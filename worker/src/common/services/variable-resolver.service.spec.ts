@@ -31,4 +31,35 @@ describe('VariableResolverService', () => {
       'Failed to securely resolve project variables',
     );
   });
+
+  describe('used-secret filtering', () => {
+    const rows = [
+      {
+        key: 'BROKEN_SECRET',
+        type: 'secret',
+        isSecret: true,
+        encryptedValue: 'invalid-envelope',
+        value: '',
+      },
+      { key: 'PLAIN_VAR', type: 'variable', isSecret: false, value: 'v' },
+    ];
+    const make = () =>
+      new VariableResolverService({
+        getProjectVariables: jest.fn().mockResolvedValue(rows),
+      } as unknown as DbService);
+
+    it('ignores an undecryptable secret the scripts do not use', async () => {
+      const result = await make().resolveProjectVariables('p1', [
+        "getSecret('OTHER_SECRET')",
+      ]);
+      expect(result.secrets).toEqual({});
+      expect(result.variables).toEqual({ PLAIN_VAR: 'v' });
+    });
+
+    it('fails with a safe message naming a used secret that cannot be decrypted', async () => {
+      await expect(
+        make().resolveProjectVariables('p1', ["getSecret('BROKEN_SECRET')"]),
+      ).rejects.toThrow("secret 'BROKEN_SECRET' could not be decrypted");
+    });
+  });
 });

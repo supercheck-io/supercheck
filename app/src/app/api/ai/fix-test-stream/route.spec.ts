@@ -4,7 +4,7 @@ jest.mock("@/lib/ai/ai-streaming-service", () => ({ AIStreamingService: { genera
 jest.mock("@/lib/ai/ai-prompts", () => ({ AIPromptBuilder: { buildK6FixPrompt: jest.fn(() => "prompt"), generateGuidanceMessage: jest.fn(() => "Retry after the report is ready") } }));
 jest.mock("@/lib/ai/ai-service", () => ({ AIFixService: { generateScriptFix: jest.fn() } }));
 jest.mock("@/lib/session", () => ({ getActiveOrganization: jest.fn() }));
-jest.mock("@/lib/services/usage-tracker", () => ({ usageTracker: { consumeAICredit: jest.fn() } }));
+jest.mock("@/lib/services/usage-tracker", () => ({ usageTracker: { consumeAICredit: jest.fn(), refundAICredit: jest.fn() } }));
 jest.mock("@/lib/services/subscription-service", () => ({ subscriptionService: { blockUntilSubscribed: jest.fn(), requireValidPolarCustomer: jest.fn() } }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 jest.mock("next/headers", () => ({ headers: jest.fn(async () => new Headers()) }));

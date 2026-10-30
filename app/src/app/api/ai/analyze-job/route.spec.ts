@@ -11,7 +11,7 @@ jest.mock("@/lib/ai/ai-streaming-service", () => ({ AIStreamingService: {
 jest.mock("@/lib/ai/ai-prompts", () => ({ AIPromptBuilder: { buildJobAnalyzePrompt: jest.fn() } }));
 jest.mock("@/lib/session", () => ({ getActiveOrganization: jest.fn() }));
 jest.mock("@/lib/auth-context", () => ({ requireAuthContext: jest.fn() }));
-jest.mock("@/lib/services/usage-tracker", () => ({ usageTracker: { consumeAICredit: jest.fn() } }));
+jest.mock("@/lib/services/usage-tracker", () => ({ usageTracker: { consumeAICredit: jest.fn(), refundAICredit: jest.fn() } }));
 jest.mock("@/lib/services/subscription-service", () => ({ subscriptionService: {
   blockUntilSubscribed: jest.fn(), requireValidPolarCustomer: jest.fn(),
 } }));

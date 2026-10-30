@@ -10,6 +10,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { S3Service } from '../../execution/services/s3.service';
 import { pathExists } from '../utils/file-search';
+import { scrubSecretsFromReportDir } from '../utils/secret-stream';
 
 export interface ReportUploadResult {
   success: boolean;
@@ -24,6 +25,8 @@ export interface ReportUploadOptions {
   s3ReportKeyPrefix: string;
   entityType: 'test' | 'job' | 'monitor';
   processReportFiles?: boolean;
+  /** Secret values to scrub from text-like report files before upload. */
+  secrets?: Record<string, string>;
 }
 
 /**
@@ -56,6 +59,7 @@ export class ReportUploadService {
       s3ReportKeyPrefix,
       entityType,
       processReportFiles = true,
+      secrets,
     } = options;
     const testBucket = this.s3Service.getBucketForEntityType(entityType);
     // Only trust the configured reporter output; other extracted HTML may be test-authored.
@@ -63,6 +67,22 @@ export class ReportUploadService {
     if (!(await pathExists(reportDir))) {
       this.logger.warn(`No generated HTML report found for test ${testId}`);
       return { success: false, reportUrl: null, error: 'Report not found' };
+    }
+
+    if (secrets) {
+      try {
+        await scrubSecretsFromReportDir(reportDir, secrets);
+      } catch (error) {
+        // Fail closed: never upload a report we could not scrub.
+        this.logger.error(
+          `Report secret scrubbing failed for test ${testId}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        return {
+          success: false,
+          reportUrl: null,
+          error: 'Report secret scrubbing failed',
+        };
+      }
     }
 
     const result = await this._uploadFromDirectory(

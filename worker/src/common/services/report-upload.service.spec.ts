@@ -115,4 +115,42 @@ describe('ReportUploadService', () => {
     });
     expect(s3Service.uploadDirectory).not.toHaveBeenCalled();
   });
+
+  it('scrubs secret values and their encoded forms from text reports before upload', async () => {
+    const s3Service = createS3ServiceMock();
+    const service = new ReportUploadService(s3Service);
+    const runDir = await createRunDirectory();
+    const reportDir = path.join(runDir, 'html');
+    const secret = 'hunter2-secret/value';
+    await fs.mkdir(path.join(reportDir, 'data'), { recursive: true });
+    await fs.writeFile(
+      path.join(reportDir, 'index.html'),
+      `<p>${secret}</p>${Buffer.from(secret).toString('base64')} ${encodeURIComponent(secret)} short:abc`,
+    );
+    await fs.writeFile(
+      path.join(reportDir, 'data', 'r.json'),
+      JSON.stringify({ v: secret }),
+    );
+    s3Service.uploadDirectory.mockImplementation(async (dir: string) => {
+      const html = await fs.readFile(path.join(dir, 'index.html'), 'utf8');
+      const json = await fs.readFile(path.join(dir, 'data', 'r.json'), 'utf8');
+      expect(html + json).not.toContain(secret);
+      expect(html).not.toContain(Buffer.from(secret).toString('base64'));
+      expect(html).not.toContain(encodeURIComponent(secret));
+      expect(html).toContain('short:abc');
+      return [];
+    });
+
+    const result = await service.uploadReport({
+      runDir,
+      testId: 'test-12345678',
+      executionId: 'execution-123',
+      s3ReportKeyPrefix: 'execution-123/report',
+      entityType: 'job',
+      secrets: { TOKEN: secret, TINY: 'abc' },
+    });
+
+    expect(result.success).toBe(true);
+    expect(s3Service.uploadDirectory).toHaveBeenCalledTimes(1);
+  });
 });

@@ -91,8 +91,7 @@ import {
   useMonitorPermissions,
 } from "@/hooks/use-monitor-details";
 import { useQueryClient } from "@tanstack/react-query";
-import { MONITORS_QUERY_KEY, MONITOR_QUERY_KEY } from "@/hooks/use-monitors";
-import { DASHBOARD_QUERY_KEY } from "@/hooks/use-dashboard";
+import { formatUptime, getResumeStatus, invalidateMonitorCaches } from "./monitor-actions";
 import { useLocationMetadata } from "@/hooks/use-locations";
 
 export interface MonitorResultItem {
@@ -234,10 +233,11 @@ export function MonitorDetailClient({
   const {
     canEdit: canEditMonitor,
     canDelete: canDeleteMonitor,
-    canToggle: canToggleMonitor,
     isLoading: permissionsLoading,
   } = useMonitorPermissions(monitor.id);
   const permissionsReady = hasHydrated && !permissionsLoading;
+  // Pause/resume hits the update endpoint, so it needs the same permission as editing (as in the list row)
+  const canToggleMonitor = canEditMonitor;
 
   // Dynamic location metadata
   const { locations: dynamicLocations } = useLocationMetadata();
@@ -336,10 +336,7 @@ export function MonitorDetailClient({
       toast.success(`Monitor "${monitor.name}" deleted successfully.`);
 
       // Invalidate Monitors cache to ensure fresh data on monitors list
-      queryClient.invalidateQueries({ queryKey: MONITORS_QUERY_KEY, refetchType: 'all' });
-      // Dashboard counts and the cached single-monitor entry also change
-      queryClient.invalidateQueries({ queryKey: DASHBOARD_QUERY_KEY, refetchType: 'all' });
-      queryClient.invalidateQueries({ queryKey: [...MONITOR_QUERY_KEY, monitor.id], refetchType: 'all' });
+      invalidateMonitorCaches(queryClient, monitor.id);
 
       router.push("/monitors");
       router.refresh();
@@ -358,16 +355,10 @@ export function MonitorDetailClient({
       return;
     }
 
-    let newStatus: DBMoniotorStatusType =
-      monitor.status === "paused" ? "up" : "paused";
-
-    if (
-      monitor.status === "paused" &&
-      monitor.recentResults &&
-      monitor.recentResults.length > 0
-    ) {
-      newStatus = monitor.recentResults[0].isUp ? "up" : "down";
-    }
+    const newStatus: DBMoniotorStatusType =
+      monitor.status === "paused"
+        ? getResumeStatus(monitor.recentResults?.[0]?.isUp)
+        : "paused";
 
     try {
       const response = await fetch(`/api/monitors/${monitor.id}`, {
@@ -392,10 +383,7 @@ export function MonitorDetailClient({
       );
 
       // Invalidate Monitors cache to ensure fresh data on monitors list
-      queryClient.invalidateQueries({ queryKey: MONITORS_QUERY_KEY, refetchType: 'all' });
-      // Dashboard counts and the cached single-monitor entry also change
-      queryClient.invalidateQueries({ queryKey: DASHBOARD_QUERY_KEY, refetchType: 'all' });
-      queryClient.invalidateQueries({ queryKey: [...MONITOR_QUERY_KEY, monitor.id], refetchType: 'all' });
+      invalidateMonitorCaches(queryClient, monitor.id);
 
       // Refresh server-side props to get the latest data
       router.refresh();
@@ -434,7 +422,7 @@ export function MonitorDetailClient({
 
         return {
           name: format(date, "HH:mm"), // Show only time (HH:MM) for cleaner x-axis
-          time: r.responseTimeMs ?? 0, // Use 0 for failed checks (null/undefined response times)
+          time: r.responseTimeMs ?? null, // null leaves a gap for failed checks instead of plotting 0 ms
           fullDate: format(date, "MMM dd, HH:mm"), // Keep full date for tooltips
           isUp: r.isUp, // Keep status for conditional styling
           status: r.status,
@@ -464,11 +452,11 @@ export function MonitorDetailClient({
     return {
       uptime24h:
         period24h.uptimePercentage !== null
-          ? `${period24h.uptimePercentage.toFixed(1)}%`
+          ? formatUptime(period24h.uptimePercentage)
           : "N/A",
       uptime30d:
         period30d.uptimePercentage !== null
-          ? `${period30d.uptimePercentage.toFixed(1)}%`
+          ? formatUptime(period30d.uptimePercentage)
           : "N/A",
       avgResponse24h:
         period24h.avgResponseTimeMs !== null

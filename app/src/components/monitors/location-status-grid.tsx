@@ -1,5 +1,6 @@
 "use client";
 
+import { formatUptime } from "./monitor-actions";
 import React, { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -202,7 +203,7 @@ export function LocationStatusGrid({
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-gray-600">Uptime (last {days}d)</span>
                     <span className={`font-bold ${healthColor}`}>
-                      {stat.uptimePercentage.toFixed(2)}%
+                      {formatUptime(stat.uptimePercentage)}
                     </span>
                   </div>
                   <div className="h-2 bg-gray-200 rounded-full overflow-hidden">

@@ -14,6 +14,7 @@ import {
   trialPlanLimits,
 } from "./trial-limits";
 
+import { PgDialect } from "drizzle-orm/pg-core";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -250,6 +251,15 @@ describe("trial limits", () => {
           selectCount(4),
         ),
       ).resolves.toBe(4);
+    });
+
+    it("counts only running and completed investigations", async () => {
+      const database = selectCount(1) as unknown as { where: jest.Mock };
+      await countTrialInvestigations("org", new Date(Date.now() + 86_400_000), database as never);
+      const { sql: text, params } = new PgDialect().sqlToQuery(database.where.mock.calls[0][0]);
+      expect(text).toContain('"status"');
+      expect(params).toEqual(expect.arrayContaining(["running", "completed"]));
+      expect(params).not.toContain("failed");
     });
 
     it("counts none when there is no row", async () => {

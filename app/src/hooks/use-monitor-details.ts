@@ -108,15 +108,8 @@ async function fetchMonitorPermissions(
   monitorId: string
 ): Promise<MonitorPermissions> {
   const response = await fetch(`/api/monitors/${monitorId}/permissions`);
-  if (!response.ok) {
-    // Return restrictive defaults on error
-    return {
-      userRole: Role.PROJECT_VIEWER,
-      canEdit: false,
-      canDelete: false,
-      canToggle: false,
-    };
-  }
+  // A failed request is not a denial: surface it as an error so callers do not treat it as "viewer".
+  if (!response.ok) throw new Error("Failed to load monitor permissions");
 
   const result = await response.json();
   // Map the string role to the Role enum
@@ -243,6 +236,8 @@ export function useMonitorPermissions(monitorId: string) {
     canEdit: query.data?.canEdit ?? false,
     canDelete: query.data?.canDelete ?? false,
     canToggle: query.data?.canToggle ?? false,
+    // True only once a request has succeeded since mount; cached or failed data is not a confirmed role.
+    isConfirmed: query.isFetchedAfterMount && query.isSuccess,
     isLoading: isActuallyLoading,
     error: query.error as Error | null,
   };

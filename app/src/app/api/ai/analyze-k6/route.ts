@@ -6,7 +6,7 @@ import { isAiRateLimitError } from "@/lib/ai/ai-rate-limit-error";
 import { validateAIConfiguration } from "@/lib/ai/ai-provider";
 import { AIPromptBuilder } from "@/lib/ai/ai-prompts";
 import { getActiveOrganization } from "@/lib/session";
-import { usageTracker } from "@/lib/services/usage-tracker";
+import { reserveAICredit } from "@/lib/ai/ai-credit-reservation";
 import { headers } from "next/headers";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { getS3FileContent } from "@/lib/s3-proxy";
@@ -92,6 +92,7 @@ async function getK6ReportContent(runId: string): Promise<string | null> {
 }
 
 export async function POST(request: NextRequest) {
+  let refundCredit: (() => Promise<void>) | undefined;
   try {
     // Step 1: Parse and validate input
     const body = await request.json();
@@ -171,27 +172,29 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Atomically consume AI credit (prevents race conditions)
-      // This increments first, then checks limit, and rolls back if exceeded
-      const creditResult = await usageTracker.consumeAICredit(activeOrg.id, "ai_analyze");
-      if (!creditResult.allowed) {
-        return NextResponse.json(
-          {
-            success: false,
-            reason: creditResult.status === 503 ? "billing_unavailable" : "ai_credits_exhausted",
-            message: creditResult.reason,
-            guidance: creditResult.status === 503
-              ? "Billing is temporarily unavailable. Please try again shortly."
-              : "Upgrade your plan for more AI credits or wait until your next billing cycle.",
-            usage: {
-              used: creditResult.used,
-              limit: creditResult.limit,
-            },
-          },
-          { status: creditResult.status ?? 429 }
-        );
-      }
     }
+
+    // Reserve before the S3 report reads so denied requests skip them.
+    // Reserve a credit atomically before the provider call; refunded if no content.
+    const creditResult = await reserveAICredit(activeOrg.id, "ai_analyze");
+    if (!creditResult.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          reason: creditResult.status === 503 ? "billing_unavailable" : "ai_credits_exhausted",
+          message: creditResult.reason,
+          guidance: creditResult.status === 503
+            ? "Billing is temporarily unavailable. Please try again shortly."
+            : "Upgrade your plan for more AI credits or wait until your next billing cycle.",
+          usage: {
+            used: creditResult.used,
+            limit: creditResult.limit,
+          },
+        },
+        { status: creditResult.status ?? 429 }
+      );
+    }
+    refundCredit = creditResult.refund;
 
     // Step 4: Fetch K6 HTML reports for both runs (optional, for enhanced analysis)
     const [baselineReport, compareReport] = await Promise.all([
@@ -210,6 +213,7 @@ export async function POST(request: NextRequest) {
     // Step 6: Generate streaming AI response
     const aiResponse = await AIStreamingService.generateStreamingResponse({
       signal: request.signal,
+      onNoContent: creditResult.refund,
       userId: session.user.id,
       orgId: activeOrg.id,
       tier: session.tier,
@@ -253,6 +257,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
+    await refundCredit?.();
     console.error("[AI Analyze k6] Streaming failed:", error);
 
     const errorMessage =

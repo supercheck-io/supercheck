@@ -70,4 +70,38 @@ describe("AI streaming lifecycle", () => {
     expect(aiRateLimiter.checkAndTrackTokens).toHaveBeenCalledWith("org", 15, "plus");
     expect(aiRateLimiter.checkRateLimit).not.toHaveBeenCalled();
   });
+
+  describe("onNoContent refund hook", () => {
+    const provider = (chunks: Array<string | Error>) => jest.mocked(streamText).mockImplementation(() => ({
+      textStream: (async function* () { for (const c of chunks) { if (c instanceof Error) throw c; yield c; } })(),
+      usage: Promise.resolve({ inputTokens: 1, outputTokens: 1, totalTokens: 2 }),
+    }) as never);
+    const run = async (chunks: Array<string | Error>) => {
+      jest.spyOn(console, "error").mockImplementation(() => undefined);
+      provider(chunks);
+      const onNoContent = jest.fn(async () => undefined);
+      const { stream } = await AIStreamingService.generateStreamingResponse({ prompt: "t", orgId: "org", onNoContent });
+      await new Response(stream).text();
+      return onNoContent;
+    };
+    it("does not refund when content streams", async () => {
+      expect(await run(["a", "b", "c"])).not.toHaveBeenCalled();
+    });
+    it("refunds exactly once for an empty stream", async () => {
+      expect(await run(["", ""])).toHaveBeenCalledTimes(1);
+    });
+    it("refunds exactly once for an error before any content", async () => {
+      expect(await run([new Error("boom")])).toHaveBeenCalledTimes(1);
+    });
+    it("refunds when initialization throws before streaming", async () => {
+      jest.spyOn(console, "error").mockImplementation(() => undefined);
+      jest.mocked(streamText).mockImplementation(() => { throw new Error("401 unauthorized"); });
+      const onNoContent = jest.fn();
+      await expect(AIStreamingService.generateStreamingResponse({ prompt: "t", orgId: "org", onNoContent })).rejects.toThrow("AI_AUTH_ERROR");
+      expect(onNoContent).toHaveBeenCalledTimes(1);
+    });
+    it("keeps the charge when the stream fails after content started", async () => {
+      expect(await run(["a", new Error("late")])).not.toHaveBeenCalled();
+    });
+  });
 });
