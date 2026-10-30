@@ -114,7 +114,11 @@ describe("DELETE /api/users/me/avatar", () => {
 
 describe("PUT /api/users/me/avatar", () => {
   const put = (body: unknown) =>
-    PUT(new NextRequest("http://localhost/api/users/me/avatar", { method: "PUT", body: JSON.stringify(body) }));
+    PUT(new NextRequest("http://localhost/api/users/me/avatar", {
+      method: "PUT",
+      body: JSON.stringify(body),
+      headers: { "content-length": String(JSON.stringify(body)?.length ?? 0) },
+    }));
 
   beforeEach(() => {
     jest.resetAllMocks();
@@ -151,5 +155,13 @@ describe("PUT /api/users/me/avatar", () => {
   it("403 while impersonating", async () => {
     mockGetSession.mockResolvedValue({ user: { id: "u1" }, session: { impersonatedBy: "admin" } });
     expect((await put({ preset: "/avatars/notionists-01.svg" })).status).toBe(403);
+  });
+
+  it("refuses a missing or oversized Content-Length before reading the body", async () => {
+    const raw = (headers: HeadersInit) =>
+      PUT(new NextRequest("http://localhost/api/users/me/avatar", { method: "PUT", body: "{}", headers }));
+    expect((await raw({})).status).toBe(411);
+    expect((await raw({ "content-length": "5000" })).status).toBe(413);
+    expect(mockUpdateUser).not.toHaveBeenCalled();
   });
 });

@@ -92,6 +92,10 @@ export async function PUT(request: NextRequest) {
   if (s.error) return s.error;
   const limited = await rateLimited(s.userId, "avatar-preset", "Too many changes. Try again later.");
   if (limited) return limited;
+  // The body is a short JSON object; refuse anything larger before buffering it.
+  const length = request.headers.get("content-length");
+  if (!length) return err("Content-Length required", 411);
+  if (!(Number(length) <= 1024)) return err("Request too large", 413);
   const preset = ((await request.json().catch(() => null)) as { preset?: unknown } | null)?.preset;
   if (!isAvatarPreset(preset)) return err("Unknown avatar", 400);
   return replaceUpload(s.userId, preset);
