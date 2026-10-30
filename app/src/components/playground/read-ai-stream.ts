@@ -43,6 +43,10 @@ export async function readAiStream(
       lines.forEach(handleLine);
     }
     handleLine(buffer + decoder.decode());
+  } catch (error) {
+    // Stop the server stream too, not just this read loop.
+    await reader.cancel().catch(() => undefined);
+    throw error;
   } finally {
     reader.releaseLock();
   }

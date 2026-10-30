@@ -125,6 +125,7 @@ export async function GET(request: Request) {
       let isClosed = false;
       let reconcileTimer: ReturnType<typeof setTimeout> | null = null;
       let lifetimeTimer: ReturnType<typeof setTimeout> | undefined;
+      let heldCompletion = false;
 
       let keepAlive: ReturnType<typeof setInterval> | undefined;
       let unsubscribe = () => {};
@@ -214,6 +215,7 @@ export async function GET(request: Request) {
           reportStatus !== "failed" &&
           reportStatus !== "error"
         ) {
+          heldCompletion = true;
           return;
         }
 
@@ -289,7 +291,13 @@ export async function GET(request: Request) {
         STATUS_RECONCILE_INTERVAL_MS
       );
 
-      lifetimeTimer = setTimeout(cleanup, MAX_STREAM_LIFETIME_MS);
+      lifetimeTimer = setTimeout(() => {
+        // A held-back completion whose report never arrived must still end the client's wait.
+        if (heldCompletion) {
+          emit({ status: "error", derivedStatus: "failed", testId, errorDetails: "Timed out waiting for the test report" });
+        }
+        cleanup();
+      }, MAX_STREAM_LIFETIME_MS);
 
       keepAlive = setInterval(() => {
         safeEnqueue(encoder.encode(": ping\n\n"));

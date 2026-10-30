@@ -258,6 +258,29 @@ describe("test-status stream lifecycle", () => {
     }
   });
 
+  it("ends a held-back completion as failed when no report arrives before the max lifetime", async () => {
+    jest.useFakeTimers();
+    try {
+      mockReportsFindFirst.mockResolvedValue(undefined);
+      mockRunsFindFirst.mockResolvedValueOnce({ id: "run-1" }).mockResolvedValue(undefined);
+      const { reader, hub } = await open();
+      await reader.read(); // connected
+      await reader.read(); // waiting
+      const send = hub.subscribe.mock.calls[0][0];
+      await send({ category: "test", entityId: "test-1", queueJobId: "test-1", status: "completed" });
+      const next = reader.read();
+      await jest.advanceTimersByTimeAsync(15 * 60 * 1000 + 1);
+      let text = "";
+      for (let chunk = await next; !chunk.done; chunk = await reader.read()) {
+        text += decoder.decode(chunk.value);
+      }
+      expect(text).toContain('"derivedStatus":"failed"');
+      expect(text).toContain("Timed out waiting for the test report");
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it("holds back a queue 'completed' event until the report outcome is known", async () => {
     jest.useFakeTimers();
     try {

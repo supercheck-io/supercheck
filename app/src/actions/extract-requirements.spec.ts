@@ -263,6 +263,13 @@ describe("extractRequirementsFromDocument", () => {
     expect(result.error).toContain("not a valid PDF");
   });
 
+  it("should accept a PDF whose header follows leading bytes", async () => {
+    const formData = new MockFormData() as unknown as FormData;
+    formData.append("file", createMockFile("\n\n%PDF-1.7 body".padEnd(100, "."), "lead.pdf", { type: "application/pdf" }));
+    const result = await extractRequirementsFromDocument(formData);
+    expect(result.error ?? "").not.toContain("not a valid PDF");
+  });
+
   it("should reject empty files (size = 0)", async () => {
       const formData = new MockFormData() as unknown as FormData;
       formData.append(

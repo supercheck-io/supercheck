@@ -263,9 +263,10 @@ const MIME_BY_TYPE: Record<RequirementDocumentType, string> = {
 /** Resolve the document type and, for binary formats, check the magic bytes so a renamed file is rejected. */
 async function detectFileType(file: File): Promise<RequirementDocumentType> {
   const type = validateFileType(file);
-  const head = new Uint8Array(await file.slice(0, 5).arrayBuffer());
+  // PDF readers accept the header anywhere in the first 1024 bytes.
+  const head = new Uint8Array(await file.slice(0, 1024).arrayBuffer());
   const startsWith = (sig: number[]) => sig.every((byte, i) => head[i] === byte);
-  if (type === "pdf" && !startsWith([0x25, 0x50, 0x44, 0x46, 0x2d])) {
+  if (type === "pdf" && !new TextDecoder("latin1").decode(head).includes("%PDF-")) {
     throw new Error("File content is not a valid PDF document");
   }
   if (type === "docx" && !startsWith([0x50, 0x4b, 0x03, 0x04])) {
