@@ -24,6 +24,7 @@ import { processSreBackgroundAlertTriageJob } from "./background-alert-triage";
 import { GET as getAlertHistory } from "@/app/api/alerts/history/route";
 import { requireAuthContext } from "@/lib/auth-context";
 import { resolveIncident } from "@/lib/sre/incident-lifecycle";
+import { linkedAlertFields } from "@/lib/sre/incident-alert-snapshot";
 import { notifyIncidentEvent } from "@/lib/sre/incident-notifier";
 
 const execFileAsync = promisify(execFile);
@@ -91,12 +92,12 @@ const minutes = (n: number) => new Date(base + n * 60_000);
 async function alert(
   type: string,
   at: Date,
-  opts: { status?: "sent" | "failed" | "pending"; job?: boolean; provider?: string; dedupKey?: string } = {},
+  opts: { status?: "sent" | "failed" | "pending"; job?: boolean; provider?: string; dedupKey?: string; message?: string } = {},
 ) {
   const [row] = await mockDatabase
     .insert(schema.alertHistory)
     .values({
-      message: `${type} message`,
+      message: opts.message ?? `${type} message`,
       type: type as never,
       target: opts.job ? "Nightly export" : "Checkout API",
       targetType: opts.job ? "job" : "monitor",
@@ -185,6 +186,53 @@ it("leaves an acknowledged incident open on recovery with a single recovered not
   const [row] = await incidents();
   expect(row.status).toBe("triggered");
   expect((await states(row.id)).filter((s) => s === "recovered")).toHaveLength(1);
+});
+
+it("notes a failure that returns on an acknowledged incident, then notes the next recovery again", async () => {
+  await alert("monitor_failure", minutes(0));
+  const [open] = await incidents();
+  await mockDatabase.update(schema.sreIncidents).set({ acknowledgedAt: minutes(1), acknowledgedByUserId: userId }).where(eq(schema.sreIncidents.id, open.id));
+  await alert("monitor_recovery", minutes(10));
+  // A person acting after the recovery must not hide the returning failure.
+  await mockDatabase.insert(schema.sreIncidentTimelineEvents).values({ incidentId: open.id, eventType: "state_change", eventData: { state: "assigned" }, actorType: "user", createdAt: new Date() });
+  await alert("monitor_failure", minutes(12));
+  await alert("monitor_recovery", minutes(14));
+  expect((await states(open.id)).slice(1)).toEqual(["recovered", "assigned", "failure_returned", "recovered"]);
+});
+
+it("does not reopen on a failure that fired before the automatic recovery", async () => {
+  await alert("monitor_failure", minutes(0));
+  await alert("monitor_recovery", minutes(10));
+  await alert("job_failed", minutes(9), { job: false });
+  const rows = await incidents();
+  // Joined to the incident it belongs to: no reopen and no duplicate incident.
+  expect(rows).toHaveLength(1);
+  expect(rows[0].status).toBe("resolved");
+  expect(await states(rows[0].id)).not.toContain("reopened");
+});
+
+it("does not note a failure as returned when it fired before the recovery", async () => {
+  await alert("monitor_failure", minutes(0));
+  const [open] = await incidents();
+  await mockDatabase.update(schema.sreIncidents).set({ acknowledgedAt: minutes(1), acknowledgedByUserId: userId }).where(eq(schema.sreIncidents.id, open.id));
+  await alert("monitor_recovery", minutes(10));
+  await alert("job_failed", minutes(8), { job: false });
+  expect(await states(open.id)).not.toContain("failure_returned");
+});
+
+it("keeps each incident's alert as it was when linked, after later failures reuse the alert row", async () => {
+  await alert("monitor_failure", minutes(0), { message: "first: 502 from checkout" });
+  await alert("monitor_recovery", minutes(5));
+  await alert("monitor_failure", minutes(5 + 31), { message: "second: DNS timeout" });
+  const [first, second] = await incidents();
+  const linked = async (incidentId: string) =>
+    mockDatabase
+      .select({ description: linkedAlertFields.description, firedAt: linkedAlertFields.firedAt })
+      .from(schema.sreIncidentAlerts)
+      .innerJoin(schema.sreAlertEvents, eq(schema.sreAlertEvents.id, schema.sreIncidentAlerts.alertEventId))
+      .where(eq(schema.sreIncidentAlerts.incidentId, incidentId));
+  expect(await linked(first.id)).toEqual([{ description: "first: 502 from checkout", firedAt: minutes(0) }]);
+  expect(await linked(second.id)).toEqual([{ description: "second: DNS timeout", firedAt: minutes(36) }]);
 });
 
 it("does not reopen an incident a person resolved, even within the window", async () => {

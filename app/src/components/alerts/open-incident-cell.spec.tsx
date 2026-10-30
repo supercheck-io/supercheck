@@ -6,13 +6,15 @@ import type { AlertHistory } from "./schema";
 const push = jest.fn();
 const createIncident = jest.fn();
 let role: string | null = "project_editor";
+const invalidateQueries = jest.fn(async () => undefined);
 jest.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
+jest.mock("@tanstack/react-query", () => ({ useQueryClient: () => ({ invalidateQueries }) }));
 jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
 jest.mock("@/actions/sre-incidents", () => ({
   createSreIncidentFromAlert: (...args: unknown[]) => createIncident(...args),
 }));
 jest.mock("@/hooks/use-project-context", () => ({
-  useProjectContext: () => ({ currentProject: role ? { userRole: role } : null, loading: false, error: null }),
+  useProjectContext: () => ({ currentProject: role ? { userRole: role } : null, projectId: "p1", loading: false, error: null }),
 }));
 
 const alert = (overrides: Partial<AlertHistory>) =>
@@ -42,6 +44,8 @@ describe("OpenIncidentCell", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open incident for api" }));
     await waitFor(() => expect(push).toHaveBeenCalledWith("/incidents/inc-1"));
     expect(createIncident).toHaveBeenCalledWith({ alertHistoryId: "a1" });
+    // The incident list must not show a stale cache when the user goes back to it.
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: expect.arrayContaining(["p1"]) });
   });
 
   it("stays on the page when the action fails", async () => {

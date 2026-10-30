@@ -15,6 +15,7 @@ import {
 } from "@/db/schema";
 import { db } from "@/utils/db";
 import { monitorConfigForRead, monitorResultDetailsForRead, monitorTargetForRead } from "@/lib/monitor-read-config";
+import { linkedAlertFields } from "@/lib/sre/incident-alert-snapshot";
 
 const DEFAULT_LOOKBACK_MINUTES = 120;
 const DEFAULT_FORWARD_BUFFER_MINUTES = 10;
@@ -178,19 +179,19 @@ export async function collectNativeEvidence(input: {
       id: sreAlertEvents.id,
       fingerprintHash: sreAlertEvents.fingerprintHash,
       dedupKey: sreAlertEvents.dedupKey,
-      severity: sreAlertEvents.severity,
+      severity: linkedAlertFields.severity,
       status: sreAlertEvents.status,
       sourceType: sreAlertEvents.sourceType,
       sourceId: sreAlertEvents.sourceId,
-      title: sreAlertEvents.title,
-      description: sreAlertEvents.description,
-      firedAt: sreAlertEvents.firedAt,
+      title: linkedAlertFields.title,
+      description: linkedAlertFields.description,
+      firedAt: linkedAlertFields.firedAt,
       resolvedAt: sreAlertEvents.resolvedAt,
     })
     .from(sreIncidentAlerts)
     .innerJoin(sreAlertEvents, eq(sreIncidentAlerts.alertEventId, sreAlertEvents.id))
     .where(eq(sreIncidentAlerts.incidentId, input.incidentId))
-    .orderBy(desc(sreAlertEvents.firedAt))
+    .orderBy(desc(linkedAlertFields.firedAt))
     .limit(50);
 
   if (linkedAlerts.length === 0) {

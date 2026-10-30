@@ -71,6 +71,18 @@ describe("SreMessageContent", () => {
     expect(screen.getAllByRole("cell")).toHaveLength(2);
   });
 
+  it("renders single-column markdown tables", () => {
+    render(<SreMessageContent content={"| Service |\n|---|\n| checkout |"} />);
+    expect(screen.getByRole("table")).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "checkout" })).toBeInTheDocument();
+  });
+
+  it("shows a chart with no numeric values as code instead of an empty chart", () => {
+    render(<SreMessageContent content={["```chart", JSON.stringify({ type: "bar", xKey: "x", series: [{ key: "y", label: "Y" }], data: [{ x: "a", y: "n/a" }] }), "```"].join("\n")} />);
+    expect(screen.queryByRole("group")).not.toBeInTheDocument();
+    expect(screen.getByText("chart")).toBeInTheDocument();
+  });
+
   it("does not turn a missing chart observation into zero", () => {
     render(<SreMessageContent content={["```chart", JSON.stringify({ type: "line", title: "Errors", xKey: "time", series: [{ key: "errors", label: "Error count" }], data: [{ time: "10:00", errors: 5 }, { time: "10:01" }] }), "```"].join("\n")} />);
     expect(screen.getByText("No data")).toBeInTheDocument();

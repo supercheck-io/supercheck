@@ -1,4 +1,4 @@
-import { createSseStream, encodeSseEvent } from "./sse-stream";
+import { createSseStream, encodeSseEvent, SseClientError } from "./sse-stream";
 
 async function readStream(stream: ReadableStream<Uint8Array>) {
   const reader = stream.getReader();
@@ -60,5 +60,18 @@ describe("SRE SSE stream", () => {
 
     expect(output).toContain("event: status");
     expect(output).toContain("event: done");
+  });
+
+  it("shows only client-safe error messages", async () => {
+    const internal = await readStream(createSseStream(async () => {
+      throw new Error("relation \"secret_table\" does not exist");
+    }));
+    expect(internal).toContain("SRE stream failed");
+    expect(internal).not.toContain("secret_table");
+
+    const clientFacing = await readStream(createSseStream(async () => {
+      throw new SseClientError("Copilot conversation not found");
+    }));
+    expect(clientFacing).toContain("Copilot conversation not found");
   });
 });

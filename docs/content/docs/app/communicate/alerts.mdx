@@ -127,7 +127,7 @@ At most **3 alerts** go out per failure or recovery streak: the first when the t
 
 **Notes:**
 - Check 3: Failure threshold (3) reached → first failure alert sent
-- Check 4: Already alerted, no new alert until exponential interval
+- Check 4: Already alerted; the next reminder waits for the reminder spacing described above
 - Check 5: Status changed to passing, failure counter resets, recovery counter starts
 - Check 6: Recovery threshold (2) reached → recovery alert sent
 

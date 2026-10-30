@@ -133,12 +133,38 @@ async function fetchPinnedEndpoint(
   });
 }
 
+/** Errors the body stream once it passes maxBytes, matching the pinned path's cap. */
+function capResponseBody(response: Response, maxBytes: number): Response {
+  if (!response.body) return response;
+  let total = 0;
+  const limited = response.body.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        total += chunk.byteLength;
+        if (total > maxBytes) {
+          controller.error(new Error(`Connector response exceeded ${maxBytes} bytes`));
+          return;
+        }
+        controller.enqueue(chunk);
+      },
+    }),
+  );
+  return new Response(limited, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  });
+}
+
 export function fetchConnectorEndpoint(
   input: string | URL,
   init: RequestInit = {},
   maxResponseBytes = MAX_RESPONSE_BYTES,
 ) {
-  return fetchPinnedEndpoint(input, init, true, maxResponseBytes);
+  // The self-hosted private-network path uses plain fetch; give it the pinned path's body cap.
+  return fetchPinnedEndpoint(input, init, true, maxResponseBytes).then((response) =>
+    isSelfHosted() ? capResponseBody(response, maxResponseBytes) : response,
+  );
 }
 
 /** Public webhook variant: always validates and pins the destination. */

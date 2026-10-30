@@ -31,6 +31,7 @@ import {
   announceSystemTransition,
   applySourceRecovery,
   findOpenIncidentForSource,
+  noteFailureReturned,
   getDefaultAssigneeId,
   reopenRecentlyAutoResolved,
 } from "@/lib/sre/incident-lifecycle";
@@ -401,6 +402,7 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
     const [existingIncident] = await tx
       .select({
         id: sreIncidents.id,
+        status: sreIncidents.status,
         triageInvestigationRunId: sreIncidents.triageInvestigationRunId,
       })
       .from(sreIncidentAlerts)
@@ -423,6 +425,9 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
       .limit(1);
 
     if (existingIncident) {
+      if (existingIncident.status !== "resolved" && RECOVERABLE_FAILURE_TYPES.has(alert.type)) {
+        await noteFailureReturned(tx, existingIncident.id, firedAt);
+      }
       return {
         skipped: false as const,
         organizationId,
@@ -443,6 +448,29 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
         firedAt,
       })
       : null;
+    if (reopened?.stale) {
+      await tx
+        .insert(sreIncidentAlerts)
+        .values({
+          incidentId: reopened.incidentId,
+          alertEventId: alertEvent.id,
+          role: "related",
+          alertTitle: title,
+          alertDescription: alert.message,
+          alertSeverity: severity,
+          alertFiredAt: firedAt,
+          createdAt: new Date(),
+        })
+        .onConflictDoNothing();
+      return {
+        skipped: false as const,
+        organizationId,
+        projectId,
+        alertEventId: alertEvent.id,
+        incidentId: reopened.incidentId,
+        alreadyTriaged: true,
+      };
+    }
     if (reopened) {
       return {
         skipped: false as const,
@@ -461,8 +489,18 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
       if (openForSource) {
         await tx
           .insert(sreIncidentAlerts)
-          .values({ incidentId: openForSource.id, alertEventId: alertEvent.id, role: "related", createdAt: new Date() })
+          .values({
+            incidentId: openForSource.id,
+            alertEventId: alertEvent.id,
+            role: "related",
+            alertTitle: title,
+            alertDescription: alert.message,
+            alertSeverity: severity,
+            alertFiredAt: firedAt,
+            createdAt: new Date(),
+          })
           .onConflictDoNothing();
+        await noteFailureReturned(tx, openForSource.id, firedAt);
         return {
           skipped: false as const,
           organizationId,
@@ -572,6 +610,10 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
               incidentId: correlation.candidate.incidentId,
               alertEventId: alertEvent.id,
               role: "related",
+              alertTitle: title,
+              alertDescription: alert.message,
+              alertSeverity: severity,
+              alertFiredAt: firedAt,
               createdAt: new Date(),
             })
             .onConflictDoNothing();
@@ -652,6 +694,10 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
       incidentId: incident.id,
       alertEventId: alertEvent.id,
       role: "trigger",
+      alertTitle: title,
+      alertDescription: alert.message,
+      alertSeverity: severity,
+      alertFiredAt: firedAt,
       createdAt: new Date(),
     });
 

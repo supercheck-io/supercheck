@@ -192,19 +192,27 @@ export function ServiceCatalog({
 
       <AlertDialog
         open={Boolean(archivingService)}
-        onOpenChange={(open) => !open && setArchivingService(null)}
+        // Escape or an outside click must not close it while the archive request is running.
+        onOpenChange={(open) => !open && !isArchiving && setArchivingService(null)}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Archive service?</AlertDialogTitle>
             <AlertDialogDescription>
-              {archivingService?.name} will be marked deprecated instead of
-              deleted, preserving topology and incident history.
+              {archivingService?.name} will be archived, not deleted. Its
+              topology and incident history are kept.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isArchiving}>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmArchive} disabled={isArchiving}>
+            <AlertDialogAction
+              onClick={(event) => {
+                // Stay open until the request finishes so the spinner and any error are visible.
+                event.preventDefault();
+                confirmArchive();
+              }}
+              disabled={isArchiving}
+            >
               {isArchiving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Archive service
             </AlertDialogAction>

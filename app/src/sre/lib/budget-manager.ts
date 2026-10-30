@@ -48,3 +48,16 @@ export function assertSreAgentPromptWithinBudget(prompt: string, budget: Pick<Sr
     throw new Error(`SRE agent prompt exceeds ${budget.maxPromptChars} character budget`);
   }
 }
+
+/** Keeps the newest items whose total length fits maxChars; the newest item always stays. */
+export function keepNewestWithinBudget<T>(items: T[], lengthOf: (item: T) => number, maxChars: number) {
+  let total = 0;
+  let start = items.length;
+  while (start > 0) {
+    const length = lengthOf(items[start - 1]!);
+    if (start < items.length && total + length > maxChars) break;
+    total += length;
+    start -= 1;
+  }
+  return items.slice(start);
+}

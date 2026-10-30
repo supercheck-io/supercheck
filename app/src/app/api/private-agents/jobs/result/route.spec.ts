@@ -149,4 +149,20 @@ describe("Private Agent job result route", () => {
     }));
     expect((await POST(request(body))).status).toBe(200);
   });
+
+  it("redacts secrets an agent echoes in its error code before storing it", async () => {
+    const sets: Array<Record<string, unknown>> = [];
+    mockSelectLimit.mockResolvedValueOnce([{ id: jobId, status: "leased", leaseExpiresAt: new Date(Date.now() + 60_000) }]);
+    mockTransaction.mockImplementation(async (fn) => fn({
+      update: () => ({
+        set: (values: Record<string, unknown>) => {
+          sets.push(values);
+          return { where: () => Object.assign(Promise.resolve([]), { returning: async () => [{ id: jobId }] }) };
+        },
+      }),
+    }));
+    await POST(request({ ...body, status: "failed", errorCode: "HTTP 401 token=abc123secret" }));
+    expect(JSON.stringify(sets)).not.toContain("abc123secret");
+    expect(sets).toContainEqual(expect.objectContaining({ errorCode: "HTTP 401 token=[REDACTED]" }));
+  });
 });

@@ -116,7 +116,7 @@ Copy the **Agent ID** and **Registration token**. Start the agent within **15 mi
 
 Confirm the agent shows **connected**. In the same project's **Settings → Organization → Integrations**, add a connector, select **Private Agent**, and choose this agent.
 
-Enter a container-reachable provider endpoint and a read-only credential. Loopback addresses such as `localhost` are rejected. Validate the connector and test a known-result query. See [Connectors](/docs/app/investigate/connectors) for provider requirements.
+Enter a container-reachable provider endpoint and a read-only credential. Loopback addresses such as `localhost` and cloud metadata endpoints (AWS, GCP, Azure, Alibaba) are rejected, and a connector response larger than 10 MB fails the query. Validate the connector and test a known-result query. See [Connectors](/docs/app/investigate/connectors) for provider requirements.
 
 Private Agents are also the only way to use an [MCP server](/docs/app/investigate/connectors#mcp-servers-private-agent-only) inside your network. The agent connects over Streamable HTTP, applies the same endpoint policy as other connectors, and runs only tools you allowlisted. Discovery and tool calls run as agent jobs, so the agent must be connected. Each agent reports the connector types it supports. Supercheck sends it only those, and asks you to upgrade an older agent before it can run newer types such as MCP, Jira or Confluence.
 
@@ -131,5 +131,5 @@ Link the connector's service to an incident and run an investigation with **Incl
 </Steps>
 
 <Callout type="warn">
-Preserve the `private-agent-state` volume; do not use `down -v` during maintenance. If the registration token expires, choose **Rotate token**, replace it in `.env`, and recreate the agent within 15 minutes with the start command above.
+Preserve the `private-agent-state` volume; do not use `down -v` during maintenance. If the registration token expires, choose **Rotate token** (not available while a super admin is impersonating a user), replace it in `.env`, and recreate the agent within 15 minutes with the start command above.
 </Callout>

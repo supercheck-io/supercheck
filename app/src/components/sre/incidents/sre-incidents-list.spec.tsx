@@ -185,6 +185,32 @@ describe("SreIncidentsList", () => {
     expect(screen.getByText("Total 4 incidents")).toBeInTheDocument();
   });
 
+  it("searches and sorts by the status the badge shows", () => {
+    render(
+      <SreIncidentsList
+        incidents={[
+          incidentFixture(1, { status: "verifying" }),
+          incidentFixture(3, { status: "triggered", acknowledgedAt: new Date("2026-07-02T00:05:00.000Z") }),
+          incidentFixture(5, { status: "identified" }),
+        ]}
+        loadError={null}
+      />,
+    );
+    const firstTitle = () => within(screen.getAllByRole("row")[1]).getAllByRole("cell")[1].textContent;
+    const statusHeader = screen.getAllByRole("columnheader").find((cell) => cell.textContent?.trim() === "Status");
+    fireEvent.click(within(statusHeader!).getAllByRole("button")[0]);
+    expect(firstTitle()).toContain("Checkout incident 3");
+    fireEvent.change(screen.getByPlaceholderText(/Search/), { target: { value: "monitoring" } });
+    expect(screen.getByText("Total 1 incident")).toBeInTheDocument();
+    expect(screen.getByText("Checkout incident 1")).toBeInTheDocument();
+  });
+
+  it("shows loading, not an empty result, while the resolved scope loads", () => {
+    render(<SreIncidentsList incidents={[]} loadError={null} hasIncidents loadingScope />);
+    expect(screen.getByText("Loading incidents...")).toBeInTheDocument();
+    expect(screen.queryByText("No incidents match the current filters.")).not.toBeInTheDocument();
+  });
+
   it("lets the Status facet reach resolved incidents without switching quick filters", () => {
     render(
       <SreIncidentsList
@@ -239,6 +265,10 @@ describe("SreIncidentsList", () => {
 
   it("matches quick filters by assignee and ignores resolved incidents outside All", () => {
     expect(matchesQuickFilter({ status: "resolved", assigneeUserId: null }, "unassigned", "me")).toBe(false);
+    // With a Status filter, "Unassigned" and "Assigned to me" can reach resolved incidents.
+    expect(matchesQuickFilter({ status: "resolved", assigneeUserId: null }, "unassigned", "me", true)).toBe(true);
+    expect(matchesQuickFilter({ status: "resolved", assigneeUserId: "me" }, "mine", "me", true)).toBe(true);
+    expect(matchesQuickFilter({ status: "resolved", assigneeUserId: null }, "active", "me", true)).toBe(false);
     expect(matchesQuickFilter({ status: "resolved", assigneeUserId: null }, "all", "me")).toBe(true);
     expect(matchesQuickFilter({ status: "triggered", assigneeUserId: "me" }, "mine", null)).toBe(false);
   });

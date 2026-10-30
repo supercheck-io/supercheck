@@ -51,3 +51,28 @@ export async function failStaleSreInvestigationRunsForIncident(input: {
     );
   }
 }
+
+const ACTIVE_INCIDENT_RUN_CONSTRAINT =
+  "sre_investigation_runs_active_incident_unique";
+
+export function isActiveIncidentRunConflict(error: unknown): boolean {
+  let current = error;
+  for (let depth = 0; depth < 3 && current; depth += 1) {
+    if (typeof current !== "object") return false;
+    const dbError = current as {
+      code?: string;
+      constraint?: string;
+      constraint_name?: string;
+      cause?: unknown;
+    };
+    if (
+      dbError.code === "23505" &&
+      (dbError.constraint === ACTIVE_INCIDENT_RUN_CONSTRAINT ||
+        dbError.constraint_name === ACTIVE_INCIDENT_RUN_CONSTRAINT)
+    ) {
+      return true;
+    }
+    current = dbError.cause;
+  }
+  return false;
+}

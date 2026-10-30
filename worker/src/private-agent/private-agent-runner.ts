@@ -1177,6 +1177,18 @@ async function executeLoki(job: LeasedJob): Promise<ConnectorExecutionResult> {
   return bounded(evidence, spec.budget.maxRows);
 }
 
+// A field name only; anything else could rewrite the time-range clause of the query string.
+function elasticsearchTimestampField(value: unknown): string {
+  const field = typeof value === 'string' ? value.trim() : '';
+  if (!field) return '@timestamp';
+  if (!/^[A-Za-z0-9_.@-]{1,128}$/.test(field)) {
+    throw new Error(
+      'Elasticsearch timestampField must be a field name of letters, digits, _ . @ or -',
+    );
+  }
+  return field;
+}
+
 async function executeElasticsearch(
   job: LeasedJob,
 ): Promise<ConnectorExecutionResult> {
@@ -1186,11 +1198,9 @@ async function executeElasticsearch(
     typeof spec.filters.index === 'string' && spec.filters.index.trim()
       ? spec.filters.index.trim()
       : null;
-  const timestampField =
-    typeof spec.filters.timestampField === 'string' &&
-    spec.filters.timestampField.trim()
-      ? spec.filters.timestampField.trim()
-      : '@timestamp';
+  const timestampField = elasticsearchTimestampField(
+    spec.filters.timestampField,
+  );
   const searchPath = index
     ? `/${encodeURIComponent(index)}/_search`
     : '/_search';

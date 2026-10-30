@@ -196,6 +196,7 @@ export function SreIncidentDetailView({
       canInvestigate={permissions.canInvestigate}
       canUseLiveConnectors={permissions.canUseLiveConnectors}
       investigationEnabled={detail.capabilities.investigationEnabled}
+      onCollectEvidence={() => openSheet("brief")}
     />
   ) : null;
 

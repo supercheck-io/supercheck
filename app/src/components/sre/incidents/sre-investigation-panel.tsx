@@ -43,6 +43,8 @@ type SreInvestigationPanelProps = {
   canMapService?: boolean;
   canUseLiveConnectors?: boolean;
   investigationEnabled?: boolean;
+  /** Opens the evidence brief in place; the ?tab link does nothing while the sheet is open. */
+  onCollectEvidence?: () => void;
 };
 
 export function SreInvestigationPanel({
@@ -56,6 +58,7 @@ export function SreInvestigationPanel({
   canMapService = false,
   canUseLiveConnectors = false,
   investigationEnabled = true,
+  onCollectEvidence,
 }: SreInvestigationPanelProps) {
   const queryClient = useQueryClient();
   const { projectId } = useProjectContext();
@@ -268,11 +271,17 @@ export function SreInvestigationPanel({
                 : "No evidence is saved yet. Generate an evidence brief to collect available Supercheck context before investigating."}
             </p>
             {evidenceReferences.length === 0 && canInvestigate && (
-              <Button asChild variant="link" className="mt-2 h-auto p-0">
-                <Link href={`/incidents/${incidentId}?tab=brief`}>
+              onCollectEvidence ? (
+                <Button type="button" variant="link" className="mt-2 h-auto p-0" onClick={onCollectEvidence}>
                   Collect evidence
-                </Link>
-              </Button>
+                </Button>
+              ) : (
+                <Button asChild variant="link" className="mt-2 h-auto p-0">
+                  <Link href={`/incidents/${incidentId}?tab=brief`}>
+                    Collect evidence
+                  </Link>
+                </Button>
+              )
             )}
           </div>
         )}

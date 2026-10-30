@@ -55,6 +55,12 @@ function firstError(fieldErrors: FieldErrors | undefined, field: string) {
   return fieldErrors?.[field]?.[0] ?? null;
 }
 
+
+const FIXING_STATUSES = new Set<SreIncidentListItem["status"]>([
+  "identified",
+  "recommendations_ready",
+  "user_applying_fix",
+]);
 export function EditSreIncidentDialog({
   incident,
   services,
@@ -224,9 +230,14 @@ export function EditSreIncidentDialog({
             <div className="space-y-2">
               <Label htmlFor="incident-status">Status</Label>
               <Select
-                value={status}
+                value={FIXING_STATUSES.has(status) ? "identified" : status}
                 onValueChange={(value) =>
-                  setStatus(value as SreIncidentListItem["status"])
+                  // Keep the stored fixing sub-state when "Fixing" is picked again.
+                  setStatus(
+                    value === "identified" && FIXING_STATUSES.has(incident.status)
+                      ? incident.status
+                      : (value as SreIncidentListItem["status"]),
+                  )
                 }
               >
                 <SelectTrigger id="incident-status">
@@ -235,22 +246,17 @@ export function EditSreIncidentDialog({
                 <SelectContent>
                   <SelectItem value="triggered">Triggered</SelectItem>
                   <SelectItem value="investigating">Investigating</SelectItem>
-                  <SelectItem value="identified">Identified</SelectItem>
-                  <SelectItem value="recommendations_ready">
-                    Recommendations ready
-                  </SelectItem>
-                  <SelectItem value="user_applying_fix">
-                    User applying fix
-                  </SelectItem>
-                  <SelectItem value="verifying">Verifying</SelectItem>
+                  <SelectItem value="identified">Fixing</SelectItem>
+                  <SelectItem value="verifying">Monitoring</SelectItem>
                   <SelectItem value="resolved" disabled>
                     Resolved (use Resolve incident)
                   </SelectItem>
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                Use the Resolve incident action to close an incident with a
-                recovery note.
+                {incident.status === "resolved" && status !== "resolved"
+                  ? "Saving reopens the incident. It will need a new acknowledgement."
+                  : "Use the Resolve incident action to close an incident with a recovery note."}
               </p>
             </div>
           </div>

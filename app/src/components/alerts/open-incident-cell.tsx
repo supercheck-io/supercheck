@@ -1,6 +1,7 @@
 "use client";
 
 import { useTransition } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -9,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { isActionableAlertForIncident } from "@/lib/alert-escalation";
 import { checkRolePermissionsClient } from "@/lib/rbac/permissions-client";
+import { getSreIncidentAnalyticsQueryKey, getSreIncidentsQueryKey } from "@/lib/sre/query-keys";
 import type { AlertHistory } from "./schema";
 
 /** A delivered failure alert that can still open an incident, e.g. when the check has automatic incidents turned off. */
@@ -19,7 +21,8 @@ export function isEscalatableAlert(alert: AlertHistory) {
 export function OpenIncidentCell({ alertHistoryId, targetName }: { alertHistoryId: string; targetName: string }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const { currentProject, loading, error } = useProjectContext();
+  const queryClient = useQueryClient();
+  const { currentProject, projectId, loading, error } = useProjectContext();
   const canCreate = Boolean(
     !loading &&
       !error &&
@@ -38,6 +41,10 @@ export function OpenIncidentCell({ alertHistoryId, targetName }: { alertHistoryI
           return;
         }
         toast.success(result.message);
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: getSreIncidentsQueryKey(projectId) }),
+          queryClient.invalidateQueries({ queryKey: getSreIncidentAnalyticsQueryKey(projectId) }),
+        ]);
         router.push(`/incidents/${result.incident.id}`);
       } catch {
         toast.error("Could not open the incident. Please try again.");
