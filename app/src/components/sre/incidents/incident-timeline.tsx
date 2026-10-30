@@ -23,6 +23,8 @@ const STATE_LABELS: Record<string, string> = {
   resolved: "Resolved",
   recovered: "Recovered",
   reopened: "Reopened",
+  failure_returned: "Failure returned",
+  alert_correlated: "Alert linked",
   incident_updated: "Incident updated",
   manual_incident_created: "Incident created",
   created_from_alert_history: "Incident created from alert",

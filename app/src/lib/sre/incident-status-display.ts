@@ -25,7 +25,7 @@ export const INCIDENT_DISPLAY_STATUSES: ReadonlyArray<{
   description: string;
 }> = [
   { value: "triggered", label: "Triggered", tone: "danger", description: "An alert opened this incident and nobody has acknowledged it yet." },
-  { value: "acknowledged", label: "Acknowledged", tone: "purple", description: "Someone is on it. Escalation stops." },
+  { value: "acknowledged", label: "Acknowledged", tone: "purple", description: "Someone is on it." },
   { value: "investigating", label: "Investigating", tone: "info", description: "The team or the AI is looking for the cause." },
   { value: "fixing", label: "Fixing", tone: "indigo", description: "The cause is known and a fix is being prepared or applied." },
   { value: "monitoring", label: "Monitoring", tone: "warning", description: "A fix is in place. Watching to confirm it holds." },
