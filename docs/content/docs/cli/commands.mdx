@@ -244,7 +244,7 @@ supercheck config print --offline
 | `job list` | List jobs in the current project | `--page` (1), `--limit` (50) |
 | `job get <job-id>` | Get job details | — |
 | `job create` | Create a job | `--name` (required), `--tests` (required), `--description`, `--type`, `--schedule`, `--dry-run` |
-| `job update <job-id>` | Update job configuration | `--name`, `--description`, `--schedule`, `--dry-run` |
+| `job update <job-id>` | Update job configuration | `--name`, `--description`, `--schedule`, `--tests` (replaces the test list), `--dry-run` |
 | `job delete <job-id>` | Delete a job with confirmation | `--force` |
 | `job run` | Run a job immediately, bypassing the cron schedule | `--id`, `--local`, `--cloud`, `--offline`, `--playwright-config` |
 | `job trigger <job-id>` | Trigger a job with a trigger key, optionally wait | `--wait`, `--timeout` (300) |
@@ -666,7 +666,7 @@ These commands are read-only and require `sre_service:view`.
 | Command | What it does | Key flags |
 |---|---|---|
 | `pull` | Pull remote resources into local config and files | `--dry-run`, `--force`, `--tests-only`, `--config-only` |
-| `diff` | Preview changes between local config and server state | `--delete`, `--no-delete` |
+| `diff` | Preview changes between local config and server state | `--delete` |
 | `deploy` | Push configuration to the API | `--dry-run`, `--delete`, `--no-delete`, `--force`, `--verify`, `--verify-timeout <seconds>` |
 | `destroy` | Tear down all managed resources defined with IDs in the local config, including notification providers, requirements and status pages | `--dry-run`, `--force` |
 
@@ -693,7 +693,7 @@ supercheck destroy --force        # Confirm and delete resources
 `supercheck destroy` requires `--force` to confirm deletion, or `--dry-run` to preview. Bare `supercheck destroy` errors without `--force`.
 </Callout>
 
-`diff` and `deploy` preserve remote resources absent from config by default. Use `diff --delete` to preview pruning, then `deploy --delete` to apply it. Pruning includes resources created outside this config. `--no-delete` remains supported. `--force` skips the confirmation prompt; keep test scripts as editable source files and review `supercheck diff` before deploying.
+`diff` and `deploy` preserve remote resources absent from config by default. Use `diff --delete` to preview pruning, then `deploy --delete` to apply it. Pruning includes resources created outside this config. `deploy --no-delete` is also accepted and keeps the default behaviour. `--force` skips the confirmation prompt; keep test scripts as editable source files and review `supercheck diff` before deploying.
 
 <Accordions>
 <Accordion title="supercheck pull: files, backups and overwrites" id="supercheck-pull">

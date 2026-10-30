@@ -4,7 +4,7 @@ description: Role-based access control for organizations and projects
 icon: ShieldCheck
 ---
 
-Choose a role based on the tasks a teammate needs. Use the tables below to check permissions.
+Pick a role by the tasks a teammate needs, then check the matrix for exact permissions.
 
 ## Role Overview
 
@@ -52,7 +52,7 @@ Use the matrix below for each role's exact permissions and project scope.
 
 ## Permission Matrix
 
-<Tabs items={['Organization', 'Project', 'Tests & Jobs', 'Monitors & Status Pages', 'Test Runs', 'CLI Tokens', 'Notifications', 'Tags', 'AI SRE']}>
+<Tabs items={['Organization', 'Project', 'Tests, Jobs & Requirements', 'Monitors & Status Pages', 'Test Runs', 'CLI Tokens', 'Notifications', 'Tags', 'AI SRE']}>
 <Tab value="Organization">
 
 | Resource | Super Admin | Org Owner | Org Admin | Project Admin | Project Editor | Project Viewer |
@@ -80,7 +80,7 @@ Use the matrix below for each role's exact permissions and project scope.
 </Callout>
 
 </Tab>
-<Tab value="Tests & Jobs">
+<Tab value="Tests, Jobs & Requirements">
 
 | Action | Super Admin | Org Owner | Org Admin | Project Admin* | Project Editor* | Project Viewer |
 |--------|:-----------:|:---------:|:---------:|:--------------:|:---------------:|:--------------:|
@@ -211,7 +211,7 @@ These roles have additional permissions in **assigned projects** and read-only a
 - **Project Admin** — Full control, but only for assigned projects
 - **Project Editor** — Create/edit permissions, but only for assigned projects
 
-<Callout type="tip">
+<Callout type="info">
 **Why is Project Viewer organization-wide?** This design enables oversight and monitoring roles to view all projects without needing individual assignments. They cannot modify anything, making it safe for read-only visibility.
 </Callout>
 

@@ -107,7 +107,7 @@ Set up notifications for job results:
 | **Job failures** | Notify when any test in the job fails |
 | **Job success completion** | Notify when all tests pass (optional) |
 | **Job timeouts** | Notify if the job exceeds its maximum execution time |
-| **Notification Channels** | Select Slack, email, Discord, Telegram, or webhook |
+| **Notification Channels** | Select email, Slack, Discord, Telegram, Microsoft Teams, or webhook |
 
 Failure and recovery thresholds count consecutive runs, including the current run exactly once. Failed and errored runs both count toward the failure threshold. A different outcome breaks the consecutive sequence.
 
@@ -121,25 +121,11 @@ Failure and recovery thresholds count consecutive runs, including the current ru
 
 See [How alerts become incidents](/docs/app/investigate/incidents#how-alerts-become-incidents).
 
-## Parallel Execution
+## Parallel execution
 
-Run multiple jobs or tests simultaneously to reduce total execution time. The parallel execution panel in the header shows real-time status of all running and queued executions across your organization.
+Jobs and tests run in parallel up to your capacity. Select the **RUNNING / QUEUED** indicator in the header to inspect, open, or cancel active and waiting runs. Self-hosted installations configure concurrent and queued limits; see [Self-Hosted](/docs/app/deployment/self-hosted).
 
 ![Parallel Execution Dialog](/screenshots/parallel-execution-dialog.png)
-
-**Manage executions:**
-
-- Click the **RUNNING / QUEUED** indicator to view active and waiting runs.
-- Open a run to inspect its progress.
-- Cancel a run you no longer need.
-
-Runs wait when execution capacity is full. Multiple jobs can run at once up to your capacity limit.
-
-**Capacity limits:** self-hosted installations have configurable concurrent and queued job limits. See [Self-Hosted](/docs/app/deployment/self-hosted).
-
-<Callout type="info">
-The parallel execution indicator appears in the top navigation bar showing **RUNNING** and **QUEUED** counts. Click it to view details and manage executions.
-</Callout>
 
 ## CI/CD Integration
 
@@ -193,15 +179,13 @@ Open the job you want to trigger
 Open the job's **Edit** action and continue to **CI/CD Settings**
 </Step>
 <Step>
-Click **Create Key**
+Select **Create Key**, then copy the trigger URL and API key
 </Step>
 </Steps>
 
 ![CI/CD Tab](/screenshots/edit-job-add-cicd-apikey-1.png)
 
 ![Create API Key](/screenshots/edit-job-add-cicd-apikey-2.png)
-
-4. Copy the trigger URL and API key
 
 ![API Key Configuration](/screenshots/edit-job-cicd-apikey-configure.png)
 
@@ -246,12 +230,9 @@ test:
 </Tab>
 </Tabs>
 
-### API Key Security
-
-- **Generate unique keys** for each CI/CD pipeline
-- **Store keys as secrets** in your CI/CD platform
-- **Rotate keys periodically** for security
-- **Revoke keys** when no longer needed
+<Callout type="warn">
+Use a unique key per pipeline, store it as a CI secret, rotate it periodically, and revoke keys you no longer need.
+</Callout>
 
 ## Job Execution
 
@@ -288,16 +269,19 @@ Review the cancellation status and any partial results in the run details
 </Step>
 </Steps>
 
-### Viewing Results
+Open a run to see its summary, per-test results, reports (screenshots, traces, logs), and history. See [Runs](/docs/app/automate/runs).
 
-After a job completes:
+## Execution limits
 
-- **Summary** — Pass/fail status, duration, test count
-- **Test Results** — Individual test outcomes with details
-- **Reports** — Screenshots, traces, and logs for each test
-- **History** — Previous runs for comparison
+| Job type | Limit |
+|---|---|
+| **Playwright job** | 60 minutes for the whole job. Each test also has its own 5-minute timeout |
+| **k6 performance job** | Exactly one test, 60 minutes per execution |
 
-## Job Notifications
+k6 scripts are rejected when a literal `vus`, `maxVUs`, `preAllocatedVUs`, `startVUs`, or a VU stage target (top-level `stages` or `ramping-vus` scenarios) is above **1000**, or a literal duration is above 60 minutes.
+
+<Accordions>
+<Accordion title="Notification contents" id="notification-contents">
 
 Jobs send notifications through your configured alert channels:
 
@@ -307,14 +291,8 @@ Jobs send notifications through your configured alert channels:
 | **Success** (optional) | Enabled, and the job passes | Job name and project, all tests passed confirmation, execution duration, link to report |
 | **Timeout** | A job exceeds the maximum execution time | The job is automatically stopped, a timeout notification is sent, and partial results are saved |
 
-<Callout type="info">
-**Execution Time Limits:**
-- **Playwright Jobs:** Maximum runtime of **60 minutes** for the entire job execution
-- **K6 Performance Jobs:** Exactly one test per job, with a maximum runtime of **60 minutes** per job execution. Scripts that set a literal `vus`, `maxVUs`, `preAllocatedVUs`, `startVUs`, or a VU stage target above **1000** (top-level `stages` or `ramping-vus` scenarios), or a literal duration above 60 minutes, are rejected
-- **Individual Tests:** Each test within a job is also subject to its own timeout (5 minutes for Playwright, 60 minutes for K6)
-</Callout>
 
-<Accordions>
+</Accordion>
 <Accordion title="Deleting jobs and stored artifacts" id="deleting-stored-artifacts">
 
 Jobs with queued or running executions cannot be deleted until those executions stop. Deleting a resource with stored artifacts waits for storage cleanup to finish. If cleanup fails, Supercheck keeps the resource available for another deletion attempt. Restore storage access and retry; a partial cleanup may already have removed some artifacts.

@@ -112,7 +112,10 @@ The document is sent to your configured AI provider. Do not upload credentials o
 | **Investigate a failure** | Open a requirement's linked tests to see the failing run |
 | **Share** | Choose **Export** to download requirements as CSV |
 
-## Permissions
+## Reference
+
+<Accordions>
+<Accordion title="Permissions" id="permissions">
 
 | Role | View | Create and edit | Extract from document | Delete |
 |---|:---:|:---:|:---:|:---:|
@@ -122,7 +125,8 @@ The document is sent to your configured AI provider. Do not upload credentials o
 
 See [Roles & Permissions](/docs/app/admin/roles-and-permissions) for how roles are assigned.
 
-## Read Requirements Through the API
+</Accordion>
+<Accordion title="Read requirements through the API" id="api">
 
 `GET /api/requirements` lists the active project's requirements.
 
@@ -136,13 +140,18 @@ See [Roles & Permissions](/docs/app/admin/roles-and-permissions) for how roles a
 
 The status filter is applied before pagination, and `total` counts matching requirements. Requirements without a coverage snapshot count as `missing`. See the [API reference](/docs/api/requirements/listRequirements) for the response format.
 
-## Manage Requirements from the CLI and MCP
+</Accordion>
+<Accordion title="Manage requirements from the CLI and MCP" id="cli-mcp">
 
 - **CLI:** `supercheck requirement list|get|create|update|delete|link|unlink|coverage|export` manages requirements from the terminal, and `requirements[]` in `supercheck.config.ts` manages them as code with `pull`, `diff` and `deploy`. See [CLI commands](/docs/cli/commands#requirements) and [Configuration](/docs/cli/configuration#requirements).
 - **MCP:** `list_requirements` and `get_requirement` give AI tools read-only access. See [MCP tools](/docs/mcp/tools).
 
 Extracting requirements from a document is available in the dashboard only.
 
-## Deleting Stored Artifacts
+</Accordion>
+<Accordion title="Deleting stored artifacts" id="deleting-artifacts">
 
 Deleting a resource with stored artifacts waits for storage cleanup to finish. If cleanup fails, the resource stays available so you can retry; a partial cleanup may already have removed some artifacts.
+
+</Accordion>
+</Accordions>

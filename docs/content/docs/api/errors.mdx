@@ -102,14 +102,11 @@ HTTP/1.1 401 Unauthorized
 
 **Fix:** Verify your token is valid with `supercheck whoami`. Create a new token if needed.
 
-### Token Expired
+### Token Expired or Revoked
 
-```
-HTTP/1.1 401 Unauthorized
-{"error": "Token expired"}
-```
+Expired, disabled and revoked tokens return `401 Unauthorized`.
 
-**Fix:** Create a new token in the dashboard or via API.
+**Fix:** Run `supercheck login --reauth` or create a new token in the dashboard.
 
 ### Insufficient Permissions
 

@@ -162,13 +162,17 @@ Validate each connector and run an investigation with live sources enabled befor
 </Step>
 </Steps>
 
-## Usage limit and stuck runs
+<Accordions>
+<Accordion title="Usage limit and stuck runs" id="usage-limit">
 
 Each organization has a daily AI usage limit shared by investigations, triage, evidence briefs, and Copilot chat. The limit counts tokens reported by the AI provider and resets at 00:00 UTC. When it is reached, new AI requests return a "daily AI usage limit" message and evidence briefs fall back to the deterministic summary.
 
 Self-hosted deployments set the limit with `SRE_DAILY_TOKEN_LIMIT_PER_ORG` (default `2000000`; `0` disables the limit). The limit needs Redis and is enforced by the app only.
 
 If an investigation stops reporting because the server restarted while it ran, it is marked failed after about five minutes. You can then start a new run for the same incident. Failed runs are not charged.
+
+</Accordion>
+</Accordions>
 
 ## Permissions
 
