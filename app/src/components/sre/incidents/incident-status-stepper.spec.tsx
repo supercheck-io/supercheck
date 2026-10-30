@@ -18,4 +18,17 @@ describe("IncidentStatusStepper", () => {
     const states = screen.getAllByRole("listitem").map((item) => item.getAttribute("data-state"));
     expect(states).toEqual(["done", "done", "upcoming", "upcoming", "upcoming", "current"]);
   });
+
+  it("colours a connector only between two steps that both happened", () => {
+    const { container } = render(<IncidentStatusStepper current="resolved" />);
+    const connectors = Array.from(container.querySelectorAll("li > span[aria-hidden='true']"));
+    expect(connectors.map((c) => c.className.includes("bg-success"))).toEqual([false, false, false, false, false]);
+    expect(screen.getByText(/^Resolved/).closest("li")).toHaveTextContent("Resolved (done)");
+  });
+
+  it("colours the line into the current step while open", () => {
+    const { container } = render(<IncidentStatusStepper current="investigating" />);
+    const connectors = Array.from(container.querySelectorAll("li > span[aria-hidden='true']"));
+    expect(connectors.map((c) => c.className.includes("bg-success"))).toEqual([true, true, false, false, false]);
+  });
 });

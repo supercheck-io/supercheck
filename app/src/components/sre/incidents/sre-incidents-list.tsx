@@ -188,7 +188,10 @@ function SortableHead({
     : ArrowUpDown;
 
   return (
-    <TableHead className={className}>
+    <TableHead
+      className={className}
+      aria-sort={isActive ? (direction === "asc" ? "ascending" : "descending") : "none"}
+    >
       <div className="flex items-center gap-1">
       <Button
         type="button"
@@ -238,6 +241,9 @@ export function SreIncidentsList({
   }
   // Resolved incidents are only fetched when the All or a Status filter asks for them.
   const needsResolved = quickFilter === "all" || statusFilter.length > 0;
+  // Picking a status overrides the default Active view so "Resolved" is reachable; the chips show that.
+  const effectiveQuickFilter: QuickFilter =
+    statusFilter.length > 0 && quickFilter === "active" ? "all" : quickFilter;
   useEffect(() => {
     onScopeChange?.(needsResolved ? "all" : "active");
   }, [needsResolved, onScopeChange]);
@@ -267,7 +273,7 @@ export function SreIncidentsList({
         // Picking a status overrides the default Active view so "Resolved" is reachable.
         matchesQuickFilter(
           incident,
-          statusFilter.length > 0 && quickFilter === "active" ? "all" : quickFilter,
+          effectiveQuickFilter,
           currentUserId,
         ) &&
         (statusFilter.length === 0 ||
@@ -313,7 +319,7 @@ export function SreIncidentsList({
   }, [
     deferredSearch,
     incidents,
-    quickFilter,
+    effectiveQuickFilter,
     currentUserId,
     severityFilter,
     serviceFilter,
@@ -395,9 +401,9 @@ export function SreIncidentsList({
               key={filter.value}
               type="button"
               size="sm"
-              variant={quickFilter === filter.value ? "secondary" : "ghost"}
+              variant={effectiveQuickFilter === filter.value ? "secondary" : "ghost"}
               className="h-8"
-              aria-pressed={quickFilter === filter.value}
+              aria-pressed={effectiveQuickFilter === filter.value}
               onClick={() => {
                 setQuickFilter(filter.value);
                 setPageIndex(0);
@@ -536,15 +542,11 @@ export function SreIncidentsList({
                     <TableRow
                       key={incident.id}
                       className="h-13 cursor-pointer hover:bg-muted/50"
-                      tabIndex={0}
-                      onClick={() => router.push(`/incidents/${incident.id}`)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" || event.key === " ") {
-                          event.preventDefault();
-                          router.push(`/incidents/${incident.id}`);
-                        }
+                      onClick={(event) => {
+                        // The title link handles its own clicks, including open-in-new-tab.
+                        if ((event.target as HTMLElement).closest("a")) return;
+                        router.push(`/incidents/${incident.id}`);
                       }}
-                      aria-label={`View incident #${incident.incidentNumber}: ${incident.title}`}
                     >
                       <TableCell className="py-2.5">
                         {/* Same badge style as the UUID columns in other tables. */}
@@ -553,12 +555,13 @@ export function SreIncidentsList({
                         </code>
                       </TableCell>
                       <TableCell className="max-w-[360px] py-2.5">
-                        <span
-                          className="block truncate font-medium"
+                        <Link
+                          href={`/incidents/${incident.id}`}
+                          className="block truncate rounded-sm font-medium underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           title={incident.title}
                         >
                           {incident.title}
-                        </span>
+                        </Link>
                       </TableCell>
                       <TableCell className="py-2.5">
                         <TableBadge
@@ -591,7 +594,7 @@ export function SreIncidentsList({
                         {incident.primaryServiceName ?? "No service linked"}
                       </TableCell>
                       <TableCell className="py-2.5">
-                        <UserCell name={incident.assigneeName} image={incident.assigneeImage} compact />
+                        <UserCell name={incident.assigneeName} image={incident.assigneeImage} compact emptyDash />
                       </TableCell>
                       <TableCell className="py-2.5 text-sm tabular-nums">
                         <span
@@ -633,7 +636,7 @@ export function SreIncidentsList({
             </div>
             <div className="flex flex-wrap items-center gap-3 sm:gap-6 lg:gap-8">
               <div className="flex items-center space-x-2">
-                <p className="text-sm">Rows per page</p>
+                <p id="incidents-rows-per-page" className="text-sm">Rows per page</p>
                 <Select
                   value={`${pageSize}`}
                   onValueChange={(value) => {
@@ -641,7 +644,7 @@ export function SreIncidentsList({
                     setPageIndex(0);
                   }}
                 >
-                  <SelectTrigger className="h-8 w-[70px]">
+                  <SelectTrigger className="h-8 w-[70px]" aria-labelledby="incidents-rows-per-page">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent side="top">

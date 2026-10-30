@@ -6,6 +6,16 @@ import { Download, FileText, Loader2, Plus, Sparkles, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { generateSrePostmortem, saveSrePostmortem } from "@/actions/sre-postmortem";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -64,8 +74,10 @@ export function PostmortemCard({
   };
   const refresh = () => queryClient.invalidateQueries({ queryKey: getSreIncidentDetailQueryKey(projectId, incidentId) });
 
+  const [confirmReplace, setConfirmReplace] = useState(false);
+
   const generate = () => {
-    if (hasDraft && !window.confirm("Replace the current post-mortem with a new draft? Your edits will be lost.")) return;
+    setConfirmReplace(false);
     startTransition(async () => {
       const result = await generateSrePostmortem({ incidentId }).catch(() => null);
       if (!result?.success) {
@@ -126,12 +138,26 @@ export function PostmortemCard({
             </Button>
           )}
           {canEdit && (
-            <Button type="button" variant={hasDraft ? "outline" : "default"} size="sm" onClick={generate} disabled={pending}>
+            <Button type="button" variant={hasDraft ? "outline" : "default"} size="sm" onClick={hasDraft ? () => setConfirmReplace(true) : generate} disabled={pending}>
               {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" aria-hidden="true" />}
               {hasDraft ? "Regenerate draft" : "Generate post-mortem draft"}
             </Button>
           )}
         </div>
+        <AlertDialog open={confirmReplace} onOpenChange={setConfirmReplace}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Replace the post-mortem?</AlertDialogTitle>
+              <AlertDialogDescription>
+                A new draft replaces the current post-mortem. Your edits will be lost.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={generate}>Replace draft</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </CardHeader>
       <CardContent>
         {!hasDraft ? (

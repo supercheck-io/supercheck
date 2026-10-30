@@ -15,9 +15,10 @@ beforeAll(() => {
   Element.prototype.scrollIntoView = jest.fn();
 });
 
+const mockPush = jest.fn();
 jest.mock("next/navigation", () => ({
   useRouter: () => ({
-    push: jest.fn(),
+    push: mockPush,
     refresh: jest.fn(),
   }),
 }));
@@ -195,6 +196,31 @@ describe("SreIncidentsList", () => {
     fireEvent.click(screen.getByRole("option", { name: "Resolved" }));
     expect(screen.getByText("Total 1 incident")).toBeInTheDocument();
     expect(screen.getByText("Checkout incident 3")).toBeInTheDocument();
+    // The Active chip no longer claims to be the view once a status is picked.
+    const group = screen.getByRole("group", { name: "Quick filters" });
+    expect(within(group).getByRole("button", { name: "Active" })).toHaveAttribute("aria-pressed", "false");
+    expect(within(group).getByRole("button", { name: "All" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("links incident titles and opens the row on a click outside the link", () => {
+    mockPush.mockClear();
+    render(<SreIncidentsList incidents={[incidentFixture(1)]} loadError={null} />);
+    const link = screen.getByRole("link", { name: "Checkout incident 1" });
+    expect(link).toHaveAttribute("href", expect.stringMatching(/^\/incidents\//));
+    fireEvent.click(link);
+    expect(mockPush).not.toHaveBeenCalled();
+    fireEvent.click(link.closest("tr")!.querySelector("td")!);
+    expect(mockPush).toHaveBeenCalledWith(link.getAttribute("href"));
+  });
+
+  it("announces the active sort on its column header", () => {
+    render(<SreIncidentsList incidents={[incidentFixture(1), incidentFixture(2)]} loadError={null} />);
+    const age = screen.getByRole("columnheader", { name: /Age/ });
+    expect(age).toHaveAttribute("aria-sort", "none");
+    fireEvent.click(within(age).getByRole("button"));
+    expect(age).toHaveAttribute("aria-sort", "descending");
+    fireEvent.click(within(age).getByRole("button"));
+    expect(age).toHaveAttribute("aria-sort", "ascending");
   });
 
   it("shows assignee and AI state columns", () => {

@@ -36,7 +36,7 @@ describe("SreIncidentAnalytics", () => {
       topServices: [{ serviceId: "checkout", serviceName: "checkout-api", count: 4 }],
     }} />);
 
-    expect(screen.getByText("Incident trends")).toBeInTheDocument();
+    expect(screen.getByText("Trends")).toBeInTheDocument();
     expect(screen.getByText("Of incidents created in the last 30 days")).toBeInTheDocument();
     expect(screen.getByText("75%")).toBeInTheDocument();
     expect(screen.getByText("1h 35m")).toBeInTheDocument();

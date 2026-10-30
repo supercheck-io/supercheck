@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, ArrowLeft, Clock, FileText, MoreHorizontal } from "lucide-react";
+import { AlertTriangle, Check, ChevronLeft, Clock, FileSearch, FileText, History, MoreHorizontal, NotebookPen, Sparkles } from "lucide-react";
 
 import type { SreIncidentDetail } from "@/actions/sre-incidents";
 import type { SreServiceListItem } from "@/actions/sre-services";
@@ -10,9 +10,10 @@ import { AcknowledgeSreIncidentButton } from "@/components/sre/incidents/acknowl
 import { EditSreIncidentDialog } from "@/components/sre/incidents/edit-sre-incident-dialog";
 import { EvidenceDetailsDialog } from "@/components/sre/incidents/evidence-details-dialog";
 import { IncidentAiSummaryCard } from "@/components/sre/incidents/incident-ai-summary-card";
-import { IncidentInvestigationSheet } from "@/components/sre/incidents/incident-investigation-sheet";
+import { IncidentInvestigationSheet, type InvestigationTab } from "@/components/sre/incidents/incident-investigation-sheet";
 import { IncidentSidebar } from "@/components/sre/incidents/incident-sidebar";
 import { IncidentStatusStepper } from "@/components/sre/incidents/incident-status-stepper";
+import { SimilarIncidentsList } from "@/components/sre/incidents/similar-incidents-card";
 import { IncidentTimeline } from "@/components/sre/incidents/incident-timeline";
 import { InvestigationFeedback } from "@/components/sre/incidents/investigation-feedback";
 import { InvestigationHypotheses } from "@/components/sre/incidents/investigation-hypotheses";
@@ -27,6 +28,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -41,11 +43,12 @@ type SreIncidentDetailViewProps = {
   initialTab?: "overview" | "investigation" | "evidence" | "brief";
 };
 
-const DEFAULT_SECTIONS = ["run", "hypotheses"];
-const SECTIONS_FOR_TAB: Record<string, string[]> = {
-  investigation: ["run", "hypotheses", "steps"],
-  evidence: ["evidence"],
-  brief: ["brief"],
+const DEFAULT_TAB = "analysis";
+// Legacy ?tab= deep links.
+const SHEET_TAB_FOR_LINK: Record<string, string> = {
+  investigation: "analysis",
+  evidence: "evidence",
+  brief: "brief",
 };
 
 const severityTones: Record<
@@ -67,6 +70,15 @@ function formatDate(value: Date | string | null) {
     hour: "numeric",
     minute: "2-digit",
   }).format(new Date(value));
+}
+
+function SheetSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="space-y-3">
+      <h3 className="text-sm font-semibold">{title}</h3>
+      {children}
+    </section>
+  );
 }
 
 function getBriefSummary(detail: SreIncidentDetail) {
@@ -147,109 +159,120 @@ export function SreIncidentDetailView({
   const display = getDisplayStatus(incident.status, incident.acknowledgedAt);
 
   const [sheetOpen, setSheetOpen] = useState(initialTab !== "overview");
-  const [expanded, setExpanded] = useState<string[]>(SECTIONS_FOR_TAB[initialTab] ?? DEFAULT_SECTIONS);
+  const [sheetTab, setSheetTab] = useState(SHEET_TAB_FOR_LINK[initialTab] ?? DEFAULT_TAB);
   const [editOpen, setEditOpen] = useState(false);
   const [resolveOpen, setResolveOpen] = useState(false);
+  const [showCommander, setShowCommander] = useState(false);
 
-  const openSheet = (sections?: string[]) => {
-    if (sections) setExpanded((current) => Array.from(new Set([...current, ...sections])));
+  const openSheet = (tab: string = DEFAULT_TAB) => {
+    setSheetTab(tab);
     setSheetOpen(true);
   };
 
   useEffect(() => {
-    const onOpenPostmortem = () => openSheet(["postmortem"]);
+    const onOpenPostmortem = () => openSheet("postmortem");
     window.addEventListener(OPEN_POSTMORTEM_EVENT, onOpenPostmortem);
     return () => window.removeEventListener(OPEN_POSTMORTEM_EVENT, onOpenPostmortem);
   }, []);
 
   const needsAck = permissions.canUpdate && open && !incident.acknowledgedAt;
   const needsResolve = permissions.canUpdate && open && Boolean(incident.acknowledgedAt);
+  const canAddCommander = permissions.canUpdate && open && !incident.commanderUserId && !showCommander;
 
-  const sections = [
+  const runPanel = permissions.canInvestigate ? (
+    <SreInvestigationPanel
+      key={investigation?.id ?? "no-investigation"}
+      incidentId={incident.id}
+      hasPrimaryService={Boolean(incident.primaryServiceId)}
+      serviceMappingHref={`/incidents/${incident.id}?edit=service`}
+      canMapService={permissions.canUpdate}
+      evidenceReferences={detail.evidence.map((item) => ({
+        id: item.id,
+        title: item.title,
+        evidenceType: item.evidenceType,
+      }))}
+      toolMetrics={detail.toolMetrics}
+      latestInvestigation={investigation}
+      canInvestigate={permissions.canInvestigate}
+      canUseLiveConnectors={permissions.canUseLiveConnectors}
+      investigationEnabled={detail.capabilities.investigationEnabled}
+    />
+  ) : null;
+
+  const tabs: InvestigationTab[] = [
     {
-      id: "run",
-      title: "Run controls",
-      content: permissions.canInvestigate ? (
-        <SreInvestigationPanel
-          key={investigation?.id ?? "no-investigation"}
-          incidentId={incident.id}
-          hasPrimaryService={Boolean(incident.primaryServiceId)}
-          serviceMappingHref={`/incidents/${incident.id}?edit=service`}
-          canMapService={permissions.canUpdate}
-          evidenceReferences={detail.evidence.map((item) => ({
-            id: item.id,
-            title: item.title,
-            evidenceType: item.evidenceType,
-          }))}
-          toolMetrics={detail.toolMetrics}
-          latestInvestigation={investigation}
-          canInvestigate={permissions.canInvestigate}
-          canUseLiveConnectors={permissions.canUseLiveConnectors}
-          investigationEnabled={detail.capabilities.investigationEnabled}
-        />
-      ) : null,
+      id: "analysis",
+      title: "Analysis",
+      icon: Sparkles,
+      content:
+        investigation || runPanel ? (
+          <>
+            {/* Findings first; the run controls follow once there is something to read. */}
+            {!investigation && runPanel}
+            {investigation && (
+              <SheetSection title="Hypotheses">
+                <InvestigationHypotheses
+                  incidentId={incident.id}
+                  investigation={investigation}
+                  evidence={detail.evidence}
+                  canGiveFeedback={permissions.canUpdate}
+                />
+              </SheetSection>
+            )}
+            {investigation && (
+              // The trace carries its own "How I investigated" title.
+              <InvestigationStepTrace steps={investigation.steps} running={investigation.status === "running"} />
+            )}
+            {investigation && runPanel}
+            {investigation && (
+              <SheetSection title="Report snapshot">
+                <SreReportSnapshotControl
+                  key={investigation.id}
+                  incidentId={incident.id}
+                  latestInvestigation={investigation}
+                  latestReportSnapshot={detail.latestReportSnapshot}
+                  canInvestigate={permissions.canInvestigate}
+                />
+              </SheetSection>
+            )}
+          </>
+        ) : null,
     },
     {
-      id: "hypotheses",
-      title: "Hypotheses",
-      content: investigation ? (
-        <InvestigationHypotheses
-          incidentId={incident.id}
-          investigation={investigation}
-          evidence={detail.evidence}
-          canGiveFeedback={permissions.canUpdate}
-        />
-      ) : null,
+      id: "evidence",
+      title: `Evidence (${detail.evidence.length})`,
+      icon: FileSearch,
+      content: <NativeEvidenceCard detail={detail} />,
     },
-    {
-      id: "steps",
-      title: "Steps",
-      content: investigation ? (
-        <InvestigationStepTrace steps={investigation.steps} running={investigation.status === "running"} />
-      ) : null,
-    },
-    { id: "evidence", title: `Evidence (${detail.evidence.length})`, content: <NativeEvidenceCard detail={detail} /> },
     {
       id: "brief",
-      title: "Evidence brief",
+      title: "Brief",
+      icon: FileText,
       content: (
-        <div className="h-[32rem] max-h-[70svh]">
-          <SreIncidentBriefPanel
-            key={`${incident.id}:${detail.latestBrief?.id ?? "no-brief"}`}
-            incidentId={incident.id}
-            incidentNumber={incident.incidentNumber}
-            incidentTitle={incident.title}
-            initialSummary={summary}
-            initialProvider={provider}
-            initialConfidenceScore={detail.latestBrief?.confidenceScore ?? null}
-            hasBrief={Boolean(detail.latestBrief)}
-            canGenerate={permissions.canInvestigate}
-            totalEvidenceCount={detail.evidence.length}
-            evidenceCount={
-              typeof detail.latestBrief?.agentStateSnapshot?.evidenceCount === "number"
-                ? detail.latestBrief.agentStateSnapshot.evidenceCount
-                : null
-            }
-          />
-        </div>
+        <SreIncidentBriefPanel
+          key={`${incident.id}:${detail.latestBrief?.id ?? "no-brief"}`}
+          incidentId={incident.id}
+          incidentNumber={incident.incidentNumber}
+          incidentTitle={incident.title}
+          initialSummary={summary}
+          initialProvider={provider}
+          initialConfidenceScore={detail.latestBrief?.confidenceScore ?? null}
+          hasBrief={Boolean(detail.latestBrief)}
+          canGenerate={permissions.canInvestigate}
+          totalEvidenceCount={detail.evidence.length}
+          evidenceCount={
+            typeof detail.latestBrief?.agentStateSnapshot?.evidenceCount === "number"
+              ? detail.latestBrief.agentStateSnapshot.evidenceCount
+              : null
+          }
+        />
       ),
     },
-    {
-      id: "snapshot",
-      title: "Report snapshot",
-      content: investigation ? (
-        <SreReportSnapshotControl
-          key={investigation.id}
-          incidentId={incident.id}
-          latestInvestigation={investigation}
-          latestReportSnapshot={detail.latestReportSnapshot}
-          canInvestigate={permissions.canInvestigate}
-        />
-      ) : null,
-    },
+    { id: "similar", title: "Similar", icon: History, content: <SimilarIncidentsList incidentId={incident.id} /> },
     {
       id: "postmortem",
       title: "Post-mortem",
+      icon: NotebookPen,
       content: !open ? (
         <PostmortemCard
           key={incident.postmortem?.updatedAt ?? "none"}
@@ -264,15 +287,15 @@ export function SreIncidentDetailView({
   ];
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3 overflow-y-auto overflow-x-hidden">
-      <header className="shrink-0 space-y-2">
-        <Button asChild variant="link" className="h-auto p-0 text-muted-foreground">
-          <Link href="/incidents">
-            <ArrowLeft className="h-4 w-4" />
-            Incidents
-          </Link>
-        </Button>
-        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+    <div className="flex min-w-0 flex-col gap-3">
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex min-w-0 items-start gap-3">
+          {/* Same back control as the monitor and job detail pages. */}
+          <Button asChild variant="outline" size="icon" className="mt-0.5 h-8 w-8 shrink-0">
+            <Link href="/incidents" aria-label="Back to incidents">
+              <ChevronLeft className="h-4 w-4" />
+            </Link>
+          </Button>
           <div className="min-w-0 space-y-1.5">
             <h1 className="break-words text-xl font-semibold leading-tight">
               <span className="mr-2 text-muted-foreground">#{incident.incidentNumber}</span>
@@ -282,7 +305,7 @@ export function SreIncidentDetailView({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <span tabIndex={0} className="rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                    <TableBadge tone={severityTones[incident.severity]} className="uppercase">
+                    <TableBadge tone={severityTones[incident.severity]} compact className="uppercase">
                       {incident.severity}
                     </TableBadge>
                   </span>
@@ -294,61 +317,69 @@ export function SreIncidentDetailView({
               {incident.primaryServiceName && <span>{incident.primaryServiceName}</span>}
               {incident.primaryServiceName && <span aria-hidden="true">·</span>}
               <span suppressHydrationWarning title={formatDate(incident.createdAt)}>
-                opened {formatAgo(incident.createdAt)}
+                Opened {formatAgo(incident.createdAt)}
               </span>
             </div>
           </div>
-          <div className="flex shrink-0 items-center gap-2">
-            {needsAck && <AcknowledgeSreIncidentButton incidentId={incident.id} />}
-            {needsResolve && (
-              <ResolveSreIncidentDialog incidentId={incident.id} defaultSummary={incident.rootCauseSummary ?? ""} />
-            )}
-            {!open && (
-              <Button size="sm" variant="outline" onClick={() => openSheet(["postmortem"])}>
-                <FileText className="h-4 w-4" />
-                Post-mortem
-              </Button>
-            )}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="icon" className="h-8 w-8" aria-label="More actions">
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {permissions.canUpdate && (
-                  <DropdownMenuItem onSelect={() => setEditOpen(true)}>Edit</DropdownMenuItem>
-                )}
-                {needsAck && <DropdownMenuItem onSelect={() => setResolveOpen(true)}>Resolve</DropdownMenuItem>}
-                {permissions.canInvestigate && (
-                  <>
-                    <DropdownMenuItem asChild>
-                      <Link href={`/copilot?incident=${incident.id}`}>Ask Copilot</Link>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onSelect={() => openSheet(["run"])}>
-                      {investigation ? "Re-run investigation" : "Run investigation"}
-                    </DropdownMenuItem>
-                  </>
-                )}
-                <DropdownMenuItem asChild>
-                  <Link href={`/copilot/evidence-graph?incident=${incident.id}`}>Investigation map</Link>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
         </div>
-        {incident.resolutionSummary && (
-          <p className="line-clamp-2 rounded-md border bg-muted/40 px-3 py-2 text-sm" data-testid="resolution-summary">
-            <span className="font-medium">Resolution: </span>
-            {incident.resolutionSummary}
-          </p>
-        )}
+        <div className="flex shrink-0 items-center gap-2 pl-11 sm:pl-0">
+          {needsAck && <AcknowledgeSreIncidentButton incidentId={incident.id} />}
+          {needsResolve && (
+            <Button size="sm" onClick={() => setResolveOpen(true)}>
+              <Check className="h-4 w-4" />
+              Resolve incident
+            </Button>
+          )}
+          {!open && (
+            <Button size="sm" variant="outline" onClick={() => openSheet("postmortem")}>
+              <FileText className="h-4 w-4" />
+              Post-mortem
+            </Button>
+          )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="icon" className="h-8 w-8" aria-label="More actions">
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {permissions.canUpdate && (
+                <DropdownMenuItem onSelect={() => setEditOpen(true)}>Edit incident</DropdownMenuItem>
+              )}
+              {canAddCommander && (
+                <DropdownMenuItem onSelect={() => setShowCommander(true)}>Add commander</DropdownMenuItem>
+              )}
+              {needsAck && <DropdownMenuItem onSelect={() => setResolveOpen(true)}>Resolve incident</DropdownMenuItem>}
+              {permissions.canInvestigate && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onSelect={() => openSheet("analysis")}>
+                    {investigation ? "Re-run investigation" : "Run investigation"}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href={`/copilot?incident=${incident.id}`}>Ask Copilot</Link>
+                  </DropdownMenuItem>
+                </>
+              )}
+              <DropdownMenuItem asChild>
+                <Link href={`/copilot/evidence-graph?incident=${incident.id}`}>Investigation Map</Link>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </header>
 
       <IncidentStatusStepper current={display.value} acknowledged={Boolean(incident.acknowledgedAt)} description={display.description} />
 
-      <div className="grid min-w-0 shrink-0 gap-4 lg:items-start lg:grid-cols-[minmax(0,1fr)_18rem]">
-        <div className="flex min-w-0 flex-col gap-3">
+      {incident.resolutionSummary && (
+        <p className="line-clamp-2 rounded-md border bg-muted/40 px-3 py-2 text-sm" data-testid="resolution-summary">
+          <span className="font-medium">Resolution: </span>
+          {incident.resolutionSummary}
+        </p>
+      )}
+
+      <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
+        <div className="flex min-w-0 flex-col gap-4">
           <IncidentAiSummaryCard
             rootCauseSummary={incident.rootCauseSummary}
             confidenceScore={incident.confidenceScore}
@@ -359,30 +390,35 @@ export function SreIncidentDetailView({
             canInvestigate={permissions.canInvestigate}
             feedback={
               permissions.canUpdate && investigation?.status === "completed" ? (
-                <>
-                  <span className="font-medium">Was this right?</span>
-                  <InvestigationFeedback
-                    key={`feedback:${investigation.id}`}
-                    incidentId={incident.id}
-                    investigationRunId={investigation.id}
-                    initial={investigation.myFeedback.find((entry) => entry.hypothesisKey === null) ?? null}
-                    label="this investigation"
-                  />
-                </>
+                <InvestigationFeedback
+                  key={`feedback:${investigation.id}`}
+                  incidentId={incident.id}
+                  investigationRunId={investigation.id}
+                  initial={investigation.myFeedback.find((entry) => entry.hypothesisKey === null) ?? null}
+                  label="this investigation"
+                  compact
+                />
               ) : null
             }
           />
           <IncidentTimeline incidentId={incident.id} canUpdate={permissions.canUpdate && open} />
         </div>
-        <IncidentSidebar detail={detail} />
+        {/* Sticks below the app header while the timeline scrolls with the page. */}
+        <div className="min-w-0 lg:sticky lg:top-16">
+          <IncidentSidebar
+            detail={detail}
+            showCommander={showCommander}
+            onOpenSimilar={() => openSheet("similar")}
+          />
+        </div>
       </div>
 
       <IncidentInvestigationSheet
         open={sheetOpen}
         onOpenChange={setSheetOpen}
-        sections={sections}
-        expanded={expanded}
-        onExpandedChange={setExpanded}
+        tabs={tabs}
+        tab={sheetTab}
+        onTabChange={setSheetTab}
       />
       <EditSreIncidentDialog
         incident={incident}
@@ -391,7 +427,8 @@ export function SreIncidentDetailView({
         open={editOpen}
         onOpenChange={setEditOpen}
       />
-      {needsAck && (
+      {/* One dialog for both entry points: the header button once acknowledged, the menu before. */}
+      {(needsAck || needsResolve) && (
         <ResolveSreIncidentDialog
           incidentId={incident.id}
           defaultSummary={incident.rootCauseSummary ?? ""}

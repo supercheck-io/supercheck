@@ -156,4 +156,12 @@ describe("UserCell", () => {
     fireEvent.focus(trigger!);
     expect((await screen.findAllByText("System")).length).toBeGreaterThan(1);
   });
+
+  it("shows a dash where the initials go only when asked to", () => {
+    const { container, rerender } = render(<UserCell name={null} compact emptyDash />);
+    expect(container).toHaveTextContent("—");
+    expect(screen.getByText("Unassigned")).toHaveClass("sr-only");
+    rerender(<UserCell name={null} emptyLabel="System" compact />);
+    expect(container).not.toHaveTextContent("—");
+  });
 });

@@ -5,7 +5,7 @@ jest.mock("@/hooks/use-sre", () => ({ useSreIncidentTimeline: jest.fn() }));
 
 import type { SreIncidentDetail } from "@/actions/sre-incidents";
 
-import { IncidentAiSummaryCard, confidenceLabel } from "./incident-ai-summary-card";
+import { IncidentAiSummaryCard, confidenceLabel, stripReportBoilerplate } from "./incident-ai-summary-card";
 import { describeTimelineEvent } from "./incident-timeline";
 
 describe("confidenceLabel", () => {
@@ -18,6 +18,41 @@ describe("confidenceLabel", () => {
     ["abc", "Inconclusive"],
   ])("maps %s to %s", (score, label) => {
     expect(confidenceLabel(score).label).toBe(label);
+  });
+});
+
+describe("stripReportBoilerplate", () => {
+  it("drops the title and Overview fields the page header already shows", () => {
+    const report = [
+      "### Incident Investigation Report",
+      "**Overview**",
+      "**Incident Title:** Checkout: Job Failed",
+      "**Severity:** Sev2",
+      "**Status:** Investigating",
+      "**Primary Service:** Unknown",
+      "---",
+      "**What Changed**",
+      "- The job failed twice.",
+    ].join("\n");
+    expect(stripReportBoilerplate(report)).toBe("**What Changed**\n- The job failed twice.");
+  });
+
+  it("keeps field-style lines and Overview sections that appear after the header", () => {
+    const report = [
+      "# Incident Investigation Report",
+      "**Severity:** Sev2",
+      "**What Changed**",
+      "- **Status:** Replica lag 40s, connections exhausted",
+      "## Overview",
+      "Checkout returned 500s for 12 minutes.",
+    ].join("\n");
+    expect(stripReportBoilerplate(report)).toBe(report.split("\n").slice(2).join("\n"));
+  });
+
+  it("keeps ordinary prose that mentions status or severity", () => {
+    expect(stripReportBoilerplate("The status page stayed green while severity rose.")).toBe(
+      "The status page stayed green while severity rose.",
+    );
   });
 });
 
@@ -143,7 +178,7 @@ describe("describeTimelineEvent", () => {
     expect(describeTimelineEvent({ eventType: "state_change", eventData: { state: "assigned" } }).title).toBe("Assignment changed");
     expect(describeTimelineEvent({ eventType: "state_change", eventData: { state: "acknowledged" } }).title).toBe("Acknowledged");
     expect(describeTimelineEvent({ eventType: "state_change", eventData: { state: "resolved", comment: "fixed" } })).toEqual({ title: "Resolved", body: "fixed" });
-    expect(describeTimelineEvent({ eventType: "comment", eventData: { text: "hi" } })).toEqual({ title: "Update", body: "hi" });
+    expect(describeTimelineEvent({ eventType: "comment", eventData: { text: "hi" } })).toEqual({ title: "Note", body: "hi" });
     expect(describeTimelineEvent({ eventType: "ai_finding", eventData: { summary: "Cause" } }).body).toBe("Cause");
     expect(describeTimelineEvent({ eventType: "tool_call", eventData: null })).toEqual({ title: "tool call", body: null });
   });
@@ -152,6 +187,7 @@ describe("describeTimelineEvent", () => {
 describe("IncidentAiSummaryCard compact layout", () => {
   it("clamps a long conclusion until Show more is pressed and exposes the details button", () => {
     const onOpenDetails = jest.fn();
+    jest.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValueOnce(400);
     render(
       <IncidentAiSummaryCard
         rootCauseSummary={"Long conclusion. ".repeat(40)}
@@ -168,5 +204,30 @@ describe("IncidentAiSummaryCard compact layout", () => {
     fireEvent.click(screen.getByRole("button", { name: "Investigation details" }));
     expect(onOpenDetails).toHaveBeenCalled();
     expect(screen.getByText("Was this right?")).toBeInTheDocument();
+  });
+
+  it("clamps a long markdown report by height and expands it inline without an inner scroller", () => {
+    const height = jest.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(400);
+    const long = `**What Changed**\n${"- The job failed again.\n".repeat(20)}`;
+    render(<IncidentAiSummaryCard rootCauseSummary={long} confidenceScore="0.8" investigationStatus="completed" />);
+    const body = screen.getByTestId("ai-summary-body");
+    expect(body.className).toContain("max-h-28");
+    fireEvent.click(screen.getByRole("button", { name: "Show more" }));
+    expect(body.className).not.toContain("max-h");
+    expect(body.className).not.toContain("overflow-y-auto");
+    fireEvent.click(screen.getByRole("button", { name: "Show less" }));
+    expect(body.className).toContain("max-h-28");
+    height.mockRestore();
+  });
+
+  it("offers no Show more when the text fits", () => {
+    render(<IncidentAiSummaryCard rootCauseSummary={"x ".repeat(200)} confidenceScore="0.8" investigationStatus="completed" />);
+    expect(screen.queryByRole("button", { name: "Show more" })).toBeNull();
+  });
+
+  it("keeps a summary that is nothing but header lines rather than showing it as empty", () => {
+    render(<IncidentAiSummaryCard rootCauseSummary="**Status:** Investigating" confidenceScore="0.8" investigationStatus="completed" />);
+    expect(screen.queryByText(/No AI analysis yet/)).toBeNull();
+    expect(screen.getByText(/Investigating/)).toBeInTheDocument();
   });
 });

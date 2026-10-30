@@ -174,4 +174,21 @@ describe("SreMessageContent", () => {
     heightSpy.mockRestore();
     widthSpy.mockRestore();
   });
+
+  it("links only real web URLs and drops horizontal rules", () => {
+    const { container } = render(
+      <SreMessageContent content={"See [runbook](https://example.com/rb) and [Log 1](#).\n\n---\n\nDone"} />,
+    );
+    expect(screen.getByRole("link", { name: /^runbook/ })).toHaveAttribute("href", "https://example.com/rb");
+    expect(screen.queryByRole("link", { name: "Log 1" })).toBeNull();
+    expect(screen.getByText(/Log 1/)).toBeInTheDocument();
+    expect(container.textContent).not.toContain("---");
+    expect(container.textContent).not.toContain("](#)");
+  });
+
+  it("shows the real host when a link label names a different site", () => {
+    render(<SreMessageContent content={"[docs.supercheck.io](https://evil.example/x) and [example.com/a](https://example.com/a)"} />);
+    expect(screen.getByRole("link", { name: /docs\.supercheck\.io/ })).toHaveTextContent("(evil.example)");
+    expect(screen.getByRole("link", { name: /example\.com\/a/ })).not.toHaveTextContent("(example.com)");
+  });
 });

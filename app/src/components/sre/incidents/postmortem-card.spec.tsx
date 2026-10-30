@@ -36,6 +36,17 @@ describe("PostmortemCard", () => {
     expect(screen.getByRole("button", { name: "Regenerate draft" })).toBeInTheDocument();
   });
 
+  it("asks before replacing an existing draft and only regenerates on confirm", async () => {
+    render(<PostmortemCard {...base} postmortem={stored} canEdit />);
+    fireEvent.click(screen.getByRole("button", { name: "Regenerate draft" }));
+    expect(await screen.findByRole("alertdialog")).toHaveTextContent("Your edits will be lost.");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(generate).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Regenerate draft" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Replace draft" }));
+    await waitFor(() => expect(generate).toHaveBeenCalledWith({ incidentId: "i1" }));
+  });
+
   it("saves edits with follow-ups serialized as a bullet list", async () => {
     render(<PostmortemCard {...base} postmortem={stored} canEdit />);
     fireEvent.change(screen.getByLabelText("Summary"), { target: { value: "New summary" } });

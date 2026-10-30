@@ -182,8 +182,6 @@ Required summary markdown format:
 # Incident Investigation Report
 
 ## Report Details
-- **Incident**: ${JSON.stringify(input.incidentTitle).replace(/</g, "\\u003c")}
-- **Severity**: ${JSON.stringify(input.incidentSeverity).replace(/</g, "\\u003c")}
 - **Evidence Source**: Stored incident evidence
 
 ## Executive Summary
@@ -232,8 +230,6 @@ Use exactly this Markdown structure:
 # Incident Investigation Report
 
 ## Report Details
-- **Incident**: ${JSON.stringify(input.incidentTitle).replace(/</g, "\\u003c")}
-- **Severity**: ${JSON.stringify(input.incidentSeverity).replace(/</g, "\\u003c")}
 - **Evidence Source**: Stored incident evidence
 - **Evidence Items**: ${input.evidence.length}
 - **Primary Signal**: [strongest evidence title, or "None available"]

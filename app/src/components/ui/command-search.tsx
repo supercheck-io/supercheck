@@ -78,7 +78,7 @@ export function CommandSearch({
         jobs: "/jobs",
         runs: "/runs",
         variables: "/variables",
-        alerts: "/incidents?tab=alerts",
+        alerts: "/notifications?tab=history",
         notifications: "/notifications",
         incidents: "/incidents",
         "status-pages": "/status-pages",
@@ -192,7 +192,7 @@ export function CommandSearch({
                 </CommandItem>
                 <CommandItem onSelect={() => handleCommand("alerts")}>
                   <BellRing className="mr-2 h-4 w-4 !text-amber-600" />
-                  <span>Alerts</span>
+                  <span>Delivery history</span>
                 </CommandItem>
                 <CommandItem onSelect={() => handleCommand("incidents")}>
                   <Siren className="mr-2 h-4 w-4 !text-rose-500" />

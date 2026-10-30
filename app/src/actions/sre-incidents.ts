@@ -15,6 +15,7 @@ import {
   sql,
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
+import { isActionableAlertForIncident } from "@/lib/alert-escalation";
 import type { SrePostmortem } from "@/db/schema";
 import { z } from "zod";
 
@@ -508,25 +509,6 @@ function deriveAlertStatus(type: string): SreAlertStatus {
     normalizedType.includes("success")
     ? "resolved"
     : "firing";
-}
-
-function isActionableAlertForIncident(
-  status: "sent" | "failed" | "pending",
-  type: string,
-  message: string,
-) {
-  if (status !== "sent") {
-    return false;
-  }
-
-  const normalizedType = type.toLowerCase();
-  const normalizedMessage = message.toLowerCase();
-  return !(
-    normalizedType.includes("recovery") ||
-    normalizedType.includes("success") ||
-    normalizedType.includes("resolved") ||
-    normalizedMessage.includes("completed successfully")
-  );
 }
 
 function sha256(value: string) {

@@ -10,7 +10,7 @@ Alerts notify you when monitors fail, tests break, or services recover. Configur
 
 Configure a notification channel, send a test notification, then select that channel in a monitor or job's **Alerts** settings. Choose which failures and recoveries should notify your team, and review delivery history when a notification does not arrive.
 
-Channels live on the **Notifications** page in the sidebar. Alert signals and delivery history are on the **Alerts** tab of the **Incidents** page (`Incidents → Alerts`; switch to **History** for deliveries). Alerts are automatic: a check failed or recovered. Each failure alert also opens an incident, unless you turn that off in the check's **Incidents** settings. See [How alerts become incidents](/docs/app/investigate/incidents#how-alerts-become-incidents).
+The **Notifications** page in the sidebar has two tabs: **Channels**, where you set up where alerts go, and **Delivery history**, which lists every notification sent. Alerts are automatic: a check failed or recovered. Each failure alert also opens an incident, unless you turn that off in the check's **Incidents** settings. See [How alerts become incidents](/docs/app/investigate/incidents#how-alerts-become-incidents).
 
 ## Alert Workflow
 
@@ -417,19 +417,9 @@ The webhook UI supports custom JSON headers for provider API keys. Supercheck st
 </Tab>
 </Tabs>
 
-## Alert Signals
+## Delivery History
 
-Use **Incidents → Alerts → Signals** for investigation-ready failure signals. Signals are derived from sent failure alerts only. Notification delivery failures, recoveries, and success notifications are listed only in **History** (the toggle on the same tab).
-
-![Alert Signals](/screenshots/sre-alert-signals.png)
-
-Repeated sent failures for the same target and alert type appear as one signal, with the latest message and timestamp and a repeat count. All individual deliveries remain in History. A failure signal is historical evidence, not proof that the target is still failing.
-
-From Signals you can search, filter by severity or source, and sort. **Incident #N** opens the incident a signal belongs to; **Open incident** creates one when incidents are turned off for that check. See [How alerts become incidents](/docs/app/investigate/incidents#how-alerts-become-incidents).
-
-## Alert History
-
-Track all alerts from **Incidents → Alerts → History**:
+Track every notification from **Notifications → Delivery history**:
 
 ![Alert History](/screenshots/alert-history.png)
 
@@ -437,7 +427,7 @@ Track all alerts from **Incidents → Alerts → History**:
 - Target (monitor or job name)
 - Notification channels used
 - Delivery status
-- The incident the alert belongs to, linked
+- The incident the alert belongs to, linked. A sent failure alert with no incident (for example, when incidents are turned off for that check) shows **Open incident** to create one. See [How alerts become incidents](/docs/app/investigate/incidents#how-alerts-become-incidents).
 - Timestamp
 - Delivery correlation metadata for AI SRE, including provider type/preset, dedup key, event action, response status, attempt count, and response hash when available
 

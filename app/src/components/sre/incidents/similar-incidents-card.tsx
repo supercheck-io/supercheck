@@ -1,45 +1,50 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 
 import { useSreSimilarIncidents } from "@/hooks/use-sre";
 import { TableBadge } from "@/components/ui/table-badge";
 
-const COLLAPSED = 3;
 const MATCH_LABEL = { service: "Same service", alert: "Same alert source", title: "Similar title" } as const;
 
-/** Resolved incidents from the last 180 days that look related. History only; may be unrelated. */
-export function SimilarIncidentsCard({ incidentId }: { incidentId: string }) {
+/** How many resolved incidents look related; null while loading or on error. */
+export function useSimilarIncidentCount(incidentId: string) {
   const { data } = useSreSimilarIncidents(incidentId);
-  const [showAll, setShowAll] = useState(false);
-  const all = data?.success ? data.incidents : [];
-  const incidents = showAll ? all : all.slice(0, COLLAPSED);
-  // Nothing to show while loading, on error, or when there are no matches.
-  if (all.length === 0) return null;
+  return data?.success ? data.incidents.length : null;
+}
+
+/** Resolved incidents from the last 180 days that look related. History only; may be unrelated. */
+export function SimilarIncidentsList({ incidentId }: { incidentId: string }) {
+  const { data, isPending } = useSreSimilarIncidents(incidentId);
+  if (isPending) return <p className="text-sm text-muted-foreground">Looking for similar incidents...</p>;
+  if (!data?.success) return <p className="text-sm text-muted-foreground">Similar incidents are unavailable right now.</p>;
+  if (data.incidents.length === 0) {
+    return <p className="text-sm text-muted-foreground">No similar resolved incidents in the last 180 days.</p>;
+  }
   return (
-    <section data-testid="similar-incidents" aria-labelledby="similar-incidents-title" className="space-y-2">
-      <h3 id="similar-incidents-title" className="flex items-center gap-1.5 text-sm font-semibold">
-        Similar incidents
-        <span className="ml-auto text-xs font-normal tabular-nums text-muted-foreground">{all.length}</span>
-      </h3>
-      <ul className="space-y-2.5">
-        {incidents.map((incident) => (
-          <li key={incident.id} className="space-y-1 text-sm">
+    <div data-testid="similar-incidents" className="space-y-3">
+      <p className="text-xs text-muted-foreground">
+        Resolved incidents from the last 180 days that share a service, alert source or title. They may be unrelated.
+      </p>
+      <ul className="divide-y rounded-lg border">
+        {data.incidents.map((incident) => (
+          <li key={incident.id} className="space-y-1.5 p-3 text-sm">
             <Link
               href={`/incidents/${incident.id}`}
-              className="block break-words font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="block break-words font-medium underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              #{incident.incidentNumber} {incident.title}
+              <span className="mr-1.5 text-muted-foreground">#{incident.incidentNumber}</span>
+              {incident.title}
             </Link>
-            <div className="flex flex-wrap gap-1">
+            <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+              {incident.serviceName && <span>{incident.serviceName}</span>}
               {incident.matchedOn.map((match) => (
                 <TableBadge key={match} compact tone="slate">
                   {MATCH_LABEL[match]}
                 </TableBadge>
               ))}
             </div>
-            {(incident.rootCauseSummary || incident.resolutionSummary) && (
+            {(incident.resolutionSummary || incident.rootCauseSummary) && (
               <p className="line-clamp-2 break-words text-xs text-muted-foreground">
                 {incident.resolutionSummary ?? incident.rootCauseSummary}
               </p>
@@ -47,16 +52,6 @@ export function SimilarIncidentsCard({ incidentId }: { incidentId: string }) {
           </li>
         ))}
       </ul>
-      {all.length > COLLAPSED && (
-        <button
-          type="button"
-          aria-expanded={showAll}
-          onClick={() => setShowAll((value) => !value)}
-          className="rounded-sm text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          {showAll ? "Show fewer" : `Show more (${all.length - COLLAPSED})`}
-        </button>
-      )}
-    </section>
+    </div>
   );
 }

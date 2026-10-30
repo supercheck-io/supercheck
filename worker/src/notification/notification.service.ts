@@ -410,7 +410,7 @@ export class NotificationService {
         dashboardUrl = `${baseUrl}/notification-run/${payload.metadata.runId}`;
       }
     } else {
-      dashboardUrl = `${baseUrl}/incidents?tab=alerts`;
+      dashboardUrl = `${baseUrl}/notifications?tab=history`;
     }
 
     const targetUrl = payload.metadata?.target;

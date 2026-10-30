@@ -126,7 +126,7 @@ export function SreIncidentAnalytics({ analytics }: { analytics: Analytics }) {
   return (
     <div className="flex flex-col gap-4 lg:min-h-0 lg:flex-1">
       <PageHeader
-        title="Incident trends"
+        title="Trends"
         description={`Incident volume and resolution over the last ${windowDays} days.`}
       />
 

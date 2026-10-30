@@ -1,4 +1,5 @@
 import {
+  stripEvidenceIdLists,
   formatInvestigationMarkdown,
   parseInvestigationOutput,
   readStoredHypotheses,
@@ -129,5 +130,12 @@ describe("evidence id lists in text", () => {
     expect(result.ok && result.output.conclusion).toBe("Both regions returned 503. Cause undetermined.");
     expect(result.ok && result.output.hypotheses[0].rationale).toBe("503 seen");
     expect(result.ok && result.output.topEvidenceIds).toEqual([E1]);
+  });
+
+  it("strips placeholder evidence and log references the model leaves without a target", () => {
+    expect(stripEvidenceIdLists("Job marked failed (Evidence ID:(#)).")).toBe("Job marked failed.");
+    expect(stripEvidenceIdLists(`Run failed after 16s ([Log ID: ${E1}](#)).`)).toBe("Run failed after 16s.");
+    expect(stripEvidenceIdLists(`ok (see [Log ID: ${E1}](#)) end`)).toBe("ok (see) end");
+    expect(stripEvidenceIdLists("See [the runbook](https://example.com/runbook).")).toBe("See [the runbook](https://example.com/runbook).");
   });
 });

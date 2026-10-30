@@ -54,7 +54,7 @@ export function describeTimelineEvent(event: Pick<SreIncidentTimelineItem, "even
   body: string | null;
 } {
   const data = event.eventData ?? {};
-  if (event.eventType === "comment") return { title: "Update", body: str(data.text) };
+  if (event.eventType === "comment") return { title: "Note", body: str(data.text) };
   if (event.eventType === "ai_finding") {
     return { title: "AI finding", body: aiFindingHeadline(data.summary) ?? str(data.error) };
   }
@@ -64,6 +64,8 @@ export function describeTimelineEvent(event: Pick<SreIncidentTimelineItem, "even
   }
   return { title: event.eventType.replace(/_/g, " "), body: null };
 }
+
+const TIMELINE_COLLAPSED = 20;
 
 function formatTime(value: Date | string) {
   return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(value));
@@ -82,6 +84,7 @@ export function IncidentTimeline({
   const query = useSreIncidentTimeline(incidentId);
   const [text, setText] = useState("");
   const [pending, setPending] = useState(false);
+  const [showAll, setShowAll] = useState(false);
   const events = query.data?.success ? query.data.events : [];
 
   const post = async () => {
@@ -89,7 +92,7 @@ export function IncidentTimeline({
     setPending(true);
     const result = await addSreIncidentUpdate({ incidentId, text }).catch(() => null).finally(() => setPending(false));
     if (!result?.success) {
-      toast.error(result?.error ?? "Failed to add update");
+      toast.error(result?.error ?? "Failed to add note");
       return;
     }
     setText("");
@@ -105,7 +108,7 @@ export function IncidentTimeline({
         {canUpdate && (
           <div className="flex shrink-0 items-end gap-2">
             <Label htmlFor={id} className="sr-only">
-              Post an update
+              Add a note
             </Label>
             <Textarea
               id={id}
@@ -114,16 +117,16 @@ export function IncidentTimeline({
               maxLength={2000}
               rows={1}
               disabled={pending}
-              placeholder="Write an update..."
+              placeholder="Add a note for your team..."
               className="min-h-9 max-h-24 resize-none py-2"
             />
             <Button size="sm" onClick={post} disabled={pending || !text.trim()}>
               {pending && <Loader2 className="h-4 w-4 animate-spin" />}
-              Post
+              Add note
             </Button>
           </div>
         )}
-        <div className="max-h-[32rem] overflow-y-auto pr-1">
+        <div>
           {query.isPending ? (
             <p className="text-sm text-muted-foreground">Loading timeline...</p>
           ) : query.data && !query.data.success ? (
@@ -132,7 +135,7 @@ export function IncidentTimeline({
             <p className="text-sm text-muted-foreground">No activity yet.</p>
           ) : (
             <ol className="ml-1 space-y-3 border-l pl-4">
-              {events.map((event) => {
+              {(showAll ? events : events.slice(0, TIMELINE_COLLAPSED)).map((event) => {
                 const { title, body } = describeTimelineEvent(event);
                 return (
                   <li key={event.id} className="relative">
@@ -156,6 +159,11 @@ export function IncidentTimeline({
                 );
               })}
             </ol>
+          )}
+          {events.length > TIMELINE_COLLAPSED && (
+            <Button type="button" variant="link" size="sm" className="mt-2 h-auto px-0 text-muted-foreground" aria-expanded={showAll} onClick={() => setShowAll((value) => !value)}>
+              {showAll ? "Show fewer" : `Show all ${events.length} events`}
+            </Button>
           )}
         </div>
       </CardContent>

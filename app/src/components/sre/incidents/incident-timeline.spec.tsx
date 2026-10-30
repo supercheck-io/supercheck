@@ -46,6 +46,16 @@ describe("describeTimelineEvent", () => {
 });
 
 describe("IncidentTimeline", () => {
+  it("shows the latest 20 events and expands to all of them", () => {
+    ready(Array.from({ length: 25 }, (_, i) => ev(`e${i}`, "comment", { text: `note ${i}` })));
+    render(<IncidentTimeline incidentId="inc-1" canUpdate={false} />);
+    expect(screen.getByText("note 19")).toBeInTheDocument();
+    expect(screen.queryByText("note 20")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show all 25 events" }));
+    expect(screen.getByText("note 24")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Show fewer" })).toHaveAttribute("aria-expanded", "true");
+  });
+
   it("shows loading, error and empty states", () => {
     mockQuery = { isPending: true };
     const view = render(<IncidentTimeline incidentId="i1" canUpdate />);
@@ -68,7 +78,7 @@ describe("IncidentTimeline", () => {
     ]);
     render(<IncidentTimeline incidentId="i1" canUpdate />);
     expect(screen.getAllByRole("listitem")).toHaveLength(5);
-    for (const text of ["Update", "Rolling back", "Recovered", "Reopened", "Resolved", "Resolved automatically on recovery", "AI finding", "Deploy 42 is suspect", "AI"]) {
+    for (const text of ["Note", "Rolling back", "Recovered", "Reopened", "Resolved", "Resolved automatically on recovery", "AI finding", "Deploy 42 is suspect", "AI"]) {
       expect(screen.getAllByText(text, { exact: false }).length).toBeGreaterThan(0);
     }
     expect(screen.getAllByText(/System/).length).toBe(2);
@@ -76,17 +86,17 @@ describe("IncidentTimeline", () => {
 
   it("hides the composer when the user cannot update", () => {
     render(<IncidentTimeline incidentId="i1" canUpdate={false} />);
-    expect(screen.queryByPlaceholderText("Write an update...")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Post" })).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("Add a note for your team...")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add note" })).not.toBeInTheDocument();
   });
 
   it("disables Post until there is text, then posts and invalidates the timeline query", async () => {
     addUpdate.mockResolvedValue({ success: true });
     render(<IncidentTimeline incidentId="i1" canUpdate />);
-    expect(screen.getByRole("button", { name: "Post" })).toBeDisabled();
-    const box = screen.getByPlaceholderText("Write an update...");
+    expect(screen.getByRole("button", { name: "Add note" })).toBeDisabled();
+    const box = screen.getByPlaceholderText("Add a note for your team...");
     fireEvent.change(box, { target: { value: "Fix deployed" } });
-    fireEvent.click(screen.getByRole("button", { name: "Post" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add note" }));
     await waitFor(() => expect(mockInvalidate).toHaveBeenCalled());
     expect(addUpdate).toHaveBeenCalledWith({ incidentId: "i1", text: "Fix deployed" });
     expect(mockInvalidate).toHaveBeenCalledWith({ queryKey: expect.arrayContaining(["project-1", "i1"]) });
@@ -95,13 +105,13 @@ describe("IncidentTimeline", () => {
 
   it.each([
     ["an error result", () => addUpdate.mockResolvedValue({ success: false, error: "Denied" }), "Denied"],
-    ["a rejected action", () => addUpdate.mockRejectedValue(new Error("net")), "Failed to add update"],
+    ["a rejected action", () => addUpdate.mockRejectedValue(new Error("net")), "Failed to add note"],
   ])("toasts and keeps the draft on %s", async (_name, arrange, message) => {
     arrange();
     render(<IncidentTimeline incidentId="i1" canUpdate />);
-    const box = screen.getByPlaceholderText("Write an update...");
+    const box = screen.getByPlaceholderText("Add a note for your team...");
     fireEvent.change(box, { target: { value: "Draft" } });
-    fireEvent.click(screen.getByRole("button", { name: "Post" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add note" }));
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith(message));
     expect(mockInvalidate).not.toHaveBeenCalled();
     expect(box).toHaveValue("Draft");

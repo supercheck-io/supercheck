@@ -22,8 +22,9 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { NotificationProviderForm } from "@/components/alerts/notification-provider-form";
-import { Plus, BellRing } from "lucide-react";
-import Link from "next/link";
+import { Plus, BellRing, History } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { DeliveryHistory } from "@/components/alerts/delivery-history";
 import { InfoTip } from "@/components/ui/info-tip";
 
 import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
@@ -65,6 +66,14 @@ function NotificationsPage() {
   const [deletingProvider, setDeletingProvider] =
     useState<NotificationProvider | null>(null);
   const searchParams = useSearchParams();
+  const tab = searchParams.get("tab") === "history" ? "history" : "channels";
+  const onTabChange = (next: string) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (next === "history") params.set("tab", "history");
+    else params.delete("tab");
+    const qs = params.toString();
+    router.replace(qs ? `/notifications?${qs}` : "/notifications", { scroll: false });
+  };
   const [preselectedType, setPreselectedType] = useState<
     NotificationProviderType | undefined
   >(undefined);
@@ -227,71 +236,81 @@ function NotificationsPage() {
         <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 m-4">
           <CardContent className="p-6">
             <div className="space-y-4">
-              <PageHeader
-                title="Notifications"
-                description="Choose where Supercheck sends alerts and incident updates"
-                titleAdornment={
-                  <InfoTip label="About channels">
-                    Channels are where Supercheck notifies your team about
-                    alerts and incidents. Status-page subscribers are managed
-                    on each status page.
-                  </InfoTip>
-                }
-                actions={
-                  providers.length > 0 || providersLoading ? (
-                    <Button onClick={() => openCreateDialog()} disabled={!canCreate}>
-                      <Plus className="h-4 w-4 mr-2" />
-                      Create channel
-                    </Button>
-                  ) : null
-                }
-              />
-
-              {providersError ? (
-                <ListErrorState title="Failed to fetch notification channels" error={providersError} onRetry={() => refetchProviders()} />
-              ) : providers.length === 0 && !providersLoading ? (
-                <DashboardEmptyState
-                  className="min-h-[360px]"
-                  title="No notification channels"
-                  description="Add your first notification channel to start receiving alerts"
-                  icon={<BellRing className="h-12 w-12" />}
-                  action={
-                    <Button onClick={() => openCreateDialog()} disabled={!canCreate}>
-                      <Plus className="h-4 w-4 mr-2" />
-                      Create channel
-                    </Button>
+              <Tabs value={tab} onValueChange={onTabChange} className="w-full">
+                <PageHeader
+                  title="Notifications"
+                  description="Choose where Supercheck sends alerts and incident updates, and see what was sent"
+                  titleAdornment={
+                    <InfoTip label="About notifications">
+                      Channels are where Supercheck notifies your team about
+                      alerts and incidents. Delivery history lists every
+                      notification sent. Status-page subscribers are managed
+                      on each status page.
+                    </InfoTip>
+                  }
+                  actions={
+                    <div className="flex flex-wrap items-center gap-2">
+                      <TabsList>
+                        <TabsTrigger value="channels" className="gap-2">
+                          <BellRing className="h-4 w-4" />
+                          Channels
+                        </TabsTrigger>
+                        <TabsTrigger value="history" className="gap-2">
+                          <History className="h-4 w-4" />
+                          Delivery history
+                        </TabsTrigger>
+                      </TabsList>
+                      {tab === "channels" && (providers.length > 0 || providersLoading) ? (
+                        <Button onClick={() => openCreateDialog()} disabled={!canCreate}>
+                          <Plus className="h-4 w-4" />
+                          Create channel
+                        </Button>
+                      ) : null}
+                    </div>
                   }
                 />
-              ) : (
-                <NotificationChannelsComponent
-                  onEditChannel={handleEditChannel}
-                  onDeleteChannel={handleDeleteChannel}
-                  providersData={providers.map((p) => ({
-                    id: p.id,
-                    name: p.name,
-                    type: p.type,
-                    config: p.config,
-                    isEnabled: p.isEnabled,
-                    createdAt: p.createdAt,
-                    updatedAt: p.updatedAt || p.createdAt,
-                    lastUsed: p.lastUsed,
-                    createdByName: p.createdByName ?? null,
-                    createdByImage: p.createdByImage ?? null,
-                  }))}
-                  refreshTrigger={0}
-                />
-              )}
 
-              <p className="text-sm text-muted-foreground">
-                Recent deliveries are listed in the{" "}
-                <Link
-                  href="/incidents?tab=alerts&view=history"
-                  className="underline underline-offset-4 hover:text-foreground"
-                >
-                  delivery history
-                </Link>
-                .
-              </p>
+                <TabsContent value="channels" className="mt-0 pt-4">
+                  {providersError ? (
+                    <ListErrorState title="Failed to fetch notification channels" error={providersError} onRetry={() => refetchProviders()} />
+                  ) : providers.length === 0 && !providersLoading ? (
+                    <DashboardEmptyState
+                      className="min-h-[360px]"
+                      title="No notification channels"
+                      description="Add your first notification channel to start receiving alerts"
+                      icon={<BellRing className="h-12 w-12" />}
+                      action={
+                        <Button onClick={() => openCreateDialog()} disabled={!canCreate}>
+                          <Plus className="h-4 w-4 mr-2" />
+                          Create channel
+                        </Button>
+                      }
+                    />
+                  ) : (
+                    <NotificationChannelsComponent
+                      onEditChannel={handleEditChannel}
+                      onDeleteChannel={handleDeleteChannel}
+                      providersData={providers.map((p) => ({
+                        id: p.id,
+                        name: p.name,
+                        type: p.type,
+                        config: p.config,
+                        isEnabled: p.isEnabled,
+                        createdAt: p.createdAt,
+                        updatedAt: p.updatedAt || p.createdAt,
+                        lastUsed: p.lastUsed,
+                        createdByName: p.createdByName ?? null,
+                        createdByImage: p.createdByImage ?? null,
+                      }))}
+                      refreshTrigger={0}
+                    />
+                  )}
+
+                </TabsContent>
+                <TabsContent value="history" className="mt-0 pt-4">
+                  <DeliveryHistory />
+                </TabsContent>
+              </Tabs>
             </div>
 
             <Dialog
