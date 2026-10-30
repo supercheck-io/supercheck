@@ -18,7 +18,10 @@ import {
   getBillableMs,
   createK6AllocationTracker,
 } from '../../common/billable-ms';
-import { createSecretStream } from '../../common/utils/secret-stream';
+import {
+  createSecretStream,
+  scrubSecretsFromReportDir,
+} from '../../common/utils/secret-stream';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { execa } from 'execa';
@@ -702,6 +705,8 @@ export class K6ExecutionService {
       const s3KeyPrefix = `${runId}`;
       const bucket = this.s3Service.getBucketForEntityType(entityType);
 
+      // Fail closed: a scrub error aborts the upload.
+      await scrubSecretsFromReportDir(extractedReportsDir, runtimeSecrets);
       await this.s3Service.uploadDirectory(
         extractedReportsDir,
         s3KeyPrefix,

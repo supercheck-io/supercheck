@@ -35,7 +35,7 @@ import { canEditMonitors, canDeleteMonitors } from "@/lib/rbac/client-permission
 
 import { monitorSchema } from "./schema";
 import { useQueryClient } from "@tanstack/react-query";
-import { MONITORS_QUERY_KEY } from "@/hooks/use-monitors";
+import { canToggleMonitors, getResumeStatus, invalidateMonitorCaches } from "./monitor-actions";
 
 interface DataTableRowActionsProps<TData> {
   row: Row<TData>;
@@ -53,6 +53,7 @@ export function DataTableRowActions<TData>({
   // Check permissions using project context (same as jobs/tests approach)
   const userRole = currentProject?.userRole ? normalizeRole(currentProject.userRole) : null;
   const hasEditPermission = userRole ? canEditMonitors(userRole) : false;
+  const hasTogglePermission = canToggleMonitors(userRole);
   const hasDeletePermission = userRole ? canDeleteMonitors(userRole) : false;
 
   // Use safeParse instead of parse to handle validation errors
@@ -83,7 +84,7 @@ export function DataTableRowActions<TData>({
     if (!monitor.id) return;
 
     setIsPauseResumeLoading(true);
-    const newStatus = monitor.status === 'paused' ? 'up' : 'paused';
+    const newStatus = monitor.status === 'paused' ? getResumeStatus() : 'paused';
     const action = monitor.status === 'paused' ? 'resume' : 'pause';
 
     try {
@@ -106,7 +107,7 @@ export function DataTableRowActions<TData>({
       });
 
       // Invalidate Monitors cache to ensure fresh data on monitors list
-      queryClient.invalidateQueries({ queryKey: MONITORS_QUERY_KEY, refetchType: 'all' });
+      invalidateMonitorCaches(queryClient, monitor.id);
 
       // Refresh the page to update the list
       router.refresh();
@@ -145,7 +146,7 @@ export function DataTableRowActions<TData>({
       });
 
       // Invalidate Monitors cache to ensure fresh data on monitors list
-      queryClient.invalidateQueries({ queryKey: MONITORS_QUERY_KEY, refetchType: 'all' });
+      invalidateMonitorCaches(queryClient, monitor.id);
 
       // Call onDelete callback if provided
       if (onDelete) {
@@ -205,9 +206,9 @@ export function DataTableRowActions<TData>({
             <TooltipTrigger asChild>
               <div>
                 <DropdownMenuItem
-                  onClick={hasEditPermission ? handleTogglePauseResume : undefined}
-                  disabled={!hasEditPermission || isPauseResumeLoading}
-                  className={!hasEditPermission ? "opacity-50 cursor-not-allowed" : ""}
+                  onClick={hasTogglePermission ? handleTogglePauseResume : undefined}
+                  disabled={!hasTogglePermission || isPauseResumeLoading}
+                  className={!hasTogglePermission ? "opacity-50 cursor-not-allowed" : ""}
                 >
                   {monitor.status === 'paused' ? (
                     <>
@@ -223,7 +224,7 @@ export function DataTableRowActions<TData>({
                 </DropdownMenuItem>
               </div>
             </TooltipTrigger>
-            {!hasEditPermission && (
+            {!hasTogglePermission && (
               <TooltipContent>
                 <p>Insufficient permissions to control monitors</p>
               </TooltipContent>

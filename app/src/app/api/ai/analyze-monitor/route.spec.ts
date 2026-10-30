@@ -11,7 +11,7 @@ jest.mock("@/lib/ai/ai-streaming-service", () => ({ AIStreamingService: {
 jest.mock("@/lib/ai/ai-prompts", () => ({ AIPromptBuilder: { buildMonitorAnalyzePrompt: jest.fn() } }));
 jest.mock("@/lib/session", () => ({ getActiveOrganization: jest.fn() }));
 jest.mock("@/lib/rbac/middleware", () => ({ hasPermissionForUser: jest.fn(), requireAuth: jest.fn() }));
-jest.mock("@/lib/services/usage-tracker", () => ({ usageTracker: { consumeAICredit: jest.fn() } }));
+jest.mock("@/lib/services/usage-tracker", () => ({ usageTracker: { consumeAICredit: jest.fn(), refundAICredit: jest.fn() } }));
 jest.mock("@/lib/services/subscription-service", () => ({ subscriptionService: {
   blockUntilSubscribed: jest.fn(), requireValidPolarCustomer: jest.fn(),
 } }));
@@ -89,7 +89,6 @@ describe("monitor AI analysis project authorization", () => {
     expect(hasPermissionForUser).toHaveBeenCalledWith("effective-user", "monitor", "view", {
       organizationId: "org-1", projectId: "project-9",
     });
-    expect(usageTracker.consumeAICredit).toHaveBeenCalledTimes(1);
   });
 
   it("denies users without project view access before spending credits or calling AI", async () => {

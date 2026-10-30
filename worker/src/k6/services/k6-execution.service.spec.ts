@@ -1,3 +1,4 @@
+import * as secretStream from '../../common/utils/secret-stream';
 import { createTrialK6Script } from '../../common/security/trial-k6-workload';
 import {
   TargetDnsUnavailableError,
@@ -1256,6 +1257,70 @@ describe('K6ExecutionService', () => {
         fs.access.mockResolvedValue(undefined);
       },
     );
+
+    it('scrubs the report directory with the run secrets before uploading', async () => {
+      const fs = jest.requireMock('fs/promises');
+      fs.access.mockRejectedValue(new Error('missing HTML'));
+      fs.rename = jest.fn().mockResolvedValue(undefined);
+      fs.copyFile = jest.fn().mockResolvedValue(undefined);
+      Object.assign(mockS3Service, {
+        prepareFileVariables: jest
+          .fn()
+          .mockResolvedValue({ additionalFiles: {}, filePaths: {} }),
+        getBucketForEntityType: jest.fn().mockReturnValue('bucket'),
+        uploadDirectory: jest.fn().mockResolvedValue(undefined),
+        getBaseUrlForEntity: jest
+          .fn()
+          .mockReturnValue('https://example.com/run'),
+      });
+      Object.assign(mockDbService, {
+        storeReportMetadata: jest.fn().mockResolvedValue(undefined),
+      });
+      mockVariableResolverService.resolveProjectVariables.mockResolvedValueOnce(
+        {
+          variables: {},
+          secrets: { TOKEN: 'super-secret-value' },
+          files: {},
+        },
+      );
+      jest
+        .spyOn(service, 'allocateDashboardPort' as never)
+        .mockResolvedValue(0 as never);
+      jest.spyOn(service, 'executeK6Binary' as never).mockResolvedValue({
+        exitCode: 0,
+        billableMs: 1000,
+        billingVirtualUsers: 1,
+        stdout: '',
+        stderr: '',
+        error: null,
+        timedOut: false,
+        cancelled: false,
+      } as never);
+      const order: string[] = [];
+      const scrub = jest
+        .spyOn(secretStream, 'scrubSecretsFromReportDir')
+        .mockImplementation(async () => void order.push('scrub'));
+      (
+        mockS3Service as unknown as { uploadDirectory: jest.Mock }
+      ).uploadDirectory.mockImplementation(
+        async () => void order.push('upload'),
+      );
+      await service.runK6Test({
+        runId: 'run-1',
+        testId: 'test-1',
+        organizationId: 'org-1',
+        projectId: 'project-1',
+        tests: [],
+        script: 'export default function() {}',
+        location: 'local',
+      });
+      expect(scrub).toHaveBeenCalledWith(expect.any(String), {
+        TOKEN: 'super-secret-value',
+      });
+      expect(order).toEqual(['scrub', 'upload']);
+      fs.access.mockResolvedValue(undefined);
+      scrub.mockRestore();
+    });
 
     it('should generate HTML report', () => {
       const result: K6ExecutionResult = {

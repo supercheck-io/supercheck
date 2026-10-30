@@ -211,8 +211,8 @@ export function buildTrialEntitlement(
 }
 
 /**
- * Investigations a trial organization has started during its trial. Every started investigation counts,
- * whatever its outcome, so cancelling or failing one does not hand the allowance back. The window starts
+ * Investigations a trial organization has started during its trial. Only running and completed runs count;
+ * failed, aborted and timed-out runs produced no result, matching paid admission. The window starts
  * at the stored trial start (extending the expiry must not move it); old rows fall back to the default length.
  */
 export async function countTrialInvestigations(
@@ -232,6 +232,7 @@ export async function countTrialInvestigations(
         eq(sreInvestigationRuns.organizationId, organizationId),
         eq(sreInvestigationRuns.agentType, "investigation"),
         eq(sreInvestigationRuns.billingTier, "trial"),
+        or(eq(sreInvestigationRuns.status, "running"), eq(sreInvestigationRuns.status, "completed")),
         gte(sreInvestigationRuns.createdAt, trialStartedAt),
       ),
     );

@@ -18,7 +18,7 @@ import {
   GetObjectCommand,
 } from "@aws-sdk/client-s3";
 import { getActiveOrganization } from "@/lib/session";
-import { usageTracker } from "@/lib/services/usage-tracker";
+import { reserveAICredit } from "@/lib/ai/ai-credit-reservation";
 import { headers } from "next/headers";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { resolveRunArtifact } from "@/lib/ai/run-artifact";
@@ -38,6 +38,7 @@ const s3Client = new S3Client({
 });
 
 export async function POST(request: NextRequest) {
+  let refundCredit: (() => Promise<void>) | undefined;
   try {
     // Step 1: Input validation and sanitization
     const body = await request.json();
@@ -253,8 +254,10 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Charge only after report and prompt prerequisites succeed.
-    const creditResult = await usageTracker.consumeAICredit(activeOrg.id, "ai_fix");
+
+    // Step 4: Generate streaming AI response
+    // Reserve a credit atomically before the provider call; refunded if no content.
+    const creditResult = await reserveAICredit(activeOrg.id, "ai_fix");
     if (!creditResult.allowed) {
       return NextResponse.json(
         {
@@ -272,10 +275,11 @@ export async function POST(request: NextRequest) {
         { status: creditResult.status ?? 429 }
       );
     }
+    refundCredit = creditResult.refund;
 
-    // Step 4: Generate streaming AI response
     const aiResponse = await AIStreamingService.generateStreamingResponse({
       signal: request.signal,
+      onNoContent: creditResult.refund,
       userId: session.user.id,
       orgId: activeOrg.id,
       tier: session.tier,
@@ -320,6 +324,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
+    await refundCredit?.();
     console.error("AI fix streaming failed:", error);
 
     const errorMessage =

@@ -12,6 +12,7 @@ import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
 import { monitorTypes } from "@/components/monitors/data";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { useMonitorPermissions } from "@/hooks/use-monitor-details";
 
 // Can't use metadata in client components, remove this
 // export const metadata: Metadata = {
@@ -29,6 +30,13 @@ export default function EditMonitorPage({
   const [monitor, setMonitor] = useState<Monitor | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const { canEdit, isLoading: permissionsLoading, isConfirmed: permissionsConfirmed } = useMonitorPermissions(id);
+
+  // Viewers cannot edit: send them to the detail page instead of an editable form
+  useEffect(() => {
+    if (id && permissionsConfirmed && !canEdit) router.replace(`/monitors/${id}`);
+  }, [id, permissionsConfirmed, canEdit, router]);
 
   // Get params on the client side
   useEffect(() => {
@@ -84,7 +92,7 @@ export default function EditMonitorPage({
     };
   }, [id]);
 
-  if (loading) {
+  if (loading || permissionsLoading || (id && permissionsConfirmed && !canEdit)) {
     return (
       <div>
         <PageBreadcrumbs
@@ -188,29 +196,10 @@ export default function EditMonitorPage({
   // Get monitor type info for the title
   const monitorTypeInfo = monitorTypes.find((t) => t.value === formType);
 
-  // Convert monitor.frequencyMinutes to FormValues.interval (seconds as string)
-  const validFormIntervals = [
-    "60",
-    "300",
-    "600",
-    "900",
-    "1800",
-    "3600",
-    "10800",
-    "43200",
-    "86400",
-  ];
-  let formInterval: FormValues["interval"] = "60"; // Default interval
-
-  // Convert frequencyMinutes to seconds
-  const intervalInSeconds = (monitor.frequencyMinutes || 1) * 60;
-  if (validFormIntervals.includes(intervalInSeconds.toString())) {
-    formInterval = intervalInSeconds.toString() as FormValues["interval"];
-  } else {
-    console.warn(
-      `Monitor frequency ${monitor.frequencyMinutes} minutes (${intervalInSeconds} seconds) not in form options. Defaulting to 60s.`
-    );
-  }
+  // Keep the stored interval exactly; the form adds it as an option when it is not a preset
+  const formInterval = String(
+    (monitor.frequencyMinutes || 1) * 60
+  ) as FormValues["interval"];
 
   // Prepare data for the form, ensuring all required fields for FormValues are present
   const formData: FormValues = {

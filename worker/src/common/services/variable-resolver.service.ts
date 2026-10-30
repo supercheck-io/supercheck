@@ -13,6 +13,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { DbService } from '../../db/db.service';
 import { decryptSecret, type SecretEnvelope } from '../security/secret-crypto';
+import { filterSecretVariablesToUsedKeys } from '../utils/script-analysis';
 
 // Encrypted value format used by the app
 const ENCRYPTED_PREFIX = 'enc:v1:';
@@ -69,11 +70,16 @@ export class VariableResolverService {
    * This method fetches variables from the database and decrypts secrets securely
    *
    * @param projectId The project ID to resolve variables for
+   * @param scripts When given, only secrets these scripts use are decrypted, so an
+   *   unreadable unused secret cannot fail the run
    * @returns Object containing resolved variables and secrets
    */
   async resolveProjectVariables(
     projectId: string,
+    scripts?: string[],
   ): Promise<VariableResolutionResult> {
+    const errors: string[] = [];
+    let result: VariableResolutionResult;
     try {
       // Fetch all variables for the project
       const variables = await this.dbService.getProjectVariables(projectId);
@@ -81,7 +87,21 @@ export class VariableResolverService {
       const resolvedVariables: Record<string, string> = {};
       const resolvedSecrets: Record<string, string> = {};
       const resolvedFiles: Record<string, FileVariableMetadata> = {};
-      const errors: string[] = [];
+
+      const usedSecretKeys = scripts
+        ? new Set(
+            Object.keys(
+              filterSecretVariablesToUsedKeys(
+                Object.fromEntries(
+                  variables
+                    .filter((v) => v.isSecret || v.type === 'secret')
+                    .map((v) => [v.key, '']),
+                ),
+                scripts,
+              ),
+            ),
+          )
+        : null;
 
       for (const variable of variables) {
         try {
@@ -107,7 +127,8 @@ export class VariableResolverService {
           }
 
           if (variable.isSecret || varType === 'secret') {
-            // Decrypt secret variables
+            // Skip secrets no script references; they are never injected
+            if (usedSecretKeys && !usedSecretKeys.has(variable.key)) continue;
             if (variable.encryptedValue) {
               const value = decryptValue(variable.encryptedValue, projectId);
               resolvedSecrets[variable.key] = value;
@@ -125,7 +146,11 @@ export class VariableResolverService {
           this.logger.error(
             `Failed to resolve variable '${variable.key}': ${error instanceof Error ? error.message : 'Unknown error'}`,
           );
-          errors.push(`Failed to resolve variable '${variable.key}'`);
+          errors.push(
+            variable.isSecret || variable.type === 'secret'
+              ? `secret '${variable.key}' could not be decrypted`
+              : `variable '${variable.key}' could not be resolved`,
+          );
         }
       }
 
@@ -133,13 +158,7 @@ export class VariableResolverService {
         `Resolved ${Object.keys(resolvedVariables).length} variables, ${Object.keys(resolvedSecrets).length} secrets, and ${Object.keys(resolvedFiles).length} files for project ${projectId}`,
       );
 
-      if (errors.length > 0) {
-        throw new Error(
-          `Project variable resolution incomplete (${errors.length} error${errors.length === 1 ? '' : 's'})`,
-        );
-      }
-
-      return {
+      result = {
         variables: resolvedVariables,
         secrets: resolvedSecrets,
         files: resolvedFiles,
@@ -153,6 +172,13 @@ export class VariableResolverService {
       // and could target the wrong system, so resolution uncertainty is fatal.
       throw new Error('Failed to securely resolve project variables');
     }
+    if (errors.length > 0) {
+      // Keys only, never values, so this message is safe to surface to the user.
+      throw new Error(
+        `Failed to securely resolve project variables: ${errors.join('; ')}`,
+      );
+    }
+    return result;
   }
 
   /**

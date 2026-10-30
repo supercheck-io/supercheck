@@ -128,6 +128,22 @@ export class UsageTracker {
       return { allowed: false, reason: "Unable to verify AI credits. Please retry.", status: 503 };
     }
   }
+
+  /**
+   * Return a credit reserved by consumeAICredit when the provider produced no
+   * output. Atomic and floored at 0; callers guard against double refunds
+   * (see reserveAICredit). A usage reset in between simply floors at 0.
+   */
+  async refundAICredit(
+    organizationId: string,
+    _actionType: "ai_fix" | "ai_create" | "ai_analyze"
+  ): Promise<void> {
+    if (!organizationId || !isCloudHosted() || !isPolarEnabled()) return;
+    await db
+      .update(organization)
+      .set({ aiCreditsUsed: sql`GREATEST(COALESCE(${organization.aiCreditsUsed}, 0) - 1, 0)` })
+      .where(and(eq(organization.id, organizationId), sql`COALESCE(${organization.aiCreditsUsed}, 0) > 0`));
+  }
 }
 
 // Export singleton instance

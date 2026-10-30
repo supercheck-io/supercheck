@@ -1,6 +1,7 @@
 import { ExecutionWorkloadError } from "./execution/execution-policy";
 import { SubscriptionAccessDeniedError } from "./services/subscription-service";
 import { NextResponse } from "next/server";
+import { VariableResolutionError } from "./variable-resolution-error";
 import type { ExecutionRateLimitResult } from "./execution-rate-limiter";
 import {
   getExecutionQueueRunError,
@@ -41,6 +42,11 @@ export function buildExecutionQueueErrorResponse(
       { error: error.message, code: "EXECUTION_ENTITLEMENT_DENIED" },
       { status: error.status },
     );
+  if (error instanceof VariableResolutionError)
+    return NextResponse.json(
+      { error: error.message, code: "VARIABLES_UNRESOLVED" },
+      { status: 422 },
+    );
   if (!isExecutionQueueError(error)) return null;
 
   const capacityExceeded = error.code === "capacity_exceeded";
@@ -70,6 +76,7 @@ export function buildExecutionQueueErrorResponse(
 }
 
 export function getSafeExecutionQueueErrorDetails(error: unknown): string {
+  if (error instanceof VariableResolutionError) return error.message;
   return isExecutionQueueError(error)
     ? getExecutionQueueRunError(error)
     : "Failed to queue execution";

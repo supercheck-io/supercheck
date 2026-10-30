@@ -128,6 +128,11 @@ export async function resolveProjectVariables(
  */
 export function extractVariableNames(script: string): string[] {
   const variableNames: string[] = [];
+  // Drop JS comments (keeping string literals) so commented-out helper calls are not counted.
+  script = script.replace(
+    /("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|`(?:\\.|[^`\\])*`)|\/\/[^\n]*|\/\*[\s\S]*?\*\//g,
+    (_m, str: string | undefined) => str ?? " ",
+  );
 
   // Match standalone helper calls only, not methods like fs.readFile().
   const regex =

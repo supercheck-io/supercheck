@@ -70,7 +70,7 @@ import { useProjectContext } from "@/hooks/use-project-context";
 import { useAppConfig } from "@/hooks/use-app-config";
 import { useAvailableLocations } from "@/hooks/use-locations";
 import { useQueryClient } from "@tanstack/react-query";
-import { MONITORS_QUERY_KEY } from "@/hooks/use-monitors";
+import { invalidateMonitorCaches, mergeEditConfig, withCurrentInterval } from "./monitor-actions";
 import { useTest } from "@/hooks/use-tests";
 
 // Define presets for Expected Status Codes
@@ -523,7 +523,16 @@ export function MonitorForm({
   }, [currentMonitorType, initialData, fromTestId]);
 
   const form = useForm<FormValues>({
-    resolver: zodResolver(formSchema) as Resolver<FormValues>,
+    resolver: (async (values, ctx, opts) => {
+      const result = await (zodResolver(formSchema) as Resolver<FormValues>)(values, ctx, opts);
+      // A stored interval below the synthetic floor stays valid while it is left unchanged
+      if (editMode && values.interval === initialData?.interval && result.errors?.interval) {
+        const { interval: _ignored, ...rest } = result.errors;
+        void _ignored;
+        return Object.keys(rest).length ? { values: {}, errors: rest } : { values, errors: {} };
+      }
+      return result;
+    }) as Resolver<FormValues>,
     mode: "onSubmit", // Only validate on submit, not on every change
     defaultValues: {
       ...getDefaultValues(),
@@ -557,7 +566,7 @@ export function MonitorForm({
   useEffect(() => {
     if (type === "synthetic_test") {
       const currentInterval = parseInt(form.getValues("interval"), 10);
-      if (currentInterval < 300) {
+      if (currentInterval < 300 && !(editMode && form.getValues("interval") === initialData?.interval)) {
         // If current interval is less than 5 minutes, set to 5 minutes
         form.setValue("interval", "300");
       }
@@ -673,7 +682,7 @@ export function MonitorForm({
 
   async function onSubmit(data: FormValues) {
     setIsSubmitting(true);
-
+    try {
     // Sanitize all input data before processing
     const sanitizedData = sanitizeMonitorFormData(data);
 
@@ -886,11 +895,18 @@ export function MonitorForm({
       };
     }
 
+    // Edit: keep stored keys the form does not manage (timeouts, retry strategy, regions...)
+    if (editMode) config = mergeEditConfig(data.type, initialConfig, config);
+
     // Add location config to all monitor types
     config.locationConfig = locationConfig;
     apiData.config = config;
 
-    try {
+    // Unchanged interval is not re-sent, so legacy values the API would now reject still save
+    if (editMode && sanitizedData.interval === initialData?.interval) {
+      delete apiData.frequencyMinutes;
+    }
+
       // If onSave callback is provided (wizard mode), pass the form data and API data
       if (onSave) {
         // Pass both the form values and the API data
@@ -966,7 +982,7 @@ export function MonitorForm({
       });
 
       // Invalidate Monitors cache without blocking navigation
-      void queryClient.invalidateQueries({ queryKey: MONITORS_QUERY_KEY, refetchType: 'all' });
+      invalidateMonitorCaches(queryClient, editMode ? id : result.id);
 
       if (editMode) {
         router.push(`/monitors/${id}`);
@@ -1235,10 +1251,12 @@ export function MonitorForm({
                   name="interval"
                   render={({ field }) => {
                     // Use different interval options based on monitor type
-                    const checkIntervalOptions =
+                    const checkIntervalOptions = withCurrentInterval(
                       type === "synthetic_test"
                         ? syntheticCheckIntervalOptions
-                        : standardCheckIntervalOptions;
+                        : standardCheckIntervalOptions,
+                      editMode ? initialData?.interval : undefined
+                    );
 
                     return (
                       <FormItem className="space-y-2">

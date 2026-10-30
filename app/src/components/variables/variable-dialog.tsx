@@ -86,6 +86,8 @@ export function VariableDialog({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [secretLoadWarning, setSecretLoadWarning] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
+  const [revealing, setRevealing] = useState(false);
+  const [revealed, setRevealed] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isEditing = !!variable;
@@ -104,6 +106,7 @@ export function VariableDialog({
       });
       setSelectedFile(null);
       setSecretLoadWarning(null);
+      setRevealed(false);
       setFetchingData(false);
       setErrors({});
       return;
@@ -137,31 +140,6 @@ export function VariableDialog({
           if (isSecretValue) {
             if (canViewSecrets && initialSecretValue) {
               resolvedValue = initialSecretValue;
-            } else if (canViewSecrets) {
-              try {
-                const decryptResponse = await fetch(
-                  `/api/projects/${projectId}/variables/${variable.id}/decrypt`,
-                  {
-                    method: 'POST',
-                    signal: abortController.signal,
-                    cache: 'no-store',
-                  }
-                );
-
-                if (decryptResponse.ok) {
-                  const decryptData = await decryptResponse.json();
-                  resolvedValue = decryptData?.data?.value || '';
-                } else if (decryptResponse.status === 401 || decryptResponse.status === 403) {
-                  setSecretLoadWarning('You can edit metadata, but secret reveal requires permission. Leave value blank to keep current secret.');
-                } else {
-                  setSecretLoadWarning('Could not load the current secret value. Leave value blank to keep existing secret.');
-                }
-              } catch (decryptError) {
-                if (!abortController.signal.aborted) {
-                  console.error('Error decrypting variable for edit:', decryptError);
-                  setSecretLoadWarning('Could not load the current secret value. Leave value blank to keep existing secret.');
-                }
-              }
             }
           }
         }
@@ -203,6 +181,29 @@ export function VariableDialog({
       abortController.abort();
     };
   }, [variable, open, projectId, defaultIsSecret, initialType, canViewSecrets, initialSecretValue]);
+
+  // Decrypting is audited server-side, so it only happens on an explicit click.
+  const revealSecret = async () => {
+    if (!variable) return;
+    setRevealing(true);
+    try {
+      const response = await fetch(
+        `/api/projects/${projectId}/variables/${variable.id}/decrypt`,
+        { method: 'POST', cache: 'no-store' }
+      );
+      if (!response.ok) {
+        setSecretLoadWarning('Could not reveal the secret value. Leave value blank to keep the current secret.');
+        return;
+      }
+      const decryptData = await response.json();
+      setFormData((current) => ({ ...current, value: decryptData?.data?.value || '' }));
+      setRevealed(true);
+    } catch {
+      setSecretLoadWarning('Could not reveal the secret value. Leave value blank to keep the current secret.');
+    } finally {
+      setRevealing(false);
+    }
+  };
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
@@ -529,8 +530,8 @@ export function VariableDialog({
                 <Label htmlFor="value" className="text-sm font-medium">Value *</Label>
                 <Input
                   id="value"
-                  type={isSecretType ? "password" : "text"}
-                  placeholder={isSecretType ? "Enter secret value" : "Enter value"}
+                  type={isSecretType && !revealed ? "password" : "text"}
+                  placeholder={isSecretType ? (isEditing ? "Leave blank to keep the current value" : "Enter secret value") : "Enter value"}
                   value={formData.value}
                   onChange={(e) => setFormData({ ...formData, value: e.target.value })}
                   disabled={loading || fetchingData}
@@ -543,6 +544,11 @@ export function VariableDialog({
                   <p className="text-xs text-muted-foreground">
                     {secretLoadWarning || 'Leave value blank to keep the current secret unchanged.'}
                   </p>
+                )}
+                {isEditing && isSecretType && canViewSecrets && !revealed && (
+                  <Button type="button" variant="outline" size="sm" onClick={revealSecret} disabled={loading || fetchingData || revealing}>
+                    {revealing ? 'Revealing...' : 'Reveal current value'}
+                  </Button>
                 )}
               </div>
             )}
