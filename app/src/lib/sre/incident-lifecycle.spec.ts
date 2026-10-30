@@ -329,8 +329,15 @@ describe("reopenRecentlyAutoResolved", () => {
       incidentId,
       assigneeUserId: assignee,
       alreadyTriaged: false,
+      stale: false,
     });
     expect(inserts[0]).toMatchObject({ eventData: { state: "reopened" }, actorType: "system" });
+  });
+
+  it("hands back a failure that fired before the resolve as stale, without reopening", async () => {
+    selectQueue.push([latest({ resolvedAt: new Date(source.firedAt.getTime() + 60_000) })]);
+    expect(await reopenRecentlyAutoResolved(executor as never, source)).toMatchObject({ incidentId, stale: true });
+    expect(executor.update).not.toHaveBeenCalled();
   });
 
   it("does not reopen outside the window", async () => {

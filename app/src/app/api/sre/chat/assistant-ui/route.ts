@@ -160,13 +160,15 @@ function getTotalMessageTextLength(messages: SreAssistantUiMessage[]) {
 function fitPromptHistory(messages: SreAssistantUiMessage[], maxChars: number) {
   let lastUser = messages.length - 1;
   while (lastUser > 0 && messages[lastUser]?.role !== "user") lastUser -= 1;
+  const trailing = messages.slice(lastUser + 1);
+  const trailingChars = trailing.reduce((total, message) => total + getTextFromUiMessage(message).length, 0);
   const kept = keepNewestWithinBudget(
     messages.slice(0, lastUser + 1),
     (message) => getTextFromUiMessage(message).length,
-    maxChars,
+    maxChars - trailingChars,
   );
   while (kept.length > 1 && kept[0]?.role !== "user") kept.shift();
-  return [...kept, ...messages.slice(lastUser + 1)];
+  return [...kept, ...trailing];
 }
 
 function buildAssistantUiSystemPrompt(input: {

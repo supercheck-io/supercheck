@@ -1803,11 +1803,12 @@ export class ElasticsearchConnector extends BaseDirectConnector {
         ? params.filters.index.trim()
         : null;
     // A field name only; anything else could rewrite the time-range clause of the query string.
-    const timestampField =
-      typeof params.filters?.timestampField === "string" &&
-      /^[A-Za-z0-9_.@-]{1,128}$/.test(params.filters.timestampField.trim())
-        ? params.filters.timestampField.trim()
-        : "@timestamp";
+    const requestedField =
+      typeof params.filters?.timestampField === "string" ? params.filters.timestampField.trim() : "";
+    if (requestedField && !/^[A-Za-z0-9_.@-]{1,128}$/.test(requestedField)) {
+      throw new Error("Elasticsearch timestampField must be a field name of letters, digits, _ . @ or -");
+    }
+    const timestampField = requestedField || "@timestamp";
     const searchPath = index
       ? `/${encodeURIComponent(index)}/_search`
       : "/_search";

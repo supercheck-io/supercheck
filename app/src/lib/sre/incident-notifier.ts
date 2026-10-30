@@ -304,33 +304,51 @@ async function participantEmails(
   participantIds: string[],
   person: (id?: string | null) => { email: string } | undefined,
 ) {
-  if (participantIds.length === 0) return [];
+  if (participantIds.length === 0) return { emails: [], claimed: [] };
   try {
     // Lazy import: incident-lifecycle imports this module.
     const { isAssignableUser } = await import("./incident-lifecycle");
     const throttled = SYSTEM_EVENTS.includes(input.event) || (input.event === "resolved" && input.automatic);
     const emails: string[] = [];
+    const claimed: string[] = [];
     for (const id of participantIds) {
       const email = person(id)?.email;
       if (!email || !(await isAssignableUser(input.organizationId, input.projectId, id))) continue;
-      if (throttled && !(await claimRecipient(input, id))) continue;
+      if (throttled) {
+        if (!(await claimRecipient(input, id))) continue;
+        claimed.push(id);
+      }
       emails.push(email);
     }
-    return emails;
+    return { emails, claimed };
   } catch (error) {
     // Channel posts below must still go out.
     logger.warn({ error: error instanceof Error ? error.message : "lookup failed" }, "Incident participant lookup failed");
-    return [];
+    return { emails: [], claimed: [] };
   }
+}
+
+function recipientKey(input: IncidentNotifyInput, userId: string) {
+  return `supercheck:sre:incident-email:${input.incidentId}:${input.event}:${userId}`;
 }
 
 async function claimRecipient(input: IncidentNotifyInput, userId: string) {
   try {
     const redis = await getRedisConnection();
-    const key = `supercheck:sre:incident-email:${input.incidentId}:${input.event}:${userId}`;
-    return (await redis.set(key, "1", "EX", DEDUPE_TTL_SECONDS, "NX")) === "OK";
+    return (await redis.set(recipientKey(input, userId), "1", "EX", DEDUPE_TTL_SECONDS, "NX")) === "OK";
   } catch {
     return true;
+  }
+}
+
+/** A failed send must not use up the window, or the next event would be suppressed too. */
+async function releaseRecipients(input: IncidentNotifyInput, userIds: string[]) {
+  if (userIds.length === 0) return;
+  try {
+    const redis = await getRedisConnection();
+    await redis.del(...userIds.map((id) => recipientKey(input, id)));
+  } catch {
+    // Best effort; the claim expires on its own.
   }
 }
 
@@ -444,11 +462,12 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<v
       },
     };
 
-    const directEmails = await participantEmails(input, participantIds, person);
-    if (directEmails.length > 0) {
+    const direct = await participantEmails(input, participantIds, person);
+    if (direct.emails.length > 0) {
       try {
-        await sendEmail(directEmails, message);
+        await sendEmail(direct.emails, message);
       } catch (error) {
+        await releaseRecipients(input, direct.claimed);
         logger.warn({ incidentId: incident.id, error: error instanceof Error ? error.message : "send failed" }, "Incident email to participants failed");
       }
     }

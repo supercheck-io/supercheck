@@ -192,7 +192,8 @@ export function ServiceCatalog({
 
       <AlertDialog
         open={Boolean(archivingService)}
-        onOpenChange={(open) => !open && setArchivingService(null)}
+        // Escape or an outside click must not close it while the archive request is running.
+        onOpenChange={(open) => !open && !isArchiving && setArchivingService(null)}
       >
         <AlertDialogContent>
           <AlertDialogHeader>

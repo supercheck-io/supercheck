@@ -11,7 +11,8 @@ function chain(result: unknown[]) {
 jest.mock("@/utils/db", () => ({ db: { select: jest.fn(() => chain(selectQueue.shift() ?? [])) } }));
 
 const redisSet = jest.fn();
-jest.mock("@/lib/queue", () => ({ getRedisConnection: jest.fn(async () => ({ set: redisSet })) }));
+const redisDel = jest.fn();
+jest.mock("@/lib/queue", () => ({ getRedisConnection: jest.fn(async () => ({ set: redisSet, del: redisDel })) }));
 const sendEmailToMultiple = jest.fn().mockResolvedValue({ sentCount: 1, failedAddresses: [], errors: {} });
 jest.mock("@/lib/email-service", () => ({ EmailService: { getInstance: () => ({ sendEmailToMultiple }) } }));
 const fetchPublicEndpoint = jest.fn().mockResolvedValue({ ok: true });
@@ -132,6 +133,13 @@ describe("participant emails", () => {
     selectQueue.push([incident], participants, []);
     await notifyIncidentEvent({ ...base, event: "resolved", assigneeUserId: null });
     expect(sendEmailToMultiple).toHaveBeenCalledTimes(1);
+  });
+
+  it("releases the throttle claim when the email send fails, so the next event can still email", async () => {
+    sendEmailToMultiple.mockResolvedValueOnce({ sentCount: 0, failedAddresses: ["ada@example.com"], errors: {} });
+    selectQueue.push([incident], participants, []);
+    await notifyIncidentEvent({ ...base, event: "reopened", actorUserId: null, assigneeUserId: null });
+    expect(redisDel).toHaveBeenCalledWith("supercheck:sre:incident-email:inc-1:reopened:assignee");
   });
 
   it("still posts to channels when the participant lookup fails", async () => {

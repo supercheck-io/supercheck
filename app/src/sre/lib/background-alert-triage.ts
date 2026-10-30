@@ -426,7 +426,7 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
 
     if (existingIncident) {
       if (existingIncident.status !== "resolved" && RECOVERABLE_FAILURE_TYPES.has(alert.type)) {
-        await noteFailureReturned(tx, existingIncident.id);
+        await noteFailureReturned(tx, existingIncident.id, firedAt);
       }
       return {
         skipped: false as const,
@@ -448,6 +448,29 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
         firedAt,
       })
       : null;
+    if (reopened?.stale) {
+      await tx
+        .insert(sreIncidentAlerts)
+        .values({
+          incidentId: reopened.incidentId,
+          alertEventId: alertEvent.id,
+          role: "related",
+          alertTitle: title,
+          alertDescription: alert.message,
+          alertSeverity: severity,
+          alertFiredAt: firedAt,
+          createdAt: new Date(),
+        })
+        .onConflictDoNothing();
+      return {
+        skipped: false as const,
+        organizationId,
+        projectId,
+        alertEventId: alertEvent.id,
+        incidentId: reopened.incidentId,
+        alreadyTriaged: true,
+      };
+    }
     if (reopened) {
       return {
         skipped: false as const,
@@ -477,7 +500,7 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
             createdAt: new Date(),
           })
           .onConflictDoNothing();
-        await noteFailureReturned(tx, openForSource.id);
+        await noteFailureReturned(tx, openForSource.id, firedAt);
         return {
           skipped: false as const,
           organizationId,

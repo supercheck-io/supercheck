@@ -641,6 +641,8 @@ export async function applySourceRecovery(
       eventData: {
         state: "recovered",
         comment: `${source.targetName} recovered; resolve when you've confirmed`,
+        // When the check recovered, so a failure processed late is not mistaken for a new one.
+        recoveredAt: source.recoveredAt.toISOString(),
       },
       actorType: "system",
       createdAt: new Date(),
@@ -674,10 +676,13 @@ export async function findOpenIncidentForSource(tx: Executor, source: SourceRef)
  * Record a failure that came back on an open incident after its recovery note, so the
  * timeline shows it and the next recovery is noted again.
  */
-export async function noteFailureReturned(tx: Executor, incidentId: string) {
+export async function noteFailureReturned(tx: Executor, incidentId: string, firedAt: Date) {
   // Only the source's own health states: an acknowledgement after the recovery must not hide the failure.
   const [lastState] = await tx
-    .select({ state: sql<string>`${sreIncidentTimelineEvents.eventData}->>'state'` })
+    .select({
+      state: sql<string>`${sreIncidentTimelineEvents.eventData}->>'state'`,
+      recoveredAt: sql<string | null>`${sreIncidentTimelineEvents.eventData}->>'recoveredAt'`,
+    })
     .from(sreIncidentTimelineEvents)
     .where(
       and(
@@ -689,6 +694,8 @@ export async function noteFailureReturned(tx: Executor, incidentId: string) {
     .orderBy(desc(sreIncidentTimelineEvents.createdAt))
     .limit(1);
   if (lastState?.state !== "recovered") return false;
+  // A failure that fired before the recovery is late, not returning.
+  if (lastState.recoveredAt && firedAt.getTime() <= new Date(lastState.recoveredAt).getTime()) return false;
   await tx.insert(sreIncidentTimelineEvents).values({
     incidentId,
     eventType: "state_change",
@@ -721,14 +728,13 @@ export async function reopenRecentlyAutoResolved(
     .where(triggerSourceMatch(source))
     .orderBy(desc(sreIncidents.createdAt))
     .limit(1);
-  if (
-    !latest ||
-    latest.status !== "resolved" ||
-    !latest.resolvedAt ||
-    // A failure that fired before the recovery was processed late; it is not the failure returning.
-    source.firedAt.getTime() < latest.resolvedAt.getTime() ||
-    source.firedAt.getTime() - latest.resolvedAt.getTime() >= INCIDENT_REOPEN_WINDOW_MS
-  ) {
+  if (!latest || latest.status !== "resolved" || !latest.resolvedAt) return null;
+  // A failure that fired before the resolve was processed late: it belongs to that incident,
+  // which must neither reopen nor be duplicated by a new one.
+  if (source.firedAt.getTime() < latest.resolvedAt.getTime()) {
+    return { incidentId: latest.id, assigneeUserId: latest.assigneeUserId, alreadyTriaged: true, stale: true as const };
+  }
+  if (source.firedAt.getTime() - latest.resolvedAt.getTime() >= INCIDENT_REOPEN_WINDOW_MS) {
     return null;
   }
 
@@ -778,6 +784,7 @@ export async function reopenRecentlyAutoResolved(
     incidentId: latest.id,
     assigneeUserId: latest.assigneeUserId,
     alreadyTriaged: Boolean(latest.triageInvestigationRunId),
+    stale: false as const,
   };
 }
 

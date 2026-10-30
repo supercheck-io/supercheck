@@ -53,7 +53,7 @@ Ask one focused question, then review citations and any evidence gaps before act
 | Limit | Value |
 |---|---|
 | **Message length** | 4,000 characters |
-| **Conversation context** | 20,000 characters per request. In a long chat the oldest turns are left out of what Copilot reads, and the history stays saved |
+| **Conversation length** | 20,000 characters of chat history. A longer chat is rejected with *Copilot chat history is too large* and the new message is not saved; start a new chat to continue. Within that limit, if the request would exceed Copilot's prompt budget, the oldest turns are left out of what it reads |
 | **Images and videos** | Not inspected. Paste relevant text instead |
 
 Answers can include markdown tables and small bar, line or area charts (up to 4 series and 48 points). Charts use only values from evidence, tool results or your messages; a chart without numeric values is shown as raw data instead.

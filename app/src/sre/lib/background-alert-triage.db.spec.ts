@@ -205,8 +205,19 @@ it("does not reopen on a failure that fired before the automatic recovery", asyn
   await alert("monitor_recovery", minutes(10));
   await alert("job_failed", minutes(9), { job: false });
   const rows = await incidents();
+  // Joined to the incident it belongs to: no reopen and no duplicate incident.
+  expect(rows).toHaveLength(1);
   expect(rows[0].status).toBe("resolved");
   expect(await states(rows[0].id)).not.toContain("reopened");
+});
+
+it("does not note a failure as returned when it fired before the recovery", async () => {
+  await alert("monitor_failure", minutes(0));
+  const [open] = await incidents();
+  await mockDatabase.update(schema.sreIncidents).set({ acknowledgedAt: minutes(1), acknowledgedByUserId: userId }).where(eq(schema.sreIncidents.id, open.id));
+  await alert("monitor_recovery", minutes(10));
+  await alert("job_failed", minutes(8), { job: false });
+  expect(await states(open.id)).not.toContain("failure_returned");
 });
 
 it("keeps each incident's alert as it was when linked, after later failures reuse the alert row", async () => {

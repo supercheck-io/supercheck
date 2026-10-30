@@ -198,7 +198,13 @@ export async function runSreIncidentTriage(input: RunSreIncidentTriageInput): Pr
   } catch (error) {
     // Raw provider errors may contain credentials or sensitive evidence; log only the error class.
     triageLogger.error(
-      { investigationRunId: run.id, errorName: error instanceof Error ? error.name : typeof error },
+      {
+        investigationRunId: run.id,
+        errorName: error instanceof Error ? error.name : typeof error,
+        // Agent errors carry the model's finish reason (length, content-filter); it holds no evidence text.
+        finishReason:
+          typeof error === "object" && error && "finishReason" in error ? String(error.finishReason) : undefined,
+      },
       "SRE triage failed",
     );
     const errorMessage = "SRE triage failed";
