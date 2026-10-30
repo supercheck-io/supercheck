@@ -24,6 +24,8 @@ export DATABASE_URL="postgresql://user:pass@localhost:5432/supercheck"
 export REDIS_HOST="localhost"
 export REDIS_PORT="6379"
 export REDIS_PASSWORD="placeholder-redis-password"
+export DB_PASSWORD="placeholder-db-password"
+export BETTER_AUTH_SECRET="placeholder-auth-secret"
 export S3_ENDPOINT="http://localhost:9000"
 export AWS_ACCESS_KEY_ID="placeholder-access-key"
 export AWS_SECRET_ACCESS_KEY="placeholder-secret-key"
@@ -73,6 +75,16 @@ for file in "${files[@]}"; do
   fi
 done
 
+echo "==> Opt-in DNS-01 override merges onto the main file"
+# --no-env-resolution: the credentials file (traefik-dns.env) exists only on servers that opt in.
+if APP_DOMAIN=app.example.com ACME_EMAIL=ops@example.com ACME_DNS_PROVIDER=cloudflare \
+  docker compose --profile https -f docker-compose.yml -f compose.dns01.yml config --no-env-resolution -q >/dev/null 2>&1; then
+  echo "  ok   compose.dns01.yml"
+else
+  echo "  FAIL compose.dns01.yml"
+  fail=1
+fi
+
 echo "==> Compose routing regression checks"
 python3 ./compose.spec.py
 
@@ -86,11 +98,15 @@ else
   fail=1
 fi
 
-echo "==> documented installer downloads use the v$installer_ver tag"
-for doc in README.md INSTALL.md ../../docs/content/docs/app/deployment/self-hosted.mdx; do
-  stale="$(grep -o 'supercheck/[^/]*/deploy/docker/install\.sh' "$doc" | grep -Fvx "supercheck/v$installer_ver/deploy/docker/install.sh" || true)"
+echo "==> documented downloads and clones use the v$installer_ver tag"
+for doc in README.md INSTALL.md ../README.md install.sh setup-k3s.sh ../../docs/content/docs/app/deployment/*.mdx; do
+  stale="$(grep -o 'githubusercontent\.com/supercheck-io/supercheck/[^/]*/deploy/docker/[A-Za-z0-9._-]*' "$doc" | grep -v "/supercheck/v$installer_ver/deploy/docker/" || true)"
+  clone="$(grep -E 'git clone .*supercheck-io/supercheck' "$doc" | grep -Fv -- "--branch v$installer_ver" || true)"
   if [ -n "$stale" ]; then
     echo "  FAIL $doc fetches ${stale%%$'\n'*}"
+    fail=1
+  elif [ -n "$clone" ]; then
+    echo "  FAIL $doc clones without --branch v$installer_ver"
     fail=1
   else
     echo "  ok   $doc"

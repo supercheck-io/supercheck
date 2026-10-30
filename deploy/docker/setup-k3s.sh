@@ -5,7 +5,7 @@
 # sandboxed test execution. Replaces Docker-socket-based execution.
 #
 # Usage:
-#   curl -fsSL -o setup-k3s.sh https://raw.githubusercontent.com/supercheck-io/supercheck/main/deploy/docker/setup-k3s.sh
+#   curl -fsSL -o setup-k3s.sh https://raw.githubusercontent.com/supercheck-io/supercheck/v1.4.0/deploy/docker/setup-k3s.sh
 #   sudo bash setup-k3s.sh
 #   # or
 #   chmod +x setup-k3s.sh && sudo ./setup-k3s.sh
@@ -64,6 +64,31 @@ secure_kubeconfig() {
     rm -f "$service_tmp"
   fi
   if [[ -f "$kubeconfig" ]]; then chmod 600 "$kubeconfig"; fi
+}
+
+# The worker kubeconfig points at https://<host IP>:6443. When the host IP changed since K3s was
+# installed (new VM IP, DHCP), add it to the API certificate; K3s re-issues it on restart.
+# Anything that cannot be checked is skipped rather than treated as a mismatch.
+ensure_api_tls_san() {
+  command -v openssl &>/dev/null || return 0
+  local sans
+  sans="$(timeout 10 openssl s_client -connect 127.0.0.1:6443 </dev/null 2>/dev/null | openssl x509 -noout -ext subjectAltName 2>/dev/null || true)"
+  if [[ -z "$sans" ]]; then
+    warn "Could not read the K3s API certificate; skipping the host IP check"
+    return 0
+  fi
+  grep -Eq "IP Address:${HOST_IP//./\\.}(,|\$)" <<<"$sans" && return 0
+  warn "Host IP ${HOST_IP} is not in the K3s API certificate; adding it and restarting K3s"
+  install -d -m 755 /etc/rancher/k3s/config.yaml.d
+  # tls-san+ appends to any tls-san the operator set in config.yaml instead of replacing it.
+  printf 'tls-san+:\n  - "%s"\n' "$HOST_IP" >/etc/rancher/k3s/config.yaml.d/50-supercheck-host-ip.yaml
+  systemctl restart k3s
+  for _ in $(seq 1 60); do
+    k3s kubectl get nodes &>/dev/null && return 0
+    sleep 2
+  done
+  error "K3s did not come back within 120 seconds after adding the host IP"
+  exit 1
 }
 
 # ─── Preflight checks ────────────────────────────────────────────────────────
@@ -140,6 +165,7 @@ trap 'rm -rf "$TMP_DIR"; if [[ -n "${WORKER_KUBECONFIG_TMP:-}" ]]; then rm -f "$
 
 if command -v k3s &>/dev/null; then
   warn "K3s is already installed, skipping installation"
+  ensure_api_tls_san
 else
   log "Installing K3s ${K3S_VERSION} with containerd runtime..."
   curl -fsSL https://get.k3s.io -o "${TMP_DIR}/install-k3s.sh"
@@ -655,9 +681,8 @@ info "Execution NS: supercheck-execution (restricted PSS, limit range, quota, eg
 echo ""
 info "Next steps:"
 info "  1. Follow the deployment guide: https://supercheck.io/docs/app/deployment/self-hosted"
-info "  2. Or run Docker Compose with K3s-backed execution using:"
-info "     Set COMPOSE_PROFILES=https, APP_DOMAIN and ACME_EMAIL in .env for HTTPS."
-info "     KUBECONFIG_FILE=${WORKER_KUBECONFIG} docker compose up -d"
+info "  2. Or start the stack from deploy/docker (for HTTPS, set COMPOSE_PROFILES=https,"
+info "     APP_DOMAIN and ACME_EMAIL in .env first): sudo docker compose up -d"
 info ""
 info "Admin access:       sudo k3s kubectl get nodes (admin kubeconfig is root-only)"
 info "Worker kubeconfig:  ${WORKER_KUBECONFIG}"

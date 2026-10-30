@@ -1,4 +1,4 @@
-import { getSSLConfig } from "@/utils/db-ssl";
+import { getSSLConfig, shouldEnableSSL } from "@/utils/db-ssl";
 
 describe("getSSLConfig", () => {
   const originalEnv = process.env;
@@ -6,6 +6,7 @@ describe("getSSLConfig", () => {
   beforeEach(() => {
     process.env = { ...originalEnv };
     delete process.env.SELF_HOSTED;
+    process.env.DATABASE_URL = "";
   });
 
   afterAll(() => {
@@ -34,5 +35,26 @@ describe("getSSLConfig", () => {
   it("returns undefined when SELF_HOSTED=1", () => {
     process.env.SELF_HOSTED = "1";
     expect(getSSLConfig()).toBeUndefined();
+  });
+
+  it("honours sslmode=require on a self-hosted external database", () => {
+    process.env.SELF_HOSTED = "true";
+    process.env.DATABASE_URL = "postgresql://u:p@db.example.com:5432/supercheck?sslmode=require";
+    expect(getSSLConfig()).toBe("verify-full");
+    expect(shouldEnableSSL()).toBe(true);
+  });
+
+  it("honours sslmode=disable in cloud mode", () => {
+    process.env.DATABASE_URL = "postgres://u:p@localhost:5432/supercheck?sslmode=disable";
+    expect(getSSLConfig()).toBeUndefined();
+    expect(shouldEnableSSL()).toBe(false);
+  });
+
+  it("falls back to the hosting mode for a URL without sslmode or an unparsable URL", () => {
+    process.env.SELF_HOSTED = "true";
+    for (const url of ["postgresql://u:p@postgres:5432/supercheck", "::not a url::"]) {
+      process.env.DATABASE_URL = url;
+      expect(getSSLConfig()).toBeUndefined();
+    }
   });
 });

@@ -46,7 +46,7 @@ sequenceDiagram
 
 | Requirement | Details |
 |-------------|---------|
-| Permission | Able to configure connectors (Project Admin or Org Admin) |
+| Permission | Organization owner or admin (**Settings → Organization** is not shown to other roles) |
 | Host | Docker Engine with Compose v2 that can reach Supercheck and your provider endpoints |
 | Network | Outbound HTTPS to the Supercheck API, with no browser challenge in front. No inbound ports for remote agents; colocated agents use the private Docker network |
 

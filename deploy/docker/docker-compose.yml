@@ -4,25 +4,17 @@
 # Production execution uses the same Kubernetes Job + gVisor model as cloud by
 # pointing the worker at a local K3s cluster.
 #
-# Quick Start:
-#   1. Clone the repository
-#   2. Run: sudo bash setup-k3s.sh
-#   3. Create .env with generated secrets (optional integrations can be added later)
-#   4. Run: KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker compose up -d
-#   5. Access: http://localhost:3000
+# Install and upgrade with install.sh (see the documentation link below):
+#   sudo bash install.sh                       # first install
+#   sudo bash install.sh --upgrade             # upgrade to the installer's release
+# Manual: ./init-secrets.sh, sudo bash setup-k3s.sh, then sudo docker compose up -d
 # For a public server, set APP_DOMAIN, ACME_EMAIL, and COMPOSE_PROFILES=https.
 # Add private-agent to COMPOSE_PROFILES to run an optional colocated Private Agent.
-#
-# Upgrading:
-#   Set SUPERCHECK_VERSION in your .env file or shell environment:
-#     SUPERCHECK_VERSION=<tag> docker compose up -d
-#   This updates app, worker, and WORKER_IMAGE in one place.
 #
 # For source-based local development, use docker-compose-local.yml instead.
 #
 # Data Persistence:
-#   PostgreSQL data is stored in a Docker named volume (postgres-data).
-#   IMPORTANT: Take regular backups! See Maintenance section in docs.
+#   PostgreSQL, RustFS and Redis data live in named volumes. Back up with: sudo bash backup.sh
 #
 # Documentation: https://supercheck.io/docs/app/deployment/self-hosted
 # ============================================================================
@@ -32,17 +24,17 @@ name: supercheck
 
 # YAML anchors for shared configuration
 x-common-env: &common-env # Database Configuration
-  DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/supercheck}
+  DATABASE_URL: ${DATABASE_URL:-postgresql://${DB_USER:-postgres}:${DB_PASSWORD:?DB_PASSWORD is missing from .env. New install? Run ./init-secrets.sh. Existing install? Restore the .env you installed with; never generate a new one}@postgres:5432/${DB_NAME:-supercheck}}
   DB_HOST: ${DB_HOST:-postgres}
   DB_PORT: ${DB_PORT:-5432}
   DB_USER: ${DB_USER:-postgres}
-  DB_PASSWORD: ${DB_PASSWORD:-postgres}
+  DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is missing from .env. New install? Run ./init-secrets.sh. Existing install? Restore the .env you installed with; never generate a new one}
   DB_NAME: ${DB_NAME:-supercheck}
 
   # Redis Configuration
   REDIS_HOST: ${REDIS_HOST:-redis}
   REDIS_PORT: ${REDIS_PORT:-6379}
-  REDIS_PASSWORD: ${REDIS_PASSWORD:-supersecure-redis-password-change-this}
+  REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is missing from .env. New install? Run ./init-secrets.sh}
   REDIS_TLS_ENABLED: ${REDIS_TLS_ENABLED:-false}
   REDIS_TLS_REJECT_UNAUTHORIZED: ${REDIS_TLS_REJECT_UNAUTHORIZED:-false}
 
@@ -57,7 +49,7 @@ x-common-env: &common-env # Database Configuration
   STATUS_PAGE_HIDE_BRANDING: ${STATUS_PAGE_HIDE_BRANDING:-false}
   # Days to keep finished status-page notification delivery rows (App-side; 1-3650).
   STATUS_PAGE_DELIVERY_RETENTION_DAYS: ${STATUS_PAGE_DELIVERY_RETENTION_DAYS:-30}
-  BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-CHANGE_THIS_GENERATE_64_CHAR_HEX}
+  BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET is missing from .env. New install? Run ./init-secrets.sh. Existing install? Restore the .env you installed with}
   INVITE_RATE_LIMIT_MAX: ${INVITE_RATE_LIMIT_MAX:-10}
   # Client-IP trust for rate limits; set when a CDN/extra proxy sits in front. See app/.env.example.
   TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-0}
@@ -188,7 +180,8 @@ x-common-env: &common-env # Database Configuration
   WEBHOOK_CLEANUP_BATCH_SIZE: ${WEBHOOK_CLEANUP_BATCH_SIZE:-1000}
   WEBHOOK_CLEANUP_SAFETY_LIMIT: ${WEBHOOK_CLEANUP_SAFETY_LIMIT:-100000}
 
-  # Security Configuration
+  # Security Configuration. init-secrets.sh always sets this. The placeholder fallback stays only so
+  # installs that predate it keep decrypting stored secrets; the app logs a warning when it is used.
   SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:-CHANGE_THIS_GENERATE_32_CHAR_HEX}
 
   # Better Auth Admin Configuration
@@ -478,13 +471,6 @@ services:
           cpus: "0.5"
           memory: 1G
 
-      # Container Restart Protection (handles stuck/crashed containers)
-      restart_policy:
-        condition: on-failure
-        max_attempts: 3
-        delay: 15s
-        window: 120s
-
     # GVISOR-006: Hardened security profile
     security_opt:
       - no-new-privileges:true # Prevent privilege escalation
@@ -508,11 +494,11 @@ services:
     environment:
       # Explicit allowlist, not *common-env: this process needs only the database, alert delivery and
       # billing verification, so it must not receive auth, object-storage, AI or Redis credentials.
-      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/supercheck}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://${DB_USER:-postgres}:${DB_PASSWORD:?DB_PASSWORD is missing from .env. New install? Run ./init-secrets.sh. Existing install? Restore the .env you installed with; never generate a new one}@postgres:5432/${DB_NAME:-supercheck}}
       DB_HOST: ${DB_HOST:-postgres}
       DB_PORT: ${DB_PORT:-5432}
       DB_USER: ${DB_USER:-postgres}
-      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is missing from .env. New install? Run ./init-secrets.sh. Existing install? Restore the .env you installed with; never generate a new one}
       DB_NAME: ${DB_NAME:-supercheck}
       NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-${APP_DOMAIN:+https://}${APP_DOMAIN:-http://localhost:3000}}
       APP_URL: ${APP_URL:-${NEXT_PUBLIC_APP_URL:-${APP_DOMAIN:+https://}${APP_DOMAIN:-http://localhost:3000}}}
@@ -563,18 +549,19 @@ services:
 
   # PostgreSQL Database
   postgres:
-    image: postgres:18
+    image: postgres:18.6
     ports:
-      - "127.0.0.1:${DB_HOST_PORT:-5432}:5432"
+      # Loopback only. Multi-server: set DB_BIND_ADDR in .env to this server's private address.
+      - "${DB_BIND_ADDR:-127.0.0.1}:${DB_HOST_PORT:-5432}:5432"
     environment:
       - POSTGRES_USER=${DB_USER:-postgres}
-      - POSTGRES_PASSWORD=${DB_PASSWORD:-postgres}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:?DB_PASSWORD is missing from .env. New install? Run ./init-secrets.sh. Existing install? Restore the .env you installed with; never generate a new one}
       - POSTGRES_DB=${DB_NAME:-supercheck}
     volumes:
       - postgres-data:/var/lib/postgresql
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
       interval: 10s
       timeout: 5s
       retries: 15
@@ -592,12 +579,12 @@ services:
 
   # Redis (for job queues)
   redis:
-    image: redis:8
+    image: redis:8.10
     ports:
-      - "127.0.0.1:${REDIS_HOST_PORT:-6379}:6379"
+      - "${REDIS_BIND_ADDR:-127.0.0.1}:${REDIS_HOST_PORT:-6379}:6379"
     environment:
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-supersecure-redis-password-change-this}
-    command: sh -c "exec redis-server --requirepass \"${REDIS_PASSWORD:-supersecure-redis-password-change-this}\" --maxmemory 256mb --maxmemory-policy noeviction --save '' --appendonly yes --appendfsync everysec --protected-mode yes --bind 0.0.0.0 --tcp-keepalive 300"
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is missing from .env. New install? Run ./init-secrets.sh}
+    command: sh -c "exec redis-server --requirepass \"${REDIS_PASSWORD:?REDIS_PASSWORD is missing from .env}\" --maxmemory 256mb --maxmemory-policy noeviction --save '' --appendonly yes --appendfsync everysec --protected-mode yes --bind 0.0.0.0 --tcp-keepalive 300"
     volumes:
       - redis-data:/data
     restart: unless-stopped
@@ -607,7 +594,7 @@ services:
           "CMD",
           "redis-cli",
           "-a",
-          "${REDIS_PASSWORD:-supersecure-redis-password-change-this}",
+          "${REDIS_PASSWORD:?REDIS_PASSWORD is missing from .env}",
           "ping",
         ]
       interval: 10s
@@ -630,7 +617,7 @@ services:
   rustfs:
     image: ghcr.io/rustfs/rustfs:1.0.1
     ports:
-      - "127.0.0.1:9000:9000"
+      - "${RUSTFS_BIND_ADDR:-127.0.0.1}:9000:9000"
     environment:
       - RUSTFS_CONSOLE_ENABLE=false # the app only needs the S3 API
       - RUSTFS_ACCESS_KEY=${AWS_ACCESS_KEY_ID:?AWS_ACCESS_KEY_ID is required}

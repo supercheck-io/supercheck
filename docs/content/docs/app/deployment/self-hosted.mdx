@@ -58,7 +58,7 @@ flowchart TB
 | OS | Ubuntu 22.04+ or Debian 12+ (x86_64 or arm64) |
 | Resources | 2 vCPU and 4 GB RAM minimum; 10 GB free disk minimum, 15 GB to start, 30–50 GB for regular use |
 | Access | `sudo` and outbound internet access. Docker and Compose are installed for you |
-| Public HTTPS only | A domain pointing at the server (plus a wildcard record for status pages), inbound ports 80 and 443, and an email address for certificate notices |
+| Public HTTPS only | A domain pointing at the server, inbound ports 80 and 443, and an email address for certificate notices. Status pages on subdomains also need a wildcard DNS record and a [wildcard certificate](#status-page-https) |
 
 <Callout type="warn">
 **Linux only.** The test sandbox needs the Linux kernel. macOS, Windows, WSL2, and Docker Desktop are not supported.
@@ -140,9 +140,13 @@ On a public server, sign-up is open to anyone who can reach the URL. Create your
 | `--yes`, `-y` | Never prompt; fail with a clear message if a value is missing |
 | `--dry-run` | Run read-only checks and print the plan; change nothing |
 | `--version <x.y.z>` | Release to install (default: the version bundled with the script) |
+| `--upgrade` | Upgrade an existing install to `--version` (default: the script's release). See [Upgrade](#upgrade) |
 | `--dir <path>` | Install location (default: `/opt/supercheck`) |
 | `--no-prewarm` | Skip importing the ~3 GB worker image into the sandbox; the first test run downloads it instead |
 | `--docker-group` | Add the invoking sudo user to the `docker` group (root-equivalent access) |
+| `--ignore-minio` | Start with empty storage even though a volume from the retired MinIO storage exists. Without it the installer stops, so data is not left behind by accident |
+| `--no-color` | Plain output (`NO_COLOR` is honoured too) |
+| `--help`, `-h` | Show all options |
 
 Exit codes: `0` healthy, `1` failed, `2` bad usage, `3` installed but the health check reports a problem. The log is `/var/log/supercheck/install.log`.
 
@@ -181,9 +185,9 @@ All services should be healthy and the health endpoint should return `{"status":
 |---------|---------|-----------|
 | `app` | Next.js UI and API | `127.0.0.1:3000` |
 | `worker` | Test execution in the gVisor sandbox | none |
-| `postgres` | Database | `127.0.0.1:5432` |
-| `redis` | Job queues | `127.0.0.1:6379` |
-| `rustfs` | S3-compatible artifact storage | `127.0.0.1:9000` |
+| `postgres` | Database | `127.0.0.1:5432` (`DB_BIND_ADDR`, `DB_HOST_PORT`) |
+| `redis` | Job queues | `127.0.0.1:6379` (`REDIS_BIND_ADDR`, `REDIS_HOST_PORT`) |
+| `rustfs` | S3-compatible artifact storage | `127.0.0.1:9000` (`RUSTFS_BIND_ADDR`) |
 | `traefik` | HTTPS reverse proxy (HTTPS profile only) | `80`, `443` |
 
 Test runs can reach public addresses but not private networks (RFC1918, link-local, CGNAT, tailnet), mail ports (25, 465, 587, 2525) or the host's Kubernetes control ports. By default, monitors also refuse hosts that resolve to a private address. Use a [Private Agent](/docs/app/deployment/private-agent) for services inside another network.
@@ -232,37 +236,211 @@ Off by default. Lets Claude, Cursor, VS Code and other [MCP clients](/docs/mcp) 
 Optional: `MCP_DYNAMIC_CLIENT_REGISTRATION=false` accepts only clients with a Client ID Metadata Document.
 
 </Accordion>
-</Accordions>
+<Accordion title="Status page HTTPS" id="status-page-https">
 
-## Maintenance
+The app domain gets its certificate automatically (HTTP-01). Status pages are different:
 
-<Accordions>
-<Accordion title="Updates" id="updates">
+| Status page URL | Certificate |
+|---|---|
+| `<id>.STATUS_PAGE_DOMAIN` (default) | Needs a wildcard certificate for `*.STATUS_PAGE_DOMAIN`. HTTP-01 cannot issue wildcards, so until you enable DNS-01 below, browsers warn on these pages |
+| Custom domain (`status.example.net`) | Not issued automatically. Add your own certificate to Traefik, or put the domain behind a proxy that terminates TLS, such as Cloudflare |
 
-<Callout type="warn">
-Installations from a release that bundled MinIO must migrate storage to RustFS before updating. Run `migrate-minio-to-rustfs.sh` from your current checkout; see the [deployment README](https://github.com/supercheck-io/supercheck/blob/v1.4.0/deploy/docker/README.md#upgrading).
-</Callout>
+To issue the wildcard certificate with DNS-01, from `deploy/docker`:
 
-Back up first. From `deploy/docker`, set `SUPERCHECK_VERSION` in `.env`, then:
+1. Add a wildcard DNS record `*.STATUS_PAGE_DOMAIN` pointing at the server (`STATUS_PAGE_DOMAIN` defaults to your app domain).
+2. Find your DNS provider's code and credential variables in the [Traefik provider list](https://doc.traefik.io/traefik/https/acme/#providers).
+3. Put the credentials in `traefik-dns.env`, which only Traefik reads:
 
-```bash
-sudo docker compose pull
-sudo env KUBECONFIG_FILE=/etc/rancher/k3s/supercheck-worker.kubeconfig docker compose up -d --wait --wait-timeout 300
-```
+   ```bash
+   sudo install -m 600 /dev/null traefik-dns.env
+   sudoedit traefik-dns.env    # for example: CF_DNS_API_TOKEN=...
+   ```
 
-Migrations run automatically. Never run `docker compose down -v`; it deletes the database, artifacts, and queue. If workers cannot read their kubeconfig after an update, re-run `sudo bash setup-k3s.sh`.
+4. Add to `.env`, then apply with `sudo docker compose up -d`:
+
+   ```dotenv
+   COMPOSE_FILE=docker-compose.yml:compose.dns01.yml
+   ACME_DNS_PROVIDER=cloudflare
+   ```
+
+5. Check `sudo docker compose logs traefik | grep -i acme`, then open `https://<id>.STATUS_PAGE_DOMAIN`.
+
+To turn it off, remove both lines from `.env` and run `sudo docker compose up -d`.
 
 </Accordion>
-<Accordion title="Backups" id="backups">
+</Accordions>
 
-Back up PostgreSQL, the `rustfs-data` volume, `.env`, and (for HTTPS) the `traefik-letsencrypt` volume. Keep `.env` private and off the server: its secrets are needed to read encrypted data.
+## Upgrade
+
+Download the installer of the release you want and run it with `--upgrade` on the server:
 
 ```bash
-install -m 600 /dev/null "$HOME/supercheck-backup.sql" && \
-  sudo docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > "$HOME/supercheck-backup.sql"
+curl -fsSL https://raw.githubusercontent.com/supercheck-io/supercheck/v1.4.0/deploy/docker/install.sh -o install.sh
+sudo bash install.sh --upgrade
 ```
 
-The SQL export does not include files, `.env`, or certificates.
+Replace `v1.4.0` with the target release. `--upgrade` moves to the script's own release; add `--version <x.y.z>` for a different one, or `--dry-run` to see the plan first. The upgrade:
+
+1. Stops early if tracked files in the installation were edited (keep changes in `.env` instead) or if the target is older than the installed release.
+2. Dumps the database to `/var/backups/supercheck/pre-upgrade-<time>.dump` and keeps a copy of `.env`.
+3. Checks out the release's deployment files, re-runs the sandbox setup, pulls the images and imports the worker image into the sandbox.
+4. Restarts the stack, which applies database migrations, and checks health.
+
+Expect a few minutes of downtime. Upgrade remote workers afterwards ([Multi-Server](/docs/app/deployment/multi-server#upgrade-workers)).
+
+<Callout type="warn">
+Never run `docker compose down -v`: it deletes the database, stored artifacts, and the queue.
+</Callout>
+
+<Accordions>
+<Accordion title="Manual update" id="manual-update">
+
+Use this for installs that are not a git checkout of a release, or when you prefer to run each step. Replace `<x.y.z>` with the target release and `/opt/supercheck` with your `--dir`:
+
+```bash
+cd /opt/supercheck/deploy/docker
+sudo bash backup.sh                      # see Backups for releases without backup.sh
+sudo git -C /opt/supercheck fetch --depth 1 origin refs/tags/v<x.y.z>:refs/tags/v<x.y.z>
+sudo git -C /opt/supercheck checkout --detach refs/tags/v<x.y.z>
+sudo bash setup-k3s.sh
+sudoedit .env                            # set SUPERCHECK_VERSION=<x.y.z> (no leading v)
+sudo docker compose pull
+sudo docker save ghcr.io/supercheck-io/supercheck/worker:<x.y.z> | sudo k3s ctr -n k8s.io images import -
+sudo docker compose up -d --wait --wait-timeout 300
+curl --fail --silent --show-error http://localhost:3000/api/health
+```
+
+Importing the worker image keeps the first test run after the update from timing out while the sandbox downloads it. `docker compose pull` alone only downloads the version already selected in `.env`.
+
+</Accordion>
+<Accordion title="Upgrading from MinIO (releases before 1.4.0)" id="upgrading-from-minio-breaking">
+
+MinIO and RustFS disk formats are incompatible, so storage must be migrated before you update. Stop remote workers, then run the migration from your **current** checkout's `deploy/docker`, with the old stack running:
+
+```bash
+sudo curl -fsSL https://raw.githubusercontent.com/supercheck-io/supercheck/v1.4.0/deploy/docker/migrate-minio-to-rustfs.sh -o migrate-minio-to-rustfs.sh && \
+sudo bash migrate-minio-to-rustfs.sh && sudo rm -- migrate-minio-to-rustfs.sh
+```
+
+Continue only after it succeeds. It stops the local app and worker, copies and verifies storage, and keeps `.env.pre-rustfs` and the `minio-data` volume for recovery. Then upgrade, and run `sudo docker compose up -d --remove-orphans` once to remove the old MinIO container. Check a status page and a test report before deleting the old volume.
+
+Releases before `1.3.3` predate the current sandbox: back up, then run `sudo bash setup-k3s.sh` before upgrading.
+
+</Accordion>
+</Accordions>
+
+## Backups
+
+From `deploy/docker`:
+
+```bash
+sudo bash backup.sh
+```
+
+This writes `/var/backups/supercheck/<UTC time>/` (readable by root only) with the database dump, RustFS storage (reports, artifacts, status-page assets, documents), `.env`, and the HTTPS certificates. The app and worker stop while data is copied, usually for under a minute, and start again afterwards, also if the backup fails. Use `--out <dir>` for another location.
+
+Copy each backup off the server and keep it private: its `env` file holds the secrets needed to read encrypted data. Old backups are not deleted for you.
+
+To restore, stop remote workers, then:
+
+```bash
+sudo bash backup.sh --restore /var/backups/supercheck/<UTC time>
+```
+
+Restore needs the same release as the backup, asks you to type `restore`, and replaces `.env` (the old file is kept as `.env.pre-restore-<time>`), storage, and the database before starting the stack and checking health. Pass `--yes` to skip the prompt in scripts. Jobs that were queued in Redis are not part of a backup, so runs queued at backup time do not resume.
+
+<Accordions>
+<Accordion title="Daily backups with cron" id="scheduled-backups">
+
+```bash
+echo '0 3 * * * root cd /opt/supercheck/deploy/docker && bash backup.sh >>/var/log/supercheck/backup.log 2>&1' | sudo tee /etc/cron.d/supercheck-backup
+```
+
+Each run briefly stops the app and worker, so pick a quiet hour.
+
+</Accordion>
+<Accordion title="Releases without backup.sh (1.4.0 and earlier)" id="backups-without-script">
+
+Back up `.env`, a database dump and the storage volume. Run from `deploy/docker`; `docker volume ls` shows the volume name if you changed the project name:
+
+```bash
+sudo install -m 600 .env "$HOME/supercheck.env"
+install -m 600 /dev/null "$HOME/supercheck-backup.sql" && \
+  sudo docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > "$HOME/supercheck-backup.sql"
+sudo docker compose stop app worker
+sudo docker run --rm -v supercheck_rustfs-data:/data:ro -v "$HOME":/backup --entrypoint tar postgres:18 \
+  --numeric-owner -czf /backup/supercheck-rustfs.tar.gz -C /data .
+sudo docker compose start app worker
+```
+
+</Accordion>
+</Accordions>
+
+External PostgreSQL, Redis, or S3 (`docker-compose-external.yml`) are not covered; use your provider's backups.
+
+## Troubleshooting
+
+<Accordions>
+<Accordion title="Installer exit codes" id="exit-codes">
+
+| Code | Meaning | Next step |
+|---|---|---|
+| `0` | Installed and healthy | Open the printed URL |
+| `1` | A step failed | The installer prints the last log lines; the full log is `/var/log/supercheck/install.log`. Fix the cause and re-run the same command |
+| `2` | Bad usage | Check the options with `bash install.sh --help` |
+| `3` | Running, but `/api/health` reports a problem | Run `curl http://localhost:3000/api/health` to see which dependency fails, then `sudo docker compose logs --tail=100 app worker` |
+
+</Accordion>
+<Accordion title="HTTPS certificate is not issued" id="acme-failure">
+
+Let's Encrypt must reach the server on port 80 at your domain's A record.
+
+- Check that the domain resolves to this server: `getent ahostsv4 app.example.com`.
+- Allow inbound 80 and 443 in your cloud firewall or security group.
+- With Cloudflare's proxy on, make sure it forwards `/.well-known/acme-challenge/` to the server, or switch the record to DNS-only until the certificate is issued.
+- Read the reason: `sudo docker compose logs --tail=100 traefik | grep -i acme`.
+
+Repeated failures hit Let's Encrypt rate limits; fix the cause before restarting Traefik again. Browser warnings on status-page subdomains mean the wildcard certificate is missing: see [Status page HTTPS](#status-page-https).
+
+</Accordion>
+<Accordion title="k3s is not ready" id="k3s-not-ready">
+
+```bash
+sudo k3s kubectl get nodes
+sudo systemctl status k3s --no-pager
+sudo journalctl -u k3s -n 100 --no-pager
+```
+
+Re-running `sudo bash setup-k3s.sh` is safe. If the server's IP address changed since installation, the re-run adds the new address to the k3s API certificate and rewrites the worker kubeconfig; then run `sudo docker compose up -d --force-recreate worker`.
+
+</Accordion>
+<Accordion title="gVisor sandbox check fails" id="gvisor-check">
+
+`setup-k3s.sh` ends by running a test pod with the gVisor runtime. If it fails, inspect the pod events:
+
+```bash
+sudo k3s kubectl describe pod gvisor-test -n supercheck-execution
+runsc --version
+```
+
+Fix the reported cause and re-run `sudo bash setup-k3s.sh`. Do not work around it by disabling the sandbox: `EXECUTION_RUNTIME_CLASS_NAME=none` is for local development only, runs untrusted test code without isolation, and makes the worker log `Sandbox isolation is DISABLED`.
+
+</Accordion>
+<Accordion title="First test run times out" id="image-pull-timeout">
+
+The ~3 GB worker image must be in the sandbox before a run starts. The installer imports it; if that step was skipped (`--no-prewarm`) or failed, re-run the installer, or import it yourself:
+
+```bash
+sudo k3s ctr -n k8s.io images ls -q | grep supercheck/worker
+sudo docker save ghcr.io/supercheck-io/supercheck/worker:1.4.0 | sudo k3s ctr -n k8s.io images import -
+```
+
+Use the version in your `.env` (`SUPERCHECK_VERSION`).
+
+</Accordion>
+<Accordion title="Compose says a secret is missing from .env" id="missing-secret">
+
+`docker-compose.yml` refuses to start without `DB_PASSWORD`, `REDIS_PASSWORD`, `BETTER_AUTH_SECRET`, and the storage keys. On a new install, run `./init-secrets.sh`. On an existing install, restore the `.env` you installed with (the installer keeps `.env.bak-*` copies next to it, and each backup has one). Never generate new secrets for existing data: the database password and encryption key would no longer match.
 
 </Accordion>
 </Accordions>

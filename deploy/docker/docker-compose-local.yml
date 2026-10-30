@@ -29,6 +29,8 @@
 # Project name ensures consistent volume naming across different directories
 name: supercheck
 
+# The secret fallbacks below are public development defaults. Never use this file for a
+# reachable server; docker-compose.yml requires real values from init-secrets.sh.
 # YAML anchors for shared configuration
 x-common-env: &common-env # Database Configuration
   DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/supercheck}
@@ -392,7 +394,7 @@ services:
       - ALL # Drop all capabilities by default
   # PostgreSQL Database
   postgres:
-    image: postgres:18
+    image: postgres:18.6
     # Published so the app/worker can run from source on the host (hybrid mode)
     ports:
       - "127.0.0.1:${DB_HOST_PORT:-5432}:5432"
@@ -422,7 +424,7 @@ services:
 
   # Redis (for job queues)
   redis:
-    image: redis:8
+    image: redis:8.10
     # Published so the app/worker can run from source on the host (hybrid mode)
     ports:
       - "127.0.0.1:${REDIS_HOST_PORT:-6379}:6379"

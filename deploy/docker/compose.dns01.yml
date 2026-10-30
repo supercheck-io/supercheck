@@ -1,0 +1,29 @@
+# Opt-in wildcard certificate for status pages (<id>.STATUS_PAGE_DOMAIN) using the ACME DNS-01
+# challenge. The default HTTP-01 challenge cannot issue wildcard certificates, so without this
+# file status-page subdomains are served with Traefik's self-signed default certificate.
+#
+# Enable it in .env (keep the file order):
+#   COMPOSE_FILE=docker-compose.yml:compose.dns01.yml
+#   ACME_DNS_PROVIDER=cloudflare        # a provider code from https://doc.traefik.io/traefik/https/acme/#providers
+# Put that provider's credentials in traefik-dns.env next to this file (chmod 600), for example
+#   CF_DNS_API_TOKEN=...
+# then run: sudo docker compose up -d
+# Only Traefik reads traefik-dns.env; no other container receives these credentials.
+
+services:
+  traefik:
+    env_file:
+      - path: ./traefik-dns.env
+        required: true
+    environment:
+      - TRAEFIK_CERTIFICATESRESOLVERS_DNS_ACME_DNSCHALLENGE=true
+      - TRAEFIK_CERTIFICATESRESOLVERS_DNS_ACME_DNSCHALLENGE_PROVIDER=${ACME_DNS_PROVIDER:?set ACME_DNS_PROVIDER in .env to your DNS provider code}
+      - TRAEFIK_CERTIFICATESRESOLVERS_DNS_ACME_EMAIL=${ACME_EMAIL:?ACME_EMAIL is required}
+      - TRAEFIK_CERTIFICATESRESOLVERS_DNS_ACME_STORAGE=/letsencrypt/acme-dns.json
+
+  app:
+    labels:
+      # Traefik lowercases resolver names, so this must stay "dns".
+      - "traefik.http.routers.status-pages.tls.certresolver=dns"
+      - "traefik.http.routers.status-pages.tls.domains[0].main=${STATUS_PAGE_DOMAIN:-${APP_DOMAIN:?APP_DOMAIN is required}}"
+      - "traefik.http.routers.status-pages.tls.domains[0].sans=*.${STATUS_PAGE_DOMAIN:-${APP_DOMAIN:?APP_DOMAIN is required}}"
