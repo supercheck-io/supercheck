@@ -64,6 +64,8 @@ interface MemberAccessDialogProps {
   ) => Promise<{ successMessage?: string } | void>;
   isLoading?: boolean;
   isCloudMode?: boolean;
+  // Server only lets org owners assign org_admin.
+  actorRole?: string;
 }
 
 const rolesRequiringProjectSelection = new Set([
@@ -71,7 +73,7 @@ const rolesRequiringProjectSelection = new Set([
   "project_admin",
 ]);
 
-const accessLevels = [
+const allAccessLevels = [
   {
     role: "project_viewer",
     label: "Viewer",
@@ -139,7 +141,7 @@ function RoleInfoPopover() {
         <div className="space-y-4">
           <h4 className="font-semibold text-sm">Role Permissions</h4>
           <div className="space-y-3">
-            {accessLevels.map((level) => (
+            {allAccessLevels.map((level) => (
               <div key={level.role} className="flex items-start gap-3">
                 <div className={cn("p-1.5 rounded-md", level.bgColor)}>
                   <level.icon className={cn("h-3.5 w-3.5", level.color)} />
@@ -168,7 +170,11 @@ export function MemberAccessDialog({
   onSubmit,
   isLoading = false,
   isCloudMode = true,
+  actorRole,
 }: MemberAccessDialogProps) {
+  const accessLevels = allAccessLevels.filter(
+    (l) => l.role !== "org_admin" || actorRole === "org_owner"
+  );
   const [formData, setFormData] = useState<MemberData>({
     email: "",
     role: "project_editor",

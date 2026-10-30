@@ -271,3 +271,8 @@ describe("accepted invitation quota", () => {
     expect(entries.size).toBe(0);
   });
 });
+
+it("returns 400, not 500, for a malformed JSON body", async () => {
+  const bad = new NextRequest("https://app.supercheck.io/api/organizations/members/invite", { method: "POST", body: "{nope" });
+  expect((await POST(bad)).status).toBe(400);
+});

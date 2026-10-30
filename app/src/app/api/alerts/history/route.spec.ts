@@ -12,12 +12,12 @@ jest.mock("@/sre/lib/background-alert-triage-queue", () => ({
   enqueueSreAlertTriageJob: jest.fn(),
 }));
 jest.mock("@/lib/sre/sre-rate-limiter", () => ({ checkSreAlertHistoryWriteRateLimit: jest.fn(async () => ({ allowed: true, remaining: 1 })) }));
-jest.mock("@/utils/db", () => ({ db: { select: jest.fn(), insert: jest.fn() } }));
+jest.mock("@/utils/db", () => ({ db: { select: jest.fn(), insert: jest.fn(), execute: jest.fn() } }));
 
 import { GET, POST } from "./route";
 
 const { requireAuthContext } = jest.requireMock("@/lib/auth-context") as { requireAuthContext: jest.Mock };
-const { db } = jest.requireMock("@/utils/db") as { db: { select: jest.Mock; insert: jest.Mock } };
+const { db } = jest.requireMock("@/utils/db") as { db: { select: jest.Mock; insert: jest.Mock; execute: jest.Mock } };
 const { enqueueSreAlertTriageJob } = jest.requireMock("@/sre/lib/background-alert-triage-queue") as {
   enqueueSreAlertTriageJob: jest.Mock;
 };
@@ -124,5 +124,40 @@ describe("GET /api/alerts/history errors", () => {
     const response = await GET(new NextRequest("http://localhost/api/alerts/history"));
     expect(response.status).toBe(500);
     expect(JSON.stringify(await response.json())).not.toMatch(/alert_history_secret/);
+  });
+});
+
+describe("GET /api/alerts/history rows", () => {
+  const DELETED = "018f0000-0000-7000-8000-0000000000bb";
+  const row = (id: string, providerId: string, extra: Record<string, unknown> = {}) => ({
+    id, targetType: "monitor", monitorId: MONITOR_ID, jobId: null, target: "t", type: "monitor_failure",
+    message: "m", status: "failed", timestamp: new Date(), providerId, providerName: null, providerType: null,
+    errorMessage: null, deliveryMetadata: null, jobName: null, monitorName: "mon", ...extra,
+  });
+
+  it("orders ties deterministically and hides raw ids of deleted channels", async () => {
+    requireAuthContext.mockResolvedValue({
+      userId: "u1", organizationId: "org-a",
+      project: { id: "project-a", name: "A", organizationId: "org-a", userRole: "project_editor" }, isCliAuth: false,
+    });
+    const queries: string[] = [];
+    db.execute.mockImplementation(async (q: { queryChunks: unknown[] }) => {
+      const text = JSON.stringify(q.queryChunks);
+      queries.push(text);
+      if (text.includes("information_schema")) return [{ exists: true }];
+      if (text.includes("ORDER BY")) {
+        return [
+          row("a1", DELETED),
+          row("a2", DELETED, { deliveryMetadata: { provider: { id: DELETED, type: "slack" } } }),
+          row("a3", "legacy-email"),
+        ];
+      }
+      return [];
+    });
+    const body = await (await GET(new NextRequest("http://localhost/api/alerts/history"))).json();
+    expect(queries.some((q) => q.includes('DESC, id DESC'))).toBe(true);
+    expect(body.map((r: { notificationProvider: string }) => r.notificationProvider)).toEqual([
+      "Deleted channel", "slack", "legacy-email",
+    ]);
   });
 });

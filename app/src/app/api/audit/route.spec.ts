@@ -1,6 +1,7 @@
 /** @jest-environment node */
 
 import { NextRequest } from "next/server";
+import { PgDialect } from "drizzle-orm/pg-core";
 
 jest.mock("@/utils/db", () => ({
   db: {
@@ -149,5 +150,25 @@ describe("Audit API Route", () => {
     expect(response.status).toBe(401);
     expect(body.success).toBe(false);
     expect(body.error).toBe("Authentication required");
+  });
+
+  it("escapes LIKE wildcards in search and orders by an id tiebreaker", async () => {
+    const countQuery = { from: jest.fn().mockReturnThis(), where: jest.fn().mockResolvedValue([{ count: 0 }]) };
+    const logsQuery = {
+      from: jest.fn().mockReturnThis(),
+      leftJoin: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      limit: jest.fn().mockReturnThis(),
+      offset: jest.fn().mockResolvedValue([]),
+    };
+    mockDb.select.mockReturnValueOnce(countQuery).mockReturnValueOnce(logsQuery);
+    mockDb.selectDistinct.mockReturnValue({ from: jest.fn().mockReturnThis(), where: jest.fn().mockReturnThis(), orderBy: jest.fn().mockResolvedValue([]) });
+
+    await GET(new NextRequest("http://localhost/api/audit?search=" + encodeURIComponent("50%_a\\b")));
+
+    const { params } = new PgDialect().sqlToQuery(countQuery.where.mock.calls[0][0]);
+    expect(params).toContain("%50\\%\\_a\\\\b%");
+    expect(logsQuery.orderBy.mock.calls[0]).toHaveLength(2);
   });
 });

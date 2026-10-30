@@ -1060,6 +1060,7 @@ function OrgAdminDashboardContent() {
                 normalizeRole(currentUserRole),
               )}
               projects={projects}
+              currentUserRole={normalizeRole(currentUserRole)}
             />
           )}
 
@@ -1069,6 +1070,7 @@ function OrgAdminDashboardContent() {
             onOpenChange={setShowInviteDialog}
             mode="invite"
             projects={projects}
+            actorRole={normalizeRole(currentUserRole)}
             onSubmit={async (memberData) => {
               setInviting(true);
               try {
@@ -1091,6 +1093,7 @@ function OrgAdminDashboardContent() {
 
                 if (data.success) {
                   invalidateMembers();
+                  invalidateStats();
                 } else {
                   throw new Error(data.error || "Failed to send invitation");
                 }

@@ -336,18 +336,25 @@ export class JobNotificationService {
         const createdAlertHistoryRows: AlertHistoryTriageCandidate[] = [];
         for (const result of notificationResults.results) {
           const status: AlertStatus = result.success ? 'sent' : 'failed';
-          createdAlertHistoryRows.push(
-            await this.dbService.saveAlertHistory(
-              jobId,
-              alertType,
-              result.provider.id,
-              status,
-              payload.message,
-              result.error,
-              job.name,
-              result.deliveryMetadata,
-            ),
-          );
+          // One failed insert must not drop the remaining rows or the triage enqueue.
+          try {
+            createdAlertHistoryRows.push(
+              await this.dbService.saveAlertHistory(
+                jobId,
+                alertType,
+                result.provider.id,
+                status,
+                payload.message,
+                result.error,
+                job.name,
+                result.deliveryMetadata,
+              ),
+            );
+          } catch (rowError) {
+            this.logger.error(
+              `Failed to save alert history row for job ${jobId}: ${getErrorMessage(rowError)}`,
+            );
+          }
         }
         await this.sreAlertTriageQueueService.enqueueAlertHistoryRows(
           createdAlertHistoryRows,

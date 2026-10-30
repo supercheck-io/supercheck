@@ -3,7 +3,8 @@ import { NextRequest } from "next/server";
 
 let tokenRows: unknown[] = [];
 let usableCount = 0;
-let lockedRow: { enabled: boolean } | null | undefined;
+let dupRow: { id: string } | undefined;
+let lockedRow: { enabled: boolean; ownerId?: string; name?: string } | null | undefined;
 const updates: Record<string, unknown>[] = [];
 const mockRequireAuth = jest.fn();
 
@@ -18,7 +19,7 @@ jest.mock("@/utils/db", () => {
     select: () => ({ from: () => ({ where: () => ({ limit: async () => tokenRows }) }) }),
     update,
     transaction: async (fn: (tx: unknown) => unknown) =>
-      fn({ execute: async () => undefined, update, select: () => ({ from: () => ({ where: () => Object.assign(Promise.resolve([{ count: usableCount }]), { limit: async () => (lockedRow === null ? [] : [lockedRow ?? { enabled: (tokenRows[0] as { enabled?: boolean })?.enabled }]) }) }) }) }),
+      fn({ execute: async () => undefined, update, select: (cols?: Record<string, unknown>) => ({ from: () => ({ where: () => Object.assign(Promise.resolve([{ count: usableCount }]), { limit: () => { const r = cols && "id" in cols ? (dupRow ? [dupRow] : []) : lockedRow === null ? [] : [lockedRow ?? { enabled: (tokenRows[0] as { enabled?: boolean })?.enabled, ownerId: (tokenRows[0] as { ownerId?: string })?.ownerId, name: (tokenRows[0] as { name?: string })?.name }]; return Object.assign(Promise.resolve(r), { for: async () => r }); } }) }) }) }),
   };
   return { db };
 });
@@ -49,6 +50,7 @@ beforeEach(() => {
   updates.length = 0;
   usableCount = 0;
   lockedRow = undefined;
+  dupRow = undefined;
   mockRequireAuth.mockResolvedValue({ userId: "u1", organizationId: "o1", project: { id: "p1" }, isCliAuth: true });
 });
 
@@ -72,6 +74,16 @@ describe("PATCH /api/cli-tokens/[id]", () => {
     expect((await patch({ enabled: true })).status).toBe(200);
   });
 
+  it("lets a non-owner rename an already-enabled token that sends enabled:true", async () => {
+    tokenRows = [{ id: tokenId, projectId: "p1", jobId: null, ownerId: "u2", enabled: true }];
+    expect((await patch({ enabled: true, name: "renamed" })).status).toBe(200);
+  });
+
+  it("still blocks a non-owner from re-enabling a disabled token", async () => {
+    tokenRows = [{ id: tokenId, projectId: "p1", jobId: null, ownerId: "u2", enabled: false }];
+    expect((await patch({ enabled: true })).status).toBe(403);
+  });
+
   it("returns 404, not the cap error, when the token disappears before the locked re-read", async () => {
     tokenRows = [{ id: tokenId, projectId: "p1", jobId: null, ownerId: "u1", enabled: false }];
     lockedRow = null;
@@ -89,5 +101,33 @@ describe("PATCH /api/cli-tokens/[id]", () => {
     tokenRows = [{ id: tokenId, projectId: "p1", jobId: null, ownerId: "u2" }];
     expect((await patch({ enabled: false, name: "old" })).status).toBe(200);
     expect(updates[0]).toMatchObject({ enabled: false, name: "old" });
+  });
+
+  it("returns 409 when renaming to a name another token in the project already uses", async () => {
+    tokenRows = [{ id: tokenId, projectId: "p1", jobId: null, ownerId: "u1" }];
+    dupRow = { id: "other" };
+    expect((await patch({ name: "CI" })).status).toBe(409);
+    expect(updates).toHaveLength(0);
+  });
+
+  it("rejects a non-owner when the locked row was revoked after the pre-read", async () => {
+    tokenRows = [{ id: tokenId, projectId: "p1", jobId: null, ownerId: "u2", enabled: true }];
+    lockedRow = { enabled: false, ownerId: "u2" };
+    expect((await patch({ enabled: true })).status).toBe(403);
+    expect(updates).toHaveLength(0);
+  });
+
+  it("skips the name uniqueness check when the name is unchanged", async () => {
+    tokenRows = [{ id: tokenId, projectId: "p1", jobId: null, ownerId: "u1", enabled: true, name: "CI" }];
+    dupRow = { id: "other" };
+    expect((await patch({ name: "CI" })).status).toBe(200);
+  });
+
+  it("checks uniqueness when the locked name differs from the pre-read name", async () => {
+    tokenRows = [{ id: tokenId, projectId: "p1", jobId: null, ownerId: "u1", enabled: true, name: "CI" }];
+    lockedRow = { enabled: true, ownerId: "u1", name: "renamed-meanwhile" };
+    dupRow = { id: "other" };
+    expect((await patch({ name: "CI" })).status).toBe(409);
+    expect(updates).toHaveLength(0);
   });
 });

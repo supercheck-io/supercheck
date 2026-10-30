@@ -57,7 +57,7 @@ export async function GET(request: NextRequest) {
     const searchConditions: SQL<unknown>[] = [];
     if (isCliAuth && projectId) searchConditions.push(sql`${auditLogs.details}->>'projectId' = ${projectId}`);
     if (search) {
-      searchConditions.push(ilike(auditLogs.action, `%${search}%`));
+      searchConditions.push(ilike(auditLogs.action, `%${search.replace(/[\\%_]/g, "\\$&")}%`));
     }
     
     if (action) {
@@ -78,9 +78,10 @@ export async function GET(request: NextRequest) {
     const totalCount = totalCountResult?.count || 0;
 
     // Build order by clause
+    // id tiebreaker keeps pages stable when rows share a createdAt.
     const orderBy = sortOrder === 'desc' 
-      ? desc(auditLogs.createdAt)
-      : auditLogs.createdAt;
+      ? [desc(auditLogs.createdAt), desc(auditLogs.id)]
+      : [auditLogs.createdAt, auditLogs.id];
 
     // Fetch audit logs with user information
     const auditData = await db
@@ -97,7 +98,7 @@ export async function GET(request: NextRequest) {
       .from(auditLogs)
       .leftJoin(user, eq(auditLogs.userId, user.id))
       .where(whereClause)
-      .orderBy(orderBy)
+      .orderBy(...orderBy)
       .limit(limit)
       .offset(offset);
 

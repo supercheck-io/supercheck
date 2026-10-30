@@ -75,6 +75,7 @@ interface CliToken {
   name: string;
   start: string;
   enabled: boolean;
+  isOwner?: boolean;
   expiresAt: string | null;
   createdAt: string;
   lastRequest: string | null;
@@ -464,13 +465,16 @@ export function CliTokensTable() {
               <DropdownMenuContent align="end">
                 <DropdownMenuItem
                   onClick={() => handleToggleEnabled(token.id, token.enabled)}
+                  // Server only lets the token's owner re-enable it.
+                  disabled={!token.enabled && token.isOwner === false}
+                  title={!token.enabled && token.isOwner === false ? "Only the token's owner can re-enable it" : undefined}
                 >
                   {token.enabled ? (
                     <Ban className="mr-2 h-3.5 w-3.5" />
                   ) : (
                     <CheckCircle className="mr-2 h-3.5 w-3.5" />
                   )}
-                  {token.enabled ? "Disable token" : "Enable token"}
+                  {token.enabled ? "Disable token" : token.isOwner === false ? "Enable token (owner only)" : "Enable token"}
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   className="text-destructive focus:text-destructive"
