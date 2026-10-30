@@ -57,8 +57,13 @@ const stockPlans = [
 
 describe('competitive stock pricing rollout', () => {
   let pg: PGlite;
-  beforeEach(async () => {
+  // One embedded Postgres per file: booting PGlite per test made this the
+  // slowest suite and left its Jest worker too busy to exit cleanly.
+  beforeAll(() => {
     pg = new PGlite();
+  });
+  beforeEach(async () => {
+    await pg.exec('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
     const columns = Object.entries(stockPlans[0])
       .map(
         ([key, value]) =>
@@ -77,7 +82,7 @@ describe('competitive stock pricing rollout', () => {
       );
     }
   });
-  afterEach(async () => {
+  afterAll(async () => {
     await pg.close();
   });
   const migrate = async () => {
