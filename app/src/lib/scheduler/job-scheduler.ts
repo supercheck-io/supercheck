@@ -11,7 +11,7 @@ import { Job } from 'bullmq';
 import crypto from 'crypto';
 import { db } from '@/utils/db';
 import { jobs, runs, projects } from '@/db/schema';
-import { eq, and, inArray, lt } from 'drizzle-orm';
+import { eq, and, inArray, desc } from 'drizzle-orm';
 import { addJobToQueue, addK6JobToQueue, JobExecutionTask, K6ExecutionTask, queueLogger } from '@/lib/queue';
 import { prepareJobTestScripts } from '@/lib/job-execution-utils';
 import { getNextRunDate } from './cron-utils';
@@ -29,7 +29,6 @@ import { getSafeExecutionQueueErrorDetails } from '@/lib/execution-api-responses
 const logger = queueLogger;
 
 // A run queued this long never reached the worker; stop it blocking future ticks.
-const STALE_QUEUED_RUN_MS = 30 * 60 * 1000;
 
 async function removeOrphanedSchedule(jobId: string, reason: string): Promise<void> {
   // Dynamic import: lib/job-scheduler imports this module.
@@ -134,15 +133,8 @@ export async function processScheduledJob(
       logger.error({ jobId, error }, 'Failed to update the next run date');
     }
 
-    try {
-      await db
-        .update(runs)
-        .set({ status: 'error', completedAt: new Date(), errorDetails: 'Run was never picked up and was marked failed' })
-        .where(and(eq(runs.jobId, jobId), eq(runs.status, 'queued'), lt(runs.startedAt, new Date(Date.now() - STALE_QUEUED_RUN_MS))));
-    } catch (error) {
-      logger.error({ jobId, error }, 'Failed to expire stale queued runs');
-    }
-
+    // Runs stuck in queued are recovered by the worker's stalled-run sweep, which can tell a lost run
+    // from one still waiting in the organization's capacity queue.
     // A queued run already owns capacity/queue position and must also prevent
     // the next cron tick from creating a duplicate execution.
     const activeRuns = await db
@@ -161,8 +153,18 @@ export async function processScheduledJob(
       return { success: true };
     }
 
-    // Leave a visible blocked run so a policy-skipped tick shows in history.
+    // Leave one visible blocked run per blocked spell, not one per tick.
     const recordBlockedRun = async (reason: string) => {
+      const [latest] = await db
+        .select({ status: runs.status, errorDetails: runs.errorDetails })
+        .from(runs)
+        .where(eq(runs.jobId, jobId))
+        .orderBy(desc(runs.createdAt))
+        .limit(1);
+      if (latest?.status === 'blocked' && latest.errorDetails === reason) {
+        logger.info({ jobId }, 'Scheduled run still blocked; not recording another blocked run');
+        return;
+      }
       const now = new Date();
       await db.insert(runs).values({
         id: runId,

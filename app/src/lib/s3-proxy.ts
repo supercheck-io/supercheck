@@ -161,9 +161,11 @@ export async function fetchFromS3(
     }
 
     // Stream the body through instead of buffering the whole object in memory.
-    const body = (
-      s3Response.Body as { transformToWebStream: () => ReadableStream }
-    ).transformToWebStream();
+    const streamable = s3Response.Body as { transformToWebStream?: () => ReadableStream };
+    const body =
+      typeof streamable.transformToWebStream === "function"
+        ? streamable.transformToWebStream()
+        : new Blob([(await streamToUint8Array(s3Response.Body)) as BlobPart]);
 
     const headers: Record<string, string> = {
       "Content-Type":

@@ -183,6 +183,7 @@ export class StalledJobHandlerService implements OnModuleInit, OnModuleDestroy {
         ) {
           // Orphaned queued run: sweep only when no queue job or execution remains.
           if (
+            (await this.isWaitingForCapacity(run.id)) ||
             (await this.isBullMqJobActive(run.id, run.location)) ||
             (await this.containerExecutorService.hasActiveExecution(run.id))
           ) {
@@ -371,8 +372,12 @@ export class StalledJobHandlerService implements OnModuleInit, OnModuleDestroy {
             const active = runStatuses.find(
               (status) => status === 'running' || status === 'queued',
             );
+            // Jobs have no blocked status; a policy-blocked tick never ran, so use the last real run.
+            const latestExecuted =
+              runStatuses.find((status) => status !== 'blocked') ??
+              runStatuses[0];
             await this.dbService.updateJobStatus(jobId, [
-              active ?? runStatuses[0],
+              active ?? latestExecuted,
             ]);
           }
 
@@ -429,6 +434,19 @@ export class StalledJobHandlerService implements OnModuleInit, OnModuleDestroy {
     }
 
     this.logger.log('StalledJobHandlerService cleaned up');
+  }
+
+  /**
+   * A run held by the app's per-organization capacity queue has no BullMQ job until it is promoted,
+   * and may legitimately wait longer than the sweep threshold. Fails safe: a Redis error keeps the run.
+   */
+  private async isWaitingForCapacity(runId: string): Promise<boolean> {
+    if (!this.redisClient) return true;
+    try {
+      return (await this.redisClient.exists(`capacity:job:${runId}`)) === 1;
+    } catch {
+      return true;
+    }
   }
 
   private async isBullMqJobActive(

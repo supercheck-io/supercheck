@@ -81,10 +81,12 @@ const scheduledJob = {
 } as Parameters<typeof processScheduledJob>[0];
 
 function selectRows(rows: unknown[]) {
+  const limit = jest.fn().mockResolvedValue(rows);
   return {
     from: jest.fn().mockReturnValue({
       where: jest.fn().mockReturnValue({
-        limit: jest.fn().mockResolvedValue(rows),
+        limit,
+        orderBy: jest.fn().mockReturnValue({ limit }),
       }),
     }),
   };
@@ -107,6 +109,22 @@ describe("scheduled execution admission", () => {
     ).mockResolvedValue(undefined);
   });
 
+  it("records only one blocked run while the job stays blocked for the same reason", async () => {
+    (db.select as jest.Mock)
+      .mockReturnValueOnce(
+        selectRows([{ id: "job-1", projectId: "project-1", organizationId: "org-1", jobType: "playwright", cronSchedule: "*/5 * * * *" }]),
+      )
+      .mockReturnValueOnce(selectRows([{ status: "active" }]))
+      .mockReturnValueOnce(selectRows([]))
+      .mockReturnValueOnce(selectRows([{ status: "blocked", errorDetails: "Spending limit reached" }]));
+    (polarUsageService.shouldBlockUsage as jest.Mock).mockResolvedValue({ blocked: true, reason: "Spending limit reached" });
+    const values = jest.fn().mockResolvedValue(undefined);
+    (db.insert as jest.Mock).mockReturnValue({ values });
+
+    await expect(processScheduledJob(scheduledJob)).resolves.toEqual({ success: true });
+    expect(values).not.toHaveBeenCalled();
+  });
+
   it("records a blocked run when subscription validation blocks the tick", async () => {
     (db.select as jest.Mock).mockReturnValueOnce(
       selectRows([
@@ -124,7 +142,7 @@ describe("scheduled execution admission", () => {
       new SubscriptionAccessDeniedError("inactive", "subscription_required"),
     );
 
-    (db.select as jest.Mock).mockReturnValueOnce(selectRows([]));
+    (db.select as jest.Mock).mockReturnValueOnce(selectRows([])).mockReturnValueOnce(selectRows([]));
     const values = jest.fn().mockResolvedValue(undefined);
     (db.insert as jest.Mock).mockReturnValue({ values });
 
@@ -154,7 +172,7 @@ describe("scheduled execution admission", () => {
       reason: "Spending limit reached",
     });
 
-    (db.select as jest.Mock).mockReturnValueOnce(selectRows([]));
+    (db.select as jest.Mock).mockReturnValueOnce(selectRows([])).mockReturnValueOnce(selectRows([]));
     const values = jest.fn().mockResolvedValue(undefined);
     (db.insert as jest.Mock).mockReturnValue({ values });
 
@@ -383,13 +401,13 @@ describe("scheduled job bookkeeping", () => {
     expect(db.insert).not.toHaveBeenCalled();
   });
 
-  it("expires stale queued runs before the overlap check", async () => {
+  it("leaves queued runs to the worker's stalled sweep instead of expiring them here", async () => {
     (db.select as jest.Mock)
       .mockReturnValueOnce(selectRows([jobRow]))
       .mockReturnValueOnce(selectRows([{ status: "active" }]))
       .mockReturnValueOnce(selectRows([{ id: "run-active" }]));
     await processScheduledJob(scheduledJob);
-    expect(sets).toContainEqual(expect.objectContaining({ status: "error", errorDetails: expect.any(String) }));
+    expect(sets).not.toContainEqual(expect.objectContaining({ status: "error" }));
   });
 
   it("does not fail the job or other runs when no run was inserted", async () => {

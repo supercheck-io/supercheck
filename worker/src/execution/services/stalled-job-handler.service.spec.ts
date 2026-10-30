@@ -123,11 +123,12 @@ describe('StalledJobHandlerService', () => {
   });
 
   it.each([
-    ['orphaned', false, true],
-    ['still in BullMQ', true, false],
+    ['orphaned', false, false, true],
+    ['still in BullMQ', true, false, false],
+    ['waiting in the capacity queue', false, true, false],
   ])(
     'sweeps a plain queued run past the threshold: %s',
-    async (_name, queueActive, recover) => {
+    async (_name, queueActive, capacityQueued, recover) => {
       const transaction = jest.fn().mockResolvedValue(undefined);
       const database = {
         select: () => ({
@@ -164,7 +165,9 @@ describe('StalledJobHandlerService', () => {
         isBullMqJobActive: () => Promise<boolean>;
         checkAndHandleStalledJobs: () => Promise<void>;
       };
-      state.redisClient = {};
+      state.redisClient = {
+        exists: jest.fn().mockResolvedValue(capacityQueued ? 1 : 0),
+      };
       jest.spyOn(state, 'isBullMqJobActive').mockResolvedValue(queueActive);
       await state.checkAndHandleStalledJobs();
       expect(transaction).toHaveBeenCalledTimes(recover ? 1 : 0);
