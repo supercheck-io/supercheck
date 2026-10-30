@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -222,6 +223,9 @@ function LocationConfigSectionComponent({
 
     // Require at least one location when enabled
     if (newLocations.length === 0) {
+      toast.info("At least one location is required", {
+        description: "Select another location before deselecting this one.",
+      });
       return;
     }
 

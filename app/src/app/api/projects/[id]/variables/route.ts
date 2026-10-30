@@ -6,6 +6,7 @@ import { eq, and } from "drizzle-orm";
 import { resolveProjectPermissionContext, checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireUserAuthContext, isAuthError } from "@/lib/auth-context";
 import { createVariableSchema, createFileVariableSchema, MAX_FILE_SIZE, resolveFileMimeType, type VariableType } from "@/lib/validations/variable";
+import { logAuditEvent } from "@/lib/audit-logger";
 import { encryptValue } from "@/lib/encryption";
 import { getS3Client } from "@/lib/s3-proxy";
 import { PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
@@ -134,7 +135,7 @@ export async function POST(
     try {
       if (isMultipart) {
         // File-type variable creation via FormData
-        return await handleFileVariableCreate(request, projectId, userId);
+        return await handleFileVariableCreate(request, projectId, userId, permCtx.organizationId);
       }
 
       // Standard variable/secret creation via JSON
@@ -207,6 +208,16 @@ export async function POST(
         .values(variableData as typeof projectVariables.$inferInsert)
         .returning();
 
+      await logAuditEvent({
+        userId,
+        organizationId: permCtx.organizationId,
+        action: "variable_created",
+        resource: "project_variable",
+        resourceId: newVariable.id,
+        metadata: { projectId, key: newVariable.key, isSecret: newVariable.isSecret },
+        success: true,
+      });
+
       // Return the variable (without encrypted data)
       const responseVariable = {
         ...newVariable,
@@ -261,6 +272,7 @@ async function handleFileVariableCreate(
   request: NextRequest,
   projectId: string,
   userId: string,
+  organizationId?: string,
 ) {
   // Reject obviously oversized requests before buffering the body
   const contentLength = parseInt(request.headers.get("content-length") || "0", 10);
@@ -385,6 +397,16 @@ async function handleFileVariableCreate(
     }
     throw dbError;
   }
+
+  await logAuditEvent({
+    userId,
+    organizationId,
+    action: "variable_created",
+    resource: "project_variable",
+    resourceId: newVariable.id,
+    metadata: { projectId, key: newVariable.key, isSecret: false },
+    success: true,
+  });
 
   return NextResponse.json({
     success: true,

@@ -531,26 +531,32 @@ describe('InputSanitizer', () => {
       expect(result.httpConfig_method).toBe('POST');
     });
 
-    it('should sanitize JSON headers', () => {
-      const data = { httpConfig_headers: '{"Content-Type": "application/json"}' };
-      const result = sanitizeMonitorFormData(data);
-      expect(result.httpConfig_headers).toBeTruthy();
-    });
-
     it('should sanitize status codes', () => {
       const data = { httpConfig_expectedStatusCodes: '200, 201<script>' };
       const result = sanitizeMonitorFormData(data);
       expect(result.httpConfig_expectedStatusCodes).toBe('200, 201');
     });
 
-    it('should sanitize credentials', () => {
+    it('keeps unicode and punctuation in names', () => {
+      for (const name of ['Café API', '生産API', 'API: prod/v2']) {
+        expect(sanitizeMonitorFormData({ name }).name).toBe(name);
+      }
+    });
+
+    it('still strips tags from names', () => {
+      expect(sanitizeMonitorFormData({ name: 'A<script>x</script>B' }).name).toBe('AB');
+    });
+
+    it('leaves body, keyword, headers and credentials untouched', () => {
       const data = {
-        httpConfig_authUsername: 'user<script>',
-        httpConfig_authPassword: 'pass<script>',
+        httpConfig_body: '{"url":"${var}"}',
+        httpConfig_keywordInBody: 'a<b>${x}',
+        httpConfig_headers: '{"X-Id":"${id}"}',
+        httpConfig_authUsername: 'u<x>',
+        httpConfig_authPassword: 'p<x>${y}',
+        httpConfig_authToken: 't<x>',
       };
-      const result = sanitizeMonitorFormData(data);
-      expect(result.httpConfig_authUsername).not.toContain('<script>');
-      expect(result.httpConfig_authPassword).not.toContain('<script>');
+      expect(sanitizeMonitorFormData(data)).toEqual(data);
     });
 
     it('should sanitize port number', () => {

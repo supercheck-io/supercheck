@@ -15,6 +15,7 @@ import { projectVariables } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import { logAuditEvent } from "@/lib/audit-logger";
 import { encryptValue } from "@/lib/encryption";
 import { getS3Client } from "@/lib/s3-proxy";
 import { DeleteObjectCommand } from "@aws-sdk/client-s3";
@@ -208,8 +209,29 @@ export async function PUT(
     const [updated] = await db
       .update(projectVariables)
       .set(updateData)
-      .where(eq(projectVariables.id, variableId))
+      .where(
+        and(
+          eq(projectVariables.id, variableId),
+          eq(projectVariables.projectId, context.project.id)
+        )
+      )
       .returning();
+
+    await logAuditEvent({
+      userId: context.userId,
+      organizationId: context.organizationId,
+      action: "variable_updated",
+      resource: "project_variable",
+      resourceId: variableId,
+      metadata: {
+        projectId: context.project.id,
+        key: updated.key,
+        isSecret: updated.isSecret,
+        ...(existing.key !== updated.key ? { previousKey: existing.key } : {}),
+        ...(existing.isSecret !== updated.isSecret ? { previousIsSecret: existing.isSecret } : {}),
+      },
+      success: true,
+    });
 
     return NextResponse.json({
       ...updated,
@@ -221,6 +243,12 @@ export async function PUT(
       return NextResponse.json(
         { error: error instanceof Error ? error.message : "Authentication required" },
         { status: 401 }
+      );
+    }
+    if (error && typeof error === "object" && "code" in error && error.code === "23505") {
+      return NextResponse.json(
+        { error: "Variable with this key already exists" },
+        { status: 409 }
       );
     }
     console.error("Error updating variable:", error);
@@ -254,6 +282,8 @@ export async function DELETE(
         id: projectVariables.id,
         type: projectVariables.type,
         storagePath: projectVariables.storagePath,
+        key: projectVariables.key,
+        isSecret: projectVariables.isSecret,
       })
       .from(projectVariables)
       .where(
@@ -274,7 +304,22 @@ export async function DELETE(
     // Delete DB row first, then best-effort S3 cleanup
     await db
       .delete(projectVariables)
-      .where(eq(projectVariables.id, variableId));
+      .where(
+        and(
+          eq(projectVariables.id, variableId),
+          eq(projectVariables.projectId, context.project.id)
+        )
+      );
+
+    await logAuditEvent({
+      userId: context.userId,
+      organizationId: context.organizationId,
+      action: "variable_deleted",
+      resource: "project_variable",
+      resourceId: variableId,
+      metadata: { projectId: context.project.id, key: existing.key, isSecret: existing.isSecret },
+      success: true,
+    });
 
     if (existing.type === "file" && existing.storagePath) {
       try {

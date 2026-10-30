@@ -58,11 +58,11 @@ type ChartMouseState = {
 const chartConfig = {
   up: {
     label: "Up",
-    color: "#22c55e", // Explicit green color (Tailwind's green-500)
+    color: "var(--success)",
   },
   down: {
     label: "Down",
-    color: "#ef4444", // Explicit red color (Tailwind's red-500)
+    color: "var(--destructive)",
   },
 };
 

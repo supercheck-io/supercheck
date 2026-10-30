@@ -173,6 +173,21 @@ console.log('API key configured:', !!getSecret('API_KEY'));
 const actualKey = getSecret('API_KEY');
 ```
 
+<Callout type="warn">
+Masking covers console output, error messages, and plain-text report files. It does not cover traces, screenshots, videos, or the Playwright HTML report, whose test data is stored compressed inside the page. If a test types a secret into a page, the secret can appear in those artifacts. Do not type secrets into pages whose reports you share.
+</Callout>
+
+<Accordions>
+<Accordion title="What is masked" id="secret-masking">
+
+- Secret values are replaced with `[SECRET]` in console output and errors. They are also replaced in text-based report files before the report is uploaded. The same applies to the base64, URL-encoded, and JSON-escaped forms of each value.
+- Secrets shorter than 6 characters are not masked, because replacing short strings would damage unrelated output. Use longer secrets.
+- Binary or compressed artifacts are not scanned or rewritten: `trace.zip`, screenshots, videos, and the test data embedded in the Playwright HTML report.
+- A secret is only injected into a run when a script reads it with `getSecret('KEY')`. If a script that uses a secret cannot decrypt it, the run fails with a message naming the key. Secrets that no script uses never affect a run.
+
+</Accordion>
+</Accordions>
+
 **Secrets work normally in:**
 - Playwright actions (`page.fill()`, `page.click()`)
 - HTTP headers and request bodies
@@ -294,6 +309,13 @@ for (const user of users) {
 </Accordion>
 <Accordion title="Variable naming conventions" id="variable-naming-conventions">
 
+Names must follow these rules:
+
+- 4 to 20 characters.
+- Start with an uppercase letter, then use only uppercase letters, numbers, and underscores.
+- Cannot start with `SUPERCHECK_`, which is reserved.
+- Cannot be `PATH`, `HOME`, `USER`, `NODE_ENV`, or `PORT`.
+
 Use clear, consistent naming for your variables:
 
 | Pattern | Example | Use For |
@@ -322,7 +344,15 @@ Use clear, consistent naming for your variables:
 <Tabs items={['Encryption', 'Access Control', 'Audit Trail']}>
 <Tab value="Encryption">
 
-Store credentials as **Secrets** to encrypt saved values. Use the reveal action only when needed, and keep secrets out of uploaded data files.
+Store credentials as **Secrets** to encrypt saved values. Editing a secret starts with an empty value field; leave it blank to keep the current value, or select **Reveal current value** to view it. Keep secrets out of uploaded data files.
+
+<Accordions>
+<Accordion title="Changing the encryption key" id="encryption-key">
+
+Secrets are encrypted with the instance's `SECRET_ENCRYPTION_KEY`. If you change it, existing secrets can no longer be decrypted, and runs that use them fail. Key rotation is not supported yet. Re-enter each secret after changing the key, and do not change it on an instance that has secrets you need.
+
+</Accordion>
+</Accordions>
 
 </Tab>
 <Tab value="Access Control">
@@ -341,10 +371,7 @@ Variables follow your project's role-based permissions:
 </Tab>
 <Tab value="Audit Trail">
 
-All variable operations are logged:
-- Who created, updated, or deleted variables
-- When changes were made
-- Variable keys (not secret values)
+Creating, updating, renaming, deleting, and converting variables, in the app or through the CLI and API, is recorded in the audit log as `variable_created`, `variable_updated`, or `variable_deleted`. Each entry records who made the change, when, the project, the variable key (plus the previous key on a rename), and whether it is a secret. Values are never recorded. Revealing a secret is audited separately.
 
 </Tab>
 </Tabs>

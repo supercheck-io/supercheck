@@ -409,6 +409,7 @@ export class ExecutionService implements OnModuleDestroy {
       const resolved =
         await this.variableResolverService.resolveProjectVariables(
           task.projectId,
+          [task.code],
         );
       task = {
         ...task,
@@ -581,6 +582,7 @@ export class ExecutionService implements OnModuleDestroy {
             s3ReportKeyPrefix,
             entityType,
             processReportFiles: true,
+            secrets: runtimeSecrets,
           });
 
           if (uploadResult.success) {
@@ -649,6 +651,7 @@ export class ExecutionService implements OnModuleDestroy {
           s3ReportKeyPrefix,
           entityType,
           processReportFiles: true,
+          secrets: runtimeSecrets,
         });
 
         if (uploadResult.success) {
@@ -786,6 +789,13 @@ export class ExecutionService implements OnModuleDestroy {
   ): Promise<TestExecutionResult> {
     const resolved = await this.variableResolverService.resolveProjectVariables(
       task.projectId,
+      task.testScripts.map((ts) => {
+        try {
+          return decodeStoredTestScript(ts.script);
+        } catch {
+          return ts.script;
+        }
+      }),
     );
     task = {
       ...task,
@@ -1041,6 +1051,7 @@ export class ExecutionService implements OnModuleDestroy {
         s3ReportKeyPrefix,
         entityType: 'job',
         processReportFiles: true,
+        secrets: taskSecrets,
       });
 
       if (uploadResult.success) {

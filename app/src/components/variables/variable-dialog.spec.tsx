@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { VariableDialog } from './variable-dialog';
 import type { Variable } from './schema';
 
@@ -47,33 +47,20 @@ describe('VariableDialog', () => {
     jest.clearAllMocks();
   });
 
-  it('loads decrypted secret value for users who can view secrets', async () => {
+  it('does not decrypt on open and only reveals after an explicit click', async () => {
     const fetchMock = global.fetch as unknown as jest.Mock;
     fetchMock
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({
           success: true,
-          data: {
-            id: 'var-secret',
-            key: 'API_KEY',
-            value: '[ENCRYPTED]',
-            isSecret: true,
-            description: 'secret key',
-          },
+          data: { id: 'var-secret', key: 'API_KEY', value: '[ENCRYPTED]', isSecret: true, description: 'secret key' },
         }),
       })
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
-        json: async () => ({
-          success: true,
-          data: {
-            id: 'var-secret',
-            key: 'API_KEY',
-            value: 'decrypted-secret-value',
-          },
-        }),
+        json: async () => ({ success: true, data: { value: 'decrypted-secret-value' } }),
       });
 
     render(
@@ -88,25 +75,23 @@ describe('VariableDialog', () => {
     );
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect((screen.getByLabelText(/Variable Name \*/i) as HTMLInputElement).value).toBe('API_KEY');
     });
+    const valueInput = screen.getByLabelText(/Value \*/i) as HTMLInputElement;
+    expect(valueInput.value).toBe('');
+    expect(valueInput.placeholder).toBe('Leave blank to keep the current value');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
 
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      1,
-      '/api/projects/project-1/variables/var-secret',
-      expect.objectContaining({ cache: 'no-store' })
-    );
+    fireEvent.click(screen.getByRole('button', { name: /Reveal current value/i }));
 
+    await waitFor(() => {
+      expect(valueInput.value).toBe('decrypted-secret-value');
+    });
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
       '/api/projects/project-1/variables/var-secret/decrypt',
       expect.objectContaining({ method: 'POST', cache: 'no-store' })
     );
-
-    await waitFor(() => {
-      const valueInput = screen.getByLabelText(/Value \*/i) as HTMLInputElement;
-      expect(valueInput.value).toBe('decrypted-secret-value');
-    });
   });
 
   it('does not fetch decrypted secret value when user cannot view secrets', async () => {

@@ -6,6 +6,7 @@ import { eq, and } from "drizzle-orm";
 import { resolveProjectPermissionContext, checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireUserAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { updateVariableSchema, createFileVariableSchema, keySchema, MAX_FILE_SIZE, ALLOWED_FILE_MIME_TYPES, resolveFileMimeType, type VariableType } from "@/lib/validations/variable";
+import { logAuditEvent } from "@/lib/audit-logger";
 import { encryptValue } from "@/lib/encryption";
 import { getS3Client } from "@/lib/s3-proxy";
 import { PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
@@ -167,7 +168,7 @@ export async function PUT(
       // Handle file-type variable update via multipart/form-data
       const contentType = request.headers.get("content-type") || "";
       if (contentType.includes("multipart/form-data")) {
-        return await handleFileVariableUpdate(request, existingVariable, projectId, variableId);
+        return await handleFileVariableUpdate(request, existingVariable, projectId, variableId, userId, permCtx.organizationId);
       }
 
       let body;
@@ -272,8 +273,29 @@ export async function PUT(
       const [updatedVariable] = await db
         .update(projectVariables)
         .set(updateData)
-        .where(eq(projectVariables.id, variableId))
+        .where(
+          and(
+            eq(projectVariables.id, variableId),
+            eq(projectVariables.projectId, projectId)
+          )
+        )
         .returning();
+
+      await logAuditEvent({
+        userId,
+        organizationId: permCtx.organizationId,
+        action: "variable_updated",
+        resource: "project_variable",
+        resourceId: variableId,
+        metadata: {
+          projectId,
+          key: updatedVariable.key,
+          isSecret: updatedVariable.isSecret,
+          ...(existingVariable.key !== updatedVariable.key ? { previousKey: existingVariable.key } : {}),
+          ...(existingVariable.isSecret !== updatedVariable.isSecret ? { previousIsSecret: existingVariable.isSecret } : {}),
+        },
+        success: true,
+      });
 
       // Return the variable without encrypted data
       const responseVariable = {
@@ -287,6 +309,12 @@ export async function PUT(
         data: responseVariable,
       });
     } catch (error) {
+      if (error && typeof error === "object" && "code" in error && error.code === "23505") {
+        return NextResponse.json(
+          { error: "Variable with this name already exists" },
+          { status: 400 }
+        );
+      }
       if (error instanceof z.ZodError) {
         return NextResponse.json(
           { error: "Invalid input. Check variable fields and try again." },
@@ -366,7 +394,22 @@ export async function DELETE(
     // If DB deletion fails, the S3 object is still intact — no corruption.
     await db
       .delete(projectVariables)
-      .where(eq(projectVariables.id, variableId));
+      .where(
+        and(
+          eq(projectVariables.id, variableId),
+          eq(projectVariables.projectId, projectId)
+        )
+      );
+
+    await logAuditEvent({
+      userId,
+      organizationId: permCtx.organizationId,
+      action: "variable_deleted",
+      resource: "project_variable",
+      resourceId: variableId,
+      metadata: { projectId, key: existingVariable.key, isSecret: existingVariable.isSecret },
+      success: true,
+    });
 
     // Best-effort S3 cleanup after the row is gone.
     // An orphaned object is harmless; a row pointing at a deleted object is not.
@@ -411,6 +454,8 @@ async function handleFileVariableUpdate(
   existingVariable: typeof projectVariables.$inferSelect,
   projectId: string,
   variableId: string,
+  userId: string,
+  organizationId?: string,
 ) {
   if (existingVariable.type !== "file") {
     return NextResponse.json(
@@ -541,7 +586,12 @@ async function handleFileVariableUpdate(
     [updatedVariable] = await db
       .update(projectVariables)
       .set(updateData)
-      .where(eq(projectVariables.id, variableId))
+      .where(
+        and(
+          eq(projectVariables.id, variableId),
+          eq(projectVariables.projectId, projectId)
+        )
+      )
       .returning();
   } catch (dbError) {
     // If we uploaded a new file but DB update failed, clean up the new S3 file
@@ -560,6 +610,21 @@ async function handleFileVariableUpdate(
     }
     throw dbError;
   }
+
+  await logAuditEvent({
+    userId,
+    organizationId,
+    action: "variable_updated",
+    resource: "project_variable",
+    resourceId: variableId,
+    metadata: {
+      projectId,
+      key: updatedVariable.key,
+      isSecret: false,
+      ...(existingVariable.key !== updatedVariable.key ? { previousKey: existingVariable.key } : {}),
+    },
+    success: true,
+  });
 
   // Delete old file from S3 after successful DB update (best-effort)
   if (oldStoragePath) {

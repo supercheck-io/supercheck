@@ -39,8 +39,21 @@ export async function applyVariablesToTestScripts(
   const variableResolution = await resolveProjectVariables(projectId);
   
   if (variableResolution.errors && variableResolution.errors.length > 0) {
+    // Details can echo decrypt internals, so they are logged only; the worker fails the same way.
     console.warn(`${logPrefix} Variable resolution errors:`, variableResolution.errors);
-    // Continue execution but log warnings
+    const used = new Set(testScripts.flatMap((t) => extractVariableNames(t.script)));
+    // An error naming a key no script references cannot affect the run (the worker only decrypts used secrets).
+    const blocking = variableResolution.errors
+      .map((e) => /variable '([^']+)'/.exec(e)?.[1])
+      .filter((key) => key === undefined || used.has(key));
+    if (blocking.length > 0) {
+      const keys = [...new Set(blocking.filter((key): key is string => !!key))];
+      throw new Error(
+        keys.length > 0
+          ? `Project variables could not be resolved: ${keys.join(", ")}`
+          : "Project variables could not be resolved"
+      );
+    }
   }
   
   // Keep scripts unchanged; variable helpers are injected securely at worker runtime

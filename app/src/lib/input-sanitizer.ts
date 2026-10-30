@@ -291,7 +291,8 @@ export function sanitizeMonitorFormData(data: MonitorFormData): MonitorFormData 
 
   // Sanitize name
   if (sanitized.name) {
-    sanitized.name = sanitizeMonitorName(sanitized.name);
+    // Match the API (sanitizeString): names keep unicode and punctuation
+    sanitized.name = sanitizeString(sanitized.name);
   }
 
   // Sanitize target based on type
@@ -310,34 +311,11 @@ export function sanitizeMonitorFormData(data: MonitorFormData): MonitorFormData 
     sanitized.httpConfig_method = sanitizeHttpMethod(sanitized.httpConfig_method);
   }
 
-  if (sanitized.httpConfig_headers) {
-    sanitized.httpConfig_headers = sanitizeJson(sanitized.httpConfig_headers);
-  }
-
-  if (sanitized.httpConfig_body) {
-    sanitized.httpConfig_body = sanitizeString(sanitized.httpConfig_body);
-  }
-
   if (sanitized.httpConfig_expectedStatusCodes) {
     sanitized.httpConfig_expectedStatusCodes = sanitizeStatusCodes(sanitized.httpConfig_expectedStatusCodes);
   }
 
-  if (sanitized.httpConfig_keywordInBody) {
-    sanitized.httpConfig_keywordInBody = sanitizeString(sanitized.httpConfig_keywordInBody);
-  }
-
-  // Sanitize auth credentials
-  if (sanitized.httpConfig_authUsername) {
-    sanitized.httpConfig_authUsername = sanitizeCredential(sanitized.httpConfig_authUsername);
-  }
-
-  if (sanitized.httpConfig_authPassword) {
-    sanitized.httpConfig_authPassword = sanitizeCredential(sanitized.httpConfig_authPassword);
-  }
-
-  if (sanitized.httpConfig_authToken) {
-    sanitized.httpConfig_authToken = sanitizeCredential(sanitized.httpConfig_authToken);
-  }
+  // Headers, body, keyword and credentials are data the API stores as given; never rewrite them here.
 
   // Sanitize port
   if (sanitized.portConfig_port !== undefined) {
