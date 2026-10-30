@@ -3,10 +3,10 @@
 Install on an Ubuntu 22.04+ or Debian 12+ server with sudo access and `curl` (at least 2 vCPU, 4 GB RAM, and 15 GB free disk):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/supercheck-io/supercheck/v1.4.0/deploy/docker/install.sh -o install.sh && sudo bash install.sh --version 1.4.0
+curl -fsSL https://raw.githubusercontent.com/supercheck-io/supercheck/v1.5.0/deploy/docker/install.sh -o install.sh && sudo bash install.sh --version 1.5.0
 ```
 
-This installs **1.4.0**, which includes RustFS. Choose local evaluation or public HTTPS and follow the prompts. The installer installs Docker and Compose, generates secrets, prepares the execution sandbox, starts the services, and checks health. Open the printed URL to create your account and run a test.
+This installs **1.5.0**, which includes RustFS. Choose local evaluation or public HTTPS and follow the prompts. The installer installs Docker and Compose, generates secrets, prepares the execution sandbox, starts the services, and checks health. Open the printed URL to create your account and run a test.
 
 For HTTPS, point your domain at the server and allow inbound ports 80 and 443. macOS, Windows, WSL2, and Docker Desktop are not supported.
 
@@ -43,7 +43,7 @@ Use `./init-secrets.sh` to generate secure defaults, then configure:
 
 | Variable | Description |
 |----------|-------------|
-| `SUPERCHECK_VERSION` | App/worker image tag for prebuilt Compose variants, including the sandbox image (default in this checkout: `1.4.0`); set explicitly in `.env` when upgrading |
+| `SUPERCHECK_VERSION` | App/worker image tag for prebuilt Compose variants, including the sandbox image (default in this checkout: `1.5.0`); set explicitly in `.env` when upgrading |
 | `SELF_HOSTED` | Self-hosted mode toggle (default: `true`) |
 | `SIGNUP_ENABLED` | Toggle open email/password signup (default: `true`) |
 | `ALLOWED_EMAIL_DOMAINS` | Optional comma-separated signup allowlist (default: empty = allow all) |

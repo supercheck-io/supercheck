@@ -5,8 +5,8 @@ Self-host Supercheck on a Linux server (Ubuntu 22.04+ or Debian 12+). macOS, Win
 **Start here:** [Self-Hosted guide](https://supercheck.io/docs/app/deployment/self-hosted). It covers the one-command installer, upgrades, backups and restore, status-page HTTPS and troubleshooting.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/supercheck-io/supercheck/v1.4.0/deploy/docker/install.sh -o install.sh
-sudo bash install.sh --version 1.4.0
+curl -fsSL https://raw.githubusercontent.com/supercheck-io/supercheck/v1.5.0/deploy/docker/install.sh -o install.sh
+sudo bash install.sh --version 1.5.0
 ```
 
 ## In this directory
