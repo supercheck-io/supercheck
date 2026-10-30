@@ -295,7 +295,7 @@ describe("one message per event for alert-triggered incidents", () => {
 
   it.each([
     ["recovered", {}],
-    ["reopened", {}],
+    ["reopened", { automatic: true }],
     ["resolved", { automatic: true }],
   ])("skips channel posts for %s %j", async (event, extra) => {
     await run({ event, ...extra });
@@ -317,6 +317,7 @@ describe("one message per event for alert-triggered incidents", () => {
     ["acknowledged", {}],
     ["ai_finding", {}],
     ["resolved", {}],
+    ["reopened", {}],
   ])("still posts channels for %s", async (event, extra) => {
     await run({ event, ...extra });
     expect(fetchPublicEndpoint).toHaveBeenCalledTimes(1);

@@ -10,7 +10,7 @@ Incidents are the responder queue for issues that need investigation, evidence r
 
 | From | How |
 |---|---|
-| **An alert** | Incidents open automatically when a monitor or job alert fires, with no setup beyond enabling alerts. Repeated alerts for the same target join the same incident. You can also select **Open incident** next to a failure in **Incidents → Alerts**. Neither path starts a full AI investigation |
+| **An alert** | Incidents open automatically when a monitor or job alert fires, with no setup beyond enabling alerts. Repeated alerts for the same target join the same incident. You can also select **Open incident** next to a failure in **Communicate → Notifications → Delivery history**. Neither path starts a full AI investigation |
 | **Scratch** | In **Respond → Incidents**, select **New incident** for issues that did not come from a Supercheck alert |
 
 Both paths open the incident workspace.
@@ -23,10 +23,11 @@ When a monitor or job alert fires (alerts enabled, a channel attached, outside a
 
 | Rule | Behavior |
 |---|---|
-| **One incident per source** | While an incident for a monitor or job is open, further failures join it as linked alerts |
+| **One incident per source** | While an incident for a monitor or job is open, further failures join it as linked alerts. If the check fails again after a *recovered* note, the timeline shows **Failure returned** and the next recovery is noted again |
+| **Alert snapshot** | Each incident keeps the alert's message, severity and time as they were when it was linked, so a later failure of the same check does not change an older incident's evidence |
 | **Severity** | *Auto* derives SEV1 to SEV4 from the alert; a fixed level in the check's settings overrides it |
-| **Auto-resolve** | On recovery, an unacknowledged incident resolves itself with a note, even if recovery alerts are off. An acknowledged one stays open, gets a *recovered* note, and its assignee is emailed. Applies to monitor-down and job failed or timed-out alerts; SSL-expiry incidents stay open until someone resolves them |
-| **Reopen** | A new failure within 30 minutes of an automatic resolution reopens the same incident |
+| **Auto-resolve** | On recovery, an unacknowledged incident resolves itself with a note, even if recovery alerts are off. An acknowledged one stays open, gets a *recovered* note, and its participants are emailed. Applies to monitor-down and job failed or timed-out alerts; SSL-expiry incidents stay open until someone resolves them |
+| **Reopen** | A new failure within 30 minutes of an automatic resolution reopens the same incident. A failure that fired before the recovery, but was processed after it, does not. Changing a resolved incident's status in **Edit** also reopens it and clears its acknowledgement |
 
 Control this per check under **Alert Settings → Incidents**: **Open an incident when this alerts**, **Severity**, and **Resolve automatically on recovery if nobody acknowledged it** (both toggles on by default).
 
@@ -160,11 +161,11 @@ Supercheck announces an incident when it is **opened**, **assigned**, **acknowle
 
 | Where | What is sent |
 |---|---|
-| **The check's channels** | Assignment, acknowledgement, AI findings, reopening and manual resolution. Opening and automatic resolution post nothing extra, because the alert and recovery already went there |
-| **Assignee email** | A direct email when someone else assigns them, and when an acknowledged incident recovers (requires email delivery) |
-| **Incidents created by hand** | No source channels, so only the assignee is emailed |
+| **The check's channels** | Assignment, acknowledgement, AI findings, and resolution or reopening by a person. Opening, recovery, automatic resolution and automatic reopening post nothing extra, because the worker's alert and recovery already went there. If every delivery of the opening alert failed, the channels get the incident-opened message instead |
+| **Participant email** | The assignee and the incident commander get a direct email for every change someone else makes: assignment, acknowledgement, resolution and reopening, plus recovery and automatic reopening. On a reassignment the previous assignee is told too. You are never emailed about your own change, and only people who can still act on the incident (owners, admins, and the project's admins and editors) receive mail. Requires email delivery |
+| **Incidents created by hand** | No source channels, so only the participants are emailed |
 
-Email, Slack, Teams, Discord, Telegram and plain webhook channels are supported; webhooks with a preset or body template are skipped for incident messages. Each message names the incident, severity and service and links to it, without raw evidence, logs, credentials or AI conclusions. The same event is announced once within a short window.
+Email, Slack, Teams, Discord, Telegram and plain webhook channels are supported; webhooks with a preset or body template are skipped for incident messages. Each message names the incident, severity and service and links to it, without raw evidence, logs, credentials or AI conclusions. The same event is announced once within a short window, and recovery and reopen emails reach each person at most once every 10 minutes, so a flapping check does not flood inboxes.
 
 ## Incident Lifecycle
 

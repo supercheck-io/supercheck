@@ -799,7 +799,7 @@ export async function announceSystemTransition(
     projectId,
     incidentId,
     event,
-    automatic: event === "resolved",
+    automatic: event === "resolved" || event === "reopened",
     assigneeUserId: extra.assigneeUserId,
     dedupeDiscriminator: extra.discriminator,
   }).catch(() => undefined);

@@ -368,12 +368,12 @@ describe("announceSystemTransition", () => {
       discriminator: "d1",
     });
 
-  it("audits and notifies, marking only resolved as automatic", async () => {
+  it("audits and notifies, marking resolved and reopened as automatic", async () => {
     await announce("resolved");
     await announce("recovered");
     await announce("reopened");
     const calls = (notifyIncidentEvent as jest.Mock).mock.calls.map(([arg]) => [arg.event, arg.automatic]);
-    expect(calls).toEqual([["resolved", true], ["recovered", false], ["reopened", false]]);
+    expect(calls).toEqual([["resolved", true], ["recovered", false], ["reopened", true]]);
     expect(notifyIncidentEvent).toHaveBeenCalledWith(
       expect.objectContaining({ assigneeUserId: assignee, dedupeDiscriminator: "d1", incidentId }),
     );

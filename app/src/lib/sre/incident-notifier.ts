@@ -59,7 +59,7 @@ type IncidentNotifyInput = {
   detail?: string;
   /** Distinguishes repeats of one event, such as the investigation run id. */
   dedupeDiscriminator?: string;
-  /** `resolved` by alert recovery rather than a person (channels already got the recovery alert). */
+  /** `resolved` or `reopened` by the alert flow rather than a person (channels already got the alert). */
   automatic?: boolean;
 };
 
@@ -460,7 +460,7 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<v
     // recovery (automatic resolve, recovered) to these channels.
     // `created` is skipped only when the worker's alert was actually delivered; if every
     // delivery failed, the channels have not heard about it yet.
-    if (input.event === "recovered" || input.event === "reopened" || (input.event === "resolved" && input.automatic)) return;
+    if (input.event === "recovered" || ((input.event === "reopened" || input.event === "resolved") && input.automatic)) return;
     if (input.event === "created" && (await triggerAlertDelivered(source.sourceType, source.sourceId))) return;
 
     const providerColumns = {
