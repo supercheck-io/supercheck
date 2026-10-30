@@ -153,6 +153,22 @@ function getTotalMessageTextLength(messages: SreAssistantUiMessage[]) {
   );
 }
 
+/**
+ * The newest turns that fit the budget, always ending with the latest user turn
+ * and starting on a user turn, as providers expect.
+ */
+function fitPromptHistory(messages: SreAssistantUiMessage[], maxChars: number) {
+  let lastUser = messages.length - 1;
+  while (lastUser > 0 && messages[lastUser]?.role !== "user") lastUser -= 1;
+  const kept = keepNewestWithinBudget(
+    messages.slice(0, lastUser + 1),
+    (message) => getTextFromUiMessage(message).length,
+    maxChars,
+  );
+  while (kept.length > 1 && kept[0]?.role !== "user") kept.shift();
+  return [...kept, ...messages.slice(lastUser + 1)];
+}
+
 function buildAssistantUiSystemPrompt(input: {
   projectName: string;
   incidentId: string | null;
@@ -360,6 +376,32 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Checked before anything is saved, so a rejected message leaves no orphan turn.
+  const budget = resolveSreAgentBudget({
+    maxSteps: 4,
+    maxOutputTokens: 1200,
+    timeoutMs: 45_000,
+  });
+  const liveConnectorToolsEnabled =
+    parsed.data.useLiveConnectorTools && canInvestigateConnectors;
+  const system = buildAssistantUiSystemPrompt({
+    projectName: context.project.name,
+    incidentId: requestedIncidentId,
+    liveConnectorToolsEnabled,
+  });
+  try {
+    assertSreAgentPromptWithinBudget(`${system}\n\n${latestUserText}`, budget);
+  } catch {
+    return NextResponse.json(
+      { error: "Copilot message is too large" },
+      { status: 413 },
+    );
+  }
+  const promptMessages = fitPromptHistory(
+    modelMessages,
+    budget.maxPromptChars - system.length,
+  );
+
   if (!conversation) {
     try {
       conversation = await createSreConversation({
@@ -401,41 +443,12 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  const budget = resolveSreAgentBudget({
-    maxSteps: 4,
-    maxOutputTokens: 1200,
-    timeoutMs: 45_000,
-  });
   const connectorToolScope = {
     organizationId: context.organizationId,
     projectId: context.project.id,
     incidentId: conversation.incidentId,
     userId: context.userId,
   };
-  const liveConnectorToolsEnabled =
-    parsed.data.useLiveConnectorTools && canInvestigateConnectors;
-  const system = buildAssistantUiSystemPrompt({
-    projectName: context.project.name,
-    incidentId: conversation.incidentId,
-    liveConnectorToolsEnabled,
-  });
-  try {
-    assertSreAgentPromptWithinBudget(`${system}\n\n${latestUserText}`, budget);
-  } catch {
-    return NextResponse.json(
-      { error: "Copilot message is too large" },
-      { status: 413 },
-    );
-  }
-  const promptMessages = keepNewestWithinBudget(
-    modelMessages,
-    (message) => getTextFromUiMessage(message).length,
-    budget.maxPromptChars - system.length,
-  );
-  // Providers expect the history to open with a user turn.
-  while (promptMessages.length > 1 && promptMessages[0]?.role !== "user") {
-    promptMessages.shift();
-  }
 
   const modelId = getActualModelName();
   const activeConversationId = conversation.id;

@@ -123,6 +123,21 @@ describe("getSreIncidentDetails investigation summary", () => {
     );
   });
 
+  it("reopening straight to Monitoring records mitigation", async () => {
+    const incidentId = "00000000-0000-4000-8000-000000000001";
+    (db.query.sreIncidents.findFirst as jest.Mock).mockResolvedValue({ id: incidentId, status: "resolved", mitigatedAt: null });
+    const sets: Array<Record<string, unknown>> = [];
+    (db.transaction as jest.Mock).mockImplementation(async (callback) => callback({
+      update: () => ({ set: (values: Record<string, unknown>) => {
+        sets.push(values);
+        return { where: () => ({ returning: async () => [{ id: incidentId, incidentNumber: 4, title: "t" }] }) };
+      } }),
+      insert: () => ({ values: async () => undefined }),
+    }));
+    await updateSreIncident({ id: incidentId, title: "Checkout down", severity: "sev2", status: "verifying", primaryServiceId: null });
+    expect(sets[0].mitigatedAt).toBeInstanceOf(Date);
+  });
+
   it("groups by every plain column the detail query selects (Postgres rejects the rest)", async () => {
     const { Column, sql } = jest.requireActual("drizzle-orm");
     const { PgDialect } = jest.requireActual("drizzle-orm/pg-core");

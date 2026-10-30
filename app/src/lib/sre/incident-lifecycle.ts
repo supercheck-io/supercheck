@@ -629,6 +629,7 @@ export async function applySourceRecovery(
         and(
           eq(sreIncidentTimelineEvents.incidentId, incident.id),
           eq(sreIncidentTimelineEvents.eventType, "state_change"),
+          sql`${sreIncidentTimelineEvents.eventData}->>'state' in ('recovered', 'failure_returned')`,
         ),
       )
       .orderBy(desc(sreIncidentTimelineEvents.createdAt))
@@ -674,6 +675,7 @@ export async function findOpenIncidentForSource(tx: Executor, source: SourceRef)
  * timeline shows it and the next recovery is noted again.
  */
 export async function noteFailureReturned(tx: Executor, incidentId: string) {
+  // Only the source's own health states: an acknowledgement after the recovery must not hide the failure.
   const [lastState] = await tx
     .select({ state: sql<string>`${sreIncidentTimelineEvents.eventData}->>'state'` })
     .from(sreIncidentTimelineEvents)
@@ -681,6 +683,7 @@ export async function noteFailureReturned(tx: Executor, incidentId: string) {
       and(
         eq(sreIncidentTimelineEvents.incidentId, incidentId),
         eq(sreIncidentTimelineEvents.eventType, "state_change"),
+        sql`${sreIncidentTimelineEvents.eventData}->>'state' in ('recovered', 'failure_returned')`,
       ),
     )
     .orderBy(desc(sreIncidentTimelineEvents.createdAt))

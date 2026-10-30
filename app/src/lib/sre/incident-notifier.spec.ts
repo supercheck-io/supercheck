@@ -25,7 +25,8 @@ const mockWarn = jest.fn();
 jest.mock("@/lib/logger/index", () => ({ createLogger: () => ({ warn: (...a: unknown[]) => mockWarn(...a) }) }));
 
 let mockAssignable = [{ id: "assignee" }, { id: "actor" }, { id: "commander" }, { id: "previous" }];
-jest.mock("./incident-lifecycle", () => ({ listAssignableUsers: jest.fn(async () => mockAssignable) }));
+const mockIsAssignable = jest.fn(async (_org: string, _project: string, id: string) => mockAssignable.some((row) => row.id === id));
+jest.mock("./incident-lifecycle", () => ({ isAssignableUser: (...a: [string, string, string]) => mockIsAssignable(...a) }));
 
 import { decryptNotificationProviderConfig } from "@/lib/notification-providers/crypto";
 import { buildIncidentUrl, notifyIncidentEvent } from "./incident-notifier";
@@ -121,6 +122,29 @@ describe("participant emails", () => {
     selectQueue.push([incident], participants, []);
     await notifyIncidentEvent({ ...base, event: "resolved", assigneeUserId: null });
     expect(sendEmailToMultiple).not.toHaveBeenCalled();
+  });
+
+  it("throttles automatic resolve emails like reopen, but not a person's resolve", async () => {
+    redisSet.mockImplementation(async (key: string) => (key.includes("incident-email") ? null : "OK"));
+    selectQueue.push([incident], participants, []);
+    await notifyIncidentEvent({ ...base, event: "resolved", automatic: true, actorUserId: null, assigneeUserId: null });
+    expect(sendEmailToMultiple).not.toHaveBeenCalled();
+    selectQueue.push([incident], participants, []);
+    await notifyIncidentEvent({ ...base, event: "resolved", assigneeUserId: null });
+    expect(sendEmailToMultiple).toHaveBeenCalledTimes(1);
+  });
+
+  it("still posts to channels when the participant lookup fails", async () => {
+    mockIsAssignable.mockRejectedValueOnce(new Error("db down"));
+    selectQueue.push(
+      [incident],
+      participants,
+      [{ sourceType: "monitor", sourceId: "mon-1" }],
+      [{ id: "p1", type: "slack", projectId: "project-1", config: { envelope: { webhookUrl: "https://hooks.slack.com/services/T/B/x" } } }],
+    );
+    await notifyIncidentEvent({ ...base, event: "resolved", assigneeUserId: null });
+    expect(sendEmailToMultiple).not.toHaveBeenCalled();
+    expect(fetchPublicEndpoint).toHaveBeenCalledTimes(1);
   });
 
   it("emails a participant about a flapping reopen at most once per window", async () => {

@@ -193,9 +193,11 @@ it("notes a failure that returns on an acknowledged incident, then notes the nex
   const [open] = await incidents();
   await mockDatabase.update(schema.sreIncidents).set({ acknowledgedAt: minutes(1), acknowledgedByUserId: userId }).where(eq(schema.sreIncidents.id, open.id));
   await alert("monitor_recovery", minutes(10));
+  // A person acting after the recovery must not hide the returning failure.
+  await mockDatabase.insert(schema.sreIncidentTimelineEvents).values({ incidentId: open.id, eventType: "state_change", eventData: { state: "assigned" }, actorType: "user", createdAt: new Date() });
   await alert("monitor_failure", minutes(12));
   await alert("monitor_recovery", minutes(14));
-  expect((await states(open.id)).slice(1)).toEqual(["recovered", "failure_returned", "recovered"]);
+  expect((await states(open.id)).slice(1)).toEqual(["recovered", "assigned", "failure_returned", "recovered"]);
 });
 
 it("does not reopen on a failure that fired before the automatic recovery", async () => {

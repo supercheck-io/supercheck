@@ -456,6 +456,8 @@ describe("Copilot assistant-ui chat API", () => {
 
     expect(response.status).toBe(413);
     expect(streamText).not.toHaveBeenCalled();
+    expect(mockAppendSreMessage).not.toHaveBeenCalled();
+    expect(mockCreateSreConversation).not.toHaveBeenCalled();
   });
 
   it("does not duplicate the user message when regenerating a response", async () => {

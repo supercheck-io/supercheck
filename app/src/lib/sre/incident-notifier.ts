@@ -298,24 +298,30 @@ async function sendToProvider(
 // System events can repeat every check cycle while a monitor flaps.
 const SYSTEM_EVENTS: IncidentNotifyEvent[] = ["recovered", "reopened"];
 
-/** Emails of participants who can still act on the incident, at most one per person per window for system events. */
+/** Emails of participants who can still act on the incident, at most one per person per window for alert-driven events. */
 async function participantEmails(
   input: IncidentNotifyInput,
   participantIds: string[],
   person: (id?: string | null) => { email: string } | undefined,
 ) {
   if (participantIds.length === 0) return [];
-  // Lazy import: incident-lifecycle imports this module.
-  const { listAssignableUsers } = await import("./incident-lifecycle");
-  const assignable = new Set((await listAssignableUsers(input.organizationId, input.projectId)).map((row) => row.id));
-  const emails: string[] = [];
-  for (const id of participantIds) {
-    const email = person(id)?.email;
-    if (!email || !assignable.has(id)) continue;
-    if (SYSTEM_EVENTS.includes(input.event) && !(await claimRecipient(input, id))) continue;
-    emails.push(email);
+  try {
+    // Lazy import: incident-lifecycle imports this module.
+    const { isAssignableUser } = await import("./incident-lifecycle");
+    const throttled = SYSTEM_EVENTS.includes(input.event) || (input.event === "resolved" && input.automatic);
+    const emails: string[] = [];
+    for (const id of participantIds) {
+      const email = person(id)?.email;
+      if (!email || !(await isAssignableUser(input.organizationId, input.projectId, id))) continue;
+      if (throttled && !(await claimRecipient(input, id))) continue;
+      emails.push(email);
+    }
+    return emails;
+  } catch (error) {
+    // Channel posts below must still go out.
+    logger.warn({ error: error instanceof Error ? error.message : "lookup failed" }, "Incident participant lookup failed");
+    return [];
   }
-  return emails;
 }
 
 async function claimRecipient(input: IncidentNotifyInput, userId: string) {

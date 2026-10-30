@@ -1358,11 +1358,8 @@ export async function updateSreIncident(
             parsed.data.status === "resolved"
               ? (current.resolvedAt ?? now)
               : null,
-          ...(parsed.data.status === "verifying" && !current.mitigatedAt
-            ? { mitigatedAt: now }
-            : {}),
           // A reopened incident is no longer verified, and needs a fresh acknowledgement.
-          ...(parsed.data.status !== "resolved" && current.status === "resolved"
+          ...(reopening
             ? {
                 verifiedAt: null,
                 resolutionSummary: null,
@@ -1370,6 +1367,10 @@ export async function updateSreIncident(
                 acknowledgedAt: null,
                 acknowledgedByUserId: null,
               }
+            : {}),
+          // After the reopen reset, so reopening straight to Monitoring still records mitigation.
+          ...(parsed.data.status === "verifying" && (reopening || !current.mitigatedAt)
+            ? { mitigatedAt: now }
             : {}),
           updatedAt: now,
         })
