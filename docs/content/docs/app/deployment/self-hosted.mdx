@@ -307,7 +307,7 @@ sudo git -C /opt/supercheck checkout --detach refs/tags/v<x.y.z>
 sudo bash setup-k3s.sh
 sudoedit .env                            # set SUPERCHECK_VERSION=<x.y.z> (no leading v)
 sudo docker compose pull
-sudo docker save ghcr.io/supercheck-io/supercheck/worker:<x.y.z> | sudo k3s ctr -n k8s.io images import -
+sudo docker save --platform "linux/$(dpkg --print-architecture)" ghcr.io/supercheck-io/supercheck/worker:<x.y.z> | sudo k3s ctr -n k8s.io images import -
 sudo docker compose up -d --wait --wait-timeout 300
 curl --fail --silent --show-error http://localhost:3000/api/health
 ```
@@ -434,7 +434,7 @@ The ~3 GB worker image must be in the sandbox before a run starts. The installer
 
 ```bash
 sudo k3s ctr -n k8s.io images ls -q | grep supercheck/worker
-sudo docker save ghcr.io/supercheck-io/supercheck/worker:1.4.0 | sudo k3s ctr -n k8s.io images import -
+sudo docker save --platform "linux/$(dpkg --print-architecture)" ghcr.io/supercheck-io/supercheck/worker:1.4.0 | sudo k3s ctr -n k8s.io images import -
 ```
 
 Use the version in your `.env` (`SUPERCHECK_VERSION`).

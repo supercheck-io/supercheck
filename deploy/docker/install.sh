@@ -590,6 +590,13 @@ prewarm_worker_image() {
   fi
 }
 
+# Each release's app and worker images take several GB in Docker and the sandbox; drop the old ones.
+remove_release_images() {
+  local repo="ghcr.io/supercheck-io/supercheck"
+  k3s ctr -n k8s.io images rm "$repo/worker:$1" >/dev/null 2>&1 || true
+  docker image rm "$repo/app:$1" "$repo/worker:$1" >/dev/null 2>&1 || true
+}
+
 start_stack() {
   dc up -d --wait --wait-timeout 300
 }
@@ -645,6 +652,7 @@ upgrade_preflight() {
   fi
   local current
   current="$(installed_version)"
+  UPGRADE_FROM="$current"
   if [[ -n "$current" ]] && ! version_ge "$VERSION" "$current"; then
     die "This server runs ${current}; downgrading to ${VERSION} is not supported (database migrations only move forward)." \
       "To go back, restore a backup taken on ${VERSION} (sudo bash backup.sh --restore <dir>)."
@@ -819,8 +827,12 @@ main() {
     # --version on an existing install used to change only the image tag and keep old files.
     current_version="$(installed_version)"
     if [[ -n "$current_version" && "$current_version" != "$VERSION" ]]; then
-      die "This server runs ${current_version}. Changing the release needs the upgrade command:" \
-        "sudo bash install.sh --upgrade --version ${VERSION}"
+      if version_ge "$VERSION" "$current_version"; then
+        die "This server runs ${current_version}. Changing the release needs the upgrade command:" \
+          "sudo bash install.sh --upgrade --version ${VERSION}"
+      fi
+      die "This server runs ${current_version}; going back to ${VERSION} is not supported (database migrations only move forward)." \
+        "To go back, restore a backup taken on ${VERSION} (sudo bash backup.sh --restore <dir>)."
     fi
   fi
 
@@ -960,7 +972,9 @@ main() {
     run_step "Generating secrets and configuration" generate_config
   fi
 
-  run_step "Applying explicitly requested fresh storage settings" apply_fresh_storage_config
+  if [[ "$IGNORE_MINIO" == true ]]; then
+    run_step "Applying explicitly requested fresh storage settings" apply_fresh_storage_config
+  fi
   run_step "Saving the image version" persist_version
 
   header 5 "Setting up the isolated test sandbox"
@@ -1005,6 +1019,9 @@ main() {
     if [[ "$health" == '{"status":"ok"'* ]]; then
       ok "Health check passed"
       HEALTHY=true
+      if [[ "$UPGRADE" == true && -n "${UPGRADE_FROM:-}" && "$UPGRADE_FROM" != "$VERSION" ]]; then
+        SOFT_STEP=true run_step "Removing the images of ${UPGRADE_FROM}" remove_release_images "$UPGRADE_FROM"
+      fi
     elif [[ -n "$health" ]]; then
       warn "Running, but the health check reports a problem:"
       note "$health"

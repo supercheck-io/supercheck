@@ -643,6 +643,39 @@ main
         self.assertIn('install.sh --upgrade --version 1.4.0', out)
         self.assertFalse((self.root / 'packages-installed').exists())
 
+    def test_version_flag_for_an_older_release_points_to_restore(self):
+        out = self.run_shell(r'''INSTALL_DIR="$TEST_ROOT/target"
+COMPOSE_DIR=""
+mkdir -p "$INSTALL_DIR/deploy/docker"
+touch "$INSTALL_DIR/deploy/docker/init-secrets.sh"
+printf '%s\n' BETTER_AUTH_SECRET=fixture SUPERCHECK_VERSION=1.5.0 > "$INSTALL_DIR/deploy/docker/.env"
+MODE=local
+VERSION_SET=true
+VERSION=1.4.0
+preflight() { :; }
+main
+''', 1)
+        self.assertIn('going back to 1.4.0 is not supported', out)
+        self.assertIn('backup.sh --restore', out)
+        self.assertNotIn('--upgrade --version', out)
+
+    def test_upgrade_remembers_the_previous_release(self):
+        self._git_checkout('1.4.0', ('1.4.0', '1.5.0'))
+        out = self.run_shell('COMPOSE_DIR="$TEST_ROOT/target/deploy/docker"\nVERSION=1.5.0\n'
+                             'upgrade_preflight\necho "from=$UPGRADE_FROM"\n')
+        self.assertIn('from=1.4.0', out)
+
+    def test_old_release_images_are_removed_and_failures_ignored(self):
+        out = self.run_shell(r'''k3s() { echo "k3s $*" >>"$TEST_ROOT/calls"; return 1; }
+docker() { echo "docker $*" >>"$TEST_ROOT/calls"; return 1; }
+remove_release_images 1.4.0
+echo "status=$?"
+cat "$TEST_ROOT/calls"
+''')
+        self.assertIn('k3s ctr -n k8s.io images rm ghcr.io/supercheck-io/supercheck/worker:1.4.0', out)
+        self.assertIn('docker image rm ghcr.io/supercheck-io/supercheck/app:1.4.0 ghcr.io/supercheck-io/supercheck/worker:1.4.0', out)
+        self.assertIn('status=0', out)
+
     def test_upgrade_rejects_configuration_flags(self):
         for flag in (['--local'], ['--domain', 'app.example.com']):
             result = subprocess.run(['bash', str(DEPLOY / 'install.sh'), '--upgrade', *flag],
