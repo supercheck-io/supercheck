@@ -2,6 +2,9 @@ const encoder = new TextEncoder();
 
 const EVENT_NAME_PATTERN = /^[a-z][a-z0-9._-]{0,63}$/i;
 
+/** An error whose message is safe to show the client; any other error is reported generically. */
+export class SseClientError extends Error {}
+
 export type SseEvent = {
   event: string;
   data: unknown;
@@ -37,7 +40,7 @@ export function createSseStream(
         send("done", { ok: true });
       } catch (error) {
         send("error", {
-          message: error instanceof Error ? error.message : "SRE stream failed",
+          message: error instanceof SseClientError ? error.message : "SRE stream failed",
         });
       } finally {
         if (!cancelled) controller.close();
