@@ -76,14 +76,20 @@ for file in "${files[@]}"; do
 done
 
 echo "==> Opt-in DNS-01 override merges onto the main file"
-# --no-env-resolution: the credentials file (traefik-dns.env) exists only on servers that opt in.
+# The credentials file exists only on servers that opt in; use an empty stand-in when it is absent.
+dns_env_created=0
+if [ ! -e ./traefik-dns.env ]; then
+  : > ./traefik-dns.env
+  dns_env_created=1
+fi
 if APP_DOMAIN=app.example.com ACME_EMAIL=ops@example.com ACME_DNS_PROVIDER=cloudflare \
-  docker compose --profile https -f docker-compose.yml -f compose.dns01.yml config --no-env-resolution -q >/dev/null 2>&1; then
+  docker compose --profile https -f docker-compose.yml -f compose.dns01.yml config -q >/dev/null 2>&1; then
   echo "  ok   compose.dns01.yml"
 else
   echo "  FAIL compose.dns01.yml"
   fail=1
 fi
+[ "$dns_env_created" -eq 1 ] && rm -f ./traefik-dns.env
 
 echo "==> Compose routing regression checks"
 python3 ./compose.spec.py
