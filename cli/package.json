@@ -65,7 +65,7 @@
     "conf": "^16.0.0",
     "cron-parser": "^5.10.2",
     "deepmerge-ts": "^8.0.2",
-    "dotenv": "^17.2.4",
+    "dotenv": "^18.0.9",
     "jiti": "^2.4.2",
     "ora": "^9.3.0",
     "picocolors": "^1.1.1",
