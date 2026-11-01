@@ -1,5 +1,5 @@
 # Build from the repository root: docker build -f docs/Dockerfile .
-FROM node:24-bookworm-slim@sha256:a5f4366e834695d5f363b920c104953a535d3a9864d1bdf74566a0ebe01daee5 AS builder
+FROM node:24-bookworm-slim@sha256:c86ecead9e55a5210ac1727de38a4ca840bf03dcaf34dc9749addbf383b1920c AS builder
 WORKDIR /app/docs
 COPY docs/package.json docs/package-lock.json ./
 COPY docs/next.config.mjs docs/source.config.ts ./
