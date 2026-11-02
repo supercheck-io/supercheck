@@ -3,11 +3,13 @@
 import { db } from "@/utils/db";
 import { statusPageSubscribers } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { isUnsubscribeTokenShape, unsubscribeTokenCondition } from "@/lib/subscriber-tokens";
 import { revalidatePath } from "next/cache";
 
 export async function unsubscribeFromStatusPage(token: string) {
   try {
-    if (!token || token.length !== 64) {
+    const where = isUnsubscribeTokenShape(token) ? unsubscribeTokenCondition(token) : null;
+    if (!where) {
       return {
         success: false,
         message: "Invalid unsubscribe token",
@@ -16,7 +18,7 @@ export async function unsubscribeFromStatusPage(token: string) {
 
     // Find subscriber with this unsubscribe token
     const subscriber = await db.query.statusPageSubscribers.findFirst({
-      where: eq(statusPageSubscribers.unsubscribeToken, token),
+      where,
     });
 
     if (!subscriber) {
@@ -69,12 +71,13 @@ export async function unsubscribeFromStatusPage(token: string) {
 
 export async function getSubscriberByToken(token: string) {
   try {
-    if (!token || token.length !== 64) {
+    const where = unsubscribeTokenCondition(token);
+    if (!where) {
       return { success: false, subscriber: null };
     }
 
     const subscriber = await db.query.statusPageSubscribers.findFirst({
-      where: eq(statusPageSubscribers.unsubscribeToken, token),
+      where,
       // SECURITY: explicit allow-list; never return tokens or webhook secrets.
       columns: {
         id: true,

@@ -107,3 +107,36 @@ describe("verifySubscriber", () => {
     expect(mockDb.transaction).not.toHaveBeenCalled();
   });
 });
+
+describe("verification token storage", () => {
+  it("looks up by hash first, then by legacy plaintext and migrates it", async () => {
+    const findFirst = mockDb.query.statusPageSubscribers.findFirst;
+    const row = { id: "sub-1", statusPageId: "page-1", verifiedAt: new Date(), createdAt: new Date(), updatedAt: new Date() };
+    findFirst.mockReset();
+    findFirst.mockResolvedValueOnce(undefined).mockResolvedValueOnce(row);
+    mockDb.query.statusPages.findFirst.mockResolvedValue({ language: "en" });
+    const set = jest.fn().mockReturnValue({ where: jest.fn().mockResolvedValue(undefined) });
+    mockDb.update.mockReturnValue({ set });
+    set.mockReturnValue({ where: jest.fn().mockReturnValue({ returning: jest.fn().mockResolvedValue([{ id: "sub-1" }]) }) });
+
+    const result = await verifySubscriber(token);
+
+    expect(result.success).toBe(true);
+    expect(findFirst).toHaveBeenCalledTimes(2);
+    expect(set).toHaveBeenCalledWith({
+      verificationTokenHash: require("node:crypto").createHash("sha256").update(token).digest("hex"),
+      verificationToken: null,
+    });
+  });
+});
+
+describe("superseded legacy token", () => {
+  it("rejects the link when a renewal replaced the plaintext token after the read", async () => {
+    const findFirst = mockDb.query.statusPageSubscribers.findFirst;
+    findFirst.mockReset();
+    findFirst.mockResolvedValueOnce(undefined).mockResolvedValueOnce({ id: "sub-1", statusPageId: "page-1", verifiedAt: null, updatedAt: new Date(), createdAt: new Date() });
+    mockDb.update.mockReturnValue({ set: () => ({ where: () => ({ returning: jest.fn().mockResolvedValue([]) }) }) });
+    const result = await verifySubscriber(token);
+    expect(result.success).toBe(false);
+  });
+});

@@ -271,3 +271,6 @@ afterAll(() => {
   console.debug = originalDebug;
   console.trace = originalTrace;
 });
+
+// Deterministic test key so code paths that encrypt secrets do not depend on the host environment.
+process.env.SECRET_ENCRYPTION_KEY ??= 'test-secret-encryption-key-0123456789abcdef';

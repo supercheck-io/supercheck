@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
+import { isUnsubscribeTokenShape } from "@/lib/subscriber-tokens";
 import { unsubscribeFromStatusPage } from "@/actions/unsubscribe-from-status-page";
 
 export async function POST(request: Request, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  if (!/^[a-f0-9]{64}$/i.test(token)) return NextResponse.json({ error: "Invalid token" }, { status: 400 });
+  if (!isUnsubscribeTokenShape(token)) return NextResponse.json({ error: "Invalid token" }, { status: 400 });
   // RFC 8058 allows urlencoded or multipart bodies, so parse rather than compare bytes.
   let value: FormDataEntryValue | null = null;
   try {

@@ -3,6 +3,7 @@ import type { NotificationUpdate } from "./notification-update";
 import { db } from "@/utils/db";
 import { incidents, statusPages, statusPageSubscribers } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { resolveWebhookSecret } from "@/lib/subscriber-tokens";
 import {
   deliverWebhook,
   shouldQuarantine,
@@ -150,7 +151,20 @@ export async function sendWebhookNotifications(
 
     const deliveryPromises = activeSubscribers.map(async (subscriber) => {
       try {
-        if (!subscriber.endpoint || !subscriber.webhookSecret) {
+        let webhookSecret: string | null;
+        try {
+          webhookSecret = await resolveWebhookSecret(subscriber);
+        } catch (error) {
+          // A local key problem is not an endpoint failure: record it without counting toward quarantine.
+          console.error(`[Webhook Notifications] Cannot read signing secret for ${subscriber.id}:`, error);
+          failureCount++;
+          await db
+            .update(statusPageSubscribers)
+            .set({ webhookLastError: "Signing secret could not be decrypted", updatedAt: new Date() })
+            .where(eq(statusPageSubscribers.id, subscriber.id));
+          return;
+        }
+        if (!subscriber.endpoint || !webhookSecret) {
           console.warn(
             `[Webhook Notifications] Subscriber ${subscriber.id} missing endpoint or secret`,
           );
@@ -165,7 +179,7 @@ export async function sendWebhookNotifications(
         const result = await deliverWebhook(
           subscriber.endpoint,
           webhookEvent,
-          subscriber.webhookSecret,
+          webhookSecret,
         );
 
         if (result.success) {

@@ -2,6 +2,7 @@
 
 import { db } from "@/utils/db";
 import { statusPageSubscribers, statusPages } from "@/db/schema";
+import { hashVerificationToken } from "@/lib/subscriber-tokens";
 import { eq, and, ne, isNull, isNotNull, count } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { checkSubscriberLimit } from "@/lib/middleware/plan-enforcement";
@@ -17,9 +18,30 @@ export async function verifySubscriber(token: string) {
     }
 
     // Find subscriber with this verification token
-    const subscriber = await db.query.statusPageSubscribers.findFirst({
-      where: eq(statusPageSubscribers.verificationToken, token),
+    let subscriber = await db.query.statusPageSubscribers.findFirst({
+      // A plaintext token means an older instance renewed the row after the hash was stored; the hash is stale.
+      where: and(
+        eq(statusPageSubscribers.verificationTokenHash, hashVerificationToken(token)),
+        isNull(statusPageSubscribers.verificationToken),
+      ),
     });
+    if (!subscriber) {
+      // Rows written by an older app version still hold the plaintext token; hash it and clear it.
+      subscriber = await db.query.statusPageSubscribers.findFirst({
+        where: eq(statusPageSubscribers.verificationToken, token),
+      });
+      if (subscriber) {
+        const migrated = await db
+          .update(statusPageSubscribers)
+          .set({ verificationTokenHash: hashVerificationToken(token), verificationToken: null })
+          .where(
+            and(eq(statusPageSubscribers.id, subscriber.id), eq(statusPageSubscribers.verificationToken, token)),
+          )
+          .returning({ id: statusPageSubscribers.id });
+        // A renewal replaced the token after we read it, so this link is superseded.
+        if (!migrated.length) subscriber = undefined;
+      }
+    }
 
     // A removed/unsubscribed subscriber's old link must not read as "already verified".
     if (!subscriber || subscriber.purgeAt) {

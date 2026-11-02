@@ -13,7 +13,7 @@ import { requireProjectContext } from "@/lib/project-context";
 import { getStatusPageSubscribers } from "./get-status-page-subscribers";
 import { getSubscriberByToken } from "./unsubscribe-from-status-page";
 
-const SENSITIVE = ["webhookSecret", "verificationToken", "unsubscribeToken"];
+const SENSITIVE = ["webhookSecret", "webhookSecretEncrypted", "verificationToken", "verificationTokenHash", "unsubscribeToken"];
 const pageId = "550e8400-e29b-41d4-a716-446655440000";
 
 describe("subscriber reads never select secrets or tokens", () => {

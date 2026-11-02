@@ -1,6 +1,7 @@
 "use server";
 
 import { db } from "@/utils/db";
+import { encryptWebhookSecret, hashVerificationToken } from "@/lib/subscriber-tokens";
 import { statusPageSubscribers, statusPages } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
 import { requireProjectContext } from "@/lib/project-context";
@@ -35,7 +36,7 @@ export async function rotateSubscriberWebhookSecret(subscriberId: string) {
       return { success: false, message: "Subscriber not found or access denied" };
     }
     const webhookSecret = generateWebhookSecret();
-    const updated = await db.update(statusPageSubscribers).set({ webhookSecret, updatedAt: new Date() })
+    const updated = await db.update(statusPageSubscribers).set({ webhookSecretEncrypted: encryptWebhookSecret(webhookSecret), webhookSecret: null, updatedAt: new Date() })
       .where(and(eq(statusPageSubscribers.id, subscriberId), isNull(statusPageSubscribers.purgeAt)))
       .returning({ id: statusPageSubscribers.id });
     if (!updated.length) return { success: false, message: "Subscriber is no longer active" };
@@ -367,7 +368,8 @@ export async function resendVerificationEmail(subscriberId: string) {
     await db
       .update(statusPageSubscribers)
       .set({
-        verificationToken: newVerificationToken,
+        verificationTokenHash: hashVerificationToken(newVerificationToken),
+        verificationToken: null,
         updatedAt: new Date(), // This is now used for token expiry
       })
       .where(eq(statusPageSubscribers.id, subscriberId));

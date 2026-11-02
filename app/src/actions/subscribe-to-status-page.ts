@@ -18,6 +18,7 @@ import { revalidatePath } from "next/cache";
 import { EmailService } from "@/lib/email-service";
 import { renderStatusPageVerificationEmail } from "@/lib/email-renderer";
 import { generateWebhookSecret } from "@/lib/webhook-utils";
+import { encryptWebhookSecret, hashVerificationToken } from "@/lib/subscriber-tokens";
 import { sendWebhookChallenge } from "@/lib/incident-notifications/webhook-verification";
 import { checkSubscriberLimit } from "@/lib/middleware/plan-enforcement";
 import { insertWithinPlanLimit } from "@/lib/middleware/plan-limit-lock";
@@ -553,14 +554,14 @@ async function handleEmailSubscription(
 
       // Reactivate unsubscribed user - clear purgeAt and issue new tokens
       const newVerificationToken = generateHexToken();
-      const newUnsubscribeToken = generateHexToken();
 
       await db
         .update(statusPageSubscribers)
         .set({
-          verificationToken: newVerificationToken,
-          unsubscribeToken: newUnsubscribeToken,
+          verificationTokenHash: hashVerificationToken(newVerificationToken),
+          verificationToken: null,
           purgeAt: null, // Clear unsubscribe status
+          unsubscribeToken: null, // links issued before the unsubscribe stop working
           verifiedAt: null, // Require re-verification
           updatedAt: new Date(),
         })
@@ -616,13 +617,12 @@ async function handleEmailSubscription(
     } else {
       // If exists but not verified, update the verification token and resend
       const newVerificationToken = generateHexToken();
-      const newUnsubscribeToken = generateHexToken();
 
       await db
         .update(statusPageSubscribers)
         .set({
-          verificationToken: newVerificationToken,
-          unsubscribeToken: newUnsubscribeToken,
+          verificationTokenHash: hashVerificationToken(newVerificationToken),
+          verificationToken: null,
           updatedAt: new Date(),
         })
         .where(eq(statusPageSubscribers.id, existingSubscriber.id));
@@ -683,7 +683,6 @@ async function handleEmailSubscription(
 
   // Generate secure tokens
   const verificationToken = generateHexToken();
-  const unsubscribeToken = generateHexToken();
 
   // Create subscriber
   const [subscriber] = await db
@@ -692,8 +691,7 @@ async function handleEmailSubscription(
       statusPageId: statusPage.id as string,
       email: data.email as string,
       mode: "email",
-      verificationToken,
-      unsubscribeToken,
+      verificationTokenHash: hashVerificationToken(verificationToken),
       skipConfirmationNotification: false,
       verifiedAt: null, // Will be set after verification
       createdAt: new Date(),
@@ -789,9 +787,9 @@ async function handleWebhookSubscription(
       await db
         .update(statusPageSubscribers)
         .set({
-          unsubscribeToken: generateHexToken(),
           verifiedAt: null, // always re-prove endpoint ownership via the challenge
           purgeAt: null,
+          unsubscribeToken: null,
           quarantinedAt: null,
           webhookFailures: 0,
           updatedAt: new Date(),
@@ -828,7 +826,6 @@ async function handleWebhookSubscription(
     }
 
     // Generate secure tokens
-    const unsubscribeToken = generateHexToken();
     const webhookSecret = generateWebhookSecret();
 
     // Create the webhook subscriber pending proof of endpoint ownership.
@@ -839,8 +836,7 @@ async function handleWebhookSubscription(
         statusPageId: statusPage.id as string,
         endpoint: data.endpoint as string,
         mode: "webhook",
-        unsubscribeToken,
-        webhookSecret, // Persist the webhook secret for HMAC verification
+        webhookSecretEncrypted: encryptWebhookSecret(webhookSecret), // for HMAC signing; plaintext never stored
         skipConfirmationNotification: false,
         verifiedAt: null,
         createdAt: new Date(),
@@ -956,9 +952,9 @@ async function handleSlackSubscription(
       await db
         .update(statusPageSubscribers)
         .set({
-          unsubscribeToken: generateHexToken(),
           verifiedAt: new Date(),
           purgeAt: null,
+          unsubscribeToken: null,
           quarantinedAt: null,
           webhookFailures: 0,
           updatedAt: new Date(),
@@ -986,9 +982,6 @@ async function handleSlackSubscription(
       };
     }
 
-    // Generate secure tokens
-    const unsubscribeToken = generateHexToken();
-
     // Create Slack subscriber (immediately verified - no email verification needed)
     const inserted = await insertVerifiedSubscriberWithinLimit({
       statusPageId: statusPage.id as string,
@@ -997,7 +990,6 @@ async function handleSlackSubscription(
         statusPageId: statusPage.id as string,
         endpoint,
         mode: "slack",
-        unsubscribeToken,
         skipConfirmationNotification: false,
         verifiedAt: new Date(), // Slack subscriptions are immediately verified
         createdAt: new Date(),
