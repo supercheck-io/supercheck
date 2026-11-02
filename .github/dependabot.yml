@@ -1,16 +1,15 @@
 version: 2
 
-# Version updates run monthly and are grouped so a month produces a handful of
-# PRs instead of one per package. Majors that are known to break this repo are
-# ignored below; lift an ignore only together with the migration that needs it.
-# Security updates are configured separately in repository settings and are not
-# affected by the schedule.
+# Version-update PRs are paused: every entry has open-pull-requests-limit: 0.
+# Raise a limit to resume updates for that directory; the ignore lists below
+# still apply when resumed (lift an ignore only with the migration it needs).
+# Security updates are a separate repository setting and are not affected.
 updates:
   - package-ecosystem: npm
     directory: /app
     schedule:
       interval: monthly
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 0
     cooldown:
       default-days: 7
     groups:
@@ -40,7 +39,7 @@ updates:
     directory: /app/e2e
     schedule:
       interval: monthly
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 0
     cooldown:
       default-days: 7
     groups:
@@ -54,7 +53,7 @@ updates:
     directory: /worker
     schedule:
       interval: monthly
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 0
     cooldown:
       default-days: 7
     groups:
@@ -77,7 +76,7 @@ updates:
     directory: /docs
     schedule:
       interval: monthly
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 0
     cooldown:
       default-days: 7
     groups:
@@ -104,7 +103,7 @@ updates:
     directory: /cli
     schedule:
       interval: monthly
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 0
     cooldown:
       default-days: 7
     groups:
@@ -126,7 +125,7 @@ updates:
     directory: /recorder
     schedule:
       interval: monthly
-    open-pull-requests-limit: 2
+    open-pull-requests-limit: 0
     exclude-paths:
       - "playwright/**"
     cooldown:
@@ -155,7 +154,7 @@ updates:
     directory: /
     schedule:
       interval: monthly
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 0
     cooldown:
       default-days: 7
     groups:
@@ -166,7 +165,7 @@ updates:
     directory: /app
     schedule:
       interval: monthly
-    open-pull-requests-limit: 2
+    open-pull-requests-limit: 0
     ignore:
       # Stay on the supported Node LTS line.
       - dependency-name: "node"
@@ -176,13 +175,13 @@ updates:
     directory: /worker
     schedule:
       interval: monthly
-    open-pull-requests-limit: 2
+    open-pull-requests-limit: 0
 
   - package-ecosystem: docker
     directory: /cli
     schedule:
       interval: monthly
-    open-pull-requests-limit: 2
+    open-pull-requests-limit: 0
     ignore:
       - dependency-name: "node"
         update-types: ["version-update:semver-major"]
@@ -191,7 +190,7 @@ updates:
     directory: /docs
     schedule:
       interval: monthly
-    open-pull-requests-limit: 2
+    open-pull-requests-limit: 0
     ignore:
       - dependency-name: "node"
         update-types: ["version-update:semver-major"]
