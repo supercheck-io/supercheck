@@ -14,6 +14,7 @@ describe("sniffImageType", () => {
     [text('﻿  <svg xmlns="http://www.w3.org/2000/svg"></svg>'), "image/svg+xml"],
     [text('<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" ""><svg/>'), "image/svg+xml"],
     [text(`<!-- ${"licence ".repeat(2000)} --><svg xmlns="http://www.w3.org/2000/svg"/>`), "image/svg+xml"],
+    [text('<!DOCTYPE svg [<!ENTITY text "foo ]> bar">]><svg/>'), "image/svg+xml"],
     [text(`<?xml version="1.0"?><!-- Generator: Adobe Illustrator --><!DOCTYPE svg [${'<!ENTITY ns_x "http://ns.adobe.com/x/">'.repeat(60)}]><svg version="1.1"></svg>`), "image/svg+xml"],
   ])("detects %#", (input, expected) => {
     expect(sniffImageType(input)).toBe(expected);
@@ -29,5 +30,12 @@ describe("sniffImageType", () => {
     bytes(0x4d, 0x5a),
   ])("rejects non-image content %#", (input) => {
     expect(sniffImageType(input)).toBeNull();
+  });
+
+  it("scans hostile prologs in linear time", () => {
+    const started = Date.now();
+    expect(sniffImageType(text("<!DOCTYPE svg [" + "]".repeat(5 * 1024 * 1024)))).toBeNull();
+    expect(sniffImageType(text("<!--" + "-".repeat(5 * 1024 * 1024)))).toBeNull();
+    expect(Date.now() - started).toBeLessThan(2000);
   });
 });

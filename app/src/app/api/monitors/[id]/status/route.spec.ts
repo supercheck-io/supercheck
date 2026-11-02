@@ -17,6 +17,8 @@ jest.mock("@/lib/execution/trial-interval-response", () => ({
   monitorResumeBlockedResponse: (...a: unknown[]) => monitorResumeBlockedResponse(...a),
 }));
 import { NextRequest } from "next/server";
+import { PgDialect } from "drizzle-orm/pg-core";
+import type { SQL } from "drizzle-orm";
 import { db } from "@/utils/db";
 import { requireUserAuthContext } from "@/lib/auth-context";
 import { hasPermissionForUser } from "@/lib/rbac/middleware";
@@ -55,16 +57,44 @@ it("answers 401 for an auth failure instead of 500 (c20)", async () => {
   expect((await patch("paused")).status).toBe(401);
 });
 
-it("does not change a monitor whose project was deleted before the write took its lock", async () => {
-  jest.mocked(db.query.monitors.findFirst).mockResolvedValue({ id: "m", organizationId: "org", projectId: "p", status: "paused" } as never);
-  jest.mocked(hasPermissionForUser).mockResolvedValue(true);
-  const update = jest.fn();
-  const forShare = jest.fn(async () => []);
+function lockedTx(liveProjects: unknown[], updated: unknown[] = []) {
+  const wheres: string[] = [];
+  const forShare = jest.fn(async () => liveProjects);
+  const update = jest.fn(() => ({ set: () => ({ where: () => ({ returning: async () => updated }) }) }));
   (db.transaction as jest.Mock).mockImplementation(async (cb: (tx: unknown) => unknown) =>
-    cb({ select: () => ({ from: () => ({ where: () => ({ for: forShare }) }) }), update }),
+    cb({
+      select: () => ({
+        from: () => ({
+          where: (condition: SQL) => {
+            wheres.push(new PgDialect().sqlToQuery(condition).sql);
+            return { for: forShare };
+          },
+        }),
+      }),
+      update,
+    }),
   );
-  const response = await patch("up");
-  expect(forShare).toHaveBeenCalledWith("share");
-  expect(update).not.toHaveBeenCalled();
-  expect(response.status).toBe(404);
+  return { wheres, forShare, update };
+}
+
+describe("locked status write", () => {
+  beforeEach(() => {
+    jest.mocked(db.query.monitors.findFirst).mockResolvedValue({ id: "m", organizationId: "org", projectId: "p", status: "paused" } as never);
+    jest.mocked(hasPermissionForUser).mockResolvedValue(true);
+  });
+
+  it("locks only a live project row before writing", async () => {
+    const { wheres, forShare } = lockedTx([]);
+    const response = await patch("up");
+    expect(forShare).toHaveBeenCalledWith("share");
+    expect(wheres[0]).toContain(`"projects"."status" <> $`);
+    expect(response.status).toBe(404);
+  });
+
+  it("updates the monitor when its project is live", async () => {
+    const { update } = lockedTx([{ id: "p" }], [{ id: "m", name: "M", organizationId: "org", projectId: "p", status: "up" }]);
+    const response = await patch("up");
+    expect(update).toHaveBeenCalled();
+    expect(response.status).toBe(200);
+  });
 });
