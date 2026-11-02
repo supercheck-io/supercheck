@@ -107,6 +107,9 @@ export const statusPages = pgTable(
     uniqueCustomDomain: uniqueIndex("status_pages_custom_domain_idx")
       .on(table.customDomain)
       .where(sql`custom_domain IS NOT NULL`),
+    statusPagesOrgProjectIdx: index("status_pages_org_project_idx").on(table.organizationId, table.projectId),
+    statusPagesCreatedByUserIdIdx: index("status_pages_created_by_user_id_idx").on(table.createdByUserId),
+    statusPagesProjectIdIdx: index("status_pages_project_id_idx").on(table.projectId),
   })
 );
 
@@ -143,7 +146,9 @@ export const statusPageComponents = pgTable("status_page_components", {
   lastReconciledAt: timestamp("last_reconciled_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-}, (table) => ({ serviceIdx: index("status_page_components_service_idx").on(table.serviceId), reconciliationIdx: index("status_page_components_reconciliation_idx").on(table.lastReconciledAt, table.id) }));
+}, (table) => ({ serviceIdx: index("status_page_components_service_idx").on(table.serviceId), reconciliationIdx: index("status_page_components_reconciliation_idx").on(table.lastReconciledAt, table.id),
+    statusPageComponentsStatusPageIdIdx: index("status_page_components_status_page_id_idx").on(table.statusPageId),
+  }));
 
 /**
  * Join table to link status page components with multiple monitors
@@ -162,6 +167,7 @@ export const statusPageComponentMonitors = pgTable(
   },
   (table) => ({
     pk: primaryKey({ columns: [table.componentId, table.monitorId] }),
+    statusPageComponentMonitorsMonitorIdIdx: index("status_page_component_monitors_monitor_id_idx").on(table.monitorId),
   })
 );
 
@@ -225,7 +231,9 @@ export const incidents = pgTable("incidents", {
   automaticOpenIdx: uniqueIndex("incidents_open_automatic_component_idx").on(table.sourceComponentId).where(sql`${table.sourceComponentId} is not null and ${table.status} <> 'resolved'`),
   sourceComponentIdx: index("incidents_source_component_idx").on(table.sourceComponentId),
   srePageIdx: index("incidents_sre_page_idx").on(table.statusPageId, table.sreIncidentId).where(sql`${table.sreIncidentId} is not null`),
-}));
+    incidentsStatusPageCreatedIdx: index("incidents_status_page_created_idx").on(table.statusPageId, table.createdAt.desc()),
+    incidentsCreatedByUserIdIdx: index("incidents_created_by_user_id_idx").on(table.createdByUserId),
+  }));
 
 /**
  * Incident updates with notification controls
@@ -249,7 +257,11 @@ export const incidentUpdates = pgTable("incident_updates", {
   displayAt: timestamp("display_at").defaultNow(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+},
+  (table) => [
+    index("incident_updates_created_by_user_id_idx").on(table.createdByUserId),
+    index("incident_updates_incident_id_idx").on(table.incidentId),
+  ]);
 
 /**
  * Affected components for incidents
@@ -267,7 +279,9 @@ export const incidentComponents = pgTable("incident_components", {
   oldStatus: varchar("old_status", { length: 50 }),
   newStatus: varchar("new_status", { length: 50 }),
   createdAt: timestamp("created_at").defaultNow(),
-}, (table) => ({ componentIdx: index("incident_components_component_idx").on(table.componentId) }));
+}, (table) => ({ componentIdx: index("incident_components_component_idx").on(table.componentId),
+    incidentComponentsIncidentIdIdx: index("incident_components_incident_id_idx").on(table.incidentId),
+  }));
 
 /**
  * Incident templates for common issues
@@ -291,7 +305,11 @@ export const incidentTemplates = pgTable("incident_templates", {
   shouldSendNotifications: boolean("should_send_notifications").default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+},
+  (table) => [
+    index("incident_templates_created_by_user_id_idx").on(table.createdByUserId),
+    index("incident_templates_status_page_id_idx").on(table.statusPageId),
+  ]);
 
 /**
  * Template component associations
@@ -310,7 +328,11 @@ export const incidentTemplateComponents = pgTable(
       .references(() => statusPageComponents.id, { onDelete: "cascade" }),
     createdAt: timestamp("created_at").defaultNow(),
   }
-);
+,
+  (table) => [
+    index("incident_template_components_component_id_idx").on(table.componentId),
+    index("incident_template_components_template_id_idx").on(table.templateId),
+  ]);
 
 /**
  * Subscribers with enhanced preferences
@@ -369,7 +391,9 @@ export const statusPageSubscribers = pgTable("status_page_subscribers", {
   legacyUnsubscribeToken: index("status_page_subscribers_unsubscribe_token_idx")
     .on(table.unsubscribeToken)
     .where(sql`unsubscribe_token IS NOT NULL`),
-})
+    statusPageSubscribersActiveIdx: index("status_page_subscribers_active_idx").on(table.statusPageId).where(sql`purge_at IS NULL`),
+    statusPageSubscribersStatusPageIdIdx: index("status_page_subscribers_status_page_id_idx").on(table.statusPageId),
+  })
 );
 
 /**
@@ -393,6 +417,7 @@ export const statusPageComponentSubscriptions = pgTable(
     // Prevent duplicate component subscriptions per subscriber
     uniqueSubscriberComponent: uniqueIndex("status_page_component_subs_unique_idx")
       .on(table.subscriberId, table.componentId),
+    statusPageComponentSubscriptionsComponentIdIdx: index("status_page_component_subscriptions_component_id_idx").on(table.componentId),
   })
 );
 
@@ -417,6 +442,7 @@ export const statusPageIncidentSubscriptions = pgTable(
     // Prevent duplicate incident subscriptions per subscriber
     uniqueSubscriberIncident: uniqueIndex("status_page_incident_subs_unique_idx")
       .on(table.subscriberId, table.incidentId),
+    statusPageIncidentSubscriptionsIncidentIdIdx: index("status_page_incident_subscriptions_incident_id_idx").on(table.incidentId),
   })
 );
 
@@ -451,6 +477,7 @@ export const statusPageMetrics = pgTable(
       table.componentId,
       table.date
     ),
+    statusPageMetricsComponentIdIdx: index("status_page_metrics_component_id_idx").on(table.componentId),
   })
 );
 
@@ -479,6 +506,7 @@ export const postmortems = pgTable(
   },
   (table) => ({
     incidentIdx: uniqueIndex("postmortems_incident_idx").on(table.incidentId),
+    postmortemsCreatedByUserIdIdx: index("postmortems_created_by_user_id_idx").on(table.createdByUserId),
   })
 );
 

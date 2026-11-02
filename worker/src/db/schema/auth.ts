@@ -86,6 +86,7 @@ export const session = pgTable(
     activeOrgIdx: index('session_active_org_idx').on(
       table.activeOrganizationId,
     ),
+    sessionActiveProjectIdIdx: index("session_active_project_id_idx").on(table.activeProjectId),
   }),
 );
 
@@ -187,8 +188,6 @@ export const apikey = pgTable(
     metadata: jsonb('metadata').$type<Record<string, unknown>>(),
   },
   (table) => ({
-    // Index on key for API key authentication
-    keyIdx: index('apikey_key_idx').on(table.key),
     // Index on config_id for api-key plugin lookups
     configIdIdx: index('apikey_config_id_idx').on(table.configId),
     // Index on user_id (referenceId) for listing user's API keys

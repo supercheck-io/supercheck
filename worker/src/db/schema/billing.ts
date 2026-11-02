@@ -138,9 +138,6 @@ export const billingSettings = pgTable(
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => ({
-    organizationIdIdx: index('billing_settings_org_id_idx').on(
-      table.organizationId,
-    ),
   }),
 );
 

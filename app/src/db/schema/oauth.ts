@@ -125,7 +125,6 @@ export const oauthClientResource = pgTable(
       table.clientId,
       table.resourceId,
     ),
-    clientIdx: index("oauth_client_resource_client_id_idx").on(table.clientId),
     resourceIdx: index("oauth_client_resource_resource_id_idx").on(table.resourceId),
   }),
 );
@@ -221,7 +220,6 @@ export const oauthConsent = pgTable(
     updatedAt: timestamp("updated_at").notNull(),
   },
   (table) => ({
-    clientIdx: index("oauth_consent_client_id_idx").on(table.clientId),
     userIdx: index("oauth_consent_user_id_idx").on(table.userId),
     clientUserReferenceUnique: uniqueIndex("oauth_consent_client_user_reference_uidx").on(
       table.clientId,

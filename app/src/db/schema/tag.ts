@@ -11,6 +11,7 @@ import {
   timestamp,
   uuid,
   uniqueIndex,
+  index,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
@@ -48,6 +49,8 @@ export const tags = pgTable(
       table.projectId,
       table.name
     ),
+    tagsCreatedByUserIdIdx: index("tags_created_by_user_id_idx").on(table.createdByUserId),
+    tagsOrganizationIdIdx: index("tags_organization_id_idx").on(table.organizationId),
   })
 );
 
@@ -67,6 +70,7 @@ export const monitorTags = pgTable(
   },
   (table) => ({
     pk: primaryKey({ columns: [table.monitorId, table.tagId] }),
+    monitorTagsTagIdIdx: index("monitor_tags_tag_id_idx").on(table.tagId),
   })
 );
 
@@ -86,6 +90,7 @@ export const testTags = pgTable(
   },
   (table) => ({
     pk: primaryKey({ columns: [table.testId, table.tagId] }),
+    testTagsTagIdIdx: index("test_tags_tag_id_idx").on(table.tagId),
   })
 );
 
@@ -105,6 +110,7 @@ export const requirementTags = pgTable(
   },
   (table) => ({
     pk: primaryKey({ columns: [table.requirementId, table.tagId] }),
+    requirementTagsTagIdIdx: index("requirement_tags_tag_id_idx").on(table.tagId),
   })
 );
 

@@ -72,8 +72,6 @@ export const jobs = pgTable(
     organizationIdIdx: index("jobs_organization_id_idx").on(
       table.organizationId
     ),
-    // Index on project_id for listing project jobs
-    projectIdIdx: index("jobs_project_id_idx").on(table.projectId),
     // Composite index on project_id and status for filtered queries
     projectStatusIdx: index("jobs_project_status_idx").on(
       table.projectId,
@@ -85,6 +83,7 @@ export const jobs = pgTable(
     nextRunAtIdx: index("jobs_next_run_at_idx").on(table.nextRunAt),
     // Index on created_at for sorting/pagination
     createdAtIdx: index("jobs_created_at_idx").on(table.createdAt),
+    jobsCreatedByUserIdIdx: index("jobs_created_by_user_id_idx").on(table.createdByUserId),
   })
 );
 
@@ -107,6 +106,7 @@ export const jobTests = pgTable(
       name: "job_test_cases_pk",
       columns: [table.jobId, table.testId],
     }),
+    jobTestsTestCaseIdIdx: index("job_tests_test_case_id_idx").on(table.testId),
   })
 );
 
@@ -159,11 +159,7 @@ export const runs = pgTable(
     updatedAt: timestamp("updated_at").defaultNow(),
   },
   (table) => ({
-    // Index on job_id for listing job runs
-    jobIdIdx: index("runs_job_id_idx").on(table.jobId),
     triggeredByIdx: index("runs_triggered_by_user_id_idx").on(table.triggeredByUserId).where(sql`${table.triggeredByUserId} IS NOT NULL`),
-    // Index on project_id for listing project runs
-    projectIdIdx: index("runs_project_id_idx").on(table.projectId),
     // Composite index on job_id and status for filtered queries
     jobStatusIdx: index("runs_job_status_idx").on(table.jobId, table.status),
     // Index on status for status-based queries
@@ -179,6 +175,7 @@ export const runs = pgTable(
     ),
     // PERFORMANCE: Index on started_at for dashboard date range queries
     startedAtIdx: index("runs_started_at_idx").on(table.startedAt),
+    runsJobCreatedIdx: index("runs_job_created_idx").on(table.jobId, table.createdAt.desc()),
   })
 );
 

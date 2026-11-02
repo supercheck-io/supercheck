@@ -1,5 +1,5 @@
 {
-  "id": "ee6610cd-fbc9-4d76-ac00-45438023a6ba",
+  "id": "44902cc6-5afa-410c-a671-58226572829d",
   "prevId": "9bdb199f-4e99-4623-8deb-071ab2d8e298",
   "version": "7",
   "dialect": "postgresql",
@@ -47,21 +47,6 @@
         }
       },
       "indexes": {
-        "audit_logs_action_idx": {
-          "name": "audit_logs_action_idx",
-          "columns": [
-            {
-              "expression": "action",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "audit_logs_organization_id_idx": {
           "name": "audit_logs_organization_id_idx",
           "columns": [
@@ -438,21 +423,6 @@
         }
       },
       "indexes": {
-        "apikey_key_idx": {
-          "name": "apikey_key_idx",
-          "columns": [
-            {
-              "expression": "key",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "apikey_config_id_idx": {
           "name": "apikey_config_id_idx",
           "columns": [
@@ -707,6 +677,21 @@
           "columns": [
             {
               "expression": "active_organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "session_active_project_id_idx": {
+          "name": "session_active_project_id_idx",
+          "columns": [
+            {
+              "expression": "active_project_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -1053,23 +1038,7 @@
           "default": "now()"
         }
       },
-      "indexes": {
-        "billing_settings_org_id_idx": {
-          "name": "billing_settings_org_id_idx",
-          "columns": [
-            {
-              "expression": "organization_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
+      "indexes": {},
       "foreignKeys": {
         "billing_settings_organization_id_organization_id_fk": {
           "name": "billing_settings_organization_id_organization_id_fk",
@@ -2013,6 +1982,51 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "device_authorizations_api_key_id_idx": {
+          "name": "device_authorizations_api_key_id_idx",
+          "columns": [
+            {
+              "expression": "api_key_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "device_authorizations_approved_project_id_idx": {
+          "name": "device_authorizations_approved_project_id_idx",
+          "columns": [
+            {
+              "expression": "approved_project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "device_authorizations_approved_user_id_idx": {
+          "name": "device_authorizations_approved_user_id_idx",
+          "columns": [
+            {
+              "expression": "approved_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -2370,6 +2384,21 @@
           ],
           "isUnique": false,
           "where": "\"execution_reservations\".\"finished_at\" IS NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "execution_reservations_organization_id_idx": {
+          "name": "execution_reservations_organization_id_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -3246,21 +3275,6 @@
           "method": "btree",
           "with": {}
         },
-        "oauth_client_resource_client_id_idx": {
-          "name": "oauth_client_resource_client_id_idx",
-          "columns": [
-            {
-              "expression": "client_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "oauth_client_resource_resource_id_idx": {
           "name": "oauth_client_resource_resource_id_idx",
           "columns": [
@@ -3371,21 +3385,6 @@
         }
       },
       "indexes": {
-        "oauth_consent_client_id_idx": {
-          "name": "oauth_consent_client_id_idx",
-          "columns": [
-            {
-              "expression": "client_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "oauth_consent_user_id_idx": {
           "name": "oauth_consent_user_id_idx",
           "columns": [
@@ -3889,21 +3888,6 @@
           "method": "btree",
           "with": {}
         },
-        "invitation_email_idx": {
-          "name": "invitation_email_idx",
-          "columns": [
-            {
-              "expression": "email",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "invitation_email_status_idx": {
           "name": "invitation_email_status_idx",
           "columns": [
@@ -3930,6 +3914,21 @@
           "columns": [
             {
               "expression": "expires_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "invitation_inviter_id_idx": {
+          "name": "invitation_inviter_id_idx",
+          "columns": [
+            {
+              "expression": "inviter_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -4213,7 +4212,40 @@
           "notNull": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "organization_polar_customer_id_idx": {
+          "name": "organization_polar_customer_id_idx",
+          "columns": [
+            {
+              "expression": "polar_customer_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "polar_customer_id IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "organization_subscription_id_idx": {
+          "name": "organization_subscription_id_idx",
+          "columns": [
+            {
+              "expression": "subscription_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "subscription_id IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
@@ -4430,7 +4462,23 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "project_variables_created_by_user_id_idx": {
+          "name": "project_variables_created_by_user_id_idx",
+          "columns": [
+            {
+              "expression": "created_by_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "project_variables_project_id_projects_id_fk": {
           "name": "project_variables_project_id_projects_id_fk",
@@ -4538,21 +4586,6 @@
         }
       },
       "indexes": {
-        "projects_organization_id_idx": {
-          "name": "projects_organization_id_idx",
-          "columns": [
-            {
-              "expression": "organization_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "projects_org_status_idx": {
           "name": "projects_org_status_idx",
           "columns": [
@@ -4726,21 +4759,6 @@
           "method": "btree",
           "with": {}
         },
-        "tests_project_id_idx": {
-          "name": "tests_project_id_idx",
-          "columns": [
-            {
-              "expression": "project_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "tests_project_type_idx": {
           "name": "tests_project_type_idx",
           "columns": [
@@ -4782,6 +4800,21 @@
           "columns": [
             {
               "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "tests_created_by_user_id_idx": {
+          "name": "tests_created_by_user_id_idx",
+          "columns": [
+            {
+              "expression": "created_by_user_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -4911,11 +4944,11 @@
         }
       },
       "indexes": {
-        "requirement_coverage_snapshots_requirement_id_idx": {
-          "name": "requirement_coverage_snapshots_requirement_id_idx",
+        "requirement_coverage_snapshots_status_idx": {
+          "name": "requirement_coverage_snapshots_status_idx",
           "columns": [
             {
-              "expression": "requirement_id",
+              "expression": "status",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -4926,11 +4959,11 @@
           "method": "btree",
           "with": {}
         },
-        "requirement_coverage_snapshots_status_idx": {
-          "name": "requirement_coverage_snapshots_status_idx",
+        "requirement_coverage_snapshots_last_failed_test_id_idx": {
+          "name": "requirement_coverage_snapshots_last_failed_test_id_idx",
           "columns": [
             {
-              "expression": "status",
+              "expression": "last_failed_test_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -5052,21 +5085,6 @@
         }
       },
       "indexes": {
-        "requirement_documents_project_id_idx": {
-          "name": "requirement_documents_project_id_idx",
-          "columns": [
-            {
-              "expression": "project_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "requirement_documents_uploaded_at_idx": {
           "name": "requirement_documents_uploaded_at_idx",
           "columns": [
@@ -5093,6 +5111,36 @@
             },
             {
               "expression": "uploaded_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "requirement_documents_organization_id_idx": {
+          "name": "requirement_documents_organization_id_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "requirement_documents_uploaded_by_user_id_idx": {
+          "name": "requirement_documents_uploaded_by_user_id_idx",
+          "columns": [
+            {
+              "expression": "uploaded_by_user_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -5277,21 +5325,6 @@
           "method": "btree",
           "with": {}
         },
-        "requirements_project_id_idx": {
-          "name": "requirements_project_id_idx",
-          "columns": [
-            {
-              "expression": "project_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "requirements_project_priority_idx": {
           "name": "requirements_project_priority_idx",
           "columns": [
@@ -5333,6 +5366,36 @@
           "columns": [
             {
               "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "requirements_created_by_user_id_idx": {
+          "name": "requirements_created_by_user_id_idx",
+          "columns": [
+            {
+              "expression": "created_by_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "requirements_source_document_id_idx": {
+          "name": "requirements_source_document_id_idx",
+          "columns": [
+            {
+              "expression": "source_document_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -5450,21 +5513,6 @@
           "method": "btree",
           "with": {}
         },
-        "test_requirements_test_id_idx": {
-          "name": "test_requirements_test_id_idx",
-          "columns": [
-            {
-              "expression": "test_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "test_requirements_requirement_id_idx": {
           "name": "test_requirements_requirement_id_idx",
           "columns": [
@@ -5538,7 +5586,23 @@
           "notNull": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "job_tests_test_case_id_idx": {
+          "name": "job_tests_test_case_id_idx",
+          "columns": [
+            {
+              "expression": "test_case_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "job_tests_job_id_jobs_id_fk": {
           "name": "job_tests_job_id_jobs_id_fk",
@@ -5695,21 +5759,6 @@
           "method": "btree",
           "with": {}
         },
-        "jobs_project_id_idx": {
-          "name": "jobs_project_id_idx",
-          "columns": [
-            {
-              "expression": "project_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "jobs_project_status_idx": {
           "name": "jobs_project_status_idx",
           "columns": [
@@ -5766,6 +5815,21 @@
           "columns": [
             {
               "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "jobs_created_by_user_id_idx": {
+          "name": "jobs_created_by_user_id_idx",
+          "columns": [
+            {
+              "expression": "created_by_user_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -5955,21 +6019,6 @@
         }
       },
       "indexes": {
-        "runs_job_id_idx": {
-          "name": "runs_job_id_idx",
-          "columns": [
-            {
-              "expression": "job_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "runs_triggered_by_user_id_idx": {
           "name": "runs_triggered_by_user_id_idx",
           "columns": [
@@ -5982,21 +6031,6 @@
           ],
           "isUnique": false,
           "where": "\"runs\".\"triggered_by_user_id\" IS NOT NULL",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "runs_project_id_idx": {
-          "name": "runs_project_id_idx",
-          "columns": [
-            {
-              "expression": "project_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -6095,6 +6129,27 @@
               "expression": "started_at",
               "isExpression": false,
               "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "runs_job_created_idx": {
+          "name": "runs_job_created_idx",
+          "columns": [
+            {
+              "expression": "job_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": false,
               "nulls": "last"
             }
           ],
@@ -6364,6 +6419,57 @@
           "columns": [
             {
               "expression": "run_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "k6_runs_project_started_idx": {
+          "name": "k6_runs_project_started_idx",
+          "columns": [
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "started_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "k6_performance_runs_job_id_idx": {
+          "name": "k6_performance_runs_job_id_idx",
+          "columns": [
+            {
+              "expression": "job_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "k6_performance_runs_organization_id_idx": {
+          "name": "k6_performance_runs_organization_id_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -6774,27 +6880,6 @@
         }
       },
       "indexes": {
-        "monitors_project_org_idx": {
-          "name": "monitors_project_org_idx",
-          "columns": [
-            {
-              "expression": "project_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "organization_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "monitors_project_org_status_idx": {
           "name": "monitors_project_org_status_idx",
           "columns": [
@@ -6812,6 +6897,36 @@
             },
             {
               "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "monitors_created_by_user_id_idx": {
+          "name": "monitors_created_by_user_id_idx",
+          "columns": [
+            {
+              "expression": "created_by_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "monitors_organization_id_idx": {
+          "name": "monitors_organization_id_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -7539,11 +7654,11 @@
           "method": "btree",
           "with": {}
         },
-        "alert_history_monitor_id_idx": {
-          "name": "alert_history_monitor_id_idx",
+        "alert_history_job_id_idx": {
+          "name": "alert_history_job_id_idx",
           "columns": [
             {
-              "expression": "monitor_id",
+              "expression": "job_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -7554,13 +7669,19 @@
           "method": "btree",
           "with": {}
         },
-        "alert_history_job_id_idx": {
-          "name": "alert_history_job_id_idx",
+        "alert_history_monitor_sent_idx": {
+          "name": "alert_history_monitor_sent_idx",
           "columns": [
             {
-              "expression": "job_id",
+              "expression": "monitor_id",
               "isExpression": false,
               "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "sent_at",
+              "isExpression": false,
+              "asc": false,
               "nulls": "last"
             }
           ],
@@ -7709,7 +7830,38 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "alerts_monitor_id_idx": {
+          "name": "alerts_monitor_id_idx",
+          "columns": [
+            {
+              "expression": "monitor_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "alerts_organization_id_idx": {
+          "name": "alerts_organization_id_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "alerts_organization_id_organization_id_fk": {
           "name": "alerts_organization_id_organization_id_fk",
@@ -7768,7 +7920,23 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "job_notification_settings_notification_provider_id_idx": {
+          "name": "job_notification_settings_notification_provider_id_idx",
+          "columns": [
+            {
+              "expression": "notification_provider_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "job_notification_settings_job_id_jobs_id_fk": {
           "name": "job_notification_settings_job_id_jobs_id_fk",
@@ -7835,7 +8003,23 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "monitor_notification_settings_notification_provider_id_idx": {
+          "name": "monitor_notification_settings_notification_provider_id_idx",
+          "columns": [
+            {
+              "expression": "notification_provider_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "monitor_notification_settings_monitor_id_monitors_id_fk": {
           "name": "monitor_notification_settings_monitor_id_monitors_id_fk",
@@ -7946,7 +8130,53 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "notification_providers_created_by_user_id_idx": {
+          "name": "notification_providers_created_by_user_id_idx",
+          "columns": [
+            {
+              "expression": "created_by_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "notification_providers_organization_id_idx": {
+          "name": "notification_providers_organization_id_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "notification_providers_project_id_idx": {
+          "name": "notification_providers_project_id_idx",
+          "columns": [
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "notification_providers_organization_id_organization_id_fk": {
           "name": "notification_providers_organization_id_organization_id_fk",
@@ -8044,7 +8274,29 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "notifications_user_created_idx": {
+          "name": "notifications_user_created_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "notifications_user_id_user_id_fk": {
           "name": "notifications_user_id_user_id_fk",
@@ -8090,7 +8342,23 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "monitor_tags_tag_id_idx": {
+          "name": "monitor_tags_tag_id_idx",
+          "columns": [
+            {
+              "expression": "tag_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "monitor_tags_monitor_id_monitors_id_fk": {
           "name": "monitor_tags_monitor_id_monitors_id_fk",
@@ -8157,7 +8425,23 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "requirement_tags_tag_id_idx": {
+          "name": "requirement_tags_tag_id_idx",
+          "columns": [
+            {
+              "expression": "tag_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "requirement_tags_requirement_id_requirements_id_fk": {
           "name": "requirement_tags_requirement_id_requirements_id_fk",
@@ -8276,6 +8560,36 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "tags_created_by_user_id_idx": {
+          "name": "tags_created_by_user_id_idx",
+          "columns": [
+            {
+              "expression": "created_by_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "tags_organization_id_idx": {
+          "name": "tags_organization_id_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -8349,7 +8663,23 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "test_tags_tag_id_idx": {
+          "name": "test_tags_tag_id_idx",
+          "columns": [
+            {
+              "expression": "tag_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "test_tags_test_id_tests_id_fk": {
           "name": "test_tags_test_id_tests_id_fk",
@@ -8481,6 +8811,36 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "reports_created_by_user_id_idx": {
+          "name": "reports_created_by_user_id_idx",
+          "columns": [
+            {
+              "expression": "created_by_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "reports_organization_id_idx": {
+          "name": "reports_organization_id_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -8574,6 +8934,21 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "incident_components_incident_id_idx": {
+          "name": "incident_components_incident_id_idx",
+          "columns": [
+            {
+              "expression": "incident_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -8640,7 +9015,38 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "incident_template_components_component_id_idx": {
+          "name": "incident_template_components_component_id_idx",
+          "columns": [
+            {
+              "expression": "component_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "incident_template_components_template_id_idx": {
+          "name": "incident_template_components_template_id_idx",
+          "columns": [
+            {
+              "expression": "template_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "incident_template_components_template_id_incident_templates_id_fk": {
           "name": "incident_template_components_template_id_incident_templates_id_fk",
@@ -8744,7 +9150,38 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "incident_templates_created_by_user_id_idx": {
+          "name": "incident_templates_created_by_user_id_idx",
+          "columns": [
+            {
+              "expression": "created_by_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "incident_templates_status_page_id_idx": {
+          "name": "incident_templates_status_page_id_idx",
+          "columns": [
+            {
+              "expression": "status_page_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "incident_templates_status_page_id_status_pages_id_fk": {
           "name": "incident_templates_status_page_id_status_pages_id_fk",
@@ -8843,7 +9280,38 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "incident_updates_created_by_user_id_idx": {
+          "name": "incident_updates_created_by_user_id_idx",
+          "columns": [
+            {
+              "expression": "created_by_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "incident_updates_incident_id_idx": {
+          "name": "incident_updates_incident_id_idx",
+          "columns": [
+            {
+              "expression": "incident_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "incident_updates_incident_id_incidents_id_fk": {
           "name": "incident_updates_incident_id_incidents_id_fk",
@@ -9125,6 +9593,42 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "incidents_status_page_created_idx": {
+          "name": "incidents_status_page_created_idx",
+          "columns": [
+            {
+              "expression": "status_page_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "incidents_created_by_user_id_idx": {
+          "name": "incidents_created_by_user_id_idx",
+          "columns": [
+            {
+              "expression": "created_by_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -9259,6 +9763,21 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "postmortems_created_by_user_id_idx": {
+          "name": "postmortems_created_by_user_id_idx",
+          "columns": [
+            {
+              "expression": "created_by_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -9326,7 +9845,23 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "status_page_component_monitors_monitor_id_idx": {
+          "name": "status_page_component_monitors_monitor_id_idx",
+          "columns": [
+            {
+              "expression": "monitor_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "status_page_component_monitors_component_id_status_page_components_id_fk": {
           "name": "status_page_component_monitors_component_id_status_page_components_id_fk",
@@ -9417,6 +9952,21 @@
             }
           ],
           "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "status_page_component_subscriptions_component_id_idx": {
+          "name": "status_page_component_subscriptions_component_id_idx",
+          "columns": [
+            {
+              "expression": "component_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -9615,6 +10165,21 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "status_page_components_status_page_id_idx": {
+          "name": "status_page_components_status_page_id_idx",
+          "columns": [
+            {
+              "expression": "status_page_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -9699,6 +10264,21 @@
             }
           ],
           "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "status_page_incident_subscriptions_incident_id_idx": {
+          "name": "status_page_incident_subscriptions_incident_id_idx",
+          "columns": [
+            {
+              "expression": "incident_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -9838,6 +10418,21 @@
             }
           ],
           "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "status_page_metrics_component_id_idx": {
+          "name": "status_page_metrics_component_id_idx",
+          "columns": [
+            {
+              "expression": "component_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -10417,6 +11012,37 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "status_page_subscribers_active_idx": {
+          "name": "status_page_subscribers_active_idx",
+          "columns": [
+            {
+              "expression": "status_page_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "purge_at IS NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "status_page_subscribers_status_page_id_idx": {
+          "name": "status_page_subscribers_status_page_id_idx",
+          "columns": [
+            {
+              "expression": "status_page_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -10729,6 +11355,57 @@
           ],
           "isUnique": true,
           "where": "custom_domain IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "status_pages_org_project_idx": {
+          "name": "status_pages_org_project_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "status_pages_created_by_user_id_idx": {
+          "name": "status_pages_created_by_user_id_idx",
+          "columns": [
+            {
+              "expression": "created_by_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "status_pages_project_id_idx": {
+          "name": "status_pages_project_id_idx",
+          "columns": [
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -11134,21 +11811,6 @@
         }
       },
       "indexes": {
-        "idx_project_locations_project": {
-          "name": "idx_project_locations_project",
-          "columns": [
-            {
-              "expression": "project_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "idx_project_locations_location": {
           "name": "idx_project_locations_location",
           "columns": [
@@ -11375,6 +12037,51 @@
             },
             {
               "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "diagnostic_queries_approved_by_user_id_idx": {
+          "name": "diagnostic_queries_approved_by_user_id_idx",
+          "columns": [
+            {
+              "expression": "approved_by_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "diagnostic_queries_connector_id_idx": {
+          "name": "diagnostic_queries_connector_id_idx",
+          "columns": [
+            {
+              "expression": "connector_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "diagnostic_queries_created_by_user_id_idx": {
+          "name": "diagnostic_queries_created_by_user_id_idx",
+          "columns": [
+            {
+              "expression": "created_by_user_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -11686,6 +12393,21 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "external_connector_services_service_id_idx": {
+          "name": "external_connector_services_service_id_idx",
+          "columns": [
+            {
+              "expression": "service_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -11967,6 +12689,51 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "external_connectors_created_by_user_id_idx": {
+          "name": "external_connectors_created_by_user_id_idx",
+          "columns": [
+            {
+              "expression": "created_by_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "external_connectors_private_agent_id_idx": {
+          "name": "external_connectors_private_agent_id_idx",
+          "columns": [
+            {
+              "expression": "private_agent_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "external_connectors_validated_by_private_agent_id_idx": {
+          "name": "external_connectors_validated_by_private_agent_id_idx",
+          "columns": [
+            {
+              "expression": "validated_by_private_agent_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -12159,6 +12926,21 @@
           "columns": [
             {
               "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "private_agent_artifacts_organization_id_idx": {
+          "name": "private_agent_artifacts_organization_id_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -12363,6 +13145,51 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "private_agent_credentials_organization_id_idx": {
+          "name": "private_agent_credentials_organization_id_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "private_agent_credentials_project_id_idx": {
+          "name": "private_agent_credentials_project_id_idx",
+          "columns": [
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "private_agent_credentials_revoked_by_user_id_idx": {
+          "name": "private_agent_credentials_revoked_by_user_id_idx",
+          "columns": [
+            {
+              "expression": "revoked_by_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -12538,6 +13365,21 @@
             },
             {
               "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "private_agent_heartbeats_project_id_idx": {
+          "name": "private_agent_heartbeats_project_id_idx",
+          "columns": [
+            {
+              "expression": "project_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -12818,6 +13660,51 @@
           ],
           "isUnique": false,
           "where": "status IN ('leased', 'running')",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "private_agent_jobs_authorized_by_user_id_idx": {
+          "name": "private_agent_jobs_authorized_by_user_id_idx",
+          "columns": [
+            {
+              "expression": "authorized_by_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "private_agent_jobs_connector_id_idx": {
+          "name": "private_agent_jobs_connector_id_idx",
+          "columns": [
+            {
+              "expression": "connector_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "private_agent_jobs_organization_id_idx": {
+          "name": "private_agent_jobs_organization_id_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -13134,6 +14021,21 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "private_agents_created_by_user_id_idx": {
+          "name": "private_agents_created_by_user_id_idx",
+          "columns": [
+            {
+              "expression": "created_by_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -13274,21 +14176,6 @@
         }
       },
       "indexes": {
-        "sre_ai_suggestions_incident_id_idx": {
-          "name": "sre_ai_suggestions_incident_id_idx",
-          "columns": [
-            {
-              "expression": "incident_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "sre_ai_suggestions_type_idx": {
           "name": "sre_ai_suggestions_type_idx",
           "columns": [
@@ -13315,6 +14202,51 @@
             },
             {
               "expression": "suggestion_type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sre_ai_suggestions_investigation_run_id_idx": {
+          "name": "sre_ai_suggestions_investigation_run_id_idx",
+          "columns": [
+            {
+              "expression": "investigation_run_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sre_ai_suggestions_organization_id_idx": {
+          "name": "sre_ai_suggestions_organization_id_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sre_ai_suggestions_project_id_idx": {
+          "name": "sre_ai_suggestions_project_id_idx",
+          "columns": [
+            {
+              "expression": "project_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -13602,6 +14534,21 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "sre_alert_events_project_id_idx": {
+          "name": "sre_alert_events_project_id_idx",
+          "columns": [
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -13764,6 +14711,51 @@
             },
             {
               "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sre_background_agent_runs_investigation_run_id_idx": {
+          "name": "sre_background_agent_runs_investigation_run_id_idx",
+          "columns": [
+            {
+              "expression": "investigation_run_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sre_background_agent_runs_organization_id_idx": {
+          "name": "sre_background_agent_runs_organization_id_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sre_background_agent_runs_project_id_idx": {
+          "name": "sre_background_agent_runs_project_id_idx",
+          "columns": [
+            {
+              "expression": "project_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -13947,6 +14939,21 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "sre_chat_conversations_organization_id_idx": {
+          "name": "sre_chat_conversations_organization_id_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -14117,6 +15124,36 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "sre_chat_messages_investigation_run_id_idx": {
+          "name": "sre_chat_messages_investigation_run_id_idx",
+          "columns": [
+            {
+              "expression": "investigation_run_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sre_chat_messages_tool_call_id_idx": {
+          "name": "sre_chat_messages_tool_call_id_idx",
+          "columns": [
+            {
+              "expression": "tool_call_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -14267,6 +15304,21 @@
             },
             {
               "expression": "observation_type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sre_context_observations_organization_id_idx": {
+          "name": "sre_context_observations_organization_id_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -14469,6 +15521,36 @@
           "concurrently": false,
           "method": "gin",
           "with": {}
+        },
+        "sre_context_playbooks_created_by_user_id_idx": {
+          "name": "sre_context_playbooks_created_by_user_id_idx",
+          "columns": [
+            {
+              "expression": "created_by_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sre_context_playbooks_promoted_from_recollection_id_idx": {
+          "name": "sre_context_playbooks_promoted_from_recollection_id_idx",
+          "columns": [
+            {
+              "expression": "promoted_from_recollection_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -14645,6 +15727,36 @@
           "columns": [
             {
               "expression": "error_fingerprint",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sre_context_recollections_organization_id_idx": {
+          "name": "sre_context_recollections_organization_id_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sre_context_recollections_project_id_idx": {
+          "name": "sre_context_recollections_project_id_idx",
+          "columns": [
+            {
+              "expression": "project_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -14846,6 +15958,21 @@
             },
             {
               "expression": "updated_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sre_evidence_graph_focused_views_organization_id_idx": {
+          "name": "sre_evidence_graph_focused_views_organization_id_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -15119,6 +16246,57 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "sre_evidence_items_project_created_idx": {
+          "name": "sre_evidence_items_project_created_idx",
+          "columns": [
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sre_evidence_items_organization_id_idx": {
+          "name": "sre_evidence_items_organization_id_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sre_evidence_items_source_connector_id_idx": {
+          "name": "sre_evidence_items_source_connector_id_idx",
+          "columns": [
+            {
+              "expression": "source_connector_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -15243,21 +16421,6 @@
         }
       },
       "indexes": {
-        "sre_incident_alerts_incident_id_idx": {
-          "name": "sre_incident_alerts_incident_id_idx",
-          "columns": [
-            {
-              "expression": "incident_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "sre_incident_alerts_alert_event_id_idx": {
           "name": "sre_incident_alerts_alert_event_id_idx",
           "columns": [
@@ -15433,6 +16596,51 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "sre_incident_runbook_steps_completed_by_idx": {
+          "name": "sre_incident_runbook_steps_completed_by_idx",
+          "columns": [
+            {
+              "expression": "completed_by",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sre_incident_runbook_steps_runbook_id_idx": {
+          "name": "sre_incident_runbook_steps_runbook_id_idx",
+          "columns": [
+            {
+              "expression": "runbook_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sre_incident_runbook_steps_runbook_step_id_idx": {
+          "name": "sre_incident_runbook_steps_runbook_step_id_idx",
+          "columns": [
+            {
+              "expression": "runbook_step_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -15604,6 +16812,36 @@
           "columns": [
             {
               "expression": "event_type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sre_incident_timeline_events_agent_run_id_idx": {
+          "name": "sre_incident_timeline_events_agent_run_id_idx",
+          "columns": [
+            {
+              "expression": "agent_run_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sre_incident_timeline_events_evidence_item_id_idx": {
+          "name": "sre_incident_timeline_events_evidence_item_id_idx",
+          "columns": [
+            {
+              "expression": "evidence_item_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -16071,6 +17309,81 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "sre_incidents_acknowledged_by_user_id_idx": {
+          "name": "sre_incidents_acknowledged_by_user_id_idx",
+          "columns": [
+            {
+              "expression": "acknowledged_by_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sre_incidents_assignee_user_id_idx": {
+          "name": "sre_incidents_assignee_user_id_idx",
+          "columns": [
+            {
+              "expression": "assignee_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sre_incidents_commander_user_id_idx": {
+          "name": "sre_incidents_commander_user_id_idx",
+          "columns": [
+            {
+              "expression": "commander_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sre_incidents_created_by_user_id_idx": {
+          "name": "sre_incidents_created_by_user_id_idx",
+          "columns": [
+            {
+              "expression": "created_by_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sre_incidents_status_page_incident_id_idx": {
+          "name": "sre_incidents_status_page_incident_id_idx",
+          "columns": [
+            {
+              "expression": "status_page_incident_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -16286,6 +17599,21 @@
             },
             {
               "expression": "binding_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sre_integration_binding_services_service_id_idx": {
+          "name": "sre_integration_binding_services_service_id_idx",
+          "columns": [
+            {
+              "expression": "service_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -16524,6 +17852,36 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "sre_integration_bindings_created_by_user_id_idx": {
+          "name": "sre_integration_bindings_created_by_user_id_idx",
+          "columns": [
+            {
+              "expression": "created_by_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sre_integration_bindings_organization_id_idx": {
+          "name": "sre_integration_bindings_organization_id_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -16722,6 +18080,36 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "sre_investigation_feedback_organization_id_idx": {
+          "name": "sre_investigation_feedback_organization_id_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sre_investigation_feedback_user_id_idx": {
+          "name": "sre_investigation_feedback_user_id_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -16910,6 +18298,21 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "sre_investigation_recommendations_investigation_run_id_idx": {
+          "name": "sre_investigation_recommendations_investigation_run_id_idx",
+          "columns": [
+            {
+              "expression": "investigation_run_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -17095,6 +18498,51 @@
           "columns": [
             {
               "expression": "accuracy",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sre_investigation_report_feedback_created_by_user_id_idx": {
+          "name": "sre_investigation_report_feedback_created_by_user_id_idx",
+          "columns": [
+            {
+              "expression": "created_by_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sre_investigation_report_feedback_incident_id_idx": {
+          "name": "sre_investigation_report_feedback_incident_id_idx",
+          "columns": [
+            {
+              "expression": "incident_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sre_investigation_report_feedback_organization_id_idx": {
+          "name": "sre_investigation_report_feedback_organization_id_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -17380,6 +18828,36 @@
             }
           ],
           "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sre_investigation_reports_created_by_user_id_idx": {
+          "name": "sre_investigation_reports_created_by_user_id_idx",
+          "columns": [
+            {
+              "expression": "created_by_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sre_investigation_reports_organization_id_idx": {
+          "name": "sre_investigation_reports_organization_id_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -17748,6 +19226,51 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "sre_investigation_runs_alert_event_id_idx": {
+          "name": "sre_investigation_runs_alert_event_id_idx",
+          "columns": [
+            {
+              "expression": "alert_event_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sre_investigation_runs_created_by_user_id_idx": {
+          "name": "sre_investigation_runs_created_by_user_id_idx",
+          "columns": [
+            {
+              "expression": "created_by_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sre_investigation_runs_organization_id_idx": {
+          "name": "sre_investigation_runs_organization_id_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -17974,6 +19497,51 @@
           "columns": [
             {
               "expression": "executed_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sre_investigation_tool_calls_connector_id_idx": {
+          "name": "sre_investigation_tool_calls_connector_id_idx",
+          "columns": [
+            {
+              "expression": "connector_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sre_investigation_tool_calls_evidence_item_id_idx": {
+          "name": "sre_investigation_tool_calls_evidence_item_id_idx",
+          "columns": [
+            {
+              "expression": "evidence_item_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sre_investigation_tool_calls_investigation_run_id_idx": {
+          "name": "sre_investigation_tool_calls_investigation_run_id_idx",
+          "columns": [
+            {
+              "expression": "investigation_run_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -18241,6 +19809,36 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "sre_runbooks_created_by_user_id_idx": {
+          "name": "sre_runbooks_created_by_user_id_idx",
+          "columns": [
+            {
+              "expression": "created_by_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sre_runbooks_service_id_idx": {
+          "name": "sre_runbooks_service_id_idx",
+          "columns": [
+            {
+              "expression": "service_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -18491,6 +20089,51 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "sre_service_dependencies_approved_by_idx": {
+          "name": "sre_service_dependencies_approved_by_idx",
+          "columns": [
+            {
+              "expression": "approved_by",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sre_service_dependencies_organization_id_idx": {
+          "name": "sre_service_dependencies_organization_id_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sre_service_dependencies_source_service_id_idx": {
+          "name": "sre_service_dependencies_source_service_id_idx",
+          "columns": [
+            {
+              "expression": "source_service_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -18662,6 +20305,21 @@
           "columns": [
             {
               "expression": "observed_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sre_service_dependency_observations_target_service_id_idx": {
+          "name": "sre_service_dependency_observations_target_service_id_idx",
+          "columns": [
+            {
+              "expression": "target_service_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -18998,6 +20656,36 @@
             },
             {
               "expression": "source",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sre_service_discovery_suggestions_approved_by_idx": {
+          "name": "sre_service_discovery_suggestions_approved_by_idx",
+          "columns": [
+            {
+              "expression": "approved_by",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sre_service_discovery_suggestions_project_id_idx": {
+          "name": "sre_service_discovery_suggestions_project_id_idx",
+          "columns": [
+            {
+              "expression": "project_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -19355,21 +21043,6 @@
         }
       },
       "indexes": {
-        "sre_service_resources_service_id_idx": {
-          "name": "sre_service_resources_service_id_idx",
-          "columns": [
-            {
-              "expression": "service_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "sre_service_resources_resource_idx": {
           "name": "sre_service_resources_resource_idx",
           "columns": [
@@ -19653,6 +21326,36 @@
             },
             {
               "expression": "tier",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sre_services_organization_id_idx": {
+          "name": "sre_services_organization_id_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sre_services_owner_user_id_idx": {
+          "name": "sre_services_owner_user_id_idx",
+          "columns": [
+            {
+              "expression": "owner_user_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

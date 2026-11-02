@@ -91,6 +91,9 @@ export const k6PerformanceRuns = pgTable(
     ),
     startedAtIdx: index('k6_runs_started_at_idx').on(table.startedAt),
     runIdIdx: index('k6_runs_run_id_idx').on(table.runId),
+    k6RunsProjectStartedIdx: index("k6_runs_project_started_idx").on(table.projectId, table.startedAt.desc()),
+    k6PerformanceRunsJobIdIdx: index("k6_performance_runs_job_id_idx").on(table.jobId),
+    k6PerformanceRunsOrganizationIdIdx: index("k6_performance_runs_organization_id_idx").on(table.organizationId),
   }),
 );
 

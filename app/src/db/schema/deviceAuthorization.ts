@@ -82,6 +82,9 @@ export const deviceAuthorizations = pgTable(
       "device_authorizations_status_check",
       sql`${table.status} IN ('pending', 'approved', 'denied', 'consumed')`,
     ),
+    deviceAuthorizationsApiKeyIdIdx: index("device_authorizations_api_key_id_idx").on(table.apiKeyId),
+    deviceAuthorizationsApprovedProjectIdIdx: index("device_authorizations_approved_project_id_idx").on(table.approvedProjectId),
+    deviceAuthorizationsApprovedUserIdIdx: index("device_authorizations_approved_user_id_idx").on(table.approvedUserId),
   }),
 );
 

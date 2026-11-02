@@ -89,8 +89,8 @@ export const alertHistory = pgTable(
   (table) => ({
     // PERFORMANCE: Indexes for alert history queries
     sentAtIdx: index('alert_history_sent_at_idx').on(table.sentAt),
-    monitorIdIdx: index('alert_history_monitor_id_idx').on(table.monitorId),
     jobIdIdx: index('alert_history_job_id_idx').on(table.jobId),
+    alertHistoryMonitorSentIdx: index("alert_history_monitor_sent_idx").on(table.monitorId, table.sentAt.desc()),
   }),
 );
 
@@ -113,6 +113,7 @@ export const monitorNotificationSettings = pgTable(
       name: 'monitor_notification_settings_pk',
       columns: [table.monitorId, table.notificationProviderId],
     }),
+    monitorNotificationSettingsNotificationProviderIdIdx: index("monitor_notification_settings_notification_provider_id_idx").on(table.notificationProviderId),
   }),
 );
 
@@ -132,6 +133,7 @@ export const jobNotificationSettings = pgTable(
   },
   (table) => ({
     pk: primaryKey({ columns: [table.jobId, table.notificationProviderId] }),
+    jobNotificationSettingsNotificationProviderIdIdx: index("job_notification_settings_notification_provider_id_idx").on(table.notificationProviderId),
   }),
 );
 

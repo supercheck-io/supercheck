@@ -84,8 +84,6 @@ export const requirements = pgTable(
     organizationIdIdx: index("requirements_organization_id_idx").on(
       table.organizationId
     ),
-    // Index on project_id for project-level listing (most common query)
-    projectIdIdx: index("requirements_project_id_idx").on(table.projectId),
     // Composite index for project + priority filtering
     projectPriorityIdx: index("requirements_project_priority_idx").on(
       table.projectId,
@@ -95,6 +93,8 @@ export const requirements = pgTable(
     externalIdIdx: index("requirements_external_id_idx").on(table.externalId),
     // Index on created_at for sorting/pagination
     createdAtIdx: index("requirements_created_at_idx").on(table.createdAt),
+    requirementsCreatedByUserIdIdx: index("requirements_created_by_user_id_idx").on(table.createdByUserId),
+    requirementsSourceDocumentIdIdx: index("requirements_source_document_id_idx").on(table.sourceDocumentId),
   })
 );
 
@@ -130,9 +130,6 @@ export const requirementDocuments = pgTable(
     createdAt: timestamp("created_at").defaultNow(),
   },
   (table) => ({
-    projectIdIdx: index("requirement_documents_project_id_idx").on(
-      table.projectId
-    ),
     uploadedAtIdx: index("requirement_documents_uploaded_at_idx").on(
       table.uploadedAt
     ),
@@ -140,6 +137,8 @@ export const requirementDocuments = pgTable(
       table.projectId,
       table.uploadedAt
     ),
+    requirementDocumentsOrganizationIdIdx: index("requirement_documents_organization_id_idx").on(table.organizationId),
+    requirementDocumentsUploadedByUserIdIdx: index("requirement_documents_uploaded_by_user_id_idx").on(table.uploadedByUserId),
   })
 );
 
@@ -163,8 +162,6 @@ export const testRequirements = pgTable(
       table.testId,
       table.requirementId
     ),
-    // Index for finding requirements by test
-    testIdIdx: index("test_requirements_test_id_idx").on(table.testId),
     // Index for finding tests by requirement
     requirementIdIdx: index("test_requirements_requirement_id_idx").on(
       table.requirementId
@@ -201,14 +198,11 @@ export const requirementCoverageSnapshots = pgTable(
     updatedAt: timestamp("updated_at"),
   },
   (table) => ({
-    // Index for requirement lookup (most common)
-    requirementIdIdx: index(
-      "requirement_coverage_snapshots_requirement_id_idx"
-    ).on(table.requirementId),
     // Index for filtering by status
     statusIdx: index("requirement_coverage_snapshots_status_idx").on(
       table.status
     ),
+    requirementCoverageSnapshotsLastFailedTestIdIdx: index("requirement_coverage_snapshots_last_failed_test_id_idx").on(table.lastFailedTestId),
   })
 );
 
