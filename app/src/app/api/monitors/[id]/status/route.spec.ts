@@ -60,8 +60,8 @@ it("does not change a monitor whose project was deleted before the write took it
   jest.mocked(hasPermissionForUser).mockResolvedValue(true);
   const update = jest.fn();
   const forShare = jest.fn(async () => []);
-  jest.mocked(db.transaction).mockImplementation(async (cb: never) =>
-    (cb as (tx: unknown) => unknown)({ select: () => ({ from: () => ({ where: () => ({ for: forShare }) }) }), update }) as never,
+  (db.transaction as jest.Mock).mockImplementation(async (cb: (tx: unknown) => unknown) =>
+    cb({ select: () => ({ from: () => ({ where: () => ({ for: forShare }) }) }), update }),
   );
   const response = await patch("up");
   expect(forShare).toHaveBeenCalledWith("share");

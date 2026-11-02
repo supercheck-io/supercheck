@@ -85,11 +85,12 @@ export async function PATCH(
 
     // Update the monitor status in the database. Hold the live project row (FOR SHARE) so a
     // concurrent project delete cannot pause the monitor and then be overwritten by this write.
+    const { organizationId: monitorOrgId, projectId: monitorProjectId } = currentMonitor;
     const updatedMonitor = await db.transaction(async (tx) => {
       const [liveProject] = await tx
         .select({ id: projects.id })
         .from(projects)
-        .where(and(eq(projects.id, currentMonitor.projectId!), ne(projects.status, 'deleted')))
+        .where(and(eq(projects.id, monitorProjectId), ne(projects.status, 'deleted')))
         .for('share');
       if (!liveProject) return undefined;
       const [updated] = await tx
@@ -101,8 +102,8 @@ export async function PATCH(
         .where(
           and(
             eq(monitors.id, id),
-            eq(monitors.organizationId, currentMonitor.organizationId),
-            eq(monitors.projectId, currentMonitor.projectId),
+            eq(monitors.organizationId, monitorOrgId),
+            eq(monitors.projectId, monitorProjectId),
           ),
         )
         .returning();
