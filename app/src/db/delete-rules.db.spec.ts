@@ -1,5 +1,5 @@
 /** @jest-environment node */
-// Needs TEST_DATABASE_URL (run with `npm run test:db`). Proves the ON DELETE rules of migration 0047.
+// Needs TEST_DATABASE_URL (run with `npm run test:db`). Proves the ON DELETE rules of migration 0048.
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import path from "node:path";

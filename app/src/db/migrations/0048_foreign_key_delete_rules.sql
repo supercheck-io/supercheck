@@ -9,6 +9,11 @@
 -- projects.organization_id and runs.job_id stay NO ACTION on purpose (S3 cleanup happens first).
 -- Existing rows already satisfy the old FKs, so each new FK is added NOT VALID then validated.
 -- Re-runnable. Forward-only.
+-- Fail fast instead of queueing behind a long transaction and blocking sign-ins.
+SET LOCAL lock_timeout = '5s';
+--> statement-breakpoint
+SET LOCAL statement_timeout = '10min';
+--> statement-breakpoint
 -- migration-safety: allow-destructive issue=#736
 ALTER TABLE "audit_logs" DROP CONSTRAINT IF EXISTS "audit_logs_user_id_user_id_fk";
 --> statement-breakpoint
@@ -144,3 +149,7 @@ ALTER TABLE "private_agent_jobs" DROP CONSTRAINT IF EXISTS "private_agent_jobs_p
 ALTER TABLE "private_agent_jobs" ADD CONSTRAINT "private_agent_jobs_private_agent_id_private_agents_id_fk" FOREIGN KEY ("private_agent_id") REFERENCES "private_agents"("id") ON DELETE NO ACTION NOT VALID;
 --> statement-breakpoint
 ALTER TABLE "private_agent_jobs" VALIDATE CONSTRAINT "private_agent_jobs_private_agent_id_private_agents_id_fk";
+--> statement-breakpoint
+RESET lock_timeout;
+--> statement-breakpoint
+RESET statement_timeout;
