@@ -135,6 +135,18 @@ describe("0047 subscriber secret storage", () => {
     expect(await resolveWebhookSecret(rotated)).toBe("rotated");
   });
 
+  it("does not overwrite a secret rotated after the legacy value was read", async () => {
+    await client`UPDATE status_page_subscribers SET webhook_secret = 'stale', webhook_secret_encrypted = NULL WHERE id = ${A1}`;
+    const [staleRead] = await mockDb.select().from(statusPageSubscribers).where(eq(statusPageSubscribers.id, A1));
+    await mockDb
+      .update(statusPageSubscribers)
+      .set({ webhookSecretEncrypted: encryptWebhookSecret("fresh"), webhookSecret: null })
+      .where(eq(statusPageSubscribers.id, A1));
+    await resolveWebhookSecret(staleRead);
+    const [current] = await mockDb.select().from(statusPageSubscribers).where(eq(statusPageSubscribers.id, A1));
+    expect(await resolveWebhookSecret(current)).toBe("fresh");
+  });
+
   it("is re-runnable", async () => {
     for (const stmt of migration.split("--> statement-breakpoint")) await client.unsafe(stmt);
   });

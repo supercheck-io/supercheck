@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { eq, type SQL } from "drizzle-orm";
+import { and, eq, isNull, type SQL } from "drizzle-orm";
 import { statusPageSubscribers } from "@/db/schema";
 import { db } from "@/utils/db";
 import { deriveSigningKey } from "@/lib/security/secret-crypto";
@@ -70,9 +70,16 @@ export async function resolveWebhookSecret(subscriber: {
     return decryptValue(subscriber.webhookSecretEncrypted, WEBHOOK_SECRET_CONTEXT);
   }
   if (!subscriber.webhookSecret) return null;
+  // Only migrate the value we read: a rotation that lands in between must win.
   await db
     .update(statusPageSubscribers)
     .set({ webhookSecretEncrypted: encryptWebhookSecret(subscriber.webhookSecret), webhookSecret: null })
-    .where(eq(statusPageSubscribers.id, subscriber.id));
+    .where(
+      and(
+        eq(statusPageSubscribers.id, subscriber.id),
+        eq(statusPageSubscribers.webhookSecret, subscriber.webhookSecret),
+        isNull(statusPageSubscribers.webhookSecretEncrypted),
+      ),
+    );
   return subscriber.webhookSecret;
 }
