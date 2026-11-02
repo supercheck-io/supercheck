@@ -101,6 +101,7 @@ import {
   checkPermissionWithContext,
   getProjectIdFromUrl,
   hasPermission,
+  hasPermissionForUser,
 } from "./middleware";
 
 // Cast mocks - use explicit jest.Mock for deeply nested mocks
@@ -1039,6 +1040,18 @@ describe("RBAC Middleware", () => {
   // ==========================================================================
   // CROSS-ORG ACCESS DENIAL TESTS (IDOR Prevention)
   // ==========================================================================
+
+  describe("hasPermissionForUser with a missing organization", () => {
+    it.each([null, undefined, ""])("denies resource checks whose organizationId is %p", async (organizationId) => {
+      mockIsSuperAdmin.mockResolvedValue(false);
+      const result = await hasPermissionForUser(testUserId, "monitor", "view", {
+        organizationId: organizationId as unknown as string,
+        projectId: testProjectId,
+      });
+      expect(result).toBe(false);
+      expect(mockDbSelect).not.toHaveBeenCalled();
+    });
+  });
 
   describe("Cross-Organization Access Denial", () => {
     const userOrgId = "org-user-belongs-to";
