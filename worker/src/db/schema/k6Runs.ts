@@ -34,7 +34,9 @@ export const k6PerformanceRuns = pgTable(
       .$defaultFn(() => sql`uuidv7()`),
 
     // Relationships
-    testId: uuid('test_id'),
+    testId: uuid('test_id').references(() => tests.id, {
+      onDelete: 'set null',
+    }),
     jobId: uuid('job_id').references(() => jobs.id, { onDelete: 'cascade' }),
     runId: uuid('run_id')
       .notNull()
@@ -94,6 +96,9 @@ export const k6PerformanceRuns = pgTable(
     k6RunsProjectStartedIdx: index('k6_runs_project_started_idx').on(
       table.projectId,
       table.startedAt.desc().nullsFirst(),
+    ),
+    k6PerformanceRunsTestIdIdx: index('k6_performance_runs_test_id_idx').on(
+      table.testId,
     ),
     k6PerformanceRunsJobIdIdx: index('k6_performance_runs_job_id_idx').on(
       table.jobId,

@@ -68,8 +68,11 @@ export const organization = pgTable("organization", {
   usagePeriodEnd: timestamp("usage_period_end"),
 },
   (table) => [
-    index("organization_polar_customer_id_idx").on(table.polarCustomerId).where(sql`polar_customer_id IS NOT NULL`),
-    index("organization_subscription_id_idx").on(table.subscriptionId).where(sql`subscription_id IS NOT NULL`),
+    uniqueIndex("organization_polar_customer_id_idx").on(table.polarCustomerId).where(sql`polar_customer_id IS NOT NULL`),
+    uniqueIndex("organization_subscription_id_idx").on(table.subscriptionId).where(sql`subscription_id IS NOT NULL`),
+    check("organization_playwright_minutes_used_required_check", sql`playwright_minutes_used IS NOT NULL`),
+    check("organization_k6_vu_minutes_used_required_check", sql`k6_vu_minutes_used IS NOT NULL`),
+    check("organization_ai_credits_used_required_check", sql`ai_credits_used IS NOT NULL`),
   ]);
 // Cloud/self-hosted entitlement enforcement lives in SubscriptionService.
 // A database row cannot infer hosting mode from the presence of a Polar ID.
@@ -139,6 +142,10 @@ export const invitation = pgTable(
     // Index on expires_at for cleanup queries
     expiresAtIdx: index("invitation_expires_at_idx").on(table.expiresAt),
     invitationInviterIdIdx: index("invitation_inviter_id_idx").on(table.inviterId),
+    // One live invitation per organization and address (the invite route expires stale ones first)
+    invitationPendingOrgEmailUniqueIdx: uniqueIndex("invitation_pending_org_email_unique_idx")
+      .on(table.organizationId, sql`lower(${table.email})`)
+      .where(sql`status = 'pending'`),
   })
 );
 

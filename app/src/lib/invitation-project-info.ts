@@ -17,7 +17,7 @@ export function buildInvitationProjectInfo(role: string, rawProjectNames: string
   return projectInfo;
 }
 
-/** Invitations are never rewritten to 'expired' in the database; derive it from expiresAt. */
+/** 'expired' is never stored; derive it from expiresAt. (Re-inviting an address marks its stale pending invitation 'cancelled'.) */
 export function withEffectiveStatus<T extends { status: string; expiresAt: Date }>(invite: T): T {
   return invite.status === "pending" && invite.expiresAt.getTime() < Date.now() ? { ...invite, status: "expired" } : invite;
 }

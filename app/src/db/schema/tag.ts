@@ -12,6 +12,7 @@ import {
   uuid,
   uniqueIndex,
   index,
+  check,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
@@ -51,6 +52,7 @@ export const tags = pgTable(
     ),
     tagsCreatedByUserIdIdx: index("tags_created_by_user_id_idx").on(table.createdByUserId),
     tagsOrganizationIdIdx: index("tags_organization_id_idx").on(table.organizationId),
+    tagsOrganizationIdRequired: check("tags_organization_id_required_check", sql`organization_id IS NOT NULL`),
   })
 );
 

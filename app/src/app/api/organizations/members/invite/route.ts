@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { db } from "@/utils/db";
 import { invitation, user as userTable, member, projects } from "@/db/schema";
-import { eq, and, inArray, sql, gte } from "drizzle-orm";
+import { eq, and, inArray, sql, gte, lt } from "drizzle-orm";
 import { getUserOrgRole } from "@/lib/rbac/middleware";
 import { requireUserAuthContext, isAuthError } from "@/lib/auth-context";
 import { Role } from "@/lib/rbac/permissions";
@@ -322,6 +322,19 @@ export async function POST(request: NextRequest) {
         return Number(memberRow?.count || 0) + Number(pendingRow?.count || 0);
       },
       insert: async (executor) => {
+        // An expired invite stays "pending" in the table; supersede it (status "cancelled", like the cancel
+        // route, so the list hides it) so the one-pending-per-address unique index lets the new one in.
+        await executor
+          .update(invitation)
+          .set({ status: "cancelled" })
+          .where(
+            and(
+              eq(invitation.organizationId, organizationId),
+              sql`LOWER(${invitation.email}) = ${normalizedEmail}`,
+              eq(invitation.status, "pending"),
+              lt(invitation.expiresAt, new Date()),
+            ),
+          );
         const [created] = await executor
           .insert(invitation)
           .values({
@@ -336,7 +349,18 @@ export async function POST(request: NextRequest) {
           .returning();
         return created;
       },
+    }).catch((error: unknown) => {
+      // A concurrent invite for the same address won the one-pending-per-address unique index.
+      const code = (error as { code?: string; cause?: { code?: string } })?.code ?? (error as { cause?: { code?: string } })?.cause?.code;
+      if (code === "23505") return null;
+      throw error;
     });
+    if (!invited) {
+      return NextResponse.json(
+        { error: "Invitation already sent to this email" },
+        { status: 400 },
+      );
+    }
 
     if (!invited.ok && invited.busy) {
       return NextResponse.json(

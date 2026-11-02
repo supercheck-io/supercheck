@@ -15,6 +15,7 @@ const {
   releaseMigrationLock,
   withMigrationTimeouts,
 } = require("./migration-lock.js");
+const { validatePendingConstraints } = require("./validate-constraints.js");
 
 // Configuration
 const MAX_RETRIES = 20;
@@ -754,6 +755,21 @@ async function main() {
       commit: migrationCompleted,
       logSuccess,
     });
+    if (migrationCompleted) await validateAfterCommit();
+  }
+}
+
+// Constraints added NOT VALID are validated once the migration transaction has committed, each in its
+// own short transaction that blocks neither reads nor writes. Never fails the deploy.
+async function validateAfterCommit() {
+  let client;
+  try {
+    client = postgres(TARGET_DATABASE_URL, { max: 1, ssl: getDatabaseSSLConfig() });
+    await validatePendingConstraints(client, { log, logWarning });
+  } catch (err) {
+    logWarning(`Skipped constraint validation: ${err.message}`);
+  } finally {
+    await client?.end({ timeout: 5 }).catch(() => undefined);
   }
 }
 

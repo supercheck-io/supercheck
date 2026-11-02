@@ -5,7 +5,7 @@ import { Queue, Worker } from "bullmq";
 import type Redis from "ioredis";
 import { S3Client, HeadBucketCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { db } from "@/utils/db";
-import { executionEntitlements, monitorResults, reports, runs } from "@/db/schema";
+import { executionEntitlements, monitorResults, reports, runs, sreServiceResources } from "@/db/schema";
 import { isPolarEnabled } from "./feature-flags";
 import { createS3CleanupService } from "./s3-cleanup";
 import { DataLifecycleService, MonitorResultsCleanupStrategy, JobRunsCleanupStrategy, PlaygroundArtifactsCleanupStrategy } from "./data-lifecycle-service";
@@ -78,7 +78,7 @@ describe("Artifact retention strategies", () => {
     });
     deleteWhere.mockResolvedValue(undefined);
     jest.mocked(db.delete).mockImplementation(table => {
-      events.push(table === reports ? "delete-reports" : table === runs ? "delete-runs" : "delete-results");
+      events.push(table === reports ? "delete-reports" : table === runs ? "delete-runs" : table === sreServiceResources ? "delete-links" : "delete-results");
       return { where: deleteWhere } as unknown as ReturnType<typeof db.delete>;
     });
     updateSet.mockReturnValue({ where: jest.fn().mockResolvedValue(undefined) });
@@ -421,7 +421,8 @@ describe("Artifact retention strategies", () => {
   it("deletes k6 job reports and runs only after S3 succeeds", async () => {
     jobSelections("tenant");
     const result = await new JobRunsCleanupStrategy(jobConfig).execute();
-    expect(events).toEqual(["s3", "delete-reports", "delete-runs"]);
+    // Service links to the runs' k6 results go in the same transaction, before the runs.
+    expect(events).toEqual(["s3", "delete-reports", "delete-links", "delete-runs"]);
     expect(result).toMatchObject({ success: true, recordsDeleted: 1, s3ObjectsDeleted: 1 });
   });
 

@@ -58,6 +58,7 @@ import { Queue, Worker, QueueEvents } from "bullmq";
 import type Redis from "ioredis";
 import { createS3CleanupService, type ReportDeletionInput } from "./s3-cleanup";
 import { isPolarEnabled } from "@/lib/feature-flags";
+import { removeK6RunLinks } from "@/lib/resource-deletion/linked-records";
 import { monitorAggregationService } from "./monitor-aggregation-service";
 import { endExpiredTrials, reconcilePaidTrialSuspensions, sendTrialReminders } from "@/lib/execution/trial-lifecycle";
 import { deliverTrialReminder } from "@/lib/execution/trial-reminder-delivery";
@@ -1617,6 +1618,7 @@ export class JobRunsCleanupStrategy implements ICleanupStrategy {
             or(inArray(reports.entityId, validRunIds), and(eq(reports.entityType, "test"),
               inArray(reports.reportPath, validRunIds.map(id => `${id}/report`))))));
         }
+        await removeK6RunLinks(tx, validRunIds);
         await tx.delete(runs).where(inArray(runs.id, validRunIds));
       });
       const last = oldRuns[oldRuns.length - 1];

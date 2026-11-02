@@ -17,6 +17,7 @@ import {
   decodeStoredTestScript,
   encodeStoredTestScript,
 } from "@/lib/test-script";
+import { removeServiceResourceLinks } from "@/lib/resource-deletion/linked-records";
 
 // Matches the tests.title varchar(255) column.
 const MAX_TITLE_LENGTH = 255;
@@ -360,6 +361,7 @@ export async function DELETE(
         };
       }
 
+      await removeServiceResourceLinks(tx, "test", [id]);
       // Delete scoped to org/project for defense-in-depth
       await tx
         .delete(tests)
