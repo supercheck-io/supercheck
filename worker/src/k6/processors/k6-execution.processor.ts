@@ -383,7 +383,12 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
               ? await transaction
                   .select({ id: schema.tests.id })
                   .from(schema.tests)
-                  .where(eq(schema.tests.id, testId))
+                  .where(
+                    and(
+                      eq(schema.tests.id, testId),
+                      eq(schema.tests.organizationId, taskData.organizationId),
+                    ),
+                  )
                   .for('key share')
               : [];
             await transaction.insert(schema.k6PerformanceRuns).values({

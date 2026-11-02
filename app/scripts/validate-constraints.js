@@ -20,7 +20,7 @@ async function validatePendingConstraints(
   for (const { table_name: table, constraint_name: quoted, conname: name } of pending) {
     try {
       await client.begin(async (tx) => {
-        await tx`SELECT set_config('lock_timeout', ${lockTimeout}, true)`;
+        await tx`SELECT set_config('lock_timeout', ${lockTimeout}, true), set_config('search_path', 'public', true)`;
         await tx.unsafe(`ALTER TABLE ${table} VALIDATE CONSTRAINT ${quoted}`);
       });
       result.validated.push(name);
