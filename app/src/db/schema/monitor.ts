@@ -49,7 +49,7 @@ export const monitors = pgTable(
       onDelete: "cascade",
     }),
     createdByUserId: uuid("created_by_user_id").references(() => user.id, {
-      onDelete: "no action",
+      onDelete: "set null",
     }),
     name: varchar("name", { length: 255 }).notNull(),
     description: text("description"),

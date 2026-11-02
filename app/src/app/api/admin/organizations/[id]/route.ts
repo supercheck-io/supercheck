@@ -152,6 +152,14 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
       );
     }
     
+    // Same check as the organization settings route: deleting here would not cancel billing.
+    if (orgData.subscriptionId || orgData.polarCustomerId) {
+      return NextResponse.json(
+        { success: false, error: 'Contact support to close a billing-linked organization. Deleting it here would not cancel billing.' },
+        { status: 409 }
+      );
+    }
+
     // Deleting the org cascades run/report rows and would orphan their S3 objects; projects must go first.
     const [projectRow] = await db
       .select({ id: projects.id })

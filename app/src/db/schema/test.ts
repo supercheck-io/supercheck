@@ -35,7 +35,7 @@ export const tests = pgTable(
       onDelete: "cascade",
     }),
     createdByUserId: uuid("created_by_user_id").references(() => user.id, {
-      onDelete: "no action",
+      onDelete: "set null",
     }),
     title: varchar("title", { length: 255 }).notNull(),
     description: text("description"),

@@ -27,8 +27,9 @@ export const auditLogs = pgTable(
     id: uuid('id')
       .primaryKey()
       .$defaultFn(() => sql`uuidv7()`),
-    userId: uuid('user_id').references(() => user.id),
-    organizationId: uuid('organization_id').references(() => organization.id),
+    userId: uuid('user_id').references(() => user.id, { onDelete: 'set null' }),
+    // No FK on purpose: audit history must outlive the organization and still identify it.
+    organizationId: uuid('organization_id'),
     action: varchar('action', { length: 255 }).notNull(),
     details: jsonb('details').$type<AuditDetails>(),
     createdAt: timestamp('created_at').defaultNow(),

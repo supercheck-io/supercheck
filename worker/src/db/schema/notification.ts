@@ -48,7 +48,7 @@ export const notificationProviders = pgTable('notification_providers', {
     onDelete: 'cascade',
   }),
   createdByUserId: uuid('created_by_user_id').references(() => user.id, {
-    onDelete: 'no action',
+    onDelete: 'set null',
   }),
   name: varchar('name', { length: 255 }).notNull(),
   type: varchar('type', { length: 50 })
@@ -144,7 +144,7 @@ export const notifications = pgTable('notifications', {
     .$defaultFn(() => sql`uuidv7()`),
   userId: uuid('user_id')
     .notNull()
-    .references(() => user.id),
+    .references(() => user.id, { onDelete: 'cascade' }),
   type: varchar('type', { length: 50 })
     .$type<NotificationType>()
     .notNull()

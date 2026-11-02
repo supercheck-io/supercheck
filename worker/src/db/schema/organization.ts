@@ -155,6 +155,7 @@ export const projects = pgTable(
       .$defaultFn(() => sql`uuidv7()`),
     organizationId: uuid('organization_id')
       .notNull()
+      // NO ACTION on purpose: org delete routes refuse while projects exist so project S3 objects are cleaned first.
       .references(() => organization.id),
     name: varchar('name', { length: 255 }).notNull(),
     slug: varchar('slug', { length: 255 }).unique(),
@@ -242,7 +243,7 @@ export const projectVariables = pgTable(
     mimeType: varchar('mime_type', { length: 255 }), // MIME type of uploaded file
     storagePath: text('storage_path'), // S3 storage path for file content
     description: text('description'),
-    createdByUserId: uuid('created_by_user_id').references(() => user.id),
+    createdByUserId: uuid('created_by_user_id').references(() => user.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
