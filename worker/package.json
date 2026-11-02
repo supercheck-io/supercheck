@@ -78,7 +78,7 @@
     "mysql2": "^3.24.6",
     "nestjs-pino": "^4.5.0",
     "nodemailer": "^10.1.7",
-    "oracledb": "^6.10.0",
+    "oracledb": "^26.0.0",
     "pg": "^8.23.1",
     "pino": "^10.4.0",
     "pino-http": "^11.0.0",
