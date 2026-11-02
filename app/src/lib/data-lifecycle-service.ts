@@ -37,6 +37,7 @@ import {
   retryPendingCredentialRevocations,
 } from "@/lib/security/password-reset-cleanup";
 import { db } from "@/utils/db";
+import { TELEMETRY_RETENTION_RULES, purgeTelemetryTable, resolveRetentionDays } from "@/lib/telemetry-retention";
 import { TRIAL_RETENTION } from "@/lib/execution/trial-limits";
 import {
   monitorResults,
@@ -81,6 +82,7 @@ import { deliverTrialReminder } from "@/lib/execution/trial-reminder-delivery";
  * - "credential_revocation_retry": Finishes credential revocations that failed after a password reset
  * - "alert_history": Alert notification history records
  * - "audit_logs": User/system/security audit records
+ * - "telemetry_retention": Agent heartbeats, SRE health snapshots/observations/alert events, notification outbox events
  * - "trial_lifecycle": Ends expired trials (pauses monitors, archives status pages)
  * 
  * DATA PROCESSING (Aggregation Operations):
@@ -99,6 +101,7 @@ export type CleanupEntityType =
   | "credential_revocation_retry"
   | "alert_history"
   | "audit_logs"
+  | "telemetry_retention"
   | "trial_lifecycle";
 
 /**
@@ -2215,6 +2218,63 @@ export class AlertHistoryCleanupStrategy implements ICleanupStrategy {
   }
 }
 
+/**
+ * Telemetry retention: purges operational telemetry tables by age in bounded batches.
+ * Rules (tables, defaults, protected rows) live in telemetry-retention.ts.
+ */
+export class TelemetryRetentionStrategy implements ICleanupStrategy {
+  entityType: CleanupEntityType = "telemetry_retention";
+  config: CleanupStrategyConfig;
+
+  constructor(config: CleanupStrategyConfig) {
+    this.config = config;
+  }
+
+  validate(): void {}
+
+  async getStats(): Promise<{ totalRecords: number; oldRecords: number }> {
+    return { totalRecords: 0, oldRecords: 0 };
+  }
+
+  async execute(dryRun = false): Promise<CleanupOperationResult> {
+    const startTime = Date.now();
+    const result: CleanupOperationResult = {
+      success: true,
+      entityType: this.entityType,
+      recordsDeleted: 0,
+      duration: 0,
+      errors: [],
+      details: { dryRun, tables: {} as Record<string, number> },
+    };
+    if (dryRun) {
+      result.duration = Date.now() - startTime;
+      return result;
+    }
+    const run = async (statement: string) => {
+      const res = (await db.execute(sql.raw(statement))) as unknown as { count?: number };
+      return Number(res.count ?? 0);
+    };
+    for (const rule of TELEMETRY_RETENTION_RULES) {
+      try {
+        const deleted = await purgeTelemetryTable(run, rule, {
+          days: resolveRetentionDays(rule),
+          batchSize: this.config.batchSize || 1000,
+          maxRecords: this.config.maxRecordsPerRun || 200000,
+          pauseMs: 50,
+        });
+        (result.details.tables as Record<string, number>)[rule.table] = deleted;
+        result.recordsDeleted += deleted;
+      } catch (error) {
+        // One failing table must not block the others.
+        result.success = false;
+        result.errors.push(`${rule.table}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    result.duration = Date.now() - startTime;
+    return result;
+  }
+}
+
 type AuditActionCategory =
   | "authentication"
   | "authorization"
@@ -2621,6 +2681,9 @@ export class DataLifecycleService {
           break;
         case "audit_logs":
           strategy = new AuditLogsCleanupStrategy(config);
+          break;
+        case "telemetry_retention":
+          strategy = new TelemetryRetentionStrategy(config);
           break;
         case "trial_lifecycle":
           strategy = new TrialLifecycleStrategy(config);
@@ -3191,6 +3254,24 @@ export function createDataLifecycleService(): DataLifecycleService {
       batchSize: parseInt(process.env.AUDIT_LOGS_CLEANUP_BATCH_SIZE || "1000", 10),
       maxRecordsPerRun: parseInt(
         process.env.AUDIT_LOGS_CLEANUP_SAFETY_LIMIT || "100000",
+        10
+      ),
+    },
+
+    // Telemetry retention: heartbeats, SRE snapshots/observations/alert events, notification outbox events.
+    // Per-table days: PRIVATE_AGENT_HEARTBEAT_RETENTION_DAYS (7), SRE_HEALTH_SNAPSHOT_RETENTION_DAYS (90),
+    // SRE_DEPENDENCY_OBSERVATION_RETENTION_DAYS (90), SRE_ALERT_EVENT_RETENTION_DAYS (90),
+    // STATUS_PAGE_DELIVERY_RETENTION_DAYS (30, shared with delivery rows).
+    {
+      entityType: "telemetry_retention",
+      enabled: parseBooleanEnv(process.env.TELEMETRY_RETENTION_ENABLED, true),
+      cronSchedule: parseCronSchedule(
+        process.env.TELEMETRY_RETENTION_CRON,
+        "45 4 * * *" // 4:45 AM daily
+      ),
+      batchSize: parseInt(process.env.TELEMETRY_RETENTION_BATCH_SIZE || "1000", 10),
+      maxRecordsPerRun: parseInt(
+        process.env.TELEMETRY_RETENTION_SAFETY_LIMIT || "200000",
         10
       ),
     },

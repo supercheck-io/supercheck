@@ -48,7 +48,10 @@ Use `./init-secrets.sh` to generate secure defaults, then configure:
 | `SIGNUP_ENABLED` | Toggle open email/password signup (default: `true`) |
 | `ALLOWED_EMAIL_DOMAINS` | Optional comma-separated signup allowlist (default: empty = allow all) |
 | `STATUS_PAGE_HIDE_BRANDING` | Hide the `Powered by Supercheck` footer on all public status and incident pages when set to `true` (default: `false`) |
-| `STATUS_PAGE_DELIVERY_RETENTION_DAYS` | Days to keep delivered, failed, and skipped status-page notification delivery rows (default: `30`; valid range `1`–`3650`) |
+| `STATUS_PAGE_DELIVERY_RETENTION_DAYS` | Days to keep delivered, failed, and skipped status-page notification delivery rows, and the notification events behind them (default: `30`; valid range `1`–`3650`) |
+| `TELEMETRY_RETENTION_ENABLED` | Daily purge of operational telemetry (default: `true`); `TELEMETRY_RETENTION_CRON` (`45 4 * * *`), `TELEMETRY_RETENTION_BATCH_SIZE` (`1000`) and `TELEMETRY_RETENTION_SAFETY_LIMIT` (`200000` rows per table per run) tune it |
+| `PRIVATE_AGENT_HEARTBEAT_RETENTION_DAYS` | Days to keep private agent heartbeats; each agent's newest is always kept (default: `7`) |
+| `SRE_HEALTH_SNAPSHOT_RETENTION_DAYS` / `SRE_DEPENDENCY_OBSERVATION_RETENTION_DAYS` / `SRE_ALERT_EVENT_RETENTION_DAYS` | Days to keep service health snapshots (latest per service is kept), dependency observations, and resolved alert events not linked to an incident (default: `90` each) |
 | `NEXT_PUBLIC_APP_URL` | Browser-reachable app origin, including scheme and port, with no trailing slash (bundled stack: derived as `https://${APP_DOMAIN}` when set, otherwise `http://localhost:3000`; external-services variant requires an explicit value) |
 | `DATABASE_URL` | PostgreSQL connection. For an external server that requires TLS, add `?sslmode=require` (or `verify-full`): app, worker and migrations then verify the server certificate against the system CAs, so a private CA must be trusted in those containers. `sslmode=disable` turns TLS off |
 

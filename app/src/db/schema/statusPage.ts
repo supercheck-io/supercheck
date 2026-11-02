@@ -648,7 +648,7 @@ export const statusPageNotificationEvents = pgTable("status_page_notification_ev
   isCreation: boolean("is_creation").default(false).notNull(),
   expandedAt: timestamp("expanded_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-}, (table) => ({ updateUnique: uniqueIndex("status_page_notification_event_update_idx").on(table.updateId), incidentIdx: index("status_page_notification_events_incident_idx").on(table.incidentId), pendingIdx: index("status_page_notification_events_pending_idx").on(table.createdAt).where(sql`${table.expandedAt} is null`) }));
+}, (table) => ({ updateUnique: uniqueIndex("status_page_notification_event_update_idx").on(table.updateId), incidentIdx: index("status_page_notification_events_incident_idx").on(table.incidentId), pendingIdx: index("status_page_notification_events_pending_idx").on(table.createdAt).where(sql`${table.expandedAt} is null`), expandedCreatedAtIdx: index("status_page_notification_events_expanded_created_at_idx").on(table.createdAt).where(sql`${table.expandedAt} is not null`) }));
 
 export const statusPageNotificationDeliveries = pgTable("status_page_notification_deliveries", {
   id: uuid("id").primaryKey().$defaultFn(() => sql`uuidv7()`),

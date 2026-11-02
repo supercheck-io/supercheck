@@ -49,6 +49,12 @@ x-common-env: &common-env # Database Configuration
   STATUS_PAGE_HIDE_BRANDING: ${STATUS_PAGE_HIDE_BRANDING:-false}
   # Days to keep finished status-page notification delivery rows (App-side; 1-3650).
   STATUS_PAGE_DELIVERY_RETENTION_DAYS: ${STATUS_PAGE_DELIVERY_RETENTION_DAYS:-30}
+  # Telemetry retention (App-side): days to keep heartbeats and SRE telemetry; set TELEMETRY_RETENTION_ENABLED=false to disable.
+  PRIVATE_AGENT_HEARTBEAT_RETENTION_DAYS: ${PRIVATE_AGENT_HEARTBEAT_RETENTION_DAYS:-7}
+  SRE_HEALTH_SNAPSHOT_RETENTION_DAYS: ${SRE_HEALTH_SNAPSHOT_RETENTION_DAYS:-90}
+  SRE_DEPENDENCY_OBSERVATION_RETENTION_DAYS: ${SRE_DEPENDENCY_OBSERVATION_RETENTION_DAYS:-90}
+  SRE_ALERT_EVENT_RETENTION_DAYS: ${SRE_ALERT_EVENT_RETENTION_DAYS:-90}
+  TELEMETRY_RETENTION_ENABLED: ${TELEMETRY_RETENTION_ENABLED:-true}
   BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET is missing from .env. New install? Run ./init-secrets.sh. Existing install? Restore the .env you installed with}
   INVITE_RATE_LIMIT_MAX: ${INVITE_RATE_LIMIT_MAX:-10}
   # Client-IP trust for rate limits; set when a CDN/extra proxy sits in front. See app/.env.example.

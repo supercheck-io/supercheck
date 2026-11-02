@@ -612,6 +612,7 @@ export const privateAgentHeartbeats = pgTable(
   (table) => ({
     privateAgentCreatedIdx: index("private_agent_heartbeats_agent_created_idx").on(table.privateAgentId, table.createdAt),
     organizationCreatedIdx: index("private_agent_heartbeats_org_created_idx").on(table.organizationId, table.createdAt),
+    createdAtIdx: index("private_agent_heartbeats_created_at_idx").on(table.createdAt),
     privateAgentHeartbeatsProjectIdIdx: index("private_agent_heartbeats_project_id_idx").on(table.projectId),
   })
 );
