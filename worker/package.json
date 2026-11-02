@@ -60,7 +60,7 @@
     "@nestjs/platform-express": "^11.0.1",
     "@playwright/test": "1.64.1",
     "@react-email/components": "^0.5.7",
-    "@react-email/render": "^1.4.0",
+    "@react-email/render": "^2.1.1",
     "@sentry/node": "10.76.2",
     "@types/nodemailer": "^8.0.0",
     "acorn": "^8.19.0",
