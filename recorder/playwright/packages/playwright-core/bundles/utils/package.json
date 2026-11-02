@@ -12,7 +12,7 @@
     "https-proxy-agent": "5.0.1",
     "jpeg-js": "0.4.4",
     "mime": "^3.0.0",
-    "minimatch": "^3.1.4",
+    "minimatch": "^11.0.1",
     "open": "8.4.0",
     "pngjs": "6.0.0",
     "progress": "2.0.3",
