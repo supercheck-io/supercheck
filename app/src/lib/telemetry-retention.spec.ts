@@ -37,7 +37,7 @@ describe("telemetry retention config", () => {
       const n = Number(/LIMIT (\d+) FOR/.exec(s)?.[1]);
       return [{ picked: n, deleted: n, last_time: "2020-01-01 00:00:00", last_id: "00000000-0000-0000-0000-00000000000" + sqls.length }];
     });
-    const total = await purgeTelemetryTable(run, rule, { days: 7, batchSize: 100, maxRecords: 250 });
+    const total = await purgeTelemetryTable(run, { ...rule, minSafetyLimit: undefined }, { days: 7, batchSize: 100, maxRecords: 250 });
     expect(total).toBe(250);
     expect(sqls.map((s) => /LIMIT (\d+) FOR/.exec(s)?.[1])).toEqual(["100", "100", "50"]);
     expect(sqls[0]).not.toContain("> ('");
