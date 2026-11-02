@@ -48,8 +48,9 @@ afterEach(() => {
   else process.env.SECRET_ENCRYPTION_KEY = original;
 });
 
-const urlSent = () => jest.mocked(renderIncidentNotificationEmail).mock.calls[0][0].unsubscribeUrl;
-const headersSent = () => (sendEmail.mock.calls[0] as unknown as [{ headers?: Record<string, string> }])[0].headers;
+const urlSent = (call = 0) => jest.mocked(renderIncidentNotificationEmail).mock.calls[call][0].unsubscribeUrl;
+const headersSent = (call = 0) =>
+  (sendEmail.mock.calls[call] as unknown as [{ headers?: Record<string, string> }])[0].headers;
 
 it("uses a signed link when the key is set", async () => {
   process.env.SECRET_ENCRYPTION_KEY = KEY;
@@ -66,15 +67,18 @@ describe("without SECRET_ENCRYPTION_KEY", () => {
     delete process.env.SECRET_ENCRYPTION_KEY;
   });
 
-  it("falls back to the stored token and warns once per batch", async () => {
+  it("falls back to each subscriber's stored token and warns once per batch", async () => {
+    const otherLegacy = "e".repeat(64);
     jest.mocked(resolveSubscribers).mockResolvedValue([
       { ...base, id: ID, unsubscribeToken: legacy },
-      { ...base, id: "22222222-2222-4222-8222-222222222222", email: "b@example.test", unsubscribeToken: legacy },
+      { ...base, id: "22222222-2222-4222-8222-222222222222", email: "b@example.test", unsubscribeToken: otherLegacy },
     ] as never);
     const result = await sendIncidentNotifications("incident-1", "page-1");
     expect(result.sentCount).toBe(2);
-    expect(urlSent()).toMatch(new RegExp(`/status/unsubscribe/${legacy}$`));
-    expect(headersSent()?.["List-Unsubscribe"]).toContain(legacy);
+    expect(urlSent(0)).toMatch(new RegExp(`/status/unsubscribe/${legacy}$`));
+    expect(headersSent(0)?.["List-Unsubscribe"]).toContain(legacy);
+    expect(urlSent(1)).toMatch(new RegExp(`/status/unsubscribe/${otherLegacy}$`));
+    expect(headersSent(1)?.["List-Unsubscribe"]).toContain(otherLegacy);
     expect(console.warn).toHaveBeenCalledTimes(1);
   });
 

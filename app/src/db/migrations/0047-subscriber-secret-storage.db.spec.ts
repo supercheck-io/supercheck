@@ -13,6 +13,7 @@ let maintenance: ReturnType<typeof postgres>;
 let client: ReturnType<typeof postgres>;
 let mockDb: ReturnType<typeof drizzle>;
 
+jest.mock("next/cache", () => ({ revalidatePath: jest.fn() }));
 jest.mock("@/utils/db", () => ({
   get db() {
     return mockDb;
@@ -101,9 +102,11 @@ describe("0047 subscriber secret storage", () => {
   it("rejects a superseded token whose hash was kept when an older app renewed the row", async () => {
     const oldTok = "b".repeat(64);
     const newTok = "c".repeat(64);
-    await client`UPDATE status_page_subscribers SET verification_token = ${newTok}, verification_token_hash = ${hashVerificationToken(oldTok)}, verified_at = now() WHERE id = '00000000-0000-0000-0000-0000000000a2'`;
+    await client`UPDATE status_page_subscribers SET verification_token = ${newTok}, verification_token_hash = ${hashVerificationToken(oldTok)}, verified_at = NULL WHERE id = '00000000-0000-0000-0000-0000000000a2'`;
     expect(await verifySubscriber(oldTok)).toMatchObject({ success: false });
     expect(await verifySubscriber(newTok)).toMatchObject({ success: true });
+    const [row] = await client`SELECT verified_at FROM status_page_subscribers WHERE id = '00000000-0000-0000-0000-0000000000a2'`;
+    expect(row.verified_at).not.toBeNull();
   });
 
   it("verifies a plaintext token written by an older app and migrates it", async () => {
