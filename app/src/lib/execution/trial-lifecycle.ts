@@ -11,6 +11,7 @@ import {
 import type { TrialNotificationKind } from "@/emails";
 import { db } from "@/utils/db";
 import { hasPaidAccess } from "@/lib/execution/trial-limits";
+import { notInDeletedProject } from "@/lib/middleware/plan-limit-lock";
 
 /** How many expired trials one run processes; the rest are picked up on the next run. */
 const BATCH_SIZE = 50;
@@ -276,6 +277,8 @@ export async function restoreTrialSuspensions(
             and(
               inArray(monitors.id, monitorIds),
               eq(monitors.status, "paused"),
+              // A project deleted while suspended stays stopped.
+              notInDeletedProject(monitors.projectId),
             ),
           )
           .returning({ id: monitors.id })
@@ -288,6 +291,7 @@ export async function restoreTrialSuspensions(
             and(
               inArray(statusPages.id, pageIds),
               eq(statusPages.status, "archived"),
+              notInDeletedProject(statusPages.projectId),
             ),
           )
           .returning({ id: statusPages.id })

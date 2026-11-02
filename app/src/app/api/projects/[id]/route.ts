@@ -319,8 +319,12 @@ export async function DELETE(
     });
 
     // Best effort: a paused monitor's scheduled check is a no-op, this only removes the repeatable.
-    const { unscheduleMonitors } = await import('@/lib/execution/trial-lifecycle');
-    await unscheduleMonitors(pausedMonitors, db);
+    try {
+      const { unscheduleMonitors } = await import('@/lib/execution/trial-lifecycle');
+      await unscheduleMonitors(pausedMonitors, db);
+    } catch (error) {
+      console.error('Failed to unschedule monitors for deleted project', projectId, error);
+    }
 
     // Best effort: processScheduledJob also drops the repeatable if this fails.
     try {

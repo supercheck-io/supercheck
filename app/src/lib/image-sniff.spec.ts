@@ -13,6 +13,7 @@ describe("sniffImageType", () => {
     [text('<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg"/>'), "image/svg+xml"],
     [text('﻿  <svg xmlns="http://www.w3.org/2000/svg"></svg>'), "image/svg+xml"],
     [text('<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" ""><svg/>'), "image/svg+xml"],
+    [text(`<?xml version="1.0"?><!-- Generator: Adobe Illustrator --><!DOCTYPE svg [${'<!ENTITY ns_x "http://ns.adobe.com/x/">'.repeat(60)}]><svg version="1.1"></svg>`), "image/svg+xml"],
   ])("detects %#", (input, expected) => {
     expect(sniffImageType(input)).toBe(expected);
   });
@@ -20,6 +21,7 @@ describe("sniffImageType", () => {
   it.each([
     text("<html><script>alert(1)</script></html>"),
     text("<?xml version='1.0'?><root/>"),
+    text("<html><body><svg></svg><script>alert(1)</script></body></html>"),
     bytes(0x4d, 0x5a),
   ])("rejects non-image content %#", (input) => {
     expect(sniffImageType(input)).toBeNull();

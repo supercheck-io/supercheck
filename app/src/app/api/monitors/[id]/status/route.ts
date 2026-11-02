@@ -1,4 +1,5 @@
 import { isUuid } from "@/lib/uuid";
+import { notInDeletedProject } from "@/lib/middleware/plan-limit-lock";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { monitors } from "@/db/schema";
@@ -37,8 +38,9 @@ export async function PATCH(
 
     // Get current monitor status for audit logging
     if (!isUuid((await context.params).id)) return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
+    // A soft-deleted project's monitors are gone for the user; they must not be resumable here.
     const currentMonitor = await db.query.monitors.findFirst({
-      where: eq(monitors.id, id),
+      where: and(eq(monitors.id, id), notInDeletedProject(monitors.projectId)),
     });
 
     if (!currentMonitor) {

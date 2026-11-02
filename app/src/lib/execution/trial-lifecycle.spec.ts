@@ -390,6 +390,29 @@ describe("restoreTrialSuspensions", () => {
     await expect(restoreTrialSuspensions("org", database)).resolves.toMatchObject({ monitorsResumed: 1 });
   });
 
+  it("leaves monitors and status pages of a project deleted while suspended stopped", async () => {
+    const { PgDialect } = await import("drizzle-orm/pg-core");
+    const { database, tx } = buildRestore(
+      [
+        { resourceType: "monitor", resourceId: "m1" },
+        { resourceType: "status_page", resourceId: "p1" },
+      ],
+    );
+    const wheres: string[] = [];
+    (tx.update as jest.Mock).mockImplementation(() => ({
+      set: () => ({
+        where: (condition: import("drizzle-orm").SQL) => {
+          wheres.push(new PgDialect().sqlToQuery(condition).sql);
+          return { returning: async () => [] };
+        },
+      }),
+    }));
+    await restoreTrialSuspensions("org", database);
+    expect(wheres).toHaveLength(2);
+    expect(wheres[0]).toContain(`"projects"."id" = "monitors"."project_id" AND "projects"."status" = 'deleted'`);
+    expect(wheres[1]).toContain(`"projects"."id" = "status_pages"."project_id" AND "projects"."status" = 'deleted'`);
+  });
+
   it("does nothing for an organization with no suspended resources", async () => {
     const { database, tx } = buildRestore([]);
     await expect(restoreTrialSuspensions("org", database)).resolves.toEqual({
