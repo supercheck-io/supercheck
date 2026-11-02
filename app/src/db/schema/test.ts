@@ -14,11 +14,13 @@ import {
   check,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+import { z } from "zod";
 import { createInsertSchema, createSelectSchema, createUpdateSchema } from "drizzle-zod";
 import { organization } from "./organization";
 import { projects } from "./organization";
 import { user } from "./auth";
 import type { TestPriority, TestType } from "./types";
+import { inValues, TEST_TYPE_VALUES, TEST_PRIORITY_VALUES } from "./types";
 
 /**
  * Stores test definitions and scripts.
@@ -69,12 +71,18 @@ export const tests = pgTable(
     testsCreatedByUserIdIdx: index("tests_created_by_user_id_idx").on(table.createdByUserId),
     testsOrganizationIdRequired: check("tests_organization_id_required_check", sql`organization_id IS NOT NULL`),
     testsProjectIdRequired: check("tests_project_id_required_check", sql`project_id IS NOT NULL`),
-    testsTypeCheck: check("tests_type_check", sql`${table.type} IN ('browser', 'api', 'database', 'custom', 'performance')`),
-    testsPriorityCheck: check("tests_priority_check", sql`${table.priority} IN ('low', 'medium', 'high')`),
+    testsTypeCheck: check("tests_type_check", inValues(table.type, TEST_TYPE_VALUES)),
+    testsPriorityCheck: check("tests_priority_check", inValues(table.priority, TEST_PRIORITY_VALUES)),
   })
 );
 
 // Zod schemas for tests
-export const testsInsertSchema = createInsertSchema(tests);
-export const testsUpdateSchema = createUpdateSchema(tests);
+export const testsInsertSchema = createInsertSchema(tests, {
+  type: z.enum(TEST_TYPE_VALUES).optional(),
+  priority: z.enum(TEST_PRIORITY_VALUES).optional(),
+});
+export const testsUpdateSchema = createUpdateSchema(tests, {
+  type: z.enum(TEST_TYPE_VALUES).optional(),
+  priority: z.enum(TEST_PRIORITY_VALUES).optional(),
+});
 export const testsSelectSchema = createSelectSchema(tests);

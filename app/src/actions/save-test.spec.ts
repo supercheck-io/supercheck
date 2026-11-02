@@ -97,6 +97,14 @@ it.each([
   expect(subscriptionService.blockUntilSubscribed).not.toHaveBeenCalled();
 });
 
+// priority and type are CHECK-constrained columns: a bad value is a validation error, not a database error.
+it.each([{ priority: "urgent" }, { type: "bogus" }])("rejects %j before touching the database", async (fields) => {
+  const result = await saveTest({ title: "Renamed", ...fields } as never);
+  expect(result.success).toBe(false);
+  expect(mockSet).not.toHaveBeenCalled();
+  expect(subscriptionService.blockUntilSubscribed).not.toHaveBeenCalled();
+});
+
 it("checks the authenticated organization before a permitted save", async () => {
   expect(await update("action", {})).toBe(true);
   expect(subscriptionService.blockUntilSubscribed).toHaveBeenCalledWith("org");

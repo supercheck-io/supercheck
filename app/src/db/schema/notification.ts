@@ -34,6 +34,7 @@ import type {
   NotificationStatus,
   NotificationContent,
 } from "./types";
+import { inValues, NOTIFICATION_PROVIDER_TYPE_VALUES } from "./types";
 
 /**
  * Configures different channels for sending alerts (e.g., email, Slack).
@@ -66,7 +67,7 @@ export const notificationProviders = pgTable("notification_providers", {
     index("notification_providers_project_id_idx").on(table.projectId),
     check("notification_providers_organization_id_required_check", sql`organization_id IS NOT NULL`),
     check("notification_providers_project_id_required_check", sql`project_id IS NOT NULL`),
-    check("notification_providers_type_check", sql`${table.type} IN ('email', 'slack', 'webhook', 'telegram', 'discord', 'teams')`),
+    check("notification_providers_type_check", inValues(table.type, NOTIFICATION_PROVIDER_TYPE_VALUES)),
   ]);
 
 /**
@@ -210,7 +211,7 @@ export const alerts = pgTable("alerts", {
 // Zod schemas for notification providers
 export const notificationProvidersInsertSchema = createInsertSchema(
   notificationProviders,
-  { type: z.enum(["email", "slack", "webhook", "telegram", "discord", "teams"]) },
+  { type: z.enum(NOTIFICATION_PROVIDER_TYPE_VALUES) },
 );
 export const notificationProvidersSelectSchema = createSelectSchema(
   notificationProviders

@@ -26,8 +26,10 @@ import { user } from "./auth";
 import { notificationProviders } from "./notification";
 import { organization, projects } from "./organization";
 import { incidents as statusPageIncidents } from "./statusPage";
+import { inValues } from "./types";
 
-type SreTier = "1" | "2" | "3" | "4";
+export const SRE_TIER_VALUES = ["1", "2", "3", "4"] as const;
+type SreTier = (typeof SRE_TIER_VALUES)[number];
 type SreServiceStatus = "active" | "deprecated" | "merged";
 type SreOwnerType = "team" | "user" | "slack";
 type SreOwnerRole = "primary" | "on-call" | "secondary" | "reviewer";
@@ -206,7 +208,7 @@ export const sreServices = pgTable(
     sreServicesRunbookIdIdx: index("sre_services_runbook_id_idx").on(table.runbookId),
     sreServicesMergedIntoServiceIdIdx: index("sre_services_merged_into_service_id_idx").on(table.mergedIntoServiceId),
     sreServicesStatusCheck: check("sre_services_status_check", sql`${table.status} IN ('active', 'deprecated', 'merged')`),
-    sreServicesTierCheck: check("sre_services_tier_check", sql`${table.tier} IN ('1', '2', '3', '4')`),
+    sreServicesTierCheck: check("sre_services_tier_check", inValues(table.tier, SRE_TIER_VALUES)),
   })
 );
 

@@ -22,6 +22,7 @@ import {
   createSelectSchema,
   createUpdateSchema,
 } from "drizzle-zod";
+import { z } from "zod";
 import { organization, projects } from "./organization";
 import { user } from "./auth";
 import type {
@@ -33,6 +34,7 @@ import type {
   MonitoringLocation,
   AlertConfig,
 } from "./types";
+import { inValues, MONITOR_TYPE_VALUES, MONITOR_STATUS_VALUES } from "./types";
 
 /**
  * Defines monitoring configurations for services or endpoints.
@@ -81,8 +83,8 @@ export const monitors = pgTable(
     monitorsOrganizationIdIdx: index("monitors_organization_id_idx").on(table.organizationId),
     monitorsOrganizationIdRequired: check("monitors_organization_id_required_check", sql`organization_id IS NOT NULL`),
     monitorsProjectIdRequired: check("monitors_project_id_required_check", sql`project_id IS NOT NULL`),
-    monitorsTypeCheck: check("monitors_type_check", sql`${table.type} IN ('http_request', 'website', 'ping_host', 'port_check', 'synthetic_test')`),
-    monitorsStatusCheck: check("monitors_status_check", sql`${table.status} IN ('up', 'down', 'paused', 'pending', 'maintenance', 'error')`),
+    monitorsTypeCheck: check("monitors_type_check", inValues(table.type, MONITOR_TYPE_VALUES)),
+    monitorsStatusCheck: check("monitors_status_check", inValues(table.status, MONITOR_STATUS_VALUES)),
   })
 );
 
@@ -151,8 +153,14 @@ export const monitorResults = pgTable(
 
 
 // Zod schemas for monitors
-export const monitorsInsertSchema = createInsertSchema(monitors);
-export const monitorsUpdateSchema = createUpdateSchema(monitors);
+export const monitorsInsertSchema = createInsertSchema(monitors, {
+  type: z.enum(MONITOR_TYPE_VALUES),
+  status: z.enum(MONITOR_STATUS_VALUES).optional(),
+});
+export const monitorsUpdateSchema = createUpdateSchema(monitors, {
+  type: z.enum(MONITOR_TYPE_VALUES).optional(),
+  status: z.enum(MONITOR_STATUS_VALUES).optional(),
+});
 export const monitorsSelectSchema = createSelectSchema(monitors);
 
 // Zod schemas for monitor results

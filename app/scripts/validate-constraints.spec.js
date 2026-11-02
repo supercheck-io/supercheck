@@ -42,5 +42,13 @@ describe("validatePendingConstraints", () => {
     const result = await validatePendingConstraints(client, { logWarning });
     expect(result).toEqual({ validated: ["ok_check"], left: ["bad_check"] });
     expect(logWarning).toHaveBeenCalledWith(expect.stringContaining("bad_check left NOT VALID"));
+    expect(logWarning).toHaveBeenLastCalledWith("1 constraint(s) left NOT VALID: bad_check");
+  });
+
+  it("logs no summary when everything validated", async () => {
+    const { client } = fakeClient({ pending: [{ table_name: "tests", constraint_name: "a", conname: "a" }] });
+    const logWarning = jest.fn();
+    await validatePendingConstraints(client, { logWarning });
+    expect(logWarning).not.toHaveBeenCalled();
   });
 });
