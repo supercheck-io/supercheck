@@ -15,7 +15,6 @@ import {
 import { sql } from 'drizzle-orm';
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
 import { user } from './auth';
-import { organization } from './organization';
 import type { AuditDetails } from './types';
 
 /**

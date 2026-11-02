@@ -70,9 +70,11 @@ export const session = pgTable(
       .references(() => user.id, { onDelete: 'cascade' }),
     activeOrganizationId: uuid('active_organization_id').references(
       () => organization.id,
-      { onDelete: 'set null' }
+      { onDelete: 'set null' },
     ),
-    activeProjectId: uuid('active_project_id').references(() => projects.id, { onDelete: 'set null' }),
+    activeProjectId: uuid('active_project_id').references(() => projects.id, {
+      onDelete: 'set null',
+    }),
     impersonatedBy: text('impersonated_by'),
   },
   (table) => ({

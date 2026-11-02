@@ -243,7 +243,9 @@ export const projectVariables = pgTable(
     mimeType: varchar('mime_type', { length: 255 }), // MIME type of uploaded file
     storagePath: text('storage_path'), // S3 storage path for file content
     description: text('description'),
-    createdByUserId: uuid('created_by_user_id').references(() => user.id, { onDelete: 'set null' }),
+    createdByUserId: uuid('created_by_user_id').references(() => user.id, {
+      onDelete: 'set null',
+    }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
