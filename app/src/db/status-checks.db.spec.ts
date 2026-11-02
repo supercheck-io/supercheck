@@ -1,5 +1,5 @@
 /** @jest-environment node */
-// Needs TEST_DATABASE_URL (run with `npm run test:db`). Proves migration 0051: status, type and other
+// Needs TEST_DATABASE_URL (run with `npm run test:db`). Proves migration 0052: status, type and other
 // enum-like columns only accept the values the application writes, and that data which already violates a
 // constraint never fails the migration (the constraint stays NOT VALID and still rejects new bad writes).
 import { execFile } from "node:child_process";
@@ -181,7 +181,7 @@ describe("existing data that violates a constraint", () => {
     const before = path.join(workDir, "before");
     mkdirSync(path.join(before, "src/db"), { recursive: true });
     cpSync(MIGRATIONS_DIR, path.join(before, "src/db/migrations"), { recursive: true });
-    const target = readdirSync(path.join(before, "src/db/migrations")).find((f) => f.startsWith("0051_") && f.endsWith(".sql"));
+    const target = readdirSync(path.join(before, "src/db/migrations")).find((f) => f.startsWith("0052_") && f.endsWith(".sql"));
     expect(target).toBeDefined();
     rmSync(path.join(before, "src/db/migrations", target as string));
     await migrate(dirtyName, before);
