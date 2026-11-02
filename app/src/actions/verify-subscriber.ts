@@ -2,6 +2,7 @@
 
 import { db } from "@/utils/db";
 import { statusPageSubscribers, statusPages } from "@/db/schema";
+import { hashVerificationToken } from "@/lib/subscriber-tokens";
 import { eq, and, ne, isNull, isNotNull, count } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { checkSubscriberLimit } from "@/lib/middleware/plan-enforcement";
@@ -17,9 +18,21 @@ export async function verifySubscriber(token: string) {
     }
 
     // Find subscriber with this verification token
-    const subscriber = await db.query.statusPageSubscribers.findFirst({
-      where: eq(statusPageSubscribers.verificationToken, token),
+    let subscriber = await db.query.statusPageSubscribers.findFirst({
+      where: eq(statusPageSubscribers.verificationTokenHash, hashVerificationToken(token)),
     });
+    if (!subscriber) {
+      // Rows written by an older app version still hold the plaintext token; hash it and clear it.
+      subscriber = await db.query.statusPageSubscribers.findFirst({
+        where: eq(statusPageSubscribers.verificationToken, token),
+      });
+      if (subscriber) {
+        await db
+          .update(statusPageSubscribers)
+          .set({ verificationTokenHash: hashVerificationToken(token), verificationToken: null })
+          .where(eq(statusPageSubscribers.id, subscriber.id));
+      }
+    }
 
     // A removed/unsubscribed subscriber's old link must not read as "already verified".
     if (!subscriber || subscriber.purgeAt) {

@@ -189,6 +189,8 @@ export const auth = betterAuth({
           return origins.length > 0 ? origins : undefined;
         })()
       : undefined,
+  // Provider access/refresh/id tokens are encrypted at rest with BETTER_AUTH_SECRET.
+  account: { encryptOAuthTokens: true },
   socialProviders: {
     github: {
       clientId: process.env.GITHUB_CLIENT_ID as string,

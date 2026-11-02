@@ -1,5 +1,5 @@
 {
-  "id": "281bae9d-328d-4213-aacc-db3d33c1a419",
+  "id": "27d3a67d-f630-42c8-b200-07516d598d2f",
   "prevId": "9bdb199f-4e99-4623-8deb-071ab2d8e298",
   "version": "7",
   "dialect": "postgresql",
@@ -10268,6 +10268,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "verification_token_hash": {
+          "name": "verification_token_hash",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false
+        },
         "unsubscribe_token": {
           "name": "unsubscribe_token",
           "type": "varchar(255)",
@@ -10277,6 +10283,12 @@
         "webhook_secret": {
           "name": "webhook_secret",
           "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "webhook_secret_encrypted": {
+          "name": "webhook_secret_encrypted",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
@@ -10367,6 +10379,54 @@
           ],
           "isUnique": true,
           "where": "endpoint IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "status_page_subscribers_verification_token_hash_idx": {
+          "name": "status_page_subscribers_verification_token_hash_idx",
+          "columns": [
+            {
+              "expression": "verification_token_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "verification_token_hash IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "status_page_subscribers_verification_token_idx": {
+          "name": "status_page_subscribers_verification_token_idx",
+          "columns": [
+            {
+              "expression": "verification_token",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "verification_token IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "status_page_subscribers_unsubscribe_token_idx": {
+          "name": "status_page_subscribers_unsubscribe_token_idx",
+          "columns": [
+            {
+              "expression": "unsubscribe_token",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "unsubscribe_token IS NOT NULL",
           "concurrently": false,
           "method": "btree",
           "with": {}
