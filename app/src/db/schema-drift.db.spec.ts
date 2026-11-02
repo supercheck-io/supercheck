@@ -80,11 +80,22 @@ function normalize(signature: string): string | null {
   return signature;
 }
 
-async function signatures(url: string): Promise<Set<string>> {
+// Multiset difference: duplicate signatures (e.g. two identically defined CHECKs) must also match.
+function difference(left: string[], right: string[]): string[] {
+  const remaining = new Map<string, number>();
+  for (const sig of right) remaining.set(sig, (remaining.get(sig) ?? 0) + 1);
+  return left.filter((sig) => {
+    const count = remaining.get(sig) ?? 0;
+    if (count > 0) remaining.set(sig, count - 1);
+    return count === 0;
+  });
+}
+
+async function signatures(url: string): Promise<string[]> {
   const client = postgres(url, { max: 1, onnotice: () => {} });
   try {
     const rows = await client.unsafe<{ sig: string }[]>(SIGNATURE_SQL);
-    return new Set(rows.map((row) => normalize(row.sig)).filter((s): s is string => s !== null));
+    return rows.map((row) => normalize(row.sig)).filter((s): s is string => s !== null);
   } finally {
     await client.end({ timeout: 5 });
   }
@@ -154,8 +165,8 @@ describe("schema drift", () => {
 
       const fromMigrations = await signatures(databaseUrlFor(migratedDb));
       const fromSchema = await signatures(databaseUrlFor(declaredDb));
-      const onlyInMigrations = [...fromMigrations].filter((sig) => !fromSchema.has(sig)).sort();
-      const onlyInSchema = [...fromSchema].filter((sig) => !fromMigrations.has(sig)).sort();
+      const onlyInMigrations = difference(fromMigrations, fromSchema).sort();
+      const onlyInSchema = difference(fromSchema, fromMigrations).sort();
 
       // On failure, the lists name exactly what to add to a migration or to src/db/schema.
       expect({ onlyInMigrations, onlyInSchema }).toEqual({ onlyInMigrations: [], onlyInSchema: [] });
