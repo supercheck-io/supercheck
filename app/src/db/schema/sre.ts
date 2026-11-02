@@ -508,7 +508,8 @@ export const externalConnectors = pgTable(
     id: uuidPk(),
     organizationId: uuid("organization_id").notNull().references(() => organization.id, { onDelete: "cascade" }),
     projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }),
-    privateAgentId: uuid("private_agent_id").references(() => privateAgents.id, { onDelete: "restrict" }),
+    // NO ACTION (not RESTRICT): still blocks deleting an agent that has rows, but is checked at statement end so an organization cascade can remove agent and rows in any order.
+    privateAgentId: uuid("private_agent_id").references(() => privateAgents.id, { onDelete: "no action" }),
     name: varchar("name", { length: 100 }).notNull(),
     type: varchar("type", { length: 50 }).$type<ExternalConnectorType>().notNull(),
     riskLevel: varchar("risk_level", { length: 10 }).$type<ExternalConnectorRiskLevel>().notNull().default("low"),
@@ -704,7 +705,8 @@ export const privateAgentJobs = pgTable(
     id: uuidPk(),
     organizationId: uuid("organization_id").notNull().references(() => organization.id, { onDelete: "cascade" }),
     projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
-    privateAgentId: uuid("private_agent_id").notNull().references(() => privateAgents.id, { onDelete: "restrict" }),
+    // NO ACTION (not RESTRICT): still blocks deleting an agent that has rows, but is checked at statement end so an organization cascade can remove agent and rows in any order.
+    privateAgentId: uuid("private_agent_id").notNull().references(() => privateAgents.id, { onDelete: "no action" }),
     connectorId: uuid("connector_id").references(() => externalConnectors.id, { onDelete: "set null" }),
     jobClass: varchar("job_class", { length: 30 }).$type<PrivateAgentJobClass>().notNull(),
     status: varchar("status", { length: 20 }).$type<PrivateAgentJobStatus>().notNull().default("queued"),

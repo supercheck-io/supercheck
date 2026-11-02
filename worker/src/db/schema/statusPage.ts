@@ -51,7 +51,7 @@ export const statusPages = pgTable('status_pages', {
     onDelete: 'cascade',
   }),
   createdByUserId: uuid('created_by_user_id').references(() => user.id, {
-    onDelete: 'no action',
+    onDelete: 'set null',
   }),
   name: varchar('name', { length: 255 }).notNull(),
   subdomain: varchar('subdomain', { length: 36 }).unique().notNull(),
@@ -181,7 +181,7 @@ export const incidents = pgTable(
       .notNull()
       .references(() => statusPages.id, { onDelete: 'cascade' }),
     createdByUserId: uuid('created_by_user_id').references(() => user.id, {
-      onDelete: 'no action',
+      onDelete: 'set null',
     }),
     sourceComponentId: uuid('source_component_id').references(
       () => statusPageComponents.id,
@@ -258,7 +258,7 @@ export const incidentUpdates = pgTable('incident_updates', {
     .notNull()
     .references(() => incidents.id, { onDelete: 'cascade' }),
   createdByUserId: uuid('created_by_user_id').references(() => user.id, {
-    onDelete: 'no action',
+    onDelete: 'set null',
   }),
   body: text('body').notNull(),
   status: varchar('status', { length: 50 })
@@ -308,7 +308,7 @@ export const incidentTemplates = pgTable('incident_templates', {
     .notNull()
     .references(() => statusPages.id, { onDelete: 'cascade' }),
   createdByUserId: uuid('created_by_user_id').references(() => user.id, {
-    onDelete: 'no action',
+    onDelete: 'set null',
   }),
   name: varchar('name', { length: 255 }).notNull(),
   title: varchar('title', { length: 255 }).notNull(),
@@ -480,7 +480,7 @@ export const postmortems = pgTable(
       .notNull()
       .references(() => incidents.id, { onDelete: 'cascade' }),
     createdByUserId: uuid('created_by_user_id').references(() => user.id, {
-      onDelete: 'no action',
+      onDelete: 'set null',
     }),
     body: text('body').notNull(),
     bodyLastUpdatedAt: timestamp('body_last_updated_at').defaultNow(),

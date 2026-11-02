@@ -337,6 +337,13 @@
       "when": 1793302800000,
       "tag": "0047_subscriber_secret_storage",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1793302900000,
+      "tag": "0048_foreign_key_delete_rules",
+      "breakpoints": true
     }
   ]
 }
