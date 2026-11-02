@@ -44,10 +44,10 @@ export const deviceAuthorizations = pgTable(
       .$type<DeviceGrantStatus>()
       .notNull()
       .default("pending"),
-    expiresAt: timestamp("expires_at").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     /** Current minimum polling interval in seconds (grows on slow_down). */
     pollIntervalSeconds: integer("poll_interval_seconds").notNull().default(5),
-    lastPolledAt: timestamp("last_polled_at"),
+    lastPolledAt: timestamp("last_polled_at", { withTimezone: true }),
     /** Failed/blocked browser verification attempts against this grant. */
     verificationAttempts: integer("verification_attempts").notNull().default(0),
     approvedUserId: uuid("approved_user_id").references(() => user.id, {
@@ -57,16 +57,16 @@ export const deviceAuthorizations = pgTable(
       () => projects.id,
       { onDelete: "cascade" },
     ),
-    approvedAt: timestamp("approved_at"),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
     /** Key minted at exchange; null until consumed. Hash-only, no plaintext. */
     apiKeyId: uuid("api_key_id").references(() => apikey.id, {
       onDelete: "set null",
     }),
-    consumedAt: timestamp("consumed_at"),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
     /** Untrusted, display-only client metadata (name, version, hostname, ip). */
     clientMetadata: jsonb("client_metadata").$type<Record<string, string>>(),
-    createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
     deviceCodeHashIdx: uniqueIndex("device_authorizations_device_code_hash_idx").on(

@@ -179,7 +179,7 @@ export class MonitorCycleProcessor implements OnModuleInit, OnModuleDestroy {
 
   private async processArrivals(now: Date): Promise<number> {
     const claimed = await this.dbService.db.execute<{ cycle_id: string }>(sql`
-      UPDATE monitor_cycle_arrivals SET processed_at = ${now.toISOString()}::timestamp
+      UPDATE monitor_cycle_arrivals SET processed_at = ${now.toISOString()}::timestamptz
       WHERE id IN (
         SELECT id FROM monitor_cycle_arrivals WHERE processed_at IS NULL
         ORDER BY created_at LIMIT ${BATCH} FOR UPDATE SKIP LOCKED
@@ -229,7 +229,7 @@ export class MonitorCycleProcessor implements OnModuleInit, OnModuleDestroy {
         and(
           eq(schema.monitorCycles.status, 'closed'),
           isNull(schema.monitorCycles.notifiedAt),
-          sql`${schema.monitorCycles.closedAt} + (${schema.monitorCycles.notifyAttempts} + 1) * ${REPAIR_GRACE_SECONDS} * interval '1 second' <= ${now.toISOString()}::timestamp`,
+          sql`${schema.monitorCycles.closedAt} + (${schema.monitorCycles.notifyAttempts} + 1) * ${REPAIR_GRACE_SECONDS} * interval '1 second' <= ${now.toISOString()}::timestamptz`,
         ),
       )
       .orderBy(asc(schema.monitorCycles.closedAt))
@@ -350,7 +350,7 @@ export class MonitorCycleProcessor implements OnModuleInit, OnModuleDestroy {
       const deleted = await this.dbService.db.execute(sql`
         DELETE FROM monitor_cycles WHERE id IN (
           SELECT id FROM monitor_cycles
-          WHERE closed_at IS NOT NULL AND closed_at < ${cutoff.toISOString()}::timestamp
+          WHERE closed_at IS NOT NULL AND closed_at < ${cutoff.toISOString()}::timestamptz
           ORDER BY closed_at LIMIT ${RETENTION_BATCH}
         )`);
       this.state.retentionDeleted += deleted.count ?? 0;
@@ -359,8 +359,7 @@ export class MonitorCycleProcessor implements OnModuleInit, OnModuleDestroy {
   }
 
   private async refreshLag(now: Date): Promise<void> {
-    // Computed in SQL: the driver returns timestamp-without-time-zone values that Node would
-    // otherwise parse in its local zone.
+    // Computed in SQL: the driver returns timestamp text that Node would parse inconsistently.
     const at = now.toISOString();
     const [lag] = await this.dbService.db.execute<{
       arrival: string | null;
@@ -368,8 +367,8 @@ export class MonitorCycleProcessor implements OnModuleInit, OnModuleDestroy {
       unnotified: string;
     }>(sql`
       SELECT
-        (SELECT EXTRACT(EPOCH FROM (${at}::timestamp - min(created_at))) FROM monitor_cycle_arrivals WHERE processed_at IS NULL) AS arrival,
-        (SELECT EXTRACT(EPOCH FROM (${at}::timestamp - min(deadline_at))) FROM monitor_cycles WHERE status = 'open' AND deadline_at <= ${at}::timestamp) AS overdue,
+        (SELECT EXTRACT(EPOCH FROM (${at}::timestamptz - min(created_at))) FROM monitor_cycle_arrivals WHERE processed_at IS NULL) AS arrival,
+        (SELECT EXTRACT(EPOCH FROM (${at}::timestamptz - min(deadline_at))) FROM monitor_cycles WHERE status = 'open' AND deadline_at <= ${at}::timestamptz) AS overdue,
         (SELECT count(*) FROM monitor_cycles WHERE status = 'closed' AND notified_at IS NULL) AS unnotified`);
     this.state.arrivalLagSeconds = Math.max(0, Number(lag.arrival ?? 0));
     this.state.overdueSeconds = Math.max(0, Number(lag.overdue ?? 0));

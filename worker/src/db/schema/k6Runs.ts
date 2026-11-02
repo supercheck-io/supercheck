@@ -55,8 +55,8 @@ export const k6PerformanceRuns = pgTable(
 
     // Status tracking
     status: varchar('status', { length: 20 }).$type<TestRunStatus>().notNull(),
-    startedAt: timestamp('started_at').defaultNow(),
-    completedAt: timestamp('completed_at'),
+    startedAt: timestamp('started_at', { withTimezone: true }).defaultNow(),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
     durationMs: integer('duration_ms'),
 
     // Results (from summary.json)
@@ -82,8 +82,8 @@ export const k6PerformanceRuns = pgTable(
     consoleOutput: text('console_output'), // Truncated for quick view (full in S3)
 
     // Timestamps
-    createdAt: timestamp('created_at').defaultNow(),
-    updatedAt: timestamp('updated_at').defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
   },
   (table) => ({
     // PERFORMANCE: Indexes for dashboard K6 analytics queries

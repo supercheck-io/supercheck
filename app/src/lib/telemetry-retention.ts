@@ -89,7 +89,7 @@ export type Row = Record<string, unknown>;
 export type Runner = (statement: string) => Promise<Row[]>;
 
 const cutoff = (days: number) =>
-  `localtimestamp - make_interval(days => ${days})`; // matches the DEFAULT now() these timestamp columns use
+  `now() - make_interval(days => ${days})`; // timestamptz columns
 const protectFor = (rule: TelemetryRetentionRule, alias: string) =>
   rule.protect ? ` AND ${rule.protect.replaceAll("{a}", alias)}` : "";
 
@@ -118,7 +118,7 @@ export function buildPurgeBatchSql(
   if (cursor && !(/^[0-9: .+-]+$/.test(cursor.time) && /^[0-9a-f-]{36}$/.test(cursor.id)))
     throw new Error("invalid cursor");
   const t = rule.timeColumn;
-  const after = cursor ? ` AND (y.${t}, y.id) > ('${cursor.time}'::timestamp, '${cursor.id}'::uuid)` : "";
+  const after = cursor ? ` AND (y.${t}, y.id) > ('${cursor.time}'::timestamptz, '${cursor.id}'::uuid)` : "";
   return `WITH picked AS (SELECT y.id, y.${t} AS t FROM ${rule.table} y WHERE y.${t} < ${cutoff(days)}${after}${protectFor(rule, "y")} ORDER BY y.${t}, y.id LIMIT ${batchSize} FOR UPDATE SKIP LOCKED), del AS (DELETE FROM ${rule.table} z WHERE z.id IN (SELECT id FROM picked) AND z.${t} < ${cutoff(days)}${protectFor(rule, "z")} RETURNING z.id) SELECT (SELECT count(*) FROM picked)::int AS picked, (SELECT count(*) FROM del)::int AS deleted, (SELECT t::text FROM picked ORDER BY t DESC, id DESC LIMIT 1) AS last_time, (SELECT id::text FROM picked ORDER BY t DESC, id DESC LIMIT 1) AS last_id`;
 }
 

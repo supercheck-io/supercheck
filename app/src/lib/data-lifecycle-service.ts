@@ -623,8 +623,8 @@ export class MonitorResultsCleanupStrategy implements ICleanupStrategy {
                   inArray(monitorResults.monitorId, monitorIds),
                   lt(monitorResults.checkedAt, cutoffDate),
                   cursor ? or(
-                    gt(monitorResults.checkedAt, sql`${cursor.checkedAt}::timestamp`),
-                    and(eq(monitorResults.checkedAt, sql`${cursor.checkedAt}::timestamp`), gt(monitorResults.id, cursor.id))
+                    gt(monitorResults.checkedAt, sql`${cursor.checkedAt}::timestamptz`),
+                    and(eq(monitorResults.checkedAt, sql`${cursor.checkedAt}::timestamptz`), gt(monitorResults.id, cursor.id))
                   ) : undefined,
                   or(
                     eq(monitorResults.isStatusChange, false),
@@ -833,8 +833,8 @@ export class MonitorResultsCleanupStrategy implements ICleanupStrategy {
               and(
                 lt(monitorResults.checkedAt, cutoffDate),
                 cursor ? or(
-                  gt(monitorResults.checkedAt, sql`${cursor.checkedAt}::timestamp`),
-                  and(eq(monitorResults.checkedAt, sql`${cursor.checkedAt}::timestamp`), gt(monitorResults.id, cursor.id))
+                  gt(monitorResults.checkedAt, sql`${cursor.checkedAt}::timestamptz`),
+                  and(eq(monitorResults.checkedAt, sql`${cursor.checkedAt}::timestamptz`), gt(monitorResults.id, cursor.id))
                 ) : undefined,
                 or(
                 eq(monitorResults.isStatusChange, false),
@@ -1408,7 +1408,7 @@ export class JobRunsCleanupStrategy implements ICleanupStrategy {
     return and(
       sql`${runs.jobId} IS NULL`,
       inArray(runs.status, TERMINAL_RUN_STATUSES),
-      lt(sql`coalesce(${runs.completedAt}, ${runs.createdAt})`, sql`${cutoff.toISOString()}::timestamp`)
+      lt(sql`coalesce(${runs.completedAt}, ${runs.createdAt})`, sql`${cutoff.toISOString()}::timestamptz`)
     )!;
   }
 
@@ -1566,8 +1566,8 @@ export class JobRunsCleanupStrategy implements ICleanupStrategy {
         id: runs.id, createdAt: sql<string>`${runs.createdAt}::text`, reportS3Url: runs.reportS3Url, logsS3Url: runs.logsS3Url, metadata: runs.metadata,
       }).from(runs)
         .where(and(condition, cursor ? or(
-          gt(runs.createdAt, sql`${cursor.createdAt}::timestamp`),
-          and(eq(runs.createdAt, sql`${cursor.createdAt}::timestamp`), gt(runs.id, cursor.id))
+          gt(runs.createdAt, sql`${cursor.createdAt}::timestamptz`),
+          and(eq(runs.createdAt, sql`${cursor.createdAt}::timestamptz`), gt(runs.id, cursor.id))
         ) : undefined))
         .orderBy(asc(runs.createdAt), asc(runs.id)).limit(limit);
       if (oldRuns.length === 0) break;

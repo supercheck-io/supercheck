@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
         type: string;
         message: string;
         status: string;
-        timestamp: Date;
+        timestamp: Date | string | null;
         providerId: string | null;
         providerName: string | null;
         providerType: string | null;
@@ -184,7 +184,8 @@ export async function GET(request: NextRequest) {
         type: item.type,
         message: item.message,
         status: item.status,
-        timestamp: item.timestamp,
+        // raw SQL rows carry timestamptz as "YYYY-MM-DD HH:MM:SS+00" text; sent_at is nullable
+        timestamp: item.timestamp ? new Date(item.timestamp).toISOString() : null,
         incident: incidentByAlert.get(item.id) ?? null,
         // A deleted channel leaves a raw provider UUID behind; show its stored type or a label instead.
         notificationProvider:

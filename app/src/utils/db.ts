@@ -22,6 +22,8 @@ const connectionString =
 // max_connections is a separate backend limit. App schedulers share this pool.
 const client = postgres(connectionString, {
   ssl: getSSLConfig(),
+  // DATE()/to_char()/date_trunc() on timestamptz bucket by session zone: pin it so buckets are UTC days.
+  connection: { TimeZone: "UTC" },
   max: getDatabasePoolMax(),
   idle_timeout: parseInt(process.env.DB_IDLE_TIMEOUT || "30", 10), // Default: 30 seconds
   connect_timeout: parseInt(process.env.DB_CONNECT_TIMEOUT || "10", 10), // Default: 10 seconds

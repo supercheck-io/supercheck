@@ -66,7 +66,7 @@ export const monitorAggregates = pgTable(
     // Start of the aggregation period (hour or day boundary)
     // For hourly: truncated to hour (e.g., 2024-12-04 14:00:00)
     // For daily: truncated to day (e.g., 2024-12-04 00:00:00)
-    periodStart: timestamp("period_start").notNull(),
+    periodStart: timestamp("period_start", { withTimezone: true }).notNull(),
 
     // Location for multi-location monitors (null = all locations combined)
     location: text("location").$type<MonitoringLocation | null>(),
@@ -97,8 +97,8 @@ export const monitorAggregates = pgTable(
     statusChangeCount: integer("status_change_count").notNull().default(0),
 
     // Metadata
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => ({
     // Primary lookup: monitor + period type + period start + location

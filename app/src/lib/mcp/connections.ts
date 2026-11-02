@@ -64,7 +64,7 @@ export async function listMcpConnections(userId: string): Promise<McpConnection[
       projectName: projects.name,
       connectedAt: oauthConsent.createdAt,
       // mapWith decodes the raw aggregate like a timestamp column; a bare sql<Date>
-      // arrives as a "timestamp without time zone" string that Date would read as local time.
+      // arrives as a raw timestamp string rather than a Date.
       lastActiveAt: sql`(
         SELECT max(${oauthRefreshToken.createdAt}) FROM ${oauthRefreshToken}
         WHERE ${oauthRefreshToken.userId} = ${oauthConsent.userId}

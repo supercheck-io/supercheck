@@ -99,10 +99,10 @@ export const statusPages = pgTable(
     heroCover: varchar("hero_cover", { length: 500 }),
     customDomain: varchar("custom_domain", { length: 255 }),
     customDomainVerified: boolean("custom_domain_verified").default(false),
-    customDomainLastCheckedAt: timestamp("custom_domain_last_checked_at"),
+    customDomainLastCheckedAt: timestamp("custom_domain_last_checked_at", { withTimezone: true }),
     theme: jsonb("theme").$type<Record<string, unknown>>().default({}),
-    createdAt: timestamp("created_at").defaultNow(),
-    updatedAt: timestamp("updated_at").defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
   },
   (table) => ({
     // Prevent duplicate custom domains while allowing NULL values
@@ -138,7 +138,7 @@ export const statusPageComponents = pgTable("status_page_components", {
   onlyShowIfDegraded: boolean("only_show_if_degraded").default(false),
   serviceId: uuid("service_id").references((): AnyPgColumn => sreServices.id, { onDelete: "set null" }),
   automationEmail: varchar("automation_email", { length: 255 }),
-  startDate: timestamp("start_date"),
+  startDate: timestamp("start_date", { withTimezone: true }),
   position: integer("position").default(0),
   // Aggregation settings for multiple monitors
   aggregationMethod: varchar("aggregation_method", { length: 50 })
@@ -148,9 +148,9 @@ export const statusPageComponents = pgTable("status_page_components", {
   autoCreateIncidents: boolean("auto_create_incidents").default(false).notNull(),
   // A manual resolve keeps automatic incidents off until the component recovers.
   autoIncidentSuppressed: boolean("auto_incident_suppressed").default(false).notNull(),
-  lastReconciledAt: timestamp("last_reconciled_at"),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
+  lastReconciledAt: timestamp("last_reconciled_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 }, (table) => ({ serviceIdx: index("status_page_components_service_idx").on(table.serviceId), reconciliationIdx: index("status_page_components_reconciliation_idx").on(table.lastReconciledAt, table.id),
     statusPageComponentsStatusPageIdIdx: index("status_page_components_status_page_id_idx").on(table.statusPageId),
     statusPageComponentsStatusCheck: check("status_page_components_status_check", inValues(table.status, COMPONENT_STATUS_VALUES)),
@@ -169,7 +169,7 @@ export const statusPageComponentMonitors = pgTable(
       .notNull()
       .references(() => monitors.id, { onDelete: "cascade" }),
     weight: integer("weight").default(1).notNull(),
-    createdAt: timestamp("created_at").defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   },
   (table) => ({
     pk: primaryKey({ columns: [table.componentId, table.monitorId] }),
@@ -202,8 +202,8 @@ export const incidents = pgTable("incidents", {
     .default("minor"),
   impactOverride: varchar("impact_override", { length: 50 }),
   body: text("body"),
-  scheduledFor: timestamp("scheduled_for"),
-  scheduledUntil: timestamp("scheduled_until"),
+  scheduledFor: timestamp("scheduled_for", { withTimezone: true }),
+  scheduledUntil: timestamp("scheduled_until", { withTimezone: true }),
   scheduledRemindPrior: boolean("scheduled_remind_prior").default(true),
   autoTransitionToMaintenanceState: boolean(
     "auto_transition_to_maintenance_state"
@@ -225,14 +225,14 @@ export const incidents = pgTable("incidents", {
   ),
   metadata: jsonb("metadata").default({}),
   deliverNotifications: boolean("deliver_notifications").default(true),
-  backfillDate: timestamp("backfill_date"),
+  backfillDate: timestamp("backfill_date", { withTimezone: true }),
   backfilled: boolean("backfilled").default(false),
-  monitoringAt: timestamp("monitoring_at"),
-  resolvedAt: timestamp("resolved_at"),
+  monitoringAt: timestamp("monitoring_at", { withTimezone: true }),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
   sreIncidentId: uuid("sre_incident_id").references((): AnyPgColumn => sreIncidents.id, { onDelete: "set null" }),
   shortlink: varchar("shortlink", { length: 255 }),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 }, (table) => ({
   automaticOpenIdx: uniqueIndex("incidents_open_automatic_component_idx").on(table.sourceComponentId).where(sql`${table.sourceComponentId} is not null and ${table.status} <> 'resolved'`),
   sourceComponentIdx: index("incidents_source_component_idx").on(table.sourceComponentId),
@@ -263,9 +263,9 @@ export const incidentUpdates = pgTable("incident_updates", {
     .notNull()
     .default("investigating"),
   deliverNotifications: boolean("deliver_notifications").default(true),
-  displayAt: timestamp("display_at").defaultNow(),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
+  displayAt: timestamp("display_at", { withTimezone: true }).defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 },
   (table) => [
     index("incident_updates_created_by_user_id_idx").on(table.createdByUserId),
@@ -288,7 +288,7 @@ export const incidentComponents = pgTable("incident_components", {
     .references(() => statusPageComponents.id, { onDelete: "cascade" }),
   oldStatus: varchar("old_status", { length: 50 }),
   newStatus: varchar("new_status", { length: 50 }),
-  createdAt: timestamp("created_at").defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 }, (table) => ({ componentIdx: index("incident_components_component_idx").on(table.componentId),
     incidentComponentsIncidentIdIdx: index("incident_components_incident_id_idx").on(table.incidentId),
   }));
@@ -313,8 +313,8 @@ export const incidentTemplates = pgTable("incident_templates", {
     "investigating"
   ),
   shouldSendNotifications: boolean("should_send_notifications").default(true),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 },
   (table) => [
     index("incident_templates_created_by_user_id_idx").on(table.createdByUserId),
@@ -336,7 +336,7 @@ export const incidentTemplateComponents = pgTable(
     componentId: uuid("component_id")
       .notNull()
       .references(() => statusPageComponents.id, { onDelete: "cascade" }),
-    createdAt: timestamp("created_at").defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   }
 ,
   (table) => [
@@ -360,9 +360,9 @@ export const statusPageSubscribers = pgTable("status_page_subscribers", {
   skipConfirmationNotification: boolean(
     "skip_confirmation_notification"
   ).default(false),
-  quarantinedAt: timestamp("quarantined_at"),
-  purgeAt: timestamp("purge_at"),
-  verifiedAt: timestamp("verified_at"),
+  quarantinedAt: timestamp("quarantined_at", { withTimezone: true }),
+  purgeAt: timestamp("purge_at", { withTimezone: true }),
+  verifiedAt: timestamp("verified_at", { withTimezone: true }),
   // Legacy plaintext; new tokens are stored only as a SHA-256 hash.
   verificationToken: varchar("verification_token", { length: 255 }),
   verificationTokenHash: varchar("verification_token_hash", { length: 64 }),
@@ -376,12 +376,12 @@ export const statusPageSubscribers = pgTable("status_page_subscribers", {
   webhookVerificationTokenHash: varchar("webhook_verification_token_hash", {
     length: 64,
   }),
-  webhookVerificationExpiresAt: timestamp("webhook_verification_expires_at"),
+  webhookVerificationExpiresAt: timestamp("webhook_verification_expires_at", { withTimezone: true }),
   webhookFailures: integer("webhook_failures").default(0),
-  webhookLastAttemptAt: timestamp("webhook_last_attempt_at"),
+  webhookLastAttemptAt: timestamp("webhook_last_attempt_at", { withTimezone: true }),
   webhookLastError: text("webhook_last_error"),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 },
 (table) => ({
   // Prevent duplicate email subscribers per status page
@@ -422,7 +422,7 @@ export const statusPageComponentSubscriptions = pgTable(
     componentId: uuid("component_id")
       .notNull()
       .references(() => statusPageComponents.id, { onDelete: "cascade" }),
-    createdAt: timestamp("created_at").defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   },
   (table) => ({
     // Prevent duplicate component subscriptions per subscriber
@@ -447,7 +447,7 @@ export const statusPageIncidentSubscriptions = pgTable(
     subscriberId: uuid("subscriber_id")
       .notNull()
       .references(() => statusPageSubscribers.id, { onDelete: "cascade" }),
-    createdAt: timestamp("created_at").defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   },
   (table) => ({
     // Prevent duplicate incident subscriptions per subscriber
@@ -473,14 +473,14 @@ export const statusPageMetrics = pgTable(
       () => statusPageComponents.id,
       { onDelete: "cascade" }
     ),
-    date: timestamp("date").notNull(),
+    date: timestamp("date", { withTimezone: true }).notNull(),
     uptimePercentage: varchar("uptime_percentage", { length: 10 }),
     totalChecks: integer("total_checks").default(0),
     successfulChecks: integer("successful_checks").default(0),
     failedChecks: integer("failed_checks").default(0),
     averageResponseTimeMs: integer("average_response_time_ms"),
-    createdAt: timestamp("created_at").defaultNow(),
-    updatedAt: timestamp("updated_at").defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
   },
   (table) => ({
     dateIdx: uniqueIndex("status_page_metrics_date_component_idx").on(
@@ -508,12 +508,12 @@ export const postmortems = pgTable(
       onDelete: "set null",
     }),
     body: text("body").notNull(),
-    bodyLastUpdatedAt: timestamp("body_last_updated_at").defaultNow(),
+    bodyLastUpdatedAt: timestamp("body_last_updated_at", { withTimezone: true }).defaultNow(),
     ignored: boolean("ignored").default(false),
     notifiedSubscribers: boolean("notified_subscribers").default(false),
-    publishedAt: timestamp("published_at"),
-    createdAt: timestamp("created_at").defaultNow(),
-    updatedAt: timestamp("updated_at").defaultNow(),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
   },
   (table) => ({
     incidentIdx: uniqueIndex("postmortems_incident_idx").on(table.incidentId),
@@ -653,8 +653,8 @@ export const statusPageNotificationEvents = pgTable("status_page_notification_ev
   incidentId: uuid("incident_id").notNull().references(() => incidents.id, { onDelete: "cascade" }),
   updateId: uuid("update_id").notNull().references(() => incidentUpdates.id, { onDelete: "cascade" }),
   isCreation: boolean("is_creation").default(false).notNull(),
-  expandedAt: timestamp("expanded_at"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
+  expandedAt: timestamp("expanded_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => ({ updateUnique: uniqueIndex("status_page_notification_event_update_idx").on(table.updateId), incidentIdx: index("status_page_notification_events_incident_idx").on(table.incidentId), pendingIdx: index("status_page_notification_events_pending_idx").on(table.createdAt).where(sql`${table.expandedAt} is null`), expandedCreatedAtIdx: index("status_page_notification_events_expanded_created_at_idx").on(table.createdAt).where(sql`${table.expandedAt} is not null`) }));
 
 export const statusPageNotificationDeliveries = pgTable("status_page_notification_deliveries", {
@@ -664,8 +664,8 @@ export const statusPageNotificationDeliveries = pgTable("status_page_notificatio
   mode: varchar("mode", { length: 50 }).notNull(),
   status: varchar("status", { length: 20 }).default("pending").notNull(),
   attempts: integer("attempts").default(0).notNull(),
-  leasedUntil: timestamp("leased_until"),
-  enqueuedAt: timestamp("enqueued_at"),
+  leasedUntil: timestamp("leased_until", { withTimezone: true }),
+  enqueuedAt: timestamp("enqueued_at", { withTimezone: true }),
   lastError: text("last_error"),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => ({ recipientUnique: uniqueIndex("status_page_notification_delivery_recipient_idx").on(table.eventId, table.subscriberId), subscriberIdx: index("status_page_notification_deliveries_subscriber_idx").on(table.subscriberId), pendingIdx: index("status_page_notification_deliveries_pending_idx").on(table.updatedAt).where(sql`${table.status} = 'pending'`), enqueueIdx: index("status_page_notification_deliveries_enqueue_idx").on(table.enqueuedAt).where(sql`${table.status} = 'pending'`), retentionIdx: index("status_page_notification_deliveries_retention_idx").on(table.updatedAt).where(sql`${table.status} in ('delivered', 'failed', 'skipped')`) }));

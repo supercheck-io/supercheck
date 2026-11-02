@@ -67,7 +67,7 @@ export const requirements = pgTable(
     externalId: varchar("external_id", { length: 255 }),
     externalUrl: text("external_url"),
     externalProvider: varchar("external_provider", { length: 50 }), // 'jira', 'github', 'gitlab', 'linear'
-    externalSyncedAt: timestamp("external_synced_at"),
+    externalSyncedAt: timestamp("external_synced_at", { withTimezone: true }),
     // Creator tracking
     createdBy: varchar("created_by", { length: 10 })
       .$type<RequirementCreatedBy>()
@@ -76,8 +76,8 @@ export const requirements = pgTable(
     createdByUserId: uuid("created_by_user_id").references(() => user.id, {
       onDelete: "set null",
     }),
-    createdAt: timestamp("created_at").defaultNow(),
-    updatedAt: timestamp("updated_at"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }),
   },
   (table) => ({
     // Index on organization_id for org-level queries
@@ -126,8 +126,8 @@ export const requirementDocuments = pgTable(
     uploadedByUserId: uuid("uploaded_by_user_id").references(() => user.id, {
       onDelete: "set null",
     }),
-    uploadedAt: timestamp("uploaded_at").defaultNow(),
-    createdAt: timestamp("created_at").defaultNow(),
+    uploadedAt: timestamp("uploaded_at", { withTimezone: true }).defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   },
   (table) => ({
     uploadedAtIdx: index("requirement_documents_uploaded_at_idx").on(
@@ -154,7 +154,7 @@ export const testRequirements = pgTable(
     requirementId: uuid("requirement_id")
       .notNull()
       .references(() => requirements.id, { onDelete: "cascade" }),
-    createdAt: timestamp("created_at").defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   },
   (table) => ({
     // Composite primary key via unique index
@@ -193,9 +193,9 @@ export const requirementCoverageSnapshots = pgTable(
     lastFailedTestId: uuid("last_failed_test_id").references(() => tests.id, {
       onDelete: "set null",
     }),
-    lastFailedAt: timestamp("last_failed_at"),
-    lastEvaluatedAt: timestamp("last_evaluated_at").defaultNow(),
-    updatedAt: timestamp("updated_at"),
+    lastFailedAt: timestamp("last_failed_at", { withTimezone: true }),
+    lastEvaluatedAt: timestamp("last_evaluated_at", { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }),
   },
   (table) => ({
     // Index for filtering by status

@@ -40,8 +40,8 @@ export const tags = pgTable(
     }),
     name: varchar('name', { length: 100 }).notNull(),
     color: varchar('color', { length: 50 }),
-    createdAt: timestamp('created_at').defaultNow(),
-    updatedAt: timestamp('updated_at').defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
   },
   (table) => ({
     projectTagNameUnique: uniqueIndex('tags_project_name_idx').on(
@@ -69,7 +69,7 @@ export const monitorTags = pgTable(
     tagId: uuid('tag_id')
       .notNull()
       .references(() => tags.id, { onDelete: 'cascade' }),
-    assignedAt: timestamp('assigned_at').defaultNow(),
+    assignedAt: timestamp('assigned_at', { withTimezone: true }).defaultNow(),
   },
   (table) => ({
     pk: primaryKey({ columns: [table.monitorId, table.tagId] }),
@@ -89,7 +89,7 @@ export const testTags = pgTable(
     tagId: uuid('tag_id')
       .notNull()
       .references(() => tags.id, { onDelete: 'cascade' }),
-    assignedAt: timestamp('assigned_at').defaultNow(),
+    assignedAt: timestamp('assigned_at', { withTimezone: true }).defaultNow(),
   },
   (table) => ({
     pk: primaryKey({ columns: [table.testId, table.tagId] }),

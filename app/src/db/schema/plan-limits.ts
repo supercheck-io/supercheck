@@ -76,8 +76,8 @@ export const planLimits = pgTable("plan_limits", {
     .default(30),
 
   // Metadata
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 },
   (table) => ({
     planLimitsPlanCheck: check("plan_limits_plan_check", sql`${table.plan} IN ('plus', 'pro', 'unlimited')`),

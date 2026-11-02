@@ -402,12 +402,12 @@ async function ensurePolarColumns(client) {
       { name: "subscription_plan", type: "text" },
       { name: "subscription_status", type: "text DEFAULT 'none'" },
       { name: "subscription_id", type: "text" },
-      { name: "subscription_started_at", type: "timestamp" },
-      { name: "subscription_ends_at", type: "timestamp" },
+      { name: "subscription_started_at", type: "timestamptz" },
+      { name: "subscription_ends_at", type: "timestamptz" },
       { name: "playwright_minutes_used", type: "integer DEFAULT 0" },
       { name: "k6_vu_minutes_used", type: "integer DEFAULT 0" },
-      { name: "usage_period_start", type: "timestamp" },
-      { name: "usage_period_end", type: "timestamp" },
+      { name: "usage_period_start", type: "timestamptz" },
+      { name: "usage_period_end", type: "timestamptz" },
     ];
 
     for (const column of requiredColumns) {

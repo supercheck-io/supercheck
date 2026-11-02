@@ -34,11 +34,11 @@ export const executionUsageReceipts = pgTable(
       .notNull(),
     units: numeric("units", { precision: 10, scale: 4 }).notNull(),
     metadata: jsonb("metadata").$type<Record<string, unknown>>(),
-    billingPeriodStart: timestamp("billing_period_start").notNull(),
-    billingPeriodEnd: timestamp("billing_period_end").notNull(),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-    settledAt: timestamp("settled_at"),
-    nextAttemptAt: timestamp("next_attempt_at").defaultNow(),
+    billingPeriodStart: timestamp("billing_period_start", { withTimezone: true }).notNull(),
+    billingPeriodEnd: timestamp("billing_period_end", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    settledAt: timestamp("settled_at", { withTimezone: true }),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }).defaultNow(),
     lastError: text("last_error"),
   },
   (table) => ({
@@ -70,14 +70,14 @@ export const webhookIdempotency = pgTable(
       .$defaultFn(() => sql`uuidv7()`),
     webhookId: text("webhook_id").notNull(),
     eventType: text("event_type").notNull(),
-    processedAt: timestamp("processed_at").defaultNow().notNull(),
+    processedAt: timestamp("processed_at", { withTimezone: true }).defaultNow().notNull(),
     // Optional: store result for debugging
     resultStatus: text("result_status").$type<
       "success" | "error" | "skipped"
     >(),
     resultMessage: text("result_message"),
     // TTL for cleanup (24 hours default)
-    expiresAt: timestamp("expires_at").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   },
   (table) => ({
     // Unique constraint on webhook_id + event_type
@@ -128,12 +128,12 @@ export const billingSettings = pgTable(
     notificationEmails: jsonb("notification_emails").$type<string[]>(),
 
     // Track which notifications have been sent this period
-    lastNotificationSentAt: timestamp("last_notification_sent_at"),
+    lastNotificationSentAt: timestamp("last_notification_sent_at", { withTimezone: true }),
     notificationsSentThisPeriod: jsonb("notifications_sent_this_period").$type<number[]>(),
 
     // Metadata
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => ({
   })
@@ -177,14 +177,14 @@ export const usageEvents = pgTable(
     polarEventId: text("polar_event_id"), // ID returned from Polar after sync
     syncError: text("sync_error"),
     syncAttempts: integer("sync_attempts").default(0).notNull(),
-    lastSyncAttempt: timestamp("last_sync_attempt"),
+    lastSyncAttempt: timestamp("last_sync_attempt", { withTimezone: true }),
 
     // Billing period this event belongs to
-    billingPeriodStart: timestamp("billing_period_start").notNull(),
-    billingPeriodEnd: timestamp("billing_period_end").notNull(),
+    billingPeriodStart: timestamp("billing_period_start", { withTimezone: true }).notNull(),
+    billingPeriodEnd: timestamp("billing_period_end", { withTimezone: true }).notNull(),
 
     // Timestamps
-    createdAt: timestamp("created_at").defaultNow().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => ({
     organizationIdIdx: index("usage_events_org_id_idx").on(
@@ -260,12 +260,12 @@ export const usageNotifications = pgTable(
     deliveryError: text("delivery_error"),
 
     // Billing period
-    billingPeriodStart: timestamp("billing_period_start").notNull(),
-    billingPeriodEnd: timestamp("billing_period_end").notNull(),
+    billingPeriodStart: timestamp("billing_period_start", { withTimezone: true }).notNull(),
+    billingPeriodEnd: timestamp("billing_period_end", { withTimezone: true }).notNull(),
 
     // Timestamps
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-    sentAt: timestamp("sent_at"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
   },
   (table) => ({
     organizationIdIdx: index("usage_notifications_org_id_idx").on(
@@ -309,8 +309,8 @@ export const overagePricing = pgTable("overage_pricing", {
     .default(10), // $0.10 per completed full investigation
 
   // Metadata
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 },
   (table) => ({
     overagePricingPlanCheck: check("overage_pricing_plan_check", sql`${table.plan} IN ('plus', 'pro')`),

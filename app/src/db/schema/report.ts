@@ -41,8 +41,8 @@ export const reports = pgTable(
     reportPath: varchar("report_path", { length: 255 }).notNull(),
     status: varchar("status", { length: 50 }).notNull().default("running"),
     s3Url: varchar("s3_url", { length: 1024 }),
-    createdAt: timestamp("created_at").defaultNow(),
-    updatedAt: timestamp("updated_at").defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
   },
   (table) => ({
     typeIdUnique: uniqueIndex("reports_entity_type_id_idx").on(

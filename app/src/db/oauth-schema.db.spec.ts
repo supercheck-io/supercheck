@@ -65,7 +65,7 @@ afterAll(async () => {
 
 function expectedType(column: PgColumn): string {
   const type = column.getSQLType();
-  if (type.startsWith("timestamp")) return "timestamp without time zone";
+  if (type.startsWith("timestamp")) return "timestamp with time zone";
   if (type === "uuid") return "uuid";
   if (type === "text") return "text";
   if (type === "boolean") return "boolean";

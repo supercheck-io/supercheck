@@ -58,8 +58,8 @@ export const notificationProviders = pgTable("notification_providers", {
     .notNull(),
   config: jsonb("config").$type<NotificationProviderConfig>().notNull(),
   isEnabled: boolean("is_enabled").notNull().default(true),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 },
   (table) => [
     index("notification_providers_created_by_user_id_idx").on(table.createdByUserId),
@@ -92,7 +92,7 @@ export const alertHistory = pgTable(
       .$type<AlertStatus>()
       .notNull()
       .default("pending"),
-    sentAt: timestamp("sent_at").defaultNow(),
+    sentAt: timestamp("sent_at", { withTimezone: true }).defaultNow(),
     errorMessage: text("error_message"),
     deliveryMetadata: jsonb("delivery_metadata").$type<AlertDeliveryMetadata>(),
   },
@@ -119,7 +119,7 @@ export const monitorNotificationSettings = pgTable(
     notificationProviderId: uuid("notification_provider_id")
       .notNull()
       .references(() => notificationProviders.id, { onDelete: "cascade" }),
-    createdAt: timestamp("created_at").defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   },
   (table) => ({
     pk: primaryKey({
@@ -142,7 +142,7 @@ export const jobNotificationSettings = pgTable(
     notificationProviderId: uuid("notification_provider_id")
       .notNull()
       .references(() => notificationProviders.id, { onDelete: "cascade" }),
-    createdAt: timestamp("created_at").defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   },
   (table) => ({
     pk: primaryKey({ columns: [table.jobId, table.notificationProviderId] }),
@@ -169,8 +169,8 @@ export const notifications = pgTable("notifications", {
     .$type<NotificationStatus>()
     .notNull()
     .default("pending"),
-  sentAt: timestamp("sent_at"),
-  createdAt: timestamp("created_at").defaultNow(),
+  sentAt: timestamp("sent_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 },
   (table) => [
     index("notifications_user_created_idx").on(table.userId, table.createdAt.desc().nullsFirst()),
@@ -199,8 +199,8 @@ export const alerts = pgTable("alerts", {
   failureThreshold: integer("failure_threshold").default(1).notNull(),
   recoveryThreshold: integer("recovery_threshold").default(1).notNull(),
   customMessage: text("custom_message"),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 },
   (table) => [
     index("alerts_monitor_id_idx").on(table.monitorId),

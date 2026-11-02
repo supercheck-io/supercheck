@@ -180,8 +180,8 @@ suite('MonitorCycleProcessor (PostgreSQL)', () => {
   it('reports arrival lag and overdue age and deletes finished cycles past retention', async () => {
     await open('p8');
     await hint('p8', 'eu');
-    await client`UPDATE monitor_cycle_arrivals SET created_at = ${new Date(t0.getTime() - 30_000).toISOString()}::timestamp WHERE cycle_id = 'p8'`;
-    await client`UPDATE monitor_cycles SET status = 'closed', closed_by = 'deadline', result_status = 'down', closed_at = ${new Date(t0.getTime() - 40 * 86_400_000).toISOString()}::timestamp, notified_at = ${t0.toISOString()}::timestamp WHERE id = 'p8'`;
+    await client`UPDATE monitor_cycle_arrivals SET created_at = ${new Date(t0.getTime() - 30_000).toISOString()}::timestamptz WHERE cycle_id = 'p8'`;
+    await client`UPDATE monitor_cycles SET status = 'closed', closed_by = 'deadline', result_status = 'down', closed_at = ${new Date(t0.getTime() - 40 * 86_400_000).toISOString()}::timestamptz, notified_at = ${t0.toISOString()}::timestamptz WHERE id = 'p8'`;
     await open('p9');
     // Retention sweeps are rate-limited to every 10 minutes; move the clock past that window.
     await processor.tick(new Date(deadline.getTime() + 3_600_000));
@@ -305,7 +305,7 @@ suite('MonitorCycleProcessor (PostgreSQL)', () => {
 
     it('asks for an immediate next pass when a full batch of overdue cycles was found', async () => {
       await client`INSERT INTO monitor_cycles (id, monitor_id, scheduled_for, deadline_at, expected_locations, strategy, threshold)
-        SELECT 'bulk-' || g, ${monitorId}::uuid, ${t0.toISOString()}::timestamp, ${deadline.toISOString()}::timestamp, '["eu"]'::jsonb, 'any', 100
+        SELECT 'bulk-' || g, ${monitorId}::uuid, ${t0.toISOString()}::timestamptz, ${deadline.toISOString()}::timestamptz, '["eu"]'::jsonb, 'any', 100
         FROM generate_series(1, 60) g`;
       expect(await processor.tick(new Date(deadline.getTime() + 1000))).toBe(
         true,
@@ -321,7 +321,7 @@ suite('MonitorCycleProcessor (PostgreSQL)', () => {
     it('waits one minute per failed attempt before repairing a notification', async () => {
       await open('backoff');
       await processor.tick(new Date(deadline.getTime() + 1000));
-      await client`UPDATE monitor_cycles SET notified_at = NULL, notify_attempts = 2, closed_at = ${deadline.toISOString()}::timestamp WHERE id = 'backoff'`;
+      await client`UPDATE monitor_cycles SET notified_at = NULL, notify_attempts = 2, closed_at = ${deadline.toISOString()}::timestamptz WHERE id = 'backoff'`;
       sendNotification.mockClear();
       await processor.tick(new Date(deadline.getTime() + 150_000)); // inside 3 minutes
       expect((await cycle('backoff')).notifiedAt).toBeNull();

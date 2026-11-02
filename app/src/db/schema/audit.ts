@@ -32,7 +32,7 @@ export const auditLogs = pgTable(
     organizationId: uuid("organization_id"),
     action: varchar("action", { length: 255 }).notNull(),
     details: jsonb("details").$type<AuditDetails>(),
-    createdAt: timestamp("created_at").defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   },
   (table) => ({
     organizationIdIdx: index("audit_logs_organization_id_idx").on(table.organizationId),
