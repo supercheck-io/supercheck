@@ -145,4 +145,49 @@ describe("verify-key route", () => {
       "extABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
     );
   });
+
+  describe("rate limit key", () => {
+    const post = (headers: Record<string, string>) => {
+      mockDb.select.mockReturnValue({
+        from: jest.fn().mockReturnThis(),
+        innerJoin: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockResolvedValue([]),
+      });
+      return POST(new NextRequest("http://localhost/api/auth/verify-key", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...headers },
+        body: JSON.stringify({ apiKey: "extABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789", jobId: "job-1" }),
+      }));
+    };
+
+    it("keys on the proxy-appended X-Forwarded-For entry, not the client-supplied first one", async () => {
+      const redis = createRedisMock();
+      mockGetRedisConnection.mockResolvedValue(redis);
+      await post({ "x-forwarded-for": "1.1.1.1, 2.2.2.2" });
+      expect(redis.zadd).toHaveBeenCalledWith("supercheck:verify-key:ratelimit:2.2.2.2", expect.any(Number), expect.any(String));
+    });
+
+    it("uses a shared high-ceiling bucket when no trusted client IP is present", async () => {
+      const redis = createRedisMock();
+      redis.multi().exec.mockResolvedValue([[null, 0], [null, 10], [null, []]]);
+      mockGetRedisConnection.mockResolvedValue(redis);
+      const response = await post({});
+      expect(response.status).not.toBe(429);
+      expect(redis.zadd).toHaveBeenCalledWith("supercheck:verify-key:ratelimit:unknown", expect.any(Number), expect.any(String));
+    });
+  });
+
+  it("reports the applied limit on 429 for requests without a trusted IP", async () => {
+    const redis = createRedisMock();
+    redis.multi().exec.mockResolvedValue([[null, 0], [null, 300], [null, []]]);
+    mockGetRedisConnection.mockResolvedValue(redis);
+    const response = await POST(new NextRequest("http://localhost/api/auth/verify-key", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ apiKey: "extABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789", jobId: "job-1" }),
+    }));
+    expect(response.status).toBe(429);
+    expect(response.headers.get("X-RateLimit-Limit")).toBe("300");
+  });
 });

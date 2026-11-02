@@ -1,4 +1,5 @@
 import { isCredentialOwnerActive } from "@/lib/security/credential-owner";
+import { getClientIP } from "@/lib/session-security";
 import { NextRequest, NextResponse } from "next/server";
 import { defaultKeyHasher } from "@better-auth/api-key";
 import { db } from "@/utils/db";
@@ -19,6 +20,7 @@ const logger = createLogger({ module: "verify-key" }) as {
 // These are deliberately restrictive to prevent enumeration attacks
 const RATE_LIMIT_WINDOW_SECONDS = 60; // 1 minute window
 const RATE_LIMIT_MAX_REQUESTS = 10; // 10 requests per minute per IP
+const UNKNOWN_IP_MAX_REQUESTS = 300; // shared ceiling when no trusted client IP is available
 const RATE_LIMIT_KEY_PREFIX = "supercheck:verify-key:ratelimit";
 
 /**
@@ -27,13 +29,16 @@ const RATE_LIMIT_KEY_PREFIX = "supercheck:verify-key:ratelimit";
  */
 async function checkRateLimit(
   ip: string
-): Promise<{ allowed: boolean; remaining: number; retryAfter?: number }> {
+): Promise<{ allowed: boolean; remaining: number; limit: number; retryAfter?: number }> {
+  // No trustworthy client IP: share one bucket with a much higher ceiling, so DB load stays
+  // bounded while a single noisy caller is far less likely to lock everyone out.
+  const maxRequests = ip === "unknown" ? UNKNOWN_IP_MAX_REQUESTS : RATE_LIMIT_MAX_REQUESTS;
   try {
     const redis = await getRedisConnection();
     if (!redis) {
       // Fail open if Redis is unavailable
       logger.warn({ ip }, "Redis unavailable for rate limiting, allowing request");
-      return { allowed: true, remaining: RATE_LIMIT_MAX_REQUESTS };
+      return { allowed: true, remaining: maxRequests, limit: maxRequests };
     }
 
     const key = `${RATE_LIMIT_KEY_PREFIX}:${ip}`;
@@ -56,13 +61,13 @@ async function checkRateLimit(
     
     if (!results) {
       logger.warn({ ip }, "Redis transaction failed, allowing request");
-      return { allowed: true, remaining: RATE_LIMIT_MAX_REQUESTS };
+      return { allowed: true, remaining: maxRequests, limit: maxRequests };
     }
 
     const currentCount = (results[1]?.[1] as number) ?? 0;
     const oldestEntry = results[2]?.[1] as string[] | undefined;
     
-    if (currentCount >= RATE_LIMIT_MAX_REQUESTS) {
+    if (currentCount >= maxRequests) {
       // Calculate retryAfter based on oldest entry
       let retryAfter = RATE_LIMIT_WINDOW_SECONDS;
       if (oldestEntry && oldestEntry.length >= 2) {
@@ -72,11 +77,11 @@ async function checkRateLimit(
       }
       
       logger.warn(
-        { ip, count: currentCount, limit: RATE_LIMIT_MAX_REQUESTS },
+        { ip, count: currentCount, limit: maxRequests },
         "Rate limit exceeded for verify-key endpoint"
       );
       
-      return { allowed: false, remaining: 0, retryAfter };
+      return { allowed: false, remaining: 0, limit: maxRequests, retryAfter };
     }
 
     // Add this request to the window
@@ -87,37 +92,19 @@ async function checkRateLimit(
     
     return {
       allowed: true,
-      remaining: Math.max(0, RATE_LIMIT_MAX_REQUESTS - currentCount - 1),
+      remaining: Math.max(0, maxRequests - currentCount - 1),
+      limit: maxRequests,
     };
   } catch (error) {
     // Fail open on Redis errors
     logger.error({ error, ip }, "Rate limiting error, allowing request");
-    return { allowed: true, remaining: RATE_LIMIT_MAX_REQUESTS };
+    return { allowed: true, remaining: maxRequests, limit: maxRequests };
   }
-}
-
-/**
- * Extract client IP from request
- */
-function getClientIp(request: NextRequest): string {
-  // Check common proxy headers
-  const forwardedFor = request.headers.get("x-forwarded-for");
-  if (forwardedFor) {
-    // Get the first IP in the chain (original client)
-    return forwardedFor.split(",")[0].trim();
-  }
-  
-  const realIp = request.headers.get("x-real-ip");
-  if (realIp) {
-    return realIp.trim();
-  }
-  
-  // Fallback (may not be accurate behind proxies)
-  return "unknown";
 }
 
 export async function POST(request: NextRequest) {
-  const clientIp = getClientIp(request);
+  // Trusted-proxy aware: the first X-Forwarded-For entry is client-controlled.
+  const clientIp = getClientIP(request.headers);
   
   // Check rate limit first
   const rateLimitResult = await checkRateLimit(clientIp);
@@ -131,7 +118,7 @@ export async function POST(request: NextRequest) {
         status: 429,
         headers: {
           "Retry-After": String(rateLimitResult.retryAfter ?? 60),
-          "X-RateLimit-Limit": String(RATE_LIMIT_MAX_REQUESTS),
+          "X-RateLimit-Limit": String(rateLimitResult.limit),
           "X-RateLimit-Remaining": "0",
         },
       }
