@@ -50,7 +50,8 @@ const DB_UUID_DEFAULTS = new Set(["uuidv7()", "gen_random_uuid()"]);
 const SIGNATURE_SQL = `
   SELECT 'COL ' || cl.relname || '.' || a.attname || ' ' || format_type(a.atttypid, a.atttypmod)
     || ' null=' || CASE WHEN a.attnotnull THEN 'NO' ELSE 'YES' END
-    || ' def=' || coalesce(pg_get_expr(d.adbin, d.adrelid), '-') AS sig
+    || ' def=' || coalesce(pg_get_expr(d.adbin, d.adrelid), '-')
+    || CASE WHEN a.attidentity <> '' THEN ' identity=' || a.attidentity::text ELSE '' END AS sig
   FROM pg_attribute a
   JOIN pg_class cl ON cl.oid = a.attrelid AND cl.relkind = 'r'
   LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
