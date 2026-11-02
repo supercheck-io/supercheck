@@ -331,10 +331,14 @@ export const statusPageSubscribers = pgTable("status_page_subscribers", {
   quarantinedAt: timestamp("quarantined_at"),
   purgeAt: timestamp("purge_at"),
   verifiedAt: timestamp("verified_at"),
+  // Legacy plaintext; new tokens are stored only as a SHA-256 hash.
   verificationToken: varchar("verification_token", { length: 255 }),
+  verificationTokenHash: varchar("verification_token_hash", { length: 64 }),
   unsubscribeToken: varchar("unsubscribe_token", { length: 255 }),
   // Webhook security and delivery tracking
   webhookSecret: varchar("webhook_secret", { length: 255 }),
+  // Encrypted (secret-crypto) signing secret; webhook_secret is the legacy plaintext, cleared on first use.
+  webhookSecretEncrypted: text("webhook_secret_encrypted"),
   // Ownership challenge for webhook subscribers. The raw token is only sent to
   // the endpoint; the row keeps its SHA-256 hash and expiry.
   webhookVerificationTokenHash: varchar("webhook_verification_token_hash", {
@@ -356,6 +360,15 @@ export const statusPageSubscribers = pgTable("status_page_subscribers", {
   uniqueEndpointPerPage: uniqueIndex("status_page_subscribers_endpoint_idx")
     .on(table.statusPageId, table.endpoint)
     .where(sql`endpoint IS NOT NULL`),
+  uniqueVerificationTokenHash: uniqueIndex("status_page_subscribers_verification_token_hash_idx")
+    .on(table.verificationTokenHash)
+    .where(sql`verification_token_hash IS NOT NULL`),
+  legacyVerificationToken: index("status_page_subscribers_verification_token_idx")
+    .on(table.verificationToken)
+    .where(sql`verification_token IS NOT NULL`),
+  legacyUnsubscribeToken: index("status_page_subscribers_unsubscribe_token_idx")
+    .on(table.unsubscribeToken)
+    .where(sql`unsubscribe_token IS NOT NULL`),
 })
 );
 

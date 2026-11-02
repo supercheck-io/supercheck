@@ -330,6 +330,13 @@
       "when": 1793216400000,
       "tag": "0046_incident_alert_snapshot",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1793302800000,
+      "tag": "0047_subscriber_secret_storage",
+      "breakpoints": true
     }
   ]
 }

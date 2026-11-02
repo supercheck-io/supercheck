@@ -3,6 +3,7 @@ import type { NotificationUpdate } from "./notification-update";
 import { db } from "@/utils/db";
 import { incidents, statusPages, statusPageSubscribers } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { resolveWebhookSecret } from "@/lib/subscriber-tokens";
 import {
   deliverWebhook,
   shouldQuarantine,
@@ -150,7 +151,8 @@ export async function sendWebhookNotifications(
 
     const deliveryPromises = activeSubscribers.map(async (subscriber) => {
       try {
-        if (!subscriber.endpoint || !subscriber.webhookSecret) {
+        const webhookSecret = await resolveWebhookSecret(subscriber);
+        if (!subscriber.endpoint || !webhookSecret) {
           console.warn(
             `[Webhook Notifications] Subscriber ${subscriber.id} missing endpoint or secret`,
           );
@@ -165,7 +167,7 @@ export async function sendWebhookNotifications(
         const result = await deliverWebhook(
           subscriber.endpoint,
           webhookEvent,
-          subscriber.webhookSecret,
+          webhookSecret,
         );
 
         if (result.success) {

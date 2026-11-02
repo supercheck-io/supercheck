@@ -1,4 +1,5 @@
 import { resolveSubscribers } from "./resolve-subscribers";
+import { signUnsubscribeToken } from "@/lib/subscriber-tokens";
 import type { NotificationUpdate } from "./notification-update";
 import { db } from "@/utils/db";
 import { incidents, statusPages, incidentComponents } from "@/db/schema";
@@ -179,9 +180,8 @@ export async function sendIncidentNotifications(
         }
 
         // Use per-subscriber unsubscribe token
-        const unsubscribeUrl = subscriber.unsubscribeToken
-          ? `${baseUrl}/status/unsubscribe/${subscriber.unsubscribeToken}`
-          : "";
+        const unsubscribeToken = signUnsubscribeToken(subscriber.id);
+        const unsubscribeUrl = `${baseUrl}/status/unsubscribe/${unsubscribeToken}`;
 
         const emailParams = {
           ...emailParamsTemplate,
@@ -196,14 +196,10 @@ export async function sendIncidentNotifications(
           subject: emailContent.subject,
           text: emailContent.text,
           html: emailContent.html,
-          ...(subscriber.unsubscribeToken
-            ? {
-                headers: {
-                  "List-Unsubscribe": `<${baseUrl}/api/status-pages/unsubscribe/${subscriber.unsubscribeToken}>`,
-                  "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-                },
-              }
-            : {}),
+          headers: {
+            "List-Unsubscribe": `<${baseUrl}/api/status-pages/unsubscribe/${unsubscribeToken}>`,
+            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+          },
         });
 
         if (result.success) {

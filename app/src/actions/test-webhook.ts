@@ -1,5 +1,6 @@
 "use server";
 
+import { resolveWebhookSecret } from "@/lib/subscriber-tokens";
 import { db } from "@/utils/db";
 import { statusPageSubscribers, statusPages } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
@@ -91,7 +92,8 @@ export async function testWebhook(data: z.infer<typeof testWebhookSchema>) {
     }
 
     // Ensure webhook has endpoint and secret
-    if (!subscriber.endpoint || !subscriber.webhookSecret) {
+    const webhookSecret = await resolveWebhookSecret(subscriber);
+    if (!subscriber.endpoint || !webhookSecret) {
       return {
         success: false,
         message: "Webhook configuration is incomplete",
@@ -111,7 +113,7 @@ export async function testWebhook(data: z.infer<typeof testWebhookSchema>) {
     const result = await deliverWebhook(
       subscriber.endpoint,
       testPayload,
-      subscriber.webhookSecret
+      webhookSecret
     );
 
     if (result.success) {

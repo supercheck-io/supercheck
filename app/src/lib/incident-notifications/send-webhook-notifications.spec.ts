@@ -33,6 +33,7 @@ jest.mock("@/lib/webhook-delivery.service", () => ({
 import { db } from "@/utils/db";
 import { resolveSubscribers } from "./resolve-subscribers";
 import { deliverWebhook } from "@/lib/webhook-delivery.service";
+import { encryptWebhookSecret } from "@/lib/subscriber-tokens";
 import { sendWebhookNotifications } from "./send-webhook-notifications";
 
 beforeEach(() => {
@@ -47,7 +48,7 @@ it("never delivers to a webhook subscriber that has not proven endpoint ownershi
     {
       id: "subscriber-1",
       endpoint: "https://hooks.example.com/supercheck",
-      webhookSecret: "0123456789abcdef",
+      webhookSecretEncrypted: encryptWebhookSecret("0123456789abcdef"),
       verifiedAt: null,
       quarantinedAt: null,
       purgeAt: null,
@@ -66,7 +67,7 @@ it("delivers once the subscriber is verified", async () => {
     {
       id: "subscriber-1",
       endpoint: "https://hooks.example.com/supercheck",
-      webhookSecret: "0123456789abcdef",
+      webhookSecretEncrypted: encryptWebhookSecret("0123456789abcdef"),
       verifiedAt: new Date(),
       quarantinedAt: null,
       purgeAt: null,
@@ -87,7 +88,7 @@ describe("failure counting", () => {
   const sub = {
     id: "subscriber-1",
     endpoint: "https://hooks.example.com/supercheck",
-    webhookSecret: "0123456789abcdef",
+    webhookSecretEncrypted: encryptWebhookSecret("0123456789abcdef"),
     verifiedAt: new Date(),
     quarantinedAt: null,
     purgeAt: null,
