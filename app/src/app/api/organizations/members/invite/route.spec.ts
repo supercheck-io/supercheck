@@ -19,7 +19,7 @@ import { db } from "@/utils/db";
 import { checkTeamMemberLimit } from "@/lib/middleware/plan-enforcement";
 import { getUserOrgRole } from "@/lib/rbac/middleware";
 import { renderOrganizationInvitationEmail } from "@/lib/email-renderer";
-jest.mock("@/utils/db", () => ({ db: { select: jest.fn(), insert: jest.fn(), transaction: jest.fn(), query: { organization: { findFirst: jest.fn(async () => ({ name: "Host team" })) } } } }));
+jest.mock("@/utils/db", () => ({ db: { select: jest.fn(), insert: jest.fn(), update: jest.fn(), transaction: jest.fn(), query: { organization: { findFirst: jest.fn(async () => ({ name: "Host team" })) } } } }));
 jest.mock("@/lib/auth-context", () => ({ requireUserAuthContext: jest.fn(async () => ({ userId: "inviter", organizationId: "host" })), isAuthError: jest.fn(() => false) }));
 jest.mock("@/lib/rbac/middleware", () => ({ getUserOrgRole: jest.fn() }));
 jest.mock("@/lib/queue", () => ({ getRedisConnection: jest.fn(async () => null) }));
@@ -30,6 +30,8 @@ jest.mock("@/lib/middleware/plan-enforcement", () => ({ checkTeamMemberLimit: je
 
 const mockSelect = db.select as jest.Mock;
 const mockInsert = db.insert as jest.Mock;
+const mockUpdate = db.update as jest.Mock;
+const expireWhere = jest.fn();
 const values = jest.fn();
 function rows(data: unknown[]) {
   return { from: jest.fn().mockReturnThis(), where: jest.fn().mockReturnThis(), limit: jest.fn().mockResolvedValue(data),
@@ -45,6 +47,7 @@ beforeEach(() => {
     .mockReturnValueOnce(rows([])).mockReturnValueOnce(rows([])).mockReturnValueOnce(rows([{ id: "host-project", name: "Project" }]));
   values.mockReturnValue({ returning: jest.fn(async () => [{ id: "invite", email: "owner@example.com", role: "project_editor", expiresAt: new Date() }]) });
   mockInsert.mockReturnValue({ values });
+  mockUpdate.mockReturnValue({ set: jest.fn(() => ({ where: expireWhere })) });
   jest.spyOn(console, "warn").mockImplementation(() => {});
   jest.spyOn(console, "log").mockImplementation(() => {});
 });
@@ -82,7 +85,7 @@ it("prevents an org admin from granting another admin", async () => {
 describe("seat limit", () => {
   function useTransaction(execute = jest.fn().mockResolvedValue([{ value: "0" }])) {
     (db.transaction as jest.Mock).mockImplementation((cb: (tx: unknown) => unknown) =>
-      cb({ execute, select: mockSelect, insert: mockInsert }));
+      cb({ execute, select: mockSelect, insert: mockInsert, update: mockUpdate }));
     return execute;
   }
 
@@ -107,6 +110,14 @@ describe("seat limit", () => {
 
     expect((await POST(request())).status).toBe(200);
     expect(values).toHaveBeenCalledWith(expect.objectContaining({ organizationId: "host", status: "pending" }));
+  });
+
+  it("expires stale pending invitations for the address before inserting a new one", async () => {
+    useTransaction();
+    expect((await POST(request())).status).toBe(200);
+    expect(mockUpdate).toHaveBeenCalledTimes(1);
+    expect(expireWhere).toHaveBeenCalledTimes(1);
+    expect(mockUpdate.mock.invocationCallOrder[0]).toBeLessThan(values.mock.invocationCallOrder[0]);
   });
 
   it("returns 503 with Retry-After when the lock times out", async () => {

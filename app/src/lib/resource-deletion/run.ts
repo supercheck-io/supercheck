@@ -10,6 +10,7 @@ import {
   createS3CleanupService,
   type ReportDeletionInput,
 } from "@/lib/s3-cleanup";
+import { removeK6RunLinks } from "./linked-records";
 
 // Messages of this class are authored here and safe to show; any other error text may leak DB/S3 detail.
 class RetryableDeleteError extends Error {}
@@ -247,6 +248,7 @@ export async function deleteRunWithContext(runId: string, context: ProjectAuthCo
           const reportIds = reportsResult.reportsToDelete.map(report => report.id);
           if (reportIds.length) await tx.delete(reports).where(and(inArray(reports.id, reportIds),
             or(eq(reports.entityId, runId), and(eq(reports.entityType, "test"), eq(reports.reportPath, `${runId}/report`)))));
+        await removeK6RunLinks(tx, [runId]);
         // Now delete the run
         console.log(`[DELETE_RUN] Now deleting run with ID: ${runId}`);
         try {

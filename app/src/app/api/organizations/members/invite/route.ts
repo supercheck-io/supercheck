@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { db } from "@/utils/db";
 import { invitation, user as userTable, member, projects } from "@/db/schema";
-import { eq, and, inArray, sql, gte } from "drizzle-orm";
+import { eq, and, inArray, sql, gte, lt } from "drizzle-orm";
 import { getUserOrgRole } from "@/lib/rbac/middleware";
 import { requireUserAuthContext, isAuthError } from "@/lib/auth-context";
 import { Role } from "@/lib/rbac/permissions";
@@ -322,6 +322,19 @@ export async function POST(request: NextRequest) {
         return Number(memberRow?.count || 0) + Number(pendingRow?.count || 0);
       },
       insert: async (executor) => {
+        // An expired invite stays "pending" in the table; retire it so the one-pending-per-address
+        // unique index lets the new invitation in.
+        await executor
+          .update(invitation)
+          .set({ status: "expired" })
+          .where(
+            and(
+              eq(invitation.organizationId, organizationId),
+              sql`LOWER(${invitation.email}) = ${normalizedEmail}`,
+              eq(invitation.status, "pending"),
+              lt(invitation.expiresAt, new Date()),
+            ),
+          );
         const [created] = await executor
           .insert(invitation)
           .values({

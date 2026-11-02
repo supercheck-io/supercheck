@@ -376,9 +376,16 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
               ),
               columns: { id: true },
             });
-          if (!existingPerformanceRun)
+          if (!existingPerformanceRun) {
+            // The test can be deleted while the run is in flight; the link is then dropped, not the result.
+            const linkedTest = testId
+              ? await transaction.query.tests.findFirst({
+                  where: eq(schema.tests.id, testId),
+                  columns: { id: true },
+                })
+              : null;
             await transaction.insert(schema.k6PerformanceRuns).values({
-              testId,
+              testId: linkedTest?.id ?? null,
               runId,
               jobId: taskData.jobId ?? null,
               organizationId: taskData.organizationId,
@@ -408,6 +415,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
                 ? truncateConsoleOutput(result.consoleOutput)
                 : null,
             });
+          }
 
           // Update run with final status and artifacts
           const _durationSeconds = Math.max(

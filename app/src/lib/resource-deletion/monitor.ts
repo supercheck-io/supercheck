@@ -8,6 +8,7 @@ import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { deleteScheduledMonitor } from "@/lib/monitor-scheduler";
 import { createS3CleanupService } from "@/lib/s3-cleanup";
+import { removeServiceResourceLinks, removeTrialSuspensions } from "./linked-records";
 
 type MonitorDeletionResult = {
   success: boolean;
@@ -137,6 +138,8 @@ export async function deleteMonitorWithContext(
         .where(eq(monitorResults.monitorId, monitorId))
         .returning({ id: monitorResults.id });
 
+      await removeServiceResourceLinks(tx, "monitor", [monitorId]);
+      await removeTrialSuspensions(tx, "monitor", [monitorId]);
       // Delete the monitor (with project scoping for extra safety)
       const deletedMonitors = await tx
         .delete(monitors)

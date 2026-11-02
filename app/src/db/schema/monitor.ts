@@ -14,6 +14,7 @@ import {
   uuid,
   boolean,
   index,
+  check,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import {
@@ -78,6 +79,8 @@ export const monitors = pgTable(
     ),
     monitorsCreatedByUserIdIdx: index("monitors_created_by_user_id_idx").on(table.createdByUserId),
     monitorsOrganizationIdIdx: index("monitors_organization_id_idx").on(table.organizationId),
+    monitorsOrganizationIdRequired: check("monitors_organization_id_required_check", sql`organization_id IS NOT NULL`),
+    monitorsProjectIdRequired: check("monitors_project_id_required_check", sql`project_id IS NOT NULL`),
   })
 );
 

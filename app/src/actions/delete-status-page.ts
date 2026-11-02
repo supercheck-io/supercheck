@@ -8,6 +8,7 @@ import { requireProjectContext } from "@/lib/project-context";
 import { requirePermissions } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { z } from "zod";
+import { deleteStatusPageWithLinks } from "@/lib/resource-deletion/linked-records";
 
 // UUID validation schema
 const uuidSchema = z.string().uuid("Invalid status page ID");
@@ -71,15 +72,7 @@ export async function deleteStatusPage(id: string) {
     }
 
     // Delete the status page (cascade will handle related records)
-    await db
-      .delete(statusPages)
-      .where(
-        and(
-          eq(statusPages.id, id),
-          eq(statusPages.organizationId, organizationId),
-          eq(statusPages.projectId, project.id)
-        )
-      );
+    await deleteStatusPageWithLinks(id, organizationId, project.id);
 
     // Log the audit event
     await logAuditEvent({

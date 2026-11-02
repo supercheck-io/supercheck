@@ -27,6 +27,7 @@ import {
   toStatusPageDto,
   updateStatusPageSettings,
 } from "@/lib/status-pages/service";
+import { deleteStatusPageWithLinks } from "@/lib/resource-deletion/linked-records";
 
 // UUID validation schema
 const uuidSchema = z.string().uuid("Invalid status page ID format");
@@ -290,15 +291,7 @@ export async function DELETE(
     }
 
     // Delete (cascade handles components and component-monitor associations)
-    await db
-      .delete(statusPages)
-      .where(
-        and(
-          eq(statusPages.id, id),
-          eq(statusPages.organizationId, organizationId),
-          eq(statusPages.projectId, project.id)
-        )
-      );
+    await deleteStatusPageWithLinks(id, organizationId, project.id);
 
     await logAuditEvent({
       userId,

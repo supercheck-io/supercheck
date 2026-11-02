@@ -41,12 +41,13 @@ describe('k6 HTTP failure metrics', () => {
 
 describe('k6 durable completion', () => {
   it.each([
-    [false, false],
-    [true, false],
-    [false, true],
+    [false, false, true],
+    [true, false, true],
+    [false, true, true],
+    [false, false, false],
   ])(
-    'persists terminal results in the receipt transaction (existing result: %s, retry: %s)',
-    async (existing, retry) => {
+    'persists terminal results in the receipt transaction (existing result: %s, retry: %s, test exists: %s)',
+    async (existing, retry, testExists) => {
       const result = {
         success: true,
         durationMs: 61000,
@@ -66,6 +67,11 @@ describe('k6 durable completion', () => {
             findFirst: jest
               .fn()
               .mockResolvedValue(existing ? { id: 'existing' } : undefined),
+          },
+          tests: {
+            findFirst: jest
+              .fn()
+              .mockResolvedValue(testExists ? { id: 'test-id' } : undefined),
           },
         },
         insert: jest.fn().mockReturnValue({ values }),
@@ -163,6 +169,12 @@ describe('k6 durable completion', () => {
         expect.any(Function),
       );
       expect(tx.insert).toHaveBeenCalledTimes(existing ? 0 : 1);
+      if (!existing) {
+        // A test deleted mid-run must not fail the result: the link is dropped.
+        expect(values).toHaveBeenCalledWith(
+          expect.objectContaining({ testId: testExists ? 'test-id' : null }),
+        );
+      }
       expect(transactionSet).toHaveBeenCalledWith(
         expect.objectContaining({ status: 'passed', durationMs: 61000 }),
       );

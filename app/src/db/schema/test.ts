@@ -11,6 +11,7 @@ import {
   timestamp,
   uuid,
   index,
+  check,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema, createSelectSchema, createUpdateSchema } from "drizzle-zod";
@@ -66,6 +67,8 @@ export const tests = pgTable(
     // Index on created_at for sorting/pagination
     createdAtIdx: index("tests_created_at_idx").on(table.createdAt),
     testsCreatedByUserIdIdx: index("tests_created_by_user_id_idx").on(table.createdByUserId),
+    testsOrganizationIdRequired: check("tests_organization_id_required_check", sql`organization_id IS NOT NULL`),
+    testsProjectIdRequired: check("tests_project_id_required_check", sql`project_id IS NOT NULL`),
   })
 );
 

@@ -6,6 +6,7 @@
 =================================== */
 
 import {
+  type AnyPgColumn,
   boolean,
   check,
   index,
@@ -182,14 +183,14 @@ export const sreServices = pgTable(
     environment: varchar("environment", { length: 50 }),
     ownerTeam: varchar("owner_team", { length: 100 }),
     ownerUserId: uuid("owner_user_id").references(() => user.id, { onDelete: "set null" }),
-    runbookId: uuid("runbook_id"),
+    runbookId: uuid("runbook_id").references((): AnyPgColumn => sreRunbooks.id, { onDelete: "set null" }),
     repoUrl: varchar("repo_url", { length: 500 }),
     otelServiceName: varchar("otel_service_name", { length: 100 }),
     slackChannel: varchar("slack_channel", { length: 100 }),
     tags: jsonb("tags").$type<string[]>().default([]),
     metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}),
     status: varchar("status", { length: 20 }).$type<SreServiceStatus>().notNull().default("active"),
-    mergedIntoServiceId: uuid("merged_into_service_id"),
+    mergedIntoServiceId: uuid("merged_into_service_id").references((): AnyPgColumn => sreServices.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -202,6 +203,8 @@ export const sreServices = pgTable(
     projectTierIdx: index("sre_services_project_tier_idx").on(table.projectId, table.tier),
     sreServicesOrganizationIdIdx: index("sre_services_organization_id_idx").on(table.organizationId),
     sreServicesOwnerUserIdIdx: index("sre_services_owner_user_id_idx").on(table.ownerUserId),
+    sreServicesRunbookIdIdx: index("sre_services_runbook_id_idx").on(table.runbookId),
+    sreServicesMergedIntoServiceIdIdx: index("sre_services_merged_into_service_id_idx").on(table.mergedIntoServiceId),
   })
 );
 
@@ -216,7 +219,7 @@ export const sreServiceOwners = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => ({
-    serviceIdIdx: index("sre_service_owners_service_id_idx").on(table.serviceId),
+    ownerUniqueIdx: uniqueIndex("sre_service_owners_unique_idx").on(table.serviceId, table.ownerType, table.ownerRef, table.role),
     ownerRefIdx: index("sre_service_owners_owner_type_ref_idx").on(table.ownerType, table.ownerRef),
   })
 );
@@ -248,7 +251,7 @@ export const sreServiceDependencies = pgTable(
     source: varchar("source", { length: 25 }).$type<SreDependencySource>().notNull(),
     sourceRef: varchar("source_ref", { length: 255 }),
     confidence: numeric("confidence", { precision: 5, scale: 4 }),
-    evidenceItemId: uuid("evidence_item_id"),
+    evidenceItemId: uuid("evidence_item_id").references((): AnyPgColumn => sreEvidenceItems.id, { onDelete: "set null" }),
     approvedBy: uuid("approved_by").references(() => user.id, { onDelete: "set null" }),
     approvedAt: timestamp("approved_at"),
     firstSeenAt: timestamp("first_seen_at").defaultNow().notNull(),
@@ -267,6 +270,7 @@ export const sreServiceDependencies = pgTable(
     sreServiceDependenciesApprovedByIdx: index("sre_service_dependencies_approved_by_idx").on(table.approvedBy),
     sreServiceDependenciesOrganizationIdIdx: index("sre_service_dependencies_organization_id_idx").on(table.organizationId),
     sreServiceDependenciesSourceServiceIdIdx: index("sre_service_dependencies_source_service_id_idx").on(table.sourceServiceId),
+    sreServiceDependenciesEvidenceItemIdIdx: index("sre_service_dependencies_evidence_item_id_idx").on(table.evidenceItemId),
   })
 );
 
@@ -377,7 +381,7 @@ export const sreAlertEvents = pgTable(
     resolvedAt: timestamp("resolved_at"),
     silencedAt: timestamp("silenced_at"),
     silenceReason: text("silence_reason"),
-    triageInvestigationRunId: uuid("triage_investigation_run_id"),
+    triageInvestigationRunId: uuid("triage_investigation_run_id").references((): AnyPgColumn => sreInvestigationRuns.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => ({
@@ -387,6 +391,7 @@ export const sreAlertEvents = pgTable(
     severityStatusIdx: index("sre_alert_events_severity_status_idx").on(table.severity, table.status),
     firedAtIdx: index("sre_alert_events_fired_at_idx").on(table.firedAt),
     sreAlertEventsProjectIdIdx: index("sre_alert_events_project_id_idx").on(table.projectId),
+    sreAlertEventsTriageInvestigationRunIdIdx: index("sre_alert_events_triage_investigation_run_id_idx").on(table.triageInvestigationRunId),
   })
 );
 
@@ -402,7 +407,7 @@ export const sreIncidents = pgTable(
     status: varchar("status", { length: 25 }).$type<SreIncidentStatus>().notNull().default("triggered"),
     primaryServiceId: uuid("primary_service_id").references(() => sreServices.id, { onDelete: "set null" }),
     statusPageIncidentId: uuid("status_page_incident_id").references(() => statusPageIncidents.id, { onDelete: "set null" }),
-    triageInvestigationRunId: uuid("triage_investigation_run_id"),
+    triageInvestigationRunId: uuid("triage_investigation_run_id").references((): AnyPgColumn => sreInvestigationRuns.id, { onDelete: "set null" }),
     rootCauseSummary: text("root_cause_summary"),
     confidenceScore: numeric("confidence_score", { precision: 5, scale: 4 }),
     resolvedAt: timestamp("resolved_at"),
@@ -434,6 +439,7 @@ export const sreIncidents = pgTable(
     sreIncidentsCommanderUserIdIdx: index("sre_incidents_commander_user_id_idx").on(table.commanderUserId),
     sreIncidentsCreatedByUserIdIdx: index("sre_incidents_created_by_user_id_idx").on(table.createdByUserId),
     sreIncidentsStatusPageIncidentIdIdx: index("sre_incidents_status_page_incident_id_idx").on(table.statusPageIncidentId),
+    sreIncidentsTriageInvestigationRunIdIdx: index("sre_incidents_triage_investigation_run_id_idx").on(table.triageInvestigationRunId),
   })
 );
 
@@ -793,7 +799,7 @@ export const sreEvidenceItems = pgTable(
     organizationId: uuid("organization_id").notNull().references(() => organization.id, { onDelete: "cascade" }),
     projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
     incidentId: uuid("incident_id").references(() => sreIncidents.id, { onDelete: "set null" }),
-    investigationRunId: uuid("investigation_run_id"),
+    investigationRunId: uuid("investigation_run_id").references((): AnyPgColumn => sreInvestigationRuns.id, { onDelete: "set null" }),
     sourceType: varchar("source_type", { length: 30 }).$type<SreEvidenceSourceType>().notNull(),
     sourceConnectorId: uuid("source_connector_id").references(() => externalConnectors.id, { onDelete: "set null" }),
     sourceUri: varchar("source_uri", { length: 1000 }).notNull(),
@@ -966,7 +972,7 @@ export const sreInvestigationRecommendations = pgTable(
     confidenceScore: numeric("confidence_score", { precision: 5, scale: 4 }),
     applicationStatus: varchar("application_status", { length: 20 }).$type<SreRecommendationStatus>().notNull().default("pending"),
     appliedAt: timestamp("applied_at"),
-    supersededById: uuid("superseded_by_id"),
+    supersededById: uuid("superseded_by_id").references((): AnyPgColumn => sreInvestigationRecommendations.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => ({
@@ -975,6 +981,7 @@ export const sreInvestigationRecommendations = pgTable(
       .on(table.incidentId, table.applicationStatus)
       .where(sql`application_status = 'pending'`),
     sreInvestigationRecommendationsInvestigationRunIdIdx: index("sre_investigation_recommendations_investigation_run_id_idx").on(table.investigationRunId),
+    sreInvestigationRecommendationsSupersededByIdIdx: index("sre_investigation_recommendations_superseded_by_id_idx").on(table.supersededById),
   })
 );
 
@@ -1099,7 +1106,7 @@ export const sreContextRecollections = pgTable(
     whatWasTried: jsonb("what_was_tried").$type<Record<string, unknown>[]>(),
     rootCause: text("root_cause"),
     resolution: text("resolution"),
-    promotedToPlaybookId: uuid("promoted_to_playbook_id"),
+    promotedToPlaybookId: uuid("promoted_to_playbook_id").references((): AnyPgColumn => sreContextPlaybooks.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => ({
@@ -1108,6 +1115,7 @@ export const sreContextRecollections = pgTable(
     errorFingerprintIdx: index("sre_context_recollections_error_fingerprint_idx").on(table.errorFingerprint),
     sreContextRecollectionsOrganizationIdIdx: index("sre_context_recollections_organization_id_idx").on(table.organizationId),
     sreContextRecollectionsProjectIdIdx: index("sre_context_recollections_project_id_idx").on(table.projectId),
+    sreContextRecollectionsPromotedToPlaybookIdIdx: index("sre_context_recollections_promoted_to_playbook_id_idx").on(table.promotedToPlaybookId),
   })
 );
 

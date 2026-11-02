@@ -74,7 +74,7 @@ beforeAll(async () => {
   mockContext = { organizationId: org.id, project: { id: project.id } };
 
   const run = (jobId: string, status: schema.TestRunStatus, startedAt: Date, trigger: schema.JobTrigger = "manual") =>
-    ({ jobId, status, startedAt, trigger });
+    ({ jobId, projectId: project.id, status, startedAt, trigger });
   await mockDatabase.insert(schema.runs).values([
     // Six failures in the last week and one older, so the 7-day window has a clear edge.
     ...Array.from({ length: 7 }, (_, i) => run(job.id, i % 2 ? "error" : "failed", daysAgo(i < 6 ? i + 1 : 10))),
