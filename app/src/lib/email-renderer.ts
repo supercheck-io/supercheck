@@ -136,7 +136,7 @@ export async function renderIncidentNotificationEmail(params: {
   incidentDescription: string;
   affectedComponents: string[];
   updateTimestamp: string;
-  unsubscribeUrl: string;
+  unsubscribeUrl?: string;
   supportUrl?: string | null;
   language?: string;
 }): Promise<RenderedEmail> {

@@ -82,6 +82,11 @@ it("delivers once the subscriber is verified", async () => {
 
   expect(result.sentCount).toBe(1);
   expect(deliverWebhook).toHaveBeenCalledTimes(1);
+  expect(deliverWebhook).toHaveBeenCalledWith(
+    "https://hooks.example.com/supercheck",
+    expect.anything(),
+    "0123456789abcdef",
+  );
 });
 
 describe("failure counting", () => {
