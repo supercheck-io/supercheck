@@ -185,6 +185,29 @@ it.each([
   expect(mockSet).not.toHaveBeenCalled();
 });
 
+it.each(["action", "api"])(
+  "rejects an edit of a legacy row whose stored type is no longer allowed, before writing, in %s",
+  async (flow) => {
+    stored.type = "legacy_type";
+    try {
+      expect(await update(flow, {})).toBe(false);
+      expect(mockSet).not.toHaveBeenCalled();
+    } finally {
+      stored.type = "browser";
+    }
+  },
+);
+
+it("names the unsupported stored type in the action error", async () => {
+  stored.type = "legacy_type";
+  try {
+    const result = await saveTest({ id: "00000000-0000-4000-8000-000000000001", title: "T" });
+    expect(result.error).toContain('Test type "legacy_type" is no longer supported');
+  } finally {
+    stored.type = "browser";
+  }
+});
+
 it("rejects a description over the API limit in the save action too", async () => {
   const result = await saveTest({ id: "00000000-0000-4000-8000-000000000001", title: "T", description: "a".repeat(1001) });
   expect(result.success).toBe(false);
