@@ -92,7 +92,7 @@ export async function testWebhook(data: z.infer<typeof testWebhookSchema>) {
     }
 
     // Ensure webhook has endpoint and secret
-    const webhookSecret = await resolveWebhookSecret(subscriber);
+    const webhookSecret = subscriber.endpoint ? await resolveWebhookSecret(subscriber) : null;
     if (!subscriber.endpoint || !webhookSecret) {
       return {
         success: false,
