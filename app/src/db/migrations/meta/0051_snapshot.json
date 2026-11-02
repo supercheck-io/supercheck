@@ -1,5 +1,5 @@
 {
-  "id": "f7cf16be-4c09-4285-be7e-cffd5394e625",
+  "id": "3d1e4696-275d-4c57-8d42-69b8e4f84862",
   "prevId": "9bdb199f-4e99-4623-8deb-071ab2d8e298",
   "version": "7",
   "dialect": "postgresql",
@@ -10902,6 +10902,22 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "status_page_notification_events_expanded_created_at_idx": {
+          "name": "status_page_notification_events_expanded_created_at_idx",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"status_page_notification_events\".\"expanded_at\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -13510,6 +13526,21 @@
               "asc": true,
               "nulls": "last"
             },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "private_agent_heartbeats_created_at_idx": {
+          "name": "private_agent_heartbeats_created_at_idx",
+          "columns": [
             {
               "expression": "created_at",
               "isExpression": false,

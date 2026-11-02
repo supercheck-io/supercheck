@@ -218,7 +218,7 @@ describe("createSreIncidentFromAlert severity", () => {
     const values: unknown[] = [];
     const chain = (rows: unknown[]) => Object.assign(Promise.resolve(rows), {
       from: () => chain(rows), where: () => chain(rows), innerJoin: () => chain(rows), leftJoin: () => chain(rows),
-      orderBy: () => chain(rows), limit: () => chain(rows),
+      orderBy: () => chain(rows), limit: () => chain(rows), for: () => chain(rows),
       values: (v: unknown) => { values.push(v); return chain([{ id: "new-id", assigneeUserId: null, incidentNumber: 1 }]); },
       returning: () => chain([{ id: "new-id", assigneeUserId: null, incidentNumber: 1 }]),
       set: () => chain([]),
