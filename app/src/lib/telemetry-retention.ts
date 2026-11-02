@@ -89,7 +89,7 @@ export type Row = Record<string, unknown>;
 export type Runner = (statement: string) => Promise<Row[]>;
 
 const cutoff = (days: number) =>
-  `localtimestamp - make_interval(days => ${days})`; // matches the DEFAULT now() these timestamp columns use
+  `now() - make_interval(days => ${days})`; // timestamptz columns
 const protectFor = (rule: TelemetryRetentionRule, alias: string) =>
   rule.protect ? ` AND ${rule.protect.replaceAll("{a}", alias)}` : "";
 

@@ -54,7 +54,7 @@ import {
 } from "@/lib/telemetry-retention";
 
 const id = () => randomUUID();
-const ago = (days: number) => `localtimestamp - interval '${days} days'`;
+const ago = (days: number) => `now() - interval '${days} days'`;
 const rule = (table: string) =>
   TELEMETRY_RETENTION_RULES.find((r) => r.table === table) as TelemetryRetentionRule;
 const run = async (statement: string) => [...(await sql.unsafe(statement))];
