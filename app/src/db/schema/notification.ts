@@ -66,6 +66,7 @@ export const notificationProviders = pgTable("notification_providers", {
     index("notification_providers_project_id_idx").on(table.projectId),
     check("notification_providers_organization_id_required_check", sql`organization_id IS NOT NULL`),
     check("notification_providers_project_id_required_check", sql`project_id IS NOT NULL`),
+    check("notification_providers_type_check", sql`${table.type} IN ('email', 'slack', 'webhook', 'telegram', 'discord', 'teams')`),
   ]);
 
 /**
@@ -100,6 +101,8 @@ export const alertHistory = pgTable(
     jobIdIdx: index("alert_history_job_id_idx").on(table.jobId),
     alertHistoryMonitorSentIdx: index("alert_history_monitor_sent_idx").on(table.monitorId, table.sentAt.desc().nullsFirst()),
     alertHistoryTargetRequired: check("alert_history_target_required_check", sql`monitor_id IS NOT NULL OR job_id IS NOT NULL`),
+    alertHistoryTypeCheck: check("alert_history_type_check", sql`${table.type} IN ('monitor_failure', 'monitor_recovery', 'job_failed', 'job_success', 'job_timeout', 'ssl_expiring')`),
+    alertHistoryStatusCheck: check("alert_history_status_check", sql`${table.status} IN ('sent', 'failed', 'pending')`),
   })
 );
 
@@ -206,7 +209,8 @@ export const alerts = pgTable("alerts", {
 
 // Zod schemas for notification providers
 export const notificationProvidersInsertSchema = createInsertSchema(
-  notificationProviders
+  notificationProviders,
+  { type: z.enum(["email", "slack", "webhook", "telegram", "discord", "teams"]) },
 );
 export const notificationProvidersSelectSchema = createSelectSchema(
   notificationProviders

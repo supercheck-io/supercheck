@@ -81,6 +81,8 @@ export const monitors = pgTable(
     monitorsOrganizationIdIdx: index("monitors_organization_id_idx").on(table.organizationId),
     monitorsOrganizationIdRequired: check("monitors_organization_id_required_check", sql`organization_id IS NOT NULL`),
     monitorsProjectIdRequired: check("monitors_project_id_required_check", sql`project_id IS NOT NULL`),
+    monitorsTypeCheck: check("monitors_type_check", sql`${table.type} IN ('http_request', 'website', 'ping_host', 'port_check', 'synthetic_test')`),
+    monitorsStatusCheck: check("monitors_status_check", sql`${table.status} IN ('up', 'down', 'paused', 'pending', 'maintenance', 'error')`),
   })
 );
 
@@ -143,6 +145,7 @@ export const monitorResults = pgTable(
       table.monitorId,
       table.executionGroupId
     ),
+    monitorResultsStatusCheck: check("monitor_results_status_check", sql`${table.status} IN ('up', 'down', 'error', 'timeout')`),
   })
 );
 

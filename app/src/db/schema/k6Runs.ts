@@ -14,6 +14,7 @@ import {
   boolean,
   uuid,
   index,
+  check,
 } from "drizzle-orm/pg-core";
 import { sql, relations } from "drizzle-orm";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
@@ -97,6 +98,7 @@ export const k6PerformanceRuns = pgTable(
     k6PerformanceRunsTestIdIdx: index("k6_performance_runs_test_id_idx").on(table.testId),
     k6PerformanceRunsJobIdIdx: index("k6_performance_runs_job_id_idx").on(table.jobId),
     k6PerformanceRunsOrganizationIdIdx: index("k6_performance_runs_organization_id_idx").on(table.organizationId),
+    k6PerformanceRunsStatusCheck: check("k6_performance_runs_status_check", sql`${table.status} IN ('running', 'passed', 'failed', 'error', 'blocked', 'queued')`),
   })
 );
 

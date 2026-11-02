@@ -12,6 +12,7 @@ import {
   boolean,
   timestamp,
   uuid,
+  check,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
@@ -77,7 +78,11 @@ export const planLimits = pgTable("plan_limits", {
   // Metadata
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+},
+  (table) => ({
+    planLimitsPlanCheck: check("plan_limits_plan_check", sql`${table.plan} IN ('plus', 'pro', 'unlimited')`),
+  })
+);
 
 // Zod schemas for validation
 export const planLimitsInsertSchema = createInsertSchema(planLimits);

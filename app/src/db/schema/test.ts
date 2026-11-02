@@ -69,6 +69,8 @@ export const tests = pgTable(
     testsCreatedByUserIdIdx: index("tests_created_by_user_id_idx").on(table.createdByUserId),
     testsOrganizationIdRequired: check("tests_organization_id_required_check", sql`organization_id IS NOT NULL`),
     testsProjectIdRequired: check("tests_project_id_required_check", sql`project_id IS NOT NULL`),
+    testsTypeCheck: check("tests_type_check", sql`${table.type} IN ('browser', 'api', 'database', 'custom', 'performance')`),
+    testsPriorityCheck: check("tests_priority_check", sql`${table.priority} IN ('low', 'medium', 'high')`),
   })
 );
 

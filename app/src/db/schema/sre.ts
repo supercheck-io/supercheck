@@ -205,6 +205,8 @@ export const sreServices = pgTable(
     sreServicesOwnerUserIdIdx: index("sre_services_owner_user_id_idx").on(table.ownerUserId),
     sreServicesRunbookIdIdx: index("sre_services_runbook_id_idx").on(table.runbookId),
     sreServicesMergedIntoServiceIdIdx: index("sre_services_merged_into_service_id_idx").on(table.mergedIntoServiceId),
+    sreServicesStatusCheck: check("sre_services_status_check", sql`${table.status} IN ('active', 'deprecated', 'merged')`),
+    sreServicesTierCheck: check("sre_services_tier_check", sql`${table.tier} IN ('1', '2', '3', '4')`),
   })
 );
 
@@ -221,6 +223,8 @@ export const sreServiceOwners = pgTable(
   (table) => ({
     ownerUniqueIdx: uniqueIndex("sre_service_owners_unique_idx").on(table.serviceId, table.ownerType, table.ownerRef, table.role),
     ownerRefIdx: index("sre_service_owners_owner_type_ref_idx").on(table.ownerType, table.ownerRef),
+    sreServiceOwnersOwnerTypeCheck: check("sre_service_owners_owner_type_check", sql`${table.ownerType} IN ('team', 'user', 'slack')`),
+    sreServiceOwnersRoleCheck: check("sre_service_owners_role_check", sql`${table.role} IN ('primary', 'on-call', 'secondary', 'reviewer')`),
   })
 );
 
@@ -237,6 +241,8 @@ export const sreServiceResources = pgTable(
   (table) => ({
     resourceIdx: index("sre_service_resources_resource_idx").on(table.resourceType, table.resourceId),
     serviceResourceUniqueIdx: uniqueIndex("sre_service_resources_service_resource_unique_idx").on(table.serviceId, table.resourceType, table.resourceId),
+    sreServiceResourcesResourceTypeCheck: check("sre_service_resources_resource_type_check", sql`${table.resourceType} IN ('monitor', 'job', 'test', 'status_page_component', 'k6_run')`),
+    sreServiceResourcesRelationshipCheck: check("sre_service_resources_relationship_check", sql`${table.relationship} IN ('monitors', 'owned', 'depends_on')`),
   })
 );
 
@@ -271,6 +277,7 @@ export const sreServiceDependencies = pgTable(
     sreServiceDependenciesOrganizationIdIdx: index("sre_service_dependencies_organization_id_idx").on(table.organizationId),
     sreServiceDependenciesSourceServiceIdIdx: index("sre_service_dependencies_source_service_id_idx").on(table.sourceServiceId),
     sreServiceDependenciesEvidenceItemIdIdx: index("sre_service_dependencies_evidence_item_id_idx").on(table.evidenceItemId),
+    sreServiceDependenciesStatusCheck: check("sre_service_dependencies_status_check", sql`${table.status} IN ('active', 'stale', 'rejected')`),
   })
 );
 
@@ -392,6 +399,8 @@ export const sreAlertEvents = pgTable(
     firedAtIdx: index("sre_alert_events_fired_at_idx").on(table.firedAt),
     sreAlertEventsProjectIdIdx: index("sre_alert_events_project_id_idx").on(table.projectId),
     sreAlertEventsTriageInvestigationRunIdIdx: index("sre_alert_events_triage_investigation_run_id_idx").on(table.triageInvestigationRunId),
+    sreAlertEventsSeverityCheck: check("sre_alert_events_severity_check", sql`${table.severity} IN ('sev1', 'sev2', 'sev3', 'sev4')`),
+    sreAlertEventsStatusCheck: check("sre_alert_events_status_check", sql`${table.status} IN ('firing', 'resolved', 'silenced', 'deduplicated')`),
   })
 );
 
@@ -440,6 +449,8 @@ export const sreIncidents = pgTable(
     sreIncidentsCreatedByUserIdIdx: index("sre_incidents_created_by_user_id_idx").on(table.createdByUserId),
     sreIncidentsStatusPageIncidentIdIdx: index("sre_incidents_status_page_incident_id_idx").on(table.statusPageIncidentId),
     sreIncidentsTriageInvestigationRunIdIdx: index("sre_incidents_triage_investigation_run_id_idx").on(table.triageInvestigationRunId),
+    sreIncidentsSeverityCheck: check("sre_incidents_severity_check", sql`${table.severity} IN ('sev1', 'sev2', 'sev3', 'sev4')`),
+    sreIncidentsStatusCheck: check("sre_incidents_status_check", sql`${table.status} IN ('triggered', 'investigating', 'identified', 'recommendations_ready', 'user_applying_fix', 'verifying', 'resolved')`),
   })
 );
 
@@ -460,6 +471,7 @@ export const sreIncidentAlerts = pgTable(
   (table) => ({
     alertEventIdIdx: index("sre_incident_alerts_alert_event_id_idx").on(table.alertEventId),
     incidentAlertUniqueIdx: uniqueIndex("sre_incident_alerts_incident_alert_unique_idx").on(table.incidentId, table.alertEventId),
+    sreIncidentAlertsRoleCheck: check("sre_incident_alerts_role_check", sql`${table.role} IN ('trigger', 'related', 'red_herring')`),
   })
 );
 
@@ -518,6 +530,8 @@ export const privateAgents = pgTable(
     agentModeStatusIdx: index("private_agents_mode_status_idx").on(table.agentMode, table.status),
     connectedHeartbeatIdx: index("private_agents_connected_heartbeat_idx").on(table.lastHeartbeatAt).where(sql`status = 'connected'`),
     privateAgentsCreatedByUserIdIdx: index("private_agents_created_by_user_id_idx").on(table.createdByUserId),
+    privateAgentsStatusCheck: check("private_agents_status_check", sql`${table.status} IN ('pending', 'connected', 'disconnected', 'unhealthy', 'disabled')`),
+    privateAgentsAgentModeCheck: check("private_agents_agent_mode_check", sql`${table.agentMode} IN ('connector_proxy', 'execution_worker', 'hybrid')`),
   })
 );
 
@@ -562,6 +576,8 @@ export const externalConnectors = pgTable(
     privateAgentIdx: index("external_connectors_private_agent_idx").on(table.privateAgentId).where(sql`private_agent_id IS NOT NULL`),
     externalConnectorsCreatedByUserIdIdx: index("external_connectors_created_by_user_id_idx").on(table.createdByUserId),
     externalConnectorsValidatedByPrivateAgentIdIdx: index("external_connectors_validated_by_private_agent_id_idx").on(table.validatedByPrivateAgentId),
+    externalConnectorsStatusCheck: check("external_connectors_status_check", sql`${table.status} IN ('configured', 'valid', 'unreachable', 'missing_credentials', 'disabled')`),
+    externalConnectorsRiskLevelCheck: check("external_connectors_risk_level_check", sql`${table.riskLevel} IN ('low', 'medium', 'high', 'critical')`),
   })
 );
 
@@ -768,6 +784,8 @@ export const privateAgentJobs = pgTable(
     privateAgentJobsAuthorizedByUserIdIdx: index("private_agent_jobs_authorized_by_user_id_idx").on(table.authorizedByUserId),
     privateAgentJobsConnectorIdIdx: index("private_agent_jobs_connector_id_idx").on(table.connectorId),
     privateAgentJobsOrganizationIdIdx: index("private_agent_jobs_organization_id_idx").on(table.organizationId),
+    privateAgentJobsStatusCheck: check("private_agent_jobs_status_check", sql`${table.status} IN ('queued', 'leased', 'running', 'completed', 'failed', 'cancelled', 'timed_out')`),
+    privateAgentJobsJobClassCheck: check("private_agent_jobs_job_class_check", sql`${table.jobClass} IN ('sre_connector_query', 'http_monitor_check', 'playwright_run', 'k6_run', 'network_check')`),
   })
 );
 
@@ -875,6 +893,7 @@ export const sreInvestigationRuns = pgTable(
     sreInvestigationRunsAlertEventIdIdx: index("sre_investigation_runs_alert_event_id_idx").on(table.alertEventId),
     sreInvestigationRunsCreatedByUserIdIdx: index("sre_investigation_runs_created_by_user_id_idx").on(table.createdByUserId),
     sreInvestigationRunsOrganizationIdIdx: index("sre_investigation_runs_organization_id_idx").on(table.organizationId),
+    sreInvestigationRunsStatusCheck: check("sre_investigation_runs_status_check", sql`${table.status} IN ('running', 'completed', 'failed', 'aborted', 'timed_out')`),
   })
 );
 
@@ -932,6 +951,7 @@ export const sreInvestigationToolCalls = pgTable(
     executedAtIdx: index("sre_investigation_tool_calls_executed_at_idx").on(table.executedAt),
     sreInvestigationToolCallsConnectorIdIdx: index("sre_investigation_tool_calls_connector_id_idx").on(table.connectorId),
     sreInvestigationToolCallsEvidenceItemIdIdx: index("sre_investigation_tool_calls_evidence_item_id_idx").on(table.evidenceItemId),
+    sreInvestigationToolCallsStatusCheck: check("sre_investigation_tool_calls_status_check", sql`${table.status} IN ('success', 'error', 'timeout', 'aborted')`),
   })
 );
 
