@@ -98,6 +98,14 @@ describe("0047 subscriber secret storage", () => {
     expect(result).toMatchObject({ success: true, alreadyVerified: true });
   });
 
+  it("rejects a superseded token whose hash was kept when an older app renewed the row", async () => {
+    const oldTok = "b".repeat(64);
+    const newTok = "c".repeat(64);
+    await client`UPDATE status_page_subscribers SET verification_token = ${newTok}, verification_token_hash = ${hashVerificationToken(oldTok)}, verified_at = now() WHERE id = '00000000-0000-0000-0000-0000000000a2'`;
+    expect(await verifySubscriber(oldTok)).toMatchObject({ success: false });
+    expect(await verifySubscriber(newTok)).toMatchObject({ success: true });
+  });
+
   it("verifies a plaintext token written by an older app and migrates it", async () => {
     await client`UPDATE status_page_subscribers SET verification_token = ${hashedVerify}, verification_token_hash = NULL, verified_at = now() WHERE id = '00000000-0000-0000-0000-0000000000a2'`;
     expect(await verifySubscriber(hashedVerify)).toMatchObject({ success: true });

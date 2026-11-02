@@ -28,7 +28,7 @@ interface IncidentNotificationEmailProps {
   incidentDescription: string;
   affectedComponents: string[];
   updateTimestamp: string;
-  unsubscribeUrl: string;
+  unsubscribeUrl?: string;
   supportUrl?: string | null;
   language?: string;
 }
@@ -119,7 +119,7 @@ export const IncidentNotificationEmail = ({
   incidentDescription = "We are currently investigating this incident.",
   affectedComponents = [],
   updateTimestamp = new Date().toLocaleString(),
-  unsubscribeUrl = "https://status.example.com/unsubscribe",
+  unsubscribeUrl,
   supportUrl,
   language = "en",
 }: IncidentNotificationEmailProps) => {
@@ -147,10 +147,14 @@ export const IncidentNotificationEmail = ({
               <Link href={statusPageUrl} style={footerLink}>
                 {t.emailViewStatusPage}
               </Link>
-              {" • "}
-              <Link href={unsubscribeUrl} style={footerLink}>
-                {t.unsubscribe}
-              </Link>
+              {unsubscribeUrl && (
+                <>
+                  {" • "}
+                  <Link href={unsubscribeUrl} style={footerLink}>
+                    {t.unsubscribe}
+                  </Link>
+                </>
+              )}
             </Text>
             <Text style={copyright}>
               {t.poweredBy}{" "}
