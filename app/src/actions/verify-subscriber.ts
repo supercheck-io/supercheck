@@ -19,7 +19,11 @@ export async function verifySubscriber(token: string) {
 
     // Find subscriber with this verification token
     let subscriber = await db.query.statusPageSubscribers.findFirst({
-      where: eq(statusPageSubscribers.verificationTokenHash, hashVerificationToken(token)),
+      // A plaintext token means an older instance renewed the row after the hash was stored; the hash is stale.
+      where: and(
+        eq(statusPageSubscribers.verificationTokenHash, hashVerificationToken(token)),
+        isNull(statusPageSubscribers.verificationToken),
+      ),
     });
     if (!subscriber) {
       // Rows written by an older app version still hold the plaintext token; hash it and clear it.
@@ -27,10 +31,15 @@ export async function verifySubscriber(token: string) {
         where: eq(statusPageSubscribers.verificationToken, token),
       });
       if (subscriber) {
-        await db
+        const migrated = await db
           .update(statusPageSubscribers)
           .set({ verificationTokenHash: hashVerificationToken(token), verificationToken: null })
-          .where(eq(statusPageSubscribers.id, subscriber.id));
+          .where(
+            and(eq(statusPageSubscribers.id, subscriber.id), eq(statusPageSubscribers.verificationToken, token)),
+          )
+          .returning({ id: statusPageSubscribers.id });
+        // A renewal replaced the token after we read it, so this link is superseded.
+        if (!migrated.length) subscriber = undefined;
       }
     }
 
