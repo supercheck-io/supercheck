@@ -27,3 +27,15 @@ it("clears quarantine when the admin test succeeds", async () => {
 
   expect(set).toHaveBeenCalledWith(expect.objectContaining({ webhookFailures: 0, quarantinedAt: null }));
 });
+
+it("does not touch the secret when the subscriber has no endpoint", async () => {
+  (requireProjectContext as jest.Mock).mockResolvedValue({ userId: "u", organizationId: "org", project: { id: "p" } });
+  (db.query.statusPages.findFirst as jest.Mock).mockResolvedValue({ id });
+  (db.query.statusPageSubscribers.findFirst as jest.Mock).mockResolvedValue({
+    id, mode: "webhook", endpoint: null, webhookSecret: "legacy", webhookSecretEncrypted: null,
+  });
+  (db.update as jest.Mock).mockClear();
+  const result = await testWebhook({ subscriberId: id, statusPageId: id });
+  expect(result.success).toBe(false);
+  expect(db.update).not.toHaveBeenCalled();
+});

@@ -17,6 +17,9 @@ reviews:
     enabled: true
     drafts: false
     auto_incremental_review: true
+    # Also review stacked PRs whose base is another feature branch, not only main.
+    base_branches:
+      - ".*"
     # Keep reviewing active PRs throughout the trial; provider limits still apply.
     auto_pause_after_reviewed_commits: 0
     ignore_title_keywords:
