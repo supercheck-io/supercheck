@@ -42,12 +42,20 @@ const MIGRATION_ONLY_TABLES = new Set(["monitor_aggregate_dedup_audit"]);
  */
 const DB_UUID_DEFAULTS = new Set(["uuidv7()", "gen_random_uuid()"]);
 
+// Compared: column type (format_type keeps array element, enum and precision),
+// nullability and default; constraint definitions; index names and definitions.
+// Not compared: constraint names (hand-written migrations use Postgres default
+// `_fkey` names, so a migration that drops a constraint must use the name in the
+// database, not the Drizzle name), sequences, triggers, functions, comments.
 const SIGNATURE_SQL = `
-  SELECT 'COL ' || c.table_name || '.' || c.column_name || ' ' || c.data_type
-    || coalesce('(' || c.character_maximum_length || ')', '')
-    || ' null=' || c.is_nullable || ' def=' || coalesce(c.column_default, '-') AS sig
-  FROM information_schema.columns c
-  WHERE c.table_schema = 'public' AND c.table_name <> '__drizzle_migrations'
+  SELECT 'COL ' || cl.relname || '.' || a.attname || ' ' || format_type(a.atttypid, a.atttypmod)
+    || ' null=' || CASE WHEN a.attnotnull THEN 'NO' ELSE 'YES' END
+    || ' def=' || coalesce(pg_get_expr(d.adbin, d.adrelid), '-') AS sig
+  FROM pg_attribute a
+  JOIN pg_class cl ON cl.oid = a.attrelid AND cl.relkind = 'r'
+  LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+  WHERE cl.relnamespace = 'public'::regnamespace AND cl.relname <> '__drizzle_migrations'
+    AND a.attnum > 0 AND NOT a.attisdropped
   UNION ALL
   SELECT 'CON ' || conrelid::regclass::text || ' ' || contype::text || ' '
     || regexp_replace(pg_get_constraintdef(oid), '\\s+', ' ', 'g')
@@ -55,16 +63,17 @@ const SIGNATURE_SQL = `
   WHERE connamespace = 'public'::regnamespace AND contype <> 'n'
     AND conrelid::regclass::text <> '__drizzle_migrations'
   UNION ALL
-  SELECT 'IDX ' || tablename || ' ' || regexp_replace(indexdef, 'INDEX \\S+ ON ', 'INDEX ON ')
-  FROM pg_indexes
-  WHERE schemaname = 'public' AND tablename <> '__drizzle_migrations'
-    AND indexname NOT IN (SELECT conname FROM pg_constraint)
+  SELECT 'IDX ' || t.relname || ' ' || pg_get_indexdef(i.indexrelid)
+  FROM pg_index i
+  JOIN pg_class t ON t.oid = i.indrelid
+  WHERE t.relnamespace = 'public'::regnamespace AND t.relname <> '__drizzle_migrations'
+    AND NOT EXISTS (SELECT 1 FROM pg_constraint k WHERE k.conindid = i.indexrelid)
 `;
 
 function normalize(signature: string): string | null {
-  const table = signature.split(" ")[1]?.split(".")[0]?.replace(/^public\./, "");
+  const table = signature.split(" ")[1]?.split(".")[0];
   if (table && MIGRATION_ONLY_TABLES.has(table)) return null;
-  const match = /^(COL \S+\.id uuid\(?\)? ?null=NO def=)(.*)$/.exec(signature);
+  const match = /^(COL \S+\.id uuid null=NO def=)(.*)$/.exec(signature);
   if (match && (match[2] === "-" || DB_UUID_DEFAULTS.has(match[2]))) {
     return `${match[1]}<db-uuid>`;
   }
