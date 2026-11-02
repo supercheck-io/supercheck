@@ -80,7 +80,6 @@ export const projectLocations = pgTable(
   },
   (table) => [
     unique("project_locations_unique").on(table.projectId, table.locationId),
-    index("idx_project_locations_project").on(table.projectId),
     index("idx_project_locations_location").on(table.locationId),
   ]
 );

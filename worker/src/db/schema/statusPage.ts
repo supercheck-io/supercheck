@@ -145,6 +145,9 @@ export const statusPageComponents = pgTable(
       table.lastReconciledAt,
       table.id,
     ),
+    statusPageComponentsStatusPageIdIdx: index(
+      'status_page_components_status_page_id_idx',
+    ).on(table.statusPageId),
   }),
 );
 
@@ -165,6 +168,9 @@ export const statusPageComponentMonitors = pgTable(
   },
   (table) => ({
     pk: primaryKey({ columns: [table.componentId, table.monitorId] }),
+    statusPageComponentMonitorsMonitorIdIdx: index(
+      'status_page_component_monitors_monitor_id_idx',
+    ).on(table.monitorId),
   }),
 );
 
@@ -244,6 +250,12 @@ export const incidents = pgTable(
     srePageIdx: index('incidents_sre_page_idx')
       .on(table.statusPageId, table.sreIncidentId)
       .where(sql`${table.sreIncidentId} is not null`),
+    incidentsStatusPageCreatedIdx: index(
+      'incidents_status_page_created_idx',
+    ).on(table.statusPageId, table.createdAt.desc().nullsFirst()),
+    incidentsCreatedByUserIdIdx: index('incidents_created_by_user_id_idx').on(
+      table.createdByUserId,
+    ),
   }),
 );
 
@@ -294,6 +306,9 @@ export const incidentComponents = pgTable(
     componentIdx: index('incident_components_component_idx').on(
       table.componentId,
     ),
+    incidentComponentsIncidentIdIdx: index(
+      'incident_components_incident_id_idx',
+    ).on(table.incidentId),
   }),
 );
 
@@ -380,6 +395,12 @@ export const statusPageSubscribers = pgTable(
     uniqueEndpointPerPage: uniqueIndex('status_page_subscribers_endpoint_idx')
       .on(table.statusPageId, table.endpoint)
       .where(sql`endpoint IS NOT NULL`),
+    statusPageSubscribersActiveIdx: index('status_page_subscribers_active_idx')
+      .on(table.statusPageId)
+      .where(sql`purge_at IS NULL`),
+    statusPageSubscribersStatusPageIdIdx: index(
+      'status_page_subscribers_status_page_id_idx',
+    ).on(table.statusPageId),
   }),
 );
 
@@ -405,6 +426,9 @@ export const statusPageComponentSubscriptions = pgTable(
     uniqueSubscriberComponent: uniqueIndex(
       'status_page_component_subs_unique_idx',
     ).on(table.subscriberId, table.componentId),
+    statusPageComponentSubscriptionsComponentIdIdx: index(
+      'status_page_component_subscriptions_component_id_idx',
+    ).on(table.componentId),
   }),
 );
 
@@ -430,6 +454,9 @@ export const statusPageIncidentSubscriptions = pgTable(
     uniqueSubscriberIncident: uniqueIndex(
       'status_page_incident_subs_unique_idx',
     ).on(table.subscriberId, table.incidentId),
+    statusPageIncidentSubscriptionsIncidentIdIdx: index(
+      'status_page_incident_subscriptions_incident_id_idx',
+    ).on(table.incidentId),
   }),
 );
 
@@ -464,6 +491,9 @@ export const statusPageMetrics = pgTable(
       table.componentId,
       table.date,
     ),
+    statusPageMetricsComponentIdIdx: index(
+      'status_page_metrics_component_id_idx',
+    ).on(table.componentId),
   }),
 );
 
@@ -492,6 +522,9 @@ export const postmortems = pgTable(
   },
   (table) => ({
     incidentIdx: uniqueIndex('postmortems_incident_idx').on(table.incidentId),
+    postmortemsCreatedByUserIdIdx: index(
+      'postmortems_created_by_user_id_idx',
+    ).on(table.createdByUserId),
   }),
 );
 

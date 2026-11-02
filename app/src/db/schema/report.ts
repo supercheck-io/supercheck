@@ -11,6 +11,7 @@ import {
   timestamp,
   uuid,
   uniqueIndex,
+  index,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { organization } from "./organization";
@@ -47,5 +48,7 @@ export const reports = pgTable(
       table.entityType,
       table.entityId
     ),
+    reportsCreatedByUserIdIdx: index("reports_created_by_user_id_idx").on(table.createdByUserId),
+    reportsOrganizationIdIdx: index("reports_organization_id_idx").on(table.organizationId),
   })
 );

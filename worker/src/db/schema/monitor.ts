@@ -71,15 +71,16 @@ export const monitors = pgTable(
     updatedAt: timestamp('updated_at'),
   },
   (table) => ({
-    // PERFORMANCE: Indexes for dashboard monitor queries
-    projectOrgIdx: index('monitors_project_org_idx').on(
-      table.projectId,
-      table.organizationId,
-    ),
     projectOrgStatusIdx: index('monitors_project_org_status_idx').on(
       table.projectId,
       table.organizationId,
       table.status,
+    ),
+    monitorsCreatedByUserIdIdx: index('monitors_created_by_user_id_idx').on(
+      table.createdByUserId,
+    ),
+    monitorsOrganizationIdIdx: index('monitors_organization_id_idx').on(
+      table.organizationId,
     ),
   }),
 );

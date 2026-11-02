@@ -66,7 +66,11 @@ export const organization = pgTable("organization", {
     .default("0"),
   usagePeriodStart: timestamp("usage_period_start"),
   usagePeriodEnd: timestamp("usage_period_end"),
-});
+},
+  (table) => [
+    index("organization_polar_customer_id_idx").on(table.polarCustomerId).where(sql`polar_customer_id IS NOT NULL`),
+    index("organization_subscription_id_idx").on(table.subscriptionId).where(sql`subscription_id IS NOT NULL`),
+  ]);
 // Cloud/self-hosted entitlement enforcement lives in SubscriptionService.
 // A database row cannot infer hosting mode from the presence of a Polar ID.
 
@@ -127,8 +131,6 @@ export const invitation = pgTable(
     organizationIdIdx: index("invitation_organization_id_idx").on(
       table.organizationId
     ),
-    // Index on email for checking pending invitations
-    emailIdx: index("invitation_email_idx").on(table.email),
     // Composite index on email and status for pending invitation lookups
     emailStatusIdx: index("invitation_email_status_idx").on(
       table.email,
@@ -136,6 +138,7 @@ export const invitation = pgTable(
     ),
     // Index on expires_at for cleanup queries
     expiresAtIdx: index("invitation_expires_at_idx").on(table.expiresAt),
+    invitationInviterIdIdx: index("invitation_inviter_id_idx").on(table.inviterId),
   })
 );
 
@@ -164,10 +167,6 @@ export const projects = pgTable(
     updatedAt: timestamp("updated_at").defaultNow(),
   },
   (table) => ({
-    // Index on organization_id for listing organization projects
-    organizationIdIdx: index("projects_organization_id_idx").on(
-      table.organizationId
-    ),
     // Composite index on organization_id and status for filtered queries
     orgStatusIdx: index("projects_org_status_idx").on(
       table.organizationId,
@@ -244,6 +243,7 @@ export const projectVariables = pgTable(
   },
   (table) => ({
     uniqueKeyPerProject: unique().on(table.projectId, table.key),
+    projectVariablesCreatedByUserIdIdx: index("project_variables_created_by_user_id_idx").on(table.createdByUserId),
   })
 );
 
