@@ -117,6 +117,7 @@ describe("verification token storage", () => {
     mockDb.query.statusPages.findFirst.mockResolvedValue({ language: "en" });
     const set = jest.fn().mockReturnValue({ where: jest.fn().mockResolvedValue(undefined) });
     mockDb.update.mockReturnValue({ set });
+    set.mockReturnValue({ where: jest.fn().mockReturnValue({ returning: jest.fn().mockResolvedValue([{ id: "sub-1" }]) }) });
 
     const result = await verifySubscriber(token);
 
@@ -126,5 +127,16 @@ describe("verification token storage", () => {
       verificationTokenHash: require("node:crypto").createHash("sha256").update(token).digest("hex"),
       verificationToken: null,
     });
+  });
+});
+
+describe("superseded legacy token", () => {
+  it("rejects the link when a renewal replaced the plaintext token after the read", async () => {
+    const findFirst = mockDb.query.statusPageSubscribers.findFirst;
+    findFirst.mockReset();
+    findFirst.mockResolvedValueOnce(undefined).mockResolvedValueOnce({ id: "sub-1", statusPageId: "page-1", verifiedAt: null, updatedAt: new Date(), createdAt: new Date() });
+    mockDb.update.mockReturnValue({ set: () => ({ where: () => ({ returning: jest.fn().mockResolvedValue([]) }) }) });
+    const result = await verifySubscriber(token);
+    expect(result.success).toBe(false);
   });
 });
