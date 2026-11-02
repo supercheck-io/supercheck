@@ -60,8 +60,6 @@ export const tests = pgTable(
     organizationIdIdx: index('tests_organization_id_idx').on(
       table.organizationId,
     ),
-    // Index on project_id for listing project tests
-    projectIdIdx: index('tests_project_id_idx').on(table.projectId),
     // Composite index on project_id and type for filtered queries
     projectTypeIdx: index('tests_project_type_idx').on(
       table.projectId,
@@ -71,6 +69,9 @@ export const tests = pgTable(
     typeIdx: index('tests_type_idx').on(table.type),
     // Index on created_at for sorting/pagination
     createdAtIdx: index('tests_created_at_idx').on(table.createdAt),
+    testsCreatedByUserIdIdx: index('tests_created_by_user_id_idx').on(
+      table.createdByUserId,
+    ),
   }),
 );
 

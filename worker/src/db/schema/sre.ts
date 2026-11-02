@@ -246,6 +246,12 @@ export const sreServices = pgTable(
       table.projectId,
       table.tier,
     ),
+    sreServicesOrganizationIdIdx: index('sre_services_organization_id_idx').on(
+      table.organizationId,
+    ),
+    sreServicesOwnerUserIdIdx: index('sre_services_owner_user_id_idx').on(
+      table.ownerUserId,
+    ),
   }),
 );
 
@@ -295,9 +301,6 @@ export const sreServiceResources = pgTable(
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => ({
-    serviceIdIdx: index('sre_service_resources_service_id_idx').on(
-      table.serviceId,
-    ),
     resourceIdx: index('sre_service_resources_resource_idx').on(
       table.resourceType,
       table.resourceId,
@@ -361,6 +364,15 @@ export const sreServiceDependencies = pgTable(
     pendingApprovalIdx: index('sre_service_dependencies_pending_approval_idx')
       .on(table.approvedAt)
       .where(sql`approved_at IS NULL`),
+    sreServiceDependenciesApprovedByIdx: index(
+      'sre_service_dependencies_approved_by_idx',
+    ).on(table.approvedBy),
+    sreServiceDependenciesOrganizationIdIdx: index(
+      'sre_service_dependencies_organization_id_idx',
+    ).on(table.organizationId),
+    sreServiceDependenciesSourceServiceIdIdx: index(
+      'sre_service_dependencies_source_service_id_idx',
+    ).on(table.sourceServiceId),
   }),
 );
 
@@ -394,6 +406,9 @@ export const sreServiceDependencyObservations = pgTable(
     observedAtIdx: index(
       'sre_service_dependency_observations_observed_at_idx',
     ).on(table.observedAt),
+    sreServiceDependencyObservationsTargetServiceIdIdx: index(
+      'sre_service_dependency_observations_target_service_id_idx',
+    ).on(table.targetServiceId),
   }),
 );
 
@@ -464,6 +479,12 @@ export const sreServiceDiscoverySuggestions = pgTable(
     organizationSourceIdx: index(
       'sre_service_discovery_suggestions_org_source_idx',
     ).on(table.organizationId, table.source),
+    sreServiceDiscoverySuggestionsApprovedByIdx: index(
+      'sre_service_discovery_suggestions_approved_by_idx',
+    ).on(table.approvedBy),
+    sreServiceDiscoverySuggestionsProjectIdIdx: index(
+      'sre_service_discovery_suggestions_project_id_idx',
+    ).on(table.projectId),
   }),
 );
 
@@ -554,6 +575,9 @@ export const sreAlertEvents = pgTable(
       table.status,
     ),
     firedAtIdx: index('sre_alert_events_fired_at_idx').on(table.firedAt),
+    sreAlertEventsProjectIdIdx: index('sre_alert_events_project_id_idx').on(
+      table.projectId,
+    ),
   }),
 );
 
@@ -614,6 +638,12 @@ export const sreIncidents = pgTable(
     activeStatusIdx: index('sre_incidents_active_status_idx')
       .on(table.status)
       .where(sql`status != 'resolved'`),
+    sreIncidentsCreatedByUserIdIdx: index(
+      'sre_incidents_created_by_user_id_idx',
+    ).on(table.createdByUserId),
+    sreIncidentsStatusPageIncidentIdIdx: index(
+      'sre_incidents_status_page_incident_id_idx',
+    ).on(table.statusPageIncidentId),
   }),
 );
 
@@ -634,9 +664,6 @@ export const sreIncidentAlerts = pgTable(
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => ({
-    incidentIdIdx: index('sre_incident_alerts_incident_id_idx').on(
-      table.incidentId,
-    ),
     alertEventIdIdx: index('sre_incident_alerts_alert_event_id_idx').on(
       table.alertEventId,
     ),
@@ -738,6 +765,9 @@ export const privateAgents = pgTable(
     connectedHeartbeatIdx: index('private_agents_connected_heartbeat_idx')
       .on(table.lastHeartbeatAt)
       .where(sql`status = 'connected'`),
+    privateAgentsCreatedByUserIdIdx: index(
+      'private_agents_created_by_user_id_idx',
+    ).on(table.createdByUserId),
   }),
 );
 
@@ -821,6 +851,12 @@ export const externalConnectors = pgTable(
     privateAgentIdx: index('external_connectors_private_agent_idx')
       .on(table.privateAgentId)
       .where(sql`private_agent_id IS NOT NULL`),
+    externalConnectorsCreatedByUserIdIdx: index(
+      'external_connectors_created_by_user_id_idx',
+    ).on(table.createdByUserId),
+    externalConnectorsValidatedByPrivateAgentIdIdx: index(
+      'external_connectors_validated_by_private_agent_id_idx',
+    ).on(table.validatedByPrivateAgentId),
   }),
 );
 
@@ -862,6 +898,15 @@ export const privateAgentCredentials = pgTable(
     revokedAtIdx: index('private_agent_credentials_revoked_at_idx')
       .on(table.revokedAt)
       .where(sql`revoked_at IS NOT NULL`),
+    privateAgentCredentialsOrganizationIdIdx: index(
+      'private_agent_credentials_organization_id_idx',
+    ).on(table.organizationId),
+    privateAgentCredentialsProjectIdIdx: index(
+      'private_agent_credentials_project_id_idx',
+    ).on(table.projectId),
+    privateAgentCredentialsRevokedByUserIdIdx: index(
+      'private_agent_credentials_revoked_by_user_id_idx',
+    ).on(table.revokedByUserId),
   }),
 );
 
@@ -898,6 +943,9 @@ export const privateAgentHeartbeats = pgTable(
     organizationCreatedIdx: index(
       'private_agent_heartbeats_org_created_idx',
     ).on(table.organizationId, table.createdAt),
+    privateAgentHeartbeatsProjectIdIdx: index(
+      'private_agent_heartbeats_project_id_idx',
+    ).on(table.projectId),
   }),
 );
 
@@ -929,6 +977,9 @@ export const externalConnectorServices = pgTable(
     organizationConnectorIdx: index(
       'external_connector_services_org_connector_idx',
     ).on(table.organizationId, table.connectorId),
+    externalConnectorServicesServiceIdIdx: index(
+      'external_connector_services_service_id_idx',
+    ).on(table.serviceId),
   }),
 );
 
@@ -983,6 +1034,12 @@ export const sreIntegrationBindings = pgTable(
         table.externalConnectorId,
       )
       .where(sql`enabled = true`),
+    sreIntegrationBindingsCreatedByUserIdIdx: index(
+      'sre_integration_bindings_created_by_user_id_idx',
+    ).on(table.createdByUserId),
+    sreIntegrationBindingsOrganizationIdIdx: index(
+      'sre_integration_bindings_organization_id_idx',
+    ).on(table.organizationId),
   }),
 );
 
@@ -1015,6 +1072,9 @@ export const sreIntegrationBindingServices = pgTable(
     organizationBindingIdx: index(
       'sre_integration_binding_services_org_binding_idx',
     ).on(table.organizationId, table.bindingId),
+    sreIntegrationBindingServicesServiceIdIdx: index(
+      'sre_integration_binding_services_service_id_idx',
+    ).on(table.serviceId),
   }),
 );
 
@@ -1097,6 +1157,15 @@ export const diagnosticQueries = pgTable(
       table.queryType,
       table.status,
     ),
+    diagnosticQueriesApprovedByUserIdIdx: index(
+      'diagnostic_queries_approved_by_user_id_idx',
+    ).on(table.approvedByUserId),
+    diagnosticQueriesConnectorIdIdx: index(
+      'diagnostic_queries_connector_id_idx',
+    ).on(table.connectorId),
+    diagnosticQueriesCreatedByUserIdIdx: index(
+      'diagnostic_queries_created_by_user_id_idx',
+    ).on(table.createdByUserId),
   }),
 );
 
@@ -1164,6 +1233,15 @@ export const privateAgentJobs = pgTable(
     leaseExpiresAtIdx: index('private_agent_jobs_lease_expires_at_idx')
       .on(table.leaseExpiresAt)
       .where(sql`status IN ('leased', 'running')`),
+    privateAgentJobsAuthorizedByUserIdIdx: index(
+      'private_agent_jobs_authorized_by_user_id_idx',
+    ).on(table.authorizedByUserId),
+    privateAgentJobsConnectorIdIdx: index(
+      'private_agent_jobs_connector_id_idx',
+    ).on(table.connectorId),
+    privateAgentJobsOrganizationIdIdx: index(
+      'private_agent_jobs_organization_id_idx',
+    ).on(table.organizationId),
   }),
 );
 
@@ -1199,6 +1277,9 @@ export const privateAgentArtifacts = pgTable(
     createdAtIdx: index('private_agent_artifacts_created_at_idx').on(
       table.createdAt,
     ),
+    privateAgentArtifactsOrganizationIdIdx: index(
+      'private_agent_artifacts_organization_id_idx',
+    ).on(table.organizationId),
   }),
 );
 
@@ -1257,6 +1338,15 @@ export const sreEvidenceItems = pgTable(
     observedAtIdx: index('sre_evidence_items_observed_at_idx').on(
       table.observedAt,
     ),
+    sreEvidenceItemsProjectCreatedIdx: index(
+      'sre_evidence_items_project_created_idx',
+    ).on(table.projectId, table.createdAt.desc().nullsFirst()),
+    sreEvidenceItemsOrganizationIdIdx: index(
+      'sre_evidence_items_organization_id_idx',
+    ).on(table.organizationId),
+    sreEvidenceItemsSourceConnectorIdIdx: index(
+      'sre_evidence_items_source_connector_id_idx',
+    ).on(table.sourceConnectorId),
   }),
 );
 
@@ -1328,6 +1418,15 @@ export const sreInvestigationRuns = pgTable(
       'sre_investigation_runs_billing_tier_check',
       sql`${table.billingTier} IN ('paid', 'trial')`,
     ),
+    sreInvestigationRunsAlertEventIdIdx: index(
+      'sre_investigation_runs_alert_event_id_idx',
+    ).on(table.alertEventId),
+    sreInvestigationRunsCreatedByUserIdIdx: index(
+      'sre_investigation_runs_created_by_user_id_idx',
+    ).on(table.createdByUserId),
+    sreInvestigationRunsOrganizationIdIdx: index(
+      'sre_investigation_runs_organization_id_idx',
+    ).on(table.organizationId),
   }),
 );
 
@@ -1373,6 +1472,12 @@ export const sreInvestigationToolCalls = pgTable(
     executedAtIdx: index('sre_investigation_tool_calls_executed_at_idx').on(
       table.executedAt,
     ),
+    sreInvestigationToolCallsConnectorIdIdx: index(
+      'sre_investigation_tool_calls_connector_id_idx',
+    ).on(table.connectorId),
+    sreInvestigationToolCallsEvidenceItemIdIdx: index(
+      'sre_investigation_tool_calls_evidence_item_id_idx',
+    ).on(table.evidenceItemId),
   }),
 );
 
@@ -1406,15 +1511,21 @@ export const sreAiSuggestions = pgTable(
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => ({
-    incidentIdIdx: index('sre_ai_suggestions_incident_id_idx').on(
-      table.incidentId,
-    ),
     suggestionTypeIdx: index('sre_ai_suggestions_type_idx').on(
       table.suggestionType,
     ),
     incidentSuggestionTypeIdx: index('sre_ai_suggestions_incident_type_idx').on(
       table.incidentId,
       table.suggestionType,
+    ),
+    sreAiSuggestionsInvestigationRunIdIdx: index(
+      'sre_ai_suggestions_investigation_run_id_idx',
+    ).on(table.investigationRunId),
+    sreAiSuggestionsOrganizationIdIdx: index(
+      'sre_ai_suggestions_organization_id_idx',
+    ).on(table.organizationId),
+    sreAiSuggestionsProjectIdIdx: index('sre_ai_suggestions_project_id_idx').on(
+      table.projectId,
     ),
   }),
 );
@@ -1449,6 +1560,9 @@ export const sreInvestigationRecommendations = pgTable(
     )
       .on(table.incidentId, table.applicationStatus)
       .where(sql`application_status = 'pending'`),
+    sreInvestigationRecommendationsInvestigationRunIdIdx: index(
+      'sre_investigation_recommendations_investigation_run_id_idx',
+    ).on(table.investigationRunId),
   }),
 );
 
@@ -1490,6 +1604,12 @@ export const sreIncidentTimelineEvents = pgTable(
     eventTypeIdx: index('sre_incident_timeline_events_event_type_idx').on(
       table.eventType,
     ),
+    sreIncidentTimelineEventsAgentRunIdIdx: index(
+      'sre_incident_timeline_events_agent_run_id_idx',
+    ).on(table.agentRunId),
+    sreIncidentTimelineEventsEvidenceItemIdIdx: index(
+      'sre_incident_timeline_events_evidence_item_id_idx',
+    ).on(table.evidenceItemId),
   }),
 );
 
@@ -1528,6 +1648,12 @@ export const sreRunbooks = pgTable(
     organizationNameIdx: index('sre_runbooks_org_name_idx').on(
       table.organizationId,
       table.name,
+    ),
+    sreRunbooksCreatedByUserIdIdx: index(
+      'sre_runbooks_created_by_user_id_idx',
+    ).on(table.createdByUserId),
+    sreRunbooksServiceIdIdx: index('sre_runbooks_service_id_idx').on(
+      table.serviceId,
     ),
   }),
 );
@@ -1590,6 +1716,15 @@ export const sreIncidentRunbookSteps = pgTable(
     )
       .on(table.incidentId, table.status)
       .where(sql`status IN ('pending', 'in_progress')`),
+    sreIncidentRunbookStepsCompletedByIdx: index(
+      'sre_incident_runbook_steps_completed_by_idx',
+    ).on(table.completedBy),
+    sreIncidentRunbookStepsRunbookIdIdx: index(
+      'sre_incident_runbook_steps_runbook_id_idx',
+    ).on(table.runbookId),
+    sreIncidentRunbookStepsRunbookStepIdIdx: index(
+      'sre_incident_runbook_steps_runbook_step_id_idx',
+    ).on(table.runbookStepId),
   }),
 );
 
@@ -1621,6 +1756,9 @@ export const sreContextObservations = pgTable(
     projectObservationTypeIdx: index(
       'sre_context_observations_project_type_idx',
     ).on(table.projectId, table.observationType),
+    sreContextObservationsOrganizationIdIdx: index(
+      'sre_context_observations_organization_id_idx',
+    ).on(table.organizationId),
   }),
 );
 
@@ -1658,6 +1796,12 @@ export const sreContextRecollections = pgTable(
     errorFingerprintIdx: index(
       'sre_context_recollections_error_fingerprint_idx',
     ).on(table.errorFingerprint),
+    sreContextRecollectionsOrganizationIdIdx: index(
+      'sre_context_recollections_organization_id_idx',
+    ).on(table.organizationId),
+    sreContextRecollectionsProjectIdIdx: index(
+      'sre_context_recollections_project_id_idx',
+    ).on(table.projectId),
   }),
 );
 
@@ -1704,6 +1848,12 @@ export const sreContextPlaybooks = pgTable(
     alertSignatureGinIdx: index(
       'sre_context_playbooks_alert_signature_gin_idx',
     ).using('gin', table.alertSignature),
+    sreContextPlaybooksCreatedByUserIdIdx: index(
+      'sre_context_playbooks_created_by_user_id_idx',
+    ).on(table.createdByUserId),
+    sreContextPlaybooksPromotedFromRecollectionIdIdx: index(
+      'sre_context_playbooks_promoted_from_recollection_id_idx',
+    ).on(table.promotedFromRecollectionId),
   }),
 );
 
@@ -1744,6 +1894,15 @@ export const sreBackgroundAgentRuns = pgTable(
     scheduleCreatedIdx: index(
       'sre_background_agent_runs_schedule_created_idx',
     ).on(table.scheduleId, table.createdAt),
+    sreBackgroundAgentRunsInvestigationRunIdIdx: index(
+      'sre_background_agent_runs_investigation_run_id_idx',
+    ).on(table.investigationRunId),
+    sreBackgroundAgentRunsOrganizationIdIdx: index(
+      'sre_background_agent_runs_organization_id_idx',
+    ).on(table.organizationId),
+    sreBackgroundAgentRunsProjectIdIdx: index(
+      'sre_background_agent_runs_project_id_idx',
+    ).on(table.projectId),
   }),
 );
 
@@ -1784,6 +1943,9 @@ export const sreChatConversations = pgTable(
       table.projectId,
       table.status,
     ),
+    sreChatConversationsOrganizationIdIdx: index(
+      'sre_chat_conversations_organization_id_idx',
+    ).on(table.organizationId),
   }),
 );
 
@@ -1815,6 +1977,12 @@ export const sreChatMessages = pgTable(
       'sre_chat_messages_conversation_created_idx',
     ).on(table.conversationId, table.createdAt),
     roleIdx: index('sre_chat_messages_role_idx').on(table.role),
+    sreChatMessagesInvestigationRunIdIdx: index(
+      'sre_chat_messages_investigation_run_id_idx',
+    ).on(table.investigationRunId),
+    sreChatMessagesToolCallIdIdx: index(
+      'sre_chat_messages_tool_call_id_idx',
+    ).on(table.toolCallId),
   }),
 );
 
@@ -1868,6 +2036,12 @@ export const sreInvestigationReports = pgTable(
     runHashUniqueIdx: uniqueIndex(
       'sre_investigation_reports_run_hash_unique_idx',
     ).on(table.investigationRunId, table.reportHash),
+    sreInvestigationReportsCreatedByUserIdIdx: index(
+      'sre_investigation_reports_created_by_user_id_idx',
+    ).on(table.createdByUserId),
+    sreInvestigationReportsOrganizationIdIdx: index(
+      'sre_investigation_reports_organization_id_idx',
+    ).on(table.organizationId),
   }),
 );
 
@@ -1917,6 +2091,15 @@ export const sreInvestigationReportFeedback = pgTable(
     accuracyIdx: index('sre_investigation_report_feedback_accuracy_idx').on(
       table.accuracy,
     ),
+    sreInvestigationReportFeedbackCreatedByUserIdIdx: index(
+      'sre_investigation_report_feedback_created_by_user_id_idx',
+    ).on(table.createdByUserId),
+    sreInvestigationReportFeedbackIncidentIdIdx: index(
+      'sre_investigation_report_feedback_incident_id_idx',
+    ).on(table.incidentId),
+    sreInvestigationReportFeedbackOrganizationIdIdx: index(
+      'sre_investigation_report_feedback_organization_id_idx',
+    ).on(table.organizationId),
   }),
 );
 
@@ -1962,6 +2145,9 @@ export const sreEvidenceGraphFocusedViews = pgTable(
       table.createdByUserId,
       table.updatedAt,
     ),
+    sreEvidenceGraphFocusedViewsOrganizationIdIdx: index(
+      'sre_evidence_graph_focused_views_organization_id_idx',
+    ).on(table.organizationId),
   }),
 );
 

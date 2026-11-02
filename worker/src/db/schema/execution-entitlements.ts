@@ -104,6 +104,9 @@ export const executionReservations = pgTable(
       'execution_reservations_values_check',
       sql`${table.kind} IN ('playwright', 'k6') AND ${table.tier} IN ('paid', 'trial') AND ${table.reservedMs} >= 0 AND ${table.usedMs} >= 0`,
     ),
+    index('execution_reservations_organization_id_idx').on(
+      table.organizationId,
+    ),
   ],
 );
 

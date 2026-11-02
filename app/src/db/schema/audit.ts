@@ -35,8 +35,6 @@ export const auditLogs = pgTable(
     createdAt: timestamp("created_at").defaultNow(),
   },
   (table) => ({
-    // PERFORMANCE: Indexes for dashboard queries
-    actionIdx: index("audit_logs_action_idx").on(table.action),
     organizationIdIdx: index("audit_logs_organization_id_idx").on(table.organizationId),
     createdAtIdx: index("audit_logs_created_at_idx").on(table.createdAt),
     // Composite index for dashboard playground queries
