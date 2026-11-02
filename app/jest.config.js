@@ -207,6 +207,9 @@ const customJestConfig = {
     },
   },
   testTimeout: 10000,
+  // Recycle workers that balloon (playwright-editor-types builds ~2GB TS programs): a
+  // multi-GB worker can miss jest-worker's 500ms exit grace on CI and trip the leaked-handle gate.
+  workerIdleMemoryLimit: "1GB",
 };
 
 // Export async config to allow override of transformIgnorePatterns

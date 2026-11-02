@@ -34,6 +34,8 @@ import { getS3Client } from "@/lib/s3-proxy";
 import { eq, sql } from "drizzle-orm";
 import { AuthService, AISecurityService } from "@/lib/ai/ai-security";
 import { getActiveOrganization } from "@/lib/session";
+import { subscriptionService } from "@/lib/services/subscription-service";
+import { reserveAICredit } from "@/lib/ai/ai-credit-reservation";
 import {
   validateAIConfiguration,
   getProviderModel,
@@ -595,6 +597,17 @@ export async function extractRequirementsFromDocument(
       };
     }
 
+    // AI extraction is a paid feature, gated like the other AI routes.
+    try {
+      await subscriptionService.blockUntilSubscribed(organizationId);
+      await subscriptionService.requireValidPolarCustomer(organizationId);
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Subscription required to use AI features",
+      };
+    }
+
     // Get file from form data
     const file = formData.get("file") as File | null;
     if (!file) {
@@ -727,12 +740,21 @@ export async function extractRequirementsFromDocument(
       };
     }
 
-    // 4. Extract requirements using AI
+    // 4. Reserve an AI credit atomically, then extract requirements using AI
+    const credit = await reserveAICredit(organizationId, "ai_create");
+    if (!credit.allowed) {
+      await deleteDocumentRecord(documentId, storagePath);
+      return {
+        success: false,
+        error: credit.reason || "AI credits exhausted. Upgrade your plan or wait for the next billing cycle.",
+      };
+    }
     let requirements: ExtractedRequirement[];
     let truncated: boolean;
     try {
       ({ requirements, truncated } = await extractWithAI(documentText, organizationId, tier));
     } catch (aiError) {
+      await credit.refund();
       await deleteDocumentRecord(documentId, storagePath);
       return {
         success: false,

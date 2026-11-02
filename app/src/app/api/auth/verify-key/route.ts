@@ -1,4 +1,5 @@
 import { isCredentialOwnerActive } from "@/lib/security/credential-owner";
+import { getClientIP } from "@/lib/session-security";
 import { NextRequest, NextResponse } from "next/server";
 import { defaultKeyHasher } from "@better-auth/api-key";
 import { db } from "@/utils/db";
@@ -28,6 +29,12 @@ const RATE_LIMIT_KEY_PREFIX = "supercheck:verify-key:ratelimit";
 async function checkRateLimit(
   ip: string
 ): Promise<{ allowed: boolean; remaining: number; retryAfter?: number }> {
+  // No trustworthy client IP: a shared "unknown" bucket would let one caller lock out every
+  // client, so skip the per-IP limit like the sign-in check does (keys are high-entropy).
+  if (ip === "unknown") {
+    logger.warn({}, "verify-key: no trusted client IP; per-IP rate limit skipped");
+    return { allowed: true, remaining: RATE_LIMIT_MAX_REQUESTS };
+  }
   try {
     const redis = await getRedisConnection();
     if (!redis) {
@@ -96,28 +103,9 @@ async function checkRateLimit(
   }
 }
 
-/**
- * Extract client IP from request
- */
-function getClientIp(request: NextRequest): string {
-  // Check common proxy headers
-  const forwardedFor = request.headers.get("x-forwarded-for");
-  if (forwardedFor) {
-    // Get the first IP in the chain (original client)
-    return forwardedFor.split(",")[0].trim();
-  }
-  
-  const realIp = request.headers.get("x-real-ip");
-  if (realIp) {
-    return realIp.trim();
-  }
-  
-  // Fallback (may not be accurate behind proxies)
-  return "unknown";
-}
-
 export async function POST(request: NextRequest) {
-  const clientIp = getClientIp(request);
+  // Trusted-proxy aware: the first X-Forwarded-For entry is client-controlled.
+  const clientIp = getClientIP(request.headers);
   
   // Check rate limit first
   const rateLimitResult = await checkRateLimit(clientIp);

@@ -145,4 +145,34 @@ describe("verify-key route", () => {
       "extABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
     );
   });
+
+  describe("rate limit key", () => {
+    const post = (headers: Record<string, string>) => {
+      mockDb.select.mockReturnValue({
+        from: jest.fn().mockReturnThis(),
+        innerJoin: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockResolvedValue([]),
+      });
+      return POST(new NextRequest("http://localhost/api/auth/verify-key", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...headers },
+        body: JSON.stringify({ apiKey: "extABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789", jobId: "job-1" }),
+      }));
+    };
+
+    it("keys on the proxy-appended X-Forwarded-For entry, not the client-supplied first one", async () => {
+      const redis = createRedisMock();
+      mockGetRedisConnection.mockResolvedValue(redis);
+      await post({ "x-forwarded-for": "1.1.1.1, 2.2.2.2" });
+      expect(redis.zadd).toHaveBeenCalledWith("supercheck:verify-key:ratelimit:2.2.2.2", expect.any(Number), expect.any(String));
+    });
+
+    it("skips the per-IP limit when no trusted client IP is present", async () => {
+      const redis = createRedisMock();
+      mockGetRedisConnection.mockResolvedValue(redis);
+      await post({});
+      expect(redis.multi).not.toHaveBeenCalled();
+    });
+  });
 });

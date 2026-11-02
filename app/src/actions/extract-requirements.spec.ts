@@ -100,13 +100,27 @@ jest.mock("unpdf", () => ({
 
 jest.mock("@/lib/ai/ai-rate-limiter", () => ({ aiRateLimiter: { checkAndTrackTokens: jest.fn().mockResolvedValue({ allowed: true }) } }));
 
+jest.mock("@/lib/services/subscription-service", () => ({
+  subscriptionService: {
+    blockUntilSubscribed: jest.fn().mockResolvedValue(undefined),
+    requireValidPolarCustomer: jest.fn().mockResolvedValue(undefined),
+  },
+}));
+const mockRefund = jest.fn();
+jest.mock("@/lib/ai/ai-credit-reservation", () => ({
+  reserveAICredit: jest.fn(async () => ({ allowed: true, refund: mockRefund })),
+}));
+
 // Import after mocks
 import { generateText } from "ai";
+import { db } from "@/utils/db";
 import { aiRateLimiter } from "@/lib/ai/ai-rate-limiter";
 import { requireProjectContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { getActiveOrganization } from "@/lib/session";
 import { AISecurityService } from "@/lib/ai/ai-security";
+import { subscriptionService } from "@/lib/services/subscription-service";
+import { reserveAICredit } from "@/lib/ai/ai-credit-reservation";
 import { extractRequirementsFromDocument } from "./extract-requirements";
 
 // Cast mocks
@@ -465,6 +479,45 @@ describe("extractRequirementsFromDocument", () => {
     const result = await extractRequirementsFromDocument(formData);
     expect(result.success).toBe(true);
     expect(result.truncated).toBe(true);
+  });
+
+  describe("Subscription and AI credits", () => {
+    const upload = () => {
+      const formData = new MockFormData() as unknown as FormData;
+      formData.append("file", createMockFile("Requirements".padEnd(100, "."), "test.txt", { type: "text/plain" }));
+      return extractRequirementsFromDocument(formData);
+    };
+
+    it("rejects orgs without an active subscription before calling AI", async () => {
+      (subscriptionService.blockUntilSubscribed as jest.Mock).mockRejectedValueOnce(new Error("No active subscription"));
+      const result = await upload();
+      expect(result).toEqual({ success: false, error: "No active subscription" });
+      expect(generateText).not.toHaveBeenCalled();
+      expect(db.insert).not.toHaveBeenCalled();
+      expect(reserveAICredit).not.toHaveBeenCalled();
+    });
+
+    it("rejects when AI credits are exhausted", async () => {
+      (reserveAICredit as jest.Mock).mockResolvedValueOnce({ allowed: false, reason: "credits used", refund: mockRefund });
+      const result = await upload();
+      expect(result).toEqual({ success: false, error: "credits used" });
+      expect(generateText).not.toHaveBeenCalled();
+      expect(db.delete).toHaveBeenCalled();
+    });
+
+    it("reserves one ai_create credit and refunds it when extraction fails", async () => {
+      (generateText as jest.Mock).mockRejectedValueOnce(new Error("provider down"));
+      const result = await upload();
+      expect(result.success).toBe(false);
+      expect(reserveAICredit).toHaveBeenCalledWith(testOrgId, "ai_create");
+      expect(mockRefund).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps the credit on success", async () => {
+      const result = await upload();
+      expect(result.success).toBe(true);
+      expect(mockRefund).not.toHaveBeenCalled();
+    });
   });
 
   describe("Allowed File Types", () => {

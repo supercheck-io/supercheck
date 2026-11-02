@@ -76,6 +76,11 @@ export class S3CleanupService {
     });
   }
 
+  /** Release the client's sockets (tests and short-lived callers). */
+  destroy(): void {
+    this.s3Client.destroy();
+  }
+
   getRunArtifactInputs(run: {
     id: string;
     reportS3Url?: string | null;
