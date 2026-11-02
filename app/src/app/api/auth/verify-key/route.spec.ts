@@ -168,11 +168,13 @@ describe("verify-key route", () => {
       expect(redis.zadd).toHaveBeenCalledWith("supercheck:verify-key:ratelimit:2.2.2.2", expect.any(Number), expect.any(String));
     });
 
-    it("skips the per-IP limit when no trusted client IP is present", async () => {
+    it("uses a shared high-ceiling bucket when no trusted client IP is present", async () => {
       const redis = createRedisMock();
+      redis.multi().exec.mockResolvedValue([[null, 0], [null, 10], [null, []]]);
       mockGetRedisConnection.mockResolvedValue(redis);
-      await post({});
-      expect(redis.multi).not.toHaveBeenCalled();
+      const response = await post({});
+      expect(response.status).not.toBe(429);
+      expect(redis.zadd).toHaveBeenCalledWith("supercheck:verify-key:ratelimit:unknown", expect.any(Number), expect.any(String));
     });
   });
 });
