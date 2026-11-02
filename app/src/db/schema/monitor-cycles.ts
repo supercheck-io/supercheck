@@ -9,6 +9,7 @@ import {
   jsonb,
   index,
   uniqueIndex,
+  check,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { monitors } from "./monitor";
@@ -57,7 +58,17 @@ export const monitorCycles = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => ({
-    monitorIdx: index("monitor_cycles_monitor_idx").on(table.monitorId, table.scheduledFor.desc()),
+    monitorIdx: index("monitor_cycles_monitor_idx").on(table.monitorId, table.scheduledFor.desc().nullsFirst()),
+    statusCheck: check("monitor_cycles_status_check", sql`${table.status} IN ('open', 'closed', 'aborted')`),
+    modeCheck: check("monitor_cycles_mode_check", sql`${table.mode} IN ('control_plane')`),
+    closedByCheck: check(
+      "monitor_cycles_closed_by_check",
+      sql`${table.closedBy} IS NULL OR ${table.closedBy} IN ('arrival', 'deadline')`,
+    ),
+    resultStatusCheck: check(
+      "monitor_cycles_result_status_check",
+      sql`${table.resultStatus} IS NULL OR ${table.resultStatus} IN ('up', 'down')`,
+    ),
     openDeadlineIdx: index("monitor_cycles_open_deadline_idx")
       .on(table.deadlineAt)
       .where(sql`${table.status} = 'open'`),
