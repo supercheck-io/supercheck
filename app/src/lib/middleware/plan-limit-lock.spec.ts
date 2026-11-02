@@ -1,5 +1,8 @@
+import { PgDialect } from "drizzle-orm/pg-core";
+import { monitors } from "@/db/schema";
 import {
   insertWithinPlanLimit,
+  notInDeletedProject,
   PlanLimitBusyError,
   withPlanLimitLock,
 } from "./plan-limit-lock";
@@ -180,5 +183,14 @@ describe("insertWithinPlanLimit", () => {
     expect(result).toEqual({ ok: false, check: denied });
     expect(check).toHaveBeenLastCalledWith("org-1", 3);
     expect(insert).not.toHaveBeenCalled();
+  });
+});
+
+describe("notInDeletedProject", () => {
+  it("excludes rows whose project is soft-deleted, keeping rows without a project", () => {
+    const { sql } = new PgDialect().sqlToQuery(notInDeletedProject(monitors.projectId));
+    expect(sql).toBe(
+      `NOT EXISTS (SELECT 1 FROM "projects" WHERE "projects"."id" = "monitors"."project_id" AND "projects"."status" = 'deleted')`,
+    );
   });
 });

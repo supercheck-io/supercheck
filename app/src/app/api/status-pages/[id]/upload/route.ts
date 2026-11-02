@@ -8,6 +8,7 @@ import { eq, and } from "drizzle-orm";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { requirePermissions } from "@/lib/rbac/middleware";
 import { v4 as uuidv4 } from "uuid";
+import { sniffImageType } from "@/lib/image-sniff";
 
 // S3 Configuration
 const s3Client = new S3Client({
@@ -35,6 +36,7 @@ const ALLOWED_TYPES = [
 
 type UploadType = "favicon" | "logo" | "cover";
 
+
 interface RouteContext {
   params: Promise<{
     id: string;
@@ -53,6 +55,18 @@ export async function POST(request: Request, context: RouteContext) {
       { status_page: ["update"] },
       { organizationId, projectId: project.id }
     );
+
+    // Reject oversized bodies before buffering them (multipart overhead allowance included).
+    const contentLength = Number(request.headers.get("content-length"));
+    if (!contentLength) {
+      return NextResponse.json({ success: false, message: "Content-Length required" }, { status: 411 });
+    }
+    if (contentLength > MAX_FILE_SIZE + 64 * 1024) {
+      return NextResponse.json(
+        { success: false, message: `File size exceeds ${MAX_FILE_SIZE / 1024 / 1024}MB limit` },
+        { status: 413 }
+      );
+    }
 
     // Parse FormData
     const formData = await request.formData();
@@ -133,6 +147,13 @@ export async function POST(request: Request, context: RouteContext) {
     // Convert file to buffer
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
+    const sniffed = sniffImageType(buffer);
+    if (!sniffed || sniffed !== (file.type === "image/jpg" ? "image/jpeg" : file.type)) {
+      return NextResponse.json(
+        { success: false, message: "File content does not match an allowed image type" },
+        { status: 400 }
+      );
+    }
 
     // Upload to S3
     const uploadCommand = new PutObjectCommand({
@@ -187,6 +208,9 @@ export async function POST(request: Request, context: RouteContext) {
         { error: error instanceof Error ? error.message : "Authentication required" },
         { status: 401 }
       );
+    }
+    if (error instanceof Error && error.message.includes("Access denied")) {
+      return NextResponse.json({ success: false, message: "Insufficient permissions" }, { status: 403 });
     }
     console.error("[UPLOAD] Error uploading file:", error);
 

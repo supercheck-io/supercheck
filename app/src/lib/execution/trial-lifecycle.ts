@@ -22,7 +22,7 @@ const DRAIN_BUDGET_MS = 20_000;
  * monitor, but it keeps firing and would be the only trace of a stale schedule after a restart.
  * Best effort: a failure here must not undo the lifecycle change.
  */
-async function unscheduleMonitors(
+export async function unscheduleMonitors(
   monitorRows: Array<{ id: string; scheduledJobId: string | null }>,
   database: Pick<typeof db, "update">,
 ): Promise<void> {
@@ -37,7 +37,7 @@ async function unscheduleMonitors(
         .set({ scheduledJobId: null })
         .where(eq(monitors.id, row.id));
     } catch (error) {
-      console.error(`Failed to unschedule monitor ${row.id} at trial end:`, error);
+      console.error(`Failed to unschedule monitor ${row.id}:`, error);
     }
   }
 }

@@ -1,6 +1,7 @@
 "use server";
 
 import { headers } from "next/headers";
+import { validateWebhookUrlString } from "@/lib/url-validator";
 import { getClientIP } from "@/lib/session-security";
 import { allowStatusPageSubscription } from "@/lib/status-page-subscription-rate-limit";
 import { db } from "@/utils/db";
@@ -65,74 +66,6 @@ const generateHexToken = (byteLength = 32) =>
     crypto.getRandomValues(new Uint8Array(byteLength)),
     (byte) => byte.toString(16).padStart(2, "0")
   ).join("");
-
-/**
- * SSRF Protection: Validate webhook URL to prevent Server-Side Request Forgery
- * - Blocks private IP ranges (127.x.x.x, 10.x.x.x, 172.16-31.x.x, 192.168.x.x)
- * - Blocks link-local addresses (169.254.x.x)
- * - Blocks localhost variations
- * - In production, enforces HTTPS
- */
-function isUrlSafeForWebhook(urlString: string): { safe: boolean; reason?: string } {
-  try {
-    const url = new URL(urlString);
-    const hostname = url.hostname.toLowerCase();
-    
-    // Block localhost variations
-    if (
-      hostname === "localhost" ||
-      hostname === "127.0.0.1" ||
-      hostname === "[::1]" ||
-      hostname === "0.0.0.0" ||
-      hostname.endsWith(".localhost")
-    ) {
-      return { safe: false, reason: "Localhost URLs are not allowed" };
-    }
-    
-    // Block private IP ranges (only check if it looks like an IP)
-    const ipv4Pattern = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
-    const ipMatch = hostname.match(ipv4Pattern);
-    
-    if (ipMatch) {
-      const [, a, b] = ipMatch.map(Number);
-      
-      // 10.x.x.x (Class A private)
-      if (a === 10) {
-        return { safe: false, reason: "Private network IPs are not allowed" };
-      }
-      // 172.16.x.x - 172.31.x.x (Class B private)
-      if (a === 172 && b >= 16 && b <= 31) {
-        return { safe: false, reason: "Private network IPs are not allowed" };
-      }
-      // 192.168.x.x (Class C private)
-      if (a === 192 && b === 168) {
-        return { safe: false, reason: "Private network IPs are not allowed" };
-      }
-      // 127.x.x.x (Loopback)
-      if (a === 127) {
-        return { safe: false, reason: "Loopback IPs are not allowed" };
-      }
-      // 169.254.x.x (Link-local / AWS metadata)
-      if (a === 169 && b === 254) {
-        return { safe: false, reason: "Link-local addresses are not allowed" };
-      }
-      // 0.x.x.x (Invalid/broadcast)
-      if (a === 0) {
-        return { safe: false, reason: "Invalid IP address" };
-      }
-    }
-    
-    // In production, require HTTPS for webhooks
-    const isProduction = process.env.NODE_ENV === "production";
-    if (isProduction && url.protocol !== "https:") {
-      return { safe: false, reason: "HTTPS is required for webhook URLs in production" };
-    }
-    
-    return { safe: true };
-  } catch {
-    return { safe: false, reason: "Invalid URL format" };
-  }
-}
 
 // Helper function to send verification email
 async function sendVerificationEmail(params: {
@@ -751,11 +684,12 @@ async function handleWebhookSubscription(
     const endpoint = data.endpoint as string;
 
     // SECURITY: Validate webhook URL for SSRF protection
-    const ssrfCheck = isUrlSafeForWebhook(endpoint);
-    if (!ssrfCheck.safe) {
+    // Same check as delivery-time (HTTPS, public host, no credentials); delivery also pins DNS.
+    const ssrfCheck = validateWebhookUrlString(endpoint);
+    if (!ssrfCheck.valid) {
       return {
         success: false,
-        message: ssrfCheck.reason || "Invalid webhook URL",
+        message: ssrfCheck.error || "Invalid webhook URL",
       };
     }
 

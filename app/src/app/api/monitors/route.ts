@@ -25,7 +25,7 @@ import {
 } from "@/lib/input-sanitizer";
 import { checkMonitorLimit } from "@/lib/middleware/plan-enforcement";
 import { monitorResumeBlockedResponse, trialIntervalErrorResponse } from "@/lib/execution/trial-interval-response";
-import { insertWithinPlanLimit } from "@/lib/middleware/plan-limit-lock";
+import { insertWithinPlanLimit, notInDeletedProject } from "@/lib/middleware/plan-limit-lock";
 import {
   subscriptionService,
   SubscriptionAccessDeniedError,
@@ -557,7 +557,7 @@ export async function POST(req: NextRequest) {
         const [row] = await tx
           .select({ count: sql<number>`count(*)` })
           .from(monitors)
-          .where(eq(monitors.organizationId, organizationId));
+          .where(and(eq(monitors.organizationId, organizationId), notInDeletedProject(monitors.projectId)));
         return Number(row?.count || 0);
       },
       insert: (executor) => insertMonitorRecord(monitorData, executor),
