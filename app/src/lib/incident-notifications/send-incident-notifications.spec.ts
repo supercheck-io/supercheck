@@ -58,7 +58,10 @@ it("uses a signed link when the key is set", async () => {
   const result = await sendIncidentNotifications("incident-1", "page-1");
   expect(result.sentCount).toBe(1);
   expect(urlSent()).toMatch(new RegExp(`/status/unsubscribe/${ID}\\.[A-Za-z0-9_-]{43}$`));
-  expect(headersSent()?.["List-Unsubscribe"]).toContain(`/api/status-pages/unsubscribe/${ID}.`);
+  // Header carries the same signed token as the rendered link, on the API route.
+  expect(headersSent()?.["List-Unsubscribe"]).toBe(
+    `<${urlSent().replace("/status/unsubscribe/", "/api/status-pages/unsubscribe/")}>`,
+  );
   expect(console.warn).not.toHaveBeenCalled();
 });
 
