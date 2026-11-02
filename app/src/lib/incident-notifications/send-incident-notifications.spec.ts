@@ -60,7 +60,7 @@ it("uses a signed link when the key is set", async () => {
   expect(urlSent()).toMatch(new RegExp(`/status/unsubscribe/${ID}\\.[A-Za-z0-9_-]{43}$`));
   // Header carries the same signed token as the rendered link, on the API route.
   expect(headersSent()?.["List-Unsubscribe"]).toBe(
-    `<${urlSent().replace("/status/unsubscribe/", "/api/status-pages/unsubscribe/")}>`,
+    `<${String(urlSent()).replace("/status/unsubscribe/", "/api/status-pages/unsubscribe/")}>`,
   );
   expect(console.warn).not.toHaveBeenCalled();
 });
