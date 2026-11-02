@@ -29,6 +29,9 @@ updates:
       # Newer Monaco vendors a DOMPurify with open advisories.
       - dependency-name: "monaco-editor"
         update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      # react-day-picker 10 changes Calendar classNames and the single-mode prop types.
+      - dependency-name: "react-day-picker"
+        update-types: ["version-update:semver-major"]
       # Keep @types/node on the supported Node runtime.
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
@@ -63,8 +66,12 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: "drizzle-zod"
         update-types: ["version-update:semver-minor", "version-update:semver-major"]
-      - dependency-name: "@types/node"
+      # BullMQ 6 removes Queue.client, used by the queue status service.
+      - dependency-name: "bullmq"
         update-types: ["version-update:semver-major"]
+      # @types/node 22.20 changes the TLS certificate types read by the SSL monitor.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
 
   - package-ecosystem: npm
     directory: /docs
@@ -84,6 +91,12 @@ updates:
         update-types: ["version-update:semver-minor", "version-update:semver-major"]
       - dependency-name: "fumadocs-ui"
         update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      # fumadocs-mdx 15 moves the generated .source output the docs import.
+      - dependency-name: "fumadocs-mdx"
+        update-types: ["version-update:semver-major"]
+      # Mermaid 12 re-lays out and recolours existing diagrams; needs a visual review.
+      - dependency-name: "mermaid"
+        update-types: ["version-update:semver-major"]
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
 
@@ -99,6 +112,9 @@ updates:
         update-types: ["minor", "patch"]
     ignore:
       - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+      # Commander 15 requires Node 22.12+; the published CLI still supports Node 20.
+      - dependency-name: "commander"
         update-types: ["version-update:semver-major"]
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
@@ -130,6 +146,9 @@ updates:
         update-types: ["version-update:semver-major"]
       # The vendored CodeMirror is v5; the root package is not that dependency.
       - dependency-name: "codemirror"
+        update-types: ["version-update:semver-major"]
+      # Vite 8 (Rolldown) cannot resolve chromium-bidi imports in vendored Playwright.
+      - dependency-name: "vite"
         update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
