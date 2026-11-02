@@ -7,6 +7,11 @@
 -- has. The app encrypts a legacy plaintext "webhook_secret" the first time it signs with it and then
 -- clears the plaintext. The legacy "unsubscribe_token" column keeps working for links already emailed
 -- and can be cleared in a later release.
+-- Fail fast instead of queueing behind a long transaction and blocking traffic.
+SET LOCAL lock_timeout = '5s';
+--> statement-breakpoint
+SET LOCAL statement_timeout = '10min';
+--> statement-breakpoint
 ALTER TABLE "status_page_subscribers" ADD COLUMN IF NOT EXISTS "verification_token_hash" varchar(64);
 --> statement-breakpoint
 ALTER TABLE "status_page_subscribers" ADD COLUMN IF NOT EXISTS "webhook_secret_encrypted" text;
@@ -27,3 +32,7 @@ CREATE UNIQUE INDEX "status_page_subscribers_verification_token_hash_idx" ON "st
 CREATE INDEX "status_page_subscribers_verification_token_idx" ON "status_page_subscribers" USING btree ("verification_token") WHERE "verification_token" IS NOT NULL;
 --> statement-breakpoint
 CREATE INDEX "status_page_subscribers_unsubscribe_token_idx" ON "status_page_subscribers" USING btree ("unsubscribe_token") WHERE "unsubscribe_token" IS NOT NULL;
+--> statement-breakpoint
+RESET lock_timeout;
+--> statement-breakpoint
+RESET statement_timeout;
