@@ -1,5 +1,5 @@
 /** @jest-environment node */
-jest.mock("@/utils/db", () => ({ db: { query: { monitors: { findFirst: jest.fn() } }, update: jest.fn() } }));
+jest.mock("@/utils/db", () => ({ db: { query: { monitors: { findFirst: jest.fn() } }, update: jest.fn(), transaction: jest.fn() } }));
 jest.mock("@/lib/auth-context", () => {
   class AuthError extends Error {
     status = 401;
@@ -53,4 +53,18 @@ it("answers 401 for an auth failure instead of 500 (c20)", async () => {
   const { AuthError } = jest.requireMock("@/lib/auth-context");
   jest.mocked(requireUserAuthContext).mockRejectedValueOnce(new AuthError("expired"));
   expect((await patch("paused")).status).toBe(401);
+});
+
+it("does not change a monitor whose project was deleted before the write took its lock", async () => {
+  jest.mocked(db.query.monitors.findFirst).mockResolvedValue({ id: "m", organizationId: "org", projectId: "p", status: "paused" } as never);
+  jest.mocked(hasPermissionForUser).mockResolvedValue(true);
+  const update = jest.fn();
+  const forShare = jest.fn(async () => []);
+  jest.mocked(db.transaction).mockImplementation(async (cb: never) =>
+    (cb as (tx: unknown) => unknown)({ select: () => ({ from: () => ({ where: () => ({ for: forShare }) }) }), update }) as never,
+  );
+  const response = await patch("up");
+  expect(forShare).toHaveBeenCalledWith("share");
+  expect(update).not.toHaveBeenCalled();
+  expect(response.status).toBe(404);
 });

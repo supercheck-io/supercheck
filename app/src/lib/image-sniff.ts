@@ -4,9 +4,16 @@ import { detectAvatarType } from "@/lib/user-avatar";
 export function sniffImageType(b: Uint8Array): string | null {
   const raster = detectAvatarType(b);
   if (raster) return raster === "jpg" ? "image/jpeg" : `image/${raster}`;
-  if (b.length >= 6 && [0x47, 0x49, 0x46, 0x38].every((v, i) => b[i] === v)) return "image/gif";
-  // Illustrator/Inkscape exports can put a long DOCTYPE/entity block or licence comment before <svg.
-  const head = Buffer.from(b.subarray(0, 8192)).toString("utf8").replace(/^\uFEFF/, "").trimStart();
-  if (head.startsWith("<") && /<svg[\s>/]/.test(head) && !/<html[\s>]/i.test(head)) return "image/svg+xml";
+  if (b.length >= 6 && /^GIF8[79]a$/.test(Buffer.from(b.subarray(0, 6)).toString("latin1"))) return "image/gif";
+  // SVG: the document root element must be <svg>, after any XML declaration, comments and DOCTYPE
+  // (Illustrator/Inkscape exports can put long entity blocks there).
+  let doc = Buffer.from(b).toString("utf8").replace(/^\uFEFF/, "");
+  for (;;) {
+    doc = doc.trimStart();
+    const prolog = /^(?:<\?[\s\S]*?\?>|<!--[\s\S]*?-->|<!DOCTYPE(?:[^[>]*\[[\s\S]*?\])?[^>]*>)/i.exec(doc);
+    if (!prolog) break;
+    doc = doc.slice(prolog[0].length);
+  }
+  if (/^<svg[\s>/]/.test(doc)) return "image/svg+xml";
   return null;
 }

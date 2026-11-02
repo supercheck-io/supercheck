@@ -12,6 +12,10 @@ describe('QueueAlertingController.getConfig', () => {
     } as unknown as QueueAlertingService;
     const config = new QueueAlertingController(service).getConfig();
     expect(JSON.stringify(config)).not.toContain('secret');
-    expect(config).toMatchObject({ enabled: true, slackWebhookUrl: '[redacted]', alertWebhookUrl: '[redacted]' });
+    expect(config).toMatchObject({
+      enabled: true,
+      slackWebhookUrl: '[redacted]',
+      alertWebhookUrl: '[redacted]',
+    });
   });
 });
