@@ -14,6 +14,7 @@ import {
   jsonb,
   uuid,
   index,
+  check,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema, createSelectSchema, createUpdateSchema } from "drizzle-zod";
@@ -84,6 +85,8 @@ export const jobs = pgTable(
     // Index on created_at for sorting/pagination
     createdAtIdx: index("jobs_created_at_idx").on(table.createdAt),
     jobsCreatedByUserIdIdx: index("jobs_created_by_user_id_idx").on(table.createdByUserId),
+    jobsOrganizationIdRequired: check("jobs_organization_id_required_check", sql`organization_id IS NOT NULL`),
+    jobsProjectIdRequired: check("jobs_project_id_required_check", sql`project_id IS NOT NULL`),
   })
 );
 
@@ -176,6 +179,7 @@ export const runs = pgTable(
     // PERFORMANCE: Index on started_at for dashboard date range queries
     startedAtIdx: index("runs_started_at_idx").on(table.startedAt),
     runsJobCreatedIdx: index("runs_job_created_idx").on(table.jobId, table.createdAt.desc().nullsFirst()),
+    runsProjectIdRequired: check("runs_project_id_required_check", sql`project_id IS NOT NULL`),
   })
 );
 

@@ -41,12 +41,13 @@ describe('k6 HTTP failure metrics', () => {
 
 describe('k6 durable completion', () => {
   it.each([
-    [false, false],
-    [true, false],
-    [false, true],
+    [false, false, true],
+    [true, false, true],
+    [false, true, true],
+    [false, false, false],
   ])(
-    'persists terminal results in the receipt transaction (existing result: %s, retry: %s)',
-    async (existing, retry) => {
+    'persists terminal results in the receipt transaction (existing result: %s, retry: %s, test exists: %s)',
+    async (existing, retry, testExists) => {
       const result = {
         success: true,
         durationMs: 61000,
@@ -60,6 +61,9 @@ describe('k6 durable completion', () => {
         .fn()
         .mockReturnValue({ where: transactionWhere });
       const values = jest.fn().mockResolvedValue(undefined);
+      const forKeyShare = jest
+        .fn()
+        .mockResolvedValue(testExists ? [{ id: 'test-id' }] : []);
       const tx = {
         query: {
           k6PerformanceRuns: {
@@ -68,6 +72,11 @@ describe('k6 durable completion', () => {
               .mockResolvedValue(existing ? { id: 'existing' } : undefined),
           },
         },
+        select: jest.fn().mockReturnValue({
+          from: jest.fn().mockReturnValue({
+            where: jest.fn().mockReturnValue({ for: forKeyShare }),
+          }),
+        }),
         insert: jest.fn().mockReturnValue({ values }),
         update: jest.fn().mockReturnValue({ set: transactionSet }),
       };
@@ -163,6 +172,13 @@ describe('k6 durable completion', () => {
         expect.any(Function),
       );
       expect(tx.insert).toHaveBeenCalledTimes(existing ? 0 : 1);
+      if (!existing) {
+        expect(forKeyShare).toHaveBeenCalledWith('key share');
+        // A test deleted mid-run must not fail the result: the link is dropped.
+        expect(values).toHaveBeenCalledWith(
+          expect.objectContaining({ testId: testExists ? 'test-id' : null }),
+        );
+      }
       expect(transactionSet).toHaveBeenCalledWith(
         expect.objectContaining({ status: 'passed', durationMs: 61000 }),
       );

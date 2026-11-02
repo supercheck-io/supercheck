@@ -126,6 +126,7 @@ beforeEach(async () => {
     .insert(schema.monitors)
     .values({
       organizationId: organization.id,
+      projectId: project.id,
       name: "API",
       type: "http_request",
       target: "https://example.com",

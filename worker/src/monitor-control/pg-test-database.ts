@@ -51,10 +51,15 @@ export async function seedMonitor(
     .insert(schema.organization)
     .values({ name: 'Org', createdAt: new Date() })
     .returning();
+  const [project] = await db
+    .insert(schema.projects)
+    .values({ organizationId: organization.id, name: 'Project' })
+    .returning();
   const [monitor] = await db
     .insert(schema.monitors)
     .values({
       organizationId: organization.id,
+      projectId: project.id,
       name: 'API',
       type: 'http_request',
       target: 'https://example.com',

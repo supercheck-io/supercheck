@@ -7,6 +7,7 @@ import { revalidatePath } from "next/cache";
 import { requireProjectContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
+import { removeServiceResourceLinks } from "@/lib/resource-deletion/linked-records";
 
 export async function deleteTest(testId: string) {
   try {
@@ -108,16 +109,20 @@ export async function deleteTest(testId: string) {
     }
 
     // Delete the test if not associated with any jobs (with project scoping for extra safety)
-    const result = await db
-      .delete(tests)
-      .where(
-        and(
-          eq(tests.id, testId),
-          eq(tests.projectId, project.id),
-          eq(tests.organizationId, organizationId)
+    const result = await db.transaction(async (tx) => {
+      const deleted = await tx
+        .delete(tests)
+        .where(
+          and(
+            eq(tests.id, testId),
+            eq(tests.projectId, project.id),
+            eq(tests.organizationId, organizationId)
+          )
         )
-      )
-      .returning();
+        .returning();
+      if (deleted.length > 0) await removeServiceResourceLinks(tx, "test", [testId]);
+      return deleted;
+    });
 
     if (result.length === 0) {
       return {

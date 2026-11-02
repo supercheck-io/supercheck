@@ -38,6 +38,7 @@ import {
   SubscriptionAccessDeniedError,
 } from "@/lib/services/subscription-service";
 import { generateProxyUrl } from "@/lib/asset-proxy";
+import { removeServiceResourceLinks } from "@/lib/resource-deletion/linked-records";
 
 const UNVERIFIED_DOMAIN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -942,6 +943,7 @@ export async function deleteComponent(
 
     await db.transaction(async (tx) => {
       await retireOrphanedSubscribers({ componentId }, tx);
+      await removeServiceResourceLinks(tx, "status_page_component", [componentId]);
       await tx
         .delete(statusPageComponents)
         .where(

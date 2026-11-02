@@ -15,6 +15,7 @@ import {
   uuid,
   boolean,
   index,
+  check,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
@@ -63,6 +64,8 @@ export const notificationProviders = pgTable("notification_providers", {
     index("notification_providers_created_by_user_id_idx").on(table.createdByUserId),
     index("notification_providers_organization_id_idx").on(table.organizationId),
     index("notification_providers_project_id_idx").on(table.projectId),
+    check("notification_providers_organization_id_required_check", sql`organization_id IS NOT NULL`),
+    check("notification_providers_project_id_required_check", sql`project_id IS NOT NULL`),
   ]);
 
 /**
@@ -96,6 +99,7 @@ export const alertHistory = pgTable(
     sentAtIdx: index("alert_history_sent_at_idx").on(table.sentAt),
     jobIdIdx: index("alert_history_job_id_idx").on(table.jobId),
     alertHistoryMonitorSentIdx: index("alert_history_monitor_sent_idx").on(table.monitorId, table.sentAt.desc().nullsFirst()),
+    alertHistoryTargetRequired: check("alert_history_target_required_check", sql`monitor_id IS NOT NULL OR job_id IS NOT NULL`),
   })
 );
 
@@ -197,6 +201,7 @@ export const alerts = pgTable("alerts", {
   (table) => [
     index("alerts_monitor_id_idx").on(table.monitorId),
     index("alerts_organization_id_idx").on(table.organizationId),
+    check("alerts_organization_id_required_check", sql`organization_id IS NOT NULL`),
   ]);
 
 // Zod schemas for notification providers

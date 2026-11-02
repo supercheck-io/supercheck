@@ -68,10 +68,15 @@ beforeEach(async () => {
     .insert(schema.organization)
     .values({ name: "Test", createdAt: new Date() })
     .returning();
+  const [project] = await mockDatabase
+    .insert(schema.projects)
+    .values({ organizationId: organization.id, name: "Project" })
+    .returning();
   const [monitor] = await mockDatabase
     .insert(schema.monitors)
     .values({
       organizationId: organization.id,
+      projectId: project.id,
       name: "API",
       type: "http_request",
       target: "https://example.com",

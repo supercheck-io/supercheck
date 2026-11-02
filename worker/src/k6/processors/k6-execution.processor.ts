@@ -376,9 +376,23 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
               ),
               columns: { id: true },
             });
-          if (!existingPerformanceRun)
+          if (!existingPerformanceRun) {
+            // The test can be deleted while the run is in flight; the link is then dropped, not the result.
+            // FOR KEY SHARE keeps a concurrent delete from committing between this check and the insert.
+            const [linkedTest] = testId
+              ? await transaction
+                  .select({ id: schema.tests.id })
+                  .from(schema.tests)
+                  .where(
+                    and(
+                      eq(schema.tests.id, testId),
+                      eq(schema.tests.organizationId, taskData.organizationId),
+                    ),
+                  )
+                  .for('key share')
+              : [];
             await transaction.insert(schema.k6PerformanceRuns).values({
-              testId,
+              testId: linkedTest?.id ?? null,
               runId,
               jobId: taskData.jobId ?? null,
               organizationId: taskData.organizationId,
@@ -408,6 +422,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
                 ? truncateConsoleOutput(result.consoleOutput)
                 : null,
             });
+          }
 
           // Update run with final status and artifacts
           const _durationSeconds = Math.max(

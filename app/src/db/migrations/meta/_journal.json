@@ -351,6 +351,20 @@
       "when": 1793302960000,
       "tag": "0049_foreign_key_and_lookup_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1793303020000,
+      "tag": "0050_integrity_constraints",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1793303030000,
+      "tag": "0051_retention_indexes",
+      "breakpoints": true
     }
   ]
 }

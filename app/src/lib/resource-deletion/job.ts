@@ -11,6 +11,7 @@ import {
   type ReportDeletionInput,
 } from "@/lib/s3-cleanup";
 import { deleteScheduledJob } from "@/lib/job-scheduler";
+import { removeK6RunLinksForJob, removeServiceResourceLinks } from "./linked-records";
 
 type JobDeletionResult = {
   success: boolean;
@@ -195,6 +196,8 @@ export async function deleteJobWithContext(jobId: string, context: ProjectAuthCo
       // Delete only the pointers collected and rechecked, never newly inserted report rows.
       if (allReportsToDelete.length) await tx.delete(reports).where(inArray(reports.id, allReportsToDelete.map(report => report.id)));
 
+      await removeServiceResourceLinks(tx, "job", [jobId]);
+      await removeK6RunLinksForJob(tx, jobId);
       // Delete test runs associated with this job
       console.log("[DELETE_JOB] Deleting associated runs...");
       const deletedRuns = await tx

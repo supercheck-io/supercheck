@@ -7,14 +7,16 @@
  * scope every read and write to the caller's active project and organization,
  * and a destructive delete must refuse while dependants still reference it.
  */
-jest.mock("@/utils/db", () => ({
-  db: {
+jest.mock("@/utils/db", () => {
+  const db: Record<string, jest.Mock> = {
     select: jest.fn(),
     insert: jest.fn(),
     update: jest.fn(),
     delete: jest.fn(),
-  },
-}));
+  };
+  db.transaction = jest.fn(async (callback: (tx: unknown) => unknown) => callback(db));
+  return { db };
+});
 
 jest.mock("@/lib/project-context", () => ({
   requireProjectContext: jest.fn(),
@@ -362,11 +364,16 @@ describe("job and test lifecycle actions", () => {
         .mockReturnValueOnce(whereChain([{ count: 0 }]))
         .mockReturnValueOnce(whereChain([{ count: 0 }]));
       const deletion = deleteChain([{ id: TEST_ID_1 }]);
-      mockDb.delete.mockReturnValueOnce(deletion);
+      const linkDeletion = { where: jest.fn().mockResolvedValue(undefined) };
+      mockDb.delete.mockReturnValueOnce(deletion).mockReturnValueOnce(linkDeletion);
 
       const result = await deleteTest(TEST_ID_1);
 
       expect(result).toEqual({ success: true, message: "Test deleted successfully" });
+      // The service links that cannot cascade go in the same transaction.
+      const linkPredicate = predicateFor(linkDeletion.where.mock.calls[0][0]);
+      expect(linkPredicate.sql).toContain('"sre_service_resources"."resource_type" =');
+      expect(linkPredicate.params).toEqual(["test", TEST_ID_1]);
       // The predicate, not just the result: the delete must carry the same
       // project and organization scope as the lookup above.
       const deletePredicate = predicateFor(deletion.where.mock.calls[0][0]);

@@ -18,13 +18,14 @@ import {
   uniqueIndex,
   index,
   type AnyPgColumn,
+  check,
 } from "drizzle-orm/pg-core";
 import { sql, relations } from "drizzle-orm";
 import { createInsertSchema, createSelectSchema, createUpdateSchema } from "drizzle-zod";
 import { organization, projects } from "./organization";
 import { user } from "./auth";
 import { monitors } from "./monitor";
-import { sreServices } from "./sre";
+import { sreIncidents, sreServices } from "./sre";
 import type {
   StatusPageStatus,
   ComponentStatus,
@@ -110,6 +111,8 @@ export const statusPages = pgTable(
     statusPagesOrgProjectIdx: index("status_pages_org_project_idx").on(table.organizationId, table.projectId),
     statusPagesCreatedByUserIdIdx: index("status_pages_created_by_user_id_idx").on(table.createdByUserId),
     statusPagesProjectIdIdx: index("status_pages_project_id_idx").on(table.projectId),
+    statusPagesSubdomainLowercase: check("status_pages_subdomain_lowercase_check", sql`subdomain = lower(subdomain)`),
+    statusPagesCustomDomainLowercase: check("status_pages_custom_domain_lowercase_check", sql`custom_domain = lower(custom_domain)`),
   })
 );
 
@@ -223,13 +226,14 @@ export const incidents = pgTable("incidents", {
   backfilled: boolean("backfilled").default(false),
   monitoringAt: timestamp("monitoring_at"),
   resolvedAt: timestamp("resolved_at"),
-  sreIncidentId: uuid("sre_incident_id"),
+  sreIncidentId: uuid("sre_incident_id").references((): AnyPgColumn => sreIncidents.id, { onDelete: "set null" }),
   shortlink: varchar("shortlink", { length: 255 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
   automaticOpenIdx: uniqueIndex("incidents_open_automatic_component_idx").on(table.sourceComponentId).where(sql`${table.sourceComponentId} is not null and ${table.status} <> 'resolved'`),
   sourceComponentIdx: index("incidents_source_component_idx").on(table.sourceComponentId),
+  incidentsSreIncidentIdIdx: index("incidents_sre_incident_id_idx").on(table.sreIncidentId),
   srePageIdx: index("incidents_sre_page_idx").on(table.statusPageId, table.sreIncidentId).where(sql`${table.sreIncidentId} is not null`),
     incidentsStatusPageCreatedIdx: index("incidents_status_page_created_idx").on(table.statusPageId, table.createdAt.desc().nullsFirst()),
     incidentsCreatedByUserIdIdx: index("incidents_created_by_user_id_idx").on(table.createdByUserId),
@@ -331,7 +335,7 @@ export const incidentTemplateComponents = pgTable(
 ,
   (table) => [
     index("incident_template_components_component_id_idx").on(table.componentId),
-    index("incident_template_components_template_id_idx").on(table.templateId),
+    uniqueIndex("incident_template_components_unique_idx").on(table.templateId, table.componentId),
   ]);
 
 /**
@@ -644,7 +648,7 @@ export const statusPageNotificationEvents = pgTable("status_page_notification_ev
   isCreation: boolean("is_creation").default(false).notNull(),
   expandedAt: timestamp("expanded_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-}, (table) => ({ updateUnique: uniqueIndex("status_page_notification_event_update_idx").on(table.updateId), incidentIdx: index("status_page_notification_events_incident_idx").on(table.incidentId), pendingIdx: index("status_page_notification_events_pending_idx").on(table.createdAt).where(sql`${table.expandedAt} is null`) }));
+}, (table) => ({ updateUnique: uniqueIndex("status_page_notification_event_update_idx").on(table.updateId), incidentIdx: index("status_page_notification_events_incident_idx").on(table.incidentId), pendingIdx: index("status_page_notification_events_pending_idx").on(table.createdAt).where(sql`${table.expandedAt} is null`), expandedCreatedAtIdx: index("status_page_notification_events_expanded_created_at_idx").on(table.createdAt).where(sql`${table.expandedAt} is not null`) }));
 
 export const statusPageNotificationDeliveries = pgTable("status_page_notification_deliveries", {
   id: uuid("id").primaryKey().$defaultFn(() => sql`uuidv7()`),
