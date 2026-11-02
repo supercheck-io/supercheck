@@ -129,6 +129,12 @@ afterAll(async () => {
 });
 
 describe("schema drift", () => {
+  it("reports a duplicated signature that only one side has twice", () => {
+    const check = "CON tests c CHECK ((priority = ANY (ARRAY['low'::text])))";
+    expect(difference([check, check, "COL tests.id uuid"], [check, "COL tests.id uuid"])).toEqual([check]);
+    expect(difference([check], [check, check])).toEqual([]);
+  });
+
   it(
     "migrations produce exactly the schema declared in src/db/schema",
     async () => {
