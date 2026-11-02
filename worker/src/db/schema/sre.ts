@@ -753,7 +753,7 @@ export const externalConnectors = pgTable(
     }),
     privateAgentId: uuid('private_agent_id').references(
       () => privateAgents.id,
-      { onDelete: 'restrict' },
+      { onDelete: 'no action' },
     ),
     name: varchar('name', { length: 100 }).notNull(),
     type: varchar('type', { length: 50 })
@@ -1112,7 +1112,7 @@ export const privateAgentJobs = pgTable(
       .references(() => projects.id, { onDelete: 'cascade' }),
     privateAgentId: uuid('private_agent_id')
       .notNull()
-      .references(() => privateAgents.id, { onDelete: 'restrict' }),
+      .references(() => privateAgents.id, { onDelete: 'no action' }),
     connectorId: uuid('connector_id').references(() => externalConnectors.id, {
       onDelete: 'set null',
     }),

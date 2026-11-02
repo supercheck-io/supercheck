@@ -26,6 +26,20 @@ describe("admin organization DELETE", () => {
     expect(db.delete).not.toHaveBeenCalled();
   });
 
+  it("refuses with 409 while the org has a billing link", async () => {
+    selectRows([{ id: ORG_ID, subscriptionId: "sub-1" }], [{ count: 0 }]);
+    const response = await DELETE(new NextRequest("http://localhost/x", { method: "DELETE" }), { params: Promise.resolve({ id: ORG_ID }) });
+    expect(response.status).toBe(409);
+    expect(db.delete).not.toHaveBeenCalled();
+  });
+
+  it("refuses with 409 when only polarCustomerId is set", async () => {
+    selectRows([{ id: ORG_ID, subscriptionId: null, polarCustomerId: "customer" }], [{ count: 0 }]);
+    const response = await DELETE(new NextRequest("http://localhost/x", { method: "DELETE" }), { params: Promise.resolve({ id: ORG_ID }) });
+    expect(response.status).toBe(409);
+    expect(db.delete).not.toHaveBeenCalled();
+  });
+
   it("deletes an empty organization", async () => {
     selectRows([{ id: ORG_ID }], [{ count: 0 }], []);
     jest.mocked(db.delete).mockReturnValue({ where: jest.fn().mockResolvedValue(undefined) } as never);

@@ -36,7 +36,7 @@ export const tags = pgTable(
       .notNull()
       .references(() => projects.id, { onDelete: "cascade" }),
     createdByUserId: uuid("created_by_user_id").references(() => user.id, {
-      onDelete: "no action",
+      onDelete: "set null",
     }),
     name: varchar("name", { length: 100 }).notNull(),
     color: varchar("color", { length: 50 }),

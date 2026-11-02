@@ -47,7 +47,7 @@ export const jobs = pgTable(
       onDelete: "cascade",
     }),
     createdByUserId: uuid("created_by_user_id").references(() => user.id, {
-      onDelete: "no action",
+      onDelete: "set null",
     }),
     name: varchar("name", { length: 255 }).notNull(),
     description: text("description"),
@@ -119,6 +119,7 @@ export const runs = pgTable(
     id: uuid("id")
       .primaryKey()
       .$defaultFn(() => sql`uuidv7()`),
+    // NO ACTION on purpose: job deletion removes runs and their S3 objects first (lib/resource-deletion/job.ts).
     jobId: uuid("job_id").references(() => jobs.id),
     projectId: uuid("project_id").references(() => projects.id, {
       onDelete: "cascade",
