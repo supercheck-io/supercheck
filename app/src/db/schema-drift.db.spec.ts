@@ -50,7 +50,8 @@ const DB_UUID_DEFAULTS = new Set(["uuidv7()", "gen_random_uuid()"]);
 const SIGNATURE_SQL = `
   SELECT 'COL ' || cl.relname || '.' || a.attname || ' ' || format_type(a.atttypid, a.atttypmod)
     || ' null=' || CASE WHEN a.attnotnull THEN 'NO' ELSE 'YES' END
-    || ' def=' || coalesce(pg_get_expr(d.adbin, d.adrelid), '-') AS sig
+    || ' def=' || coalesce(pg_get_expr(d.adbin, d.adrelid), '-')
+    || CASE WHEN a.attidentity <> '' THEN ' identity=' || a.attidentity::text ELSE '' END AS sig
   FROM pg_attribute a
   JOIN pg_class cl ON cl.oid = a.attrelid AND cl.relkind = 'r'
   LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
@@ -80,11 +81,22 @@ function normalize(signature: string): string | null {
   return signature;
 }
 
-async function signatures(url: string): Promise<Set<string>> {
+// Multiset difference: duplicate signatures (e.g. two identically defined CHECKs) must also match.
+function difference(left: string[], right: string[]): string[] {
+  const remaining = new Map<string, number>();
+  for (const sig of right) remaining.set(sig, (remaining.get(sig) ?? 0) + 1);
+  return left.filter((sig) => {
+    const count = remaining.get(sig) ?? 0;
+    if (count > 0) remaining.set(sig, count - 1);
+    return count === 0;
+  });
+}
+
+async function signatures(url: string): Promise<string[]> {
   const client = postgres(url, { max: 1, onnotice: () => {} });
   try {
     const rows = await client.unsafe<{ sig: string }[]>(SIGNATURE_SQL);
-    return new Set(rows.map((row) => normalize(row.sig)).filter((s): s is string => s !== null));
+    return rows.map((row) => normalize(row.sig)).filter((s): s is string => s !== null);
   } finally {
     await client.end({ timeout: 5 });
   }
@@ -118,6 +130,12 @@ afterAll(async () => {
 });
 
 describe("schema drift", () => {
+  it("reports a duplicated signature that only one side has twice", () => {
+    const check = "CON tests c CHECK ((priority = ANY (ARRAY['low'::text])))";
+    expect(difference([check, check, "COL tests.id uuid"], [check, "COL tests.id uuid"])).toEqual([check]);
+    expect(difference([check], [check, check])).toEqual([]);
+  });
+
   it(
     "migrations produce exactly the schema declared in src/db/schema",
     async () => {
@@ -154,8 +172,8 @@ describe("schema drift", () => {
 
       const fromMigrations = await signatures(databaseUrlFor(migratedDb));
       const fromSchema = await signatures(databaseUrlFor(declaredDb));
-      const onlyInMigrations = [...fromMigrations].filter((sig) => !fromSchema.has(sig)).sort();
-      const onlyInSchema = [...fromSchema].filter((sig) => !fromMigrations.has(sig)).sort();
+      const onlyInMigrations = difference(fromMigrations, fromSchema).sort();
+      const onlyInSchema = difference(fromSchema, fromMigrations).sort();
 
       // On failure, the lists name exactly what to add to a migration or to src/db/schema.
       expect({ onlyInMigrations, onlyInSchema }).toEqual({ onlyInMigrations: [], onlyInSchema: [] });

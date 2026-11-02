@@ -170,6 +170,14 @@ export async function sendIncidentNotifications(
     let successCount = 0;
     let failureCount = 0;
 
+    // Signed links need SECRET_ENCRYPTION_KEY; without it fall back to a stored legacy token, else no link.
+    const canSign = Boolean(process.env.SECRET_ENCRYPTION_KEY);
+    if (!canSign) {
+      console.warn(
+        "[Incident Notifications] SECRET_ENCRYPTION_KEY is not set; using stored unsubscribe tokens where present and omitting unsubscribe links otherwise",
+      );
+    }
+
     const sendPromises = verifiedSubscribers.map(async (subscriber) => {
       try {
         if (!subscriber.email) {
@@ -180,8 +188,12 @@ export async function sendIncidentNotifications(
         }
 
         // Use per-subscriber unsubscribe token
-        const unsubscribeToken = signUnsubscribeToken(subscriber.id);
-        const unsubscribeUrl = `${baseUrl}/status/unsubscribe/${unsubscribeToken}`;
+        const unsubscribeToken = canSign
+          ? signUnsubscribeToken(subscriber.id)
+          : subscriber.unsubscribeToken;
+        const unsubscribeUrl = unsubscribeToken
+          ? `${baseUrl}/status/unsubscribe/${unsubscribeToken}`
+          : undefined;
 
         const emailParams = {
           ...emailParamsTemplate,
@@ -196,10 +208,12 @@ export async function sendIncidentNotifications(
           subject: emailContent.subject,
           text: emailContent.text,
           html: emailContent.html,
-          headers: {
-            "List-Unsubscribe": `<${baseUrl}/api/status-pages/unsubscribe/${unsubscribeToken}>`,
-            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-          },
+          headers: unsubscribeToken
+            ? {
+                "List-Unsubscribe": `<${baseUrl}/api/status-pages/unsubscribe/${unsubscribeToken}>`,
+                "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+              }
+            : undefined,
         });
 
         if (result.success) {

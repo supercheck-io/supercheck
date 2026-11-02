@@ -82,6 +82,11 @@ it("delivers once the subscriber is verified", async () => {
 
   expect(result.sentCount).toBe(1);
   expect(deliverWebhook).toHaveBeenCalledTimes(1);
+  expect(deliverWebhook).toHaveBeenCalledWith(
+    "https://hooks.example.com/supercheck",
+    expect.anything(),
+    "0123456789abcdef",
+  );
 });
 
 describe("failure counting", () => {
@@ -120,4 +125,33 @@ describe("failure counting", () => {
     await sendWebhookNotifications("incident-1", "page-1", undefined, "subscriber-1", false, true);
     expect(sets[0].webhookFailures).toBe(4);
   });
+});
+
+it("records an undecryptable signing secret without counting it toward quarantine", async () => {
+  jest.spyOn(console, "error").mockImplementation(() => {});
+  jest.mocked(resolveSubscribers).mockResolvedValue([
+    {
+      id: "subscriber-1",
+      endpoint: "https://hooks.example.com/supercheck",
+      webhookSecretEncrypted: "enc:v1:not-valid",
+      verifiedAt: new Date(),
+      quarantinedAt: null,
+      purgeAt: null,
+      webhookFailures: 3,
+    },
+  ] as never);
+  const sets: Record<string, unknown>[] = [];
+  (db.update as jest.Mock).mockReturnValue({
+    set: (v: Record<string, unknown>) => {
+      sets.push(v);
+      return { where: async () => undefined };
+    },
+  });
+  const result = await sendWebhookNotifications("incident-1", "page-1");
+  expect(result.sentCount).toBe(0);
+  expect(deliverWebhook).not.toHaveBeenCalled();
+  expect(sets).toHaveLength(1);
+  expect(sets[0]).toEqual(expect.objectContaining({ webhookLastError: expect.any(String) }));
+  expect(sets[0]).not.toHaveProperty("webhookFailures");
+  expect(sets[0]).not.toHaveProperty("quarantinedAt");
 });

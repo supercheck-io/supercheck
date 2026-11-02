@@ -41,7 +41,7 @@ describe("telemetry retention config", () => {
     expect(total).toBe(250);
     expect(sqls.map((s) => /LIMIT (\d+) FOR/.exec(s)?.[1])).toEqual(["100", "100", "50"]);
     expect(sqls[0]).not.toContain("> ('");
-    expect(sqls[1]).toContain("> ('2020-01-01 00:00:00'::timestamp");
+    expect(sqls[1]).toContain("> ('2020-01-01 00:00:00'::timestamptz");
     expect(sqls[0]).toContain("FOR UPDATE SKIP LOCKED");
   });
 

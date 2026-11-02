@@ -71,15 +71,20 @@ export async function resolveWebhookSecret(subscriber: {
   }
   if (!subscriber.webhookSecret) return null;
   // Only migrate the value we read: a rotation that lands in between must win.
-  await db
-    .update(statusPageSubscribers)
-    .set({ webhookSecretEncrypted: encryptWebhookSecret(subscriber.webhookSecret), webhookSecret: null })
-    .where(
-      and(
-        eq(statusPageSubscribers.id, subscriber.id),
-        eq(statusPageSubscribers.webhookSecret, subscriber.webhookSecret),
-        isNull(statusPageSubscribers.webhookSecretEncrypted),
-      ),
-    );
+  try {
+    await db
+      .update(statusPageSubscribers)
+      .set({ webhookSecretEncrypted: encryptWebhookSecret(subscriber.webhookSecret), webhookSecret: null })
+      .where(
+        and(
+          eq(statusPageSubscribers.id, subscriber.id),
+          eq(statusPageSubscribers.webhookSecret, subscriber.webhookSecret),
+          isNull(statusPageSubscribers.webhookSecretEncrypted),
+        ),
+      );
+  } catch (error) {
+    // Signing still works with the secret we read; the migration retries on the next use.
+    console.error(`[Webhook Secret] Failed to migrate legacy secret for ${subscriber.id}:`, error);
+  }
   return subscriber.webhookSecret;
 }

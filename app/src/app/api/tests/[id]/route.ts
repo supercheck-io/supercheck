@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { isInvalidUuidError, isUuid } from "@/lib/uuid";
 import { isTestPriority, MAX_SCRIPT_LENGTH, MAX_DESCRIPTION_LENGTH } from "@/lib/validations/common";
 import { db } from "@/utils/db";
-import { tests, jobTests, jobs, monitors } from "@/db/schema";
+import { tests, jobTests, jobs, monitors, TEST_TYPE_VALUES } from "@/db/schema";
 import { eq, and, count, sql } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
@@ -192,6 +192,13 @@ export async function PUT(
       body.type !== undefined
         ? normalizeTestType(body.type)
         : existingTest.type;
+    // A row saved before type values were constrained cannot be updated until it gets an allowed type.
+    if (!(TEST_TYPE_VALUES as readonly string[]).includes(resolvedType)) {
+      return NextResponse.json(
+        { error: `Test type "${resolvedType}" is no longer supported. Choose one of: ${TEST_TYPE_VALUES.join(", ")}.` },
+        { status: 400 },
+      );
+    }
 
     const hasSubmittedScript = body.script !== undefined;
     if (hasSubmittedScript && typeof body.script !== "string") {
