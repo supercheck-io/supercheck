@@ -353,7 +353,9 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
           eq(sreAlertEvents.fingerprintHash, fingerprintHash),
         ),
       )
-      .limit(1);
+      .limit(1)
+      // Lock the reused row so a concurrent retention purge cannot delete it before it is linked.
+      .for("update");
 
     // Reused per org+fingerprint: refresh to the latest failure so correlation and evidence are current.
     if (existingAlertEvent) {

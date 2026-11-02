@@ -57,8 +57,7 @@ const id = () => randomUUID();
 const ago = (days: number) => `localtimestamp - interval '${days} days'`;
 const rule = (table: string) =>
   TELEMETRY_RETENTION_RULES.find((r) => r.table === table) as TelemetryRetentionRule;
-const run = async (statement: string) =>
-  (await sql.unsafe(statement)).count as number;
+const run = async (statement: string) => [...(await sql.unsafe(statement))];
 const purge = (table: string, batchSize = 2) =>
   purgeTelemetryTable(run, rule(table), { batchSize, maxRecords: 1000 });
 const ids = async (table: string) =>
@@ -102,9 +101,9 @@ describe("telemetry retention purge", () => {
     );
     const batches: number[] = [];
     const counting = async (s: string) => {
-      const n = await run(s);
-      batches.push(n);
-      return n;
+      const rows = await run(s);
+      batches.push(Number(rows[0].deleted));
+      return rows;
     };
     const deleted = await purgeTelemetryTable(
       counting,
@@ -188,6 +187,45 @@ describe("telemetry retention purge", () => {
     expect(
       (await sql.unsafe(`SELECT 1 FROM status_page_notification_deliveries WHERE event_id = '${done[0]}'`)).length,
     ).toBe(0);
+  });
+
+  it("skips rows another transaction holds locked (ingest reusing an alert event)", async () => {
+    const [org, proj] = [id(), id()];
+    const eid = id();
+    await seed([
+      `INSERT INTO sre_alert_events (id, organization_id, project_id, fingerprint_hash, status, source_type, title, fired_at) VALUES ('${eid}','${org}','${proj}','locked','resolved','monitor','t',${ago(200)})`,
+    ]);
+    const other = postgres(process.env.TEST_DATABASE_URL!.replace(/\/[^/]*$/, `/${databaseName}`), { max: 1, onnotice: () => {} });
+    try {
+      await other.begin(async (tx) => {
+        await tx.unsafe(`SELECT id FROM sre_alert_events WHERE id = '${eid}' FOR UPDATE`);
+        expect(await purge("sre_alert_events")).toBe(0);
+        expect((await ids("sre_alert_events")).has(eid)).toBe(true);
+      });
+    } finally {
+      await other.end({ timeout: 5 });
+    }
+    expect(await purge("sre_alert_events")).toBe(1);
+  });
+
+  it("pages past protected old rows without rescanning them", async () => {
+    const org = id();
+    const agent = id();
+    // 4 old rows for one agent: the newest is protected, 3 deletable, batch size 1
+    await seed(
+      [40, 39, 38, 37].map(
+        (d) =>
+          `INSERT INTO private_agent_heartbeats (id, private_agent_id, organization_id, status, protocol_version, agent_version, created_at) VALUES ('${id()}','${agent}','${org}','connected','1','1',${ago(d)})`,
+      ),
+    );
+    const seen: string[] = [];
+    const spy = async (s: string) => {
+      seen.push(s);
+      return run(s);
+    };
+    const n = await purgeTelemetryTable(spy, rule("private_agent_heartbeats"), { days: 7, batchSize: 1, maxRecords: 100 });
+    expect(n).toBe(3);
+    expect(seen.slice(1).every((s) => s.includes("> ('"))).toBe(true);
   });
 
   it("incident history cascades from its parent and is not covered by any rule", async () => {

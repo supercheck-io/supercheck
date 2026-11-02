@@ -37,7 +37,7 @@ import {
   retryPendingCredentialRevocations,
 } from "@/lib/security/password-reset-cleanup";
 import { db } from "@/utils/db";
-import { TELEMETRY_RETENTION_RULES, purgeTelemetryTable, resolveRetentionDays } from "@/lib/telemetry-retention";
+import { TELEMETRY_RETENTION_RULES, buildCountSql, purgeTelemetryTable, resolveBatchSize, resolveRetentionDays, resolveSafetyLimit } from "@/lib/telemetry-retention";
 import { TRIAL_RETENTION } from "@/lib/execution/trial-limits";
 import {
   monitorResults,
@@ -2246,22 +2246,19 @@ export class TelemetryRetentionStrategy implements ICleanupStrategy {
       errors: [],
       details: { dryRun, tables: {} as Record<string, number> },
     };
-    if (dryRun) {
-      result.duration = Date.now() - startTime;
-      return result;
-    }
-    const run = async (statement: string) => {
-      const res = (await db.execute(sql.raw(statement))) as unknown as { count?: number };
-      return Number(res.count ?? 0);
-    };
+    const run = async (statement: string) =>
+      (await db.execute(sql.raw(statement))) as unknown as Record<string, unknown>[];
     for (const rule of TELEMETRY_RETENTION_RULES) {
       try {
-        const deleted = await purgeTelemetryTable(run, rule, {
-          days: resolveRetentionDays(rule),
-          batchSize: this.config.batchSize || 1000,
-          maxRecords: this.config.maxRecordsPerRun || 200000,
-          pauseMs: 50,
-        });
+        const days = resolveRetentionDays(rule);
+        const deleted = dryRun
+          ? Number((await run(buildCountSql(rule, days)))[0]?.n ?? 0)
+          : await purgeTelemetryTable(run, rule, {
+              days,
+              batchSize: resolveBatchSize(this.config.batchSize),
+              maxRecords: resolveSafetyLimit(this.config.maxRecordsPerRun),
+              pauseMs: 50,
+            });
         (result.details.tables as Record<string, number>)[rule.table] = deleted;
         result.recordsDeleted += deleted;
       } catch (error) {
@@ -3267,13 +3264,10 @@ export function createDataLifecycleService(): DataLifecycleService {
       enabled: parseBooleanEnv(process.env.TELEMETRY_RETENTION_ENABLED, true),
       cronSchedule: parseCronSchedule(
         process.env.TELEMETRY_RETENTION_CRON,
-        "45 4 * * *" // 4:45 AM daily
+        "45 * * * *" // hourly: heartbeats arrive at ~2,880 rows per agent per day, so a daily pass would need a huge cap
       ),
-      batchSize: parseInt(process.env.TELEMETRY_RETENTION_BATCH_SIZE || "1000", 10),
-      maxRecordsPerRun: parseInt(
-        process.env.TELEMETRY_RETENTION_SAFETY_LIMIT || "200000",
-        10
-      ),
+      batchSize: resolveBatchSize(process.env.TELEMETRY_RETENTION_BATCH_SIZE),
+      maxRecordsPerRun: resolveSafetyLimit(process.env.TELEMETRY_RETENTION_SAFETY_LIMIT),
     },
 
     // Trial lifecycle: end expired trials (pause monitors, archive status pages)
