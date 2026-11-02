@@ -1,6 +1,6 @@
 import type { SQL } from "drizzle-orm";
 import { PgDialect, getTableConfig } from "drizzle-orm/pg-core";
-import { oauthSchema } from "./oauth";
+import { oauthSchema } from "./schema/oauth";
 
 // Better Auth's Drizzle adapter finds each table by its MODEL name, so a rename here breaks the
 // OAuth server at runtime (and only when the feature is on). The real-stack checks cover behaviour;

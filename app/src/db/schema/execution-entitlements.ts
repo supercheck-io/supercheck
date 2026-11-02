@@ -64,7 +64,7 @@ export const executionEntitlements = pgTable(
       .where(sql`${table.lifecycleEndedAt} IS NULL`),
     check(
       "execution_entitlements_limits_check",
-      sql`${table.runningCapacity} > 0 AND ${table.queuedCapacity} > 0 AND ${table.k6MaxVus} BETWEEN 1 AND 5 AND ${table.playwrightBudgetMs} > 0 AND ${table.playwrightUsedMs} >= 0`,
+      sql`${table.runningCapacity} > 0 AND ${table.queuedCapacity} > 0 AND ${table.k6MaxVus} BETWEEN 1 AND 5 AND ${table.playwrightBudgetMs} > 0 AND ${table.playwrightUsedMs} >= 0 AND ${table.maxMonitors} >= 0 AND ${table.minCheckIntervalMinutes} >= 1 AND ${table.maxStatusPages} >= 0 AND ${table.maxStatusPageSubscribers} >= 0 AND ${table.maxTeamMembers} >= 1 AND ${table.maxProjects} >= 1 AND ${table.sreInvestigationUnits} >= 0 AND ${table.aiCredits} >= 0`,
     ),
     check(
       "execution_entitlements_k6_budget_check",
@@ -159,5 +159,9 @@ export const trialSuspensions = pgTable(
       table.resourceId,
     ),
     index("trial_suspensions_org_idx").on(table.organizationId),
+    check(
+      "trial_suspensions_type_check",
+      sql`${table.resourceType} IN ('monitor', 'status_page')`,
+    ),
   ],
 );
