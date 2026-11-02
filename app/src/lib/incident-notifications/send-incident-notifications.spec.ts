@@ -77,8 +77,10 @@ describe("without SECRET_ENCRYPTION_KEY", () => {
     expect(result.sentCount).toBe(2);
     expect(urlSent(0)).toMatch(new RegExp(`/status/unsubscribe/${legacy}$`));
     expect(headersSent(0)?.["List-Unsubscribe"]).toContain(legacy);
+    expect(headersSent(0)?.["List-Unsubscribe-Post"]).toBe("List-Unsubscribe=One-Click");
     expect(urlSent(1)).toMatch(new RegExp(`/status/unsubscribe/${otherLegacy}$`));
     expect(headersSent(1)?.["List-Unsubscribe"]).toContain(otherLegacy);
+    expect(headersSent(1)?.["List-Unsubscribe-Post"]).toBe("List-Unsubscribe=One-Click");
     expect(console.warn).toHaveBeenCalledTimes(1);
   });
 
