@@ -555,7 +555,6 @@ export const externalConnectors = pgTable(
     projectTypeIdx: index("external_connectors_project_type_idx").on(table.projectId, table.type),
     privateAgentIdx: index("external_connectors_private_agent_idx").on(table.privateAgentId).where(sql`private_agent_id IS NOT NULL`),
     externalConnectorsCreatedByUserIdIdx: index("external_connectors_created_by_user_id_idx").on(table.createdByUserId),
-    externalConnectorsPrivateAgentIdIdx: index("external_connectors_private_agent_id_idx").on(table.privateAgentId),
     externalConnectorsValidatedByPrivateAgentIdIdx: index("external_connectors_validated_by_private_agent_id_idx").on(table.validatedByPrivateAgentId),
   })
 );
@@ -818,7 +817,7 @@ export const sreEvidenceItems = pgTable(
     sourceConnectorIdx: index("sre_evidence_items_source_connector_idx").on(table.sourceType, table.sourceConnectorId),
     evidenceTypeIdx: index("sre_evidence_items_evidence_type_idx").on(table.evidenceType),
     observedAtIdx: index("sre_evidence_items_observed_at_idx").on(table.observedAt),
-    sreEvidenceItemsProjectCreatedIdx: index("sre_evidence_items_project_created_idx").on(table.projectId, table.createdAt.desc()),
+    sreEvidenceItemsProjectCreatedIdx: index("sre_evidence_items_project_created_idx").on(table.projectId, table.createdAt.desc().nullsFirst()),
     sreEvidenceItemsOrganizationIdIdx: index("sre_evidence_items_organization_id_idx").on(table.organizationId),
     sreEvidenceItemsSourceConnectorIdIdx: index("sre_evidence_items_source_connector_id_idx").on(table.sourceConnectorId),
   })
@@ -926,7 +925,6 @@ export const sreInvestigationToolCalls = pgTable(
     executedAtIdx: index("sre_investigation_tool_calls_executed_at_idx").on(table.executedAt),
     sreInvestigationToolCallsConnectorIdIdx: index("sre_investigation_tool_calls_connector_id_idx").on(table.connectorId),
     sreInvestigationToolCallsEvidenceItemIdIdx: index("sre_investigation_tool_calls_evidence_item_id_idx").on(table.evidenceItemId),
-    sreInvestigationToolCallsInvestigationRunIdIdx: index("sre_investigation_tool_calls_investigation_run_id_idx").on(table.investigationRunId),
   })
 );
 

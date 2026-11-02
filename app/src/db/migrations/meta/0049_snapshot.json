@@ -1,5 +1,5 @@
 {
-  "id": "44902cc6-5afa-410c-a671-58226572829d",
+  "id": "178bac3c-27f3-4443-897b-42cdc3b1dd18",
   "prevId": "9bdb199f-4e99-4623-8deb-071ab2d8e298",
   "version": "7",
   "dialect": "postgresql",
@@ -6150,7 +6150,7 @@
               "expression": "created_at",
               "isExpression": false,
               "asc": false,
-              "nulls": "last"
+              "nulls": "first"
             }
           ],
           "isUnique": false,
@@ -6442,7 +6442,7 @@
               "expression": "started_at",
               "isExpression": false,
               "asc": false,
-              "nulls": "last"
+              "nulls": "first"
             }
           ],
           "isUnique": false,
@@ -7682,7 +7682,7 @@
               "expression": "sent_at",
               "isExpression": false,
               "asc": false,
-              "nulls": "last"
+              "nulls": "first"
             }
           ],
           "isUnique": false,
@@ -8288,7 +8288,7 @@
               "expression": "created_at",
               "isExpression": false,
               "asc": false,
-              "nulls": "last"
+              "nulls": "first"
             }
           ],
           "isUnique": false,
@@ -9607,7 +9607,7 @@
               "expression": "created_at",
               "isExpression": false,
               "asc": false,
-              "nulls": "last"
+              "nulls": "first"
             }
           ],
           "isUnique": false,
@@ -12695,21 +12695,6 @@
           "columns": [
             {
               "expression": "created_by_user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "external_connectors_private_agent_id_idx": {
-          "name": "external_connectors_private_agent_id_idx",
-          "columns": [
-            {
-              "expression": "private_agent_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -16260,7 +16245,7 @@
               "expression": "created_at",
               "isExpression": false,
               "asc": false,
-              "nulls": "last"
+              "nulls": "first"
             }
           ],
           "isUnique": false,
@@ -19527,21 +19512,6 @@
           "columns": [
             {
               "expression": "evidence_item_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "sre_investigation_tool_calls_investigation_run_id_idx": {
-          "name": "sre_investigation_tool_calls_investigation_run_id_idx",
-          "columns": [
-            {
-              "expression": "investigation_run_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

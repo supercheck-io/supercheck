@@ -96,50 +96,43 @@ export const webhookIdempotency = pgTable(
  * Organization billing settings
  * Stores spending limits and notification preferences per organization
  */
-export const billingSettings = pgTable(
-  'billing_settings',
-  {
-    id: uuid('id')
-      .primaryKey()
-      .$defaultFn(() => sql`uuidv7()`),
-    organizationId: uuid('organization_id')
-      .notNull()
-      .unique()
-      .references(() => organization.id, { onDelete: 'cascade' }),
+export const billingSettings = pgTable('billing_settings', {
+  id: uuid('id')
+    .primaryKey()
+    .$defaultFn(() => sql`uuidv7()`),
+  organizationId: uuid('organization_id')
+    .notNull()
+    .unique()
+    .references(() => organization.id, { onDelete: 'cascade' }),
 
-    // Spending limits (in cents to avoid floating point issues)
-    monthlySpendingLimitCents: integer('monthly_spending_limit_cents'), // null = no limit
-    enableSpendingLimit: boolean('enable_spending_limit')
-      .default(false)
-      .notNull(),
+  // Spending limits (in cents to avoid floating point issues)
+  monthlySpendingLimitCents: integer('monthly_spending_limit_cents'), // null = no limit
+  enableSpendingLimit: boolean('enable_spending_limit')
+    .default(false)
+    .notNull(),
 
-    // Hard stop when limit reached (vs soft warning)
-    hardStopOnLimit: boolean('hard_stop_on_limit').default(false).notNull(),
+  // Hard stop when limit reached (vs soft warning)
+  hardStopOnLimit: boolean('hard_stop_on_limit').default(false).notNull(),
 
-    // Usage notification thresholds (percentages)
-    notifyAt50Percent: boolean('notify_at_50_percent').default(false).notNull(),
-    notifyAt80Percent: boolean('notify_at_80_percent').default(true).notNull(),
-    notifyAt90Percent: boolean('notify_at_90_percent').default(true).notNull(),
-    notifyAt100Percent: boolean('notify_at_100_percent')
-      .default(true)
-      .notNull(),
+  // Usage notification thresholds (percentages)
+  notifyAt50Percent: boolean('notify_at_50_percent').default(false).notNull(),
+  notifyAt80Percent: boolean('notify_at_80_percent').default(true).notNull(),
+  notifyAt90Percent: boolean('notify_at_90_percent').default(true).notNull(),
+  notifyAt100Percent: boolean('notify_at_100_percent').default(true).notNull(),
 
-    // Notification recipients (JSON array of emails, null = org admins only)
-    notificationEmails: jsonb('notification_emails').$type<string[]>(),
+  // Notification recipients (JSON array of emails, null = org admins only)
+  notificationEmails: jsonb('notification_emails').$type<string[]>(),
 
-    // Track which notifications have been sent this period
-    lastNotificationSentAt: timestamp('last_notification_sent_at'),
-    notificationsSentThisPeriod: jsonb('notifications_sent_this_period').$type<
-      number[]
-    >(),
+  // Track which notifications have been sent this period
+  lastNotificationSentAt: timestamp('last_notification_sent_at'),
+  notificationsSentThisPeriod: jsonb('notifications_sent_this_period').$type<
+    number[]
+  >(),
 
-    // Metadata
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-    updatedAt: timestamp('updated_at').defaultNow().notNull(),
-  },
-  (table) => ({
-  }),
-);
+  // Metadata
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
 
 /**
  * Usage events log

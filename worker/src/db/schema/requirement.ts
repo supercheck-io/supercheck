@@ -70,8 +70,12 @@ export const requirements = pgTable(
     organizationIdIdx: index('requirements_organization_id_idx').on(
       table.organizationId,
     ),
-    requirementsCreatedByUserIdIdx: index("requirements_created_by_user_id_idx").on(table.createdByUserId),
-    requirementsSourceDocumentIdIdx: index("requirements_source_document_id_idx").on(table.sourceDocumentId),
+    requirementsCreatedByUserIdIdx: index(
+      'requirements_created_by_user_id_idx',
+    ).on(table.createdByUserId),
+    requirementsSourceDocumentIdIdx: index(
+      'requirements_source_document_id_idx',
+    ).on(table.sourceDocumentId),
   }),
 );
 
@@ -107,8 +111,12 @@ export const requirementDocuments = pgTable(
     createdAt: timestamp('created_at').defaultNow(),
   },
   (table) => ({
-    requirementDocumentsOrganizationIdIdx: index("requirement_documents_organization_id_idx").on(table.organizationId),
-    requirementDocumentsUploadedByUserIdIdx: index("requirement_documents_uploaded_by_user_id_idx").on(table.uploadedByUserId),
+    requirementDocumentsOrganizationIdIdx: index(
+      'requirement_documents_organization_id_idx',
+    ).on(table.organizationId),
+    requirementDocumentsUploadedByUserIdIdx: index(
+      'requirement_documents_uploaded_by_user_id_idx',
+    ).on(table.uploadedByUserId),
   }),
 );
 
@@ -171,6 +179,8 @@ export const requirementCoverageSnapshots = pgTable(
     statusIdx: index('requirement_coverage_snapshots_status_idx').on(
       table.status,
     ),
-    requirementCoverageSnapshotsLastFailedTestIdIdx: index("requirement_coverage_snapshots_last_failed_test_id_idx").on(table.lastFailedTestId),
+    requirementCoverageSnapshotsLastFailedTestIdIdx: index(
+      'requirement_coverage_snapshots_last_failed_test_id_idx',
+    ).on(table.lastFailedTestId),
   }),
 );

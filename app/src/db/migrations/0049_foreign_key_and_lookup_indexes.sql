@@ -2,22 +2,26 @@
 -- indexes for the hot read paths (status pages, run lists, alert history, notifications,
 -- evidence), and drop indexes that are fully covered by another index on the same table.
 --
--- NOT CONCURRENTLY: the migration runner uses one transaction, so each CREATE INDEX blocks
--- writes to its table while it builds. Largest tables touched (schedule accordingly):
+-- NOT CONCURRENTLY: the migration runner uses one transaction, so writes to every table indexed
+-- here wait until the whole migration commits, and the DROP INDEX statements at the end need a
+-- brief exclusive lock (fail after 5s rather than queue). Deploy in a quiet window.
+-- Composite DESC columns are NULLS FIRST to match `ORDER BY col DESC` in the queries.
+-- Largest tables touched:
 --   runs, k6_performance_runs, alert_history, notifications, sre_evidence_items,
---   sre_alert_events, sre_investigation_runs, sre_investigation_tool_calls,
+--   sre_alert_events, sre_investigation_runs,
 --   sre_chat_messages, sre_incident_timeline_events, reports, session.
 --
 -- Deliberately not indexed (append-only, high write rate, parent effectively never deleted):
 --   audit_logs.user_id, sre_incident_timeline_events.actor_user_id
--- runs.triggered_by_user_id already has a partial IS NOT NULL index that serves the FK.
+-- runs.triggered_by_user_id, external_connectors.private_agent_id and
+-- sre_investigation_tool_calls.investigation_run_id already have partial IS NOT NULL indexes that serve the FK.
 -- Re-runnable (CREATE INDEX is rewritten to IF NOT EXISTS by the runner). Forward-only.
 
 SET LOCAL lock_timeout = '5s';
 --> statement-breakpoint
 SET LOCAL statement_timeout = '10min';
 --> statement-breakpoint
-CREATE INDEX "alert_history_monitor_sent_idx" ON "alert_history" ("monitor_id", "sent_at" DESC NULLS LAST);
+CREATE INDEX "alert_history_monitor_sent_idx" ON "alert_history" ("monitor_id", "sent_at" DESC);
 --> statement-breakpoint
 CREATE INDEX "alerts_monitor_id_idx" ON "alerts" ("monitor_id");
 --> statement-breakpoint
@@ -41,8 +45,6 @@ CREATE INDEX "external_connector_services_service_id_idx" ON "external_connector
 --> statement-breakpoint
 CREATE INDEX "external_connectors_created_by_user_id_idx" ON "external_connectors" ("created_by_user_id");
 --> statement-breakpoint
-CREATE INDEX "external_connectors_private_agent_id_idx" ON "external_connectors" ("private_agent_id");
---> statement-breakpoint
 CREATE INDEX "external_connectors_validated_by_private_agent_id_idx" ON "external_connectors" ("validated_by_private_agent_id");
 --> statement-breakpoint
 CREATE INDEX "incident_components_incident_id_idx" ON "incident_components" ("incident_id");
@@ -61,7 +63,7 @@ CREATE INDEX "incident_updates_incident_id_idx" ON "incident_updates" ("incident
 --> statement-breakpoint
 CREATE INDEX "incidents_created_by_user_id_idx" ON "incidents" ("created_by_user_id");
 --> statement-breakpoint
-CREATE INDEX "incidents_status_page_created_idx" ON "incidents" ("status_page_id", "created_at" DESC NULLS LAST);
+CREATE INDEX "incidents_status_page_created_idx" ON "incidents" ("status_page_id", "created_at" DESC);
 --> statement-breakpoint
 CREATE INDEX "invitation_inviter_id_idx" ON "invitation" ("inviter_id");
 --> statement-breakpoint
@@ -75,7 +77,7 @@ CREATE INDEX "k6_performance_runs_job_id_idx" ON "k6_performance_runs" ("job_id"
 --> statement-breakpoint
 CREATE INDEX "k6_performance_runs_organization_id_idx" ON "k6_performance_runs" ("organization_id");
 --> statement-breakpoint
-CREATE INDEX "k6_runs_project_started_idx" ON "k6_performance_runs" ("project_id", "started_at" DESC NULLS LAST);
+CREATE INDEX "k6_runs_project_started_idx" ON "k6_performance_runs" ("project_id", "started_at" DESC);
 --> statement-breakpoint
 CREATE INDEX "monitor_notification_settings_notification_provider_id_idx" ON "monitor_notification_settings" ("notification_provider_id");
 --> statement-breakpoint
@@ -91,7 +93,7 @@ CREATE INDEX "notification_providers_organization_id_idx" ON "notification_provi
 --> statement-breakpoint
 CREATE INDEX "notification_providers_project_id_idx" ON "notification_providers" ("project_id");
 --> statement-breakpoint
-CREATE INDEX "notifications_user_created_idx" ON "notifications" ("user_id", "created_at" DESC NULLS LAST);
+CREATE INDEX "notifications_user_created_idx" ON "notifications" ("user_id", "created_at" DESC);
 --> statement-breakpoint
 CREATE INDEX "organization_polar_customer_id_idx" ON "organization" ("polar_customer_id") WHERE polar_customer_id IS NOT NULL;
 --> statement-breakpoint
@@ -135,7 +137,7 @@ CREATE INDEX "requirements_created_by_user_id_idx" ON "requirements" ("created_b
 --> statement-breakpoint
 CREATE INDEX "requirements_source_document_id_idx" ON "requirements" ("source_document_id");
 --> statement-breakpoint
-CREATE INDEX "runs_job_created_idx" ON "runs" ("job_id", "created_at" DESC NULLS LAST);
+CREATE INDEX "runs_job_created_idx" ON "runs" ("job_id", "created_at" DESC);
 --> statement-breakpoint
 CREATE INDEX "session_active_project_id_idx" ON "session" ("active_project_id");
 --> statement-breakpoint
@@ -173,7 +175,7 @@ CREATE INDEX "sre_evidence_graph_focused_views_organization_id_idx" ON "sre_evid
 --> statement-breakpoint
 CREATE INDEX "sre_evidence_items_organization_id_idx" ON "sre_evidence_items" ("organization_id");
 --> statement-breakpoint
-CREATE INDEX "sre_evidence_items_project_created_idx" ON "sre_evidence_items" ("project_id", "created_at" DESC NULLS LAST);
+CREATE INDEX "sre_evidence_items_project_created_idx" ON "sre_evidence_items" ("project_id", "created_at" DESC);
 --> statement-breakpoint
 CREATE INDEX "sre_evidence_items_source_connector_id_idx" ON "sre_evidence_items" ("source_connector_id");
 --> statement-breakpoint
@@ -228,8 +230,6 @@ CREATE INDEX "sre_investigation_runs_organization_id_idx" ON "sre_investigation_
 CREATE INDEX "sre_investigation_tool_calls_connector_id_idx" ON "sre_investigation_tool_calls" ("connector_id");
 --> statement-breakpoint
 CREATE INDEX "sre_investigation_tool_calls_evidence_item_id_idx" ON "sre_investigation_tool_calls" ("evidence_item_id");
---> statement-breakpoint
-CREATE INDEX "sre_investigation_tool_calls_investigation_run_id_idx" ON "sre_investigation_tool_calls" ("investigation_run_id");
 --> statement-breakpoint
 CREATE INDEX "sre_runbooks_created_by_user_id_idx" ON "sre_runbooks" ("created_by_user_id");
 --> statement-breakpoint

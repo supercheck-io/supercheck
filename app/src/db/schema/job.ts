@@ -175,7 +175,7 @@ export const runs = pgTable(
     ),
     // PERFORMANCE: Index on started_at for dashboard date range queries
     startedAtIdx: index("runs_started_at_idx").on(table.startedAt),
-    runsJobCreatedIdx: index("runs_job_created_idx").on(table.jobId, table.createdAt.desc()),
+    runsJobCreatedIdx: index("runs_job_created_idx").on(table.jobId, table.createdAt.desc().nullsFirst()),
   })
 );
 

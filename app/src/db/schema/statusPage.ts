@@ -231,7 +231,7 @@ export const incidents = pgTable("incidents", {
   automaticOpenIdx: uniqueIndex("incidents_open_automatic_component_idx").on(table.sourceComponentId).where(sql`${table.sourceComponentId} is not null and ${table.status} <> 'resolved'`),
   sourceComponentIdx: index("incidents_source_component_idx").on(table.sourceComponentId),
   srePageIdx: index("incidents_sre_page_idx").on(table.statusPageId, table.sreIncidentId).where(sql`${table.sreIncidentId} is not null`),
-    incidentsStatusPageCreatedIdx: index("incidents_status_page_created_idx").on(table.statusPageId, table.createdAt.desc()),
+    incidentsStatusPageCreatedIdx: index("incidents_status_page_created_idx").on(table.statusPageId, table.createdAt.desc().nullsFirst()),
     incidentsCreatedByUserIdIdx: index("incidents_created_by_user_id_idx").on(table.createdByUserId),
   }));
 

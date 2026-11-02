@@ -84,10 +84,37 @@ describe("index coverage", () => {
         AND a.indexprs IS NULL AND b.indexprs IS NULL
         AND a.indnatts <= b.indnatts
         AND (a.indkey::int2[])[0:a.indnatts-1] = (b.indkey::int2[])[0:a.indnatts-1]
+        AND (a.indoption::int2[])[0:a.indnatts-1] = (b.indoption::int2[])[0:a.indnatts-1]
         AND (a.indnatts < b.indnatts OR a.indexrelid > b.indexrelid)
         AND a.indrelid::regclass::text <> '__drizzle_migrations'
       ORDER BY 1`;
     const unexpected = rows.filter((r) => !REDUNDANT_INDEX_ALLOWLIST.has(r.redundant));
     expect(unexpected).toEqual([]);
+  });
+
+  it("no plain single-column index duplicates a `col IS NOT NULL` partial index", async () => {
+    const rows = await db<{ redundant: string }[]>`
+      SELECT full_idx.indexrelid::regclass::text AS redundant
+      FROM pg_index full_idx
+      JOIN pg_index part ON part.indrelid = full_idx.indrelid AND part.indnatts = 1
+        AND part.indkey[0] = full_idx.indkey[0] AND part.indexprs IS NULL
+      JOIN pg_attribute a ON a.attrelid = full_idx.indrelid AND a.attnum = full_idx.indkey[0]
+      WHERE full_idx.indnatts = 1 AND full_idx.indpred IS NULL AND full_idx.indexprs IS NULL
+        AND NOT full_idx.indisunique AND NOT full_idx.indisprimary
+        AND pg_get_expr(part.indpred, part.indrelid) = '(' || a.attname || ' IS NOT NULL)'
+      ORDER BY 1`;
+    expect(rows.map((r) => r.redundant)).toEqual([]);
+  });
+
+  it("every allowlisted foreign key is still unindexed", async () => {
+    // Keeps the allowlist honest: remove an entry once its column gets an index.
+    const rows = await db<{ ref: string }[]>`
+      SELECT c.conrelid::regclass::text || '.' || a.attname AS ref
+      FROM pg_constraint c
+      JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = c.conkey[1]
+      WHERE c.contype = 'f' AND EXISTS (
+        SELECT 1 FROM pg_index i WHERE i.indrelid = c.conrelid AND i.indkey[0] = c.conkey[1])`;
+    const indexed = new Set(rows.map((r) => r.ref));
+    expect([...UNINDEXED_FK_ALLOWLIST].filter((ref) => indexed.has(ref))).toEqual([]);
   });
 });

@@ -87,7 +87,9 @@ export const jobs = pgTable(
     nextRunAtIdx: index('jobs_next_run_at_idx').on(table.nextRunAt),
     // Index on created_at for sorting/pagination
     createdAtIdx: index('jobs_created_at_idx').on(table.createdAt),
-    jobsCreatedByUserIdIdx: index("jobs_created_by_user_id_idx").on(table.createdByUserId),
+    jobsCreatedByUserIdIdx: index('jobs_created_by_user_id_idx').on(
+      table.createdByUserId,
+    ),
   }),
 );
 
@@ -110,7 +112,7 @@ export const jobTests = pgTable(
       name: 'job_test_cases_pk',
       columns: [table.jobId, table.testId],
     }),
-    jobTestsTestCaseIdIdx: index("job_tests_test_case_id_idx").on(table.testId),
+    jobTestsTestCaseIdIdx: index('job_tests_test_case_id_idx').on(table.testId),
   }),
 );
 
@@ -176,7 +178,10 @@ export const runs = pgTable(
     ),
     // PERFORMANCE: Index on started_at for dashboard date range queries
     startedAtIdx: index('runs_started_at_idx').on(table.startedAt),
-    runsJobCreatedIdx: index("runs_job_created_idx").on(table.jobId, table.createdAt.desc()),
+    runsJobCreatedIdx: index('runs_job_created_idx').on(
+      table.jobId,
+      table.createdAt.desc().nullsFirst(),
+    ),
   }),
 );
 

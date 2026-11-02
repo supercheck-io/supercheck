@@ -86,7 +86,9 @@ export const session = pgTable(
     activeOrgIdx: index('session_active_org_idx').on(
       table.activeOrganizationId,
     ),
-    sessionActiveProjectIdIdx: index("session_active_project_id_idx").on(table.activeProjectId),
+    sessionActiveProjectIdIdx: index('session_active_project_id_idx').on(
+      table.activeProjectId,
+    ),
   }),
 );
 

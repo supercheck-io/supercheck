@@ -95,7 +95,7 @@ export const alertHistory = pgTable(
     // PERFORMANCE: Indexes for alert history queries
     sentAtIdx: index("alert_history_sent_at_idx").on(table.sentAt),
     jobIdIdx: index("alert_history_job_id_idx").on(table.jobId),
-    alertHistoryMonitorSentIdx: index("alert_history_monitor_sent_idx").on(table.monitorId, table.sentAt.desc()),
+    alertHistoryMonitorSentIdx: index("alert_history_monitor_sent_idx").on(table.monitorId, table.sentAt.desc().nullsFirst()),
   })
 );
 
@@ -165,7 +165,7 @@ export const notifications = pgTable("notifications", {
   createdAt: timestamp("created_at").defaultNow(),
 },
   (table) => [
-    index("notifications_user_created_idx").on(table.userId, table.createdAt.desc()),
+    index("notifications_user_created_idx").on(table.userId, table.createdAt.desc().nullsFirst()),
   ]);
 
 /**

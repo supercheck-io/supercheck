@@ -76,8 +76,12 @@ export const monitors = pgTable(
       table.organizationId,
       table.status,
     ),
-    monitorsCreatedByUserIdIdx: index("monitors_created_by_user_id_idx").on(table.createdByUserId),
-    monitorsOrganizationIdIdx: index("monitors_organization_id_idx").on(table.organizationId),
+    monitorsCreatedByUserIdIdx: index('monitors_created_by_user_id_idx').on(
+      table.createdByUserId,
+    ),
+    monitorsOrganizationIdIdx: index('monitors_organization_id_idx').on(
+      table.organizationId,
+    ),
   }),
 );
 

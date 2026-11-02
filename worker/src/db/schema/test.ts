@@ -69,7 +69,9 @@ export const tests = pgTable(
     typeIdx: index('tests_type_idx').on(table.type),
     // Index on created_at for sorting/pagination
     createdAtIdx: index('tests_created_at_idx').on(table.createdAt),
-    testsCreatedByUserIdIdx: index("tests_created_by_user_id_idx").on(table.createdByUserId),
+    testsCreatedByUserIdIdx: index('tests_created_by_user_id_idx').on(
+      table.createdByUserId,
+    ),
   }),
 );
 

@@ -139,7 +139,9 @@ export const invitation = pgTable(
     ),
     // Index on expires_at for cleanup queries
     expiresAtIdx: index('invitation_expires_at_idx').on(table.expiresAt),
-    invitationInviterIdIdx: index("invitation_inviter_id_idx").on(table.inviterId),
+    invitationInviterIdIdx: index('invitation_inviter_id_idx').on(
+      table.inviterId,
+    ),
   }),
 );
 
@@ -246,7 +248,9 @@ export const projectVariables = pgTable(
   },
   (table) => ({
     uniqueKeyPerProject: unique().on(table.projectId, table.key),
-    projectVariablesCreatedByUserIdIdx: index("project_variables_created_by_user_id_idx").on(table.createdByUserId),
+    projectVariablesCreatedByUserIdIdx: index(
+      'project_variables_created_by_user_id_idx',
+    ).on(table.createdByUserId),
   }),
 );
 
