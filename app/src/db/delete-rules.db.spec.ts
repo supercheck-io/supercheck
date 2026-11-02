@@ -134,6 +134,13 @@ describe("foreign key delete rules", () => {
         .filter((r) => r.confdeltype === "a" || r.confdeltype === "r")
         .map((r) => r.tbl),
     ).toEqual([]);
+    // Named explicitly: other created_by_user_id keys (e.g. sre_investigation_report_feedback) keep CASCADE.
+    const setNullTables = [
+      "project_variables", "tests", "jobs", "monitors", "notification_providers", "tags",
+      "reports", "incident_templates", "incident_updates", "incidents", "postmortems", "status_pages",
+    ];
+    expect(rows.filter((r) => setNullTables.includes(r.tbl)).map((r) => r.tbl).sort()).toEqual([...setNullTables].sort());
+    expect(rows.filter((r) => setNullTables.includes(r.tbl) && r.confdeltype !== "n").map((r) => r.tbl)).toEqual([]);
   });
 
   it("clears a session's active organization and project when they are deleted", async () => {
