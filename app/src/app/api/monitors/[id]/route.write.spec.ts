@@ -142,6 +142,11 @@ describe("monitor PUT write boundary", () => {
     expect(set).not.toHaveBeenCalled();
   });
 
+  it.each([{ status: "bogus" }, { type: "bogus" }])("rejects a value outside the allowed set with 400, not a database error: %j", async (body) => {
+    expect((await call(PUT, "PUT", body)).status).toBe(400);
+    expect(set).not.toHaveBeenCalled();
+  });
+
   it.each([{ status: "paused", enabled: true }, { status: "up", enabled: false }])("rejects disagreeing %j", async (body) => {
     expect((await call(PUT, "PUT", body)).status).toBe(400);
     expect(set).not.toHaveBeenCalled();

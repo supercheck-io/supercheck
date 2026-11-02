@@ -5,8 +5,16 @@
 =================================== */
 
 // Test types
-export type TestPriority = "low" | "medium" | "high";
-export type TestType = "browser" | "api" | "database" | "custom" | "performance";
+import { sql, type SQL } from "drizzle-orm";
+
+/** `col IN (...)` built from the same constant that defines the TypeScript union, so the two cannot drift. */
+export const inValues = (column: unknown, values: readonly string[]): SQL =>
+  sql`${column} IN (${sql.raw(values.map((v) => `'${v}'`).join(", "))})`;
+
+export const TEST_PRIORITY_VALUES = ["low", "medium", "high"] as const;
+export type TestPriority = (typeof TEST_PRIORITY_VALUES)[number];
+export const TEST_TYPE_VALUES = ["browser", "api", "database", "custom", "performance"] as const;
+export type TestType = (typeof TEST_TYPE_VALUES)[number];
 
 // Requirement types - using same priority as tests for consistency
 export type RequirementPriority = "low" | "medium" | "high";
@@ -44,20 +52,11 @@ export type ArtifactPaths = {
 export type ReportType = "test" | "job" | "monitor" | "k6_test" | "k6_job";
 
 // Monitor types
-export type MonitorType =
-  | "http_request"
-  | "website"
-  | "ping_host"
-  | "port_check"
-  | "synthetic_test";
+export const MONITOR_TYPE_VALUES = ["http_request", "website", "ping_host", "port_check", "synthetic_test"] as const;
+export type MonitorType = (typeof MONITOR_TYPE_VALUES)[number];
 
-export type MonitorStatus =
-  | "up"
-  | "down"
-  | "paused"
-  | "pending"
-  | "maintenance"
-  | "error";
+export const MONITOR_STATUS_VALUES = ["up", "down", "paused", "pending", "maintenance", "error"] as const;
+export type MonitorStatus = (typeof MONITOR_STATUS_VALUES)[number];
 
 export type MonitorResultStatus = "up" | "down" | "error" | "timeout";
 
@@ -200,13 +199,8 @@ export type AlertDeliveryMetadata = {
 };
 
 // Notification types
-export type NotificationProviderType =
-  | "email"
-  | "slack"
-  | "webhook"
-  | "telegram"
-  | "discord"
-  | "teams";
+export const NOTIFICATION_PROVIDER_TYPE_VALUES = ["email", "slack", "webhook", "telegram", "discord", "teams"] as const;
+export type NotificationProviderType = (typeof NOTIFICATION_PROVIDER_TYPE_VALUES)[number];
 
 type SecretEnvelope = {
   encrypted: true;
@@ -266,19 +260,12 @@ export type AuditDetails = {
 
 // Status page types
 export type StatusPageStatus = "draft" | "published" | "archived";
-export type ComponentStatus =
-  | "operational"
-  | "degraded_performance"
-  | "partial_outage"
-  | "major_outage"
-  | "under_maintenance";
-export type IncidentStatus =
-  | "investigating"
-  | "identified"
-  | "monitoring"
-  | "resolved"
-  | "scheduled";
-export type IncidentImpact = "none" | "minor" | "major" | "critical";
+export const COMPONENT_STATUS_VALUES = ["operational", "degraded_performance", "partial_outage", "major_outage", "under_maintenance"] as const;
+export type ComponentStatus = (typeof COMPONENT_STATUS_VALUES)[number];
+export const INCIDENT_STATUS_VALUES = ["investigating", "identified", "monitoring", "resolved", "scheduled"] as const;
+export type IncidentStatus = (typeof INCIDENT_STATUS_VALUES)[number];
+export const INCIDENT_IMPACT_VALUES = ["none", "minor", "major", "critical"] as const;
+export type IncidentImpact = (typeof INCIDENT_IMPACT_VALUES)[number];
 export type SubscriberMode = "email" | "webhook" | "slack";
 
 // Billing/Subscription types

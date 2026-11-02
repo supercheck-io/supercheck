@@ -22,6 +22,7 @@ import {
   numeric,
   index,
   uniqueIndex,
+  check,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
@@ -125,6 +126,7 @@ export const monitorAggregates = pgTable(
       table.periodType,
       table.periodStart
     ),
+    monitorAggregatesPeriodTypeCheck: check("monitor_aggregates_period_type_check", sql`${table.periodType} IN ('hourly', 'daily')`),
   })
 );
 

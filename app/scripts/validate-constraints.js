@@ -30,6 +30,9 @@ async function validatePendingConstraints(
       logWarning(`Constraint ${name} left NOT VALID: ${error.message}`);
     }
   }
+  if (result.left.length) {
+    logWarning(`${result.left.length} constraint(s) left NOT VALID: ${result.left.join(", ")}`);
+  }
   return result;
 }
 

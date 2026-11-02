@@ -1,5 +1,5 @@
 {
-  "id": "3d1e4696-275d-4c57-8d42-69b8e4f84862",
+  "id": "450fca17-ab59-405e-8650-6e3563b81364",
   "prevId": "9bdb199f-4e99-4623-8deb-071ab2d8e298",
   "version": "7",
   "dialect": "postgresql",
@@ -1294,7 +1294,12 @@
         }
       },
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "overage_pricing_plan_check": {
+          "name": "overage_pricing_plan_check",
+          "value": "\"overage_pricing\".\"plan\" IN ('plus', 'pro')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.usage_events": {
@@ -1552,7 +1557,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "usage_events_event_type_check": {
+          "name": "usage_events_event_type_check",
+          "value": "\"usage_events\".\"event_type\" IN ('playwright_execution', 'k6_execution', 'monitor_execution', 'ai_usage', 'sre_investigation')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.usage_notifications": {
@@ -1729,7 +1739,20 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "usage_notifications_notification_type_check": {
+          "name": "usage_notifications_notification_type_check",
+          "value": "\"usage_notifications\".\"notification_type\" IN ('usage_50_percent', 'usage_80_percent', 'usage_90_percent', 'usage_100_percent', 'spending_limit_warning', 'spending_limit_reached', 'billing_period_reset')"
+        },
+        "usage_notifications_resource_type_check": {
+          "name": "usage_notifications_resource_type_check",
+          "value": "\"usage_notifications\".\"resource_type\" IN ('playwright', 'k6', 'ai', 'sre', 'combined', 'spending')"
+        },
+        "usage_notifications_delivery_status_check": {
+          "name": "usage_notifications_delivery_status_check",
+          "value": "\"usage_notifications\".\"delivery_status\" IN ('pending', 'sent', 'failed')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.webhook_idempotency": {
@@ -3993,7 +4016,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "invitation_status_check": {
+          "name": "invitation_status_check",
+          "value": "\"invitation\".\"status\" IN ('pending', 'accepted', 'rejected', 'canceled', 'cancelled', 'expired')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.member": {
@@ -4292,6 +4320,14 @@
         "organization_ai_credits_used_required_check": {
           "name": "organization_ai_credits_used_required_check",
           "value": "ai_credits_used IS NOT NULL"
+        },
+        "organization_subscription_plan_check": {
+          "name": "organization_subscription_plan_check",
+          "value": "\"organization\".\"subscription_plan\" IS NULL OR \"organization\".\"subscription_plan\" IN ('plus', 'pro', 'unlimited')"
+        },
+        "organization_subscription_status_check": {
+          "name": "organization_subscription_status_check",
+          "value": "\"organization\".\"subscription_status\" IS NULL OR \"organization\".\"subscription_status\" IN ('active', 'canceled', 'past_due', 'none')"
         }
       },
       "isRLSEnabled": false
@@ -4554,7 +4590,12 @@
         }
       },
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "project_variables_type_check": {
+          "name": "project_variables_type_check",
+          "value": "\"project_variables\".\"type\" IN ('variable', 'secret', 'file')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.projects": {
@@ -4700,7 +4741,12 @@
         }
       },
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "projects_status_check": {
+          "name": "projects_status_check",
+          "value": "\"projects\".\"status\" IN ('active', 'archived', 'deleted')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.tests": {
@@ -4913,6 +4959,14 @@
         "tests_project_id_required_check": {
           "name": "tests_project_id_required_check",
           "value": "project_id IS NOT NULL"
+        },
+        "tests_type_check": {
+          "name": "tests_type_check",
+          "value": "\"tests\".\"type\" IN ('browser', 'api', 'database', 'custom', 'performance')"
+        },
+        "tests_priority_check": {
+          "name": "tests_priority_check",
+          "value": "\"tests\".\"priority\" IN ('low', 'medium', 'high')"
         }
       },
       "isRLSEnabled": false
@@ -5937,6 +5991,14 @@
         "jobs_project_id_required_check": {
           "name": "jobs_project_id_required_check",
           "value": "project_id IS NOT NULL"
+        },
+        "jobs_job_type_check": {
+          "name": "jobs_job_type_check",
+          "value": "\"jobs\".\"job_type\" IN ('playwright', 'k6')"
+        },
+        "jobs_status_check": {
+          "name": "jobs_status_check",
+          "value": "\"jobs\".\"status\" IN ('pending', 'running', 'passed', 'failed', 'error')"
         }
       },
       "isRLSEnabled": false
@@ -6260,6 +6322,14 @@
         "runs_project_id_required_check": {
           "name": "runs_project_id_required_check",
           "value": "project_id IS NOT NULL"
+        },
+        "runs_status_check": {
+          "name": "runs_status_check",
+          "value": "\"runs\".\"status\" IN ('running', 'passed', 'failed', 'error', 'blocked', 'queued')"
+        },
+        "runs_trigger_check": {
+          "name": "runs_trigger_check",
+          "value": "\"runs\".\"trigger\" IN ('manual', 'remote', 'schedule')"
         }
       },
       "isRLSEnabled": false
@@ -6624,7 +6694,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "k6_performance_runs_status_check": {
+          "name": "k6_performance_runs_status_check",
+          "value": "\"k6_performance_runs\".\"status\" IN ('running', 'passed', 'failed', 'error', 'blocked', 'queued')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.monitor_results": {
@@ -6839,7 +6914,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "monitor_results_status_check": {
+          "name": "monitor_results_status_check",
+          "value": "\"monitor_results\".\"status\" IN ('up', 'down', 'error', 'timeout')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.monitors": {
@@ -7076,6 +7156,14 @@
         "monitors_project_id_required_check": {
           "name": "monitors_project_id_required_check",
           "value": "project_id IS NOT NULL"
+        },
+        "monitors_type_check": {
+          "name": "monitors_type_check",
+          "value": "\"monitors\".\"type\" IN ('http_request', 'website', 'ping_host', 'port_check', 'synthetic_test')"
+        },
+        "monitors_status_check": {
+          "name": "monitors_status_check",
+          "value": "\"monitors\".\"status\" IN ('up', 'down', 'paused', 'pending', 'maintenance', 'error')"
         }
       },
       "isRLSEnabled": false
@@ -7329,7 +7417,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "monitor_aggregates_period_type_check": {
+          "name": "monitor_aggregates_period_type_check",
+          "value": "\"monitor_aggregates\".\"period_type\" IN ('hourly', 'daily')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.monitor_cycle_arrivals": {
@@ -7821,6 +7914,14 @@
         "alert_history_target_required_check": {
           "name": "alert_history_target_required_check",
           "value": "monitor_id IS NOT NULL OR job_id IS NOT NULL"
+        },
+        "alert_history_type_check": {
+          "name": "alert_history_type_check",
+          "value": "\"alert_history\".\"type\" IN ('monitor_failure', 'monitor_recovery', 'job_failed', 'job_success', 'job_timeout', 'ssl_expiring')"
+        },
+        "alert_history_status_check": {
+          "name": "alert_history_status_check",
+          "value": "\"alert_history\".\"status\" IN ('sent', 'failed', 'pending')"
         }
       },
       "isRLSEnabled": false
@@ -8334,6 +8435,10 @@
         "notification_providers_project_id_required_check": {
           "name": "notification_providers_project_id_required_check",
           "value": "project_id IS NOT NULL"
+        },
+        "notification_providers_type_check": {
+          "name": "notification_providers_type_check",
+          "value": "\"notification_providers\".\"type\" IN ('email', 'slack', 'webhook', 'telegram', 'discord', 'teams')"
         }
       },
       "isRLSEnabled": false
@@ -8993,7 +9098,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "reports_entity_type_check": {
+          "name": "reports_entity_type_check",
+          "value": "\"reports\".\"entity_type\" IN ('test', 'job', 'monitor', 'k6_test', 'k6_job')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.incident_components": {
@@ -9468,7 +9578,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "incident_updates_status_check": {
+          "name": "incident_updates_status_check",
+          "value": "\"incident_updates\".\"status\" IN ('investigating', 'identified', 'monitoring', 'resolved', 'scheduled')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.incidents": {
@@ -9828,7 +9943,16 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "incidents_status_check": {
+          "name": "incidents_status_check",
+          "value": "\"incidents\".\"status\" IN ('investigating', 'identified', 'monitoring', 'resolved', 'scheduled')"
+        },
+        "incidents_impact_check": {
+          "name": "incidents_impact_check",
+          "value": "\"incidents\".\"impact\" IN ('none', 'minor', 'major', 'critical')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.postmortems": {
@@ -10366,7 +10490,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "status_page_components_status_check": {
+          "name": "status_page_components_status_check",
+          "value": "\"status_page_components\".\"status\" IN ('operational', 'degraded_performance', 'partial_outage', 'major_outage', 'under_maintenance')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.status_page_incident_subscriptions": {
@@ -11232,7 +11361,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "status_page_subscribers_mode_check": {
+          "name": "status_page_subscribers_mode_check",
+          "value": "\"status_page_subscribers\".\"mode\" IN ('email', 'webhook', 'slack')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.status_pages": {
@@ -11640,6 +11774,10 @@
         "status_pages_custom_domain_lowercase_check": {
           "name": "status_pages_custom_domain_lowercase_check",
           "value": "custom_domain = lower(custom_domain)"
+        },
+        "status_pages_status_check": {
+          "name": "status_pages_status_check",
+          "value": "\"status_pages\".\"status\" IN ('draft', 'published', 'archived')"
         }
       },
       "isRLSEnabled": false
@@ -11802,7 +11940,12 @@
         }
       },
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "plan_limits_plan_check": {
+          "name": "plan_limits_plan_check",
+          "value": "\"plan_limits\".\"plan\" IN ('plus', 'pro', 'unlimited')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.locations": {
@@ -12977,6 +13120,14 @@
         "external_connectors_side_effect_level_none_check": {
           "name": "external_connectors_side_effect_level_none_check",
           "value": "\"external_connectors\".\"side_effect_level\" = 'none'"
+        },
+        "external_connectors_status_check": {
+          "name": "external_connectors_status_check",
+          "value": "\"external_connectors\".\"status\" IN ('configured', 'valid', 'unreachable', 'missing_credentials', 'disabled')"
+        },
+        "external_connectors_risk_level_check": {
+          "name": "external_connectors_risk_level_check",
+          "value": "\"external_connectors\".\"risk_level\" IN ('low', 'medium', 'high', 'critical')"
         }
       },
       "isRLSEnabled": false
@@ -13958,7 +14109,16 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "private_agent_jobs_status_check": {
+          "name": "private_agent_jobs_status_check",
+          "value": "\"private_agent_jobs\".\"status\" IN ('queued', 'leased', 'running', 'completed', 'failed', 'cancelled', 'timed_out')"
+        },
+        "private_agent_jobs_job_class_check": {
+          "name": "private_agent_jobs_job_class_check",
+          "value": "\"private_agent_jobs\".\"job_class\" IN ('sre_connector_query', 'http_monitor_check', 'playwright_run', 'k6_run', 'network_check')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.private_agents": {
@@ -14260,7 +14420,16 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "private_agents_status_check": {
+          "name": "private_agents_status_check",
+          "value": "\"private_agents\".\"status\" IN ('pending', 'connected', 'disconnected', 'unhealthy', 'disabled')"
+        },
+        "private_agents_agent_mode_check": {
+          "name": "private_agents_agent_mode_check",
+          "value": "\"private_agents\".\"agent_mode\" IN ('connector_proxy', 'execution_worker', 'hybrid')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.sre_ai_suggestions": {
@@ -14801,7 +14970,16 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "sre_alert_events_severity_check": {
+          "name": "sre_alert_events_severity_check",
+          "value": "\"sre_alert_events\".\"severity\" IN ('sev1', 'sev2', 'sev3', 'sev4')"
+        },
+        "sre_alert_events_status_check": {
+          "name": "sre_alert_events_status_check",
+          "value": "\"sre_alert_events\".\"status\" IN ('firing', 'resolved', 'silenced', 'deduplicated')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.sre_background_agent_runs": {
@@ -16736,7 +16914,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "sre_incident_alerts_role_check": {
+          "name": "sre_incident_alerts_role_check",
+          "value": "\"sre_incident_alerts\".\"role\" IN ('trigger', 'related', 'red_herring')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.sre_incident_runbook_steps": {
@@ -17774,6 +17957,14 @@
         "sre_incidents_resolution_summary_length_check": {
           "name": "sre_incidents_resolution_summary_length_check",
           "value": "\"sre_incidents\".\"resolution_summary\" IS NULL OR char_length(\"sre_incidents\".\"resolution_summary\") <= 4000"
+        },
+        "sre_incidents_severity_check": {
+          "name": "sre_incidents_severity_check",
+          "value": "\"sre_incidents\".\"severity\" IN ('sev1', 'sev2', 'sev3', 'sev4')"
+        },
+        "sre_incidents_status_check": {
+          "name": "sre_incidents_status_check",
+          "value": "\"sre_incidents\".\"status\" IN ('triggered', 'investigating', 'identified', 'recommendations_ready', 'user_applying_fix', 'verifying', 'resolved')"
         }
       },
       "isRLSEnabled": false
@@ -19650,6 +19841,10 @@
         "sre_investigation_runs_billing_tier_check": {
           "name": "sre_investigation_runs_billing_tier_check",
           "value": "\"sre_investigation_runs\".\"billing_tier\" IN ('paid', 'trial')"
+        },
+        "sre_investigation_runs_status_check": {
+          "name": "sre_investigation_runs_status_check",
+          "value": "\"sre_investigation_runs\".\"status\" IN ('running', 'completed', 'failed', 'aborted', 'timed_out')"
         }
       },
       "isRLSEnabled": false
@@ -19885,7 +20080,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "sre_investigation_tool_calls_status_check": {
+          "name": "sre_investigation_tool_calls_status_check",
+          "value": "\"sre_investigation_tool_calls\".\"status\" IN ('success', 'error', 'timeout', 'aborted')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.sre_runbook_steps": {
@@ -20522,7 +20722,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "sre_service_dependencies_status_check": {
+          "name": "sre_service_dependencies_status_check",
+          "value": "\"sre_service_dependencies\".\"status\" IN ('active', 'stale', 'rejected')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.sre_service_dependency_observations": {
@@ -21330,7 +21535,16 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "sre_service_owners_owner_type_check": {
+          "name": "sre_service_owners_owner_type_check",
+          "value": "\"sre_service_owners\".\"owner_type\" IN ('team', 'user', 'slack')"
+        },
+        "sre_service_owners_role_check": {
+          "name": "sre_service_owners_role_check",
+          "value": "\"sre_service_owners\".\"role\" IN ('primary', 'on-call', 'secondary', 'reviewer')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.sre_service_resources": {
@@ -21444,7 +21658,16 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "sre_service_resources_resource_type_check": {
+          "name": "sre_service_resources_resource_type_check",
+          "value": "\"sre_service_resources\".\"resource_type\" IN ('monitor', 'job', 'test', 'status_page_component', 'k6_run')"
+        },
+        "sre_service_resources_relationship_check": {
+          "name": "sre_service_resources_relationship_check",
+          "value": "\"sre_service_resources\".\"relationship\" IN ('monitors', 'owned', 'depends_on')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.sre_services": {
@@ -21801,7 +22024,16 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "sre_services_status_check": {
+          "name": "sre_services_status_check",
+          "value": "\"sre_services\".\"status\" IN ('active', 'deprecated', 'merged')"
+        },
+        "sre_services_tier_check": {
+          "name": "sre_services_tier_check",
+          "value": "\"sre_services\".\"tier\" IN ('1', '2', '3', '4')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.run_callbacks": {
