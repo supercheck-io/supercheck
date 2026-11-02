@@ -177,4 +177,17 @@ describe("verify-key route", () => {
       expect(redis.zadd).toHaveBeenCalledWith("supercheck:verify-key:ratelimit:unknown", expect.any(Number), expect.any(String));
     });
   });
+
+  it("reports the applied limit on 429 for requests without a trusted IP", async () => {
+    const redis = createRedisMock();
+    redis.multi().exec.mockResolvedValue([[null, 0], [null, 300], [null, []]]);
+    mockGetRedisConnection.mockResolvedValue(redis);
+    const response = await POST(new NextRequest("http://localhost/api/auth/verify-key", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ apiKey: "extABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789", jobId: "job-1" }),
+    }));
+    expect(response.status).toBe(429);
+    expect(response.headers.get("X-RateLimit-Limit")).toBe("300");
+  });
 });

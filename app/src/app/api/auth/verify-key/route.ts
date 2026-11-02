@@ -29,7 +29,7 @@ const RATE_LIMIT_KEY_PREFIX = "supercheck:verify-key:ratelimit";
  */
 async function checkRateLimit(
   ip: string
-): Promise<{ allowed: boolean; remaining: number; retryAfter?: number }> {
+): Promise<{ allowed: boolean; remaining: number; limit: number; retryAfter?: number }> {
   // No trustworthy client IP: share one bucket with a much higher ceiling, so DB load stays
   // bounded while a single noisy caller is far less likely to lock everyone out.
   const maxRequests = ip === "unknown" ? UNKNOWN_IP_MAX_REQUESTS : RATE_LIMIT_MAX_REQUESTS;
@@ -38,7 +38,7 @@ async function checkRateLimit(
     if (!redis) {
       // Fail open if Redis is unavailable
       logger.warn({ ip }, "Redis unavailable for rate limiting, allowing request");
-      return { allowed: true, remaining: maxRequests };
+      return { allowed: true, remaining: maxRequests, limit: maxRequests };
     }
 
     const key = `${RATE_LIMIT_KEY_PREFIX}:${ip}`;
@@ -61,7 +61,7 @@ async function checkRateLimit(
     
     if (!results) {
       logger.warn({ ip }, "Redis transaction failed, allowing request");
-      return { allowed: true, remaining: maxRequests };
+      return { allowed: true, remaining: maxRequests, limit: maxRequests };
     }
 
     const currentCount = (results[1]?.[1] as number) ?? 0;
@@ -81,7 +81,7 @@ async function checkRateLimit(
         "Rate limit exceeded for verify-key endpoint"
       );
       
-      return { allowed: false, remaining: 0, retryAfter };
+      return { allowed: false, remaining: 0, limit: maxRequests, retryAfter };
     }
 
     // Add this request to the window
@@ -93,11 +93,12 @@ async function checkRateLimit(
     return {
       allowed: true,
       remaining: Math.max(0, maxRequests - currentCount - 1),
+      limit: maxRequests,
     };
   } catch (error) {
     // Fail open on Redis errors
     logger.error({ error, ip }, "Rate limiting error, allowing request");
-    return { allowed: true, remaining: maxRequests };
+    return { allowed: true, remaining: maxRequests, limit: maxRequests };
   }
 }
 
@@ -117,7 +118,7 @@ export async function POST(request: NextRequest) {
         status: 429,
         headers: {
           "Retry-After": String(rateLimitResult.retryAfter ?? 60),
-          "X-RateLimit-Limit": String(RATE_LIMIT_MAX_REQUESTS),
+          "X-RateLimit-Limit": String(rateLimitResult.limit),
           "X-RateLimit-Remaining": "0",
         },
       }
