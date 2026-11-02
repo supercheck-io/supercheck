@@ -422,7 +422,7 @@ export class MonitorCycleService {
       .update(schema.monitorCycles)
       .set({
         notifyAttempts: sql`${schema.monitorCycles.notifyAttempts} + 1`,
-        notifiedAt: sql`CASE WHEN ${schema.monitorCycles.notifyAttempts} + 1 >= ${MAX_NOTIFY_ATTEMPTS} THEN (now() AT TIME ZONE 'utc') ELSE NULL END`,
+        notifiedAt: sql`CASE WHEN ${schema.monitorCycles.notifyAttempts} + 1 >= ${MAX_NOTIFY_ATTEMPTS} THEN now() ELSE NULL END`,
       })
       .where(
         and(

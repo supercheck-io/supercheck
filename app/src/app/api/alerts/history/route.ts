@@ -184,7 +184,7 @@ export async function GET(request: NextRequest) {
         type: item.type,
         message: item.message,
         status: item.status,
-        timestamp: item.timestamp,
+        timestamp: new Date(item.timestamp).toISOString(), // raw SQL rows carry timestamptz as "YYYY-MM-DD HH:MM:SS+00" text
         incident: incidentByAlert.get(item.id) ?? null,
         // A deleted channel leaves a raw provider UUID behind; show its stored type or a label instead.
         notificationProvider:

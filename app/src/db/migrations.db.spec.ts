@@ -115,7 +115,7 @@ describe("database migrations and seeds", () => {
             AND column_name = 'created_at'
         `;
         expect(column).toBeDefined();
-        expect(column.data_type).toBe("timestamp without time zone");
+        expect(column.data_type).toBe("timestamp with time zone");
         expect(column.is_nullable).toBe("NO");
         expect(column.column_default).toMatch(/now\(\)/i);
 

@@ -30,6 +30,7 @@ const drizzleProvider: Provider = {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
     const client = postgres(connectionString, {
       ssl: getSSLConfig(),
+      connection: { TimeZone: 'UTC' }, // UTC day bucketing for timestamptz columns
       max: getDatabasePoolMax(),
       idle_timeout: parseInt(process.env.DB_IDLE_TIMEOUT || '30', 10),
       connect_timeout: parseInt(process.env.DB_CONNECT_TIMEOUT || '10', 10),

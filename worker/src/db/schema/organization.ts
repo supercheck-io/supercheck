@@ -37,7 +37,7 @@ export const organization = pgTable('organization', {
   name: text('name').notNull(),
   slug: text('slug').unique(),
   logo: text('logo'),
-  createdAt: timestamp('created_at').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
   metadata: jsonb('metadata'),
 
   // Polar subscription fields
@@ -52,8 +52,10 @@ export const organization = pgTable('organization', {
 
   // Subscription period dates (from Polar webhook)
   // These track the actual subscription billing cycle dates
-  subscriptionStartedAt: timestamp('subscription_started_at'), // When current subscription period started
-  subscriptionEndsAt: timestamp('subscription_ends_at'), // When current subscription period ends
+  subscriptionStartedAt: timestamp('subscription_started_at', {
+    withTimezone: true,
+  }), // When current subscription period started
+  subscriptionEndsAt: timestamp('subscription_ends_at', { withTimezone: true }), // When current subscription period ends
 
   // Usage tracking fields
   playwrightMinutesUsed: numeric('playwright_minutes_used', {
@@ -69,8 +71,8 @@ export const organization = pgTable('organization', {
   })
     .notNull()
     .default('0'),
-  usagePeriodStart: timestamp('usage_period_start'),
-  usagePeriodEnd: timestamp('usage_period_end'),
+  usagePeriodStart: timestamp('usage_period_start', { withTimezone: true }),
+  usagePeriodEnd: timestamp('usage_period_end', { withTimezone: true }),
 });
 // Cloud/self-hosted entitlement enforcement lives in the app SubscriptionService.
 // A database row cannot infer hosting mode from the presence of a Polar ID.
@@ -91,7 +93,7 @@ export const member = pgTable(
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
     role: text('role').default('project_viewer').notNull(),
-    createdAt: timestamp('created_at').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
   },
   (table) => ({
     uniqueUserOrg: unique().on(table.userId, table.organizationId),
@@ -121,7 +123,7 @@ export const invitation = pgTable(
     email: text('email').notNull(),
     role: text('role'),
     status: text('status').default('pending').notNull(),
-    expiresAt: timestamp('expires_at').notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     inviterId: uuid('inviter_id')
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
@@ -166,8 +168,8 @@ export const projects = pgTable(
       .$type<'active' | 'archived' | 'deleted'>()
       .notNull()
       .default('active'),
-    createdAt: timestamp('created_at').defaultNow(),
-    updatedAt: timestamp('updated_at').defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
   },
   (table) => ({
     // Composite index on organization_id and status for filtered queries
@@ -200,7 +202,9 @@ export const projectMembers = pgTable(
       .notNull()
       .references(() => projects.id, { onDelete: 'cascade' }),
     role: varchar('role', { length: 50 }).default('project_viewer').notNull(),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => ({
     uniqueUserProject: unique().on(table.userId, table.projectId),
@@ -243,8 +247,12 @@ export const projectVariables = pgTable(
     createdByUserId: uuid('created_by_user_id').references(() => user.id, {
       onDelete: 'set null',
     }),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => ({
     uniqueKeyPerProject: unique().on(table.projectId, table.key),

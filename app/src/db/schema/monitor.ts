@@ -66,12 +66,12 @@ export const monitors = pgTable(
       .default("pending"),
     config: jsonb("config").$type<MonitorConfig>(),
     alertConfig: jsonb("alert_config").$type<AlertConfig>(),
-    lastCheckAt: timestamp("last_check_at"),
-    lastStatusChangeAt: timestamp("last_status_change_at"),
-    mutedUntil: timestamp("muted_until"),
+    lastCheckAt: timestamp("last_check_at", { withTimezone: true }),
+    lastStatusChangeAt: timestamp("last_status_change_at", { withTimezone: true }),
+    mutedUntil: timestamp("muted_until", { withTimezone: true }),
     scheduledJobId: varchar("scheduled_job_id", { length: 255 }),
-    createdAt: timestamp("created_at").defaultNow(),
-    updatedAt: timestamp("updated_at"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }),
   },
   (table) => ({
     projectOrgStatusIdx: index("monitors_project_org_status_idx").on(
@@ -100,7 +100,7 @@ export const monitorResults = pgTable(
     monitorId: uuid("monitor_id")
       .notNull()
       .references(() => monitors.id, { onDelete: "cascade" }),
-    checkedAt: timestamp("checked_at").notNull().defaultNow(),
+    checkedAt: timestamp("checked_at", { withTimezone: true }).notNull().defaultNow(),
     location: varchar("location", { length: 50 })
       .$type<MonitoringLocation>()
       .notNull()

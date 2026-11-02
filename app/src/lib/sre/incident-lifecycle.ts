@@ -412,7 +412,7 @@ export async function resolveIncident(
       .set({
         status: "resolved",
         resolvedAt: now,
-        mitigatedAt: sql`coalesce(${sreIncidents.mitigatedAt}, ${now.toISOString()}::timestamp)`,
+        mitigatedAt: sql`coalesce(${sreIncidents.mitigatedAt}, ${now.toISOString()}::timestamptz)`,
         resolutionSummary: summary,
         updatedAt: now,
       })
@@ -597,7 +597,7 @@ export async function applySourceRecovery(
         .set({
           status: "resolved",
           resolvedAt: now,
-          mitigatedAt: sql`coalesce(${sreIncidents.mitigatedAt}, ${now.toISOString()}::timestamp)`,
+          mitigatedAt: sql`coalesce(${sreIncidents.mitigatedAt}, ${now.toISOString()}::timestamptz)`,
           resolutionSummary: summary,
           updatedAt: now,
         })

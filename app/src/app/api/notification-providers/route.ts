@@ -64,7 +64,7 @@ export async function GET() {
     const lastAlerts = await db
       .select({
         provider: alertHistory.provider,
-        sentAt: sql<Date>`MAX(${alertHistory.sentAt})`.as("sentAt"),
+        sentAt: sql<Date>`MAX(${alertHistory.sentAt})`.mapWith(alertHistory.sentAt).as("sentAt"),
       })
       .from(alertHistory)
       .where(inArray(alertHistory.provider, providerIds))

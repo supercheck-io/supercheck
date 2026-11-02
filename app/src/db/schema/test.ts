@@ -51,8 +51,8 @@ export const tests = pgTable(
       .$type<TestType>()
       .notNull()
       .default("browser"),
-    createdAt: timestamp("created_at").defaultNow(),
-    updatedAt: timestamp("updated_at"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }),
   },
   (table) => ({
     // Index on organization_id for listing organization tests

@@ -148,6 +148,12 @@ describe.each(engines)('durable execution usage (%s)', (engine) => {
         ),
       ),
     );
+    // The migrations above predate 0053 (timestamptz); apply its conversion so the tables match the schema.
+    await pg.exec(`DO $$ DECLARE r record; BEGIN
+      FOR r IN SELECT table_name, column_name FROM information_schema.columns
+        WHERE table_schema = current_schema() AND data_type = 'timestamp without time zone' LOOP
+        EXECUTE format('ALTER TABLE %I ALTER COLUMN %I TYPE timestamptz', r.table_name, r.column_name);
+      END LOOP; END $$`);
   });
 
   beforeEach(async () => {

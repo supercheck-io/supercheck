@@ -230,8 +230,12 @@ export const sreServices = pgTable(
       .notNull()
       .default('active'),
     mergedIntoServiceId: uuid('merged_into_service_id'),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => ({
     projectOrgStatusIdx: index('sre_services_project_org_status_idx').on(
@@ -276,7 +280,9 @@ export const sreServiceOwners = pgTable(
       .$type<SreOwnerRole>()
       .notNull()
       .default('primary'),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => ({
     serviceIdIdx: index('sre_service_owners_service_id_idx').on(
@@ -304,7 +310,9 @@ export const sreServiceResources = pgTable(
       .$type<SreResourceRelationship>()
       .notNull()
       .default('monitors'),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => ({
     resourceIdx: index('sre_service_resources_resource_idx').on(
@@ -342,14 +350,20 @@ export const sreServiceDependencies = pgTable(
     approvedBy: uuid('approved_by').references(() => user.id, {
       onDelete: 'set null',
     }),
-    approvedAt: timestamp('approved_at'),
-    firstSeenAt: timestamp('first_seen_at').defaultNow().notNull(),
-    lastSeenAt: timestamp('last_seen_at').defaultNow().notNull(),
+    approvedAt: timestamp('approved_at', { withTimezone: true }),
+    firstSeenAt: timestamp('first_seen_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    lastSeenAt: timestamp('last_seen_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
     status: varchar('status', { length: 15 })
       .$type<SreDependencyStatus>()
       .notNull()
       .default('active'),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => ({
     activeDependencyUniqueIdx: uniqueIndex(
@@ -399,7 +413,9 @@ export const sreServiceDependencyObservations = pgTable(
     observedBy: varchar('observed_by', { length: 50 }).notNull(),
     observationData: jsonb('observation_data').$type<Record<string, unknown>>(),
     confidence: numeric('confidence', { precision: 5, scale: 4 }).notNull(),
-    observedAt: timestamp('observed_at').defaultNow().notNull(),
+    observedAt: timestamp('observed_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => ({
     dependencyIdIdx: index(
@@ -429,11 +445,13 @@ export const sreServiceHealthSnapshots = pgTable(
       .notNull()
       .references(() => projects.id, { onDelete: 'cascade' }),
     health: varchar('health', { length: 10 }).$type<SreHealth>().notNull(),
-    windowStart: timestamp('window_start').notNull(),
-    windowEnd: timestamp('window_end').notNull(),
+    windowStart: timestamp('window_start', { withTimezone: true }).notNull(),
+    windowEnd: timestamp('window_end', { withTimezone: true }).notNull(),
     healthScore: numeric('health_score', { precision: 5, scale: 4 }),
     signals: jsonb('signals').$type<Record<string, unknown>>(),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => ({
     serviceWindowIdx: index(
@@ -473,8 +491,10 @@ export const sreServiceDiscoverySuggestions = pgTable(
     approvedBy: uuid('approved_by').references(() => user.id, {
       onDelete: 'set null',
     }),
-    approvedAt: timestamp('approved_at'),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
+    approvedAt: timestamp('approved_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => ({
     pendingProjectStatusIdx: index(
@@ -504,7 +524,7 @@ export const sreServiceDeployments = pgTable(
     projectId: uuid('project_id')
       .notNull()
       .references(() => projects.id, { onDelete: 'cascade' }),
-    deployedAt: timestamp('deployed_at').notNull(),
+    deployedAt: timestamp('deployed_at', { withTimezone: true }).notNull(),
     deployedBy: varchar('deployed_by', { length: 200 }),
     commitSha: varchar('commit_sha', { length: 40 }),
     commitMessage: text('commit_message'),
@@ -514,7 +534,9 @@ export const sreServiceDeployments = pgTable(
       .notNull(),
     sourceRef: varchar('source_ref', { length: 255 }),
     metadata: jsonb('metadata').$type<Record<string, unknown>>(),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => ({
     serviceDeployedAtIdx: index(
@@ -558,12 +580,14 @@ export const sreAlertEvents = pgTable(
     }),
     title: varchar('title', { length: 500 }).notNull(),
     description: text('description'),
-    firedAt: timestamp('fired_at').notNull(),
-    resolvedAt: timestamp('resolved_at'),
-    silencedAt: timestamp('silenced_at'),
+    firedAt: timestamp('fired_at', { withTimezone: true }).notNull(),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+    silencedAt: timestamp('silenced_at', { withTimezone: true }),
     silenceReason: text('silence_reason'),
     triageInvestigationRunId: uuid('triage_investigation_run_id'),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => ({
     orgFingerprintUniqueIdx: uniqueIndex(
@@ -618,13 +642,17 @@ export const sreIncidents = pgTable(
     triageInvestigationRunId: uuid('triage_investigation_run_id'),
     rootCauseSummary: text('root_cause_summary'),
     confidenceScore: numeric('confidence_score', { precision: 5, scale: 4 }),
-    resolvedAt: timestamp('resolved_at'),
-    verifiedAt: timestamp('verified_at'),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+    verifiedAt: timestamp('verified_at', { withTimezone: true }),
     createdByUserId: uuid('created_by_user_id').references(() => user.id, {
       onDelete: 'set null',
     }),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => ({
     orgIncidentNumberUniqueIdx: uniqueIndex(
@@ -667,7 +695,9 @@ export const sreIncidentAlerts = pgTable(
       .$type<SreIncidentAlertRole>()
       .notNull()
       .default('trigger'),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => ({
     alertEventIdIdx: index('sre_incident_alerts_alert_event_id_idx').on(
@@ -696,8 +726,10 @@ export const sreIncidentVerifications = pgTable(
       .notNull()
       .default('pending'),
     resultDetail: jsonb('result_detail').$type<Record<string, unknown>>(),
-    checkedAt: timestamp('checked_at'),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
+    checkedAt: timestamp('checked_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => ({
     incidentIdIdx: index('sre_incident_verifications_incident_id_idx').on(
@@ -743,17 +775,21 @@ export const privateAgents = pgTable(
       .default(false),
     region: varchar('region', { length: 50 }),
     networkLabel: varchar('network_label', { length: 100 }),
-    lastHeartbeatAt: timestamp('last_heartbeat_at'),
-    connectedAt: timestamp('connected_at'),
-    registeredAt: timestamp('registered_at'),
-    disabledAt: timestamp('disabled_at'),
+    lastHeartbeatAt: timestamp('last_heartbeat_at', { withTimezone: true }),
+    connectedAt: timestamp('connected_at', { withTimezone: true }),
+    registeredAt: timestamp('registered_at', { withTimezone: true }),
+    disabledAt: timestamp('disabled_at', { withTimezone: true }),
     lastError: text('last_error'),
     metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}),
     createdByUserId: uuid('created_by_user_id').references(() => user.id, {
       onDelete: 'set null',
     }),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => ({
     organizationStatusIdx: index('private_agents_org_status_idx').on(
@@ -816,7 +852,7 @@ export const externalConnectors = pgTable(
       .notNull()
       .default(60),
     outputLimits: jsonb('output_limits').$type<Record<string, unknown>>(),
-    lastValidatedAt: timestamp('last_validated_at'),
+    lastValidatedAt: timestamp('last_validated_at', { withTimezone: true }),
     lastValidationStatus: varchar('last_validation_status', {
       length: 20,
     }).$type<ExternalConnectorValidationStatus>(),
@@ -829,8 +865,12 @@ export const externalConnectors = pgTable(
     createdByUserId: uuid('created_by_user_id').references(() => user.id, {
       onDelete: 'set null',
     }),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => ({
     permissionLevelReadCheck: check(
@@ -881,11 +921,13 @@ export const privateAgentCredentials = pgTable(
     }),
     keyId: varchar('key_id', { length: 100 }).notNull(),
     secretHash: text('secret_hash').notNull(),
-    issuedAt: timestamp('issued_at').defaultNow().notNull(),
-    expiresAt: timestamp('expires_at'),
-    lastUsedAt: timestamp('last_used_at'),
-    rotatedAt: timestamp('rotated_at'),
-    revokedAt: timestamp('revoked_at'),
+    issuedAt: timestamp('issued_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+    rotatedAt: timestamp('rotated_at', { withTimezone: true }),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
     revokedByUserId: uuid('revoked_by_user_id').references(() => user.id, {
       onDelete: 'set null',
     }),
@@ -940,7 +982,9 @@ export const privateAgentHeartbeats = pgTable(
       .default({}),
     latencyMs: integer('latency_ms'),
     errorCode: varchar('error_code', { length: 100 }),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => ({
     privateAgentCreatedIdx: index(
@@ -971,7 +1015,9 @@ export const externalConnectorServices = pgTable(
     serviceId: uuid('service_id')
       .notNull()
       .references(() => sreServices.id, { onDelete: 'cascade' }),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => ({
     connectorServiceUniqueIdx: uniqueIndex(
@@ -1017,8 +1063,12 @@ export const sreIntegrationBindings = pgTable(
     createdByUserId: uuid('created_by_user_id').references(() => user.id, {
       onDelete: 'set null',
     }),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => ({
     projectIntegrationIdx: index(
@@ -1065,7 +1115,9 @@ export const sreIntegrationBindingServices = pgTable(
     serviceId: uuid('service_id')
       .notNull()
       .references(() => sreServices.id, { onDelete: 'cascade' }),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => ({
     bindingServiceUniqueIdx: uniqueIndex(
@@ -1097,10 +1149,14 @@ export const externalConnectorCredentials = pgTable(
     encryptedCredential: text('encrypted_credential').notNull(),
     encryptionVersion: integer('encryption_version').notNull().default(1),
     encryptionKeyContext: varchar('encryption_key_context', { length: 255 }),
-    expiresAt: timestamp('expires_at'),
-    lastRotatedAt: timestamp('last_rotated_at'),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    lastRotatedAt: timestamp('last_rotated_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => ({
     connectorIdIdx: index('external_connector_credentials_connector_id_idx').on(
@@ -1147,8 +1203,12 @@ export const diagnosticQueries = pgTable(
     approvedByUserId: uuid('approved_by_user_id').references(() => user.id, {
       onDelete: 'set null',
     }),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => ({
     projectConnectorIdx: index('diagnostic_queries_project_connector_idx').on(
@@ -1214,16 +1274,18 @@ export const privateAgentJobs = pgTable(
       .notNull()
       .default({}),
     leaseTokenHash: varchar('lease_token_hash', { length: 128 }),
-    leaseExpiresAt: timestamp('lease_expires_at'),
+    leaseExpiresAt: timestamp('lease_expires_at', { withTimezone: true }),
     idempotencyKey: varchar('idempotency_key', { length: 128 }).notNull(),
-    cancelRequestedAt: timestamp('cancel_requested_at'),
-    startedAt: timestamp('started_at'),
-    completedAt: timestamp('completed_at'),
+    cancelRequestedAt: timestamp('cancel_requested_at', { withTimezone: true }),
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
     durationMs: integer('duration_ms'),
     errorCode: varchar('error_code', { length: 100 }),
     resultHash: varchar('result_hash', { length: 128 }),
     resultSummary: jsonb('result_summary').$type<Record<string, unknown>>(),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => ({
     privateAgentStatusIdx: index('private_agent_jobs_agent_status_idx').on(
@@ -1271,7 +1333,9 @@ export const privateAgentArtifacts = pgTable(
     sha256: varchar('sha256', { length: 64 }).notNull(),
     contentType: varchar('content_type', { length: 100 }),
     sizeBytes: integer('size_bytes').notNull(),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => ({
     privateAgentJobIdIdx: index('private_agent_artifacts_job_id_idx').on(
@@ -1324,8 +1388,10 @@ export const sreEvidenceItems = pgTable(
     metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}),
     citationQuery: text('citation_query'),
     citationResultHash: varchar('citation_result_hash', { length: 64 }),
-    observedAt: timestamp('observed_at'),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
+    observedAt: timestamp('observed_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => ({
     incidentIdIdx: index('sre_evidence_items_incident_id_idx').on(
@@ -1390,8 +1456,10 @@ export const sreInvestigationRuns = pgTable(
       Record<string, unknown>
     >(),
     promptInput: jsonb('prompt_input').$type<Record<string, unknown>>(),
-    startedAt: timestamp('started_at').defaultNow().notNull(),
-    completedAt: timestamp('completed_at'),
+    startedAt: timestamp('started_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
     durationMs: integer('duration_ms'),
     createdByUserId: uuid('created_by_user_id').references(() => user.id, {
       onDelete: 'set null',
@@ -1400,7 +1468,9 @@ export const sreInvestigationRuns = pgTable(
       .$type<'paid' | 'trial'>()
       .notNull()
       .default('paid'),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => ({
     incidentIdIdx: index('sre_investigation_runs_incident_id_idx').on(
@@ -1466,7 +1536,9 @@ export const sreInvestigationToolCalls = pgTable(
       () => sreEvidenceItems.id,
       { onDelete: 'set null' },
     ),
-    executedAt: timestamp('executed_at').defaultNow().notNull(),
+    executedAt: timestamp('executed_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => ({
     investigationRunIdIdx: index('sre_investigation_tool_calls_run_id_idx')
@@ -1514,7 +1586,9 @@ export const sreAiSuggestions = pgTable(
     completionTokens: integer('completion_tokens'),
     promptInput: jsonb('prompt_input').$type<Record<string, unknown>>(),
     accepted: boolean('accepted'),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => ({
     suggestionTypeIdx: index('sre_ai_suggestions_type_idx').on(
@@ -1553,9 +1627,11 @@ export const sreInvestigationRecommendations = pgTable(
       .$type<SreRecommendationStatus>()
       .notNull()
       .default('pending'),
-    appliedAt: timestamp('applied_at'),
+    appliedAt: timestamp('applied_at', { withTimezone: true }),
     supersededById: uuid('superseded_by_id'),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => ({
     incidentIdIdx: index(
@@ -1597,7 +1673,9 @@ export const sreIncidentTimelineEvents = pgTable(
       () => sreEvidenceItems.id,
       { onDelete: 'set null' },
     ),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => ({
     incidentCreatedIdx: index(
@@ -1643,8 +1721,12 @@ export const sreRunbooks = pgTable(
     createdByUserId: uuid('created_by_user_id').references(() => user.id, {
       onDelete: 'set null',
     }),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => ({
     projectServiceIdx: index('sre_runbooks_project_service_idx').on(
@@ -1677,7 +1759,9 @@ export const sreRunbookSteps = pgTable(
     evidenceGatheringAction: varchar('evidence_gathering_action', {
       length: 100,
     }),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => ({
     runbookStepOrderIdx: index('sre_runbook_steps_runbook_step_order_idx').on(
@@ -1710,8 +1794,10 @@ export const sreIncidentRunbookSteps = pgTable(
     completedBy: uuid('completed_by').references(() => user.id, {
       onDelete: 'set null',
     }),
-    completedAt: timestamp('completed_at'),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => ({
     incidentIdIdx: index('sre_incident_runbook_steps_incident_id_idx').on(
@@ -1752,8 +1838,12 @@ export const sreContextObservations = pgTable(
     source: varchar('source', { length: 50 }).notNull(),
     confidence: numeric('confidence', { precision: 5, scale: 4 }),
     metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => ({
     serviceIdIdx: index('sre_context_observations_service_id_idx').on(
@@ -1790,7 +1880,9 @@ export const sreContextRecollections = pgTable(
     rootCause: text('root_cause'),
     resolution: text('resolution'),
     promotedToPlaybookId: uuid('promoted_to_playbook_id'),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => ({
     incidentIdIdx: index('sre_context_recollections_incident_id_idx').on(
@@ -1840,8 +1932,12 @@ export const sreContextPlaybooks = pgTable(
     createdByUserId: uuid('created_by_user_id').references(() => user.id, {
       onDelete: 'set null',
     }),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => ({
     organizationAlertSignatureIdx: index(
@@ -1881,15 +1977,17 @@ export const sreBackgroundAgentRuns = pgTable(
       .notNull()
       .default('scheduled'),
     scheduleId: varchar('schedule_id', { length: 100 }),
-    triggerAt: timestamp('trigger_at').notNull(),
-    completedAt: timestamp('completed_at'),
+    triggerAt: timestamp('trigger_at', { withTimezone: true }).notNull(),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
     resultSummary: text('result_summary'),
     resultData: jsonb('result_data').$type<Record<string, unknown>>(),
     investigationRunId: uuid('investigation_run_id').references(
       () => sreInvestigationRuns.id,
       { onDelete: 'set null' },
     ),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => ({
     activeProjectStatusIdx: index(
@@ -1934,8 +2032,12 @@ export const sreChatConversations = pgTable(
       .$type<SreChatConversationStatus>()
       .notNull()
       .default('active'),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => ({
     userUpdatedAtIdx: index('sre_chat_conversations_user_updated_at_idx').on(
@@ -1976,7 +2078,9 @@ export const sreChatMessages = pgTable(
     ),
     modelId: varchar('model_id', { length: 100 }),
     tokenCount: integer('token_count'),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => ({
     conversationCreatedIdx: index(
@@ -2022,7 +2126,9 @@ export const sreInvestigationReports = pgTable(
     createdByUserId: uuid('created_by_user_id').references(() => user.id, {
       onDelete: 'set null',
     }),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => ({
     runCreatedAtIdx: index('sre_investigation_reports_run_created_at_idx').on(
@@ -2081,8 +2187,12 @@ export const sreInvestigationReportFeedback = pgTable(
     createdByUserId: uuid('created_by_user_id')
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => ({
     reportUserUniqueIdx: uniqueIndex(
@@ -2140,8 +2250,12 @@ export const sreEvidenceGraphFocusedViews = pgTable(
     createdByUserId: uuid('created_by_user_id').references(() => user.id, {
       onDelete: 'set null',
     }),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (table) => ({
     projectStatusUpdatedIdx: index(

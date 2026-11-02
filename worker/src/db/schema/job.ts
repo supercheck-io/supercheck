@@ -65,11 +65,11 @@ export const jobs = pgTable(
       .notNull()
       .default('pending'),
     alertConfig: jsonb('alert_config').$type<AlertConfig>(),
-    lastRunAt: timestamp('last_run_at'),
-    nextRunAt: timestamp('next_run_at'),
+    lastRunAt: timestamp('last_run_at', { withTimezone: true }),
+    nextRunAt: timestamp('next_run_at', { withTimezone: true }),
     scheduledJobId: varchar('scheduled_job_id', { length: 255 }),
-    createdAt: timestamp('created_at').defaultNow(),
-    updatedAt: timestamp('updated_at'),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }),
   },
   (table) => ({
     // Index on organization_id for listing organization jobs
@@ -135,8 +135,8 @@ export const runs = pgTable(
       .notNull()
       .default('running'),
     durationMs: integer('duration_ms'),
-    startedAt: timestamp('started_at'),
-    completedAt: timestamp('completed_at'),
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
 
     // Artifact URLs (S3 references)
     reportS3Url: text('report_s3_url'),
@@ -159,8 +159,8 @@ export const runs = pgTable(
       .$type<JobTrigger>()
       .notNull()
       .default('manual'),
-    createdAt: timestamp('created_at').defaultNow(),
-    updatedAt: timestamp('updated_at').defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
   },
   (table) => ({
     // Composite index on job_id and status for filtered queries
