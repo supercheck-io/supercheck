@@ -73,6 +73,8 @@ export const organization = pgTable("organization", {
     check("organization_playwright_minutes_used_required_check", sql`playwright_minutes_used IS NOT NULL`),
     check("organization_k6_vu_minutes_used_required_check", sql`k6_vu_minutes_used IS NOT NULL`),
     check("organization_ai_credits_used_required_check", sql`ai_credits_used IS NOT NULL`),
+    check("organization_subscription_plan_check", sql`${table.subscriptionPlan} IS NULL OR ${table.subscriptionPlan} IN ('plus', 'pro', 'unlimited')`),
+    check("organization_subscription_status_check", sql`${table.subscriptionStatus} IS NULL OR ${table.subscriptionStatus} IN ('active', 'canceled', 'past_due', 'none')`),
   ]);
 // Cloud/self-hosted entitlement enforcement lives in SubscriptionService.
 // A database row cannot infer hosting mode from the presence of a Polar ID.
@@ -146,6 +148,7 @@ export const invitation = pgTable(
     invitationPendingOrgEmailUniqueIdx: uniqueIndex("invitation_pending_org_email_unique_idx")
       .on(table.organizationId, sql`lower(${table.email})`)
       .where(sql`status = 'pending'`),
+    invitationStatusCheck: check("invitation_status_check", sql`${table.status} IN ('pending', 'accepted', 'rejected', 'canceled', 'cancelled', 'expired')`),
   })
 );
 
@@ -185,6 +188,7 @@ export const projects = pgTable(
     uniqueDefaultPerOrg: uniqueIndex("projects_unique_default_per_org_idx")
       .on(table.organizationId)
       .where(sql`is_default = true`),
+    projectsStatusCheck: check("projects_status_check", sql`${table.status} IN ('active', 'archived', 'deleted')`),
   })
 );
 
@@ -251,6 +255,7 @@ export const projectVariables = pgTable(
   (table) => ({
     uniqueKeyPerProject: unique().on(table.projectId, table.key),
     projectVariablesCreatedByUserIdIdx: index("project_variables_created_by_user_id_idx").on(table.createdByUserId),
+    projectVariablesTypeCheck: check("project_variables_type_check", sql`${table.type} IN ('variable', 'secret', 'file')`),
   })
 );
 

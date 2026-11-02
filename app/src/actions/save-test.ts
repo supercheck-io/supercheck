@@ -2,6 +2,7 @@
 
 import { and, eq } from "drizzle-orm";
 import {
+  TEST_TYPE_VALUES,
   requirements,
   tests,
   testsInsertSchema,
@@ -112,6 +113,14 @@ export async function saveTest(
       validatedData.type !== undefined
         ? normalizeTestType(validatedData.type)
         : (existingTest?.type ?? "browser");
+    // A row saved before type values were constrained cannot be updated until it gets an allowed type.
+    if (!(TEST_TYPE_VALUES as readonly string[]).includes(resolvedType)) {
+      return {
+        id: "",
+        success: false,
+        error: `Test type "${resolvedType}" is no longer supported. Choose one of: ${TEST_TYPE_VALUES.join(", ")}.`,
+      };
+    }
     const hasSubmittedScript = validatedData.script !== undefined;
     const scriptToSave = hasSubmittedScript
       ? encodeStoredTestScript(validatedData.script!)

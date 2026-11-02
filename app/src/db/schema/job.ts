@@ -87,6 +87,8 @@ export const jobs = pgTable(
     jobsCreatedByUserIdIdx: index("jobs_created_by_user_id_idx").on(table.createdByUserId),
     jobsOrganizationIdRequired: check("jobs_organization_id_required_check", sql`organization_id IS NOT NULL`),
     jobsProjectIdRequired: check("jobs_project_id_required_check", sql`project_id IS NOT NULL`),
+    jobsJobTypeCheck: check("jobs_job_type_check", sql`${table.jobType} IN ('playwright', 'k6')`),
+    jobsStatusCheck: check("jobs_status_check", sql`${table.status} IN ('pending', 'running', 'passed', 'failed', 'error')`),
   })
 );
 
@@ -180,6 +182,8 @@ export const runs = pgTable(
     startedAtIdx: index("runs_started_at_idx").on(table.startedAt),
     runsJobCreatedIdx: index("runs_job_created_idx").on(table.jobId, table.createdAt.desc().nullsFirst()),
     runsProjectIdRequired: check("runs_project_id_required_check", sql`project_id IS NOT NULL`),
+    runsStatusCheck: check("runs_status_check", sql`${table.status} IN ('running', 'passed', 'failed', 'error', 'blocked', 'queued')`),
+    runsTriggerCheck: check("runs_trigger_check", sql`${table.trigger} IN ('manual', 'remote', 'schedule')`),
   })
 );
 

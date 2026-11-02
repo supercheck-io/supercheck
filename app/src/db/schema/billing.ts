@@ -204,6 +204,7 @@ export const usageEvents = pgTable(
       table.billingPeriodEnd
     ),
     createdAtIdx: index("usage_events_created_at_idx").on(table.createdAt),
+    usageEventsEventTypeCheck: check("usage_events_event_type_check", sql`${table.eventType} IN ('playwright_execution', 'k6_execution', 'monitor_execution', 'ai_usage', 'sre_investigation')`),
   })
 );
 
@@ -277,6 +278,9 @@ export const usageNotifications = pgTable(
       table.billingPeriodStart,
       table.billingPeriodEnd
     ),
+    usageNotificationsNotificationTypeCheck: check("usage_notifications_notification_type_check", sql`${table.notificationType} IN ('usage_50_percent', 'usage_80_percent', 'usage_90_percent', 'usage_100_percent', 'spending_limit_warning', 'spending_limit_reached', 'billing_period_reset')`),
+    usageNotificationsResourceTypeCheck: check("usage_notifications_resource_type_check", sql`${table.resourceType} IN ('playwright', 'k6', 'ai', 'sre', 'combined', 'spending')`),
+    usageNotificationsDeliveryStatusCheck: check("usage_notifications_delivery_status_check", sql`${table.deliveryStatus} IN ('pending', 'sent', 'failed')`),
   })
 );
 
@@ -307,7 +311,11 @@ export const overagePricing = pgTable("overage_pricing", {
   // Metadata
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+},
+  (table) => ({
+    overagePricingPlanCheck: check("overage_pricing_plan_check", sql`${table.plan} IN ('plus', 'pro')`),
+  })
+);
 
 // Zod schemas for validation
 export const executionUsageReceiptsInsertSchema = createInsertSchema(executionUsageReceipts);

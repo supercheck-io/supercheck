@@ -97,6 +97,14 @@ it.each([
   expect(subscriptionService.blockUntilSubscribed).not.toHaveBeenCalled();
 });
 
+// priority and type are CHECK-constrained columns: a bad value is a validation error, not a database error.
+it.each([{ priority: "urgent" }, { type: "bogus" }])("rejects %j before touching the database", async (fields) => {
+  const result = await saveTest({ title: "Renamed", ...fields } as never);
+  expect(result.success).toBe(false);
+  expect(mockSet).not.toHaveBeenCalled();
+  expect(subscriptionService.blockUntilSubscribed).not.toHaveBeenCalled();
+});
+
 it("checks the authenticated organization before a permitted save", async () => {
   expect(await update("action", {})).toBe(true);
   expect(subscriptionService.blockUntilSubscribed).toHaveBeenCalledWith("org");
@@ -175,6 +183,29 @@ it.each([
   const result = await saveTest({ ...input, script: "const a = ;" });
   expect(result).toEqual({ id: "", success: false, error });
   expect(mockSet).not.toHaveBeenCalled();
+});
+
+it.each(["action", "api"])(
+  "rejects an edit of a legacy row whose stored type is no longer allowed, before writing, in %s",
+  async (flow) => {
+    stored.type = "legacy_type";
+    try {
+      expect(await update(flow, {})).toBe(false);
+      expect(mockSet).not.toHaveBeenCalled();
+    } finally {
+      stored.type = "browser";
+    }
+  },
+);
+
+it("names the unsupported stored type in the action error", async () => {
+  stored.type = "legacy_type";
+  try {
+    const result = await saveTest({ id: "00000000-0000-4000-8000-000000000001", title: "T" });
+    expect(result.error).toContain('Test type "legacy_type" is no longer supported');
+  } finally {
+    stored.type = "browser";
+  }
 });
 
 it("rejects a description over the API limit in the save action too", async () => {

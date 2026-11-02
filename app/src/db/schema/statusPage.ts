@@ -33,6 +33,7 @@ import type {
   IncidentImpact,
   SubscriberMode,
 } from "./types";
+import { inValues, COMPONENT_STATUS_VALUES, INCIDENT_STATUS_VALUES, INCIDENT_IMPACT_VALUES } from "./types";
 
 /**
  * Stores status page configurations with UUID-based subdomains
@@ -113,6 +114,7 @@ export const statusPages = pgTable(
     statusPagesProjectIdIdx: index("status_pages_project_id_idx").on(table.projectId),
     statusPagesSubdomainLowercase: check("status_pages_subdomain_lowercase_check", sql`subdomain = lower(subdomain)`),
     statusPagesCustomDomainLowercase: check("status_pages_custom_domain_lowercase_check", sql`custom_domain = lower(custom_domain)`),
+    statusPagesStatusCheck: check("status_pages_status_check", sql`${table.status} IN ('draft', 'published', 'archived')`),
   })
 );
 
@@ -151,6 +153,7 @@ export const statusPageComponents = pgTable("status_page_components", {
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({ serviceIdx: index("status_page_components_service_idx").on(table.serviceId), reconciliationIdx: index("status_page_components_reconciliation_idx").on(table.lastReconciledAt, table.id),
     statusPageComponentsStatusPageIdIdx: index("status_page_components_status_page_id_idx").on(table.statusPageId),
+    statusPageComponentsStatusCheck: check("status_page_components_status_check", inValues(table.status, COMPONENT_STATUS_VALUES)),
   }));
 
 /**
@@ -237,6 +240,8 @@ export const incidents = pgTable("incidents", {
   srePageIdx: index("incidents_sre_page_idx").on(table.statusPageId, table.sreIncidentId).where(sql`${table.sreIncidentId} is not null`),
     incidentsStatusPageCreatedIdx: index("incidents_status_page_created_idx").on(table.statusPageId, table.createdAt.desc().nullsFirst()),
     incidentsCreatedByUserIdIdx: index("incidents_created_by_user_id_idx").on(table.createdByUserId),
+    incidentsStatusCheck: check("incidents_status_check", inValues(table.status, INCIDENT_STATUS_VALUES)),
+    incidentsImpactCheck: check("incidents_impact_check", inValues(table.impact, INCIDENT_IMPACT_VALUES)),
   }));
 
 /**
@@ -265,6 +270,7 @@ export const incidentUpdates = pgTable("incident_updates", {
   (table) => [
     index("incident_updates_created_by_user_id_idx").on(table.createdByUserId),
     index("incident_updates_incident_id_idx").on(table.incidentId),
+    check("incident_updates_status_check", inValues(table.status, INCIDENT_STATUS_VALUES)),
   ]);
 
 /**
@@ -397,6 +403,7 @@ export const statusPageSubscribers = pgTable("status_page_subscribers", {
     .where(sql`unsubscribe_token IS NOT NULL`),
     statusPageSubscribersActiveIdx: index("status_page_subscribers_active_idx").on(table.statusPageId).where(sql`purge_at IS NULL`),
     statusPageSubscribersStatusPageIdIdx: index("status_page_subscribers_status_page_id_idx").on(table.statusPageId),
+    statusPageSubscribersModeCheck: check("status_page_subscribers_mode_check", sql`${table.mode} IN ('email', 'webhook', 'slack')`),
   })
 );
 

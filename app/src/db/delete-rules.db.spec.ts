@@ -175,7 +175,7 @@ describe("foreign key delete rules", () => {
     await sql`INSERT INTO projects (id, organization_id, name) VALUES (${projectId}, ${orgId}, 'p')`;
     await sql`INSERT INTO private_agents (id, organization_id, name) VALUES (${agentId}, ${orgId}, 'a')`;
     await sql`INSERT INTO external_connectors (id, organization_id, name, type, private_agent_id) VALUES (${connectorId}, ${orgId}, 'c', 'http', ${agentId})`;
-    await sql`INSERT INTO private_agent_jobs (id, organization_id, project_id, private_agent_id, connector_id, authorized_by, job_class, job_spec_hash, policy_decision_hash, idempotency_key) VALUES (${id()}, ${orgId}, ${projectId}, ${agentId}, ${connectorId}, 'x', 'y', 'h', 'h', ${id()})`;
+    await sql`INSERT INTO private_agent_jobs (id, organization_id, project_id, private_agent_id, connector_id, authorized_by, job_class, job_spec_hash, policy_decision_hash, idempotency_key) VALUES (${id()}, ${orgId}, ${projectId}, ${agentId}, ${connectorId}, 'x', 'network_check', 'h', 'h', ${id()})`;
 
     await expect(
       sql`DELETE FROM private_agents WHERE id = ${agentId}`,
