@@ -160,4 +160,24 @@ describe("GET /api/alerts/history rows", () => {
       "Deleted channel", "slack", "legacy-email",
     ]);
   });
+
+  it("serialises raw timestamptz text as ISO and keeps a missing sent_at null", async () => {
+    requireAuthContext.mockResolvedValue({
+      userId: "u1", organizationId: "org-a",
+      project: { id: "project-a", name: "A", organizationId: "org-a", userRole: "project_editor" }, isCliAuth: false,
+    });
+    db.execute.mockImplementation(async (q: { queryChunks: unknown[] }) => {
+      const text = JSON.stringify(q.queryChunks);
+      if (text.includes("information_schema")) return [{ exists: true }];
+      if (text.includes("ORDER BY")) {
+        return [
+          row("t1", "legacy-email", { timestamp: "2026-11-02 08:00:00.123456+00" }),
+          row("t2", "legacy-email", { timestamp: null }),
+        ];
+      }
+      return [];
+    });
+    const body = await (await GET(new NextRequest("http://localhost/api/alerts/history"))).json();
+    expect(body.map((r: { timestamp: string | null }) => r.timestamp)).toEqual(["2026-11-02T08:00:00.123Z", null]);
+  });
 });

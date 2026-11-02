@@ -359,8 +359,7 @@ export class MonitorCycleProcessor implements OnModuleInit, OnModuleDestroy {
   }
 
   private async refreshLag(now: Date): Promise<void> {
-    // Computed in SQL: the driver returns timestamp-without-time-zone values that Node would
-    // otherwise parse in its local zone.
+    // Computed in SQL: the driver returns timestamp text that Node would parse inconsistently.
     const at = now.toISOString();
     const [lag] = await this.dbService.db.execute<{
       arrival: string | null;

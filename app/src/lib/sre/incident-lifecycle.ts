@@ -565,7 +565,7 @@ export async function applySourceRecovery(
   if (open.length === 0) return { resolved: [], recovered: [] };
 
   // A failure alert newer than this recovery means the recovery is stale; leave the incident alone.
-  // Compared in SQL: sent_at is a timestamp without time zone, so parsing it in JS depends on the host TZ.
+  // Compared in SQL: comparing in SQL avoids parsing the driver's timestamp text in JS.
   const [newerFailure] = await tx
     .select({ id: alertHistory.id })
     .from(alertHistory)

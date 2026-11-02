@@ -17,7 +17,7 @@ const maintenanceUrl = process.env.TEST_DATABASE_URL;
 if (!maintenanceUrl) throw new Error("TEST_DATABASE_URL is required for database integration tests.");
 
 const suffix = randomUUID().replace(/-/g, "").slice(0, 12);
-const names = { utc: `tstz_utc_${suffix}`, ny: `tstz_ny_${suffix}` };
+const names = { utc: `tstz_utc_${suffix}`, ny: `tstz_ny_${suffix}`, empty: `tstz_empty_${suffix}` };
 let maintenance: ReturnType<typeof postgres>;
 let workDir: string;
 let beforeDir: string;
@@ -60,8 +60,10 @@ beforeAll(async () => {
   for (const name of Object.values(names)) await maintenance.unsafe(`CREATE DATABASE "${name}"`);
   await maintenance.unsafe(`ALTER DATABASE "${names.utc}" SET TimeZone = 'UTC'`);
   await maintenance.unsafe(`ALTER DATABASE "${names.ny}" SET TimeZone = 'America/New_York'`);
+  await maintenance.unsafe(`ALTER DATABASE "${names.empty}" SET TimeZone = 'America/New_York'`);
   for (const name of Object.values(names)) {
     await migrate(name);
+    if (name === names.empty) continue; // stays empty: the guard only protects existing data
     await withDb(name, (db) =>
       db`INSERT INTO organization (id, name, created_at) VALUES (${(orgIds[name] = randomUUID())}, 'o', '2026-01-01 12:00:00')`,
     );
@@ -74,6 +76,10 @@ afterAll(async () => {
   await maintenance?.end({ timeout: 5 });
 });
 
+const PARTIAL_INDEXES = ["private_agent_jobs_lease_expires_at_idx", "status_page_notification_deliveries_retention_idx"];
+const partialIndexDefs = (db: ReturnType<typeof postgres>) =>
+  db`SELECT indexname, indexdef FROM pg_indexes WHERE indexname IN ${db(PARTIAL_INDEXES)} ORDER BY indexname`;
+
 const restore = () =>
   cpSync(path.join(MIGRATIONS_DIR, target), path.join(beforeDir, "src/db/migrations", target));
 
@@ -84,6 +90,8 @@ describe("0053_timestamptz", () => {
       indexes: (await db`SELECT count(*)::int AS count FROM pg_indexes WHERE schemaname = 'public'`)[0].count as number,
     }));
     expect(before.naive).toBeGreaterThan(200);
+    const indexesBefore = await withDb(names.utc, partialIndexDefs);
+    expect(indexesBefore).toHaveLength(2);
     restore();
     await migrate(names.utc);
 
@@ -91,6 +99,8 @@ describe("0053_timestamptz", () => {
       expect(await naiveCount(db)).toBe(0);
       const [{ count }] = await db`SELECT count(*)::int AS count FROM pg_indexes WHERE schemaname = 'public'`;
       expect(count).toBe(before.indexes);
+      // Recreated partial indexes keep exactly their previous definition.
+      expect([...(await partialIndexDefs(db))]).toEqual([...indexesBefore]);
       const [row] = await db`SELECT created_at::text AS text, extract(epoch FROM created_at)::bigint AS epoch
         FROM organization WHERE id = ${orgIds[names.utc]}`;
       expect(row.text).toBe("2026-01-01 12:00:00+00");
@@ -105,12 +115,25 @@ describe("0053_timestamptz", () => {
     const naive = await withDb(names.ny, naiveCount);
     restore();
     await expect(migrate(names.ny)).rejects.toMatchObject({
-      stderr: expect.stringContaining("requires the database session TimeZone to be UTC"),
+      code: expect.any(Number),
+      stderr: expect.stringContaining("Do not just change the timezone setting"),
     });
+    await expect(migrate(names.ny)).rejects.not.toMatchObject({ code: 0 });
     await withDb(names.ny, async (db) => {
       expect(await naiveCount(db)).toBe(naive);
       const [row] = await db`SELECT created_at::text AS text FROM organization WHERE id = ${orgIds[names.ny]}`;
       expect(row.text).toBe("2026-01-01 12:00:00");
+    });
+  }, 180_000);
+
+  it("migrates an empty non-UTC database completely (nothing to protect, conversion is exact)", async () => {
+    restore();
+    await migrate(names.empty);
+    await withDb(names.empty, async (db) => {
+      expect(await naiveCount(db)).toBe(0);
+      const [{ count }] = await db`SELECT count(*)::int AS count FROM information_schema.columns
+        WHERE table_schema = 'public' AND data_type = 'timestamp with time zone'`;
+      expect(count).toBeGreaterThan(250);
     });
   }, 180_000);
 });
