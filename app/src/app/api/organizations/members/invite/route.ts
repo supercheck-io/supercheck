@@ -322,11 +322,11 @@ export async function POST(request: NextRequest) {
         return Number(memberRow?.count || 0) + Number(pendingRow?.count || 0);
       },
       insert: async (executor) => {
-        // An expired invite stays "pending" in the table; retire it so the one-pending-per-address
-        // unique index lets the new invitation in.
+        // An expired invite stays "pending" in the table; supersede it (status "cancelled", like the cancel
+        // route, so the list hides it) so the one-pending-per-address unique index lets the new one in.
         await executor
           .update(invitation)
-          .set({ status: "expired" })
+          .set({ status: "cancelled" })
           .where(
             and(
               eq(invitation.organizationId, organizationId),
@@ -349,7 +349,18 @@ export async function POST(request: NextRequest) {
           .returning();
         return created;
       },
+    }).catch((error: unknown) => {
+      // A concurrent invite for the same address won the one-pending-per-address unique index.
+      const code = (error as { code?: string; cause?: { code?: string } })?.code ?? (error as { cause?: { code?: string } })?.cause?.code;
+      if (code === "23505") return null;
+      throw error;
     });
+    if (!invited) {
+      return NextResponse.json(
+        { error: "Invitation already sent to this email" },
+        { status: 400 },
+      );
+    }
 
     if (!invited.ok && invited.busy) {
       return NextResponse.json(

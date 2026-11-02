@@ -258,9 +258,11 @@ describe("existing data that violates a constraint", () => {
     await insert(dirty, "organization", { id: dupB, name: "b", created_at: new Date(), polar_customer_id: "dup" });
     await insert(dirty, "projects", { id: project, organization_id: org, name: "p" });
     await insert(dirty, "user", { id: user, name: "u", email: `${user}@example.test` });
-    const invite = { organization_id: org, inviter_id: user, status: "pending", expires_at: new Date(Date.now() + 1e9) };
-    await insert(dirty, "invitation", { id: id(), email: "Dev@example.test", ...invite });
-    await insert(dirty, "invitation", { id: id(), email: "dev@example.test", ...invite });
+    // The old invite route allowed re-inviting after expiry, leaving the stale row "pending".
+    const invite = { organization_id: org, inviter_id: user, status: "pending" };
+    const stale = id();
+    await insert(dirty, "invitation", { id: stale, email: "Dev@example.test", ...invite, expires_at: new Date(Date.now() - 1e9) });
+    await insert(dirty, "invitation", { id: id(), email: "dev@example.test", ...invite, expires_at: new Date(Date.now() + 1e9) });
     const [kept, merged, dangling] = [id(), id(), id()];
     const service = { organization_id: org, project_id: project };
     await insert(dirty, "sre_services", { id: kept, ...service, name: "kept" });
@@ -276,12 +278,19 @@ describe("existing data that violates a constraint", () => {
     await insert(dirty, "incident_template_components", { id: id(), template_id: template, component_id: component });
     const orphanTest = id();
     await insert(dirty, "tests", { id: orphanTest, title: "no tenant" });
+    // Rows whose tenant is derivable from a parent.
+    const [derivedTest, derivedJob, derivedRun] = [id(), id(), id()];
+    await insert(dirty, "tests", { id: derivedTest, title: "has project", project_id: project });
+    await insert(dirty, "jobs", { id: derivedJob, name: "j", project_id: project });
+    await insert(dirty, "runs", { id: derivedRun, job_id: derivedJob });
+    await dirty`UPDATE jobs SET organization_id = NULL WHERE id = ${derivedJob}`;
     await insert(dirty, "alert_history", { id: id(), message: "m", type: "monitor_failure", target: "t", target_type: "monitor", provider: "email" });
 
     // Apply 0050 on top of it.
     cpSync(path.join(MIGRATIONS_DIR, target as string), path.join(before, "src/db/migrations", target as string));
-    const { stdout } = await migrate(dirtyName, before);
-    expect(stdout).toContain("left NOT VALID");
+    const { stdout, stderr } = await migrate(dirtyName, before);
+    // The post-commit validator reports what it could not validate.
+    expect(`${stdout}${stderr}`).toContain("tests_organization_id_required_check left NOT VALID");
 
     // Dangling ids are cleared, valid ones are kept; no row is deleted.
     const services = await dirty`SELECT id, merged_into_service_id, runbook_id FROM sre_services`;
@@ -290,6 +299,14 @@ describe("existing data that violates a constraint", () => {
     expect(byId.get(dangling)).toMatchObject({ merged_into_service_id: null, runbook_id: null });
     expect(services).toHaveLength(3);
     expect(await dirty`SELECT 1 FROM tests WHERE id = ${orphanTest}`).toHaveLength(1);
+
+    // Tenant columns are filled from the parent; a row with no parent stays NULL.
+    expect((await dirty`SELECT organization_id FROM tests WHERE id = ${derivedTest}`)[0].organization_id).toBe(org);
+    expect((await dirty`SELECT organization_id FROM jobs WHERE id = ${derivedJob}`)[0].organization_id).toBe(org);
+    expect((await dirty`SELECT project_id FROM runs WHERE id = ${derivedRun}`)[0].project_id).toBe(project);
+    expect((await dirty`SELECT organization_id FROM tests WHERE id = ${orphanTest}`)[0].organization_id).toBeNull();
+    // The superseded stale invitation is cancelled, the live one stays pending.
+    expect((await dirty`SELECT status FROM invitation WHERE id = ${stale}`)[0].status).toBe("cancelled");
 
     // Counters are 0 and required.
     expect(await dirty`SELECT 1 FROM organization WHERE id = ${org} AND playwright_minutes_used = 0 AND k6_vu_minutes_used = 0 AND ai_credits_used = 0`).toHaveLength(1);
@@ -324,7 +341,7 @@ describe("existing data that violates a constraint", () => {
     expect(def("organization_subscription_id_idx")).toContain("UNIQUE");
     expect(def("organization_polar_customer_id_idx")).toBeDefined();
     expect(def("organization_polar_customer_id_idx")).not.toContain("UNIQUE");
-    expect(def("invitation_pending_org_email_unique_idx")).toBeUndefined();
+    expect(def("invitation_pending_org_email_unique_idx")).toContain("UNIQUE");
     expect(def("sre_service_owners_unique_idx")).toBeUndefined();
     expect(def("sre_service_owners_service_id_idx")).toBeDefined();
     expect(def("incident_template_components_unique_idx")).toContain("UNIQUE");

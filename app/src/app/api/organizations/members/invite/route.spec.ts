@@ -112,7 +112,13 @@ describe("seat limit", () => {
     expect(values).toHaveBeenCalledWith(expect.objectContaining({ organizationId: "host", status: "pending" }));
   });
 
-  it("expires stale pending invitations for the address before inserting a new one", async () => {
+  it("answers 400 when a concurrent invite wins the unique index", async () => {
+    useTransaction();
+    values.mockReturnValue({ returning: jest.fn(async () => { throw Object.assign(new Error("duplicate"), { code: "23505" }); }) });
+    expect((await POST(request())).status).toBe(400);
+  });
+
+  it("supersedes stale pending invitations for the address before inserting a new one", async () => {
     useTransaction();
     expect((await POST(request())).status).toBe(200);
     expect(mockUpdate).toHaveBeenCalledTimes(1);

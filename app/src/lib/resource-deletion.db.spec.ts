@@ -44,7 +44,7 @@ beforeAll(async () => {
     CREATE TABLE monitor_results (id text PRIMARY KEY, monitor_id text REFERENCES monitors(id), test_execution_id text, test_report_s3_url text);
     CREATE TABLE runs (id text PRIMARY KEY, project_id text, job_id text, status text, trigger text, started_at timestamptz, report_s3_url text, logs_s3_url text, metadata jsonb, completed_at timestamptz, error_details text);
     CREATE TABLE reports (id text PRIMARY KEY, entity_id text, entity_type text, report_path text, s3_url text);
-    CREATE TABLE k6_performance_runs (id text PRIMARY KEY, run_id text);
+    CREATE TABLE k6_performance_runs (id text PRIMARY KEY, run_id text, job_id text);
     CREATE TABLE sre_service_resources (id text PRIMARY KEY, resource_type text, resource_id text);
     CREATE TABLE trial_suspensions (id text PRIMARY KEY, resource_type text, resource_id text);
     INSERT INTO runs (id, project_id, status) VALUES ('old-run', 'project', 'passed'), ('new-run', 'project', 'passed');

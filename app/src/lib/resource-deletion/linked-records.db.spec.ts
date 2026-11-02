@@ -19,6 +19,7 @@ jest.mock("@/utils/db", () => ({
 import {
   deleteStatusPageWithLinks,
   removeK6RunLinks,
+  removeK6RunLinksForJob,
   removeServiceResourceLinks,
   removeTrialSuspensions,
 } from "./linked-records";
@@ -91,6 +92,23 @@ it("removes the k6 run links of the deleted runs only", async () => {
   ]);
   await removeK6RunLinks(mockDatabase, [runA.id]);
   expect((await linksOf(service.id)).map((l) => l.resourceId)).toEqual([k6B.id]);
+});
+
+it("removes the k6 run links of every result of a job, including ones created after a snapshot", async () => {
+  const { organization, project, service } = await seed();
+  const [job] = await mockDatabase.insert(schema.jobs).values({ organizationId: organization.id, projectId: project.id, name: "J", jobType: "k6" }).returning();
+  const [other] = await mockDatabase.insert(schema.jobs).values({ organizationId: organization.id, projectId: project.id, name: "O", jobType: "k6" }).returning();
+  const result = async (jobId: string) => {
+    const [run] = await mockDatabase.insert(schema.runs).values({ projectId: project.id, jobId }).returning();
+    const [k6] = await mockDatabase.insert(schema.k6PerformanceRuns).values({ runId: run.id, jobId, organizationId: organization.id, projectId: project.id, status: "passed" }).returning();
+    await mockDatabase.insert(schema.sreServiceResources).values({ serviceId: service.id, resourceType: "k6_run", resourceId: k6.id });
+    return k6.id;
+  };
+  await result(job.id);
+  await result(job.id);
+  const kept = await result(other.id);
+  await removeK6RunLinksForJob(mockDatabase, job.id);
+  expect((await linksOf(service.id)).map((l) => l.resourceId)).toEqual([kept]);
 });
 
 it("removes the trial suspension of the deleted resource", async () => {

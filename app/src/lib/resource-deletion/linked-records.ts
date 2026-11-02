@@ -1,6 +1,6 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, or } from "drizzle-orm";
 import { db } from "@/utils/db";
-import { k6PerformanceRuns, sreServiceResources, statusPageComponents, statusPages, trialSuspensions } from "@/db/schema";
+import { k6PerformanceRuns, runs, sreServiceResources, statusPageComponents, statusPages, trialSuspensions } from "@/db/schema";
 
 // sre_service_resources.resource_id and trial_suspensions.resource_id point at several tables, so no
 // foreign key can cascade them. Every delete path calls these inside its own transaction instead.
@@ -26,6 +26,27 @@ export async function removeK6RunLinks(tx: Executor, runIds: string[]) {
       inArray(
         sreServiceResources.resourceId,
         tx.select({ id: k6PerformanceRuns.id }).from(k6PerformanceRuns).where(inArray(k6PerformanceRuns.runId, runIds)),
+      ),
+    ),
+  );
+}
+
+/** Same as removeK6RunLinks for every k6 result of a job, resolved inside the caller's transaction. */
+export async function removeK6RunLinksForJob(tx: Executor, jobId: string) {
+  await tx.delete(sreServiceResources).where(
+    and(
+      eq(sreServiceResources.resourceType, "k6_run"),
+      inArray(
+        sreServiceResources.resourceId,
+        tx
+          .select({ id: k6PerformanceRuns.id })
+          .from(k6PerformanceRuns)
+          .where(
+            or(
+              eq(k6PerformanceRuns.jobId, jobId),
+              inArray(k6PerformanceRuns.runId, tx.select({ id: runs.id }).from(runs).where(eq(runs.jobId, jobId))),
+            ),
+          ),
       ),
     ),
   );

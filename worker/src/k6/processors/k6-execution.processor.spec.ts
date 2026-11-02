@@ -61,6 +61,9 @@ describe('k6 durable completion', () => {
         .fn()
         .mockReturnValue({ where: transactionWhere });
       const values = jest.fn().mockResolvedValue(undefined);
+      const forKeyShare = jest
+        .fn()
+        .mockResolvedValue(testExists ? [{ id: 'test-id' }] : []);
       const tx = {
         query: {
           k6PerformanceRuns: {
@@ -68,12 +71,12 @@ describe('k6 durable completion', () => {
               .fn()
               .mockResolvedValue(existing ? { id: 'existing' } : undefined),
           },
-          tests: {
-            findFirst: jest
-              .fn()
-              .mockResolvedValue(testExists ? { id: 'test-id' } : undefined),
-          },
         },
+        select: jest.fn().mockReturnValue({
+          from: jest.fn().mockReturnValue({
+            where: jest.fn().mockReturnValue({ for: forKeyShare }),
+          }),
+        }),
         insert: jest.fn().mockReturnValue({ values }),
         update: jest.fn().mockReturnValue({ set: transactionSet }),
       };
@@ -170,6 +173,7 @@ describe('k6 durable completion', () => {
       );
       expect(tx.insert).toHaveBeenCalledTimes(existing ? 0 : 1);
       if (!existing) {
+        expect(forKeyShare).toHaveBeenCalledWith('key share');
         // A test deleted mid-run must not fail the result: the link is dropped.
         expect(values).toHaveBeenCalledWith(
           expect.objectContaining({ testId: testExists ? 'test-id' : null }),
