@@ -15,7 +15,7 @@ let mockUser: { id: string; email: string; name: string };
 let mockToken: string;
 jest.mock("@/utils/db", () => ({ get db() { return mockDatabase; } }));
 jest.mock("@/lib/session", () => ({ getCurrentUser: () => mockUser }));
-jest.mock("@/utils/auth", () => ({ auth: { api: { getSession: () => ({ session: { token: mockToken } }) } } }));
+jest.mock("@/utils/auth", () => ({ auth: { api: { getSession: () => ({ session: { token: mockToken }, user: mockUser }) } } }));
 jest.mock("next/headers", () => ({ headers: () => new Headers() }));
 jest.mock("@/lib/feature-flags", () => ({ isCloudHosted: () => true }));
 jest.mock("@/lib/services/organization-customer", () => ({ ensurePolarCustomerAndLink: jest.fn() }));

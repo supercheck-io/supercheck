@@ -210,3 +210,16 @@ it("says the subscription was already cancelled when storage cleanup fails", asy
   expect((error as StorageCleanupError).subscriptionCancelled).toBe(true);
   expect((error as Error).message).toMatch(/subscription was already cancelled/);
 });
+
+it("lets an owner delete an organization that has other members, and refuses a non-owner", async () => {
+  const [owner] = await mockDatabase.insert(schema.user).values({ id: randomUUID(), name: "O", email: `${randomUUID()}@example.test` }).returning();
+  const [viewer] = await mockDatabase.insert(schema.user).values({ id: randomUUID(), name: "V", email: `${randomUUID()}@example.test` }).returning();
+  const { organization } = await seed();
+  await mockDatabase.insert(schema.member).values([
+    { organizationId: organization.id, userId: owner.id, role: "org_owner", createdAt: new Date() },
+    { organizationId: organization.id, userId: viewer.id, role: "project_viewer", createdAt: new Date() },
+  ]);
+  await expect(deleteOrganizationCompletely(organization.id, { ownerUserId: viewer.id }, viewer.id)).rejects.toBeInstanceOf(OrganizationMembershipChangedError);
+  await expect(deleteOrganizationCompletely(organization.id, { ownerUserId: owner.id }, owner.id)).resolves.toEqual({ subscriptionCancelled: false });
+  expect(await mockDatabase.select().from(schema.member).where(eq(schema.member.organizationId, organization.id))).toHaveLength(0);
+});

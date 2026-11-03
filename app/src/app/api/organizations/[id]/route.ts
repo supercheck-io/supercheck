@@ -7,9 +7,12 @@ import { organization, member, projects, session } from '@/db/schema';
 import { eq, and, count } from 'drizzle-orm';
 import { Role } from '@/lib/rbac/permissions';
 import { z } from 'zod';
+import { BillingCancellationError, OrganizationMembershipChangedError, StorageCleanupError, deleteOrganizationCompletely } from '@/lib/organization-teardown';
+import { isImpersonatedSession } from '@/lib/rbac/middleware';
+import { checkAdminRateLimit } from '@/lib/session-security';
 import { requireSameOriginRequest } from '@/lib/security/same-origin';
 class OrganizationDeletionError extends Error {
-  constructor(message: string, readonly status: 403 | 404 | 409) { super(message); }
+  constructor(message: string, readonly status: 403 | 404 | 409 | 502) { super(message); }
 }
 
 /**
@@ -252,29 +255,38 @@ export async function DELETE(
       );
     }
     
-    await db.transaction(async tx => {
-      const [org] = await tx.select({ subscriptionId: organization.subscriptionId, polarCustomerId: organization.polarCustomerId })
-        .from(organization).where(eq(organization.id, organizationId)).limit(1).for('update');
-      if (!org) throw new OrganizationDeletionError('Organization not found', 404);
-      // Recheck ownership inside the transaction and hold it during deletion.
-      const [ownership] = await tx.select({ id: member.id }).from(member)
-        .where(and(eq(member.organizationId, organizationId), eq(member.userId, userId), eq(member.role, 'org_owner')))
-        .limit(1).for('share');
-      if (!ownership) throw new OrganizationDeletionError('Only organization owners can delete organizations', 403);
-      if (org.subscriptionId || org.polarCustomerId) {
-        throw new OrganizationDeletionError('Contact support to close a billing-linked organization. Deleting it here would not cancel billing.', 409);
+    // Irreversible: never from an impersonated session, rate limited, and the caller must name the org.
+    if (await isImpersonatedSession()) {
+      return NextResponse.json({ error: 'Stop impersonating before deleting an organization' }, { status: 403 });
+    }
+    const limit = await checkAdminRateLimit(userId, 'delete_own_organization', 5, 10 * 60 * 1000);
+    if (!limit.allowed) {
+      return NextResponse.json({ error: 'Too many attempts. Try again later.' }, { status: 429 });
+    }
+    const body = ((await request.json().catch(() => null)) ?? {}) as { confirmOrganizationId?: unknown };
+    if (body.confirmOrganizationId !== organizationId) {
+      return NextResponse.json({ error: 'Confirm the organization to delete (confirmOrganizationId)' }, { status: 400 });
+    }
+
+    // Full teardown: ends the subscription, removes every project, its data and stored files.
+    // The owner check is repeated under the organization row lock.
+    try {
+      const deleted = await deleteOrganizationCompletely(organizationId, { ownerUserId: userId }, userId);
+      if (!deleted) throw new OrganizationDeletionError('Organization not found', 404);
+    } catch (error) {
+      if (error instanceof OrganizationMembershipChangedError) {
+        throw new OrganizationDeletionError('Only organization owners can delete organizations', 403);
       }
-      const [project] = await tx.select({ id: projects.id }).from(projects)
-        .where(eq(projects.organizationId, organizationId)).limit(1);
-      if (project) {
-        throw new OrganizationDeletionError('This organization contains projects. Contact your administrator or support for data removal before deleting it.', 409);
+      if (error instanceof BillingCancellationError || error instanceof StorageCleanupError) {
+        throw new OrganizationDeletionError(error.message, 502);
       }
-      // Empty organizations may still be selected in browser sessions.
-      await tx.update(session).set({ activeOrganizationId: null, activeProjectId: null })
-        .where(eq(session.activeOrganizationId, organizationId));
-      await tx.delete(organization).where(eq(organization.id, organizationId));
-    });
-    
+      const code = (error as { code?: string; cause?: { code?: string } } | null);
+      if (code?.code === '55P03' || code?.cause?.code === '55P03') {
+        throw new OrganizationDeletionError('The organization is busy. Try again in a moment.', 409);
+      }
+      throw error;
+    }
+
     return NextResponse.json({
       success: true,
       message: 'Organization deleted successfully'

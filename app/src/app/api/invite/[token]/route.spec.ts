@@ -96,7 +96,7 @@ describe("invitation privacy and acceptance", () => {
 
   function acceptance({ projectRows = [{ id: "22222222-2222-4222-8222-222222222222" }], sessionRows = [{ id: "session" }], claimRows = [{ id: invite.id }] } = {}) {
     (isCloudHosted as jest.Mock).mockReturnValue(false);
-    auth.api.getSession.mockResolvedValue({ session: { token: "browser-token" } });
+    auth.api.getSession.mockResolvedValue({ session: { token: "browser-token" }, user: { id: "user-1", banned: false } });
     db.select.mockReset().mockReturnValueOnce(selectRows([{ ...invite, role: "project_viewer" }]))
       .mockReturnValueOnce(selectRows([]));
     const claimWhere = jest.fn().mockReturnValue({ returning: jest.fn().mockResolvedValue(claimRows) });

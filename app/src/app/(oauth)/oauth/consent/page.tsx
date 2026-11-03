@@ -1,4 +1,5 @@
 import { headers } from "next/headers";
+import { isCredentialOwnerActive } from "@/lib/security/credential-owner";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { verifyOAuthQueryParams } from "@better-auth/oauth-provider";
@@ -81,7 +82,7 @@ export default async function McpConsentPage({
 
   const requestHeaders = await headers();
   const session = await auth.api.getSession({ headers: requestHeaders });
-  if (!session?.user) {
+  if (!session?.user || !isCredentialOwnerActive(session.user)) {
     // The sign-in page replays this request against the authorize endpoint once signed in.
     redirect(`/sign-in?${oauthQuery}`);
   }

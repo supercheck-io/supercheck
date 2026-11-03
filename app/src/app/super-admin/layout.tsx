@@ -1,4 +1,5 @@
 import { AppSidebar } from "@/components/app-sidebar";
+import { getCachedAuthSession } from "@/lib/session-cache";
 import { Separator } from "@/components/ui/separator";
 import {
   SidebarInset,
@@ -8,8 +9,6 @@ import {
 import { BreadcrumbProvider } from "@/components/breadcrumb-context";
 import { BreadcrumbDisplay } from "@/components/breadcrumb-display";
 import { CommandSearch } from "@/components/ui/command-search";
-import { auth } from "@/utils/auth";
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { NavUser } from "@/components/nav-user";
 import { DemoBadge } from "@/components/demo-badge";
@@ -28,9 +27,7 @@ export default async function AdminLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
+  const session = await getCachedAuthSession();
 
   if (!session) {
     redirect("/sign-in");

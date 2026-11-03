@@ -4,12 +4,21 @@ import { NextResponse } from "next/server";
 import { isOAuthEndpointDenied, withReachableEndpointsOnly } from "@/lib/mcp/http-policy";
 import { isMcpServerEnabled } from "@/lib/mcp/config";
 import { prepareMcpOAuthRequest } from "@/lib/mcp/request-policy";
+import { isCredentialOwnerActive } from "@/lib/security/credential-owner";
 
 const handlers = toNextJsHandler(auth);
 
 // Organization writes must use the dedicated APIs with app RBAC, limits and
 // audit logging. Default-deny also covers new routes in future plugin releases.
 const allowedOrganizationReads = new Set(["list"]);
+
+function decodedPath(request: Request): string | null {
+  try {
+    return decodeURIComponent(new URL(request.url).pathname).replace(/\/+$/, "");
+  } catch {
+    return null;
+  }
+}
 
 function organizationPolicyError(request: Request) {
   let path: string;
@@ -49,6 +58,13 @@ export async function GET(request: Request) {
   const prepared = isMcpServerEnabled() ? await prepareMcpOAuthRequest(request) : request;
   if (prepared instanceof Response) return prepared;
   const response = await handlers.GET(prepared);
+  // The client session check: a session that outlived a suspension reads as signed out (expired bans pass).
+  if (decodedPath(request) === "/api/auth/get-session" && response.ok) {
+    const body = await response.clone().json().catch(() => null) as { user?: { banned?: unknown; banExpires?: unknown } } | null;
+    if (body?.user && !isCredentialOwnerActive(body.user)) {
+      return NextResponse.json(null, { headers: { "Cache-Control": "no-store" } });
+    }
+  }
   // Better Auth's own copy of the metadata lists endpoints this route refuses; advertise only reachable ones.
   if (isMcpServerEnabled() && new URL(request.url).pathname.replace(/\/+$/, "") === "/api/auth/.well-known/oauth-authorization-server") {
     return withReachableEndpointsOnly(response);

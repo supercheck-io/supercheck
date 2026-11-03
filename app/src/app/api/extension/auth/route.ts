@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isCredentialOwnerActive } from "@/lib/security/credential-owner";
 import type { InferAPI } from "better-auth";
 import type { apiKey } from "@better-auth/api-key";
 import { defaultKeyHasher } from "@better-auth/api-key";
@@ -167,7 +168,7 @@ export async function POST(request: NextRequest) {
       headers: requestHeaders,
     });
 
-    if (!session?.user?.id) {
+    if (!session?.user?.id || !isCredentialOwnerActive(session.user)) {
       return NextResponse.json(
         { success: false, error: "Authentication required" },
         { status: 401 }
@@ -309,7 +310,7 @@ export async function DELETE(request: NextRequest) {
       headers: requestHeaders,
     });
 
-    if (!session?.user?.id) {
+    if (!session?.user?.id || !isCredentialOwnerActive(session.user)) {
       return NextResponse.json(
         { success: false, error: "Authentication required" },
         { status: 401 }

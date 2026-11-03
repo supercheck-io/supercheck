@@ -1,7 +1,6 @@
 import { NextRequest } from "next/server";
-import { headers } from "next/headers";
+import { getCachedAuthSession } from "@/lib/session-cache";
 import { z } from "zod";
-import { auth } from "@/utils/auth";
 import { isImpersonatedSession } from "@/lib/rbac/middleware";
 import { requireSameOriginRequest } from "@/lib/security/same-origin";
 import { logAuditEvent } from "@/lib/audit-logger";
@@ -21,7 +20,7 @@ export async function DELETE(
   const crossOrigin = requireSameOriginRequest(request);
   if (crossOrigin) return crossOrigin;
 
-  const session = await auth.api.getSession({ headers: await headers() });
+  const session = await getCachedAuthSession();
   if (!session?.user) return mcpJson({ error: "authentication_required" }, 401);
 
   if (await isImpersonatedSession()) {

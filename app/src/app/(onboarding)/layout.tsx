@@ -1,5 +1,4 @@
-import { auth } from "@/utils/auth";
-import { headers } from "next/headers";
+import { getCachedAuthSession } from "@/lib/session-cache";
 import { redirect } from "next/navigation";
 import { QueryProvider } from "@/lib/query-provider";
 import { CheckIcon } from "@/components/logo/supercheck-logo";
@@ -24,9 +23,7 @@ export default async function OnboardingLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
+  const session = await getCachedAuthSession();
 
   if (!session) {
     redirect("/sign-in");

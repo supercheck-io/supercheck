@@ -149,6 +149,13 @@ describe("Extension auth route", () => {
     expect(mockAuth.api.createApiKey).not.toHaveBeenCalled();
   });
 
+  it("refuses to mint a recorder key for a suspended session", async () => {
+    mockAuth.api.getSession.mockResolvedValue({ user: { id: "user-1", banned: true, banExpires: null } });
+    const response = await POST(postRequest());
+    expect(response.status).toBe(401);
+    expect(mockAuth.api.createApiKey).not.toHaveBeenCalled();
+  });
+
   it("forbids a viewer from creating a recorder API key", async () => {
     mockAuth.api.getSession.mockResolvedValue({ user: { id: "viewer-1" } });
     mockCanCreateKey.mockReturnValue(false);

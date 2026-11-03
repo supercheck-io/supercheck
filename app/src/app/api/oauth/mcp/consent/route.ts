@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { isCredentialOwnerActive } from "@/lib/security/credential-owner";
 import { headers } from "next/headers";
 import { z } from "zod";
 import { auth } from "@/utils/auth";
@@ -42,7 +43,7 @@ export async function POST(request: NextRequest) {
 
   const requestHeaders = await headers();
   const session = await auth.api.getSession({ headers: requestHeaders });
-  if (!session?.user) return mcpJson({ error: "authentication_required" }, 401);
+  if (!session?.user || !isCredentialOwnerActive(session.user)) return mcpJson({ error: "authentication_required" }, 401);
 
   // A connection authorized while impersonating would belong to the impersonated
   // user and outlive the impersonation.

@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getCachedAuthSession } from "@/lib/session-cache";
 import { getActiveTrial, hasPaidAccess } from "@/lib/execution/trial-limits";
 import { db } from '@/utils/db';
 import { invitation, member, organization, planLimits, projects, projectMembers, session, user as userTable } from '@/db/schema';
 import { eq, and, inArray, desc, asc, gt, sql } from 'drizzle-orm';
 import { requireUserAuthContext, isAuthError } from '@/lib/auth-context';
 import { getCurrentUser } from '@/lib/session';
-import { auth } from '@/utils/auth';
-import { headers } from 'next/headers';
 import { withPlanLimitLock } from "@/lib/middleware/plan-limit-lock";
 import { isCloudHosted, isPolarEnabled } from '@/lib/feature-flags';
 
@@ -66,7 +65,7 @@ export async function GET(
       );
     }
 
-    const viewer = await auth.api.getSession({ headers: await headers() });
+    const viewer = await getCachedAuthSession();
     const isMatchingUser = Boolean(viewer?.user?.email &&
       viewer.user.email.toLowerCase().trim() === invite.email.toLowerCase().trim());
     const canViewEmail = isMatchingUser;
@@ -220,7 +219,7 @@ export async function POST(
       );
     }
 
-    const sessionData = await auth.api.getSession({ headers: await headers() });
+    const sessionData = await getCachedAuthSession();
     if (!sessionData?.session?.token) {
       return NextResponse.json({ error: 'Please sign in again to accept the invitation' }, { status: 401 });
     }

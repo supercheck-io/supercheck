@@ -506,7 +506,8 @@ export async function requireAuth(): Promise<{
 export async function isImpersonatedSession(): Promise<boolean> {
   try {
     const authSession = await getCachedAuthSession();
-    if (!authSession) return false;
+    // No usable session (signed out or suspended): refuse, consistent with failing closed.
+    if (!authSession) return true;
     // The auth session may already carry the flag; honour it without waiting for the lookup.
     if ((authSession.session as { impersonatedBy?: string | null }).impersonatedBy) return true;
     const [dbSession] = await db

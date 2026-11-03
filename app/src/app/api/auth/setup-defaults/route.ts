@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getCachedAuthSession } from "@/lib/session-cache";
 import { db } from "@/utils/db";
 import {
   organization as orgTable,
@@ -12,8 +13,6 @@ import {
 } from "@/db/schema";
 import { getCurrentUser } from "@/lib/session";
 import { eq, and, gte, desc, asc, sql } from "drizzle-orm";
-import { auth } from "@/utils/auth";
-import { headers } from "next/headers";
 import { randomUUID } from "crypto";
 import {
   isCloudHosted,
@@ -118,7 +117,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const sessionData = await auth.api.getSession({ headers: await headers() });
+    const sessionData = await getCachedAuthSession();
     if (!sessionData?.session?.token) {
       return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 });
     }

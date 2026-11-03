@@ -1,69 +1,74 @@
 /** @jest-environment node */
 import { NextRequest } from "next/server";
-
 jest.mock("@/lib/auth-context", () => ({ requireUserAuthContext: jest.fn(), isAuthError: jest.fn(() => false) }));
-jest.mock("@/lib/rbac/middleware", () => ({ getUserOrgRole: jest.fn() }));
+jest.mock("@/lib/rbac/middleware", () => ({ getUserOrgRole: jest.fn(), isImpersonatedSession: jest.fn(async () => false) }));
+jest.mock("@/lib/session-security", () => ({ checkAdminRateLimit: jest.fn(async () => ({ allowed: true })) }));
 jest.mock("@/utils/db", () => ({ db: { transaction: jest.fn() } }));
-
-import { db } from "@/utils/db";
+jest.mock("@/lib/organization-teardown", () => {
+  class BillingCancellationError extends Error {}
+  class OrganizationMembershipChangedError extends Error {}
+  class StorageCleanupError extends Error {}
+  return { BillingCancellationError, OrganizationMembershipChangedError, StorageCleanupError, deleteOrganizationCompletely: jest.fn() };
+});
 import { requireUserAuthContext } from "@/lib/auth-context";
-import { getUserOrgRole } from "@/lib/rbac/middleware";
+import { getUserOrgRole, isImpersonatedSession } from "@/lib/rbac/middleware";
+import { deleteOrganizationCompletely } from "@/lib/organization-teardown";
 import { DELETE } from "./route";
 
-function rows(values: unknown[]) {
-  return {
-    from: jest.fn().mockReturnThis(), where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(),
-    for: jest.fn().mockResolvedValue(values), then: (resolve: (result: unknown[]) => unknown) => Promise.resolve(values).then(resolve),
-  };
-}
-const request = (origin = "https://app.supercheck.io") => new NextRequest("https://app.supercheck.io/api/organizations/org-a", { method: "DELETE", headers: { origin } });
-const params = { params: Promise.resolve({ id: "267cc333-3242-5fc2-821c-51a1a17b9580" }) };
+const ORG_ID = "267cc333-3242-5fc2-821c-51a1a17b9580";
+const params = { params: Promise.resolve({ id: ORG_ID }) };
+const del = (body: unknown = { confirmOrganizationId: ORG_ID }, origin = "https://app.supercheck.io") =>
+  DELETE(new NextRequest(`https://app.supercheck.io/api/organizations/${ORG_ID}`, { method: "DELETE", headers: { origin }, body: JSON.stringify(body) }), params);
+const errors = jest.requireMock("@/lib/organization-teardown") as Record<string, new (m: string) => Error>;
 
-describe("organization deletion", () => {
-  const set = jest.fn();
-  const tx = { select: jest.fn(), update: jest.fn(), delete: jest.fn() };
+describe("owner organization deletion", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     (requireUserAuthContext as jest.Mock).mockResolvedValue({ userId: "owner", isCliAuth: false });
     (getUserOrgRole as jest.Mock).mockResolvedValue("org_owner");
-    (db.transaction as jest.Mock).mockImplementation(callback => callback(tx));
-    tx.select.mockReset().mockReturnValueOnce(rows([{ subscriptionId: null, polarCustomerId: null }]))
-      .mockReturnValueOnce(rows([{ id: "owner-membership" }])).mockReturnValueOnce(rows([]));
-    set.mockReturnValue({ where: jest.fn().mockResolvedValue([]) });
-    tx.update.mockReturnValue({ set });
-    tx.delete.mockReturnValue({ where: jest.fn().mockResolvedValue([]) });
+    (deleteOrganizationCompletely as jest.Mock).mockResolvedValue({ subscriptionCancelled: true });
   });
 
-  it("clears selected session references before deleting an empty organization", async () => {
-    expect((await DELETE(request(), params)).status).toBe(200);
-    expect(set).toHaveBeenCalledWith({ activeOrganizationId: null, activeProjectId: null });
-    expect(tx.delete).toHaveBeenCalledTimes(1);
-    expect(tx.update.mock.invocationCallOrder[0]).toBeLessThan(tx.delete.mock.invocationCallOrder[0]);
+  it("tears the organization down for its owner, rechecking ownership under the lock", async () => {
+    expect((await del()).status).toBe(200);
+    expect(deleteOrganizationCompletely).toHaveBeenCalledWith(ORG_ID, { ownerUserId: "owner" }, "owner");
   });
 
-  it("returns a conflict for projects instead of relying on nonexistent cascades", async () => {
-    tx.select.mockReset().mockReturnValueOnce(rows([{}])).mockReturnValueOnce(rows([{ id: "owner-membership" }]))
-      .mockReturnValueOnce(rows([{ id: "project" }]));
-    expect((await DELETE(request(), params)).status).toBe(409);
-    expect(tx.delete).not.toHaveBeenCalled();
+  it("requires the organization to be confirmed", async () => {
+    expect((await del({})).status).toBe(400);
+    expect((await del(null)).status).toBe(400);
+    expect(deleteOrganizationCompletely).not.toHaveBeenCalled();
   });
 
-  it("keeps billing-linked organizations intact so a deletion cannot orphan billing", async () => {
-    tx.select.mockReset().mockReturnValueOnce(rows([{ polarCustomerId: "customer" }]))
-      .mockReturnValueOnce(rows([{ id: "owner-membership" }]));
-    expect((await DELETE(request(), params)).status).toBe(409);
-    expect(tx.delete).not.toHaveBeenCalled();
+  it("refuses non-owners, cross-origin requests, CLI tokens and impersonated sessions", async () => {
+    (getUserOrgRole as jest.Mock).mockResolvedValueOnce("org_admin");
+    expect((await del()).status).toBe(403);
+    expect((await del(undefined, "https://foreign.example")).status).toBe(403);
+    (requireUserAuthContext as jest.Mock).mockResolvedValueOnce({ userId: "owner", isCliAuth: true });
+    expect((await del()).status).toBe(403);
+    (isImpersonatedSession as jest.Mock).mockResolvedValueOnce(true);
+    expect((await del()).status).toBe(403);
+    expect(deleteOrganizationCompletely).not.toHaveBeenCalled();
   });
 
-  it("rejects cross-origin browser deletion and nonowners", async () => {
-    expect((await DELETE(request("https://foreign.example"), params)).status).toBe(403);
-    (getUserOrgRole as jest.Mock).mockResolvedValue("org_admin");
-    expect((await DELETE(request(), params)).status).toBe(403);
-    expect(db.transaction).not.toHaveBeenCalled();
+  it.each([
+    ["OrganizationMembershipChangedError", 403],
+    ["BillingCancellationError", 502],
+    ["StorageCleanupError", 502],
+  ])("maps %s to %i", async (name, status) => {
+    (deleteOrganizationCompletely as jest.Mock).mockRejectedValueOnce(new errors[name]("x"));
+    expect((await del()).status).toBe(status);
   });
 
-  it("reports a related-data conflict when another foreign key prevents deletion", async () => {
-    (db.transaction as jest.Mock).mockRejectedValueOnce({ cause: { code: "23503" } });
-    expect((await DELETE(request(), params)).status).toBe(409);
+  it("returns 429 without tearing down when the rate limit is exhausted", async () => {
+    const { checkAdminRateLimit } = jest.requireMock("@/lib/session-security") as { checkAdminRateLimit: jest.Mock };
+    checkAdminRateLimit.mockResolvedValueOnce({ allowed: false });
+    expect((await del()).status).toBe(429);
+    expect(deleteOrganizationCompletely).not.toHaveBeenCalled();
+  });
+
+  it("answers 409 when the organization row is busy (lock timeout)", async () => {
+    (deleteOrganizationCompletely as jest.Mock).mockRejectedValueOnce(Object.assign(new Error("lock"), { code: "55P03" }));
+    expect((await del()).status).toBe(409);
   });
 });
