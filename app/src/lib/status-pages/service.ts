@@ -21,7 +21,7 @@ import {
 import { logAuditEvent } from "@/lib/audit-logger";
 import { retireOrphanedSubscribers } from "@/lib/incident-notifications/retire-orphaned-subscribers";
 import { checkStatusPageLimit, checkFeatureAvailability } from "@/lib/middleware/plan-enforcement";
-import { insertWithinPlanLimit } from "@/lib/middleware/plan-limit-lock";
+import { insertWithinPlanLimit, notInDeletedProject } from "@/lib/middleware/plan-limit-lock";
 import { statusAggregationService } from "@/lib/status-aggregation.service";
 import {
   getEffectiveStatusPageCnameTarget,
@@ -347,7 +347,7 @@ export async function createStatusPage(
         const [row] = await tx
           .select({ count: sql<number>`count(*)` })
           .from(statusPages)
-          .where(eq(statusPages.organizationId, organizationId));
+          .where(and(eq(statusPages.organizationId, organizationId), notInDeletedProject(statusPages.projectId)));
         return Number(row?.count || 0);
       },
       insert: async (executor) => {

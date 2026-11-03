@@ -4,7 +4,7 @@ import { hasPermissionForUser, getUserOrgRole } from '@/lib/rbac/middleware';
 import { resolveEffectiveProjectRole } from '@/lib/rbac/effective-project-role';
 import { requireUserAuthContext, isAuthError } from '@/lib/auth-context';
 import { db } from '@/utils/db';
-import { projects, projectMembers, jobs, tests, monitors } from '@/db/schema';
+import { projects, projectMembers, jobs, tests, monitors, statusPages } from '@/db/schema';
 import { eq, and, ne, count, isNotNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { logAuditEvent } from '@/lib/audit-logger';
@@ -279,14 +279,30 @@ export async function DELETE(
     
     // Soft delete project (mark as deleted)
     // Guarded + RETURNING: a concurrent delete/rename cannot produce a duplicate or stale audit entry.
-    const [deleted] = await db
-      .update(projects)
-      .set({
-        status: 'deleted',
-        updatedAt: new Date()
-      })
-      .where(and(eq(projects.id, projectId), ne(projects.status, 'deleted')))
-      .returning({ name: projects.name, slug: projects.slug, description: projects.description });
+    // Pause the project's monitors in the same transaction: nothing else stops them checking
+    // and alerting once the project is gone.
+    const { deleted, pausedMonitors } = await db.transaction(async (tx) => {
+      const [deleted] = await tx
+        .update(projects)
+        .set({
+          status: 'deleted',
+          updatedAt: new Date()
+        })
+        .where(and(eq(projects.id, projectId), ne(projects.status, 'deleted')))
+        .returning({ name: projects.name, slug: projects.slug, description: projects.description });
+      if (!deleted) return { deleted, pausedMonitors: [] };
+      const pausedMonitors = await tx
+        .update(monitors)
+        .set({ status: 'paused', updatedAt: new Date() })
+        .where(and(eq(monitors.projectId, projectId), ne(monitors.status, 'paused')))
+        .returning({ id: monitors.id, scheduledJobId: monitors.scheduledJobId });
+      // Its public status pages would otherwise stay live with no way to manage them.
+      await tx
+        .update(statusPages)
+        .set({ status: 'archived', updatedAt: new Date() })
+        .where(and(eq(statusPages.projectId, projectId), ne(statusPages.status, 'archived')));
+      return { deleted, pausedMonitors };
+    });
 
     if (!deleted) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
@@ -301,6 +317,14 @@ export async function DELETE(
       metadata: { projectName: deleted.name, projectSlug: deleted.slug, description: deleted.description, organizationId },
       success: true,
     });
+
+    // Best effort: a paused monitor's scheduled check is a no-op, this only removes the repeatable.
+    try {
+      const { unscheduleMonitors } = await import('@/lib/execution/trial-lifecycle');
+      await unscheduleMonitors(pausedMonitors, db);
+    } catch (error) {
+      console.error('Failed to unschedule monitors for deleted project', projectId, error);
+    }
 
     // Best effort: processScheduledJob also drops the repeatable if this fails.
     try {

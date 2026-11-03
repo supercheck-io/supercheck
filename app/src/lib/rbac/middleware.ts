@@ -225,6 +225,11 @@ export async function hasPermissionForUser(
   context?: Partial<PermissionContext>
 ): Promise<boolean> {
   try {
+    // SECURITY: a resource-scoped check whose org is missing (legacy null-org rows) must not
+    // fall through to the default project_viewer role, which skips the membership check.
+    if (context && "organizationId" in context && !context.organizationId) {
+      return false;
+    }
     // SECURITY: Enforce organization membership for all org-scoped requests
     if (context?.organizationId) {
       const isSA = await isSuperAdmin(userId);

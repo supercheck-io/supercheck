@@ -378,10 +378,19 @@ export const statusPageSubscribers = pgTable(
     quarantinedAt: timestamp('quarantined_at', { withTimezone: true }),
     purgeAt: timestamp('purge_at', { withTimezone: true }),
     verifiedAt: timestamp('verified_at', { withTimezone: true }),
+    // Legacy plaintext; new tokens are stored only as a SHA-256 hash (mirrors the app schema).
     verificationToken: varchar('verification_token', { length: 255 }),
+    verificationTokenHash: varchar('verification_token_hash', { length: 64 }),
     unsubscribeToken: varchar('unsubscribe_token', { length: 255 }),
     // Webhook security and delivery tracking
     webhookSecret: varchar('webhook_secret', { length: 255 }),
+    webhookSecretEncrypted: text('webhook_secret_encrypted'),
+    webhookVerificationTokenHash: varchar('webhook_verification_token_hash', {
+      length: 64,
+    }),
+    webhookVerificationExpiresAt: timestamp('webhook_verification_expires_at', {
+      withTimezone: true,
+    }),
     webhookFailures: integer('webhook_failures').default(0),
     webhookLastAttemptAt: timestamp('webhook_last_attempt_at', {
       withTimezone: true,

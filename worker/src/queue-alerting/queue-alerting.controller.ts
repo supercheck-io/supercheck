@@ -65,6 +65,12 @@ export class QueueAlertingController {
    */
   @Get('config')
   getConfig(): QueueAlertingConfig {
-    return this.alertingService.getConfig();
+    const config = this.alertingService.getConfig();
+    // Webhook URLs embed secrets; this endpoint is unauthenticated, so only say whether they are set.
+    return {
+      ...config,
+      alertWebhookUrl: config.alertWebhookUrl ? '[redacted]' : undefined,
+      slackWebhookUrl: config.slackWebhookUrl ? '[redacted]' : undefined,
+    };
   }
 }

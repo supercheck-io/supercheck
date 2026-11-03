@@ -419,28 +419,6 @@ export async function getAdminActivityLogs(
 }
 
 /**
- * Cleanup old audit logs (for maintenance)
- */
-export async function cleanupOldAuditLogs(
-  daysToKeep: number = 90
-): Promise<number> {
-  try {
-    const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - daysToKeep);
-
-    await db
-      .delete(audit_log)
-      .where(sql`${audit_log.createdAt} < ${cutoffDate}`);
-
-    auditLogger.info({ daysToKeep, cutoffDate }, "Cleaned up old audit logs");
-    return 0; // Simplified return for now
-  } catch (error) {
-    auditLogger.error({ err: error, daysToKeep }, "Failed to cleanup old audit logs");
-    return 0;
-  }
-}
-
-/**
  * Get audit statistics
  */
 export async function getAuditStatistics(): Promise<{

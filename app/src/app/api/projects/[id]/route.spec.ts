@@ -4,7 +4,12 @@ jest.mock("@/lib/rbac/middleware", () => ({ hasPermissionForUser: jest.fn() }));
 jest.mock("@/lib/auth-context", () => ({ requireUserAuthContext: jest.fn(), isAuthError: jest.fn() }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 jest.mock("@/lib/job-scheduler", () => ({ deleteScheduledJob: jest.fn().mockResolvedValue(true) }));
-jest.mock("@/utils/db", () => ({ db: { select: jest.fn(), update: jest.fn() } }));
+jest.mock("@/utils/db", () => {
+  const db = { select: jest.fn(), update: jest.fn(), transaction: jest.fn() };
+  db.transaction.mockImplementation((cb: (tx: typeof db) => unknown) => cb(db));
+  return { db };
+});
+jest.mock("@/lib/execution/trial-lifecycle", () => ({ unscheduleMonitors: jest.fn() }));
 import { DELETE, GET, PUT } from "./route";
 import { PgDialect } from "drizzle-orm/pg-core";
 import { db } from "@/utils/db";
@@ -12,6 +17,7 @@ import { deleteScheduledJob } from "@/lib/job-scheduler";
 import { hasPermissionForUser } from "@/lib/rbac/middleware";
 import { requireUserAuthContext } from "@/lib/auth-context";
 import { logAuditEvent } from "@/lib/audit-logger";
+import { unscheduleMonitors } from "@/lib/execution/trial-lifecycle";
 
 const ID = "93ce4a2e-7846-5b60-b753-1ab3563f0fce";
 const set = jest.fn();
@@ -155,5 +161,19 @@ describe("DELETE schedules", () => {
     void DELETE(new NextRequest(`http://localhost/api/projects/${ID}`, { method: "DELETE" }), { params: Promise.resolve({ id: ID }) });
     await new Promise((r) => setTimeout(r, 20));
     expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ action: "project_deleted" }));
+  });
+
+  it("pauses the project's monitors in the delete transaction and unschedules them", async () => {
+    (db.select as jest.Mock)
+      .mockReturnValueOnce({ from: () => ({ where: () => ({ limit: async () => [{ organizationId: "org-1", isDefault: false }] }) }) })
+      .mockReturnValueOnce({ from: () => ({ where: async () => [] }) });
+    set
+      .mockReturnValueOnce({ where: () => ({ returning: async () => [{ name: "n", slug: "s", description: null }] }) })
+      .mockReturnValueOnce({ where: () => ({ returning: async () => [{ id: "m1", scheduledJobId: "s1" }] }) });
+    const res = await DELETE(new NextRequest(`http://localhost/api/projects/${ID}`, { method: "DELETE" }), { params: Promise.resolve({ id: ID }) });
+    expect(res.status).toBe(200);
+    expect(db.transaction).toHaveBeenCalled();
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({ status: "paused" }));
+    expect(unscheduleMonitors).toHaveBeenCalledWith([{ id: "m1", scheduledJobId: "s1" }], db);
   });
 });

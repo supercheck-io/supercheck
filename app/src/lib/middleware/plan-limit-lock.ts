@@ -1,4 +1,5 @@
-import { sql } from "drizzle-orm";
+import { sql, type AnyColumn } from "drizzle-orm";
+import { projects } from "@/db/schema";
 import { db } from "@/utils/db";
 
 export type PlanLimitTransaction = Parameters<
@@ -136,4 +137,9 @@ export async function insertWithinPlanLimit<TRow, TCheck extends LimitCheck>(opt
 
   if (!outcome.atLimit) return { ok: true, row: outcome.row };
   return { ok: false, check: await check(organizationId, outcome.count) };
+}
+
+/** Rows of soft-deleted projects no longer count toward plan limits (deleting a project frees its quota). */
+export function notInDeletedProject(projectId: AnyColumn) {
+  return sql`NOT EXISTS (SELECT 1 FROM ${projects} WHERE ${projects.id} = ${projectId} AND ${projects.status} = 'deleted')`;
 }

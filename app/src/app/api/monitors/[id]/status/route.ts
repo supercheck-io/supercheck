@@ -1,8 +1,9 @@
 import { isUuid } from "@/lib/uuid";
+import { notInDeletedProject } from "@/lib/middleware/plan-limit-lock";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
-import { monitors } from "@/db/schema";
-import { and, eq } from "drizzle-orm";
+import { monitors, projects } from "@/db/schema";
+import { and, eq, ne } from "drizzle-orm";
 import { isAuthError, requireUserAuthContext } from "@/lib/auth-context";
 import { monitorResumeBlockedResponse } from "@/lib/execution/trial-interval-response";
 import { hasPermissionForUser } from '@/lib/rbac/middleware';
@@ -37,8 +38,9 @@ export async function PATCH(
 
     // Get current monitor status for audit logging
     if (!isUuid((await context.params).id)) return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
+    // A soft-deleted project's monitors are gone for the user; they must not be resumable here.
     const currentMonitor = await db.query.monitors.findFirst({
-      where: eq(monitors.id, id),
+      where: and(eq(monitors.id, id), notInDeletedProject(monitors.projectId)),
     });
 
     if (!currentMonitor) {
@@ -81,21 +83,32 @@ export async function PATCH(
     const resumeBlocked = await monitorResumeBlockedResponse(currentMonitor.organizationId, currentMonitor.status, { status });
     if (resumeBlocked) return resumeBlocked;
 
-    // Update the monitor status in the database
-    const [updatedMonitor] = await db
-      .update(monitors)
-      .set({
-        status: status,
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(monitors.id, id),
-          eq(monitors.organizationId, currentMonitor.organizationId),
-          eq(monitors.projectId, currentMonitor.projectId),
-        ),
-      )
-      .returning();
+    // Update the monitor status in the database. Hold the live project row (FOR SHARE) so a
+    // concurrent project delete cannot pause the monitor and then be overwritten by this write.
+    const { organizationId: monitorOrgId, projectId: monitorProjectId } = currentMonitor;
+    const updatedMonitor = await db.transaction(async (tx) => {
+      const [liveProject] = await tx
+        .select({ id: projects.id })
+        .from(projects)
+        .where(and(eq(projects.id, monitorProjectId), ne(projects.status, 'deleted')))
+        .for('share');
+      if (!liveProject) return undefined;
+      const [updated] = await tx
+        .update(monitors)
+        .set({
+          status: status,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(monitors.id, id),
+            eq(monitors.organizationId, monitorOrgId),
+            eq(monitors.projectId, monitorProjectId),
+          ),
+        )
+        .returning();
+      return updated;
+    });
 
     if (!updatedMonitor) {
       return NextResponse.json(
