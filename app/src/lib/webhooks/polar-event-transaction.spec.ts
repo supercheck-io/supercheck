@@ -48,6 +48,16 @@ function setup(overrides: Record<string, unknown> = {}) {
 describe("Polar event transactions", () => {
   beforeEach(() => jest.clearAllMocks());
 
+  it("acknowledges an event whose organization was deleted while it waited, and fails otherwise", async () => {
+    const { locked } = setup();
+    const apply = jest.fn();
+    locked.mockResolvedValueOnce([]);
+    await expect(runOrderedPolarEvent({ ...input, organizationDeleted: async () => true }, apply)).resolves.toBeUndefined();
+    locked.mockResolvedValueOnce([]);
+    await expect(runOrderedPolarEvent({ ...input, organizationDeleted: async () => false }, apply)).rejects.toThrow("Polar billing organization not found");
+    expect(apply).not.toHaveBeenCalled();
+  });
+
   it("locks before invoking the handler and writes the cursor afterward", async () => {
     const { tx, locked, set } = setup();
     await runOrderedPolarEvent(input, async () => {

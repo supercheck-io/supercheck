@@ -11,10 +11,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { MoreHorizontal, UserCheck, UserX, Loader2 } from "lucide-react";
+import { MoreHorizontal, UserCheck, UserX, Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { ImpersonateDialog } from "./impersonate-dialog";
 import { BanUserDialog } from "./ban-user-dialog";
+import { DeleteUserDialog } from "./delete-user-dialog";
 import { AdminUser } from "./user-columns";
 
 interface UserActionsProps {
@@ -53,6 +54,7 @@ export function UserActions({ user, onUserUpdate }: UserActionsProps) {
   const { data: session } = useSession();
   const [impersonateDialogOpen, setImpersonateDialogOpen] = useState(false);
   const [banDialogOpen, setBanDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [isUnbanning, setIsUnbanning] = useState(false);
 
   const currentUser = session?.user;
@@ -108,6 +110,14 @@ export function UserActions({ user, onUserUpdate }: UserActionsProps) {
               {isCurrentUser ? "Can't Ban Yourself" : "Ban User"}
             </DropdownMenuItem>
           )}
+          <DropdownMenuItem
+            onClick={() => setDeleteDialogOpen(true)}
+            className="text-destructive focus:text-destructive"
+            disabled={isCurrentUser}
+          >
+            <Trash2 className="mr-2 h-4 w-4" />
+            {isCurrentUser ? "Can't Delete Yourself" : "Delete User"}
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -122,6 +132,15 @@ export function UserActions({ user, onUserUpdate }: UserActionsProps) {
       <BanUserDialog
         open={banDialogOpen}
         onOpenChange={setBanDialogOpen}
+        userId={user.id}
+        userName={user.name}
+        userEmail={user.email}
+        onSuccess={onUserUpdate}
+      />
+
+      <DeleteUserDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
         userId={user.id}
         userName={user.name}
         userEmail={user.email}

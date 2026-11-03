@@ -15,10 +15,11 @@ import {
   getPolarWebhookDb,
   runOrderedPolarEvent,
 } from "./polar-event-transaction";
-import { organization, webhookIdempotency } from "@/db/schema";
-import { eq, and, lt, lte, isNull, or } from "drizzle-orm";
+import { auditLogs, organization, webhookIdempotency } from "@/db/schema";
+import { eq, and, lt, lte, isNull, or, sql } from "drizzle-orm";
 import type { SubscriptionPlan } from "@/db/schema";
 import { restoreTrialSuspensions } from "@/lib/execution/trial-lifecycle";
+import { TEARDOWN_ACTION } from "@/lib/organization-teardown-action";
 
 // A short processing lease prevents concurrent delivery from running twice.
 // Completed records are retained for 24 hours to suppress provider retries.
@@ -161,6 +162,20 @@ async function updateWebhookResult(
   if (status === "error") {
     throw new Error(message ?? `Failed to process Polar ${eventType} webhook`);
   }
+}
+
+/**
+ * True when this event's subscription belonged to an organization an admin deleted. Cancelling the
+ * subscription during that teardown triggers follow-up events that can never find the organization;
+ * they are acknowledged instead of retried (retries could get the endpoint disabled).
+ */
+async function belongsToDeletedOrganization(subscriptionId: string): Promise<boolean> {
+  const [row] = await getPolarWebhookDb()
+    .select({ id: auditLogs.id })
+    .from(auditLogs)
+    .where(and(eq(auditLogs.action, TEARDOWN_ACTION), sql`${auditLogs.details}->>'subscriptionId' = ${subscriptionId}`))
+    .limit(1);
+  return !!row;
 }
 
 /**
@@ -1832,6 +1847,12 @@ function orderedHandler(
             where: eq(organization.subscriptionId, subscriptionId),
           })
         : undefined;
+    // A subscription of an organization an admin deleted must never fall through to another
+    // organization of the same customer or user below.
+    if (!org && subscriptionId && (await belongsToDeletedOrganization(subscriptionId))) {
+      console.log(`[Polar] ${eventType}: organization was deleted; acknowledging`);
+      return;
+    }
     if (!org && orgId) org = await findOrganizationById(orgId);
     if (!org && customerId)
       org = await findOrganizationByCustomerId(customerId);
@@ -1847,6 +1868,8 @@ function orderedHandler(
         eventKey: eventType + ":" + getWebhookEventKey(payload, eventType),
         subscriptionId,
         canReplaceSubscription: eventType === "subscription.active",
+        // The organization can be deleted by an admin while this event waits for its row lock.
+        organizationDeleted: subscriptionId ? () => belongsToDeletedOrganization(subscriptionId) : undefined,
         periodStart: getSubscriptionDatesFromPayload(payload).startsAt,
         affectsSubscriptionState: eventType !== "order.paid",
         // A deferred plan change keeps the current plan, so compare with that.

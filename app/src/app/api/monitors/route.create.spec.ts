@@ -4,7 +4,7 @@ import { NextRequest } from "next/server";
 const dbSelect = jest.fn();
 const dbDeleteWhere = jest.fn();
 jest.mock("@/utils/db", () => ({
-  db: { select: (...a: unknown[]) => dbSelect(...a), delete: () => ({ where: (...a: unknown[]) => dbDeleteWhere(...a) }) },
+  db: { select: (...a: unknown[]) => dbSelect(...a), delete: () => ({ where: (...a: unknown[]) => dbDeleteWhere(...a) }), transaction: jest.fn() },
 }));
 jest.mock("@/lib/auth-context", () => ({
   requireAuthContext: jest.fn(async () => ({ userId: "u", organizationId: "org-1", project: { id: "project-1", name: "P" }, isCliAuth: false })),
@@ -36,6 +36,8 @@ jest.mock("@/lib/location-registry", () => ({
   PROJECT_RESTRICTED_LOCATIONS_DISABLED_ERROR: "restricted",
 }));
 jest.mock("@/lib/worker-registry", () => ({ getActiveWorkerQueueNames: jest.fn() }));
+const deleteScheduledMonitor = jest.fn(async () => true);
+jest.mock("@/lib/monitor-scheduler", () => ({ deleteScheduledMonitor }));
 jest.mock("@/lib/creators", () => ({ loadCreators: jest.fn() }));
 
 import { POST, PUT } from "./route";
@@ -100,4 +102,50 @@ it("rejects a synthetic monitor that runs more often than every 5 minutes", asyn
   );
   expect(res.status).toBe(400);
   expect(insertWithinPlanLimit).not.toHaveBeenCalled();
+});
+
+it("does not insert into a project deleted before the insert took its lock", async () => {
+  const { insertMonitorRecord } = jest.requireMock("@/lib/monitor-service") as { insertMonitorRecord: jest.Mock };
+  const forShare = jest.fn(async () => []);
+  const executor = { select: () => ({ from: () => ({ where: () => ({ for: forShare }) }) }) };
+  insertWithinPlanLimit.mockImplementation(async (opts: { insert: (e: unknown) => Promise<unknown> }) => ({ ok: true, row: await opts.insert(executor) }));
+  const res = await post({ enabled: false, notificationProviders: [] });
+  expect(forShare).toHaveBeenCalledWith("share");
+  expect(insertMonitorRecord).not.toHaveBeenCalled();
+  expect(res.status).toBe(404);
+});
+
+it("opens a transaction for the project lock when no plan limit applies (self-hosted)", async () => {
+  const { db } = jest.requireMock("@/utils/db") as { db: { transaction: jest.Mock } };
+  const { insertMonitorRecord } = jest.requireMock("@/lib/monitor-service") as { insertMonitorRecord: jest.Mock };
+  const forShare = jest.fn(async () => []);
+  db.transaction.mockImplementation(async (cb: (tx: unknown) => unknown) => cb({ select: () => ({ from: () => ({ where: () => ({ for: forShare }) }) }) }));
+  insertWithinPlanLimit.mockImplementation(async (opts: { insert: (e: unknown) => Promise<unknown> }) => ({ ok: true, row: await opts.insert(db) }));
+  const res = await post({ enabled: false, notificationProviders: [] });
+  expect(db.transaction).toHaveBeenCalled();
+  expect(forShare).toHaveBeenCalledWith("share");
+  expect(insertMonitorRecord).not.toHaveBeenCalled();
+  expect(res.status).toBe(404);
+});
+
+it("drops the schedule when the project was deleted between the insert and scheduling", async () => {
+  const { scheduleCreatedMonitor } = jest.requireMock("@/lib/monitor-service") as { scheduleCreatedMonitor: jest.Mock };
+  insertWithinPlanLimit.mockResolvedValue({ ok: true, row: { newMonitor: { id: "new-monitor" }, enabled: true } });
+  scheduleCreatedMonitor.mockResolvedValue({ id: "new-monitor" });
+  dbSelect.mockReturnValue({ from: () => ({ innerJoin: () => ({ where: () => ({ limit: async () => [] }) }), where: async () => [] }) });
+  const res = await post({ enabled: false, notificationProviders: [] });
+  expect(deleteScheduledMonitor).toHaveBeenCalledWith("new-monitor");
+  expect(res.status).toBe(404);
+});
+
+it("removes the schedule and the row when the post-scheduling check fails", async () => {
+  const { scheduleCreatedMonitor } = jest.requireMock("@/lib/monitor-service") as { scheduleCreatedMonitor: jest.Mock };
+  insertWithinPlanLimit.mockResolvedValue({ ok: true, row: { newMonitor: { id: "new-monitor" }, enabled: true } });
+  scheduleCreatedMonitor.mockResolvedValue({ id: "new-monitor" });
+  dbDeleteWhere.mockResolvedValue(undefined);
+  dbSelect.mockReturnValue({ from: () => ({ innerJoin: () => ({ where: () => ({ limit: async () => { throw new Error("db down"); } }) }), where: async () => [] }) });
+  const res = await post({ enabled: false, notificationProviders: [] });
+  expect(res.status).toBe(500);
+  expect(deleteScheduledMonitor).toHaveBeenCalledWith("new-monitor");
+  expect(dbDeleteWhere).toHaveBeenCalledTimes(1);
 });

@@ -246,6 +246,30 @@ export class S3CleanupService {
     }
   }
 
+  /** Configured bucket name (for callers that delete by prefix). */
+  bucket(name: "statusBucketName" | "requirementsBucketName" | "projectDataFilesBucketName" | "testBucketName" | "jobBucketName" | "k6TestBucketName" | "k6JobBucketName"): string {
+    return this.config[name];
+  }
+
+  /** Delete every object under a prefix (e.g. `projects/{id}/`) in any bucket. */
+  async deletePrefix(bucketName: string, prefix: string): Promise<S3DeletionResult> {
+    if (!prefix.endsWith("/") || prefix === "/") throw new Error(`Refusing to delete unscoped prefix "${prefix}"`);
+    const total: S3DeletionResult = { success: true, deletedObjects: [], failedObjects: [], totalAttempted: 0 };
+    let continuationToken: string | undefined;
+    // Page by page: memory stays bounded and earlier pages are deleted even if a later listing fails.
+    do {
+      const page = await this.s3Client.send(new ListObjectsV2Command({ Bucket: bucketName, Prefix: prefix, ContinuationToken: continuationToken }));
+      const keys = (page.Contents ?? []).map((obj) => obj.Key).filter((key): key is string => !!key);
+      const result = await this.deleteObjectsBatch(bucketName, keys);
+      total.success &&= result.success;
+      total.deletedObjects.push(...result.deletedObjects);
+      total.failedObjects.push(...result.failedObjects);
+      total.totalAttempted += result.totalAttempted;
+      continuationToken = page.NextContinuationToken;
+    } while (continuationToken);
+    return total;
+  }
+
   /**
    * Delete multiple objects in batch (more efficient for large numbers)
    */

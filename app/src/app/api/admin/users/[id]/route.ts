@@ -18,7 +18,8 @@ import { z } from 'zod';
 import { logAdminEvent, logImpersonationEvent } from '@/lib/audit-logger';
 import { checkAdminRateLimit } from '@/lib/session-security';
 import { pruneAvatars } from '@/lib/user-avatar';
-
+import { BillingCancellationError, OrganizationMembershipChangedError, StorageCleanupError, deleteOrganizationCompletely, soleMemberOrganizations } from '@/lib/organization-teardown';
+import { isImpersonatedSession } from '@/lib/rbac/middleware';
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = await params;
@@ -152,8 +153,10 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   }
 }
 
-export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = await params;
+  // Organizations already deleted by this request; reported even when a later step fails.
+  const deletedOrganizationIds: string[] = [];
   try {
     await requireAdmin();
 
@@ -165,6 +168,15 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
         { success: false, error: 'Cannot delete your own account' },
         { status: 400 }
       );
+    }
+
+    // Destructive and irreversible: never from an impersonated session, and rate limited per admin.
+    if (await isImpersonatedSession()) {
+      return NextResponse.json({ success: false, error: 'Stop impersonating before deleting users' }, { status: 403 });
+    }
+    const deleteLimit = await checkAdminRateLimit(currentAdmin.id, 'delete_user', 10, 10 * 60 * 1000);
+    if (!deleteLimit.allowed) {
+      return NextResponse.json({ success: false, error: 'Too many deletions. Try again later.' }, { status: 429 });
     }
 
     // Verify user exists before attempting deletion
@@ -201,6 +213,55 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
         { success: false, error: 'User is the only owner of an organization with other members. Transfer ownership first.' },
         { status: 409 }
       );
+    }
+
+    // Organizations where this user is the only member are deleted with the user. The admin must
+    // confirm that exact set (the dialog lists them), so a stale or blind request cannot delete one.
+    const soleMemberOrgs = await soleMemberOrganizations(userId);
+    const body = (await request.json().catch(() => ({}))) as { confirmDeleteOrganizationIds?: unknown };
+    const confirmed = new Set(Array.isArray(body.confirmDeleteOrganizationIds) ? body.confirmDeleteOrganizationIds : []);
+    if (soleMemberOrgs.length !== confirmed.size || soleMemberOrgs.some((org) => !confirmed.has(org.id))) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: 'confirm_organization_deletion',
+          error: 'Deleting this user also deletes the organizations they are the only member of. Confirm them first.',
+          organizations: soleMemberOrgs,
+        },
+        { status: 409 }
+      );
+    }
+    for (const org of soleMemberOrgs) {
+      try {
+        const deleted = await deleteOrganizationCompletely(org.id, { onlyMemberUserId: userId }, currentAdmin.id);
+        if (deleted) {
+          deletedOrganizationIds.push(org.id);
+          try {
+            await logAdminEvent(currentAdmin.id, 'organization_deleted', org.id, 'organization', org.id, {
+            organizationName: org.name, reason: 'sole_member_user_deleted', userId,
+            subscriptionCancelled: deleted.subscriptionCancelled,
+          });
+          } catch (error) {
+            console.error('Failed to audit organization deletion:', error);
+          }
+        }
+      } catch (error) {
+        // Earlier organizations in this request are already gone; say so, the user is kept.
+        const alreadyDeleted = { deletedOrganizationIds };
+        if (error instanceof BillingCancellationError || error instanceof StorageCleanupError) {
+          return NextResponse.json({ success: false, error: `${org.name}: ${error.message}. The user was not deleted.`, ...alreadyDeleted }, { status: 502 });
+        }
+        if (error instanceof OrganizationMembershipChangedError) {
+          return NextResponse.json({
+            success: false,
+            code: 'confirm_organization_deletion',
+            error: `${org.name}: ${error.message}. Review the list and confirm again.`,
+            organizations: await soleMemberOrganizations(userId),
+            ...alreadyDeleted,
+          }, { status: 409 });
+        }
+        throw error;
+      }
     }
 
     await db.transaction(async (tx) => {
@@ -240,6 +301,7 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
       // Same transaction as the deletion: both commit or neither does.
       await logAdminEvent(currentAdmin.id, 'user_deleted', userId, 'user', userId, {
         targetEmail: targetUser.email,
+        ...(deletedOrganizationIds.length ? { deletedOrganizationIds } : {}),
       }, tx);
     });
     
@@ -253,7 +315,7 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
   } catch (error) {
     console.error('Admin user DELETE error:', error);
     return NextResponse.json(
-      { success: false, error: 'Failed to delete user' },
+      { success: false, error: 'Failed to delete user', ...(deletedOrganizationIds.length ? { deletedOrganizationIds } : {}) },
       { status: 500 }
     );
   }

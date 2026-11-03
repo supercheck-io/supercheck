@@ -3,6 +3,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/utils/db';
 import { organization, member, projects, user } from '@/db/schema';
 import { requireAdmin } from '@/lib/admin';
+import { getCurrentUser } from '@/lib/session';
+import { logAdminEvent } from '@/lib/audit-logger';
+import { BillingCancellationError, OrganizationMembershipChangedError, StorageCleanupError, deleteOrganizationCompletely } from '@/lib/organization-teardown';
+import { isImpersonatedSession } from '@/lib/rbac/middleware';
+import { checkAdminRateLimit } from '@/lib/session-security';
 import { eq, count } from 'drizzle-orm';
 
 export async function GET(
@@ -120,10 +125,19 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   }
 }
 
-export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = await params;
   try {
     await requireAdmin();
+    const admin = await getCurrentUser();
+    if (!admin) throw new Error('Authentication required');
+    if (await isImpersonatedSession()) {
+      return NextResponse.json({ success: false, error: 'Stop impersonating before deleting organizations' }, { status: 403 });
+    }
+    const deleteLimit = await checkAdminRateLimit(admin.id, 'delete_organization', 10, 10 * 60 * 1000);
+    if (!deleteLimit.allowed) {
+      return NextResponse.json({ success: false, error: 'Too many deletions. Try again later.' }, { status: 429 });
+    }
     
     // First check if organization exists and get member count
     if (!isUuid((await params).id)) return NextResponse.json({ error: "Organization not found" }, { status: 404 });
@@ -152,31 +166,37 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
       );
     }
     
-    // Same check as the organization settings route: deleting here would not cancel billing.
-    if (orgData.subscriptionId || orgData.polarCustomerId) {
+    // The caller must name the organization it confirmed (no blind or replayed teardown).
+    const body = (await request.json().catch(() => ({}))) as { confirmOrganizationId?: unknown };
+    if (body.confirmOrganizationId !== resolvedParams.id) {
       return NextResponse.json(
-        { success: false, error: 'Contact support to close a billing-linked organization. Deleting it here would not cancel billing.' },
-        { status: 409 }
+        { success: false, error: 'Confirm the organization to delete (confirmOrganizationId)' },
+        { status: 400 }
       );
     }
 
-    // Deleting the org cascades run/report rows and would orphan their S3 objects; projects must go first.
-    const [projectRow] = await db
-      .select({ id: projects.id })
-      .from(projects)
-      .where(eq(projects.organizationId, resolvedParams.id))
-      .limit(1);
-    if (projectRow) {
-      return NextResponse.json(
-        { success: false, error: 'Organization still has projects; delete them first' },
-        { status: 409 }
-      );
+    // Full teardown: cancels billing, stops schedules, removes stored files and all projects.
+    try {
+      const deleted = await deleteOrganizationCompletely(resolvedParams.id, { noMembers: true }, admin.id);
+      if (deleted) {
+        try {
+          await logAdminEvent(admin.id, 'organization_deleted', resolvedParams.id, 'organization', resolvedParams.id, {
+          organizationName: orgData.name, subscriptionCancelled: deleted.subscriptionCancelled,
+        });
+        } catch (error) {
+          console.error('Failed to audit organization deletion:', error);
+        }
+      }
+    } catch (error) {
+      if (error instanceof BillingCancellationError || error instanceof StorageCleanupError) {
+        return NextResponse.json({ success: false, error: error.message }, { status: 502 });
+      }
+      if (error instanceof OrganizationMembershipChangedError) {
+        return NextResponse.json({ success: false, error: 'Cannot delete organization with members' }, { status: 400 });
+      }
+      throw error;
     }
 
-    await db
-      .delete(organization)
-      .where(eq(organization.id, resolvedParams.id));
-    
     return NextResponse.json({
       success: true,
       data: { message: 'Organization deleted successfully' }
