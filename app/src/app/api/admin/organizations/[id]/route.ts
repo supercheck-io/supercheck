@@ -3,6 +3,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/utils/db';
 import { organization, member, projects, user } from '@/db/schema';
 import { requireAdmin } from '@/lib/admin';
+import { getCurrentUser } from '@/lib/session';
+import { logAdminEvent } from '@/lib/audit-logger';
+import { BillingCancellationError, deleteOrganizationCompletely } from '@/lib/organization-teardown';
 import { eq, count } from 'drizzle-orm';
 
 export async function GET(
@@ -124,6 +127,8 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
   const resolvedParams = await params;
   try {
     await requireAdmin();
+    const admin = await getCurrentUser();
+    if (!admin) throw new Error('Authentication required');
     
     // First check if organization exists and get member count
     if (!isUuid((await params).id)) return NextResponse.json({ error: "Organization not found" }, { status: 404 });
@@ -152,31 +157,21 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
       );
     }
     
-    // Same check as the organization settings route: deleting here would not cancel billing.
-    if (orgData.subscriptionId || orgData.polarCustomerId) {
-      return NextResponse.json(
-        { success: false, error: 'Contact support to close a billing-linked organization. Deleting it here would not cancel billing.' },
-        { status: 409 }
-      );
+    // Full teardown: cancels billing, stops schedules, removes stored files and all projects.
+    try {
+      const deleted = await deleteOrganizationCompletely(resolvedParams.id);
+      if (deleted) {
+        await logAdminEvent(admin.id, 'organization_deleted', resolvedParams.id, 'organization', resolvedParams.id, {
+          organizationName: orgData.name, s3Failures: deleted.s3Failures,
+        });
+      }
+    } catch (error) {
+      if (error instanceof BillingCancellationError) {
+        return NextResponse.json({ success: false, error: `${error.message}. Nothing was deleted.` }, { status: 502 });
+      }
+      throw error;
     }
 
-    // Deleting the org cascades run/report rows and would orphan their S3 objects; projects must go first.
-    const [projectRow] = await db
-      .select({ id: projects.id })
-      .from(projects)
-      .where(eq(projects.organizationId, resolvedParams.id))
-      .limit(1);
-    if (projectRow) {
-      return NextResponse.json(
-        { success: false, error: 'Organization still has projects; delete them first' },
-        { status: 409 }
-      );
-    }
-
-    await db
-      .delete(organization)
-      .where(eq(organization.id, resolvedParams.id));
-    
     return NextResponse.json({
       success: true,
       data: { message: 'Organization deleted successfully' }

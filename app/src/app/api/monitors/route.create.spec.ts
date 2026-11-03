@@ -101,3 +101,14 @@ it("rejects a synthetic monitor that runs more often than every 5 minutes", asyn
   expect(res.status).toBe(400);
   expect(insertWithinPlanLimit).not.toHaveBeenCalled();
 });
+
+it("does not insert into a project deleted before the insert took its lock", async () => {
+  const { insertMonitorRecord } = jest.requireMock("@/lib/monitor-service") as { insertMonitorRecord: jest.Mock };
+  const forShare = jest.fn(async () => []);
+  const executor = { select: () => ({ from: () => ({ where: () => ({ for: forShare }) }) }) };
+  insertWithinPlanLimit.mockImplementation(async (opts: { insert: (e: unknown) => Promise<unknown> }) => ({ ok: true, row: await opts.insert(executor) }));
+  const res = await post({ enabled: false, notificationProviders: [] });
+  expect(forShare).toHaveBeenCalledWith("share");
+  expect(insertMonitorRecord).not.toHaveBeenCalled();
+  expect(res.status).toBe(404);
+});

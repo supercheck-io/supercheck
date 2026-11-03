@@ -6,9 +6,10 @@ import {
   monitorNotificationSettings,
   monitorTags,
   notificationProviders,
+  projects,
   tags,
 } from "@/db/schema";
-import { eq, desc, and, sql, inArray } from "drizzle-orm";
+import { eq, desc, and, sql, inArray, ne } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { isUuid } from "@/lib/uuid";
@@ -560,7 +561,16 @@ export async function POST(req: NextRequest) {
           .where(and(eq(monitors.organizationId, organizationId), notInDeletedProject(monitors.projectId)));
         return Number(row?.count || 0);
       },
-      insert: (executor) => insertMonitorRecord(monitorData, executor),
+      insert: async (executor) => {
+        // Hold the live project so a concurrent project delete cannot miss this new monitor.
+        const [liveProject] = await executor
+          .select({ id: projects.id })
+          .from(projects)
+          .where(and(eq(projects.id, targetProjectId), ne(projects.status, "deleted")))
+          .for("share");
+        if (!liveProject) return null;
+        return insertMonitorRecord(monitorData, executor);
+      },
     });
     if (!inserted.ok && inserted.busy) {
       return NextResponse.json(
@@ -583,6 +593,9 @@ export async function POST(req: NextRequest) {
         },
         { status: 403 },
       );
+    }
+    if (!inserted.row) {
+      return NextResponse.json({ error: "Project not found" }, { status: 404 });
     }
     // Link the validated providers before scheduling, so a scheduling failure cannot leave a monitor without them.
     const createdMonitor = inserted.row.newMonitor;

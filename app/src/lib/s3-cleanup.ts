@@ -246,6 +246,16 @@ export class S3CleanupService {
     }
   }
 
+  /** Configured bucket name (for callers that delete by prefix). */
+  bucket(name: "statusBucketName" | "requirementsBucketName" | "projectDataFilesBucketName"): string {
+    return this.config[name];
+  }
+
+  /** Delete every object under a prefix (e.g. `projects/{id}/`) in any bucket. */
+  async deletePrefix(bucketName: string, prefix: string): Promise<S3DeletionResult> {
+    return this.deleteObjectsBatch(bucketName, await this.listObjectsWithPrefix(bucketName, prefix));
+  }
+
   /**
    * Delete multiple objects in batch (more efficient for large numbers)
    */

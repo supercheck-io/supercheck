@@ -5,6 +5,7 @@ import { member, organization } from '@/db/schema';
 import { requireAdmin } from '@/lib/admin';
 import { eq } from 'drizzle-orm';
 import { roleToDisplayName, normalizeRole } from '@/lib/rbac/role-normalizer';
+import { soleMemberOrganizations } from '@/lib/organization-teardown';
 
 /**
  * GET /api/admin/users/[id]/organizations
@@ -32,8 +33,13 @@ export async function GET(
       .where(eq(member.userId, resolvedParams.id))
       .orderBy(member.id); // UUIDv7 is time-ordered (PostgreSQL 18+)
     
+    // Orgs where this user is the only member are deleted with the user (shown in the delete dialog).
+    const soleMember = new Map((await soleMemberOrganizations(resolvedParams.id)).map(org => [org.id, org]));
+
     // Normalize roles for consistent frontend handling
     const normalizedOrganizations = userOrganizations.map(org => ({
+      isOnlyMember: soleMember.has(org.organizationId),
+      hasActiveSubscription: soleMember.get(org.organizationId)?.hasActiveSubscription ?? false,
       organizationId: org.organizationId,
       organizationName: org.organizationName,
       role: org.role, // Keep original for compatibility

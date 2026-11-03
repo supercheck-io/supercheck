@@ -18,7 +18,7 @@ import { z } from 'zod';
 import { logAdminEvent, logImpersonationEvent } from '@/lib/audit-logger';
 import { checkAdminRateLimit } from '@/lib/session-security';
 import { pruneAvatars } from '@/lib/user-avatar';
-
+import { BillingCancellationError, deleteOrganizationCompletely, soleMemberOrganizations } from '@/lib/organization-teardown';
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = await params;
@@ -152,7 +152,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   }
 }
 
-export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = await params;
   try {
     await requireAdmin();
@@ -201,6 +201,38 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
         { success: false, error: 'User is the only owner of an organization with other members. Transfer ownership first.' },
         { status: 409 }
       );
+    }
+
+    // Organizations where this user is the only member are deleted with the user. The admin must
+    // confirm that exact set (the dialog lists them), so a stale or blind request cannot delete one.
+    const soleMemberOrgs = await soleMemberOrganizations(userId);
+    const body = (await request.json().catch(() => ({}))) as { confirmDeleteOrganizationIds?: unknown };
+    const confirmed = new Set(Array.isArray(body.confirmDeleteOrganizationIds) ? body.confirmDeleteOrganizationIds : []);
+    if (soleMemberOrgs.length !== confirmed.size || soleMemberOrgs.some((org) => !confirmed.has(org.id))) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: 'confirm_organization_deletion',
+          error: 'Deleting this user also deletes the organizations they are the only member of. Confirm them first.',
+          organizations: soleMemberOrgs,
+        },
+        { status: 409 }
+      );
+    }
+    for (const org of soleMemberOrgs) {
+      try {
+        const deleted = await deleteOrganizationCompletely(org.id);
+        if (deleted) {
+          await logAdminEvent(currentAdmin.id, 'organization_deleted', org.id, 'organization', org.id, {
+            organizationName: org.name, reason: 'sole_member_user_deleted', userId, s3Failures: deleted.s3Failures,
+          });
+        }
+      } catch (error) {
+        if (error instanceof BillingCancellationError) {
+          return NextResponse.json({ success: false, error: `${org.name}: ${error.message}. Nothing was deleted for this organization.` }, { status: 502 });
+        }
+        throw error;
+      }
     }
 
     await db.transaction(async (tx) => {

@@ -6,6 +6,11 @@ jest.mock("@/lib/audit-logger", () => ({ logAdminEvent: jest.fn(), logImpersonat
 jest.mock("@/lib/session-security", () => ({ checkAdminRateLimit: jest.fn() }));
 jest.mock("@/utils/db", () => ({ db: { select: jest.fn(), transaction: jest.fn() } }));
 jest.mock("@/lib/user-avatar", () => ({ pruneAvatars: jest.fn() }));
+jest.mock("@/lib/organization-teardown", () => {
+  class BillingCancellationError extends Error {}
+  return { BillingCancellationError, deleteOrganizationCompletely: jest.fn(), soleMemberOrganizations: jest.fn(async () => []) };
+});
+import { BillingCancellationError, deleteOrganizationCompletely, soleMemberOrganizations } from "@/lib/organization-teardown";
 import { NextRequest } from "next/server";
 import { db } from "@/utils/db";
 import { getCurrentUser } from "@/lib/session";
@@ -46,6 +51,42 @@ it("blocks deleting a user who is the only owner of an organization that has oth
   const response = await DELETE(new NextRequest("http://localhost/api/admin/users/target"), { params: Promise.resolve({ id: "0c11ab1e-7460-5139-b3b8-920f69f95082" }) });
   expect(response.status).toBe(409);
   expect(db.transaction).not.toHaveBeenCalled();
+});
+
+describe("organizations where the user is the only member", () => {
+  const ID = "0c11ab1e-7460-5139-b3b8-920f69f95082";
+  const org = { id: "org-solo", name: "Solo", hasActiveSubscription: true };
+  const del = (body?: unknown) =>
+    DELETE(new NextRequest("http://localhost/api/admin/users/target", { method: "DELETE", body: body ? JSON.stringify(body) : undefined }), { params: Promise.resolve({ id: ID }) });
+  beforeEach(() => jest.mocked(soleMemberOrganizations).mockResolvedValue([org]));
+
+  it("asks for confirmation listing the organizations, deleting nothing", async () => {
+    const response = await del();
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ code: "confirm_organization_deletion", organizations: [org] });
+    expect(deleteOrganizationCompletely).not.toHaveBeenCalled();
+    expect(db.transaction).not.toHaveBeenCalled();
+  });
+
+  it("rejects a confirmation for a different set of organizations", async () => {
+    expect((await del({ confirmDeleteOrganizationIds: ["org-other"] })).status).toBe(409);
+    expect(deleteOrganizationCompletely).not.toHaveBeenCalled();
+  });
+
+  it("deletes the confirmed organizations, then the user", async () => {
+    jest.mocked(deleteOrganizationCompletely).mockResolvedValue({ s3Failures: 0 });
+    const response = await del({ confirmDeleteOrganizationIds: ["org-solo"] });
+    expect(response.status).toBe(200);
+    expect(deleteOrganizationCompletely).toHaveBeenCalledWith("org-solo");
+    expect(logAdminEvent).toHaveBeenCalledWith("admin", "organization_deleted", "org-solo", "organization", "org-solo", expect.objectContaining({ reason: "sole_member_user_deleted" }));
+    expect(db.transaction).toHaveBeenCalled();
+  });
+
+  it("keeps the user when cancelling the subscription fails", async () => {
+    jest.mocked(deleteOrganizationCompletely).mockRejectedValue(new BillingCancellationError("Could not cancel the subscription: down"));
+    expect((await del({ confirmDeleteOrganizationIds: ["org-solo"] })).status).toBe(502);
+    expect(db.transaction).not.toHaveBeenCalled();
+  });
 });
 
 describe("PUT validation and audit", () => {
