@@ -48,7 +48,7 @@ export function DeleteOrganizationButton({ organizationId, organizationName }: D
       }
       toast.success("Organization deleted");
       // Full reload: the session's active organization is gone.
-      window.location.assign("/");
+      window.location.replace(new URL("/", window.location.origin));
     } catch {
       toast.error("Failed to delete organization");
     } finally {
