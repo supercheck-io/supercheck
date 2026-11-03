@@ -33,7 +33,7 @@ const FALLBACK_CLEANUP_INTERVAL = 60000; // 1 minute
 
 // Cleanup expired entries periodically
 if (typeof setInterval !== "undefined") {
-  setInterval(() => {
+  const cleanupTimer = setInterval(() => {
     const now = Date.now();
     for (const [key, value] of inMemoryFallback.entries()) {
       if (value.resetAt < now) {
@@ -41,6 +41,8 @@ if (typeof setInterval !== "undefined") {
       }
     }
   }, FALLBACK_CLEANUP_INTERVAL);
+  // Module-scope timer: must not keep Jest workers or short-lived processes alive.
+  cleanupTimer.unref?.();
 }
 
 /**
