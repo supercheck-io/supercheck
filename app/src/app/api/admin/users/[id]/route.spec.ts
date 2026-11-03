@@ -11,7 +11,8 @@ jest.mock("@/lib/user-avatar", () => ({ pruneAvatars: jest.fn() }));
 jest.mock("@/lib/organization-teardown", () => {
   class BillingCancellationError extends Error {}
   class OrganizationMembershipChangedError extends Error {}
-  return { BillingCancellationError, OrganizationMembershipChangedError, deleteOrganizationCompletely: jest.fn(), soleMemberOrganizations: jest.fn(async () => []) };
+  class StorageCleanupError extends Error {}
+  return { BillingCancellationError, OrganizationMembershipChangedError, StorageCleanupError, deleteOrganizationCompletely: jest.fn(), soleMemberOrganizations: jest.fn(async () => []) };
 });
 import { BillingCancellationError, deleteOrganizationCompletely, soleMemberOrganizations } from "@/lib/organization-teardown";
 import { NextRequest } from "next/server";
@@ -77,7 +78,7 @@ describe("organizations where the user is the only member", () => {
   });
 
   it("deletes the confirmed organizations, then the user", async () => {
-    jest.mocked(deleteOrganizationCompletely).mockResolvedValue({ s3Failures: 0, subscriptionCancelled: true });
+    jest.mocked(deleteOrganizationCompletely).mockResolvedValue({ subscriptionCancelled: true });
     const response = await del({ confirmDeleteOrganizationIds: ["org-solo"] });
     expect(response.status).toBe(200);
     expect(deleteOrganizationCompletely).toHaveBeenCalledWith("org-solo", { onlyMemberUserId: ID }, "admin");
@@ -97,6 +98,15 @@ describe("organizations where the user is the only member", () => {
     const response = await del({ confirmDeleteOrganizationIds: ["org-solo"] });
     expect(response.status).toBe(409);
     expect((await response.json()).code).toBe("confirm_organization_deletion");
+    expect(db.transaction).not.toHaveBeenCalled();
+  });
+
+  it("keeps the user and reports nothing deleted when stored files cannot be removed", async () => {
+    const { StorageCleanupError } = jest.requireMock("@/lib/organization-teardown") as { StorageCleanupError: new (m: string) => Error };
+    jest.mocked(deleteOrganizationCompletely).mockRejectedValue(new StorageCleanupError("2 stored file(s) could not be removed"));
+    const response = await del({ confirmDeleteOrganizationIds: ["org-solo"] });
+    expect(response.status).toBe(502);
+    expect(await response.json()).toMatchObject({ deletedOrganizationIds: [] });
     expect(db.transaction).not.toHaveBeenCalled();
   });
 

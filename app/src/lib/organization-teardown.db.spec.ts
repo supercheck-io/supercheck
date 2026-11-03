@@ -22,7 +22,7 @@ jest.mock("@/lib/feature-flags", () => ({
   getPolarConfig: () => ({ accessToken: "t", server: "sandbox" }),
 }));
 jest.mock("@/lib/billing/polar-client", () => ({ createPolarClient: () => ({ subscriptions: { revoke } }) }));
-const deletePrefix = jest.fn(async () => ({ success: true, failedObjects: [] }));
+const deletePrefix = jest.fn(async (): Promise<{ success: boolean; failedObjects: unknown[] }> => ({ success: true, failedObjects: [] }));
 const deleteReports = jest.fn(async () => ({ success: true, failedObjects: [] }));
 const getRunArtifactInputs = jest.fn(() => []);
 jest.mock("@/lib/s3-cleanup", () => ({
@@ -32,7 +32,7 @@ const deleteScheduledMonitor = jest.fn(async () => true);
 jest.mock("@/lib/monitor-scheduler", () => ({ deleteScheduledMonitor, scheduleMonitor: jest.fn() }));
 const deleteScheduledJob = jest.fn(async () => true);
 jest.mock("@/lib/job-scheduler", () => ({ deleteScheduledJob }));
-import { BillingCancellationError, OrganizationMembershipChangedError, TEARDOWN_ACTION, deleteOrganizationCompletely, soleMemberOrganizations } from "./organization-teardown";
+import { BillingCancellationError, OrganizationMembershipChangedError, StorageCleanupError, TEARDOWN_ACTION, deleteOrganizationCompletely, soleMemberOrganizations } from "./organization-teardown";
 
 const name = `org_teardown_${randomUUID().replaceAll("-", "")}`;
 let maintenance: ReturnType<typeof postgres>;
@@ -84,7 +84,7 @@ async function seed(subscription: { subscriptionId?: string; subscriptionStatus?
 
 it("deletes the organization and everything it owns, keeping audit history", async () => {
   const { organization, project, job, monitor, page } = await seed({ subscriptionId: `sub-${randomUUID()}`, subscriptionStatus: "active" });
-  await expect(deleteOrganizationCompletely(organization.id, { noMembers: true }, adminId)).resolves.toMatchObject({ s3Failures: 0 });
+  await expect(deleteOrganizationCompletely(organization.id, { noMembers: true }, adminId)).resolves.toMatchObject({ subscriptionCancelled: true });
 
   expect(revoke).toHaveBeenCalledTimes(1);
   expect(deleteScheduledJob).toHaveBeenCalledWith(job.id);
@@ -107,12 +107,16 @@ it("changes nothing when the subscription cannot be cancelled", async () => {
   const [project] = await mockDatabase.select().from(schema.projects).where(eq(schema.projects.organizationId, organization.id));
   expect(project.status).toBe("active");
   expect(deleteScheduledJob).not.toHaveBeenCalled();
+  // The audit marker rolled back with the transaction.
+  expect(await mockDatabase.select().from(schema.auditLogs).where(eq(schema.auditLogs.action, TEARDOWN_ACTION))).not.toContainEqual(
+    expect.objectContaining({ organizationId: organization.id }),
+  );
 });
 
 it("treats an already cancelled subscription as done and skips orgs without one", async () => {
   const paid = await seed({ subscriptionId: `sub-${randomUUID()}`, subscriptionStatus: "active" });
   revoke.mockRejectedValueOnce(Object.assign(new Error("AlreadyCanceledSubscription"), { statusCode: 403 }));
-  await expect(deleteOrganizationCompletely(paid.organization.id, { noMembers: true }, adminId)).resolves.toMatchObject({ s3Failures: 0 });
+  await expect(deleteOrganizationCompletely(paid.organization.id, { noMembers: true }, adminId)).resolves.toMatchObject({ subscriptionCancelled: true });
   revoke.mockClear();
   const free = await seed();
   await deleteOrganizationCompletely(free.organization.id, { noMembers: true }, adminId);
@@ -153,4 +157,19 @@ it("pages through more runs than one batch", async () => {
   const seen = getRunArtifactInputs.mock.calls.map((call) => (call as unknown as [{ id: string }])[0].id);
   expect(seen).toHaveLength(451);
   expect(new Set(seen).size).toBe(451);
+});
+
+it("deletes nothing from the database when stored files cannot be removed, so a retry can finish", async () => {
+  const { organization, project } = await seed();
+  deletePrefix.mockResolvedValueOnce({ success: false, failedObjects: [{ key: "k", error: "denied" }] });
+  await expect(deleteOrganizationCompletely(organization.id, { noMembers: true }, adminId)).rejects.toBeInstanceOf(StorageCleanupError);
+  expect(await mockDatabase.select().from(schema.projects).where(eq(schema.projects.id, project.id))).toHaveLength(1);
+  await expect(deleteOrganizationCompletely(organization.id, { noMembers: true }, adminId)).resolves.toEqual({ subscriptionCancelled: false });
+  expect(await mockDatabase.select().from(schema.projects).where(eq(schema.projects.id, project.id))).toHaveLength(0);
+});
+
+it("ends a bound subscription even when it is stored locally as none (trialing or paused at the provider)", async () => {
+  const { organization } = await seed({ subscriptionId: `sub-${randomUUID()}`, subscriptionStatus: "none" });
+  await deleteOrganizationCompletely(organization.id, { noMembers: true }, adminId);
+  expect(revoke).toHaveBeenCalledWith(organization.subscriptionId);
 });

@@ -169,9 +169,7 @@ async function updateWebhookResult(
  * subscription during that teardown triggers follow-up events that can never find the organization;
  * they are acknowledged instead of retried (retries could get the endpoint disabled).
  */
-async function belongsToDeletedOrganization(payload: PolarWebhookPayload): Promise<boolean> {
-  const subscriptionId = getSubscriptionIdFromPayload(payload);
-  if (!subscriptionId) return false;
+async function belongsToDeletedOrganization(subscriptionId: string): Promise<boolean> {
   const [row] = await getPolarWebhookDb()
     .select({ id: auditLogs.id })
     .from(auditLogs)
@@ -1856,7 +1854,7 @@ function orderedHandler(
     if (!org) {
       if (eventType === "customer.deleted") return;
       // Follow-up events of a subscription cancelled while an admin deleted its organization.
-      if (subscriptionId && (await belongsToDeletedOrganization(payload))) {
+      if (subscriptionId && (await belongsToDeletedOrganization(subscriptionId))) {
         console.log(`[Polar] ${eventType}: organization was deleted; acknowledging`);
         return;
       }

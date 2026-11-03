@@ -27,9 +27,9 @@ async function assertMembership(executor: Pick<typeof db, "select">, organizatio
   if (!ok) throw new OrganizationMembershipChangedError("The organization's members changed; nothing was deleted");
 }
 
-/** Subscriptions that still bill and must be revoked before the organization disappears. */
-export function hasCancellableSubscription(org: { subscriptionId: string | null; subscriptionStatus: string | null }) {
-  return !!org.subscriptionId && org.subscriptionStatus !== "none";
+/** Any bound subscription is ended: provider states such as trialing or paused are stored locally as "none". */
+export function hasCancellableSubscription(org: { subscriptionId: string | null }) {
+  return !!org.subscriptionId;
 }
 
 function isAlreadyGone(error: unknown): boolean {
@@ -53,14 +53,15 @@ async function revokeSubscription(subscriptionId: string): Promise<void> {
   } catch (error) {
     if (isAlreadyGone(error)) return;
     console.error(`[ORG_TEARDOWN] Failed to revoke subscription ${subscriptionId}:`, error);
-    throw new BillingCancellationError("Could not cancel the subscription with the billing provider");
+    throw new BillingCancellationError("Could not cancel the subscription with the billing provider; nothing was deleted");
   }
 }
 
-/** Best effort: removes stored files of the projects; failures are logged and counted, never block the delete. */
+/** Removes stored files of the projects; returns how many objects or prefixes failed. */
 async function deleteProjectArtifacts(projectIds: string[], monitorIds: string[], statusPageIds: string[]) {
   const s3 = createS3CleanupService();
   let failures = 0;
+  const testIds = new Set<string>();
   const run = async (label: string, fn: () => Promise<{ success: boolean; failedObjects: unknown[] }>) => {
     try {
       const result = await fn();
@@ -88,8 +89,11 @@ async function deleteProjectArtifacts(projectIds: string[], monitorIds: string[]
       entityType: r.entityType as ReportDeletionInput["entityType"],
     }));
     for (const r of batch) {
+      const testId = (r.metadata as { testId?: unknown } | null)?.testId;
+      if (typeof testId === "string" && /^[0-9a-f-]{36}$/i.test(testId)) testIds.add(testId);
       try { inputs.push(...s3.getRunArtifactInputs(r as Parameters<typeof s3.getRunArtifactInputs>[0])); }
-      catch (error) { failures++; console.error(`[ORG_TEARDOWN] run ${r.id} artifacts:`, error); }
+      // An unrecognised URL names no object we can locate; log it rather than block the deletion.
+      catch (error) { console.error(`[ORG_TEARDOWN] run ${r.id} artifacts:`, error); }
     }
     if (inputs.length) await run("run artifacts", () => s3.deleteReports(inputs));
     if (batch.length < BATCH) break;
@@ -123,91 +127,93 @@ async function deleteProjectArtifacts(projectIds: string[], monitorIds: string[]
     await run("project data files", () => s3.deletePrefix(s3.bucket("projectDataFilesBucketName"), `projects/${id}/`));
     await run("SRE attachments", () => s3.deletePrefix(SRE_ATTACHMENTS_BUCKET, `projects/${id}/`));
   }
+  // Saved browser runs write their report under the test id in the test bucket.
+  for (const id of testIds) {
+    await run("test reports", () => s3.deletePrefix(s3.bucket("testBucketName"), `${id}/`));
+  }
   for (const id of statusPageIds) {
     await run("status page assets", () => s3.deletePrefix(s3.bucket("statusBucketName"), `status-pages/${id}/`));
   }
   return failures;
 }
 
+/** Stored files could not all be removed; nothing was deleted from the database, so a retry is safe. */
+export class StorageCleanupError extends Error {}
+
 /**
- * Permanently deletes an organization and everything it owns. Checks the membership guard, cancels
- * a billing subscription (throws BillingCancellationError and changes nothing if that fails; a retry
- * after a later failure is safe because an already cancelled subscription counts as done), stops schedules, removes
- * stored files (best effort), then deletes projects and the organization in one transaction.
- * Audit logs are kept (no foreign key).
+ * Permanently deletes an organization and everything it owns, in one transaction that holds the
+ * organization row lock (FOR UPDATE). The lock conflicts with the foreign-key locks of new members,
+ * projects, monitors, tests and jobs, so the organization is frozen until the delete commits.
+ *
+ * Order: membership guard and audit marker; end the subscription (BillingCancellationError, nothing
+ * changed); stop schedules; remove stored files (StorageCleanupError if any object fails, nothing
+ * deleted from the database); delete projects and the organization. Audit logs are kept.
+ * Rollback leaves the subscription ended and schedules removed; a retry finishes the job (an ended
+ * subscription counts as done) and active monitors are rescheduled on the next app start.
  */
 export async function deleteOrganizationCompletely(
   organizationId: string,
   guard: MembershipGuard,
   actorUserId: string,
-): Promise<{ s3Failures: number; subscriptionCancelled: boolean } | null> {
-  const [org] = await db
-    .select({ id: organization.id, subscriptionId: organization.subscriptionId, subscriptionStatus: organization.subscriptionStatus })
-    .from(organization).where(eq(organization.id, organizationId)).limit(1);
-  if (!org) return null;
-
-  // Checked before anything irreversible, and again under the row lock before the final delete.
-  await assertMembership(db, organizationId, guard);
-  const subscriptionCancelled = hasCancellableSubscription(org);
-  // Written before anything irreversible: it records intent, and lets the billing webhooks that
-  // follow the cancellation recognise the subscription of a deleted organization (TEARDOWN_ACTION).
-  await logAdminEvent(actorUserId, "organization_teardown_started", organizationId, "organization", organizationId, {
-    organizationId, subscriptionId: subscriptionCancelled ? org.subscriptionId : undefined,
-  });
-  if (subscriptionCancelled) await revokeSubscription(org.subscriptionId!);
-
-  // Soft-delete first: the job scheduler skips deleted projects while the teardown runs.
-  const projectRows = await db
-    .update(projects).set({ status: "deleted", updatedAt: new Date() })
-    .where(eq(projects.organizationId, organizationId))
-    .returning({ id: projects.id });
-  const projectIds = projectRows.map((p) => p.id);
-
-  let s3Failures = 0;
-  if (projectIds.length) {
-    const monitorRows = await db
-      .update(monitors).set({ status: "paused", updatedAt: new Date() })
-      .where(eq(monitors.organizationId, organizationId))
-      .returning({ id: monitors.id, scheduledJobId: monitors.scheduledJobId });
-    const { unscheduleMonitors } = await import("@/lib/execution/trial-lifecycle");
-    await unscheduleMonitors(monitorRows, db);
-
-    const { deleteScheduledJob } = await import("@/lib/job-scheduler");
-    const scheduled = await db.select({ id: jobs.id }).from(jobs)
-      .where(and(inArray(jobs.projectId, projectIds), isNotNull(jobs.cronSchedule)));
-    for (const job of scheduled) {
-      try { await deleteScheduledJob(job.id); }
-      catch (error) { console.error(`[ORG_TEARDOWN] unschedule job ${job.id}:`, error); }
-    }
-
-    const pages = await db.select({ id: statusPages.id }).from(statusPages).where(eq(statusPages.organizationId, organizationId));
-    s3Failures = await deleteProjectArtifacts(projectIds, monitorRows.map((m) => m.id), pages.map((p) => p.id));
-  }
-
-  await db.transaction(async (tx) => {
-    await tx.select({ id: organization.id }).from(organization).where(eq(organization.id, organizationId)).for("update");
+): Promise<{ subscriptionCancelled: boolean } | null> {
+  return db.transaction(async (tx) => {
+    const [org] = await tx
+      .select({ id: organization.id, subscriptionId: organization.subscriptionId })
+      .from(organization).where(eq(organization.id, organizationId)).for("update");
+    if (!org) return null;
     await assertMembership(tx, organizationId, guard);
-    // MCP consents reference projects by id without a foreign key.
-    if (projectIds.length) await tx.delete(oauthConsent).where(inArray(oauthConsent.referenceId, projectIds));
-    await tx.delete(projects).where(eq(projects.organizationId, organizationId));
+
+    // Lets the provider events that follow the cancellation recognise a deleted organization.
+    await logAdminEvent(actorUserId, "organization_teardown_started", organizationId, "organization", organizationId, {
+      organizationId, subscriptionId: org.subscriptionId ?? undefined,
+    }, tx);
+    const subscriptionCancelled = hasCancellableSubscription(org);
+    if (subscriptionCancelled) await revokeSubscription(org.subscriptionId!);
+
+    const projectIds = (await tx.select({ id: projects.id }).from(projects).where(eq(projects.organizationId, organizationId))).map((p) => p.id);
+    if (projectIds.length) {
+      const monitorRows = await tx.select({ id: monitors.id, scheduledJobId: monitors.scheduledJobId })
+        .from(monitors).where(eq(monitors.organizationId, organizationId));
+      const scheduledJobs = await tx.select({ id: jobs.id }).from(jobs)
+        .where(and(inArray(jobs.projectId, projectIds), isNotNull(jobs.cronSchedule)));
+      // Stop new executions before collecting files, so no new artifacts appear after the sweep.
+      const { deleteScheduledMonitor } = await import("@/lib/monitor-scheduler");
+      const { deleteScheduledJob } = await import("@/lib/job-scheduler");
+      for (const row of monitorRows) {
+        for (const id of new Set([row.id, row.scheduledJobId].filter((v): v is string => !!v))) {
+          try { await deleteScheduledMonitor(id); } catch (error) { console.error(`[ORG_TEARDOWN] unschedule monitor ${id}:`, error); }
+        }
+      }
+      for (const job of scheduledJobs) {
+        try { await deleteScheduledJob(job.id); } catch (error) { console.error(`[ORG_TEARDOWN] unschedule job ${job.id}:`, error); }
+      }
+
+      const pages = await tx.select({ id: statusPages.id }).from(statusPages).where(eq(statusPages.organizationId, organizationId));
+      const failures = await deleteProjectArtifacts(projectIds, monitorRows.map((m) => m.id), pages.map((p) => p.id));
+      if (failures) {
+        throw new StorageCleanupError(`${failures} stored file(s) could not be removed; nothing was deleted, retry the deletion`);
+      }
+      // MCP consents reference projects by id without a foreign key.
+      await tx.delete(oauthConsent).where(inArray(oauthConsent.referenceId, projectIds));
+      await tx.delete(projects).where(eq(projects.organizationId, organizationId));
+    }
     await tx.delete(organization).where(eq(organization.id, organizationId));
+    return { subscriptionCancelled };
   });
-  if (s3Failures) console.error(`[ORG_TEARDOWN] organization ${organizationId} deleted with ${s3Failures} S3 cleanup failures`);
-  return { s3Failures, subscriptionCancelled };
 }
 
 /** Organizations whose only member is this user (deleted together with the user). */
 export async function soleMemberOrganizations(userId: string) {
   const rows = await db
-    .select({ id: organization.id, name: organization.name, subscriptionId: organization.subscriptionId, subscriptionStatus: organization.subscriptionStatus })
+    .select({ id: organization.id, name: organization.name, subscriptionId: organization.subscriptionId })
     .from(member)
     .innerJoin(organization, eq(member.organizationId, organization.id))
     .where(and(
       eq(member.userId, userId),
       sql`not exists (select 1 from member other where other.organization_id = ${member.organizationId} and other.user_id <> ${userId})`,
     ));
-  return rows.map(({ subscriptionId, subscriptionStatus, ...org }) => ({
+  return rows.map(({ subscriptionId, ...org }) => ({
     ...org,
-    hasActiveSubscription: hasCancellableSubscription({ subscriptionId, subscriptionStatus }),
+    hasActiveSubscription: hasCancellableSubscription({ subscriptionId }),
   }));
 }

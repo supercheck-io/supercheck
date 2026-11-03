@@ -86,6 +86,11 @@ export function DeleteUserDialog({ open, onOpenChange, userId, userName, userEma
       }
       if (!data.success) {
         toast.error(data.error || "Failed to delete user");
+        // Some organizations may already be gone: show what is left.
+        if (Array.isArray(data.deletedOrganizationIds) && data.deletedOrganizationIds.length) {
+          setOrgs((current) => current?.filter((org) => !data.deletedOrganizationIds.includes(org.id)) ?? null);
+          onSuccess();
+        }
         return;
       }
       toast.success(orgs.length ? `User and ${orgs.length} organization${orgs.length > 1 ? "s" : ""} deleted` : "User deleted");

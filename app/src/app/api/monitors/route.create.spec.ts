@@ -36,6 +36,8 @@ jest.mock("@/lib/location-registry", () => ({
   PROJECT_RESTRICTED_LOCATIONS_DISABLED_ERROR: "restricted",
 }));
 jest.mock("@/lib/worker-registry", () => ({ getActiveWorkerQueueNames: jest.fn() }));
+const deleteScheduledMonitor = jest.fn(async () => true);
+jest.mock("@/lib/monitor-scheduler", () => ({ deleteScheduledMonitor }));
 jest.mock("@/lib/creators", () => ({ loadCreators: jest.fn() }));
 
 import { POST, PUT } from "./route";
@@ -123,5 +125,15 @@ it("opens a transaction for the project lock when no plan limit applies (self-ho
   expect(db.transaction).toHaveBeenCalled();
   expect(forShare).toHaveBeenCalledWith("share");
   expect(insertMonitorRecord).not.toHaveBeenCalled();
+  expect(res.status).toBe(404);
+});
+
+it("drops the schedule when the project was deleted between the insert and scheduling", async () => {
+  const { scheduleCreatedMonitor } = jest.requireMock("@/lib/monitor-service") as { scheduleCreatedMonitor: jest.Mock };
+  insertWithinPlanLimit.mockResolvedValue({ ok: true, row: { newMonitor: { id: "new-monitor" }, enabled: true } });
+  scheduleCreatedMonitor.mockResolvedValue({ id: "new-monitor" });
+  dbSelect.mockReturnValue({ from: () => ({ innerJoin: () => ({ where: () => ({ limit: async () => [] }) }), where: async () => [] }) });
+  const res = await post({ enabled: false, notificationProviders: [] });
+  expect(deleteScheduledMonitor).toHaveBeenCalledWith("new-monitor");
   expect(res.status).toBe(404);
 });

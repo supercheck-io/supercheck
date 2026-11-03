@@ -5,7 +5,7 @@ import { organization, member, projects, user } from '@/db/schema';
 import { requireAdmin } from '@/lib/admin';
 import { getCurrentUser } from '@/lib/session';
 import { logAdminEvent } from '@/lib/audit-logger';
-import { BillingCancellationError, OrganizationMembershipChangedError, deleteOrganizationCompletely } from '@/lib/organization-teardown';
+import { BillingCancellationError, OrganizationMembershipChangedError, StorageCleanupError, deleteOrganizationCompletely } from '@/lib/organization-teardown';
 import { isImpersonatedSession } from '@/lib/rbac/middleware';
 import { checkAdminRateLimit } from '@/lib/session-security';
 import { eq, count } from 'drizzle-orm';
@@ -181,15 +181,15 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       if (deleted) {
         try {
           await logAdminEvent(admin.id, 'organization_deleted', resolvedParams.id, 'organization', resolvedParams.id, {
-          organizationName: orgData.name, subscriptionCancelled: deleted.subscriptionCancelled, s3Failures: deleted.s3Failures,
+          organizationName: orgData.name, subscriptionCancelled: deleted.subscriptionCancelled,
         });
         } catch (error) {
           console.error('Failed to audit organization deletion:', error);
         }
       }
     } catch (error) {
-      if (error instanceof BillingCancellationError) {
-        return NextResponse.json({ success: false, error: `${error.message}. Nothing was deleted.` }, { status: 502 });
+      if (error instanceof BillingCancellationError || error instanceof StorageCleanupError) {
+        return NextResponse.json({ success: false, error: error.message }, { status: 502 });
       }
       if (error instanceof OrganizationMembershipChangedError) {
         return NextResponse.json({ success: false, error: 'Cannot delete organization with members' }, { status: 400 });

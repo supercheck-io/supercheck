@@ -18,7 +18,7 @@ import { z } from 'zod';
 import { logAdminEvent, logImpersonationEvent } from '@/lib/audit-logger';
 import { checkAdminRateLimit } from '@/lib/session-security';
 import { pruneAvatars } from '@/lib/user-avatar';
-import { BillingCancellationError, OrganizationMembershipChangedError, deleteOrganizationCompletely, soleMemberOrganizations } from '@/lib/organization-teardown';
+import { BillingCancellationError, OrganizationMembershipChangedError, StorageCleanupError, deleteOrganizationCompletely, soleMemberOrganizations } from '@/lib/organization-teardown';
 import { isImpersonatedSession } from '@/lib/rbac/middleware';
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -238,15 +238,17 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
           try {
             await logAdminEvent(currentAdmin.id, 'organization_deleted', org.id, 'organization', org.id, {
             organizationName: org.name, reason: 'sole_member_user_deleted', userId,
-            subscriptionCancelled: deleted.subscriptionCancelled, s3Failures: deleted.s3Failures,
+            subscriptionCancelled: deleted.subscriptionCancelled,
           });
           } catch (error) {
             console.error('Failed to audit organization deletion:', error);
           }
         }
       } catch (error) {
-        if (error instanceof BillingCancellationError) {
-          return NextResponse.json({ success: false, error: `${org.name}: ${error.message}. Nothing was deleted for this organization.` }, { status: 502 });
+        // Earlier organizations in this request are already gone; say so, the user is kept.
+        const alreadyDeleted = { deletedOrganizationIds };
+        if (error instanceof BillingCancellationError || error instanceof StorageCleanupError) {
+          return NextResponse.json({ success: false, error: `${org.name}: ${error.message}. The user was not deleted.`, ...alreadyDeleted }, { status: 502 });
         }
         if (error instanceof OrganizationMembershipChangedError) {
           return NextResponse.json({
@@ -254,6 +256,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
             code: 'confirm_organization_deletion',
             error: `${org.name}: ${error.message}. Review the list and confirm again.`,
             organizations: await soleMemberOrganizations(userId),
+            ...alreadyDeleted,
           }, { status: 409 });
         }
         throw error;
