@@ -7,6 +7,8 @@ import { redactConnectorText } from "@/lib/sre/connectors/output-sanitizer";
 import { privateAgentCredentials, privateAgentHeartbeats, privateAgents } from "@/db/schema";
 import { db } from "@/utils/db";
 import { authenticatePrivateAgent, unauthorized } from "../jobs/auth";
+import { allowDeviceAuthRequest } from "@/lib/auth/device-auth-rate-limit";
+import { PRIVATE_AGENT_LIMITS } from "@/lib/private-agents/request-limits";
 import { knownConnectorTypes } from "@/lib/private-agents/agent-registry";
 
 const heartbeatSchema = z.object({
@@ -41,6 +43,10 @@ export async function POST(request: NextRequest) {
     const auth = await authenticatePrivateAgent(request);
     if (!auth) {
       return unauthorized();
+    }
+
+    if (!(await allowDeviceAuthRequest([PRIVATE_AGENT_LIMITS.heartbeatPerCredential(auth.credential.id)]))) {
+      return NextResponse.json({ error: "Too many requests" }, { status: 429, headers: { "Retry-After": "60" } });
     }
 
     const body = heartbeatSchema.safeParse(await request.json().catch(() => null));
