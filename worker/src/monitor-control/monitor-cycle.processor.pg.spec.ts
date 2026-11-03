@@ -245,10 +245,10 @@ suite('MonitorCycleProcessor (PostgreSQL)', () => {
         'open',
       ],
       [
-        'a billing outage at its limit is aborted',
+        'a prolonged billing outage is never aborted',
         () => new BillingVerificationError('down'),
-        { failures: 0, billingFailures: 71 },
-        'aborted',
+        { failures: 0, billingFailures: 500 },
+        'open',
       ],
       [
         'another persistent failure at its limit is aborted',

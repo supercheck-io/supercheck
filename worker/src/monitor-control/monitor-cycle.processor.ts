@@ -22,13 +22,6 @@ const POISON_MAX_BACKOFF_MS = 5 * 60_000;
 /** After this many failed closures (about 1.5 h at the maximum backoff) the cycle is aborted. */
 const POISON_GIVE_UP_AFTER = 20;
 /**
- * A billing-verification outage is not a property of the cycle: every cycle fails until billing
- * answers again. Keep them retryable for about six hours (at the maximum backoff) before giving up,
- * so a provider outage does not silently drop alerts. The window is bounded because each
- * overdue cycle is tracked in memory and re-queried every pass.
- */
-const BILLING_GIVE_UP_AFTER = 72;
-/**
  * Wall-clock budget for one notification. A tenant-controlled endpoint that trickles a response must
  * not stall every other organization's closures and alerts behind it.
  */
@@ -267,10 +260,10 @@ export class MonitorCycleProcessor implements OnModuleInit, OnModuleDestroy {
       this.logger.error(
         `Closing cycle ${id} failed (attempt ${failures + billingFailures}): ${describeError(error)}`,
       );
-      if (
-        failures >= POISON_GIVE_UP_AFTER ||
-        billingFailures >= BILLING_GIVE_UP_AFTER
-      ) {
+      // A billing-verification outage is never a reason to abort: every cycle fails until billing
+      // answers, so dropping them would lose their alerts. They stay open and retryable while the
+      // close-failures metric alerts operators; only a genuine hold aborts (in closeCycle).
+      if (failures >= POISON_GIVE_UP_AFTER) {
         this.failing.delete(id);
         try {
           await this.cycles.abortCycle(id);
