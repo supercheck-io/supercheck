@@ -139,8 +139,11 @@ export async function getCachedAuthSession() {
   }
   
   return getCachedSession('auth:session', async () => {
-    return authModule!.auth.api.getSession({
+    const authSession = await authModule!.auth.api.getSession({
       headers: await headersModule!.headers(),
     });
+    // Reject sessions that outlive a suspension (e.g. ban set outside suspendAccount); expired bans pass.
+    const { isCredentialOwnerActive } = await import('@/lib/security/credential-owner');
+    return authSession && isCredentialOwnerActive(authSession.user) ? authSession : null;
   });
 }

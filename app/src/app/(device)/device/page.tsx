@@ -1,4 +1,5 @@
 import { headers } from "next/headers";
+import { isCredentialOwnerActive } from "@/lib/security/credential-owner";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { eq, inArray } from "drizzle-orm";
@@ -93,7 +94,7 @@ export default async function DevicePage({
 
   const requestHeaders = await headers();
   const session = await auth.api.getSession({ headers: requestHeaders });
-  if (!session?.user) {
+  if (!session?.user || !isCredentialOwnerActive(session.user)) {
     // Hard-coded allowlisted destination; the code is revalidated by buildDeviceReturnPath.
     redirect(`/sign-in?next=${encodeURIComponent(buildDeviceReturnPath(formatted))}`);
   }
