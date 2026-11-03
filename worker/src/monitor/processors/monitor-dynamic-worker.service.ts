@@ -542,6 +542,28 @@ export class MonitorDynamicWorkerService
     }
   }
 
+  /**
+   * Final-failure variant of closeSkippedGroup: the job has already failed, so it cannot be delayed and
+   * retried. One attempt; if it fails, the cycle deadline settles the region.
+   */
+  private async closeGroupAfterFailure(
+    job: Job<MonitorJobDataDto>,
+  ): Promise<void> {
+    const { monitorId, executionGroupId, monitorCycle } = job.data;
+    if (!executionGroupId) return;
+    try {
+      await this.monitorService.skipDistributedMonitorGroup(
+        monitorId,
+        executionGroupId,
+        !!monitorCycle,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Could not close group ${executionGroupId} for ${monitorId} after a final failure; the cycle deadline will settle it: ${getErrorMessage(error)}`,
+      );
+    }
+  }
+
   private async closeSkippedGroup(job: Job<MonitorJobDataDto>): Promise<void> {
     const { monitorId, executionGroupId, monitorCycle } = job.data;
     if (!executionGroupId) return;
@@ -679,7 +701,7 @@ export class MonitorDynamicWorkerService
       this.logger.warn(
         `Monitor ${monitorId}/${executionLocation} result was lost; closing the group without recording downtime`,
       );
-      await this.closeSkippedGroup(job);
+      await this.closeGroupAfterFailure(job);
       return;
     }
 
@@ -730,7 +752,7 @@ export class MonitorDynamicWorkerService
             this.logger.warn(
               `Stored up result for ${monitorId}/${executionLocation} could not be saved, closing the group without recording downtime: ${getErrorMessage(pendingError)}`,
             );
-            await this.closeSkippedGroup(job);
+            await this.closeGroupAfterFailure(job);
             return;
           }
           this.logger.warn(

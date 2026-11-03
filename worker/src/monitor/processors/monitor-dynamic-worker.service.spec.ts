@@ -1076,14 +1076,16 @@ describe('MonitorDynamicWorkerService lifecycle', () => {
       updateData: jest.fn().mockRejectedValue(new Error('lock lost')),
       getState: jest.fn().mockResolvedValue('failed'),
     };
-    // The failed handler cannot retry: the error surfaces and the cycle deadline settles the region.
+    // The failed job cannot be delayed: one close attempt, no updateData or moveToDelayed, and the
+    // cycle deadline settles the region.
     await expect(
       service['handleFinalJobFailure'](
         job as never,
         new ResultNotKeptError('lost'),
       ),
-    ).rejects.toThrow('lock lost');
+    ).resolves.toBeUndefined();
     expect(skip).toHaveBeenCalledTimes(1);
+    expect(job.updateData).not.toHaveBeenCalled();
     expect(save).not.toHaveBeenCalled();
   });
   it('carries the cycle marker into a final failure so it records a hint, never legacy evaluation', async () => {

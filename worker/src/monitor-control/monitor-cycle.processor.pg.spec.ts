@@ -328,8 +328,38 @@ suite('MonitorCycleProcessor (PostgreSQL)', () => {
       await processor.tick(new Date(deadline.getTime() + 1000));
       expect(processor.snapshot().abortedCycles).toBe(before);
       expect((await cycle('abort-fails')).status).toBe('open');
+      // The backoff survives the failed abort, so the cycle is not retried on every pass.
+      const kept = (
+        processor as unknown as { failing: Map<string, { nextAt: number }> }
+      ).failing.get('abort-fails');
+      expect(kept?.nextAt).toBeGreaterThan(Date.now());
       close.mockRestore();
       abort.mockRestore();
+    });
+
+    it('never backs a young cycle off past the 24 h age bound', async () => {
+      await open('near-bound');
+      const close = jest
+        .spyOn(MonitorCycleService.prototype, 'closeCycle')
+        .mockRejectedValue(new Error('poison'));
+      (processor as unknown as { failing: Map<string, unknown> }).failing.set(
+        'near-bound',
+        { failures: 10, billingFailures: 0, nextAt: 0 },
+      );
+      // 30 s before the bound; a 5 min backoff would otherwise overshoot it.
+      const now = new Date(deadline.getTime() + 24 * 60 * 60_000 - 30_000);
+      const realNow = Date.now;
+      Date.now = () => now.getTime();
+      try {
+        await processor.tick(now);
+      } finally {
+        Date.now = realNow;
+      }
+      const state = (
+        processor as unknown as { failing: Map<string, { nextAt: number }> }
+      ).failing.get('near-bound');
+      expect(state?.nextAt).toBe(deadline.getTime() + 24 * 60 * 60_000);
+      close.mockRestore();
     });
 
     it('asks for an immediate next pass when a full batch of overdue cycles was found', async () => {

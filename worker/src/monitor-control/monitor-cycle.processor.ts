@@ -32,6 +32,8 @@ const POISON_MAX_BACKOFF_MS = 5 * 60_000;
 const POISON_GIVE_UP_AFTER = 20;
 /** Hard age bound: an open cycle this far past its deadline is aborted whatever the error (billing included). */
 const MAX_OPEN_AGE_MS = 24 * 60 * 60_000;
+/** Bind parameters per id list; postgres.js rejects a query above 65534 parameters. */
+const ID_QUERY_CHUNK = 1000;
 /**
  * Wall-clock budget for one notification. A tenant-controlled endpoint that trickles a response must
  * not stall every other organization's closures and alerts behind it.
@@ -199,8 +201,11 @@ export class MonitorCycleProcessor implements OnModuleInit, OnModuleDestroy {
   private async processDeadlines(now: Date): Promise<number> {
     // Cycles in backoff are excluded in SQL, so they can never crowd healthy ones out of the batch.
     const failingIds = [...this.failing.keys()];
+    // shortcut: only the first ID_QUERY_CHUNK backed-off ids are excluded in SQL (the loop below still
+    // skips the rest); beyond that a large outage can again crowd the batch, which the age bound clears.
     const backedOff = [...this.failing]
       .filter(([, state]) => state.nextAt > Date.now())
+      .slice(0, ID_QUERY_CHUNK)
       .map(([id]) => id);
     const due = await this.dbService.db
       .select({
@@ -221,19 +226,22 @@ export class MonitorCycleProcessor implements OnModuleInit, OnModuleDestroy {
       .limit(BATCH);
     if (failingIds.length) {
       // Forget entries whose cycle was closed, deleted or aborted outside close(), on every pass.
-      const stillOpen = new Set(
-        (
-          await this.dbService.db
-            .select({ id: schema.monitorCycles.id })
-            .from(schema.monitorCycles)
-            .where(
-              and(
-                eq(schema.monitorCycles.status, 'open'),
-                inArray(schema.monitorCycles.id, failingIds),
+      const stillOpen = new Set<string>();
+      for (let i = 0; i < failingIds.length; i += ID_QUERY_CHUNK) {
+        const rows = await this.dbService.db
+          .select({ id: schema.monitorCycles.id })
+          .from(schema.monitorCycles)
+          .where(
+            and(
+              eq(schema.monitorCycles.status, 'open'),
+              inArray(
+                schema.monitorCycles.id,
+                failingIds.slice(i, i + ID_QUERY_CHUNK),
               ),
-            )
-        ).map((row) => row.id),
-      );
+            ),
+          );
+        for (const row of rows) stillOpen.add(row.id);
+      }
       for (const id of failingIds)
         if (!stillOpen.has(id)) this.failing.delete(id);
     }
@@ -242,11 +250,7 @@ export class MonitorCycleProcessor implements OnModuleInit, OnModuleDestroy {
       if (this.stopping || processed >= BATCH) break;
       if ((this.failing.get(id)?.nextAt ?? 0) > Date.now()) continue;
       processed += 1;
-      await this.close(
-        id,
-        now,
-        now.getTime() - deadlineAt.getTime() > MAX_OPEN_AGE_MS,
-      );
+      await this.close(id, now, deadlineAt);
     }
     return processed;
   }
@@ -269,7 +273,11 @@ export class MonitorCycleProcessor implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  private async close(id: string, now: Date, expired = false): Promise<void> {
+  private async close(id: string, now: Date, deadlineAt?: Date): Promise<void> {
+    const expiresAt = deadlineAt
+      ? deadlineAt.getTime() + MAX_OPEN_AGE_MS
+      : Infinity;
+    const expired = now.getTime() > expiresAt;
     try {
       const outcome = await this.cycles.closeCycle(id, now);
       this.failing.delete(id);
@@ -284,15 +292,17 @@ export class MonitorCycleProcessor implements OnModuleInit, OnModuleDestroy {
       const failures = (previous?.failures ?? 0) + (billing ? 0 : 1);
       const billingFailures =
         (previous?.billingFailures ?? 0) + (billing ? 1 : 0);
+      const backoffUntil =
+        Date.now() +
+        Math.min(
+          POISON_MAX_BACKOFF_MS,
+          2000 * 2 ** Math.min(failures + billingFailures, 20),
+        );
       this.failing.set(id, {
         failures,
         billingFailures,
-        nextAt:
-          Date.now() +
-          Math.min(
-            POISON_MAX_BACKOFF_MS,
-            2000 * 2 ** Math.min(failures + billingFailures, 20),
-          ),
+        // Before the age bound, never back off past it, so the abort runs on time.
+        nextAt: expired ? backoffUntil : Math.min(backoffUntil, expiresAt),
       });
       this.logger.error(
         `Closing cycle ${id} failed (attempt ${failures + billingFailures}): ${describeError(error)}`,
@@ -302,11 +312,11 @@ export class MonitorCycleProcessor implements OnModuleInit, OnModuleDestroy {
       // close-failures metric alerts operators; only a genuine hold aborts (in closeCycle), or the
       // 24 h age bound (so a deterministic billing error cannot pile up open cycles forever).
       if (failures >= POISON_GIVE_UP_AFTER || expired) {
-        this.failing.delete(id);
         try {
           await this.cycles.abortCycle(id);
+          this.failing.delete(id);
         } catch (abortError) {
-          // Left open, so the next pass retries the closure from scratch.
+          // Left open with its backoff kept, so a failing abort cannot be retried on every pass.
           this.logger.error(
             `Aborting cycle ${id} failed: ${describeError(abortError)}`,
           );

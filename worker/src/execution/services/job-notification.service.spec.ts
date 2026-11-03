@@ -330,6 +330,34 @@ describe('JobNotificationService', () => {
       ).toHaveBeenCalledTimes(1);
     });
 
+    it('does not count the current run toward a reminder when a newer run already alerted', async () => {
+      const { service, dbService, notificationService } = createService();
+      (await dbService.getJobById()).alertConfig.failureThreshold = 1;
+      dbService.getJobAlertStreakState.mockResolvedValue({
+        sent: 1,
+        lastSentAt: new Date(200_000),
+      });
+      // Four failures after the alert plus this run would make five, but this run finished before the alert.
+      dbService.getRecentRunsForJob.mockResolvedValue([
+        {
+          id: 'run-1',
+          status: 'failed',
+          createdAt: new Date(100_000),
+          completedAt: new Date(150_000),
+        },
+        ...Array.from({ length: 4 }, (_, i) => ({
+          id: `new-${i}`,
+          status: 'failed',
+          createdAt: new Date(210_000 + i),
+          completedAt: new Date(220_000 + i),
+        })),
+      ]);
+      await service.handleJobNotifications(params);
+      expect(
+        notificationService.sendNotificationToMultipleProviders,
+      ).not.toHaveBeenCalled();
+    });
+
     it('logs and swallows a failure loading the job', async () => {
       const { service, dbService } = createService();
       dbService.getJobById.mockRejectedValue(new Error('lookup failed'));

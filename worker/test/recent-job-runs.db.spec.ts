@@ -16,10 +16,10 @@ it('orders terminal job history by timestamp, independently of UUIDv4 ordering',
   const client = postgres(url.toString(), { max: 1 });
   try {
     await client.unsafe(
-      'CREATE TABLE runs (id uuid PRIMARY KEY, job_id uuid, status text, error_details text, created_at timestamp)',
+      'CREATE TABLE runs (id uuid PRIMARY KEY, job_id uuid, status text, error_details text, created_at timestamp, completed_at timestamp)',
     );
     const jobId = randomUUID();
-    await client`INSERT INTO runs VALUES
+    await client`INSERT INTO runs (id, job_id, status, error_details, created_at) VALUES
       ('ffffffff-ffff-4fff-afff-ffffffffffff', ${jobId}, 'failed', null, '2026-01-01'),
       ('00000000-0000-4000-a000-000000000001', ${jobId}, 'passed', null, '2026-01-02'),
       ('00000000-0000-4000-a000-000000000002', ${jobId}, 'error', null, '2026-01-02'),

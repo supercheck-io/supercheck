@@ -231,6 +231,11 @@ export class JobNotificationService {
           ? await this.dbService.getJobAlertStreakState(jobId)
           : { sent: 0, lastSentAt: null };
       let consecutiveSuccesses = normalizedStatus === 'passed' ? 1 : 0;
+      // A newer run may already have alerted: this run counts as "since the alert" only if it finished after it.
+      const currentRun = recentRuns.find((run) => run.id === runId);
+      const currentAt = currentRun?.completedAt ?? new Date();
+      if (alertState.lastSentAt && currentAt <= alertState.lastSentAt)
+        failuresSinceLastAlert = 0;
 
       for (const run of recentRuns) {
         if (run.id === runId || isCancelledRun(run)) continue;
