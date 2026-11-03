@@ -442,20 +442,24 @@ export class MonitorDynamicWorkerService
           await job.moveToDelayed(Date.now() + error.retryAfterMs, job.token);
           throw new DelayedError();
         }
-        // Without a group id a retry cannot see an already-inserted row, so it would insert a duplicate.
-        if (!saved && job.data.executionGroupId) {
-          await job
-            .updateData({
-              ...job.data,
-              aggregationOnly: true,
-              _pendingResult: result,
-            })
-            .catch((updateError: unknown) => {
-              this.logger.warn(
-                `Could not keep the unsaved result for monitor ${job.data.monitorId}: ${getErrorMessage(updateError)}`,
-              );
-            });
-        }
+        // The check already ran (and a synthetic one was billed): a retry would run it again. Keep the result
+        // for a save-only retry when a group id lets that retry see an inserted row; otherwise fail for good.
+        // The 'failed' handler logs and captures the failure.
+        const kept =
+          !!saved ||
+          (!!job.data.executionGroupId &&
+            (await job
+              .updateData({
+                ...job.data,
+                aggregationOnly: true,
+                _pendingResult: result,
+              })
+              .then(() => true)
+              .catch(() => false)));
+        if (!kept)
+          throw new UnrecoverableError(
+            `Monitor ${job.data.monitorId} result could not be saved and will not be re-run: ${getErrorMessage(error)}`,
+          );
         throw error;
       }
 

@@ -1501,6 +1501,25 @@ describe('MonitorService', () => {
         service['saveMonitorResultToDb'](row),
       ).resolves.toBeUndefined();
     });
+    it('absorbs a transient insert error without failing the job', async () => {
+      const values = jest
+        .fn()
+        .mockRejectedValueOnce(new Error('connection reset'))
+        .mockResolvedValue(undefined);
+      mockDbService.db.insert.mockReturnValue({ values });
+      jest.spyOn(service, 'saveMonitorResults').mockResolvedValue(undefined);
+      await service.saveDistributedMonitorResult(
+        {
+          monitorId: mockMonitor.id,
+          location: 'eu',
+          checkedAt: new Date(),
+          status: 'up',
+          isUp: true,
+        },
+        {},
+      );
+      expect(values).toHaveBeenCalledTimes(2);
+    });
     it('uses aggregate counters when default routing produced multiple actual results', async () => {
       const monitor = {
         ...mockMonitor,

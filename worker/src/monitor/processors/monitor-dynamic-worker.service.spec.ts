@@ -1247,6 +1247,36 @@ describe('a completed check whose result failed to save', () => {
     );
   });
 
+  it('fails for good, without a rerun, when a failed save cannot be retried from a kept result', async () => {
+    const save = jest.fn().mockRejectedValue(new Error('db down'));
+    const executeMonitor = jest.fn().mockResolvedValue(result);
+    const service = build(save, executeMonitor);
+    // No group id: a retry could not see an inserted row, so nothing is kept.
+    const noGroup = {
+      name: EXECUTE_MONITOR_JOB_NAME,
+      data: { monitorId: 'monitor-1', executionLocation: 'eu' },
+      updateData: jest.fn(),
+    };
+    await expect(
+      service['processJob'](noGroup as never),
+    ).rejects.toBeInstanceOf(UnrecoverableError);
+    expect(noGroup.updateData).not.toHaveBeenCalled();
+    // A group id, but the result cannot be stored on the job.
+    const unstorable = {
+      name: EXECUTE_MONITOR_JOB_NAME,
+      data: {
+        monitorId: 'monitor-1',
+        executionLocation: 'eu',
+        executionGroupId: 'g',
+      },
+      updateData: jest.fn().mockRejectedValue(new Error('redis down')),
+    };
+    await expect(
+      service['processJob'](unstorable as never),
+    ).rejects.toBeInstanceOf(UnrecoverableError);
+    expect(executeMonitor).toHaveBeenCalledTimes(2);
+  });
+
   it('falls back to an error row when the stored result itself cannot be saved', async () => {
     const save = jest
       .fn()
