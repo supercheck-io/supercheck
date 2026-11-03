@@ -5,7 +5,9 @@ import { organization, member, projects, user } from '@/db/schema';
 import { requireAdmin } from '@/lib/admin';
 import { getCurrentUser } from '@/lib/session';
 import { logAdminEvent } from '@/lib/audit-logger';
-import { BillingCancellationError, deleteOrganizationCompletely } from '@/lib/organization-teardown';
+import { BillingCancellationError, OrganizationMembershipChangedError, deleteOrganizationCompletely } from '@/lib/organization-teardown';
+import { isImpersonatedSession } from '@/lib/rbac/middleware';
+import { checkAdminRateLimit } from '@/lib/session-security';
 import { eq, count } from 'drizzle-orm';
 
 export async function GET(
@@ -123,12 +125,19 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   }
 }
 
-export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = await params;
   try {
     await requireAdmin();
     const admin = await getCurrentUser();
     if (!admin) throw new Error('Authentication required');
+    if (await isImpersonatedSession()) {
+      return NextResponse.json({ success: false, error: 'Stop impersonating before deleting organizations' }, { status: 403 });
+    }
+    const deleteLimit = await checkAdminRateLimit(admin.id, 'delete_organization', 10, 10 * 60 * 1000);
+    if (!deleteLimit.allowed) {
+      return NextResponse.json({ success: false, error: 'Too many deletions. Try again later.' }, { status: 429 });
+    }
     
     // First check if organization exists and get member count
     if (!isUuid((await params).id)) return NextResponse.json({ error: "Organization not found" }, { status: 404 });
@@ -157,17 +166,33 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
       );
     }
     
+    // The caller must name the organization it confirmed (no blind or replayed teardown).
+    const body = (await request.json().catch(() => ({}))) as { confirmOrganizationId?: unknown };
+    if (body.confirmOrganizationId !== resolvedParams.id) {
+      return NextResponse.json(
+        { success: false, error: 'Confirm the organization to delete (confirmOrganizationId)' },
+        { status: 400 }
+      );
+    }
+
     // Full teardown: cancels billing, stops schedules, removes stored files and all projects.
     try {
-      const deleted = await deleteOrganizationCompletely(resolvedParams.id);
+      const deleted = await deleteOrganizationCompletely(resolvedParams.id, { noMembers: true }, admin.id);
       if (deleted) {
-        await logAdminEvent(admin.id, 'organization_deleted', resolvedParams.id, 'organization', resolvedParams.id, {
-          organizationName: orgData.name, s3Failures: deleted.s3Failures,
+        try {
+          await logAdminEvent(admin.id, 'organization_deleted', resolvedParams.id, 'organization', resolvedParams.id, {
+          organizationName: orgData.name, subscriptionCancelled: deleted.subscriptionCancelled, s3Failures: deleted.s3Failures,
         });
+        } catch (error) {
+          console.error('Failed to audit organization deletion:', error);
+        }
       }
     } catch (error) {
       if (error instanceof BillingCancellationError) {
         return NextResponse.json({ success: false, error: `${error.message}. Nothing was deleted.` }, { status: 502 });
+      }
+      if (error instanceof OrganizationMembershipChangedError) {
+        return NextResponse.json({ success: false, error: 'Cannot delete organization with members' }, { status: 400 });
       }
       throw error;
     }

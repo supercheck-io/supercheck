@@ -562,14 +562,17 @@ export async function POST(req: NextRequest) {
         return Number(row?.count || 0);
       },
       insert: async (executor) => {
-        // Hold the live project so a concurrent project delete cannot miss this new monitor.
-        const [liveProject] = await executor
-          .select({ id: projects.id })
-          .from(projects)
-          .where(and(eq(projects.id, targetProjectId), ne(projects.status, "deleted")))
-          .for("share");
-        if (!liveProject) return null;
-        return insertMonitorRecord(monitorData, executor);
+        // Hold the live project so a concurrent project delete cannot miss this new monitor. Without a
+        // plan limit the executor is the pool (no transaction), so open one for the lock to hold.
+        const insertInLiveProject = async (tx: typeof executor) => {
+          const [liveProject] = await tx
+            .select({ id: projects.id })
+            .from(projects)
+            .where(and(eq(projects.id, targetProjectId), ne(projects.status, "deleted")))
+            .for("share");
+          return liveProject ? insertMonitorRecord(monitorData, tx) : null;
+        };
+        return executor === db ? db.transaction(insertInLiveProject) : insertInLiveProject(executor);
       },
     });
     if (!inserted.ok && inserted.busy) {

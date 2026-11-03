@@ -18,7 +18,8 @@ import { z } from 'zod';
 import { logAdminEvent, logImpersonationEvent } from '@/lib/audit-logger';
 import { checkAdminRateLimit } from '@/lib/session-security';
 import { pruneAvatars } from '@/lib/user-avatar';
-import { BillingCancellationError, deleteOrganizationCompletely, soleMemberOrganizations } from '@/lib/organization-teardown';
+import { BillingCancellationError, OrganizationMembershipChangedError, deleteOrganizationCompletely, soleMemberOrganizations } from '@/lib/organization-teardown';
+import { isImpersonatedSession } from '@/lib/rbac/middleware';
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = await params;
@@ -167,6 +168,15 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       );
     }
 
+    // Destructive and irreversible: never from an impersonated session, and rate limited per admin.
+    if (await isImpersonatedSession()) {
+      return NextResponse.json({ success: false, error: 'Stop impersonating before deleting users' }, { status: 403 });
+    }
+    const deleteLimit = await checkAdminRateLimit(currentAdmin.id, 'delete_user', 10, 10 * 60 * 1000);
+    if (!deleteLimit.allowed) {
+      return NextResponse.json({ success: false, error: 'Too many deletions. Try again later.' }, { status: 429 });
+    }
+
     // Verify user exists before attempting deletion
     if (!isUuid((await params).id)) return NextResponse.json({ error: "User not found" }, { status: 404 });
     const [targetUser] = await db
@@ -219,17 +229,32 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
         { status: 409 }
       );
     }
+    const deletedOrganizationIds: string[] = [];
     for (const org of soleMemberOrgs) {
       try {
-        const deleted = await deleteOrganizationCompletely(org.id);
+        const deleted = await deleteOrganizationCompletely(org.id, { onlyMemberUserId: userId }, currentAdmin.id);
         if (deleted) {
-          await logAdminEvent(currentAdmin.id, 'organization_deleted', org.id, 'organization', org.id, {
-            organizationName: org.name, reason: 'sole_member_user_deleted', userId, s3Failures: deleted.s3Failures,
+          deletedOrganizationIds.push(org.id);
+          try {
+            await logAdminEvent(currentAdmin.id, 'organization_deleted', org.id, 'organization', org.id, {
+            organizationName: org.name, reason: 'sole_member_user_deleted', userId,
+            subscriptionCancelled: deleted.subscriptionCancelled, s3Failures: deleted.s3Failures,
           });
+          } catch (error) {
+            console.error('Failed to audit organization deletion:', error);
+          }
         }
       } catch (error) {
         if (error instanceof BillingCancellationError) {
           return NextResponse.json({ success: false, error: `${org.name}: ${error.message}. Nothing was deleted for this organization.` }, { status: 502 });
+        }
+        if (error instanceof OrganizationMembershipChangedError) {
+          return NextResponse.json({
+            success: false,
+            code: 'confirm_organization_deletion',
+            error: `${org.name}: ${error.message}. Review the list and confirm again.`,
+            organizations: await soleMemberOrganizations(userId),
+          }, { status: 409 });
         }
         throw error;
       }
@@ -272,6 +297,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       // Same transaction as the deletion: both commit or neither does.
       await logAdminEvent(currentAdmin.id, 'user_deleted', userId, 'user', userId, {
         targetEmail: targetUser.email,
+        ...(deletedOrganizationIds.length ? { deletedOrganizationIds } : {}),
       }, tx);
     });
     

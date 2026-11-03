@@ -71,7 +71,12 @@ export function DeleteUserDialog({ open, onOpenChange, userId, userName, userEma
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ confirmDeleteOrganizationIds: orgs.map((org) => org.id) }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => null);
+      if (!data) {
+        // Proxy timeout or error page: a large teardown can outlive the request but keep running.
+        toast.error("No response from the server. The deletion may still be running; refresh the list before retrying.");
+        return;
+      }
       if (data.code === "confirm_organization_deletion") {
         // Memberships changed since the dialog opened: show the current list and ask again.
         setOrgs(data.organizations);
@@ -114,7 +119,7 @@ export function DeleteUserDialog({ open, onOpenChange, userId, userName, userEma
             <AlertDescription>{loadError}</AlertDescription>
           </Alert>
         ) : !orgs ? (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <div role="status" aria-live="polite" className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" /> Checking organizations…
           </div>
         ) : orgs.length > 0 ? (
@@ -142,7 +147,13 @@ export function DeleteUserDialog({ open, onOpenChange, userId, userName, userEma
           <p className="text-sm text-muted-foreground">This user is not the only member of any organization. Their organizations are kept.</p>
         )}
 
-        <div className="space-y-2">
+        <form
+          className="space-y-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (orgs && confirmedEmail && !isDeleting) void handleDelete();
+          }}
+        >
           <Label htmlFor="delete-user-confirm">Type the user&apos;s email to confirm</Label>
           <Input
             id="delete-user-confirm"
@@ -152,7 +163,7 @@ export function DeleteUserDialog({ open, onOpenChange, userId, userName, userEma
             autoComplete="off"
             disabled={isDeleting}
           />
-        </div>
+        </form>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isDeleting}>

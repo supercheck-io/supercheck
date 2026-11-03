@@ -15,10 +15,11 @@ import {
   getPolarWebhookDb,
   runOrderedPolarEvent,
 } from "./polar-event-transaction";
-import { organization, webhookIdempotency } from "@/db/schema";
-import { eq, and, lt, lte, isNull, or } from "drizzle-orm";
+import { auditLogs, organization, webhookIdempotency } from "@/db/schema";
+import { eq, and, lt, lte, isNull, or, sql } from "drizzle-orm";
 import type { SubscriptionPlan } from "@/db/schema";
 import { restoreTrialSuspensions } from "@/lib/execution/trial-lifecycle";
+import { TEARDOWN_ACTION } from "@/lib/organization-teardown-action";
 
 // A short processing lease prevents concurrent delivery from running twice.
 // Completed records are retained for 24 hours to suppress provider retries.
@@ -161,6 +162,22 @@ async function updateWebhookResult(
   if (status === "error") {
     throw new Error(message ?? `Failed to process Polar ${eventType} webhook`);
   }
+}
+
+/**
+ * True when this event's subscription belonged to an organization an admin deleted. Cancelling the
+ * subscription during that teardown triggers follow-up events that can never find the organization;
+ * they are acknowledged instead of retried (retries could get the endpoint disabled).
+ */
+async function belongsToDeletedOrganization(payload: PolarWebhookPayload): Promise<boolean> {
+  const subscriptionId = getSubscriptionIdFromPayload(payload);
+  if (!subscriptionId) return false;
+  const [row] = await getPolarWebhookDb()
+    .select({ id: auditLogs.id })
+    .from(auditLogs)
+    .where(and(eq(auditLogs.action, TEARDOWN_ACTION), sql`${auditLogs.details}->>'subscriptionId' = ${subscriptionId}`))
+    .limit(1);
+  return !!row;
 }
 
 /**
@@ -1838,6 +1855,11 @@ function orderedHandler(
     if (!org && userId) org = await findOrganizationByUserId(userId);
     if (!org) {
       if (eventType === "customer.deleted") return;
+      // Follow-up events of a subscription cancelled while an admin deleted its organization.
+      if (subscriptionId && (await belongsToDeletedOrganization(payload))) {
+        console.log(`[Polar] ${eventType}: organization was deleted; acknowledging`);
+        return;
+      }
       throw new Error("Polar billing organization not found");
     }
     await runOrderedPolarEvent(

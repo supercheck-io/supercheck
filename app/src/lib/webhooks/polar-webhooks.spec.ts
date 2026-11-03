@@ -17,6 +17,7 @@ jest.mock("@/utils/db", () => ({
     insert: jest.fn(),
     update: jest.fn(),
     delete: jest.fn(),
+    select: jest.fn(),
     query: {
       webhookIdempotency: { findFirst: jest.fn() },
       organization: { findFirst: jest.fn() },
@@ -33,6 +34,7 @@ jest.mock("./polar-event-transaction", () => ({
 }));
 
 jest.mock("@/db/schema", () => ({
+  auditLogs: { id: "auditLogs.id", action: "auditLogs.action", details: "auditLogs.details" },
   organization: {
     id: "organization.id",
     polarCustomerId: "organization.polarCustomerId",
@@ -60,6 +62,7 @@ jest.mock("drizzle-orm", () => ({
   lt: jest.fn((left, right) => ({ op: "lt", left, right })),
   lte: jest.fn((left, right) => ({ op: "lte", left, right })),
   or: jest.fn((...args) => ({ op: "or", args })),
+  sql: jest.fn(() => ({ op: "sql" })),
 }));
 
 import { db } from "@/utils/db";
@@ -647,7 +650,19 @@ describe("Polar webhook helpers", () => {
       else expect(write).not.toHaveProperty("subscriptionPlan");
     });
 
-    it("treats a canceled snapshot without product_id as retaining its current plan", async () => {
+    it("acknowledges an unmatched event whose subscription belonged to an organization an admin deleted", async () => {
+    (db.query.organization.findFirst as jest.Mock).mockResolvedValue(undefined);
+    (db.select as jest.Mock).mockReturnValue({ from: () => ({ where: () => ({ limit: async () => [{ id: "audit-1" }] }) }) });
+    await expect(handleSubscriptionCanceled({ id: "evt_deleted_org", type: "subscription.canceled", data: { id: "sub_gone", status: "canceled", customer_id: "cus_gone" } })).resolves.toBeUndefined();
+    expect(runOrderedPolarEvent).not.toHaveBeenCalled();
+  });
+
+  it("still fails (so Polar retries) when no organization matches for another reason", async () => {
+    (db.query.organization.findFirst as jest.Mock).mockResolvedValue(undefined);
+    (db.select as jest.Mock).mockReturnValue({ from: () => ({ where: () => ({ limit: async () => [] }) }) });
+    await expect(handleSubscriptionCanceled({ id: "evt_unknown_org", type: "subscription.canceled", data: { id: "sub_unknown", status: "canceled", customer_id: "cus_unknown" } })).rejects.toThrow("Polar billing organization not found");
+  });
+  it("treats a canceled snapshot without product_id as retaining its current plan", async () => {
       mockWebhookClaim();
       (db.query.organization.findFirst as jest.Mock).mockResolvedValue({
         id: "org_123", subscriptionPlan: "pro", subscriptionStatus: "canceled", subscriptionId: "sub_123", polarCustomerId: "cus_123",

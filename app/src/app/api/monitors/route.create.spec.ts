@@ -4,7 +4,7 @@ import { NextRequest } from "next/server";
 const dbSelect = jest.fn();
 const dbDeleteWhere = jest.fn();
 jest.mock("@/utils/db", () => ({
-  db: { select: (...a: unknown[]) => dbSelect(...a), delete: () => ({ where: (...a: unknown[]) => dbDeleteWhere(...a) }) },
+  db: { select: (...a: unknown[]) => dbSelect(...a), delete: () => ({ where: (...a: unknown[]) => dbDeleteWhere(...a) }), transaction: jest.fn() },
 }));
 jest.mock("@/lib/auth-context", () => ({
   requireAuthContext: jest.fn(async () => ({ userId: "u", organizationId: "org-1", project: { id: "project-1", name: "P" }, isCliAuth: false })),
@@ -108,6 +108,19 @@ it("does not insert into a project deleted before the insert took its lock", asy
   const executor = { select: () => ({ from: () => ({ where: () => ({ for: forShare }) }) }) };
   insertWithinPlanLimit.mockImplementation(async (opts: { insert: (e: unknown) => Promise<unknown> }) => ({ ok: true, row: await opts.insert(executor) }));
   const res = await post({ enabled: false, notificationProviders: [] });
+  expect(forShare).toHaveBeenCalledWith("share");
+  expect(insertMonitorRecord).not.toHaveBeenCalled();
+  expect(res.status).toBe(404);
+});
+
+it("opens a transaction for the project lock when no plan limit applies (self-hosted)", async () => {
+  const { db } = jest.requireMock("@/utils/db") as { db: { transaction: jest.Mock } };
+  const { insertMonitorRecord } = jest.requireMock("@/lib/monitor-service") as { insertMonitorRecord: jest.Mock };
+  const forShare = jest.fn(async () => []);
+  db.transaction.mockImplementation(async (cb: (tx: unknown) => unknown) => cb({ select: () => ({ from: () => ({ where: () => ({ for: forShare }) }) }) }));
+  insertWithinPlanLimit.mockImplementation(async (opts: { insert: (e: unknown) => Promise<unknown> }) => ({ ok: true, row: await opts.insert(db) }));
+  const res = await post({ enabled: false, notificationProviders: [] });
+  expect(db.transaction).toHaveBeenCalled();
   expect(forShare).toHaveBeenCalledWith("share");
   expect(insertMonitorRecord).not.toHaveBeenCalled();
   expect(res.status).toBe(404);

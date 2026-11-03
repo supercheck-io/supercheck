@@ -3,12 +3,15 @@ jest.mock("@/lib/admin", () => ({ requireAdmin: jest.fn() }));
 jest.mock("@/lib/session", () => ({ getCurrentUser: jest.fn() }));
 jest.mock("@/utils/auth", () => ({ auth: {} }));
 jest.mock("@/lib/audit-logger", () => ({ logAdminEvent: jest.fn(), logImpersonationEvent: jest.fn() }));
-jest.mock("@/lib/session-security", () => ({ checkAdminRateLimit: jest.fn() }));
+jest.mock("@/lib/session-security", () => ({ checkAdminRateLimit: jest.fn(async () => ({ allowed: true })) }));
+jest.mock("@/lib/rbac/middleware", () => ({ isImpersonatedSession: jest.fn(async () => false) }));
+import { isImpersonatedSession } from "@/lib/rbac/middleware";
 jest.mock("@/utils/db", () => ({ db: { select: jest.fn(), transaction: jest.fn() } }));
 jest.mock("@/lib/user-avatar", () => ({ pruneAvatars: jest.fn() }));
 jest.mock("@/lib/organization-teardown", () => {
   class BillingCancellationError extends Error {}
-  return { BillingCancellationError, deleteOrganizationCompletely: jest.fn(), soleMemberOrganizations: jest.fn(async () => []) };
+  class OrganizationMembershipChangedError extends Error {}
+  return { BillingCancellationError, OrganizationMembershipChangedError, deleteOrganizationCompletely: jest.fn(), soleMemberOrganizations: jest.fn(async () => []) };
 });
 import { BillingCancellationError, deleteOrganizationCompletely, soleMemberOrganizations } from "@/lib/organization-teardown";
 import { NextRequest } from "next/server";
@@ -74,12 +77,27 @@ describe("organizations where the user is the only member", () => {
   });
 
   it("deletes the confirmed organizations, then the user", async () => {
-    jest.mocked(deleteOrganizationCompletely).mockResolvedValue({ s3Failures: 0 });
+    jest.mocked(deleteOrganizationCompletely).mockResolvedValue({ s3Failures: 0, subscriptionCancelled: true });
     const response = await del({ confirmDeleteOrganizationIds: ["org-solo"] });
     expect(response.status).toBe(200);
-    expect(deleteOrganizationCompletely).toHaveBeenCalledWith("org-solo");
+    expect(deleteOrganizationCompletely).toHaveBeenCalledWith("org-solo", { onlyMemberUserId: ID }, "admin");
     expect(logAdminEvent).toHaveBeenCalledWith("admin", "organization_deleted", "org-solo", "organization", "org-solo", expect.objectContaining({ reason: "sole_member_user_deleted" }));
     expect(db.transaction).toHaveBeenCalled();
+  });
+
+  it("refuses from an impersonated session", async () => {
+    jest.mocked(isImpersonatedSession).mockResolvedValueOnce(true);
+    expect((await del({ confirmDeleteOrganizationIds: ["org-solo"] })).status).toBe(403);
+    expect(deleteOrganizationCompletely).not.toHaveBeenCalled();
+  });
+
+  it("asks again when the organization gained a member after confirmation", async () => {
+    const { OrganizationMembershipChangedError } = jest.requireMock("@/lib/organization-teardown") as { OrganizationMembershipChangedError: new (m: string) => Error };
+    jest.mocked(deleteOrganizationCompletely).mockRejectedValue(new OrganizationMembershipChangedError("changed"));
+    const response = await del({ confirmDeleteOrganizationIds: ["org-solo"] });
+    expect(response.status).toBe(409);
+    expect((await response.json()).code).toBe("confirm_organization_deletion");
+    expect(db.transaction).not.toHaveBeenCalled();
   });
 
   it("keeps the user when cancelling the subscription fails", async () => {
