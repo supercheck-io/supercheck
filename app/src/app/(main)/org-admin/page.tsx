@@ -42,6 +42,7 @@ import { ProjectsTable } from "@/components/org-admin/projects-table";
 import type { Project } from "@/components/org-admin/project-columns";
 import { ProjectLocationsDialog } from "@/components/org-admin/project-locations-dialog";
 import { SubscriptionTab } from "@/components/org-admin/subscription-tab";
+import { DeleteOrganizationButton } from "@/components/org-admin/delete-organization-button";
 import { TrialLoadTesting } from "@/components/org-admin/trial-load-testing";
 import { MemberAccessDialog } from "@/components/members/MemberAccessDialog";
 import { PrivateAgentsAdminView } from "@/components/sre/private-agents/private-agents-admin-view";
@@ -837,6 +838,9 @@ function OrgAdminDashboardContent() {
                 >
                   <Pencil className="h-3.5 w-3.5" />
                 </Button>
+              )}
+              {normalizeRole(currentUserRole) === "org_owner" && (
+                <DeleteOrganizationButton organizationId={orgDetails.id} organizationName={orgDetails.name} />
               )}
             </span>
           }

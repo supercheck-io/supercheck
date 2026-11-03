@@ -16,14 +16,16 @@ export class BillingCancellationError extends Error {}
 /** The organization's members changed since the admin confirmed the deletion. */
 export class OrganizationMembershipChangedError extends Error {}
 
-/** Who may still be a member when the organization is deleted: nobody, or only this user. */
-export type MembershipGuard = { onlyMemberUserId: string } | { noMembers: true };
+/** Who may still be a member when the organization is deleted: nobody, only this user, or any members while this user is still an owner. */
+export type MembershipGuard = { onlyMemberUserId: string } | { noMembers: true } | { ownerUserId: string };
 
 async function assertMembership(executor: Pick<typeof db, "select">, organizationId: string, guard: MembershipGuard) {
-  const rows = await executor.select({ userId: member.userId }).from(member).where(eq(member.organizationId, organizationId));
+  const rows = await executor.select({ userId: member.userId, role: member.role }).from(member).where(eq(member.organizationId, organizationId));
   const ok = "noMembers" in guard
     ? rows.length === 0
-    : rows.length === 1 && rows[0].userId === guard.onlyMemberUserId;
+    : "ownerUserId" in guard
+      ? rows.some((row) => row.userId === guard.ownerUserId && row.role === "org_owner")
+      : rows.length === 1 && rows[0].userId === guard.onlyMemberUserId;
   if (!ok) throw new OrganizationMembershipChangedError("The organization's members changed; nothing was deleted");
 }
 
