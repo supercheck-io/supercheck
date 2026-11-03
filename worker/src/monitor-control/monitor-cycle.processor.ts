@@ -292,17 +292,20 @@ export class MonitorCycleProcessor implements OnModuleInit, OnModuleDestroy {
       const failures = (previous?.failures ?? 0) + (billing ? 0 : 1);
       const billingFailures =
         (previous?.billingFailures ?? 0) + (billing ? 1 : 0);
-      const backoffUntil =
-        Date.now() +
-        Math.min(
-          POISON_MAX_BACKOFF_MS,
-          2000 * 2 ** Math.min(failures + billingFailures, 20),
-        );
+      const backoffMs = Math.min(
+        POISON_MAX_BACKOFF_MS,
+        2000 * 2 ** Math.min(failures + billingFailures, 20),
+      );
       this.failing.set(id, {
         failures,
         billingFailures,
-        // Before the age bound, never back off past it, so the abort runs on time.
-        nextAt: expired ? backoffUntil : Math.min(backoffUntil, expiresAt),
+        // Before the age bound, never back off past it, so the abort runs on time. The bound is measured
+        // on the tick clock (`now`) and the backoff on the wall clock, so cap by the time remaining.
+        nextAt:
+          Date.now() +
+          (expired
+            ? backoffMs
+            : Math.min(backoffMs, expiresAt - now.getTime())),
       });
       this.logger.error(
         `Closing cycle ${id} failed (attempt ${failures + billingFailures}): ${describeError(error)}`,
