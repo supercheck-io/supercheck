@@ -330,7 +330,6 @@ export class StatusPageDetailPage extends BasePage {
   readonly componentTable: Locator;
 
   // Incident actions
-  readonly createIncidentButton: Locator;
   readonly incidentTable: Locator;
 
   constructor(page: Page) {
@@ -427,11 +426,6 @@ export class StatusPageDetailPage extends BasePage {
     this.componentTable = page
       .locator('[data-testid="components-table"]')
       .or(page.locator("table"));
-
-    // Incident actions
-    this.createIncidentButton = page
-      .locator('button:has-text("Create Incident")')
-      .or(page.locator('button:has-text("Report Incident")'));
 
     this.incidentTable = page
       .locator('[data-testid="incidents-table"]')

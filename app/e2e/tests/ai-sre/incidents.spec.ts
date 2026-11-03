@@ -65,7 +65,7 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
         page.getByRole("tab", { name: "Delivery history", exact: true }),
       ).toBeVisible();
       const alertRow = page.getByRole("row").filter({ hasText: monitor.name }).first();
-      // A delivered alert usually opens its incident server-side (row shows "#N"); otherwise promote it manually.
+      // The SRE worker opens the incident asynchronously: the row shows "#N" once it has, else the promote button (idempotent).
       await alertRow
         .getByRole("link", { name: /^#\d+$/ })
         .or(alertRow.getByRole("button", { name: `Open incident for ${monitor.name}`, exact: true }))
