@@ -68,9 +68,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Throttle before touching the database so guessing cannot be used to hammer writes.
+    const clientIp = getClientIP(request.headers);
     const allowed = await allowDeviceAuthRequest([
-      PRIVATE_AGENT_LIMITS.exchangePerIp(getClientIP(request.headers)),
-      PRIVATE_AGENT_LIMITS.exchangePerAgent(body.data.agentId),
+      PRIVATE_AGENT_LIMITS.exchangePerIp(clientIp),
+      PRIVATE_AGENT_LIMITS.exchangePerAgent(body.data.agentId, clientIp),
     ]);
     if (!allowed) {
       return NextResponse.json({ error: "Too many requests" }, { status: 429, headers: { "Retry-After": "600" } });
@@ -93,13 +94,14 @@ export async function POST(request: NextRequest) {
         return { status: "unauthorized" as const };
       }
 
-      if (agent.status === "disabled") {
-        return { status: "disabled" as const };
-      }
-
       // No write on a wrong token: the caller is unauthenticated and must not be able to churn the row.
+      // Checked before the disabled state so a caller without the token learns nothing about the agent.
       if (!tokenHashesMatch(agent.registrationTokenHash, registrationTokenHash)) {
         return { status: "unauthorized" as const };
+      }
+
+      if (agent.status === "disabled") {
+        return { status: "disabled" as const };
       }
 
       const expiresAt = getPrivateAgentRegistrationTokenExpiresAt(agent.metadata);

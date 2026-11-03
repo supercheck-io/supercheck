@@ -7,9 +7,10 @@ export const PRIVATE_AGENT_LIMITS = {
     subject: ip,
     max: ip === "unknown" ? 600 : 30,
   }),
-  exchangePerAgent: (agentId: string): DeviceAuthLimit => ({
+  // Keyed with the IP so a third party who knows an agent ID cannot lock out its real exchange.
+  exchangePerAgent: (agentId: string, ip: string): DeviceAuthLimit => ({
     scope: "pa-exchange-agent",
-    subject: agentId,
+    subject: `${agentId}:${ip}`,
     max: 20,
   }),
   heartbeatPerCredential: (credentialId: string): DeviceAuthLimit => ({

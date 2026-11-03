@@ -50,4 +50,22 @@ describe("Private Agent registration exchange abuse limits", () => {
     expect(res.status).toBe(429);
     expect(db.transaction).not.toHaveBeenCalled();
   });
+  it("does not reveal a disabled agent to a caller without its token", async () => {
+    mockTx.select.mockReturnValue({
+      from: () => ({
+        where: () => ({
+          limit: async () => [{ id: AGENT_ID, status: "disabled", registrationTokenHash: "a".repeat(64), metadata: {} }],
+        }),
+      }),
+    });
+    const res = await POST(req());
+    expect(res.status).toBe(401);
+  });
+
+  it("keys the per-agent bucket by client IP so others cannot lock the agent out", async () => {
+    await POST(req());
+    const limits = jest.mocked(allowDeviceAuthRequest).mock.calls[0][0];
+    const agentLimit = limits.find((limit) => limit.scope === "pa-exchange-agent");
+    expect(agentLimit?.subject).toMatch(new RegExp(`^${AGENT_ID}:`));
+  });
 });
