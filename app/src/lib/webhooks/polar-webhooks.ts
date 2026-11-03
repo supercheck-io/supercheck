@@ -1867,6 +1867,8 @@ function orderedHandler(
         eventKey: eventType + ":" + getWebhookEventKey(payload, eventType),
         subscriptionId,
         canReplaceSubscription: eventType === "subscription.active",
+        // The organization can be deleted by an admin while this event waits for its row lock.
+        organizationDeleted: subscriptionId ? () => belongsToDeletedOrganization(subscriptionId) : undefined,
         periodStart: getSubscriptionDatesFromPayload(payload).startsAt,
         affectsSubscriptionState: eventType !== "order.paid",
         // A deferred plan change keeps the current plan, so compare with that.

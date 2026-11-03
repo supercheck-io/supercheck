@@ -28,6 +28,8 @@ export async function runOrderedPolarEvent(
     affectsSubscriptionState?: boolean;
     /** Normalized subscription state carried by this event, for tie checks. */
     snapshot?: { status: string | undefined; plan: string | null };
+    /** True when the organization was deliberately deleted meanwhile: acknowledge instead of retrying. */
+    organizationDeleted?: () => Promise<boolean>;
   },
   apply: () => Promise<void>,
 ) {
@@ -44,7 +46,10 @@ export async function runOrderedPolarEvent(
       .from(organization)
       .where(eq(organization.id, input.organizationId))
       .for("update");
-    if (!org) throw new Error("Polar billing organization not found");
+    if (!org) {
+      if (await input.organizationDeleted?.()) return;
+      throw new Error("Polar billing organization not found");
+    }
 
     if (input.affectsSubscriptionState !== false && org.polarWebhookTimestamp) {
       const difference =

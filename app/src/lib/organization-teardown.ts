@@ -60,6 +60,19 @@ async function revokeSubscription(subscriptionId: string): Promise<void> {
 /** Removes stored files of the projects; returns how many objects or prefixes failed. */
 async function deleteProjectArtifacts(projectIds: string[], monitorIds: string[], statusPageIds: string[]) {
   const s3 = createS3CleanupService();
+  try {
+    return await sweepProjectArtifacts(s3, projectIds, monitorIds, statusPageIds);
+  } finally {
+    s3.destroy();
+  }
+}
+
+async function sweepProjectArtifacts(
+  s3: ReturnType<typeof createS3CleanupService>,
+  projectIds: string[],
+  monitorIds: string[],
+  statusPageIds: string[],
+) {
   let failures = 0;
   const testIds = new Set<string>();
   const run = async (label: string, fn: () => Promise<{ success: boolean; failedObjects: unknown[] }>) => {
@@ -157,10 +170,15 @@ export async function deleteOrganizationCompletely(
   actorUserId: string,
 ): Promise<{ subscriptionCancelled: boolean } | null> {
   return db.transaction(async (tx) => {
+    // Fail fast instead of queueing other writers behind a busy organization row.
+    await tx.execute(sql`SET LOCAL lock_timeout = '10s'`);
     const [org] = await tx
       .select({ id: organization.id, subscriptionId: organization.subscriptionId })
       .from(organization).where(eq(organization.id, organizationId)).for("update");
     if (!org) return null;
+    // Lock the projects too (same order as other org-then-project writers) before anything
+    // irreversible: a writer holding a project FOR SHARE would otherwise deadlock the final delete.
+    await tx.select({ id: projects.id }).from(projects).where(eq(projects.organizationId, organizationId)).for("no key update");
     await assertMembership(tx, organizationId, guard);
 
     // Lets the provider events that follow the cancellation recognise a deleted organization.

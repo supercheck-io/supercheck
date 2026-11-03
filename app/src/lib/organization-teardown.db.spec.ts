@@ -26,7 +26,7 @@ const deletePrefix = jest.fn(async (): Promise<{ success: boolean; failedObjects
 const deleteReports = jest.fn(async () => ({ success: true, failedObjects: [] }));
 const getRunArtifactInputs = jest.fn(() => []);
 jest.mock("@/lib/s3-cleanup", () => ({
-  createS3CleanupService: () => ({ deletePrefix, deleteReports, getRunArtifactInputs, bucket: (n: string) => n }),
+  createS3CleanupService: () => ({ deletePrefix, deleteReports, getRunArtifactInputs, bucket: (n: string) => n, destroy: jest.fn() }),
 }));
 const deleteScheduledMonitor = jest.fn(async () => true);
 jest.mock("@/lib/monitor-scheduler", () => ({ deleteScheduledMonitor, scheduleMonitor: jest.fn() }));
@@ -172,4 +172,22 @@ it("ends a bound subscription even when it is stored locally as none (trialing o
   const { organization } = await seed({ subscriptionId: `sub-${randomUUID()}`, subscriptionStatus: "none" });
   await deleteOrganizationCompletely(organization.id, { noMembers: true }, adminId);
   expect(revoke).toHaveBeenCalledWith(organization.subscriptionId);
+});
+
+it("makes a member join wait until the teardown commits, then fail on the missing organization", async () => {
+  const [joiner] = await mockDatabase.insert(schema.user).values({ id: randomUUID(), name: "J", email: `${randomUUID()}@example.test` }).returning();
+  const { organization } = await seed({ subscriptionId: `sub-${randomUUID()}`, subscriptionStatus: "active" });
+  let releaseRevoke!: () => void;
+  revoke.mockImplementationOnce(() => new Promise<void>((resolve) => { releaseRevoke = resolve; }));
+  const teardown = deleteOrganizationCompletely(organization.id, { noMembers: true }, adminId);
+  await new Promise((resolve) => setTimeout(resolve, 200)); // teardown now holds the row lock, waiting on the provider
+
+  const join = client.begin(async (sql) => {
+    await sql`SET LOCAL lock_timeout = '300ms'`;
+    await sql`INSERT INTO member (id, organization_id, user_id, role, created_at) VALUES (${randomUUID()}, ${organization.id}, ${joiner.id}, 'project_viewer', now())`;
+  });
+  await expect(join).rejects.toThrow(/lock timeout/i);
+
+  releaseRevoke();
+  await expect(teardown).resolves.toEqual({ subscriptionCancelled: true });
 });

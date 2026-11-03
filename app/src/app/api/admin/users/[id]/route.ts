@@ -155,6 +155,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = await params;
+  // Organizations already deleted by this request; reported even when a later step fails.
+  const deletedOrganizationIds: string[] = [];
   try {
     await requireAdmin();
 
@@ -229,7 +231,6 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
         { status: 409 }
       );
     }
-    const deletedOrganizationIds: string[] = [];
     for (const org of soleMemberOrgs) {
       try {
         const deleted = await deleteOrganizationCompletely(org.id, { onlyMemberUserId: userId }, currentAdmin.id);
@@ -314,7 +315,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   } catch (error) {
     console.error('Admin user DELETE error:', error);
     return NextResponse.json(
-      { success: false, error: 'Failed to delete user' },
+      { success: false, error: 'Failed to delete user', ...(deletedOrganizationIds.length ? { deletedOrganizationIds } : {}) },
       { status: 500 }
     );
   }
