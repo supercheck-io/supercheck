@@ -138,8 +138,12 @@ test.describe("AI SRE service topology administration @aisre @topology @critical
 async function createService(page: Page, name: string): Promise<string> {
   await page.goto("/services", { waitUntil: "load" });
   await waitForHydration(page);
-  await page.getByTestId("add-service-btn").click();
   const dialog = page.getByRole("dialog", { name: "Add service" });
+  // The root hydration flag can precede this page's boundary; retry a click that landed early.
+  await expect(async () => {
+    if (!(await dialog.isVisible())) await page.getByTestId("add-service-btn").click();
+    await expect(dialog).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 15_000 });
   await dialog.getByLabel("Service name *").fill(name);
   await dialog.getByLabel("Environment").fill("staging");
   await dialog.getByTestId("submit-service-btn").click();

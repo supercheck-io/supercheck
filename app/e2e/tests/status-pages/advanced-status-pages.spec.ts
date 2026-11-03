@@ -68,7 +68,7 @@ test.describe('Status page publishing and management @status-pages @high', () =>
     const created = await createStatusPageThroughUi(page, request, cleanup);
     await page.goto(`/status-pages/${created.id}`, { waitUntil: 'domcontentloaded' });
 
-    for (const name of ['Overview', 'Components', 'Incidents', 'Subscribers', 'Settings']) {
+    for (const name of ['Overview', 'Components', 'Status updates', 'Subscribers', 'Settings']) {
       const tab = page.getByRole('tab', { name });
       await tab.click();
       await expect(tab).toHaveAttribute('aria-selected', 'true');

@@ -21,13 +21,13 @@ test.describe('Status-page incident lifecycle @status-pages @incidents', () => {
     await expect(componentDialog).toBeHidden();
     await expect(page.getByText(componentName, { exact: true })).toBeVisible();
 
-    await page.getByRole('tab', { name: 'Incidents', exact: true }).click();
-    await page.getByRole('button', { name: 'Create Incident', exact: true }).click();
-    const incidentDialog = page.getByRole('dialog', { name: 'Create Incident' });
+    await page.getByRole('tab', { name: 'Status updates', exact: true }).click();
+    await page.getByRole('button', { name: 'New status update', exact: true }).click();
+    const incidentDialog = page.getByRole('dialog', { name: 'New status update' });
     await incidentDialog.getByLabel('Title *').fill(incidentName);
     await incidentDialog.getByLabel('Initial Message *').fill(incidentMessage);
     await incidentDialog.getByLabel(componentName, { exact: true }).click();
-    await incidentDialog.getByRole('button', { name: 'Create Incident', exact: true }).click();
+    await incidentDialog.getByRole('button', { name: 'Post status update', exact: true }).click();
     await expect(incidentDialog).toBeHidden();
     await expect(page.getByText(incidentName, { exact: true })).toBeVisible();
 

@@ -89,10 +89,8 @@ test.describe("Organization project administration @admin @projects @critical", 
     const deletedResponse = await request.get(
       `/api/projects/${created.data.id}`,
     );
-    expect(deletedResponse.status(), await deletedResponse.text()).toBe(200);
-    expect(await deletedResponse.json()).toMatchObject({
-      project: { id: created.data.id, status: "deleted" },
-    });
+    // Deletion is soft, and the API hides soft-deleted projects.
+    expect(deletedResponse.status(), await deletedResponse.text()).toBe(404);
   });
 
   test("viewer cannot create or mutate projects and unauthenticated callers are rejected", async ({

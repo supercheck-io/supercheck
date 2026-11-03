@@ -117,8 +117,12 @@ afterAll(async () => {
 it("returns the project's 7-day failures and daily trigger counts without other tenants' runs", async () => {
   const response = await GET();
   expect(response.status).toBe(200);
-  const { jobs } = await response.json();
+  const { jobs, monitors } = await response.json();
 
+  // FILTER counts come back from Postgres as strings unless mapped.
+  for (const value of [jobs.total, jobs.active, jobs.scheduled, monitors.up, monitors.paused, monitors.error]) {
+    expect(typeof value).toBe("number");
+  }
   expect(jobs.failedRuns30d).toBe(7);
   // Failed and error runs of any job type count (6 Playwright + 1 k6); the 10-day, 40-day and other tenants' runs are excluded.
   expect(jobs.failedRuns7d).toEqual({ manual: 7, scheduled: 0, remote: 0 });
