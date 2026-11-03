@@ -1847,17 +1847,18 @@ function orderedHandler(
             where: eq(organization.subscriptionId, subscriptionId),
           })
         : undefined;
+    // A subscription of an organization an admin deleted must never fall through to another
+    // organization of the same customer or user below.
+    if (!org && subscriptionId && (await belongsToDeletedOrganization(subscriptionId))) {
+      console.log(`[Polar] ${eventType}: organization was deleted; acknowledging`);
+      return;
+    }
     if (!org && orgId) org = await findOrganizationById(orgId);
     if (!org && customerId)
       org = await findOrganizationByCustomerId(customerId);
     if (!org && userId) org = await findOrganizationByUserId(userId);
     if (!org) {
       if (eventType === "customer.deleted") return;
-      // Follow-up events of a subscription cancelled while an admin deleted its organization.
-      if (subscriptionId && (await belongsToDeletedOrganization(subscriptionId))) {
-        console.log(`[Polar] ${eventType}: organization was deleted; acknowledging`);
-        return;
-      }
       throw new Error("Polar billing organization not found");
     }
     await runOrderedPolarEvent(

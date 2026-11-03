@@ -624,14 +624,22 @@ export async function POST(req: NextRequest) {
 
     // A project or organization delete that committed between the insert and scheduling would
     // leave this schedule behind; drop it if the monitor is gone or its project is deleted.
-    const [stillLive] = await db
-      .select({ id: monitors.id })
-      .from(monitors)
-      .innerJoin(projects, eq(projects.id, monitors.projectId))
-      .where(and(eq(monitors.id, createdMonitor.id), ne(projects.status, "deleted")))
-      .limit(1);
+    const { deleteScheduledMonitor } = await import("@/lib/monitor-scheduler");
+    let stillLive;
+    try {
+      [stillLive] = await db
+        .select({ id: monitors.id })
+        .from(monitors)
+        .innerJoin(projects, eq(projects.id, monitors.projectId))
+        .where(and(eq(monitors.id, createdMonitor.id), ne(projects.status, "deleted")))
+        .limit(1);
+    } catch (checkError) {
+      // The schedule exists now: undo both (best effort) so a retry does not duplicate them.
+      await deleteScheduledMonitor(createdMonitor.id).catch((e) => console.error("Failed to remove schedule:", e));
+      await db.delete(monitors).where(eq(monitors.id, createdMonitor.id)).catch((e) => console.error("Failed to remove monitor:", e));
+      throw checkError;
+    }
     if (!stillLive) {
-      const { deleteScheduledMonitor } = await import("@/lib/monitor-scheduler");
       await deleteScheduledMonitor(createdMonitor.id).catch(() => false);
       return NextResponse.json({ error: "Project not found" }, { status: 404 });
     }

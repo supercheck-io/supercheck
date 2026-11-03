@@ -75,6 +75,7 @@ async function sweepProjectArtifacts(
 ) {
   let failures = 0;
   const testIds = new Set<string>();
+  const unparsedRunIds: string[] = [];
   const run = async (label: string, fn: () => Promise<{ success: boolean; failedObjects: unknown[] }>) => {
     try {
       const result = await fn();
@@ -105,10 +106,18 @@ async function sweepProjectArtifacts(
       const testId = (r.metadata as { testId?: unknown } | null)?.testId;
       if (typeof testId === "string" && /^[0-9a-f-]{36}$/i.test(testId)) testIds.add(testId);
       try { inputs.push(...s3.getRunArtifactInputs(r as Parameters<typeof s3.getRunArtifactInputs>[0])); }
-      // An unrecognised URL names no object we can locate; log it rather than block the deletion.
-      catch (error) { console.error(`[ORG_TEARDOWN] run ${r.id} artifacts:`, error); }
+      catch (error) {
+        // Unrecognised URL: run artifacts are keyed by run id, so sweep that folder in every run bucket.
+        console.error(`[ORG_TEARDOWN] run ${r.id} artifacts (sweeping by run id):`, error);
+        unparsedRunIds.push(r.id);
+      }
     }
     if (inputs.length) await run("run artifacts", () => s3.deleteReports(inputs));
+    for (const id of unparsedRunIds.splice(0)) {
+      for (const bucket of ["jobBucketName", "testBucketName", "k6JobBucketName", "k6TestBucketName"] as const) {
+        await run("run folder", () => s3.deletePrefix(s3.bucket(bucket), `${id}/`));
+      }
+    }
     if (batch.length < BATCH) break;
   }
 
@@ -150,8 +159,12 @@ async function sweepProjectArtifacts(
   return failures;
 }
 
-/** Stored files could not all be removed; nothing was deleted from the database, so a retry is safe. */
-export class StorageCleanupError extends Error {}
+/** Stored files could not all be removed. The database is unchanged (some files may be gone); a retry finishes. */
+export class StorageCleanupError extends Error {
+  constructor(message: string, readonly subscriptionCancelled: boolean) {
+    super(message);
+  }
+}
 
 /**
  * Permanently deletes an organization and everything it owns, in one transaction that holds the
@@ -209,7 +222,11 @@ export async function deleteOrganizationCompletely(
       const pages = await tx.select({ id: statusPages.id }).from(statusPages).where(eq(statusPages.organizationId, organizationId));
       const failures = await deleteProjectArtifacts(projectIds, monitorRows.map((m) => m.id), pages.map((p) => p.id));
       if (failures) {
-        throw new StorageCleanupError(`${failures} stored file(s) could not be removed; nothing was deleted, retry the deletion`);
+        throw new StorageCleanupError(
+          `${failures} stored file(s) could not be removed. The organization and its data are still in the database (some files may already be gone); retry the deletion to finish`
+            + (subscriptionCancelled ? ". Its billing subscription was already cancelled" : ""),
+          subscriptionCancelled,
+        );
       }
       // MCP consents reference projects by id without a foreign key.
       await tx.delete(oauthConsent).where(inArray(oauthConsent.referenceId, projectIds));

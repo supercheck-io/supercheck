@@ -37,7 +37,7 @@ it("lists only sole-member organizations, notes cancelled subscriptions and conf
     { success: true },
   );
   renderDialog();
-  expect(await screen.findByText(/Solo Inc/)).toHaveTextContent("subscription will be cancelled");
+  expect(await screen.findByText(/Solo Inc/)).toHaveTextContent("linked subscription is cancelled if still active");
   expect(screen.queryByText(/Shared Co/)).toBeNull();
 
   const button = screen.getByRole("button", { name: "Delete user and 1 organization" });

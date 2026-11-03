@@ -137,3 +137,15 @@ it("drops the schedule when the project was deleted between the insert and sched
   expect(deleteScheduledMonitor).toHaveBeenCalledWith("new-monitor");
   expect(res.status).toBe(404);
 });
+
+it("removes the schedule and the row when the post-scheduling check fails", async () => {
+  const { scheduleCreatedMonitor } = jest.requireMock("@/lib/monitor-service") as { scheduleCreatedMonitor: jest.Mock };
+  insertWithinPlanLimit.mockResolvedValue({ ok: true, row: { newMonitor: { id: "new-monitor" }, enabled: true } });
+  scheduleCreatedMonitor.mockResolvedValue({ id: "new-monitor" });
+  dbDeleteWhere.mockResolvedValue(undefined);
+  dbSelect.mockReturnValue({ from: () => ({ innerJoin: () => ({ where: () => ({ limit: async () => { throw new Error("db down"); } }) }), where: async () => [] }) });
+  const res = await post({ enabled: false, notificationProviders: [] });
+  expect(res.status).toBe(500);
+  expect(deleteScheduledMonitor).toHaveBeenCalledWith("new-monitor");
+  expect(dbDeleteWhere).toHaveBeenCalledTimes(1);
+});

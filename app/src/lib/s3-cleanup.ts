@@ -247,7 +247,7 @@ export class S3CleanupService {
   }
 
   /** Configured bucket name (for callers that delete by prefix). */
-  bucket(name: "statusBucketName" | "requirementsBucketName" | "projectDataFilesBucketName" | "testBucketName"): string {
+  bucket(name: "statusBucketName" | "requirementsBucketName" | "projectDataFilesBucketName" | "testBucketName" | "jobBucketName" | "k6TestBucketName" | "k6JobBucketName"): string {
     return this.config[name];
   }
 

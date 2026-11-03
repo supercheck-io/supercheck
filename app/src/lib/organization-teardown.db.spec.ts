@@ -24,7 +24,7 @@ jest.mock("@/lib/feature-flags", () => ({
 jest.mock("@/lib/billing/polar-client", () => ({ createPolarClient: () => ({ subscriptions: { revoke } }) }));
 const deletePrefix = jest.fn(async (): Promise<{ success: boolean; failedObjects: unknown[] }> => ({ success: true, failedObjects: [] }));
 const deleteReports = jest.fn(async () => ({ success: true, failedObjects: [] }));
-const getRunArtifactInputs = jest.fn(() => []);
+const getRunArtifactInputs = jest.fn((): unknown[] => []);
 jest.mock("@/lib/s3-cleanup", () => ({
   createS3CleanupService: () => ({ deletePrefix, deleteReports, getRunArtifactInputs, bucket: (n: string) => n, destroy: jest.fn() }),
 }));
@@ -190,4 +190,23 @@ it("makes a member join wait until the teardown commits, then fail on the missin
 
   releaseRevoke();
   await expect(teardown).resolves.toEqual({ subscriptionCancelled: true });
+});
+
+it("sweeps a run's folder in every run bucket when its artifact URL cannot be parsed", async () => {
+  const { organization, project } = await seed();
+  const [run] = await mockDatabase.select().from(schema.runs).where(eq(schema.runs.projectId, project.id));
+  getRunArtifactInputs.mockImplementationOnce(() => { throw new Error("unrecognised URL"); });
+  await deleteOrganizationCompletely(organization.id, { noMembers: true }, adminId);
+  for (const bucket of ["jobBucketName", "testBucketName", "k6JobBucketName", "k6TestBucketName"]) {
+    expect(deletePrefix).toHaveBeenCalledWith(bucket, `${run.id}/`);
+  }
+});
+
+it("says the subscription was already cancelled when storage cleanup fails", async () => {
+  const { organization } = await seed({ subscriptionId: `sub-${randomUUID()}`, subscriptionStatus: "active" });
+  deletePrefix.mockResolvedValueOnce({ success: false, failedObjects: [{ key: "k" }] });
+  const error = await deleteOrganizationCompletely(organization.id, { noMembers: true }, adminId).catch((e: unknown) => e);
+  expect(error).toBeInstanceOf(StorageCleanupError);
+  expect((error as StorageCleanupError).subscriptionCancelled).toBe(true);
+  expect((error as Error).message).toMatch(/subscription was already cancelled/);
 });

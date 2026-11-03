@@ -80,6 +80,7 @@ export function DeleteUserDialog({ open, onOpenChange, userId, userName, userEma
       if (data.code === "confirm_organization_deletion") {
         // Memberships changed since the dialog opened: show the current list and ask again.
         setOrgs(data.organizations);
+        if (Array.isArray(data.deletedOrganizationIds) && data.deletedOrganizationIds.length) onSuccess();
         setTypedEmail("");
         toast.error("The organizations to delete changed. Review the list and confirm again.");
         return;
@@ -139,12 +140,12 @@ export function DeleteUserDialog({ open, onOpenChange, userId, userName, userEma
                 {orgs.map((org) => (
                   <li key={org.id}>
                     {org.name}
-                    {org.hasActiveSubscription && " (subscription will be cancelled)"}
+                    {org.hasActiveSubscription && " (linked subscription is cancelled if still active)"}
                   </li>
                 ))}
               </ul>
               {paidOrgs.length > 0 && (
-                <p className="mt-2">Subscriptions are cancelled immediately, without a refund.</p>
+                <p className="mt-2">A subscription that is still active is cancelled immediately, without a refund.</p>
               )}
             </AlertDescription>
           </Alert>
