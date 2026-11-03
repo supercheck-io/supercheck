@@ -514,7 +514,7 @@ export class DbService implements OnModuleInit {
    */
   async getJobAlertStreakState(
     jobId: string,
-  ): Promise<{ sent: number; lastSentAt: Date | null }> {
+  ): Promise<{ sent: number; lastSentAt: Date | null; unknown?: boolean }> {
     try {
       const [{ since }] = await this.db
         .select({ since: sql<Date | null>`max(${runs.createdAt})` })
@@ -555,11 +555,12 @@ export class DbService implements OnModuleInit {
         }, null),
       };
     } catch (error) {
-      // Unknown history must not silence a failing job: treat it as a fresh streak.
+      // Unknown history must not silence a failing job, nor alert on every run: flag it so the caller
+      // falls back to the positional rule.
       this.logger.error(
         `Failed to read alert history for job ${jobId}: ${(error as Error).message}`,
       );
-      return { sent: 0, lastSentAt: null };
+      return { sent: 0, lastSentAt: null, unknown: true };
     }
   }
 

@@ -262,7 +262,14 @@ suite('MonitorCycleProcessor (PostgreSQL)', () => {
         { failures: 2, billingFailures: 60 },
         'open',
       ],
-    ])('%s', async (_name, makeError, seed, status) => {
+      [
+        'a billing error on a cycle open past 24 h is aborted',
+        () => new BillingVerificationError('no plan limits'),
+        { failures: 0, billingFailures: 3 },
+        'aborted',
+        25 * 3_600_000,
+      ],
+    ])('%s', async (_name, makeError, seed, status, ageMs = 1000) => {
       await open('limit');
       const spy = jest
         .spyOn(MonitorCycleService.prototype, 'closeCycle')
@@ -272,7 +279,7 @@ suite('MonitorCycleProcessor (PostgreSQL)', () => {
         { ...seed, nextAt: 0 },
       );
       const before = processor.snapshot();
-      await processor.tick(new Date(deadline.getTime() + 1000));
+      await processor.tick(new Date(deadline.getTime() + ageMs));
       expect((await cycle('limit')).status).toBe(status);
       const after = processor.snapshot();
       // Billing outages count as close failures too, so operators are alerted before an abort.

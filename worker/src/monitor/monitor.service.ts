@@ -2138,15 +2138,23 @@ export class MonitorService {
         );
         // The insert may have committed before the error surfaced; never add a second row for the same check.
         if (executionGroupId) {
+          // The cycle's synthetic deadline row shares this key but is not this check's result.
           const stored = await this.dbService.db.query.monitorResults
-            .findFirst({
+            .findMany({
               where: and(
                 eq(schema.monitorResults.monitorId, result.monitorId),
                 eq(schema.monitorResults.executionGroupId, executionGroupId),
                 eq(schema.monitorResults.location, result.location),
               ),
+              limit: 5,
             })
-            .catch(() => undefined);
+            .then((rows) =>
+              rows.some(
+                (row) =>
+                  !(row.details as { synthetic?: boolean } | null)?.synthetic,
+              ),
+            )
+            .catch(() => false);
           if (stored) return;
         }
       }

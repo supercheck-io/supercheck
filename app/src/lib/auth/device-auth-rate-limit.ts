@@ -48,10 +48,12 @@ export const DEVICE_AUTH_LIMITS = {
 /**
  * Sliding-window limiter shared across replicas via Redis. Fails CLOSED: if
  * Redis is unreachable the request is rejected rather than allowed, because
- * these endpoints guard credential issuance.
+ * these endpoints guard credential issuance. Already-authenticated callers can
+ * pass `failOpen` so a Redis outage does not take them offline.
  */
 export async function allowDeviceAuthRequest(
   limits: DeviceAuthLimit[],
+  { failOpen = false }: { failOpen?: boolean } = {},
 ): Promise<boolean> {
   try {
     const redis = await getRedisConnection();
@@ -85,6 +87,6 @@ export async function allowDeviceAuthRequest(
     );
     return Number(result) === 1;
   } catch {
-    return false;
+    return failOpen;
   }
 }

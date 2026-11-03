@@ -1501,6 +1501,28 @@ describe('MonitorService', () => {
         service['saveMonitorResultToDb'](row),
       ).resolves.toBeUndefined();
     });
+    it('ignores the synthetic deadline row when checking whether a failed insert committed', async () => {
+      const save = jest
+        .fn()
+        .mockRejectedValueOnce(new Error('connection reset'))
+        .mockResolvedValue(undefined);
+      Object.assign(service, { saveMonitorResultToDb: save });
+      mockDbService.db.query.monitorResults.findMany.mockResolvedValueOnce([
+        { details: { synthetic: true } },
+      ]);
+      await service['insertResultWithRetry'](
+        {
+          monitorId: mockMonitor.id,
+          location: 'eu',
+          checkedAt: new Date(),
+          status: 'up',
+          isUp: true,
+        },
+        'g1',
+      );
+      // The synthetic row is not this check's result, so the insert is retried.
+      expect(save).toHaveBeenCalledTimes(2);
+    });
     it('absorbs a transient insert error without failing the job', async () => {
       const values = jest
         .fn()

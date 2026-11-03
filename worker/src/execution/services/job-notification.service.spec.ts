@@ -384,6 +384,43 @@ describe('JobNotificationService', () => {
       },
     );
 
+    it.each([
+      [4, false],
+      [6, true],
+      [11, true],
+      [16, false],
+      [7, false],
+    ])(
+      'falls back to the positional rule when alert history is unreadable (streak %i sends=%s)',
+      async (streak, sends) => {
+        const { service, dbService, notificationService } = createService();
+        dbService.getJobAlertStreakState.mockResolvedValue({
+          sent: 0,
+          lastSentAt: null,
+          unknown: true,
+        });
+        dbService.getRecentRunsForJob.mockImplementation(
+          (_id: string, limit: number) =>
+            Promise.resolve(
+              Array.from({ length: Math.min(limit, streak) }, (_, i) => ({
+                id: i === 0 ? 'run-1' : `old-${i}`,
+                status: 'failed',
+                createdAt: new Date((streak - i) * 1000),
+              })),
+            ),
+        );
+        await service.handleJobNotifications({
+          jobId: 'job-1',
+          runId: 'run-1',
+          finalStatus: 'failed',
+          durationSeconds: 1,
+        });
+        expect(
+          notificationService.sendNotificationToMultipleProviders,
+        ).toHaveBeenCalledTimes(sends ? 1 : 0);
+      },
+    );
+
     it('still alerts on a timeout deep in a streak when failure alerts are off', async () => {
       const { service, dbService, notificationService } = createService();
       dbService.getJobById.mockResolvedValue({

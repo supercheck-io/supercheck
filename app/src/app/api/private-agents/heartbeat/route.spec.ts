@@ -31,4 +31,21 @@ describe("Private Agent heartbeat rate limit", () => {
     expect(res.status).toBe(429);
     expect(db.transaction).not.toHaveBeenCalled();
   });
+
+  it("asks the limiter to fail open, so a Redis outage does not take agents offline", async () => {
+    jest.mocked(authenticatePrivateAgent).mockResolvedValue({
+      agent: { id: "3f2b8c1e-5a4d-4e6f-8b7a-9c0d1e2f3a4b" },
+      credential: { id: "cred-1" },
+    } as never);
+    jest.mocked(allowDeviceAuthRequest).mockResolvedValue(true);
+    jest.mocked(db.transaction).mockResolvedValue(undefined as never);
+    await POST(
+      new NextRequest("http://localhost/api/private-agents/heartbeat", {
+        method: "POST",
+        headers: { authorization: "Bearer x", "content-type": "application/json" },
+        body: JSON.stringify({}),
+      })
+    );
+    expect(jest.mocked(allowDeviceAuthRequest).mock.calls.at(-1)?.[1]).toEqual({ failOpen: true });
+  });
 });

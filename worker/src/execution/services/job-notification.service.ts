@@ -66,6 +66,21 @@ export function isFailureAlertStreak(
   return alertsSent === 0 || failuresSinceLastAlert >= failureAlertInterval(t);
 }
 
+// Fallback when alert history cannot be read: alert at the threshold, then every interval, max 3 per streak.
+function isPositionalFailureAlert(
+  consecutiveFailures: number,
+  threshold: number,
+) {
+  const t = Math.max(1, threshold || 1);
+  const interval = failureAlertInterval(t);
+  const after = consecutiveFailures - t;
+  return (
+    after >= 0 &&
+    after % interval === 0 &&
+    after / interval < MAX_FAILURE_ALERTS_PER_STREAK
+  );
+}
+
 @Injectable()
 export class JobNotificationService {
   private readonly logger = new Logger(JobNotificationService.name);
@@ -204,7 +219,11 @@ export class JobNotificationService {
 
       let consecutiveFailures = normalizedStatus === 'failed' ? 1 : 0;
       let failuresSinceLastAlert = consecutiveFailures;
-      const alertState =
+      const alertState: {
+        sent: number;
+        lastSentAt: Date | null;
+        unknown?: boolean;
+      } =
         normalizedStatus === 'failed'
           ? await this.dbService.getJobAlertStreakState(jobId)
           : { sent: 0, lastSentAt: null };
@@ -235,15 +254,25 @@ export class JobNotificationService {
         }
       }
 
+      const shouldAlertOnStreak = () =>
+        alertState.unknown
+          ? isPositionalFailureAlert(
+              consecutiveFailures,
+              alertConfig.failureThreshold,
+            )
+          : isFailureAlertStreak(
+              consecutiveFailures,
+              alertConfig.failureThreshold,
+              alertState.sent,
+              alertState.lastSentAt
+                ? failuresSinceLastAlert
+                : consecutiveFailures,
+            );
+
       const shouldNotifyFailure =
         alertConfig.alertOnFailure &&
         normalizedStatus === 'failed' &&
-        isFailureAlertStreak(
-          consecutiveFailures,
-          alertConfig.failureThreshold,
-          alertState.sent,
-          alertState.lastSentAt ? failuresSinceLastAlert : consecutiveFailures,
-        );
+        shouldAlertOnStreak();
 
       const shouldNotifySuccess =
         alertConfig.alertOnSuccess &&
@@ -254,12 +283,7 @@ export class JobNotificationService {
       const shouldNotifyTimeout =
         alertConfig.alertOnTimeout &&
         finalStatus === 'timeout' &&
-        isFailureAlertStreak(
-          consecutiveFailures,
-          alertConfig.failureThreshold,
-          alertState.sent,
-          alertState.lastSentAt ? failuresSinceLastAlert : consecutiveFailures,
-        );
+        shouldAlertOnStreak();
 
       if (
         !shouldNotifyFailure &&

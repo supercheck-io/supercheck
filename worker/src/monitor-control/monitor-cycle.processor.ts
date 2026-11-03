@@ -21,6 +21,10 @@ const DEFAULT_RETENTION_DAYS = 14;
 const POISON_MAX_BACKOFF_MS = 5 * 60_000;
 /** After this many failed closures (about 1.5 h at the maximum backoff) the cycle is aborted. */
 const POISON_GIVE_UP_AFTER = 20;
+/** Hard age bound: an open cycle this far past its deadline is aborted whatever the error (billing included). */
+const MAX_OPEN_AGE_MS = 24 * 60 * 60_000;
+/** Cap on the extra rows fetched to look past cycles in backoff. */
+const MAX_FAILING_OVERFETCH = 200;
 /**
  * Wall-clock budget for one notification. A tenant-controlled endpoint that trickles a response must
  * not stall every other organization's closures and alerts behind it.
@@ -187,8 +191,12 @@ export class MonitorCycleProcessor implements OnModuleInit, OnModuleDestroy {
 
   private async processDeadlines(now: Date): Promise<number> {
     // Fetch extra rows so cycles in backoff never crowd out healthy ones.
+    const limit = BATCH + Math.min(this.failing.size, MAX_FAILING_OVERFETCH);
     const due = await this.dbService.db
-      .select({ id: schema.monitorCycles.id })
+      .select({
+        id: schema.monitorCycles.id,
+        deadlineAt: schema.monitorCycles.deadlineAt,
+      })
       .from(schema.monitorCycles)
       .where(
         and(
@@ -197,19 +205,23 @@ export class MonitorCycleProcessor implements OnModuleInit, OnModuleDestroy {
         ),
       )
       .orderBy(asc(schema.monitorCycles.deadlineAt))
-      .limit(BATCH + this.failing.size);
-    if (due.length < BATCH + this.failing.size) {
+      .limit(limit);
+    if (due.length < limit) {
       // The query saw every open overdue cycle: forget entries that were closed, deleted or aborted.
       const seen = new Set(due.map((row) => row.id));
       for (const id of this.failing.keys())
         if (!seen.has(id)) this.failing.delete(id);
     }
     let processed = 0;
-    for (const { id } of due) {
+    for (const { id, deadlineAt } of due) {
       if (this.stopping || processed >= BATCH) break;
       if ((this.failing.get(id)?.nextAt ?? 0) > Date.now()) continue;
       processed += 1;
-      await this.close(id, now);
+      await this.close(
+        id,
+        now,
+        now.getTime() - deadlineAt.getTime() > MAX_OPEN_AGE_MS,
+      );
     }
     return processed;
   }
@@ -232,7 +244,7 @@ export class MonitorCycleProcessor implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  private async close(id: string, now: Date): Promise<void> {
+  private async close(id: string, now: Date, expired = false): Promise<void> {
     try {
       const outcome = await this.cycles.closeCycle(id, now);
       this.failing.delete(id);
@@ -262,8 +274,9 @@ export class MonitorCycleProcessor implements OnModuleInit, OnModuleDestroy {
       );
       // A billing-verification outage is never a reason to abort: every cycle fails until billing
       // answers, so dropping them would lose their alerts. They stay open and retryable while the
-      // close-failures metric alerts operators; only a genuine hold aborts (in closeCycle).
-      if (failures >= POISON_GIVE_UP_AFTER) {
+      // close-failures metric alerts operators; only a genuine hold aborts (in closeCycle), or the
+      // 24 h age bound (so a deterministic billing error cannot pile up open cycles forever).
+      if (failures >= POISON_GIVE_UP_AFTER || expired) {
         this.failing.delete(id);
         try {
           await this.cycles.abortCycle(id);

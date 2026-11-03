@@ -11,6 +11,7 @@ const mockTx = {
 jest.mock("@/utils/db", () => ({ db: { transaction: jest.fn((fn: (tx: unknown) => unknown) => fn(mockTx)) } }));
 jest.mock("@/lib/auth/device-auth-rate-limit", () => ({ allowDeviceAuthRequest: jest.fn() }));
 
+import { hashApiKey } from "@/lib/security/api-key-hash";
 import { POST } from "./route";
 import { allowDeviceAuthRequest } from "@/lib/auth/device-auth-rate-limit";
 import { db } from "@/utils/db";
@@ -60,6 +61,26 @@ describe("Private Agent registration exchange abuse limits", () => {
     });
     const res = await POST(req());
     expect(res.status).toBe(401);
+  });
+
+  it("returns 403 for a disabled agent when the token is correct", async () => {
+    mockTx.select.mockReturnValue({
+      from: () => ({
+        where: () => ({
+          limit: async () => [
+            { id: AGENT_ID, status: "disabled", registrationTokenHash: hashApiKey("wrong-token"), metadata: {} },
+          ],
+        }),
+      }),
+    });
+    const res = await POST(req());
+    expect(res.status).toBe(403);
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it("keeps the exchange limiter fail-closed", async () => {
+    await POST(req());
+    expect(jest.mocked(allowDeviceAuthRequest).mock.calls[0][1]).toBeUndefined();
   });
 
   it("keys the per-agent bucket by client IP so others cannot lock the agent out", async () => {

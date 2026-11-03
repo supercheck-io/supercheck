@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
       return unauthorized();
     }
 
-    if (!(await allowDeviceAuthRequest([PRIVATE_AGENT_LIMITS.heartbeatPerCredential(auth.credential.id)]))) {
+    if (!(await allowDeviceAuthRequest([PRIVATE_AGENT_LIMITS.heartbeatPerCredential(auth.credential.id)], { failOpen: true }))) {
       return NextResponse.json({ error: "Too many requests" }, { status: 429, headers: { "Retry-After": "60" } });
     }
 

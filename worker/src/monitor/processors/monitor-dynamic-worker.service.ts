@@ -33,6 +33,9 @@ import { captureJobFailure } from '../../common/sentry-reporter';
 /** How many times a skipped group's closure waits (about a minute each) for the aggregation lease. */
 const MAX_AGGREGATION_BUSY_RETRIES = 30;
 
+/** A real result that could not be saved or kept for a retry; the final-failure handler must not record it as downtime. */
+export class ResultNotKeptError extends UnrecoverableError {}
+
 /**
  * Dynamically creates BullMQ Workers for regional monitor queues.
  *
@@ -457,7 +460,7 @@ export class MonitorDynamicWorkerService
               .then(() => true)
               .catch(() => false)));
         if (!kept)
-          throw new UnrecoverableError(
+          throw new ResultNotKeptError(
             `Monitor ${job.data.monitorId} result could not be saved and will not be re-run: ${getErrorMessage(error)}`,
           );
         throw error;
@@ -664,6 +667,15 @@ export class MonitorDynamicWorkerService
         `Skipping synthetic error for ${monitorId}/${executionLocation}: ` +
           `real result already persisted (executionGroupId=${executionGroupId})`,
       );
+    }
+
+    // The check ran but its result was lost with the job data: a synthetic down row would misreport it.
+    if (!existing && error instanceof ResultNotKeptError) {
+      this.logger.warn(
+        `Monitor ${monitorId}/${executionLocation} result was lost; closing the group without recording downtime`,
+      );
+      await this.closeSkippedGroup(job);
+      return;
     }
 
     // Only saving failed: record the check's real outcome, not a synthetic error that reads as downtime.

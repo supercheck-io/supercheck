@@ -26,7 +26,10 @@ import { resetWorkerQueuesForTests } from '../../common/worker-queues';
 import { MonitorJobDataDto } from '../dto/monitor-job.dto';
 import { EXECUTE_MONITOR_JOB_NAME } from '../monitor.constants';
 import Redis from 'ioredis';
-import { MonitorDynamicWorkerService } from './monitor-dynamic-worker.service';
+import {
+  MonitorDynamicWorkerService,
+  ResultNotKeptError,
+} from './monitor-dynamic-worker.service';
 import {
   MonitorService,
   MonitorAggregationBusyError,
@@ -993,6 +996,55 @@ describe('MonitorDynamicWorkerService lifecycle', () => {
       }
     },
   );
+  it('does not record downtime when a real result could not be saved or kept', async () => {
+    const save = jest.fn().mockRejectedValue(new Error('save failed'));
+    const skip = jest.fn().mockResolvedValue(undefined);
+    const service = new MonitorDynamicWorkerService(
+      {
+        executeMonitor: jest.fn().mockResolvedValue({
+          monitorId: 'monitor-1',
+          location: 'eu',
+          isUp: true,
+        }),
+        saveDistributedMonitorResult: save,
+        skipDistributedMonitorGroup: skip,
+      } as unknown as MonitorService,
+      new ConfigService(),
+      {} as HeartbeatService,
+      {
+        db: {
+          query: {
+            monitorResults: {
+              findFirst: jest.fn().mockResolvedValue(undefined),
+            },
+          },
+        },
+      } as unknown as DbService,
+    );
+    jest
+      .spyOn(service as never, 'assertBrowserCapability')
+      .mockResolvedValue(undefined as never);
+    const job = {
+      name: EXECUTE_MONITOR_JOB_NAME,
+      data: {
+        monitorId: 'monitor-1',
+        executionGroupId: 'group-1',
+        executionLocation: 'eu',
+        expectedLocations: ['eu'],
+      },
+      attemptsMade: 3,
+      updateData: jest.fn().mockRejectedValue(new Error('lock lost')),
+      getState: jest.fn().mockResolvedValue('failed'),
+    };
+    const failure = await service['processJob'](job as never).catch(
+      (e: unknown) => e,
+    );
+    expect(failure).toBeInstanceOf(ResultNotKeptError);
+    save.mockClear();
+    await service['handleFinalJobFailure'](job as never, failure as Error);
+    expect(save).not.toHaveBeenCalled();
+    expect(skip).toHaveBeenCalledWith('monitor-1', 'group-1', false);
+  });
   it('carries the cycle marker into a final failure so it records a hint, never legacy evaluation', async () => {
     const save = jest.fn().mockResolvedValue(undefined);
     const service = new MonitorDynamicWorkerService(
