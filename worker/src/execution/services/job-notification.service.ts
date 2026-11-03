@@ -40,8 +40,9 @@ function getErrorMessage(error: unknown): string {
   return String(error);
 }
 
-// Mirrors the monitor rule in monitor-evaluator.ts (evaluateAndSendAlert): alert at
-// the threshold, then every max(5, 2 x threshold) failures after it, max 3 per streak.
+// Mirrors the monitor rule in monitor-evaluator.ts (evaluateAndSendAlert): alert at the threshold, then
+// every max(5, 2 x threshold) failures after the last alert, max 3 alerts actually sent per streak. The cap
+// counts sent alerts, not failures: with failure alerts off, a long streak must still alert on a timeout.
 const MAX_FAILURE_ALERTS_PER_STREAK = 3;
 
 function failureAlertInterval(threshold: number) {
@@ -56,14 +57,13 @@ export function maxFailureAlertStreak(threshold: number) {
 export function isFailureAlertStreak(
   consecutiveFailures: number,
   threshold: number,
+  alertsSent: number,
+  failuresSinceLastAlert: number,
 ) {
   const t = Math.max(1, threshold || 1);
-  const after = consecutiveFailures - t;
-  if (after < 0) return false;
-  const interval = failureAlertInterval(t);
-  return (
-    after % interval === 0 && after / interval < MAX_FAILURE_ALERTS_PER_STREAK
-  );
+  if (consecutiveFailures < t || alertsSent >= MAX_FAILURE_ALERTS_PER_STREAK)
+    return false;
+  return alertsSent === 0 || failuresSinceLastAlert >= failureAlertInterval(t);
 }
 
 @Injectable()
@@ -203,6 +203,11 @@ export class JobNotificationService {
           : finalStatus;
 
       let consecutiveFailures = normalizedStatus === 'failed' ? 1 : 0;
+      let failuresSinceLastAlert = consecutiveFailures;
+      const alertState =
+        normalizedStatus === 'failed'
+          ? await this.dbService.getJobAlertStreakState(jobId)
+          : { sent: 0, lastSentAt: null };
       let consecutiveSuccesses = normalizedStatus === 'passed' ? 1 : 0;
 
       for (const run of recentRuns) {
@@ -210,6 +215,12 @@ export class JobNotificationService {
         if (normalizedStatus === 'failed') {
           if (run.status === 'failed' || run.status === 'error') {
             consecutiveFailures++;
+            if (
+              alertState.lastSentAt &&
+              run.createdAt &&
+              run.createdAt > alertState.lastSentAt
+            )
+              failuresSinceLastAlert++;
             continue;
           }
           break;
@@ -227,7 +238,12 @@ export class JobNotificationService {
       const shouldNotifyFailure =
         alertConfig.alertOnFailure &&
         normalizedStatus === 'failed' &&
-        isFailureAlertStreak(consecutiveFailures, alertConfig.failureThreshold);
+        isFailureAlertStreak(
+          consecutiveFailures,
+          alertConfig.failureThreshold,
+          alertState.sent,
+          alertState.lastSentAt ? failuresSinceLastAlert : consecutiveFailures,
+        );
 
       const shouldNotifySuccess =
         alertConfig.alertOnSuccess &&
@@ -238,7 +254,12 @@ export class JobNotificationService {
       const shouldNotifyTimeout =
         alertConfig.alertOnTimeout &&
         finalStatus === 'timeout' &&
-        isFailureAlertStreak(consecutiveFailures, alertConfig.failureThreshold);
+        isFailureAlertStreak(
+          consecutiveFailures,
+          alertConfig.failureThreshold,
+          alertState.sent,
+          alertState.lastSentAt ? failuresSinceLastAlert : consecutiveFailures,
+        );
 
       if (
         !shouldNotifyFailure &&

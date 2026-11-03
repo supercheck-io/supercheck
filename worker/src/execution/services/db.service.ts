@@ -508,6 +508,61 @@ export class DbService implements OnModuleInit {
     }
   }
 
+  /**
+   * Failure alerts actually delivered since the job's current failing streak began (its last non-failing run).
+   * One alert fans out to a row per provider, so the count is the busiest provider's, not the row total.
+   */
+  async getJobAlertStreakState(
+    jobId: string,
+  ): Promise<{ sent: number; lastSentAt: Date | null }> {
+    try {
+      const [{ since }] = await this.db
+        .select({ since: sql<Date | null>`max(${runs.createdAt})` })
+        .from(runs)
+        .where(
+          and(
+            eq(runs.jobId, jobId),
+            inArray(sql<string>`${runs.status}`, [
+              'passed',
+              'blocked',
+              'skipped',
+            ]),
+          ),
+        );
+      const perProvider = await this.db
+        .select({
+          sent: sql<number>`count(*)::int`,
+          lastSentAt: sql<Date>`max(${alertHistory.sentAt})`,
+        })
+        .from(alertHistory)
+        .where(
+          and(
+            eq(alertHistory.jobId, jobId),
+            eq(alertHistory.status, 'sent'),
+            inArray(sql<string>`${alertHistory.type}`, [
+              'job_failed',
+              'job_timeout',
+            ]),
+            since ? sql`${alertHistory.sentAt} > ${since}` : undefined,
+          ),
+        )
+        .groupBy(alertHistory.provider);
+      return {
+        sent: Math.max(0, ...perProvider.map((row) => row.sent)),
+        lastSentAt: perProvider.reduce<Date | null>((latest, row) => {
+          const at = new Date(row.lastSentAt);
+          return !latest || at > latest ? at : latest;
+        }, null),
+      };
+    } catch (error) {
+      // Unknown history must not silence a failing job: treat it as a fresh streak.
+      this.logger.error(
+        `Failed to read alert history for job ${jobId}: ${(error as Error).message}`,
+      );
+      return { sent: 0, lastSentAt: null };
+    }
+  }
+
   async claimRunExecution(runId: string): Promise<boolean> {
     const [claimed] = await this.db
       .update(runs)

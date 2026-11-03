@@ -77,6 +77,9 @@ import {
 // Use the MonitorResult type from schema
 type MonitorResult = z.infer<typeof monitorResultsSelectSchema>;
 
+const RESULT_SAVE_ATTEMPTS = 3;
+const RESULT_SAVE_BACKOFF_MS = 250;
+
 function serializeResponseData(value: unknown): string {
   if (typeof value === 'string') return value;
   if (value === null || value === undefined) return '';
@@ -700,7 +703,7 @@ export class MonitorService {
         : result;
 
     if (!options.persisted) {
-      await this.saveMonitorResultToDb(persistedResult, true);
+      await this.insertResultWithRetry(persistedResult, executionGroupId);
     }
 
     if (!executionGroupId) {
@@ -2116,6 +2119,38 @@ export class MonitorService {
     ...args: Parameters<MonitorEvaluator['getLastSslAlert']>
   ) {
     return this.evaluator.getLastSslAlert(...args);
+  }
+
+  // A failed insert makes the BullMQ job retry, so a transient DB error is absorbed here first; re-running the
+  // check would bill a synthetic one twice.
+  private async insertResultWithRetry(
+    result: MonitorExecutionResult,
+    executionGroupId?: string,
+  ): Promise<void> {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        await this.saveMonitorResultToDb(result, true);
+        return;
+      } catch (error) {
+        if (attempt >= RESULT_SAVE_ATTEMPTS) throw error;
+        await new Promise((resolve) =>
+          setTimeout(resolve, RESULT_SAVE_BACKOFF_MS * 2 ** (attempt - 1)),
+        );
+        // The insert may have committed before the error surfaced; never add a second row for the same check.
+        if (executionGroupId) {
+          const stored = await this.dbService.db.query.monitorResults
+            .findFirst({
+              where: and(
+                eq(schema.monitorResults.monitorId, result.monitorId),
+                eq(schema.monitorResults.executionGroupId, executionGroupId),
+                eq(schema.monitorResults.location, result.location),
+              ),
+            })
+            .catch(() => undefined);
+          if (stored) return;
+        }
+      }
+    }
   }
 
   private async saveMonitorResultToDb(
