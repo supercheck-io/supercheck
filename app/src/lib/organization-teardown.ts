@@ -20,7 +20,8 @@ export class OrganizationMembershipChangedError extends Error {}
 export type MembershipGuard = { onlyMemberUserId: string } | { noMembers: true } | { ownerUserId: string };
 
 async function assertMembership(executor: Pick<typeof db, "select">, organizationId: string, guard: MembershipGuard) {
-  const rows = await executor.select({ userId: member.userId, role: member.role }).from(member).where(eq(member.organizationId, organizationId));
+  // FOR SHARE: a concurrent demotion or removal of these members waits for the teardown to finish.
+  const rows = await executor.select({ userId: member.userId, role: member.role }).from(member).where(eq(member.organizationId, organizationId)).for("share");
   const ok = "noMembers" in guard
     ? rows.length === 0
     : "ownerUserId" in guard

@@ -1,5 +1,4 @@
-import { auth } from "@/utils/auth";
-import { headers } from "next/headers";
+import { getCachedAuthSession } from "@/lib/session-cache";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 
@@ -13,9 +12,7 @@ export default async function NotificationLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
+  const session = await getCachedAuthSession();
 
   if (!session) {
     redirect("/sign-in?from=notification");

@@ -1,5 +1,4 @@
-import { auth } from "@/utils/auth";
-import { headers } from "next/headers";
+import { getCachedAuthSession } from "@/lib/session-cache";
 import { redirect } from "next/navigation";
 import { getUserOrgRole } from "@/lib/rbac/middleware";
 import { Role } from "@/lib/rbac/permissions";
@@ -17,9 +16,7 @@ export default async function OrgAdminLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const session = await auth.api.getSession({
-    headers: await headers()
-  });
+  const session = await getCachedAuthSession();
 
   if (!session) {
     redirect("/sign-in");

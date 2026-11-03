@@ -183,7 +183,7 @@ describe("POST /api/auth/setup-defaults", () => {
     mockDb.select.mockReset().mockReturnValueOnce(selectResult([{ emailVerified: true }], true))
       .mockReturnValueOnce(selectResult([]))
       .mockReturnValueOnce({ from: jest.fn().mockReturnThis(), where: jest.fn().mockReturnThis(), orderBy: jest.fn().mockReturnThis(), limit: jest.fn().mockResolvedValue([]) });
-    (auth.api.getSession as unknown as jest.Mock).mockResolvedValue({ session: { token: "browser-token" } });
+    (auth.api.getSession as unknown as jest.Mock).mockResolvedValue({ session: { token: "browser-token" }, user: { id: "user-1", banned: false } });
     const tx = {
       select: jest.fn().mockReturnValueOnce({ from: jest.fn().mockReturnThis(), where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), for: jest.fn().mockResolvedValue([{ id: "user-1" }]) })
         .mockReturnValueOnce(selectResult([
@@ -228,7 +228,7 @@ describe("POST /api/auth/setup-defaults", () => {
     mockDb.select.mockReturnValueOnce(selectResult([{ emailVerified: true }], true))
       .mockReturnValueOnce(selectResult([]))
       .mockReturnValueOnce({ from: jest.fn().mockReturnThis(), where: jest.fn().mockReturnThis(), orderBy: jest.fn().mockReturnThis(), limit: jest.fn().mockResolvedValue([]) });
-    (auth.api.getSession as unknown as jest.Mock).mockResolvedValue({ session: { token: "browser-token" } });
+    (auth.api.getSession as unknown as jest.Mock).mockResolvedValue({ session: { token: "browser-token" }, user: { id: "user-1", banned: false } });
     const txSet = jest.fn().mockReturnValue({ where: jest.fn().mockReturnValue({ returning: jest.fn().mockResolvedValue(sessionExists ? [{ id: "session" }] : []) }) });
     const values = jest.fn().mockReturnValue({ returning: jest.fn().mockResolvedValue([{ id: "new-id", name: "Default" }]) });
     const tx = {
@@ -257,7 +257,7 @@ describe("POST /api/auth/setup-defaults", () => {
       mockDb.select.mockReturnValueOnce(selectResult([{ emailVerified: true }], true))
         .mockReturnValueOnce(selectResult([]))
         .mockReturnValueOnce({ from: jest.fn().mockReturnThis(), where: jest.fn().mockReturnThis(), orderBy: jest.fn().mockReturnThis(), limit: jest.fn().mockResolvedValue([]) });
-      (auth.api.getSession as unknown as jest.Mock).mockResolvedValue({ session: { token: "browser-token" } });
+      (auth.api.getSession as unknown as jest.Mock).mockResolvedValue({ session: { token: "browser-token" }, user: { id: "user-1", banned: false } });
       const txSet = jest.fn().mockReturnValue({ where: jest.fn().mockReturnValue({ returning: jest.fn().mockResolvedValue([{ id: "session" }]) }) });
       const values = jest.fn().mockReturnValue({ returning: jest.fn().mockResolvedValue([{ id: "new-id", name: "Default" }]) });
       const tx = {

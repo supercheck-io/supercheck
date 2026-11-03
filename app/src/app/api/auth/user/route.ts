@@ -1,12 +1,9 @@
 import { NextResponse } from 'next/server';
-import { auth } from '@/utils/auth';
-import { headers } from 'next/headers';
+import { getCachedAuthSession } from "@/lib/session-cache";
 
 export async function GET() {
   try {
-    const session = await auth.api.getSession({
-      headers: await headers(),
-    });
+    const session = await getCachedAuthSession();
 
     if (!session?.user) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });

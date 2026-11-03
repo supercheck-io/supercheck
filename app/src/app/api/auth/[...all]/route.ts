@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { isOAuthEndpointDenied, withReachableEndpointsOnly } from "@/lib/mcp/http-policy";
 import { isMcpServerEnabled } from "@/lib/mcp/config";
 import { prepareMcpOAuthRequest } from "@/lib/mcp/request-policy";
+import { isCredentialOwnerActive } from "@/lib/security/credential-owner";
 
 const handlers = toNextJsHandler(auth);
 
@@ -49,6 +50,13 @@ export async function GET(request: Request) {
   const prepared = isMcpServerEnabled() ? await prepareMcpOAuthRequest(request) : request;
   if (prepared instanceof Response) return prepared;
   const response = await handlers.GET(prepared);
+  // The client session check: a session that outlived a suspension reads as signed out (expired bans pass).
+  if (new URL(request.url).pathname.replace(/\/+$/, "") === "/api/auth/get-session" && response.ok) {
+    const body = await response.clone().json().catch(() => null) as { user?: { banned?: unknown; banExpires?: unknown } } | null;
+    if (body?.user && !isCredentialOwnerActive(body.user)) {
+      return NextResponse.json(null, { headers: { "Cache-Control": "no-store" } });
+    }
+  }
   // Better Auth's own copy of the metadata lists endpoints this route refuses; advertise only reachable ones.
   if (isMcpServerEnabled() && new URL(request.url).pathname.replace(/\/+$/, "") === "/api/auth/.well-known/oauth-authorization-server") {
     return withReachableEndpointsOnly(response);

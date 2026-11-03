@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/utils/auth";
-import { headers } from "next/headers";
+import { getCachedAuthSession } from "@/lib/session-cache";
 import crypto from "crypto";
 
 export const dynamic = "force-dynamic";
@@ -13,9 +12,7 @@ const NO_STORE = { "Cache-Control": "no-store" };
  * (https://www.chatwoot.com/hc/user-guide/articles/1677587232-how-to-set-up-identity-validation).
  */
 export async function GET() {
-  const sessionData = await auth.api.getSession({
-    headers: await headers(),
-  });
+  const sessionData = await getCachedAuthSession();
 
   if (!sessionData?.user?.id) {
     return new NextResponse("Unauthorized", { status: 401 });

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getCachedAuthSession } from "@/lib/session-cache";
 import { headers } from "next/headers";
 import { eq } from "drizzle-orm";
 import { auth } from "@/utils/auth";
@@ -14,7 +15,7 @@ const err = (error: string, status: number, extra?: HeadersInit) =>
   NextResponse.json({ error }, { status, headers: extra });
 
 async function currentSession(): Promise<{ userId: string; error?: undefined } | { error: NextResponse; userId?: undefined }> {
-  const session = await auth.api.getSession({ headers: await headers() });
+  const session = await getCachedAuthSession();
   if (!session?.user) return { error: err("Authentication required", 401) };
   // An admin impersonating a user must not change that user's profile.
   if (session.session.impersonatedBy) return { error: err("Not allowed while impersonating", 403) };

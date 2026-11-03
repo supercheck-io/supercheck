@@ -160,3 +160,19 @@ it("does not reach the provider after the shared OAuth rate limit is exhausted",
     delete process.env.MCP_SERVER_ENABLED;
   }
 });
+
+describe("client session check for suspended accounts", () => {
+  const getSession = () => GET(new Request("https://app.supercheck.io/api/auth/get-session"));
+  it.each([
+    ["an active permanent ban", { banned: true, banExpires: null }, null],
+    ["an active temporary ban", { banned: true, banExpires: new Date(Date.now() + 60_000).toISOString() }, null],
+  ])("reads as signed out with %s", async (_, ban, expected) => {
+    mockGet.mockResolvedValueOnce(Response.json({ session: { id: "s" }, user: { id: "u", ...ban } }));
+    expect(await (await getSession()).json()).toBe(expected);
+  });
+  it("keeps the session once a temporary ban has expired", async () => {
+    const body = { session: { id: "s" }, user: { id: "u", banned: true, banExpires: new Date(Date.now() - 60_000).toISOString() } };
+    mockGet.mockResolvedValueOnce(Response.json(body));
+    expect(await (await getSession()).json()).toEqual(body);
+  });
+});

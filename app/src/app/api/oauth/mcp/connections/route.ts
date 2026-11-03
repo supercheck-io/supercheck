@@ -1,5 +1,4 @@
-import { headers } from "next/headers";
-import { auth } from "@/utils/auth";
+import { getCachedAuthSession } from "@/lib/session-cache";
 import { guardMcpEnabled, mcpJson } from "@/lib/mcp/http";
 import { listMcpConnections } from "@/lib/mcp/connections";
 
@@ -10,7 +9,7 @@ export async function GET() {
   const disabled = guardMcpEnabled();
   if (disabled) return disabled;
 
-  const session = await auth.api.getSession({ headers: await headers() });
+  const session = await getCachedAuthSession();
   if (!session?.user) return mcpJson({ error: "authentication_required" }, 401);
 
   const connections = await listMcpConnections(session.user.id);
