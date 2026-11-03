@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { RUN_CANCELLATION_MARKER } from '../../common/services/cancellation.service';
 import { AlertStatus, AlertType, TestRunStatus } from '../../db/schema';
@@ -388,6 +389,7 @@ export class JobNotificationService {
           // One failed insert must not drop the remaining rows or the triage enqueue.
           try {
             // The streak cap counts these rows: without a stored 'sent' row the next failing run alerts again.
+            const alertRowId = randomUUID();
             for (let attempt = 1; ; attempt++) {
               try {
                 createdAlertHistoryRows.push(
@@ -400,6 +402,7 @@ export class JobNotificationService {
                     result.error,
                     job.name,
                     result.deliveryMetadata,
+                    alertRowId,
                   ),
                 );
                 break;

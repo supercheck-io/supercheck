@@ -427,6 +427,7 @@ export class DbService implements OnModuleInit {
     errorMessage?: string,
     jobNameOverride?: string,
     deliveryMetadata?: AlertDeliveryMetadata,
+    id?: string,
   ): Promise<{ id: string; status: AlertStatus }> {
     try {
       let jobName = jobNameOverride;
@@ -440,6 +441,7 @@ export class DbService implements OnModuleInit {
       const [created] = await this.db
         .insert(alertHistory)
         .values({
+          ...(id ? { id } : {}),
           jobId,
           type,
           provider,
@@ -451,12 +453,14 @@ export class DbService implements OnModuleInit {
           target: jobName,
           targetType: 'job',
         })
+        // A caller-supplied id makes a retry after a lost acknowledgement a no-op.
+        .onConflictDoNothing()
         .returning({ id: alertHistory.id, status: alertHistory.status });
 
       this.logger.log(
         `Successfully saved alert history for job ${jobId} with status: ${status}`,
       );
-      return created;
+      return created ?? { id: id as string, status };
     } catch (error) {
       this.logger.error(
         `Failed to save alert history for job ${jobId}:`,

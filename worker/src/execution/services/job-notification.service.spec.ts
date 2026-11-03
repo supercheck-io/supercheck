@@ -113,6 +113,7 @@ describe('JobNotificationService', () => {
         version: 1,
         provider: { id: 'provider-2', type: 'webhook' },
       }),
+      expect.any(String),
     );
     expect(
       sreAlertTriageQueueService.enqueueAlertHistoryRows,
@@ -297,6 +298,11 @@ describe('JobNotificationService', () => {
       await service.handleJobNotifications(params);
       // The first row is retried once, then the second row is saved.
       expect(dbService.saveAlertHistory).toHaveBeenCalledTimes(3);
+      // The retry reuses the row id, so a committed-but-unacknowledged insert is not duplicated.
+      const ids = dbService.saveAlertHistory.mock.calls.map((call) => call[8]);
+      expect(ids[0]).toEqual(expect.any(String));
+      expect(ids[1]).toBe(ids[0]);
+      expect(ids[2]).not.toBe(ids[0]);
       expect(
         sreAlertTriageQueueService.enqueueAlertHistoryRows,
       ).toHaveBeenCalledWith([savedRow, savedRow]);
