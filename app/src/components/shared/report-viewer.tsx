@@ -6,7 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { AlertCircle, Loader2Icon, FileText, Maximize2, X } from "lucide-react";
+import { AlertCircle, ExternalLink, Loader2Icon, FileText, Maximize2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { PlaywrightLogo } from "../logo/playwright-logo";
@@ -614,7 +614,15 @@ export function ReportViewer({
           !isReportLoading &&
           !iframeError &&
           !hideFullscreenButton && (
-            <div className="absolute top-2 right-2 z-10">
+            <div className="absolute top-2 right-2 z-10 flex gap-1">
+              {separateOrigin && iframeSrc && (
+                // Safari cannot load the trace viewer inside a cross-site frame; as its own tab it works.
+                <Button size="sm" asChild className="cursor-pointer flex items-center gap-1 bg-secondary hover:bg-secondary/90">
+                  <a href={iframeSrc} target="_blank" rel="noopener noreferrer" title="Open report in a new tab" aria-label="Open report in a new tab">
+                    <ExternalLink className="h-4 w-4 text-secondary-foreground" />
+                  </a>
+                </Button>
+              )}
               <Button
                 size="sm"
                 className="cursor-pointer flex items-center gap-1 bg-secondary hover:bg-secondary/90"
