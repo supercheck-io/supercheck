@@ -5,7 +5,16 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
-import { and, asc, eq, isNull, lte, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  eq,
+  inArray,
+  isNull,
+  lte,
+  notInArray,
+  sql,
+} from 'drizzle-orm';
 import { DbService } from '../db/db.service';
 import * as schema from '../db/schema';
 import { BillingVerificationError } from './billing-hold.service';
@@ -23,8 +32,6 @@ const POISON_MAX_BACKOFF_MS = 5 * 60_000;
 const POISON_GIVE_UP_AFTER = 20;
 /** Hard age bound: an open cycle this far past its deadline is aborted whatever the error (billing included). */
 const MAX_OPEN_AGE_MS = 24 * 60 * 60_000;
-/** Cap on the extra rows fetched to look past cycles in backoff. */
-const MAX_FAILING_OVERFETCH = 200;
 /**
  * Wall-clock budget for one notification. A tenant-controlled endpoint that trickles a response must
  * not stall every other organization's closures and alerts behind it.
@@ -190,8 +197,11 @@ export class MonitorCycleProcessor implements OnModuleInit, OnModuleDestroy {
   }
 
   private async processDeadlines(now: Date): Promise<number> {
-    // Fetch extra rows so cycles in backoff never crowd out healthy ones.
-    const limit = BATCH + Math.min(this.failing.size, MAX_FAILING_OVERFETCH);
+    // Cycles in backoff are excluded in SQL, so they can never crowd healthy ones out of the batch.
+    const failingIds = [...this.failing.keys()];
+    const backedOff = [...this.failing]
+      .filter(([, state]) => state.nextAt > Date.now())
+      .map(([id]) => id);
     const due = await this.dbService.db
       .select({
         id: schema.monitorCycles.id,
@@ -202,15 +212,30 @@ export class MonitorCycleProcessor implements OnModuleInit, OnModuleDestroy {
         and(
           eq(schema.monitorCycles.status, 'open'),
           lte(schema.monitorCycles.deadlineAt, now),
+          backedOff.length
+            ? notInArray(schema.monitorCycles.id, backedOff)
+            : undefined,
         ),
       )
       .orderBy(asc(schema.monitorCycles.deadlineAt))
-      .limit(limit);
-    if (due.length < limit) {
-      // The query saw every open overdue cycle: forget entries that were closed, deleted or aborted.
-      const seen = new Set(due.map((row) => row.id));
-      for (const id of this.failing.keys())
-        if (!seen.has(id)) this.failing.delete(id);
+      .limit(BATCH);
+    if (failingIds.length) {
+      // Forget entries whose cycle was closed, deleted or aborted outside close(), on every pass.
+      const stillOpen = new Set(
+        (
+          await this.dbService.db
+            .select({ id: schema.monitorCycles.id })
+            .from(schema.monitorCycles)
+            .where(
+              and(
+                eq(schema.monitorCycles.status, 'open'),
+                inArray(schema.monitorCycles.id, failingIds),
+              ),
+            )
+        ).map((row) => row.id),
+      );
+      for (const id of failingIds)
+        if (!stillOpen.has(id)) this.failing.delete(id);
     }
     let processed = 0;
     for (const { id, deadlineAt } of due) {

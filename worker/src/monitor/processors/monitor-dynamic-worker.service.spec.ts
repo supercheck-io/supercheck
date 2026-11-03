@@ -1045,6 +1045,47 @@ describe('MonitorDynamicWorkerService lifecycle', () => {
     expect(save).not.toHaveBeenCalled();
     expect(skip).toHaveBeenCalledWith('monitor-1', 'group-1', false);
   });
+  it('writes no error row when closing the group of a lost result also fails', async () => {
+    const save = jest.fn();
+    const skip = jest.fn().mockRejectedValue(new Error('db down'));
+    const service = new MonitorDynamicWorkerService(
+      {
+        saveDistributedMonitorResult: save,
+        skipDistributedMonitorGroup: skip,
+      } as unknown as MonitorService,
+      new ConfigService(),
+      {} as HeartbeatService,
+      {
+        db: {
+          query: {
+            monitorResults: {
+              findFirst: jest.fn().mockResolvedValue(undefined),
+            },
+          },
+        },
+      } as unknown as DbService,
+    );
+    const job = {
+      data: {
+        monitorId: 'monitor-1',
+        executionGroupId: 'group-1',
+        executionLocation: 'eu',
+        expectedLocations: ['eu'],
+      },
+      attemptsMade: 3,
+      updateData: jest.fn().mockRejectedValue(new Error('lock lost')),
+      getState: jest.fn().mockResolvedValue('failed'),
+    };
+    // The failed handler cannot retry: the error surfaces and the cycle deadline settles the region.
+    await expect(
+      service['handleFinalJobFailure'](
+        job as never,
+        new ResultNotKeptError('lost'),
+      ),
+    ).rejects.toThrow('lock lost');
+    expect(skip).toHaveBeenCalledTimes(1);
+    expect(save).not.toHaveBeenCalled();
+  });
   it('carries the cycle marker into a final failure so it records a hint, never legacy evaluation', async () => {
     const save = jest.fn().mockResolvedValue(undefined);
     const service = new MonitorDynamicWorkerService(
@@ -1329,35 +1370,51 @@ describe('a completed check whose result failed to save', () => {
     expect(executeMonitor).toHaveBeenCalledTimes(2);
   });
 
-  it('falls back to an error row when the stored result itself cannot be saved', async () => {
-    const save = jest
-      .fn()
-      .mockRejectedValueOnce(new Error('value too long'))
-      .mockResolvedValue(undefined);
-    const service = build(save);
-    const data = JSON.parse(
-      JSON.stringify({
-        monitorId: 'monitor-1',
-        executionLocation: 'eu',
-        executionGroupId: 'g',
-        aggregationOnly: true,
-        _pendingResult: result,
-      }),
-    );
-    await service['handleFinalJobFailure'](
-      {
-        data,
-        attemptsMade: 3,
-        getState: jest.fn().mockResolvedValue('failed'),
-      } as never,
-      new Error('value too long'),
-    );
-    expect(save).toHaveBeenCalledTimes(2);
-    expect(save).toHaveBeenLastCalledWith(
-      expect.objectContaining({ status: 'error' }),
-      expect.anything(),
-    );
-  });
+  it.each([
+    ['up', true],
+    ['down', false],
+  ])(
+    'when a stored %s result itself cannot be saved, %s',
+    async (_label, isUp) => {
+      const save = jest
+        .fn()
+        .mockRejectedValueOnce(new Error('value too long'))
+        .mockResolvedValue(undefined);
+      const service = build(save);
+      const skip = jest.fn().mockResolvedValue(undefined);
+      (service['monitorService'] as any).skipDistributedMonitorGroup = skip;
+      const data = JSON.parse(
+        JSON.stringify({
+          monitorId: 'monitor-1',
+          executionLocation: 'eu',
+          executionGroupId: 'g',
+          aggregationOnly: true,
+          _pendingResult: { ...result, isUp, status: isUp ? 'up' : 'down' },
+        }),
+      );
+      await service['handleFinalJobFailure'](
+        {
+          data,
+          attemptsMade: 3,
+          getState: jest.fn().mockResolvedValue('failed'),
+          updateData: jest.fn().mockResolvedValue(undefined),
+        } as never,
+        new Error('value too long'),
+      );
+      if (isUp) {
+        // An error row would record a successful check as downtime.
+        expect(save).toHaveBeenCalledTimes(1);
+        expect(skip).toHaveBeenCalledWith('monitor-1', 'g', false);
+      } else {
+        // An observed outage is still recorded, as an error row.
+        expect(skip).not.toHaveBeenCalled();
+        expect(save).toHaveBeenLastCalledWith(
+          expect.objectContaining({ status: 'error' }),
+          expect.anything(),
+        );
+      }
+    },
+  );
 
   it('finishes from the stored row, not an error row, when the save inserted before throwing', async () => {
     const save = jest

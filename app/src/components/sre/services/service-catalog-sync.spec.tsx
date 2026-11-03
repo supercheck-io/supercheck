@@ -37,12 +37,19 @@ const created: SreServiceListItem = {
   updatedAt: new Date("2026-11-02T10:00:00Z"),
 };
 
+const mockEdited: SreServiceListItem = { ...created, name: "renamed-api", updatedAt: new Date("2026-11-02T10:05:00Z") };
+
 jest.mock("@/components/sre/services/service-form-dialog", () => ({
   ServiceFormDialog: ({
     onSaved,
   }: {
     onSaved: (service: SreServiceListItem) => void;
-  }) => <button onClick={() => onSaved(created)}>save-service</button>,
+  }) => (
+    <>
+      <button onClick={() => onSaved(created)}>save-service</button>
+      <button onClick={() => onSaved(mockEdited)}>save-edit</button>
+    </>
+  ),
 }));
 
 const canCreate = { canCreate: true, canUpdate: true, canArchive: false };
@@ -108,5 +115,40 @@ describe("ServiceCatalog server payload sync", () => {
     );
     expect(screen.queryByText("fresh-api")).not.toBeInTheDocument();
     expect(screen.getByText("No services registered")).toBeInTheDocument();
+  });
+
+  it("keeps a saved edit over an older server row for the same service", async () => {
+    const mount = (initialServices: SreServiceListItem[]) =>
+      render(
+        <ServiceCatalog projectId="project-stale" initialServices={initialServices} loadError={null} permissions={canCreate} />,
+      );
+    const first = mount([created]);
+    fireEvent.click(screen.getByTestId("add-service-btn"));
+    fireEvent.click(screen.getByText("save-edit"));
+    await screen.findByText("renamed-api");
+    first.unmount();
+
+    // The remounted payload was rendered before the edit.
+    mount([created]);
+    expect(await screen.findByText("renamed-api")).toBeInTheDocument();
+    expect(screen.queryByText("fresh-api")).not.toBeInTheDocument();
+  });
+
+  it("drops a pending save after the 60 second retention window", async () => {
+    const nowSpy = jest.spyOn(Date, "now").mockReturnValue(1_000_000);
+    const first = render(
+      <ServiceCatalog projectId="project-ttl" initialServices={[]} loadError={null} permissions={canCreate} />,
+    );
+    fireEvent.click(screen.getByTestId("add-service-btn"));
+    fireEvent.click(screen.getByText("save-service"));
+    await screen.findByText("fresh-api");
+    first.unmount();
+
+    nowSpy.mockReturnValue(1_000_000 + 60_001);
+    render(
+      <ServiceCatalog projectId="project-ttl" initialServices={[]} loadError={null} permissions={canCreate} />,
+    );
+    expect(screen.queryByText("fresh-api")).not.toBeInTheDocument();
+    nowSpy.mockRestore();
   });
 });

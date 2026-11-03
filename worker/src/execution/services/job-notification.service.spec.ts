@@ -286,7 +286,7 @@ describe('JobNotificationService', () => {
       ).toHaveBeenCalledWith([]);
     });
 
-    it('keeps saving and enqueues remaining rows after one save fails', async () => {
+    it('retries a failed alert-history insert so the sent row is stored', async () => {
       const { service, dbService, sreAlertTriageQueueService } =
         createService();
       const savedRow = { id: 'row-2' };
@@ -295,10 +295,33 @@ describe('JobNotificationService', () => {
         .mockRejectedValueOnce(new Error('db blip'))
         .mockResolvedValue(savedRow);
       await service.handleJobNotifications(params);
-      expect(dbService.saveAlertHistory).toHaveBeenCalledTimes(2);
+      // The first row is retried once, then the second row is saved.
+      expect(dbService.saveAlertHistory).toHaveBeenCalledTimes(3);
       expect(
         sreAlertTriageQueueService.enqueueAlertHistoryRows,
-      ).toHaveBeenCalledWith([savedRow]);
+      ).toHaveBeenCalledWith([savedRow, savedRow]);
+    });
+
+    it('counts a run created before the last alert but completed after it toward the reminder', async () => {
+      const { service, dbService, notificationService } = createService();
+      // Threshold 1: alert after failure 1, reminder 5 failures later (4 more runs plus the current one).
+      (await dbService.getJobById()).alertConfig.failureThreshold = 1;
+      dbService.getJobAlertStreakState.mockResolvedValue({
+        sent: 1,
+        lastSentAt: new Date(100_000),
+      });
+      dbService.getRecentRunsForJob.mockResolvedValue(
+        Array.from({ length: 4 }, (_, i) => ({
+          id: `old-${i}`,
+          status: 'failed',
+          createdAt: new Date(50_000 - i), // all created before the alert...
+          completedAt: new Date(150_000 + i), // ...and all finished after it
+        })),
+      );
+      await service.handleJobNotifications(params);
+      expect(
+        notificationService.sendNotificationToMultipleProviders,
+      ).toHaveBeenCalledTimes(1);
     });
 
     it('logs and swallows a failure loading the job', async () => {

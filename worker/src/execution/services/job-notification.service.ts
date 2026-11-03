@@ -44,6 +44,8 @@ function getErrorMessage(error: unknown): string {
 // every max(5, 2 x threshold) failures after the last alert, max 3 alerts actually sent per streak. The cap
 // counts sent alerts, not failures: with failure alerts off, a long streak must still alert on a timeout.
 const MAX_FAILURE_ALERTS_PER_STREAK = 3;
+const ALERT_HISTORY_SAVE_ATTEMPTS = 3;
+const ALERT_HISTORY_RETRY_MS = 200;
 
 function failureAlertInterval(threshold: number) {
   return Math.max(5, threshold * 2);
@@ -234,10 +236,12 @@ export class JobNotificationService {
         if (normalizedStatus === 'failed') {
           if (run.status === 'failed' || run.status === 'error') {
             consecutiveFailures++;
+            // Count by completion: a run created before the alert that failed after it is a failure since it.
+            const failedAt = run.completedAt ?? run.createdAt;
             if (
               alertState.lastSentAt &&
-              run.createdAt &&
-              run.createdAt > alertState.lastSentAt
+              failedAt &&
+              failedAt > alertState.lastSentAt
             )
               failuresSinceLastAlert++;
             continue;
@@ -383,18 +387,29 @@ export class JobNotificationService {
           const status: AlertStatus = result.success ? 'sent' : 'failed';
           // One failed insert must not drop the remaining rows or the triage enqueue.
           try {
-            createdAlertHistoryRows.push(
-              await this.dbService.saveAlertHistory(
-                jobId,
-                alertType,
-                result.provider.id,
-                status,
-                payload.message,
-                result.error,
-                job.name,
-                result.deliveryMetadata,
-              ),
-            );
+            // The streak cap counts these rows: without a stored 'sent' row the next failing run alerts again.
+            for (let attempt = 1; ; attempt++) {
+              try {
+                createdAlertHistoryRows.push(
+                  await this.dbService.saveAlertHistory(
+                    jobId,
+                    alertType,
+                    result.provider.id,
+                    status,
+                    payload.message,
+                    result.error,
+                    job.name,
+                    result.deliveryMetadata,
+                  ),
+                );
+                break;
+              } catch (insertError) {
+                if (attempt >= ALERT_HISTORY_SAVE_ATTEMPTS) throw insertError;
+                await new Promise((resolve) =>
+                  setTimeout(resolve, ALERT_HISTORY_RETRY_MS * attempt),
+                );
+              }
+            }
           } catch (rowError) {
             this.logger.error(
               `Failed to save alert history row for job ${jobId}: ${getErrorMessage(rowError)}`,

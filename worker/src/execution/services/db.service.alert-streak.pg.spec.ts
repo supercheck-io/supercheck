@@ -86,6 +86,20 @@ suite('DbService.getJobAlertStreakState (PostgreSQL)', () => {
     expect(state.lastSentAt).toEqual(new Date('2026-01-01T00:04:30Z'));
   });
 
+  it('leaves out an old-streak alert delivered after the passing run started but before it finished', async () => {
+    await testDb.db.insert(schema.runs).values({
+      jobId,
+      projectId,
+      status: 'passed',
+      trigger: 'manual',
+      createdAt: new Date('2026-01-01T00:01:00Z'),
+      completedAt: new Date('2026-01-01T00:03:00Z'),
+    } as never);
+    await alert('p1', 'sent', '2026-01-01T00:02:00Z'); // earlier failure's alert, delivered late
+    await run('failed', '2026-01-01T00:04:00Z');
+    expect((await service.getJobAlertStreakState(jobId)).sent).toBe(0);
+  });
+
   it('reports no alerts for a job with no history', async () => {
     await run('failed', '2026-01-01T00:02:00Z');
     expect(await service.getJobAlertStreakState(jobId)).toEqual({

@@ -1480,9 +1480,14 @@ describe('MonitorService', () => {
       mockDbService.db.query.monitorResults.findFirst.mockReset();
     });
     it('fails the distributed job when the result insert fails, but keeps the swallow on the local path', async () => {
-      mockDbService.db.insert.mockReturnValue({
-        values: jest.fn().mockRejectedValue(new Error('statement timeout')),
+      // A thenable, like drizzle's insert builder: awaited directly or through onConflictDoNothing.
+      const failing = () => ({
+        then: (_resolve: unknown, reject: (e: Error) => void) =>
+          reject(new Error('statement timeout')),
+        onConflictDoNothing: () =>
+          Promise.reject(new Error('statement timeout')),
       });
+      mockDbService.db.insert.mockReturnValue({ values: jest.fn(failing) });
       const row = {
         monitorId: mockMonitor.id,
         location: 'eu',
@@ -1501,33 +1506,12 @@ describe('MonitorService', () => {
         service['saveMonitorResultToDb'](row),
       ).resolves.toBeUndefined();
     });
-    it('ignores the synthetic deadline row when checking whether a failed insert committed', async () => {
-      const save = jest
+    it('retries an insert whose response was lost under one row id, ignoring a conflict', async () => {
+      const onConflictDoNothing = jest
         .fn()
         .mockRejectedValueOnce(new Error('connection reset'))
         .mockResolvedValue(undefined);
-      Object.assign(service, { saveMonitorResultToDb: save });
-      mockDbService.db.query.monitorResults.findMany.mockResolvedValueOnce([
-        { details: { synthetic: true } },
-      ]);
-      await service['insertResultWithRetry'](
-        {
-          monitorId: mockMonitor.id,
-          location: 'eu',
-          checkedAt: new Date(),
-          status: 'up',
-          isUp: true,
-        },
-        'g1',
-      );
-      // The synthetic row is not this check's result, so the insert is retried.
-      expect(save).toHaveBeenCalledTimes(2);
-    });
-    it('absorbs a transient insert error without failing the job', async () => {
-      const values = jest
-        .fn()
-        .mockRejectedValueOnce(new Error('connection reset'))
-        .mockResolvedValue(undefined);
+      const values = jest.fn().mockReturnValue({ onConflictDoNothing });
       mockDbService.db.insert.mockReturnValue({ values });
       jest.spyOn(service, 'saveMonitorResults').mockResolvedValue(undefined);
       await service.saveDistributedMonitorResult(
@@ -1540,7 +1524,10 @@ describe('MonitorService', () => {
         },
         {},
       );
-      expect(values).toHaveBeenCalledTimes(2);
+      expect(onConflictDoNothing).toHaveBeenCalledTimes(2);
+      const ids = values.mock.calls.map(([row]) => row.id);
+      expect(ids[0]).toEqual(expect.any(String));
+      expect(ids[1]).toBe(ids[0]);
     });
     it('uses aggregate counters when default routing produced multiple actual results', async () => {
       const monitor = {

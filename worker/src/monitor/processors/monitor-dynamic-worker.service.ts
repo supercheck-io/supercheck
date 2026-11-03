@@ -33,6 +33,9 @@ import { captureJobFailure } from '../../common/sentry-reporter';
 /** How many times a skipped group's closure waits (about a minute each) for the aggregation lease. */
 const MAX_AGGREGATION_BUSY_RETRIES = 30;
 
+/** Excludes the cycle's synthetic deadline row, which shares the key but is not a check's result. */
+const realResultOnly = sql`${schema.monitorResults.details} ->> 'synthetic' is distinct from 'true'`;
+
 /** A real result that could not be saved or kept for a retry; the final-failure handler must not record it as downtime. */
 export class ResultNotKeptError extends UnrecoverableError {}
 
@@ -392,6 +395,7 @@ export class MonitorDynamicWorkerService
                   job.data.executionGroupId,
                 ),
                 eq(schema.monitorResults.location, jobLocation),
+                realResultOnly,
               ),
               orderBy: [desc(schema.monitorResults.checkedAt)],
             })
@@ -658,6 +662,7 @@ export class MonitorDynamicWorkerService
           eq(schema.monitorResults.monitorId, monitorId),
           eq(schema.monitorResults.executionGroupId, executionGroupId),
           eq(schema.monitorResults.location, executionLocation),
+          realResultOnly,
         ),
       });
     const existing = await findStored();
@@ -719,7 +724,15 @@ export class MonitorDynamicWorkerService
             await save(pending, true);
             return;
           }
-          // The stored result itself cannot be saved; an error row still lets the group close.
+          // The stored result itself cannot be saved. An up result must not become a down error row; a down
+          // result stays visible as one, which still lets the group close.
+          if (pending.isUp) {
+            this.logger.warn(
+              `Stored up result for ${monitorId}/${executionLocation} could not be saved, closing the group without recording downtime: ${getErrorMessage(pendingError)}`,
+            );
+            await this.closeSkippedGroup(job);
+            return;
+          }
           this.logger.warn(
             `Stored result for ${monitorId}/${executionLocation} could not be saved, recording an error result: ${getErrorMessage(pendingError)}`,
           );

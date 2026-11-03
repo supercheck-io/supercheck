@@ -477,6 +477,7 @@ export class DbService implements OnModuleInit {
           status: schema.runs.status,
           errorDetails: schema.runs.errorDetails,
           createdAt: schema.runs.createdAt,
+          completedAt: schema.runs.completedAt,
         })
         .from(schema.runs)
         .where(
@@ -516,8 +517,13 @@ export class DbService implements OnModuleInit {
     jobId: string,
   ): Promise<{ sent: number; lastSentAt: Date | null; unknown?: boolean }> {
     try {
-      const [{ since }] = await this.db
-        .select({ since: sql<Date | null>`max(${runs.createdAt})` })
+      // The cutoff is a subquery so the count sees one snapshot. It is when the last non-failing run finished
+      // (creation time while unfinished), so an alert for an earlier failure delivered after that run was
+      // created still belongs to the old streak.
+      const since = this.db
+        .select({
+          at: sql<Date | null>`max(coalesce(${runs.completedAt}, ${runs.createdAt}))`,
+        })
         .from(runs)
         .where(
           and(
@@ -543,7 +549,7 @@ export class DbService implements OnModuleInit {
               'job_failed',
               'job_timeout',
             ]),
-            since ? sql`${alertHistory.sentAt} > ${since}` : undefined,
+            sql`${alertHistory.sentAt} > coalesce((${since}), '-infinity'::timestamptz)`,
           ),
         )
         .groupBy(alertHistory.provider);

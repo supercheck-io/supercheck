@@ -237,6 +237,28 @@ suite('MonitorCycleProcessor (PostgreSQL)', () => {
       spy.mockRestore();
     });
 
+    it('closes a ready cycle when more than a batch of earlier cycles are in backoff, and forgets closed ones', async () => {
+      await client`INSERT INTO monitor_cycles (id, monitor_id, scheduled_for, deadline_at, expected_locations, strategy, threshold)
+        SELECT 'bo-' || g, ${monitorId}::uuid, ${t0.toISOString()}::timestamptz, ${new Date(deadline.getTime() - 60_000).toISOString()}::timestamptz, '["eu"]'::jsonb, 'any', 100
+        FROM generate_series(1, 260) g`;
+      await open('ready');
+      const failing = (
+        processor as unknown as { failing: Map<string, unknown> }
+      ).failing;
+      for (let g = 1; g <= 260; g++)
+        failing.set(`bo-${g}`, {
+          failures: 1,
+          billingFailures: 0,
+          nextAt: Date.now() + 60_000,
+        });
+      failing.set('gone', { failures: 1, billingFailures: 0, nextAt: 0 });
+      await processor.tick(new Date(deadline.getTime() + 1000));
+      expect((await cycle('ready')).status).toBe('closed');
+      expect((await cycle('bo-1')).status).toBe('open');
+      expect(failing.has('gone')).toBe(false);
+      expect(failing.has('bo-1')).toBe(true);
+    });
+
     it.each([
       [
         'a billing outage below its limit stays open',

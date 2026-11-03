@@ -18,10 +18,14 @@ import { db } from "@/utils/db";
 
 const AGENT_ID = "3f2b8c1e-5a4d-4e6f-8b7a-9c0d1e2f3a4b";
 
-function req() {
+function req(ip?: string) {
   return new NextRequest("http://localhost/api/private-agents/registration/exchange", {
     method: "POST",
-    headers: { authorization: "Bearer wrong-token", "content-type": "application/json" },
+    headers: {
+      authorization: "Bearer wrong-token",
+      "content-type": "application/json",
+      ...(ip ? { "x-forwarded-for": ip } : {}),
+    },
     body: JSON.stringify({ agentId: AGENT_ID, protocolVersion: "1", agentVersion: "1.0.0" }),
   });
 }
@@ -87,6 +91,14 @@ describe("Private Agent registration exchange abuse limits", () => {
     await POST(req());
     const limits = jest.mocked(allowDeviceAuthRequest).mock.calls[0][0];
     const agentLimit = limits.find((limit) => limit.scope === "pa-exchange-agent");
-    expect(agentLimit?.subject).toMatch(new RegExp(`^${AGENT_ID}:`));
+    // No resolvable client IP here, so the subject carries exactly the unknown marker (and a generous cap).
+    expect(agentLimit).toMatchObject({ subject: `${AGENT_ID}:unknown`, max: 600 });
+  });
+
+  it("keys the per-agent bucket by the resolved client IP with the strict cap", async () => {
+    await POST(req("203.0.113.9"));
+    const limits = jest.mocked(allowDeviceAuthRequest).mock.calls[0][0];
+    const agentLimit = limits.find((limit) => limit.scope === "pa-exchange-agent");
+    expect(agentLimit).toMatchObject({ subject: `${AGENT_ID}:203.0.113.9`, max: 20 });
   });
 });

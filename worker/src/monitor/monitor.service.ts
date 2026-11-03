@@ -703,7 +703,7 @@ export class MonitorService {
         : result;
 
     if (!options.persisted) {
-      await this.insertResultWithRetry(persistedResult, executionGroupId);
+      await this.insertResultWithRetry(persistedResult);
     }
 
     if (!executionGroupId) {
@@ -2122,41 +2122,21 @@ export class MonitorService {
   }
 
   // A failed insert makes the BullMQ job retry, so a transient DB error is absorbed here first; re-running the
-  // check would bill a synthetic one twice.
+  // check would bill a synthetic one twice. The row id is fixed up front and the insert ignores a conflict on it,
+  // so a retry after an insert that committed (response lost) cannot add a second row.
   private async insertResultWithRetry(
     result: MonitorExecutionResult,
-    executionGroupId?: string,
   ): Promise<void> {
+    const id = randomUUID();
     for (let attempt = 1; ; attempt++) {
       try {
-        await this.saveMonitorResultToDb(result, true);
+        await this.saveMonitorResultToDb(result, true, id);
         return;
       } catch (error) {
         if (attempt >= RESULT_SAVE_ATTEMPTS) throw error;
         await new Promise((resolve) =>
           setTimeout(resolve, RESULT_SAVE_BACKOFF_MS * 2 ** (attempt - 1)),
         );
-        // The insert may have committed before the error surfaced; never add a second row for the same check.
-        if (executionGroupId) {
-          // The cycle's synthetic deadline row shares this key but is not this check's result.
-          const stored = await this.dbService.db.query.monitorResults
-            .findMany({
-              where: and(
-                eq(schema.monitorResults.monitorId, result.monitorId),
-                eq(schema.monitorResults.executionGroupId, executionGroupId),
-                eq(schema.monitorResults.location, result.location),
-              ),
-              limit: 5,
-            })
-            .then((rows) =>
-              rows.some(
-                (row) =>
-                  !(row.details as { synthetic?: boolean } | null)?.synthetic,
-              ),
-            )
-            .catch(() => false);
-          if (stored) return;
-        }
       }
     }
   }
@@ -2164,6 +2144,7 @@ export class MonitorService {
   private async saveMonitorResultToDb(
     resultData: MonitorExecutionResult,
     rethrow = false,
+    id?: string,
   ): Promise<void> {
     try {
       // Get the last monitor result to track consecutive failures and successes
@@ -2229,7 +2210,8 @@ export class MonitorService {
         );
       }
 
-      await this.dbService.db.insert(schema.monitorResults).values({
+      const insertRow = this.dbService.db.insert(schema.monitorResults).values({
+        ...(id ? { id } : {}),
         monitorId: resultData.monitorId,
         location: resultData.location,
         checkedAt: resultData.checkedAt,
@@ -2256,6 +2238,7 @@ export class MonitorService {
           (resultData.details as { executionGroupId?: string })
             ?.executionGroupId || null,
       });
+      await (id ? insertRow.onConflictDoNothing() : insertRow);
     } catch (error) {
       this.logger.error(
         `Failed to save monitor result for ${resultData.monitorId}: ${getErrorMessage(error)}`,
