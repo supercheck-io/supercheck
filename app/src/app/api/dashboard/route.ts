@@ -66,13 +66,13 @@ export async function GET() {
       // COALESCE ensures 0 instead of NULL when no rows match
       dbInstance.select({
         total: count(),
-        active: sql<number>`COALESCE(count(*) filter (where ${monitors.enabled} = true), 0)`,
-        up: sql<number>`COALESCE(count(*) filter (where ${monitors.status} = 'up'), 0)`,
-        down: sql<number>`COALESCE(count(*) filter (where ${monitors.status} = 'down'), 0)`,
-        paused: sql<number>`COALESCE(count(*) filter (where ${monitors.status} = 'paused'), 0)`,
-        pending: sql<number>`COALESCE(count(*) filter (where ${monitors.status} = 'pending'), 0)`,
-        maintenance: sql<number>`COALESCE(count(*) filter (where ${monitors.status} = 'maintenance'), 0)`,
-        error: sql<number>`COALESCE(count(*) filter (where ${monitors.status} = 'error'), 0)`,
+        active: sql<number>`COALESCE(count(*) filter (where ${monitors.enabled} = true), 0)`.mapWith(Number),
+        up: sql<number>`COALESCE(count(*) filter (where ${monitors.status} = 'up'), 0)`.mapWith(Number),
+        down: sql<number>`COALESCE(count(*) filter (where ${monitors.status} = 'down'), 0)`.mapWith(Number),
+        paused: sql<number>`COALESCE(count(*) filter (where ${monitors.status} = 'paused'), 0)`.mapWith(Number),
+        pending: sql<number>`COALESCE(count(*) filter (where ${monitors.status} = 'pending'), 0)`.mapWith(Number),
+        maintenance: sql<number>`COALESCE(count(*) filter (where ${monitors.status} = 'maintenance'), 0)`.mapWith(Number),
+        error: sql<number>`COALESCE(count(*) filter (where ${monitors.status} = 'error'), 0)`.mapWith(Number),
       }).from(monitors)
         .where(monitorBaseCondition),
       
@@ -130,17 +130,17 @@ export async function GET() {
       // OPTIMIZED: Single query for total and active job counts
       dbInstance.select({
         total: count(),
-        active: sql<number>`count(*) filter (where ${jobs.status} = 'running')`,
+        active: sql<number>`count(*) filter (where ${jobs.status} = 'running')`.mapWith(Number),
         // Jobs with a cron schedule configured (what the dashboard calls "scheduled")
-        scheduled: sql<number>`count(*) filter (where ${jobs.cronSchedule} is not null and ${jobs.cronSchedule} <> '')`,
+        scheduled: sql<number>`count(*) filter (where ${jobs.cronSchedule} is not null and ${jobs.cronSchedule} <> '')`.mapWith(Number),
       }).from(jobs)
         .where(jobBaseCondition),
       
       // Recent runs (last 30 days) - only for jobs in this project
       dbInstance.select({
         count: count(),
-        passed: sql<number>`count(*) filter (where ${runs.status} = 'passed')`,
-        failed: sql<number>`count(*) filter (where ${runs.status} in ('failed', 'error'))`,
+        passed: sql<number>`count(*) filter (where ${runs.status} = 'passed')`.mapWith(Number),
+        failed: sql<number>`count(*) filter (where ${runs.status} in ('failed', 'error'))`.mapWith(Number),
       })
         .from(runs)
         .innerJoin(jobs, eq(runs.jobId, jobs.id))
@@ -152,9 +152,9 @@ export async function GET() {
       // OPTIMIZED: Single query for successful and failed runs in last 24h
       dbInstance.select({
         total: count(),
-        passed: sql<number>`count(*) filter (where ${runs.status} = 'passed')`,
+        passed: sql<number>`count(*) filter (where ${runs.status} = 'passed')`.mapWith(Number),
         // `error` is a failure too (see lib/dashboard/run-outcomes.ts)
-        failed: sql<number>`count(*) filter (where ${runs.status} in ('failed', 'error'))`,
+        failed: sql<number>`count(*) filter (where ${runs.status} in ('failed', 'error'))`.mapWith(Number),
       })
         .from(runs)
         .innerJoin(jobs, eq(runs.jobId, jobs.id))
@@ -174,8 +174,8 @@ export async function GET() {
       // Failed runs in the last 7 days by trigger, for the Needs attention chart (unknown triggers count as manual)
       dbInstance.select({
         total: count(),
-        scheduled: sql<number>`count(*) filter (where ${runs.trigger} = 'schedule')`,
-        remote: sql<number>`count(*) filter (where ${runs.trigger} = 'remote')`,
+        scheduled: sql<number>`count(*) filter (where ${runs.trigger} = 'schedule')`.mapWith(Number),
+        remote: sql<number>`count(*) filter (where ${runs.trigger} = 'remote')`.mapWith(Number),
       }).from(runs)
         .innerJoin(jobs, eq(runs.jobId, jobs.id))
         .where(and(
@@ -189,8 +189,8 @@ export async function GET() {
         // Text, not a DATE the driver parses into a local-midnight Date that can shift the day
         date: sql<string>`to_char(DATE(${runs.startedAt}), 'YYYY-MM-DD')`,
         total: count(),
-        scheduled: sql<number>`count(*) filter (where ${runs.trigger} = 'schedule')`,
-        remote: sql<number>`count(*) filter (where ${runs.trigger} = 'remote')`,
+        scheduled: sql<number>`count(*) filter (where ${runs.trigger} = 'schedule')`.mapWith(Number),
+        remote: sql<number>`count(*) filter (where ${runs.trigger} = 'remote')`.mapWith(Number),
       }).from(runs)
         .innerJoin(jobs, eq(runs.jobId, jobs.id))
         .where(and(gte(runs.startedAt, last30Days), playwrightJobCondition))
@@ -200,8 +200,8 @@ export async function GET() {
       // OPTIMIZED: Total execution time using SQL aggregation instead of fetching all rows
       // Now returns aggregated stats directly rather than raw data
       dbInstance.select({
-        totalMs: sql<number>`COALESCE(SUM(${runs.durationMs}), 0)`,
-        avgMs: sql<number>`COALESCE(AVG(${runs.durationMs}), 0)`,
+        totalMs: sql<number>`COALESCE(SUM(${runs.durationMs}), 0)`.mapWith(Number),
+        avgMs: sql<number>`COALESCE(AVG(${runs.durationMs}), 0)`.mapWith(Number),
         count: count(),
       }).from(runs)
         .leftJoin(jobs, eq(runs.jobId, jobs.id))
@@ -251,9 +251,9 @@ export async function GET() {
       dbInstance.select({
         totalRuns: count(),
         totalDurationMs: sum(k6PerformanceRuns.durationMs),
-        totalVuMinutes: sql<number>`SUM(COALESCE(${k6PerformanceRuns.vusMax}, 1) * COALESCE(${k6PerformanceRuns.durationMs}, 0) / 60000.0)`,
+        totalVuMinutes: sql<number>`SUM(COALESCE(${k6PerformanceRuns.vusMax}, 1) * COALESCE(${k6PerformanceRuns.durationMs}, 0) / 60000.0)`.mapWith(Number),
         totalRequests: sum(k6PerformanceRuns.totalRequests),
-        avgResponseTimeMs: sql<number>`AVG(${k6PerformanceRuns.avgResponseTimeMs})`
+        avgResponseTimeMs: sql<number>`AVG(${k6PerformanceRuns.avgResponseTimeMs})`.mapWith(Number)
       }).from(k6PerformanceRuns)
         .where(and(
           gte(k6PerformanceRuns.startedAt, last30Days),
@@ -277,9 +277,9 @@ export async function GET() {
       // OPTIMIZED: Synthetic monitor executions - SQL aggregation instead of fetching all rows
       // This was causing CPU spikes by fetching 4000+ rows and looping in JS
       dbInstance.select({
-        totalResponseTimeMs: sql<number>`COALESCE(SUM(${monitorResults.responseTimeMs}), 0)`,
+        totalResponseTimeMs: sql<number>`COALESCE(SUM(${monitorResults.responseTimeMs}), 0)`.mapWith(Number),
         count: count(),
-        validCount: sql<number>`COUNT(*) FILTER (WHERE ${monitorResults.responseTimeMs} IS NOT NULL AND ${monitorResults.responseTimeMs} >= 0 AND ${monitorResults.responseTimeMs} <= 86400000)`
+        validCount: sql<number>`COUNT(*) FILTER (WHERE ${monitorResults.responseTimeMs} IS NOT NULL AND ${monitorResults.responseTimeMs} >= 0 AND ${monitorResults.responseTimeMs} <= 86400000)`.mapWith(Number)
       }).from(monitorResults)
         .innerJoin(monitors, eq(monitorResults.monitorId, monitors.id))
         .where(and(
@@ -303,8 +303,8 @@ export async function GET() {
             THEN EXTRACT(EPOCH FROM (${reports.updatedAt} - ${reports.createdAt})) * 1000
             ELSE 0
           END
-        ), 0)`,
-        validCount: sql<number>`COUNT(*) FILTER (WHERE ${reports.status} != 'running' AND ${reports.createdAt} IS NOT NULL AND ${reports.updatedAt} IS NOT NULL)`
+        ), 0)`.mapWith(Number),
+        validCount: sql<number>`COUNT(*) FILTER (WHERE ${reports.status} != 'running' AND ${reports.createdAt} IS NOT NULL AND ${reports.updatedAt} IS NOT NULL)`.mapWith(Number)
       }).from(auditLogs)
         .innerJoin(
           reports,
@@ -323,7 +323,7 @@ export async function GET() {
       // OPTIMIZED: Calculate uptime percentage using SQL aggregation instead of fetching all rows
       dbInstance.select({
         totalChecks: count(),
-        successfulChecks: sql<number>`count(*) filter (where ${monitorResults.isUp} = true)`,
+        successfulChecks: sql<number>`count(*) filter (where ${monitorResults.isUp} = true)`.mapWith(Number),
       }).from(monitorResults)
         .innerJoin(monitors, eq(monitorResults.monitorId, monitors.id))
         .where(and(
@@ -336,7 +336,7 @@ export async function GET() {
       // Monitor availability trend (last 30 days) - only for monitors in this project
       dbInstance.select({
         date: sql<string>`DATE(${monitorResults.checkedAt})`,
-        upCount: sql<number>`SUM(CASE WHEN ${monitorResults.isUp} THEN 1 ELSE 0 END)`,
+        upCount: sql<number>`SUM(CASE WHEN ${monitorResults.isUp} THEN 1 ELSE 0 END)`.mapWith(Number),
         totalCount: count()
       }).from(monitorResults)
         .innerJoin(monitors, eq(monitorResults.monitorId, monitors.id))
@@ -351,9 +351,9 @@ export async function GET() {
 
       // Response time statistics - only for monitors in this project
       dbInstance.select({
-        avgResponseTime: sql<number>`AVG(${monitorResults.responseTimeMs})`,
-        minResponseTime: sql<number>`MIN(${monitorResults.responseTimeMs})`,
-        maxResponseTime: sql<number>`MAX(${monitorResults.responseTimeMs})`
+        avgResponseTime: sql<number>`AVG(${monitorResults.responseTimeMs})`.mapWith(Number),
+        minResponseTime: sql<number>`MIN(${monitorResults.responseTimeMs})`.mapWith(Number),
+        maxResponseTime: sql<number>`MAX(${monitorResults.responseTimeMs})`.mapWith(Number)
       }).from(monitorResults)
         .innerJoin(monitors, eq(monitorResults.monitorId, monitors.id))
         .where(and(

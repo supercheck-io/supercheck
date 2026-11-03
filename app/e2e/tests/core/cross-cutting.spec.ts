@@ -6,9 +6,13 @@ test.describe('Cross-cutting UI behavior @core', () => {
     await page.setViewportSize({ width: 375, height: 667 });
     await page.goto('/');
     await waitForHydration(page);
-    await expect(page.getByRole('button', { name: 'Toggle Sidebar', exact: true }).first()).toBeVisible();
-    await page.getByRole('button', { name: 'Toggle Sidebar', exact: true }).first().click();
-    await expect(page.getByRole('link', { name: 'Tests', exact: true })).toBeVisible();
+    const toggle = page.getByRole('button', { name: 'Toggle Sidebar', exact: true }).first();
+    await expect(toggle).toBeVisible();
+    // The sidebar can hydrate after the root flag; retry a tap that landed before its handler attached.
+    await expect(async () => {
+      if (!(await page.getByRole('dialog').isVisible())) await toggle.click();
+      await expect(page.getByRole('link', { name: 'Tests', exact: true })).toBeVisible({ timeout: 2_000 });
+    }).toPass({ timeout: 15_000 });
     await expect(page.getByRole('link', { name: 'Monitors', exact: true })).toBeVisible();
   });
 

@@ -103,10 +103,13 @@ test.describe("AI SRE service catalog @aisre @critical", () => {
       await waitForHydration(page);
       const persistedRow = page.getByRole("row").filter({ hasText: name });
       await expect(persistedRow).toBeVisible();
-      await persistedRow
-        .getByRole("button", { name: `Open actions for ${name}` })
-        .click();
-      await expect(page.getByRole("menu")).toBeVisible();
+      // The root hydration flag can precede the table's boundary; retry a click that landed early.
+      await expect(async () => {
+        if (!(await page.getByRole("menu").isVisible())) {
+          await persistedRow.getByRole("button", { name: `Open actions for ${name}` }).click();
+        }
+        await expect(page.getByRole("menu")).toBeVisible({ timeout: 2_000 });
+      }).toPass({ timeout: 15_000 });
       await page.getByRole("menuitem", { name: "Archive service" }).click();
       const archiveDialog = page.getByRole("alertdialog", {
         name: "Archive service?",
