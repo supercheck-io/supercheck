@@ -120,7 +120,8 @@ it("returns the project's 7-day failures and daily trigger counts without other 
   const { jobs, monitors } = await response.json();
 
   // FILTER counts come back from Postgres as strings unless mapped.
-  for (const value of [jobs.total, jobs.active, jobs.scheduled, monitors.up, monitors.paused, monitors.error]) {
+  for (const value of [jobs.total, jobs.active, jobs.scheduled,
+    ...(["total", "active", "up", "down", "paused", "pending", "maintenance", "error"] as const).map((key) => monitors[key])]) {
     expect(typeof value).toBe("number");
   }
   expect(jobs.failedRuns30d).toBe(7);
