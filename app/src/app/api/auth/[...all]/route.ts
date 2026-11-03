@@ -12,6 +12,14 @@ const handlers = toNextJsHandler(auth);
 // audit logging. Default-deny also covers new routes in future plugin releases.
 const allowedOrganizationReads = new Set(["list"]);
 
+function decodedPath(request: Request): string | null {
+  try {
+    return decodeURIComponent(new URL(request.url).pathname).replace(/\/+$/, "");
+  } catch {
+    return null;
+  }
+}
+
 function organizationPolicyError(request: Request) {
   let path: string;
   try {
@@ -51,7 +59,7 @@ export async function GET(request: Request) {
   if (prepared instanceof Response) return prepared;
   const response = await handlers.GET(prepared);
   // The client session check: a session that outlived a suspension reads as signed out (expired bans pass).
-  if (new URL(request.url).pathname.replace(/\/+$/, "") === "/api/auth/get-session" && response.ok) {
+  if (decodedPath(request) === "/api/auth/get-session" && response.ok) {
     const body = await response.clone().json().catch(() => null) as { user?: { banned?: unknown; banExpires?: unknown } } | null;
     if (body?.user && !isCredentialOwnerActive(body.user)) {
       return NextResponse.json(null, { headers: { "Cache-Control": "no-store" } });

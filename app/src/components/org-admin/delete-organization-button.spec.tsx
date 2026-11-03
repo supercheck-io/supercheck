@@ -4,6 +4,9 @@ import { toast } from "sonner";
 import { DeleteOrganizationButton } from "./delete-organization-button";
 
 jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
+const reloadProjectContext = jest.fn();
+jest.mock("@/lib/project-navigation", () => ({ reloadProjectContext: (...a: unknown[]) => reloadProjectContext(...a) }));
+jest.mock("@/hooks/use-project-context", () => ({ clearProjectsCache: jest.fn() }));
 const fetchMock = jest.fn();
 
 beforeEach(() => {
@@ -34,4 +37,14 @@ it("explains a non-JSON response instead of claiming failure", async () => {
   fireEvent.change(screen.getByLabelText(/Type the organization name/), { target: { value: "Acme" } });
   fireEvent.submit(screen.getByLabelText(/Type the organization name/).closest("form")!);
   await waitFor(() => expect(toast.error).toHaveBeenCalledWith(expect.stringContaining("may still be running")));
+});
+
+it("clears cached project data and reloads after a successful delete, keeping the button disabled", async () => {
+  fetchMock.mockResolvedValueOnce({ json: async () => ({ success: true }) });
+  openDialog();
+  fireEvent.change(screen.getByLabelText(/Type the organization name/), { target: { value: "Acme" } });
+  const confirm = screen.getAllByRole("button", { name: "Delete organization" }).at(-1)!;
+  fireEvent.click(confirm);
+  await waitFor(() => expect(reloadProjectContext).toHaveBeenCalled());
+  expect(confirm).toBeDisabled();
 });

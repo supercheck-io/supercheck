@@ -36,6 +36,7 @@ describe("owner organization deletion", () => {
 
   it("requires the organization to be confirmed", async () => {
     expect((await del({})).status).toBe(400);
+    expect((await del(null)).status).toBe(400);
     expect(deleteOrganizationCompletely).not.toHaveBeenCalled();
   });
 

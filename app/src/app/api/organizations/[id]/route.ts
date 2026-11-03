@@ -263,7 +263,7 @@ export async function DELETE(
     if (!limit.allowed) {
       return NextResponse.json({ error: 'Too many attempts. Try again later.' }, { status: 429 });
     }
-    const body = (await request.json().catch(() => ({}))) as { confirmOrganizationId?: unknown };
+    const body = ((await request.json().catch(() => null)) ?? {}) as { confirmOrganizationId?: unknown };
     if (body.confirmOrganizationId !== organizationId) {
       return NextResponse.json({ error: 'Confirm the organization to delete (confirmOrganizationId)' }, { status: 400 });
     }

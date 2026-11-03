@@ -15,6 +15,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AlertTriangle, Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { reloadProjectContext } from "@/lib/project-navigation";
+import { clearProjectsCache } from "@/hooks/use-project-context";
 
 interface DeleteOrganizationButtonProps {
   organizationId: string;
@@ -40,20 +42,22 @@ export function DeleteOrganizationButton({ organizationId, organizationName }: D
       const data = await res.json().catch(() => null);
       if (!data) {
         toast.error("No response from the server. The deletion may still be running; reload the page before retrying.");
+        setIsDeleting(false);
         return;
       }
       if (!data.success) {
         toast.error(data.error || "Failed to delete organization");
+        setIsDeleting(false);
         return;
       }
       toast.success("Organization deleted");
-      // Full reload: the session's active organization is gone.
-      window.location.replace(new URL("/", window.location.origin));
+      // Drop cached projects and queries of the deleted organization, then reload (stays disabled meanwhile).
+      reloadProjectContext(clearProjectsCache);
+      return;
     } catch {
       toast.error("Failed to delete organization");
-    } finally {
-      setIsDeleting(false);
     }
+    setIsDeleting(false);
   };
 
   return (

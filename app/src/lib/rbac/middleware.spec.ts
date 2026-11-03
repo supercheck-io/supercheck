@@ -176,11 +176,12 @@ describe("RBAC Middleware", () => {
       mockDbSelect.mockReturnValue(chain as unknown);
     };
 
-    it("is false for a normal session and when signed out", async () => {
+    it("is false for a normal session, and refuses (true) without a usable session", async () => {
       rowFor([{ impersonatedBy: null }]);
       expect(await isImpersonatedSession()).toBe(false);
+      // Signed out or suspended: fail closed so a caller that forgot to authenticate still refuses.
       mockAuthGetSession.mockResolvedValue(null);
-      expect(await isImpersonatedSession()).toBe(false);
+      expect(await isImpersonatedSession()).toBe(true);
     });
 
     it("is true when the session was started by a super admin impersonating the user", async () => {
