@@ -130,6 +130,7 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
       await expect(page.locator(`#sre-evidence-${evidenceId}`)).toBeVisible();
 
       await page.keyboard.press("Escape");
+      await expect(page.getByTestId("investigation-sheet")).toBeHidden();
       const askCopilot = page.getByRole("menuitem", {
         name: "Ask Copilot",
         exact: true,
@@ -202,13 +203,10 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
       await expect(
         page.getByRole("heading", { name: "Incidents", exact: true }),
       ).toBeVisible();
-      for (const column of ["#", "Title", "Severity", "Status", "Service", "Assignee", "Age", "AI"]) {
-        await expect(
-          page.getByRole("columnheader", {
-            name: new RegExp(`^${column === "#" ? "#" : column}`),
-          }),
-        ).toBeVisible();
-      }
+      // Severity and Status headers carry info-tip text, so match prefixes in exact order.
+      await expect(page.getByRole("columnheader")).toHaveText([
+        /^#/, /^Title/, /^Severity/, /^Status/, /^Service/, /^Assignee/, /^Age/, /^AI/,
+      ]);
       await page
         .getByRole("button", { name: "New incident", exact: true })
         .click();
@@ -227,6 +225,7 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
 
       await expect(page.getByTestId("incident-ai-summary")).toBeVisible();
       const sheet = await openInvestigationSheet(page, "Analysis");
+      await expect(sheet.getByRole("tab")).toContainText(["Analysis", "Evidence", "Brief"]);
       await expect(sheet.getByLabel("Include live sources")).toBeDisabled();
       await expect(
         sheet.getByText("Link a service to use live sources.", { exact: false }),
@@ -238,7 +237,7 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
       await expect(
         sheet.getByText(/AI generated|Fallback brief/).first(),
       ).toBeVisible({ timeout: 90_000 });
-      await expect(sheet.getByText(/^Confidence: /).first()).toBeVisible();
+      await expect(sheet.getByText(/^Confidence: (High|Medium|Low|Inconclusive)$/).first()).toBeVisible();
       await expect(
         sheet.getByRole("button", { name: "Regenerate brief", exact: true }),
       ).toBeVisible();
@@ -283,18 +282,21 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
         if (!(await feedbackNote.isVisible())) await rightButton.click();
         await expect(feedbackNote).toBeVisible({ timeout: 2000 });
       }).toPass({ timeout: 15_000 });
-      await feedbackNote.fill(`E2E feedback ${Date.now()}`);
+      const note = `E2E feedback ${Date.now()}`;
+      await feedbackNote.fill(note);
       await summaryCard.getByRole("button", { name: "Save", exact: true }).click();
       await expect(
         page.getByText("Thanks, feedback saved", { exact: true }),
       ).toBeVisible();
 
       await page.reload();
-      await expect(
-        page
-          .getByTestId("incident-ai-summary")
-          .getByRole("button", { name: "Right: this investigation" }),
-      ).toHaveAttribute("aria-pressed", "true");
+      const persistedRight = page
+        .getByTestId("incident-ai-summary")
+        .getByRole("button", { name: "Right: this investigation" });
+      await expect(persistedRight).toHaveAttribute("aria-pressed", "true");
+      // The saved note is shown in the verdict tooltip.
+      await persistedRight.hover();
+      await expect(page.getByRole("tooltip")).toContainText(`You marked this right: ${note}`);
       const persistedSheet = await openInvestigationSheet(page, "Analysis");
       await expect(persistedSheet.getByText(/^Snapshot saved/)).toBeVisible();
 
@@ -309,7 +311,7 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
       await expect(
         viewerPage.getByRole("heading", { name: new RegExp(incidentTitle) }),
       ).toBeVisible({ timeout: 30_000 });
-      for (const name of ["More actions", "Resolve incident", "Investigate"]) {
+      for (const name of ["More actions", "Acknowledge"]) {
         await expect(
           viewerPage.getByRole("button", { name, exact: true }),
         ).toHaveCount(0);
@@ -319,6 +321,7 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
       ).toHaveCount(0);
       const viewerSheet = await openInvestigationSheet(viewerPage, "Analysis");
       await expect(viewerSheet.getByText(/^Snapshot saved/)).toBeVisible();
+      await expect(viewerSheet.getByRole("group", { name: /^Feedback on / })).toHaveCount(0);
       for (const name of ["Run investigation", "Run again", "Save report snapshot"]) {
         await expect(
           viewerSheet.getByRole("button", { name, exact: true }),
