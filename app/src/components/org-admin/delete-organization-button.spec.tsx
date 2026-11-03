@@ -48,3 +48,20 @@ it("clears cached project data and reloads after a successful delete, keeping th
   await waitFor(() => expect(reloadProjectContext).toHaveBeenCalled());
   expect(confirm).toBeDisabled();
 });
+
+it("accepts the name without surrounding whitespace and never an empty confirmation", () => {
+  render(<DeleteOrganizationButton organizationId="org-2" organizationName="  Acme Co " />);
+  fireEvent.click(screen.getByRole("button", { name: "Delete organization" }));
+  const confirm = screen.getAllByRole("button", { name: "Delete organization" }).at(-1)!;
+  expect(confirm).toBeDisabled();
+  fireEvent.change(screen.getByLabelText(/Type the organization name/), { target: { value: "Acme Co" } });
+  expect(confirm).toBeEnabled();
+});
+
+it("warns that a dropped connection may have deleted the organization", async () => {
+  fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+  openDialog();
+  fireEvent.change(screen.getByLabelText(/Type the organization name/), { target: { value: "Acme" } });
+  fireEvent.submit(screen.getByLabelText(/Type the organization name/).closest("form")!);
+  await waitFor(() => expect(toast.error).toHaveBeenCalledWith(expect.stringContaining("may have gone through")));
+});

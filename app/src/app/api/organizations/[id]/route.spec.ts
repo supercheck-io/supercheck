@@ -60,6 +60,13 @@ describe("owner organization deletion", () => {
     expect((await del()).status).toBe(status);
   });
 
+  it("returns 429 without tearing down when the rate limit is exhausted", async () => {
+    const { checkAdminRateLimit } = jest.requireMock("@/lib/session-security") as { checkAdminRateLimit: jest.Mock };
+    checkAdminRateLimit.mockResolvedValueOnce({ allowed: false });
+    expect((await del()).status).toBe(429);
+    expect(deleteOrganizationCompletely).not.toHaveBeenCalled();
+  });
+
   it("answers 409 when the organization row is busy (lock timeout)", async () => {
     (deleteOrganizationCompletely as jest.Mock).mockRejectedValueOnce(Object.assign(new Error("lock"), { code: "55P03" }));
     expect((await del()).status).toBe(409);

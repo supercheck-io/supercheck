@@ -28,7 +28,9 @@ export function DeleteOrganizationButton({ organizationId, organizationName }: D
   const [open, setOpen] = useState(false);
   const [typedName, setTypedName] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
-  const confirmed = typedName.trim() === organizationName;
+  // Compare trimmed values and never accept an empty confirmation.
+  const expectedName = organizationName.trim();
+  const confirmed = typedName.trim() !== "" && typedName.trim() === expectedName;
 
   const handleDelete = async () => {
     if (!confirmed || isDeleting) return;
@@ -55,7 +57,8 @@ export function DeleteOrganizationButton({ organizationId, organizationName }: D
       reloadProjectContext(clearProjectsCache);
       return;
     } catch {
-      toast.error("Failed to delete organization");
+      // The request may have reached the server before the connection dropped.
+      toast.error("Lost contact with the server. The deletion may have gone through; reload the page before retrying.");
     }
     setIsDeleting(false);
   };
@@ -107,7 +110,7 @@ export function DeleteOrganizationButton({ organizationId, organizationName }: D
               id="delete-org-confirm"
               value={typedName}
               onChange={(event) => setTypedName(event.target.value)}
-              placeholder={organizationName}
+              placeholder={expectedName}
               autoComplete="off"
               disabled={isDeleting}
             />
