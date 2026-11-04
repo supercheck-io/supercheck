@@ -11,6 +11,9 @@ import {
 } from "@/lib/private-agents/registration-token";
 import { hashApiKey } from "@/lib/security/api-key-hash";
 import { db } from "@/utils/db";
+import { allowDeviceAuthRequest } from "@/lib/auth/device-auth-rate-limit";
+import { getClientIP } from "@/lib/session-security";
+import { PRIVATE_AGENT_LIMITS } from "@/lib/private-agents/request-limits";
 import { getBearerToken, unauthorized } from "../../jobs/auth";
 import { knownConnectorTypes, withReportedConnectorTypes } from "@/lib/private-agents/agent-registry";
 
@@ -64,6 +67,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid registration exchange payload" }, { status: 400 });
     }
 
+    // Throttle before touching the database so guessing cannot be used to hammer writes.
+    const clientIp = getClientIP(request.headers);
+    const allowed = await allowDeviceAuthRequest([
+      PRIVATE_AGENT_LIMITS.exchangePerIp(clientIp),
+      PRIVATE_AGENT_LIMITS.exchangePerAgent(body.data.agentId, clientIp),
+    ]);
+    if (!allowed) {
+      return NextResponse.json({ error: "Too many requests" }, { status: 429, headers: { "Retry-After": "600" } });
+    }
+
     const now = new Date();
     const registrationTokenHash = hashApiKey(token);
     const runtimeSecret = generateRuntimeSecret();
@@ -81,19 +94,14 @@ export async function POST(request: NextRequest) {
         return { status: "unauthorized" as const };
       }
 
-      if (agent.status === "disabled") {
-        return { status: "disabled" as const };
+      // No write on a wrong token: the caller is unauthenticated and must not be able to churn the row.
+      // Checked before the disabled state so a caller without the token learns nothing about the agent.
+      if (!tokenHashesMatch(agent.registrationTokenHash, registrationTokenHash)) {
+        return { status: "unauthorized" as const };
       }
 
-      if (!tokenHashesMatch(agent.registrationTokenHash, registrationTokenHash)) {
-        await tx
-          .update(privateAgents)
-          .set({
-            metadata: incrementPrivateAgentRegistrationAttempts(agent.metadata, now, "invalid_token"),
-            updatedAt: now,
-          })
-          .where(eq(privateAgents.id, agent.id));
-        return { status: "unauthorized" as const };
+      if (agent.status === "disabled") {
+        return { status: "disabled" as const };
       }
 
       const expiresAt = getPrivateAgentRegistrationTokenExpiresAt(agent.metadata);

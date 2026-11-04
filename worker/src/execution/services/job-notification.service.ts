@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { RUN_CANCELLATION_MARKER } from '../../common/services/cancellation.service';
 import { AlertStatus, AlertType, TestRunStatus } from '../../db/schema';
@@ -40,9 +41,12 @@ function getErrorMessage(error: unknown): string {
   return String(error);
 }
 
-// Mirrors the monitor rule in monitor-evaluator.ts (evaluateAndSendAlert): alert at
-// the threshold, then every max(5, 2 x threshold) failures after it, max 3 per streak.
+// Mirrors the monitor rule in monitor-evaluator.ts (evaluateAndSendAlert): alert at the threshold, then
+// every max(5, 2 x threshold) failures after the last alert, max 3 alerts actually sent per streak. The cap
+// counts sent alerts, not failures: with failure alerts off, a long streak must still alert on a timeout.
 const MAX_FAILURE_ALERTS_PER_STREAK = 3;
+const ALERT_HISTORY_SAVE_ATTEMPTS = 3;
+const ALERT_HISTORY_RETRY_MS = 200;
 
 function failureAlertInterval(threshold: number) {
   return Math.max(5, threshold * 2);
@@ -56,13 +60,27 @@ export function maxFailureAlertStreak(threshold: number) {
 export function isFailureAlertStreak(
   consecutiveFailures: number,
   threshold: number,
+  alertsSent: number,
+  failuresSinceLastAlert: number,
 ) {
   const t = Math.max(1, threshold || 1);
-  const after = consecutiveFailures - t;
-  if (after < 0) return false;
+  if (consecutiveFailures < t || alertsSent >= MAX_FAILURE_ALERTS_PER_STREAK)
+    return false;
+  return alertsSent === 0 || failuresSinceLastAlert >= failureAlertInterval(t);
+}
+
+// Fallback when alert history cannot be read: alert at the threshold, then every interval, max 3 per streak.
+function isPositionalFailureAlert(
+  consecutiveFailures: number,
+  threshold: number,
+) {
+  const t = Math.max(1, threshold || 1);
   const interval = failureAlertInterval(t);
+  const after = consecutiveFailures - t;
   return (
-    after % interval === 0 && after / interval < MAX_FAILURE_ALERTS_PER_STREAK
+    after >= 0 &&
+    after % interval === 0 &&
+    after / interval < MAX_FAILURE_ALERTS_PER_STREAK
   );
 }
 
@@ -203,13 +221,35 @@ export class JobNotificationService {
           : finalStatus;
 
       let consecutiveFailures = normalizedStatus === 'failed' ? 1 : 0;
+      let failuresSinceLastAlert = consecutiveFailures;
+      const alertState: {
+        sent: number;
+        lastSentAt: Date | null;
+        unknown?: boolean;
+      } =
+        normalizedStatus === 'failed'
+          ? await this.dbService.getJobAlertStreakState(jobId)
+          : { sent: 0, lastSentAt: null };
       let consecutiveSuccesses = normalizedStatus === 'passed' ? 1 : 0;
+      // A newer run may already have alerted: this run counts as "since the alert" only if it finished after it.
+      const currentRun = recentRuns.find((run) => run.id === runId);
+      const currentAt = currentRun?.completedAt ?? new Date();
+      if (alertState.lastSentAt && currentAt <= alertState.lastSentAt)
+        failuresSinceLastAlert = 0;
 
       for (const run of recentRuns) {
         if (run.id === runId || isCancelledRun(run)) continue;
         if (normalizedStatus === 'failed') {
           if (run.status === 'failed' || run.status === 'error') {
             consecutiveFailures++;
+            // Count by completion: a run created before the alert that failed after it is a failure since it.
+            const failedAt = run.completedAt ?? run.createdAt;
+            if (
+              alertState.lastSentAt &&
+              failedAt &&
+              failedAt > alertState.lastSentAt
+            )
+              failuresSinceLastAlert++;
             continue;
           }
           break;
@@ -224,10 +264,25 @@ export class JobNotificationService {
         }
       }
 
+      const shouldAlertOnStreak = () =>
+        alertState.unknown
+          ? isPositionalFailureAlert(
+              consecutiveFailures,
+              alertConfig.failureThreshold,
+            )
+          : isFailureAlertStreak(
+              consecutiveFailures,
+              alertConfig.failureThreshold,
+              alertState.sent,
+              alertState.lastSentAt
+                ? failuresSinceLastAlert
+                : consecutiveFailures,
+            );
+
       const shouldNotifyFailure =
         alertConfig.alertOnFailure &&
         normalizedStatus === 'failed' &&
-        isFailureAlertStreak(consecutiveFailures, alertConfig.failureThreshold);
+        shouldAlertOnStreak();
 
       const shouldNotifySuccess =
         alertConfig.alertOnSuccess &&
@@ -238,7 +293,7 @@ export class JobNotificationService {
       const shouldNotifyTimeout =
         alertConfig.alertOnTimeout &&
         finalStatus === 'timeout' &&
-        isFailureAlertStreak(consecutiveFailures, alertConfig.failureThreshold);
+        shouldAlertOnStreak();
 
       if (
         !shouldNotifyFailure &&
@@ -338,18 +393,31 @@ export class JobNotificationService {
           const status: AlertStatus = result.success ? 'sent' : 'failed';
           // One failed insert must not drop the remaining rows or the triage enqueue.
           try {
-            createdAlertHistoryRows.push(
-              await this.dbService.saveAlertHistory(
-                jobId,
-                alertType,
-                result.provider.id,
-                status,
-                payload.message,
-                result.error,
-                job.name,
-                result.deliveryMetadata,
-              ),
-            );
+            // The streak cap counts these rows: without a stored 'sent' row the next failing run alerts again.
+            const alertRowId = randomUUID();
+            for (let attempt = 1; ; attempt++) {
+              try {
+                createdAlertHistoryRows.push(
+                  await this.dbService.saveAlertHistory(
+                    jobId,
+                    alertType,
+                    result.provider.id,
+                    status,
+                    payload.message,
+                    result.error,
+                    job.name,
+                    result.deliveryMetadata,
+                    alertRowId,
+                  ),
+                );
+                break;
+              } catch (insertError) {
+                if (attempt >= ALERT_HISTORY_SAVE_ATTEMPTS) throw insertError;
+                await new Promise((resolve) =>
+                  setTimeout(resolve, ALERT_HISTORY_RETRY_MS * attempt),
+                );
+              }
+            }
           } catch (rowError) {
             this.logger.error(
               `Failed to save alert history row for job ${jobId}: ${getErrorMessage(rowError)}`,

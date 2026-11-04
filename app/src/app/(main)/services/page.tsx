@@ -28,6 +28,7 @@ export default async function ServicesPage() {
         <CardContent>
           <ServiceCatalog
             key={context.project.id}
+            projectId={context.project.id}
             initialServices={result.services}
             loadError={result.success ? null : result.error}
             permissions={permissions}

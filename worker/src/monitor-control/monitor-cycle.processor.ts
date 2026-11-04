@@ -21,13 +21,8 @@ const DEFAULT_RETENTION_DAYS = 14;
 const POISON_MAX_BACKOFF_MS = 5 * 60_000;
 /** After this many failed closures (about 1.5 h at the maximum backoff) the cycle is aborted. */
 const POISON_GIVE_UP_AFTER = 20;
-/**
- * A billing-verification outage is not a property of the cycle: every cycle fails until billing
- * answers again. Keep them retryable for about six hours (at the maximum backoff) before giving up,
- * so a provider outage does not silently drop alerts. The window is bounded because each
- * overdue cycle is tracked in memory and re-queried every pass.
- */
-const BILLING_GIVE_UP_AFTER = 72;
+/** Hard age bound: an open cycle this far past its deadline is aborted whatever the error (billing included). */
+const MAX_OPEN_AGE_MS = 24 * 60 * 60_000;
 /**
  * Wall-clock budget for one notification. A tenant-controlled endpoint that trickles a response must
  * not stall every other organization's closures and alerts behind it.
@@ -193,30 +188,55 @@ export class MonitorCycleProcessor implements OnModuleInit, OnModuleDestroy {
   }
 
   private async processDeadlines(now: Date): Promise<number> {
-    // Fetch extra rows so cycles in backoff never crowd out healthy ones.
+    // Ids travel as one jsonb parameter, so a large outage cannot exceed the postgres.js bind limit.
+    const idList = (ids: string[]) =>
+      sql`(select jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb))`;
+    const failingIds = [...this.failing.keys()];
+    // Cycles in backoff are excluded in SQL, so they can never crowd healthy ones out of the batch.
+    const backedOff = [...this.failing]
+      .filter(([, state]) => state.nextAt > Date.now())
+      .map(([id]) => id);
     const due = await this.dbService.db
-      .select({ id: schema.monitorCycles.id })
+      .select({
+        id: schema.monitorCycles.id,
+        deadlineAt: schema.monitorCycles.deadlineAt,
+      })
       .from(schema.monitorCycles)
       .where(
         and(
           eq(schema.monitorCycles.status, 'open'),
           lte(schema.monitorCycles.deadlineAt, now),
+          backedOff.length
+            ? sql`${schema.monitorCycles.id} not in ${idList(backedOff)}`
+            : undefined,
         ),
       )
       .orderBy(asc(schema.monitorCycles.deadlineAt))
-      .limit(BATCH + this.failing.size);
-    if (due.length < BATCH + this.failing.size) {
-      // The query saw every open overdue cycle: forget entries that were closed, deleted or aborted.
-      const seen = new Set(due.map((row) => row.id));
-      for (const id of this.failing.keys())
-        if (!seen.has(id)) this.failing.delete(id);
+      .limit(BATCH);
+    if (failingIds.length) {
+      // Forget entries whose cycle was closed, deleted or aborted outside close(), on every pass.
+      const stillOpen = new Set(
+        (
+          await this.dbService.db
+            .select({ id: schema.monitorCycles.id })
+            .from(schema.monitorCycles)
+            .where(
+              and(
+                eq(schema.monitorCycles.status, 'open'),
+                sql`${schema.monitorCycles.id} in ${idList(failingIds)}`,
+              ),
+            )
+        ).map((row) => row.id),
+      );
+      for (const id of failingIds)
+        if (!stillOpen.has(id)) this.failing.delete(id);
     }
     let processed = 0;
-    for (const { id } of due) {
+    for (const { id, deadlineAt } of due) {
       if (this.stopping || processed >= BATCH) break;
       if ((this.failing.get(id)?.nextAt ?? 0) > Date.now()) continue;
       processed += 1;
-      await this.close(id, now);
+      await this.close(id, now, deadlineAt);
     }
     return processed;
   }
@@ -239,7 +259,11 @@ export class MonitorCycleProcessor implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  private async close(id: string, now: Date): Promise<void> {
+  private async close(id: string, now: Date, deadlineAt?: Date): Promise<void> {
+    const expiresAt = deadlineAt
+      ? deadlineAt.getTime() + MAX_OPEN_AGE_MS
+      : Infinity;
+    const expired = now.getTime() > expiresAt;
     try {
       const outcome = await this.cycles.closeCycle(id, now);
       this.failing.delete(id);
@@ -254,28 +278,34 @@ export class MonitorCycleProcessor implements OnModuleInit, OnModuleDestroy {
       const failures = (previous?.failures ?? 0) + (billing ? 0 : 1);
       const billingFailures =
         (previous?.billingFailures ?? 0) + (billing ? 1 : 0);
+      const backoffMs = Math.min(
+        POISON_MAX_BACKOFF_MS,
+        2000 * 2 ** Math.min(failures + billingFailures, 20),
+      );
       this.failing.set(id, {
         failures,
         billingFailures,
+        // Before the age bound, never back off past it, so the abort runs on time. The bound is measured
+        // on the tick clock (`now`) and the backoff on the wall clock, so cap by the time remaining.
         nextAt:
           Date.now() +
-          Math.min(
-            POISON_MAX_BACKOFF_MS,
-            2000 * 2 ** Math.min(failures + billingFailures, 20),
-          ),
+          (expired
+            ? backoffMs
+            : Math.min(backoffMs, expiresAt - now.getTime())),
       });
       this.logger.error(
         `Closing cycle ${id} failed (attempt ${failures + billingFailures}): ${describeError(error)}`,
       );
-      if (
-        failures >= POISON_GIVE_UP_AFTER ||
-        billingFailures >= BILLING_GIVE_UP_AFTER
-      ) {
-        this.failing.delete(id);
+      // A billing-verification outage is never a reason to abort: every cycle fails until billing
+      // answers, so dropping them would lose their alerts. They stay open and retryable while the
+      // close-failures metric alerts operators; only a genuine hold aborts (in closeCycle), or the
+      // 24 h age bound (so a deterministic billing error cannot pile up open cycles forever).
+      if (failures >= POISON_GIVE_UP_AFTER || expired) {
         try {
           await this.cycles.abortCycle(id);
+          this.failing.delete(id);
         } catch (abortError) {
-          // Left open, so the next pass retries the closure from scratch.
+          // Left open with its backoff kept, so a failing abort cannot be retried on every pass.
           this.logger.error(
             `Aborting cycle ${id} failed: ${describeError(abortError)}`,
           );

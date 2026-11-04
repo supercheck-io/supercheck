@@ -30,6 +30,9 @@ describe('JobNotificationService', () => {
       ]),
       getProjectById: jest.fn().mockResolvedValue({ name: 'Prod' }),
       getRecentRunsForJob: jest.fn().mockResolvedValue([]),
+      getJobAlertStreakState: jest
+        .fn()
+        .mockResolvedValue({ sent: 0, lastSentAt: null }),
       saveAlertHistory: jest
         .fn()
         .mockResolvedValueOnce({ id: 'history-1', status: 'sent' })
@@ -110,6 +113,7 @@ describe('JobNotificationService', () => {
         version: 1,
         provider: { id: 'provider-2', type: 'webhook' },
       }),
+      expect.any(String),
     );
     expect(
       sreAlertTriageQueueService.enqueueAlertHistoryRows,
@@ -205,23 +209,32 @@ describe('JobNotificationService', () => {
       }
     });
 
+    // [prior failed runs, alerts sent, failure after which the last one went out, notifies]
     it.each([
-      [0, false],
-      [1, false],
-      [2, true], // third consecutive failed/timed-out run reaches threshold 3
-      [3, false],
-      [8, true], // reminder at threshold + 6
-      [14, true], // second reminder
-      [20, false], // capped at 3 alerts
+      [0, 0, undefined, false],
+      [1, 0, undefined, false],
+      [2, 0, undefined, true], // third consecutive failed/timed-out run reaches threshold 3
+      [3, 1, 3, false],
+      [8, 1, 3, true], // reminder at threshold + 6
+      [14, 2, 9, true], // second reminder
+      [20, 3, 15, false], // capped at 3 alerts sent
     ])(
-      'applies the failure threshold, cadence and cap to timeouts (%i prior failed runs -> %s)',
-      async (priorFailed, notifies) => {
+      'applies the failure threshold, cadence and cap to timeouts (%i prior failed runs, %i sent -> %s)',
+      async (priorFailed, sent, sentAtFailure, notifies) => {
         const { service, dbService, notificationService } = createService();
         (await dbService.getJobById()).alertConfig.failureThreshold = 3;
+        dbService.getJobAlertStreakState.mockResolvedValue({
+          sent,
+          lastSentAt:
+            sentAtFailure === undefined
+              ? null
+              : new Date((sentAtFailure + 0.5) * 1000),
+        });
         dbService.getRecentRunsForJob.mockResolvedValue(
           Array.from({ length: priorFailed }, (_, i) => ({
             id: `old-${i}`,
             status: i % 2 ? 'error' : 'failed',
+            createdAt: new Date((priorFailed - i) * 1000),
           })),
         );
         await service.handleJobNotifications(params);
@@ -274,7 +287,7 @@ describe('JobNotificationService', () => {
       ).toHaveBeenCalledWith([]);
     });
 
-    it('keeps saving and enqueues remaining rows after one save fails', async () => {
+    it('retries a failed alert-history insert so the sent row is stored', async () => {
       const { service, dbService, sreAlertTriageQueueService } =
         createService();
       const savedRow = { id: 'row-2' };
@@ -283,10 +296,66 @@ describe('JobNotificationService', () => {
         .mockRejectedValueOnce(new Error('db blip'))
         .mockResolvedValue(savedRow);
       await service.handleJobNotifications(params);
-      expect(dbService.saveAlertHistory).toHaveBeenCalledTimes(2);
+      // The first row is retried once, then the second row is saved.
+      expect(dbService.saveAlertHistory).toHaveBeenCalledTimes(3);
+      // The retry reuses the row id, so a committed-but-unacknowledged insert is not duplicated.
+      const ids = dbService.saveAlertHistory.mock.calls.map((call) => call[8]);
+      expect(ids[0]).toEqual(expect.any(String));
+      expect(ids[1]).toBe(ids[0]);
+      expect(ids[2]).not.toBe(ids[0]);
       expect(
         sreAlertTriageQueueService.enqueueAlertHistoryRows,
-      ).toHaveBeenCalledWith([savedRow]);
+      ).toHaveBeenCalledWith([savedRow, savedRow]);
+    });
+
+    it('counts a run created before the last alert but completed after it toward the reminder', async () => {
+      const { service, dbService, notificationService } = createService();
+      // Threshold 1: alert after failure 1, reminder 5 failures later (4 more runs plus the current one).
+      (await dbService.getJobById()).alertConfig.failureThreshold = 1;
+      dbService.getJobAlertStreakState.mockResolvedValue({
+        sent: 1,
+        lastSentAt: new Date(100_000),
+      });
+      dbService.getRecentRunsForJob.mockResolvedValue(
+        Array.from({ length: 4 }, (_, i) => ({
+          id: `old-${i}`,
+          status: 'failed',
+          createdAt: new Date(50_000 - i), // all created before the alert...
+          completedAt: new Date(150_000 + i), // ...and all finished after it
+        })),
+      );
+      await service.handleJobNotifications(params);
+      expect(
+        notificationService.sendNotificationToMultipleProviders,
+      ).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not count the current run toward a reminder when a newer run already alerted', async () => {
+      const { service, dbService, notificationService } = createService();
+      (await dbService.getJobById()).alertConfig.failureThreshold = 1;
+      dbService.getJobAlertStreakState.mockResolvedValue({
+        sent: 1,
+        lastSentAt: new Date(200_000),
+      });
+      // Four failures after the alert plus this run would make five, but this run finished before the alert.
+      dbService.getRecentRunsForJob.mockResolvedValue([
+        {
+          id: 'run-1',
+          status: 'failed',
+          createdAt: new Date(100_000),
+          completedAt: new Date(150_000),
+        },
+        ...Array.from({ length: 4 }, (_, i) => ({
+          id: `new-${i}`,
+          status: 'failed',
+          createdAt: new Date(210_000 + i),
+          completedAt: new Date(220_000 + i),
+        })),
+      ]);
+      await service.handleJobNotifications(params);
+      expect(
+        notificationService.sendNotificationToMultipleProviders,
+      ).not.toHaveBeenCalled();
     });
 
     it('logs and swallows a failure loading the job', async () => {
@@ -304,11 +373,22 @@ describe('JobNotificationService', () => {
   });
 
   describe('failure alert cap', () => {
-    it('alerts at threshold then every max(5, 2x threshold), max 3 per streak', () => {
-      const alertingAt = (t: number, upTo = 40) =>
-        Array.from({ length: upTo }, (_, i) => i + 1).filter((n) =>
-          isFailureAlertStreak(n, t),
-        );
+    it('alerts at threshold, then every max(5, 2x threshold) failures after the last alert, max 3 sent', () => {
+      // Walk a streak the way the service does: record each alert as sent.
+      const alertingAt = (t: number, upTo = 40) => {
+        let sent = 0;
+        let sinceLast = 0;
+        const at: number[] = [];
+        for (let n = 1; n <= upTo; n++) {
+          sinceLast++;
+          if (isFailureAlertStreak(n, t, sent, sinceLast)) {
+            at.push(n);
+            sent++;
+            sinceLast = 0;
+          }
+        }
+        return at;
+      };
       expect(alertingAt(1)).toEqual([1, 6, 11]);
       expect(alertingAt(2)).toEqual([2, 7, 12]);
       expect(alertingAt(3)).toEqual([3, 9, 15]);
@@ -316,34 +396,120 @@ describe('JobNotificationService', () => {
       expect(maxFailureAlertStreak(3)).toBe(15);
     });
 
-    // Feeds exactly the rows the service asks for, like the real query would.
+    // Feeds exactly the rows the service asks for, like the real query would. Run k (oldest = 1) was
+    // created at k seconds; `sentAtFailure` is the failure after which the last alert went out.
     it.each([
-      [2, false],
+      [3, 1, 1, false],
+      [6, 1, 1, true],
+      [11, 2, 6, true],
+      [12, 3, 11, false],
+      [40, 3, 11, false],
+      // Failure alerts were off: no alert was ever sent, so a timeout deep in the streak still alerts.
+      [40, 0, undefined, true],
+      // Alerts failed to deliver (not counted as sent): the next failure past the threshold retries.
+      [7, 0, undefined, true],
+    ])(
+      'job failure streak of %i with %i alerts sent (last after failure %s) sends=%s',
+      async (streak, sent, sentAtFailure, sends) => {
+        const { service, dbService, notificationService } = createService();
+        dbService.getJobAlertStreakState.mockResolvedValue({
+          sent,
+          lastSentAt:
+            sentAtFailure === undefined
+              ? null
+              : new Date((sentAtFailure + 0.5) * 1000),
+        });
+        dbService.getRecentRunsForJob.mockImplementation(
+          (_id: string, limit: number) =>
+            Promise.resolve(
+              Array.from({ length: Math.min(limit, streak) }, (_, i) => ({
+                id: i === 0 ? 'run-1' : `old-${i}`,
+                status: 'failed',
+                createdAt: new Date((streak - i) * 1000),
+              })),
+            ),
+        );
+        await service.handleJobNotifications({
+          jobId: 'job-1',
+          runId: 'run-1',
+          finalStatus: 'failed',
+          durationSeconds: 1,
+        });
+        expect(
+          notificationService.sendNotificationToMultipleProviders,
+        ).toHaveBeenCalledTimes(sends ? 1 : 0);
+      },
+    );
+
+    it.each([
+      [4, false],
       [6, true],
       [11, true],
-      [12, false],
       [16, false],
-      [40, false],
-    ])('job failure streak of %i sends=%s', async (streak, sends) => {
+      [7, false],
+    ])(
+      'falls back to the positional rule when alert history is unreadable (streak %i sends=%s)',
+      async (streak, sends) => {
+        const { service, dbService, notificationService } = createService();
+        dbService.getJobAlertStreakState.mockResolvedValue({
+          sent: 0,
+          lastSentAt: null,
+          unknown: true,
+        });
+        dbService.getRecentRunsForJob.mockImplementation(
+          (_id: string, limit: number) =>
+            Promise.resolve(
+              Array.from({ length: Math.min(limit, streak) }, (_, i) => ({
+                id: i === 0 ? 'run-1' : `old-${i}`,
+                status: 'failed',
+                createdAt: new Date((streak - i) * 1000),
+              })),
+            ),
+        );
+        await service.handleJobNotifications({
+          jobId: 'job-1',
+          runId: 'run-1',
+          finalStatus: 'failed',
+          durationSeconds: 1,
+        });
+        expect(
+          notificationService.sendNotificationToMultipleProviders,
+        ).toHaveBeenCalledTimes(sends ? 1 : 0);
+      },
+    );
+
+    it('still alerts on a timeout deep in a streak when failure alerts are off', async () => {
       const { service, dbService, notificationService } = createService();
-      dbService.getRecentRunsForJob.mockImplementation(
-        (_id: string, limit: number) =>
-          Promise.resolve(
-            Array.from({ length: Math.min(limit, streak) }, (_, i) => ({
-              id: i === 0 ? 'run-1' : `old-${i}`,
-              status: 'failed',
-            })),
-          ),
+      dbService.getJobById.mockResolvedValue({
+        id: 'job-1',
+        name: 'J',
+        projectId: 'project-1',
+        alertConfig: {
+          enabled: true,
+          notificationProviders: ['provider-1'],
+          failureThreshold: 1,
+          recoveryThreshold: 1,
+          alertOnFailure: false,
+          alertOnSuccess: false,
+          alertOnTimeout: true,
+        },
+      });
+      dbService.getRecentRunsForJob.mockResolvedValue(
+        Array.from({ length: 11 }, (_, i) => ({
+          id: `old-${i}`,
+          status: 'failed',
+          createdAt: new Date((20 - i) * 1000),
+        })),
       );
       await service.handleJobNotifications({
         jobId: 'job-1',
         runId: 'run-1',
-        finalStatus: 'failed',
+        finalStatus: 'timeout',
         durationSeconds: 1,
       });
       expect(
         notificationService.sendNotificationToMultipleProviders,
-      ).toHaveBeenCalledTimes(sends ? 1 : 0);
+      ).toHaveBeenCalledTimes(1);
     });
 
     it('signals a recovery once, right after a failed run, even with alerts off', async () => {

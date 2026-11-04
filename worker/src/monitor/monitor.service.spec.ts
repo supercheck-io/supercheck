@@ -1480,9 +1480,14 @@ describe('MonitorService', () => {
       mockDbService.db.query.monitorResults.findFirst.mockReset();
     });
     it('fails the distributed job when the result insert fails, but keeps the swallow on the local path', async () => {
-      mockDbService.db.insert.mockReturnValue({
-        values: jest.fn().mockRejectedValue(new Error('statement timeout')),
+      // A thenable, like drizzle's insert builder: awaited directly or through onConflictDoNothing.
+      const failing = () => ({
+        then: (_resolve: unknown, reject: (e: Error) => void) =>
+          reject(new Error('statement timeout')),
+        onConflictDoNothing: () =>
+          Promise.reject(new Error('statement timeout')),
       });
+      mockDbService.db.insert.mockReturnValue({ values: jest.fn(failing) });
       const row = {
         monitorId: mockMonitor.id,
         location: 'eu',
@@ -1500,6 +1505,29 @@ describe('MonitorService', () => {
       await expect(
         service['saveMonitorResultToDb'](row),
       ).resolves.toBeUndefined();
+    });
+    it('retries an insert whose response was lost under one row id, ignoring a conflict', async () => {
+      const onConflictDoNothing = jest
+        .fn()
+        .mockRejectedValueOnce(new Error('connection reset'))
+        .mockResolvedValue(undefined);
+      const values = jest.fn().mockReturnValue({ onConflictDoNothing });
+      mockDbService.db.insert.mockReturnValue({ values });
+      jest.spyOn(service, 'saveMonitorResults').mockResolvedValue(undefined);
+      await service.saveDistributedMonitorResult(
+        {
+          monitorId: mockMonitor.id,
+          location: 'eu',
+          checkedAt: new Date(),
+          status: 'up',
+          isUp: true,
+        },
+        {},
+      );
+      expect(onConflictDoNothing).toHaveBeenCalledTimes(2);
+      const ids = values.mock.calls.map(([row]) => row.id);
+      expect(ids[0]).toEqual(expect.any(String));
+      expect(ids[1]).toBe(ids[0]);
     });
     it('uses aggregate counters when default routing produced multiple actual results', async () => {
       const monitor = {

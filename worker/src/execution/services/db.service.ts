@@ -427,6 +427,7 @@ export class DbService implements OnModuleInit {
     errorMessage?: string,
     jobNameOverride?: string,
     deliveryMetadata?: AlertDeliveryMetadata,
+    id?: string,
   ): Promise<{ id: string; status: AlertStatus }> {
     try {
       let jobName = jobNameOverride;
@@ -440,6 +441,7 @@ export class DbService implements OnModuleInit {
       const [created] = await this.db
         .insert(alertHistory)
         .values({
+          ...(id ? { id } : {}),
           jobId,
           type,
           provider,
@@ -451,12 +453,14 @@ export class DbService implements OnModuleInit {
           target: jobName,
           targetType: 'job',
         })
+        // A caller-supplied id makes a retry after a lost acknowledgement a no-op.
+        .onConflictDoNothing()
         .returning({ id: alertHistory.id, status: alertHistory.status });
 
       this.logger.log(
         `Successfully saved alert history for job ${jobId} with status: ${status}`,
       );
-      return created;
+      return created ?? { id: id as string, status };
     } catch (error) {
       this.logger.error(
         `Failed to save alert history for job ${jobId}:`,
@@ -477,6 +481,7 @@ export class DbService implements OnModuleInit {
           status: schema.runs.status,
           errorDetails: schema.runs.errorDetails,
           createdAt: schema.runs.createdAt,
+          completedAt: schema.runs.completedAt,
         })
         .from(schema.runs)
         .where(
@@ -505,6 +510,67 @@ export class DbService implements OnModuleInit {
         `Failed to get recent runs for job ${jobId}: ${(error as Error).message}`,
       );
       return [];
+    }
+  }
+
+  /**
+   * Failure alerts actually delivered since the job's current failing streak began (its last non-failing run).
+   * One alert fans out to a row per provider, so the count is the busiest provider's, not the row total.
+   */
+  async getJobAlertStreakState(
+    jobId: string,
+  ): Promise<{ sent: number; lastSentAt: Date | null; unknown?: boolean }> {
+    try {
+      // The cutoff is a subquery so the count sees one snapshot. It is when the last non-failing run finished
+      // (creation time while unfinished), so an alert for an earlier failure delivered after that run was
+      // created still belongs to the old streak.
+      const since = this.db
+        .select({
+          at: sql<Date | null>`max(coalesce(${runs.completedAt}, ${runs.createdAt}))`,
+        })
+        .from(runs)
+        .where(
+          and(
+            eq(runs.jobId, jobId),
+            inArray(sql<string>`${runs.status}`, [
+              'passed',
+              'blocked',
+              'skipped',
+            ]),
+          ),
+        );
+      const perProvider = await this.db
+        .select({
+          sent: sql<number>`count(*)::int`,
+          lastSentAt: sql<Date>`max(${alertHistory.sentAt})`,
+        })
+        .from(alertHistory)
+        .where(
+          and(
+            eq(alertHistory.jobId, jobId),
+            eq(alertHistory.status, 'sent'),
+            inArray(sql<string>`${alertHistory.type}`, [
+              'job_failed',
+              'job_timeout',
+            ]),
+            sql`${alertHistory.sentAt} > coalesce((${since}), '-infinity'::timestamptz)`,
+          ),
+        )
+        .groupBy(alertHistory.provider);
+      return {
+        sent: Math.max(0, ...perProvider.map((row) => row.sent)),
+        lastSentAt: perProvider.reduce<Date | null>((latest, row) => {
+          const at = new Date(row.lastSentAt);
+          return !latest || at > latest ? at : latest;
+        }, null),
+      };
+    } catch (error) {
+      // Unknown history must not silence a failing job, nor alert on every run: flag it so the caller
+      // falls back to the positional rule.
+      this.logger.error(
+        `Failed to read alert history for job ${jobId}: ${(error as Error).message}`,
+      );
+      return { sent: 0, lastSentAt: null, unknown: true };
     }
   }
 

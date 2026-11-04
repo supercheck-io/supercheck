@@ -237,6 +237,28 @@ suite('MonitorCycleProcessor (PostgreSQL)', () => {
       spy.mockRestore();
     });
 
+    it('closes a ready cycle when more than a batch of earlier cycles are in backoff, and forgets closed ones', async () => {
+      await client`INSERT INTO monitor_cycles (id, monitor_id, scheduled_for, deadline_at, expected_locations, strategy, threshold)
+        SELECT 'bo-' || g, ${monitorId}::uuid, ${t0.toISOString()}::timestamptz, ${new Date(deadline.getTime() - 60_000).toISOString()}::timestamptz, '["eu"]'::jsonb, 'any', 100
+        FROM generate_series(1, 260) g`;
+      await open('ready');
+      const failing = (
+        processor as unknown as { failing: Map<string, unknown> }
+      ).failing;
+      for (let g = 1; g <= 260; g++)
+        failing.set(`bo-${g}`, {
+          failures: 1,
+          billingFailures: 0,
+          nextAt: Date.now() + 60_000,
+        });
+      failing.set('gone', { failures: 1, billingFailures: 0, nextAt: 0 });
+      await processor.tick(new Date(deadline.getTime() + 1000));
+      expect((await cycle('ready')).status).toBe('closed');
+      expect((await cycle('bo-1')).status).toBe('open');
+      expect(failing.has('gone')).toBe(false);
+      expect(failing.has('bo-1')).toBe(true);
+    });
+
     it.each([
       [
         'a billing outage below its limit stays open',
@@ -245,10 +267,10 @@ suite('MonitorCycleProcessor (PostgreSQL)', () => {
         'open',
       ],
       [
-        'a billing outage at its limit is aborted',
+        'a prolonged billing outage is never aborted',
         () => new BillingVerificationError('down'),
-        { failures: 0, billingFailures: 71 },
-        'aborted',
+        { failures: 0, billingFailures: 500 },
+        'open',
       ],
       [
         'another persistent failure at its limit is aborted',
@@ -262,7 +284,14 @@ suite('MonitorCycleProcessor (PostgreSQL)', () => {
         { failures: 2, billingFailures: 60 },
         'open',
       ],
-    ])('%s', async (_name, makeError, seed, status) => {
+      [
+        'a billing error on a cycle open past 24 h is aborted',
+        () => new BillingVerificationError('no plan limits'),
+        { failures: 0, billingFailures: 3 },
+        'aborted',
+        25 * 3_600_000,
+      ],
+    ])('%s', async (_name, makeError, seed, status, ageMs = 1000) => {
       await open('limit');
       const spy = jest
         .spyOn(MonitorCycleService.prototype, 'closeCycle')
@@ -272,7 +301,7 @@ suite('MonitorCycleProcessor (PostgreSQL)', () => {
         { ...seed, nextAt: 0 },
       );
       const before = processor.snapshot();
-      await processor.tick(new Date(deadline.getTime() + 1000));
+      await processor.tick(new Date(deadline.getTime() + ageMs));
       expect((await cycle('limit')).status).toBe(status);
       const after = processor.snapshot();
       // Billing outages count as close failures too, so operators are alerted before an abort.
@@ -299,8 +328,38 @@ suite('MonitorCycleProcessor (PostgreSQL)', () => {
       await processor.tick(new Date(deadline.getTime() + 1000));
       expect(processor.snapshot().abortedCycles).toBe(before);
       expect((await cycle('abort-fails')).status).toBe('open');
+      // The backoff survives the failed abort, so the cycle is not retried on every pass.
+      const kept = (
+        processor as unknown as { failing: Map<string, { nextAt: number }> }
+      ).failing.get('abort-fails');
+      expect(kept?.nextAt).toBeGreaterThan(Date.now());
       close.mockRestore();
       abort.mockRestore();
+    });
+
+    it('never backs a young cycle off past the 24 h age bound', async () => {
+      await open('near-bound');
+      const close = jest
+        .spyOn(MonitorCycleService.prototype, 'closeCycle')
+        .mockRejectedValue(new Error('poison'));
+      (processor as unknown as { failing: Map<string, unknown> }).failing.set(
+        'near-bound',
+        { failures: 10, billingFailures: 0, nextAt: 0 },
+      );
+      // 30 s before the bound; a 5 min backoff would otherwise overshoot it.
+      const now = new Date(deadline.getTime() + 24 * 60 * 60_000 - 30_000);
+      const realNow = Date.now;
+      Date.now = () => now.getTime();
+      try {
+        await processor.tick(now);
+      } finally {
+        Date.now = realNow;
+      }
+      const state = (
+        processor as unknown as { failing: Map<string, { nextAt: number }> }
+      ).failing.get('near-bound');
+      expect(state?.nextAt).toBe(deadline.getTime() + 24 * 60 * 60_000);
+      close.mockRestore();
     });
 
     it('asks for an immediate next pass when a full batch of overdue cycles was found', async () => {

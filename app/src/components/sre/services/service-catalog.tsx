@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { Row } from "@tanstack/react-table";
 import { Boxes, Loader2, Network, Plus } from "lucide-react";
@@ -31,7 +31,29 @@ import { columns } from "@/components/sre/data-table/services/columns";
 import { ServicesToolbar } from "@/components/sre/data-table/services/toolbar";
 import { SreSetupGuideDialog } from "@/components/sre/onboarding/sre-setup-guide-dialog";
 
+// Saves the server payload has not caught up with yet. revalidatePath can remount
+// the catalog with a payload rendered before the write, so component state alone
+// would lose them. Scoped per project and short-lived so nothing leaks across views.
+const UNSYNCED_TTL_MS = 60_000;
+const unsyncedSaves = new Map<string, { projectId: string; savedAt: number; service: SreServiceListItem }>();
+
+function pendingSaves(projectId: string | undefined) {
+  if (!projectId) return [];
+  const now = Date.now();
+  const pending: SreServiceListItem[] = [];
+  for (const [id, entry] of unsyncedSaves) {
+    if (now - entry.savedAt > UNSYNCED_TTL_MS) unsyncedSaves.delete(id);
+    else if (entry.projectId === projectId) pending.push(entry.service);
+  }
+  return pending;
+}
+
+const isNewer = (a: SreServiceListItem, b: SreServiceListItem) =>
+  new Date(a.updatedAt).getTime() > new Date(b.updatedAt).getTime();
+
 type ServiceCatalogProps = {
+  /** Scopes unsynced local saves; omit to disable carrying them across remounts. */
+  projectId?: string;
   initialServices: SreServiceListItem[];
   loadError: string | null;
   setupStatus?: SreOnboardingStatus | null;
@@ -40,6 +62,7 @@ type ServiceCatalogProps = {
 };
 
 export function ServiceCatalog({
+  projectId,
   initialServices,
   loadError,
   setupStatus = null,
@@ -47,7 +70,26 @@ export function ServiceCatalog({
   permissions = { canCreate: false, canUpdate: false, canArchive: false },
 }: ServiceCatalogProps) {
   const router = useRouter();
-  const [services, setServices] = useState(initialServices);
+  const [localSaves, setLocalSaves] = useState(() => pendingSaves(projectId));
+  const services = useMemo(() => {
+    const merged = new Map(initialServices.map((service) => [service.id, service]));
+    const added: SreServiceListItem[] = [];
+    for (const saved of localSaves) {
+      const server = merged.get(saved.id);
+      if (!server) added.push(saved);
+      else if (isNewer(saved, server)) merged.set(saved.id, saved);
+    }
+    return [...added, ...merged.values()];
+  }, [initialServices, localSaves]);
+
+  // The merge above already prefers a caught-up server row; just stop carrying it across remounts.
+  useEffect(() => {
+    const server = new Map(initialServices.map((service) => [service.id, service]));
+    for (const saved of localSaves) {
+      const current = server.get(saved.id);
+      if (current && !isNewer(saved, current)) unsyncedSaves.delete(saved.id);
+    }
+  }, [initialServices, localSaves]);
   const [editingService, setEditingService] =
     useState<SreServiceListItem | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -68,15 +110,13 @@ export function ServiceCatalog({
   };
 
   const handleSaved = (savedService: SreServiceListItem) => {
-    setServices((current) => {
-      const exists = current.some((service) => service.id === savedService.id);
-      if (exists) {
-        return current.map((service) =>
-          service.id === savedService.id ? savedService : service,
-        );
-      }
-      return [savedService, ...current];
-    });
+    if (projectId) {
+      unsyncedSaves.set(savedService.id, { projectId, savedAt: Date.now(), service: savedService });
+    }
+    setLocalSaves((current) => [
+      savedService,
+      ...current.filter((service) => service.id !== savedService.id),
+    ]);
     onSetupChanged?.();
   };
 

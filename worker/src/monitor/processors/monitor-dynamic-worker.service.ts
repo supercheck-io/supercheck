@@ -33,6 +33,12 @@ import { captureJobFailure } from '../../common/sentry-reporter';
 /** How many times a skipped group's closure waits (about a minute each) for the aggregation lease. */
 const MAX_AGGREGATION_BUSY_RETRIES = 30;
 
+/** Excludes the cycle's synthetic deadline row, which shares the key but is not a check's result. */
+const realResultOnly = sql`${schema.monitorResults.details} ->> 'synthetic' is distinct from 'true'`;
+
+/** A real result that could not be saved or kept for a retry; the final-failure handler must not record it as downtime. */
+export class ResultNotKeptError extends UnrecoverableError {}
+
 /**
  * Dynamically creates BullMQ Workers for regional monitor queues.
  *
@@ -389,6 +395,7 @@ export class MonitorDynamicWorkerService
                   job.data.executionGroupId,
                 ),
                 eq(schema.monitorResults.location, jobLocation),
+                realResultOnly,
               ),
               orderBy: [desc(schema.monitorResults.checkedAt)],
             })
@@ -442,20 +449,24 @@ export class MonitorDynamicWorkerService
           await job.moveToDelayed(Date.now() + error.retryAfterMs, job.token);
           throw new DelayedError();
         }
-        // Without a group id a retry cannot see an already-inserted row, so it would insert a duplicate.
-        if (!saved && job.data.executionGroupId) {
-          await job
-            .updateData({
-              ...job.data,
-              aggregationOnly: true,
-              _pendingResult: result,
-            })
-            .catch((updateError: unknown) => {
-              this.logger.warn(
-                `Could not keep the unsaved result for monitor ${job.data.monitorId}: ${getErrorMessage(updateError)}`,
-              );
-            });
-        }
+        // The check already ran (and a synthetic one was billed): a retry would run it again. Keep the result
+        // for a save-only retry when a group id lets that retry see an inserted row; otherwise fail for good.
+        // The 'failed' handler logs and captures the failure.
+        const kept =
+          !!saved ||
+          (!!job.data.executionGroupId &&
+            (await job
+              .updateData({
+                ...job.data,
+                aggregationOnly: true,
+                _pendingResult: result,
+              })
+              .then(() => true)
+              .catch(() => false)));
+        if (!kept)
+          throw new ResultNotKeptError(
+            `Monitor ${job.data.monitorId} result could not be saved and will not be re-run: ${getErrorMessage(error)}`,
+          );
         throw error;
       }
 
@@ -528,6 +539,28 @@ export class MonitorDynamicWorkerService
         await this.rememberFlags(job);
         await this.closeSkippedGroup(job);
       });
+    }
+  }
+
+  /**
+   * Final-failure variant of closeSkippedGroup: the job has already failed, so it cannot be delayed and
+   * retried. One attempt; if it fails, the cycle deadline settles the region.
+   */
+  private async closeGroupAfterFailure(
+    job: Job<MonitorJobDataDto>,
+  ): Promise<void> {
+    const { monitorId, executionGroupId, monitorCycle } = job.data;
+    if (!executionGroupId) return;
+    try {
+      await this.monitorService.skipDistributedMonitorGroup(
+        monitorId,
+        executionGroupId,
+        !!monitorCycle,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Could not close group ${executionGroupId} for ${monitorId} after a final failure; the cycle deadline will settle it: ${getErrorMessage(error)}`,
+      );
     }
   }
 
@@ -651,6 +684,7 @@ export class MonitorDynamicWorkerService
           eq(schema.monitorResults.monitorId, monitorId),
           eq(schema.monitorResults.executionGroupId, executionGroupId),
           eq(schema.monitorResults.location, executionLocation),
+          realResultOnly,
         ),
       });
     const existing = await findStored();
@@ -660,6 +694,15 @@ export class MonitorDynamicWorkerService
         `Skipping synthetic error for ${monitorId}/${executionLocation}: ` +
           `real result already persisted (executionGroupId=${executionGroupId})`,
       );
+    }
+
+    // The check ran but its result was lost with the job data: a synthetic down row would misreport it.
+    if (!existing && error instanceof ResultNotKeptError) {
+      this.logger.warn(
+        `Monitor ${monitorId}/${executionLocation} result was lost; closing the group without recording downtime`,
+      );
+      await this.closeGroupAfterFailure(job);
+      return;
     }
 
     // Only saving failed: record the check's real outcome, not a synthetic error that reads as downtime.
@@ -703,7 +746,15 @@ export class MonitorDynamicWorkerService
             await save(pending, true);
             return;
           }
-          // The stored result itself cannot be saved; an error row still lets the group close.
+          // The stored result itself cannot be saved. An up result must not become a down error row; a down
+          // result stays visible as one, which still lets the group close.
+          if (pending.isUp) {
+            this.logger.warn(
+              `Stored up result for ${monitorId}/${executionLocation} could not be saved, closing the group without recording downtime: ${getErrorMessage(pendingError)}`,
+            );
+            await this.closeGroupAfterFailure(job);
+            return;
+          }
           this.logger.warn(
             `Stored result for ${monitorId}/${executionLocation} could not be saved, recording an error result: ${getErrorMessage(pendingError)}`,
           );

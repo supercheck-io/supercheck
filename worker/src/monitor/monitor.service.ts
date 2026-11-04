@@ -77,6 +77,9 @@ import {
 // Use the MonitorResult type from schema
 type MonitorResult = z.infer<typeof monitorResultsSelectSchema>;
 
+const RESULT_SAVE_ATTEMPTS = 3;
+const RESULT_SAVE_BACKOFF_MS = 250;
+
 function serializeResponseData(value: unknown): string {
   if (typeof value === 'string') return value;
   if (value === null || value === undefined) return '';
@@ -700,7 +703,7 @@ export class MonitorService {
         : result;
 
     if (!options.persisted) {
-      await this.saveMonitorResultToDb(persistedResult, true);
+      await this.insertResultWithRetry(persistedResult);
     }
 
     if (!executionGroupId) {
@@ -2118,9 +2121,30 @@ export class MonitorService {
     return this.evaluator.getLastSslAlert(...args);
   }
 
+  // A failed insert makes the BullMQ job retry, so a transient DB error is absorbed here first; re-running the
+  // check would bill a synthetic one twice. The row id is fixed up front and the insert ignores a conflict on it,
+  // so a retry after an insert that committed (response lost) cannot add a second row.
+  private async insertResultWithRetry(
+    result: MonitorExecutionResult,
+  ): Promise<void> {
+    const id = randomUUID();
+    for (let attempt = 1; ; attempt++) {
+      try {
+        await this.saveMonitorResultToDb(result, true, id);
+        return;
+      } catch (error) {
+        if (attempt >= RESULT_SAVE_ATTEMPTS) throw error;
+        await new Promise((resolve) =>
+          setTimeout(resolve, RESULT_SAVE_BACKOFF_MS * 2 ** (attempt - 1)),
+        );
+      }
+    }
+  }
+
   private async saveMonitorResultToDb(
     resultData: MonitorExecutionResult,
     rethrow = false,
+    id?: string,
   ): Promise<void> {
     try {
       // Get the last monitor result to track consecutive failures and successes
@@ -2186,7 +2210,8 @@ export class MonitorService {
         );
       }
 
-      await this.dbService.db.insert(schema.monitorResults).values({
+      const insertRow = this.dbService.db.insert(schema.monitorResults).values({
+        ...(id ? { id } : {}),
         monitorId: resultData.monitorId,
         location: resultData.location,
         checkedAt: resultData.checkedAt,
@@ -2213,6 +2238,7 @@ export class MonitorService {
           (resultData.details as { executionGroupId?: string })
             ?.executionGroupId || null,
       });
+      await (id ? insertRow.onConflictDoNothing() : insertRow);
     } catch (error) {
       this.logger.error(
         `Failed to save monitor result for ${resultData.monitorId}: ${getErrorMessage(error)}`,

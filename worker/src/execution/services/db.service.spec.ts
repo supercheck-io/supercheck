@@ -13,3 +13,20 @@ describe('run status updates', () => {
     expect(query.params).toEqual(['run-id', 'queued', 'running']);
   });
 });
+
+describe('getJobAlertStreakState', () => {
+  it('flags unknown history when the alert history cannot be read', async () => {
+    const database = {
+      select: () => {
+        throw new Error('db down');
+      },
+    };
+    const service = new DbService(database as never, {} as never);
+    jest.spyOn(service['logger'], 'error').mockImplementation(() => undefined);
+    expect(await service.getJobAlertStreakState('job-id')).toEqual({
+      sent: 0,
+      lastSentAt: null,
+      unknown: true,
+    });
+  });
+});
