@@ -9,6 +9,7 @@ import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-con
 import { requirePermissions } from "@/lib/rbac/middleware";
 import { v4 as uuidv4 } from "uuid";
 import { sniffImageType } from "@/lib/image-sniff";
+import { apiKeyRateLimiter, createRateLimitHeaders } from "@/lib/api-key-rate-limiter";
 
 // S3 Configuration
 const s3Client = new S3Client({
@@ -25,6 +26,7 @@ const s3Client = new S3Client({
 const BUCKET_NAME =
   process.env.S3_STATUS_BUCKET_NAME || "status-page-artifacts";
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+const UPLOAD_RATE_LIMIT = { enabled: true, timeWindow: 600, maxRequests: 30 };
 const ALLOWED_TYPES = [
   "image/png",
   "image/jpeg",
@@ -50,11 +52,19 @@ export async function POST(request: Request, context: RouteContext) {
     const statusPageId = params.id;
 
     // Check authentication and permissions
-    const { organizationId, project } = await requireAuthContext();
+    const { organizationId, project, userId } = await requireAuthContext();
     await requirePermissions(
       { status_page: ["update"] },
       { organizationId, projectId: project.id }
     );
+
+    const limit = await apiKeyRateLimiter.checkAndIncrement(`status-page-upload:${userId}`, UPLOAD_RATE_LIMIT);
+    if (!limit.allowed) {
+      return NextResponse.json(
+        { success: false, message: "Too many uploads. Try again later." },
+        { status: limit.unavailable ? 503 : 429, headers: createRateLimitHeaders(limit) },
+      );
+    }
 
     // Reject oversized bodies before buffering them (multipart overhead allowance included).
     const contentLength = Number(request.headers.get("content-length"));

@@ -8,11 +8,16 @@ jest.mock("@/utils/db", () => ({
   db: { query: { statusPages: { findFirst: jest.fn(async () => ({ id: "p" })) } }, update: jest.fn() },
 }));
 jest.mock("@/lib/auth-context", () => ({
-  requireAuthContext: jest.fn(async () => ({ organizationId: "o", project: { id: "pr" } })),
+  requireAuthContext: jest.fn(async () => ({ organizationId: "o", userId: "u1", project: { id: "pr" } })),
   isAuthError: () => false,
 }));
 jest.mock("@/lib/rbac/middleware", () => ({ requirePermissions: jest.fn() }));
 jest.mock("@/lib/asset-proxy", () => ({ generateProxyUrl: (v: string) => v }));
+const mockLimit = jest.fn();
+jest.mock("@/lib/api-key-rate-limiter", () => ({
+  apiKeyRateLimiter: { checkAndIncrement: (...a: unknown[]) => mockLimit(...a) ?? Promise.resolve({ allowed: true }) },
+  createRateLimitHeaders: () => ({ "Retry-After": "30" }),
+}));
 import { POST } from "./route";
 import { requirePermissions } from "@/lib/rbac/middleware";
 
@@ -56,4 +61,12 @@ it("rejects content that does not match the declared image type", async () => {
 it("returns 403 when the caller lacks status_page:update", async () => {
   (requirePermissions as jest.Mock).mockRejectedValue(new Error("Permission check failed: Access denied: Missing status_page:update permission"));
   expect((await upload(PNG, "image/png")).status).toBe(403);
+});
+
+it("answers 429 with Retry-After when the upload limit is exceeded", async () => {
+  mockLimit.mockResolvedValueOnce({ allowed: false });
+  const res = await upload(PNG, "image/png");
+  expect(res.status).toBe(429);
+  expect(res.headers.get("Retry-After")).toBe("30");
+  expect(send).not.toHaveBeenCalled();
 });

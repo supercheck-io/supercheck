@@ -12,6 +12,11 @@ jest.mock("@/lib/test-results-access", () => ({
   resolveAccessContext: jest.fn(),
 }));
 
+const mockLimit = jest.fn();
+jest.mock("@/lib/api-key-rate-limiter", () => ({
+  apiKeyRateLimiter: { checkAndIncrement: (...a: unknown[]) => mockLimit(...a) ?? Promise.resolve({ allowed: true }) },
+  createRateLimitHeaders: () => ({ "Retry-After": "30" }),
+}));
 import { db } from "@/utils/db";
 import { hasPermissionForUser } from "@/lib/rbac/middleware";
 import { requireUserAuthContext } from "@/lib/auth-context";
@@ -37,6 +42,13 @@ describe("POST /api/report-urls", () => {
     (db.select as jest.Mock).mockReturnValue({
       from: () => ({ where: () => ({ orderBy: () => Promise.resolve([{ entityType: "test" }]) }) }),
     });
+  });
+
+  it("answers 429 with Retry-After when the minting limit is exceeded", async () => {
+    mockLimit.mockResolvedValueOnce({ allowed: false });
+    const res = await POST(post("/api/test-results/run-1/report/index.html"));
+    expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBe("30");
   });
   afterEach(() => {
     process.env = { ...original };
