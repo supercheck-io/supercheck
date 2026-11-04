@@ -249,7 +249,7 @@ describe("applySourceRecovery", () => {
 
   it("auto-resolves an unacknowledged incident with an automatic timeline event", async () => {
     selectQueue.push([open(null)], []);
-    updateQueue.push([{ id: incidentId }]);
+    updateQueue.push([], [{ id: incidentId }]); // first update resolves the alert events
     const result = await applySourceRecovery(executor as never, { ...source, autoResolve: true });
     expect(result).toEqual({ resolved: [{ id: incidentId }], recovered: [] });
     expect(inserts[0]).toMatchObject({
@@ -266,7 +266,7 @@ describe("applySourceRecovery", () => {
   it("only notes recovery on an acknowledged incident", async () => {
     selectQueue.push([open(new Date())], [], []);
     const result = await applySourceRecovery(executor as never, { ...source, autoResolve: true });
-    expect(executor.update).not.toHaveBeenCalled();
+    expect(executor.update).toHaveBeenCalledTimes(1); // alert events only, never the incident
     expect(result.recovered).toEqual([{ id: incidentId, assigneeUserId: assignee }]);
     expect(inserts[0]).toMatchObject({ eventData: { state: "recovered", comment: "Checkout API recovered; resolve when you've confirmed" } });
   });
@@ -274,7 +274,7 @@ describe("applySourceRecovery", () => {
   it("only notes recovery when autoResolveIncident is off", async () => {
     selectQueue.push([open(null)], [], []);
     const result = await applySourceRecovery(executor as never, { ...source, autoResolve: false });
-    expect(executor.update).not.toHaveBeenCalled();
+    expect(executor.update).toHaveBeenCalledTimes(1);
     expect(result.resolved).toEqual([]);
     expect(result.recovered).toHaveLength(1);
   });
@@ -312,9 +312,10 @@ describe("applySourceRecovery", () => {
     expect(text).not.toContain("ssl_expiring");
   });
 
-  it("does nothing when no incident is open", async () => {
+  it("still resolves the firing alert events when no incident is open", async () => {
     selectQueue.push([]);
     expect(await applySourceRecovery(executor as never, { ...source, autoResolve: true })).toEqual({ resolved: [], recovered: [] });
+    expect(executor.update).toHaveBeenCalledTimes(1);
     expect(inserts).toHaveLength(0);
   });
 });

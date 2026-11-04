@@ -555,6 +555,19 @@ export async function applySourceRecovery(
   tx: Executor,
   source: SourceRef & { targetName: string; autoResolve: boolean; recoveredAt: Date },
 ) {
+  const open = await tx
+    .select({
+      id: sreIncidents.id,
+      incidentNumber: sreIncidents.incidentNumber,
+      title: sreIncidents.title,
+      createdAt: sreIncidents.createdAt,
+      acknowledgedAt: sreIncidents.acknowledgedAt,
+      assigneeUserId: sreIncidents.assigneeUserId,
+    })
+    .from(sreIncidentAlerts)
+    .innerJoin(sreIncidents, eq(sreIncidentAlerts.incidentId, sreIncidents.id))
+    .innerJoin(sreAlertEvents, eq(sreIncidentAlerts.alertEventId, sreAlertEvents.id))
+    .where(and(triggerSourceMatch(source), ne(sreIncidents.status, "resolved")));
   // A failure alert newer than this recovery means the recovery is stale; leave the incident alone.
   // Compared in SQL: comparing in SQL avoids parsing the driver's timestamp text in JS.
   const [newerFailure] = await tx
@@ -591,19 +604,6 @@ export async function applySourceRecovery(
       ),
     );
 
-  const open = await tx
-    .select({
-      id: sreIncidents.id,
-      incidentNumber: sreIncidents.incidentNumber,
-      title: sreIncidents.title,
-      createdAt: sreIncidents.createdAt,
-      acknowledgedAt: sreIncidents.acknowledgedAt,
-      assigneeUserId: sreIncidents.assigneeUserId,
-    })
-    .from(sreIncidentAlerts)
-    .innerJoin(sreIncidents, eq(sreIncidentAlerts.incidentId, sreIncidents.id))
-    .innerJoin(sreAlertEvents, eq(sreIncidentAlerts.alertEventId, sreAlertEvents.id))
-    .where(and(triggerSourceMatch(source), ne(sreIncidents.status, "resolved")));
   if (open.length === 0) return { resolved: [], recovered: [] };
 
   const resolved: { id: string }[] = [];
