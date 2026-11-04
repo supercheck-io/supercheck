@@ -88,6 +88,7 @@ export async function resolveMcpEndpointUrl(row: ConnectorRow): Promise<string |
     throw new McpEndpointMissingError();
   }
 
+  let configChanged = false;
   try {
     const encrypted = encryptConnectorCredential(withMcpEndpoint(blob, stored), context);
     await db.transaction(async (tx) => {
@@ -97,7 +98,10 @@ export async function resolveMcpEndpointUrl(row: ConnectorRow): Promise<string |
         .from(externalConnectors)
         .where(and(eq(externalConnectors.id, row.id), sql`${externalConnectors.config}->>'endpointUrl' = ${stored}`))
         .for("update");
-      if (!lockedConnector) return;
+      if (!lockedConnector) {
+        configChanged = true;
+        return;
+      }
       if (credentialRow) {
         // A rotate that committed since the read replaced or removed the row, so this stale rewrite is skipped.
         const [current] = await tx
@@ -141,6 +145,12 @@ export async function resolveMcpEndpointUrl(row: ConnectorRow): Promise<string |
       name: error instanceof Error ? error.name : typeof error,
       code: typeof code === "string" ? code : undefined,
     });
+  }
+  if (configChanged) {
+    // The endpoint changed since the read (e.g. a rotation moved it into the credential): `stored` is stale.
+    const [fresh] = await db.select().from(externalConnectors).where(eq(externalConnectors.id, row.id)).limit(1);
+    if (!fresh) throw new McpEndpointMissingError();
+    return resolveMcpEndpointUrl(fresh);
   }
   return stored;
 }

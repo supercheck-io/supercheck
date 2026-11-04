@@ -3,6 +3,8 @@ process.env.SECRET_ENCRYPTION_KEY = "a".repeat(64);
 
 let mockCredentialRows: unknown[] = [];
 let mockLockedRows: unknown[] | null = null; // what FOR UPDATE sees inside the transaction; null = same as the read
+let mockConnectorLocked = true; // false = the connector no longer matches the stored URL at lock time
+let mockFreshConnector: unknown[] = []; // what the post-conflict re-read of the connector returns
 let mockLockedConfig: Record<string, unknown> = { tools: [] }; // the connector config FOR UPDATE sees
 let mockTxFails: unknown = null;
 const mockUpdates: Array<{ table: string; set: Record<string, unknown> }> = [];
@@ -20,7 +22,14 @@ jest.mock("@/db/schema", () => ({
 }));
 jest.mock("@/utils/db", () => ({
   db: {
-    select: () => ({ from: () => ({ where: () => ({ orderBy: () => ({ limit: async () => mockCredentialRows }) }) }) }),
+    select: () => ({
+      from: (t: { name?: string }) => ({
+        where: () => ({
+          orderBy: () => ({ limit: async () => mockCredentialRows }),
+          limit: async () => (t.name === "connectors" ? mockFreshConnector : mockCredentialRows),
+        }),
+      }),
+    }),
     transaction: async (fn: (tx: unknown) => unknown) => {
       if (mockTxFails) throw mockTxFails;
       return fn({
@@ -35,7 +44,8 @@ jest.mock("@/utils/db", () => ({
           for (const m of ["where", "limit"]) chain[m] = () => chain;
           chain.for = async () => {
             mockLockOrder.push(table);
-            if (table === "connectors" && !mockLockedRows) return [{ id: "c1", config: mockLockedConfig }];
+            if (table === "connectors" && !mockConnectorLocked) return [];
+            if (table === "connectors") return [{ id: "c1", config: mockLockedConfig }];
             return rows();
           };
           chain.then = (r: (x: unknown) => unknown) => Promise.resolve(mockCredentialRows).then(r);
@@ -59,6 +69,8 @@ const row = (endpointUrl: unknown) =>
 beforeEach(() => {
   mockCredentialRows = [];
   mockLockedRows = null;
+  mockConnectorLocked = true;
+  mockFreshConnector = [];
   mockLockedConfig = { tools: [] };
   mockTxFails = null;
   mockUpdates.length = 0;
@@ -82,6 +94,18 @@ describe("resolveMcpEndpointUrl", () => {
 
   it("fails clearly when the URL is redacted and no credential holds it", async () => {
     await expect(resolveMcpEndpointUrl(row("https://mcp.example.com/mcp?…"))).rejects.toBeInstanceOf(McpEndpointMissingError);
+  });
+
+  it("resolves from fresh state when the config changed concurrently, never returning the stale URL", async () => {
+    mockConnectorLocked = false;
+    const encrypted = encryptConnectorCredential({ token: "t", endpointUrl: "https://mcp.example.com/mcp?apiKey=rotated" }, context);
+    // First read sees no credential; after the conflict the re-read sees the rotated, redacted connector and credential.
+    mockFreshConnector = [row("https://mcp.example.com/mcp?…")];
+    mockCredentialRows = [];
+    const first = resolveMcpEndpointUrl(row("https://mcp.example.com/mcp?apiKey=stale"));
+    // Credential becomes visible to the re-read only.
+    mockCredentialRows = [{ id: "cr1", updatedAt: STAMP, ...encrypted }];
+    expect(await first).toBe("https://mcp.example.com/mcp?apiKey=rotated");
   });
 
   it("keeps a legacy row working and moves its URL into the credential and out of config", async () => {
@@ -126,8 +150,10 @@ describe("resolveMcpEndpointUrl", () => {
     mockLockedRows = [{ id: "cr1", updatedAt: new Date("2026-01-02T00:00:00Z") }];
     expect(await resolveMcpEndpointUrl(row("https://mcp.example.com/mcp?apiKey=s3cret"))).toBe("https://mcp.example.com/mcp?apiKey=s3cret");
     expect(mockUpdates).toHaveLength(0);
+    // Connector lock returns a row, credential lock returns none (row deleted): the `!current` guard skips the rewrite.
     mockLockedRows = [];
     await resolveMcpEndpointUrl(row("https://mcp.example.com/mcp?apiKey=s3cret"));
+    expect(mockLockOrder).toEqual(["connectors", "credentials", "connectors", "credentials"]);
     expect(mockUpdates).toHaveLength(0);
   });
 

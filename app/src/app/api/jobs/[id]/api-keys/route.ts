@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
-import { apikey, jobs, member, user } from "@/db/schema";
+import { apikey, jobs, user } from "@/db/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { z } from "zod";
 import { logAuditEvent } from "@/lib/audit-logger";
-import { checkPermissionWithContext, isImpersonatedSession, resolveProjectPermissionContext } from "@/lib/rbac/middleware";
+import { checkPermissionWithContext, isImpersonatedSession } from "@/lib/rbac/middleware";
 import { createLogger } from "@/lib/logger/pino-config";
 import { hashApiKey, generateApiKey, getApiKeyPrefix } from "@/lib/security/api-key-hash";
 import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
@@ -223,24 +223,10 @@ export async function POST(
       }
     }
     
-    // The membership re-check, name/cap checks and insert run under one per-job
-    // advisory lock, so concurrent requests cannot both pass the cap or name check.
+    // The name/cap checks and insert run under one per-job advisory lock, so concurrent requests cannot both pass the cap or name check.
     // SECURITY: Only the hash is stored, the plain key is returned once to the user.
     const created = await db.transaction(async (tx) => {
       await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${job[0].id}, 0))`);
-
-      const [stillMember] = await tx
-        .select({ id: member.id })
-        .from(member)
-        .where(and(eq(member.userId, userId), eq(member.organizationId, authCtx.organizationId)))
-        .limit(1);
-      if (!stillMember) return { error: "Insufficient permissions", status: 403 } as const;
-
-      // Re-resolve the creator's current role: the pre-lock check used a snapshot.
-      const freshContext = await resolveProjectPermissionContext(userId, authCtx.project.id);
-      if (!freshContext || !checkPermissionWithContext("apiKey", "create", freshContext)) {
-        return { error: "Insufficient permissions", status: 403 } as const;
-      }
 
       const [existingNamedKey] = await tx
         .select({ id: apikey.id })

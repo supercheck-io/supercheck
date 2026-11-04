@@ -31,4 +31,11 @@ CREATE INDEX plain_idx ON runs (c);`;
     const bad = `${ok}\n-- CREATE INDEX CONCURRENTLY ignored_in_comment ON t (c);\nCREATE INDEX CONCURRENTLY c_idx ON t (c);`;
     expect(() => assertDeferredFileRerunnable("0099.sql", bad)).toThrow(/0099\.sql.*IF NOT EXISTS.*c_idx/);
   });
+  it("ignores block comments and string literals when checking for plain CONCURRENTLY builds", () => {
+    const sql = `/* CREATE INDEX CONCURRENTLY commented_idx ON t (a); */
+SELECT 'CREATE INDEX CONCURRENTLY quoted_idx ON t (a); -- x';
+CREATE INDEX CONCURRENTLY IF NOT EXISTS real_idx ON t (b);`;
+    expect(concurrentIndexNames(sql)).toEqual(["real_idx"]);
+    expect(() => assertDeferredFileRerunnable("0099.sql", sql)).not.toThrow();
+  });
 });

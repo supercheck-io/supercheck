@@ -1,6 +1,6 @@
 import React from "react";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ReportViewer, REPORT_URL_REFRESH_MS, REPORT_URL_REFRESH_RETRY_MS } from "./report-viewer";
+import { ReportViewer, REPORT_URL_REFRESH_MS, REPORT_URL_REFRESH_TIMEOUT_MS, REPORT_URL_REFRESH_RETRY_MS } from "./report-viewer";
 
 const appConfig = { config: { reports: { separateOrigin: true } }, isFetched: true };
 jest.mock("@/hooks/use-app-config", () => ({ useAppConfig: () => appConfig }));
@@ -186,14 +186,17 @@ describe("signed URL lifecycle", () => {
 
   it("bounds each refresh request with a timeout signal", async () => {
     jest.useFakeTimers();
+    const timeoutSpy = jest.spyOn(AbortSignal, "timeout");
     const { container } = render(<ReportViewer reportUrl="/api/test-results/run-1/report/index.html" />);
     await waitFor(() => expect(container.querySelector("iframe")).toHaveAttribute("src", SIGNED));
     fireEvent.load(container.querySelector("iframe")!);
     fetchMock.mockClear();
+    timeoutSpy.mockClear();
     await act(async () => {
       jest.advanceTimersByTime(REPORT_URL_REFRESH_MS + 10);
     });
     await waitFor(() => expect(fetchMock.mock.calls.length).toBeGreaterThanOrEqual(2));
+    expect(timeoutSpy).toHaveBeenCalledWith(REPORT_URL_REFRESH_TIMEOUT_MS);
     for (const [, init] of fetchMock.mock.calls) expect((init as RequestInit).signal).toBeInstanceOf(AbortSignal);
   });
 

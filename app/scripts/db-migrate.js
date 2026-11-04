@@ -256,7 +256,12 @@ const CONCURRENT_INDEX =
   /CREATE\s+(?:UNIQUE\s+)?INDEX\s+CONCURRENTLY\s+(IF\s+NOT\s+EXISTS\s+)?"?([A-Za-z0-9_]+)"?(?:\s+ON\s+(?:ONLY\s+)?((?:"?[A-Za-z0-9_]+"?\.)?"?[A-Za-z0-9_]+"?))?/gi;
 
 function concurrentIndexes(sql) {
-  return [...sql.replace(/--[^\n]*/g, "").matchAll(CONCURRENT_INDEX)].map((m) => ({
+  // Blank string literals first, so a `--` or `/*` inside one is not read as a comment; then drop comments.
+  const code = sql
+    .replace(/'(?:[^']|'')*'/g, "''")
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/--[^\n]*/g, "");
+  return [...code.matchAll(CONCURRENT_INDEX)].map((m) => ({
     name: m[2],
     table: m[3],
     ifNotExists: Boolean(m[1]),
