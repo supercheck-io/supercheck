@@ -7,6 +7,7 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 ## [Unreleased]
 - **Diagnostic queries.** Saving a query now rejects an unconstrained text parameter placed outside quotes in a PromQL, LogQL or TraceQL template, and a pattern that accepts any value; add a pattern, enum or allowlist, or put the placeholder in quotes. Already-saved queries are not rewritten, and at run time they accept plain tokens only.
 - **Monitor targets.** Creating or changing an HTTP, website, ping or port monitor now returns 400 when its target is a private, loopback or reserved address (including a name that resolves to one). Set `ALLOW_INTERNAL_TARGETS=true` on both the app and the worker to allow them. Existing monitors keep working and stay editable until their target or type changes.
+- **Reports origin removed.** The optional `REPORTS_ORIGIN` setting and `POST /api/report-urls` are gone; report HTML is always served from the app origin again. Remove `REPORTS_ORIGIN` from your environment (it is now ignored) and any DNS, TLS or proxy routing you added for that host, which would otherwise serve the full app.
 
 ## [1.5.0] - 2026-10-30
 
