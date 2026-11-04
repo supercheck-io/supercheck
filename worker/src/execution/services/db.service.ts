@@ -274,6 +274,19 @@ export class DbService implements OnModuleInit {
     }
   }
 
+  /** Merges keys into runs.metadata without clobbering what else is stored there. */
+  async mergeRunMetadata(
+    runId: string,
+    patch: Record<string, unknown>,
+  ): Promise<void> {
+    await this.dbInstance
+      .update(runs)
+      .set({
+        metadata: sql`coalesce(${runs.metadata}, '{}'::jsonb) || ${JSON.stringify(patch)}::text::jsonb`,
+      })
+      .where(eq(runs.id, runId));
+  }
+
   /**
    * Gets a job by ID including alert configuration with RBAC filtering
    * @param jobId The ID of the job to retrieve
@@ -798,10 +811,16 @@ export class DbService implements OnModuleInit {
           continue;
         }
 
-        // Get the latest completed run from any of these jobs
+        // Latest terminal run from any of these jobs. A job run records per-test outcomes in
+        // metadata.testStatuses; older runs and k6 runs fall back to the run status.
         const jobIds = jobsWithTest.map((j) => j.jobId);
         const latestRun = await this.db
-          .select({ status: schema.runs.status })
+          .select({
+            status: schema.runs.status,
+            testStatus: sql<
+              string | null
+            >`${schema.runs.metadata}->'testStatuses'->>${testId}::text`,
+          })
           .from(schema.runs)
           .where(
             and(
@@ -812,10 +831,16 @@ export class DbService implements OnModuleInit {
               sql`${schema.runs.status} IN ('passed', 'failed', 'error')`,
             ),
           )
-          .orderBy(desc(schema.runs.completedAt), desc(schema.runs.id))
+          .orderBy(
+            sql`${schema.runs.completedAt} DESC NULLS LAST`,
+            desc(schema.runs.id),
+          )
           .limit(1);
 
-        const status = latestRun.length > 0 ? latestRun[0].status : null;
+        const status =
+          latestRun.length > 0
+            ? (latestRun[0].testStatus ?? latestRun[0].status)
+            : null;
         results.push({
           testId,
           status:

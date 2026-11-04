@@ -163,7 +163,8 @@ export async function updateCoverageSnapshot(
   const linkedTests = await executor
     .selectDistinctOn([testRequirements.testId], {
       testId: testRequirements.testId,
-      status: runs.status,
+      // A job run records per-test outcomes in metadata.testStatuses; older and k6 runs use the run status.
+      status: sql<string | null>`coalesce(${runs.metadata}->'testStatuses'->>${testRequirements.testId}::text, ${runs.status})`,
     })
     .from(testRequirements)
     .leftJoin(jobTests, eq(jobTests.testId, testRequirements.testId))
