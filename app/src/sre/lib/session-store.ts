@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, or } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import {
@@ -7,6 +7,12 @@ import {
   sreIncidents,
 } from "@/db/schema";
 import { db } from "@/utils/db";
+
+/** Attachment markers: an interrupted reply stays out of prompts; a superseded one was replaced by a regenerated reply. */
+export const SRE_MESSAGE_INTERRUPTED = "interrupted";
+export const SRE_MESSAGE_SUPERSEDED = "superseded";
+export const isSreMessageSuperseded = (row: { attachments: Record<string, unknown>[] | null }) =>
+  Boolean(row.attachments?.some((item) => item.type === SRE_MESSAGE_SUPERSEDED));
 
 const MAX_MESSAGE_CONTENT_LENGTH = 32_000;
 const MAX_TITLE_LENGTH = 200;
@@ -260,6 +266,20 @@ export async function appendSreMessage(input: AppendSreMessageInput) {
 
     return message;
   });
+}
+
+/** Flags a reply replaced by a regeneration so later prompts and reloaded history skip it. */
+export async function markSreMessageSuperseded(
+  input: z.infer<typeof conversationLookupSchema> & { messageId: string },
+) {
+  const { messageId, ...lookup } = input;
+  const conversation = await getSreConversation(lookup);
+  await db
+    .update(sreChatMessages)
+    .set({
+      attachments: sql`coalesce(${sreChatMessages.attachments}, '[]'::jsonb) || ${JSON.stringify([{ type: SRE_MESSAGE_SUPERSEDED }])}::jsonb`,
+    })
+    .where(and(eq(sreChatMessages.id, messageId), eq(sreChatMessages.conversationId, conversation.id)));
 }
 
 export async function archiveSreConversation(

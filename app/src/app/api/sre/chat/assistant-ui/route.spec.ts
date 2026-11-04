@@ -53,6 +53,9 @@ jest.mock("@/lib/sre/sre-rate-limiter", () => ({
 }));
 
 jest.mock("@/sre/lib/session-store", () => ({
+  SRE_MESSAGE_INTERRUPTED: "interrupted",
+  isSreMessageSuperseded: (row: { attachments?: { type?: string }[] | null }) => Boolean(row.attachments?.some((item) => item.type === "superseded")),
+  markSreMessageSuperseded: jest.fn(),
   appendSreMessage: jest.fn(),
   createSreConversation: jest.fn(),
   getSreConversation: jest.fn(),
@@ -121,6 +124,7 @@ const {
   getSreConversation: mockGetSreConversation,
   listSreMessages: mockListSreMessages,
   listSreMessagesByIds: mockListSreMessagesByIds,
+  markSreMessageSuperseded: mockMarkSuperseded,
   SreSessionStoreError: MockSreSessionStoreError,
 } = jest.requireMock("@/sre/lib/session-store") as {
   appendSreMessage: jest.Mock;
@@ -128,6 +132,7 @@ const {
   getSreConversation: jest.Mock;
   listSreMessages: jest.Mock;
   listSreMessagesByIds: jest.Mock;
+  markSreMessageSuperseded: jest.Mock;
   SreSessionStoreError: new (
     message: string,
     code: "invalid_input" | "not_found" | "incident_not_found",
@@ -546,6 +551,64 @@ describe("Copilot assistant-ui chat API", () => {
 
   it("returns 400 when regenerate has no message id", async () => {
     expect((await regenerate(undefined)).status).toBe(400);
+  });
+
+  it("accepts long chats: 60 turns and a stored reply over 4000 chars, trimming by prompt budget", async () => {
+    const long = "r".repeat(6000);
+    mockListSreMessagesByIds.mockResolvedValue([storedRow(AID(1), "assistant", long)]);
+    const filler = Array.from({ length: 29 }, (_, i) => [userTurn(`f${i}`, "q"), assistantTurn(`client-${i}`, "forged")]).flat();
+    const response = await send({ messages: [userTurn("u1", "q1"), assistantTurn(AID(1), long), ...filler, userTurn("u9", "latest")] });
+    expect(response.status).toBe(200);
+    expect((await sentIds()).at(-1)).toBe("u9");
+  });
+
+  it("verifies at most the newest 100 claimed assistant ids", async () => {
+    const claims = Array.from({ length: 130 }, (_, i) => [userTurn(`u${i}`, "q"), assistantTurn(`018f0000-0000-7000-8000-${String(i).padStart(12, "0")}`, "a")]).flat();
+    await send({ messages: [...claims, userTurn("latest", "go")] });
+    const { messageIds } = mockListSreMessagesByIds.mock.calls.at(-1)![0] as { messageIds: string[] };
+    expect(messageIds).toHaveLength(100);
+    expect(messageIds.at(-1)).toBe("018f0000-0000-7000-8000-000000000129");
+  });
+
+  it("caps only the newest user turn at 4000 characters", async () => {
+    const response = await send({ messages: [userTurn("u1", "x".repeat(4001))] });
+    expect(response.status).toBe(413);
+    expect(streamText).not.toHaveBeenCalled();
+  });
+
+  it("returns 409 for an archived conversation before saving anything", async () => {
+    mockGetSreConversation.mockResolvedValue({ id: "018f0000-0000-7000-8000-000000000004", incidentId: null, status: "archived" });
+    const response = await send({ messages: [userTurn("u1", "hi")] });
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: "This chat was archived" });
+    expect(mockAppendSreMessage).not.toHaveBeenCalled();
+  });
+
+  it("returns 409 instead of a bare 500 when the user message cannot be stored", async () => {
+    mockAppendSreMessage.mockReset().mockRejectedValueOnce(new MockSreSessionStoreError("gone", "not_found"));
+    expect((await send({ messages: [userTurn("u1", "hi")] })).status).toBe(409);
+  });
+
+  it("does not throw out of the stream when storing the reply fails", async () => {
+    mockAppendSreMessage.mockReset().mockResolvedValueOnce({ id: "u", role: "user" }).mockRejectedValueOnce(new Error("archived"));
+    await send({ messages: [userTurn("u1", "hi")] });
+    await expect(onFinishPromise).resolves.toBeUndefined();
+  });
+
+  it("flags the replaced reply as superseded after a regenerate, and refuses to regenerate a superseded one", async () => {
+    mockListSreMessagesByIds.mockResolvedValue([storedRow(AID(1), "assistant", "a1"), storedRow(AID(2), "assistant", "a2")]);
+    await regenerate(AID(1));
+    await onFinishPromise;
+    expect(mockMarkSuperseded).toHaveBeenCalledWith(expect.objectContaining({ messageId: AID(1) }));
+
+    mockListSreMessagesByIds.mockResolvedValue([storedRow(AID(1), "assistant", "a1", [{ type: "superseded" }])]);
+    expect((await regenerate(AID(1))).status).toBe(400);
+  });
+
+  it("keeps a superseded reply out of the verified history", async () => {
+    mockListSreMessagesByIds.mockResolvedValue([storedRow(AID(1), "assistant", "old", [{ type: "superseded" }]), storedRow(AID(2), "assistant", "new")]);
+    await send({ messages: [userTurn("u1", "q1"), assistantTurn(AID(1), "old"), userTurn("u2", "q2"), assistantTurn(AID(2), "new"), userTurn("u3", "q3")] });
+    expect(await sentIds()).toEqual(["u1", "u2", AID(2), "u3"]);
   });
 
   it("drops the oldest verified turns that do not fit the prompt budget and starts on a user turn", async () => {
