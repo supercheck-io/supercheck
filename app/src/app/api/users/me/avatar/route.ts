@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCachedAuthSession } from "@/lib/session-cache";
 import { headers } from "next/headers";
 import { eq } from "drizzle-orm";
+import sharp from "sharp";
 import { auth } from "@/utils/auth";
 import { db } from "@/utils/db";
 import { user } from "@/db/schema";
@@ -58,10 +59,22 @@ export async function POST(request: NextRequest) {
   const ext = detectAvatarType(bytes);
   if (!ext) return err("Only PNG, JPEG or WebP images are allowed", 415);
 
-  const previous = await previousVersion(s.userId);
-  const version = newAvatarVersion(ext);
+  // Re-encode so EXIF/GPS and any trailing payload never reach storage; also bounds decoded size.
+  let encoded: Buffer;
   try {
-    await putAvatar(s.userId, version, bytes);
+    encoded = await sharp(bytes, { limitInputPixels: 20e6 })
+      .rotate()
+      .resize(256, 256, { fit: "cover" })
+      .webp()
+      .toBuffer();
+  } catch {
+    return err("Image could not be processed", 400);
+  }
+
+  const previous = await previousVersion(s.userId);
+  const version = newAvatarVersion("webp");
+  try {
+    await putAvatar(s.userId, version, encoded);
     await setImage(avatarPath(s.userId, version));
   } catch (error) {
     console.error("[AVATAR] Upload failed:", error);
