@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 
-import { sreAlertEvents, sreIncidents, sreIncidentTimelineEvents, user } from "@/db/schema";
+import { sreAlertEvents, sreIncidents, sreIncidentTimelineEvents, incidents as statusPageIncidents, statusPages, user } from "@/db/schema";
+import { updateIncidentStatus } from "@/actions/update-incident-status";
 import { createLogger } from "@/lib/logger/index";
 import { requireProjectContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
@@ -39,10 +40,12 @@ const resolveSchema = z.object({
 const updateSchema = z.object({
   incidentId: z.string().uuid(),
   text: z.string().trim().min(1, "Update cannot be empty").max(MAX_INCIDENT_UPDATE_LENGTH),
+  /** Also publish the note as an update on the incident's linked status page incident. */
+  postToStatusPage: z.boolean().optional(),
 });
 
 export type SreIncidentActionResult =
-  | { success: true; message: string }
+  | { success: true; message: string; /** Set when the note was saved but a follow-up step failed. */ warning?: string }
   | { success: false; error: string };
 
 export type SreIncidentAssignee = {
@@ -65,7 +68,7 @@ export type SreIncidentTimelineItem = {
 };
 
 type Guarded =
-  | { ok: true; actor: IncidentActor }
+  | { ok: true; actor: IncidentActor; context: { userId: string; organizationId: string; project: Awaited<ReturnType<typeof requireProjectContext>>["project"] } }
   | { ok: false; error: string };
 
 async function guard(action: "view" | "update"): Promise<Guarded> {
@@ -73,7 +76,7 @@ async function guard(action: "view" | "update"): Promise<Guarded> {
   if (!checkPermissionWithContext("sre_incident", action, { userId, organizationId, project })) {
     return { ok: false, error: "Insufficient permissions for this incident action" };
   }
-  return { ok: true, actor: { userId, organizationId, projectId: project.id } };
+  return { ok: true, actor: { userId, organizationId, projectId: project.id }, context: { userId, organizationId, project } };
 }
 
 async function updateRateLimitError(actor: IncidentActor, incidentId: string) {
@@ -190,6 +193,26 @@ export async function resolveSreIncident(
   }
 }
 
+/** The linked public incident, unless it is resolved or scheduled maintenance (those need their own flow). */
+async function findOpenStatusPageIncident(actor: IncidentActor, incidentId: string) {
+  const [row] = await db
+    .select({ id: statusPageIncidents.id, statusPageId: statusPageIncidents.statusPageId, status: statusPageIncidents.status })
+    .from(sreIncidents)
+    .innerJoin(statusPageIncidents, eq(statusPageIncidents.id, sreIncidents.statusPageIncidentId))
+    .innerJoin(statusPages, eq(statusPages.id, statusPageIncidents.statusPageId))
+    .where(
+      and(
+        eq(sreIncidents.id, incidentId),
+        eq(sreIncidents.organizationId, actor.organizationId),
+        eq(sreIncidents.projectId, actor.projectId),
+        eq(statusPages.organizationId, actor.organizationId),
+        eq(statusPages.projectId, actor.projectId),
+      ),
+    )
+    .limit(1);
+  return row && ["investigating", "identified", "monitoring"].includes(row.status) ? row : null;
+}
+
 export async function addSreIncidentUpdate(
   input: z.infer<typeof updateSchema>,
 ): Promise<SreIncidentActionResult> {
@@ -202,9 +225,35 @@ export async function addSreIncidentUpdate(
     if (!auth.ok) return { success: false, error: auth.error };
     const limited = await updateRateLimitError(auth.actor, parsed.data.incidentId);
     if (limited) return { success: false, error: limited };
+    // Checked before the note is written, so a refused post never leaves a half-done update.
+    let statusPageTarget: { id: string; statusPageId: string; status: string } | null = null;
+    if (parsed.data.postToStatusPage) {
+      if (!checkPermissionWithContext("status_page", "update", auth.context)) {
+        return { success: false, error: "Insufficient permissions to post to the status page" };
+      }
+      statusPageTarget = await findOpenStatusPageIncident(auth.actor, parsed.data.incidentId);
+      if (!statusPageTarget) {
+        return { success: false, error: "This incident has no open status page incident to post to" };
+      }
+    }
     const result = await addIncidentUpdate(auth.actor, parsed.data.incidentId, parsed.data.text);
     if (!result.ok) return { success: false, error: result.error };
     refresh(parsed.data.incidentId);
+    if (statusPageTarget) {
+      // The existing status page path writes the update and queues subscriber emails.
+      const posted = await updateIncidentStatus({
+        incidentId: statusPageTarget.id,
+        statusPageId: statusPageTarget.statusPageId,
+        status: statusPageTarget.status as "investigating" | "identified" | "monitoring",
+        body: parsed.data.text,
+        deliverNotifications: true,
+        restoreComponentStatus: false,
+      }).catch(() => null);
+      if (!posted?.success) {
+        return { success: true, message: "Update added", warning: `The status page post failed: ${posted?.message ?? "try again from the status page"}` };
+      }
+      return { success: true, message: "Update added and posted to the status page" };
+    }
     return { success: true, message: "Update added" };
   } catch (error) {
     logger.error({ error }, "Error adding SRE incident update");

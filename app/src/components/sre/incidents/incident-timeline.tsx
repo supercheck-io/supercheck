@@ -7,6 +7,7 @@ import { toast } from "sonner";
 
 import { addSreIncidentUpdate, type SreIncidentTimelineItem, type SreIncidentTimelineRefs } from "@/actions/sre-incident-lifecycle";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -116,9 +117,12 @@ function formatTime(value: Date | string) {
 export function IncidentTimeline({
   incidentId,
   canUpdate,
+  canPostToStatusPage = false,
 }: {
   incidentId: string;
   canUpdate: boolean;
+  /** Set only when the incident has an open linked status page incident and the user may update status pages. */
+  canPostToStatusPage?: boolean;
 }) {
   const id = useId();
   const { projectId } = useProjectContext();
@@ -126,6 +130,7 @@ export function IncidentTimeline({
   const query = useSreIncidentTimeline(incidentId);
   const [text, setText] = useState("");
   const [pending, setPending] = useState(false);
+  const [postToStatusPage, setPostToStatusPage] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const events = query.data?.success ? query.data.events : [];
   const refs = query.data?.success ? query.data.refs : undefined;
@@ -133,12 +138,16 @@ export function IncidentTimeline({
   const post = async () => {
     if (pending || !text.trim()) return;
     setPending(true);
-    const result = await addSreIncidentUpdate({ incidentId, text }).catch(() => null).finally(() => setPending(false));
+    const result = await addSreIncidentUpdate({ incidentId, text, ...(canPostToStatusPage && postToStatusPage ? { postToStatusPage: true } : {}) })
+      .catch(() => null)
+      .finally(() => setPending(false));
     if (!result?.success) {
       toast.error(result?.error ?? "Failed to add note");
       return;
     }
+    if (result.warning) toast.warning(result.warning);
     setText("");
+    setPostToStatusPage(false);
     await queryClient.invalidateQueries({ queryKey: getSreIncidentTimelineQueryKey(projectId, incidentId) });
   };
 
@@ -149,7 +158,8 @@ export function IncidentTimeline({
       </CardHeader>
       <CardContent className="flex flex-col gap-3 px-4 pb-0">
         {canUpdate && (
-          <div className="flex shrink-0 items-end gap-2">
+          <div className="flex shrink-0 flex-col gap-2">
+          <div className="flex items-end gap-2">
             <Label htmlFor={id} className="sr-only">
               Add a note
             </Label>
@@ -167,6 +177,13 @@ export function IncidentTimeline({
               {pending && <Loader2 className="h-4 w-4 animate-spin" />}
               Add note
             </Button>
+          </div>
+          {canPostToStatusPage && (
+            <label className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Checkbox checked={postToStatusPage} onCheckedChange={(checked) => setPostToStatusPage(checked === true)} disabled={pending} />
+              Also post to status page (subscribers are emailed)
+            </label>
+          )}
           </div>
         )}
         <div>

@@ -403,7 +403,14 @@ export function SreIncidentDetailView({
               ) : null
             }
           />
-          <IncidentTimeline incidentId={incident.id} canUpdate={permissions.canUpdate && open} />
+          <IncidentTimeline
+            incidentId={incident.id}
+            canUpdate={permissions.canUpdate && open}
+            canPostToStatusPage={
+              Boolean(permissions.canPostToStatusPage) &&
+              ["investigating", "identified", "monitoring"].includes(detail.publicIncident?.status ?? "")
+            }
+          />
         </div>
         {/* Sticks below the app header while the timeline scrolls with the page. */}
         <div className="min-w-0 lg:sticky lg:top-16">

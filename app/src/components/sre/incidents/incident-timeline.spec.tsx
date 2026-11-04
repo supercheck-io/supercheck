@@ -8,7 +8,7 @@ import { aiFindingHeadline, describeTimelineEvent, IncidentTimeline } from "./in
 const mockInvalidate = jest.fn().mockResolvedValue(undefined);
 let mockQuery: { isPending: boolean; isError?: boolean; data?: unknown; refetch?: () => void };
 
-jest.mock("sonner", () => ({ toast: { error: jest.fn() } }));
+jest.mock("sonner", () => ({ toast: { error: jest.fn(), warning: jest.fn() } }));
 jest.mock("@/actions/sre-incident-lifecycle", () => ({ addSreIncidentUpdate: jest.fn() }));
 jest.mock("@tanstack/react-query", () => ({ useQueryClient: () => ({ invalidateQueries: mockInvalidate }) }));
 jest.mock("@/hooks/use-sre", () => ({ useSreIncidentTimeline: () => mockQuery }));
@@ -153,6 +153,26 @@ describe("IncidentTimeline", () => {
     expect(addUpdate).toHaveBeenCalledWith({ incidentId: "i1", text: "Fix deployed" });
     expect(mockInvalidate).toHaveBeenCalledWith({ queryKey: expect.arrayContaining(["project-1", "i1"]) });
     expect(box).toHaveValue("");
+  });
+
+  it("offers the status page checkbox only when allowed, and sends the flag only when ticked", async () => {
+    addUpdate.mockResolvedValue({ success: true });
+    const { unmount } = render(<IncidentTimeline incidentId="i1" canUpdate />);
+    expect(screen.queryByLabelText(/Also post to status page/)).not.toBeInTheDocument();
+    unmount();
+    render(<IncidentTimeline incidentId="i1" canUpdate canPostToStatusPage />);
+    fireEvent.change(screen.getByPlaceholderText("Add a note for your team..."), { target: { value: "Customers affected" } });
+    fireEvent.click(screen.getByLabelText(/Also post to status page/));
+    fireEvent.click(screen.getByRole("button", { name: "Add note" }));
+    await waitFor(() => expect(addUpdate).toHaveBeenCalledWith({ incidentId: "i1", text: "Customers affected", postToStatusPage: true }));
+  });
+
+  it("warns when the note was saved but the status page post failed", async () => {
+    addUpdate.mockResolvedValue({ success: true, warning: "The status page post failed: nope" });
+    render(<IncidentTimeline incidentId="i1" canUpdate canPostToStatusPage />);
+    fireEvent.change(screen.getByPlaceholderText("Add a note for your team..."), { target: { value: "x" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add note" }));
+    await waitFor(() => expect(toast.warning).toHaveBeenCalledWith("The status page post failed: nope"));
   });
 
   it.each([

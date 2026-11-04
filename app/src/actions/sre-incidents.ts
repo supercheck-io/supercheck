@@ -299,6 +299,8 @@ export type SreIncidentDetail = {
     canUpdate: boolean;
     canInvestigate: boolean;
     canUseLiveConnectors: boolean;
+    /** May publish an incident note to the linked status page incident. */
+    canPostToStatusPage?: boolean;
   };
   capabilities: {
     investigationEnabled: boolean;
@@ -842,6 +844,12 @@ export async function getSreIncidentDetails(
         project,
       });
 
+    const canPostToStatusPage = checkPermissionWithContext("status_page", "update", {
+      userId,
+      organizationId,
+      project,
+    });
+
     if (!canView) {
       return {
         success: false,
@@ -1195,6 +1203,7 @@ export async function getSreIncidentDetails(
           canUpdate,
           canInvestigate,
           canUseLiveConnectors,
+          canPostToStatusPage,
         },
         capabilities: {
           investigationEnabled: isSreInvestigationAgentEnabled(),
