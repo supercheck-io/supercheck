@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { redactConnectorText } from "@/lib/sre/connectors/output-sanitizer";
@@ -61,8 +61,8 @@ export async function POST(request: NextRequest) {
     const now = new Date();
     const capabilities = { ...body.data.capabilities, sreConnectorTypes: knownConnectorTypes(body.data.capabilities.sreConnectorTypes) };
 
-    await db.transaction(async (tx) => {
-      await tx
+    const accepted = await db.transaction(async (tx) => {
+      const [touched] = await tx
         .update(privateAgents)
         .set({
           status: body.data.status,
@@ -81,7 +81,10 @@ export async function POST(request: NextRequest) {
             : sql`coalesce(${privateAgents.metadata}, '{}'::jsonb) - 'sreConnectorTypes'`,
           updatedAt: now,
         })
-        .where(eq(privateAgents.id, auth.agent.id));
+        // A disable between authentication and this write must not be revived by a late heartbeat.
+        .where(and(eq(privateAgents.id, auth.agent.id), ne(privateAgents.status, "disabled")))
+        .returning({ id: privateAgents.id });
+      if (!touched) return false;
 
       await tx
         .update(privateAgentCredentials)
@@ -101,7 +104,9 @@ export async function POST(request: NextRequest) {
         errorCode: body.data.errorCode ?? null,
         createdAt: now,
       });
+      return true;
     });
+    if (!accepted) return unauthorized();
 
     return NextResponse.json({ ok: true, receivedAt: now.toISOString() });
   } catch (error) {
