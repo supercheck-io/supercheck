@@ -49,3 +49,11 @@ it("keeps Save disabled for an out-of-range re-notify time", async () => {
   fireEvent.change(screen.getByLabelText("After"), { target: { value: "2" } });
   expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
 });
+
+it("drops a saved channel that no longer exists so Save is not refused", async () => {
+  getPolicy.mockResolvedValue({ ...loaded, data: { ...loaded.data, policy: { ...loaded.data.policy, channelIds: ["gone", "c1"] } } });
+  render(<ProjectIncidentPolicyDialog open onOpenChange={jest.fn()} projectId="p1" projectName="Prod" />);
+  await screen.findByText("Ops Slack");
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(savePolicy).toHaveBeenCalledWith("p1", expect.objectContaining({ channelIds: ["c1"] })));
+});

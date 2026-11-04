@@ -55,7 +55,9 @@ export function ProjectIncidentPolicyDialog({ open, onOpenChange, projectId, pro
       }
       const { policy, channels: available } = result.data;
       setChannels(available);
-      setChannelIds(new Set(policy.channelIds));
+      // A deleted or disabled channel can linger in the saved policy; keep only those still listed.
+      const listed = new Set(available.map((channel) => channel.id));
+      setChannelIds(new Set(policy.channelIds.filter((id) => listed.has(id))));
       setEmailOwners(policy.emailServiceOwnersOnSev12);
       setRenotify(policy.renotifyUnackedMinutes !== null);
       setMinutes(String(policy.renotifyUnackedMinutes ?? 30));

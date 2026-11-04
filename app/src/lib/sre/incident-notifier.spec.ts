@@ -497,6 +497,13 @@ describe("watchers, policy and fallback", () => {
     expect(sendEmailToMultiple.mock.calls[0][0].recipients).toEqual(["ops@example.com"]);
   });
 
+  it("emails project owners and admins when the re-notify has nobody else to reach", async () => {
+    mockAdmins.mockResolvedValue([{ id: "admin", name: "Ops", email: "ops@example.com" }]);
+    selectQueue.push([{ ...incident, assigneeUserId: null }], people, []);
+    await notifyIncidentEvent({ ...base, event: "unacknowledged", assigneeUserId: null, actorUserId: null });
+    expect(sendEmailToMultiple.mock.calls[0][0].recipients).toEqual(["ops@example.com"]);
+  });
+
   it("does not use the admin fallback when a channel will be notified or the incident has an owner", async () => {
     mockPolicyProviders.mockResolvedValue([slack]);
     mockAdmins.mockResolvedValue([{ id: "admin", name: "Ops", email: "ops@example.com" }]);

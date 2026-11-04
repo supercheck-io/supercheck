@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 
-import { sreIncidents } from "@/db/schema";
+import { sreIncidents, sreInvestigationRuns } from "@/db/schema";
 import { validateAIConfiguration } from "@/lib/ai/ai-provider";
 import { createLogger } from "@/lib/logger/index";
 import { assertCanStartSreInvestigation } from "@/lib/sre/investigation-billing";
@@ -47,18 +47,33 @@ export async function maybeAutoInvestigateOnOpen(input: AutoInvestigateInput): P
       .limit(1);
     if (!incident || incident.status === "resolved") return { handled: false, reason: "not_open" };
 
+    // One automatic run per incident: later alerts joining it, or a retried job, must not bill again.
+    const [existingRun] = await db
+      .select({ id: sreInvestigationRuns.id })
+      .from(sreInvestigationRuns)
+      .where(
+        and(
+          eq(sreInvestigationRuns.incidentId, input.incidentId),
+          eq(sreInvestigationRuns.organizationId, input.organizationId),
+          eq(sreInvestigationRuns.projectId, input.projectId),
+        ),
+      )
+      .limit(1);
+    if (existingRun) return { handled: false, reason: "already_investigated" };
+
     try {
       validateAIConfiguration();
     } catch {
       return { handled: false, reason: "ai_not_configured" };
     }
 
+    if (await sreDailyTokenLimitResponse(input.organizationId)) return { handled: false, reason: "daily_limit" };
+
     if (incident.severity === "sev3" || incident.severity === "sev4") {
       const triage = await runSreIncidentTriage(input);
       return { handled: triage.success, reason: triage.success ? undefined : "triage_refused" };
     }
 
-    if (await sreDailyTokenLimitResponse(input.organizationId)) return { handled: false, reason: "daily_limit" };
     try {
       await assertCanStartSreInvestigation(input.organizationId);
     } catch {

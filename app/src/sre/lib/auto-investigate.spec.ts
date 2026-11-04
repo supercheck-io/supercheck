@@ -19,9 +19,20 @@ jest.mock("@/sre/lib/investigation-runner", () => ({
 const triage = jest.fn();
 jest.mock("@/sre/lib/triage-runner", () => ({ runSreIncidentTriage: (...a: unknown[]) => triage(...a) }));
 let incidentRows: unknown[] = [];
+let runRows: unknown[] = [];
 jest.mock("@/utils/db", () => ({
-  db: { select: () => { const n: Record<string, unknown> = {}; for (const k of ["from", "where"]) n[k] = () => n; n.limit = () => Promise.resolve(incidentRows); return n; } },
+  db: {
+    select: () => {
+      // First lookup is the incident, the second is any earlier investigation run.
+      const rows = selects++ % 2 === 0 ? incidentRows : runRows;
+      const n: Record<string, unknown> = {};
+      for (const k of ["from", "where"]) n[k] = () => n;
+      n.limit = () => Promise.resolve(rows);
+      return n;
+    },
+  },
 }));
+let selects = 0;
 
 import { maybeAutoInvestigateOnOpen } from "./auto-investigate";
 
@@ -29,6 +40,8 @@ const input = { organizationId: "org-1", projectId: "p1", incidentId: "i1", user
 
 beforeEach(() => {
   jest.clearAllMocks();
+  selects = 0;
+  runRows = [];
   sreEnabled.mockReturnValue(true);
   policy.mockResolvedValue({ autoInvestigateOnOpen: true });
   incidentRows = [{ severity: "sev1", status: "triggered" }];
@@ -63,17 +76,32 @@ it.each(["sev3", "sev4"])("runs only a triage for %s", async (severity) => {
   expect(start).not.toHaveBeenCalled();
 });
 
-it("starts nothing when billing, the daily limit, the AI config or the incident state refuse", async () => {
-  assertCanStart.mockRejectedValue(new Error("no plan"));
-  expect(await maybeAutoInvestigateOnOpen(input)).toMatchObject({ handled: false, reason: "billing" });
-  assertCanStart.mockResolvedValue(undefined);
+it("does not start a second automatic run for an incident that already has one", async () => {
+  runRows = [{ id: "run-0" }];
+  expect(await maybeAutoInvestigateOnOpen(input)).toEqual({ handled: false, reason: "already_investigated" });
+  expect(start).not.toHaveBeenCalled();
+  expect(triage).not.toHaveBeenCalled();
+});
+
+it("applies the daily token limit to triage as well", async () => {
+  incidentRows = [{ severity: "sev4", status: "triggered" }];
   dailyLimit.mockResolvedValue({});
   expect(await maybeAutoInvestigateOnOpen(input)).toMatchObject({ handled: false, reason: "daily_limit" });
+  expect(triage).not.toHaveBeenCalled();
+});
+
+it("starts nothing when billing, the daily limit, the AI config or the incident state refuse", async () => {
+  const call = () => { selects = 0; return maybeAutoInvestigateOnOpen(input); };
+  assertCanStart.mockRejectedValue(new Error("no plan"));
+  expect(await call()).toMatchObject({ handled: false, reason: "billing" });
+  assertCanStart.mockResolvedValue(undefined);
+  dailyLimit.mockResolvedValue({});
+  expect(await call()).toMatchObject({ handled: false, reason: "daily_limit" });
   dailyLimit.mockResolvedValue(null);
   validate.mockImplementation(() => { throw new Error("no key"); });
-  expect(await maybeAutoInvestigateOnOpen(input)).toMatchObject({ handled: false, reason: "ai_not_configured" });
+  expect(await call()).toMatchObject({ handled: false, reason: "ai_not_configured" });
   validate.mockReturnValue(undefined);
   incidentRows = [{ severity: "sev1", status: "resolved" }];
-  expect(await maybeAutoInvestigateOnOpen(input)).toMatchObject({ handled: false, reason: "not_open" });
+  expect(await call()).toMatchObject({ handled: false, reason: "not_open" });
   expect(start).not.toHaveBeenCalled();
 });

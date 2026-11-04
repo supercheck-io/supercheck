@@ -613,7 +613,8 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<v
               .limit(10);
 
     // Nobody owns it and nothing would reach a channel: tell the project's owners and admins.
-    if (input.event === "created" && !ownerId && providers.length === 0) {
+    // Also for the one re-notify, so it is never silently lost.
+    if ((input.event === "created" || input.event === "unacknowledged") && !ownerId && providers.length === 0) {
       const admins = await listProjectAdmins(input.organizationId, input.projectId).catch(() => []);
       const emails = admins.filter((admin) => admin.id !== input.actorUserId).map((admin) => admin.email);
       if (emails.length > 0) {
