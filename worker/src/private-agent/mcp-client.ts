@@ -75,6 +75,8 @@ export type McpJobInput = {
 };
 
 const REDACTIONS: Array<[RegExp, string]> = [
+  // scheme://user:password@host keeps scheme, user and host.
+  [/\b([a-z][a-z0-9+.-]{0,30}:\/\/[^\s:/@]{1,200}:)[^\s@/]{1,500}(@)/gi, '$1[REDACTED]$2'],
   [
     /("(?:token|api[_-]?key|access[_-]?token|refresh[_-]?token|secret|password|passwd|pwd)"\s*:\s*)"(?:\\.|[^"\\])*"/gi,
     '$1"[REDACTED]"',

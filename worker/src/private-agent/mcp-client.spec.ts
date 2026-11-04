@@ -10,6 +10,7 @@ import {
   buildAuthHeaders,
   executeMcpJob,
   mcpOperationSchema,
+  redactMcpText,
   unsupportedSchemaReason,
   validateMcpArguments,
   type McpJobInput,
@@ -344,5 +345,15 @@ describe('MCP validator shared cases', () => {
     expect(unsupportedSchemaReason(JSON.parse(schema)) === null).toBe(
       supported,
     );
+  });
+});
+
+describe('redactMcpText connection strings', () => {
+  it.each([
+    ['postgres://user:s3cret@db:5432/x', 'postgres://user:[REDACTED]@db:5432/x'],
+    ['redis://a:pw1234@cache.internal/0', 'redis://a:[REDACTED]@cache.internal/0'],
+    ['http://db:5432/x', 'http://db:5432/x'],
+  ])('redacts only the password in %s', (input, expected) => {
+    expect(redactMcpText(input)).toBe(expected);
   });
 });
