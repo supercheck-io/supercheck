@@ -3,6 +3,7 @@ import { projectVariables } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { decryptValue } from "@/lib/encryption";
 import { createLogger } from "@/lib/logger/pino-config";
+import { collectHelperLiteralKeys } from "@/lib/helper-call-analysis";
 
 const logger = createLogger({ module: "variable-resolver" });
 
@@ -127,6 +128,11 @@ export async function resolveProjectVariables(
  * This is used for validation and optimization
  */
 export function extractVariableNames(script: string): string[] {
+  try {
+    return collectHelperLiteralKeys(script, ["getVariable", "getSecret", "getFile", "readFile"]);
+  } catch {
+    // Not plain JavaScript (for example TypeScript syntax): fall back to the regex scan below.
+  }
   const variableNames: string[] = [];
   // Drop JS comments (keeping string literals) so commented-out helper calls are not counted.
   script = script.replace(

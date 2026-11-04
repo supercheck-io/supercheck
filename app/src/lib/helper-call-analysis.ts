@@ -10,7 +10,7 @@ import * as walk from "acorn-walk";
 
 // ─── Types (shared with worker) ──────────────────────────────────────
 
-type HelperName = "getFile" | "readFile" | "getSecret";
+type HelperName = "getFile" | "readFile" | "getSecret" | "getVariable";
 
 interface HelperCall {
   name: HelperName;
@@ -486,4 +486,19 @@ export function hasUnboundHelperCall(
   helperName: string
 ): boolean {
   return collectUnboundHelperCalls(script, [helperName as HelperName]).length > 0;
+}
+
+/**
+ * Literal keys of unshadowed calls to the given helpers, in first-seen order. Calls inside
+ * comments or strings are ignored. Throws when the script does not parse as plain JavaScript
+ * so the caller can choose its own fallback.
+ */
+export function collectHelperLiteralKeys(
+  script: string,
+  helperNames: readonly HelperName[],
+): string[] {
+  const keys = collectHelperCallsWithAst(script, helperNames)
+    .map((call) => call.literalKey)
+    .filter((key): key is string => typeof key === "string" && key !== "");
+  return [...new Set(keys)];
 }
