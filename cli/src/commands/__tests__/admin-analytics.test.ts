@@ -149,4 +149,18 @@ describe('analytics, token and project commands', () => {
     expect(mockGet).toHaveBeenCalledWith('/api/projects')
     expect(mockOutput).toHaveBeenCalledWith([{ id: 'p1' }], expect.anything())
   })
+
+  it('lists members of the current project, flattening the user', async () => {
+    const id = '11111111-1111-4111-8111-111111111111'
+    mockGet.mockResolvedValueOnce({ data: { project: { id } } })
+    mockGet.mockResolvedValueOnce({ data: { members: [{ userId: 'u1', role: 'project_editor', user: { name: 'Ada', email: 'ada@example.test' } }] } })
+    await projectCommand.parseAsync(['node', 'project', 'members'])
+    expect(mockGet).toHaveBeenNthCalledWith(1, '/api/context')
+    expect(mockGet).toHaveBeenNthCalledWith(2, `/api/projects/${id}/members`)
+    expect(mockOutput).toHaveBeenCalledWith([{ userId: 'u1', name: 'Ada', email: 'ada@example.test', role: 'project_editor' }], expect.anything())
+  })
+
+  it('rejects a malformed project id before calling the API', async () => {
+    await expect(projectCommand.parseAsync(['node', 'project', 'members', 'nope'])).rejects.toThrow('valid UUID')
+  })
 })
