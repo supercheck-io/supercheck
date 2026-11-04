@@ -151,7 +151,14 @@ export async function POST(request: NextRequest) {
             leaseExpiresAt,
             startedAt: now,
           })
-          .where(and(eq(privateAgentJobs.id, job.id), eq(privateAgentJobs.status, "queued")))
+          .where(
+            and(
+              eq(privateAgentJobs.id, job.id),
+              eq(privateAgentJobs.status, "queued"),
+              // Re-checked in the UPDATE itself so a concurrent disable or rotate cannot slip between check and lease.
+              sql`EXISTS (SELECT 1 FROM private_agent_credentials c JOIN private_agents a ON a.id = c.private_agent_id WHERE c.id = ${auth.credential.id} AND c.revoked_at IS NULL AND a.status <> 'disabled')`
+            )
+          )
           .returning();
 
         await tx
