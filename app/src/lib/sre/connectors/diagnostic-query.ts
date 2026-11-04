@@ -34,7 +34,7 @@ const TEMPLATE_PARAM_PATTERN = /\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}|\$([a-zA-
 const PARAMETER_NAME_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 const DURATION_PARAMETER_PATTERN = /^[1-9]\d{0,5}(ms|s|m|h|d|w)$/;
 const SUPPORTED_PARAMETER_TYPES = new Set<DiagnosticQueryParameterType>(["string", "number", "boolean", "date", "duration"]);
-const SUPPORTED_SCHEMA_KEYS = new Set(["type", "enum", "default", "required", "min", "max", "maxLength", "pattern"]);
+const SUPPORTED_SCHEMA_KEYS = new Set(["type", "enum", "default", "required", "min", "max", "maxLength", "pattern", "allowParens"]);
 
 type NormalizedParameterSchema = {
   type: DiagnosticQueryParameterType;
@@ -45,6 +45,7 @@ type NormalizedParameterSchema = {
   max?: number;
   maxLength?: number;
   pattern?: string;
+  allowParens?: boolean;
 };
 
 /**
@@ -230,6 +231,13 @@ function normalizeParameterSchemaEntry(name: string, schemaValue: unknown): Norm
     normalized.pattern = schemaValue.pattern;
   }
 
+  if (schemaValue.allowParens !== undefined) {
+    if (schemaValue.allowParens !== true || normalized.type !== "string" || !normalized.pattern) {
+      throw new Error(`Diagnostic query parameter schema for "${name}" allowParens must be true and requires a string parameter with a pattern`);
+    }
+    normalized.allowParens = true;
+  }
+
   return normalized;
 }
 
@@ -352,6 +360,11 @@ const UNSAFE_FREE_TEXT = /["'`{}\\\n\r;]/;
 // An unquoted position has no delimiter to escape from, so operators, spaces, parens and pipes are
 // enough to change the query. Free text there must be a plain token.
 const UNQUOTED_SAFE_TOKEN = /^[A-Za-z0-9_.:/@-]+$/;
+// Opt-in per parameter (allowParens, http_get only): Azure resource names may contain parentheses, legal in a URL path.
+const UNQUOTED_SAFE_TOKEN_PARENS = /^[A-Za-z0-9_.:/@()-]+$/;
+// Parens are query syntax for every other adapter, so the flag is honored only for http_get.
+const parensAllowed = (schema: NormalizedParameterSchema | null, queryType?: DiagnosticQueryType) =>
+  Boolean(schema?.allowParens) && queryType === "http_get";
 // Values containing a character UNSAFE_FREE_TEXT rejects. A pattern that accepts any of them is not
 // constraining the value (".*", "^.+$", "[^x]+").
 const BROAD_PATTERN_CANARIES = ['a"b', "a'b", "a`b", "a{b}", "a\\b", "a\nb", "a;b", '"} or vector(1) #'];
@@ -371,10 +384,10 @@ export function isOverBroadPattern(pattern: string): boolean {
 
 const NON_TOKEN_CANARIES = [" ", "(", ")", "|", "=", "!", "<", ">", ",", "+", "*", "?", "&", "$", "%", "~", "[", "]"].map((c) => `a${c}a`);
 
-function acceptsNonToken(pattern: string): boolean {
+function acceptsNonToken(pattern: string, allowParens = false): boolean {
   try {
     const re = new RegExp(pattern);
-    return NON_TOKEN_CANARIES.some((canary) => re.test(canary));
+    return NON_TOKEN_CANARIES.filter((c) => !(allowParens && /[()]/.test(c))).some((canary) => re.test(canary));
   } catch {
     return true;
   }
@@ -415,6 +428,7 @@ function rejectUnsafeFreeText(
   schemaValue: unknown,
   allowlistValue: unknown,
   quoted: boolean,
+  queryType?: DiagnosticQueryType,
 ) {
   if (typeof value !== "string") return;
   const schema = normalizeParameterSchemaEntry(name, schemaValue);
@@ -423,7 +437,7 @@ function rejectUnsafeFreeText(
     throw new Error(`Diagnostic query parameter "${name}" contains disallowed characters`);
   }
   // Typed date/duration values are validated by their own parsers.
-  if (!quoted && (!schema || schema.type === "string") && value !== "" && (!UNQUOTED_SAFE_TOKEN.test(value) || value.includes(".."))) {
+  if (!quoted && (!schema || schema.type === "string") && value !== "" && (!(parensAllowed(schema, queryType) ? UNQUOTED_SAFE_TOKEN_PARENS : UNQUOTED_SAFE_TOKEN).test(value) || value.includes(".."))) {
     throw new Error(`Diagnostic query parameter "${name}" is unquoted free text and may only contain letters, digits and _ . : / @ -`);
   }
 }
@@ -449,7 +463,7 @@ export function validateTemplateFreeTextPositions(
     if (isConstrainedFreeText(schema, allowlist[name])) continue;
     if (!isInsideQuotes(template, match.index, hashComments)) {
       // A pattern that only admits plain tokens is consistent with the render-time token rule.
-      if (schema?.pattern && !acceptsNonToken(schema.pattern)) continue;
+      if (schema?.pattern && !acceptsNonToken(schema.pattern, parensAllowed(schema, queryType))) continue;
       throw new Error(
         `Diagnostic query parameter "${name}" is free text in an unquoted position; add an enum or allowlist, a pattern that admits only plain tokens, or put the placeholder inside quotes`,
       );
@@ -494,7 +508,7 @@ export function renderDiagnosticQueryTemplate(definition: DiagnosticQueryDefinit
     }
     validateParameterValue(name, value, definition.parameterSchema[name]);
     validateAllowlist(name, value, definition.allowlist[name]);
-    rejectUnsafeFreeText(name, value, definition.parameterSchema[name], definition.allowlist[name], isInsideQuotes(definition.template, offset, hasHashComments(definition.queryType)));
+    rejectUnsafeFreeText(name, value, definition.parameterSchema[name], definition.allowlist[name], isInsideQuotes(definition.template, offset, hasHashComments(definition.queryType)), definition.queryType);
     referencedParameters.add(name);
     return formatParameterValue(value);
   });
