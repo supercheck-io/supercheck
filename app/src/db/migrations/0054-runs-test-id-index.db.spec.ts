@@ -2,6 +2,8 @@
 // CI-only: needs TEST_DATABASE_URL (run with `npm run test:db`).
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { cpSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import postgres from "postgres";
@@ -66,4 +68,23 @@ it("drops an INVALID index left by an interrupted build and rebuilds it", async 
   expect(await indexState()).toEqual([true]);
   const [{ count }] = await client<{ count: number }[]>`SELECT count(*)::int AS count FROM "__drizzle_migrations"`;
   expect(count).toBe(id);
+}, 180_000);
+
+it("does not fail the run or record the file when a deferred build fails", async () => {
+  const work = mkdtempSync(path.join(os.tmpdir(), "deferred-fail-"));
+  try {
+    cpSync(path.join(APP_ROOT, "src/db/migrations"), path.join(work, "src/db/migrations"), { recursive: true });
+    const bad = "-- supercheck:no-transaction\nCREATE INDEX CONCURRENTLY IF NOT EXISTS bad_deferred_idx ON no_such_table (x);\n";
+    writeFileSync(path.join(work, "src/db/migrations/0099_bad_deferred.sql"), bad);
+    const { stdout } = await execFileAsync(process.execPath, [path.join(APP_ROOT, "scripts/db-migrate.js")], {
+      cwd: work,
+      env: { ...process.env, DATABASE_URL: databaseUrl, SELF_HOSTED: "true", NODE_ENV: "test" },
+      timeout: 90_000,
+    });
+    expect(stdout).toMatch(/Deferred migration 0099_bad_deferred.sql failed and will be retried/);
+    const hash = require("node:crypto").createHash("md5").update(bad).digest("hex");
+    expect(await client`SELECT 1 FROM "__drizzle_migrations" WHERE hash = ${hash}`).toHaveLength(0);
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
 }, 180_000);

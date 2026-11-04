@@ -270,38 +270,57 @@ async function dropInvalidIndexes(client, sql) {
   }
 }
 
-// Runs the deferred no-transaction files on their own connection, in autocommit. The session advisory
-// lock uses the same key as the migration transaction, so two deploys never build or drop one index at
-// once. A file is recorded only after every statement succeeded.
+// Runs the deferred no-transaction files after the main migration transaction has committed.
+// Locking matches the main runner (pooler-safe): a dedicated connection holds BEGIN +
+// pg_try_advisory_xact_lock on the same key for the whole step, and the CONCURRENTLY build runs on a
+// second connection in autocommit. A file is recorded only after every statement succeeded.
+// These files are performance work (indexes): a failed build is logged as a warning, left unrecorded so
+// the next deploy retries it, and never fails the run or blocks startup.
 async function runDeferredMigrations(items = deferredMigrations) {
   if (items.length === 0) return true;
+  let lockClient;
   let client;
   try {
-    client = postgres(TARGET_DATABASE_URL, { max: 1, ssl: getDatabaseSSLConfig(), onnotice: () => {} });
-    await client`SELECT pg_advisory_lock(hashtext(${MIGRATION_LOCK_NAME}))`;
-    for (const { file, content, hash } of items) {
-      const [applied] = await client`SELECT id FROM "__drizzle_migrations" WHERE hash = ${hash}`;
-      if (applied) continue;
-
-      log(`Applying migration outside a transaction: ${file}`);
-      await dropInvalidIndexes(client, content);
-      // No IF NOT EXISTS rewriting and no savepoints: the file is exactly what the author wrote.
-      for (const statement of content.split("--> statement-breakpoint")) {
-        if (statement.replace(/--[^\n]*/g, "").trim().length === 0) continue;
-        await client.unsafe(statement.trim());
-      }
-      await client`
-        INSERT INTO "__drizzle_migrations" (hash, created_at) VALUES (${hash}, ${Date.now()})
-      `;
-      logSuccess(`Migration ${file} applied successfully`);
+    lockClient = await acquireMigrationLock(postgres, TARGET_DATABASE_URL, {
+      lockName: MIGRATION_LOCK_NAME,
+      timeoutMs: MIGRATION_LOCK_TIMEOUT_MS,
+      log,
+      logSuccess,
+      logError: logWarning,
+      simpleProtocol: true,
+    });
+    if (!lockClient) {
+      logWarning("Skipping no-transaction migrations (lock unavailable); the next deploy retries them");
+      return true;
     }
-    return true;
+    client = postgres(TARGET_DATABASE_URL, { max: 1, ssl: getDatabaseSSLConfig(), onnotice: () => {} });
+    for (const { file, content, hash } of items) {
+      try {
+        const [applied] = await client`SELECT id FROM "__drizzle_migrations" WHERE hash = ${hash}`;
+        if (applied) continue;
+
+        log(`Applying migration outside a transaction: ${file}`);
+        await dropInvalidIndexes(client, content);
+        // No IF NOT EXISTS rewriting and no savepoints: the file is exactly what the author wrote.
+        for (const statement of content.split("--> statement-breakpoint")) {
+          if (statement.replace(/--[^\n]*/g, "").trim().length === 0) continue;
+          await client.unsafe(statement.trim());
+        }
+        await client`
+          INSERT INTO "__drizzle_migrations" (hash, created_at) VALUES (${hash}, ${Date.now()})
+        `;
+        logSuccess(`Migration ${file} applied successfully`);
+      } catch (err) {
+        logWarning(`Deferred migration ${file} failed and will be retried on the next deploy: ${err.message}`);
+      }
+    }
   } catch (err) {
-    logError(`Failed to apply a no-transaction migration: ${err.message}`);
-    return false;
+    logWarning(`Deferred migrations skipped: ${err.message}`);
   } finally {
     await client?.end({ timeout: 5 }).catch(() => undefined);
+    await releaseMigrationLock(lockClient, { commit: false, logSuccess: () => undefined }).catch(() => undefined);
   }
+  return true;
 }
 
 // Function to run migrations
@@ -834,7 +853,7 @@ async function main() {
     });
     if (migrationCompleted) {
       await validateAfterCommit();
-      if (!(await runDeferredMigrations())) process.exitCode = 1;
+      await runDeferredMigrations();
     }
   }
 }

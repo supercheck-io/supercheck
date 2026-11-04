@@ -17,7 +17,7 @@ import {
   statusPageComponents,
   incidents,
 } from "@/db/schema";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, isNull, or } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 import { normalizeHexColor } from "@/lib/status-page-branding";
 import { normalizePublicStatusPageId } from "@/lib/public-status-page-id";
@@ -219,7 +219,9 @@ export async function GET(
         .where(
           and(
             eq(incidents.statusPageId, statusPageId),
-            inArray(incidents.status, ["investigating", "identified", "monitoring"])
+            inArray(incidents.status, ["investigating", "identified", "monitoring"]),
+            // A maintenance window (both times set) is not an incident, as on the public page.
+            or(isNull(incidents.scheduledFor), isNull(incidents.scheduledUntil))
           )
         )
         .limit(1);

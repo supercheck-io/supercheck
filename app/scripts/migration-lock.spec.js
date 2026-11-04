@@ -107,4 +107,20 @@ describe("migration advisory lock", () => {
       "Database migration transaction rolled back",
     );
   });
+
+  it("can take the lock with the simple query protocol so it holds no snapshot", async () => {
+    const queries = [];
+    const client = jest.fn(() => Promise.resolve([]));
+    client.unsafe = jest.fn((text) => {
+      queries.push(text);
+      return Promise.resolve([{ acquired: true }]);
+    });
+    client.end = jest.fn(() => Promise.resolve());
+    const lock = await acquireMigrationLock(jest.fn(() => client), "postgres://db", {
+      lockName: "it's-a-lock",
+      simpleProtocol: true,
+    });
+    expect(lock).toBe(client);
+    expect(queries).toEqual(["SELECT pg_try_advisory_xact_lock(hashtext('it''s-a-lock')) AS acquired"]);
+  });
 });
