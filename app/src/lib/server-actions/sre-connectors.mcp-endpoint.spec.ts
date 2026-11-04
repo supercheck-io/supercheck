@@ -110,3 +110,26 @@ it("keeps the encrypted endpoint URL when the credential is rotated", async () =
   });
   expect(mockConnectorUpdates.find((u) => "config" in u)).toMatchObject({ config: { endpointUrl: "https://mcp.example.com/mcp?…" } });
 });
+
+it("asks for the full endpoint URL when it is redacted and no credential holds it, and accepts it on rotate", async () => {
+  const context = { organizationId: "o1", projectId: "p1", connectorId: "018f0000-0000-7000-8000-0000000000c1" };
+  mockConnector = {
+    id: context.connectorId, organizationId: "o1", projectId: "p1", type: "mcp", status: "configured",
+    config: { endpointUrl: "https://mcp.example.com/mcp?…" },
+  };
+  mockSelectRows = [{ id: "cr1", ...encryptConnectorCredential({ token: "old" }, context) }];
+
+  const refused = await rotateSreConnectorCredential({ id: context.connectorId, credentialType: "bearer_token", value: { token: "new" } });
+  expect(refused).toMatchObject({ success: false, error: expect.stringContaining("Enter the full endpoint URL") });
+  expect(mockInserted).toHaveLength(0);
+
+  await rotateSreConnectorCredential({
+    id: context.connectorId, credentialType: "bearer_token", value: { token: "new" },
+    endpointUrl: "https://mcp.example.com/mcp?apiKey=again",
+  });
+  const credentialRow = mockInserted.find((row) => "encryptedCredential" in row) as { encryptedCredential: string };
+  expect(decryptConnectorCredential(credentialRow.encryptedCredential, context)).toEqual({
+    token: "new",
+    endpointUrl: "https://mcp.example.com/mcp?apiKey=again",
+  });
+});

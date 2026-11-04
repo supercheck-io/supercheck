@@ -55,6 +55,7 @@ import {
   providerEndpointRequirementError,
 } from "@/lib/sre/connectors/providers/provider-credentials";
 import {
+  McpEndpointMissingError,
   resolveMcpEndpointUrl,
   urlHasQuery,
   withMcpEndpoint,
@@ -136,6 +137,8 @@ const rotateConnectorCredentialSchema = z.object({
   credentialType: z.enum(credentialTypes),
   value: flatCredentialValueSchema,
   expiresAt: z.coerce.date().optional().nullable(),
+  // MCP only: the full endpoint URL, required when it is no longer stored anywhere readable.
+  endpointUrl: z.string().trim().url("Enter a valid endpoint URL").optional().or(z.literal("")),
 });
 
 const searchConnectorSchema = z.object({
@@ -1386,10 +1389,24 @@ export async function rotateSreConnectorCredential(
     // Rotation replaces the whole blob, so carry the encrypted MCP endpoint URL over (this also moves a
     // legacy URL out of config).
     const storedEndpoint = typeof connector.config?.endpointUrl === "string" ? connector.config.endpointUrl : null;
-    const carriedEndpoint =
-      connector.type === "mcp" && storedEndpoint && urlHasQuery(storedEndpoint)
-        ? await resolveMcpEndpointUrl(connector)
-        : null;
+    let suppliedEndpoint: string | null = null;
+    if (connector.type === "mcp" && parsed.data.endpointUrl) {
+      suppliedEndpoint = normalizeEndpointUrl(parsed.data.endpointUrl, "mcp");
+      await assertEndpointAllowedForExecution(suppliedEndpoint, true);
+    }
+    let carriedEndpoint: string | null = null;
+    if (connector.type === "mcp") {
+      if (suppliedEndpoint) {
+        carriedEndpoint = urlHasQuery(suppliedEndpoint) ? suppliedEndpoint : null;
+      } else if (storedEndpoint && urlHasQuery(storedEndpoint)) {
+        try {
+          carriedEndpoint = await resolveMcpEndpointUrl(connector);
+        } catch (error) {
+          if (error instanceof McpEndpointMissingError) return { success: false, error: error.message };
+          throw error;
+        }
+      }
+    }
     const encrypted = encryptConnectorCredential(
       carriedEndpoint
         ? withMcpEndpoint(parsed.data.value as ConnectorCredentialValue, carriedEndpoint)
@@ -1426,7 +1443,11 @@ export async function rotateSreConnectorCredential(
           lastValidationStatus: null,
           lastValidationError: null,
           lastValidationLatencyMs: null,
-          ...(carriedEndpoint ? { config: { ...connector.config, endpointUrl: redactEndpointQuery(carriedEndpoint) } } : {}),
+          ...(suppliedEndpoint
+            ? { config: { ...connector.config, endpointUrl: redactEndpointQuery(suppliedEndpoint) } }
+            : carriedEndpoint
+              ? { config: { ...connector.config, endpointUrl: redactEndpointQuery(carriedEndpoint) } }
+              : {}),
           updatedAt: new Date(),
         })
         .where(eq(externalConnectors.id, connector.id));

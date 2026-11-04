@@ -17,6 +17,14 @@ type ConnectorRow = typeof externalConnectors.$inferSelect;
  */
 export const MCP_ENDPOINT_FIELD = "endpointUrl";
 
+/** The stored MCP endpoint is redacted and no credential holds the full URL: the admin must enter it again. */
+export class McpEndpointMissingError extends Error {
+  constructor() {
+    super("The MCP endpoint URL (including its key) is not stored. Enter the full endpoint URL to continue.");
+    this.name = "McpEndpointMissingError";
+  }
+}
+
 export function urlHasQuery(url: string): boolean {
   try {
     return new URL(url).search !== "";
@@ -49,13 +57,21 @@ export async function resolveMcpEndpointUrl(row: ConnectorRow): Promise<string |
   if (typeof secret === "string") return secret;
 
   if (stored === redactEndpointQuery(stored)) {
-    throw new Error("The MCP endpoint URL is not stored. Rotate the connector credential to save it again.");
+    throw new McpEndpointMissingError();
   }
 
   try {
     const encrypted = encryptConnectorCredential(withMcpEndpoint(blob, stored), context);
     await db.transaction(async (tx) => {
       if (credentialRow) {
+        // Lock in the same order as credential rotation (credential, then connector). A rotate that
+        // committed since the read replaced or removed the row, so this stale rewrite is skipped.
+        const [current] = await tx
+          .select({ id: externalConnectorCredentials.id, updatedAt: externalConnectorCredentials.updatedAt })
+          .from(externalConnectorCredentials)
+          .where(eq(externalConnectorCredentials.id, credentialRow.id))
+          .for("update");
+        if (!current || current.updatedAt.getTime() !== credentialRow.updatedAt.getTime()) return;
         await tx
           .update(externalConnectorCredentials)
           .set({
@@ -66,6 +82,18 @@ export async function resolveMcpEndpointUrl(row: ConnectorRow): Promise<string |
           })
           .where(eq(externalConnectorCredentials.id, credentialRow.id));
       } else {
+        const [lockedConnector] = await tx
+          .select({ id: externalConnectors.id })
+          .from(externalConnectors)
+          .where(and(eq(externalConnectors.id, row.id), sql`${externalConnectors.config}->>'endpointUrl' = ${stored}`))
+          .for("update");
+        if (!lockedConnector) return;
+        const [existing] = await tx
+          .select({ id: externalConnectorCredentials.id })
+          .from(externalConnectorCredentials)
+          .where(eq(externalConnectorCredentials.connectorId, row.id))
+          .limit(1);
+        if (existing) return;
         await tx.insert(externalConnectorCredentials).values({
           connectorId: row.id,
           credentialType: "api_key",
@@ -79,8 +107,12 @@ export async function resolveMcpEndpointUrl(row: ConnectorRow): Promise<string |
         .where(and(eq(externalConnectors.id, row.id), sql`${externalConnectors.config}->>'endpointUrl' = ${stored}`));
     });
   } catch (error) {
-    // The URL still works from config; the move is retried on the next use.
-    console.error("Could not encrypt a stored MCP endpoint URL:", error instanceof Error ? error.message : error);
+    // Never log the message: database errors echo bound parameters, which hold the plaintext URL.
+    const code = (error as { code?: unknown } | null)?.code;
+    console.error("Could not encrypt a stored MCP endpoint URL", {
+      name: error instanceof Error ? error.name : typeof error,
+      code: typeof code === "string" ? code : undefined,
+    });
   }
   return stored;
 }
