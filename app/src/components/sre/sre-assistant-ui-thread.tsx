@@ -104,6 +104,41 @@ type SreAssistantUiThreadProps = {
   onError: (message: string) => void;
 };
 
+type IdHolder = { get: () => string | undefined; set: (id: string) => void };
+
+function createIdHolder(initial: string | undefined): IdHolder {
+  let id = initial;
+  return { get: () => id, set: (next) => { id = next; } };
+}
+
+type SendRequestOptions = {
+  id: string;
+  messages: unknown[];
+  trigger: string;
+  messageId: string | undefined;
+  requestMetadata: unknown;
+  body: Record<string, unknown> | undefined;
+};
+
+/** Same body the transport builds by default, plus the regenerated reply's id when the SDK omits it. */
+function buildSendRequest(
+  options: SendRequestOptions,
+  lastAssistant: IdHolder,
+) {
+  return {
+    body: {
+      ...options.body,
+      id: options.id,
+      messages: options.messages,
+      trigger: options.trigger,
+      messageId:
+        options.messageId ??
+        (options.trigger === "regenerate-message" ? lastAssistant.get() : undefined),
+      metadata: options.requestMetadata,
+    },
+  };
+}
+
 export function historyMessagesToUiMessages(
   messages: SreCopilotChatHistory["messages"],
 ): SreAssistantUiMessage[] {
@@ -595,8 +630,8 @@ export function SreAssistantUiThread({
     () => historyMessagesToUiMessages(initialMessages),
     [initialMessages],
   );
-  const lastAssistantIdRef = useRef<string | undefined>(
-    uiMessages.findLast((message) => message.role === "assistant")?.id,
+  const [lastAssistant] = useState(() =>
+    createIdHolder(uiMessages.findLast((message) => message.role === "assistant")?.id),
   );
   const transport = useMemo(
     () =>
@@ -609,20 +644,9 @@ export function SreAssistantUiThread({
         },
         // Regenerate trims the reply from `messages` and passes no id, so name it from the
         // last reply we saw (its id is the stored row id) or the loaded history.
-        prepareSendMessagesRequest: (options) => ({
-          body: {
-            ...options.body,
-            id: options.id,
-            messages: options.messages,
-            trigger: options.trigger,
-            messageId:
-              options.messageId ??
-              (options.trigger === "regenerate-message" ? lastAssistantIdRef.current : undefined),
-            metadata: options.requestMetadata,
-          },
-        }),
+        prepareSendMessagesRequest: (options) => buildSendRequest(options, lastAssistant),
       }),
-    [conversationId, incidentId, useLiveConnectorTools, canUseLiveConnectors],
+    [conversationId, incidentId, useLiveConnectorTools, canUseLiveConnectors, lastAssistant],
   );
   // Set false on unmount (New chat / history switch / archive remount this component)
   // so a late stream can neither keep running nor write into the next thread.
@@ -633,7 +657,7 @@ export function SreAssistantUiThread({
     transport,
     onError: (error) => onError(formatCopilotError(error)),
     onFinish: ({ message, messages }) => {
-      if (message.role === "assistant") lastAssistantIdRef.current = message.id;
+      if (message.role === "assistant") lastAssistant.set(message.id);
       if (!isActiveRef.current) {
         return;
       }
