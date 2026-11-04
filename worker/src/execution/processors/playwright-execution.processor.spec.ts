@@ -26,6 +26,7 @@ const mockExecutionService = {
   runSingleTest: jest.fn(),
   hasActiveExecution: jest.fn().mockResolvedValue(false),
   runJob: jest.fn(),
+  updateRequirementCoverageAfterRun: jest.fn().mockResolvedValue(undefined),
 };
 
 const mockDbService = {
@@ -677,6 +678,25 @@ describe('PlaywrightExecutionProcessor', () => {
         await processor.process(job);
 
         expect(mockDbService.syncJobStatusFromRuns).toHaveBeenCalled();
+      });
+
+      it('refreshes requirement coverage only after the terminal status is written', async () => {
+        const order: string[] = [];
+        mockDbService.updateRunStatus.mockImplementation(async () => {
+          order.push('status');
+        });
+        mockExecutionService.updateRequirementCoverageAfterRun.mockImplementation(
+          async () => {
+            order.push('coverage');
+          },
+        );
+
+        await processor.process(createMockJob(mockJobTask));
+
+        expect(order.indexOf('status')).toBeGreaterThanOrEqual(0);
+        expect(order.indexOf('coverage')).toBeGreaterThan(
+          order.indexOf('status'),
+        );
       });
 
       it('should update lastRunAt on job', async () => {

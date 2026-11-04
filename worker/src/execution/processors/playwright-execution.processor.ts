@@ -628,6 +628,12 @@ export class PlaywrightExecutionProcessor
           .execute();
       }
 
+      // After the terminal status is committed, so coverage sees this run (fire-and-forget).
+      void this.executionService.updateRequirementCoverageAfterRun(
+        jobData,
+        runId,
+      );
+
       // Send notifications for job completion
       await this.jobNotificationService.handleJobNotifications({
         jobId: jobIdForLookup,
