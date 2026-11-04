@@ -13,7 +13,7 @@ Incidents are the responder queue for issues that need investigation, evidence r
 | **An alert** | Incidents open automatically when a monitor or job alert fires, with no setup beyond enabling alerts. Repeated alerts for the same target join the same incident. You can also select **Open incident** next to a failure in **Communicate → Notifications → Delivery history**. Neither path starts a full AI investigation |
 | **Scratch** | In **Respond → Incidents**, select **New incident** for issues that did not come from a Supercheck alert |
 
-Both paths open the incident workspace.
+Both paths open the incident workspace. If AI triage fails, the timeline records a *triage failed* event with the error code, so the failure is visible on the incident. The timeline shows its own error and a retry when it cannot load, rather than *No activity yet*.
 
 ![Create Incident Dialog](/screenshots/create-incident-dialog.png)
 
@@ -88,7 +88,7 @@ In the **Investigation details** panel, **How I investigated** lists each check 
 
 | Control | What it does |
 |---|---|
-| **Run investigation** / **Run again** | Starts a bounded, read-only AI pass over stored evidence and optional live connectors |
+| **Run investigation** / **Run again** | Starts a bounded, read-only AI pass over stored evidence and optional live connectors. Only one run can be active per incident; starting another returns `409` until it finishes |
 | **Include live sources** | Off by default. Needs a linked service and connector investigation permission |
 | **Right** / **Wrong** | On the whole investigation or on any single hypothesis, with an optional one-line note (up to 500 characters). Needs permission to update incidents |
 | **Re-run with my note** | Starts a new investigation that also sees your note as guidance, plus the notes you left on earlier runs |
@@ -145,12 +145,12 @@ When a monitor or job alert fires (alerts enabled, a channel attached, outside a
 | **Alert snapshot** | Each incident keeps the alert's message, severity and time as they were when it was linked, so a later failure of the same check does not change an older incident's evidence |
 | **Severity** | *Auto* derives SEV1 to SEV4 from the alert; a fixed level in the check's settings overrides it |
 | **Auto-resolve** | On recovery, an unacknowledged incident resolves itself with a note, even if recovery alerts are off. An acknowledged one stays open, gets a *recovered* note, and its participants are emailed. Applies to monitor-down and job failed or timed-out alerts; SSL-expiry incidents stay open until someone resolves them |
-| **Reopen** | A new failure within 30 minutes of an automatic resolution reopens the same incident. A failure that fired before the recovery, but was processed after it, does not. Changing a resolved incident's status in **Edit** also reopens it and clears its acknowledgement |
+| **Reopen** | A new failure within 30 minutes of an automatic resolution reopens the same incident. Reopening keeps the previous resolution summary. **Open incident** from delivery history follows the same rules: it joins the source's open incident or reopens a recently auto-resolved one instead of creating a duplicate. A failure that fired before the recovery, but was processed after it, does not. Changing a resolved incident's status in **Edit** also reopens it and clears its acknowledgement |
 
 Control this per check under **Alert Settings → Incidents**: **Open an incident when this alerts**, **Severity**, and **Resolve automatically on recovery if nobody acknowledged it** (both toggles on by default).
 
 <Callout type="info">
-AI triage is separate and optional. It runs only when an administrator enables automatic triage (`SRE_AUTOMATION_ENABLED`) and an AI provider is configured.
+AI triage is separate and optional. Triage that starts by itself from an alert runs only when an administrator enables it (`SRE_AUTOMATION_ENABLED`) and an AI provider is configured. That setting gates only alert-triggered triage: running triage manually from an incident needs only `SRE_ENABLED` and an AI provider.
 </Callout>
 
 </Accordion>
@@ -159,7 +159,7 @@ AI triage is separate and optional. It runs only when an administrator enables a
 
 | Action | Behavior |
 |---|---|
-| **Default assignee** | Incidents opened from alerts are assigned to the primary owner of the linked service when that person is still a member who can act on incidents. Otherwise they stay unassigned |
+| **Default assignee** | An incident opened from an alert is assigned to the linked service's owner user when one is set and that person can still act on incidents. Supercheck does not set service owners today: the service form has a free-text **Owner team** only, so alert incidents open unassigned until someone acknowledges or assigns them |
 | **Assign** | Choose any organization owner or admin, or a project admin or editor of this project. Viewers and people outside the project are rejected. Assigning again to the same person changes nothing |
 | **Acknowledge** | Stamps who acknowledged and when. If the incident is unassigned, the acknowledger becomes the assignee. Acknowledging twice is harmless |
 | **Commander** | Optional single incident commander, set from the sidebar |
@@ -209,6 +209,23 @@ Select **Trends** in the queue to see metrics for the last 30 days.
 | **Most affected services** | Hotspots that need deeper fixes |
 
 ![Incident Trends](/screenshots/sre-incident-trends.png)
+
+</Accordion>
+
+<Accordion title="Rate limits and trial allowance" id="trial-allowance">
+
+Limits apply per person and incident, and exceeding one returns `429` with a retry delay.
+
+| Action | Limit |
+|---|---|
+| **Triage** | 10 starts per 5 minutes |
+| **Investigation** | 3 starts per 5 minutes |
+| **Evidence brief** | 3 per minute |
+| **Copilot chat** | 30 messages per minute per person |
+
+Only one investigation or triage run can be active per incident (`409` otherwise). If a run has been marked running for more than five minutes, for example because the server restarted, starting a new run for that incident fails the old one first. On Supercheck Cloud, the billing reconciler also fails any run stuck for more than 15 minutes and retries missing billing records.
+
+On the free trial, AI triage is limited to 20 runs and investigations to the trial's included number. A run that fails does not count against either. Copilot chat and evidence briefs need a paid plan.
 
 </Accordion>
 

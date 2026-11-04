@@ -32,7 +32,7 @@ Use **Services** to define systems such as `checkout-service` or `payment-gatewa
 
 ![Add Service Dialog](/screenshots/sre-add-service-dialog.png)
 
-For each service, add its owner, environment, tier, repository, and telemetry name. The service detail page has three sections.
+For each service, set its name, tier, **Status** (`active`, `deprecated` or `merged`), environment, owner team, OpenTelemetry service name, **Slack channel**, repository URL, **Tags** and **Description**. The services list opens on **Active** services; archiving a service marks it deprecated, and you can show it again with the **Status** filter. The service detail page has three sections.
 
 | Section | Shows |
 |---|---|
@@ -48,7 +48,7 @@ Suggested relationships are not used as service dependencies or for alert correl
 
 ## Integrations
 
-Use **Settings → Organization → Integrations** to add read-only evidence sources. Each connector has a service scope, validation status, execution mode, and output limits. Select **Add connector** to connect providers such as Prometheus, Grafana, Loki, or GitHub.
+Use **Settings → Organization → Integrations** to add read-only evidence sources. Each connector has a service scope, validation status, execution mode, and output limits. Select **Add connector** and choose a **Connector type** to connect providers such as Prometheus, Grafana, Loki, or GitHub.
 
 Use the narrowest credential and service scope that supports your queries, and validate the connector after setup. See [Connectors](/docs/app/investigate/connectors) for supported providers and query examples.
 
@@ -169,7 +169,7 @@ Each organization has a daily AI usage limit shared by investigations, triage, e
 
 Self-hosted deployments set the limit with `SRE_DAILY_TOKEN_LIMIT_PER_ORG` (default `2000000`; `0` disables the limit). The limit needs Redis and is enforced by the app only.
 
-If an investigation stops reporting because the server restarted while it ran, it is marked failed after about five minutes. You can then start a new run for the same incident. Failed runs are not charged.
+If an investigation stops reporting because the server restarted while it ran, it is marked failed once it has run for more than five minutes and you start a new run for that incident. On Supercheck Cloud, the billing reconciler also fails any run stuck for more than 15 minutes. You can then start a new run for the same incident. Failed runs are not charged and do not use the free-trial allowance.
 
 </Accordion>
 </Accordions>
