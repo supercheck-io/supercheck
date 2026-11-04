@@ -1228,6 +1228,24 @@ describe('NotificationService', () => {
       expect(blocks[1].text).toContain('line one\nline two');
     });
 
+    it('leaves URL fields unescaped and escapes angle-bracket text', async () => {
+      await service.sendNotification(teamsProvider, {
+        ...basePayload,
+        title: '<https://x> down',
+        metadata: {
+          ...basePayload.metadata,
+          target: 'https://example.com/a_b(c)',
+        },
+      });
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      const content = body.attachments[0].content.body;
+      expect(content[0].text).toBe('\\<https://x\\> down');
+      const facts = content[2].facts as Array<{ title: string; value: string }>;
+      expect(facts.find((f) => f.title === 'Target URL')?.value).toBe(
+        'https://example.com/a_b(c)',
+      );
+    });
+
     it('should reject invalid Teams webhook URL', async () => {
       const invalidProvider: NotificationProvider = {
         id: 'provider-teams-invalid',

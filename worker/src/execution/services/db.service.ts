@@ -112,8 +112,6 @@ export class DbService implements OnModuleInit {
    * Updates the status of a job in the jobs table
    * @param jobId The ID of the job to update
    * @param runStatuses Array of run statuses for the job
-   * @param finishingRunId When set, the write only lands if this is the job's newest run, so an older run
-   *   finishing late cannot overwrite the status of a newer one.
    */
   async updateJobStatus(
     jobId: string,
@@ -126,7 +124,6 @@ export class DbService implements OnModuleInit {
       | 'queued'
       | 'blocked'
     )[],
-    finishingRunId?: string,
   ): Promise<void> {
     try {
       // Determine the aggregate job status
@@ -163,14 +160,7 @@ export class DbService implements OnModuleInit {
         .set({
           status: jobStatus,
         })
-        .where(
-          and(
-            eq(jobs.id, jobId),
-            finishingRunId
-              ? sql`${finishingRunId} = (select ${runs.id} from ${runs} where ${runs.jobId} = ${jobId} order by ${runs.createdAt} desc limit 1)`
-              : undefined,
-          ),
-        );
+        .where(eq(jobs.id, jobId));
     } catch (error) {
       this.logger.error(`Failed to update job status for ${jobId}:`, error);
     }
@@ -625,12 +615,7 @@ export class DbService implements OnModuleInit {
     if (!finalized) return false;
     if (finalized.jobId) {
       try {
-        const active = await this.hasOtherActiveRun(finalized.jobId, runId);
-        await this.updateJobStatus(
-          finalized.jobId,
-          [active ? 'running' : 'error'],
-          runId,
-        );
+        await this.syncJobStatusFromRuns(finalized.jobId);
       } catch (error) {
         // The run is already finalized; leave the job status for the next run to write rather than guess.
         this.logger.error(
@@ -707,20 +692,24 @@ export class DbService implements OnModuleInit {
     }
   }
 
-  /** True when another run of the job is still queued or running. Throws when the lookup fails: callers must not guess. */
-  async hasOtherActiveRun(jobId: string, runId: string): Promise<boolean> {
-    const [other] = await this.db
-      .select({ id: runs.id })
-      .from(runs)
-      .where(
-        and(
-          eq(runs.jobId, jobId),
-          ne(runs.id, runId),
-          inArray(runs.status, ['queued', 'running']),
-        ),
-      )
-      .limit(1);
-    return !!other;
+  /**
+   * Recompute a job's status from its runs in one statement: running while any run is queued or
+   * running, otherwise the newest finished run's status (a blocked run counts as error, since jobs
+   * have no blocked status). Call after the run's own row is written. Throws on failure so callers
+   * can decide; with no runs the status is left unchanged.
+   */
+  async syncJobStatusFromRuns(jobId: string): Promise<void> {
+    await this.db.execute(sql`
+      UPDATE jobs SET status = CASE
+        WHEN EXISTS (SELECT 1 FROM runs WHERE job_id = ${jobId} AND status IN ('queued', 'running')) THEN 'running'
+        ELSE COALESCE(
+          (SELECT CASE WHEN status = 'blocked' THEN 'error' ELSE status END
+             FROM runs
+            WHERE job_id = ${jobId} AND status IN ('passed', 'failed', 'error', 'blocked')
+            ORDER BY created_at DESC LIMIT 1),
+          jobs.status)
+      END
+      WHERE id = ${jobId}`);
   }
 
   // ===============================

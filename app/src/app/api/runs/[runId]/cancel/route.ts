@@ -465,10 +465,10 @@ export async function POST(
 
       // If this run belongs to a job, update the job status
       if (run.runJobId) {
-        const jobStatus = await syncJobStatusFromRuns(tx, run.runJobId);
+        await syncJobStatusFromRuns(tx, run.runJobId);
 
         logger.info(
-          { runId, jobId: run.runJobId, jobStatus },
+          { runId, jobId: run.runJobId },
           "Updated job status after run cancellation"
         );
       }

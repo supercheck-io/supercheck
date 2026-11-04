@@ -469,7 +469,7 @@ export class PlaywrightExecutionProcessor
 
       // The stalled-run sweep finalizes the run and its job together if this write failed.
       if (originalJobId && runCancellationRecorded) {
-        await this.updateJobStatus(originalJobId, 'error', runId);
+        await this.syncJobStatus(originalJobId, runId);
         await this.dbService.db
           .update(jobs)
           .set({ lastRunAt: new Date() })
@@ -515,7 +515,7 @@ export class PlaywrightExecutionProcessor
 
       // Update job status
       if (originalJobId) {
-        await this.updateJobStatus(originalJobId, 'error', runId);
+        await this.syncJobStatus(originalJobId, runId);
       }
 
       // Send notification (non-blocking)
@@ -618,7 +618,7 @@ export class PlaywrightExecutionProcessor
 
       // Update job status based on all current run statuses
       if (originalJobId) {
-        await this.updateJobStatus(originalJobId, finalStatus, runId);
+        await this.syncJobStatus(originalJobId, runId);
 
         // Always update lastRunAt after a run completes
         await this.dbService.db
@@ -736,7 +736,7 @@ export class PlaywrightExecutionProcessor
 
       // Update job status based on all current run statuses
       if (originalJobId) {
-        await this.updateJobStatus(originalJobId, errorStatus, runId);
+        await this.syncJobStatus(originalJobId, runId);
       }
 
       try {
@@ -792,24 +792,11 @@ export class PlaywrightExecutionProcessor
     }
   }
 
-  private async updateJobStatus(
-    originalJobId: string,
-    status: 'pending' | 'running' | 'passed' | 'failed' | 'error',
-    runId: string,
-  ) {
-    // Job status follows this run's final status; only a sibling still queued/running keeps it running.
+  /** Recompute the job's status from its runs; call after this run's row is written. */
+  private async syncJobStatus(originalJobId: string, runId: string) {
     try {
-      const otherActive = await this.dbService.hasOtherActiveRun(
-        originalJobId,
-        runId,
-      );
-      await this.dbService.updateJobStatus(
-        originalJobId,
-        [otherActive ? 'running' : status],
-        runId,
-      );
+      await this.dbService.syncJobStatusFromRuns(originalJobId);
     } catch (err) {
-      // A failed sibling lookup is "unknown", not "none active": skip the write instead of guessing.
       this.logger.error(
         `[${runId}] Failed to update job status: ${err instanceof Error ? err.message : String(err)}`,
       );

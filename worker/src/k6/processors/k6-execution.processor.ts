@@ -243,15 +243,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
       // Update job status if this is a job run
       if (taskData.jobId) {
         try {
-          const active = await this.dbService.hasOtherActiveRun(
-            taskData.jobId,
-            runId,
-          );
-          await this.dbService.updateJobStatus(
-            taskData.jobId,
-            [active ? 'running' : 'error'],
-            runId,
-          );
+          await this.dbService.syncJobStatusFromRuns(taskData.jobId);
         } catch {
           // Unknown sibling state: leave the job status for the next run.
         }
@@ -544,15 +536,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
         // Update job status based on all current run statuses
         try {
           // The job reflects this run; an old failed run in its history must not pin it.
-          const active = await this.dbService.hasOtherActiveRun(
-            taskData.jobId,
-            runId,
-          );
-          await this.dbService.updateJobStatus(
-            taskData.jobId,
-            [active ? 'running' : finalStatus],
-            runId,
-          );
+          await this.dbService.syncJobStatusFromRuns(taskData.jobId);
         } catch (err) {
           this.logger.error(
             `[${runId}] Failed to update job status: ${err instanceof Error ? err.message : String(err)}`,
@@ -719,15 +703,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
         // Update job status based on all current run statuses
         try {
           // The job reflects this run; an old failed run in its history must not pin it.
-          const active = await this.dbService.hasOtherActiveRun(
-            taskData.jobId,
-            runId,
-          );
-          await this.dbService.updateJobStatus(
-            taskData.jobId,
-            [active ? 'running' : 'failed'],
-            runId,
-          );
+          await this.dbService.syncJobStatusFromRuns(taskData.jobId);
         } catch (err) {
           this.logger.error(
             `[${runId}] Failed to update job status on error: ${err instanceof Error ? err.message : String(err)}`,

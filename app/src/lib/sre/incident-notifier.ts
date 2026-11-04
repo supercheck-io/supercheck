@@ -158,7 +158,7 @@ function escapeSlack(value: string) {
 
 /** Teams and Discord render markdown, so user text must not become links or formatting. */
 function escapeMarkdown(value: string) {
-  return value.replace(/[\\`*_~|>[\]()]/g, "\\$&");
+  return value.replace(/[\\`*_~|<>[\]()]/g, "\\$&");
 }
 
 function clip(value: string, max: number) {

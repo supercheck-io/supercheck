@@ -110,6 +110,8 @@ interface FormattedNotification {
     title: string;
     value: string;
     short?: boolean;
+    /** URL values: shown as-is, never markdown-escaped. */
+    raw?: boolean;
   }>;
   color: string;
   footer: string;
@@ -179,7 +181,7 @@ const WEBHOOK_BLOCKED_HEADERS = new Set([
 
 /** Teams and Discord render markdown, so user text must not become links or formatting. */
 function escapeMarkdown(value: string): string {
-  return value.replace(/[\\`*_~|>[\]()]/g, '\\$&');
+  return value.replace(/[\\`*_~|<>[\]()]/g, '\\$&');
 }
 
 function clip(value: string, max: number): string {
@@ -472,7 +474,7 @@ export class NotificationService {
     }
 
     // Build standardized fields
-    const fields: Array<{ title: string; value: string; short?: boolean }> = [];
+    const fields: FormattedNotification['fields'] = [];
 
     // Project info
     if (payload.projectName) {
@@ -534,6 +536,7 @@ export class NotificationService {
         title: 'Target URL',
         value: payload.metadata.targetUrl,
         short: false,
+        raw: true,
       });
     }
 
@@ -551,6 +554,7 @@ export class NotificationService {
         title: dashboardLabel,
         value: payload.metadata.dashboardUrl,
         short: false,
+        raw: true,
       });
     }
 
@@ -1546,7 +1550,12 @@ export class NotificationService {
                 color: parseInt(formatted.color.replace('#', ''), 16),
                 fields: formatted.fields.slice(0, 25).map((field) => ({
                   name: clip(escapeMarkdown(field.title), 256),
-                  value: clip(escapeMarkdown(field.value || '-'), 1024),
+                  value: clip(
+                    field.raw
+                      ? field.value || '-'
+                      : escapeMarkdown(field.value || '-'),
+                    1024,
+                  ),
                   inline: field.short || false,
                 })),
                 footer: { text: formatted.footer?.trim() || 'Supercheck' },
@@ -1652,14 +1661,17 @@ export class NotificationService {
       };
 
       // Sanitize input fields to prevent injection
-      const sanitizeText = (text: string | undefined | null): string => {
+      const sanitizeText = (
+        text: string | undefined | null,
+        raw = false,
+      ): string => {
         if (!text) return '';
         // Remove control characters (keeping line breaks) and limit length
-        return escapeMarkdown(
-          text
-            // eslint-disable-next-line no-control-regex
-            .replace(/[\x00-\x09\x0B\x0C\x0E-\x1F\x7F]/g, ''),
-        ).substring(0, 5000);
+        const clean = text
+          // eslint-disable-next-line no-control-regex
+          .replace(/[\x00-\x09\x0B\x0C\x0E-\x1F\x7F]/g, '')
+          .substring(0, 5000);
+        return raw ? clean : escapeMarkdown(clean);
       };
 
       // Build Adaptive Card payload for Teams
@@ -1699,7 +1711,9 @@ export class NotificationService {
                     .slice(0, 10) // Teams limits FactSet items
                     .map((f) => ({
                       title: sanitizeText(f.title),
-                      value: sanitizeText(f.value),
+                      value: f.raw
+                        ? sanitizeText(f.value, true)
+                        : sanitizeText(f.value),
                     })),
                   spacing: 'medium',
                 },
