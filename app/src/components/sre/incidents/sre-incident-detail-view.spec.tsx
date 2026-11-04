@@ -301,7 +301,7 @@ describe("SreIncidentDetailView", () => {
     expect(screen.getByTestId("hypothesis-h2")).toHaveTextContent("Ruled out");
     expect(screen.getAllByRole("button", { name: "View evidence: Monitor timeout" }).length).toBeGreaterThan(0);
     expect(screen.getAllByText("Feedback: this investigation")).toHaveLength(1);
-    expect(screen.getByTestId("investigation-step-trace")).toHaveAttribute("open");
+    expect(screen.getByTestId("investigation-step-trace")).toHaveAttribute("data-state", "open");
   });
 
   it("offers the post-mortem only once the incident is resolved", () => {

@@ -118,9 +118,8 @@ beforeEach(() => {
 it("loads saved queries only when their dialog is opened", async () => {
   renderPage();
   await screen.findByText("Connector management");
-  expect(
-    screen.queryByRole("tab", { name: "Diagnostic Recipes" }),
-  ).not.toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "Integrations" })).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "Private Agents" })).toBeInTheDocument();
   expect(screen.queryByText("Saved query management")).not.toBeInTheDocument();
   expect(mockFetch).not.toHaveBeenCalledWith(
     "/api/sre/diagnostic-recipes",

@@ -58,6 +58,11 @@ interface ExtendedTableMeta<TData> extends TableMeta<TData> {
   globalFilterColumns?: string[];
 }
 
+const sortLabel: Record<string, "ascending" | "descending"> = {
+  asc: "ascending",
+  desc: "descending",
+};
+
 // Generic global filter function
 function genericGlobalFilterFn(
   row: Row<unknown>,
@@ -313,9 +318,7 @@ export function DataTable<TData, TValue>({
                       key={header.id}
                       aria-sort={
                         header.column.getCanSort()
-                          ? { asc: "ascending", desc: "descending" }[
-                              header.column.getIsSorted() as string
-                            ] ?? "none"
+                          ? sortLabel[String(header.column.getIsSorted())] ?? "none"
                           : undefined
                       }
                     >

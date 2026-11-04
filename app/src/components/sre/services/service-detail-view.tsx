@@ -1,5 +1,6 @@
 "use client";
 
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import Link from "next/link";
 import { useMemo, useState, useTransition, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -17,7 +18,7 @@ import {
   Plus,
   RefreshCw,
   Trash2,
-  X,
+  X, ChevronRight
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -283,7 +284,7 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
               Services
             </Link>
           </Button>
-          <h1 className="break-words text-2xl font-semibold">
+          <h1 className="break-words text-xl font-semibold leading-tight">
             {detail.service.name}
           </h1>
           {/* Meta line, like the incident header: status (when not active), tier and environment. */}
@@ -306,6 +307,7 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
         <div className="flex shrink-0 flex-wrap gap-2">
           <Button
             variant="outline"
+            size="sm"
             onClick={() =>
               startTransition(async () => {
                 await refresh();
@@ -348,10 +350,12 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
         <p className="mt-2 text-sm text-muted-foreground">
           {detail.health.explanation}
         </p>
-        <details className="mt-2 text-xs text-muted-foreground">
-          <summary className="cursor-pointer rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <Collapsible className="mt-2 text-xs text-muted-foreground">
+          <CollapsibleTrigger className="group flex w-full items-center gap-1.5 text-left cursor-pointer rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+<ChevronRight className="h-4 w-4 shrink-0 transition-transform group-data-[state=open]:rotate-90" aria-hidden="true" />
             Service details
-          </summary>
+          </CollapsibleTrigger>
+<CollapsibleContent>
           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
             {detail.service.ownerTeam && (
               <span>Owner: {detail.service.ownerTeam}</span>
@@ -363,7 +367,8 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
             )}
             <span>Calculated {formatDate(detail.health.calculatedAt)}</span>
           </div>
-        </details>
+        </CollapsibleContent>
+</Collapsible>
       </section>
 
       <Tabs
@@ -395,7 +400,7 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
               </p>
             </div>
             {detail.permissions.canEdit && (
-              <Button onClick={openNewDependency}>
+              <Button size="sm" onClick={openNewDependency}>
                 <Plus className="h-4 w-4" /> Add dependency
               </Button>
             )}
@@ -484,13 +489,15 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
             </div>
           )}
           {detail.suggestions.length > 0 && (
-            <details className="rounded-md border p-4">
-              <summary className="cursor-pointer rounded-sm text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <Collapsible className="rounded-md border p-4">
+              <CollapsibleTrigger className="group flex w-full items-center gap-1.5 text-left cursor-pointer rounded-sm text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+<ChevronRight className="h-4 w-4 shrink-0 transition-transform group-data-[state=open]:rotate-90" aria-hidden="true" />
                 Suggested dependencies
                 {pendingSuggestions.length > 0
                   ? ` (${pendingSuggestions.length} pending)`
                   : ""}
-              </summary>
+              </CollapsibleTrigger>
+<CollapsibleContent>
               <p className="my-3 text-sm text-muted-foreground">
                 Review discovered relationships before adding them to the map.
               </p>
@@ -532,6 +539,7 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
                       <div className="flex gap-2">
                         <Button
                           variant="outline"
+                          size="sm"
                           disabled={isPending}
                           onClick={() =>
                             runMutation(() =>
@@ -544,6 +552,7 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
                           <X className="h-4 w-4" /> Reject
                         </Button>
                         <Button
+                          size="sm"
                           disabled={isPending}
                           onClick={() =>
                             runMutation(() =>
@@ -564,7 +573,8 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
                   </div>
                 ))}
               </div>
-            </details>
+            </CollapsibleContent>
+</Collapsible>
           )}
         </TabsContent>
 
@@ -581,6 +591,7 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
             </div>
             {detail.permissions.canEdit && (
               <Button
+                size="sm"
                 onClick={() => {
                   setEditingResourceId(null);
                   setResourceType("monitor");
