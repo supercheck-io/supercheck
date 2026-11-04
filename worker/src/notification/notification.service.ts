@@ -184,6 +184,11 @@ function escapeMarkdown(value: string): string {
   return value.replace(/[\\`*_~|<>[\]()]/g, '\\$&');
 }
 
+/** Discord descriptions also render line-leading # as headings. */
+function escapeDiscordDescription(value: string): string {
+  return escapeMarkdown(value).replace(/^(#+)/gm, '\\$1');
+}
+
 function clip(value: string, max: number): string {
   return value.length > max ? `${value.slice(0, max - 1)}…` : value;
 }
@@ -1546,7 +1551,10 @@ export class NotificationService {
             embeds: [
               {
                 title: clip(escapeMarkdown(formatted.title), 256),
-                description: clip(escapeMarkdown(formatted.message), 4096),
+                description: clip(
+                  escapeDiscordDescription(formatted.message),
+                  4096,
+                ),
                 color: parseInt(formatted.color.replace('#', ''), 16),
                 fields: formatted.fields.slice(0, 25).map((field) => ({
                   name: clip(escapeMarkdown(field.title), 256),

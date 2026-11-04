@@ -353,6 +353,7 @@ function collectHelperCallsWithAst(
           !node.callee.computed &&
           node.callee.object?.type === "Identifier" &&
           node.callee.object.name === "globalThis" &&
+          !isBound(scope, "globalThis") &&
           node.callee.property?.type === "Identifier" &&
           helperNameSet.has(node.callee.property.name)
         ) {

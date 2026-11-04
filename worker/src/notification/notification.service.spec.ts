@@ -421,6 +421,15 @@ describe('NotificationService', () => {
       );
     });
 
+    it('escapes line-leading # in the Discord description', async () => {
+      await service.sendNotification(discordProvider, {
+        ...basePayload,
+        message: '# heading',
+      });
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(body.embeds[0].description).toContain('\\# heading');
+    });
+
     it('should include embeds with proper structure', async () => {
       await service.sendNotification(discordProvider, basePayload);
 

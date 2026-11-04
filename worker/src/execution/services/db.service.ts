@@ -706,7 +706,7 @@ export class DbService implements OnModuleInit {
           (SELECT CASE WHEN status = 'blocked' THEN 'error' ELSE status END
              FROM runs
             WHERE job_id = ${jobId} AND status IN ('passed', 'failed', 'error', 'blocked')
-            ORDER BY created_at DESC LIMIT 1),
+            ORDER BY created_at DESC NULLS LAST, id DESC LIMIT 1),
           jobs.status)
       END
       WHERE id = ${jobId}`);
