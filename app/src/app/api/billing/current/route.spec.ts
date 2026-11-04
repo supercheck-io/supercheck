@@ -116,4 +116,14 @@ describe("current billing subscription display", () => {
     const body = await (await GET()).json();
     expect(body.limits.teamMembers).toMatchObject({ current: 5, remaining: 1 });
   });
+
+  it("never rounds a nearly exhausted allowance up to 100 percent", async () => {
+    (subscriptionService.getSubscriptionAccessStatus as jest.Mock).mockResolvedValue({ isActive: true, plan: "plus", status: "active" });
+    (subscriptionService.getUsageSafe as jest.Mock).mockResolvedValue({
+      playwrightMinutes: { used: 997, included: 1000, overage: 0 }, k6VuMinutes: { used: 0, included: 0, overage: 0 },
+      aiCredits: { used: 0, included: 100, overage: 0 }, sreInvestigations: { used: 0, included: 5, overage: 0 },
+    });
+    const body = await (await GET()).json();
+    expect(body.usage.playwrightMinutes.percentage).toBe(99);
+  });
 });

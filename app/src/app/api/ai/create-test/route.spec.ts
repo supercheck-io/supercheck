@@ -42,6 +42,12 @@ describe("AI create-test input bounds", () => {
     expect(usageTracker.consumeAICredit).not.toHaveBeenCalled();
   });
 
+  it("answers 400, not 500, for a non-string current script", async () => {
+    const response = await post({ userRequest: "write a login test", testType: "playwright", currentScript: { a: 1 } });
+    expect(response.status).toBe(400);
+    expect(AIStreamingService.generateStreamingResponse).not.toHaveBeenCalled();
+  });
+
   it("requires an active organization before any AI call or credit charge", async () => {
     getActiveOrganization.mockResolvedValue(null);
     const response = await post({ userRequest: "write a login test", testType: "playwright" });

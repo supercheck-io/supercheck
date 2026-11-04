@@ -110,7 +110,7 @@ export async function GET() {
     const periodEnd = org.usagePeriodEnd ?? org.subscriptionEndsAt;
 
     const toPercent = (used: number, included: number) =>
-      included > 0 ? Math.round((used / included) * 100) : 100;
+      included > 0 ? Math.floor((used / included) * 100) : 100;
 
     return NextResponse.json({
       organizationId,

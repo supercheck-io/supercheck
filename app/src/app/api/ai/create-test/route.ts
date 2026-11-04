@@ -42,6 +42,16 @@ export async function POST(request: NextRequest) {
 
     const userRequest = body.userRequest.trim();
     const testType = body.testType;
+    if (body.currentScript != null && typeof body.currentScript !== "string") {
+      return NextResponse.json(
+        {
+          success: false,
+          reason: "invalid_request",
+          message: "Current script must be a string",
+        },
+        { status: 400 }
+      );
+    }
     const currentScript = body.currentScript ? body.currentScript.trim() : "";
 
     // Validate user request length
