@@ -21,6 +21,8 @@ import { useAppConfig } from "@/hooks/use-app-config";
 
 // Signed report URLs live 1h (REPORT_TOKEN_TTL_SECONDS); refresh 5 minutes early. Not imported: that module is server-only.
 export const REPORT_URL_REFRESH_MS = 55 * 60 * 1000;
+/** Delay before retrying a failed background refresh; the current report keeps working meanwhile. */
+export const REPORT_URL_REFRESH_RETRY_MS = 5 * 60 * 1000;
 
 // Static error page component - defined outside to avoid recreation each render
 function StaticErrorPage({
@@ -223,6 +225,12 @@ export function ReportViewer({
   const [signedUrl, setSignedUrl] = useState<{ source: string; url: string } | null>(null);
   // Bumped by the refresh timer to mint a fresh signed URL before the old one expires.
   const [refreshTick, setRefreshTick] = useState(0);
+  // A freshly minted URL waits here until the document is hidden, so a visible report is never reloaded.
+  const [pendingSigned, setPendingSigned] = useState<{ source: string; url: string } | null>(null);
+  const signedSourceRef = useRef<string | null>(null);
+  useEffect(() => {
+    signedSourceRef.current = signedUrl?.source ?? null;
+  }, [signedUrl]);
 
   // Read through a ref so a retry-state change does not re-run the effect before its backoff delay.
   const applyErrorBodyRef = useRef(applyErrorBody);
@@ -253,8 +261,8 @@ export function ReportViewer({
         if (!mint.ok || !minted?.url) {
           return fail(minted?.error || "The test report could not be found.");
         }
-        // Default cache mode so the iframe's own load of this URL reuses the response instead of a second fetch.
-        const res = await fetch(minted.url);
+        // The server answers private, no-store, so the iframe's own load cannot reuse this response.
+        const res = await fetch(minted.url, { cache: "no-store" });
         const text = await res.text();
         if (cancelled) return;
         if ((res.headers.get("content-type") || "").includes("json")) {
@@ -272,7 +280,53 @@ export function ReportViewer({
     return () => {
       cancelled = true;
     };
-  }, [separateOrigin, currentReportUrl, retryNonce, isRunning, refreshTick]);
+  }, [separateOrigin, currentReportUrl, retryNonce, isRunning]);
+
+  // Background refresh: any failure keeps the working iframe and retries later; it never shows an error.
+  useEffect(() => {
+    if (refreshTick === 0 || !separateOrigin || !currentReportUrl || isRunning) return;
+    const source = currentReportUrl;
+    if (signedSourceRef.current !== source) return;
+    let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    const retryLater = () => {
+      if (!cancelled) retryTimer = setTimeout(() => setRefreshTick((n) => n + 1), REPORT_URL_REFRESH_RETRY_MS);
+    };
+    (async () => {
+      try {
+        const mint = await fetch("/api/report-urls", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path: source }),
+        });
+        const minted = await mint.json().catch(() => null);
+        if (!mint.ok || !minted?.url) return retryLater();
+        const res = await fetch(minted.url, { cache: "no-store" });
+        await res.text();
+        if (!res.ok || (res.headers.get("content-type") || "").includes("json")) return retryLater();
+        if (!cancelled) setPendingSigned({ source, url: minted.url });
+      } catch {
+        retryLater();
+      }
+    })();
+    return () => {
+      cancelled = true;
+      clearTimeout(retryTimer);
+    };
+  }, [separateOrigin, currentReportUrl, isRunning, refreshTick]);
+
+  // Swap the iframe to the refreshed URL only while the page is hidden.
+  useEffect(() => {
+    if (!pendingSigned) return;
+    const apply = () => {
+      if (document.visibilityState !== "hidden") return;
+      setSignedUrl(pendingSigned);
+      setPendingSigned(null);
+    };
+    apply();
+    document.addEventListener("visibilitychange", apply);
+    return () => document.removeEventListener("visibilitychange", apply);
+  }, [pendingSigned]);
 
   // Lazy-loaded assets inside the frame cannot be retried from here (cross-origin), so re-mint on a timer.
   useEffect(() => {
@@ -317,10 +371,7 @@ export function ReportViewer({
 
     const pendingUpdate = setTimeout(() => {
       if (reportUrl) {
-        // Use the URL as-is from the caller — browser caching is managed by
-        // Cache-Control headers on the server (public, max-age=300).
-        // Do NOT append a cache-busting timestamp here; it defeats browser
-        // caching and causes a full S3 round-trip on every tab switch / remount.
+        // Use the URL as-is from the caller; the server sets Cache-Control (private, no-store).
         setCurrentReportUrl(reportUrl);
         setIsReportLoading(true);
         setIframeError(false);
