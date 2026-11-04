@@ -107,3 +107,57 @@ describe("getPrivateAgents", () => {
     expect(result.agents.map((a) => [a.id, a.status])).toEqual([["stale", "disconnected"], ["fresh", "connected"]]);
   });
 });
+
+describe("Private Agent lifecycle hardening", () => {
+  const id = "00000000-0000-4000-8000-000000000001";
+
+  function recordingTx(returning: unknown[]) {
+    const sets: Array<Record<string, unknown>> = [];
+    const conditions: SQL[] = [];
+    const tx = {
+      update: () => ({
+        set: (values: Record<string, unknown>) => {
+          sets.push(values);
+          return {
+            where: (c: SQL) => {
+              conditions.push(c);
+              return { returning: async () => returning, then: (r: (v: unknown) => void) => r(undefined) };
+            },
+          };
+        },
+      }),
+    };
+    mockTransaction.mockImplementation(async (fn) => fn(tx));
+    return { sets, conditions };
+  }
+
+  it("disable drops the registration token and fails the agent's open jobs", async () => {
+    const { sets, conditions } = recordingTx([{ id, name: "a", status: "disabled", lastHeartbeatAt: null }]);
+    const result = await disablePrivateAgent({ id });
+    expect(result.success).toBe(true);
+    expect(sets[0]).toMatchObject({ status: "disabled", registrationTokenHash: null });
+    expect(sets.at(-1)).toMatchObject({ status: "failed", errorCode: "agent_disabled" });
+    const jobSql = new PgDialect().sqlToQuery(conditions.at(-1) as SQL);
+    expect(jobSql.params).toEqual(expect.arrayContaining(["queued", "leased", "running"]));
+  });
+
+  it("rotate guards the UPDATE on a non-disabled status, clears the heartbeat, and fails when the guard misses", async () => {
+    mockFindFirst.mockResolvedValue({ id, projectId: "p1", status: "connected", metadata: {} });
+    const { sets, conditions } = recordingTx([]);
+    const result = await rotatePrivateAgentToken({ id });
+    expect(result.success).toBe(false);
+    expect(sets).toHaveLength(1); // credentials are not revoked when the guarded update matched nothing
+    expect(sets[0]).toMatchObject({ lastHeartbeatAt: null, status: "pending" });
+    expect(new PgDialect().sqlToQuery(conditions[0]).sql).toMatch(/"status" <> \$/);
+  });
+
+  it("reports a stale unhealthy agent as disconnected but keeps pending agents pending", async () => {
+    const base = { name: "a", version: "1", agentMode: "sre", supportsSreConnectors: true, region: null, networkLabel: null, lastError: null, projectId: null };
+    mockRows = [
+      { ...base, id: "u", status: "unhealthy", lastHeartbeatAt: new Date(Date.now() - 10 * 60_000) },
+      { ...base, id: "p", status: "pending", lastHeartbeatAt: null },
+    ];
+    const result = await getPrivateAgents();
+    expect(result.agents.map((a) => [a.id, a.status])).toEqual([["u", "disconnected"], ["p", "pending"]]);
+  });
+});
