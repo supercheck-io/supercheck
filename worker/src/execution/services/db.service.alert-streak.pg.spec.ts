@@ -10,6 +10,7 @@ import {
   seedMonitor,
 } from '../../monitor-control/pg-test-database';
 import { DbService } from './db.service';
+import { isFailureAlertStreak } from './job-notification.service';
 
 jest.setTimeout(120_000);
 
@@ -167,13 +168,71 @@ suite('DbService.getJobAlertStreakState (PostgreSQL)', () => {
       expect(outcomes.filter((claimed) => claimed.size > 0)).toHaveLength(2);
     });
 
+    // The gate job-notification builds: threshold 1, runs counted by position in the streak.
+    const realGate =
+      (consecutiveFailures: number) =>
+      (state: { sent: number; lastSentAt: Date | null }) =>
+        isFailureAlertStreak(
+          consecutiveFailures,
+          1,
+          state.sent,
+          state.lastSentAt ? 0 : consecutiveFailures,
+        );
+
+    it('re-drives a partly delivered run through the real gate: only the failed provider is claimed', async () => {
+      const runId = randomUUID();
+      await run('failed', '2026-01-01T00:02:00Z');
+      const first = await claim(runId, realGate(1));
+      await service.finishJobAlert(first.get('p1')!, 'sent');
+      await service.finishJobAlert(
+        first.get('p2')!,
+        'failed',
+        'boom',
+        {} as never,
+      );
+      const retry = await claim(runId, realGate(1));
+      expect([...retry.keys()]).toEqual(['p2']);
+      expect(await rowStatus(runId, 'p1')).toBe('sent');
+      const [row] = await testDb.client<
+        { error_message: string | null; delivery_metadata: unknown }[]
+      >`SELECT error_message, delivery_metadata FROM alert_history WHERE run_id = ${runId} AND provider = 'p2'`;
+      expect(row).toEqual({ error_message: null, delivery_metadata: null });
+    });
+
+    it("counts other runs' alerts toward the cap but not the run's own", async () => {
+      const cap = (state: { sent: number }) => state.sent < 1;
+      const runA = randomUUID();
+      const runB = randomUUID();
+      expect((await claim(runA, cap, ['p1'])).size).toBe(1);
+      expect((await claim(runB, cap, ['p1'])).size).toBe(0);
+    });
+
+    it('a pending row for another run leaves this run claimable while the cap is not reached', async () => {
+      const runA = randomUUID();
+      const runB = randomUUID();
+      await claim(runA, () => true, ['p1']);
+      const claimed = await claim(runB, (state) => state.sent < 2, ['p1']);
+      expect([...claimed.keys()]).toEqual(['p1']);
+      expect(await rowStatus(runA, 'p1')).toBe('pending');
+    });
+
     it('never conflicts rows that carry no run id', async () => {
-      await alert('p1', 'sent', '2026-01-01T00:00:00Z');
-      await alert('p1', 'sent', '2026-01-01T00:00:00Z');
+      const save = () =>
+        service.saveAlertHistory(
+          jobId,
+          'job_failed',
+          'p1',
+          'sent',
+          'm',
+          undefined,
+          'J',
+        );
+      await save();
+      await save();
       expect(
         (await testDb.client`SELECT 1 FROM alert_history WHERE run_id IS NULL`)
           .length,
-      ).toBeGreaterThanOrEqual(2);
+      ).toBe(2);
     });
   });
 });

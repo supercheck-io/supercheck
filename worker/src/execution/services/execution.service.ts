@@ -128,6 +128,9 @@ interface PlaywrightExecutionResult {
   billableMs?: number; // Container run time evidenced by Kubernetes
 }
 
+// results.json is parsed in memory; anything larger is treated as an unusable report.
+const MAX_PLAYWRIGHT_REPORT_BYTES = 50 * 1024 * 1024;
+
 @Injectable()
 export class ExecutionService implements OnModuleDestroy {
   private readonly logger = new Logger(ExecutionService.name);
@@ -1075,8 +1078,12 @@ export class ExecutionService implements OnModuleDestroy {
       const durationStr = this.formatDuration(durationMs);
 
       // Evaluate report contents to determine real outcome; default to failed if unknown
-      const reportOutcome =
-        await this.evaluatePlaywrightReport(extractedReportsDir);
+      const report = this.loadPlaywrightReport(extractedReportsDir);
+      report.catch(() => undefined); // each consumer handles the rejection itself
+      const reportOutcome = await this.evaluatePlaywrightReport(
+        extractedReportsDir,
+        report,
+      );
       overallSuccess = overallSuccess && !reportOutcome.hasFailures;
 
       // Per-test outcomes let requirement coverage tell tests of one run apart. Best effort:
@@ -1084,6 +1091,7 @@ export class ExecutionService implements OnModuleDestroy {
       const testStatuses = await this.readJobTestStatuses(
         extractedReportsDir,
         testScripts.map((ts) => ts.id),
+        report,
       );
       if (Object.keys(testStatuses).length > 0) {
         await this.dbService
@@ -1417,18 +1425,34 @@ export class ExecutionService implements OnModuleDestroy {
     }
   }
 
+  /** Reads and parses results.json once; rejects when it is missing, unparseable or over the size cap. */
+  private async loadPlaywrightReport(
+    extractedReportsDir: string,
+  ): Promise<PlaywrightReport> {
+    const resultsPath = path.join(extractedReportsDir, 'results.json');
+    const { size } = await fs.stat(resultsPath);
+    if (size > MAX_PLAYWRIGHT_REPORT_BYTES) {
+      throw new Error(`results.json is too large to parse (${size} bytes)`);
+    }
+    return JSON.parse(
+      await fs.readFile(resultsPath, 'utf-8'),
+    ) as PlaywrightReport;
+  }
+
   /**
    * Inspect the extracted Playwright results.json to determine if any failures occurred.
    * Defaults to "hasFailures=true" when the report is missing or unreadable to stay fail-safe.
    */
   private async evaluatePlaywrightReport(
     extractedReportsDir: string,
+    report: Promise<PlaywrightReport> = this.loadPlaywrightReport(
+      extractedReportsDir,
+    ),
   ): Promise<{ hasFailures: boolean; foundReport: boolean }> {
     const resultsPath = path.join(extractedReportsDir, 'results.json');
 
     try {
-      const raw = await fs.readFile(resultsPath, 'utf-8');
-      const parsed = JSON.parse(raw) as PlaywrightReport;
+      const parsed = await report;
 
       const collectedTests = this.collectPlaywrightTests(parsed);
       this.logger.debug(
@@ -1504,14 +1528,14 @@ export class ExecutionService implements OnModuleDestroy {
   private async readJobTestStatuses(
     extractedReportsDir: string,
     testIds: string[],
+    report: Promise<PlaywrightReport> = this.loadPlaywrightReport(
+      extractedReportsDir,
+    ),
   ): Promise<Record<string, 'passed' | 'failed'>> {
     const known = new Set(testIds);
     const statuses: Record<string, 'passed' | 'failed'> = {};
     try {
-      const raw = await fs.readFile(
-        path.join(extractedReportsDir, 'results.json'),
-        'utf-8',
-      );
+      const parsed = await report;
       const visit = (node: unknown, file?: string) => {
         if (!node || typeof node !== 'object') return;
         const obj = node as Record<string, unknown>;
@@ -1534,7 +1558,7 @@ export class ExecutionService implements OnModuleDestroy {
           }
         }
       };
-      visit(JSON.parse(raw));
+      visit(parsed);
     } catch {
       return {};
     }

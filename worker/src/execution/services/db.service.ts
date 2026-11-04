@@ -552,6 +552,7 @@ export class DbService implements OnModuleInit {
   private async queryJobAlertStreak(
     jobId: string,
     database: Pick<typeof this.db, 'select'>,
+    excludeRunId?: string,
   ): Promise<{ sent: number; lastSentAt: Date | null }> {
     // The cutoff is a subquery so the count sees one snapshot. It is when the last non-failing run finished
     // (creation time while unfinished), so an alert for an earlier failure delivered after that run was
@@ -586,6 +587,10 @@ export class DbService implements OnModuleInit {
             'job_timeout',
           ]),
           sql`${alertHistory.sentAt} > coalesce((${since}), '-infinity'::timestamptz)`,
+          // A re-driven run is judged as if it had not alerted, so its failed provider can be reclaimed.
+          excludeRunId
+            ? sql`${alertHistory.runId} IS DISTINCT FROM ${excludeRunId}`
+            : undefined,
         ),
       )
       .groupBy(alertHistory.provider);
@@ -619,7 +624,9 @@ export class DbService implements OnModuleInit {
       await tx.execute(
         sql`select pg_advisory_xact_lock(hashtextextended(${`job-alert:${jobId}`}, 0))`,
       );
-      if (!input.shouldAlert(await this.queryJobAlertStreak(jobId, tx))) {
+      if (
+        !input.shouldAlert(await this.queryJobAlertStreak(jobId, tx, runId))
+      ) {
         return new Map<string, string>();
       }
       const claimed = await tx
@@ -644,7 +651,13 @@ export class DbService implements OnModuleInit {
             alertHistory.provider,
           ],
           targetWhere: sql`${alertHistory.type} IN ('job_failed', 'job_timeout') AND ${alertHistory.runId} IS NOT NULL`,
-          set: { status: 'pending', sentAt: new Date(), message },
+          set: {
+            status: 'pending',
+            sentAt: new Date(),
+            message,
+            errorMessage: null,
+            deliveryMetadata: null,
+          },
           setWhere: sql`${alertHistory.status} = 'failed'`,
         })
         .returning({ id: alertHistory.id, provider: alertHistory.provider });

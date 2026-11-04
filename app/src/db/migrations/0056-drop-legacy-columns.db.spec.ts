@@ -47,7 +47,7 @@ afterAll(async () => {
 
 it("refuses to drop webhook_secret while a plaintext secret has no encrypted copy", async () => {
   await client`INSERT INTO status_page_subscribers (webhook_secret) VALUES ('plain')`;
-  await expect(migrate()).rejects.toThrow(/plaintext signing secret/);
+  await expect(migrate()).rejects.toThrow(/1 status page webhook subscribers still have a plaintext signing secret/);
   expect(await columns("status_page_subscribers")).toContain("webhook_secret");
 });
 

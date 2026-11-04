@@ -11,7 +11,13 @@
  * Filesystem access is real here (temp directories) instead of mocked, so a
  * change to the report path layout fails these tests.
  */
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  mkdtempSync,
+  mkdirSync,
+  rmSync,
+  truncateSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { runInNewContext } from 'node:vm';
@@ -486,5 +492,15 @@ describe('ExecutionService per-test statuses for job runs', () => {
     await expect(read()).resolves.toEqual({});
     writeFileSync(path.join(directory, 'results.json'), '{not json');
     await expect(read()).resolves.toEqual({});
+  });
+
+  it('skips an oversize results.json: no statuses, fail-safe evaluation, no crash', async () => {
+    const file = path.join(directory, 'results.json');
+    writeFileSync(file, '{}');
+    truncateSync(file, 50 * 1024 * 1024 + 1); // sparse, so cheap
+    await expect(read()).resolves.toEqual({});
+    await expect(
+      service['evaluatePlaywrightReport'](directory),
+    ).resolves.toEqual({ hasFailures: true, foundReport: false });
   });
 });
