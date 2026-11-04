@@ -190,8 +190,9 @@ restore() {
 
   say "Starting Supercheck"
   dc up -d --wait --wait-timeout 300
-  # Shell value wins over .env, as in Compose; drop quotes, spaces and trailing comments.
-  local port; port="${APP_HOST_PORT:-$(sed -n 's/^APP_HOST_PORT=//p' .env | tail -n1)}"
+  # A shell value (even empty) wins over .env, as in Compose; accept KEY=v, KEY = v and KEY: v,
+  # then drop quotes, spaces and trailing comments.
+  local port; port="${APP_HOST_PORT-$(sed -nE 's/^[[:space:]]*APP_HOST_PORT[[:space:]]*[=:][[:space:]]*//p' .env | tail -n1)}"
   port="${port%%#*}"; port="$(printf '%s' "$port" | tr -d "\"' \t\r")"
   [[ "$port" =~ ^[0-9]+$ ]] || port=3000
   if curl -fsS --max-time 10 "http://127.0.0.1:${port}/api/health" >/dev/null 2>&1; then

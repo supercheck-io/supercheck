@@ -762,16 +762,18 @@ preflight() {
   [[ "$problems" -eq 0 ]] || exit 1
 }
 
-# host_port VAR DEFAULT: the shell value wins over .env, as in Compose. Quotes, CR, spaces and
-# trailing comments are dropped; anything that is not a port 1-65535 stops the install.
-# APP_HOST_PORT and RUSTFS_HOST_PORT only apply once the Compose file reads them (1.5.1+).
+# host_port VAR DEFAULT: a shell value (even empty) wins over .env, as in Compose. Quotes, CR,
+# spaces and trailing comments are dropped; anything that is not a port 1-65535 stops the install.
+# APP_HOST_PORT and RUSTFS_HOST_PORT only apply when the Compose file reads them (1.5.1+); before
+# the source is fetched the requested value is used, and check_ports runs again after the fetch.
 host_port() {
-  local var="$1" default="$2" port
-  if [[ "$var" == APP_HOST_PORT || "$var" == RUSTFS_HOST_PORT ]] && ! grep -q "$var" "$(compose_dir)/docker-compose.yml" 2>/dev/null; then
+  local var="$1" default="$2" port file
+  file="$(compose_dir)/docker-compose.yml"
+  if [[ "$var" == APP_HOST_PORT || "$var" == RUSTFS_HOST_PORT ]] && [[ -f "$file" ]] && ! grep -q "$var" "$file"; then
     echo "$default"; return
   fi
-  # env_get fails under pipefail before .env exists (first install).
-  port="${!var:-$(env_get "$var" || true)}"
+  if [[ -n "${!var+set}" ]]; then port="${!var}"
+  else port="$(env_get "$var" || true)"; fi # env_get fails under pipefail before .env exists.
   port="${port%%#*}"; port="${port//[[:space:]]/}"
   [[ -z "$port" ]] && { echo "$default"; return; }
   if [[ ! "$port" =~ ^[0-9]+$ ]] || (( 10#$port < 1 || 10#$port > 65535 )); then
@@ -994,6 +996,8 @@ main() {
       "Install a release that includes the RustFS storage change: see https://github.com/supercheck-io/supercheck/releases" \
       "then re-run with --version <that release>, or run install.sh from a checkout of its source."
   fi
+  # The fetched release decides which host ports its Compose file publishes.
+  if [[ "${SOURCE_FETCHED:-false}" == true || "$UPGRADE" == true ]]; then check_ports; fi
   if [[ -f "$(compose_dir)/.env" ]]; then
     ok "Keeping existing .env (secrets are never regenerated)"
     if [[ "$NEED_PUBLIC_APPLY" == true ]]; then run_step "Applying HTTPS settings to .env" apply_public_config; fi

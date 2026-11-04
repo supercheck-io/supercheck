@@ -136,6 +136,21 @@ app_host_port
 ''')
         self.assertEqual(output.strip(), '3000')
 
+    def test_requested_app_port_is_used_before_the_source_is_fetched(self):
+        output = self.run_shell(r'''export APP_HOST_PORT=13000
+app_host_port
+''')
+        self.assertEqual(output.strip(), '13000')
+
+    def test_empty_shell_port_overrides_env_file(self):
+        # Compose treats an exported empty value as unset for ${VAR:-default}, not as "read .env".
+        output = self.run_shell(r'''echo "APP_HOST_PORT" > "$COMPOSE_DIR/docker-compose.yml"
+printf 'APP_HOST_PORT=13000\n' > "$COMPOSE_DIR/.env"
+export APP_HOST_PORT=
+app_host_port
+''')
+        self.assertEqual(output.strip(), '3000')
+
     def test_invalid_and_duplicate_ports_are_rejected(self):
         compose = 'echo "APP_HOST_PORT RUSTFS_HOST_PORT" > "$COMPOSE_DIR/docker-compose.yml"\n'
         for value in ('3001x', '0', '70000'):
