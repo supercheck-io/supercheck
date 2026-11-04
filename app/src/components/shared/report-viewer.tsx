@@ -19,6 +19,9 @@ import {
 import { useTheme } from "next-themes";
 import { useAppConfig } from "@/hooks/use-app-config";
 
+// Signed report URLs live 1h (REPORT_TOKEN_TTL_SECONDS); refresh 5 minutes early. Not imported: that module is server-only.
+export const REPORT_URL_REFRESH_MS = 55 * 60 * 1000;
+
 // Static error page component - defined outside to avoid recreation each render
 function StaticErrorPage({
   title,
@@ -218,6 +221,8 @@ export function ReportViewer({
   const { config: appConfig, isFetched: configReady } = useAppConfig();
   const separateOrigin = !!appConfig.reports?.separateOrigin;
   const [signedUrl, setSignedUrl] = useState<{ source: string; url: string } | null>(null);
+  // Bumped by the refresh timer to mint a fresh signed URL before the old one expires.
+  const [refreshTick, setRefreshTick] = useState(0);
 
   // Read through a ref so a retry-state change does not re-run the effect before its backoff delay.
   const applyErrorBodyRef = useRef(applyErrorBody);
@@ -248,7 +253,8 @@ export function ReportViewer({
         if (!mint.ok || !minted?.url) {
           return fail(minted?.error || "The test report could not be found.");
         }
-        const res = await fetch(minted.url, { cache: "no-store" });
+        // Default cache mode so the iframe's own load of this URL reuses the response instead of a second fetch.
+        const res = await fetch(minted.url);
         const text = await res.text();
         if (cancelled) return;
         if ((res.headers.get("content-type") || "").includes("json")) {
@@ -266,7 +272,17 @@ export function ReportViewer({
     return () => {
       cancelled = true;
     };
-  }, [separateOrigin, currentReportUrl, retryNonce, isRunning]);
+  }, [separateOrigin, currentReportUrl, retryNonce, isRunning, refreshTick]);
+
+  // Lazy-loaded assets inside the frame cannot be retried from here (cross-origin), so re-mint on a timer.
+  useEffect(() => {
+    if (!signedUrl) return;
+    const t = setTimeout(
+      () => setRefreshTick((n) => n + 1),
+      REPORT_URL_REFRESH_MS
+    );
+    return () => clearTimeout(t);
+  }, [signedUrl]);
 
   const iframeSrc = useMemo(() => {
     if (!currentReportUrl) {

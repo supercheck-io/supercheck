@@ -65,6 +65,7 @@ import { useRouter } from "next/navigation";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { HEX_COLOR_REGEX, normalizeHexColor } from "@/lib/status-page-branding";
 import { SUPPORTED_LANGUAGES } from "@/lib/status-page-translations";
 import { useQueryClient } from "@tanstack/react-query";
 import type { StatusPageDetailResponse } from "@/hooks/use-status-pages";
@@ -114,6 +115,12 @@ type SettingsTabProps = {
   statusPageCnameTarget?: string;
 };
 
+// #rgb or #rrggbb; saved as the 6-digit form.
+const hexColorField = z
+  .string()
+  .regex(HEX_COLOR_REGEX, "Invalid color format")
+  .transform((v) => normalizeHexColor(v)!);
+
 const settingsSchema = z.object({
   name: z
     .string()
@@ -142,11 +149,11 @@ const settingsSchema = z.object({
   allowSlackSubscribers: z.boolean(),
   allowIncidentSubscribers: z.boolean(),
   allowRssFeed: z.boolean(),
-  cssGreens: z.string().regex(/^#[0-9A-Fa-f]{6}$/, "Invalid color format"),
-  cssYellows: z.string().regex(/^#[0-9A-Fa-f]{6}$/, "Invalid color format"),
-  cssOranges: z.string().regex(/^#[0-9A-Fa-f]{6}$/, "Invalid color format"),
-  cssBlues: z.string().regex(/^#[0-9A-Fa-f]{6}$/, "Invalid color format"),
-  cssReds: z.string().regex(/^#[0-9A-Fa-f]{6}$/, "Invalid color format"),
+  cssGreens: hexColorField,
+  cssYellows: hexColorField,
+  cssOranges: hexColorField,
+  cssBlues: hexColorField,
+  cssReds: hexColorField,
   language: z.string().min(2).max(10).optional(),
 });
 

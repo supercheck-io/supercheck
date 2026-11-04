@@ -1,4 +1,4 @@
-import { renderDiagnosticQueryTemplate, validateDiagnosticQueryParameterSchema, validateTemplatePlaceholderCoverage } from "./diagnostic-query";
+import { isOverBroadPattern, renderDiagnosticQueryTemplate, validateDiagnosticQueryParameterSchema, validateTemplateFreeTextPositions, validateTemplatePlaceholderCoverage } from "./diagnostic-query";
 
 const definition = {
   id: "018f0000-0000-7000-8000-000000000001",
@@ -162,5 +162,61 @@ describe("diagnostic query pattern matching path", () => {
     expect(() =>
       renderDiagnosticQueryTemplate(withPattern("^[a-z]+$"), { service: "Checkout1" })
     ).toThrow(/required pattern/);
+  });
+});
+
+describe("diagnostic query free-text and broad-pattern guards", () => {
+  const base = { ...definition, allowlist: {}, parameterSchema: { v: "string" } };
+  const render = (template: string, schema: Record<string, unknown>, value: string, allowlist = {}) =>
+    renderDiagnosticQueryTemplate({ ...base, template, parameterSchema: schema, allowlist }, { v: value });
+
+  it("rejects operators and spaces in an unquoted free-text position at render time", () => {
+    expect(() => render("up > $v", { v: "string" }, "1 or vector(1)")).toThrow("unquoted free text");
+    expect(() => render("/api/$v", { v: "string" }, "../admin")).toThrow("unquoted free text");
+    expect(() => render("/api/$v", { v: "string" }, "a?x=1&y=2")).toThrow("unquoted free text");
+  });
+
+  it("still renders a plain token in an unquoted position (saved definitions keep working)", () => {
+    expect(render("/api/$v", { v: "string" }, "checkout-api").query).toBe("/api/checkout-api");
+  });
+
+  it("allows spaces and operators inside quotes, but not the quote itself", () => {
+    expect(render('{app="$v"}', { v: "string" }, "a b | c").query).toBe('{app="a b | c"}');
+    expect(() => render('{app="$v"}', { v: "string" }, 'x"} or vector(1) #')).toThrow("disallowed characters");
+  });
+
+  it("treats an over-broad saved pattern as no constraint when rendering", () => {
+    expect(() => render('{app="$v"}', { v: { type: "string", pattern: ".*" } }, 'x"} or {a="b')).toThrow("disallowed characters");
+    expect(render('{app="$v"}', { v: { type: "string", pattern: ".*" } }, "benign").query).toBe('{app="benign"}');
+  });
+
+  it("keeps a strict pattern as the constraint, even in an unquoted position", () => {
+    expect(render("up > $v", { v: { type: "string", pattern: "^[a-z ]+$" } }, "a b").query).toBe("up > a b");
+  });
+
+  it("detects over-broad patterns", () => {
+    for (const p of [".*", "^.+$", "^[^x]+$", "a", "^[\\s\\S]*$"]) expect(isOverBroadPattern(p)).toBe(true);
+    for (const p of ["^[a-zA-Z0-9_.:-]+$", "^[a-z ]+$"]) expect(isOverBroadPattern(p)).toBe(false);
+  });
+
+  it("rejects over-broad patterns when a definition is saved", () => {
+    expect(() => validateDiagnosticQueryParameterSchema({ v: { type: "string", pattern: ".*" } })).toThrow("too broad");
+    expect(() => validateDiagnosticQueryParameterSchema({ v: { type: "string", pattern: "^[a-z]+$" } })).not.toThrow();
+  });
+
+  it("rejects unconstrained free text in an unquoted position when a definition is saved", () => {
+    expect(() => validateTemplateFreeTextPositions("up > $v", { v: "string" }, {})).toThrow("unquoted position");
+    expect(() => validateTemplateFreeTextPositions('{a="$v"}', { v: "string" }, {})).not.toThrow();
+    expect(() => validateTemplateFreeTextPositions("up > $v", { v: "number" }, {})).not.toThrow();
+    expect(() => validateTemplateFreeTextPositions("up > $v", { v: { type: "string", pattern: "^[a-z]+$" } }, {})).not.toThrow();
+    expect(() => validateTemplateFreeTextPositions("up > $v", { v: "string" }, { v: ["a", "b"] })).not.toThrow();
+  });
+
+  it("every built-in recipe passes the save-time guards", () => {
+    const { diagnosticQueryAdapterRecipes } = jest.requireActual("./diagnostic-query-adapters");
+    for (const r of diagnosticQueryAdapterRecipes) {
+      expect(() => validateDiagnosticQueryParameterSchema(r.parameterSchema)).not.toThrow();
+      expect(() => validateTemplateFreeTextPositions(r.template, r.parameterSchema, r.allowlist)).not.toThrow();
+    }
   });
 });

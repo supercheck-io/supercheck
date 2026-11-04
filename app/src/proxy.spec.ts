@@ -163,3 +163,58 @@ describe("proxy CORS for the MCP endpoint", () => {
   });
 });
 
+
+describe("proxy reports host gate", () => {
+  const originalEnv = process.env;
+  const REPORTS = "https://reports.example.test";
+
+  beforeEach(() => {
+    jest.resetModules();
+    process.env = {
+      ...originalEnv,
+      SELF_HOSTED: "true",
+      APP_URL: "https://app.example.test",
+      REPORTS_ORIGIN: REPORTS,
+    };
+  });
+
+  afterAll(() => {
+    process.env = originalEnv;
+  });
+
+  const call = async (path: string, headers: Record<string, string>) => {
+    const { proxy } = await import("./proxy");
+    return proxy(new NextRequest(`https://app.example.test${path}`, { headers }));
+  };
+
+  it("404s everything but report assets on the reports host", async () => {
+    const res = await call("/api/auth/session", { host: "reports.example.test" });
+    expect(res.status).toBe(404);
+  });
+
+  it("fails closed on a forged X-Forwarded-Host", async () => {
+    const res = await call("/dashboard", {
+      host: "app.example.test",
+      "x-forwarded-host": "reports.example.test",
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("lets report asset paths through on the reports host", async () => {
+    const res = await call("/api/test-results/~tok/run/report/index.html", {
+      host: "reports.example.test",
+    });
+    expect(res.status).not.toBe(404);
+  });
+
+  it("does not gate the app host", async () => {
+    const res = await call("/api/auth/session", { host: "app.example.test" });
+    expect(res.status).not.toBe(404);
+  });
+
+  it("ignores REPORTS_ORIGIN equal to the app host instead of locking the app out", async () => {
+    process.env.REPORTS_ORIGIN = "https://app.example.test";
+    const res = await call("/dashboard", { host: "app.example.test" });
+    expect(res.status).not.toBe(404);
+  });
+});
