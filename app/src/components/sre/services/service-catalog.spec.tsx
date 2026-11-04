@@ -57,6 +57,7 @@ describe("ServiceCatalog", () => {
       />,
     );
     await screen.findByText("checkout-api");
+    expect(screen.getByText("Environment")).toBeInTheDocument();
     expect(screen.queryByText("legacy-api")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /^Status/, expanded: false }));
     fireEvent.click(screen.getByRole("option", { name: /Deprecated/ }));
