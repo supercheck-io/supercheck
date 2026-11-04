@@ -132,7 +132,7 @@ export const observabilityDiagnosticRecipes: DiagnosticQueryAdapterRecipe[] = [
       resource: {
         type: "string",
         maxLength: 400,
-        pattern: "^/subscriptions/[0-9a-fA-F-]{36}/resourceGroups/[\\w.()-]+/providers/[\\w.]+(/[\\w.()-]+){2,}$",
+        pattern: "^/subscriptions/[0-9a-fA-F-]{36}/resourceGroups/[\\w.-]+/providers/[\\w.]+/[\\w.-]+/[\\w./-]+$",
       },
       metric: { type: "string", enum: ["Percentage CPU", "Http5xx", "Requests", "HttpResponseTime"], default: "Http5xx" },
       agg: { type: "string", enum: ["Average", "Maximum", "Total"], default: "Total" },

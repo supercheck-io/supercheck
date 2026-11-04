@@ -91,9 +91,15 @@ export async function resolveMcpEndpointUrl(row: ConnectorRow): Promise<string |
   try {
     const encrypted = encryptConnectorCredential(withMcpEndpoint(blob, stored), context);
     await db.transaction(async (tx) => {
+      // Lock the connector row first, then the credential row: the order credential rotation uses.
+      const [lockedConnector] = await tx
+        .select({ id: externalConnectors.id })
+        .from(externalConnectors)
+        .where(and(eq(externalConnectors.id, row.id), sql`${externalConnectors.config}->>'endpointUrl' = ${stored}`))
+        .for("update");
+      if (!lockedConnector) return;
       if (credentialRow) {
-        // Lock in the same order as credential rotation (credential, then connector). A rotate that
-        // committed since the read replaced or removed the row, so this stale rewrite is skipped.
+        // A rotate that committed since the read replaced or removed the row, so this stale rewrite is skipped.
         const [current] = await tx
           .select({ id: externalConnectorCredentials.id, updatedAt: externalConnectorCredentials.updatedAt })
           .from(externalConnectorCredentials)
@@ -110,12 +116,6 @@ export async function resolveMcpEndpointUrl(row: ConnectorRow): Promise<string |
           })
           .where(eq(externalConnectorCredentials.id, credentialRow.id));
       } else {
-        const [lockedConnector] = await tx
-          .select({ id: externalConnectors.id })
-          .from(externalConnectors)
-          .where(and(eq(externalConnectors.id, row.id), sql`${externalConnectors.config}->>'endpointUrl' = ${stored}`))
-          .for("update");
-        if (!lockedConnector) return;
         const [existing] = await tx
           .select({ id: externalConnectorCredentials.id })
           .from(externalConnectorCredentials)

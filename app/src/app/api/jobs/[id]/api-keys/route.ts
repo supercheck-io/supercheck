@@ -227,7 +227,12 @@ export async function POST(
     // advisory lock, so concurrent requests cannot both pass the cap or name check.
     // SECURITY: Only the hash is stored, the plain key is returned once to the user.
     const created = await db.transaction(async (tx) => {
-      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${jobId}, 0))`);
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${job[0].id}, 0))`);
+
+      // The lock wait can outlast a short expiry computed before it.
+      if (expiresAt && expiresAt <= new Date()) {
+        return { error: "Expiry date must be in the future", status: 400 } as const;
+      }
 
       const [stillMember] = await tx
         .select({ id: member.id })
@@ -239,13 +244,13 @@ export async function POST(
       const [existingNamedKey] = await tx
         .select({ id: apikey.id })
         .from(apikey)
-        .where(and(eq(apikey.jobId, jobId), eq(apikey.name, name.trim())))
+        .where(and(eq(apikey.jobId, job[0].id), eq(apikey.name, name.trim())))
         .limit(1);
       if (existingNamedKey) {
         return { error: "An API key with this name already exists for this job", status: 409 } as const;
       }
 
-      const existingKeys = await tx.select({ id: apikey.id }).from(apikey).where(eq(apikey.jobId, jobId));
+      const existingKeys = await tx.select({ id: apikey.id }).from(apikey).where(eq(apikey.jobId, job[0].id));
       if (existingKeys.length >= 10) {
         return { error: "Maximum of 10 API keys per job reached", status: 400 } as const;
       }

@@ -255,7 +255,7 @@ export function validateDiagnosticQueryParameterSchema(parameterSchema: Record<s
       throw new Error(`Diagnostic query parameter schema contains invalid parameter name "${name}"`);
     }
     const schema = normalizeParameterSchemaEntry(name, parameterSchema[name]);
-    // Write-time only: saved broad patterns still load and are treated as no constraint when rendering.
+    // Write-time only: saved broad patterns still load; they never exempt a value from the render-time free-text checks.
     if (schema?.pattern && isOverBroadPattern(schema.pattern)) {
       throw new Error(`Diagnostic query parameter schema for "${name}" pattern is too broad: it accepts quotes, braces, backslashes or newlines`);
     }
@@ -353,24 +353,45 @@ const UNSAFE_FREE_TEXT = /["'`{}\\\n\r;]/;
 // enough to change the query. Free text there must be a plain token.
 const UNQUOTED_SAFE_TOKEN = /^[A-Za-z0-9_.:/@-]+$/;
 // Values containing a character UNSAFE_FREE_TEXT rejects. A pattern that accepts any of them is not
-// constraining the value (".*", "^.+$", "[^x]+") and cannot stand in for the free-text check.
+// constraining the value (".*", "^.+$", "[^x]+").
 const BROAD_PATTERN_CANARIES = ['a"b', "a'b", "a`b", "a{b}", "a\\b", "a\nb", "a;b", '"} or vector(1) #'];
+const NEGATED_CLASS = /\[\^(?:[^\]\\]|\\.)*\]/g;
+// Query-syntax characters written literally in the pattern (outside a negated class) mean it accepts them.
+const SYNTAX_LITERAL = /["'`#;]|\\[{}\\nrxu0]/;
 
-/** True when the pattern accepts values with query-syntax characters, so it constrains nothing. */
+/** Save-time check: true when the pattern accepts values with query-syntax characters. */
 export function isOverBroadPattern(pattern: string): boolean {
   try {
     const re = new RegExp(pattern);
-    return BROAD_PATTERN_CANARIES.some((canary) => re.test(canary));
+    return BROAD_PATTERN_CANARIES.some((canary) => re.test(canary)) || SYNTAX_LITERAL.test(pattern.replace(NEGATED_CLASS, ""));
   } catch {
     return false;
   }
 }
 
+const NON_TOKEN_CANARIES = [" ", "(", ")", "|", "=", "!", "<", ">", ",", "+", "*", "?", "&", "$", "%", "~", "[", "]"].map((c) => `a${c}a`);
+
+function acceptsNonToken(pattern: string): boolean {
+  try {
+    const re = new RegExp(pattern);
+    return NON_TOKEN_CANARIES.some((canary) => re.test(canary));
+  } catch {
+    return true;
+  }
+}
+
+const hasHashComments = (queryType?: DiagnosticQueryType) => queryType === "promql" || queryType === "logql";
+
 /** Whether the template position at `offset` is inside a quoted string ("...", '...' or `...`). */
-function isInsideQuotes(template: string, offset: number): boolean {
+function isInsideQuotes(template: string, offset: number, hashComments = false): boolean {
   let open: string | null = null;
   for (let i = 0; i < offset; i++) {
     const ch = template[i];
+    if (!open && hashComments && ch === "#") {
+      // PromQL and LogQL: a # outside a string comments out the rest of the line, so quotes in it do not count.
+      while (i < offset && template[i] !== "\n") i++;
+      continue;
+    }
     if (open) {
       // A backslash escapes only in "..." and '...' strings; backtick strings are raw.
       if (ch === "\\" && open !== "`") i++;
@@ -382,13 +403,10 @@ function isInsideQuotes(template: string, offset: number): boolean {
   return open !== null;
 }
 
+// Only values the admin fixed up front (enum or allowlist) are exempt from the free-text checks.
+// A pattern is not: it can be loose, or accept query syntax, so it never replaces the guard.
 function isConstrainedFreeText(schema: NormalizedParameterSchema | null, allowlistValue: unknown) {
-  // A broad pattern is treated as absent at runtime so saved definitions keep working for benign values.
-  return Boolean(
-    (schema?.pattern && !isOverBroadPattern(schema.pattern)) ||
-      schema?.enum ||
-      (Array.isArray(allowlistValue) && allowlistValue.length > 0),
-  );
+  return Boolean(schema?.enum || (Array.isArray(allowlistValue) && allowlistValue.length > 0));
 }
 
 function rejectUnsafeFreeText(
@@ -418,7 +436,9 @@ export function validateTemplateFreeTextPositions(
   template: string,
   parameterSchema: Record<string, unknown>,
   allowlist: Record<string, unknown>,
+  queryType?: DiagnosticQueryType,
 ): void {
+  const hashComments = hasHashComments(queryType);
   const pattern = new RegExp(TEMPLATE_PARAM_PATTERN.source, TEMPLATE_PARAM_PATTERN.flags);
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(template)) !== null) {
@@ -427,9 +447,11 @@ export function validateTemplateFreeTextPositions(
     const schema = normalizeParameterSchemaEntry(name, parameterSchema[name]);
     if (schema && schema.type !== "string") continue;
     if (isConstrainedFreeText(schema, allowlist[name])) continue;
-    if (!isInsideQuotes(template, match.index)) {
+    if (!isInsideQuotes(template, match.index, hashComments)) {
+      // A pattern that only admits plain tokens is consistent with the render-time token rule.
+      if (schema?.pattern && !acceptsNonToken(schema.pattern)) continue;
       throw new Error(
-        `Diagnostic query parameter "${name}" is free text in an unquoted position; add a pattern, enum or allowlist, or put the placeholder inside quotes`,
+        `Diagnostic query parameter "${name}" is free text in an unquoted position; add an enum or allowlist, a pattern that admits only plain tokens, or put the placeholder inside quotes`,
       );
     }
   }
@@ -472,7 +494,7 @@ export function renderDiagnosticQueryTemplate(definition: DiagnosticQueryDefinit
     }
     validateParameterValue(name, value, definition.parameterSchema[name]);
     validateAllowlist(name, value, definition.allowlist[name]);
-    rejectUnsafeFreeText(name, value, definition.parameterSchema[name], definition.allowlist[name], isInsideQuotes(definition.template, offset));
+    rejectUnsafeFreeText(name, value, definition.parameterSchema[name], definition.allowlist[name], isInsideQuotes(definition.template, offset, hasHashComments(definition.queryType)));
     referencedParameters.add(name);
     return formatParameterValue(value);
   });

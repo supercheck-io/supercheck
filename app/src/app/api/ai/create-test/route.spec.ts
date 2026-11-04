@@ -54,6 +54,7 @@ describe("AI create-test input bounds", () => {
     requireAuth.mockRejectedValueOnce(new AuthError("CLI access revoked", 403));
     const response = await post({ userRequest: "write a login test", testType: "playwright" });
     expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ reason: "forbidden", message: expect.stringContaining("permission") });
   });
 
   it("requires an active organization before any AI call or credit charge", async () => {

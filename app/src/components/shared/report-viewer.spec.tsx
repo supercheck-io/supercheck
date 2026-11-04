@@ -108,6 +108,51 @@ describe("signed URL lifecycle", () => {
     setVisibility("visible");
   });
 
+  const mockMints = (urls: string[]) => {
+    let n = 0;
+    fetchMock.mockImplementation(async (url: string) =>
+      url === "/api/report-urls"
+        ? { ok: true, json: async () => ({ url: urls[Math.min(n++, urls.length - 1)] }) }
+        : { ok: true, headers: new Headers({ "content-type": "text/html" }), text: async () => "<html></html>" },
+    );
+  };
+
+  it("points the new-tab link at the pending URL while the iframe keeps the old one", async () => {
+    jest.useFakeTimers();
+    setVisibility("visible");
+    const { container } = render(<ReportViewer reportUrl="/api/test-results/run-1/report/index.html" />);
+    await waitFor(() => expect(container.querySelector("iframe")).toHaveAttribute("src", SIGNED));
+    fireEvent.load(container.querySelector("iframe")!);
+    mockMints([NEW]);
+    await act(async () => {
+      jest.advanceTimersByTime(REPORT_URL_REFRESH_MS + 10);
+    });
+    expect(container.querySelector("iframe")).toHaveAttribute("src", SIGNED);
+    expect(screen.getByRole("link", { name: "Open report in a new tab" })).toHaveAttribute("href", NEW);
+  });
+
+  it("re-mints instead of applying a pending URL that aged past the freshness window", async () => {
+    jest.useFakeTimers();
+    setVisibility("visible");
+    const NEW2 = "https://reports.example.test/api/test-results/~token4/run-1/report/index.html";
+    const { container } = render(<ReportViewer reportUrl="/api/test-results/run-1/report/index.html" />);
+    await waitFor(() => expect(container.querySelector("iframe")).toHaveAttribute("src", SIGNED));
+    fireEvent.load(container.querySelector("iframe")!);
+    mockMints([NEW, NEW2]);
+    await act(async () => {
+      jest.advanceTimersByTime(REPORT_URL_REFRESH_MS + 10);
+    });
+    expect(mintCount()).toBe(2);
+    await act(async () => {
+      jest.advanceTimersByTime(REPORT_URL_REFRESH_MS); // pending sits visible until it is stale
+    });
+    expect(container.querySelector("iframe")).toHaveAttribute("src", SIGNED);
+    await act(async () => setVisibility("hidden"));
+    await waitFor(() => expect(container.querySelector("iframe")).toHaveAttribute("src", NEW2));
+    expect(mintCount()).toBe(3);
+    setVisibility("visible");
+  });
+
   it("drops a refreshed URL minted for a previous report when the viewer switched reports", async () => {
     jest.useFakeTimers();
     setVisibility("visible");

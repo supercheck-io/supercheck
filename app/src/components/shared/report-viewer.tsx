@@ -19,6 +19,8 @@ import {
 import { useTheme } from "next-themes";
 import { useAppConfig } from "@/hooks/use-app-config";
 
+type SignedUrl = { source: string; url: string; mintedAt: number };
+
 // Signed report URLs live 1h (REPORT_TOKEN_TTL_SECONDS); refresh 5 minutes early. Not imported: that module is server-only.
 export const REPORT_URL_REFRESH_MS = 55 * 60 * 1000;
 /** Delay before retrying a failed background refresh; the current report keeps working meanwhile. */
@@ -222,11 +224,11 @@ export function ReportViewer({
   // here on the response (the reports origin allows this app's origin via CORS).
   const { config: appConfig, isFetched: configReady } = useAppConfig();
   const separateOrigin = !!appConfig.reports?.separateOrigin;
-  const [signedUrl, setSignedUrl] = useState<{ source: string; url: string } | null>(null);
+  const [signedUrl, setSignedUrl] = useState<SignedUrl | null>(null);
   // Bumped by the refresh timer to mint a fresh signed URL before the old one expires.
   const [refreshTick, setRefreshTick] = useState(0);
   // A freshly minted URL waits here until the document is hidden, so a visible report is never reloaded.
-  const [pendingSigned, setPendingSigned] = useState<{ source: string; url: string } | null>(null);
+  const [pendingSigned, setPendingSigned] = useState<SignedUrl | null>(null);
   const signedSourceRef = useRef<string | null>(null);
   useEffect(() => {
     signedSourceRef.current = signedUrl?.source ?? null;
@@ -272,7 +274,7 @@ export function ReportViewer({
         } else if (text.includes("Test Validation Failed")) {
           setIsValidationError(true);
         }
-        setSignedUrl({ source, url: minted.url });
+        setSignedUrl({ source, url: minted.url, mintedAt: Date.now() });
       } catch {
         fail("Failed to load test report. The report server might be unreachable.");
       }
@@ -304,7 +306,7 @@ export function ReportViewer({
         const res = await fetch(minted.url, { cache: "no-store" });
         await res.text();
         if (!res.ok || (res.headers.get("content-type") || "").includes("json")) return retryLater();
-        if (!cancelled) setPendingSigned({ source, url: minted.url });
+        if (!cancelled) setPendingSigned({ source, url: minted.url, mintedAt: Date.now() });
       } catch {
         retryLater();
       }
@@ -325,8 +327,10 @@ export function ReportViewer({
         return;
       }
       if (document.visibilityState !== "hidden") return;
-      setSignedUrl(pendingSigned);
       setPendingSigned(null);
+      // Still-fresh URLs are applied; an aged-out one is re-minted instead of loading an expired URL.
+      if (Date.now() - pendingSigned.mintedAt < REPORT_URL_REFRESH_MS) setSignedUrl(pendingSigned);
+      else setRefreshTick((n) => n + 1);
     };
     apply();
     document.addEventListener("visibilitychange", apply);
@@ -359,6 +363,10 @@ export function ReportViewer({
     const separator = currentReportUrl.includes("?") ? "&" : "?";
     return `${currentReportUrl}${separator}rvRetry=${retryNonce}`;
   }, [currentReportUrl, retryNonce, separateOrigin, signedUrl, configReady]);
+
+  // The new-tab link always takes the freshest minted URL, even while the iframe still holds the older one.
+  const openLinkHref =
+    (pendingSigned?.source === currentReportUrl ? pendingSigned.url : undefined) ?? iframeSrc;
 
   // Update URL when prop changes - deferred to avoid synchronous setState
   useEffect(() => {
@@ -687,10 +695,10 @@ export function ReportViewer({
           !iframeError &&
           !hideFullscreenButton && (
             <div className="absolute top-2 right-2 z-10 flex gap-1">
-              {separateOrigin && iframeSrc && (
+              {separateOrigin && openLinkHref && (
                 // Safari cannot load the trace viewer inside a cross-site frame; as its own tab it works.
                 <Button size="sm" asChild className="cursor-pointer flex items-center gap-1 bg-secondary hover:bg-secondary/90">
-                  <a href={iframeSrc} target="_blank" rel="noopener noreferrer" title="Open report in a new tab" aria-label="Open report in a new tab">
+                  <a href={openLinkHref} target="_blank" rel="noopener noreferrer" title="Open report in a new tab" aria-label="Open report in a new tab">
                     <ExternalLink className="h-4 w-4 text-secondary-foreground" />
                   </a>
                 </Button>

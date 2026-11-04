@@ -96,6 +96,29 @@ describe("POST /api/jobs/[id]/api-keys transaction checks", () => {
     expect(mockExecute).toHaveBeenCalledTimes(1);
   });
 
+  it("keys the lock on the canonical job id read from the DB, not the raw URL spelling", async () => {
+    const lower = "abcdefab-1111-4111-8111-abcdefabcdef";
+    mockRequireAuth.mockResolvedValue(context);
+    selects.length = 0;
+    selects.push([{ id: lower, organizationId: "o1", projectId: "p1", name: "Job" }], [{ id: "m1" }], [], []);
+    const upper = new NextRequest(`https://app.example.com/api/jobs/${lower.toUpperCase()}/api-keys`, {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "ci" }),
+    });
+    expect((await POST(upper, { params: Promise.resolve({ id: lower.toUpperCase() }) })).status).toBe(201);
+    const chunks = ((mockExecute.mock.calls[0] as unknown[])[0] as { queryChunks: unknown[] }).queryChunks;
+    const values = chunks.map((c) => (c as { value?: unknown })?.value ?? c);
+    expect(values).toContain(lower);
+    expect(values).not.toContain(lower.toUpperCase());
+  });
+
+  it("re-checks the expiry after the lock wait", async () => {
+    mockRequireAuth.mockResolvedValue({ ...context, isCliAuth: true, cliTokenExpiresAt: new Date(Date.now() + 1000) });
+    mockExecute.mockImplementationOnce(async () => { jest.setSystemTime(Date.now() + 5000); });
+    const res = await post({ name: "ci" });
+    expect(res.status).toBe(400);
+    expect(inserted).toHaveLength(0);
+  });
+
   it("refuses when the creator is no longer a member of the organization", async () => {
     mockRequireAuth.mockResolvedValue(context);
     selects.length = 0;

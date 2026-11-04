@@ -188,38 +188,45 @@ export async function discoverSreMcpTools(
     const discovered = parseDiscoveredTools(
       normalizePrivateAgentEvidenceSummaries(result.job.resultSummary, 50),
     );
-    // Re-read after the wait so a concurrent allowlist save is not overwritten.
-    const fresh = await db.query.externalConnectors.findFirst({
-      where: and(
-        eq(externalConnectors.id, connector.id),
-        eq(externalConnectors.organizationId, organizationId),
-        eq(externalConnectors.projectId, project.id),
-      ),
-      columns: { config: true },
+    // Lock the row and re-read after the wait: only the mcp key is merged, so a concurrent
+    // allowlist save or endpoint rotation is not overwritten.
+    const config = await db.transaction(async (tx) => {
+      const [fresh] = await tx
+        .select({ config: externalConnectors.config })
+        .from(externalConnectors)
+        .where(
+          and(
+            eq(externalConnectors.id, connector.id),
+            eq(externalConnectors.organizationId, organizationId),
+            eq(externalConnectors.projectId, project.id),
+          ),
+        )
+        .for("update");
+      const freshConfig = fresh?.config ?? connector.config ?? {};
+      const previous = readMcpConfig(freshConfig);
+      const merged: Record<string, unknown> = {
+        ...freshConfig,
+        mcp: { ...previous, discovered, discoveredAt: new Date().toISOString() },
+      };
+      await tx
+        .update(externalConnectors)
+        .set({
+          config: merged,
+          status: "valid",
+          lastValidatedAt: new Date(),
+          lastValidationStatus: "valid",
+          lastValidationError: null,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(externalConnectors.id, connector.id),
+            eq(externalConnectors.organizationId, organizationId),
+            eq(externalConnectors.projectId, project.id),
+          ),
+        );
+      return merged;
     });
-    const freshConfig = fresh?.config ?? connector.config ?? {};
-    const previous = readMcpConfig(freshConfig);
-    const config: Record<string, unknown> = {
-      ...freshConfig,
-      mcp: { ...previous, discovered, discoveredAt: new Date().toISOString() },
-    };
-    await db
-      .update(externalConnectors)
-      .set({
-        config,
-        status: "valid",
-        lastValidatedAt: new Date(),
-        lastValidationStatus: "valid",
-        lastValidationError: null,
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(externalConnectors.id, connector.id),
-          eq(externalConnectors.organizationId, organizationId),
-          eq(externalConnectors.projectId, project.id),
-        ),
-      );
 
     await logAuditEvent({
       userId,
@@ -253,24 +260,39 @@ export async function saveSreMcpToolAllowlist(
     if (!loaded.ok) return { success: false, error: loaded.error };
     const { userId, organizationId, project, connector } = loaded;
 
-    const previous = readMcpConfig(connector.config);
-    const built = buildAllowlist(previous.discovered, parsed.data.tools, previous.allowlist);
-    if (!built.ok) return { success: false, error: built.error };
-
-    const config: Record<string, unknown> = {
-      ...(connector.config ?? {}),
-      mcp: { ...previous, allowlist: built.allowlist },
-    };
-    await db
-      .update(externalConnectors)
-      .set({ config, updatedAt: new Date() })
-      .where(
-        and(
-          eq(externalConnectors.id, connector.id),
-          eq(externalConnectors.organizationId, organizationId),
-          eq(externalConnectors.projectId, project.id),
-        ),
-      );
+    // Lock the row and merge only the mcp allowlist into the freshly read config.
+    const saved = await db.transaction(async (tx) => {
+      const [fresh] = await tx
+        .select({ config: externalConnectors.config })
+        .from(externalConnectors)
+        .where(
+          and(
+            eq(externalConnectors.id, connector.id),
+            eq(externalConnectors.organizationId, organizationId),
+            eq(externalConnectors.projectId, project.id),
+          ),
+        )
+        .for("update");
+      const freshConfig = fresh?.config ?? connector.config ?? {};
+      const previous = readMcpConfig(freshConfig);
+      const built = buildAllowlist(previous.discovered, parsed.data.tools, previous.allowlist);
+      if (!built.ok) return built;
+      const merged: Record<string, unknown> = { ...freshConfig, mcp: { ...previous, allowlist: built.allowlist } };
+      await tx
+        .update(externalConnectors)
+        .set({ config: merged, updatedAt: new Date() })
+        .where(
+          and(
+            eq(externalConnectors.id, connector.id),
+            eq(externalConnectors.organizationId, organizationId),
+            eq(externalConnectors.projectId, project.id),
+          ),
+        );
+      return { ok: true as const, allowlist: built.allowlist, config: merged };
+    });
+    if (!saved.ok) return { success: false, error: saved.error };
+    const { config } = saved;
+    const built = saved;
 
     await logAuditEvent({
       userId,

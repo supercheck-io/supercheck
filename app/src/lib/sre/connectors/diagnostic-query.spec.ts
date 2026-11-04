@@ -185,23 +185,32 @@ describe("diagnostic query free-text and broad-pattern guards", () => {
     expect(() => render('{app="$v"}', { v: "string" }, 'x"} or vector(1) #')).toThrow("disallowed characters");
   });
 
-  it("treats an over-broad saved pattern as no constraint when rendering", () => {
-    expect(() => render('{app="$v"}', { v: { type: "string", pattern: ".*" } }, 'x"} or {a="b')).toThrow("disallowed characters");
-    expect(render('{app="$v"}', { v: { type: "string", pattern: ".*" } }, "benign").query).toBe('{app="benign"}');
+  it("never lets a pattern exempt a quoted value from the free-text check", () => {
+    const stored = { v: { type: "string", pattern: ".*" } };
+    expect(() => render('{app="$v"}', stored, 'x"} or {a="b')).toThrow("disallowed characters");
+    expect(render('{app="$v"}', stored, "benign").query).toBe('{app="benign"}');
+    // A saved pattern that admits syntax cannot smuggle it past render either.
+    const evil = { v: { type: "string", pattern: '^x"\\} or vector\\(1\\) #$' } };
+    expect(() => render('{app="$v"}', evil, 'x"} or vector(1) #')).toThrow("disallowed characters");
   });
 
-  it("keeps a strict pattern as the constraint, even in an unquoted position", () => {
-    expect(render("up > $v", { v: { type: "string", pattern: "^[a-z ]+$" } }, "a b").query).toBe("up > a b");
+  it("still applies the strict token rule to an unquoted placeholder that has a pattern", () => {
+    const loose = { v: { type: "string", pattern: "^[a-z ]+$" } };
+    expect(() => render("up > $v", loose, "a b")).toThrow("unquoted free text");
+    expect(render("up > $v", loose, "ab").query).toBe("up > ab");
+    expect(render("up > $v", { v: { type: "string", enum: ["a b"] } }, "a b").query).toBe("up > a b");
   });
 
   it("detects over-broad patterns", () => {
     for (const p of [".*", "^.+$", "^[^x]+$", "a", "^[\\s\\S]*$"]) expect(isOverBroadPattern(p)).toBe(true);
     for (const p of ["^[a-zA-Z0-9_.:-]+$", "^[a-z ]+$"]) expect(isOverBroadPattern(p)).toBe(false);
+    for (const p of ['^x"\\} or vector\\(1\\) #$', '^x"\\} or vector\\(1\\) #.*$', "^a#b$", "^a\\\\b$", "^a\\nb$"]) expect(isOverBroadPattern(p)).toBe(true);
   });
 
   it("rejects over-broad patterns when a definition is saved", () => {
     expect(() => validateDiagnosticQueryParameterSchema({ v: { type: "string", pattern: ".*" } })).toThrow("too broad");
     expect(() => validateDiagnosticQueryParameterSchema({ v: { type: "string", pattern: "^[a-z]+$" } })).not.toThrow();
+    expect(() => validateDiagnosticQueryParameterSchema({ v: { type: "string", pattern: '^x"\\} or vector\\(1\\) #$' } })).toThrow("too broad");
   });
 
   it("rejects unconstrained free text in an unquoted position when a definition is saved", () => {
@@ -209,6 +218,7 @@ describe("diagnostic query free-text and broad-pattern guards", () => {
     expect(() => validateTemplateFreeTextPositions('{a="$v"}', { v: "string" }, {})).not.toThrow();
     expect(() => validateTemplateFreeTextPositions("up > $v", { v: "number" }, {})).not.toThrow();
     expect(() => validateTemplateFreeTextPositions("up > $v", { v: { type: "string", pattern: "^[a-z]+$" } }, {})).not.toThrow();
+    expect(() => validateTemplateFreeTextPositions("up > $v", { v: { type: "string", pattern: "^[a-z ]+$" } }, {})).toThrow("unquoted position");
     expect(() => validateTemplateFreeTextPositions("up > $v", { v: "string" }, { v: ["a", "b"] })).not.toThrow();
   });
 
@@ -236,6 +246,21 @@ describe("diagnostic query free-text and broad-pattern guards", () => {
         expect(() => httpRender("/api/$v", bad)).toThrow("disallowed characters");
       }
     });
+  });
+
+  it("skips # comments outside strings for PromQL/LogQL when judging quotes", () => {
+    // The apostrophe sits in a comment, so it must not open a string that makes $v look quoted.
+    const tpl = "up # don't\n> $v";
+    expect(() => validateTemplateFreeTextPositions(tpl, { v: "string" }, {}, "promql")).toThrow("unquoted position");
+    expect(() => validateTemplateFreeTextPositions(tpl, { v: "string" }, {}, "logql")).toThrow("unquoted position");
+    // Other query types have no # comments, so the apostrophe really does open a string.
+    expect(() => validateTemplateFreeTextPositions(tpl, { v: "string" }, {}, "http_get")).not.toThrow();
+    // A # inside a string is not a comment.
+    expect(() => validateTemplateFreeTextPositions('{a="#x $v"}', { v: "string" }, {}, "promql")).not.toThrow();
+    // Render path: a placeholder inside a comment is treated as unquoted.
+    expect(() =>
+      renderDiagnosticQueryTemplate({ ...base, queryType: "promql", template: 'up # "\n> $v', parameterSchema: { v: "string" } }, { v: "1 or vector(1)" }),
+    ).toThrow("unquoted free text");
   });
 
   it("treats a backslash as literal inside a backtick string", () => {

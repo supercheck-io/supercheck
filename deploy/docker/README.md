@@ -71,6 +71,7 @@ When you are running the app locally on `http://localhost:3000`, Supercheck keep
 
 | Variable | Description | Default |
 |----------|-------------|---------|
+| `ALLOW_INTERNAL_TARGETS` | `true` lets monitors target private, loopback and reserved addresses. Passed to the app and worker | `false` |
 | `CORS_ALLOWED_ORIGINS` | App-side: comma-separated additional trusted origins for browser integrations | Empty |
 | `DEVICE_AUTH_ENABLED` | Let `supercheck login` sign in through the browser (device authorization). When `false` the CLI asks users to create a token in the dashboard instead. Needs Redis and database migration 0032 | `false` |
 | `MCP_SERVER_ENABLED` | Remote MCP server sign-in (OAuth 2.1 for MCP clients). Off by default; needs migration 0036 and `BETTER_AUTH_URL` set to the public HTTPS URL | `false` |

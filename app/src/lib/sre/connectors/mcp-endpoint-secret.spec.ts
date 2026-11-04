@@ -6,6 +6,7 @@ let mockLockedRows: unknown[] | null = null; // what FOR UPDATE sees inside the 
 let mockTxFails: unknown = null;
 const mockUpdates: Array<{ table: string; set: Record<string, unknown> }> = [];
 const mockInserts: Array<Record<string, unknown>> = [];
+const mockLockOrder: string[] = [];
 const mockTxUpdate = (table: { name?: string }) => ({
   set: (set: Record<string, unknown>) => {
     mockUpdates.push({ table: table.name ?? "?", set });
@@ -25,8 +26,16 @@ jest.mock("@/utils/db", () => ({
         select: () => {
           const chain: Record<string, unknown> = {};
           const rows = () => mockLockedRows ?? (mockCredentialRows.length ? mockCredentialRows : [{ id: "c1" }]);
-          for (const m of ["from", "where", "limit"]) chain[m] = () => chain;
-          chain.for = async () => rows();
+          let table = "?";
+          chain.from = (t: { name?: string }) => {
+            table = t.name ?? "?";
+            return chain;
+          };
+          for (const m of ["where", "limit"]) chain[m] = () => chain;
+          chain.for = async () => {
+            mockLockOrder.push(table);
+            return rows();
+          };
           chain.then = (r: (x: unknown) => unknown) => Promise.resolve(mockCredentialRows).then(r);
           return chain;
         },
@@ -51,6 +60,7 @@ beforeEach(() => {
   mockTxFails = null;
   mockUpdates.length = 0;
   mockInserts.length = 0;
+  mockLockOrder.length = 0;
 });
 
 describe("resolveMcpEndpointUrl", () => {
@@ -87,6 +97,8 @@ describe("resolveMcpEndpointUrl", () => {
     await resolveMcpEndpointUrl(row("https://mcp.example.com/mcp?apiKey=s3cret"));
     expect(mockInserts).toHaveLength(0);
     expect(mockUpdates.map((u) => u.table)).toEqual(["credentials", "connectors"]);
+    // Same order as credential rotation: connector row first, then credential row.
+    expect(mockLockOrder).toEqual(["connectors", "credentials"]);
     const written = mockUpdates.find((u) => u.table === "credentials")!.set.encryptedCredential as string;
     expect(decryptConnectorCredential(written, context)).toEqual({
       token: "t",

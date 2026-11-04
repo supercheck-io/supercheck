@@ -4,6 +4,8 @@ const mockFindConnector = jest.fn();
 const mockUpdateWhere = jest.fn();
 const mockQueue = jest.fn();
 const mockWait = jest.fn();
+const mockForUpdate = jest.fn();
+let mockLockedConfig: Record<string, unknown> | undefined;
 
 jest.mock("server-only", () => ({}));
 jest.mock("next/cache", () => ({ revalidatePath: jest.fn() }));
@@ -23,6 +25,20 @@ jest.mock("@/utils/db", () => ({
     query: { externalConnectors: { findFirst: (...a: unknown[]) => mockFindConnector(...a) } },
     select: () => ({ from: () => ({ where: async () => [] }) }),
     update: () => ({ set: (values: unknown) => ({ where: (...a: unknown[]) => mockUpdateWhere(values, ...a) }) }),
+    transaction: async (fn: (tx: unknown) => unknown) =>
+      fn({
+        select: () => ({
+          from: () => ({
+            where: () => ({
+              for: async (...a: unknown[]) => {
+                mockForUpdate(...a);
+                return [{ config: mockLockedConfig ?? (await mockFindConnector()).config }];
+              },
+            }),
+          }),
+        }),
+        update: () => ({ set: (values: unknown) => ({ where: (...a: unknown[]) => mockUpdateWhere(values, ...a) }) }),
+      }),
   },
 }));
 jest.mock("@/lib/sre/connectors", () => ({
@@ -60,6 +76,7 @@ const connector = (overrides: Record<string, unknown> = {}) => ({
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockLockedConfig = undefined;
   mockCan.mockReturnValue(true);
   mockFindConnector.mockResolvedValue(connector());
 });
@@ -145,6 +162,28 @@ describe("MCP connector actions", () => {
     expect(ok).toMatchObject({ success: true, state: { allowlist: [{ name: "search" }] } });
     const saved = mockUpdateWhere.mock.calls[0][0] as { config: { endpointUrl: string; mcp: { allowlist: unknown[] } } };
     expect(saved.config.endpointUrl).toBe("https://mcp.internal/mcp");
+    expect(saved.config.mcp.allowlist).toHaveLength(1);
+  });
+
+  it("merges only its own keys into the locked, freshly read config", async () => {
+    mockQueue.mockResolvedValue({ jobId: "job-1", privateAgentId: "agent-1", route: {} });
+    mockWait.mockResolvedValue({ state: "completed", job: { resultSummary: { evidence: [] } } });
+    // The endpoint was rotated after the connector was loaded for this request.
+    mockLockedConfig = { endpointUrl: "https://mcp.internal/rotated?…", mcp: { discovered: [], allowlist: [] } };
+    await discoverSreMcpTools({ id });
+    expect(mockForUpdate).toHaveBeenCalledWith("update");
+    expect((mockUpdateWhere.mock.calls[0][0] as { config: { endpointUrl: string } }).config.endpointUrl).toBe("https://mcp.internal/rotated?…");
+
+    mockUpdateWhere.mockClear();
+    mockForUpdate.mockClear();
+    mockLockedConfig = {
+      endpointUrl: "https://mcp.internal/rotated?…",
+      mcp: { discovered: [{ name: "search", description: "Search", inputSchema: schema, unsupportedReason: null }] },
+    };
+    expect(await saveSreMcpToolAllowlist({ id, tools: [{ name: "search" }] })).toMatchObject({ success: true });
+    expect(mockForUpdate).toHaveBeenCalledWith("update");
+    const saved = mockUpdateWhere.mock.calls[0][0] as { config: { endpointUrl: string; mcp: { allowlist: unknown[] } } };
+    expect(saved.config.endpointUrl).toBe("https://mcp.internal/rotated?…");
     expect(saved.config.mcp.allowlist).toHaveLength(1);
   });
 });
