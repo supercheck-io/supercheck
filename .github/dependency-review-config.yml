@@ -12,3 +12,7 @@ allow-ghsas:
   - GHSA-rgw5-rvv9-x895
   - GHSA-f886-m6hf-6m8v
   - GHSA-v6h2-p8h4-qcjw
+  # deepmerge prototype poisoning (low severity, no patched release). The runtime
+  # path is @react-email/render -> html-to-text -> deepmerge, which only merges
+  # static html-to-text options. The other paths are dev-only (jest, @nestjs/cli).
+  - GHSA-gcqx-w48m-w2h4
