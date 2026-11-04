@@ -383,12 +383,18 @@ export async function POST(request: NextRequest) {
 
     if (isAuthError) {
       return NextResponse.json(
-        {
-          success: false,
-          reason: "authentication_required",
-          message: "Authentication required to use AI fix feature",
-          guidance: "Please log in and try again",
-        },
+        authErrorStatus(error) === 403
+          ? {
+              success: false,
+              reason: "forbidden",
+              message: "You no longer have permission to use AI fix in this project",
+            }
+          : {
+              success: false,
+              reason: "authentication_required",
+              message: "Authentication required to use AI fix feature",
+              guidance: "Please log in and try again",
+            },
         { status: authErrorStatus(error) }
       );
     }
