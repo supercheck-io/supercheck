@@ -55,6 +55,7 @@ const MAX_MESSAGE_TEXT_LENGTH = 4000;
 // Transport safety bounds, not product limits: the prompt budget decides how much history is used.
 const MAX_PART_TEXT_LENGTH = 100_000;
 const MAX_REQUEST_MESSAGES = 1000;
+const MAX_REQUEST_BODY_BYTES = 2_000_000;
 // Stored replies the request may claim; keeps the verification lookup bounded by the newest turns.
 const MAX_VERIFIED_ASSISTANT_IDS = 100;
 const HISTORY_ROW_LIMIT = 200;
@@ -294,9 +295,19 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Long chats are allowed, but the whole body stays bounded before it is parsed.
+  if (Number(request.headers.get("content-length") ?? 0) > MAX_REQUEST_BODY_BYTES) {
+    return NextResponse.json({ error: "Copilot chat history is too large" }, { status: 413 });
+  }
+
   let parsedBody: unknown;
   try {
-    parsedBody = await request.json();
+    const rawBody = await request.text();
+    // Covers requests without a Content-Length (chunked), which the header check cannot see.
+    if (rawBody.length > MAX_REQUEST_BODY_BYTES) {
+      return NextResponse.json({ error: "Copilot chat history is too large" }, { status: 413 });
+    }
+    parsedBody = JSON.parse(rawBody);
   } catch {
     return NextResponse.json(
       { error: "Invalid Copilot chat request" },
@@ -639,7 +650,6 @@ export async function POST(request: NextRequest) {
             attachments: [{ type: SRE_MESSAGE_INTERRUPTED }],
             modelId,
           });
-          await supersedeRegeneratedReply();
         } catch (error) {
           logger.error({ error }, "Failed to store interrupted Copilot reply");
         }

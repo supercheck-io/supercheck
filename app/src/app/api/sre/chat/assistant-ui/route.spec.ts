@@ -605,6 +605,29 @@ describe("Copilot assistant-ui chat API", () => {
     expect((await regenerate(AID(1))).status).toBe(400);
   });
 
+  it("keeps the original reply when the regeneration is stopped before it finishes", async () => {
+    streamAborted = true;
+    mockListSreMessagesByIds.mockResolvedValue([storedRow(AID(1), "assistant", "a1"), storedRow(AID(2), "assistant", "a2")]);
+    await regenerate(AID(1));
+    await onFinishPromise;
+    expect(mockMarkSuperseded).not.toHaveBeenCalled();
+  });
+
+  it("returns 413 for a request body over the size bound", async () => {
+    const response = await POST(new NextRequest("http://localhost/api/sre/chat/assistant-ui", {
+      method: "POST", headers: { "content-length": "3000000" }, body: JSON.stringify({ messages: [userTurn("u1", "hi")] }),
+    }));
+    expect(response.status).toBe(413);
+    expect(streamText).not.toHaveBeenCalled();
+  });
+
+  it("returns 413 for an oversized body that sends no Content-Length", async () => {
+    const response = await POST(new NextRequest("http://localhost/api/sre/chat/assistant-ui", {
+      method: "POST", body: JSON.stringify({ messages: [userTurn("u1", "x".repeat(2_100_000))] }),
+    }));
+    expect(response.status).toBe(413);
+  });
+
   it("keeps a superseded reply out of the verified history", async () => {
     mockListSreMessagesByIds.mockResolvedValue([storedRow(AID(1), "assistant", "old", [{ type: "superseded" }]), storedRow(AID(2), "assistant", "new")]);
     await send({ messages: [userTurn("u1", "q1"), assistantTurn(AID(1), "old"), userTurn("u2", "q2"), assistantTurn(AID(2), "new"), userTurn("u3", "q3")] });
