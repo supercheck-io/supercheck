@@ -14,7 +14,7 @@ import { eq, gte, and, count, sql, sum, inArray } from "drizzle-orm";
 import { subDays, subHours } from "date-fns";
 import { getQueueStats } from "@/lib/queue-stats";
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
-import { requireAuthContext, isAuthError } from '@/lib/auth-context';
+import { requireAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-context';
 import { excludeSupersededSyntheticResults, excludeSyntheticResults } from "@/lib/monitor-result-filters";
 import { buildSystemIssues } from "@/lib/dashboard/system-health";
 import { FAILED_RUN_STATUSES } from "@/lib/dashboard/run-outcomes";
@@ -539,7 +539,7 @@ export async function GET() {
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : 'Authentication required' },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     // Log error for debugging but avoid logging sensitive data

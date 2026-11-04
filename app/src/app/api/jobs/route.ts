@@ -15,7 +15,7 @@ import { desc, eq, inArray, and, asc, sql } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { z } from "zod";
 import { updateJob, JOB_CONFLICT_ERROR, jobNameSchema, jobDescriptionSchema, MAX_JOB_TESTS } from "@/lib/server-actions/update-job";
-import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { isUuid } from "@/lib/uuid";
 import { subscriptionService } from "@/lib/services/subscription-service";
 import { getNextRunDate } from "@/lib/cron-utils";
@@ -315,7 +315,7 @@ export async function GET(request: Request) {
     if (isAuthError(error)) {
       return NextResponse.json(
         { success: false, error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     console.error("Failed to fetch jobs:", error);
@@ -664,7 +664,7 @@ export async function POST(request: NextRequest) {
     if (isAuthError(error)) {
       return NextResponse.json(
         { success: false, error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     console.error("Error creating job:", error);
@@ -898,7 +898,7 @@ export async function PUT(request: Request) {
     if (isAuthError(error)) {
       return NextResponse.json(
         { success: false, error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
 

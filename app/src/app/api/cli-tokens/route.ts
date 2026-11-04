@@ -5,7 +5,7 @@ import { eq, and, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { capExpiryToCliToken } from "@/lib/auth/cli-token-expiry";
-import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { checkPermissionWithContext, isImpersonatedSession } from "@/lib/rbac/middleware";
 import {
   issueCliApiKeyAtomically,
@@ -89,7 +89,7 @@ export async function GET() {
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     logger.error({ err: error }, "Error fetching CLI tokens");
@@ -224,7 +224,7 @@ export async function POST(request: NextRequest) {
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     logger.error({ err: error }, "Error creating CLI token");

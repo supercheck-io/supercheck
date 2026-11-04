@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { runs, reports, jobs, ReportType } from "@/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
-import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 
 export async function GET(
@@ -87,7 +87,7 @@ export async function GET(
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     console.error(`Error fetching status for run ${runId}:`, error);

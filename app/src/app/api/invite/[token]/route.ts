@@ -4,7 +4,7 @@ import { getActiveTrial, hasPaidAccess } from "@/lib/execution/trial-limits";
 import { db } from '@/utils/db';
 import { invitation, member, organization, planLimits, projects, projectMembers, session, user as userTable } from '@/db/schema';
 import { eq, and, inArray, desc, asc, gt, sql } from 'drizzle-orm';
-import { requireUserAuthContext, isAuthError } from '@/lib/auth-context';
+import { requireUserAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-context';
 import { getCurrentUser } from '@/lib/session';
 import { withPlanLimitLock } from "@/lib/middleware/plan-limit-lock";
 import { isCloudHosted, isPolarEnabled } from '@/lib/feature-flags';
@@ -407,7 +407,7 @@ export async function POST(
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : 'Authentication required' },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
 

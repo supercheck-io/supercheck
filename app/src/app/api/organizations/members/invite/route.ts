@@ -4,7 +4,7 @@ import { db } from "@/utils/db";
 import { invitation, user as userTable, member, projects } from "@/db/schema";
 import { eq, and, inArray, sql, gte, lt } from "drizzle-orm";
 import { getUserOrgRole } from "@/lib/rbac/middleware";
-import { requireUserAuthContext, isAuthError } from "@/lib/auth-context";
+import { requireUserAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { Role } from "@/lib/rbac/permissions";
 import { buildInvitationProjectInfo } from "@/lib/invitation-project-info";
 import { EmailService } from "@/lib/email-service";
@@ -467,7 +467,7 @@ export async function POST(request: NextRequest) {
           error:
             error instanceof Error ? error.message : "Authentication required",
         },
-        { status: 401 },
+        { status: authErrorStatus(error) },
       );
     }
     console.error("Error sending invitation:", error);

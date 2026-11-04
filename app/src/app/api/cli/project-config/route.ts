@@ -9,7 +9,7 @@ import {
   type NotificationProviderType,
 } from "@/db/schema";
 import { db } from "@/utils/db";
-import { isAuthError, requireAuthContext } from "@/lib/auth-context";
+import { isAuthError, requireAuthContext, authErrorStatus } from "@/lib/auth-context";
 import {
   buildCliProjectConfigSnapshot,
   type CliProjectConfigSreIntegrationBindingInput,
@@ -106,7 +106,7 @@ export async function GET() {
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 },
+        { status: authErrorStatus(error) },
       );
     }
 

@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { monitors, monitorResults, MonitoringLocation } from "@/db/schema";
 import { eq, and, gte, lt, or, sql } from "drizzle-orm";
-import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import {
   monitorAggregationService,
@@ -394,7 +394,7 @@ export async function GET(
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     logger.error({ err: error, monitorId: id }, "Error fetching monitor stats");

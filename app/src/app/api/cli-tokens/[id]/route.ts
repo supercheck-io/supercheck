@@ -5,7 +5,7 @@ import { apikey } from "@/db/schema";
 import { eq, and, isNull, ne } from "drizzle-orm";
 import { z } from "zod";
 import { logAuditEvent } from "@/lib/audit-logger";
-import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { MAX_CLI_TOKENS_PER_PROJECT, countUsableCliKeys, lockProjectForKeyIssuance } from "@/lib/auth/cli-key-service";
 import { createLogger } from "@/lib/logger/pino-config";
@@ -164,7 +164,7 @@ export async function PATCH(
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     logger.error({ err: error }, "Error updating CLI token");
@@ -234,7 +234,7 @@ export async function DELETE(
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     logger.error({ err: error }, "Error revoking CLI token");

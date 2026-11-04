@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getLocationDisplayData } from "@/lib/location-registry";
-import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { createLogger } from "@/lib/logger/index";
 
 const logger = createLogger({ module: "locations-api" }) as {
@@ -29,7 +29,7 @@ export async function GET() {
     if (isAuthError(error)) {
       return NextResponse.json(
         { success: false, error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     logger.error({ err: error }, "Error fetching locations");

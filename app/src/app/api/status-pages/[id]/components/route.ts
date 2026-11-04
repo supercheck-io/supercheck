@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
-import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import {
   createComponent,
   createComponentFieldsSchema,
@@ -51,7 +51,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     console.error("Error listing components:", error);
@@ -116,7 +116,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     console.error("Error creating component:", error);

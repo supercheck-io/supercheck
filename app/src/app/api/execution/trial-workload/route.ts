@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireSameOriginRequest } from "@/lib/security/same-origin";
 import { getExecutionPolicy, ExecutionWorkloadError } from "@/lib/execution/execution-policy";
@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
     if (limited) return limited;
     return NextResponse.json({ success: true, script: createTrialK6Script(workload) });
   } catch (error) {
-    if (isAuthError(error)) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+    if (isAuthError(error)) return NextResponse.json({ error: "Authentication required" }, { status: authErrorStatus(error) });
     if (error instanceof ExecutionWorkloadError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }

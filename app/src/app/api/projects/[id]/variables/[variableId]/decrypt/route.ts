@@ -8,7 +8,7 @@ import {
   checkPermissionWithContext,
   withRateLimit,
 } from "@/lib/rbac/middleware";
-import { requireUserAuthContext, isAuthError } from "@/lib/auth-context";
+import { requireUserAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { decryptValue } from "@/lib/encryption";
 import { logAuditEvent } from "@/lib/audit-logger";
 
@@ -195,7 +195,7 @@ export async function POST(
       if (isAuthError(error)) {
         return NextResponse.json(
           { error: error instanceof Error ? error.message : "Authentication required" },
-          { status: 401 }
+          { status: authErrorStatus(error) }
         );
       }
 

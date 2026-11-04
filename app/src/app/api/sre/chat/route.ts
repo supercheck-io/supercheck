@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
-import { isAuthError, requireAuthContext } from "@/lib/auth-context";
+import { isAuthError, requireAuthContext, authErrorStatus } from "@/lib/auth-context";
 import { createLogger } from "@/lib/logger/index";
 import { sreDailyTokenLimitResponse } from "@/lib/sre/sre-daily-token-limit";
 import { checkSreChatRateLimit } from "@/lib/sre/sre-rate-limiter";
@@ -74,7 +74,7 @@ function authErrorResponse(error: unknown) {
         ? "Authentication required"
         : "Unable to authorize Copilot",
     },
-    { status: isAuthError(error) ? 401 : 500 },
+    { status: isAuthError(error) ? authErrorStatus(error) : 500 },
   );
 }
 
