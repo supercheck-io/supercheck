@@ -29,7 +29,7 @@ export function buildSreTriageSystemPrompt() {
 
 export function buildSreTriagePrompt(input: SreTriagePromptInput) {
   return [
-    `Incident title (unverified):\n${fenceUntrustedBlock("incident_title", [input.incidentTitle], 500)}`,
+    `Incident title (unverified):\n${fenceUntrustedBlock("incident_title", [input.incidentTitle ?? ""], 500)}`,
     `Severity: ${input.severity}`,
     `Primary service: ${input.serviceName ?? "unknown"}`,
     `Stored evidence items: ${input.evidenceCount}`,
