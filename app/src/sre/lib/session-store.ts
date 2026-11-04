@@ -180,16 +180,19 @@ export async function listSreConversations(input: ListSreConversationsInput) {
     .limit(parsed.limit ?? 50);
 }
 
+/** With `limit`, returns the newest `limit` messages, still oldest first. */
 export async function listSreMessages(
-  input: z.infer<typeof conversationLookupSchema>,
+  input: z.infer<typeof conversationLookupSchema> & { limit?: number },
 ) {
-  const conversation = await getSreConversation(input);
-
-  return db
+  const { limit, ...lookup } = input;
+  const conversation = await getSreConversation(lookup);
+  const base = db
     .select()
     .from(sreChatMessages)
-    .where(eq(sreChatMessages.conversationId, conversation.id))
-    .orderBy(asc(sreChatMessages.createdAt));
+    .where(eq(sreChatMessages.conversationId, conversation.id));
+  if (!limit) return base.orderBy(asc(sreChatMessages.createdAt));
+  const newest = await base.orderBy(desc(sreChatMessages.createdAt)).limit(limit);
+  return newest.reverse();
 }
 
 export async function appendSreMessage(input: AppendSreMessageInput) {

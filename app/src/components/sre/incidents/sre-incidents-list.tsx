@@ -297,10 +297,7 @@ export function SreIncidentsList({
       );
     });
 
-    // Newest activity first; a column header click overrides it in the table.
-    return filtered.sort(
-      (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-    );
+    return filtered;
   }, [
     deferredSearch,
     incidents,
@@ -422,6 +419,7 @@ export function SreIncidentsList({
             initialColumnVisibility={{}}
             entityLabel={`incidents${truncated ? " (from the latest 500)" : ""}`}
             emptyMessage="No incidents match the current filters."
+            initialSorting={[{ id: "updatedAt", desc: true }]}
             skeletonColumns={9}
           />
         </>

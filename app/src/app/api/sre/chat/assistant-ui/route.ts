@@ -49,6 +49,7 @@ type SreAssistantUiMessage = UIMessage<SreAssistantUiMessageMetadata>;
 const MAX_MESSAGE_TEXT_LENGTH = 4000;
 // Flags a stored assistant row as a reply cut short; such rows stay out of later prompts.
 const INTERRUPTED_ATTACHMENT_TYPE = "interrupted";
+const HISTORY_ROW_LIMIT = 200;
 const MAX_TOTAL_MESSAGE_TEXT_LENGTH = 20_000;
 const logger = createLogger({ module: "sre-assistant-ui" }) as {
   error: (data: unknown, message?: string) => void;
@@ -398,6 +399,8 @@ export async function POST(request: NextRequest) {
   }
   // The prompt history comes from the stored conversation, never from client-sent
   // assistant turns, which a caller could forge to steer the model.
+  const regenerating = parsed.data.trigger === "regenerate-message";
+  let regenerateTargetFound = false;
   const storedMessages: SreAssistantUiMessage[] = [];
   if (conversation) {
     try {
@@ -406,8 +409,13 @@ export async function POST(request: NextRequest) {
         projectId: context.project.id,
         userId: context.userId,
         conversationId: conversation.id,
+        limit: HISTORY_ROW_LIMIT,
       });
       for (const row of rows) {
+        if (regenerating && row.id === parsed.data.messageId) {
+          regenerateTargetFound = true;
+          break;
+        }
         if (
           (row.role !== "user" && row.role !== "assistant") ||
           !row.content?.trim() ||
@@ -429,18 +437,27 @@ export async function POST(request: NextRequest) {
       );
     }
   }
-  const clientUserTurn: SreAssistantUiMessage = {
-    id: latestUserMessage.id,
-    role: "user",
-    parts: [{ type: "text", text: latestUserText }],
-  };
   let history = storedMessages;
-  if (parsed.data.trigger === "submit-message") {
-    history = [...storedMessages, clientUserTurn];
-  } else {
-    // Regenerating: the stored user turn is already the last one asked, so drop the old reply.
+  if (regenerating) {
+    // Regenerate the reply the client named: history is every stored turn before it.
+    if (!regenerateTargetFound) {
+      return NextResponse.json(
+        { error: "Copilot message to regenerate was not found" },
+        { status: 400 },
+      );
+    }
     while (history.at(-1)?.role === "assistant") history = history.slice(0, -1);
-    if (history.length === 0) history = [clientUserTurn];
+    if (history.length === 0) {
+      return NextResponse.json(
+        { error: "Copilot message to regenerate was not found" },
+        { status: 400 },
+      );
+    }
+  } else {
+    history = [
+      ...storedMessages,
+      { id: latestUserMessage.id, role: "user", parts: [{ type: "text", text: latestUserText }] },
+    ];
   }
   const promptMessages = fitPromptHistory(
     history,
@@ -533,6 +550,8 @@ export async function POST(request: NextRequest) {
 
   return result.toUIMessageStreamResponse<SreAssistantUiMessage>({
     originalMessages: messages,
+    // The streamed reply carries the id it is stored under, so a later regenerate can name it.
+    generateMessageId: () => assistantMessageId,
     messageMetadata: ({ part }) => {
       if (part.type !== "finish") {
         return {

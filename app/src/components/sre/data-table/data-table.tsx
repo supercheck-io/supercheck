@@ -44,6 +44,8 @@ interface DataTableProps<TData, TValue> {
   entityLabel?: string;
   /** Shown instead of "No results." when no row is visible. */
   emptyMessage?: string;
+  /** Sort applied on first render; header clicks then change it. */
+  initialSorting?: SortingState;
   initialColumnVisibility?: VisibilityState;
   skeletonColumns?: number;
   onRowPrefetch?: (row: Row<TData>) => void;
@@ -115,6 +117,7 @@ export function DataTable<TData, TValue>({
   renderToolbar,
   entityLabel,
   emptyMessage = "No results.",
+  initialSorting = [],
   initialColumnVisibility = { updatedAt: false },
   skeletonColumns = 5,
   onRowPrefetch,
@@ -128,7 +131,7 @@ export function DataTable<TData, TValue>({
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(
     [],
   );
-  const [sorting, setSorting] = React.useState<SortingState>([]);
+  const [sorting, setSorting] = React.useState<SortingState>(initialSorting);
   const [globalFilter, setGlobalFilter] = React.useState("");
   const [mounted, setMounted] = React.useState(false);
   const { bodyRef, pagination, onPaginationChange } = useFitPagination(data.length, fixedPageSize);

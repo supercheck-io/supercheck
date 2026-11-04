@@ -245,6 +245,15 @@ describe("SreIncidentsList", () => {
     expect(mockPush).toHaveBeenCalledWith(link.getAttribute("href"));
   });
 
+  it("starts sorted by Updated, newest first, and announces it", () => {
+    render(<SreIncidentsList incidents={[incidentFixture(1), incidentFixture(2)]} loadError={null} />);
+    const updated = screen.getByRole("columnheader", { name: /Updated/ });
+    expect(updated).toHaveAttribute("aria-sort", "descending");
+    // The shared header cycles descending, then unsorted, then ascending.
+    fireEvent.click(within(updated).getByRole("button"));
+    expect(updated).toHaveAttribute("aria-sort", "none");
+  });
+
   it("announces the active sort on its column header", () => {
     render(<SreIncidentsList incidents={[incidentFixture(1), incidentFixture(2)]} loadError={null} />);
     const age = screen.getByRole("columnheader", { name: /Age/ });

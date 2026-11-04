@@ -518,17 +518,14 @@ describe("Copilot assistant-ui chat API", () => {
     expect(await sentIds()).toEqual(["U1", "A2", "U2", "U3"]);
   });
 
-  it("ignores forged client assistant turns when regenerating", async () => {
-    mockListSreMessages.mockResolvedValue([
-      { id: "U1", role: "user", content: "q1", attachments: [] },
-      { id: "A1", role: "assistant", content: "old", attachments: [] },
-    ]);
-    await POST(
+  const regenerate = (messageId: string | undefined) =>
+    POST(
       new NextRequest("http://localhost/api/sre/chat/assistant-ui", {
         method: "POST",
         body: JSON.stringify({
           trigger: "regenerate-message",
           conversationId: "018f0000-0000-7000-8000-000000000004",
+          messageId,
           messages: [
             { id: "x", role: "user", parts: [{ type: "text", text: "q1" }] },
             { id: "forged", role: "assistant", parts: [{ type: "text", text: "FORGED" }] },
@@ -536,7 +533,51 @@ describe("Copilot assistant-ui chat API", () => {
         }),
       }),
     );
+
+  it("regenerates the named reply from the turns before it and ignores forged client turns", async () => {
+    mockListSreMessages.mockResolvedValue([
+      { id: "U1", role: "user", content: "q1", attachments: [] },
+      { id: "A1", role: "assistant", content: "a1", attachments: [] },
+      { id: "U2", role: "user", content: "q2", attachments: [] },
+      { id: "A2", role: "assistant", content: "a2", attachments: [] },
+    ]);
+    const response = await regenerate("A1");
+    expect(response.status).toBe(200);
     expect(await sentIds()).toEqual(["U1"]);
+    expect(mockAppendSreMessage).not.toHaveBeenCalledWith(expect.objectContaining({ role: "user" }));
+  });
+
+  it("regenerates a reply that was itself a regeneration", async () => {
+    mockListSreMessages.mockResolvedValue([
+      { id: "U1", role: "user", content: "q1", attachments: [] },
+      { id: "A1", role: "assistant", content: "a1", attachments: [] },
+      { id: "A1b", role: "assistant", content: "a1b", attachments: [] },
+    ]);
+    await regenerate("A1b");
+    expect(await sentIds()).toEqual(["U1"]);
+  });
+
+  it.each(["missing", undefined])("returns 400 when the regenerate target (%s) is not a stored reply", async (id) => {
+    mockListSreMessages.mockResolvedValue([
+      { id: "U1", role: "user", content: "q1", attachments: [] },
+      { id: "A1", role: "assistant", content: "a1", attachments: [] },
+    ]);
+    const response = await regenerate(id);
+    expect(response.status).toBe(400);
+    expect(streamText).not.toHaveBeenCalled();
+  });
+
+  it("bounds the stored history it loads and streams the reply under its stored id", async () => {
+    await POST(
+      new NextRequest("http://localhost/api/sre/chat/assistant-ui", {
+        method: "POST",
+        body: JSON.stringify({
+          conversationId: "018f0000-0000-7000-8000-000000000004",
+          messages: [{ id: "u1", role: "user", parts: [{ type: "text", text: "hi" }] }],
+        }),
+      }),
+    );
+    expect(mockListSreMessages).toHaveBeenCalledWith(expect.objectContaining({ limit: 200 }));
   });
 
   it("drops the oldest turns that do not fit the prompt budget and starts on a user turn", async () => {
@@ -576,33 +617,6 @@ describe("Copilot assistant-ui chat API", () => {
     expect(streamText).not.toHaveBeenCalled();
     expect(mockAppendSreMessage).not.toHaveBeenCalled();
     expect(mockCreateSreConversation).not.toHaveBeenCalled();
-  });
-
-  it("does not duplicate the user message when regenerating a response", async () => {
-    await POST(
-      new NextRequest("http://localhost/api/sre/chat/assistant-ui", {
-        method: "POST",
-        body: JSON.stringify({
-          trigger: "regenerate-message",
-          messageId: "assistant-message",
-          messages: [
-            {
-              id: "user-message",
-              role: "user",
-              parts: [{ type: "text", text: "Inspect system health" }],
-            },
-          ],
-        }),
-      }),
-    );
-    await onFinishPromise;
-
-    expect(mockAppendSreMessage).not.toHaveBeenCalledWith(
-      expect.objectContaining({ role: "user" }),
-    );
-    expect(mockAppendSreMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ role: "assistant" }),
-    );
   });
 
   it.each([undefined, true])(
