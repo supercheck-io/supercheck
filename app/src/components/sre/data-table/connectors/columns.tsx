@@ -140,7 +140,7 @@ export const columns: ColumnDef<SreConnectorListItem>[] = [
     id: "privateAgent",
     accessorFn: (connector) => connector.privateAgent?.name ?? "",
     header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="Private Agent" />
+      <DataTableColumnHeader column={column} title="Private agent" />
     ),
     cell: ({ row }) =>
       row.original.privateAgent ? (

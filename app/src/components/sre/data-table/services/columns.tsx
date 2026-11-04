@@ -71,7 +71,7 @@ export const columns: ColumnDef<SreServiceListItem>[] = [
   {
     accessorKey: "environment",
     header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="Env" />
+      <DataTableColumnHeader column={column} title="Environment" />
     ),
     cell: ({ row }) =>
       row.original.environment ? (

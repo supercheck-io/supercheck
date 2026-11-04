@@ -311,8 +311,7 @@ export async function getSreServices(): Promise<{
         and(
           eq(sreServices.organizationId, organizationId),
           eq(sreServices.projectId, project.id),
-          // Archived (deprecated) and merged services are hidden; the catalog has no status filter to reach them.
-          eq(sreServices.status, "active")
+          ne(sreServices.status, "merged")
         )
       )
       .orderBy(desc(sreServices.updatedAt));

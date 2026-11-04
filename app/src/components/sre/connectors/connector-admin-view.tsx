@@ -490,7 +490,7 @@ export function ConnectorAdminView({
     return (
       <DashboardEmptyState
         className="min-h-[420px]"
-        title="Connectors unavailable"
+        title="Integrations unavailable"
         description={loadError}
         icon={<Cable className="h-10 w-10" />}
       />

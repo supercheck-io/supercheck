@@ -37,7 +37,7 @@ export function SreSetupGuideDialog({
       action: "Open Services",
     },
     {
-      label: "Add a connector",
+      label: "Add an integration",
       description: "Connect a read-only source and limit its service scope.",
       complete: Boolean(status?.connectors),
       href: "/org-admin?tab=integrations",
