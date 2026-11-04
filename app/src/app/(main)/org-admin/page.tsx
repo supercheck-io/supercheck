@@ -41,6 +41,7 @@ import { MembersTable } from "@/components/org-admin/members-table";
 import { ProjectsTable } from "@/components/org-admin/projects-table";
 import type { Project } from "@/components/org-admin/project-columns";
 import { ProjectLocationsDialog } from "@/components/org-admin/project-locations-dialog";
+import { ProjectIncidentPolicyDialog } from "@/components/org-admin/project-incident-policy-dialog";
 import { SubscriptionTab } from "@/components/org-admin/subscription-tab";
 import { DeleteOrganizationButton } from "@/components/org-admin/delete-organization-button";
 import { TrialLoadTesting } from "@/components/org-admin/trial-load-testing";
@@ -728,6 +729,8 @@ function OrgAdminDashboardContent() {
     setLocationProject(project);
   };
 
+  const [policyProject, setPolicyProject] = useState<Project | null>(null);
+
   const handleUpdateProject = async () => {
     if (!editingProject) return;
 
@@ -863,6 +866,7 @@ function OrgAdminDashboardContent() {
               onCreateProject={() => setShowCreateProjectDialog(true)}
               onEditProject={handleEditProject}
               onManageLocations={handleManageLocations}
+              onManageIncidentPolicy={setPolicyProject}
               canCreateProjects={canCreateProjects(
                 normalizeRole(currentUserRole),
               )}
@@ -1013,6 +1017,17 @@ function OrgAdminDashboardContent() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+
+          {policyProject && (
+            <ProjectIncidentPolicyDialog
+              open={!!policyProject}
+              onOpenChange={(open) => {
+                if (!open) setPolicyProject(null);
+              }}
+              projectId={policyProject.id}
+              projectName={policyProject.name}
+            />
+          )}
 
           {/* Project Location Restrictions Dialog */}
           {locationProject && (
