@@ -1,4 +1,4 @@
-import React, {
+import {
   ReactNode,
   useCallback,
   useEffect,
@@ -6,7 +6,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { AlertCircle, ExternalLink, Loader2Icon, FileText, Maximize2, X } from "lucide-react";
+import { AlertCircle, Loader2Icon, FileText, Maximize2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { PlaywrightLogo } from "../logo/playwright-logo";
@@ -17,19 +17,6 @@ import {
   CancellationErrorInfo,
 } from "./cancellation-error-page";
 import { useTheme } from "next-themes";
-import { useAppConfig } from "@/hooks/use-app-config";
-
-type SignedUrl = { source: string; url: string; mintedAt: number };
-
-// Signed report URLs live 1h (REPORT_TOKEN_TTL_SECONDS); refresh 5 minutes early. Not imported: that module is server-only.
-export const REPORT_URL_REFRESH_MS = 55 * 60 * 1000;
-/** Bound on each request of the background refresh, so a stall reaches the retry path. */
-export const REPORT_URL_REFRESH_TIMEOUT_MS = 30 * 1000;
-/** Bounds for a server-provided Retry-After on a rate-limited refresh. */
-const RETRY_AFTER_MIN_MS = 5 * 1000;
-const RETRY_AFTER_MAX_MS = 5 * 60 * 1000;
-/** Delay before retrying a failed background refresh; the current report keeps working meanwhile. */
-export const REPORT_URL_REFRESH_RETRY_MS = 5 * 60 * 1000;
 
 // Static error page component - defined outside to avoid recreation each render
 function StaticErrorPage({
@@ -177,195 +164,8 @@ export function ReportViewer({
     return true;
   }, [clearRetryTimer, currentReportUrl, retryAttempt]);
 
-  // Applies a JSON error body from the report API. Returns true when it was handled as an error.
-  const applyErrorBody = useCallback(
-    (bodyText: string): boolean => {
-      try {
-        const errorData = JSON.parse(bodyText);
-        const errorMessage =
-          errorData.message ||
-          errorData.details ||
-          errorData.error ||
-          "Unknown error";
-
-        if (isTransientReportError(errorMessage)) {
-          if (scheduleTransientRetry()) {
-            return true;
-          }
-        }
-
-        // Check if this is a cancellation error
-        if (
-          errorData.cancellationInfo &&
-          errorData.cancellationInfo.isCancelled
-        ) {
-          setCancellationInfo(errorData.cancellationInfo);
-        }
-        // Check if this is a timeout error based on the API response
-        else if (
-          errorData.timeoutInfo &&
-          errorData.timeoutInfo.isTimeout
-        ) {
-          setTimeoutInfo(errorData.timeoutInfo);
-        } else {
-          setReportError(errorMessage);
-        }
-
-        setIframeError(true);
-        setIsValidationError(false);
-        setIsReportLoading(false);
-        return true;
-      } catch (e) {
-        // Not valid JSON, continue with normal display
-        console.error("ReportViewer: Error parsing JSON:", e);
-      }
-      return false;
-    },
-    [scheduleTransientRetry]
-  );
-
-  // With REPORTS_ORIGIN the report loads from a cookieless origin through a short-lived signed URL.
-  // The parent cannot read that iframe, so the status check the onLoad handler does on the DOM is done
-  // here on the response (the reports origin allows this app's origin via CORS).
-  const { config: appConfig, isFetched: configReady } = useAppConfig();
-  const separateOrigin = !!appConfig.reports?.separateOrigin;
-  const [signedUrl, setSignedUrl] = useState<SignedUrl | null>(null);
-  // Bumped by the refresh timer to mint a fresh signed URL before the old one expires.
-  const [refreshTick, setRefreshTick] = useState(0);
-  // A freshly minted URL waits here until the document is hidden, so a visible report is never reloaded.
-  const [pendingSigned, setPendingSigned] = useState<SignedUrl | null>(null);
-  const signedSourceRef = useRef<string | null>(null);
-  useEffect(() => {
-    signedSourceRef.current = signedUrl?.source ?? null;
-  }, [signedUrl]);
-
-  // Read through a ref so a retry-state change does not re-run the effect before its backoff delay.
-  const applyErrorBodyRef = useRef(applyErrorBody);
-  useEffect(() => {
-    applyErrorBodyRef.current = applyErrorBody;
-  });
-
-  useEffect(() => {
-    // Nothing is requested while the run is still going; the report does not exist yet.
-    if (!separateOrigin || !currentReportUrl || isRunning) return;
-    const source = currentReportUrl;
-    let cancelled = false;
-    const fail = (message: string) => {
-      if (cancelled) return;
-      setReportError(message);
-      setIframeError(true);
-      setIsValidationError(false);
-      setIsReportLoading(false);
-    };
-    (async () => {
-      try {
-        const mint = await fetch("/api/report-urls", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ path: source }),
-        });
-        const minted = await mint.json().catch(() => null);
-        if (!mint.ok || !minted?.url) {
-          return fail(minted?.error || "The test report could not be found.");
-        }
-        // The server answers private, no-store, so the iframe's own load cannot reuse this response.
-        const res = await fetch(minted.url, { cache: "no-store" });
-        const text = await res.text();
-        if (cancelled) return;
-        if ((res.headers.get("content-type") || "").includes("json")) {
-          if (applyErrorBodyRef.current(text)) return;
-        } else if (!res.ok) {
-          return fail("The test report could not be found.");
-        } else if (text.includes("Test Validation Failed")) {
-          setIsValidationError(true);
-        }
-        setSignedUrl({ source, url: minted.url, mintedAt: Date.now() });
-      } catch {
-        fail("Failed to load test report. The report server might be unreachable.");
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [separateOrigin, currentReportUrl, retryNonce, isRunning]);
-
-  // Background refresh: any failure keeps the working iframe and retries later; it never shows an error.
-  useEffect(() => {
-    if (refreshTick === 0 || !separateOrigin || !currentReportUrl || isRunning) return;
-    const source = currentReportUrl;
-    if (signedSourceRef.current !== source) return;
-    let cancelled = false;
-    let retryTimer: ReturnType<typeof setTimeout> | undefined;
-    const retryLater = (delayMs = REPORT_URL_REFRESH_RETRY_MS) => {
-      if (!cancelled) retryTimer = setTimeout(() => setRefreshTick((n) => n + 1), delayMs);
-    };
-    (async () => {
-      try {
-        const mint = await fetch("/api/report-urls", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ path: source }),
-          signal: AbortSignal.timeout(REPORT_URL_REFRESH_TIMEOUT_MS),
-        });
-        const minted = await mint.json().catch(() => null);
-        if (!mint.ok || !minted?.url) {
-          const retryAfterSeconds = Number(mint.headers?.get("Retry-After"));
-          return mint.status === 429 && retryAfterSeconds > 0
-            ? retryLater(Math.min(Math.max(retryAfterSeconds * 1000, RETRY_AFTER_MIN_MS), RETRY_AFTER_MAX_MS))
-            : retryLater();
-        }
-        const res = await fetch(minted.url, { cache: "no-store", signal: AbortSignal.timeout(REPORT_URL_REFRESH_TIMEOUT_MS) });
-        await res.text();
-        if (!res.ok || (res.headers.get("content-type") || "").includes("json")) return retryLater();
-        if (!cancelled) setPendingSigned({ source, url: minted.url, mintedAt: Date.now() });
-      } catch {
-        retryLater();
-      }
-    })();
-    return () => {
-      cancelled = true;
-      clearTimeout(retryTimer);
-    };
-  }, [separateOrigin, currentReportUrl, isRunning, refreshTick]);
-
-  // Swap the iframe to the refreshed URL only while the page is hidden.
-  useEffect(() => {
-    if (!pendingSigned) return;
-    const apply = () => {
-      // A URL minted for a report the viewer has since left must never replace the current one.
-      if (pendingSigned.source !== currentReportUrl) {
-        setPendingSigned(null);
-        return;
-      }
-      if (document.visibilityState !== "hidden") return;
-      setPendingSigned(null);
-      // Still-fresh URLs are applied; an aged-out one is re-minted instead of loading an expired URL.
-      if (Date.now() - pendingSigned.mintedAt < REPORT_URL_REFRESH_MS) setSignedUrl(pendingSigned);
-      else setRefreshTick((n) => n + 1);
-    };
-    apply();
-    document.addEventListener("visibilitychange", apply);
-    return () => document.removeEventListener("visibilitychange", apply);
-  }, [pendingSigned, currentReportUrl]);
-
-  // Lazy-loaded assets inside the frame cannot be retried from here (cross-origin), so re-mint on a timer.
-  useEffect(() => {
-    if (!signedUrl) return;
-    const t = setTimeout(
-      () => setRefreshTick((n) => n + 1),
-      REPORT_URL_REFRESH_MS
-    );
-    return () => clearTimeout(t);
-  }, [signedUrl]);
-
   const iframeSrc = useMemo(() => {
     if (!currentReportUrl) {
-      return undefined;
-    }
-    if (separateOrigin) {
-      return signedUrl?.source === currentReportUrl ? signedUrl.url : undefined;
-    }
-    if (!configReady) {
       return undefined;
     }
     if (retryNonce === 0) {
@@ -373,38 +173,7 @@ export function ReportViewer({
     }
     const separator = currentReportUrl.includes("?") ? "&" : "?";
     return `${currentReportUrl}${separator}rvRetry=${retryNonce}`;
-  }, [currentReportUrl, retryNonce, separateOrigin, signedUrl, configReady]);
-
-  // The new-tab link always takes the freshest minted URL, even while the iframe still holds the older one.
-  const openLinkSigned =
-    pendingSigned?.source === currentReportUrl
-      ? pendingSigned
-      : signedUrl?.source === currentReportUrl
-        ? signedUrl
-        : null;
-  const openLinkHref = openLinkSigned?.url ?? iframeSrc;
-
-  // A report left visible past the refresh threshold holds an aged URL; mint a fresh one for the new tab.
-  // The tab opens synchronously (popup blockers) and is pointed at the minted URL afterwards.
-  const handleOpenInNewTab = async (event: React.MouseEvent<HTMLAnchorElement>) => {
-    if (!currentReportUrl || (openLinkSigned && Date.now() - openLinkSigned.mintedAt < REPORT_URL_REFRESH_MS)) return;
-    event.preventDefault();
-    const tab = window.open("about:blank", "_blank");
-    if (tab) tab.opener = null;
-    try {
-      const res = await fetch("/api/report-urls", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: currentReportUrl }),
-        signal: AbortSignal.timeout(REPORT_URL_REFRESH_TIMEOUT_MS),
-      });
-      const minted = await res.json().catch(() => null);
-      if (!res.ok || !minted?.url) throw new Error("mint failed");
-      if (tab) tab.location.href = minted.url;
-    } catch {
-      tab?.close();
-    }
-  };
+  }, [currentReportUrl, retryNonce]);
 
   // Update URL when prop changes - deferred to avoid synchronous setState
   useEffect(() => {
@@ -422,7 +191,7 @@ export function ReportViewer({
 
     const pendingUpdate = setTimeout(() => {
       if (reportUrl) {
-        // Use the URL as-is from the caller; the server sets Cache-Control (private, no-store).
+        // Use URL as-is from the caller; the server sets Cache-Control (private, no-store).
         setCurrentReportUrl(reportUrl);
         setIsReportLoading(true);
         setIframeError(false);
@@ -670,7 +439,7 @@ export function ReportViewer({
   }
 
   // Error state - only show if it's not a validation error
-  if (iframeError && !isRunning && !isValidationError) {
+  if (iframeError && !isValidationError) {
     // Show cancellation-specific error page if cancellation detected
     if (cancellationInfo?.isCancelled) {
       return (
@@ -727,20 +496,11 @@ export function ReportViewer({
       )}
 
       <div className="flex flex-col h-full w-full">
-        {!isRunning &&
-          currentReportUrl &&
+        {currentReportUrl &&
           !isReportLoading &&
           !iframeError &&
           !hideFullscreenButton && (
-            <div className="absolute top-2 right-2 z-10 flex gap-1">
-              {separateOrigin && openLinkHref && (
-                // Safari cannot load the trace viewer inside a cross-site frame; as its own tab it works.
-                <Button size="sm" asChild className="cursor-pointer flex items-center gap-1 bg-secondary hover:bg-secondary/90">
-                  <a href={openLinkHref} onClick={handleOpenInNewTab} target="_blank" rel="noopener noreferrer" title="Open report in a new tab" aria-label="Open report in a new tab">
-                    <ExternalLink className="h-4 w-4 text-secondary-foreground" />
-                  </a>
-                </Button>
-              )}
+            <div className="absolute top-2 right-2 z-10">
               <Button
                 size="sm"
                 className="cursor-pointer flex items-center gap-1 bg-secondary hover:bg-secondary/90"
@@ -751,7 +511,7 @@ export function ReportViewer({
             </div>
           )}
 
-        {currentReportUrl && iframeSrc && (
+        {currentReportUrl && (
           <iframe
             ref={iframeRef}
             key={iframeSrc}
@@ -770,11 +530,6 @@ export function ReportViewer({
             title="Report"
             onLoad={(e) => {
               const iframe = e.target as HTMLIFrameElement;
-              if (separateOrigin) {
-                // Cross-origin: nothing in the iframe is readable; the response was checked before it loaded.
-                setIsReportLoading(false);
-                return;
-              }
               try {
                 // Verify we can access the contentWindow - if not, it's likely a CORS issue
                 if (!iframe.contentWindow) {
@@ -829,7 +584,45 @@ export function ReportViewer({
                     (bodyText.includes('"message"') ||
                       bodyText.includes('"details"'))
                   ) {
-                    if (applyErrorBody(bodyText)) return;
+                    try {
+                      const errorData = JSON.parse(bodyText);
+                      const errorMessage =
+                        errorData.message ||
+                        errorData.details ||
+                        errorData.error ||
+                        "Unknown error";
+
+                      if (isTransientReportError(errorMessage)) {
+                        if (scheduleTransientRetry()) {
+                          return;
+                        }
+                      }
+
+                      // Check if this is a cancellation error
+                      if (
+                        errorData.cancellationInfo &&
+                        errorData.cancellationInfo.isCancelled
+                      ) {
+                        setCancellationInfo(errorData.cancellationInfo);
+                      }
+                      // Check if this is a timeout error based on the API response
+                      else if (
+                        errorData.timeoutInfo &&
+                        errorData.timeoutInfo.isTimeout
+                      ) {
+                        setTimeoutInfo(errorData.timeoutInfo);
+                      } else {
+                        setReportError(errorMessage);
+                      }
+
+                      setIframeError(true);
+                      setIsValidationError(false);
+                      setIsReportLoading(false);
+                      return;
+                    } catch (e) {
+                      // Not valid JSON, continue with normal display
+                      console.error("ReportViewer: Error parsing JSON:", e);
+                    }
                   }
                 }
 
