@@ -219,4 +219,33 @@ describe("diagnostic query free-text and broad-pattern guards", () => {
       expect(() => validateTemplateFreeTextPositions(r.template, r.parameterSchema, r.allowlist)).not.toThrow();
     }
   });
+
+  describe("http_get templates", () => {
+    const httpRender = (template: string, value: string) =>
+      renderDiagnosticQueryTemplate({ ...base, queryType: "http_get", template }, { v: value });
+
+    it("URL-encodes an unquoted free-text value instead of rejecting spaces, commas and =", () => {
+      expect(httpRender("/api/v1/search?q=$v", "a b,c=d&e").query).toBe("/api/v1/search?q=a%20b%2Cc%3Dd%26e");
+      expect(httpRender("/api/$v", "../admin".replace("..", "x")).query).toBe("/api/x%2Fadmin");
+    });
+
+    it("still rejects path traversal, quotes, backslashes, braces and newlines", () => {
+      expect(() => httpRender("/api/$v", "../admin")).toThrow('".." path segments');
+      for (const bad of ['a"b', "a'b", "a`b", "a\\b", "a{b}", "a\nb", "a\rb"]) {
+        expect(() => httpRender("/api/$v", bad)).toThrow("disallowed characters");
+      }
+    });
+
+    it("accepts unquoted free text at save time for http_get but not for query languages", () => {
+      expect(() => validateTemplateFreeTextPositions("/api/$v", { v: "string" }, {}, "http_get")).not.toThrow();
+      expect(() => validateTemplateFreeTextPositions("up > $v", { v: "string" }, {}, "promql")).toThrow("unquoted position");
+      expect(() => render("up > $v", { v: "string" }, "a b")).toThrow("unquoted free text");
+    });
+  });
+
+  it("treats a backslash as literal inside a backtick string", () => {
+    // `a\` closes at the second backtick, so $v after it is unquoted; in "..." the backslash would escape.
+    expect(() => validateTemplateFreeTextPositions("`a\\` > $v", { v: "string" }, {})).toThrow("unquoted position");
+    expect(() => validateTemplateFreeTextPositions('"a\\" > $v', { v: "string" }, {})).not.toThrow();
+  });
 });
