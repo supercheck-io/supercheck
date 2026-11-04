@@ -22,9 +22,19 @@ jest.mock("@/lib/user-avatar", () => ({
 }));
 
 import { NextRequest } from "next/server";
+import sharp from "sharp";
 import { POST, PUT, DELETE } from "./route";
 
 const PNG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3];
+let realPng: Uint8Array;
+let jpegWithExif: Uint8Array;
+beforeAll(async () => {
+  const base = sharp({ create: { width: 400, height: 300, channels: 3, background: "#336699" } });
+  realPng = new Uint8Array(await base.clone().png().toBuffer());
+  jpegWithExif = new Uint8Array(
+    await base.clone().jpeg().withExif({ IFD0: { Copyright: "secret-exif-marker" } }).toBuffer(),
+  );
+});
 const req = (bytes: number[] | Uint8Array, type = "image/png") => {
   const form = new FormData();
   form.append("file", new File([new Uint8Array(bytes)], "a.png", { type }));
@@ -80,21 +90,37 @@ describe("POST /api/users/me/avatar", () => {
   it("stores the image, points user.image at the app route and removes the previous object", async () => {
     const prev = `${"b".repeat(32)}.png`;
     mockLimit.mockResolvedValue([{ image: `/api/users/u1/avatar?v=${prev}` }]);
-    const res = await POST(req(PNG));
+    const res = await POST(req(realPng));
     expect(res.status).toBe(200);
     const { image } = await res.json();
-    expect(image).toMatch(/^\/api\/users\/u1\/avatar\?v=[a-f0-9]{32}\.png$/);
-    expect(mockPut).toHaveBeenCalledWith("u1", expect.stringMatching(/\.png$/), expect.any(Uint8Array));
+    expect(image).toMatch(/^\/api\/users\/u1\/avatar\?v=[a-f0-9]{32}\.webp$/);
+    expect(mockPut).toHaveBeenCalledWith("u1", expect.stringMatching(/\.webp$/), expect.any(Uint8Array));
     expect(mockUpdateUser).toHaveBeenCalledWith(expect.objectContaining({ body: { image } }));
     expect(mockDelete).toHaveBeenCalledWith("u1", prev);
     // Orphans from earlier concurrent uploads are pruned, keeping the new version.
     expect(mockPrune).toHaveBeenCalledWith("u1", image.split("v=")[1]);
   });
 
+  it("stores a 256px WebP with EXIF stripped", async () => {
+    expect((await POST(req(jpegWithExif, "image/jpeg"))).status).toBe(200);
+    const stored = Buffer.from(mockPut.mock.calls[0][2] as Uint8Array);
+    expect(stored.subarray(0, 4).toString()).toBe("RIFF");
+    expect(stored.subarray(8, 12).toString()).toBe("WEBP");
+    expect(stored.includes("secret-exif-marker")).toBe(false);
+    const meta = await sharp(stored).metadata();
+    expect(meta).toMatchObject({ format: "webp", width: 256, height: 256 });
+    expect(meta.exif).toBeUndefined();
+  });
+
+  it("400 when the bytes look like an image but cannot be decoded", async () => {
+    expect((await POST(req(PNG))).status).toBe(400);
+    expect(mockPut).not.toHaveBeenCalled();
+  });
+
   it("cleans up the new object when the profile update fails", async () => {
     mockUpdateUser.mockRejectedValue(new Error("db"));
     jest.spyOn(console, "error").mockImplementation(() => {});
-    expect((await POST(req(PNG))).status).toBe(500);
+    expect((await POST(req(realPng))).status).toBe(500);
     expect(mockDelete).toHaveBeenCalledTimes(1);
   });
 });

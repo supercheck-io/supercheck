@@ -10,6 +10,7 @@ import {
   createS3CleanupService,
   type ReportDeletionInput,
 } from "@/lib/s3-cleanup";
+import { syncJobStatusFromRuns } from "@/lib/job-status-sync";
 import { removeK6RunLinks } from "./linked-records";
 
 // Messages of this class are authored here and safe to show; any other error text may leak DB/S3 detail.
@@ -264,6 +265,9 @@ export async function deleteRunWithContext(runId: string, context: ProjectAuthCo
           if (deletedRuns.length === 0) {
             throw new Error(`Failed to delete run ${runId} - no rows affected`);
           }
+
+          // The job's stored status must follow its newest remaining run, not the deleted one.
+          if (runData.jobId) await syncJobStatusFromRuns(tx, runData.jobId);
 
           console.log(
             "[DELETE_RUN] Transaction completed successfully - run and reports deleted"

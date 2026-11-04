@@ -223,3 +223,7 @@ supercheck.state.json.lock
 !.claude/settings.json
 !.claude/commands/
 !.claude/skills/
+
+# Local install-script markers
+.app-install
+.worker-install

@@ -68,6 +68,11 @@ type RunResponse = {
   location?: string | null;
 };
 
+// Below lg the page scrolls, so the report gets a viewport-relative height; at lg+ the
+// page is viewport-fit (data-fit-viewport) and the report fills the space under the header.
+const reportFitClass =
+  "h-[75svh] min-h-[420px] lg:h-auto lg:min-h-[240px] lg:flex-1";
+
 export function RunDetails({
   run,
   isNotificationView = false,
@@ -292,7 +297,13 @@ export function RunDetails({
   };
 
   return (
-    <div className="h-full overflow-hidden">
+    <div
+      className={
+        isNotificationView
+          ? "h-full overflow-hidden"
+          : "flex min-h-0 flex-1 flex-col overflow-hidden"
+      }
+    >
       {/* Status listener for real-time updates */}
       <RunStatusListener
         runId={run.id}
@@ -564,9 +575,9 @@ export function RunDetails({
 	        </Alert>
 	      ) : null}
 
-	      <div className="bg-card rounded-lg border overflow-hidden">
+	      <div className={`bg-card rounded-lg border overflow-hidden ${isNotificationView ? "" : reportFitClass}`}>
         {isPerformanceRun ? (
-          <div className="h-[calc(100vh-270px)]">
+          <div className={isNotificationView ? "h-[calc(100vh-270px)]" : "h-full"}>
             <PerformanceTestReport
               runId={run.id}
               onStatusChange={(status: K6RunStatus, payload) => {
@@ -588,7 +599,11 @@ export function RunDetails({
               isRunning={currentStatus === "running"}
               backToLabel="Back to Runs"
               backToUrl="/runs"
-              containerClassName="w-full h-[calc(100vh-270px)] relative"
+              containerClassName={
+                isNotificationView
+                  ? "w-full h-[calc(100vh-270px)] relative"
+                  : "w-full h-full relative"
+              }
               iframeClassName="w-full h-full border-0 rounded-lg"
               hideEmptyMessage={true}
             />

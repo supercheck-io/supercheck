@@ -262,4 +262,9 @@ describe("InterruptedNotice", () => {
     rerender(<InterruptedNotice status={{ type: "complete" }} />);
     expect(screen.queryByText("Reply was interrupted.")).not.toBeInTheDocument();
   });
+
+  it("shows when the server flagged the reply as interrupted", () => {
+    render(<InterruptedNotice status={{ type: "complete" }} interrupted />);
+    expect(screen.getByText("Reply was interrupted.")).toBeInTheDocument();
+  });
 });

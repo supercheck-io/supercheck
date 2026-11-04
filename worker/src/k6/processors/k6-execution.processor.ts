@@ -242,9 +242,14 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
 
       // Update job status if this is a job run
       if (taskData.jobId) {
+        try {
+          await this.dbService.syncJobStatusFromRuns(taskData.jobId);
+        } catch {
+          // Unknown sibling state: leave the job status for the next run.
+        }
         await this.dbService.db
           .update(schema.jobs)
-          .set({ status: 'error', lastRunAt: new Date() })
+          .set({ lastRunAt: new Date() })
           .where(eq(schema.jobs.id, taskData.jobId))
           .catch(() => {});
       }
@@ -531,13 +536,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
         // Update job status based on all current run statuses
         try {
           // The job reflects this run; an old failed run in its history must not pin it.
-          const active = await this.dbService.hasOtherActiveRun(
-            taskData.jobId,
-            runId,
-          );
-          await this.dbService.updateJobStatus(taskData.jobId, [
-            active ? 'running' : finalStatus,
-          ]);
+          await this.dbService.syncJobStatusFromRuns(taskData.jobId);
         } catch (err) {
           this.logger.error(
             `[${runId}] Failed to update job status: ${err instanceof Error ? err.message : String(err)}`,
@@ -704,13 +703,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
         // Update job status based on all current run statuses
         try {
           // The job reflects this run; an old failed run in its history must not pin it.
-          const active = await this.dbService.hasOtherActiveRun(
-            taskData.jobId,
-            runId,
-          );
-          await this.dbService.updateJobStatus(taskData.jobId, [
-            active ? 'running' : 'failed',
-          ]);
+          await this.dbService.syncJobStatusFromRuns(taskData.jobId);
         } catch (err) {
           this.logger.error(
             `[${runId}] Failed to update job status on error: ${err instanceof Error ? err.message : String(err)}`,
