@@ -1,3 +1,4 @@
+import { authErrorStatus, AuthError } from "@/lib/auth-context";
 import { getClientIP } from "@/lib/session-security";
 import { NextRequest, NextResponse } from "next/server";
 import { AIFixService } from "@/lib/ai/ai-service";
@@ -372,6 +373,7 @@ export async function POST(request: NextRequest) {
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error";
     const isAuthError =
+      error instanceof AuthError ||
       errorMessage.includes("Authentication") ||
       errorMessage.includes("Unauthorized");
     const isRateLimitError =
@@ -387,7 +389,7 @@ export async function POST(request: NextRequest) {
           message: "Authentication required to use AI fix feature",
           guidance: "Please log in and try again",
         },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
 

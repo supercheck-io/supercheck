@@ -9,7 +9,7 @@ import { eq, and, gte, sql, desc } from "drizzle-orm";
 import {
   hasPermissionForUser,
 } from "@/lib/rbac/middleware";
-import { isAuthError, requireUserAuthContext } from "@/lib/auth-context";
+import { isAuthError, requireUserAuthContext, authErrorStatus } from "@/lib/auth-context";
 import { createLogger } from "@/lib/logger/index";
 import type {
   MonitorResultStatus,
@@ -200,7 +200,7 @@ export async function GET(
     });
   } catch (error) {
     if (isAuthError(error)) {
-      const status = (error as { status?: number }).status === 403 ? 403 : 401;
+      const status = authErrorStatus(error);
       return NextResponse.json({ error: error instanceof Error ? error.message : "Authentication required" }, { status });
     }
     logger.error({ err: error, monitorId: id }, "Error fetching location stats");

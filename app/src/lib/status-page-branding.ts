@@ -11,7 +11,6 @@ export function normalizeHexColor(value: string | null | undefined): string | nu
 }
 
 const MIN_TEXT_CONTRAST = 4.5;
-const MIN_BORDER_CONTRAST = 3;
 
 type BrandingInput = {
   cssBodyBackgroundColor?: string | null;
@@ -65,9 +64,8 @@ export function resolveBranding(page: BrandingInput): StatusPageBranding {
   if (background) {
     const auto = contrastRatio("#000000", background) >= contrastRatio("#ffffff", background) ? "#000000" : "#ffffff";
     const font = readable(custom(page.cssFontColor, DEFAULTS.font), auto);
-    // Borders are non-text UI: WCAG 1.4.11 asks 3:1, and an unreadable custom border falls back to the derived one.
-    const customBorder = custom(page.cssBorderColor, DEFAULTS.border);
-    const border = customBorder && contrastRatio(customBorder, background) >= MIN_BORDER_CONTRAST ? customBorder : null;
+    // Borders are decorative, so the owner's choice is kept as is; only an unset border is derived.
+    const border = custom(page.cssBorderColor, DEFAULTS.border);
     pageColors = {
       background,
       font,

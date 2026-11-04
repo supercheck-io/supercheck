@@ -31,10 +31,11 @@ export async function POST(request: Request) {
   }
 
   const limit = await apiKeyRateLimiter.checkAndIncrement(`report-urls:${authContext.userId}`, REPORT_URL_RATE_LIMIT);
-  if (!limit.allowed) {
+  // Read-only and already auth- and permission-gated: an unavailable limiter fails open.
+  if (!limit.allowed && !limit.unavailable) {
     return NextResponse.json(
       { error: "Too many requests. Try again later." },
-      { status: limit.unavailable ? 503 : 429, headers: createRateLimitHeaders(limit) },
+      { status: 429, headers: createRateLimitHeaders(limit) },
     );
   }
 

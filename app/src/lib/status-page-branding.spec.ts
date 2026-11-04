@@ -46,12 +46,11 @@ describe("hex normalisation", () => {
 
 describe("border colour", () => {
   const bg = { cssBodyBackgroundColor: "#eeeeee", cssFontColor: "#000000" };
-  it("keeps a border with enough contrast", () => {
+  it("keeps a high-contrast border", () => {
     expect(resolveBranding({ ...bg, cssBorderColor: "#555555" }).page?.border).toBe("#555555");
   });
-  it("replaces a near-invisible border with a plain derived colour (no color-mix)", () => {
-    const border = resolveBranding({ ...bg, cssBorderColor: "#fefefe" }).page?.border;
-    expect(border).toBe("#bebebe");
+  it("keeps the owner's border even when it is low contrast", () => {
+    expect(resolveBranding({ ...bg, cssBorderColor: "#fefefe" }).page?.border).toBe("#fefefe");
   });
   it("derives plain colours when no border is set", () => {
     const page = resolveBranding({ cssBodyBackgroundColor: "#eeeeee" }).page!;

@@ -44,6 +44,12 @@ describe("POST /api/report-urls", () => {
     });
   });
 
+  it("fails open when the rate limiter is unavailable", async () => {
+    mockLimit.mockResolvedValueOnce({ allowed: false, unavailable: true });
+    const res = await POST(post("/api/test-results/run-1/report/index.html"));
+    expect(res.status).toBe(200);
+  });
+
   it("answers 429 with Retry-After when the minting limit is exceeded", async () => {
     mockLimit.mockResolvedValueOnce({ allowed: false });
     const res = await POST(post("/api/test-results/run-1/report/index.html"));
