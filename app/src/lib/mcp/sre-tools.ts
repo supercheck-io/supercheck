@@ -1,3 +1,4 @@
+import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { z } from "zod";
 import { requireSreSubscription } from "@/app/api/sre/_auth";
@@ -44,15 +45,17 @@ function retryMessage(limit: { unavailable?: boolean }, what: string) {
 }
 
 /** Same checks, in the same order, as the REST routes that start billable AI SRE work. */
-async function startGate(ctx: McpCallContext, kind: "triage" | "investigate" | "brief", incidentId: string) {
+async function startGate(ctx: McpCallContext, kind: "triage" | "investigate" | "brief", incidentId: string, liveConnectors = false) {
   if (!isSreEnabled()) throw new McpToolFailure("feature_disabled", "AI SRE is not enabled on this server");
   assertCan(ctx, "sre_incident", "investigate", MCP_SRE_SCOPE);
   assertCan(ctx, "sre_investigation", "investigate", MCP_SRE_SCOPE);
+  // Refused before any limiter slot is spent, as in the REST route.
+  if (liveConnectors) assertCan(ctx, "sre_connector", "investigate", MCP_SRE_SCOPE);
   if (kind !== "investigate") {
     const denied = await requireSreSubscription(ctx.organizationId, { allowTrial: kind === "triage" });
     if (denied) {
       const body = (await denied.json().catch(() => ({}))) as { error?: string };
-      throw new McpToolFailure("subscription_required", body.error ?? "An active plan is required");
+      throw new McpToolFailure(denied.status === 503 ? "unavailable" : "subscription_required", body.error ?? "An active plan is required");
     }
   }
   // Triage and briefs run detached, so a missing incident must be refused here, not logged later.
@@ -112,8 +115,7 @@ export function registerSreTools(tool: ToolRegistrar, ctx: McpCallContext): void
     tool("investigate_incident", "Start a full AI investigation of an incident. Billable. Live connectors need the connector investigate permission. " + POLL, sre,
       { incidentId: idArg, useLiveConnectors: z.boolean().default(false), guidance: investigationGuidanceSchema.nullish() },
       async ({ incidentId, useLiveConnectors, guidance }) => {
-        await startGate(ctx, "investigate", incidentId);
-        if (useLiveConnectors) assertCan(ctx, "sre_connector", "investigate", MCP_SRE_SCOPE);
+        await startGate(ctx, "investigate", incidentId, useLiveConnectors);
         const input = { ...actor, incidentId, enableLiveConnectors: useLiveConnectors, guidance };
         const started = await startSreIncidentInvestigation(input);
         if (!started.success) throw new McpToolFailure(started.status === 404 ? "not_found" : "conflict", started.error);
@@ -124,7 +126,9 @@ export function registerSreTools(tool: ToolRegistrar, ctx: McpCallContext): void
     tool("generate_incident_brief", "Generate an AI evidence brief for an incident. Billable, needs a plan. " + POLL, sre, { incidentId: idArg }, async ({ incidentId }) => {
       await startGate(ctx, "brief", incidentId);
       after(() => runSreEvidenceBriefGeneration({ ...actor, incidentId, generateBrief: generateEvidenceBrief }).then((r) => {
-        if (!r.success) logger.error({ incidentId }, "MCP evidence brief did not complete");
+        if (!r.success) return logger.error({ incidentId }, "MCP evidence brief did not complete");
+        revalidatePath("/incidents");
+        revalidatePath(`/incidents/${incidentId}`);
       }, (error) => logger.error({ err: error, incidentId }, "MCP evidence brief failed")));
       return { accepted: true, incidentId, next: POLL };
     });

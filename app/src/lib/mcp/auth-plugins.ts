@@ -148,7 +148,7 @@ export interface McpAuthPluginOptions {
  *
  * - `jwt()` signs access tokens; `mcp()` is the OAuth provider and binds tokens
  *   to the MCP resource URL; `cimd()` accepts Client ID Metadata Documents.
- * - Only the read-only `mcp:read` scope exists, and only the
+ * - Scopes are `mcp:read` (read-only, required) and the optional `mcp:incidents:write` and `mcp:sre`, and only the
  *   authorization-code and refresh-token grants: there is no user-less
  *   (`client_credentials`) path.
  * - Consent is recorded per project via `consentReferenceId`, so a token can

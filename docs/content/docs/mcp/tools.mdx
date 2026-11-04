@@ -12,7 +12,7 @@ Returned text (test titles, error excerpts, incident summaries, investigation fi
 
 | Tool | Needs permission to view | Arguments | Returns |
 |---|---|---|---|
-| `get_context` | project | none | The connected project and your role |
+| `get_context` | project | none | The connected project, your role and the scopes this connection holds |
 | `list_tests` | tests | `limit`, `cursor`, `type`, `priority`, `search` | `id`, `title`, `type`, `priority`, `updatedAt` (no scripts) |
 | `get_test` | tests | `id` | Metadata and description for one test (no script) |
 | `list_jobs` | jobs | `limit`, `cursor` | `id`, `name`, `jobType`, `status`, `cronSchedule`, `lastRunAt`, `nextRunAt` (no alert settings) |
@@ -63,7 +63,7 @@ List tools accept `limit` (1 to 50, default 20) and `cursor`. When more results 
 | `forbidden` | Your role cannot view this kind of resource |
 | `not_found` | No such item in the connected project |
 | `internal_error` | The request failed; try again |
-| `rate_limited`, `daily_limit`, `subscription_required`, `feature_disabled` | An `mcp:sre` start was refused by the same limits and plan checks as the dashboard |
+| `rate_limited`, `daily_limit`, `subscription_required`, `unavailable`, `feature_disabled` | An `mcp:sre` start was refused by the same limits and plan checks as the dashboard |
 | `invalid`, `conflict` | An incident write was refused (for example an assignee who cannot act on incidents) |
 
 Invalid arguments (an `id` that is not a UUID, or a `limit` outside 1 to 50) return a validation error. Connection-level problems return HTTP errors instead, each as a JSON-RPC error with the code in `error.data.code`: `400` (`parse_error` when the body is not JSON, `batch_too_large` over 20 calls), `401` (sign in again), `403` (`access_denied` when access was removed, `invalid_request_origin`, or `insufficient_scope`), `404` (MCP is off), `405` (only POST is accepted), `413` (request over 1 MB), `429` (`rate_limited` or `too_many_concurrent_requests`, with `Retry-After`), `500` (`server_error`), `503` (`rate_limiter_unavailable` or `server_unavailable`, with `Retry-After` when the server can say when to retry).

@@ -9,6 +9,7 @@ jest.mock("@/utils/db", () => {
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 jest.mock("@/lib/logger/index", () => ({ createLogger: () => ({ error: jest.fn() }) }));
 const afterCallbacks: (() => unknown)[] = [];
+jest.mock("next/cache", () => ({ revalidatePath: jest.fn() }));
 jest.mock("next/server", () => ({ after: (fn: () => unknown) => afterCallbacks.push(fn) }));
 const requireSreSubscription = jest.fn();
 jest.mock("@/app/api/sre/_auth", () => ({ requireSreSubscription: (...a: unknown[]) => requireSreSubscription(...a) }));
@@ -131,6 +132,7 @@ describe("AI SRE tools", () => {
   });
   it.each([
     ["triage_incident", () => requireSreSubscription.mockResolvedValue({ json: async () => ({ error: "Subscribe" }) }), "subscription_required"],
+    ["triage_incident", () => requireSreSubscription.mockResolvedValue({ status: 503, json: async () => ({ error: "Try again" }) }), "unavailable"],
     ["triage_incident", () => limiters.triage.mockResolvedValue({ allowed: false }), "rate_limited"],
     ["generate_incident_brief", () => limiters.brief.mockResolvedValue({ allowed: false, unavailable: true }), "rate_limited"],
     ["investigate_incident", () => checkSreDailyTokenLimit.mockResolvedValue({ allowed: false }), "daily_limit"],
@@ -155,6 +157,7 @@ describe("AI SRE tools", () => {
     found();
     permission.mockImplementation((resource: string) => resource !== "sre_connector");
     await expect(tools().get("investigate_incident")!.run({ incidentId: id, useLiveConnectors: true })).rejects.toThrow("forbidden");
+    expect(limiters.investigate).not.toHaveBeenCalled();
     expect(startSreIncidentInvestigation).not.toHaveBeenCalled();
   });
   it("investigation returns the run id and completes after the response", async () => {

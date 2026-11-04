@@ -1,3 +1,4 @@
+import { ignoreBrokenPipe } from '../utils/broken-pipe.js'
 import { agentCommand } from '../commands/agent.js'
 import { discoverCommand } from '../commands/discover.js'
 import { onboardCommand } from '../commands/onboard.js'
@@ -204,13 +205,8 @@ function configureErrors(command: Command): void {
 }
 configureErrors(program)
 
-// A reader that closes the pipe early (`supercheck ... | head`) is not an error: stop quietly, like other CLIs.
-for (const stream of [process.stdout, process.stderr]) {
-  stream.on('error', (error: NodeJS.ErrnoException) => {
-    if (error.code === 'EPIPE') process.exit(0)
-    throw error
-  })
-}
+ignoreBrokenPipe(process.stdout)
+ignoreBrokenPipe(process.stderr)
 
 async function main(): Promise<void> {
   try {
