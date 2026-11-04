@@ -128,9 +128,6 @@ interface PlaywrightExecutionResult {
   billableMs?: number; // Container run time evidenced by Kubernetes
 }
 
-// results.json is parsed in memory; anything larger is treated as an unusable report.
-const MAX_PLAYWRIGHT_REPORT_BYTES = 50 * 1024 * 1024;
-
 @Injectable()
 export class ExecutionService implements OnModuleDestroy {
   private readonly logger = new Logger(ExecutionService.name);
@@ -1093,15 +1090,14 @@ export class ExecutionService implements OnModuleDestroy {
         testScripts.map((ts) => ts.id),
         report,
       );
-      if (Object.keys(testStatuses).length > 0) {
-        await this.dbService
-          .mergeRunMetadata(runId, { testStatuses })
-          .catch((err: unknown) =>
-            this.logger.warn(
-              `[${runId}] Failed to store per-test statuses: ${err instanceof Error ? err.message : String(err)}`,
-            ),
-          );
-      }
+      // Always written: an empty object replaces stale statuses from an earlier attempt of a re-driven run.
+      await this.dbService
+        .mergeRunMetadata(runId, { testStatuses })
+        .catch((err: unknown) =>
+          this.logger.warn(
+            `[${runId}] Failed to store per-test statuses: ${err instanceof Error ? err.message : String(err)}`,
+          ),
+        );
 
       // Update the finalResult to include duration
       finalResult = {
@@ -1425,17 +1421,15 @@ export class ExecutionService implements OnModuleDestroy {
     }
   }
 
-  /** Reads and parses results.json once; rejects when it is missing, unparseable or over the size cap. */
+  /** Reads and parses results.json once; rejects when it is missing or unparseable. */
   private async loadPlaywrightReport(
     extractedReportsDir: string,
   ): Promise<PlaywrightReport> {
-    const resultsPath = path.join(extractedReportsDir, 'results.json');
-    const { size } = await fs.stat(resultsPath);
-    if (size > MAX_PLAYWRIGHT_REPORT_BYTES) {
-      throw new Error(`results.json is too large to parse (${size} bytes)`);
-    }
     return JSON.parse(
-      await fs.readFile(resultsPath, 'utf-8'),
+      await fs.readFile(
+        path.join(extractedReportsDir, 'results.json'),
+        'utf-8',
+      ),
     ) as PlaywrightReport;
   }
 
@@ -1524,16 +1518,16 @@ export class ExecutionService implements OnModuleDestroy {
     }
   }
 
-  /** Maps each `NNN-<testId>.spec.ts` in results.json to passed/failed; {} when the report is unusable. */
+  /** Maps each `NNN-<testId>.spec.ts` in results.json to passed/failed/skipped; {} when the report is unusable. */
   private async readJobTestStatuses(
     extractedReportsDir: string,
     testIds: string[],
     report: Promise<PlaywrightReport> = this.loadPlaywrightReport(
       extractedReportsDir,
     ),
-  ): Promise<Record<string, 'passed' | 'failed'>> {
+  ): Promise<Record<string, 'passed' | 'failed' | 'skipped'>> {
     const known = new Set(testIds);
-    const statuses: Record<string, 'passed' | 'failed'> = {};
+    const statuses: Record<string, 'passed' | 'failed' | 'skipped'> = {};
     try {
       const parsed = await report;
       const visit = (node: unknown, file?: string) => {
@@ -1547,8 +1541,17 @@ export class ExecutionService implements OnModuleDestroy {
         if (testId && known.has(testId) && Array.isArray(obj.tests)) {
           for (const test of obj.tests as PlaywrightTestEntry[]) {
             if (!test) continue;
-            if (this.isPlaywrightTestFailure(test)) statuses[testId] = 'failed';
-            else statuses[testId] ??= 'passed';
+            if (statuses[testId] === 'failed') continue;
+            const attempts = this.extractPlaywrightAttemptStatuses(test);
+            const entry = this.isPlaywrightTestFailure(test)
+              ? 'failed'
+              : attempts.includes('skipped') && !attempts.includes('passed')
+                ? 'skipped'
+                : 'passed';
+            // fail wins; any pass beats skipped; skipped only when every entry skipped
+            if (entry === 'failed' || entry === 'passed' || !statuses[testId]) {
+              statuses[testId] = entry;
+            }
           }
         }
         for (const key of ['suites', 'projects', 'specs']) {

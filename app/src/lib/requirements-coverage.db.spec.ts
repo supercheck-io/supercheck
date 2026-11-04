@@ -72,3 +72,10 @@ it("falls back to the run status for runs without per-test outcomes", async () =
   ]);
   expect(snapshot).toMatchObject({ status: "covered", linked: 2, passed: 2, failed: 0 });
 });
+
+it("does not count skipped tests as passed: coverage stays missing", async () => {
+  const snapshot = await scenario([
+    { status: "passed", at: "2026-01-02", testStatuses: { a: "skipped", b: "skipped" } },
+  ]);
+  expect(snapshot).toMatchObject({ status: "missing", linked: 2, passed: 0, failed: 0 });
+});

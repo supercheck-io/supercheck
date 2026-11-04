@@ -93,6 +93,21 @@ suite('DbService.getLinkedTestsWithStatus (PostgreSQL)', () => {
     );
   });
 
+  it('counts a skipped test as neither passed nor failed', async () => {
+    const ctx = await seed();
+    await testDb.db
+      .insert(schema.testRequirements)
+      .values([{ testId: ctx.a.id, requirementId: ctx.requirement.id }]);
+    await run(ctx, 'passed', '2026-01-02T00:00:00Z', {
+      testStatuses: { [ctx.a.id]: 'skipped' },
+    });
+    const result = await service.getLinkedTestsWithStatus(
+      ctx.requirement.id,
+      'org',
+    );
+    expect(result.map((r) => r.status)).toEqual([null]);
+  });
+
   it('falls back to the run status when the run has no per-test outcomes', async () => {
     const ctx = await seed();
     await testDb.db.insert(schema.testRequirements).values([

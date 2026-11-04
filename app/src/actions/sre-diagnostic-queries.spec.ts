@@ -91,4 +91,28 @@ describe("SRE diagnostic query actions", () => {
     expect(result).toEqual({ success: false, error: "allowParens is only supported for Azure Monitor connectors" });
     expect(db.insert).not.toHaveBeenCalled();
   });
+
+  it("rejects allowParens in an Azure logs: template", async () => {
+    const limit = jest.fn().mockResolvedValue([
+      { id: "018f0000-0000-7000-8000-000000000004", type: "azure_monitor", status: "connected" },
+    ]);
+    const where = jest.fn().mockReturnValue({ limit });
+    const from = jest.fn().mockReturnValue({ where });
+    jest.mocked(db.select).mockReturnValue({ from } as never);
+
+    const result = await createSreDiagnosticQuery({
+      connectorId: "018f0000-0000-7000-8000-000000000004",
+      name: "Logs",
+      queryType: "http_get",
+      template: "logs: AppTraces | where Name == $term",
+      parameterSchema: { term: { type: "string", pattern: "^[a-z()]+$", allowParens: true } },
+      allowlist: { paths: ["/query"] },
+      maxRows: 100,
+      maxBytes: 1_048_576,
+      maxSeconds: 10,
+    });
+
+    expect(result).toEqual({ success: false, error: "allowParens is only supported in Azure Monitor metrics: templates" });
+    expect(db.insert).not.toHaveBeenCalled();
+  });
 });

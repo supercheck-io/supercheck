@@ -251,7 +251,15 @@ describe("diagnostic query free-text and broad-pattern guards", () => {
       expect(() => render(`${sub}/resourceGroups/rg(prod)/providers/Microsoft.Web/sites/a`, "promql")).toThrow("unquoted free text");
       const loose = { r: { type: "string", pattern: "^[\\w()]+$", allowParens: true } };
       expect(() => validateTemplateFreeTextPositions("up > $r", loose, {}, "promql")).toThrow("unquoted position");
-      expect(() => validateTemplateFreeTextPositions("up > $r", loose, {}, "http_get")).not.toThrow();
+      expect(() => validateTemplateFreeTextPositions("metrics: up > $r", loose, {}, "http_get")).not.toThrow();
+    });
+
+    it("is ignored in logs: (KQL) templates at render and save time", () => {
+      const tpl = "logs: AppTraces | where Name == $resource";
+      const evil = "false)or(true";
+      const loose = { resource: { type: "string", pattern: "^[\\w()]+$", allowParens: true } };
+      expect(() => renderDiagnosticQueryTemplate({ ...base, queryType: "http_get", template: tpl, parameterSchema: loose, allowlist: {} }, { resource: evil })).toThrow("unquoted free text");
+      expect(() => validateTemplateFreeTextPositions(tpl, loose, {}, "http_get")).toThrow("unquoted position");
     });
 
     it("requires a pattern", () => {

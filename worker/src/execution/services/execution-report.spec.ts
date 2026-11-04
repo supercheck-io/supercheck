@@ -11,13 +11,7 @@
  * Filesystem access is real here (temp directories) instead of mocked, so a
  * change to the report path layout fails these tests.
  */
-import {
-  mkdtempSync,
-  mkdirSync,
-  rmSync,
-  truncateSync,
-  writeFileSync,
-} from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { runInNewContext } from 'node:vm';
@@ -494,13 +488,34 @@ describe('ExecutionService per-test statuses for job runs', () => {
     await expect(read()).resolves.toEqual({});
   });
 
-  it('skips an oversize results.json: no statuses, fail-safe evaluation, no crash', async () => {
-    const file = path.join(directory, 'results.json');
-    writeFileSync(file, '{}');
-    truncateSync(file, 50 * 1024 * 1024 + 1); // sparse, so cheap
-    await expect(read()).resolves.toEqual({});
-    await expect(
-      service['evaluatePlaywrightReport'](directory),
-    ).resolves.toEqual({ hasFailures: true, foundReport: false });
+  it('records skipped when every entry is skipped; a pass or failure wins', async () => {
+    writeResults(directory, {
+      suites: [
+        {
+          file: `001-${A}.spec.ts`,
+          specs: [
+            { tests: [test('a1', ['skipped']), test('a2', ['skipped'])] },
+          ],
+        },
+        {
+          file: `002-${B}.spec.ts`,
+          specs: [{ tests: [test('b1', ['skipped']), test('b2', ['passed'])] }],
+        },
+      ],
+    });
+    await expect(read()).resolves.toEqual({ [A]: 'skipped', [B]: 'passed' });
+  });
+
+  it('parses a large results.json regardless of size', async () => {
+    writeResults(directory, {
+      suites: [
+        {
+          file: `001-${A}.spec.ts`,
+          specs: [{ tests: [test('a', ['passed'])] }],
+        },
+      ],
+      pad: 'x'.repeat(1024 * 1024),
+    });
+    await expect(read()).resolves.toEqual({ [A]: 'passed' });
   });
 });
