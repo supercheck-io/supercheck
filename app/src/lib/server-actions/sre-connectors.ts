@@ -54,6 +54,11 @@ import {
   flatCredentialFields,
   providerEndpointRequirementError,
 } from "@/lib/sre/connectors/providers/provider-credentials";
+import {
+  resolveMcpEndpointUrl,
+  urlHasQuery,
+  withMcpEndpoint,
+} from "@/lib/sre/connectors/mcp-endpoint-secret";
 import { db } from "@/utils/db";
 
 const credentialTypes = [
@@ -988,6 +993,10 @@ export async function createSreConnector(
       }
     }
 
+    // A key in an MCP endpoint's query is a secret: the full URL goes into the encrypted credential blob
+    // and config keeps only the redacted form.
+    const secretEndpoint = parsed.data.type === "mcp" && endpointUrl && urlHasQuery(endpointUrl) ? endpointUrl : null;
+
     const connector = await db.transaction(async (tx) => {
       const [created] = await tx
         .insert(externalConnectors)
@@ -997,7 +1006,7 @@ export async function createSreConnector(
           privateAgentId: parsed.data.privateAgentId ?? null,
           name: parsed.data.name,
           type: parsed.data.type,
-          config: endpointUrl ? { endpointUrl } : {},
+          config: endpointUrl ? { endpointUrl: secretEndpoint ? redactEndpointQuery(endpointUrl) : endpointUrl } : {},
           riskLevel: parsed.data.riskLevel,
           permissionLevel: "read",
           sideEffectLevel: "none",
@@ -1014,9 +1023,10 @@ export async function createSreConnector(
         })
         .returning();
 
-      if (parsed.data.credential) {
+      if (parsed.data.credential || secretEndpoint) {
+        const credentialValue = parsed.data.credential?.value as ConnectorCredentialValue | undefined;
         const encrypted = encryptConnectorCredential(
-          parsed.data.credential.value as ConnectorCredentialValue,
+          secretEndpoint ? withMcpEndpoint(credentialValue, secretEndpoint) : (credentialValue as ConnectorCredentialValue),
           {
             organizationId,
             projectId: project.id,
@@ -1026,11 +1036,11 @@ export async function createSreConnector(
 
         await tx.insert(externalConnectorCredentials).values({
           connectorId: created.id,
-          credentialType: parsed.data.credential.credentialType,
+          credentialType: parsed.data.credential?.credentialType ?? "api_key",
           encryptedCredential: encrypted.encryptedCredential,
           encryptionVersion: encrypted.encryptionVersion,
           encryptionKeyContext: encrypted.encryptionKeyContext,
-          expiresAt: parsed.data.credential.expiresAt ?? null,
+          expiresAt: parsed.data.credential?.expiresAt ?? null,
           lastRotatedAt: new Date(),
           createdAt: new Date(),
           updatedAt: new Date(),
@@ -1373,8 +1383,17 @@ export async function rotateSreConnectorCredential(
       return { success: false, error: credentialError };
     }
 
+    // Rotation replaces the whole blob, so carry the encrypted MCP endpoint URL over (this also moves a
+    // legacy URL out of config).
+    const storedEndpoint = typeof connector.config?.endpointUrl === "string" ? connector.config.endpointUrl : null;
+    const carriedEndpoint =
+      connector.type === "mcp" && storedEndpoint && urlHasQuery(storedEndpoint)
+        ? await resolveMcpEndpointUrl(connector)
+        : null;
     const encrypted = encryptConnectorCredential(
-      parsed.data.value as ConnectorCredentialValue,
+      carriedEndpoint
+        ? withMcpEndpoint(parsed.data.value as ConnectorCredentialValue, carriedEndpoint)
+        : (parsed.data.value as ConnectorCredentialValue),
       {
         organizationId,
         projectId: project.id,
@@ -1407,6 +1426,7 @@ export async function rotateSreConnectorCredential(
           lastValidationStatus: null,
           lastValidationError: null,
           lastValidationLatencyMs: null,
+          ...(carriedEndpoint ? { config: { ...connector.config, endpointUrl: redactEndpointQuery(carriedEndpoint) } } : {}),
           updatedAt: new Date(),
         })
         .where(eq(externalConnectors.id, connector.id));
