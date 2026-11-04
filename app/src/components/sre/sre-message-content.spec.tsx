@@ -83,6 +83,13 @@ describe("SreMessageContent", () => {
     expect(screen.getByText("chart")).toBeInTheDocument();
   });
 
+  it("shows a short placeholder, not raw JSON, while a chart fence is still streaming", () => {
+    const { container } = render(<SreMessageContent content={'Here:\n```chart\n{"type":"line","xKey":"t"'} />);
+    expect(screen.getByText("Preparing chart…")).toBeInTheDocument();
+    expect(container.querySelector("pre")).toBeNull();
+    expect(screen.queryByText(/xKey/)).not.toBeInTheDocument();
+  });
+
   it("does not turn a missing chart observation into zero", () => {
     render(<SreMessageContent content={["```chart", JSON.stringify({ type: "line", title: "Errors", xKey: "time", series: [{ key: "errors", label: "Error count" }], data: [{ time: "10:00", errors: 5 }, { time: "10:01" }] }), "```"].join("\n")} />);
     expect(screen.getByText("No data")).toBeInTheDocument();

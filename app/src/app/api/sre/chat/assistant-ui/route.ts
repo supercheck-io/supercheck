@@ -29,8 +29,10 @@ import {
   appendSreMessage,
   createSreConversation,
   getSreConversation,
+  listSreMessages,
   SreSessionStoreError,
 } from "@/sre/lib/session-store";
+import { SRE_CHART_PROMPT_LINES } from "@/sre/lib/chart-contract";
 import { createSreConnectorTools } from "@/sre/tools/connector-tools";
 import { createSreSimilarIncidentTools } from "@/sre/tools/similar-incident-tools";
 import { createSreEvidenceTools } from "@/sre/tools/evidence-tools";
@@ -203,10 +205,7 @@ function buildAssistantUiSystemPrompt(input: {
     "- Do not ask vaguely for more context. State exactly which evidence boundary applies and the single most useful way to continue in Supercheck.",
     "- Do not emit raw markdown heading markers as decoration; use headings only when they add structure.",
     "- When evidence is missing, name the gap and suggest the next read-only checks. Do not present a generic checklist as completed verification.",
-    "- When a small numeric summary is clearer as a chart and real values are available, include a fenced `chart` JSON block:",
-    '{"type":"line","title":"Short title","description":"Optional one-sentence context","sources":[{"label":"Prometheus","type":"prometheus","evidenceIds":["ev-123"],"query":"rate(http_requests_total[5m])"}],"xKey":"label","series":[{"key":"value","label":"Value"}],"data":[{"label":"api","value":12}]}',
-    "- Supported chart types are bar, line, and area, with at most 4 series and 48 data rows; series values must be numbers. Use only evidence or values from the conversation; do not fabricate chart data.",
-    "- Include chart sources when values come from evidence, connectors, or user-provided data. Source labels must be non-secret names such as Prometheus, Grafana, Kubernetes, or Generated preview data.",
+    ...SRE_CHART_PROMPT_LINES.map((line, index) => (index === 1 ? line : `- ${line}`)),
   ]
     .filter(Boolean)
     .join("\n");
@@ -311,10 +310,6 @@ export async function POST(request: NextRequest) {
   }
 
   const messages = parsed.data.messages.map(normalizeAssistantUiMessage);
-  const modelMessages = messages.filter(
-    (message) =>
-      message.role === "user" || Boolean(getTextFromUiMessage(message)),
-  );
   if (getTotalMessageTextLength(messages) > MAX_TOTAL_MESSAGE_TEXT_LENGTH) {
     return NextResponse.json(
       { error: "Copilot chat history is too large" },
@@ -399,8 +394,46 @@ export async function POST(request: NextRequest) {
       { status: 413 },
     );
   }
+  // The prompt history comes from the stored conversation, never from client-sent
+  // assistant turns, which a caller could forge to steer the model.
+  let storedMessages: SreAssistantUiMessage[] = [];
+  if (conversation) {
+    try {
+      storedMessages = (
+        await listSreMessages({
+          organizationId: context.organizationId,
+          projectId: context.project.id,
+          userId: context.userId,
+          conversationId: conversation.id,
+        })
+      ).flatMap((row) =>
+        (row.role === "user" || row.role === "assistant") && row.content?.trim()
+          ? [{ id: row.id, role: row.role, parts: [{ type: "text" as const, text: row.content }] }]
+          : [],
+      );
+    } catch (error) {
+      logger.error({ error }, "Failed to load Copilot conversation history");
+      return NextResponse.json(
+        { error: "Copilot conversation could not be loaded" },
+        { status: 500 },
+      );
+    }
+  }
+  const clientUserTurn: SreAssistantUiMessage = {
+    id: latestUserMessage.id,
+    role: "user",
+    parts: [{ type: "text", text: latestUserText }],
+  };
+  let history = storedMessages;
+  if (parsed.data.trigger === "submit-message") {
+    history = [...storedMessages, clientUserTurn];
+  } else {
+    // Regenerating: the stored user turn is already the last one asked, so drop the old reply.
+    while (history.at(-1)?.role === "assistant") history = history.slice(0, -1);
+    if (history.length === 0) history = [clientUserTurn];
+  }
   const promptMessages = fitPromptHistory(
-    modelMessages,
+    history,
     budget.maxPromptChars - system.length,
   );
 
@@ -508,6 +541,17 @@ export async function POST(request: NextRequest) {
       "Copilot could not complete the read-only check. No failed connector result was treated as evidence.",
     onFinish: async ({ responseMessage, isAborted }) => {
       if (isAborted) {
+        // Keep the stored history honest: the user saw a partial reply that ended early.
+        await appendSreMessage({
+          id: assistantMessageId,
+          organizationId: context.organizationId,
+          projectId: context.project.id,
+          userId: context.userId,
+          conversationId: activeConversationId,
+          role: "assistant",
+          content: "This reply was interrupted before it finished.",
+          modelId,
+        });
         return;
       }
 

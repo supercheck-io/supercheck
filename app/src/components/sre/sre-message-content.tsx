@@ -30,6 +30,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { SRE_CHART_LIMITS } from "@/sre/lib/chart-contract";
 
 const CHART_COLORS = [
   "var(--chart-1)",
@@ -182,9 +183,9 @@ function parseSreChartBlock(value: string): ParsedSreChart | null {
           : null;
   const xKey = typeof record.xKey === "string" ? record.xKey : null;
   const rawSeries = Array.isArray(record.series)
-    ? record.series.slice(0, 4)
+    ? record.series.slice(0, SRE_CHART_LIMITS.maxSeries)
     : [];
-  const rawData = Array.isArray(record.data) ? record.data.slice(0, 48) : [];
+  const rawData = Array.isArray(record.data) ? record.data.slice(0, SRE_CHART_LIMITS.maxRows) : [];
 
   if (!type || !xKey || rawSeries.length === 0 || rawData.length === 0)
     return null;
@@ -205,7 +206,7 @@ function parseSreChartBlock(value: string): ParsedSreChart | null {
   if (series.length === 0) return null;
 
   const rawSources = Array.isArray(record.sources)
-    ? record.sources.slice(0, 3)
+    ? record.sources.slice(0, SRE_CHART_LIMITS.maxSources)
     : record.source
       ? [record.source]
       : [];
@@ -229,7 +230,7 @@ function parseSreChartBlock(value: string): ParsedSreChart | null {
             const text = safeChartText(id, 80);
             return text ? [text] : [];
           })
-          .slice(0, 4)
+          .slice(0, SRE_CHART_LIMITS.maxEvidenceIdsPerSource)
       : [];
 
     return [
@@ -586,6 +587,17 @@ export function SreMessageContent({ content }: { content: string }) {
       ) {
         codeLines.push(lines[codeIndex] ?? "");
         codeIndex += 1;
+      }
+
+      if (language === "chart" && codeIndex >= lines.length) {
+        // Still streaming: the closing fence has not arrived, so there is no chart to draw yet.
+        rendered.push(
+          <p key={`chart-pending-${index}`} className="text-xs text-muted-foreground">
+            Preparing chart…
+          </p>,
+        );
+        index = codeIndex;
+        continue;
       }
 
       if (language === "chart") {
