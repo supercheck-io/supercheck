@@ -55,7 +55,7 @@ export function IncidentAssigneePicker({
     return (
       <div className="space-y-1">
         {!hideLabel && <span className="text-xs text-muted-foreground">{label}</span>}
-        <UserCell name={assigneeName} image={assigneeImage} avatarClassName="h-5 w-5" />
+        <UserCell name={assigneeName} userId={assigneeUserId} image={assigneeImage} avatarClassName="h-5 w-5" />
       </div>
     );
   }
@@ -101,7 +101,7 @@ export function IncidentAssigneePicker({
               return (
                 <span className="flex items-center gap-2">
                   {/* No real name: show the neutral icon, not a preset hashed from "Assigned". */}
-                  <UserAvatar name={person?.name ?? assigneeName} image={person?.image ?? assigneeImage} className="h-5 w-5" />
+                  <UserAvatar name={person?.name ?? assigneeName} userId={assigneeUserId} image={person?.image ?? assigneeImage} className="h-5 w-5" />
                   {name ?? "Unassigned"}
                 </span>
               );
@@ -113,7 +113,7 @@ export function IncidentAssigneePicker({
           {people.map((person) => (
             <SelectItem key={person.id} value={person.id}>
               <span className="flex items-center gap-2">
-                <UserAvatar name={person.name} image={person.image} className="h-5 w-5" />
+                <UserAvatar name={person.name} userId={person.id} image={person.image} className="h-5 w-5" />
                 {person.name}
               </span>
             </SelectItem>

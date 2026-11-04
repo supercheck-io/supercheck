@@ -133,7 +133,7 @@ function ProfileTab({ onClose }: { onClose: () => void }) {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
-        <UserAvatar name={user?.name || user?.email} image={selected} allowExternalImage className="h-16 w-16" data-testid="account-avatar" />
+        <UserAvatar name={user?.name || user?.email} userId={user?.id} image={selected} allowExternalImage className="h-16 w-16" data-testid="account-avatar" />
         <div className="flex gap-2">
           <Button type="button" variant="outline" size="sm" disabled={photoBusy || saving || impersonating} onClick={() => fileInput.current?.click()}>
             Upload photo

@@ -38,6 +38,19 @@ describe("UserAvatar", () => {
     expect(screen.getByText("AL")).toBeInTheDocument();
   });
 
+  it("seeds the colour by user id when given, else by name", () => {
+    const colour = (name: string, userId?: string) => {
+      const { unmount, container } = render(<UserAvatar name={name} userId={userId} />);
+      const cls = container.querySelector("span span")?.className ?? "";
+      unmount();
+      return cls;
+    };
+    const id = "11111111-2222-3333-4444-555555555555";
+    expect(colour("Ada Lovelace", id)).toBe(colour("A completely different name", id));
+    expect(colour("Ada Lovelace", id)).toContain(avatarColor(id));
+    expect(colour("Ada Lovelace")).toContain(avatarColor("Ada Lovelace"));
+  });
+
   it("shows a person icon when nobody is set", () => {
     const { container } = render(<UserAvatar name={null} image="/api/users/u1/avatar" />);
     expect(container.querySelector("svg[aria-hidden='true']")).not.toBeNull();
@@ -74,6 +87,18 @@ describe("UserAvatar image source", () => {
     const { container } = render(<UserAvatar name="Ada Lovelace" />);
     expect(imgSrc(container)).toBe(defaultAvatarFor("Ada Lovelace"));
     expect(AVATAR_PRESETS).toContain(defaultAvatarFor("Ada Lovelace"));
+  });
+
+  it("seeds the default preset by user id when given, else by name", () => {
+    const id = "11111111-2222-3333-4444-555555555555";
+    const a = render(<UserAvatar name="Ada" userId={id} />);
+    expect(imgSrc(a.container)).toBe(defaultAvatarFor(id));
+    a.unmount();
+    const b = render(<UserAvatar name="Ada Byron" userId={id} />);
+    expect(imgSrc(b.container)).toBe(defaultAvatarFor(id));
+    b.unmount();
+    const c = render(<UserAvatar name="Ada" />);
+    expect(imgSrc(c.container)).toBe(defaultAvatarFor("Ada"));
   });
 
   it("renders a chosen preset", () => {

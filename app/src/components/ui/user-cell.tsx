@@ -32,7 +32,7 @@ const FALLBACK_COLORS = [
   "bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-100",
 ];
 
-// shortcut: seeded by the display name, so a renamed user changes colour; seed by user id if that matters.
+// Seed is the user id when the caller has one (stable across renames); callers without an id fall back to the display name.
 export function avatarColor(name: string) {
   let hash = 0;
   for (const char of name) hash = (hash * 31 + char.codePointAt(0)!) >>> 0;
@@ -63,25 +63,29 @@ export function isSafeAvatarUrl(image: string): boolean {
 /** Round avatar: the photo, else the person's default preset, else a dashed person icon when nobody is set. */
 export function UserAvatar({
   name,
+  userId,
   image,
   allowExternalImage = false,
   className,
   ...props
 }: {
   name: string | null | undefined;
+  /** Seeds the default avatar and colour so they survive a rename; pass it wherever the id is at hand. */
+  userId?: string | null;
   image?: string | null;
   /** Only for the signed-in user's own avatar, where an OAuth photo URL is safe to load. */
   allowExternalImage?: boolean;
   className?: string;
 } & Omit<React.ComponentProps<typeof Avatar>, "children">) {
-  const src = name ? (image && (allowExternalImage || isSafeAvatarUrl(image)) ? image : defaultAvatarFor(name)) : null;
+  const seed = userId || name;
+  const src = name && seed ? (image && (allowExternalImage || isSafeAvatarUrl(image)) ? image : defaultAvatarFor(seed)) : null;
   return (
     // Initials scale with the avatar size (container query), so one component fits 16px to 64px.
     <Avatar className={cn("@container h-6 w-6", className)} {...props}>
       {/* No referrer: app URLs never reach GitHub or Google, and Google photos can refuse requests that send one.
           Initials stay as the fallback while the image loads or if it fails. */}
       {src ? <AvatarImage src={src} alt="" referrerPolicy="no-referrer" /> : null}
-      <AvatarFallback className={cn("text-[max(8px,40cqw)] font-medium", name ? avatarColor(name) : "border border-dashed bg-transparent text-muted-foreground")}>
+      <AvatarFallback className={cn("text-[max(8px,40cqw)] font-medium", name && seed ? avatarColor(seed) : "border border-dashed bg-transparent text-muted-foreground")}>
         {name ? initials(name) : <UserRound className="h-3/5 w-3/5" aria-hidden="true" />}
       </AvatarFallback>
     </Avatar>
@@ -94,6 +98,7 @@ export function UserAvatar({
  */
 export function UserCell({
   name,
+  userId,
   email,
   image,
   emptyLabel = "Unassigned",
@@ -103,6 +108,7 @@ export function UserCell({
   avatarClassName,
 }: {
   name: string | null | undefined;
+  userId?: string | null;
   email?: string | null;
   image?: string | null;
   emptyLabel?: string;
@@ -116,7 +122,7 @@ export function UserCell({
   const label = name || email || null;
   const content = (
     <div className={cn("flex min-w-0 items-center gap-2 text-sm", !label && "text-muted-foreground", className)}>
-      <UserAvatar name={label} image={image} className={avatarClassName} />
+      <UserAvatar name={label} userId={userId} image={image} className={avatarClassName} />
       {compact && label ? <span aria-hidden="true" className="font-medium">{initials(label)}</span> : null}
       {compact && !label && emptyDash ? <span aria-hidden="true" className="text-muted-foreground">—</span> : null}
       <span className={compact ? "sr-only" : "truncate"}>

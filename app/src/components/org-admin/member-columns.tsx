@@ -651,6 +651,7 @@ export const createMemberColumns = (
           ) : (
             <UserCell
               name={(item as OrgMember).name}
+              userId={(item as OrgMember).id}
               email={(item as OrgMember).email}
               image={(item as OrgMember).image}
               className="max-w-[220px] font-medium"
