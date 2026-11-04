@@ -11,8 +11,9 @@ function chain(result: unknown[]) {
 jest.mock("@/utils/db", () => ({ db: { select: jest.fn(() => chain(selectQueue.shift() ?? [])) } }));
 
 const redisSet = jest.fn();
+const redisEval = jest.fn();
 const redisDel = jest.fn();
-jest.mock("@/lib/queue", () => ({ getRedisConnection: jest.fn(async () => ({ set: redisSet, del: redisDel })) }));
+jest.mock("@/lib/queue", () => ({ getRedisConnection: jest.fn(async () => ({ set: redisSet, del: redisDel, eval: redisEval })) }));
 const sendEmailToMultiple = jest.fn().mockResolvedValue({ sentCount: 1, failedAddresses: [], errors: {} });
 jest.mock("@/lib/email-service", () => ({ EmailService: { getInstance: () => ({ sendEmailToMultiple }) } }));
 const fetchPublicEndpoint = jest.fn().mockResolvedValue({ ok: true });
@@ -63,7 +64,7 @@ it("builds a link back to the incident page", () => {
 it("sends nothing when the same incident event was already announced", async () => {
   redisSet.mockResolvedValue(null);
   await notifyIncidentEvent(base);
-  expect(redisSet).toHaveBeenCalledWith(expect.stringContaining("inc-1:assigned"), "1", "EX", 600, "NX");
+  expect(redisSet).toHaveBeenCalledWith(expect.stringContaining("inc-1:assigned"), expect.any(String), "EX", 600, "NX");
   expect(sendEmailToMultiple).not.toHaveBeenCalled();
   expect(fetchPublicEndpoint).not.toHaveBeenCalled();
 });
@@ -214,6 +215,22 @@ describe("chat payloads", () => {
     expect(body.embeds[0]).toMatchObject({ title: "#7 @everyone down", url: "https://app.example.com/incidents/inc-1", footer: { text: "Supercheck" } });
   });
 
+  it("escapes markdown in Teams and Discord incident text", async () => {
+    const title = "[click](https://evil.example) *bold*";
+    const teams = await send({ type: "teams", config: { envelope: { teamsWebhookUrl: "https://example.webhook.office.com/x" } } }, title);
+    expect(teams.attachments[0].content.body[1].text).toBe("#7 \\[click\\]\\(https://evil.example\\) \\*bold\\*");
+    fetchPublicEndpoint.mockClear();
+    selectQueue.length = 0;
+    const discord = await send({ type: "discord", config: { envelope: { discordWebhookUrl: "https://discord.com/api/webhooks/1/x" } } }, title);
+    expect(discord.embeds[0].title).toBe("#7 \\[click\\]\\(https://evil.example\\) \\*bold\\*");
+  });
+
+  it("escapes line-leading # in the Discord description", async () => {
+    selectQueue.push([incident], people, source, [{ id: "p1", projectId: "project-1", type: "discord", config: { envelope: { discordWebhookUrl: "https://discord.com/api/webhooks/1/x" } } }]);
+    await notifyIncidentEvent({ ...base, event: "acknowledged", assigneeUserId: null, detail: "# heading" });
+    expect(JSON.parse(fetchPublicEndpoint.mock.calls[0][1].body).embeds[0].description).toBe("\\# heading");
+  });
+
   it("escapes Slack control sequences in incident text", async () => {
     const body = await send({ type: "slack", config: { envelope: { webhookUrl: "https://hooks.slack.com/services/T/B/x" } } }, "<!channel> down");
     expect(body.text).not.toContain("<!channel>");
@@ -360,5 +377,36 @@ describe("one message per event for alert-triggered incidents", () => {
     await notifyIncidentEvent({ ...base, event: "recovered", assigneeUserId: "assignee", actorUserId: null });
     expect(sendEmailToMultiple.mock.calls[0][0].text).toContain("recovered");
     expect(fetchPublicEndpoint).not.toHaveBeenCalled();
+  });
+});
+
+describe("event dedupe key release", () => {
+  const discord = { id: "p1", type: "discord", projectId: "project-1", config: { envelope: { discordWebhookUrl: "https://discord.com/api/webhooks/1/x" } } };
+  const source = [{ sourceType: "monitor", sourceId: "mon-1" }];
+
+  it("releases the key when every provider failed", async () => {
+    fetchPublicEndpoint.mockResolvedValueOnce({ ok: false, status: 500 });
+    selectQueue.push([incident], people, source, [discord]);
+    await notifyIncidentEvent({ ...base, event: "acknowledged", assigneeUserId: null });
+    const token = redisSet.mock.calls[0][1];
+    expect(redisEval).toHaveBeenCalledWith(expect.stringContaining("redis.call('get'"), 1, expect.stringContaining("incident-notify:inc-1:acknowledged"), token);
+  });
+
+  it("releases only with the claim token so another owner's key survives", async () => {
+    fetchPublicEndpoint.mockResolvedValueOnce({ ok: false, status: 500 });
+    selectQueue.push([incident], people, source, [discord]);
+    await notifyIncidentEvent({ ...base, event: "acknowledged", assigneeUserId: null });
+    const [script, , , token] = redisEval.mock.calls[0];
+    expect(script).toContain("== ARGV[1]");
+    expect(token).toBe(redisSet.mock.calls[0][1]);
+    expect(token).not.toBe("1");
+  });
+
+  it("keeps the key when a provider succeeded or there were none", async () => {
+    selectQueue.push([incident], people, source, [discord]);
+    await notifyIncidentEvent({ ...base, event: "acknowledged", assigneeUserId: null });
+    selectQueue.push([incident], people, source, []);
+    await notifyIncidentEvent({ ...base, event: "acknowledged", assigneeUserId: null });
+    expect(redisEval).not.toHaveBeenCalled();
   });
 });

@@ -421,6 +421,15 @@ describe('NotificationService', () => {
       );
     });
 
+    it('escapes line-leading # in the Discord description', async () => {
+      await service.sendNotification(discordProvider, {
+        ...basePayload,
+        message: '# heading',
+      });
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(body.embeds[0].description).toContain('\\# heading');
+    });
+
     it('should include embeds with proper structure', async () => {
       await service.sendNotification(discordProvider, basePayload);
 
@@ -1214,6 +1223,38 @@ describe('NotificationService', () => {
       );
     });
 
+    it('keeps line breaks and escapes markdown in the Teams card', async () => {
+      await service.sendNotification(teamsProvider, {
+        ...basePayload,
+        title: '[click](https://evil.example) *bold*',
+        message: 'line one\nline two',
+      });
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      const blocks = body.attachments[0].content.body;
+      expect(blocks[0].text).toBe(
+        '\\[click\\]\\(https://evil.example\\) \\*bold\\*',
+      );
+      expect(blocks[1].text).toContain('line one\nline two');
+    });
+
+    it('leaves URL fields unescaped and escapes angle-bracket text', async () => {
+      await service.sendNotification(teamsProvider, {
+        ...basePayload,
+        title: '<https://x> down',
+        metadata: {
+          ...basePayload.metadata,
+          target: 'https://example.com/a_b(c)',
+        },
+      });
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      const content = body.attachments[0].content.body;
+      expect(content[0].text).toBe('\\<https://x\\> down');
+      const facts = content[2].facts as Array<{ title: string; value: string }>;
+      expect(facts.find((f) => f.title === 'Target URL')?.value).toBe(
+        'https://example.com/a_b(c)',
+      );
+    });
+
     it('should reject invalid Teams webhook URL', async () => {
       const invalidProvider: NotificationProvider = {
         id: 'provider-teams-invalid',
@@ -1755,6 +1796,23 @@ describe('NotificationService', () => {
       const result = await service.sendNotification(provider, basePayload);
 
       expect(result).toBe(true);
+    });
+
+    it('passes the rendered subject to sendMail', async () => {
+      const nodemailer = require('nodemailer');
+      const mockSendMail = jest
+        .fn()
+        .mockResolvedValue({ messageId: 'msg-123' });
+      (nodemailer.createTransport as jest.Mock).mockReturnValue({
+        verify: jest.fn().mockResolvedValue(true),
+        sendMail: mockSendMail,
+      });
+
+      await service.sendNotification(emailProvider, basePayload);
+
+      expect(mockSendMail).toHaveBeenCalledWith(
+        expect.objectContaining({ subject: 'Monitor Alert' }),
+      );
     });
 
     it('should send to ALL email addresses in comma-separated list', async () => {

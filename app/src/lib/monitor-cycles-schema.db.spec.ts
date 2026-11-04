@@ -140,7 +140,7 @@ it("indexes only pending relay work with partial indexes", async () => {
   expect(count).toBe(0);
 });
 
-it("persists a cycle idempotently so a scheduler retry reuses it", async () => {
+it("persists a cycle idempotently and refreshes the snapshot on an untouched retry", async () => {
   const id = monitorCycleId(monitorId, "repeat:abc:1000");
   const input = {
     id,
@@ -157,9 +157,41 @@ it("persists a cycle idempotently so a scheduler retry reuses it", async () => {
     .select()
     .from(schema.monitorCycles)
     .where(eq(schema.monitorCycles.id, id));
-  expect(row.expectedLocations).toEqual(["eu", "us"]);
+  expect(row.expectedLocations).toEqual(["other"]);
   expect(row.status).toBe("open");
   expect(row.deadlineAt.getTime()).toBeGreaterThan(row.scheduledFor.getTime());
+});
+
+it("freezes the snapshot once a result or arrival exists", async () => {
+  const base = {
+    monitorId,
+    configuredLocations: ["eu", "us"],
+    policy: { strategy: "majority" as const, threshold: 50 },
+    deadlineMs: 60_000,
+  };
+  const withResult = monitorCycleId(monitorId, "frozen-result");
+  await persistMonitorCycle({ ...base, id: withResult });
+  await mockDatabase.insert(schema.monitorResults).values({
+    monitorId,
+    location: "eu",
+    status: "up",
+    isUp: true,
+    executionGroupId: withResult,
+  });
+  await persistMonitorCycle({ ...base, id: withResult, configuredLocations: ["other"] });
+  const withArrival = monitorCycleId(monitorId, "frozen-arrival");
+  await persistMonitorCycle({ ...base, id: withArrival });
+  await mockDatabase
+    .insert(schema.monitorCycleArrivals)
+    .values({ cycleId: withArrival, location: "eu" });
+  await persistMonitorCycle({ ...base, id: withArrival, configuredLocations: ["other"] });
+  for (const id of [withResult, withArrival]) {
+    const [row] = await mockDatabase
+      .select()
+      .from(schema.monitorCycles)
+      .where(eq(schema.monitorCycles.id, id));
+    expect(row.expectedLocations).toEqual(["eu", "us"]);
+  }
 });
 
 it("aborts only open cycles", async () => {
