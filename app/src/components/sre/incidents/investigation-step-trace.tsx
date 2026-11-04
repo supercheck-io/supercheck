@@ -31,7 +31,7 @@ export function InvestigationStepTrace({
   const failures = steps.filter((step) => step.status === "error").length;
 
   return (
-    <Collapsible defaultOpen className="rounded-lg border" data-testid="investigation-step-trace">
+    <Collapsible defaultOpen aria-live={running ? "polite" : "off"} className="rounded-lg border" data-testid="investigation-step-trace">
       <CollapsibleTrigger className="group flex w-full cursor-pointer flex-wrap items-center gap-2 rounded-lg text-left px-4 py-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
 <ChevronRight className="h-4 w-4 shrink-0 transition-transform group-data-[state=open]:rotate-90" aria-hidden="true" />
         How I investigated
@@ -47,7 +47,7 @@ export function InvestigationStepTrace({
         )}
       </CollapsibleTrigger>
 <CollapsibleContent>
-      <ol className="space-y-1 border-t px-4 py-3" aria-live={running ? "polite" : "off"}>
+      <ol className="space-y-1 border-t px-4 py-3">
         {steps.length === 0 && (
           <li className="text-sm text-muted-foreground">Starting. Steps appear here as they finish.</li>
         )}

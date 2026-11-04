@@ -84,10 +84,16 @@ describe("SreMessageContent", () => {
   });
 
   it("shows a short placeholder, not raw JSON, while a chart fence is still streaming", () => {
-    const { container } = render(<SreMessageContent content={'Here:\n```chart\n{"type":"line","xKey":"t"'} />);
+    const { container } = render(<SreMessageContent isStreaming content={'Here:\n```chart\n{"type":"line","xKey":"t"'} />);
     expect(screen.getByText("Preparing chart…")).toBeInTheDocument();
     expect(container.querySelector("pre")).toBeNull();
     expect(screen.queryByText(/xKey/)).not.toBeInTheDocument();
+  });
+
+  it("shows an unclosed chart fence as code once the message has finished", () => {
+    const { container } = render(<SreMessageContent content={'Here:\n```chart\n{"type":"line","xKey":"t"'} />);
+    expect(screen.queryByText("Preparing chart…")).not.toBeInTheDocument();
+    expect(container.querySelector("pre")).not.toBeNull();
   });
 
   it("does not turn a missing chart observation into zero", () => {

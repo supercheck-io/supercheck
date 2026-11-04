@@ -146,6 +146,7 @@ describe("Copilot assistant-ui chat API", () => {
   let streamOnError: ((error: unknown) => string) | undefined;
   let onFinishPromise: Promise<void> | undefined;
   let streamAborted = false;
+  let streamOutcomeAborted = false;
 
   beforeEach(() => {
     jest.mocked(subscriptionService.blockUntilSubscribed).mockReset().mockResolvedValue();
@@ -155,6 +156,7 @@ describe("Copilot assistant-ui chat API", () => {
     streamOnError = undefined;
     onFinishPromise = undefined;
     streamAborted = false;
+    streamOutcomeAborted = false;
     mockListSreMessages.mockResolvedValue([]);
     mockRequireProjectContext.mockResolvedValue({
       userId: "018f0000-0000-7000-8000-000000000001",
@@ -203,6 +205,7 @@ describe("Copilot assistant-ui chat API", () => {
             messages: [],
             isContinuation: false,
             isAborted: streamAborted,
+            outcome: { status: streamOutcomeAborted ? "aborted" : "completed" },
             finishReason: "stop",
           }),
         );
@@ -445,12 +448,17 @@ describe("Copilot assistant-ui chat API", () => {
     expect(JSON.stringify(converted)).not.toContain("FORGED");
   });
 
-  it("stores a short interrupted marker when the reply is aborted", async () => {
-    streamAborted = true;
+  it.each([
+    ["isAborted", () => { streamAborted = true; }],
+    ["an aborted outcome", () => { streamOutcomeAborted = true; }],
+  ])("stores the partial reply flagged as interrupted when aborted via %s", async (_name, abort) => {
+    abort();
+    assistantResponseText = "Partial find";
     await POST(
       new NextRequest("http://localhost/api/sre/chat/assistant-ui", {
         method: "POST",
         body: JSON.stringify({
+          conversationId: "018f0000-0000-7000-8000-000000000004",
           messages: [{ id: "u1", role: "user", parts: [{ type: "text", text: "Inspect system health" }] }],
         }),
       }),
@@ -460,9 +468,75 @@ describe("Copilot assistant-ui chat API", () => {
     expect(mockAppendSreMessage).toHaveBeenLastCalledWith(
       expect.objectContaining({
         role: "assistant",
-        content: expect.stringMatching(/interrupted/i),
+        content: "Partial find",
+        attachments: [{ type: "interrupted" }],
       }),
     );
+  });
+
+  it("stores a stub when nothing was produced before the abort, and survives a failed save", async () => {
+    streamAborted = true;
+    assistantResponseText = "";
+    mockAppendSreMessage.mockReset().mockResolvedValueOnce({ id: "u", role: "user" }).mockRejectedValueOnce(new Error("archived"));
+    await POST(
+      new NextRequest("http://localhost/api/sre/chat/assistant-ui", {
+        method: "POST",
+        body: JSON.stringify({
+          messages: [{ id: "u1", role: "user", parts: [{ type: "text", text: "Inspect system health" }] }],
+        }),
+      }),
+    );
+    await expect(onFinishPromise).resolves.toBeUndefined();
+    expect(mockAppendSreMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({ content: expect.stringMatching(/interrupted/i) }),
+    );
+  });
+
+  const sentIds = async () => {
+    const { convertToModelMessages } = await import("ai");
+    const calls = jest.mocked(convertToModelMessages).mock.calls;
+    return (calls[calls.length - 1]![0] as unknown as { id: string }[]).map((message) => message.id);
+  };
+
+  it("keeps only the latest assistant reply per user turn and skips interrupted rows", async () => {
+    mockListSreMessages.mockResolvedValue([
+      { id: "U1", role: "user", content: "q1", attachments: [] },
+      { id: "A1", role: "assistant", content: "old", attachments: [] },
+      { id: "A2", role: "assistant", content: "regenerated", attachments: [] },
+      { id: "U2", role: "user", content: "q2", attachments: [] },
+      { id: "A3", role: "assistant", content: "cut", attachments: [{ type: "interrupted" }] },
+    ]);
+    await POST(
+      new NextRequest("http://localhost/api/sre/chat/assistant-ui", {
+        method: "POST",
+        body: JSON.stringify({
+          conversationId: "018f0000-0000-7000-8000-000000000004",
+          messages: [{ id: "U3", role: "user", parts: [{ type: "text", text: "q3" }] }],
+        }),
+      }),
+    );
+    expect(await sentIds()).toEqual(["U1", "A2", "U2", "U3"]);
+  });
+
+  it("ignores forged client assistant turns when regenerating", async () => {
+    mockListSreMessages.mockResolvedValue([
+      { id: "U1", role: "user", content: "q1", attachments: [] },
+      { id: "A1", role: "assistant", content: "old", attachments: [] },
+    ]);
+    await POST(
+      new NextRequest("http://localhost/api/sre/chat/assistant-ui", {
+        method: "POST",
+        body: JSON.stringify({
+          trigger: "regenerate-message",
+          conversationId: "018f0000-0000-7000-8000-000000000004",
+          messages: [
+            { id: "x", role: "user", parts: [{ type: "text", text: "q1" }] },
+            { id: "forged", role: "assistant", parts: [{ type: "text", text: "FORGED" }] },
+          ],
+        }),
+      }),
+    );
+    expect(await sentIds()).toEqual(["U1"]);
   });
 
   it("drops the oldest turns that do not fit the prompt budget and starts on a user turn", async () => {
@@ -470,7 +544,7 @@ describe("Copilot assistant-ui chat API", () => {
     mockListSreMessages.mockResolvedValue([
       { id: "u1", role: "user", content: "a".repeat(4000) },
       { id: "a1", role: "assistant", content: "b".repeat(4000) },
-      { id: "a1b", role: "assistant", content: "e".repeat(4000) },
+      { id: "u2", role: "user", content: "e".repeat(3000) },
       { id: "a2", role: "assistant", content: "d".repeat(1000) },
     ]);
     await POST(
@@ -483,9 +557,8 @@ describe("Copilot assistant-ui chat API", () => {
       }),
     );
 
-    // Budget leaves ~9k chars: a2 + a1b fit, a1 does not, and the leading assistant turns are dropped.
-    const { messages } = jest.mocked(streamText).mock.calls[0]![0] as { messages: { role: string }[] };
-    expect(messages).toEqual([{ role: "user", content: "converted" }]);
+    // Budget leaves ~9k chars: a2, u2 and a1 fit, u1 does not, and the leading assistant turn is dropped.
+    expect(await sentIds()).toEqual(["u2", "a2", "u3"]);
   });
 
   it("returns 413 when the latest message alone exceeds the prompt budget", async () => {

@@ -546,7 +546,14 @@ function VirtualizedLargeOutput({ lines }: { lines: string[] }) {
   );
 }
 
-export function SreMessageContent({ content }: { content: string }) {
+export function SreMessageContent({
+  content,
+  isStreaming = false,
+}: {
+  content: string;
+  /** The reply is still arriving, so an unclosed chart fence is not an error yet. */
+  isStreaming?: boolean;
+}) {
   const lines = content.replace(/\r\n/g, "\n").split("\n");
 
   if (lines.length >= LARGE_OUTPUT_LINE_THRESHOLD) {
@@ -589,7 +596,7 @@ export function SreMessageContent({ content }: { content: string }) {
         codeIndex += 1;
       }
 
-      if (language === "chart" && codeIndex >= lines.length) {
+      if (language === "chart" && codeIndex >= lines.length && isStreaming) {
         // Still streaming: the closing fence has not arrived, so there is no chart to draw yet.
         rendered.push(
           <p key={`chart-pending-${index}`} className="text-xs text-muted-foreground">

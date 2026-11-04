@@ -42,6 +42,8 @@ interface DataTableProps<TData, TValue> {
     table: import("@tanstack/react-table").Table<TData>,
   ) => React.ReactNode;
   entityLabel?: string;
+  /** Shown instead of "No results." when no row is visible. */
+  emptyMessage?: string;
   initialColumnVisibility?: VisibilityState;
   skeletonColumns?: number;
   onRowPrefetch?: (row: Row<TData>) => void;
@@ -112,6 +114,7 @@ export function DataTable<TData, TValue>({
   onRowClick,
   renderToolbar,
   entityLabel,
+  emptyMessage = "No results.",
   initialColumnVisibility = { updatedAt: false },
   skeletonColumns = 5,
   onRowPrefetch,
@@ -411,7 +414,7 @@ export function DataTable<TData, TValue>({
                   colSpan={columns.length}
                   className="h-24 text-center"
                 >
-                  No results.
+                  {emptyMessage}
                 </TableCell>
               </TableRow>
             )}

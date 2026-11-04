@@ -173,7 +173,7 @@ export function uiMessagesToHistoryMessages(
 
 function AssistantTextPart() {
   const part = useMessagePartText();
-  return <SreMessageContent content={part.text} />;
+  return <SreMessageContent content={part.text} isStreaming={part.status.type === "running"} />;
 }
 
 function AssistantMessage() {

@@ -208,7 +208,13 @@ describe("SreIncidentsList", () => {
   it("shows loading, not an empty result, while the resolved scope loads", () => {
     render(<SreIncidentsList incidents={[]} loadError={null} hasIncidents loadingScope />);
     expect(screen.getByText("Loading data...")).toBeInTheDocument();
-    expect(screen.queryByText("No results.")).not.toBeInTheDocument();
+    expect(screen.queryByText("No incidents match the current filters.")).not.toBeInTheDocument();
+  });
+
+  it("explains an empty filtered result", () => {
+    render(<SreIncidentsList incidents={[incidentFixture(1)]} loadError={null} />);
+    fireEvent.change(screen.getByPlaceholderText(/Search/), { target: { value: "zzz-no-match" } });
+    expect(screen.getByText("No incidents match the current filters.")).toBeInTheDocument();
   });
 
   it("lets the Status facet reach resolved incidents without switching quick filters", () => {

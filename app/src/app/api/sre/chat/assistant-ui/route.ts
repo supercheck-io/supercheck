@@ -47,6 +47,8 @@ type SreAssistantUiMessageMetadata = {
 type SreAssistantUiMessage = UIMessage<SreAssistantUiMessageMetadata>;
 
 const MAX_MESSAGE_TEXT_LENGTH = 4000;
+// Flags a stored assistant row as a reply cut short; such rows stay out of later prompts.
+const INTERRUPTED_ATTACHMENT_TYPE = "interrupted";
 const MAX_TOTAL_MESSAGE_TEXT_LENGTH = 20_000;
 const logger = createLogger({ module: "sre-assistant-ui" }) as {
   error: (data: unknown, message?: string) => void;
@@ -396,21 +398,29 @@ export async function POST(request: NextRequest) {
   }
   // The prompt history comes from the stored conversation, never from client-sent
   // assistant turns, which a caller could forge to steer the model.
-  let storedMessages: SreAssistantUiMessage[] = [];
+  const storedMessages: SreAssistantUiMessage[] = [];
   if (conversation) {
     try {
-      storedMessages = (
-        await listSreMessages({
-          organizationId: context.organizationId,
-          projectId: context.project.id,
-          userId: context.userId,
-          conversationId: conversation.id,
-        })
-      ).flatMap((row) =>
-        (row.role === "user" || row.role === "assistant") && row.content?.trim()
-          ? [{ id: row.id, role: row.role, parts: [{ type: "text" as const, text: row.content }] }]
-          : [],
-      );
+      const rows = await listSreMessages({
+        organizationId: context.organizationId,
+        projectId: context.project.id,
+        userId: context.userId,
+        conversationId: conversation.id,
+      });
+      for (const row of rows) {
+        if (
+          (row.role !== "user" && row.role !== "assistant") ||
+          !row.content?.trim() ||
+          row.attachments?.some((item) => item.type === INTERRUPTED_ATTACHMENT_TYPE)
+        ) {
+          continue;
+        }
+        // A regenerated reply supersedes the earlier one for the same user turn.
+        if (row.role === "assistant" && storedMessages.at(-1)?.role === "assistant") {
+          storedMessages.pop();
+        }
+        storedMessages.push({ id: row.id, role: row.role, parts: [{ type: "text", text: row.content }] });
+      }
     } catch (error) {
       logger.error({ error }, "Failed to load Copilot conversation history");
       return NextResponse.json(
@@ -539,19 +549,25 @@ export async function POST(request: NextRequest) {
     },
     onError: () =>
       "Copilot could not complete the read-only check. No failed connector result was treated as evidence.",
-    onFinish: async ({ responseMessage, isAborted }) => {
-      if (isAborted) {
-        // Keep the stored history honest: the user saw a partial reply that ended early.
-        await appendSreMessage({
-          id: assistantMessageId,
-          organizationId: context.organizationId,
-          projectId: context.project.id,
-          userId: context.userId,
-          conversationId: activeConversationId,
-          role: "assistant",
-          content: "This reply was interrupted before it finished.",
-          modelId,
-        });
+    onFinish: async ({ responseMessage, isAborted, outcome }) => {
+      // On a client disconnect onFinish can run from cancel() with isAborted false, so check the outcome too.
+      if (isAborted || outcome?.status === "aborted") {
+        const partial = getTextFromUiMessage(responseMessage);
+        try {
+          await appendSreMessage({
+            id: assistantMessageId,
+            organizationId: context.organizationId,
+            projectId: context.project.id,
+            userId: context.userId,
+            conversationId: activeConversationId,
+            role: "assistant",
+            content: partial || "This reply was interrupted before it finished.",
+            attachments: [{ type: INTERRUPTED_ATTACHMENT_TYPE }],
+            modelId,
+          });
+        } catch (error) {
+          logger.error({ error }, "Failed to store interrupted Copilot reply");
+        }
         return;
       }
 

@@ -421,6 +421,7 @@ export function SreIncidentsList({
             onRowClick={(row) => router.push(`/incidents/${row.original.id}`)}
             initialColumnVisibility={{}}
             entityLabel={`incidents${truncated ? " (from the latest 500)" : ""}`}
+            emptyMessage="No incidents match the current filters."
             skeletonColumns={9}
           />
         </>
