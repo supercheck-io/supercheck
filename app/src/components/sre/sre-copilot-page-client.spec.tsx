@@ -8,6 +8,15 @@ jest.mock("@/actions/sre-ai", () => ({
   getSreCopilotChatHistories: jest.fn(),
 }));
 
+let mockSubscription: { isActive: boolean } | Error = { isActive: true };
+jest.mock("@/components/subscription-guard", () => ({
+  SUBSCRIPTION_STATUS_QUERY_KEY: ["subscription-status"],
+  fetchSubscriptionStatus: async () => {
+    if (mockSubscription instanceof Error) throw mockSubscription;
+    return mockSubscription;
+  },
+}));
+
 jest.mock("@/hooks/use-project-context", () => ({
   useProjectContext: () => ({
     projectId: "project-1",
@@ -53,6 +62,24 @@ function renderClient(client = makeClient()) {
 describe("SreCopilotPageClient history refresh", () => {
   beforeEach(() => {
     jest.mocked(getSreCopilotChatHistories).mockReset();
+    mockSubscription = { isActive: true };
+  });
+
+  it("shows the upgrade state up front when the organization has no paid plan", async () => {
+    mockSubscription = { isActive: false };
+    jest.mocked(getSreCopilotChatHistories).mockResolvedValue({ success: true, histories: [] });
+    renderClient();
+    expect(await screen.findByText("Copilot needs a paid plan")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "View plans" })).toHaveAttribute("href", "/billing");
+    expect(screen.queryByRole("button", { name: "Open history" })).not.toBeInTheDocument();
+  });
+
+  it("does not block the chat when the plan cannot be read", async () => {
+    mockSubscription = new Error("down");
+    jest.mocked(getSreCopilotChatHistories).mockResolvedValue({ success: true, histories: [] });
+    renderClient();
+    expect(await screen.findByRole("button", { name: "Open history" })).toBeInTheDocument();
+    expect(screen.queryByText("Copilot needs a paid plan")).not.toBeInTheDocument();
   });
 
   it("refetches once per history-sheet open and surfaces a chat abandoned mid-stream", async () => {

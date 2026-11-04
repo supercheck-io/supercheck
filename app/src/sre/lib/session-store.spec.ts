@@ -18,6 +18,7 @@ import {
   archiveSreConversation,
   createSreConversation,
   listSreConversations,
+  markSreMessageSuperseded,
   SreSessionStoreError,
 } from "./session-store";
 
@@ -43,6 +44,26 @@ const scope = {
 describe("SRE session store", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  it("flags a reply as superseded only inside the caller's own conversation", async () => {
+    const conversationId = "018f0000-0000-7000-8000-000000000004";
+    const where = jest.fn().mockResolvedValue(undefined);
+    const set = jest.fn(() => ({ where }));
+    mockDb.update.mockReturnValue({ set });
+    mockDb.query.sreChatConversations.findFirst.mockResolvedValueOnce({ id: conversationId });
+    await markSreMessageSuperseded({ ...scope, conversationId, messageId: "018f0000-0000-7000-8000-000000000005" });
+    // The conversation is resolved with the tenant and user scope first, then the row is updated by (id, conversation).
+    expect(mockDb.query.sreChatConversations.findFirst).toHaveBeenCalled();
+    const { PgDialect } = jest.requireActual("drizzle-orm/pg-core") as typeof import("drizzle-orm/pg-core");
+    const { params } = new PgDialect().sqlToQuery(where.mock.calls[0][0]);
+    expect(params).toEqual(expect.arrayContaining(["018f0000-0000-7000-8000-000000000005", conversationId]));
+    const setQuery = new PgDialect().sqlToQuery((set.mock.calls[0] as unknown as [{ attachments: never }])[0].attachments);
+    expect(JSON.stringify(setQuery.params)).toContain("superseded");
+    mockDb.query.sreChatConversations.findFirst.mockResolvedValueOnce(undefined);
+    await expect(
+      markSreMessageSuperseded({ ...scope, conversationId, messageId: "018f0000-0000-7000-8000-000000000005" }),
+    ).rejects.toBeInstanceOf(SreSessionStoreError);
   });
 
   it("rejects invalid scoped inputs before querying", async () => {

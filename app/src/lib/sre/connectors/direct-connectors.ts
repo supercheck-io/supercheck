@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { describeConnectionError } from "./connection-error";
 
 import { fetchConnectorEndpoint } from "./pinned-fetch";
 import {
@@ -67,6 +68,10 @@ async function fetchJson({
     throw new Error(`credentials rejected with HTTP ${response.status}`);
   }
 
+  if (response.status === 404) {
+    throw new Error("request failed with HTTP 404: path not found, check the endpoint URL and base path");
+  }
+
   if (!response.ok) {
     throw new Error(`request failed with HTTP ${response.status}`);
   }
@@ -94,6 +99,10 @@ async function fetchOk({
 
   if (response.status === 401 || response.status === 403) {
     throw new Error(`credentials rejected with HTTP ${response.status}`);
+  }
+
+  if (response.status === 404) {
+    throw new Error("request failed with HTTP 404: path not found, check the endpoint URL and base path");
   }
 
   if (!response.ok) {
@@ -427,8 +436,7 @@ abstract class BaseDirectConnector implements Connector {
       await this.validationRequest();
       return { status: "valid", latencyMs: Date.now() - startedAt };
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Connector validation failed";
+      const message = describeConnectionError(error, "Connector validation failed");
       const lowerMessage = message.toLowerCase();
       return {
         status:
@@ -1539,17 +1547,27 @@ export class DatadogConnector extends BaseDirectConnector {
     };
   }
 
+  private async datadogFetch(url: string, timeoutMs: number) {
+    try {
+      return await fetchJson({ url, timeoutMs, headers: this.datadogHeaders() });
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("HTTP 403")) {
+        throw new Error(
+          "credentials rejected with HTTP 403: check the API and application keys, and that the endpoint matches your Datadog site (api.datadoghq.com for US, api.datadoghq.eu for EU)",
+        );
+      }
+      throw error;
+    }
+  }
+
   protected async validationRequest() {
     if (!this.endpointUrl) throw new Error("Datadog endpoint URL is required");
-    const payload = await fetchJson({
-      url: `${this.endpointUrl}/api/v1/validate`,
-      timeoutMs: this.timeoutMs(),
-      headers: this.datadogHeaders(),
-    });
-    if ((payload as { valid?: unknown }).valid === false) {
-      throw new Error("credentials rejected: Datadog API key was rejected");
-    }
-    return payload;
+    // /api/v1/validate checks only the API key; the events read used by search needs both keys.
+    const end = Math.floor(Date.now() / 1000);
+    return this.datadogFetch(
+      `${this.endpointUrl}/api/v1/events?start=${end - 60}&end=${end}`,
+      this.timeoutMs(),
+    );
   }
 
   async search(
@@ -1571,11 +1589,7 @@ export class DatadogConnector extends BaseDirectConnector {
       url.searchParams.set("tags", params.query.trim());
     }
 
-    const payload = await fetchJson({
-      url: url.toString(),
-      timeoutMs: this.timeoutMs(params),
-      headers: this.datadogHeaders(),
-    });
+    const payload = await this.datadogFetch(url.toString(), this.timeoutMs(params));
     const events = Array.isArray((payload as { events?: unknown[] }).events)
       ? (payload as { events: unknown[] }).events
       : [];

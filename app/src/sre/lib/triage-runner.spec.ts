@@ -63,4 +63,19 @@ describe("incident triage admission", () => {
     await expect(runSreIncidentTriage(input)).rejects.toThrow("stop after insert");
     expect(values).toHaveBeenCalledWith(expect.objectContaining({ agentType: "triage", billingTier: "trial" }));
   });
+
+  it("records a triage_failed timeline event when the agent fails", async () => {
+    const values = jest.fn((row: unknown) => Object.assign(Promise.resolve(row), { returning: async () => [{ id: "run-1" }] }));
+    (db.insert as jest.Mock).mockReturnValue({ values });
+    (runSreAgent as jest.Mock).mockRejectedValue(Object.assign(new Error("secret provider text"), { finishReason: "length" }));
+    await expect(runSreIncidentTriage(input)).resolves.toMatchObject({ success: false, status: 502, investigationRunId: "run-1" });
+    expect(values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        incidentId: "incident",
+        eventType: "state_change",
+        eventData: expect.objectContaining({ state: "triage_failed", errorCode: "length" }),
+      }),
+    );
+    expect(JSON.stringify(values.mock.calls)).not.toContain("secret provider text");
+  });
 });

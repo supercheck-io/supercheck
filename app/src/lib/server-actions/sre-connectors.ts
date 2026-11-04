@@ -26,6 +26,9 @@ import {
   decryptConnectorCredential,
   encryptConnectorCredential,
   assertEndpointAllowedForExecution,
+  HostResolutionError,
+  redactEndpointQuery,
+  summarizeJobSpec,
   createDirectConnector,
   connectorRequiresCredentials,
   enforceConnectorPolicy,
@@ -311,16 +314,32 @@ function normalizeOutputLimits(value: Record<string, unknown> | null) {
   };
 }
 
-function normalizeEndpointUrl(value: string | null | undefined) {
+/** Endpoint validation failures that are safe to show to the admin. */
+class EndpointInputError extends Error {}
+
+function normalizeEndpointUrl(value: string | null | undefined, connectorType?: string) {
   const trimmed = value?.trim();
   if (!trimmed) return null;
 
-  const url = new URL(trimmed);
+  let url: URL;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    throw new EndpointInputError("Enter a valid endpoint URL");
+  }
   if (url.protocol !== "https:" && url.protocol !== "http:") {
-    throw new Error("Connector endpoint must use http or https");
+    throw new EndpointInputError("Connector endpoint must use http or https");
+  }
+  // Connectors append their own paths and queries, so a query string is rejected, except for MCP:
+  // some hosted MCP servers carry their key in the URL. That stored URL is treated as secret.
+  if (url.hash || (url.search && connectorType !== "mcp")) {
+    throw new EndpointInputError(
+      connectorType === "mcp"
+        ? "The endpoint URL must not include a fragment"
+        : "The endpoint URL must not include a query string or fragment",
+    );
   }
 
-  url.hash = "";
   url.username = "";
   url.password = "";
   return url.toString().replace(/\/$/, "");
@@ -514,14 +533,13 @@ async function getConnectorListItem(
     hasCredentials: Boolean(row.credentialId),
     defaultTimeWindowMinutes: row.connector.defaultTimeWindowMinutes,
     outputLimits: normalizeOutputLimits(row.connector.outputLimits),
-    endpointUrl:
-      typeof row.connector.config?.endpointUrl === "string"
-        ? row.connector.config.endpointUrl
-        : null,
+    endpointUrl: redactEndpointQuery(row.connector.config?.endpointUrl),
     latestPrivateAgentJob: normalizePrivateAgentJobSummary(latestJob ?? null),
     lastValidatedAt: row.connector.lastValidatedAt,
     lastValidationStatus: row.connector.lastValidationStatus,
-    lastValidationError: row.connector.lastValidationError,
+    lastValidationError: row.connector.lastValidationError
+      ? redactConnectorText(row.connector.lastValidationError)
+      : null,
     createdAt: row.connector.createdAt,
     updatedAt: row.connector.updatedAt,
   };
@@ -649,16 +667,15 @@ export async function getSreConnectors(
       hasCredentials: credentialConnectorIds.has(row.connector.id),
       defaultTimeWindowMinutes: row.connector.defaultTimeWindowMinutes,
       outputLimits: normalizeOutputLimits(row.connector.outputLimits),
-      endpointUrl:
-        typeof row.connector.config?.endpointUrl === "string"
-          ? row.connector.config.endpointUrl
-          : null,
+      endpointUrl: redactEndpointQuery(row.connector.config?.endpointUrl),
       latestPrivateAgentJob: normalizePrivateAgentJobSummary(
         latestJobByConnectorId.get(row.connector.id) ?? null,
       ),
       lastValidatedAt: row.connector.lastValidatedAt,
       lastValidationStatus: row.connector.lastValidationStatus,
-      lastValidationError: row.connector.lastValidationError,
+      lastValidationError: row.connector.lastValidationError
+      ? redactConnectorText(row.connector.lastValidationError)
+      : null,
       createdAt: row.connector.createdAt,
       updatedAt: row.connector.updatedAt,
     }));
@@ -908,7 +925,7 @@ export async function createSreConnector(
     // Fixed-host providers never read an endpoint; drop any stale value.
     const endpointUrl = isFixedEndpointProvider
       ? null
-      : normalizeEndpointUrl(parsed.data.endpointUrl);
+      : normalizeEndpointUrl(parsed.data.endpointUrl, parsed.data.type);
 
     if (parsed.data.type === "mcp") {
       // Never reachable without a Private Agent: the server is in the customer's network.
@@ -933,10 +950,18 @@ export async function createSreConnector(
       return { success: false, error: credentialError };
     }
 
-    await assertEndpointAllowedForExecution(
-      endpointUrl,
-      Boolean(parsed.data.privateAgentId),
-    );
+    try {
+      await assertEndpointAllowedForExecution(
+        endpointUrl,
+        Boolean(parsed.data.privateAgentId),
+      );
+    } catch (error) {
+      // Policy messages describe the admin's own endpoint input and are safe to show.
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Endpoint is not allowed",
+      };
+    }
 
     if (parsed.data.privateAgentId) {
       const agent = await db.query.privateAgents.findFirst({
@@ -1057,9 +1082,13 @@ export async function createSreConnector(
     };
   } catch (error) {
     console.error("Error creating SRE connector:", error);
-    const message =
-      error instanceof Error ? error.message : "Failed to configure connector";
-    return { success: false, error: message };
+    return {
+      success: false,
+      error:
+        error instanceof EndpointInputError
+          ? error.message
+          : "Failed to configure connector",
+    };
   }
 }
 
@@ -1186,9 +1215,16 @@ export async function validateSreConnector(
             : "Private Agent is connected. Run a bounded evidence search to verify the connector endpoint and access.";
       }
     } else {
-      await assertEndpointAllowedForExecution(endpointUrl, false);
+      const policyError = await assertEndpointAllowedForExecution(endpointUrl, false).then(
+        () => null,
+        (error: unknown) => error ?? new Error("Endpoint is not allowed"),
+      );
 
-      if (isDirectValidationConnectorType(row.type)) {
+      if (policyError) {
+        // Only a DNS failure is "unreachable"; every other rejection is a policy block.
+        status = policyError instanceof HostResolutionError ? "unreachable" : "policy_blocked";
+        outputSummary = policyError instanceof Error ? policyError.message : "Endpoint is not allowed";
+      } else if (isDirectValidationConnectorType(row.type)) {
         const credential = credentialRow
           ? decryptConnectorCredential(credentialRow.encryptedCredential, {
               organizationId,
@@ -1232,7 +1268,8 @@ export async function validateSreConnector(
           status: connectorStatus,
           lastValidatedAt: new Date(),
           lastValidationStatus: status,
-          lastValidationError: status === "valid" ? null : outputSummary,
+          lastValidationError:
+            status === "valid" ? null : redactConnectorText(outputSummary),
           lastValidationLatencyMs: durationMs,
           updatedAt: new Date(),
         })
@@ -1649,7 +1686,7 @@ export async function searchSreConnectorEvidence(
         connectorType: connector.type,
         toolName: "connector.search.private_agent.queue",
         inputHash: hashConnectorPayload(route.jobSpec),
-        inputSummary: redactConnectorText(JSON.stringify(route.jobSpec)),
+        inputSummary: redactConnectorText(summarizeJobSpec(route.jobSpec)),
         outputHash: route.jobSpecHash,
         outputSummary: `Queued Private Agent connector job ${jobId}`,
         status: "success",

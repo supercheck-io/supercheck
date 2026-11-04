@@ -11,7 +11,7 @@ export function IncidentStatusStepper({
   description,
 }: {
   current: IncidentDisplayStatus;
-  /** Whether someone acknowledged it; a resolved incident may have skipped the middle steps. */
+  /** Whether acknowledgedAt is set; the Acknowledged step is ticked only then (a reopened incident clears it). */
   acknowledged?: boolean;
   /** Explains the current status; shown as a tooltip on the highlighted step. */
   description?: string;
@@ -28,7 +28,7 @@ export function IncidentStatusStepper({
           // Once resolved we only know it was triggered, maybe acknowledged, and resolved;
           // the steps in between may never have happened, so they are not ticked.
           const isDone = (i: number) =>
-            current === "resolved" ? i === 0 || i === lastIndex || (i === 1 && acknowledged) : i < currentIndex;
+            current === "resolved" ? i === 0 || i === lastIndex || (i === 1 && acknowledged) : i < currentIndex && (i !== 1 || acknowledged);
           const done = isDone(index);
           // A connector is green only between two steps that both happened.
           const nextDone = isDone(index + 1) || index + 1 === currentIndex;

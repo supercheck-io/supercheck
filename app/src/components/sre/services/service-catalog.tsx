@@ -61,6 +61,8 @@ type ServiceCatalogProps = {
   permissions?: { canCreate: boolean; canUpdate: boolean; canArchive: boolean };
 };
 
+const ACTIVE_ONLY = [{ id: "status", value: ["active"] }];
+
 export function ServiceCatalog({
   projectId,
   initialServices,
@@ -182,6 +184,8 @@ export function ServiceCatalog({
         <DataTable
           columns={columns}
           data={services}
+          // Archived services are reachable through the Status filter, not shown by default.
+          initialColumnFilters={ACTIVE_ONLY}
           onRowClick={handleRowClick}
           renderToolbar={(table) => (
             <ServicesToolbar

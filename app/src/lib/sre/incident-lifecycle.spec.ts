@@ -37,6 +37,7 @@ jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn().mockResolvedVa
 jest.mock("./incident-notifier", () => ({ notifyIncidentEvent: jest.fn().mockResolvedValue(undefined) }));
 
 import { logAuditEvent } from "@/lib/audit-logger";
+import { sreIncidents } from "@/db/schema";
 
 import {
   MAX_RESOLUTION_SUMMARY_LENGTH,
@@ -119,6 +120,7 @@ describe("assignIncident", () => {
 
 describe("acknowledgeIncident", () => {
   it("stamps the first acknowledgement, assigns the acknowledger, and notifies", async () => {
+    selectQueue.push([{ id: actor.userId }]); // actor is assignable
     updateQueue.push([{ ...ref, assigneeUserId: actor.userId }]);
     const result = await acknowledgeIncident(actor, incidentId);
     expect(result).toMatchObject({ ok: true, changed: true, autoAssigned: true });
@@ -126,12 +128,22 @@ describe("acknowledgeIncident", () => {
     expect(notifyIncidentEvent).toHaveBeenCalledWith(expect.objectContaining({ event: "acknowledged" }));
   });
 
+  it("does not auto-assign an acknowledger who cannot hold incidents (viewer)", async () => {
+    selectQueue.push([]); // not assignable
+    updateQueue.push([{ ...ref, assigneeUserId: null }]);
+    expect(await acknowledgeIncident(actor, incidentId)).toMatchObject({ ok: true, changed: true, autoAssigned: false });
+    const set = (executor.update as jest.Mock).mock.results[0].value.set.mock.calls[0][0];
+    expect(set.assigneeUserId).toBe(sreIncidents.assigneeUserId);
+  });
+
   it("keeps an existing assignee (autoAssigned false)", async () => {
+    selectQueue.push([{ id: actor.userId }]);
     updateQueue.push([{ ...ref, assigneeUserId: assignee }]);
     expect(await acknowledgeIncident(actor, incidentId)).toMatchObject({ ok: true, autoAssigned: false });
   });
 
   it("is idempotent: a second acknowledgement changes and notifies nothing", async () => {
+    selectQueue.push([{ id: actor.userId }]);
     updateQueue.push([]);
     selectQueue.push([{ ...ref, status: "investigating", acknowledgedAt: new Date() }]);
     expect(await acknowledgeIncident(actor, incidentId)).toMatchObject({ ok: true, changed: false });
@@ -140,9 +152,11 @@ describe("acknowledgeIncident", () => {
   });
 
   it("refuses to acknowledge a resolved incident and reports missing ones", async () => {
+    selectQueue.push([{ id: actor.userId }]);
     updateQueue.push([]);
     selectQueue.push([{ ...ref, status: "resolved", acknowledgedAt: null }]);
     expect(await acknowledgeIncident(actor, incidentId)).toMatchObject({ ok: false, code: "conflict" });
+    selectQueue.push([{ id: actor.userId }]);
     updateQueue.push([]);
     selectQueue.push([]);
     expect(await acknowledgeIncident(actor, incidentId)).toMatchObject({ ok: false, code: "not_found" });
@@ -291,10 +305,10 @@ describe("applySourceRecovery", () => {
     await applySourceRecovery(executor as never, { ...source, autoResolve: true });
     const where = (executor.select.mock.results[0].value as { where: jest.Mock }).where.mock.calls[0][0];
     const { PgDialect } = jest.requireActual("drizzle-orm/pg-core") as typeof import("drizzle-orm/pg-core");
-    const text = JSON.stringify(new PgDialect().sqlToQuery(where).params);
-    expect(text).toContain("monitor_failure");
-    expect(text).toContain("job_failed");
-    expect(text).toContain("job_timeout");
+    const params = new PgDialect().sqlToQuery(where).params;
+    const text = JSON.stringify(params);
+    // `_` is escaped so it only matches a literal underscore in the LIKE patterns.
+    expect(params).toEqual(expect.arrayContaining(["%:monitor\\_failure", "%:job\\_failed", "%:job\\_timeout"]));
     expect(text).not.toContain("ssl_expiring");
   });
 
@@ -332,6 +346,10 @@ describe("reopenRecentlyAutoResolved", () => {
       stale: false,
     });
     expect(inserts[0]).toMatchObject({ eventData: { state: "reopened" }, actorType: "system" });
+    // The previous resolution summary is kept across the reopen.
+    const set = (executor.update as jest.Mock).mock.results[0].value.set.mock.calls[0][0];
+    expect(set).toMatchObject({ status: "triggered", resolvedAt: null });
+    expect(set).not.toHaveProperty("resolutionSummary");
   });
 
   it("hands back a failure that fired before the resolve as stale, without reopening", async () => {

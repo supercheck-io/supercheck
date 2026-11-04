@@ -24,12 +24,17 @@ describe("alert history Incident column", () => {
     expect(screen.getByRole("link", { name: "#7" })).toHaveAttribute("href", "/incidents/inc-1");
   });
 
+  it("offers Open incident for a failed delivery too", () => {
+    renderIncidentCell({ status: "failed" });
+    expect(screen.getByRole("button", { name: "open api" })).toBeInTheDocument();
+  });
+
   it("offers Open incident for a sent failure with no incident", () => {
     renderIncidentCell({});
     expect(screen.getByRole("button", { name: "open api" })).toHaveAttribute("data-alert-id", "a1");
   });
 
-  it.each([{ type: "monitor_recovery" }, { status: "failed" as const }])("shows a dash for %j", (alert) => {
+  it.each([{ type: "monitor_recovery" }, { status: "pending" as never }])("shows a dash for %j", (alert) => {
     renderIncidentCell(alert);
     expect(screen.queryByRole("button")).toBeNull();
     expect(screen.getByText("-")).toBeInTheDocument();

@@ -1,4 +1,5 @@
 import * as crypto from 'node:crypto';
+import { isSelfHostedEnvironment } from '../runtime-mode';
 
 const KEY_ENV = 'SECRET_ENCRYPTION_KEY';
 const RAW_KEY_LENGTH = 32;
@@ -43,7 +44,18 @@ function selectKey(): Buffer {
 
   // Existing installs may still run on the old compose default and hold data encrypted
   // with it, so rejecting it would make that data unreadable. Warn instead.
-  if (!placeholderWarned && /change[_-]?this/i.test(key)) {
+  const isPlaceholder = /change[_-]?this/i.test(key);
+  // Cloud production never legitimately uses the compose default.
+  if (
+    isPlaceholder &&
+    process.env.NODE_ENV === 'production' &&
+    !isSelfHostedEnvironment()
+  ) {
+    throw new Error(
+      `${KEY_ENV} is set to a placeholder value. Generate one with: openssl rand -hex 32.`,
+    );
+  }
+  if (!placeholderWarned && isPlaceholder) {
     placeholderWarned = true;
     console.warn(
       `${KEY_ENV} is set to a placeholder value and is not secret. Generate one with: openssl rand -hex 32. Changing it makes existing encrypted secrets unreadable, so re-enter them afterwards.`,
@@ -101,6 +113,11 @@ function decodeEnvelope(payload: string): RawEnvelope {
   }
 
   return parsed;
+}
+
+/** Fail-fast startup check: throws for a placeholder key in cloud production; a missing key is left to first use. */
+export function assertSecretKeyUsable(): void {
+  if (process.env[KEY_ENV]) selectKey();
 }
 
 export function encryptSecret(

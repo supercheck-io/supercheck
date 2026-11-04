@@ -75,6 +75,16 @@ export type McpJobInput = {
 };
 
 const REDACTIONS: Array<[RegExp, string]> = [
+  // scheme://user:password@host keeps scheme, user and host.
+  [
+    /\b([a-z][a-z0-9+.-]{0,30}:\/\/[^\s:/@[]{0,200}:)(?!\d{1,5}(?:[/?#,\s]|$))[^\s]{1,500}(@)/gi,
+    '$1[REDACTED]$2',
+  ],
+  // scheme://<token>@host: the whole user part is a credential.
+  [
+    /\b([a-z][a-z0-9+.-]{0,30}:\/\/)(?:(?:(?:ghp|gho|ghu|ghs|ghr)_|glpat-|sk-|xox[a-z]-)[A-Za-z0-9_-]+|[A-Za-z0-9_-]{21,200})(@)/gi,
+    '$1[REDACTED]$2',
+  ],
   [
     /("(?:token|api[_-]?key|access[_-]?token|refresh[_-]?token|secret|password|passwd|pwd)"\s*:\s*)"(?:\\.|[^"\\])*"/gi,
     '$1"[REDACTED]"',
@@ -500,7 +510,8 @@ function toMcpError(error: unknown): McpError {
       error.message.startsWith('Private Agent connector endpoints') ||
       error.message.startsWith('Connector endpoint')
     ) {
-      return new McpError(error.message.slice(0, 100));
+      // The endpoint query may carry the MCP key, so no URL query leaves this function.
+      return new McpError(error.message.replace(/\?\S*/g, '?…').slice(0, 100));
     }
   }
   return new McpError('mcp_request_failed');

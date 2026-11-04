@@ -1,6 +1,6 @@
 "use server";
 
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, lte, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
@@ -8,8 +8,11 @@ import { sreChatConversations, sreChatMessages } from "@/db/schema";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { requireProjectContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
-import { archiveSreConversation } from "@/sre/lib/session-store";
+import { archiveSreConversation, SRE_MESSAGE_INTERRUPTED, SRE_MESSAGE_SUPERSEDED } from "@/sre/lib/session-store";
 import { db } from "@/utils/db";
+
+// Newest messages kept per chat in the history list.
+const MESSAGES_PER_CHAT = 200;
 
 const archiveCopilotChatSchema = z.object({
   conversationId: z.string().uuid(),
@@ -67,40 +70,54 @@ export async function getSreCopilotChatHistories(): Promise<
       .orderBy(desc(sreChatConversations.updatedAt))
       .limit(30);
 
-    const histories = await Promise.all(
-      conversations.map(async (conversation) => {
-        const messages = await db
-          .select()
-          .from(sreChatMessages)
-          .where(eq(sreChatMessages.conversationId, conversation.id))
-          .orderBy(asc(sreChatMessages.createdAt));
+    // One query for every conversation's newest messages (not one query per chat); superseded replies are skipped.
+    const rows = conversations.length
+      ? await (() => {
+          const ranked = db
+            .select({
+              id: sreChatMessages.id,
+              conversationId: sreChatMessages.conversationId,
+              role: sreChatMessages.role,
+              content: sreChatMessages.content,
+              modelId: sreChatMessages.modelId,
+              attachments: sreChatMessages.attachments,
+              createdAt: sreChatMessages.createdAt,
+              rank: sql<number>`row_number() over (partition by ${sreChatMessages.conversationId} order by ${sreChatMessages.createdAt} desc)`.as("rank"),
+            })
+            .from(sreChatMessages)
+            .where(
+              and(
+                inArray(sreChatMessages.conversationId, conversations.map((conversation) => conversation.id)),
+                sql`not (coalesce(${sreChatMessages.attachments}, '[]'::jsonb) @> ${JSON.stringify([{ type: SRE_MESSAGE_SUPERSEDED }])}::jsonb)`,
+              ),
+            )
+            .as("ranked");
+          return db.select().from(ranked).where(lte(ranked.rank, MESSAGES_PER_CHAT)).orderBy(asc(ranked.createdAt));
+        })()
+      : [];
+    const rowsByConversation = new Map<string, typeof rows>();
+    for (const row of rows) {
+      rowsByConversation.set(row.conversationId, [...(rowsByConversation.get(row.conversationId) ?? []), row]);
+    }
 
-        return {
-          conversationId: conversation.id,
-          title: conversation.title,
-          incidentId: conversation.incidentId,
-          updatedAt: conversation.updatedAt.toISOString(),
-          messages: messages.flatMap((message) => {
-            if (
-              (message.role !== "user" && message.role !== "assistant") ||
-              !message.content
-            ) {
-              return [];
-            }
-
-            return [
-              {
-                id: message.id,
-                role: message.role,
-                content: message.content,
-                modelId: message.modelId,
-                interrupted: message.attachments?.some((item) => item.type === "interrupted") || undefined,
-              },
-            ];
-          }),
-        };
+    const histories = conversations.map((conversation) => ({
+      conversationId: conversation.id,
+      title: conversation.title,
+      incidentId: conversation.incidentId,
+      updatedAt: conversation.updatedAt.toISOString(),
+      messages: (rowsByConversation.get(conversation.id) ?? []).flatMap((message) => {
+        if ((message.role !== "user" && message.role !== "assistant") || !message.content) return [];
+        return [
+          {
+            id: message.id,
+            role: message.role,
+            content: message.content,
+            modelId: message.modelId,
+            interrupted: message.attachments?.some((item) => item.type === SRE_MESSAGE_INTERRUPTED) || undefined,
+          },
+        ];
       }),
-    );
+    }));
 
     return { success: true, histories };
   } catch (error) {

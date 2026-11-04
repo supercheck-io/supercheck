@@ -28,7 +28,9 @@ beforeEach(() => {
 describe("isEscalatableAlert", () => {
   it.each([
     [{}, true],
-    [{ status: "failed" }, false],
+    // A failed delivery still opens an incident (same gate as background triage); only pending waits.
+    [{ status: "failed" }, true],
+    [{ status: "pending" as never }, false],
     [{ type: "monitor_recovery" }, false],
     [{ type: "job_success" }, false],
     [{ type: "job_failed", message: "Job completed successfully" }, true],

@@ -39,7 +39,8 @@ const CHART_COLORS = [
   "var(--chart-4)",
 ];
 
-const LARGE_OUTPUT_LINE_THRESHOLD = 500;
+// Windowed plain text is only for pathological output; ordinary long replies keep markdown.
+const LARGE_OUTPUT_LINE_THRESHOLD = 2000;
 const LARGE_OUTPUT_LINE_HEIGHT = 20;
 
 type ParsedSreChart = {

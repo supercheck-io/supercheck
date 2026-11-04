@@ -16,6 +16,7 @@ describe("outbound address policy", () => {
     "2001:db8::1",
     "2002:7f00:1::",
     "64:ff9b::7f00:1",
+    "64:ff9b:1:a9fe:a9:fe00:0:0",
     "::ffff:127.0.0.1",
     "::ffff:7f00:1",
     "[::ffff:ac12:5]",

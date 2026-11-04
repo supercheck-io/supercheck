@@ -17,6 +17,16 @@ import {
 } from "@/actions/sre-ai";
 import { SreAssistantUiThread } from "@/components/sre/sre-assistant-ui-thread";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -46,7 +56,6 @@ function formatHistoryDate(value: string) {
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
-    timeZone: "UTC",
   }).format(date);
 }
 
@@ -82,6 +91,7 @@ export function SreAiConsole({
     initialHistory?.conversationId ?? "new",
   );
   const [isArchiving, startArchiveTransition] = useTransition();
+  const [confirmingArchive, setConfirmingArchive] = useState(false);
 
   useEffect(() => {
     setHistories(initialHistories);
@@ -147,6 +157,7 @@ export function SreAiConsole({
 
     startArchiveTransition(async () => {
       const result = await archiveSreCopilotChat({ conversationId });
+      setConfirmingArchive(false);
       if (!result.success) {
         toast.error(result.error);
         return;
@@ -288,7 +299,7 @@ export function SreAiConsole({
                 variant="ghost"
                 size="sm"
                 aria-label="Archive chat"
-                onClick={archiveCurrentChat}
+                onClick={() => setConfirmingArchive(true)}
                 disabled={isArchiving}
               >
                 {isArchiving ? (
@@ -319,10 +330,7 @@ export function SreAiConsole({
             initialMessages={activeMessages}
             onConversationResolved={handleConversationResolved}
             onClearError={() => setError(null)}
-            onError={(message) => {
-              setError(message);
-              toast.error(message);
-            }}
+            onError={setError}
           />
         </section>
         <footer className="shrink-0 border-t px-3 py-2 text-center text-xs text-muted-foreground sm:px-5">
@@ -336,6 +344,34 @@ export function SreAiConsole({
           </Link>
         </footer>
       </main>
+      <AlertDialog
+        open={confirmingArchive}
+        // Escape or an outside click must not close it while the archive request is running.
+        onOpenChange={(open) => !open && !isArchiving && setConfirmingArchive(false)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Archive chat?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The chat leaves your history and cannot be continued. It is archived, not deleted.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isArchiving}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                // Stay open until the request finishes so the spinner and any error are visible.
+                event.preventDefault();
+                archiveCurrentChat();
+              }}
+              disabled={isArchiving}
+            >
+              {isArchiving && <Spinner className="mr-2 h-4 w-4" />}
+              Archive
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

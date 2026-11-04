@@ -46,6 +46,7 @@ interface DataTableProps<TData, TValue> {
   emptyMessage?: string;
   /** Sort applied on first render; header clicks then change it. */
   initialSorting?: SortingState;
+  initialColumnFilters?: ColumnFiltersState;
   initialColumnVisibility?: VisibilityState;
   skeletonColumns?: number;
   onRowPrefetch?: (row: Row<TData>) => void;
@@ -118,6 +119,7 @@ export function DataTable<TData, TValue>({
   entityLabel,
   emptyMessage = "No results.",
   initialSorting = [],
+  initialColumnFilters = [],
   initialColumnVisibility = { updatedAt: false },
   skeletonColumns = 5,
   onRowPrefetch,
@@ -129,7 +131,7 @@ export function DataTable<TData, TValue>({
   const [columnVisibility, setColumnVisibility] =
     React.useState<VisibilityState>(initialColumnVisibility);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(
-    [],
+    initialColumnFilters,
   );
   const [sorting, setSorting] = React.useState<SortingState>(initialSorting);
   const [globalFilter, setGlobalFilter] = React.useState("");

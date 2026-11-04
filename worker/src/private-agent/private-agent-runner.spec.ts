@@ -8,6 +8,7 @@ import {
   executePrivateAgentConnectorJob,
   leaseJob,
   processLeasedJob,
+  trackAuthFailure,
   SUPPORTED_SRE_CONNECTOR_TYPES,
   unrunnableLeasedJob,
   type PrivateAgentConfig,
@@ -504,6 +505,72 @@ describe('private agent connector execution', () => {
       }
     },
   );
+
+  it('resubmits a minimal failed result when the server rejects a result as too large', async () => {
+    const config: PrivateAgentConfig = {
+      apiUrl: 'https://app.supercheck.io',
+      agentId: baseJob.id,
+      token: 'scpac_runtime_1234567890',
+      tokenSource: 'env',
+      credentialFile: null,
+      agentVersion: '1.3.6',
+      retryIntervalMs: 5_000,
+      leaseWaitMs: 25_000,
+      heartbeatIntervalMs: 30_000,
+    };
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: { result: [] } }),
+      })
+      .mockResolvedValueOnce({ ok: false, status: 413 })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true }) });
+    global.fetch = fetchMock;
+
+    await expect(
+      processLeasedJob(config, { job: baseJob, leaseToken: 'lease-token' }),
+    ).resolves.toBeUndefined();
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(JSON.parse(fetchMock.mock.calls[2][1].body)).toEqual({
+      jobId: baseJob.id,
+      leaseToken: 'lease-token',
+      status: 'failed',
+      evidence: [],
+      truncated: false,
+      errorCode: 'result_too_large',
+    });
+  });
+
+  it('exits on 401s only after 3 in a row spanning 60 seconds, and resets otherwise', async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 401 });
+    const config = {
+      apiUrl: 'https://app.supercheck.io',
+      agentId: baseJob.id,
+      token: 'scpac_runtime_1234567890',
+      tokenSource: 'env',
+      credentialFile: null,
+      agentVersion: '1.3.6',
+      retryIntervalMs: 5_000,
+      leaseWaitMs: 25_000,
+      heartbeatIntervalMs: 30_000,
+    } as PrivateAgentConfig;
+    const unauthorized = await leaseJob(config).catch(
+      (error: unknown) => error,
+    );
+    let state = trackAuthFailure({ count: 0, firstAt: null }, unauthorized, 0);
+    state = trackAuthFailure(state, unauthorized, 10_000);
+    state = trackAuthFailure(state, unauthorized, 20_000);
+    expect(state.count).toBe(3);
+    expect(state.exit).toBe(false);
+    expect(trackAuthFailure(state, unauthorized, 60_000).exit).toBe(true);
+    expect(trackAuthFailure(state, new Error('network down'), 70_000)).toEqual({
+      count: 0,
+      firstAt: null,
+      exit: false,
+    });
+  });
 
   it('exchanges registration tokens for runtime credentials', async () => {
     const config: PrivateAgentConfig = {

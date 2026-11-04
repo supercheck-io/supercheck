@@ -555,4 +555,39 @@ describe("Copilot connector service scope", () => {
     await expect(searchIncidentLiveConnectorEvidence(scope, search)).rejects.toThrow(expected);
     expect(values).toHaveBeenCalledWith(expect.objectContaining({ status: "error", errorMessage: expected }));
   });
+
+  it("redacts persisted and model-visible connector failures", async () => {
+    db.query.sreServices.findFirst.mockResolvedValue({ id: serviceId });
+    db.select
+      .mockReturnValueOnce(selectRows([{ connector: {
+        id: connectorId, type: "prometheus", privateAgentId: null,
+        config: { endpointUrl: "https://prometheus.example" }, status: "configured",
+        permissionLevel: "read", sideEffectLevel: "none", defaultTimeWindowMinutes: 60,
+        outputLimits: { maxRows: 10, maxBytes: 1024, maxSeconds: 15 },
+      } }]))
+      .mockReturnValueOnce(selectRows([{ connectorId, serviceId }]));
+    jest.mocked(checkSreConnectorSearchRateLimit).mockResolvedValue({ allowed: true, remaining: 10 });
+    jest.mocked(createDirectConnector).mockImplementation((definition) => ({
+      ...definition,
+      search: jest.fn().mockRejectedValue(new Error("401 Bearer sk-secret-token-value-123456")),
+      validate: jest.fn(),
+      metadata: jest.fn(),
+    }));
+    const values = jest.fn().mockResolvedValue(undefined);
+    db.insert.mockReturnValue({ values });
+    await expect(searchIncidentLiveConnectorEvidence(scope, search)).rejects.toThrow();
+    const persisted = JSON.stringify(values.mock.calls);
+    expect(persisted).toContain("[REDACTED]");
+    expect(persisted).not.toContain("sk-secret-token-value");
+  });
+
+  it("returns a generic error object when executeDiagnosticQuery fails", async () => {
+    db.query.sreServices.findFirst.mockResolvedValue(null);
+    const tools = createSreConnectorTools(scope);
+    const result = await tools.executeDiagnosticQuery.execute!(
+      { serviceId, queryId: connectorId, parameters: {}, timeWindowMinutes: 60 },
+      { toolCallId: "dq", messages: [] },
+    );
+    expect(result).toMatchObject({ error: true, retryable: false });
+  });
 });

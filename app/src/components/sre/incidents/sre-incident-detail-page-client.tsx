@@ -38,12 +38,22 @@ export function SreIncidentDetailPageClient({
   }
 
   return (
-    <SreIncidentDetailView
-      key={`${incidentId}:${initialTab}`}
-      detail={incidentResult.detail}
-      services={servicesResult.success ? servicesResult.services : []}
-      initialTab={initialTab}
-    />
+    <>
+      {!servicesResult.success && (
+        <Alert variant="destructive" className="mb-4">
+          <AlertTitle>Services unavailable</AlertTitle>
+          <AlertDescription>
+            Services could not be loaded, so the service cannot be changed right now. Reload to try again.
+          </AlertDescription>
+        </Alert>
+      )}
+      <SreIncidentDetailView
+        key={`${incidentId}:${initialTab}`}
+        detail={incidentResult.detail}
+        services={servicesResult.success ? servicesResult.services : []}
+        initialTab={initialTab}
+      />
+    </>
   );
 }
 

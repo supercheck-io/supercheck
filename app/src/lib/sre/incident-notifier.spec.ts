@@ -1,8 +1,10 @@
 /** @jest-environment node */
 
 const selectQueue: unknown[][] = [];
+const chains: Array<Record<string, jest.Mock>> = [];
 function chain(result: unknown[]) {
   const node: Record<string, unknown> = {};
+  chains.push(node as Record<string, jest.Mock>);
   for (const name of ["from", "where", "limit", "leftJoin", "innerJoin", "orderBy"]) node[name] = jest.fn(() => node);
   node.then = (resolve: (value: unknown[]) => unknown) => resolve(result);
   node.catch = () => node;
@@ -354,6 +356,19 @@ describe("one message per event for alert-triggered incidents", () => {
   it("skips channel posts for created when the alert was delivered", async () => {
     await run({ event: "created" });
     expect(fetchPublicEndpoint).not.toHaveBeenCalled();
+  });
+
+  it("checks delivery of the triggering alert type only, not any alert for the source", async () => {
+    chains.length = 0;
+    selectQueue.push([incident], people, [{ ...source[0], dedupKey: "project-1:monitor:mon-1:monitor_failure" }], [], [provider]);
+    await notifyIncidentEvent({ ...base, assigneeUserId: null, event: "created" } as never);
+    const { PgDialect } = jest.requireActual("drizzle-orm/pg-core");
+    const params = chains
+      .filter((node) => node.where.mock.calls.length)
+      .map((node) => new PgDialect().sqlToQuery(node.where.mock.calls[0][0]).params)
+      .find((p: unknown[]) => p.includes("monitor_failure"));
+    expect(params).toBeDefined();
+    expect(params).not.toContain("ssl_expiring");
   });
 
   it("posts created to channels when every alert delivery failed", async () => {

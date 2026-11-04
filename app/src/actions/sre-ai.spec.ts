@@ -8,6 +8,8 @@ jest.mock("@/lib/rbac/middleware", () => ({
 }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 jest.mock("@/sre/lib/session-store", () => ({
+  SRE_MESSAGE_INTERRUPTED: "interrupted",
+  SRE_MESSAGE_SUPERSEDED: "superseded",
   archiveSreConversation: jest.fn(),
 }));
 jest.mock("@/utils/db", () => ({
@@ -55,8 +57,10 @@ it("includes incident chats in private project history", async () => {
       ],
     }),
   }));
+  const subquery = { as: () => ({ rank: "rank", createdAt: "createdAt" }) };
   db.select
     .mockReturnValueOnce({ from: () => ({ where }) })
+    .mockReturnValueOnce({ from: () => ({ where: () => subquery }) })
     .mockReturnValueOnce({
       from: () => ({ where: () => ({ orderBy: async () => [] }) }),
     });
@@ -75,6 +79,48 @@ it("includes incident chats in private project history", async () => {
     ]),
   );
   expect(query.sql).not.toContain('"incident_id" is null');
+});
+
+it("returns an empty history without a message query when there are no chats", async () => {
+  db.select.mockReturnValueOnce({ from: () => ({ where: () => ({ orderBy: () => ({ limit: async () => [] }) }) }) });
+  expect(await getSreCopilotChatHistories()).toEqual({ success: true, histories: [] });
+  expect(db.select).toHaveBeenCalledTimes(1);
+});
+
+it("loads all chats' messages in one bounded query instead of one per chat", async () => {
+  const conversations = [conversationId, "018f0000-0000-7000-8000-000000000002"].map((id, i) => ({
+    id, incidentId: null, title: `Chat ${i}`, updatedAt: new Date("2026-10-09"),
+  }));
+  const messageWhere = jest.fn((_query: SQL) => ({ as: () => ({ rank: "rank", createdAt: "createdAt" }) }));
+  const row = (id: string, conversation: string, role: string, content: string, attachments: unknown = null) => ({
+    id, conversationId: conversation, role, content, modelId: null, attachments, createdAt: new Date(),
+  });
+  db.select
+    .mockReturnValueOnce({ from: () => ({ where: () => ({ orderBy: () => ({ limit: async () => conversations }) }) }) })
+    .mockReturnValueOnce({ from: () => ({ where: messageWhere }) })
+    .mockReturnValueOnce({
+      from: () => ({
+        where: () => ({
+          orderBy: async () => [
+            row("m1", conversations[0].id, "user", "hi"),
+            row("m2", conversations[1].id, "user", "yo"),
+            row("m3", conversations[0].id, "assistant", "cut", [{ type: "interrupted" }]),
+          ],
+        }),
+      }),
+    });
+  const result = await getSreCopilotChatHistories();
+  expect(db.select).toHaveBeenCalledTimes(3); // chats + ranked subquery + rows, regardless of chat count
+  expect(result).toMatchObject({
+    success: true,
+    histories: [
+      { conversationId: conversations[0].id, messages: [{ id: "m1" }, { id: "m3", interrupted: true }] },
+      { conversationId: conversations[1].id, messages: [{ id: "m2" }] },
+    ],
+  });
+  const query = new PgDialect().sqlToQuery(messageWhere.mock.calls[0][0]);
+  expect(query.params).toEqual(expect.arrayContaining(conversations.map((c) => c.id)));
+  expect(query.sql).toContain("@>"); // superseded replies are filtered out
 });
 
 it("allows an owner to archive an incident chat with the same tenant and user checks", async () => {

@@ -1,4 +1,4 @@
-import { SRE_UNTRUSTED_CONTENT_RULE } from "../lib/untrusted-content";
+import { fenceUntrustedBlock, SRE_UNTRUSTED_CONTENT_RULE } from "../lib/untrusted-content";
 import { formatSreSkillsForPrompt, loadSreSkills } from "../lib/skill-loader";
 
 export type SreTriagePromptInput = {
@@ -29,7 +29,7 @@ export function buildSreTriageSystemPrompt() {
 
 export function buildSreTriagePrompt(input: SreTriagePromptInput) {
   return [
-    `Incident: ${input.incidentTitle}`,
+    `Incident title (unverified):\n${fenceUntrustedBlock("incident_title", [input.incidentTitle ?? ""], 500)}`,
     `Severity: ${input.severity}`,
     `Primary service: ${input.serviceName ?? "unknown"}`,
     `Stored evidence items: ${input.evidenceCount}`,

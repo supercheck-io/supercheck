@@ -60,7 +60,13 @@ import {
   isSreInvestigationAgentEnabled,
 } from "@/sre/lib/feature-gates";
 import {
+  announceSystemTransition,
+  findOpenIncidentForSource,
   getDefaultAssigneeId,
+  noteFailureReturned,
+  INCIDENT_REOPEN_WINDOW_MS,
+  RECOVERABLE_ALERT_TYPES,
+  reopenRecentlyAutoResolved,
 } from "@/lib/sre/incident-lifecycle";
 import { linkedAlertFields } from "@/lib/sre/incident-alert-snapshot";
 import { notifyIncidentEvent } from "@/lib/sre/incident-notifier";
@@ -227,6 +233,8 @@ export type SreIncidentDetail = {
     firedAt: Date;
   }>;
   currentUserId: string;
+  /** The automatic triage finding, shown when no full investigation exists yet. */
+  triageSummary?: string | null;
   latestBrief: {
     id: string;
     modelId: string;
@@ -970,6 +978,29 @@ export async function getSreIncidentDetails(
       .orderBy(desc(sreInvestigationRuns.createdAt))
       .limit(1);
 
+    const [triageRun] = latestInvestigation
+      ? []
+      : await db
+          .select({
+            rootCauseHypothesis: sreInvestigationRuns.rootCauseHypothesis,
+            agentStateSnapshot: sreInvestigationRuns.agentStateSnapshot,
+          })
+          .from(sreIncidents)
+          .innerJoin(sreInvestigationRuns, eq(sreInvestigationRuns.id, sreIncidents.triageInvestigationRunId))
+          .where(
+            and(
+              eq(sreIncidents.id, incidentId),
+              eq(sreIncidents.organizationId, organizationId),
+              eq(sreIncidents.projectId, project.id),
+              eq(sreInvestigationRuns.status, "completed"),
+            ),
+          )
+          .limit(1);
+    const triageSummary =
+      typeof triageRun?.agentStateSnapshot?.summary === "string"
+        ? triageRun.agentStateSnapshot.summary
+        : (triageRun?.rootCauseHypothesis ?? null);
+
     const myFeedback = latestInvestigation
       ? await listMyFeedbackForRun({ userId, organizationId, projectId: project.id }, latestInvestigation.id)
       : ([] as MyFeedback[]);
@@ -1123,6 +1154,7 @@ export async function getSreIncidentDetails(
             latestInvestigation?.completedAt ?? null,
           latestInvestigationCreatedAt: latestInvestigation?.createdAt ?? null,
         },
+        triageSummary,
         latestBrief: latestBrief ?? null,
         latestInvestigation: latestInvestigation
           ? {
@@ -1364,7 +1396,6 @@ export async function updateSreIncident(
           ...(reopening
             ? {
                 verifiedAt: null,
-                resolutionSummary: null,
                 mitigatedAt: null,
                 acknowledgedAt: null,
                 acknowledgedByUserId: null,
@@ -1545,7 +1576,7 @@ export async function createSreIncidentFromAlert(
     ) {
       return {
         success: false,
-        error: "Only sent failure alerts can create incidents",
+        error: "Only failure alerts can create incidents",
       };
     }
 
@@ -1675,6 +1706,46 @@ export async function createSreIncidentFromAlert(
 
       if (existingIncident) {
         return { incident: existingIncident, existing: true };
+      }
+
+      // Same rules as background triage: a recoverable failure re-opens a recently auto-resolved
+      // incident or joins the source's open one instead of creating a duplicate.
+      if (sourceId && (RECOVERABLE_ALERT_TYPES as string[]).includes(alert.type)) {
+        const source = { organizationId, projectId: project.id, sourceType, sourceId };
+        // An old alert opened by hand must not reopen a resolved incident; it may still join the
+        // incident it fired before, and any open one.
+        const reopened = await reopenRecentlyAutoResolved(tx, {
+          ...source,
+          firedAt,
+          allowReopen: Date.now() - firedAt.getTime() <= INCIDENT_REOPEN_WINDOW_MS,
+        });
+        const joined = reopened
+          ? { id: reopened.incidentId, incidentNumber: reopened.incidentNumber, title: reopened.title }
+          : await findOpenIncidentForSource(tx, source);
+        if (joined) {
+          if (!reopened || reopened.stale) {
+            await tx
+              .insert(sreIncidentAlerts)
+              .values({
+                incidentId: joined.id,
+                alertEventId: alertEvent.id,
+                role: "related",
+                alertTitle: title,
+                alertDescription: alert.message,
+                alertSeverity: severity,
+                alertFiredAt: firedAt,
+                createdAt: new Date(),
+              })
+              .onConflictDoNothing();
+          }
+          if (!reopened) await noteFailureReturned(tx, joined.id, firedAt);
+          return {
+            incident: { id: joined.id, incidentNumber: joined.incidentNumber, title: joined.title },
+            existing: true,
+            reopenedAssigneeUserId: reopened && !reopened.stale ? reopened.assigneeUserId : undefined,
+            reopened: Boolean(reopened && !reopened.stale),
+          };
+        }
       }
 
       if (isSreAlertCorrelationEnabled()) {
@@ -1921,6 +1992,13 @@ export async function createSreIncidentFromAlert(
       },
       success: true,
     });
+
+    if ("reopened" in result && result.reopened) {
+      await announceSystemTransition(organizationId, project.id, result.incident.id, "reopened", {
+        assigneeUserId: result.reopenedAssigneeUserId,
+        discriminator: alert.id,
+      });
+    }
 
     if (!result.existing && !correlation && alertStatus !== "resolved") {
       void notifyIncidentEvent({

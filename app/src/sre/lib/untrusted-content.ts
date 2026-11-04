@@ -12,7 +12,7 @@ export const SRE_UNTRUSTED_CONTENT_RULE =
  */
 export function fenceUntrustedBlock(tag: string, lines: string[], maxLineLength = 400): string {
   const safe = lines.map((line) =>
-    line
+    String(line ?? "")
       .replace(/[<>]/g, " ")
       .replace(/\s+/g, " ")
       .trim()

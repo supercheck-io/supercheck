@@ -43,8 +43,8 @@ import { notifyIncidentEvent } from "@/lib/sre/incident-notifier";
 const incident = {
   id: "018f0000-0000-7000-8000-000000000005",
   title: "Checkout latency",
-  severity: "sev1",
-  status: "investigating",
+  severity: "sev1" as const,
+  status: "investigating" as const,
   primaryServiceId: null,
   primaryServiceName: null,
   evidenceCount: 1,

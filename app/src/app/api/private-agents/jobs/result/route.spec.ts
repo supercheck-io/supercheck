@@ -47,6 +47,17 @@ describe("Private Agent job result route", () => {
     });
   });
 
+  it("rejects an oversized body with 413 by Content-Length and by streamed size", async () => {
+    const declared = new NextRequest("http://localhost/api/private-agents/jobs/result", {
+      method: "POST",
+      headers: { "content-length": String(2 * 1024 * 1024) },
+      body: JSON.stringify(body),
+    });
+    expect((await POST(declared)).status).toBe(413);
+    const streamed = request(JSON.stringify({ ...body, pad: "x".repeat(1024 * 1024 + 1) }), true);
+    expect((await POST(streamed)).status).toBe(413);
+  });
+
   it("returns 400 for malformed JSON instead of 500", async () => {
     const response = await POST(request("{not json", true));
     expect(response.status).toBe(400);
