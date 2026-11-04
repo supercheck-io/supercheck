@@ -10,7 +10,11 @@ jest.mock("@/lib/ai/ai-streaming-service", () => ({ AIStreamingService: {
 } }));
 jest.mock("@/lib/ai/ai-prompts", () => ({ AIPromptBuilder: { buildJobAnalyzePrompt: jest.fn() } }));
 jest.mock("@/lib/session", () => ({ getActiveOrganization: jest.fn() }));
-jest.mock("@/lib/auth-context", () => ({ requireAuthContext: jest.fn() }));
+jest.mock("@/lib/auth-context", () => ({
+  requireAuthContext: jest.fn(),
+  AuthError: jest.requireActual("@/lib/auth-context").AuthError,
+  authErrorStatus: jest.requireActual("@/lib/auth-context").authErrorStatus,
+}));
 jest.mock("@/lib/services/usage-tracker", () => ({ usageTracker: { consumeAICredit: jest.fn(), refundAICredit: jest.fn() } }));
 jest.mock("@/lib/services/subscription-service", () => ({ subscriptionService: {
   blockUntilSubscribed: jest.fn(), requireValidPolarCustomer: jest.fn(),
@@ -21,6 +25,7 @@ jest.mock("next/headers", () => ({ headers: jest.fn(async () => new Headers()) }
 jest.mock("@/utils/db", () => ({ db: { select: jest.fn() } }));
 
 import { POST } from "./route";
+import { AuthError } from "@/lib/auth-context";
 import { usageTracker } from "@/lib/services/usage-tracker";
 
 const { db } = jest.requireMock("@/utils/db") as { db: { select: jest.Mock } };
@@ -66,5 +71,18 @@ describe("job AI analysis tenant boundary", () => {
     expect(response.status).toBe(400);
     expect(usageTracker.consumeAICredit).not.toHaveBeenCalled();
     expect(AIStreamingService.generateStreamingResponse).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [401, "authentication_required"],
+    [403, "forbidden"],
+  ] as const)("maps an AuthError %i to reason %s", async (status, reason) => {
+    requireAuthContext.mockRejectedValue(new AuthError("denied", status));
+    const response = await POST(new NextRequest("http://localhost/api/ai/analyze-job", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ runId: "00000000-0000-4000-8000-000000000001" }),
+    }));
+    expect(response.status).toBe(status);
+    expect((await response.json()).reason).toBe(reason);
   });
 });
