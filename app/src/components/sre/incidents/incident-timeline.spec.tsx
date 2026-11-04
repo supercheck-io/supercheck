@@ -6,7 +6,7 @@ import { addSreIncidentUpdate } from "@/actions/sre-incident-lifecycle";
 import { aiFindingHeadline, describeTimelineEvent, IncidentTimeline } from "./incident-timeline";
 
 const mockInvalidate = jest.fn().mockResolvedValue(undefined);
-let mockQuery: { isPending: boolean; data?: unknown };
+let mockQuery: { isPending: boolean; isError?: boolean; data?: unknown; refetch?: () => void };
 
 jest.mock("sonner", () => ({ toast: { error: jest.fn() } }));
 jest.mock("@/actions/sre-incident-lifecycle", () => ({ addSreIncidentUpdate: jest.fn() }));

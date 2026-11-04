@@ -516,7 +516,7 @@ type SourceRef = {
 
 // Only failures that a passing check really ends: monitor up/down and job failure/timeout.
 // Never SSL-expiry (a passing check does not renew a certificate) or custom triggers.
-const RECOVERABLE_ALERT_TYPES: AlertType[] = ["monitor_failure", "job_failed", "job_timeout"];
+export const RECOVERABLE_ALERT_TYPES: AlertType[] = ["monitor_failure", "job_failed", "job_timeout"];
 // Old title-cased labels and the current ones (see alert-labels.ts); webhook-keyed events match by title.
 const RECOVERABLE_TITLES = ["Monitor Failure", "Job Failed", "Job Timeout", "Monitor down", "Job failed", "Job timed out"];
 
@@ -667,6 +667,8 @@ export async function findOpenIncidentForSource(tx: Executor, source: SourceRef)
   const [open] = await tx
     .select({
       id: sreIncidents.id,
+      incidentNumber: sreIncidents.incidentNumber,
+      title: sreIncidents.title,
       triageInvestigationRunId: sreIncidents.triageInvestigationRunId,
     })
     .from(sreIncidentAlerts)
@@ -723,6 +725,8 @@ export async function reopenRecentlyAutoResolved(
   const [latest] = await tx
     .select({
       id: sreIncidents.id,
+      incidentNumber: sreIncidents.incidentNumber,
+      title: sreIncidents.title,
       status: sreIncidents.status,
       resolvedAt: sreIncidents.resolvedAt,
       assigneeUserId: sreIncidents.assigneeUserId,
@@ -738,7 +742,7 @@ export async function reopenRecentlyAutoResolved(
   // A failure that fired before the resolve was processed late: it belongs to that incident,
   // which must neither reopen nor be duplicated by a new one.
   if (source.firedAt.getTime() < latest.resolvedAt.getTime()) {
-    return { incidentId: latest.id, assigneeUserId: latest.assigneeUserId, alreadyTriaged: true, stale: true as const };
+    return { incidentId: latest.id, incidentNumber: latest.incidentNumber, title: latest.title, assigneeUserId: latest.assigneeUserId, alreadyTriaged: true, stale: true as const };
   }
   if (source.firedAt.getTime() - latest.resolvedAt.getTime() >= INCIDENT_REOPEN_WINDOW_MS) {
     return null;
@@ -788,6 +792,8 @@ export async function reopenRecentlyAutoResolved(
   });
   return {
     incidentId: latest.id,
+    incidentNumber: latest.incidentNumber,
+    title: latest.title,
     assigneeUserId: latest.assigneeUserId,
     alreadyTriaged: Boolean(latest.triageInvestigationRunId),
     stale: false as const,

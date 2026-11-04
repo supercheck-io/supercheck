@@ -9,7 +9,8 @@ jest.mock("@/sre/lib/feature-gates", () => ({
   isSreAlertCorrelationEnabled: jest.fn(() => false),
 }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
-jest.mock("@/lib/logger/index", () => ({ createLogger: () => ({ warn: jest.fn() }) }));
+const mockLogInfo = jest.fn();
+jest.mock("@/lib/logger/index", () => ({ createLogger: () => ({ warn: (...a: unknown[]) => mockLogInfo(...a) }) }));
 jest.mock("@/lib/sre/incident-notifier", () => ({ notifyIncidentEvent: jest.fn().mockResolvedValue(undefined) }));
 jest.mock("@/lib/sre/incident-lifecycle", () => ({
   applySourceRecovery: jest.fn(),
@@ -153,6 +154,15 @@ describe("processSreBackgroundAlertTriageJob", () => {
       selectQueue.push([alertRow()]);
       freshIncidentQueue();
       expect(await processSreBackgroundAlertTriageJob(JOB)).toMatchObject({ success: true, skipped: false, investigationRunId: "run-1" });
+    });
+
+    it("logs and skips when triage is already running (409)", async () => {
+      mockAutomatic.mockReturnValue(true);
+      (runSreIncidentTriage as jest.Mock).mockResolvedValue({ success: false, status: 409, error: "running" });
+      selectQueue.push([alertRow()]);
+      freshIncidentQueue();
+      expect(await processSreBackgroundAlertTriageJob(JOB)).toMatchObject({ success: true, skipped: true, reason: "triage_in_progress" });
+      expect(mockLogInfo).toHaveBeenCalledWith(expect.objectContaining({ incidentId: expect.any(String) }), expect.stringContaining("already running"));
     });
 
     it("skips with incident_disabled and creates nothing when incidentEnabled is false", async () => {

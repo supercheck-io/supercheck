@@ -8,7 +8,10 @@ describe("isActionableAlertForIncident", () => {
     ["sent", "job_failed", "Step 2 failed; step 1 completed successfully", true],
     ["sent", "monitor_recovery", "Back up", false],
     ["sent", "job_success", "Done", false],
-    ["failed", "monitor_failure", "Down", false],
+    // A failed delivery still opens an incident, like the background path.
+    ["failed", "monitor_failure", "Down", true],
+    ["pending", "monitor_failure", "Down", false],
+    ["failed", "monitor_recovery", "Back up", false],
     ["sent", "legacy_job", "Job completed successfully", false],
   ])("%s %s -> %s", (status, type, message, expected) => {
     expect(isActionableAlertForIncident(status, type, message)).toBe(expected);

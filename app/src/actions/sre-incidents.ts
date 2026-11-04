@@ -60,7 +60,12 @@ import {
   isSreInvestigationAgentEnabled,
 } from "@/sre/lib/feature-gates";
 import {
+  announceSystemTransition,
+  findOpenIncidentForSource,
   getDefaultAssigneeId,
+  noteFailureReturned,
+  RECOVERABLE_ALERT_TYPES,
+  reopenRecentlyAutoResolved,
 } from "@/lib/sre/incident-lifecycle";
 import { linkedAlertFields } from "@/lib/sre/incident-alert-snapshot";
 import { notifyIncidentEvent } from "@/lib/sre/incident-notifier";
@@ -1545,7 +1550,7 @@ export async function createSreIncidentFromAlert(
     ) {
       return {
         success: false,
-        error: "Only sent failure alerts can create incidents",
+        error: "Only failure alerts can create incidents",
       };
     }
 
@@ -1675,6 +1680,40 @@ export async function createSreIncidentFromAlert(
 
       if (existingIncident) {
         return { incident: existingIncident, existing: true };
+      }
+
+      // Same rules as background triage: a recoverable failure re-opens a recently auto-resolved
+      // incident or joins the source's open one instead of creating a duplicate.
+      if (sourceId && (RECOVERABLE_ALERT_TYPES as string[]).includes(alert.type)) {
+        const source = { organizationId, projectId: project.id, sourceType, sourceId };
+        const reopened = await reopenRecentlyAutoResolved(tx, { ...source, firedAt });
+        const joined = reopened
+          ? { id: reopened.incidentId, incidentNumber: reopened.incidentNumber, title: reopened.title }
+          : await findOpenIncidentForSource(tx, source);
+        if (joined) {
+          if (!reopened || reopened.stale) {
+            await tx
+              .insert(sreIncidentAlerts)
+              .values({
+                incidentId: joined.id,
+                alertEventId: alertEvent.id,
+                role: "related",
+                alertTitle: title,
+                alertDescription: alert.message,
+                alertSeverity: severity,
+                alertFiredAt: firedAt,
+                createdAt: new Date(),
+              })
+              .onConflictDoNothing();
+          }
+          if (!reopened) await noteFailureReturned(tx, joined.id, firedAt);
+          return {
+            incident: { id: joined.id, incidentNumber: joined.incidentNumber, title: joined.title },
+            existing: true,
+            reopenedAssigneeUserId: reopened && !reopened.stale ? reopened.assigneeUserId : undefined,
+            reopened: Boolean(reopened && !reopened.stale),
+          };
+        }
       }
 
       if (isSreAlertCorrelationEnabled()) {
@@ -1921,6 +1960,13 @@ export async function createSreIncidentFromAlert(
       },
       success: true,
     });
+
+    if ("reopened" in result && result.reopened) {
+      await announceSystemTransition(organizationId, project.id, result.incident.id, "reopened", {
+        assigneeUserId: result.reopenedAssigneeUserId,
+        discriminator: alert.id,
+      });
+    }
 
     if (!result.existing && !correlation && alertStatus !== "resolved") {
       void notifyIncidentEvent({
