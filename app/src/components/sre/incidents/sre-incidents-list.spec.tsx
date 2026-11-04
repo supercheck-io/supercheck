@@ -119,9 +119,9 @@ describe("SreIncidentsList", () => {
       within(screen.getAllByRole("row")[1]).getAllByRole("cell")[0].textContent;
     const header = screen.getByRole("button", { name: /^#$/ });
     fireEvent.click(header);
-    expect(firstNumber()).toBe("#3");
-    fireEvent.click(header);
     expect(firstNumber()).toBe("#1");
+    fireEvent.click(header);
+    expect(firstNumber()).toBe("#3");
   });
 
   it("disables creation while permissions load and enables it when they resolve", () => {
@@ -174,15 +174,15 @@ describe("SreIncidentsList", () => {
     );
     const group = screen.getByRole("group", { name: "Quick filters" });
     expect(within(group).getByRole("button", { name: "Active" })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByText("Total 3 incidents")).toBeInTheDocument();
+    expect(screen.getByText("Total incidents: 3")).toBeInTheDocument();
     fireEvent.click(within(group).getByRole("button", { name: "Assigned to me" }));
-    expect(screen.getByText("Total 1 incident")).toBeInTheDocument();
+    expect(screen.getByText("Total incidents: 1")).toBeInTheDocument();
     expect(screen.getByText("Checkout incident 1")).toBeInTheDocument();
     fireEvent.click(within(group).getByRole("button", { name: "Unassigned" }));
-    expect(screen.getByText("Total 1 incident")).toBeInTheDocument();
+    expect(screen.getByText("Total incidents: 1")).toBeInTheDocument();
     expect(screen.getByText("Checkout incident 3")).toBeInTheDocument();
     fireEvent.click(within(group).getByRole("button", { name: "All" }));
-    expect(screen.getByText("Total 4 incidents")).toBeInTheDocument();
+    expect(screen.getByText("Total incidents: 4")).toBeInTheDocument();
   });
 
   it("searches and sorts by the status the badge shows", () => {
@@ -201,14 +201,14 @@ describe("SreIncidentsList", () => {
     fireEvent.click(within(statusHeader!).getAllByRole("button")[0]);
     expect(firstTitle()).toContain("Checkout incident 3");
     fireEvent.change(screen.getByPlaceholderText(/Search/), { target: { value: "monitoring" } });
-    expect(screen.getByText("Total 1 incident")).toBeInTheDocument();
+    expect(screen.getByText("Total incidents: 1")).toBeInTheDocument();
     expect(screen.getByText("Checkout incident 1")).toBeInTheDocument();
   });
 
   it("shows loading, not an empty result, while the resolved scope loads", () => {
     render(<SreIncidentsList incidents={[]} loadError={null} hasIncidents loadingScope />);
-    expect(screen.getByText("Loading incidents...")).toBeInTheDocument();
-    expect(screen.queryByText("No incidents match the current filters.")).not.toBeInTheDocument();
+    expect(screen.getByText("Loading data...")).toBeInTheDocument();
+    expect(screen.queryByText("No results.")).not.toBeInTheDocument();
   });
 
   it("lets the Status facet reach resolved incidents without switching quick filters", () => {
@@ -220,7 +220,7 @@ describe("SreIncidentsList", () => {
     );
     fireEvent.click(within(screen.getByTestId("incident-toolbar")).getByRole("button", { name: /Status/ }));
     fireEvent.click(screen.getByRole("option", { name: "Resolved" }));
-    expect(screen.getByText("Total 1 incident")).toBeInTheDocument();
+    expect(screen.getByText("Total incidents: 1")).toBeInTheDocument();
     expect(screen.getByText("Checkout incident 3")).toBeInTheDocument();
     // The Active chip no longer claims to be the view once a status is picked.
     const group = screen.getByRole("group", { name: "Quick filters" });
@@ -244,9 +244,9 @@ describe("SreIncidentsList", () => {
     const age = screen.getByRole("columnheader", { name: /Age/ });
     expect(age).toHaveAttribute("aria-sort", "none");
     fireEvent.click(within(age).getByRole("button"));
-    expect(age).toHaveAttribute("aria-sort", "descending");
-    fireEvent.click(within(age).getByRole("button"));
     expect(age).toHaveAttribute("aria-sort", "ascending");
+    fireEvent.click(within(age).getByRole("button"));
+    expect(age).toHaveAttribute("aria-sort", "descending");
   });
 
   it("shows assignee and AI state columns", () => {
@@ -304,7 +304,7 @@ describe("SreIncidentsList", () => {
         loadError={null}
       />,
     );
-    expect(screen.getByText("Total 2 incidents")).toBeInTheDocument();
+    expect(screen.getByText("Total incidents: 2")).toBeInTheDocument();
     fireEvent.click(
       within(screen.getByTestId("incident-toolbar")).getByRole(
         "button",
@@ -312,9 +312,9 @@ describe("SreIncidentsList", () => {
       ),
     );
     fireEvent.click(screen.getByRole("option", { name: "SEV2" }));
-    expect(screen.getByText("Total 1 incident")).toBeInTheDocument();
+    expect(screen.getByText("Total incidents: 1")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("option", { name: "SEV3" }));
-    expect(screen.getByText("Total 2 incidents")).toBeInTheDocument();
+    expect(screen.getByText("Total incidents: 2")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("option", { name: "Clear filters" }));
     fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
     fireEvent.click(
@@ -336,7 +336,7 @@ describe("SreIncidentsList", () => {
       ),
     );
     fireEvent.click(screen.getByRole("option", { name: "Resolved" }));
-    expect(screen.getByText("Total 1 incident")).toBeInTheDocument();
+    expect(screen.getByText("Total incidents: 1")).toBeInTheDocument();
     expect(screen.getByText("Checkout incident 3")).toBeInTheDocument();
   });
 
@@ -359,7 +359,7 @@ describe("SreIncidentsList", () => {
     );
     fireEvent.click(screen.getByRole("option", { name: "SEV2" }));
     expect(screen.getByText("Page 1 of 1")).toBeInTheDocument();
-    expect(screen.getByText("Total 6 incidents")).toBeInTheDocument();
+    expect(screen.getByText("Total incidents: 6")).toBeInTheDocument();
   });
 
   it("renders a compact sortable incident table with filters and pagination", () => {
@@ -370,7 +370,7 @@ describe("SreIncidentsList", () => {
 
     render(<SreIncidentsList incidents={incidents} loadError={null} />);
 
-    expect(screen.getByText("Total 13 incidents")).toBeInTheDocument();
+    expect(screen.getByText("Total incidents: 13")).toBeInTheDocument();
     expect(
       screen.queryByText("Checkout incident 14"),
     ).not.toBeInTheDocument();
@@ -411,7 +411,7 @@ describe("SreIncidentsList", () => {
       target: { value: "Checkout incident 13" },
     });
 
-    expect(screen.getByText("Total 1 incident")).toBeInTheDocument();
+    expect(screen.getByText("Total incidents: 1")).toBeInTheDocument();
     expect(screen.getByText("Checkout incident 13")).toBeInTheDocument();
     expect(
       screen.queryByText("Checkout incident 12"),
@@ -437,21 +437,21 @@ describe("SreIncidentsList display-status facet", () => {
   it("maps Acknowledged to triggered incidents with acknowledgedAt", () => {
     render(<SreIncidentsList incidents={incidents} loadError={null} />);
     pick("Acknowledged");
-    expect(screen.getByText("Total 1 incident")).toBeInTheDocument();
+    expect(screen.getByText("Total incidents: 1")).toBeInTheDocument();
     expect(screen.getByText("Acked")).toBeInTheDocument();
   });
 
   it("keeps unacknowledged triggered incidents under Triggered only", () => {
     render(<SreIncidentsList incidents={incidents} loadError={null} />);
     pick("Triggered");
-    expect(screen.getByText("Total 1 incident")).toBeInTheDocument();
+    expect(screen.getByText("Total incidents: 1")).toBeInTheDocument();
     expect(screen.getByText("Fresh")).toBeInTheDocument();
   });
 
   it("maps Fixing to identified, recommendations_ready and user_applying_fix", () => {
     render(<SreIncidentsList incidents={incidents} loadError={null} />);
     pick("Fixing");
-    expect(screen.getByText("Total 3 incidents")).toBeInTheDocument();
+    expect(screen.getByText("Total incidents: 3")).toBeInTheDocument();
     for (const title of ["Known", "Ready", "Applying"]) expect(screen.getByText(title)).toBeInTheDocument();
     expect(screen.queryByText("Looking")).not.toBeInTheDocument();
   });
