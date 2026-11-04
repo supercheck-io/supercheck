@@ -346,6 +346,10 @@ describe("reopenRecentlyAutoResolved", () => {
       stale: false,
     });
     expect(inserts[0]).toMatchObject({ eventData: { state: "reopened" }, actorType: "system" });
+    // The previous resolution summary is kept across the reopen.
+    const set = (executor.update as jest.Mock).mock.results[0].value.set.mock.calls[0][0];
+    expect(set).toMatchObject({ status: "triggered", resolvedAt: null });
+    expect(set).not.toHaveProperty("resolutionSummary");
   });
 
   it("hands back a failure that fired before the resolve as stale, without reopening", async () => {

@@ -1369,7 +1369,6 @@ export async function updateSreIncident(
           ...(reopening
             ? {
                 verifiedAt: null,
-                resolutionSummary: null,
                 mitigatedAt: null,
                 acknowledgedAt: null,
                 acknowledgedByUserId: null,

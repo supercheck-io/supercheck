@@ -773,7 +773,7 @@ export async function reopenRecentlyAutoResolved(
       status: "triggered",
       resolvedAt: null,
       mitigatedAt: null,
-      resolutionSummary: null,
+      // resolutionSummary is kept: the detail page labels it as the previous resolution while the incident is open.
       // A returning failure needs a fresh acknowledgement (and stays auto-resolvable).
       acknowledgedAt: null,
       acknowledgedByUserId: null,

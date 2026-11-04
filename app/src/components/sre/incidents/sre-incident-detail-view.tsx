@@ -373,7 +373,7 @@ export function SreIncidentDetailView({
 
       {incident.resolutionSummary && (
         <p className="line-clamp-2 rounded-md border bg-muted/40 px-3 py-2 text-sm" data-testid="resolution-summary">
-          <span className="font-medium">Resolution: </span>
+          <span className="font-medium">{incident.status === "resolved" ? "Resolution: " : "Previous resolution: "}</span>
           {incident.resolutionSummary}
         </p>
       )}

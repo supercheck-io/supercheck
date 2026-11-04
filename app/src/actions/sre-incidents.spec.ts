@@ -125,6 +125,8 @@ describe("getSreIncidentDetails investigation summary", () => {
     });
     expect(result).toMatchObject({ success: true });
     expect(sets[0]).toMatchObject({ acknowledgedAt: null, acknowledgedByUserId: null, resolvedAt: null });
+    // The previous resolution stays on the incident.
+    expect(sets[0]).not.toHaveProperty("resolutionSummary");
     expect(inserted.map((row) => (row.eventData as { state: string }).state)).toEqual(["incident_updated", "reopened"]);
     expect(jest.requireMock("@/lib/sre/incident-notifier").notifyIncidentEvent).toHaveBeenCalledWith(
       expect.objectContaining({ incidentId, event: "reopened" }),
