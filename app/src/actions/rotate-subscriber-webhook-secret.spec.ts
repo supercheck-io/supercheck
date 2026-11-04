@@ -29,10 +29,10 @@ describe("webhook secret rotation", () => {
     const result = await rotateSubscriberWebhookSecret(id);
     expect(result.success).toBe(true);
     expect(result.webhookSecret).toMatch(/^[a-f0-9]{64}$/);
-    expect(set).toHaveBeenCalledWith(expect.objectContaining({ webhookSecret: null, webhookSecretEncrypted: expect.stringMatching(/^enc:v1:/) }));
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({ webhookSecretEncrypted: expect.stringMatching(/^enc:v1:/) }));
     expect(JSON.stringify(set.mock.calls)).not.toContain(result.webhookSecret as string);
     const stored = set.mock.calls[0][0].webhookSecretEncrypted;
-    expect(await resolveWebhookSecret({ id, webhookSecret: null, webhookSecretEncrypted: stored })).toBe(result.webhookSecret);
+    expect(resolveWebhookSecret({ webhookSecretEncrypted: stored })).toBe(result.webhookSecret);
     expect(requirePermissions).toHaveBeenCalledWith({ status_page: ["update"] }, { organizationId: "org", projectId: "project" });
   });
   it("does not update a subscriber outside the active project", async () => {

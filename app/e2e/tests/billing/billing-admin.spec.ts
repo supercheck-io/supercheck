@@ -13,7 +13,7 @@ test.describe('Billing and usage @admin @billing', () => {
       subscription: { plan: string; status: string; planName: string; basePriceCents: number };
       usage: Record<string, { used: number; included: number; overage: number; percentage: number }>;
       limits: Record<string, Record<string, number>>;
-      planFeatures: { customDomains: boolean; ssoEnabled: boolean; dataRetentionDays: number };
+      planFeatures: { customDomains: boolean; dataRetentionDays: number };
     };
     expect(current.subscription).toEqual(
       expect.objectContaining({

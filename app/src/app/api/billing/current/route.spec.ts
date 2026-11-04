@@ -85,7 +85,7 @@ describe("current billing subscription display", () => {
       isActive: true, plan: "pro", status: "active",
     });
     (subscriptionService.getOrganizationPlanSafe as jest.Mock).mockResolvedValue({
-      ssoEnabled: true, customDomains: true, dataRetentionDays: 30,
+      customDomains: true, dataRetentionDays: 30,
     });
     const response = await GET();
     const { planFeatures } = await response.json();

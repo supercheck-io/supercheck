@@ -494,7 +494,6 @@ async function handleEmailSubscription(
           verificationTokenHash: hashVerificationToken(newVerificationToken),
           verificationToken: null,
           purgeAt: null, // Clear unsubscribe status
-          unsubscribeToken: null, // links issued before the unsubscribe stop working
           verifiedAt: null, // Require re-verification
           updatedAt: new Date(),
         })
@@ -723,7 +722,6 @@ async function handleWebhookSubscription(
         .set({
           verifiedAt: null, // always re-prove endpoint ownership via the challenge
           purgeAt: null,
-          unsubscribeToken: null,
           quarantinedAt: null,
           webhookFailures: 0,
           updatedAt: new Date(),
@@ -888,7 +886,6 @@ async function handleSlackSubscription(
         .set({
           verifiedAt: new Date(),
           purgeAt: null,
-          unsubscribeToken: null,
           quarantinedAt: null,
           webhookFailures: 0,
           updatedAt: new Date(),

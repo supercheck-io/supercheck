@@ -393,6 +393,13 @@
       "when": 1793814443810,
       "tag": "0055_alert_history_run_claim",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1793814706945,
+      "tag": "0056_drop_legacy_plan_and_subscriber_columns",
+      "breakpoints": true
     }
   ]
 }

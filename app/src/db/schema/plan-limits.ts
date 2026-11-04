@@ -59,7 +59,6 @@ export const planLimits = pgTable("plan_limits", {
 
   // Feature flags
   customDomains: boolean("custom_domains").default(false).notNull(),
-  ssoEnabled: boolean("sso_enabled").default(false).notNull(),
 
   // Data retention - raw check results
   dataRetentionDays: integer("data_retention_days").notNull(),

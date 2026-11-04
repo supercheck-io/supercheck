@@ -1,5 +1,3 @@
-jest.mock("@/utils/db", () => ({ db: { update: jest.fn() } }));
-import { db } from "@/utils/db";
 import {
   encryptWebhookSecret,
   hashVerificationToken,
@@ -42,11 +40,11 @@ describe("signed unsubscribe token", () => {
       expect(verifyUnsubscribeToken(v)).toBeNull();
     }
   });
-  it("still treats a legacy 64-hex token as a stored-token lookup", () => {
+  it("no longer accepts a legacy 64-hex stored token", () => {
     const legacy = "a".repeat(64);
-    expect(isUnsubscribeTokenShape(legacy)).toBe(true);
+    expect(isUnsubscribeTokenShape(legacy)).toBe(false);
     expect(verifyUnsubscribeToken(legacy)).toBeNull();
-    expect(unsubscribeTokenCondition(legacy)).not.toBeNull();
+    expect(unsubscribeTokenCondition(legacy)).toBeNull();
   });
   it("stops verifying once the key changes", () => {
     const token = signUnsubscribeToken(A);
@@ -71,23 +69,12 @@ describe("signed unsubscribe token", () => {
 });
 
 describe("resolveWebhookSecret", () => {
-  const set = jest.fn();
-  beforeEach(() => {
-    jest.clearAllMocks();
-    set.mockReturnValue({ where: jest.fn().mockResolvedValue(undefined) });
-    (db.update as jest.Mock).mockReturnValue({ set });
-  });
-  it("decrypts the encrypted column without writing", async () => {
+  it("decrypts the encrypted column", () => {
     const enc = encryptWebhookSecret("s3cret");
     expect(enc).not.toContain("s3cret");
-    expect(await resolveWebhookSecret({ id: A, webhookSecret: null, webhookSecretEncrypted: enc })).toBe("s3cret");
-    expect(db.update).not.toHaveBeenCalled();
+    expect(resolveWebhookSecret({ webhookSecretEncrypted: enc })).toBe("s3cret");
   });
-  it("encrypts and clears a legacy plaintext secret", async () => {
-    expect(await resolveWebhookSecret({ id: A, webhookSecret: "legacy", webhookSecretEncrypted: null })).toBe("legacy");
-    expect(set).toHaveBeenCalledWith({ webhookSecretEncrypted: expect.stringMatching(/^enc:v1:/), webhookSecret: null });
-  });
-  it("returns null when neither column is set", async () => {
-    expect(await resolveWebhookSecret({ id: A, webhookSecret: null, webhookSecretEncrypted: null })).toBeNull();
+  it("returns null when no secret is stored", () => {
+    expect(resolveWebhookSecret({ webhookSecretEncrypted: null })).toBeNull();
   });
 });

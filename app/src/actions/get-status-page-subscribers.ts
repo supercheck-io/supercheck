@@ -36,7 +36,7 @@ export async function rotateSubscriberWebhookSecret(subscriberId: string) {
       return { success: false, message: "Subscriber not found or access denied" };
     }
     const webhookSecret = generateWebhookSecret();
-    const updated = await db.update(statusPageSubscribers).set({ webhookSecretEncrypted: encryptWebhookSecret(webhookSecret), webhookSecret: null, updatedAt: new Date() })
+    const updated = await db.update(statusPageSubscribers).set({ webhookSecretEncrypted: encryptWebhookSecret(webhookSecret), updatedAt: new Date() })
       .where(and(eq(statusPageSubscribers.id, subscriberId), isNull(statusPageSubscribers.purgeAt)))
       .returning({ id: statusPageSubscribers.id });
     if (!updated.length) return { success: false, message: "Subscriber is no longer active" };

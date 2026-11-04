@@ -170,11 +170,11 @@ export async function sendIncidentNotifications(
     let successCount = 0;
     let failureCount = 0;
 
-    // Signed links need SECRET_ENCRYPTION_KEY; without it fall back to a stored legacy token, else no link.
+    // Signed links need SECRET_ENCRYPTION_KEY; without it the emails carry no unsubscribe link.
     const canSign = Boolean(process.env.SECRET_ENCRYPTION_KEY);
     if (!canSign) {
       console.warn(
-        "[Incident Notifications] SECRET_ENCRYPTION_KEY is not set; using stored unsubscribe tokens where present and omitting unsubscribe links otherwise",
+        "[Incident Notifications] SECRET_ENCRYPTION_KEY is not set; omitting unsubscribe links",
       );
     }
 
@@ -188,9 +188,7 @@ export async function sendIncidentNotifications(
         }
 
         // Use per-subscriber unsubscribe token
-        const unsubscribeToken = canSign
-          ? signUnsubscribeToken(subscriber.id)
-          : subscriber.unsubscribeToken;
+        const unsubscribeToken = canSign ? signUnsubscribeToken(subscriber.id) : null;
         const unsubscribeUrl = unsubscribeToken
           ? `${baseUrl}/status/unsubscribe/${unsubscribeToken}`
           : undefined;

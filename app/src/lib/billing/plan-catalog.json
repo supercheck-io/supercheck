@@ -18,7 +18,6 @@
       "maxStatusPages": 5,
       "maxStatusPageSubscribers": 1000,
       "customDomains": true,
-      "ssoEnabled": true,
       "dataRetentionDays": 7,
       "aggregatedDataRetentionDays": 30,
       "jobDataRetentionDays": 30
@@ -49,7 +48,6 @@
       "maxStatusPages": 20,
       "maxStatusPageSubscribers": 10000,
       "customDomains": true,
-      "ssoEnabled": true,
       "dataRetentionDays": 7,
       "aggregatedDataRetentionDays": 90,
       "jobDataRetentionDays": 90
