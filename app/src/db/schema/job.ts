@@ -180,6 +180,8 @@ export const runs = pgTable(
     ),
     // PERFORMANCE: Index on started_at for dashboard date range queries
     startedAtIdx: index("runs_started_at_idx").on(table.startedAt),
+    // Playground runs are found by metadata.testId; built CONCURRENTLY by migration 0054.
+    runsMetadataTestIdIdx: index("runs_metadata_test_id_created_at_idx").on(sql`(${table.metadata}->>'testId')`, table.createdAt.desc().nullsFirst()),
     runsJobCreatedIdx: index("runs_job_created_idx").on(table.jobId, table.createdAt.desc().nullsFirst()),
     runsProjectIdRequired: check("runs_project_id_required_check", sql`project_id IS NOT NULL`),
     runsStatusCheck: check("runs_status_check", sql`${table.status} IN ('running', 'passed', 'failed', 'error', 'blocked', 'queued')`),

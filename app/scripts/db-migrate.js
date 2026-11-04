@@ -233,6 +233,77 @@ async function createDatabaseIfNotExists() {
   }
 }
 
+// A file whose first comment line is `-- supercheck:no-transaction` cannot run inside the migration
+// transaction (CREATE INDEX CONCURRENTLY is refused there). Such files run after that transaction commits.
+const NO_TRANSACTION_MARKER = /^--\s*supercheck:no-transaction\s*$/m;
+const deferredMigrations = [];
+
+function hasNoTransactionMarker(sql) {
+  return NO_TRANSACTION_MARKER.test(sql);
+}
+
+function concurrentIndexNames(sql) {
+  const names = [];
+  const pattern =
+    /CREATE\s+(?:UNIQUE\s+)?INDEX\s+CONCURRENTLY\s+(?:IF\s+NOT\s+EXISTS\s+)?"?([A-Za-z0-9_]+)"?/gi;
+  for (const match of sql.matchAll(pattern)) names.push(match[1]);
+  return names;
+}
+
+// A failed or interrupted CONCURRENTLY build leaves an INVALID index; IF NOT EXISTS would then skip it
+// forever. Drop it so the retry rebuilds it.
+async function dropInvalidIndexes(client, sql) {
+  for (const name of concurrentIndexNames(sql)) {
+    const invalid = await client`
+      SELECT n.nspname AS schema
+      FROM pg_class c
+      JOIN pg_index i ON i.indexrelid = c.oid
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE c.relname = ${name} AND n.nspname = current_schema() AND NOT i.indisvalid
+    `;
+    for (const { schema } of invalid) {
+      logWarning(`Dropping invalid index ${name} left by an earlier failed build`);
+      await client.unsafe(
+        `DROP INDEX CONCURRENTLY IF EXISTS "${schema.replace(/"/g, '""')}"."${name.replace(/"/g, '""')}"`
+      );
+    }
+  }
+}
+
+// Runs the deferred no-transaction files on their own connection, in autocommit. The session advisory
+// lock uses the same key as the migration transaction, so two deploys never build or drop one index at
+// once. A file is recorded only after every statement succeeded.
+async function runDeferredMigrations(items = deferredMigrations) {
+  if (items.length === 0) return true;
+  let client;
+  try {
+    client = postgres(TARGET_DATABASE_URL, { max: 1, ssl: getDatabaseSSLConfig(), onnotice: () => {} });
+    await client`SELECT pg_advisory_lock(hashtext(${MIGRATION_LOCK_NAME}))`;
+    for (const { file, content, hash } of items) {
+      const [applied] = await client`SELECT id FROM "__drizzle_migrations" WHERE hash = ${hash}`;
+      if (applied) continue;
+
+      log(`Applying migration outside a transaction: ${file}`);
+      await dropInvalidIndexes(client, content);
+      // No IF NOT EXISTS rewriting and no savepoints: the file is exactly what the author wrote.
+      for (const statement of content.split("--> statement-breakpoint")) {
+        if (statement.replace(/--[^\n]*/g, "").trim().length === 0) continue;
+        await client.unsafe(statement.trim());
+      }
+      await client`
+        INSERT INTO "__drizzle_migrations" (hash, created_at) VALUES (${hash}, ${Date.now()})
+      `;
+      logSuccess(`Migration ${file} applied successfully`);
+    }
+    return true;
+  } catch (err) {
+    logError(`Failed to apply a no-transaction migration: ${err.message}`);
+    return false;
+  } finally {
+    await client?.end({ timeout: 5 }).catch(() => undefined);
+  }
+}
+
 // Function to run migrations
 async function runMigrations(client) {
   log("Running database migrations...");
@@ -304,6 +375,12 @@ async function runMigrations(client) {
 
       if (applied) {
         log(`Migration ${migrationFile} already applied, skipping`);
+        continue;
+      }
+
+      if (hasNoTransactionMarker(migrationContent)) {
+        log(`Migration ${migrationFile} runs after the migration transaction commits`);
+        deferredMigrations.push({ file: migrationFile, content: migrationContent, hash: migrationHash });
         continue;
       }
 
@@ -755,7 +832,10 @@ async function main() {
       commit: migrationCompleted,
       logSuccess,
     });
-    if (migrationCompleted) await validateAfterCommit();
+    if (migrationCompleted) {
+      await validateAfterCommit();
+      if (!(await runDeferredMigrations())) process.exitCode = 1;
+    }
   }
 }
 
@@ -773,5 +853,7 @@ async function validateAfterCommit() {
   }
 }
 
+module.exports = { hasNoTransactionMarker, concurrentIndexNames };
+
 // Run the main function
-main();
+if (require.main === module) main();

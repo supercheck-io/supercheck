@@ -1,6 +1,6 @@
 {
-  "id": "0d8f24e0-a13c-474f-a455-b44d570785c0",
-  "prevId": "9bdb199f-4e99-4623-8deb-071ab2d8e298",
+  "id": "fc562117-7884-476c-9788-2df7a255df32",
+  "prevId": "0d8f24e0-a13c-474f-a455-b44d570785c0",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -6245,6 +6245,27 @@
               "isExpression": false,
               "asc": true,
               "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "runs_metadata_test_id_created_at_idx": {
+          "name": "runs_metadata_test_id_created_at_idx",
+          "columns": [
+            {
+              "expression": "(\"metadata\"->>'testId')",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "first"
             }
           ],
           "isUnique": false,
