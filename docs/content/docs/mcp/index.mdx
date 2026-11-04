@@ -6,7 +6,7 @@ icon: Plug
 
 The Supercheck MCP server lets an AI tool that supports the [Model Context Protocol](https://modelcontextprotocol.io) look at one of your projects: tests, jobs, recent runs, monitors, requirements and their coverage, status pages, the service catalog, variable names, incidents and AI SRE investigation results. Ask "which runs failed overnight?", "which requirements have no passing test?" or "what did the last investigation recommend?" without copying data between tabs.
 
-By default the server is **read-only**. Two optional scopes you approve separately let the tool work incidents (`mcp:incidents:write`) or start AI SRE analysis (`mcp:sre`). Creating, changing or deploying tests and monitors always goes through the [Supercheck CLI](/docs/cli).
+By default the server is **read-only**. Two optional scopes, approved as part of the same single request, let the tool work incidents (`mcp:incidents:write`) or start AI SRE analysis (`mcp:sre`). Creating, changing or deploying tests and monitors always goes through the [Supercheck CLI](/docs/cli).
 
 ## At a glance
 

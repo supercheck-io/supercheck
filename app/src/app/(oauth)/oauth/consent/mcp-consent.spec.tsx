@@ -41,6 +41,15 @@ describe("McpConsent", () => {
     expect(screen.getByText(/cannot change anything else/i)).toBeInTheDocument();
   });
 
+  it.each([
+    ["write only", { canWriteIncidents: true }, /assign, acknowledge and resolve incidents/i, /start ai sre triage/i],
+    ["SRE only", { canRunSre: true }, /start ai sre triage/i, /assign, acknowledge and resolve incidents/i],
+  ])("discloses only the requested optional access (%s)", (_n, flags, present, absent) => {
+    render(<McpConsent oauthQuery="q" userEmail="me@example.com" projects={projects} client={unverified} navigate={navigate} {...flags} />);
+    expect(screen.getByText(present)).toBeInTheDocument();
+    expect(screen.queryByText(absent)).not.toBeInTheDocument();
+  });
+
   it("warns about an app that registered itself, and names the publisher of a verified one", () => {
     setup(unverified);
     expect(screen.getByText(/unverified app/i)).toBeInTheDocument();

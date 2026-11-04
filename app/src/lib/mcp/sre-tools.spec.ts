@@ -56,6 +56,8 @@ const permission = jest.fn();
 jest.mock("@/lib/rbac/middleware", () => ({ checkPermissionWithContext: (...a: unknown[]) => permission(...a), resolveProjectPermissionContext: jest.fn() }));
 
 import { SreInvestigationBillingError as FakeBillingError } from "@/lib/sre/investigation-billing";
+import { registerMcpTools } from "./tools";
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { registerSreTools, type ToolRegistrar } from "./sre-tools";
 import type { McpCallContext } from "./context";
 import { assertCan } from "./context";
@@ -173,5 +175,38 @@ describe("AI SRE tools", () => {
     found();
     permission.mockReturnValue(false);
     await expect(tools().get("triage_incident")!.run({ incidentId: id })).rejects.toThrow("forbidden");
+  });
+});
+
+describe("write tools through registerMcpTools (the gate the server really uses)", () => {
+  type Handler = (args: Record<string, unknown>) => Promise<{ isError?: boolean; structuredContent: Record<string, unknown> }>;
+  function server(scopes: string[]) {
+    const handlers = new Map<string, Handler>();
+    registerMcpTools({ registerTool: (n: string, _c: unknown, h: Handler) => handlers.set(n, h) } as unknown as McpServer, { ...base, scopes });
+    return handlers;
+  }
+  const calls: [string, Record<string, unknown>][] = [
+    ["assign_incident", { id, assigneeUserId: null }],
+    ["acknowledge_incident", { id }],
+    ["resolve_incident", { id, resolutionSummary: "done" }],
+  ];
+  it.each(calls)("%s is refused for a role without update permission and never reaches the service", async (name, args) => {
+    permission.mockReturnValue(false);
+    const res = await server(["mcp:read", "mcp:incidents:write"]).get(name)!(args);
+    expect(res).toMatchObject({ isError: true, structuredContent: { code: "forbidden" } });
+    for (const fn of [assignIncident, acknowledgeIncident, resolveIncident]) expect(fn).not.toHaveBeenCalled();
+  });
+  it.each(calls)("%s does not exist without the write scope", (name) => {
+    expect(server(["mcp:read"]).has(name)).toBe(false);
+  });
+  it.each(calls)("%s is refused if the scope is dropped after registration", async (name, args) => {
+    const scopes = ["mcp:read", "mcp:incidents:write"];
+    const handlers = new Map<string, Handler>();
+    const ctx = { ...base, scopes };
+    registerMcpTools({ registerTool: (n: string, _c: unknown, h: Handler) => handlers.set(n, h) } as unknown as McpServer, ctx);
+    scopes.pop();
+    const res = await handlers.get(name)!(args);
+    expect(res).toMatchObject({ isError: true, structuredContent: { code: "forbidden" } });
+    for (const fn of [assignIncident, acknowledgeIncident, resolveIncident]) expect(fn).not.toHaveBeenCalled();
   });
 });

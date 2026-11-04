@@ -157,7 +157,7 @@ describe('analytics, token and project commands', () => {
     await projectCommand.parseAsync(['node', 'project', 'members'])
     expect(mockGet).toHaveBeenNthCalledWith(1, '/api/context')
     expect(mockGet).toHaveBeenNthCalledWith(2, `/api/projects/${id}/members`)
-    expect(mockOutput).toHaveBeenCalledWith([{ userId: 'u1', name: 'Ada', email: 'ada@example.test', role: 'project_editor' }], expect.anything())
+    expect(mockOutput).toHaveBeenCalledWith([{ id: 'u1', userId: 'u1', name: 'Ada', email: 'ada@example.test', role: 'project_editor' }], expect.anything())
   })
 
   it('rejects a malformed project id before calling the API', async () => {

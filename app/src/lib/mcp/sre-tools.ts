@@ -119,8 +119,9 @@ export function registerSreTools(tool: ToolRegistrar, ctx: McpCallContext): void
         const input = { ...actor, incidentId, enableLiveConnectors: useLiveConnectors, guidance };
         const started = await startSreIncidentInvestigation(input);
         if (!started.success) throw new McpToolFailure(started.status === 404 ? "not_found" : "conflict", started.error);
-        after(() => completeSreIncidentInvestigation(started.investigationRunId, started.incident, input).catch((error) =>
-          logger.error({ err: error, incidentId, investigationRunId: started.investigationRunId }, "MCP investigation failed")));
+        after(() => completeSreIncidentInvestigation(started.investigationRunId, started.incident, input).then((r) => {
+          if (!r.success) logger.error({ incidentId, investigationRunId: started.investigationRunId, status: r.status }, "MCP investigation did not complete");
+        }, (error) => logger.error({ err: error, incidentId, investigationRunId: started.investigationRunId }, "MCP investigation failed")));
         return { accepted: true, investigationRunId: started.investigationRunId, next: POLL };
       });
     tool("generate_incident_brief", "Generate an AI evidence brief for an incident. Billable, needs a plan. " + POLL, sre, { incidentId: idArg }, async ({ incidentId }) => {
