@@ -352,15 +352,20 @@ async function releaseRecipients(input: IncidentNotifyInput, userIds: string[]) 
   }
 }
 
-/** True when a failure alert for this source was delivered (status `sent`) in the last 15 minutes. */
-async function triggerAlertDelivered(sourceType: "monitor" | "job", sourceId: string) {
+const TRIGGER_ALERT_TYPES = ["monitor_failure", "job_failed", "job_timeout", "ssl_expiring"] as const;
+
+/** True when the triggering alert (its own type, not any alert for the source) was delivered (status `sent`) in the last 15 minutes. */
+async function triggerAlertDelivered(sourceType: "monitor" | "job", sourceId: string, dedupKey: string | null) {
+  // Alert event dedup keys end with the alert type (see background-alert-triage).
+  const keyType = dedupKey?.split(":").pop();
+  const types = TRIGGER_ALERT_TYPES.filter((type) => type === keyType);
   const rows = await db
     .select({ status: alertHistory.status })
     .from(alertHistory)
     .where(
       and(
         sourceType === "monitor" ? eq(alertHistory.monitorId, sourceId) : eq(alertHistory.jobId, sourceId),
-        inArray(alertHistory.type, ["monitor_failure", "job_failed", "job_timeout", "ssl_expiring"]),
+        inArray(alertHistory.type, types.length ? types : [...TRIGGER_ALERT_TYPES]),
         gte(alertHistory.sentAt, new Date(Date.now() - 15 * 60_000)),
       ),
     )
@@ -474,7 +479,7 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<v
 
     // Providers linked to the monitor/job that raised the alert; manual incidents have none.
     const [source] = await db
-      .select({ sourceType: sreAlertEvents.sourceType, sourceId: sreAlertEvents.sourceId })
+      .select({ sourceType: sreAlertEvents.sourceType, sourceId: sreAlertEvents.sourceId, dedupKey: sreAlertEvents.dedupKey })
       .from(sreIncidentAlerts)
       .innerJoin(sreAlertEvents, eq(sreAlertEvents.id, sreIncidentAlerts.alertEventId))
       .where(and(eq(sreIncidentAlerts.incidentId, incident.id), eq(sreIncidentAlerts.role, "trigger")))
@@ -486,7 +491,7 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<v
     // `created` is skipped only when the worker's alert was actually delivered; if every
     // delivery failed, the channels have not heard about it yet.
     if (input.event === "recovered" || ((input.event === "reopened" || input.event === "resolved") && input.automatic)) return;
-    if (input.event === "created" && (await triggerAlertDelivered(source.sourceType, source.sourceId))) return;
+    if (input.event === "created" && (await triggerAlertDelivered(source.sourceType, source.sourceId, source.dedupKey))) return;
 
     const providerColumns = {
       id: notificationProviders.id,

@@ -313,13 +313,17 @@ export async function acknowledgeIncident(
 > {
   const now = new Date();
   const result = await db.transaction(async (tx) => {
+    // Acknowledging may claim an unassigned incident, but only for someone who can hold it.
+    const canOwn = await isAssignableUser(actor.organizationId, actor.projectId, actor.userId, tx);
     // Guarded update: only the first acknowledgement of an unresolved incident stamps it.
     const [updated] = await tx
       .update(sreIncidents)
       .set({
         acknowledgedAt: now,
         acknowledgedByUserId: actor.userId,
-        assigneeUserId: sql`coalesce(${sreIncidents.assigneeUserId}, ${actor.userId}::uuid)`,
+        assigneeUserId: canOwn
+          ? sql`coalesce(${sreIncidents.assigneeUserId}, ${actor.userId}::uuid)`
+          : sreIncidents.assigneeUserId,
         updatedAt: now,
       })
       .where(
@@ -377,7 +381,6 @@ export async function acknowledgeIncident(
   }
 
   const { updated } = result;
-  if (!updated) return { ok: false, code: "conflict", error: "Incident changed, reload and try again" };
   await audit(actor, "sre_incident_acknowledged", updated, {});
   notify(actor, incidentId, "acknowledged");
   return {
@@ -517,10 +520,13 @@ const RECOVERABLE_ALERT_TYPES: AlertType[] = ["monitor_failure", "job_failed", "
 // Old title-cased labels and the current ones (see alert-labels.ts); webhook-keyed events match by title.
 const RECOVERABLE_TITLES = ["Monitor Failure", "Job Failed", "Job Timeout", "Monitor down", "Job failed", "Job timed out"];
 
+// `_` and `%` are LIKE wildcards; alert types such as monitor_failure contain `_`.
+const likeLiteral = (value: string) => value.replace(/[\\%_]/g, "\\$&");
+
 const recoverableTrigger = () =>
   or(
-    ...RECOVERABLE_ALERT_TYPES.map((type) => sql`${sreAlertEvents.dedupKey} like ${`%:${type}`}`),
-    ...RECOVERABLE_TITLES.map((title) => sql`${sreAlertEvents.title} like ${`%: ${title}`}`),
+    ...RECOVERABLE_ALERT_TYPES.map((type) => sql`${sreAlertEvents.dedupKey} like ${`%:${likeLiteral(type)}`}`),
+    ...RECOVERABLE_TITLES.map((title) => sql`${sreAlertEvents.title} like ${`%: ${likeLiteral(title)}`}`),
   );
 
 const triggerSourceMatch = (source: SourceRef) =>
