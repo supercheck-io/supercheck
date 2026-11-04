@@ -153,7 +153,7 @@ export async function sendWebhookNotifications(
       try {
         let webhookSecret: string | null;
         try {
-          webhookSecret = await resolveWebhookSecret(subscriber);
+          webhookSecret = resolveWebhookSecret(subscriber);
         } catch (error) {
           // A local key problem is not an endpoint failure: record it without counting toward quarantine.
           console.error(`[Webhook Notifications] Cannot read signing secret for ${subscriber.id}:`, error);

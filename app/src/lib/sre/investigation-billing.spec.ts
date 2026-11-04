@@ -106,7 +106,6 @@ const planFixture = {
   maxStatusPages: 1,
   maxStatusPageSubscribers: 500,
   customDomains: false,
-  ssoEnabled: false,
   dataRetentionDays: 30,
   aggregatedDataRetentionDays: 30,
   jobDataRetentionDays: 30,

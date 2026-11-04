@@ -4,7 +4,7 @@ let mockMcpEnabled = false;
 const mockUpdateUser = jest.fn();
 jest.mock("@/hooks/use-app-config", () => ({ useAppConfig: () => ({ isMcpEnabled: mockMcpEnabled }) }));
 jest.mock("@/utils/auth-client", () => ({
-  useSession: () => ({ data: { user: { name: "Ada", email: "ada@example.com", image: null } } }),
+  useSession: () => ({ data: { user: { id: "user-1", name: "Ada", email: "ada@example.com", image: null } } }),
   authClient: { updateUser: (...a: unknown[]) => mockUpdateUser(...a), $store: { notify: jest.fn() } },
 }));
 jest.mock("@/components/connected-apps/connected-apps", () => ({ ConnectedApps: () => <div>apps list</div> }));
@@ -52,7 +52,7 @@ describe("AccountDialog", () => {
     render(<AccountDialog open onOpenChange={jest.fn()} />);
     expect(screen.getByRole("button", { name: "Save changes" })).toBeDisabled();
     expect(screen.getAllByRole("radio")).toHaveLength(AVATAR_PRESETS.length);
-    const index = AVATAR_PRESETS.indexOf(defaultAvatarFor("Ada"));
+    const index = AVATAR_PRESETS.indexOf(defaultAvatarFor("user-1"));
     expect(screen.getByRole("radio", { name: `Avatar ${index + 1}` })).toHaveAttribute("aria-checked", "true");
   });
 
@@ -61,7 +61,7 @@ describe("AccountDialog", () => {
     global.fetch = fetchMock as unknown as typeof fetch;
     const onOpenChange = jest.fn();
     render(<AccountDialog open onOpenChange={onOpenChange} />);
-    const other = AVATAR_PRESETS.find((p) => p !== defaultAvatarFor("Ada"))!;
+    const other = AVATAR_PRESETS.find((p) => p !== defaultAvatarFor("user-1"))!;
     fireEvent.click(screen.getByRole("radio", { name: `Avatar ${AVATAR_PRESETS.indexOf(other) + 1}` }));
     expect(fetchMock).not.toHaveBeenCalled();
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Grace" } });
@@ -75,7 +75,7 @@ describe("AccountDialog", () => {
     const fetchMock = jest.fn().mockResolvedValue({ ok: true });
     global.fetch = fetchMock as unknown as typeof fetch;
     render(<AccountDialog open onOpenChange={jest.fn()} />);
-    const shown = defaultAvatarFor("Ada");
+    const shown = defaultAvatarFor("user-1");
     fireEvent.click(screen.getByRole("radio", { name: `Avatar ${AVATAR_PRESETS.indexOf(shown) + 1}` }));
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/users/me/avatar", expect.objectContaining({ body: JSON.stringify({ preset: shown }) })));

@@ -68,7 +68,6 @@ const FALLBACK_UNLIMITED_LIMITS = {
   maxStatusPages: 999,
   maxStatusPageSubscribers: 999999,
   customDomains: true,
-  ssoEnabled: true,
   dataRetentionDays: 30, // Raw monitor data: 30 days (high frequency)
   aggregatedDataRetentionDays: 180, // Aggregated metrics: 6 months max
   jobDataRetentionDays: 180, // Job runs: 6 months max for self-hosted
@@ -92,7 +91,6 @@ const BLOCKED_PLAN_LIMITS = {
   maxStatusPages: 0,
   maxStatusPageSubscribers: 0,
   customDomains: false,
-  ssoEnabled: false,
   dataRetentionDays: 0,
   aggregatedDataRetentionDays: 0,
   jobDataRetentionDays: 0,

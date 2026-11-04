@@ -97,6 +97,7 @@ export function ImpersonationCard() {
         </div>
         <UserCell
           name={impersonatedUser?.name}
+          userId={impersonatedUser?.id}
           email={impersonatedUser?.email}
           className="text-xs font-medium"
           avatarClassName="h-5 w-5"

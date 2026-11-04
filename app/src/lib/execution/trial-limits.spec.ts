@@ -71,7 +71,6 @@ describe("trial limits", () => {
       k6VuMinutesIncluded: 0,
       maxOrganizations: 1,
       customDomains: false,
-      ssoEnabled: false,
       sreInvestigationUnitsIncluded: "5",
     });
   });

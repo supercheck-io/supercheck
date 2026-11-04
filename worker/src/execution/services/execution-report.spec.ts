@@ -442,3 +442,80 @@ describe('ExecutionService variable and secret transport', () => {
     });
   });
 });
+
+describe('ExecutionService per-test statuses for job runs', () => {
+  const A = 'aaaaaaaa-0000-0000-0000-000000000001';
+  const B = 'bbbbbbbb-0000-0000-0000-000000000002';
+  let service: ExecutionService;
+  let directory: string;
+
+  beforeEach(() => {
+    service = createService();
+    directory = mkdtempSync(path.join(tmpdir(), 'supercheck-statuses-'));
+  });
+
+  afterEach(() => {
+    service.onModuleDestroy();
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  const read = () => service['readJobTestStatuses'](directory, [A, B]);
+
+  it('maps each spec file back to its test, so only the failing test is failed', async () => {
+    writeResults(directory, {
+      suites: [
+        {
+          file: `001-${A}.spec.ts`,
+          suites: [{ specs: [{ tests: [test('a', ['failed', 'passed'])] }] }],
+        },
+        {
+          file: `002-${B}.spec.ts`,
+          specs: [{ tests: [test('b1', ['passed']), test('b2', ['failed'])] }],
+        },
+        {
+          file: '003-unknown.spec.ts',
+          specs: [{ tests: [test('x', ['failed'])] }],
+        },
+      ],
+    });
+
+    await expect(read()).resolves.toEqual({ [A]: 'passed', [B]: 'failed' });
+  });
+
+  it('records nothing when results.json is missing or unparseable', async () => {
+    await expect(read()).resolves.toEqual({});
+    writeFileSync(path.join(directory, 'results.json'), '{not json');
+    await expect(read()).resolves.toEqual({});
+  });
+
+  it('records skipped when every entry is skipped; a pass or failure wins', async () => {
+    writeResults(directory, {
+      suites: [
+        {
+          file: `001-${A}.spec.ts`,
+          specs: [
+            { tests: [test('a1', ['skipped']), test('a2', ['skipped'])] },
+          ],
+        },
+        {
+          file: `002-${B}.spec.ts`,
+          specs: [{ tests: [test('b1', ['skipped']), test('b2', ['passed'])] }],
+        },
+      ],
+    });
+    await expect(read()).resolves.toEqual({ [A]: 'skipped', [B]: 'passed' });
+  });
+
+  it('parses a large results.json regardless of size', async () => {
+    writeResults(directory, {
+      suites: [
+        {
+          file: `001-${A}.spec.ts`,
+          specs: [{ tests: [test('a', ['passed'])] }],
+        },
+      ],
+      pad: 'x'.repeat(1024 * 1024),
+    });
+    await expect(read()).resolves.toEqual({ [A]: 'passed' });
+  });
+});

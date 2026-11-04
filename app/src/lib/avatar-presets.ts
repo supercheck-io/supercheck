@@ -9,7 +9,7 @@ export function isAvatarPreset(image: unknown): image is string {
   return typeof image === "string" && AVATAR_PRESETS.includes(image);
 }
 
-// shortcut: seeded by the display name (most callers have no user id), so a rename changes the default.
+// Seed is the user id where the caller has one, else the display name (a rename then changes the default).
 export function defaultAvatarFor(seed: string): string {
   let hash = 0;
   for (const char of seed) hash = (hash * 31 + char.codePointAt(0)!) >>> 0;

@@ -12,6 +12,7 @@ import { db } from "@/utils/db";
 import { requireProjectContext } from "@/lib/project-context";
 import { getStatusPageSubscribers } from "./get-status-page-subscribers";
 import { getSubscriberByToken } from "./unsubscribe-from-status-page";
+import { signUnsubscribeToken } from "@/lib/subscriber-tokens";
 
 const SENSITIVE = ["webhookSecret", "webhookSecretEncrypted", "verificationToken", "verificationTokenHash", "unsubscribeToken"];
 const pageId = "550e8400-e29b-41d4-a716-446655440000";
@@ -43,7 +44,7 @@ describe("subscriber reads never select secrets or tokens", () => {
 
   it("getSubscriberByToken selects an explicit allow-list", async () => {
     (db.query.statusPageSubscribers.findFirst as jest.Mock).mockResolvedValue(null);
-    await getSubscriberByToken("a".repeat(64));
+    await getSubscriberByToken(signUnsubscribeToken(pageId));
     const args = (db.query.statusPageSubscribers.findFirst as jest.Mock).mock.calls[0][0];
     expect(args.columns).toBeDefined();
     for (const key of SENSITIVE) expect(args.columns[key]).toBeUndefined();

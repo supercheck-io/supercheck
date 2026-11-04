@@ -88,7 +88,7 @@ describe("0047 subscriber secret storage", () => {
     const [row] = await client`SELECT verification_token, verification_token_hash, unsubscribe_token, webhook_secret FROM status_page_subscribers WHERE id = ${A1}`;
     expect(row.verification_token).toBeNull();
     expect(row.verification_token_hash).toBe(sha(legacyVerify));
-    // Not backfillable in SQL: the app encrypts the secret on first use.
+    // Not backfillable in SQL; the plaintext secret is left in place for the later drop migration's guard.
     expect(row.webhook_secret).toBe("plain-secret");
     expect(row.unsubscribe_token).toBe(legacyUnsub);
   });
@@ -117,9 +117,9 @@ describe("0047 subscriber secret storage", () => {
     expect(row.verification_token_hash).toBe(hashVerificationToken(hashedVerify));
   });
 
-  it("resolves both legacy and signed unsubscribe links", async () => {
-    expect((await getSubscriberByToken(legacyUnsub)).subscriber?.id).toBe(A1);
+  it("resolves signed unsubscribe links; the stored legacy token is no longer accepted", async () => {
     expect((await getSubscriberByToken(signUnsubscribeToken(A1))).subscriber?.id).toBe(A1);
+    expect((await getSubscriberByToken(legacyUnsub)).success).toBe(false);
     const forged = `${A1}.${"A".repeat(43)}`;
     expect((await getSubscriberByToken(forged)).success).toBe(false);
   });
@@ -130,32 +130,10 @@ describe("0047 subscriber secret storage", () => {
     ).rejects.toThrow();
   });
 
-  it("round-trips an encrypted webhook secret and migrates a plaintext one", async () => {
-    const [legacy] = await mockDb.select().from(statusPageSubscribers).where(eq(statusPageSubscribers.id, A1));
-    expect(await resolveWebhookSecret(legacy)).toBe("plain-secret");
-    const [migrated] = await client`SELECT webhook_secret, webhook_secret_encrypted FROM status_page_subscribers WHERE id = ${A1}`;
-    expect(migrated.webhook_secret).toBeNull();
-    expect(migrated.webhook_secret_encrypted).toMatch(/^enc:v1:/);
-    expect(migrated.webhook_secret_encrypted).not.toContain("plain-secret");
-
-    const [again] = await mockDb.select().from(statusPageSubscribers).where(eq(statusPageSubscribers.id, A1));
-    expect(await resolveWebhookSecret(again)).toBe("plain-secret");
-
+  it("round-trips an encrypted webhook secret", async () => {
     await mockDb.update(statusPageSubscribers).set({ webhookSecretEncrypted: encryptWebhookSecret("rotated") }).where(eq(statusPageSubscribers.id, A1));
     const [rotated] = await mockDb.select().from(statusPageSubscribers).where(eq(statusPageSubscribers.id, A1));
-    expect(await resolveWebhookSecret(rotated)).toBe("rotated");
-  });
-
-  it("does not overwrite a secret rotated after the legacy value was read", async () => {
-    await client`UPDATE status_page_subscribers SET webhook_secret = 'stale', webhook_secret_encrypted = NULL WHERE id = ${A1}`;
-    const [staleRead] = await mockDb.select().from(statusPageSubscribers).where(eq(statusPageSubscribers.id, A1));
-    await mockDb
-      .update(statusPageSubscribers)
-      .set({ webhookSecretEncrypted: encryptWebhookSecret("fresh"), webhookSecret: null })
-      .where(eq(statusPageSubscribers.id, A1));
-    await resolveWebhookSecret(staleRead);
-    const [current] = await mockDb.select().from(statusPageSubscribers).where(eq(statusPageSubscribers.id, A1));
-    expect(await resolveWebhookSecret(current)).toBe("fresh");
+    expect(resolveWebhookSecret(rotated)).toBe("rotated");
   });
 
   it("is re-runnable", async () => {

@@ -94,6 +94,7 @@ export const auditLogColumns: ColumnDef<AuditLog>[] = [
       return (
         <UserCell
           name={user.name}
+          userId={user.id}
           email={user.email}
           image={user.image}
           emptyLabel="System"

@@ -81,7 +81,6 @@ describe("trial access", () => {
       runningCapacity: 1,
       queuedCapacity: 5,
       customDomains: false,
-      ssoEnabled: false,
     });
   });
 

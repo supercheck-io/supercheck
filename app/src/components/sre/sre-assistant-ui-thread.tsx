@@ -323,7 +323,7 @@ function UserMessage() {
           <BranchPickerPrimitive.Next aria-label="Next response" className="rounded-sm hover:bg-background p-0.5 transition-colors" />
         </BranchPickerPrimitive.Root>
       </div>
-      <UserAvatar name={user?.name || user?.email || "You"} image={user?.image} allowExternalImage className="mt-1 h-8 w-8 border shadow-sm" />
+      <UserAvatar name={user?.name || user?.email || "You"} userId={user?.id} image={user?.image} allowExternalImage className="mt-1 h-8 w-8 border shadow-sm" />
     </MessagePrimitive.Root>
   );
 }

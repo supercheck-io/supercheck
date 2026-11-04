@@ -34,6 +34,7 @@ import { deliverWebhook } from "@/lib/webhook-delivery.service";
 import { deliverSlackMessage } from "@/lib/slack-delivery.service";
 import { renderIncidentNotificationEmail } from "@/lib/email-renderer";
 import { sendIncidentNotifications } from "./send-incident-notifications";
+import { encryptWebhookSecret } from "@/lib/subscriber-tokens";
 import { sendWebhookNotifications } from "./send-webhook-notifications";
 import { sendSlackNotifications } from "./send-slack-notifications";
 
@@ -73,7 +74,7 @@ beforeEach(() => {
       id: "subscriber",
       email: "test@example.com",
       endpoint: "https://example.com/hook",
-      webhookSecret: "secret",
+      webhookSecretEncrypted: encryptWebhookSecret("secret"),
       verifiedAt: new Date(),
       purgeAt: null,
       quarantinedAt: null,

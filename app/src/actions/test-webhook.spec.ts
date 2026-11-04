@@ -9,6 +9,7 @@ jest.mock("@/lib/webhook-delivery.service", () => ({ deliverWebhook: jest.fn() }
 import { db } from "@/utils/db";
 import { requireProjectContext } from "@/lib/project-context";
 import { deliverWebhook } from "@/lib/webhook-delivery.service";
+import { encryptWebhookSecret } from "@/lib/subscriber-tokens";
 import { testWebhook } from "./test-webhook";
 
 const id = "550e8400-e29b-41d4-a716-446655440000";
@@ -17,7 +18,7 @@ it("clears quarantine when the admin test succeeds", async () => {
   (requireProjectContext as jest.Mock).mockResolvedValue({ userId: "u", organizationId: "org", project: { id: "p" } });
   (db.query.statusPages.findFirst as jest.Mock).mockResolvedValue({ id });
   (db.query.statusPageSubscribers.findFirst as jest.Mock).mockResolvedValue({
-    id, mode: "webhook", endpoint: "https://example.com/h", webhookSecret: "s", quarantinedAt: new Date(),
+    id, mode: "webhook", endpoint: "https://example.com/h", webhookSecretEncrypted: encryptWebhookSecret("s"), quarantinedAt: new Date(),
   });
   (deliverWebhook as jest.Mock).mockResolvedValue({ success: true, statusCode: 200 });
   const set = jest.fn().mockReturnValue({ where: jest.fn() });
@@ -32,7 +33,7 @@ it("does not touch the secret when the subscriber has no endpoint", async () => 
   (requireProjectContext as jest.Mock).mockResolvedValue({ userId: "u", organizationId: "org", project: { id: "p" } });
   (db.query.statusPages.findFirst as jest.Mock).mockResolvedValue({ id });
   (db.query.statusPageSubscribers.findFirst as jest.Mock).mockResolvedValue({
-    id, mode: "webhook", endpoint: null, webhookSecret: "legacy", webhookSecretEncrypted: null,
+    id, mode: "webhook", endpoint: null, webhookSecretEncrypted: null,
   });
   (db.update as jest.Mock).mockClear();
   const result = await testWebhook({ subscriberId: id, statusPageId: id });

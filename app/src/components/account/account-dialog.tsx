@@ -58,7 +58,7 @@ function ProfileTab({ onClose }: { onClose: () => void }) {
   const nameError = trimmed.length < 1 ? "Name is required" : trimmed.length > 100 ? "Name must be 100 characters or fewer" : null;
   const nameDirty = trimmed !== (user?.name ?? "");
   // The picture shown today: an uploaded photo, a chosen preset, or the default preset for the name.
-  const current = user?.image ?? defaultAvatarFor(user?.name || user?.email || "");
+  const current = user?.image ?? defaultAvatarFor(user?.id || user?.name || user?.email || "");
   const selected = preset ?? current;
   // Compared with the stored image, so picking the shown default saves it and a later rename keeps it.
   const presetDirty = preset !== null && preset !== user?.image;
@@ -133,7 +133,7 @@ function ProfileTab({ onClose }: { onClose: () => void }) {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
-        <UserAvatar name={user?.name || user?.email} image={selected} allowExternalImage className="h-16 w-16" data-testid="account-avatar" />
+        <UserAvatar name={user?.name || user?.email} userId={user?.id} image={selected} allowExternalImage className="h-16 w-16" data-testid="account-avatar" />
         <div className="flex gap-2">
           <Button type="button" variant="outline" size="sm" disabled={photoBusy || saving || impersonating} onClick={() => fileInput.current?.click()}>
             Upload photo

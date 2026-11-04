@@ -1075,9 +1075,29 @@ export class ExecutionService implements OnModuleDestroy {
       const durationStr = this.formatDuration(durationMs);
 
       // Evaluate report contents to determine real outcome; default to failed if unknown
-      const reportOutcome =
-        await this.evaluatePlaywrightReport(extractedReportsDir);
+      const report = this.loadPlaywrightReport(extractedReportsDir);
+      report.catch(() => undefined); // each consumer handles the rejection itself
+      const reportOutcome = await this.evaluatePlaywrightReport(
+        extractedReportsDir,
+        report,
+      );
       overallSuccess = overallSuccess && !reportOutcome.hasFailures;
+
+      // Per-test outcomes let requirement coverage tell tests of one run apart. Best effort:
+      // without them readers fall back to the run status.
+      const testStatuses = await this.readJobTestStatuses(
+        extractedReportsDir,
+        testScripts.map((ts) => ts.id),
+        report,
+      );
+      // Always written: an empty object replaces stale statuses from an earlier attempt of a re-driven run.
+      await this.dbService
+        .mergeRunMetadata(runId, { testStatuses })
+        .catch((err: unknown) =>
+          this.logger.warn(
+            `[${runId}] Failed to store per-test statuses: ${err instanceof Error ? err.message : String(err)}`,
+          ),
+        );
 
       // Update the finalResult to include duration
       finalResult = {
@@ -1401,18 +1421,32 @@ export class ExecutionService implements OnModuleDestroy {
     }
   }
 
+  /** Reads and parses results.json once; rejects when it is missing or unparseable. */
+  private async loadPlaywrightReport(
+    extractedReportsDir: string,
+  ): Promise<PlaywrightReport> {
+    return JSON.parse(
+      await fs.readFile(
+        path.join(extractedReportsDir, 'results.json'),
+        'utf-8',
+      ),
+    ) as PlaywrightReport;
+  }
+
   /**
    * Inspect the extracted Playwright results.json to determine if any failures occurred.
    * Defaults to "hasFailures=true" when the report is missing or unreadable to stay fail-safe.
    */
   private async evaluatePlaywrightReport(
     extractedReportsDir: string,
+    report: Promise<PlaywrightReport> = this.loadPlaywrightReport(
+      extractedReportsDir,
+    ),
   ): Promise<{ hasFailures: boolean; foundReport: boolean }> {
     const resultsPath = path.join(extractedReportsDir, 'results.json');
 
     try {
-      const raw = await fs.readFile(resultsPath, 'utf-8');
-      const parsed = JSON.parse(raw) as PlaywrightReport;
+      const parsed = await report;
 
       const collectedTests = this.collectPlaywrightTests(parsed);
       this.logger.debug(
@@ -1482,6 +1516,56 @@ export class ExecutionService implements OnModuleDestroy {
       );
       return { hasFailures: true, foundReport: false };
     }
+  }
+
+  /** Maps each `NNN-<testId>.spec.ts` in results.json to passed/failed/skipped; {} when the report is unusable. */
+  private async readJobTestStatuses(
+    extractedReportsDir: string,
+    testIds: string[],
+    report: Promise<PlaywrightReport> = this.loadPlaywrightReport(
+      extractedReportsDir,
+    ),
+  ): Promise<Record<string, 'passed' | 'failed' | 'skipped'>> {
+    const known = new Set(testIds);
+    const statuses: Record<string, 'passed' | 'failed' | 'skipped'> = {};
+    try {
+      const parsed = await report;
+      const visit = (node: unknown, file?: string) => {
+        if (!node || typeof node !== 'object') return;
+        const obj = node as Record<string, unknown>;
+        const currentFile = typeof obj.file === 'string' ? obj.file : file;
+        const testId = currentFile
+          ?.split(/[\\/]/)
+          .pop()
+          ?.match(/^\d+-(.+)\.spec\.ts$/)?.[1];
+        if (testId && known.has(testId) && Array.isArray(obj.tests)) {
+          for (const test of obj.tests as PlaywrightTestEntry[]) {
+            if (!test) continue;
+            if (statuses[testId] === 'failed') continue;
+            const attempts = this.extractPlaywrightAttemptStatuses(test);
+            const entry = this.isPlaywrightTestFailure(test)
+              ? 'failed'
+              : attempts.includes('skipped') && !attempts.includes('passed')
+                ? 'skipped'
+                : 'passed';
+            // fail wins; any pass beats skipped; skipped only when every entry skipped
+            if (entry === 'failed' || entry === 'passed' || !statuses[testId]) {
+              statuses[testId] = entry;
+            }
+          }
+        }
+        for (const key of ['suites', 'projects', 'specs']) {
+          const children = obj[key];
+          if (Array.isArray(children)) {
+            children.forEach((child) => visit(child, currentFile));
+          }
+        }
+      };
+      visit(parsed);
+    } catch {
+      return {};
+    }
+    return statuses;
   }
 
   private detectPlaywrightFailure(node: unknown): boolean {

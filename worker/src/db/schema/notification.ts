@@ -15,6 +15,7 @@ import {
   uuid,
   boolean,
   index,
+  uniqueIndex,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
@@ -77,6 +78,7 @@ export const alertHistory = pgTable(
       onDelete: 'cascade',
     }),
     jobId: uuid('job_id').references(() => jobs.id, { onDelete: 'cascade' }),
+    runId: uuid('run_id'),
     provider: varchar('provider', { length: 100 }).notNull(),
     status: varchar('status', { length: 50 })
       .$type<AlertStatus>()
@@ -90,6 +92,13 @@ export const alertHistory = pgTable(
     // PERFORMANCE: Indexes for alert history queries
     sentAtIdx: index('alert_history_sent_at_idx').on(table.sentAt),
     jobIdIdx: index('alert_history_job_id_idx').on(table.jobId),
+    alertHistoryJobRunProviderUidx: uniqueIndex(
+      'alert_history_job_run_provider_uidx',
+    )
+      .on(table.jobId, table.runId, table.provider)
+      .where(
+        sql`${table.type} IN ('job_failed', 'job_timeout') AND ${table.runId} IS NOT NULL`,
+      ),
     alertHistoryMonitorSentIdx: index('alert_history_monitor_sent_idx').on(
       table.monitorId,
       table.sentAt.desc().nullsFirst(),

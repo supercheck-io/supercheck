@@ -5,7 +5,7 @@ jest.mock("@/actions/unsubscribe-from-status-page", () => ({
 import { unsubscribeFromStatusPage } from "@/actions/unsubscribe-from-status-page";
 import { POST } from "./route";
 
-const token = "a".repeat(64);
+const token = `11111111-1111-4111-8111-111111111111.${"a".repeat(43)}`;
 const call = (body: BodyInit | null, headers: Record<string, string>) =>
   POST(new Request("http://localhost/x", { method: "POST", body, headers }), {
     params: Promise.resolve({ token }),

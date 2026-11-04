@@ -403,7 +403,7 @@ export function MemberAccessDialog({
             <div className="space-y-2">
               <Label className="text-sm font-medium">Member</Label>
               <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg border">
-                <UserAvatar name={member.name || member.email} image={member.image} className="h-10 w-10" />
+                <UserAvatar name={member.name || member.email} userId={member.id} image={member.image} className="h-10 w-10" />
                 <div className="flex-1 min-w-0">
                   <div className="font-medium truncate">{member.name}</div>
                   <div className="text-sm text-muted-foreground truncate">

@@ -220,69 +220,68 @@ export class JobNotificationService {
           ? 'failed'
           : finalStatus;
 
-      let consecutiveFailures = normalizedStatus === 'failed' ? 1 : 0;
-      let failuresSinceLastAlert = consecutiveFailures;
-      const alertState: {
-        sent: number;
-        lastSentAt: Date | null;
-        unknown?: boolean;
-      } =
-        normalizedStatus === 'failed'
-          ? await this.dbService.getJobAlertStreakState(jobId)
-          : { sent: 0, lastSentAt: null };
       let consecutiveSuccesses = normalizedStatus === 'passed' ? 1 : 0;
       // A newer run may already have alerted: this run counts as "since the alert" only if it finished after it.
       const currentRun = recentRuns.find((run) => run.id === runId);
       const currentAt = currentRun?.completedAt ?? new Date();
-      if (alertState.lastSentAt && currentAt <= alertState.lastSentAt)
-        failuresSinceLastAlert = 0;
 
-      for (const run of recentRuns) {
-        if (run.id === runId || isCancelledRun(run)) continue;
-        if (normalizedStatus === 'failed') {
-          if (run.status === 'failed' || run.status === 'error') {
-            consecutiveFailures++;
-            // Count by completion: a run created before the alert that failed after it is a failure since it.
-            const failedAt = run.completedAt ?? run.createdAt;
-            if (
-              alertState.lastSentAt &&
-              failedAt &&
-              failedAt > alertState.lastSentAt
-            )
-              failuresSinceLastAlert++;
-            continue;
-          }
-          break;
+      const countFailureStreak = (lastSentAt: Date | null) => {
+        let consecutiveFailures = 1;
+        let failuresSinceLastAlert =
+          lastSentAt && currentAt <= lastSentAt ? 0 : 1;
+        for (const run of recentRuns) {
+          if (run.id === runId || isCancelledRun(run)) continue;
+          if (run.status !== 'failed' && run.status !== 'error') break;
+          consecutiveFailures++;
+          // Count by completion: a run created before the alert that failed after it is a failure since it.
+          const failedAt = run.completedAt ?? run.createdAt;
+          if (lastSentAt && failedAt && failedAt > lastSentAt)
+            failuresSinceLastAlert++;
         }
+        return { consecutiveFailures, failuresSinceLastAlert };
+      };
 
-        if (normalizedStatus === 'passed') {
-          if (run.status === 'passed') {
-            consecutiveSuccesses++;
-            continue;
-          }
-          break;
-        }
-      }
-
-      const shouldAlertOnStreak = () =>
-        alertState.unknown
+      const shouldAlertOnStreak = (state: {
+        sent: number;
+        lastSentAt: Date | null;
+        unknown?: boolean;
+      }) => {
+        const counts = countFailureStreak(state.lastSentAt);
+        return state.unknown
           ? isPositionalFailureAlert(
-              consecutiveFailures,
+              counts.consecutiveFailures,
               alertConfig.failureThreshold,
             )
           : isFailureAlertStreak(
-              consecutiveFailures,
+              counts.consecutiveFailures,
               alertConfig.failureThreshold,
-              alertState.sent,
-              alertState.lastSentAt
-                ? failuresSinceLastAlert
-                : consecutiveFailures,
+              state.sent,
+              state.lastSentAt
+                ? counts.failuresSinceLastAlert
+                : counts.consecutiveFailures,
             );
+      };
+
+      let consecutiveFailures = 0;
+      let alertState: Awaited<ReturnType<DbService['getJobAlertStreakState']>> =
+        { sent: 0, lastSentAt: null };
+      if (normalizedStatus === 'failed') {
+        alertState = await this.dbService.getJobAlertStreakState(jobId);
+        consecutiveFailures = countFailureStreak(
+          alertState.lastSentAt,
+        ).consecutiveFailures;
+      } else if (normalizedStatus === 'passed') {
+        for (const run of recentRuns) {
+          if (run.id === runId || isCancelledRun(run)) continue;
+          if (run.status !== 'passed') break;
+          consecutiveSuccesses++;
+        }
+      }
 
       const shouldNotifyFailure =
         alertConfig.alertOnFailure &&
         normalizedStatus === 'failed' &&
-        shouldAlertOnStreak();
+        shouldAlertOnStreak(alertState);
 
       const shouldNotifySuccess =
         alertConfig.alertOnSuccess &&
@@ -293,7 +292,7 @@ export class JobNotificationService {
       const shouldNotifyTimeout =
         alertConfig.alertOnTimeout &&
         finalStatus === 'timeout' &&
-        shouldAlertOnStreak();
+        shouldAlertOnStreak(alertState);
 
       if (
         !shouldNotifyFailure &&
@@ -377,9 +376,40 @@ export class JobNotificationService {
         },
       };
 
+      // Failure alerts reserve their (run, provider) slot before sending, under a per-job lock that re-checks
+      // the cap, so concurrent or retried runs cannot over-send. Other alerts, and failure alerts when the
+      // reservation itself cannot be made, are recorded after sending.
+      let sendTo = providers;
+      const reservedRows = new Map<string, string>();
+      if (alertType === 'job_failed' || alertType === 'job_timeout') {
+        try {
+          const claimed = await this.dbService.claimJobAlertSlots({
+            jobId,
+            runId,
+            type: alertType,
+            providerIds: providers.map((provider) => provider.id),
+            message: payload.message,
+            jobName: job.name,
+            shouldAlert: (state) => shouldAlertOnStreak(state),
+          });
+          if (claimed.size === 0) {
+            this.logger.debug(
+              `Failure alert for job ${jobId} run ${runId} not sent: cap reached or already claimed`,
+            );
+            return;
+          }
+          claimed.forEach((id, providerId) => reservedRows.set(providerId, id));
+          sendTo = providers.filter((provider) => claimed.has(provider.id));
+        } catch (claimError) {
+          this.logger.error(
+            `Failed to reserve alert slot for job ${jobId}; sending unreserved: ${getErrorMessage(claimError)}`,
+          );
+        }
+      }
+
       const notificationResults =
         await this.notificationService.sendNotificationToMultipleProviders(
-          providers,
+          sendTo,
           payload,
         );
 
@@ -395,22 +425,34 @@ export class JobNotificationService {
           // One failed insert must not drop the remaining rows or the triage enqueue.
           try {
             // The streak cap counts these rows: without a stored 'sent' row the next failing run alerts again.
-            const alertRowId = randomUUID();
+            const reservedId = reservedRows.get(result.provider.id);
+            const alertRowId = reservedId ?? randomUUID();
             for (let attempt = 1; ; attempt++) {
               try {
-                createdAlertHistoryRows.push(
-                  await this.dbService.saveAlertHistory(
-                    jobId,
-                    alertType,
-                    result.provider.id,
+                if (reservedId) {
+                  await this.dbService.finishJobAlert(
+                    reservedId,
                     status,
-                    payload.message,
                     result.error,
-                    job.name,
                     result.deliveryMetadata,
-                    alertRowId,
-                  ),
-                );
+                  );
+                  createdAlertHistoryRows.push({ id: reservedId, status });
+                } else {
+                  createdAlertHistoryRows.push(
+                    await this.dbService.saveAlertHistory(
+                      jobId,
+                      alertType,
+                      result.provider.id,
+                      status,
+                      payload.message,
+                      result.error,
+                      job.name,
+                      result.deliveryMetadata,
+                      alertRowId,
+                      runId,
+                    ),
+                  );
+                }
                 break;
               } catch (insertError) {
                 if (attempt >= ALERT_HISTORY_SAVE_ATTEMPTS) throw insertError;

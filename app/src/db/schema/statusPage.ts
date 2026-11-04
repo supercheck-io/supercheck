@@ -366,9 +366,7 @@ export const statusPageSubscribers = pgTable("status_page_subscribers", {
   // Legacy plaintext; new tokens are stored only as a SHA-256 hash.
   verificationToken: varchar("verification_token", { length: 255 }),
   verificationTokenHash: varchar("verification_token_hash", { length: 64 }),
-  unsubscribeToken: varchar("unsubscribe_token", { length: 255 }),
   // Webhook security and delivery tracking
-  webhookSecret: varchar("webhook_secret", { length: 255 }),
   // Encrypted (secret-crypto) signing secret; webhook_secret is the legacy plaintext, cleared on first use.
   webhookSecretEncrypted: text("webhook_secret_encrypted"),
   // Ownership challenge for webhook subscribers. The raw token is only sent to
@@ -398,9 +396,6 @@ export const statusPageSubscribers = pgTable("status_page_subscribers", {
   legacyVerificationToken: index("status_page_subscribers_verification_token_idx")
     .on(table.verificationToken)
     .where(sql`verification_token IS NOT NULL`),
-  legacyUnsubscribeToken: index("status_page_subscribers_unsubscribe_token_idx")
-    .on(table.unsubscribeToken)
-    .where(sql`unsubscribe_token IS NOT NULL`),
     statusPageSubscribersActiveIdx: index("status_page_subscribers_active_idx").on(table.statusPageId).where(sql`purge_at IS NULL`),
     statusPageSubscribersStatusPageIdIdx: index("status_page_subscribers_status_page_id_idx").on(table.statusPageId),
     statusPageSubscribersModeCheck: check("status_page_subscribers_mode_check", sql`${table.mode} IN ('email', 'webhook', 'slack')`),

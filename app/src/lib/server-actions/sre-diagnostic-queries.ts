@@ -9,7 +9,7 @@ import { logAuditEvent } from "@/lib/audit-logger";
 import { requireProjectContext, type ProjectAuthContext, type ProjectContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { isDiagnosticQueryTypeCompatible } from "@/lib/sre/connectors/diagnostic-query-adapters";
-import { validateDiagnosticQueryParameterSchema, validateTemplateFreeTextPositions, validateTemplatePlaceholderCoverage } from "@/lib/sre/connectors/diagnostic-query";
+import { isAzureMetricsTemplate, validateDiagnosticQueryParameterSchema, validateTemplateFreeTextPositions, validateTemplatePlaceholderCoverage } from "@/lib/sre/connectors/diagnostic-query";
 import { db } from "@/utils/db";
 
 const diagnosticQueryTypes = ["promql", "logql", "traceql", "http_get"] as const;
@@ -193,6 +193,16 @@ export async function createSreDiagnosticQuery(input: z.infer<typeof createDiagn
         success: false,
         error: `${parsed.data.queryType} diagnostic queries are not supported for ${connector.type.replace(/_/g, " ")} connectors`,
       };
+    }
+
+    // Parens are only safe as Azure resource-path characters; other connectors treat them as query grouping.
+    const schemaEntries = Object.values((parsed.data.parameterSchema ?? {}) as Record<string, unknown>);
+    if (connector.type !== "azure_monitor" && schemaEntries.some((entry) => (entry as { allowParens?: unknown } | null)?.allowParens !== undefined)) {
+      return { success: false, error: "allowParens is only supported for Azure Monitor connectors" };
+    }
+
+    if (!isAzureMetricsTemplate(parsed.data.template) && schemaEntries.some((entry) => (entry as { allowParens?: unknown } | null)?.allowParens !== undefined)) {
+      return { success: false, error: "allowParens is only supported in Azure Monitor metrics: templates" };
     }
 
     try {

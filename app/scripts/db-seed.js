@@ -75,7 +75,6 @@ const PLAN_LIMITS_SEED = [
     maxStatusPages: 999,
     maxStatusPageSubscribers: 999999,
     customDomains: true,
-    ssoEnabled: true,
     dataRetentionDays: 7, // Raw monitor data: 7 days (high frequency, keep lean)
     aggregatedDataRetentionDays: 90, // Aggregated metrics: 3 months max
     jobDataRetentionDays: 90, // Job runs: 3 months max
@@ -154,7 +153,7 @@ async function seedPlanLimits(client, { preserveExisting = true } = {}) {
           playwright_minutes_included, k6_vu_minutes_included, ai_credits_included, sre_investigation_units_included,
           running_capacity, queued_capacity, max_team_members,
           max_organizations, max_projects, max_status_pages, max_status_page_subscribers,
-          custom_domains, sso_enabled, data_retention_days, aggregated_data_retention_days, job_data_retention_days,
+          custom_domains, data_retention_days, aggregated_data_retention_days, job_data_retention_days,
           created_at, updated_at
         )
         VALUES (
@@ -162,7 +161,7 @@ async function seedPlanLimits(client, { preserveExisting = true } = {}) {
           ${plan.playwrightMinutesIncluded}, ${plan.k6VuMinutesIncluded}, ${plan.aiCreditsIncluded}, ${plan.sreInvestigationUnitsIncluded},
           ${plan.runningCapacity}, ${plan.queuedCapacity}, ${plan.maxTeamMembers},
           ${plan.maxOrganizations}, ${plan.maxProjects}, ${plan.maxStatusPages}, ${plan.maxStatusPageSubscribers},
-          ${plan.customDomains}, ${plan.ssoEnabled}, ${plan.dataRetentionDays}, ${plan.aggregatedDataRetentionDays}, ${plan.jobDataRetentionDays},
+          ${plan.customDomains}, ${plan.dataRetentionDays}, ${plan.aggregatedDataRetentionDays}, ${plan.jobDataRetentionDays},
           NOW(), NOW()
         )
         ON CONFLICT (plan) DO UPDATE SET
@@ -180,7 +179,6 @@ async function seedPlanLimits(client, { preserveExisting = true } = {}) {
           max_status_pages = EXCLUDED.max_status_pages,
           max_status_page_subscribers = EXCLUDED.max_status_page_subscribers,
           custom_domains = EXCLUDED.custom_domains,
-          sso_enabled = EXCLUDED.sso_enabled,
           data_retention_days = EXCLUDED.data_retention_days,
           aggregated_data_retention_days = EXCLUDED.aggregated_data_retention_days,
           job_data_retention_days = EXCLUDED.job_data_retention_days,

@@ -274,6 +274,19 @@ export class DbService implements OnModuleInit {
     }
   }
 
+  /** Merges keys into runs.metadata without clobbering what else is stored there. */
+  async mergeRunMetadata(
+    runId: string,
+    patch: Record<string, unknown>,
+  ): Promise<void> {
+    await this.dbInstance
+      .update(runs)
+      .set({
+        metadata: sql`coalesce(${runs.metadata}, '{}'::jsonb) || ${JSON.stringify(patch)}::text::jsonb`,
+      })
+      .where(eq(runs.id, runId));
+  }
+
   /**
    * Gets a job by ID including alert configuration with RBAC filtering
    * @param jobId The ID of the job to retrieve
@@ -428,6 +441,7 @@ export class DbService implements OnModuleInit {
     jobNameOverride?: string,
     deliveryMetadata?: AlertDeliveryMetadata,
     id?: string,
+    runId?: string,
   ): Promise<{ id: string; status: AlertStatus }> {
     try {
       let jobName = jobNameOverride;
@@ -443,6 +457,7 @@ export class DbService implements OnModuleInit {
         .values({
           ...(id ? { id } : {}),
           jobId,
+          runId,
           type,
           provider,
           status,
@@ -521,49 +536,7 @@ export class DbService implements OnModuleInit {
     jobId: string,
   ): Promise<{ sent: number; lastSentAt: Date | null; unknown?: boolean }> {
     try {
-      // The cutoff is a subquery so the count sees one snapshot. It is when the last non-failing run finished
-      // (creation time while unfinished), so an alert for an earlier failure delivered after that run was
-      // created still belongs to the old streak.
-      const since = this.db
-        .select({
-          at: sql<Date | null>`max(coalesce(${runs.completedAt}, ${runs.createdAt}))`,
-        })
-        .from(runs)
-        .where(
-          and(
-            eq(runs.jobId, jobId),
-            inArray(sql<string>`${runs.status}`, [
-              'passed',
-              'blocked',
-              'skipped',
-            ]),
-          ),
-        );
-      const perProvider = await this.db
-        .select({
-          sent: sql<number>`count(*)::int`,
-          lastSentAt: sql<Date>`max(${alertHistory.sentAt})`,
-        })
-        .from(alertHistory)
-        .where(
-          and(
-            eq(alertHistory.jobId, jobId),
-            eq(alertHistory.status, 'sent'),
-            inArray(sql<string>`${alertHistory.type}`, [
-              'job_failed',
-              'job_timeout',
-            ]),
-            sql`${alertHistory.sentAt} > coalesce((${since}), '-infinity'::timestamptz)`,
-          ),
-        )
-        .groupBy(alertHistory.provider);
-      return {
-        sent: Math.max(0, ...perProvider.map((row) => row.sent)),
-        lastSentAt: perProvider.reduce<Date | null>((latest, row) => {
-          const at = new Date(row.lastSentAt);
-          return !latest || at > latest ? at : latest;
-        }, null),
-      };
+      return await this.queryJobAlertStreak(jobId, this.db);
     } catch (error) {
       // Unknown history must not silence a failing job, nor alert on every run: flag it so the caller
       // falls back to the positional rule.
@@ -572,6 +545,141 @@ export class DbService implements OnModuleInit {
       );
       return { sent: 0, lastSentAt: null, unknown: true };
     }
+  }
+
+  // 'pending' counts: a slot reserved by a process that died before sending is treated as an alert, so a
+  // crash can cost one alert but never add one.
+  private async queryJobAlertStreak(
+    jobId: string,
+    database: Pick<typeof this.db, 'select'>,
+    excludeRunId?: string,
+  ): Promise<{ sent: number; lastSentAt: Date | null }> {
+    // The cutoff is a subquery so the count sees one snapshot. It is when the last non-failing run finished
+    // (creation time while unfinished), so an alert for an earlier failure delivered after that run was
+    // created still belongs to the old streak.
+    const since = database
+      .select({
+        at: sql<Date | null>`max(coalesce(${runs.completedAt}, ${runs.createdAt}))`,
+      })
+      .from(runs)
+      .where(
+        and(
+          eq(runs.jobId, jobId),
+          inArray(sql<string>`${runs.status}`, [
+            'passed',
+            'blocked',
+            'skipped',
+          ]),
+        ),
+      );
+    const perProvider = await database
+      .select({
+        sent: sql<number>`count(*)::int`,
+        lastSentAt: sql<Date>`max(${alertHistory.sentAt})`,
+      })
+      .from(alertHistory)
+      .where(
+        and(
+          eq(alertHistory.jobId, jobId),
+          inArray(sql<string>`${alertHistory.status}`, ['sent', 'pending']),
+          inArray(sql<string>`${alertHistory.type}`, [
+            'job_failed',
+            'job_timeout',
+          ]),
+          sql`${alertHistory.sentAt} > coalesce((${since}), '-infinity'::timestamptz)`,
+          // A re-driven run is judged as if it had not alerted, so its failed provider can be reclaimed.
+          excludeRunId
+            ? sql`${alertHistory.runId} IS DISTINCT FROM ${excludeRunId}`
+            : undefined,
+        ),
+      )
+      .groupBy(alertHistory.provider);
+    return {
+      sent: Math.max(0, ...perProvider.map((row) => row.sent)),
+      lastSentAt: perProvider.reduce<Date | null>((latest, row) => {
+        const at = new Date(row.lastSentAt);
+        return !latest || at > latest ? at : latest;
+      }, null),
+    };
+  }
+
+  /**
+   * Reserves the failure-alert slot for (job, run, provider) before anything is sent. Under a per-job lock it
+   * re-reads the streak, asks `shouldAlert` whether this alert is still allowed, and inserts a 'pending' row
+   * per provider. A provider whose row already exists for this run (sent, or reserved by another attempt) is
+   * not returned; only a 'failed' row is reclaimed. Returns provider id -> alert row id for the claimed ones.
+   * Throws when the database cannot be used, so the caller decides whether to send unreserved.
+   */
+  async claimJobAlertSlots(input: {
+    jobId: string;
+    runId: string;
+    type: 'job_failed' | 'job_timeout';
+    providerIds: string[];
+    message: string;
+    jobName: string;
+    shouldAlert: (state: { sent: number; lastSentAt: Date | null }) => boolean;
+  }): Promise<Map<string, string>> {
+    const { jobId, runId, type, providerIds, message, jobName } = input;
+    return this.db.transaction(async (tx) => {
+      await tx.execute(
+        sql`select pg_advisory_xact_lock(hashtextextended(${`job-alert:${jobId}`}, 0))`,
+      );
+      if (
+        !input.shouldAlert(await this.queryJobAlertStreak(jobId, tx, runId))
+      ) {
+        return new Map<string, string>();
+      }
+      const claimed = await tx
+        .insert(alertHistory)
+        .values(
+          providerIds.map((provider) => ({
+            jobId,
+            runId,
+            type,
+            provider,
+            status: 'pending' as const,
+            message,
+            sentAt: new Date(),
+            target: jobName,
+            targetType: 'job',
+          })),
+        )
+        .onConflictDoUpdate({
+          target: [
+            alertHistory.jobId,
+            alertHistory.runId,
+            alertHistory.provider,
+          ],
+          targetWhere: sql`${alertHistory.type} IN ('job_failed', 'job_timeout') AND ${alertHistory.runId} IS NOT NULL`,
+          set: {
+            status: 'pending',
+            sentAt: new Date(),
+            message,
+            errorMessage: null,
+            deliveryMetadata: null,
+          },
+          setWhere: sql`${alertHistory.status} = 'failed'`,
+        })
+        .returning({ id: alertHistory.id, provider: alertHistory.provider });
+      return new Map(claimed.map((row) => [row.provider, row.id]));
+    });
+  }
+
+  /** Records the delivery outcome on a row reserved by claimJobAlertSlots. */
+  async finishJobAlert(
+    id: string,
+    status: AlertStatus,
+    errorMessage?: string,
+    deliveryMetadata?: AlertDeliveryMetadata,
+  ): Promise<void> {
+    await this.db
+      .update(alertHistory)
+      .set({
+        status,
+        errorMessage: errorMessage ?? null,
+        deliveryMetadata: deliveryMetadata ?? null,
+      })
+      .where(eq(alertHistory.id, id));
   }
 
   async claimRunExecution(runId: string): Promise<boolean> {
@@ -798,10 +906,16 @@ export class DbService implements OnModuleInit {
           continue;
         }
 
-        // Get the latest completed run from any of these jobs
+        // Latest terminal run from any of these jobs. A job run records per-test outcomes in
+        // metadata.testStatuses; older runs and k6 runs fall back to the run status.
         const jobIds = jobsWithTest.map((j) => j.jobId);
         const latestRun = await this.db
-          .select({ status: schema.runs.status })
+          .select({
+            status: schema.runs.status,
+            testStatus: sql<
+              string | null
+            >`${schema.runs.metadata}->'testStatuses'->>${testId}::text`,
+          })
           .from(schema.runs)
           .where(
             and(
@@ -812,10 +926,16 @@ export class DbService implements OnModuleInit {
               sql`${schema.runs.status} IN ('passed', 'failed', 'error')`,
             ),
           )
-          .orderBy(desc(schema.runs.completedAt), desc(schema.runs.id))
+          .orderBy(
+            sql`${schema.runs.completedAt} DESC NULLS LAST`,
+            desc(schema.runs.id),
+          )
           .limit(1);
 
-        const status = latestRun.length > 0 ? latestRun[0].status : null;
+        const status =
+          latestRun.length > 0
+            ? (latestRun[0].testStatus ?? latestRun[0].status)
+            : null;
         results.push({
           testId,
           status:

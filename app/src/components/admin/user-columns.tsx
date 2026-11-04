@@ -98,6 +98,7 @@ export const createUserColumns = (
     cell: ({ row }) => (
       <UserCell
         name={row.original.name}
+        userId={row.original.id}
         email={row.original.email}
         image={row.original.image}
         className="h-8 max-w-[220px] font-medium"

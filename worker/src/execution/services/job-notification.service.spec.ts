@@ -8,7 +8,7 @@ import { RUN_CANCELLATION_MARKER } from '../../common/services/cancellation.serv
 
 describe('JobNotificationService', () => {
   function createService() {
-    const dbService = {
+    const dbService: Record<string, jest.Mock> = {
       getJobById: jest.fn().mockResolvedValue({
         id: 'job-1',
         name: 'Checkout smoke test',
@@ -37,6 +37,17 @@ describe('JobNotificationService', () => {
         .fn()
         .mockResolvedValueOnce({ id: 'history-1', status: 'sent' })
         .mockResolvedValueOnce({ id: 'history-2', status: 'failed' }),
+      // Like the real claim: reserve a row per provider when the gate still allows the alert.
+      claimJobAlertSlots: jest.fn(
+        async (input: {
+          providerIds: string[];
+          shouldAlert: (state: unknown) => boolean;
+        }) =>
+          input.shouldAlert(await dbService.getJobAlertStreakState())
+            ? new Map(input.providerIds.map((id) => [id, `row-${id}`]))
+            : new Map<string, string>(),
+      ),
+      finishJobAlert: jest.fn().mockResolvedValue(undefined),
     };
     const notificationService = {
       sendNotificationToMultipleProviders: jest.fn().mockResolvedValue({
@@ -100,26 +111,22 @@ describe('JobNotificationService', () => {
       results: [{ success: false }],
     });
 
-    expect(dbService.saveAlertHistory).toHaveBeenCalledTimes(2);
-    expect(dbService.saveAlertHistory).toHaveBeenLastCalledWith(
-      'job-1',
-      'job_failed',
-      'provider-2',
+    expect(dbService.saveAlertHistory).not.toHaveBeenCalled();
+    expect(dbService.finishJobAlert).toHaveBeenCalledTimes(2);
+    expect(dbService.finishJobAlert).toHaveBeenLastCalledWith(
+      'row-provider-2',
       'failed',
-      expect.any(String),
       'failed',
-      'Checkout smoke test',
       expect.objectContaining({
         version: 1,
         provider: { id: 'provider-2', type: 'webhook' },
       }),
-      expect.any(String),
     );
     expect(
       sreAlertTriageQueueService.enqueueAlertHistoryRows,
     ).toHaveBeenCalledWith([
-      { id: 'history-1', status: 'sent' },
-      { id: 'history-2', status: 'failed' },
+      { id: 'row-provider-1', status: 'sent' },
+      { id: 'row-provider-2', status: 'failed' },
     ]);
   });
   it.each(['failed', 'passed', 'error'] as const)(
@@ -203,10 +210,15 @@ describe('JobNotificationService', () => {
           }),
         }),
       );
-      expect(dbService.saveAlertHistory).toHaveBeenCalledTimes(2);
-      for (const call of dbService.saveAlertHistory.mock.calls) {
-        expect(call.slice(0, 2)).toEqual(['job-1', 'job_timeout']);
-      }
+      expect(dbService.claimJobAlertSlots).toHaveBeenCalledWith(
+        expect.objectContaining({
+          jobId: 'job-1',
+          runId: 'run-1',
+          type: 'job_timeout',
+          providerIds: ['provider-1', 'provider-2'],
+        }),
+      );
+      expect(dbService.finishJobAlert).toHaveBeenCalledTimes(2);
     });
 
     // [prior failed runs, alerts sent, failure after which the last one went out, notifies]
@@ -271,7 +283,7 @@ describe('JobNotificationService', () => {
     it('logs and swallows an alert-history save failure', async () => {
       const { service, dbService, sreAlertTriageQueueService } =
         createService();
-      dbService.saveAlertHistory
+      dbService.finishJobAlert
         .mockReset()
         .mockRejectedValue(new Error('db down'));
       await expect(
@@ -287,9 +299,66 @@ describe('JobNotificationService', () => {
       ).toHaveBeenCalledWith([]);
     });
 
+    it('sends unreserved and records afterwards when the slot cannot be reserved', async () => {
+      const { service, dbService, notificationService } = createService();
+      dbService.claimJobAlertSlots.mockRejectedValue(new Error('db down'));
+      dbService.saveAlertHistory
+        .mockReset()
+        .mockRejectedValue(new Error('db down'));
+      await service.handleJobNotifications(params);
+      expect(
+        notificationService.sendNotificationToMultipleProviders,
+      ).toHaveBeenCalledTimes(1);
+      expect(dbService.finishJobAlert).not.toHaveBeenCalled();
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Failed to reserve alert slot'),
+      );
+      expect(dbService.saveAlertHistory).toHaveBeenCalled();
+    });
+
+    it('sends nothing when every provider slot was already claimed for the run', async () => {
+      const { service, dbService, notificationService } = createService();
+      dbService.claimJobAlertSlots.mockResolvedValue(new Map());
+      await service.handleJobNotifications(params);
+      expect(
+        notificationService.sendNotificationToMultipleProviders,
+      ).not.toHaveBeenCalled();
+      expect(dbService.finishJobAlert).not.toHaveBeenCalled();
+    });
+
+    it('sends only to the providers it claimed and marks a failed send as failed', async () => {
+      const { service, dbService, notificationService } = createService();
+      dbService.claimJobAlertSlots.mockResolvedValue(
+        new Map([['provider-2', 'row-2']]),
+      );
+      notificationService.sendNotificationToMultipleProviders.mockResolvedValue(
+        {
+          success: 0,
+          failed: 1,
+          results: [
+            { provider: { id: 'provider-2' }, success: false, error: 'boom' },
+          ],
+        },
+      );
+      await service.handleJobNotifications(params);
+      expect(
+        notificationService.sendNotificationToMultipleProviders,
+      ).toHaveBeenCalledWith(
+        [expect.objectContaining({ id: 'provider-2' })],
+        expect.anything(),
+      );
+      expect(dbService.finishJobAlert).toHaveBeenCalledWith(
+        'row-2',
+        'failed',
+        'boom',
+        undefined,
+      );
+    });
+
     it('retries a failed alert-history insert so the sent row is stored', async () => {
       const { service, dbService, sreAlertTriageQueueService } =
         createService();
+      dbService.claimJobAlertSlots.mockRejectedValue(new Error('no db'));
       const savedRow = { id: 'row-2' };
       dbService.saveAlertHistory
         .mockReset()

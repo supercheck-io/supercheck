@@ -125,7 +125,6 @@ export function trialPlanLimits(entitlement: Entitlement): PlanLimits {
     maxStatusPageSubscribers: entitlement.maxStatusPageSubscribers,
     // Custom domains and SSO need production DNS/TLS and identity setup; keep them paid.
     customDomains: false,
-    ssoEnabled: false,
     ...TRIAL_RETENTION,
     createdAt: new Date(0),
     updatedAt: new Date(0),

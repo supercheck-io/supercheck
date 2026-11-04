@@ -226,8 +226,45 @@ describe("diagnostic query free-text and broad-pattern guards", () => {
     const { diagnosticQueryAdapterRecipes } = jest.requireActual("./diagnostic-query-adapters");
     for (const r of diagnosticQueryAdapterRecipes) {
       expect(() => validateDiagnosticQueryParameterSchema(r.parameterSchema)).not.toThrow();
-      expect(() => validateTemplateFreeTextPositions(r.template, r.parameterSchema, r.allowlist)).not.toThrow();
+      expect(() => validateTemplateFreeTextPositions(r.template, r.parameterSchema, r.allowlist, r.queryType)).not.toThrow();
     }
+  });
+
+  describe("allowParens", () => {
+    const sub = "/subscriptions/00000000-0000-0000-0000-000000000000";
+    const schema = { resource: { type: "string", pattern: "^/subscriptions/[0-9a-f-]{36}/resourceGroups/[\\w.()-]+/providers/[\\w.]+/[\\w.-]+/[\\w./()-]+$", allowParens: true } };
+    const render = (resource: string, queryType: "http_get" | "promql" = "http_get") =>
+      renderDiagnosticQueryTemplate({ ...base, queryType, template: "metrics: resource=$resource", parameterSchema: schema, allowlist: {} }, { resource });
+
+    it("renders parentheses in an http_get resource path", () => {
+      const id = `${sub}/resourceGroups/rg(prod)/providers/Microsoft.Web/sites/app(1)`;
+      expect(render(id).query).toBe(`metrics: resource=${id}`);
+    });
+
+    it("still rejects injection, spaces, quotes and traversal", () => {
+      for (const bad of [`${sub}/resourceGroups/rg(prod) or 1/providers/Microsoft.Web/sites/a`, `${sub}/resourceGroups/rg"x/providers/Microsoft.Web/sites/a`, `${sub}/resourceGroups/rg/providers/Microsoft.Web/sites/../a`]) {
+        expect(() => render(bad)).toThrow();
+      }
+    });
+
+    it("is ignored outside http_get", () => {
+      expect(() => render(`${sub}/resourceGroups/rg(prod)/providers/Microsoft.Web/sites/a`, "promql")).toThrow("unquoted free text");
+      const loose = { r: { type: "string", pattern: "^[\\w()]+$", allowParens: true } };
+      expect(() => validateTemplateFreeTextPositions("up > $r", loose, {}, "promql")).toThrow("unquoted position");
+      expect(() => validateTemplateFreeTextPositions("metrics: up > $r", loose, {}, "http_get")).not.toThrow();
+    });
+
+    it("is ignored in logs: (KQL) templates at render and save time", () => {
+      const tpl = "logs: AppTraces | where Name == $resource";
+      const evil = "false)or(true";
+      const loose = { resource: { type: "string", pattern: "^[\\w()]+$", allowParens: true } };
+      expect(() => renderDiagnosticQueryTemplate({ ...base, queryType: "http_get", template: tpl, parameterSchema: loose, allowlist: {} }, { resource: evil })).toThrow("unquoted free text");
+      expect(() => validateTemplateFreeTextPositions(tpl, loose, {}, "http_get")).toThrow("unquoted position");
+    });
+
+    it("requires a pattern", () => {
+      expect(() => validateDiagnosticQueryParameterSchema({ r: { type: "string", allowParens: true } })).toThrow("allowParens");
+    });
   });
 
   describe("http_get templates", () => {
