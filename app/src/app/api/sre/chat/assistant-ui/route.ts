@@ -403,12 +403,16 @@ export async function POST(request: NextRequest) {
   // client ids are not storable), but an assistant turn counts only when a stored row in
   // THIS conversation has the same id, role and text, so a forged reply is dropped.
   const regenerating = parsed.data.trigger === "regenerate-message";
-  const regenerateTargetId = parsed.data.messageId;
+  // The AI SDK trims the reply being regenerated from `messages` and may omit its id;
+  // then the newest assistant turn sent stands in, and must still verify against a stored row.
+  const regenerateTargetId =
+    parsed.data.messageId ??
+    (regenerating ? messages.findLast((message) => message.role === "assistant")?.id : undefined);
   const newestUserIndex = messages.lastIndexOf(latestUserMessage);
   let claimed = messages.slice(0, newestUserIndex);
   if (regenerating) {
     const targetIndex = messages.findIndex((message) => message.id === regenerateTargetId);
-    claimed = targetIndex >= 0 ? messages.slice(0, targetIndex) : messages;
+    claimed = targetIndex >= 0 && parsed.data.messageId ? messages.slice(0, targetIndex) : messages;
   }
   const scope = {
     organizationId: context.organizationId,
