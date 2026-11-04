@@ -5,6 +5,7 @@ import { z } from "zod";
 import { redactConnectorText } from "@/lib/sre/connectors/output-sanitizer";
 
 import { privateAgentCredentials, privateAgentJobs, privateAgents } from "@/db/schema";
+import { MAX_PRIVATE_AGENT_RESULT_BYTES, readCappedJson } from "@/lib/private-agents/request-limits";
 import { hashApiKey } from "@/lib/security/api-key-hash";
 import { hashConnectorPayload } from "@/lib/sre/connectors";
 import { db } from "@/utils/db";
@@ -39,7 +40,11 @@ export async function POST(request: NextRequest) {
       return unauthorized();
     }
 
-    const rawBody = await request.json().catch(() => null);
+    const read = await readCappedJson(request, MAX_PRIVATE_AGENT_RESULT_BYTES);
+    if (read.tooLarge) {
+      return NextResponse.json({ error: "Job result payload too large" }, { status: 413 });
+    }
+    const rawBody = read.data;
     const body = resultSchema.safeParse(rawBody);
     if (!body.success) {
       // Fail the leased job so a result the server can never accept is not re-leased and re-run forever.
