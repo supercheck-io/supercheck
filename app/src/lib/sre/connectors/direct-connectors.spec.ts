@@ -418,12 +418,8 @@ describe("direct connectors", () => {
     );
   });
 
-  it("classifies Datadog validate=false responses as invalid credentials", async () => {
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({ valid: false }),
-    }) as unknown as typeof fetch;
+  it("validates Datadog with an endpoint that needs both keys and names the site on 403", async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 403 }) as unknown as typeof fetch;
 
     const connector = createDirectConnector({
       ...baseDefinition,
@@ -437,8 +433,9 @@ describe("direct connectors", () => {
     const result = await connector.validate();
 
     expect(result.status).toBe("invalid_credentials");
+    expect(result.message).toContain("api.datadoghq.eu");
     expect(global.fetch).toHaveBeenCalledWith(
-      "https://api.datadoghq.com/api/v1/validate",
+      expect.stringMatching(/^https:\/\/api\.datadoghq\.com\/api\/v1\/events\?start=\d+&end=\d+$/),
       expect.objectContaining({
         headers: expect.objectContaining({
           "DD-API-KEY": "bad-api-key",
@@ -446,6 +443,21 @@ describe("direct connectors", () => {
         }),
       }),
     );
+  });
+
+  it("maps a 404 to a path-not-found message", async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 404 }) as unknown as typeof fetch;
+    const connector = createDirectConnector({
+      ...baseDefinition,
+      type: "datadog",
+      endpointUrl: "https://api.datadoghq.com",
+      surfaces: ["metrics"],
+      evidenceTypes: ["event"],
+      credential: { apiKey: "k", applicationKey: "a" },
+    });
+    const result = await connector.validate();
+    expect(result.status).toBe("unreachable");
+    expect(result.message).toContain("path not found");
   });
 
   it("classifies missing Datadog keys as invalid credentials without probing the network", async () => {
