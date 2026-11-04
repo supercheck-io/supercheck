@@ -204,6 +204,14 @@ function configureErrors(command: Command): void {
 }
 configureErrors(program)
 
+// A reader that closes the pipe early (`supercheck ... | head`) is not an error: stop quietly, like other CLIs.
+for (const stream of [process.stdout, process.stderr]) {
+  stream.on('error', (error: NodeJS.ErrnoException) => {
+    if (error.code === 'EPIPE') process.exit(0)
+    throw error
+  })
+}
+
 async function main(): Promise<void> {
   try {
     await program.parseAsync(process.argv)
