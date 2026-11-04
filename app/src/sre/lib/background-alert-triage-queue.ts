@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { alertHistory, jobs, monitors } from "@/db/schema";
+import { isAttemptedAlertStatus } from "@/lib/alert-escalation";
 import { getRedisConnection, queueLogger } from "@/lib/queue";
 import { isSreBackgroundAlertTriageEnabled } from "@/sre/lib/feature-gates";
 import { db } from "@/utils/db";
@@ -47,7 +48,7 @@ async function shouldEnqueueAlertTriage(alertHistoryId: string): Promise<SreAler
     return { shouldEnqueue: false, reason: "alert_not_found" };
   }
 
-  if (alert.status !== "sent" && alert.status !== "failed") {
+  if (!isAttemptedAlertStatus(alert.status)) {
     return { shouldEnqueue: false, reason: "non_sent_alert" };
   }
 

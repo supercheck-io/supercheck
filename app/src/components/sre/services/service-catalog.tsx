@@ -61,6 +61,8 @@ type ServiceCatalogProps = {
   permissions?: { canCreate: boolean; canUpdate: boolean; canArchive: boolean };
 };
 
+const ACTIVE_ONLY = [{ id: "status", value: ["active"] }];
+
 export function ServiceCatalog({
   projectId,
   initialServices,
@@ -151,13 +153,11 @@ export function ServiceCatalog({
 
   return (
     <div className="mt-6 min-w-0 space-y-4 p-2">
-      {services.length === 0 && (
-        <PageHeader
-          title="Services"
-          description="Link monitors and jobs to services for investigation context."
-          className="mb-4 -mt-2"
-        />
-      )}
+      <PageHeader
+        title="Services"
+        description="Link monitors and jobs to services for investigation context."
+        className="mb-4 -mt-2"
+      />
       {services.length === 0 ? (
         <DashboardEmptyState
           className="min-h-[420px]"
@@ -184,6 +184,8 @@ export function ServiceCatalog({
         <DataTable
           columns={columns}
           data={services}
+          // Archived services are reachable through the Status filter, not shown by default.
+          initialColumnFilters={ACTIVE_ONLY}
           onRowClick={handleRowClick}
           renderToolbar={(table) => (
             <ServicesToolbar

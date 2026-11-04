@@ -42,6 +42,11 @@ interface DataTableProps<TData, TValue> {
     table: import("@tanstack/react-table").Table<TData>,
   ) => React.ReactNode;
   entityLabel?: string;
+  /** Shown instead of "No results." when no row is visible. */
+  emptyMessage?: string;
+  /** Sort applied on first render; header clicks then change it. */
+  initialSorting?: SortingState;
+  initialColumnFilters?: ColumnFiltersState;
   initialColumnVisibility?: VisibilityState;
   skeletonColumns?: number;
   onRowPrefetch?: (row: Row<TData>) => void;
@@ -57,6 +62,11 @@ interface DataTableProps<TData, TValue> {
 interface ExtendedTableMeta<TData> extends TableMeta<TData> {
   globalFilterColumns?: string[];
 }
+
+const sortLabel: Record<string, "ascending" | "descending"> = {
+  asc: "ascending",
+  desc: "descending",
+};
 
 // Generic global filter function
 function genericGlobalFilterFn(
@@ -107,6 +117,9 @@ export function DataTable<TData, TValue>({
   onRowClick,
   renderToolbar,
   entityLabel,
+  emptyMessage = "No results.",
+  initialSorting = [],
+  initialColumnFilters = [],
   initialColumnVisibility = { updatedAt: false },
   skeletonColumns = 5,
   onRowPrefetch,
@@ -118,9 +131,9 @@ export function DataTable<TData, TValue>({
   const [columnVisibility, setColumnVisibility] =
     React.useState<VisibilityState>(initialColumnVisibility);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(
-    [],
+    initialColumnFilters,
   );
-  const [sorting, setSorting] = React.useState<SortingState>([]);
+  const [sorting, setSorting] = React.useState<SortingState>(initialSorting);
   const [globalFilter, setGlobalFilter] = React.useState("");
   const [mounted, setMounted] = React.useState(false);
   const { bodyRef, pagination, onPaginationChange } = useFitPagination(data.length, fixedPageSize);
@@ -309,7 +322,14 @@ export function DataTable<TData, TValue>({
               <TableRow key={headerGroup.id}>
                 {headerGroup.headers.map((header) => {
                   return (
-                    <TableHead key={header.id}>
+                    <TableHead
+                      key={header.id}
+                      aria-sort={
+                        header.column.getCanSort()
+                          ? sortLabel[String(header.column.getIsSorted())] ?? "none"
+                          : undefined
+                      }
+                    >
                       {header.isPlaceholder
                         ? null
                         : flexRender(
@@ -399,7 +419,7 @@ export function DataTable<TData, TValue>({
                   colSpan={columns.length}
                   className="h-24 text-center"
                 >
-                  No results.
+                  {emptyMessage}
                 </TableCell>
               </TableRow>
             )}

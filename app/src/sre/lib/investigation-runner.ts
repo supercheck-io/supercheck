@@ -83,11 +83,21 @@ export type RunSreIncidentInvestigationResult =
       investigationRunId?: string;
     };
 
+/** The incident row startSreIncidentInvestigation loads (with evidence counts) and hands to the executor. */
+export type InvestigationIncident = Pick<
+  typeof sreIncidents.$inferSelect,
+  "id" | "title" | "severity" | "status" | "primaryServiceId"
+> & {
+  primaryServiceName: string | null;
+  evidenceCount: number;
+  connectorEvidenceCount: number;
+};
+
 export type StartSreIncidentInvestigationResult =
   | {
       success: true;
       investigationRunId: string;
-      incident: any;
+      incident: InvestigationIncident;
     }
   | {
       success: false;
@@ -192,7 +202,7 @@ export async function startSreIncidentInvestigation(
 
 export async function executeSreIncidentInvestigation(
   investigationRunId: string,
-  incident: any,
+  incident: InvestigationIncident,
   input: RunSreIncidentInvestigationInput,
 ): Promise<RunSreIncidentInvestigationResult> {
   const startedAt = Date.now();
@@ -543,7 +553,7 @@ export async function executeSreIncidentInvestigation(
 
 export async function completeSreIncidentInvestigation(
   investigationRunId: string,
-  incident: any,
+  incident: InvestigationIncident,
   input: RunSreIncidentInvestigationInput,
 ): Promise<RunSreIncidentInvestigationResult> {
   const execResult = await executeSreIncidentInvestigation(

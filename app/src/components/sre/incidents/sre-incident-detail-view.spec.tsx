@@ -301,7 +301,7 @@ describe("SreIncidentDetailView", () => {
     expect(screen.getByTestId("hypothesis-h2")).toHaveTextContent("Ruled out");
     expect(screen.getAllByRole("button", { name: "View evidence: Monitor timeout" }).length).toBeGreaterThan(0);
     expect(screen.getAllByText("Feedback: this investigation")).toHaveLength(1);
-    expect(screen.getByTestId("investigation-step-trace")).toHaveAttribute("open");
+    expect(screen.getByTestId("investigation-step-trace")).toHaveAttribute("data-state", "open");
   });
 
   it("offers the post-mortem only once the incident is resolved", () => {
@@ -341,6 +341,17 @@ describe("SreIncidentDetailView", () => {
     render(<SreIncidentDetailView detail={detail} services={[]} />);
     expect(screen.queryByRole("button", { name: "Acknowledge" })).not.toBeInTheDocument();
     expect(screen.getByText("10 min")).toBeInTheDocument();
+  });
+
+  it("shows the triage finding in the AI summary when no investigation exists", () => {
+    const detail = detailFixture();
+    detail.incident.rootCauseSummary = null;
+    detail.incident.confidenceScore = null;
+    detail.latestInvestigation = null;
+    detail.triageSummary = "Triage: connection pool exhausted";
+    render(<SreIncidentDetailView detail={detail} services={[]} />);
+    expect(screen.getByTestId("incident-ai-summary")).toHaveTextContent("connection pool exhausted");
+    expect(screen.queryByText(/No AI analysis yet/)).not.toBeInTheDocument();
   });
 
   it("hides ownership actions for read-only users and shows the resolution summary when resolved", () => {

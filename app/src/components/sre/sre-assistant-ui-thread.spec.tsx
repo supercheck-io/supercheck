@@ -5,8 +5,8 @@ import {
   getQuickRepliesForAssistantText,
 } from "./sre-generative-ui";
 import { CopilotChatHelp } from "./sre-copilot-chat-help";
-import { INCIDENT_STARTERS, SreAssistantUiThread } from "./sre-assistant-ui-thread";
-import { AssistantChatTransport } from "@assistant-ui/react-ai-sdk";
+import { INCIDENT_STARTERS, SreAssistantUiThread, historyMessagesToUiMessages, InterruptedNotice } from "./sre-assistant-ui-thread";
+import { AssistantChatTransport, useChatRuntime } from "@assistant-ui/react-ai-sdk";
 import { useProjectContext } from "@/hooks/use-project-context";
 
 jest.mock("@assistant-ui/react", () => ({
@@ -187,5 +187,84 @@ describe("SRE assistant-ui prompt helpers", () => {
     expect(
       formatCopilotError(new Error('{"error":"Invalid Copilot chat request"}')),
     ).toBe("Invalid Copilot chat request");
+  });
+});
+
+describe("historyMessagesToUiMessages", () => {
+  it("adds a short notice to an interrupted reply only", () => {
+    const [done, cut] = historyMessagesToUiMessages([
+      { id: "a", role: "assistant", content: "Finished", modelId: null },
+      { id: "b", role: "assistant", content: "Partial", modelId: null, interrupted: true },
+    ]);
+    expect(done.parts).toEqual([{ type: "text", text: "Finished" }]);
+    expect(cut.parts).toEqual([{ type: "text", text: "Partial\n\nReply was interrupted." }]);
+  });
+});
+
+describe("regenerate request", () => {
+  const prepare = (initialMessages: React.ComponentProps<typeof SreAssistantUiThread>["initialMessages"]) => {
+    jest.mocked(useProjectContext).mockReturnValue({
+      currentProject: { userRole: "project_admin" },
+    } as ReturnType<typeof useProjectContext>);
+    render(
+      <SreAssistantUiThread
+        conversationId="c1"
+        incidentId={null}
+        initialMessages={initialMessages}
+        onConversationResolved={jest.fn()}
+        onClearError={jest.fn()}
+        onError={jest.fn()}
+      />,
+    );
+    const init = jest.mocked(AssistantChatTransport).mock.lastCall![0] as unknown as {
+      prepareSendMessagesRequest: (o: Record<string, unknown>) => { body: Record<string, unknown> };
+    };
+    const runtimeOptions = jest.mocked(useChatRuntime).mock.lastCall![0] as unknown as {
+      onFinish: (e: unknown) => void;
+    };
+    const request = (trigger: string, messageId?: string) =>
+      init.prepareSendMessagesRequest({
+        id: "c1",
+        messages: [],
+        trigger,
+        messageId,
+        body: { conversationId: "c1", system: "s" },
+        requestMetadata: undefined,
+      }).body;
+    return { request, runtimeOptions };
+  };
+
+  it("sends the id of the last reply after a reload, with the rest of the body unchanged", () => {
+    const { request } = prepare([
+      { id: "u1", role: "user", content: "q", modelId: null },
+      { id: "a1", role: "assistant", content: "a", modelId: null },
+    ]);
+    expect(request("regenerate-message")).toEqual(
+      expect.objectContaining({ trigger: "regenerate-message", messageId: "a1", conversationId: "c1", system: "s" }),
+    );
+    expect(request("submit-message").messageId).toBeUndefined();
+  });
+
+  it("follows the newest streamed reply and prefers an id the SDK provides", () => {
+    const { request, runtimeOptions } = prepare([]);
+    runtimeOptions.onFinish({ message: { id: "a9", role: "assistant", parts: [{ type: "text", text: "x" }] }, messages: [] });
+    expect(request("regenerate-message").messageId).toBe("a9");
+    expect(request("regenerate-message", "a3").messageId).toBe("a3");
+  });
+});
+
+describe("InterruptedNotice", () => {
+  it("shows only for a cancelled reply", () => {
+    const { rerender } = render(<InterruptedNotice status={{ type: "incomplete", reason: "cancelled" }} />);
+    expect(screen.getByText("Reply was interrupted.")).toBeInTheDocument();
+    rerender(<InterruptedNotice status={{ type: "incomplete", reason: "error" }} />);
+    expect(screen.queryByText("Reply was interrupted.")).not.toBeInTheDocument();
+    rerender(<InterruptedNotice status={{ type: "complete" }} />);
+    expect(screen.queryByText("Reply was interrupted.")).not.toBeInTheDocument();
+  });
+
+  it("shows when the server flagged the reply as interrupted", () => {
+    render(<InterruptedNotice status={{ type: "complete" }} interrupted />);
+    expect(screen.getByText("Reply was interrupted.")).toBeInTheDocument();
   });
 });

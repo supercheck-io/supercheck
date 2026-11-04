@@ -35,6 +35,7 @@ import {
   getDefaultAssigneeId,
   reopenRecentlyAutoResolved,
 } from "@/lib/sre/incident-lifecycle";
+import { isAttemptedAlertStatus } from "@/lib/alert-escalation";
 import { alertIncidentTitle } from "@/lib/sre/alert-labels";
 import { linkStatusPageIncidentsToSreIncident } from "@/lib/status-page-reconciliation";
 import { notifyIncidentEvent } from "@/lib/sre/incident-notifier";
@@ -267,7 +268,7 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
   }
 
   // Failed deliveries still open an incident; only undelivered (pending) rows wait.
-  if (alert.status !== "sent" && alert.status !== "failed") {
+  if (!isAttemptedAlertStatus(alert.status)) {
     return { skipped: true as const, reason: "non_sent_alert" as const };
   }
 
@@ -844,6 +845,7 @@ export async function processSreBackgroundAlertTriageJob(
 
   if (!triage.success && triage.status === 409) {
     // Another triage/investigation is already running for this incident; nothing to retry.
+    logger.warn({ incidentId: incident.incidentId }, "Background triage skipped: an investigation is already running");
     return { success: true, skipped: true, reason: "triage_in_progress" };
   }
 

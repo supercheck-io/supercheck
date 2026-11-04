@@ -3,11 +3,15 @@ import { AppModule } from './app.module';
 import { Logger } from 'nestjs-pino';
 import { startPrivateAgentRunner } from './private-agent/private-agent-runner';
 
+import { assertSecretKeyUsable } from './common/security/secret-crypto';
+import { isCloudWorkerRuntime } from './common/runtime-mode';
 import { initSentry } from './common/sentry-reporter';
 
 async function bootstrap() {
   // No-op unless SENTRY_DSN is set and SELF_HOSTED is not true.
   initSentry();
+  // Cloud production must not boot on the compose placeholder key.
+  if (isCloudWorkerRuntime()) assertSecretKeyUsable();
   // Create the application with buffer logs until logger is ready
   const app = await NestFactory.create(AppModule, {
     bufferLogs: true,

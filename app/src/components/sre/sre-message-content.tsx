@@ -30,6 +30,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { SRE_CHART_LIMITS } from "@/sre/lib/chart-contract";
 
 const CHART_COLORS = [
   "var(--chart-1)",
@@ -38,7 +39,8 @@ const CHART_COLORS = [
   "var(--chart-4)",
 ];
 
-const LARGE_OUTPUT_LINE_THRESHOLD = 500;
+// Windowed plain text is only for pathological output; ordinary long replies keep markdown.
+const LARGE_OUTPUT_LINE_THRESHOLD = 2000;
 const LARGE_OUTPUT_LINE_HEIGHT = 20;
 
 type ParsedSreChart = {
@@ -182,9 +184,9 @@ function parseSreChartBlock(value: string): ParsedSreChart | null {
           : null;
   const xKey = typeof record.xKey === "string" ? record.xKey : null;
   const rawSeries = Array.isArray(record.series)
-    ? record.series.slice(0, 4)
+    ? record.series.slice(0, SRE_CHART_LIMITS.maxSeries)
     : [];
-  const rawData = Array.isArray(record.data) ? record.data.slice(0, 48) : [];
+  const rawData = Array.isArray(record.data) ? record.data.slice(0, SRE_CHART_LIMITS.maxRows) : [];
 
   if (!type || !xKey || rawSeries.length === 0 || rawData.length === 0)
     return null;
@@ -205,7 +207,7 @@ function parseSreChartBlock(value: string): ParsedSreChart | null {
   if (series.length === 0) return null;
 
   const rawSources = Array.isArray(record.sources)
-    ? record.sources.slice(0, 3)
+    ? record.sources.slice(0, SRE_CHART_LIMITS.maxSources)
     : record.source
       ? [record.source]
       : [];
@@ -229,7 +231,7 @@ function parseSreChartBlock(value: string): ParsedSreChart | null {
             const text = safeChartText(id, 80);
             return text ? [text] : [];
           })
-          .slice(0, 4)
+          .slice(0, SRE_CHART_LIMITS.maxEvidenceIdsPerSource)
       : [];
 
     return [
@@ -545,7 +547,14 @@ function VirtualizedLargeOutput({ lines }: { lines: string[] }) {
   );
 }
 
-export function SreMessageContent({ content }: { content: string }) {
+export function SreMessageContent({
+  content,
+  isStreaming = false,
+}: {
+  content: string;
+  /** The reply is still arriving, so an unclosed chart fence is not an error yet. */
+  isStreaming?: boolean;
+}) {
   const lines = content.replace(/\r\n/g, "\n").split("\n");
 
   if (lines.length >= LARGE_OUTPUT_LINE_THRESHOLD) {
@@ -586,6 +595,17 @@ export function SreMessageContent({ content }: { content: string }) {
       ) {
         codeLines.push(lines[codeIndex] ?? "");
         codeIndex += 1;
+      }
+
+      if (language === "chart" && codeIndex >= lines.length && isStreaming) {
+        // Still streaming: the closing fence has not arrived, so there is no chart to draw yet.
+        rendered.push(
+          <p key={`chart-pending-${index}`} className="text-xs text-muted-foreground">
+            Preparing chart…
+          </p>,
+        );
+        index = codeIndex;
+        continue;
       }
 
       if (language === "chart") {

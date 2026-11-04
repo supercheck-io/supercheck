@@ -20,6 +20,10 @@ jest.mock("@/lib/sre/sre-rate-limiter", () => ({
 jest.mock("@/lib/sre/connectors", () => ({
   ...jest.requireActual("@/lib/sre/connectors"),
   assertEndpointAllowedForExecution: jest.fn(async () => undefined),
+  decryptConnectorCredential: jest.fn(() => ({ type: "api_key", value: { secret: "x" } })),
+  createDirectConnector: jest.fn(() => ({
+    validate: async () => ({ status: "unreachable", message: "401 Bearer sk-secret-token-value-123456" }),
+  })),
 }));
 jest.mock("@/utils/db", () => {
   const chain = { set: (...a: unknown[]) => { mockSet(...a); return chain; }, where: () => chain, values: () => chain, returning: async () => [] };
@@ -58,5 +62,42 @@ describe("validateSreConnector with a row of a removed type", () => {
         lastValidationError: "This connector type is not supported",
       }),
     );
+  });
+});
+
+describe("validateSreConnector failure text", () => {
+  it("redacts secrets before persisting lastValidationError", async () => {
+    mockSet.mockClear();
+    mockFindConnector.mockResolvedValue({
+      id: "018f0000-0000-7000-8000-000000000004",
+      type: "sentry",
+      status: "configured",
+      privateAgentId: null,
+      config: { endpointUrl: "https://sentry.io" },
+      outputLimits: {},
+    });
+    await validateSreConnector({ id: "018f0000-0000-7000-8000-000000000004" });
+    const persisted = mockSet.mock.calls.find(([v]) => v.lastValidationStatus)?.[0];
+    expect(persisted.lastValidationError).toContain("[REDACTED]");
+    expect(persisted.lastValidationError).not.toContain("sk-secret-token-value");
+  });
+});
+
+describe("validateSreConnector DNS failures", () => {
+  it("records an unresolvable host as unreachable with a plain message", async () => {
+    mockSet.mockClear();
+    const { assertEndpointAllowedForExecution, HostResolutionError } = jest.requireMock("@/lib/sre/connectors");
+    assertEndpointAllowedForExecution.mockRejectedValueOnce(new HostResolutionError("Could not resolve host nope.example.com"));
+    mockFindConnector.mockResolvedValue({
+      id: "018f0000-0000-7000-8000-000000000004",
+      type: "sentry",
+      status: "configured",
+      privateAgentId: null,
+      config: { endpointUrl: "https://nope.example.com" },
+      outputLimits: {},
+    });
+    await validateSreConnector({ id: "018f0000-0000-7000-8000-000000000004" });
+    const persisted = mockSet.mock.calls.find(([v]) => v.lastValidationStatus)?.[0];
+    expect(persisted).toMatchObject({ lastValidationStatus: "unreachable", lastValidationError: "Could not resolve host nope.example.com" });
   });
 });

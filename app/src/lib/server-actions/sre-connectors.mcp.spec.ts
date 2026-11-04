@@ -50,6 +50,18 @@ describe("MCP connector creation and search guards", () => {
     expect(result).toMatchObject({ success: false, error: expect.stringContaining("endpoint") });
   });
 
+  it("accepts a query string for MCP only and still rejects a fragment", async () => {
+    const privateAgentId = "018f0000-0000-7000-8000-000000000009";
+    const webhook = await createSreConnector({
+      ...base, type: "prometheus" as never, endpointUrl: "https://prom.example.com/x?key=1", privateAgentId,
+    });
+    expect(webhook).toMatchObject({ success: false, error: expect.stringContaining("query string") });
+    const frag = await createSreConnector({ ...base, endpointUrl: "https://mcp.internal/mcp?key=1#x", privateAgentId });
+    expect(frag).toMatchObject({ success: false, error: expect.stringContaining("fragment") });
+    const mcp = await createSreConnector({ ...base, endpointUrl: "https://mcp.internal/mcp?key=1", privateAgentId });
+    expect(JSON.stringify(mcp)).not.toContain("query string");
+  });
+
   it("rejects reserved credential header names", async () => {
     const result = await createSreConnector({
       ...base,

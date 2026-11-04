@@ -25,6 +25,7 @@ describe("SreSetupGuideDialog", () => {
       screen.getByRole("dialog", { name: "AI SRE setup" }),
     ).toBeInTheDocument();
     expect(screen.getByText("1/2 complete")).toBeInTheDocument();
+    expect(screen.getByText("Add an integration")).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "Open Integrations" }),
     ).toHaveAttribute("href", "/org-admin?tab=integrations");

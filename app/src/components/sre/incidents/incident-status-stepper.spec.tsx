@@ -4,7 +4,7 @@ import { IncidentStatusStepper } from "./incident-status-stepper";
 
 describe("IncidentStatusStepper", () => {
   it("marks only the current status as the current step and earlier ones done", () => {
-    render(<IncidentStatusStepper current="investigating" />);
+    render(<IncidentStatusStepper current="investigating" acknowledged />);
     const items = screen.getAllByRole("listitem");
     expect(items).toHaveLength(6);
     expect(items.filter((item) => item.getAttribute("aria-current") === "step")).toHaveLength(1);
@@ -27,8 +27,14 @@ describe("IncidentStatusStepper", () => {
   });
 
   it("colours the line into the current step while open", () => {
-    const { container } = render(<IncidentStatusStepper current="investigating" />);
+    const { container } = render(<IncidentStatusStepper current="investigating" acknowledged />);
     const connectors = Array.from(container.querySelectorAll("li > span[aria-hidden='true']"));
     expect(connectors.map((c) => c.className.includes("bg-success"))).toEqual([true, true, false, false, false]);
+  });
+
+  it("does not tick Acknowledged for a reopened incident that has no acknowledgement", () => {
+    render(<IncidentStatusStepper current="investigating" acknowledged={false} />);
+    const states = screen.getAllByRole("listitem").map((item) => item.getAttribute("data-state"));
+    expect(states).toEqual(["done", "upcoming", "current", "upcoming", "upcoming", "upcoming"]);
   });
 });

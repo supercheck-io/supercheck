@@ -36,10 +36,10 @@ If live data is unavailable, check the service and connector configuration in **
 |---|---|
 | **New chat** | Starts a fresh thread. To leave an incident context, open **Respond → Copilot** |
 | **History** | Searches and restores your saved general and incident chats |
-| **Archive** | Removes a chat from active history |
+| **Archive** | Removes a chat from active history after you confirm. An archived chat cannot be continued; start a new chat |
 | **Chat help** | Shows suggested questions and explains available sources |
 
-History is private to you within your current organization and project. Let a response finish to keep its answer. A stopped answer is not saved.
+History is private to you within your current organization and project. Let a response finish to keep its answer. A stopped answer is not saved. **Regenerate** replaces the previous reply, so only the new one is kept after a reload.
 
 <Accordions>
 <Accordion title="Asking useful questions and limits" id="questions-and-limits">
@@ -53,9 +53,11 @@ Ask one focused question, then review citations and any evidence gaps before act
 
 | Limit | Value |
 |---|---|
-| **Message length** | 4,000 characters |
-| **Conversation length** | 20,000 characters of chat history. A longer chat is rejected with *Copilot chat history is too large* and the new message is not saved; start a new chat to continue. Within that limit, if the request would exceed Copilot's prompt budget, the oldest turns are left out of what it reads |
+| **Message length** | 4,000 characters, applied to the newest message only. Earlier replies in the chat can be longer |
+| **Conversation length** | Long chats keep working. If a request would exceed Copilot's prompt budget, the oldest turns are left out of what it reads. A request body over about 2 MB is rejected with *Copilot chat history is too large* |
+| **Rate** | 30 messages per minute per person |
 | **Images and videos** | Not inspected. Paste relevant text instead |
+| **Attachments (API only)** | The Copilot screen has no upload control. The API accepts `txt`, `md`, `json`, `csv`, `png`, `jpeg` and `webp` files up to 2 MB, at 10 uploads per minute and 100 per day for each incident. The model receives only the file name, type and size, never the contents, so paste text it should read |
 
 Answers can include markdown tables and small bar, line or area charts (up to 4 series and 48 points). Charts use only values from evidence, tool results or your messages; a chart without numeric values is shown as raw data instead.
 
@@ -73,6 +75,8 @@ For a full investigation with a saved report, use [Incident Investigation](/docs
 
 <Callout type="warn">
 On Supercheck Cloud, Copilot replies, incident triage, and evidence brief generation require an active organization subscription and a valid billing customer. If access is blocked, open **Settings → Organization → Subscription**. Self-hosted installations do not use these billing checks. Investigation runs also enforce spending limits.
+
+The free trial includes AI triage runs and investigations (see [Incident Investigation](/docs/app/investigate/incidents#trial-allowance)). Copilot chat and evidence briefs need a paid plan, and the Copilot screen says so instead of showing the chat.
 </Callout>
 
 </Accordion>

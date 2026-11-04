@@ -3,13 +3,14 @@ import { Card, CardContent } from "@/components/ui/card";
 import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
 import { ServiceCatalog } from "@/components/sre/services/service-catalog";
 import { requireProjectContext } from "@/lib/project-context";
+import { getSreOnboardingStatus } from "@/lib/server-actions/sre-onboarding";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 
 export const metadata = { title: "Services | Supercheck" };
 
 export default async function ServicesPage() {
   const context = await requireProjectContext();
-  const result = await getSreServices();
+  const [result, setup] = await Promise.all([getSreServices(), getSreOnboardingStatus(context)]);
   const permissions = {
     canCreate: checkPermissionWithContext("sre_service", "create", context),
     canUpdate: checkPermissionWithContext("sre_service", "update", context),
@@ -31,6 +32,7 @@ export default async function ServicesPage() {
             projectId={context.project.id}
             initialServices={result.services}
             loadError={result.success ? null : result.error}
+            setupStatus={setup.success ? setup.status : null}
             permissions={permissions}
           />
         </CardContent>

@@ -22,6 +22,7 @@ const RESERVED_IPV4_NETWORKS = [
 const RESERVED_IPV6_NETWORKS = [
   "::/96",
   "64:ff9b::/96",
+  "64:ff9b:1::/48",
   "100::/64",
   "2001::/32",
   "2001:2::/48",

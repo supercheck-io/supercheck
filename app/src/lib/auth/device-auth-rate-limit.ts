@@ -2,6 +2,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { getRedisConnection } from "@/lib/queue";
 
 const WINDOW_MS = 10 * 60 * 1000;
+// The shared connection retries forever, so an offline Redis would otherwise hang the request.
+const REDIS_TIMEOUT_MS = 1000;
 
 export interface DeviceAuthLimit {
   scope: string;
@@ -55,38 +57,48 @@ export async function allowDeviceAuthRequest(
   limits: DeviceAuthLimit[],
   { failOpen = false }: { failOpen?: boolean } = {},
 ): Promise<boolean> {
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error("Redis rate-limit timeout")), REDIS_TIMEOUT_MS);
+  });
   try {
-    const redis = await getRedisConnection();
-    const keys = limits.map(
-      (l) =>
-        `supercheck:{device-auth}:${l.scope}:${createHash("sha256")
-          .update(l.subject)
-          .digest("hex")
-          .slice(0, 32)}`,
-    );
-    const result = await redis.eval(
-      `
-      local now = tonumber(ARGV[1])
-      local window = tonumber(ARGV[2])
-      for i, key in ipairs(KEYS) do
-        redis.call('ZREMRANGEBYSCORE', key, 0, now - window)
-        if redis.call('ZCARD', key) >= tonumber(ARGV[2 + i]) then return 0 end
-      end
-      for _, key in ipairs(KEYS) do
-        redis.call('ZADD', key, now, ARGV[2 + #KEYS + 1])
-        redis.call('PEXPIRE', key, window)
-      end
-      return 1
-    `,
-      keys.length,
-      ...keys,
-      Date.now(),
-      WINDOW_MS,
-      ...limits.map((l) => l.max),
-      randomUUID(),
-    );
-    return Number(result) === 1;
+    return await Promise.race([evaluateLimits(limits), timeout]);
   } catch {
     return failOpen;
+  } finally {
+    clearTimeout(timer);
   }
+}
+
+async function evaluateLimits(limits: DeviceAuthLimit[]): Promise<boolean> {
+  const redis = await getRedisConnection();
+  const keys = limits.map(
+    (l) =>
+      `supercheck:{device-auth}:${l.scope}:${createHash("sha256")
+        .update(l.subject)
+        .digest("hex")
+        .slice(0, 32)}`,
+  );
+  const result = await redis.eval(
+    `
+    local now = tonumber(ARGV[1])
+    local window = tonumber(ARGV[2])
+    for i, key in ipairs(KEYS) do
+      redis.call('ZREMRANGEBYSCORE', key, 0, now - window)
+      if redis.call('ZCARD', key) >= tonumber(ARGV[2 + i]) then return 0 end
+    end
+    for _, key in ipairs(KEYS) do
+      redis.call('ZADD', key, now, ARGV[2 + #KEYS + 1])
+      redis.call('PEXPIRE', key, window)
+    end
+    return 1
+  `,
+    keys.length,
+    ...keys,
+    Date.now(),
+    WINDOW_MS,
+    ...limits.map((l) => l.max),
+    randomUUID(),
+  );
+  return Number(result) === 1;
 }

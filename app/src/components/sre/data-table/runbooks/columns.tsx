@@ -84,7 +84,7 @@ export const columns: ColumnDef<SreDiagnosticQueryListItem>[] = [
   {
     id: "connectorType",
     header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="Connector Type" />
+      <DataTableColumnHeader column={column} title="Connector type" />
     ),
     cell: ({ row }) => (
       <ConnectorTypeLabel type={row.original.connectorType} />

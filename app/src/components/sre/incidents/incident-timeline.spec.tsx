@@ -6,7 +6,7 @@ import { addSreIncidentUpdate } from "@/actions/sre-incident-lifecycle";
 import { aiFindingHeadline, describeTimelineEvent, IncidentTimeline } from "./incident-timeline";
 
 const mockInvalidate = jest.fn().mockResolvedValue(undefined);
-let mockQuery: { isPending: boolean; data?: unknown };
+let mockQuery: { isPending: boolean; isError?: boolean; data?: unknown; refetch?: () => void };
 
 jest.mock("sonner", () => ({ toast: { error: jest.fn() } }));
 jest.mock("@/actions/sre-incident-lifecycle", () => ({ addSreIncidentUpdate: jest.fn() }));
@@ -72,6 +72,23 @@ describe("IncidentTimeline", () => {
     ready([]);
     view.rerender(<IncidentTimeline incidentId="i1" canUpdate />);
     expect(screen.getByText("No activity yet.")).toBeInTheDocument();
+  });
+
+  it("shows an error with retry, not the empty state, when the query throws", () => {
+    const refetch = jest.fn();
+    mockQuery = { isPending: false, isError: true, data: undefined, refetch };
+    render(<IncidentTimeline incidentId="i1" canUpdate />);
+    expect(screen.getByRole("alert")).toHaveTextContent("Could not load the timeline.");
+    expect(screen.queryByText("No activity yet.")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(refetch).toHaveBeenCalled();
+  });
+
+  it("labels a failed AI triage", () => {
+    expect(describeTimelineEvent({ eventType: "state_change", eventData: { state: "triage_failed", comment: "AI triage did not complete (agent_error)." } })).toEqual({
+      title: "AI triage failed",
+      body: "AI triage did not complete (agent_error).",
+    });
   });
 
   it("renders event types, actors and the automatic resolve", () => {

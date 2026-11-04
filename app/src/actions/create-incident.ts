@@ -163,7 +163,13 @@ export async function createIncident(data: CreateIncidentData) {
       await tx
         .select({ id: statusPages.id })
         .from(statusPages)
-        .where(eq(statusPages.id, validatedData.statusPageId))
+        .where(
+          and(
+            eq(statusPages.id, validatedData.statusPageId),
+            eq(statusPages.organizationId, organizationId),
+            eq(statusPages.projectId, project.id),
+          ),
+        )
         .for("update");
       if (validatedData.sreIncidentId) {
         const linked = await tx.query.incidents.findFirst({
@@ -181,8 +187,15 @@ export async function createIncident(data: CreateIncidentData) {
         const [source] = await tx
           .select()
           .from(sreIncidents)
-          .where(eq(sreIncidents.id, validatedData.sreIncidentId))
+          .where(
+            and(
+              eq(sreIncidents.id, validatedData.sreIncidentId),
+              eq(sreIncidents.organizationId, organizationId),
+              eq(sreIncidents.projectId, project.id),
+            ),
+          )
           .for("update");
+        if (!source) throw new Error("SRE incident not found or access denied");
         if (source.statusPageIncidentId)
           throw new Error(
             "This SRE incident is already linked to a public incident.",
@@ -214,7 +227,13 @@ export async function createIncident(data: CreateIncidentData) {
         await tx
           .update(sreIncidents)
           .set({ statusPageIncidentId: incident.id, updatedAt: new Date() })
-          .where(eq(sreIncidents.id, validatedData.sreIncidentId));
+          .where(
+            and(
+              eq(sreIncidents.id, validatedData.sreIncidentId),
+              eq(sreIncidents.organizationId, organizationId),
+              eq(sreIncidents.projectId, project.id),
+            ),
+          );
       // Create initial incident update
       const [update] = await tx
         .insert(incidentUpdates)

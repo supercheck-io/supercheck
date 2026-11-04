@@ -313,13 +313,17 @@ export async function acknowledgeIncident(
 > {
   const now = new Date();
   const result = await db.transaction(async (tx) => {
+    // Acknowledging may claim an unassigned incident, but only for someone who can hold it.
+    const canOwn = await isAssignableUser(actor.organizationId, actor.projectId, actor.userId, tx);
     // Guarded update: only the first acknowledgement of an unresolved incident stamps it.
     const [updated] = await tx
       .update(sreIncidents)
       .set({
         acknowledgedAt: now,
         acknowledgedByUserId: actor.userId,
-        assigneeUserId: sql`coalesce(${sreIncidents.assigneeUserId}, ${actor.userId}::uuid)`,
+        assigneeUserId: canOwn
+          ? sql`coalesce(${sreIncidents.assigneeUserId}, ${actor.userId}::uuid)`
+          : sreIncidents.assigneeUserId,
         updatedAt: now,
       })
       .where(
@@ -377,7 +381,6 @@ export async function acknowledgeIncident(
   }
 
   const { updated } = result;
-  if (!updated) return { ok: false, code: "conflict", error: "Incident changed, reload and try again" };
   await audit(actor, "sre_incident_acknowledged", updated, {});
   notify(actor, incidentId, "acknowledged");
   return {
@@ -513,14 +516,17 @@ type SourceRef = {
 
 // Only failures that a passing check really ends: monitor up/down and job failure/timeout.
 // Never SSL-expiry (a passing check does not renew a certificate) or custom triggers.
-const RECOVERABLE_ALERT_TYPES: AlertType[] = ["monitor_failure", "job_failed", "job_timeout"];
+export const RECOVERABLE_ALERT_TYPES: AlertType[] = ["monitor_failure", "job_failed", "job_timeout"];
 // Old title-cased labels and the current ones (see alert-labels.ts); webhook-keyed events match by title.
 const RECOVERABLE_TITLES = ["Monitor Failure", "Job Failed", "Job Timeout", "Monitor down", "Job failed", "Job timed out"];
 
+// `_` and `%` are LIKE wildcards; alert types such as monitor_failure contain `_`.
+const likeLiteral = (value: string) => value.replace(/[\\%_]/g, "\\$&");
+
 const recoverableTrigger = () =>
   or(
-    ...RECOVERABLE_ALERT_TYPES.map((type) => sql`${sreAlertEvents.dedupKey} like ${`%:${type}`}`),
-    ...RECOVERABLE_TITLES.map((title) => sql`${sreAlertEvents.title} like ${`%: ${title}`}`),
+    ...RECOVERABLE_ALERT_TYPES.map((type) => sql`${sreAlertEvents.dedupKey} like ${`%:${likeLiteral(type)}`}`),
+    ...RECOVERABLE_TITLES.map((title) => sql`${sreAlertEvents.title} like ${`%: ${likeLiteral(title)}`}`),
   );
 
 const triggerSourceMatch = (source: SourceRef) =>
@@ -661,6 +667,8 @@ export async function findOpenIncidentForSource(tx: Executor, source: SourceRef)
   const [open] = await tx
     .select({
       id: sreIncidents.id,
+      incidentNumber: sreIncidents.incidentNumber,
+      title: sreIncidents.title,
       triageInvestigationRunId: sreIncidents.triageInvestigationRunId,
     })
     .from(sreIncidentAlerts)
@@ -712,11 +720,13 @@ export async function noteFailureReturned(tx: Executor, incidentId: string, fire
  */
 export async function reopenRecentlyAutoResolved(
   tx: Executor,
-  source: SourceRef & { firedAt: Date },
+  source: SourceRef & { firedAt: Date; /** False for a late, manual open: only the stale-join case may apply. */ allowReopen?: boolean },
 ) {
   const [latest] = await tx
     .select({
       id: sreIncidents.id,
+      incidentNumber: sreIncidents.incidentNumber,
+      title: sreIncidents.title,
       status: sreIncidents.status,
       resolvedAt: sreIncidents.resolvedAt,
       assigneeUserId: sreIncidents.assigneeUserId,
@@ -732,11 +742,12 @@ export async function reopenRecentlyAutoResolved(
   // A failure that fired before the resolve was processed late: it belongs to that incident,
   // which must neither reopen nor be duplicated by a new one.
   if (source.firedAt.getTime() < latest.resolvedAt.getTime()) {
-    return { incidentId: latest.id, assigneeUserId: latest.assigneeUserId, alreadyTriaged: true, stale: true as const };
+    return { incidentId: latest.id, incidentNumber: latest.incidentNumber, title: latest.title, assigneeUserId: latest.assigneeUserId, alreadyTriaged: true, stale: true as const };
   }
   if (source.firedAt.getTime() - latest.resolvedAt.getTime() >= INCIDENT_REOPEN_WINDOW_MS) {
     return null;
   }
+  if (source.allowReopen === false) return null;
 
   // Only when the most recent resolve/reopen was the automatic one; a person's later resolve wins.
   const [lastResolution] = await tx
@@ -763,7 +774,7 @@ export async function reopenRecentlyAutoResolved(
       status: "triggered",
       resolvedAt: null,
       mitigatedAt: null,
-      resolutionSummary: null,
+      // resolutionSummary is kept: the detail page labels it as the previous resolution while the incident is open.
       // A returning failure needs a fresh acknowledgement (and stays auto-resolvable).
       acknowledgedAt: null,
       acknowledgedByUserId: null,
@@ -782,6 +793,8 @@ export async function reopenRecentlyAutoResolved(
   });
   return {
     incidentId: latest.id,
+    incidentNumber: latest.incidentNumber,
+    title: latest.title,
     assigneeUserId: latest.assigneeUserId,
     alreadyTriaged: Boolean(latest.triageInvestigationRunId),
     stale: false as const,

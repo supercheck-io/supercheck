@@ -1,11 +1,11 @@
 import "server-only";
 
 import crypto from "node:crypto";
-import { and, desc, eq, isNull, or } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, ne, or } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-import { privateAgentCredentials, privateAgents } from "@/db/schema";
+import { privateAgentCredentials, privateAgentJobs, privateAgents } from "@/db/schema";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { getPrivateAgentHealth } from "@/lib/private-agents/agent-registry";
 import { buildPrivateAgentRegistrationMetadata } from "@/lib/private-agents/registration-token";
@@ -70,8 +70,11 @@ function normalizeAgent(row: typeof privateAgents.$inferSelect): PrivateAgentLis
   return {
     id: row.id,
     name: row.name,
-    // Nothing writes "disconnected", so a silent agent would otherwise stay "connected" forever.
-    status: row.status === "connected" && getPrivateAgentHealth(row).stale ? "disconnected" : row.status,
+    // Nothing writes "disconnected", so a silent agent would otherwise stay "connected" or "unhealthy" forever.
+    status:
+      (row.status === "connected" || row.status === "unhealthy") && getPrivateAgentHealth(row).stale
+        ? "disconnected"
+        : row.status,
     version: row.version,
     agentMode: row.agentMode,
     supportsSreConnectors: row.supportsSreConnectors,
@@ -256,11 +259,7 @@ export async function rotatePrivateAgentToken(input: z.infer<typeof privateAgent
     const now = new Date();
 
     const agent = await db.transaction(async (tx) => {
-      await tx
-        .update(privateAgentCredentials)
-        .set({ revokedAt: now, revocationReason: "rotated", revokedByUserId: context.userId })
-        .where(and(eq(privateAgentCredentials.privateAgentId, current.id), isNull(privateAgentCredentials.revokedAt)));
-
+      // The status guard is in the UPDATE so a concurrent disable cannot be undone by a rotate.
       const [updated] = await tx
         .update(privateAgents)
         .set({
@@ -268,14 +267,27 @@ export async function rotatePrivateAgentToken(input: z.infer<typeof privateAgent
           status: "pending",
           registeredAt: null,
           connectedAt: null,
+          // A fresh token has not connected yet; a stale heartbeat would show "Heartbeat missed".
+          lastHeartbeatAt: null,
           metadata: buildPrivateAgentRegistrationMetadata(current.metadata, now),
           updatedAt: now,
         })
-        .where(eq(privateAgents.id, current.id))
+        .where(and(eq(privateAgents.id, current.id), ne(privateAgents.status, "disabled")))
         .returning();
+
+      if (!updated) return null;
+
+      await tx
+        .update(privateAgentCredentials)
+        .set({ revokedAt: now, revocationReason: "rotated", revokedByUserId: context.userId })
+        .where(and(eq(privateAgentCredentials.privateAgentId, current.id), isNull(privateAgentCredentials.revokedAt)));
 
       return updated;
     });
+
+    if (!agent) {
+      return { success: false, error: "Private Agent not found or disabled" };
+    }
 
     await logAuditEvent({
       userId: context.userId,
@@ -316,7 +328,8 @@ export async function disablePrivateAgent(input: z.infer<typeof privateAgentIdSc
     const agent = await db.transaction(async (tx) => {
       const [updated] = await tx
         .update(privateAgents)
-        .set({ status: "disabled", disabledAt: new Date(), updatedAt: new Date() })
+        // Disabled is terminal: drop the registration token so it can no longer be exchanged.
+        .set({ status: "disabled", registrationTokenHash: null, disabledAt: new Date(), updatedAt: new Date() })
         .where(
           and(
             eq(privateAgents.id, parsed.data.id),
@@ -333,6 +346,16 @@ export async function disablePrivateAgent(input: z.infer<typeof privateAgentIdSc
           .update(privateAgentCredentials)
           .set({ revokedAt: new Date(), revocationReason: "agent_disabled", revokedByUserId: context.userId })
           .where(and(eq(privateAgentCredentials.privateAgentId, updated.id), isNull(privateAgentCredentials.revokedAt)));
+
+        await tx
+          .update(privateAgentJobs)
+          .set({ status: "failed", completedAt: new Date(), errorCode: "agent_disabled" })
+          .where(
+            and(
+              eq(privateAgentJobs.privateAgentId, updated.id),
+              inArray(privateAgentJobs.status, ["queued", "leased", "running"]),
+            ),
+          );
       }
 
       return updated;

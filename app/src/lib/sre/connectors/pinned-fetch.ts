@@ -1,15 +1,17 @@
-import { lookup } from "node:dns/promises";
+import http from "node:http";
 import https from "node:https";
 import { isIP } from "node:net";
 
-import { isPrivateConnectorAddress } from "./endpoint-policy";
+import { isSelfHosted } from "@/lib/feature-flags";
+import {
+  isMetadataOrLinkLocalAddress,
+  isPrivateConnectorAddress,
+  lookupBounded,
+  METADATA_ADDRESS_ERROR,
+} from "./endpoint-policy";
 import { createPinnedLookup } from "./pinned-lookup";
 
 const MAX_RESPONSE_BYTES = 10 * 1024 * 1024;
-
-function isSelfHosted() {
-  return process.env.SELF_HOSTED === "true" || process.env.SELF_HOSTED === "1";
-}
 
 /**
  * Fetch a direct cloud connector through an address validated in the same DNS
@@ -33,40 +35,44 @@ async function fetchPinnedEndpoint(
     throw new Error("Connector endpoints must not include URL credentials");
   }
 
-  if (allowSelfHostedPrivateNetworks && isSelfHosted()) {
-    // Self-hosted connector administrators intentionally may target private services.
-    return fetch(url, init); // lgtm [js/request-forgery]
-  }
-
-  if (url.protocol !== "https:") {
+  // Self-hosted administrators may target private services and loopback, but never cloud
+  // metadata or link-local addresses. Both modes resolve once and pin the connection.
+  const selfHosted = allowSelfHostedPrivateNetworks && isSelfHosted();
+  if (!selfHosted && url.protocol !== "https:") {
     throw new Error("Direct cloud connectors must use HTTPS");
   }
 
   const hostname = url.hostname.replace(/^\[|\]$/g, "");
   const addresses = isIP(hostname)
     ? [{ address: hostname, family: isIP(hostname) }]
-    : await lookup(hostname, { all: true, verbatim: true });
-  if (
-    addresses.length === 0 ||
-    addresses.some(({ address }) => isPrivateConnectorAddress(address))
-  ) {
+    : await lookupBounded(hostname, init.signal);
+  if (addresses.length === 0) {
+    throw new Error("Connector endpoint host did not resolve to an address");
+  }
+  if (selfHosted) {
+    if (addresses.some(({ address }) => isMetadataOrLinkLocalAddress(address))) {
+      throw new Error(METADATA_ADDRESS_ERROR);
+    }
+  } else if (addresses.some(({ address }) => isPrivateConnectorAddress(address))) {
     throw new Error(
       "Direct cloud connectors cannot target private or reserved IP ranges",
     );
   }
 
-  const selected = addresses[0];
   const headers = new Headers(init.headers);
   headers.set("Accept-Encoding", "identity");
+  if (typeof init.body === "string" || Buffer.isBuffer(init.body)) {
+    headers.set("Content-Length", String(Buffer.byteLength(init.body)));
+  }
 
   return new Promise<Response>((resolve, reject) => {
-    // Every DNS answer is public and the socket lookup is pinned to that result.
-    const request = https.request( // lgtm [js/request-forgery]
+    // Every DNS answer passed the address policy and the socket lookup is pinned to that vetted set.
+    const request = (url.protocol === "http:" ? http : https).request( // lgtm [js/request-forgery]
       url,
       {
         method: init.method ?? "GET",
         headers: Object.fromEntries(headers.entries()),
-        lookup: createPinnedLookup(selected),
+        lookup: createPinnedLookup(addresses),
       },
       (response) => {
         const chunks: Buffer[] = [];
@@ -127,32 +133,10 @@ async function fetchPinnedEndpoint(
         request.destroy(new Error("Unsupported connector request body"));
         return;
       }
-      request.write(init.body);
+      request.end(init.body);
+      return;
     }
     request.end();
-  });
-}
-
-/** Errors the body stream once it passes maxBytes, matching the pinned path's cap. */
-function capResponseBody(response: Response, maxBytes: number): Response {
-  if (!response.body) return response;
-  let total = 0;
-  const limited = response.body.pipeThrough(
-    new TransformStream<Uint8Array, Uint8Array>({
-      transform(chunk, controller) {
-        total += chunk.byteLength;
-        if (total > maxBytes) {
-          controller.error(new Error(`Connector response exceeded ${maxBytes} bytes`));
-          return;
-        }
-        controller.enqueue(chunk);
-      },
-    }),
-  );
-  return new Response(limited, {
-    status: response.status,
-    statusText: response.statusText,
-    headers: response.headers,
   });
 }
 
@@ -161,10 +145,7 @@ export function fetchConnectorEndpoint(
   init: RequestInit = {},
   maxResponseBytes = MAX_RESPONSE_BYTES,
 ) {
-  // The self-hosted private-network path uses plain fetch; give it the pinned path's body cap.
-  return fetchPinnedEndpoint(input, init, true, maxResponseBytes).then((response) =>
-    isSelfHosted() ? capResponseBody(response, maxResponseBytes) : response,
-  );
+  return fetchPinnedEndpoint(input, init, true, maxResponseBytes);
 }
 
 /** Public webhook variant: always validates and pins the destination. */

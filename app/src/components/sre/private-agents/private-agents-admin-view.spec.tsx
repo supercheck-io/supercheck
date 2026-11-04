@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { registerPrivateAgent } from "@/actions/private-agents";
 
 import { PrivateAgentsAdminView } from "./private-agents-admin-view";
 
@@ -69,4 +70,27 @@ describe("PrivateAgentsAdminView", () => {
     expect(within(dialog).getAllByText("Heartbeat missed")).toHaveLength(2);
     expect(within(dialog).getByText("CloudWatch prod")).toBeInTheDocument();
   });
+
+it("shows the env var names and keeps the one-time token dialog open on Escape and outside click", async () => {
+(registerPrivateAgent as jest.Mock).mockResolvedValue({
+success: true,
+message: "Registered",
+registrationToken: "scpa_token_value",
+agent: { id: "018f0000-0000-7000-8000-000000000002", name: "edge" },
+});
+render(<PrivateAgentsAdminView initialAgents={[]} loadError={null} />);
+fireEvent.click(screen.getByRole("button", { name: "Register agent" }));
+fireEvent.change(screen.getByLabelText("Agent name *"), { target: { value: "edge" } });
+const dialog = screen.getByRole("dialog", { name: "Register Private Agent" });
+fireEvent.click(within(dialog).getByRole("button", { name: "Register agent" }));
+await screen.findByText("PRIVATE_AGENT_TOKEN");
+for (const text of ["SUPERCHECK_API_URL", "PRIVATE_AGENT_ID", "deploy/docker/docker-compose-private-agent.yml"]) {
+expect(screen.getByText(text)).toBeInTheDocument();
+}
+fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+fireEvent.pointerDown(document.body);
+await waitFor(() => expect(screen.getByRole("dialog", { name: "Register Private Agent" })).toBeInTheDocument());
+fireEvent.click(screen.getByRole("button", { name: "Done" }));
+await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+});
 });

@@ -5,6 +5,7 @@ import { PgDialect } from "drizzle-orm/pg-core";
 
 const mockRequirePermissions = jest.fn();
 const mockOrderBy = jest.fn();
+const mockLimit = jest.fn();
 let mockEventRows: unknown[] = [];
 
 jest.mock("../../../_auth", () => ({
@@ -18,7 +19,7 @@ jest.mock("@/utils/db", () => ({
         from: () => chain,
         where: () => chain,
         orderBy: (order: unknown) => { mockOrderBy(order); return chain; },
-        limit: async () => (incidentLookup ? [{ id: "i" }] : mockEventRows),
+        limit: async (n: number) => { if (!incidentLookup) mockLimit(n); return incidentLookup ? [{ id: "i" }] : mockEventRows; },
       };
       return chain;
     },
@@ -45,5 +46,7 @@ describe("GET /api/sre/incidents/[id]/timeline", () => {
     expect(body.events.map((e: { id: string }) => e.id)).toEqual(["e1", "e2", "e3"]);
     const order = new PgDialect().sqlToQuery(mockOrderBy.mock.calls.at(-1)![0]).sql;
     expect(order).toMatch(/desc/i);
+    // Keep in sync with the action and TIMELINE_FETCH_LIMIT in incident-timeline.tsx.
+    expect(mockLimit).toHaveBeenCalledWith(500);
   });
 });

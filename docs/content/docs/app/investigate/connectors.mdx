@@ -38,14 +38,14 @@ For OpenTelemetry, connect the backend your collector exports to (Tempo, Jaeger,
 | An API reachable only inside your network | **Private Agent** | [Set up an agent with Docker Compose](/docs/app/deployment/private-agent), then select it when adding the connector |
 | An internal API reachable from your self-hosted instance | **Direct** or **Private Agent** | Use Direct if your instance can reach it. Otherwise deploy an agent in that network |
 
-Private Agent mode supports GitHub, Kubernetes, Prometheus, Grafana, Sentry, Datadog, Loki, Elasticsearch / OpenSearch, Tempo, AWS CloudWatch, Jaeger, New Relic, Splunk, Google Cloud, Azure Monitor, Jira, and Confluence. GitLab, PagerDuty, Opsgenie, and Notion support **Direct** only.
+Private Agent mode supports GitHub, Kubernetes, Prometheus, Grafana, Sentry, Datadog, Loki, Elasticsearch / OpenSearch, Tempo, AWS CloudWatch, Jaeger, New Relic, Splunk, Google Cloud, Azure Monitor, Jira, Confluence, and MCP servers. GitLab, PagerDuty, Opsgenie, and Notion support **Direct** only.
 
 | Mode | Endpoint rules |
 |---|---|
 | **Supercheck Cloud, Direct** | HTTPS only. Cannot reach localhost, private, or reserved addresses, including cloud metadata |
 | **Private Agent** | Reaches internal HTTP or HTTPS endpoints, except localhost and cloud metadata endpoints |
-| **Self-hosted Direct** | Reaches internal HTTP or HTTPS endpoints |
-| **All modes** | Reject credentials embedded in URLs |
+| **Self-hosted Direct** | Reaches internal HTTP or HTTPS endpoints, including `localhost` and private ranges. Cloud metadata and link-local addresses (`169.254.0.0/16`, `100.100.100.200`, `168.63.129.16`, `192.0.0.192`, `fe80::/10`, `fd00:ec2::254`) are blocked. Supercheck resolves the host once, checks every address, and connects to that same address |
+| **All modes** | Reject credentials embedded in URLs, and a fragment (`#`) on the endpoint. A query string (`?`) is rejected too, except for MCP connectors, whose hosted servers sometimes carry the key in the URL; Supercheck treats that stored URL as secret and shows only `?…` in the console. Put paths in the endpoint and keys in the credential fields |
 
 <p className="text-sm">Scroll horizontally on smaller screens to view all steps.</p>
 
@@ -115,7 +115,7 @@ Define the **Service scope** to restrict which services may use this connector.
 
 ### Validate
 
-Save, validate, then run one known-result query and one no-result query before relying on the connector during an incident.
+Save, validate, then run one known-result query and one no-result query before relying on the connector during an incident. A host that does not resolve, a refused connection, and a `404` on the endpoint path each get a specific message. A Private Agent connector cannot be probed from Supercheck, so validation shows guidance instead of an error.
 
 </Step>
 </Steps>
@@ -175,7 +175,9 @@ Jira, Confluence, and Notion are read-only. They find related tickets, runbooks,
 | **Confluence** | Cloud site URL (`/wiki` is added), or Data Center base URL | Same as Jira | A dedicated user with view access to runbook and post-mortem spaces only |
 | **Notion** | Fixed at `api.notion.com`; the endpoint field is ignored | Internal integration token | Share only the runbook pages with the integration |
 
-Plain text queries search by text. Jira adds the investigation time window to plain text searches; JQL and CQL are passed through as written. Page and issue bodies are converted to plain text, capped in size, and fetched for the top results only. Jira and Confluence also run through a Private Agent; Notion is direct only.
+Notion always calls `api.notion.com`. If you enter an endpoint it is still validated (a valid URL with no query string or fragment) but is not used.
+
+Plain text queries search by text. Jira adds the investigation time window to plain text searches; JQL and CQL are passed through as written, and Confluence and Notion searches have no time window. Page and issue bodies are converted to plain text, capped in size, and fetched for the top results only. Jira and Confluence also run through a Private Agent; Notion is direct only.
 
 </Accordion>
 <Accordion title="Query examples" id="query-examples">
@@ -196,7 +198,7 @@ Each provider uses its own read-only query language.
 | **Google Cloud** | `logs: severity>=ERROR AND resource.labels.service_name="checkout"` or `metrics: metric.type="run.googleapis.com/request_count"` |
 | **Azure Monitor** | KQL, such as `AppExceptions \| summarize count() by ProblemId`, or `metrics: resource=<resource ID> names="Http5xx" agg=Total` |
 
-Every search is limited to the investigation time window. Supercheck adds the window for you: leave out `SINCE`/`UNTIL` in NRQL and `earliest`/`latest` in SPL, because they are replaced. Results are capped by the connector's row, size and time limits, and a truncated result is marked as such.
+Most searches are limited to the investigation time window. The exceptions are Jira JQL, Confluence and Notion (see above), and Kubernetes, which lists the current pods and events in the namespace. Supercheck adds the window for you: leave out `SINCE`/`UNTIL` in NRQL and `earliest`/`latest` in SPL, because they are replaced. Results are capped by the connector's row, size and time limits, and a truncated result is marked as such.
 
 Queries are read-only. Supercheck rejects Splunk commands that write, notify, run scripts or fan out (`delete`, `outputlookup`, `collect`, `sendemail`, `rest`, `map`, and similar), NRQL that is not a single `SELECT`/`FROM`/`SHOW` statement, and Azure KQL control commands that start with `.`.
 
@@ -215,11 +217,11 @@ Use dedicated, read-only credentials limited to the service scope.
 | **Grafana** | Service Account token with `Viewer` role. Never use administrative accounts |
 | **Prometheus / Loki** | Read-only bearer token or gateway credential for query endpoints |
 | **Sentry** | Read-only integration token restricted to relevant project IDs |
-| **Datadog** | API key plus application key with read-only event access for the correct Datadog site |
+| **Datadog** | API key plus application key with read-only event access. There is no site field: the endpoint selects the site (`api.datadoghq.com` for US, `api.datadoghq.eu` for EU). Validation checks both keys, and a `403` names the site to check |
 | **MCP** | A token for a read-only account on the MCP server, limited to the tools you allowlist |
 | **AWS CloudWatch** | Access key ID and secret with `cloudwatch:DescribeAlarms` and `cloudwatch:GetMetricData`. Prefer short-lived STS credentials and include the session token |
 | **Jaeger** | Jaeger has no built-in authentication. Put it behind a gateway and use a read-only bearer token, or leave the credential empty on a private network |
-| **New Relic** | A User API key from a user or service user with read-only access to the account, plus the numeric account ID. Choose `us` or `eu` for the data region. Ingest and license keys do not work |
+| **New Relic** | A User API key from a user or service user with read-only access to the account, plus the numeric account ID. Choose `us` or `eu` for the data region; any other value is rejected. Ingest and license keys do not work |
 | **Splunk** | An authentication token for a user whose role has search capability and read access only to the indexes you need. Do not grant admin, delete, or lookup-write capabilities. Use the management endpoint, usually port 8089 |
 | **Google Cloud** | A service account JSON key with only `roles/monitoring.viewer` and `roles/logging.viewer` on the project. Supercheck exchanges it for a short-lived token and never uses the `token_uri` in the file |
 | **Azure Monitor** | An app registration (tenant ID, client ID, client secret) with `Monitoring Reader` on the resources and `Log Analytics Reader` on the workspace. Add the Log Analytics workspace ID to run KQL |

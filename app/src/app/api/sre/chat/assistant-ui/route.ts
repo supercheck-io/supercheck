@@ -1,3 +1,4 @@
+import { readCappedJson } from "@/lib/http/read-capped-json";
 import { isSreEnabled } from "@/sre/lib/feature-gates";
 import {
   convertToModelMessages,
@@ -29,8 +30,13 @@ import {
   appendSreMessage,
   createSreConversation,
   getSreConversation,
+  listSreMessages,
+  listSreMessagesByIds,
+    SRE_MESSAGE_INTERRUPTED,
   SreSessionStoreError,
+  isSreMessageSuperseded,
 } from "@/sre/lib/session-store";
+import { SRE_CHART_PROMPT_LINES } from "@/sre/lib/chart-contract";
 import { createSreConnectorTools } from "@/sre/tools/connector-tools";
 import { createSreSimilarIncidentTools } from "@/sre/tools/similar-incident-tools";
 import { createSreEvidenceTools } from "@/sre/tools/evidence-tools";
@@ -40,12 +46,20 @@ type SreAssistantUiMessageMetadata = {
   conversationId?: string;
   assistantMessageId?: string;
   modelId?: string;
+  interrupted?: boolean;
 };
 
 type SreAssistantUiMessage = UIMessage<SreAssistantUiMessageMetadata>;
 
+// Only the newest user turn is capped at this; older turns are trimmed by fitPromptHistory.
 const MAX_MESSAGE_TEXT_LENGTH = 4000;
-const MAX_TOTAL_MESSAGE_TEXT_LENGTH = 20_000;
+// Transport safety bounds, not product limits: the prompt budget decides how much history is used.
+const MAX_PART_TEXT_LENGTH = 100_000;
+const MAX_REQUEST_MESSAGES = 1000;
+const MAX_REQUEST_BODY_BYTES = 2 * 1024 * 1024;
+// Stored replies the request may claim; keeps the verification lookup bounded by the newest turns.
+const MAX_VERIFIED_ASSISTANT_IDS = 200;
+const HISTORY_ROW_LIMIT = 200;
 const logger = createLogger({ module: "sre-assistant-ui" }) as {
   error: (data: unknown, message?: string) => void;
 };
@@ -53,7 +67,7 @@ const logger = createLogger({ module: "sre-assistant-ui" }) as {
 const assistantUiPartSchema = z
   .object({
     type: z.string().trim().min(1).max(80),
-    text: z.string().max(MAX_MESSAGE_TEXT_LENGTH).optional(),
+    text: z.string().max(MAX_PART_TEXT_LENGTH).optional(),
   })
   .passthrough();
 
@@ -101,7 +115,7 @@ const assistantUiChatRequestSchema = z.object({
     .optional()
     .default("submit-message"),
   messageId: z.string().trim().min(1).max(200).optional(),
-  messages: z.array(assistantUiMessageSchema).min(1).max(50),
+  messages: z.array(assistantUiMessageSchema).min(1).max(MAX_REQUEST_MESSAGES),
 });
 
 function authErrorResponse(error: unknown) {
@@ -144,13 +158,6 @@ function normalizeAssistantUiMessage(
     id: message.id ?? crypto.randomUUID(),
     parts,
   };
-}
-
-function getTotalMessageTextLength(messages: SreAssistantUiMessage[]) {
-  return messages.reduce(
-    (total, message) => total + getTextFromUiMessage(message).length,
-    0,
-  );
 }
 
 /**
@@ -203,10 +210,7 @@ function buildAssistantUiSystemPrompt(input: {
     "- Do not ask vaguely for more context. State exactly which evidence boundary applies and the single most useful way to continue in Supercheck.",
     "- Do not emit raw markdown heading markers as decoration; use headings only when they add structure.",
     "- When evidence is missing, name the gap and suggest the next read-only checks. Do not present a generic checklist as completed verification.",
-    "- When a small numeric summary is clearer as a chart and real values are available, include a fenced `chart` JSON block:",
-    '{"type":"line","title":"Short title","description":"Optional one-sentence context","sources":[{"label":"Prometheus","type":"prometheus","evidenceIds":["ev-123"],"query":"rate(http_requests_total[5m])"}],"xKey":"label","series":[{"key":"value","label":"Value"}],"data":[{"label":"api","value":12}]}',
-    "- Supported chart types are bar, line, and area, with at most 4 series and 48 data rows; series values must be numbers. Use only evidence or values from the conversation; do not fabricate chart data.",
-    "- Include chart sources when values come from evidence, connectors, or user-provided data. Source labels must be non-secret names such as Prometheus, Grafana, Kubernetes, or Generated preview data.",
+    ...SRE_CHART_PROMPT_LINES.map((line, index) => (index === 1 ? line : `- ${line}`)),
   ]
     .filter(Boolean)
     .join("\n");
@@ -292,16 +296,17 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  let parsedBody: unknown;
-  try {
-    parsedBody = await request.json();
-  } catch {
-    return NextResponse.json(
-      { error: "Invalid Copilot chat request" },
-      { status: 400 },
-    );
+  // Long chats are allowed, but the whole body stays bounded before it is parsed.
+  if (Number(request.headers.get("content-length") ?? 0) > MAX_REQUEST_BODY_BYTES) {
+    return NextResponse.json({ error: "Copilot chat history is too large" }, { status: 413 });
   }
 
+  // Stream-capped by bytes: covers chunked bodies and multi-byte text that a character count misses.
+  const read = await readCappedJson(request, MAX_REQUEST_BODY_BYTES);
+  if (read.tooLarge) {
+    return NextResponse.json({ error: "Copilot chat history is too large" }, { status: 413 });
+  }
+  const parsedBody = read.data;
   const parsed = assistantUiChatRequestSchema.safeParse(parsedBody);
   if (!parsed.success) {
     return NextResponse.json(
@@ -311,17 +316,6 @@ export async function POST(request: NextRequest) {
   }
 
   const messages = parsed.data.messages.map(normalizeAssistantUiMessage);
-  const modelMessages = messages.filter(
-    (message) =>
-      message.role === "user" || Boolean(getTextFromUiMessage(message)),
-  );
-  if (getTotalMessageTextLength(messages) > MAX_TOTAL_MESSAGE_TEXT_LENGTH) {
-    return NextResponse.json(
-      { error: "Copilot chat history is too large" },
-      { status: 413 },
-    );
-  }
-
   const latestUserMessage = getLatestUserMessage(messages);
   const latestUserText = latestUserMessage
     ? getTextFromUiMessage(latestUserMessage)
@@ -331,6 +325,9 @@ export async function POST(request: NextRequest) {
       { error: "Copilot chat message is required" },
       { status: 400 },
     );
+  }
+  if (latestUserText.length > MAX_MESSAGE_TEXT_LENGTH) {
+    return NextResponse.json({ error: "Copilot message is too large" }, { status: 413 });
   }
 
   try {
@@ -368,6 +365,10 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  if (conversation && conversation.status !== "active") {
+    return NextResponse.json({ error: "This chat was archived" }, { status: 409 });
+  }
+
   if (conversation && conversation.incidentId !== requestedIncidentId) {
     return NextResponse.json(
       {
@@ -399,8 +400,118 @@ export async function POST(request: NextRequest) {
       { status: 413 },
     );
   }
+  // Client-sent history is only a claim. User turns are the caller's own words (their
+  // client ids are not storable), but an assistant turn counts only when a stored row in
+  // THIS conversation has the same id, role and text, so a forged reply is dropped.
+  const regenerating = parsed.data.trigger === "regenerate-message";
+  const regenerateTargetId = parsed.data.messageId;
+  if (regenerating && !regenerateTargetId) {
+    // The SDK trims the reply from `messages`, so nothing sent can name it; only an old cached client omits the id.
+    return NextResponse.json(
+      { error: "Reload the chat and try again" },
+      { status: 400 },
+    );
+  }
+  const newestUserIndex = messages.lastIndexOf(latestUserMessage);
+  let claimed = messages.slice(0, newestUserIndex);
+  if (regenerating) {
+    const targetIndex = messages.findIndex((message) => message.id === regenerateTargetId);
+    claimed = targetIndex >= 0 ? messages.slice(0, targetIndex) : messages;
+  }
+  const scope = {
+    organizationId: context.organizationId,
+    projectId: context.project.id,
+    userId: context.userId,
+  };
+  const isInterrupted = (row: { attachments: Record<string, unknown>[] | null }) =>
+    Boolean(row.attachments?.some((item) => item.type === SRE_MESSAGE_INTERRUPTED));
+  const toUiMessage = (row: { id: string; role: string; content: string | null }) => ({
+    id: row.id,
+    role: row.role as "user" | "assistant",
+    parts: [{ type: "text" as const, text: row.content ?? "" }],
+  });
+  let history: SreAssistantUiMessage[] = [];
+  if (conversation) {
+    try {
+      const assistantIds = [
+        ...new Set(
+          claimed
+            .filter((message) => message.role === "assistant" && z.string().uuid().safeParse(message.id).success)
+            .map((message) => message.id),
+        ),
+      ].slice(-MAX_VERIFIED_ASSISTANT_IDS);
+      const lookupIds = regenerating && regenerateTargetId && z.string().uuid().safeParse(regenerateTargetId).success
+        ? [...assistantIds, regenerateTargetId]
+        : assistantIds;
+      const stored = new Map(
+        (await listSreMessagesByIds({ ...scope, conversationId: conversation.id, messageIds: lookupIds })).map(
+          (row) => [row.id, row],
+        ),
+      );
+      if (regenerating) {
+        const target = regenerateTargetId ? stored.get(regenerateTargetId) : undefined;
+        if (target?.role !== "assistant" || isSreMessageSuperseded(target)) {
+          return NextResponse.json(
+            { error: "Copilot message to regenerate was not found" },
+            { status: 400 },
+          );
+        }
+      }
+      const verified = claimed.filter((message) => {
+        if (message.role === "user") return true;
+        const row = stored.get(message.id);
+        return (
+          row?.role === "assistant" &&
+          !isInterrupted(row) &&
+          !isSreMessageSuperseded(row) &&
+          row.content?.trim() === getTextFromUiMessage(message)
+        );
+      });
+      const hadAssistantTurns = claimed.some((message) => message.role === "assistant");
+      const verifiedAssistantTurns = verified.some((message) => message.role === "assistant");
+      if (!regenerating && hadAssistantTurns && !verifiedAssistantTurns) {
+        // Conversations from before reply ids were stored: rebuild from the newest stored rows.
+        const rows = await listSreMessages({
+          ...scope,
+          conversationId: conversation.id,
+          limit: HISTORY_ROW_LIMIT,
+        });
+        history = rows
+          .filter((row) => (row.role === "user" || row.role === "assistant") && row.content?.trim() && !isInterrupted(row) && !isSreMessageSuperseded(row))
+          .map(toUiMessage);
+      } else {
+        history = verified.filter((message) => getTextFromUiMessage(message));
+      }
+    } catch (error) {
+      logger.error({ error }, "Failed to load Copilot conversation history");
+      return NextResponse.json(
+        { error: "Copilot conversation could not be loaded" },
+        { status: 500 },
+      );
+    }
+  } else if (regenerating) {
+    return NextResponse.json(
+      { error: "Copilot message to regenerate was not found" },
+      { status: 400 },
+    );
+  } else {
+    history = claimed.filter((message) => message.role === "user" && getTextFromUiMessage(message));
+  }
+  if (regenerating) {
+    if (!history.some((message) => message.role === "user")) {
+      return NextResponse.json(
+        { error: "Copilot message to regenerate was not found" },
+        { status: 400 },
+      );
+    }
+  } else {
+    history = [
+      ...history,
+      { id: latestUserMessage.id, role: "user", parts: [{ type: "text", text: latestUserText }] },
+    ];
+  }
   const promptMessages = fitPromptHistory(
-    modelMessages,
+    history,
     budget.maxPromptChars - system.length,
   );
 
@@ -434,15 +545,24 @@ export async function POST(request: NextRequest) {
   }
 
   if (parsed.data.trigger === "submit-message") {
-    await appendSreMessage({
-      organizationId: context.organizationId,
-      projectId: context.project.id,
-      userId: context.userId,
-      conversationId: conversation.id,
-      role: "user",
-      content: latestUserText,
-      attachments: [],
-    });
+    try {
+      await appendSreMessage({
+        organizationId: context.organizationId,
+        projectId: context.project.id,
+        userId: context.userId,
+        conversationId: conversation.id,
+        role: "user",
+        content: latestUserText,
+        attachments: [],
+      });
+    } catch (error) {
+      // The conversation was archived or removed after it was loaded.
+      if (error instanceof SreSessionStoreError && error.code === "not_found") {
+        return NextResponse.json({ error: "This chat was archived" }, { status: 409 });
+      }
+      logger.error({ error }, "Failed to store Copilot message");
+      return NextResponse.json({ error: "Copilot conversation could not be updated" }, { status: 500 });
+    }
   }
 
   const connectorToolScope = {
@@ -455,7 +575,6 @@ export async function POST(request: NextRequest) {
   const modelId = getActualModelName();
   const activeConversationId = conversation.id;
   const assistantMessageId = randomUUID();
-
   const result = streamText({
     model: getProviderModel(),
     system,
@@ -490,7 +609,13 @@ export async function POST(request: NextRequest) {
 
   return result.toUIMessageStreamResponse<SreAssistantUiMessage>({
     originalMessages: messages,
+    // The streamed reply carries the id it is stored under, so a later regenerate can name it.
+    generateMessageId: () => assistantMessageId,
     messageMetadata: ({ part }) => {
+      // The server ended the reply (time budget or abort); tell the live view, which sees no Stop.
+      if (part.type === "abort") {
+        return { conversationId: activeConversationId, modelId, interrupted: true };
+      }
       if (part.type !== "finish") {
         return {
           conversationId: activeConversationId,
@@ -506,8 +631,25 @@ export async function POST(request: NextRequest) {
     },
     onError: () =>
       "Copilot could not complete the read-only check. No failed connector result was treated as evidence.",
-    onFinish: async ({ responseMessage, isAborted }) => {
-      if (isAborted) {
+    onFinish: async ({ responseMessage, isAborted, outcome }) => {
+      // On a client disconnect onFinish can run from cancel() with isAborted false, so check the outcome too.
+      if (isAborted || outcome?.status === "aborted") {
+        const partial = getTextFromUiMessage(responseMessage);
+        try {
+          await appendSreMessage({
+            id: assistantMessageId,
+            organizationId: context.organizationId,
+            projectId: context.project.id,
+            userId: context.userId,
+            conversationId: activeConversationId,
+            role: "assistant",
+            content: partial || "This reply was interrupted before it finished.",
+            attachments: [{ type: SRE_MESSAGE_INTERRUPTED }],
+            modelId,
+          });
+        } catch (error) {
+          logger.error({ error }, "Failed to store interrupted Copilot reply");
+        }
         return;
       }
 
@@ -515,16 +657,24 @@ export async function POST(request: NextRequest) {
         getTextFromUiMessage(responseMessage) ||
         "Copilot could not complete the read-only check. No failed connector result was treated as evidence.";
 
-      await appendSreMessage({
-        id: assistantMessageId,
-        organizationId: context.organizationId,
-        projectId: context.project.id,
-        userId: context.userId,
-        conversationId: activeConversationId,
-        role: "assistant",
-        content: assistantText,
-        modelId,
-      });
+      try {
+        await appendSreMessage(
+          {
+            id: assistantMessageId,
+            organizationId: context.organizationId,
+            projectId: context.project.id,
+            userId: context.userId,
+            conversationId: activeConversationId,
+            role: "assistant",
+            content: assistantText,
+            modelId,
+          },
+          ...(regenerating && regenerateTargetId ? [{ supersedeMessageId: regenerateTargetId }] : []),
+        );
+      } catch (error) {
+        // The reply already streamed; a failed save (for example an archive mid-stream) must not throw out of the stream.
+        logger.error({ error }, "Failed to store Copilot reply");
+      }
     },
   });
 }

@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { and, asc, desc, eq, inArray, lt, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lt, lte, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { externalConnectorCredentials, privateAgentCredentials, privateAgentJobs, privateAgents } from "@/db/schema";
@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
         await tx
           .update(privateAgents)
           .set({ lastHeartbeatAt: now, updatedAt: now })
-          .where(eq(privateAgents.id, auth.agent.id));
+          .where(and(eq(privateAgents.id, auth.agent.id), ne(privateAgents.status, "disabled")));
         await tx
           .update(privateAgentCredentials)
           .set({ lastUsedAt: now })
@@ -72,6 +72,14 @@ export async function POST(request: NextRequest) {
       const leaseExpiresAt = new Date(now.getTime() + LEASE_TTL_MS);
 
       const leasedJob = await db.transaction(async (tx) => {
+        // The credential was checked at request start; a disable or rotate may have revoked it since.
+        const [activeCredential] = await tx
+          .select({ id: privateAgentCredentials.id })
+          .from(privateAgentCredentials)
+          .where(and(eq(privateAgentCredentials.id, auth.credential.id), isNull(privateAgentCredentials.revokedAt)))
+          .limit(1);
+        if (!activeCredential) return null;
+
         await tx
           .update(privateAgentJobs)
           .set({
@@ -143,13 +151,20 @@ export async function POST(request: NextRequest) {
             leaseExpiresAt,
             startedAt: now,
           })
-          .where(and(eq(privateAgentJobs.id, job.id), eq(privateAgentJobs.status, "queued")))
+          .where(
+            and(
+              eq(privateAgentJobs.id, job.id),
+              eq(privateAgentJobs.status, "queued"),
+              // Re-checked in the UPDATE itself so a concurrent disable or rotate cannot slip between check and lease.
+              sql`EXISTS (SELECT 1 FROM private_agent_credentials c JOIN private_agents a ON a.id = c.private_agent_id WHERE c.id = ${auth.credential.id} AND c.revoked_at IS NULL AND a.status <> 'disabled')`
+            )
+          )
           .returning();
 
         await tx
           .update(privateAgents)
           .set({ lastHeartbeatAt: now, updatedAt: now })
-          .where(eq(privateAgents.id, auth.agent.id));
+          .where(and(eq(privateAgents.id, auth.agent.id), ne(privateAgents.status, "disabled")));
         await tx
           .update(privateAgentCredentials)
           .set({ lastUsedAt: now })

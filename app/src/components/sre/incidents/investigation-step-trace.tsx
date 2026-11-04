@@ -1,5 +1,6 @@
-import { Check, CircleAlert, CircleDashed, Loader2 } from "lucide-react";
+import { Check, CircleAlert, CircleDashed, Loader2, ChevronRight } from "lucide-react";
 
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { TableBadge } from "@/components/ui/table-badge";
 import type { SreInvestigationStep } from "@/sre/lib/investigation-trace";
 
@@ -30,8 +31,9 @@ export function InvestigationStepTrace({
   const failures = steps.filter((step) => step.status === "error").length;
 
   return (
-    <details open className="rounded-lg border" data-testid="investigation-step-trace">
-      <summary className="flex cursor-pointer flex-wrap items-center gap-2 rounded-lg px-4 py-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+    <Collapsible defaultOpen className="rounded-lg border" data-testid="investigation-step-trace">
+      <CollapsibleTrigger className="group flex w-full cursor-pointer flex-wrap items-center gap-2 rounded-lg text-left px-4 py-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <ChevronRight className="h-4 w-4 shrink-0 transition-transform group-data-[state=open]:rotate-90" aria-hidden="true" />
         How I investigated
         <span className="text-xs font-normal text-muted-foreground">
           {steps.length} {steps.length === 1 ? "step" : "steps"}
@@ -43,28 +45,30 @@ export function InvestigationStepTrace({
             Live
           </TableBadge>
         )}
-      </summary>
-      <ol className="space-y-1 border-t px-4 py-3" aria-live={running ? "polite" : "off"}>
-        {steps.length === 0 && (
-          <li className="text-sm text-muted-foreground">Starting. Steps appear here as they finish.</li>
-        )}
-        {steps.map((step) => (
-          <li key={step.index} className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm">
-            <span className="inline-flex items-center gap-1.5 font-mono text-xs">
-              {statusIcon[step.status]}
-              <span className="sr-only">{statusLabel[step.status]}: </span>
-              {step.tool}
-            </span>
-            {step.args && (
-              <span className="min-w-0 break-all text-xs text-muted-foreground">{step.args}</span>
-            )}
-            <span className="ml-auto whitespace-nowrap text-xs text-muted-foreground tabular-nums">
-              {step.resultCount !== null ? `${step.resultCount} ${step.resultCount === 1 ? "result" : "results"} · ` : ""}
-              {formatDuration(step.durationMs)}
-            </span>
-          </li>
-        ))}
-      </ol>
-    </details>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <ol className="space-y-1 border-t px-4 py-3" aria-live={running ? "polite" : "off"}>
+          {steps.length === 0 && (
+            <li className="text-sm text-muted-foreground">Starting. Steps appear here as they finish.</li>
+          )}
+          {steps.map((step) => (
+            <li key={step.index} className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm">
+              <span className="inline-flex items-center gap-1.5 font-mono text-xs">
+                {statusIcon[step.status]}
+                <span className="sr-only">{statusLabel[step.status]}: </span>
+                {step.tool}
+              </span>
+              {step.args && (
+                <span className="min-w-0 break-all text-xs text-muted-foreground">{step.args}</span>
+              )}
+              <span className="ml-auto whitespace-nowrap text-xs text-muted-foreground tabular-nums">
+                {step.resultCount !== null ? `${step.resultCount} ${step.resultCount === 1 ? "result" : "results"} · ` : ""}
+                {formatDuration(step.durationMs)}
+              </span>
+            </li>
+          ))}
+        </ol>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }

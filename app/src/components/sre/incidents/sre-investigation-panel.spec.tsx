@@ -47,7 +47,7 @@ describe("SreInvestigationPanel", () => {
   });
 
   it("falls back to saved evidence if a previously selected live-source scope disappears", async () => {
-    const props = { incidentId: "incident-1", hasPrimaryService: true, canInvestigate: true,
+    const props = { onCollectEvidence: jest.fn(), incidentId: "incident-1", hasPrimaryService: true, canInvestigate: true,
       canUseLiveConnectors: true, serviceMappingHref: "/incidents/incident-1?edit=service" };
     const { rerender } = render(<SreInvestigationPanel {...props} />);
     fireEvent.click(screen.getByLabelText("Include live sources"));
@@ -67,6 +67,7 @@ describe("SreInvestigationPanel", () => {
     );
     render(
       <SreInvestigationPanel
+        onCollectEvidence={jest.fn()}
         incidentId="incident-1"
         hasPrimaryService={true}
         serviceMappingHref="/org-admin"
@@ -85,6 +86,7 @@ describe("SreInvestigationPanel", () => {
   it("disables another run when the server reports an active investigation", () => {
     render(
       <SreInvestigationPanel
+        onCollectEvidence={jest.fn()}
         incidentId="incident-1"
         hasPrimaryService={true}
         serviceMappingHref="/org-admin"
@@ -108,6 +110,7 @@ describe("SreInvestigationPanel", () => {
   it("renders a simplified investigation action panel without embedded chat", () => {
     render(
       <SreInvestigationPanel
+        onCollectEvidence={jest.fn()}
         incidentId="018f0000-0000-7000-8000-000000000001"
         hasPrimaryService={true}
         serviceMappingHref="/org-admin?tab=services"
@@ -141,6 +144,7 @@ describe("SreInvestigationPanel", () => {
   it("runs the investigation with the selected connector setting", async () => {
     render(
       <SreInvestigationPanel
+        onCollectEvidence={jest.fn()}
         incidentId="018f0000-0000-7000-8000-000000000001"
         hasPrimaryService={true}
         serviceMappingHref="/org-admin?tab=services"
@@ -190,6 +194,7 @@ describe("SreInvestigationPanel", () => {
 
     render(
       <SreInvestigationPanel
+        onCollectEvidence={jest.fn()}
         incidentId="incident-1"
         hasPrimaryService={true}
         serviceMappingHref="/org-admin"
@@ -213,10 +218,12 @@ describe("SreInvestigationPanel", () => {
     );
   });
 
-  it("links missing evidence and optional live sources to their corrective workflows", () => {
+  it("offers evidence collection and links optional live sources to their corrective workflow", () => {
+    const onCollectEvidence = jest.fn();
     const incidentId = "018f0000-0000-7000-8000-000000000001";
     render(
       <SreInvestigationPanel
+        onCollectEvidence={onCollectEvidence}
         incidentId={incidentId}
         hasPrimaryService={false}
         serviceMappingHref="/org-admin?tab=services"
@@ -227,9 +234,8 @@ describe("SreInvestigationPanel", () => {
       />,
     );
 
-    expect(
-      screen.getByRole("link", { name: "Collect evidence" }),
-    ).toHaveAttribute("href", `/incidents/${incidentId}?tab=brief`);
+    fireEvent.click(screen.getByRole("button", { name: "Collect evidence" }));
+    expect(onCollectEvidence).toHaveBeenCalledTimes(1);
     expect(screen.getByRole("link", { name: "Link service" })).toHaveAttribute(
       "href",
       "/org-admin?tab=services",
@@ -239,6 +245,7 @@ describe("SreInvestigationPanel", () => {
   it("does not render the result itself (the AI summary card owns it)", () => {
     render(
       <SreInvestigationPanel
+        onCollectEvidence={jest.fn()}
         incidentId="018f0000-0000-7000-8000-000000000001"
         hasPrimaryService={true}
         serviceMappingHref="/org-admin?tab=services"
@@ -259,6 +266,7 @@ describe("SreInvestigationPanel", () => {
   it("re-runs with the user's note as untrusted guidance", async () => {
     render(
       <SreInvestigationPanel
+        onCollectEvidence={jest.fn()}
         incidentId="incident-1"
         hasPrimaryService={true}
         serviceMappingHref="/x"
@@ -301,6 +309,7 @@ describe("SreInvestigationPanel", () => {
   it("does not expose snapshot mutation controls to viewers", () => {
     render(
       <SreInvestigationPanel
+        onCollectEvidence={jest.fn()}
         incidentId="018f0000-0000-7000-8000-000000000001"
         hasPrimaryService={true}
         serviceMappingHref="/org-admin?tab=services"
@@ -329,6 +338,7 @@ describe("SreInvestigationPanel", () => {
   it("shows a persistent disabled state when investigation is not enabled", () => {
     render(
       <SreInvestigationPanel
+        onCollectEvidence={jest.fn()}
         incidentId="018f0000-0000-7000-8000-000000000001"
         hasPrimaryService={true}
         serviceMappingHref="/org-admin?tab=services"
@@ -350,6 +360,7 @@ describe("SreInvestigationPanel", () => {
   it("keeps investigation available without exposing live sources when connector permission is missing", () => {
     render(
       <SreInvestigationPanel
+        onCollectEvidence={jest.fn()}
         incidentId="018f0000-0000-7000-8000-000000000001"
         hasPrimaryService={true}
         serviceMappingHref="/org-admin?tab=services"
@@ -372,6 +383,7 @@ describe("SreInvestigationPanel", () => {
   it("hides mutation controls when permission props are omitted", () => {
     render(
       <SreInvestigationPanel
+        onCollectEvidence={jest.fn()}
         incidentId="018f0000-0000-7000-8000-000000000001"
         hasPrimaryService={true}
         serviceMappingHref="/org-admin?tab=services"

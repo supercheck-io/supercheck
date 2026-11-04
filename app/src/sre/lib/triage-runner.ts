@@ -223,6 +223,29 @@ export async function runSreIncidentTriage(input: RunSreIncidentTriageInput): Pr
       triageLogger.error({ investigationRunId: run.id }, "Could not mark SRE triage run failed");
     }
 
+    // Leave a trace so the incident shows why it has no AI finding. The code is the model's finish reason or the error class, never provider text.
+    const errorCode =
+      typeof error === "object" && error && "finishReason" in error && error.finishReason
+        ? String(error.finishReason)
+        : "agent_error";
+    try {
+      await db.insert(sreIncidentTimelineEvents).values({
+        incidentId: incident.id,
+        eventType: "state_change",
+        eventData: {
+          state: "triage_failed",
+          errorCode,
+          comment: `AI triage did not complete (${errorCode}).`,
+          investigationRunId: run.id,
+        },
+        actorType: "agent",
+        agentRunId: run.id,
+        createdAt: new Date(),
+      });
+    } catch {
+      triageLogger.error({ investigationRunId: run.id }, "Could not record SRE triage failure on the incident timeline");
+    }
+
     return { success: false, status: 502, error: "SRE triage failed", investigationRunId: run.id };
   }
 }

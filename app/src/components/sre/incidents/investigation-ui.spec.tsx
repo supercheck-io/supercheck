@@ -15,7 +15,7 @@ describe("InvestigationStepTrace", () => {
   it("stays open when finished and summarises failures", () => {
     render(<InvestigationStepTrace steps={steps} running={false} />);
     const details = screen.getByTestId("investigation-step-trace");
-    expect(details).toHaveAttribute("open");
+    expect(details).toHaveAttribute("data-state", "open");
     expect(details).toHaveTextContent("2 steps, 1 failed");
     expect(details).toHaveTextContent("2 results · 120 ms");
     expect(details).toHaveTextContent("2.4 s");
@@ -24,7 +24,7 @@ describe("InvestigationStepTrace", () => {
 
   it("is open and live while running, even before the first step", () => {
     render(<InvestigationStepTrace steps={[]} running />);
-    expect(screen.getByTestId("investigation-step-trace")).toHaveAttribute("open");
+    expect(screen.getByTestId("investigation-step-trace")).toHaveAttribute("data-state", "open");
     expect(screen.getByText("Live")).toBeInTheDocument();
     expect(screen.getByText(/Steps appear here/)).toBeInTheDocument();
   });

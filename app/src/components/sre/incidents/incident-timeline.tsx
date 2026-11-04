@@ -29,6 +29,7 @@ const STATE_LABELS: Record<string, string> = {
   manual_incident_created: "Incident created",
   created_from_alert_history: "Incident created from alert",
   created_from_background_alert_triage: "Incident created from alert",
+  triage_failed: "AI triage failed",
 };
 
 function str(value: unknown, max = 600) {
@@ -133,8 +134,13 @@ export function IncidentTimeline({
         <div>
           {query.isPending ? (
             <p className="text-sm text-muted-foreground">Loading timeline...</p>
-          ) : query.data && !query.data.success ? (
-            <p role="alert" className="text-sm text-destructive">{query.data.error}</p>
+          ) : (query.isError && !query.data) || (query.data && !query.data.success) ? (
+            <div role="alert" className="flex items-center gap-2 text-sm text-destructive">
+              <span>{query.data && !query.data.success ? query.data.error : "Could not load the timeline."}</span>
+              <Button type="button" variant="outline" size="sm" onClick={() => void query.refetch()}>
+                Retry
+              </Button>
+            </div>
           ) : events.length === 0 ? (
             <p className="text-sm text-muted-foreground">No activity yet.</p>
           ) : (

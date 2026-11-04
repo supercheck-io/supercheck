@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, or } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import {
@@ -7,6 +7,12 @@ import {
   sreIncidents,
 } from "@/db/schema";
 import { db } from "@/utils/db";
+
+/** Attachment markers: an interrupted reply stays out of prompts; a superseded one was replaced by a regenerated reply. */
+export const SRE_MESSAGE_INTERRUPTED = "interrupted";
+export const SRE_MESSAGE_SUPERSEDED = "superseded";
+export const isSreMessageSuperseded = (row: { attachments: Record<string, unknown>[] | null }) =>
+  Boolean(row.attachments?.some((item) => item.type === SRE_MESSAGE_SUPERSEDED));
 
 const MAX_MESSAGE_CONTENT_LENGTH = 32_000;
 const MAX_TITLE_LENGTH = 200;
@@ -180,19 +186,41 @@ export async function listSreConversations(input: ListSreConversationsInput) {
     .limit(parsed.limit ?? 50);
 }
 
+/** With `limit`, returns the newest `limit` messages, still oldest first. */
 export async function listSreMessages(
-  input: z.infer<typeof conversationLookupSchema>,
+  input: z.infer<typeof conversationLookupSchema> & { limit?: number },
 ) {
-  const conversation = await getSreConversation(input);
+  const { limit, ...lookup } = input;
+  const conversation = await getSreConversation(lookup);
+  const base = db
+    .select()
+    .from(sreChatMessages)
+    .where(eq(sreChatMessages.conversationId, conversation.id));
+  if (!limit) return base.orderBy(asc(sreChatMessages.createdAt));
+  const newest = await base.orderBy(desc(sreChatMessages.createdAt)).limit(limit);
+  return newest.reverse();
+}
 
+/** Messages of one conversation by id; ids outside the conversation are simply not returned. */
+export async function listSreMessagesByIds(
+  input: z.infer<typeof conversationLookupSchema> & { messageIds: string[] },
+) {
+  const { messageIds, ...lookup } = input;
+  const conversation = await getSreConversation(lookup);
+  if (messageIds.length === 0) return [];
   return db
     .select()
     .from(sreChatMessages)
-    .where(eq(sreChatMessages.conversationId, conversation.id))
-    .orderBy(asc(sreChatMessages.createdAt));
+    .where(
+      and(
+        eq(sreChatMessages.conversationId, conversation.id),
+        inArray(sreChatMessages.id, messageIds),
+      ),
+    );
 }
 
-export async function appendSreMessage(input: AppendSreMessageInput) {
+/** `supersedeMessageId` flags the replaced reply in the same transaction as the new one. */
+export async function appendSreMessage(input: AppendSreMessageInput, options: { supersedeMessageId?: string } = {}) {
   const parsed = parseOrThrow(appendMessageSchema, input);
 
   return db.transaction(async (tx) => {
@@ -237,8 +265,30 @@ export async function appendSreMessage(input: AppendSreMessageInput) {
       .set({ updatedAt: now })
       .where(eq(sreChatConversations.id, conversation.id));
 
+    if (options.supersedeMessageId) {
+      await flagSuperseded(tx, conversation.id, options.supersedeMessageId);
+    }
+
     return message;
   });
+}
+
+/** Flags a reply replaced by a regeneration so later prompts and reloaded history skip it. */
+export async function markSreMessageSuperseded(
+  input: z.infer<typeof conversationLookupSchema> & { messageId: string },
+) {
+  const { messageId, ...lookup } = input;
+  const conversation = await getSreConversation(lookup);
+  await flagSuperseded(db, conversation.id, messageId);
+}
+
+function flagSuperseded(executor: Pick<typeof db, "update">, conversationId: string, messageId: string) {
+  return executor
+    .update(sreChatMessages)
+    .set({
+      attachments: sql`coalesce(${sreChatMessages.attachments}, '[]'::jsonb) || ${JSON.stringify([{ type: SRE_MESSAGE_SUPERSEDED }])}::jsonb`,
+    })
+    .where(and(eq(sreChatMessages.id, messageId), eq(sreChatMessages.conversationId, conversationId)));
 }
 
 export async function archiveSreConversation(

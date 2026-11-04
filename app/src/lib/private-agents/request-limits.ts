@@ -20,3 +20,6 @@ export const PRIVATE_AGENT_LIMITS = {
     max: 600,
   }),
 } as const;
+
+// 100 evidence items at their schema maxima are about 400 KB; leave headroom, not an open door.
+export const MAX_PRIVATE_AGENT_RESULT_BYTES = 1024 * 1024;

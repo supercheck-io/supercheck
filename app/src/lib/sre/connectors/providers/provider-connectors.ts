@@ -1,4 +1,5 @@
 import { fetchConnectorEndpoint, fetchPublicEndpoint } from "../pinned-fetch";
+import { describeConnectionError } from "../connection-error";
 import {
   DEFAULT_CONNECTOR_OUTPUT_LIMITS,
   hashConnectorPayload,
@@ -257,8 +258,7 @@ export class ObservabilityProviderConnector implements Connector {
       await this.spec.validate(this.context());
       return { status: "valid", latencyMs: Date.now() - startedAt };
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Connector validation failed";
+      const message = describeConnectionError(error, "Connector validation failed");
       const lowered = message.toLowerCase();
       return {
         status:

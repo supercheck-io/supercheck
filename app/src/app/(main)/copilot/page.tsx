@@ -13,7 +13,7 @@ export default async function SreAiPage({
   const parsed = z.string().uuid().optional().safeParse(incident);
   if (!parsed.success) notFound();
   return (
-    <div className="h-[calc(100svh-3.5rem)] overflow-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    <div data-fit-viewport className="flex min-h-[560px] flex-1 flex-col overflow-hidden lg:min-h-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       <div className="sr-only">
         <PageBreadcrumbs
           items={[

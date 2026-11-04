@@ -52,4 +52,25 @@ describe("EditSreIncidentDialog", () => {
     fireEvent.click(screen.getByRole("option", { name: "Investigating" }));
     expect(screen.getByText(/Saving reopens the incident/)).toBeInTheDocument();
   });
+
+  it("hides deprecated services from the picker except the one already linked", () => {
+    const services = [
+      { id: "s-active", name: "Checkout", status: "active" },
+      { id: "s-old", name: "Legacy API", status: "deprecated" },
+      { id: "s-linked", name: "Old Billing", status: "deprecated" },
+    ] as never;
+    render(
+      <EditSreIncidentDialog
+        incident={{ ...(incident("investigating") as object), primaryServiceId: "s-linked" } as never}
+        services={services}
+        canUpdate
+        open
+        onOpenChange={jest.fn()}
+      />,
+    );
+    fireEvent.keyDown(screen.getByLabelText("Service"), { key: "Enter" });
+    expect(screen.getByRole("option", { name: "Checkout" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Old Billing" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Legacy API" })).not.toBeInTheDocument();
+  });
 });

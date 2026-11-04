@@ -104,6 +104,41 @@ type SreAssistantUiThreadProps = {
   onError: (message: string) => void;
 };
 
+type IdHolder = { get: () => string | undefined; set: (id: string) => void };
+
+function createIdHolder(initial: string | undefined): IdHolder {
+  let id = initial;
+  return { get: () => id, set: (next) => { id = next; } };
+}
+
+type SendRequestOptions = {
+  id: string;
+  messages: unknown[];
+  trigger: string;
+  messageId: string | undefined;
+  requestMetadata: unknown;
+  body: Record<string, unknown> | undefined;
+};
+
+/** Same body the transport builds by default, plus the regenerated reply's id when the SDK omits it. */
+function buildSendRequest(
+  options: SendRequestOptions,
+  lastAssistant: IdHolder,
+) {
+  return {
+    body: {
+      ...options.body,
+      id: options.id,
+      messages: options.messages,
+      trigger: options.trigger,
+      messageId:
+        options.messageId ??
+        (options.trigger === "regenerate-message" ? lastAssistant.get() : undefined),
+      metadata: options.requestMetadata,
+    },
+  };
+}
+
 export function historyMessagesToUiMessages(
   messages: SreCopilotChatHistory["messages"],
 ): SreAssistantUiMessage[] {
@@ -111,7 +146,14 @@ export function historyMessagesToUiMessages(
     id: message.id,
     role: message.role,
     metadata: message.modelId ? { modelId: message.modelId } : undefined,
-    parts: [{ type: "text", text: message.content }],
+    parts: [
+      {
+        type: "text",
+        text: message.interrupted
+          ? `${message.content}\n\n${INTERRUPTED_NOTICE}`
+          : message.content,
+      },
+    ],
   }));
 }
 
@@ -173,7 +215,30 @@ export function uiMessagesToHistoryMessages(
 
 function AssistantTextPart() {
   const part = useMessagePartText();
-  return <SreMessageContent content={part.text} />;
+  return <SreMessageContent content={part.text} isStreaming={part.status.type === "running"} />;
+}
+
+const INTERRUPTED_NOTICE = "Reply was interrupted.";
+
+/** Marks a live reply that was stopped, like the saved one shows after a reload. */
+export function InterruptedNotice({
+  status,
+  interrupted = false,
+}: {
+  status?: { type: string; reason?: string };
+  /** The server ended the reply (time budget or abort) and said so in the message metadata. */
+  interrupted?: boolean;
+}) {
+  if (!interrupted && !(status?.type === "incomplete" && status.reason === "cancelled")) return null;
+  return <p className="mt-2 whitespace-pre-wrap">{INTERRUPTED_NOTICE}</p>;
+}
+
+function LiveInterruptedNotice() {
+  const status = useAuiState((state) => state.message.status);
+  const interrupted = useAuiState(
+    (state) => state.message.metadata?.custom?.interrupted === true,
+  );
+  return <InterruptedNotice status={status} interrupted={interrupted} />;
 }
 
 function AssistantMessage() {
@@ -190,6 +255,7 @@ function AssistantMessage() {
           <Badge variant="secondary">Copilot</Badge>
         </div>
         <MessagePrimitive.Content components={{ Text: AssistantTextPart }} />
+        <LiveInterruptedNotice />
         <ActionBarPrimitive.Root
           hideWhenRunning
           className="mt-2 flex items-center gap-2"
@@ -588,6 +654,9 @@ export function SreAssistantUiThread({
     () => historyMessagesToUiMessages(initialMessages),
     [initialMessages],
   );
+  const [lastAssistant] = useState(() =>
+    createIdHolder(uiMessages.findLast((message) => message.role === "assistant")?.id),
+  );
   const transport = useMemo(
     () =>
       new AssistantChatTransport<SreAssistantUiMessage>({
@@ -597,8 +666,11 @@ export function SreAssistantUiThread({
           incidentId,
           useLiveConnectorTools: useLiveConnectorTools && canUseLiveConnectors,
         },
+        // Regenerate trims the reply from `messages` and passes no id, so name it from the
+        // last reply we saw (its id is the stored row id) or the loaded history.
+        prepareSendMessagesRequest: (options) => buildSendRequest(options, lastAssistant),
       }),
-    [conversationId, incidentId, useLiveConnectorTools, canUseLiveConnectors],
+    [conversationId, incidentId, useLiveConnectorTools, canUseLiveConnectors, lastAssistant],
   );
   // Set false on unmount (New chat / history switch / archive remount this component)
   // so a late stream can neither keep running nor write into the next thread.
@@ -609,6 +681,7 @@ export function SreAssistantUiThread({
     transport,
     onError: (error) => onError(formatCopilotError(error)),
     onFinish: ({ message, messages }) => {
+      if (message.role === "assistant") lastAssistant.set(message.id);
       if (!isActiveRef.current) {
         return;
       }

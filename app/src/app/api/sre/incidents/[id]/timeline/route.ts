@@ -19,9 +19,9 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   )).limit(1);
   if (!incident) return NextResponse.json({ error: "Incident not found" }, { status: 404 });
 
-  // The newest 1000 (so a long incident keeps its latest events), returned oldest first.
+  // The newest 500 (so a long incident keeps its latest events), returned oldest first.
   const newest = await db.select().from(sreIncidentTimelineEvents)
     .where(eq(sreIncidentTimelineEvents.incidentId, parsedId.data))
-    .orderBy(desc(sreIncidentTimelineEvents.createdAt)).limit(1000);
+    .orderBy(desc(sreIncidentTimelineEvents.createdAt)).limit(500);
   return NextResponse.json({ success: true, events: newest.reverse() });
 }

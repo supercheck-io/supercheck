@@ -1,9 +1,10 @@
 "use client";
 
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Loader2, SearchCheck, TriangleAlert } from "lucide-react";
+import { Loader2, SearchCheck, TriangleAlert, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -44,7 +45,7 @@ type SreInvestigationPanelProps = {
   canUseLiveConnectors?: boolean;
   investigationEnabled?: boolean;
   /** Opens the evidence brief in place; the ?tab link does nothing while the sheet is open. */
-  onCollectEvidence?: () => void;
+  onCollectEvidence: () => void;
 };
 
 export function SreInvestigationPanel({
@@ -271,26 +272,20 @@ export function SreInvestigationPanel({
                 : "No evidence is saved yet. Generate an evidence brief to collect available Supercheck context before investigating."}
             </p>
             {evidenceReferences.length === 0 && canInvestigate && (
-              onCollectEvidence ? (
-                <Button type="button" variant="link" className="mt-2 h-auto p-0" onClick={onCollectEvidence}>
-                  Collect evidence
-                </Button>
-              ) : (
-                <Button asChild variant="link" className="mt-2 h-auto p-0">
-                  <Link href={`/incidents/${incidentId}?tab=brief`}>
-                    Collect evidence
-                  </Link>
-                </Button>
-              )
+              <Button type="button" variant="link" className="mt-2 h-auto p-0" onClick={onCollectEvidence}>
+                Collect evidence
+              </Button>
             )}
           </div>
         )}
 
         {toolMetrics.total > 0 && (
-          <details className="rounded-lg border p-4">
-            <summary className="cursor-pointer rounded-sm text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <Collapsible className="rounded-lg border p-4">
+            <CollapsibleTrigger className="group flex w-full items-center gap-1.5 text-left cursor-pointer rounded-sm text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+<ChevronRight className="h-4 w-4 shrink-0 transition-transform group-data-[state=open]:rotate-90" aria-hidden="true" />
               Investigation diagnostics
-            </summary>
+            </CollapsibleTrigger>
+<CollapsibleContent>
             <div className="mt-3">
               <div className="grid overflow-hidden rounded-lg border sm:grid-cols-3">
                 <div className="border-b px-4 py-3 sm:border-b-0 sm:border-r">
@@ -321,7 +316,8 @@ export function SreInvestigationPanel({
                 </div>
               </div>
             </div>
-          </details>
+          </CollapsibleContent>
+</Collapsible>
         )}
     </div>
   );

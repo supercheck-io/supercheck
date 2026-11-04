@@ -49,6 +49,21 @@ describe("ServiceCatalog", () => {
     mockPush.mockClear();
   });
 
+  it("hides archived services by default and shows them through the Status filter", async () => {
+    render(
+      <ServiceCatalog
+        initialServices={[service, { ...service, id: "old", name: "legacy-api", status: "deprecated" }]}
+        loadError={null}
+      />,
+    );
+    await screen.findByText("checkout-api");
+    expect(screen.getByText("Environment")).toBeInTheDocument();
+    expect(screen.queryByText("legacy-api")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^Status/, expanded: false }));
+    fireEvent.click(screen.getByRole("option", { name: /Deprecated/ }));
+    expect(screen.getByText("legacy-api")).toBeInTheDocument();
+  });
+
   it("keeps table-backed filters and search clearing working", async () => {
     render(
       <ServiceCatalog
@@ -75,8 +90,10 @@ describe("ServiceCatalog", () => {
     fireEvent.click(screen.getByRole("option", { name: "Clear filters" }));
     fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
     fireEvent.click(
-      screen.getByRole("button", { name: "Status", expanded: false }),
+      screen.getByRole("button", { name: /^Status/, expanded: false }),
     );
+    // Active is selected by default; swap it for Deprecated.
+    fireEvent.click(screen.getByRole("option", { name: /Active/ }));
     fireEvent.click(screen.getByRole("option", { name: /Deprecated/ }));
     expect(screen.getByText("inventory-api")).toBeInTheDocument();
     expect(screen.queryByText("checkout-api")).not.toBeInTheDocument();

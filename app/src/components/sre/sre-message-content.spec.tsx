@@ -83,6 +83,19 @@ describe("SreMessageContent", () => {
     expect(screen.getByText("chart")).toBeInTheDocument();
   });
 
+  it("shows a short placeholder, not raw JSON, while a chart fence is still streaming", () => {
+    const { container } = render(<SreMessageContent isStreaming content={'Here:\n```chart\n{"type":"line","xKey":"t"'} />);
+    expect(screen.getByText("Preparing chart…")).toBeInTheDocument();
+    expect(container.querySelector("pre")).toBeNull();
+    expect(screen.queryByText(/xKey/)).not.toBeInTheDocument();
+  });
+
+  it("shows an unclosed chart fence as code once the message has finished", () => {
+    const { container } = render(<SreMessageContent content={'Here:\n```chart\n{"type":"line","xKey":"t"'} />);
+    expect(screen.queryByText("Preparing chart…")).not.toBeInTheDocument();
+    expect(container.querySelector("pre")).not.toBeNull();
+  });
+
   it("does not turn a missing chart observation into zero", () => {
     render(<SreMessageContent content={["```chart", JSON.stringify({ type: "line", title: "Errors", xKey: "time", series: [{ key: "errors", label: "Error count" }], data: [{ time: "10:00", errors: 5 }, { time: "10:01" }] }), "```"].join("\n")} />);
     expect(screen.getByText("No data")).toBeInTheDocument();
@@ -155,6 +168,13 @@ describe("SreMessageContent", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Memory %")).toBeInTheDocument();
     expect(screen.getByText("82")).toBeInTheDocument();
+  });
+
+  it("keeps markdown for a 600-line reply and windows only pathological output", () => {
+    const content = ["## Findings", ...Array.from({ length: 599 }, (_, i) => `- point ${i}`)].join("\n");
+    render(<SreMessageContent content={content} />);
+    expect(screen.getByText("Findings")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: /Large Copilot output/ })).not.toBeInTheDocument();
   });
 
   it("windows 10,000-line outputs instead of creating 10,000 DOM rows", async () => {

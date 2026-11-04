@@ -11,15 +11,21 @@ jest.mock("@/actions/sre-ai", () => ({
   archiveSreCopilotChat: jest.fn(),
 }));
 
+const mockToastError = jest.fn();
+jest.mock("sonner", () => ({ toast: { error: (...a: unknown[]) => mockToastError(...a), success: jest.fn() } }));
+
 jest.mock("@/components/sre/sre-assistant-ui-thread", () => ({
   SreAssistantUiThread: ({
     initialMessages,
     incidentId,
+    onError,
   }: {
     initialMessages: Array<{ content: string }>;
     incidentId?: string | null;
+    onError?: (message: string) => void;
   }) => (
     <div data-testid="chat-thread" data-incident={incidentId ?? ""}>
+      <button type="button" onClick={() => onError?.("Rate limited")}>Fail send</button>
       {initialMessages.map((message, index) => (
         <p key={`${message.content}-${index}`}>{message.content}</p>
       ))}
@@ -231,6 +237,26 @@ describe("SreAiConsole", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("shows a thread error once, in the alert, without also toasting it", () => {
+    mockToastError.mockClear();
+    render(<SreAiConsole />);
+    fireEvent.click(screen.getByRole("button", { name: "Fail send" }));
+    expect(screen.getByText("Rate limited")).toBeInTheDocument();
+    expect(mockToastError).not.toHaveBeenCalled();
+  });
+
+  it("formats history dates in the viewer's time zone, not pinned to UTC", () => {
+    const spy = jest.spyOn(Intl, "DateTimeFormat");
+    render(
+      <SreAiConsole
+        initialHistories={[{ conversationId: "c1", incidentId: null, title: "Dated", updatedAt: "2026-06-24T23:30:00Z", messages: [] }]}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "History" }));
+    expect(spy.mock.calls.some(([, options]) => (options as { timeZone?: string } | undefined)?.timeZone === "UTC")).toBe(false);
+    spy.mockRestore();
+  });
+
   it("shows unavailable date copy for invalid history timestamps", () => {
     render(
       <SreAiConsole
@@ -273,6 +299,9 @@ describe("SreAiConsole", () => {
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: "Archive chat" }));
+    // Archiving asks first and does nothing until confirmed.
+    expect(archiveSreCopilotChat).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole("button", { name: "Archive" }));
     await waitFor(() =>
       expect(
         screen.queryByRole("button", { name: "Archive chat" }),

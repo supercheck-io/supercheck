@@ -1,4 +1,4 @@
-jest.mock("@/utils/db", () => ({ db: { query: { statusPages: { findFirst: jest.fn() } }, transaction: jest.fn() } }));
+jest.mock("@/utils/db", () => ({ db: { query: { statusPages: { findFirst: jest.fn() }, sreIncidents: { findFirst: jest.fn() } }, transaction: jest.fn() } }));
 jest.mock("@/lib/project-context", () => ({
   requireProjectContext: jest.fn(async () => ({ userId: "u", organizationId: "o", project: { id: "p", name: "P" } })),
 }));
@@ -20,4 +20,37 @@ it("rejects an unbounded affectedComponentIds list before touching the database"
   } as never);
   expect(result.success).toBe(false);
   expect(db.query.statusPages.findFirst).not.toHaveBeenCalled();
+});
+
+it("scopes the for-update locks on the status page and SRE incident to the org and project", async () => {
+  (db.query.statusPages.findFirst as jest.Mock).mockResolvedValue({ id: uuid(1), language: "en" });
+  (db.query.sreIncidents.findFirst as jest.Mock).mockResolvedValue({ id: uuid(2) });
+  (db as unknown as { select: jest.Mock }).select = jest.fn(() => ({ from: () => ({ where: async () => [{ id: uuid(3) }] }) }));
+  const wheres: unknown[] = [];
+  const tx = {
+    select: () => ({
+      from: () => ({
+        where: (condition: unknown) => {
+          wheres.push(condition);
+          return { for: async () => [{ statusPageIncidentId: "already-linked" }] };
+        },
+      }),
+    }),
+    query: { incidents: { findFirst: jest.fn().mockResolvedValue(undefined) } },
+  };
+  (db.transaction as jest.Mock).mockImplementation((callback: (t: typeof tx) => unknown) => callback(tx));
+  const result = await createIncident({
+    statusPageId: uuid(1),
+    sreIncidentId: uuid(2),
+    name: "Outage",
+    status: "investigating",
+    impact: "minor",
+    affectedComponentIds: [uuid(3)],
+  } as never);
+  expect(result.success).toBe(false);
+  const { PgDialect } = jest.requireActual("drizzle-orm/pg-core") as typeof import("drizzle-orm/pg-core");
+  expect(wheres).toHaveLength(2);
+  for (const where of wheres) {
+    expect(new PgDialect().sqlToQuery(where as never).params).toEqual(expect.arrayContaining(["o", "p"]));
+  }
 });

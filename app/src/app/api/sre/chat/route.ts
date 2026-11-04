@@ -19,6 +19,7 @@ import {
   createSseStream,
   SseClientError,
 } from "@/sre/lib/sse-stream";
+import { SRE_CHART_PROMPT_LINES } from "@/sre/lib/chart-contract";
 import { createSreConnectorTools } from "@/sre/tools/connector-tools";
 import { createSreSimilarIncidentTools } from "@/sre/tools/similar-incident-tools";
 import { createSreEvidenceTools } from "@/sre/tools/evidence-tools";
@@ -166,10 +167,7 @@ function buildChatPrompt(input: {
       "Do not ask vaguely for more context. State exactly which evidence boundary applies and the single most useful way to continue in Supercheck.",
       "Use concise sections, bullets, markdown tables for comparisons, and fenced code blocks for commands or queries.",
       "Do not present a generic checklist as completed verification.",
-      "When a small numeric summary would be clearer as a chart, include a fenced `chart` JSON block with this exact shape:",
-      '{"type":"line","title":"Short title","description":"Optional one-sentence context","sources":[{"label":"Prometheus","type":"prometheus","evidenceIds":["ev-123"],"query":"rate(http_requests_total[5m])"}],"xKey":"label","series":[{"key":"value","label":"Value"}],"data":[{"label":"api","value":12}]}',
-      "Supported chart types are bar, line, and area, with at most 4 series and 48 data rows; series values must be numbers. Use only real values already present in evidence or the user request; do not fabricate chart data.",
-      "Include chart sources when values come from evidence, connectors, or user-provided data. Source labels must be non-secret names such as Prometheus, Grafana, Kubernetes, or Generated preview data.",
+      ...SRE_CHART_PROMPT_LINES,
     ].join("\n"),
   ]
     .filter(Boolean)
