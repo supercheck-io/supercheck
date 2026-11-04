@@ -445,6 +445,24 @@ describe("direct connectors", () => {
     );
   });
 
+  it("explains a network failure by its cause code instead of 'fetch failed'", async () => {
+    global.fetch = jest.fn().mockRejectedValue(
+      Object.assign(new TypeError("fetch failed"), { cause: Object.assign(new Error("connect"), { code: "ECONNREFUSED" }) }),
+    ) as unknown as typeof fetch;
+    const connector = createDirectConnector({
+      ...baseDefinition,
+      type: "datadog",
+      endpointUrl: "https://api.datadoghq.com",
+      surfaces: ["metrics"],
+      evidenceTypes: ["event"],
+      credential: { apiKey: "k", applicationKey: "a" },
+    });
+    const result = await connector.validate();
+    expect(result.status).toBe("unreachable");
+    expect(result.message).toContain("ECONNREFUSED");
+    expect(result.message).not.toBe("fetch failed");
+  });
+
   it("maps a 404 to a path-not-found message", async () => {
     global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 404 }) as unknown as typeof fetch;
     const connector = createDirectConnector({

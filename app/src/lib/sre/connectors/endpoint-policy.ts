@@ -43,6 +43,9 @@ export const METADATA_ADDRESS_ERROR =
 
 const DNS_LOOKUP_TIMEOUT_MS = 10_000;
 
+/** A DNS failure worth a plain message; other policy errors are policy blocks. */
+export class HostResolutionError extends Error {}
+
 /** DNS lookup bounded by the caller's abort signal and a default timeout. */
 export async function lookupBounded(hostname: string, signal?: AbortSignal | null) {
   let timer: NodeJS.Timeout | undefined;
@@ -57,6 +60,12 @@ export async function lookupBounded(hostname: string, signal?: AbortSignal | nul
   });
   try {
     return await Promise.race([lookup(hostname, { all: true, verbatim: true }), bound]);
+  } catch (error) {
+    const code = (error as { code?: unknown } | null)?.code;
+    if (code === "ENOTFOUND" || code === "EAI_AGAIN") {
+      throw new HostResolutionError(`Could not resolve host ${hostname}`);
+    }
+    throw error;
   } finally {
     clearTimeout(timer);
     if (onAbort) signal?.removeEventListener("abort", onAbort);

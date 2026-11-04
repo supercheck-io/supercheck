@@ -110,3 +110,13 @@ describe("self-hosted metadata blocking", () => {
     await expect(assertEndpointAllowedForExecution("http://prom.internal:9090", false)).resolves.toBeUndefined();
   });
 });
+
+describe("cloud DNS failures", () => {
+  it("reports an unresolvable host plainly instead of raw getaddrinfo text", async () => {
+    delete process.env.SELF_HOSTED;
+    mockLookup.mockRejectedValueOnce(Object.assign(new Error("getaddrinfo ENOTFOUND nope.example.com"), { code: "ENOTFOUND" }));
+    await expect(assertEndpointAllowedForExecution("https://nope.example.com", false)).rejects.toThrow(
+      "Could not resolve host nope.example.com",
+    );
+  });
+});

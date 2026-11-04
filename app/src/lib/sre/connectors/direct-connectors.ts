@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { describeConnectionError } from "./connection-error";
 
 import { fetchConnectorEndpoint } from "./pinned-fetch";
 import {
@@ -435,8 +436,7 @@ abstract class BaseDirectConnector implements Connector {
       await this.validationRequest();
       return { status: "valid", latencyMs: Date.now() - startedAt };
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Connector validation failed";
+      const message = describeConnectionError(error, "Connector validation failed");
       const lowerMessage = message.toLowerCase();
       return {
         status:

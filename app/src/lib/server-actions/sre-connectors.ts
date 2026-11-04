@@ -26,6 +26,7 @@ import {
   decryptConnectorCredential,
   encryptConnectorCredential,
   assertEndpointAllowedForExecution,
+  HostResolutionError,
   createDirectConnector,
   connectorRequiresCredentials,
   enforceConnectorPolicy,
@@ -1213,9 +1214,16 @@ export async function validateSreConnector(
             : "Private Agent is connected. Run a bounded evidence search to verify the connector endpoint and access.";
       }
     } else {
-      await assertEndpointAllowedForExecution(endpointUrl, false);
+      const policyError = await assertEndpointAllowedForExecution(endpointUrl, false).then(
+        () => null,
+        (error: unknown) => error ?? new Error("Endpoint is not allowed"),
+      );
 
-      if (isDirectValidationConnectorType(row.type)) {
+      if (policyError) {
+        // Only a DNS failure is "unreachable"; every other rejection is a policy block.
+        status = policyError instanceof HostResolutionError ? "unreachable" : "policy_blocked";
+        outputSummary = policyError instanceof Error ? policyError.message : "Endpoint is not allowed";
+      } else if (isDirectValidationConnectorType(row.type)) {
         const credential = credentialRow
           ? decryptConnectorCredential(credentialRow.encryptedCredential, {
               organizationId,

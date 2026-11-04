@@ -82,3 +82,22 @@ describe("validateSreConnector failure text", () => {
     expect(persisted.lastValidationError).not.toContain("sk-secret-token-value");
   });
 });
+
+describe("validateSreConnector DNS failures", () => {
+  it("records an unresolvable host as unreachable with a plain message", async () => {
+    mockSet.mockClear();
+    const { assertEndpointAllowedForExecution, HostResolutionError } = jest.requireMock("@/lib/sre/connectors");
+    assertEndpointAllowedForExecution.mockRejectedValueOnce(new HostResolutionError("Could not resolve host nope.example.com"));
+    mockFindConnector.mockResolvedValue({
+      id: "018f0000-0000-7000-8000-000000000004",
+      type: "sentry",
+      status: "configured",
+      privateAgentId: null,
+      config: { endpointUrl: "https://nope.example.com" },
+      outputLimits: {},
+    });
+    await validateSreConnector({ id: "018f0000-0000-7000-8000-000000000004" });
+    const persisted = mockSet.mock.calls.find(([v]) => v.lastValidationStatus)?.[0];
+    expect(persisted).toMatchObject({ lastValidationStatus: "unreachable", lastValidationError: "Could not resolve host nope.example.com" });
+  });
+});
