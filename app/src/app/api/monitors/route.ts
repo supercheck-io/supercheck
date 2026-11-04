@@ -807,8 +807,10 @@ export async function PUT(req: NextRequest) {
     if (!configurationValidation.success) {
       return NextResponse.json(configurationValidation, { status: 400 });
     }
-    if (updateData.target !== undefined || updateData.type !== undefined) {
-      const targetValidation = await validateMonitorTargetAddress({ type: updateData.type ?? monitorData[0].type, target: updateData.target ?? monitorData[0].target });
+    // Only a changed target or type is checked, so a monitor already pointing at an internal host stays editable.
+    const effectiveU3 = { type: updateData.type ?? monitorData[0].type, target: updateData.target ?? monitorData[0].target };
+    if (effectiveU3.type !== monitorData[0].type || effectiveU3.target !== monitorData[0].target) {
+      const targetValidation = await validateMonitorTargetAddress(effectiveU3);
       if (!targetValidation.success) {
         return NextResponse.json(targetValidation, { status: 400 });
       }

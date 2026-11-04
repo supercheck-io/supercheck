@@ -231,4 +231,19 @@ describe("synthetic monitors keep the 5-minute minimum", () => {
     const res = await call(PATCH, "PATCH", { frequencyMinutes: 1 });
     expect(res.status).not.toBe(400);
   });
+
+  describe("target address policy", () => {
+    it("rejects a changed private target on PUT and PATCH", async () => {
+      expect((await call(PUT, "PUT", { target: "http://169.254.169.254/latest" })).status).toBe(400);
+      expect((await call(PATCH, "PATCH", { target: "http://10.0.0.5" })).status).toBe(400);
+    });
+
+    it("does not revalidate an unchanged target, even an internal one, so the monitor stays editable", async () => {
+      findFirst.mockResolvedValue({ ...stored, target: "http://10.0.0.5/health" });
+      const put = await call(PUT, "PUT", { target: "http://10.0.0.5/health", frequencyMinutes: 10 });
+      expect(put.status).not.toBe(400);
+      const patch = await call(PATCH, "PATCH", { target: "http://10.0.0.5/health", type: "http_request" });
+      expect(patch.status).not.toBe(400);
+    });
+  });
 });

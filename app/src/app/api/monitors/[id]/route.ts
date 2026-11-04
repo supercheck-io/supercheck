@@ -234,8 +234,10 @@ export async function PUT(
     if (!configurationValidation.success) {
       return NextResponse.json(configurationValidation, { status: 400 });
     }
-    if (updateData.target !== undefined || updateData.type !== undefined) {
-      const targetValidation = await validateMonitorTargetAddress({ type: updateData.type ?? currentMonitor.type, target: updateData.target ?? currentMonitor.target });
+    // Only a changed target or type is checked, so a monitor already pointing at an internal host stays editable.
+    const effectiveU1 = { type: updateData.type ?? currentMonitor.type, target: updateData.target ?? currentMonitor.target };
+    if (effectiveU1.type !== currentMonitor.type || effectiveU1.target !== currentMonitor.target) {
+      const targetValidation = await validateMonitorTargetAddress(effectiveU1);
       if (!targetValidation.success) {
         return NextResponse.json(targetValidation, { status: 400 });
       }
@@ -819,8 +821,10 @@ export async function PATCH(
     if (!configurationValidation.success) {
       return NextResponse.json(configurationValidation, { status: 400 });
     }
-    if (updatePayload.target !== undefined || updatePayload.type !== undefined) {
-      const targetValidation = await validateMonitorTargetAddress({ type: updatePayload.type ?? currentMonitor.type, target: updatePayload.target ?? currentMonitor.target });
+    // Only a changed target or type is checked, so a monitor already pointing at an internal host stays editable.
+    const effectiveU2 = { type: updatePayload.type ?? currentMonitor.type, target: updatePayload.target ?? currentMonitor.target };
+    if (effectiveU2.type !== currentMonitor.type || effectiveU2.target !== currentMonitor.target) {
+      const targetValidation = await validateMonitorTargetAddress(effectiveU2);
       if (!targetValidation.success) {
         return NextResponse.json(targetValidation, { status: 400 });
       }

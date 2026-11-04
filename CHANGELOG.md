@@ -5,6 +5,7 @@ Notable changes to the Supercheck app and worker, including upgrade requirements
 The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prerelease builds (`-canary.N`) are not listed.
 
 ## [Unreleased]
+- **Monitor targets.** Creating or changing an HTTP, website, ping or port monitor now returns 400 when its target is a private, loopback or reserved address (including a name that resolves to one). Set `ALLOW_INTERNAL_TARGETS=true` on both the app and the worker to allow them. Existing monitors keep working and stay editable until their target or type changes.
 
 ## [1.5.0] - 2026-10-30
 
