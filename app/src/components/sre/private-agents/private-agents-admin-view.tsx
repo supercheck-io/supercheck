@@ -251,7 +251,12 @@ export function PrivateAgentsAdminView({
         open={Boolean(rotatedToken)}
         onOpenChange={(open) => !open && setRotatedToken(null)}
       >
-        <DialogContent className="w-[calc(100vw-1rem)] max-w-2xl gap-3 p-5 sm:w-full">
+        <DialogContent
+          className="w-[calc(100vw-1rem)] max-w-2xl gap-3 p-5 sm:w-full"
+          // The one-time token must not be lost to a stray click or Escape; use Done.
+          onInteractOutside={(event) => event.preventDefault()}
+          onEscapeKeyDown={(event) => event.preventDefault()}
+        >
           <DialogHeader>
             <DialogTitle>Token rotated</DialogTitle>
             <DialogDescription>

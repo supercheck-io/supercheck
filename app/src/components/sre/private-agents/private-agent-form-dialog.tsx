@@ -88,7 +88,16 @@ export function PrivateAgentFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[calc(100svh-1rem)] w-[calc(100vw-1rem)] max-w-4xl gap-3 overflow-y-auto p-5 sm:w-full">
+      <DialogContent
+        className="max-h-[calc(100svh-1rem)] w-[calc(100vw-1rem)] max-w-4xl gap-3 overflow-y-auto p-5 sm:w-full"
+        // The one-time token must not be lost to a stray click or Escape; use Done.
+        onInteractOutside={(event) => {
+          if (registrationToken) event.preventDefault();
+        }}
+        onEscapeKeyDown={(event) => {
+          if (registrationToken) event.preventDefault();
+        }}
+      >
         <DialogHeader>
           <DialogTitle>Register Private Agent</DialogTitle>
           <DialogDescription>
@@ -134,8 +143,24 @@ export function PrivateAgentFormDialog({
               </div>
             </div>
             <div className="rounded-lg border bg-muted/30 p-3 text-sm text-muted-foreground">
-              Start the agent with this token in its environment. Connector
-              execution remains read-only and policy-gated by Supercheck.
+              Start the agent with these environment variables:{" "}
+              <code className="rounded-sm bg-muted/60 px-1 py-0.5 font-mono text-xs dark:bg-muted">
+                SUPERCHECK_API_URL
+              </code>
+              ,{" "}
+              <code className="rounded-sm bg-muted/60 px-1 py-0.5 font-mono text-xs dark:bg-muted">
+                PRIVATE_AGENT_ID
+              </code>{" "}
+              and{" "}
+              <code className="rounded-sm bg-muted/60 px-1 py-0.5 font-mono text-xs dark:bg-muted">
+                PRIVATE_AGENT_TOKEN
+              </code>
+              . The compose file is{" "}
+              <code className="rounded-sm bg-muted/60 px-1 py-0.5 font-mono text-xs dark:bg-muted">
+                deploy/docker/docker-compose-private-agent.yml
+              </code>
+              . Connector execution remains read-only and policy-gated by
+              Supercheck.
             </div>
             <DialogFooter>
               <Button type="button" onClick={() => onOpenChange(false)}>
