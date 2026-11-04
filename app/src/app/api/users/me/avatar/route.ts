@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
   // Re-encode so EXIF/GPS and any trailing payload never reach storage; also bounds decoded size.
   let encoded: Buffer;
   try {
-    encoded = await sharp(bytes, { limitInputPixels: 20e6 })
+    encoded = await sharp(bytes, { limitInputPixels: 4096 * 4096 })
       .rotate()
       .resize(256, 256, { fit: "cover" })
       .webp()
