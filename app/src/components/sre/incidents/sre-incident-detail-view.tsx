@@ -381,7 +381,7 @@ export function SreIncidentDetailView({
       <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
         <div className="flex min-w-0 flex-col gap-4">
           <IncidentAiSummaryCard
-            rootCauseSummary={incident.rootCauseSummary}
+            rootCauseSummary={incident.rootCauseSummary ?? detail.triageSummary ?? null}
             confidenceScore={incident.confidenceScore}
             investigationStatus={investigation?.status ?? null}
             investigation={investigation}

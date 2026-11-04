@@ -272,7 +272,10 @@ export function EditSreIncidentDialog({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={noServiceValue}>Unmapped</SelectItem>
-                {services.map((service) => (
+                {services
+                  // Deprecated services cannot be picked, but the linked one stays visible as the current value.
+                  .filter((service) => service.status !== "deprecated" || service.id === incident.primaryServiceId)
+                  .map((service) => (
                   <SelectItem key={service.id} value={service.id}>
                     {service.name}
                   </SelectItem>

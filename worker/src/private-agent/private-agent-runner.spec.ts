@@ -8,6 +8,8 @@ import {
   executePrivateAgentConnectorJob,
   leaseJob,
   processLeasedJob,
+  nextAuthFailureCount,
+  MAX_CONSECUTIVE_AUTH_FAILURES,
   SUPPORTED_SRE_CONNECTOR_TYPES,
   unrunnableLeasedJob,
   type PrivateAgentConfig,
@@ -504,6 +506,67 @@ describe('private agent connector execution', () => {
       }
     },
   );
+
+  it('resubmits a minimal failed result when the server rejects a result as too large', async () => {
+    const config: PrivateAgentConfig = {
+      apiUrl: 'https://app.supercheck.io',
+      agentId: baseJob.id,
+      token: 'scpac_runtime_1234567890',
+      tokenSource: 'env',
+      credentialFile: null,
+      agentVersion: '1.3.6',
+      retryIntervalMs: 5_000,
+      leaseWaitMs: 25_000,
+      heartbeatIntervalMs: 30_000,
+    };
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: { result: [] } }),
+      })
+      .mockResolvedValueOnce({ ok: false, status: 413 })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true }) });
+    global.fetch = fetchMock;
+
+    await expect(
+      processLeasedJob(config, { job: baseJob, leaseToken: 'lease-token' }),
+    ).resolves.toBeUndefined();
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(JSON.parse(fetchMock.mock.calls[2][1].body)).toEqual({
+      jobId: baseJob.id,
+      leaseToken: 'lease-token',
+      status: 'failed',
+      evidence: [],
+      truncated: false,
+      errorCode: 'result_too_large',
+    });
+  });
+
+  it('counts consecutive 401s from the lease call and resets on any other outcome', async () => {
+    const config: PrivateAgentConfig = {
+      apiUrl: 'https://app.supercheck.io',
+      agentId: baseJob.id,
+      token: 'scpac_runtime_1234567890',
+      tokenSource: 'env',
+      credentialFile: null,
+      agentVersion: '1.3.6',
+      retryIntervalMs: 5_000,
+      leaseWaitMs: 25_000,
+      heartbeatIntervalMs: 30_000,
+    };
+    global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 401 });
+    const unauthorized = await leaseJob(config).catch(
+      (error: unknown) => error,
+    );
+    let count = 0;
+    for (let i = 0; i < MAX_CONSECUTIVE_AUTH_FAILURES; i += 1) {
+      count = nextAuthFailureCount(count, unauthorized);
+    }
+    expect(count).toBe(MAX_CONSECUTIVE_AUTH_FAILURES);
+    expect(nextAuthFailureCount(count, new Error('network down'))).toBe(0);
+  });
 
   it('exchanges registration tokens for runtime credentials', async () => {
     const config: PrivateAgentConfig = {

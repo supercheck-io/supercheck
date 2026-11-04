@@ -102,12 +102,17 @@ describe("redactConnectorText connection strings", () => {
     ["postgres://user:s3cret@db:5432/x", "postgres://user:[REDACTED]@db:5432/x"],
     ["postgres://user:s3cret@db.example.com:5432/x", "postgres://user:[REDACTED]@db.example.com:5432/x"],
     ["redis://admin:hunter2@cache.internal/0", "redis://admin:[REDACTED]@cache.internal/0"],
+    ["postgres://user:pa/ss@host/db", "postgres://user:[REDACTED]@host/db"],
+    ["postgres://u:p@ss@h/db", "postgres://u:[REDACTED]@h/db"],
+    ["https://ghp_xxx@github.com/a/b", "https://[REDACTED]@github.com/a/b"],
+    ["https://glpat-abc123@gitlab.com", "https://[REDACTED]@gitlab.com"],
+    [`https://${"a1b2c3d4".repeat(4)}@api.example.com`, "https://[REDACTED]@api.example.com"],
   ])("redacts only the password in %s", (input, expected) => {
     expect(redactConnectorText(input)).toBe(expected);
   });
 
   it("leaves URLs without credentials unchanged", () => {
-    for (const url of ["https://example.com:8443/path?a=1", "http://db:5432/x"]) {
+    for (const url of ["https://example.com:8443/path?a=1", "http://db:5432/x", "https://example.com:8443/p?e=a@localhost"]) {
       expect(redactConnectorText(url)).toBe(url);
     }
   });

@@ -221,6 +221,23 @@ function fakeRequest() {
   return request;
 }
 
+it("sends the body in one end() call with an explicit content-length", async () => {
+  (mockLookup as jest.Mock).mockResolvedValueOnce([{ address: "203.0.114.10", family: 4 }]);
+  const request = fakeRequest();
+  let sentHeaders: Record<string, string> = {};
+  (mockRequest as unknown as jest.Mock).mockImplementation((_u: URL, options: { headers: Record<string, string> }, onResponse: Function) => {
+    sentHeaders = options.headers;
+    const response = Object.assign(new EventEmitter(), { statusCode: 200, headers: {} });
+    onResponse(response);
+    queueMicrotask(() => response.emit("end"));
+    return request;
+  });
+  await fetchPublicEndpoint("https://hooks.example.com", { method: "POST", body: "héllo" });
+  expect(request.write).not.toHaveBeenCalled();
+  expect(request.end).toHaveBeenCalledWith("héllo");
+  expect(sentHeaders["content-length"]).toBe("6");
+});
+
 describe("self-hosted pinned fetch", () => {
   beforeEach(() => { jest.resetAllMocks(); });
   afterEach(() => { delete process.env.SELF_HOSTED; });

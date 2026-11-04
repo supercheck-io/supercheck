@@ -2,6 +2,7 @@ import http from "node:http";
 import https from "node:https";
 import { isIP } from "node:net";
 
+import { isSelfHosted } from "@/lib/feature-flags";
 import {
   isMetadataOrLinkLocalAddress,
   isPrivateConnectorAddress,
@@ -11,10 +12,6 @@ import {
 import { createPinnedLookup } from "./pinned-lookup";
 
 const MAX_RESPONSE_BYTES = 10 * 1024 * 1024;
-
-function isSelfHosted() {
-  return process.env.SELF_HOSTED === "true" || process.env.SELF_HOSTED === "1";
-}
 
 /**
  * Fetch a direct cloud connector through an address validated in the same DNS
@@ -62,18 +59,20 @@ async function fetchPinnedEndpoint(
     );
   }
 
-  const selected = addresses[0];
   const headers = new Headers(init.headers);
   headers.set("Accept-Encoding", "identity");
+  if (typeof init.body === "string" || Buffer.isBuffer(init.body)) {
+    headers.set("Content-Length", String(Buffer.byteLength(init.body)));
+  }
 
   return new Promise<Response>((resolve, reject) => {
-    // Every DNS answer passed the address policy and the socket lookup is pinned to the first one.
+    // Every DNS answer passed the address policy and the socket lookup is pinned to that vetted set.
     const request = (url.protocol === "http:" ? http : https).request( // lgtm [js/request-forgery]
       url,
       {
         method: init.method ?? "GET",
         headers: Object.fromEntries(headers.entries()),
-        lookup: createPinnedLookup(selected),
+        lookup: createPinnedLookup(addresses),
       },
       (response) => {
         const chunks: Buffer[] = [];
@@ -134,7 +133,8 @@ async function fetchPinnedEndpoint(
         request.destroy(new Error("Unsupported connector request body"));
         return;
       }
-      request.write(init.body);
+      request.end(init.body);
+      return;
     }
     request.end();
   });

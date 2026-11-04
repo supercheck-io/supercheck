@@ -1,10 +1,15 @@
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { Address4, Address6 } from "ip-address";
+import { isSelfHosted } from "@/lib/feature-flags";
 import { isPrivateOrReservedAddress } from "@/lib/outbound-address-policy";
 
-function isSelfHosted() {
-  return process.env.SELF_HOSTED === "true" || process.env.SELF_HOSTED === "1";
+
+/** Stored MCP URLs may carry a key in the query, so responses show only `?…`. */
+export function redactEndpointQuery(value: unknown) {
+  if (typeof value !== "string") return null;
+  const at = value.indexOf("?");
+  return at === -1 ? value : `${value.slice(0, at)}?…`;
 }
 
 export function isPrivateConnectorAddress(address: string) {
@@ -15,6 +20,21 @@ const METADATA_IPV4_NETWORKS = ["169.254.0.0/16", "100.100.100.200/32", "168.63.
   (network) => new Address4(network),
 );
 const LINK_LOCAL_IPV6 = [new Address6("fe80::/10"), new Address6("fd00:ec2::254/128")];
+
+const NAT64_NETWORKS = [new Address6("64:ff9b::/96"), new Address6("64:ff9b:1::/48")];
+const IPV4_COMPATIBLE = new Address6("::/96");
+const SIX_TO_FOUR = new Address6("2002::/16");
+
+/** IPv4 carried inside an IPv6 address by mapping, NAT64, 6to4 or the deprecated ::/96 form. */
+function embeddedIpv4(candidate: Address6) {
+  const bytes = candidate.toByteArray();
+  const at = (offset: number) => Address4.fromHex(
+    bytes.slice(offset, offset + 4).map((b) => b.toString(16).padStart(2, "0")).join(""),
+  );
+  if (candidate.isMapped4() || candidate.isHostInSubnet(IPV4_COMPATIBLE) || NAT64_NETWORKS.some((n) => candidate.isHostInSubnet(n))) return at(12);
+  if (candidate.isHostInSubnet(SIX_TO_FOUR)) return at(2);
+  return null;
+}
 
 /**
  * Cloud metadata and link-local addresses stay blocked even for self-hosted
@@ -29,9 +49,9 @@ export function isMetadataOrLinkLocalAddress(address: string) {
   }
   if (family === 6) {
     const candidate = new Address6(normalized);
-    const embedded = candidate.embeddedIPv4();
-    if (embedded && (candidate.isMapped4() || candidate.is4())) {
-      return METADATA_IPV4_NETWORKS.some((network) => embedded.isHostInSubnet(network));
+    const embedded = embeddedIpv4(candidate);
+    if (embedded && METADATA_IPV4_NETWORKS.some((network) => embedded.isHostInSubnet(network))) {
+      return true;
     }
     return LINK_LOCAL_IPV6.some((network) => candidate.isHostInSubnet(network));
   }
@@ -51,7 +71,7 @@ export async function lookupBounded(hostname: string, signal?: AbortSignal | nul
   let timer: NodeJS.Timeout | undefined;
   let onAbort: (() => void) | undefined;
   const bound = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error("DNS lookup timed out")), DNS_LOOKUP_TIMEOUT_MS);
+    timer = setTimeout(() => reject(new HostResolutionError(`DNS lookup for ${hostname} timed out`)), DNS_LOOKUP_TIMEOUT_MS);
     if (signal) {
       onAbort = () => reject(new Error("DNS lookup aborted"));
       if (signal.aborted) onAbort();
@@ -62,7 +82,7 @@ export async function lookupBounded(hostname: string, signal?: AbortSignal | nul
     return await Promise.race([lookup(hostname, { all: true, verbatim: true }), bound]);
   } catch (error) {
     const code = (error as { code?: unknown } | null)?.code;
-    if (code === "ENOTFOUND" || code === "EAI_AGAIN") {
+    if (code === "ENOTFOUND" || code === "EAI_AGAIN" || code === "ETIMEOUT") {
       throw new HostResolutionError(`Could not resolve host ${hostname}`);
     }
     throw error;

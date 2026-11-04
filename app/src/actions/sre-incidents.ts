@@ -64,6 +64,7 @@ import {
   findOpenIncidentForSource,
   getDefaultAssigneeId,
   noteFailureReturned,
+  INCIDENT_REOPEN_WINDOW_MS,
   RECOVERABLE_ALERT_TYPES,
   reopenRecentlyAutoResolved,
 } from "@/lib/sre/incident-lifecycle";
@@ -232,6 +233,8 @@ export type SreIncidentDetail = {
     firedAt: Date;
   }>;
   currentUserId: string;
+  /** The automatic triage finding, shown when no full investigation exists yet. */
+  triageSummary?: string | null;
   latestBrief: {
     id: string;
     modelId: string;
@@ -975,6 +978,29 @@ export async function getSreIncidentDetails(
       .orderBy(desc(sreInvestigationRuns.createdAt))
       .limit(1);
 
+    const [triageRun] = latestInvestigation
+      ? []
+      : await db
+          .select({
+            rootCauseHypothesis: sreInvestigationRuns.rootCauseHypothesis,
+            agentStateSnapshot: sreInvestigationRuns.agentStateSnapshot,
+          })
+          .from(sreIncidents)
+          .innerJoin(sreInvestigationRuns, eq(sreInvestigationRuns.id, sreIncidents.triageInvestigationRunId))
+          .where(
+            and(
+              eq(sreIncidents.id, incidentId),
+              eq(sreIncidents.organizationId, organizationId),
+              eq(sreIncidents.projectId, project.id),
+              eq(sreInvestigationRuns.status, "completed"),
+            ),
+          )
+          .limit(1);
+    const triageSummary =
+      typeof triageRun?.agentStateSnapshot?.summary === "string"
+        ? triageRun.agentStateSnapshot.summary
+        : (triageRun?.rootCauseHypothesis ?? null);
+
     const myFeedback = latestInvestigation
       ? await listMyFeedbackForRun({ userId, organizationId, projectId: project.id }, latestInvestigation.id)
       : ([] as MyFeedback[]);
@@ -1128,6 +1154,7 @@ export async function getSreIncidentDetails(
             latestInvestigation?.completedAt ?? null,
           latestInvestigationCreatedAt: latestInvestigation?.createdAt ?? null,
         },
+        triageSummary,
         latestBrief: latestBrief ?? null,
         latestInvestigation: latestInvestigation
           ? {
@@ -1685,7 +1712,10 @@ export async function createSreIncidentFromAlert(
       // incident or joins the source's open one instead of creating a duplicate.
       if (sourceId && (RECOVERABLE_ALERT_TYPES as string[]).includes(alert.type)) {
         const source = { organizationId, projectId: project.id, sourceType, sourceId };
-        const reopened = await reopenRecentlyAutoResolved(tx, { ...source, firedAt });
+        // An old alert opened by hand must not reopen a resolved incident; it may only join an open one.
+        const reopened = Date.now() - firedAt.getTime() > INCIDENT_REOPEN_WINDOW_MS
+          ? null
+          : await reopenRecentlyAutoResolved(tx, { ...source, firedAt });
         const joined = reopened
           ? { id: reopened.incidentId, incidentNumber: reopened.incidentNumber, title: reopened.title }
           : await findOpenIncidentForSource(tx, source);

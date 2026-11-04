@@ -68,6 +68,17 @@ describe("getSreIncidentDetails investigation summary", () => {
     }
   });
 
+  it("returns the triage finding when no full investigation exists", async () => {
+    (db.select as jest.Mock)
+      .mockReturnValueOnce(selectRows([{ id: "incident-1" }]))
+      .mockReturnValueOnce(selectRows([]))
+      .mockReturnValueOnce(selectRows([]))
+      .mockReturnValueOnce(selectRows([{ rootCauseHypothesis: "truncated", agentStateSnapshot: { summary: "Triage: pool exhausted" } }]))
+      .mockReturnValue(selectRows([]));
+    const result = await getSreIncidentDetails("incident-1");
+    expect(result.success && result.detail.triageSummary).toBe("Triage: pool exhausted");
+  });
+
   it("releases a stale running investigation (scoped) before reading the latest run", async () => {
     (db.select as jest.Mock).mockReturnValueOnce(selectRows([{ id: "incident-1" }])).mockReturnValue(selectRows([]));
     await getSreIncidentDetails("incident-1");
@@ -243,8 +254,9 @@ describe("createSreIncidentFromAlert severity", () => {
 });
 
 describe("createSreIncidentFromAlert join/reopen rules", () => {
-  const arrange = () => {
+  const arrange = (sentAt = new Date()) => {
     jest.mocked(announceSystemTransition).mockClear();
+    jest.mocked(reopenRecentlyAutoResolved).mockClear();
     jest.mocked(requireProjectContext).mockResolvedValue({
       userId: "user-1", organizationId: "org-1",
       project: { id: "project-1", name: "Prod", organizationId: "org-1", isDefault: true, userRole: "project_editor" },
@@ -252,7 +264,7 @@ describe("createSreIncidentFromAlert join/reopen rules", () => {
     jest.mocked(checkPermissionWithContext).mockReturnValue(true);
     (db.select as jest.Mock).mockReturnValueOnce(selectRows([{
       id: "alert-1", targetType: "monitor", target: "API", monitorId: "mon-1", jobId: null, type: "monitor_failure",
-      message: "down", status: "sent", provider: "slack", sentAt: new Date(), monitorName: "API", jobName: null,
+      message: "down", status: "sent", provider: "slack", sentAt, monitorName: "API", jobName: null,
       monitorAlertConfig: null, jobAlertConfig: null,
     }]));
     const inserted: unknown[] = [];
@@ -275,6 +287,14 @@ describe("createSreIncidentFromAlert join/reopen rules", () => {
     const result = await createSreIncidentFromAlert({ alertHistoryId: "00000000-0000-4000-8000-000000000009" });
     expect(result).toMatchObject({ success: true, existing: true, incident: { id: "inc-old", incidentNumber: 4 } });
     expect(announceSystemTransition).toHaveBeenCalledWith("org-1", "project-1", "inc-old", "reopened", expect.objectContaining({ assigneeUserId: "u-9" }));
+  });
+
+  it("does not reopen for an alert older than the reopen window, but still joins an open incident", async () => {
+    arrange(new Date(Date.now() - 2 * 60 * 60 * 1000));
+    jest.mocked(findOpenIncidentForSource).mockResolvedValueOnce({ id: "inc-open", ...ref, triageInvestigationRunId: null });
+    const result = await createSreIncidentFromAlert({ alertHistoryId: "00000000-0000-4000-8000-000000000009" });
+    expect(reopenRecentlyAutoResolved).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ success: true, existing: true, incident: { id: "inc-open" } });
   });
 
   it("joins the source's open incident instead of creating a duplicate", async () => {

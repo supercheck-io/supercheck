@@ -127,6 +127,24 @@ describe('secret-crypto', () => {
       },
     );
 
+    it('rejects a placeholder key in cloud production but not self-hosted', () => {
+      const { NODE_ENV, SELF_HOSTED } = process.env;
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      try {
+        process.env[KEY_ENV] = 'change_this'.padEnd(64, '_');
+        (process.env as Record<string, string>).NODE_ENV = 'production';
+        delete process.env.SELF_HOSTED;
+        expect(() => encryptSecret('v')).toThrow('placeholder value');
+        process.env.SELF_HOSTED = ' TRUE ';
+        expect(decryptSecret(encryptSecret('v'))).toBe('v');
+      } finally {
+        (process.env as Record<string, string | undefined>).NODE_ENV = NODE_ENV;
+        if (SELF_HOSTED === undefined) delete process.env.SELF_HOSTED;
+        else process.env.SELF_HOSTED = SELF_HOSTED;
+        warn.mockRestore();
+      }
+    });
+
     it('warns once for a placeholder key and not again', async () => {
       // The warning flag is module-level, so load a fresh copy of the module.
       jest.resetModules();

@@ -5,7 +5,8 @@ import { z } from "zod";
 import { redactConnectorText } from "@/lib/sre/connectors/output-sanitizer";
 
 import { privateAgentCredentials, privateAgentJobs, privateAgents } from "@/db/schema";
-import { MAX_PRIVATE_AGENT_RESULT_BYTES, readCappedJson } from "@/lib/private-agents/request-limits";
+import { readCappedJson } from "@/lib/http/read-capped-json";
+import { MAX_PRIVATE_AGENT_RESULT_BYTES } from "@/lib/private-agents/request-limits";
 import { hashApiKey } from "@/lib/security/api-key-hash";
 import { hashConnectorPayload } from "@/lib/sre/connectors";
 import { db } from "@/utils/db";

@@ -359,6 +359,10 @@ describe('redactMcpText connection strings', () => {
       'redis://a:[REDACTED]@cache.internal/0',
     ],
     ['http://db:5432/x', 'http://db:5432/x'],
+    ['http://h:8443/p?e=a@b.io', 'http://h:8443/p?e=a@b.io'],
+    ['postgres://user:pa/ss@host/db', 'postgres://user:[REDACTED]@host/db'],
+    ['postgres://u:p@ss@h/db', 'postgres://u:[REDACTED]@h/db'],
+    ['https://ghp_xxx@github.com/a/b', 'https://[REDACTED]@github.com/a/b'],
   ])('redacts only the password in %s', (input, expected) => {
     expect(redactMcpText(input)).toBe(expected);
   });

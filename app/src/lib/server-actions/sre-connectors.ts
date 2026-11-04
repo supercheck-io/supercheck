@@ -27,6 +27,7 @@ import {
   encryptConnectorCredential,
   assertEndpointAllowedForExecution,
   HostResolutionError,
+  redactEndpointQuery,
   createDirectConnector,
   connectorRequiresCredentials,
   enforceConnectorPolicy,
@@ -315,7 +316,7 @@ function normalizeOutputLimits(value: Record<string, unknown> | null) {
 /** Endpoint validation failures that are safe to show to the admin. */
 class EndpointInputError extends Error {}
 
-function normalizeEndpointUrl(value: string | null | undefined) {
+function normalizeEndpointUrl(value: string | null | undefined, connectorType?: string) {
   const trimmed = value?.trim();
   if (!trimmed) return null;
 
@@ -328,9 +329,14 @@ function normalizeEndpointUrl(value: string | null | undefined) {
   if (url.protocol !== "https:" && url.protocol !== "http:") {
     throw new EndpointInputError("Connector endpoint must use http or https");
   }
-  // Connectors append their own paths and queries; a query string would carry secrets into stored and listed URLs.
-  if (url.search || url.hash) {
-    throw new EndpointInputError("The endpoint URL must not include a query string or fragment");
+  // Connectors append their own paths and queries, so a query string is rejected, except for MCP:
+  // some hosted MCP servers carry their key in the URL. That stored URL is treated as secret.
+  if (url.hash || (url.search && connectorType !== "mcp")) {
+    throw new EndpointInputError(
+      connectorType === "mcp"
+        ? "The endpoint URL must not include a fragment"
+        : "The endpoint URL must not include a query string or fragment",
+    );
   }
 
   url.username = "";
@@ -526,10 +532,7 @@ async function getConnectorListItem(
     hasCredentials: Boolean(row.credentialId),
     defaultTimeWindowMinutes: row.connector.defaultTimeWindowMinutes,
     outputLimits: normalizeOutputLimits(row.connector.outputLimits),
-    endpointUrl:
-      typeof row.connector.config?.endpointUrl === "string"
-        ? row.connector.config.endpointUrl
-        : null,
+    endpointUrl: redactEndpointQuery(row.connector.config?.endpointUrl),
     latestPrivateAgentJob: normalizePrivateAgentJobSummary(latestJob ?? null),
     lastValidatedAt: row.connector.lastValidatedAt,
     lastValidationStatus: row.connector.lastValidationStatus,
@@ -663,10 +666,7 @@ export async function getSreConnectors(
       hasCredentials: credentialConnectorIds.has(row.connector.id),
       defaultTimeWindowMinutes: row.connector.defaultTimeWindowMinutes,
       outputLimits: normalizeOutputLimits(row.connector.outputLimits),
-      endpointUrl:
-        typeof row.connector.config?.endpointUrl === "string"
-          ? row.connector.config.endpointUrl
-          : null,
+      endpointUrl: redactEndpointQuery(row.connector.config?.endpointUrl),
       latestPrivateAgentJob: normalizePrivateAgentJobSummary(
         latestJobByConnectorId.get(row.connector.id) ?? null,
       ),
@@ -924,7 +924,7 @@ export async function createSreConnector(
     // Fixed-host providers never read an endpoint; drop any stale value.
     const endpointUrl = isFixedEndpointProvider
       ? null
-      : normalizeEndpointUrl(parsed.data.endpointUrl);
+      : normalizeEndpointUrl(parsed.data.endpointUrl, parsed.data.type);
 
     if (parsed.data.type === "mcp") {
       // Never reachable without a Private Agent: the server is in the customer's network.

@@ -562,12 +562,12 @@ describe("Copilot assistant-ui chat API", () => {
     expect((await sentIds()).at(-1)).toBe("u9");
   });
 
-  it("verifies at most the newest 100 claimed assistant ids", async () => {
-    const claims = Array.from({ length: 130 }, (_, i) => [userTurn(`u${i}`, "q"), assistantTurn(`018f0000-0000-7000-8000-${String(i).padStart(12, "0")}`, "a")]).flat();
+  it("verifies at most the newest 200 claimed assistant ids", async () => {
+    const claims = Array.from({ length: 230 }, (_, i) => [userTurn(`u${i}`, "q"), assistantTurn(`018f0000-0000-7000-8000-${String(i).padStart(12, "0")}`, "a")]).flat();
     await send({ messages: [...claims, userTurn("latest", "go")] });
     const { messageIds } = mockListSreMessagesByIds.mock.calls.at(-1)![0] as { messageIds: string[] };
-    expect(messageIds).toHaveLength(100);
-    expect(messageIds.at(-1)).toBe("018f0000-0000-7000-8000-000000000129");
+    expect(messageIds).toHaveLength(200);
+    expect(messageIds.at(-1)).toBe("018f0000-0000-7000-8000-000000000229");
   });
 
   it("caps only the newest user turn at 4000 characters", async () => {
@@ -589,6 +589,11 @@ describe("Copilot assistant-ui chat API", () => {
     expect((await send({ messages: [userTurn("u1", "hi")] })).status).toBe(409);
   });
 
+  it("returns 500 when the user message store error is not the archived case", async () => {
+    mockAppendSreMessage.mockReset().mockRejectedValueOnce(new MockSreSessionStoreError("bad", "invalid_input"));
+    expect((await send({ messages: [userTurn("u1", "hi")] })).status).toBe(500);
+  });
+
   it("does not throw out of the stream when storing the reply fails", async () => {
     mockAppendSreMessage.mockReset().mockResolvedValueOnce({ id: "u", role: "user" }).mockRejectedValueOnce(new Error("archived"));
     await send({ messages: [userTurn("u1", "hi")] });
@@ -599,7 +604,10 @@ describe("Copilot assistant-ui chat API", () => {
     mockListSreMessagesByIds.mockResolvedValue([storedRow(AID(1), "assistant", "a1"), storedRow(AID(2), "assistant", "a2")]);
     await regenerate(AID(1));
     await onFinishPromise;
-    expect(mockMarkSuperseded).toHaveBeenCalledWith(expect.objectContaining({ messageId: AID(1) }));
+    expect(mockAppendSreMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({ role: "assistant" }),
+      { supersedeMessageId: AID(1) },
+    );
 
     mockListSreMessagesByIds.mockResolvedValue([storedRow(AID(1), "assistant", "a1", [{ type: "superseded" }])]);
     expect((await regenerate(AID(1))).status).toBe(400);
@@ -610,7 +618,7 @@ describe("Copilot assistant-ui chat API", () => {
     mockListSreMessagesByIds.mockResolvedValue([storedRow(AID(1), "assistant", "a1"), storedRow(AID(2), "assistant", "a2")]);
     await regenerate(AID(1));
     await onFinishPromise;
-    expect(mockMarkSuperseded).not.toHaveBeenCalled();
+    expect(mockAppendSreMessage).not.toHaveBeenCalledWith(expect.anything(), { supersedeMessageId: expect.anything() });
   });
 
   it("returns 413 for a request body over the size bound", async () => {
@@ -626,6 +634,22 @@ describe("Copilot assistant-ui chat API", () => {
       method: "POST", body: JSON.stringify({ messages: [userTurn("u1", "x".repeat(2_100_000))] }),
     }));
     expect(response.status).toBe(413);
+  });
+
+  it("returns 413 for an oversized chunked body that sends no Content-Length", async () => {
+    const chunk = new TextEncoder().encode("x".repeat(1024 * 1024));
+    let sent = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (sent++ < 3) controller.enqueue(chunk);
+        else controller.close();
+      },
+    });
+    const response = await POST(new NextRequest("http://localhost/api/sre/chat/assistant-ui", {
+      method: "POST", body, duplex: "half",
+    } as unknown as ConstructorParameters<typeof NextRequest>[1]));
+    expect(response.status).toBe(413);
+    expect(streamText).not.toHaveBeenCalled();
   });
 
   it("keeps a superseded reply out of the verified history", async () => {

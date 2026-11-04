@@ -45,7 +45,7 @@ Private Agent mode supports GitHub, Kubernetes, Prometheus, Grafana, Sentry, Dat
 | **Supercheck Cloud, Direct** | HTTPS only. Cannot reach localhost, private, or reserved addresses, including cloud metadata |
 | **Private Agent** | Reaches internal HTTP or HTTPS endpoints, except localhost and cloud metadata endpoints |
 | **Self-hosted Direct** | Reaches internal HTTP or HTTPS endpoints, including `localhost` and private ranges. Cloud metadata and link-local addresses (`169.254.0.0/16`, `100.100.100.200`, `168.63.129.16`, `192.0.0.192`, `fe80::/10`, `fd00:ec2::254`) are blocked. Supercheck resolves the host once, checks every address, and connects to that same address |
-| **All modes** | Reject credentials embedded in URLs, and a query string or fragment (`?` or `#`) on the endpoint. Put paths in the endpoint and keys in the credential fields |
+| **All modes** | Reject credentials embedded in URLs, and a fragment (`#`) on the endpoint. A query string (`?`) is rejected too, except for MCP connectors, whose hosted servers sometimes carry the key in the URL; Supercheck treats that stored URL as secret and shows only `?…` in the console. Put paths in the endpoint and keys in the credential fields |
 
 <p className="text-sm">Scroll horizontally on smaller screens to view all steps.</p>
 

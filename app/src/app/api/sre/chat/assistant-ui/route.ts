@@ -1,3 +1,4 @@
+import { readCappedJson } from "@/lib/http/read-capped-json";
 import { isSreEnabled } from "@/sre/lib/feature-gates";
 import {
   convertToModelMessages,
@@ -31,8 +32,7 @@ import {
   getSreConversation,
   listSreMessages,
   listSreMessagesByIds,
-  markSreMessageSuperseded,
-  SRE_MESSAGE_INTERRUPTED,
+    SRE_MESSAGE_INTERRUPTED,
   SreSessionStoreError,
   isSreMessageSuperseded,
 } from "@/sre/lib/session-store";
@@ -55,9 +55,9 @@ const MAX_MESSAGE_TEXT_LENGTH = 4000;
 // Transport safety bounds, not product limits: the prompt budget decides how much history is used.
 const MAX_PART_TEXT_LENGTH = 100_000;
 const MAX_REQUEST_MESSAGES = 1000;
-const MAX_REQUEST_BODY_BYTES = 2_000_000;
+const MAX_REQUEST_BODY_BYTES = 2 * 1024 * 1024;
 // Stored replies the request may claim; keeps the verification lookup bounded by the newest turns.
-const MAX_VERIFIED_ASSISTANT_IDS = 100;
+const MAX_VERIFIED_ASSISTANT_IDS = 200;
 const HISTORY_ROW_LIMIT = 200;
 const logger = createLogger({ module: "sre-assistant-ui" }) as {
   error: (data: unknown, message?: string) => void;
@@ -300,21 +300,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Copilot chat history is too large" }, { status: 413 });
   }
 
-  let parsedBody: unknown;
-  try {
-    const rawBody = await request.text();
-    // Covers requests without a Content-Length (chunked), which the header check cannot see.
-    if (rawBody.length > MAX_REQUEST_BODY_BYTES) {
-      return NextResponse.json({ error: "Copilot chat history is too large" }, { status: 413 });
-    }
-    parsedBody = JSON.parse(rawBody);
-  } catch {
-    return NextResponse.json(
-      { error: "Invalid Copilot chat request" },
-      { status: 400 },
-    );
+  // Stream-capped by bytes: covers chunked bodies and multi-byte text that a character count misses.
+  const read = await readCappedJson(request, MAX_REQUEST_BODY_BYTES);
+  if (read.tooLarge) {
+    return NextResponse.json({ error: "Copilot chat history is too large" }, { status: 413 });
   }
-
+  const parsedBody = read.data;
   const parsed = assistantUiChatRequestSchema.safeParse(parsedBody);
   if (!parsed.success) {
     return NextResponse.json(
@@ -558,7 +549,7 @@ export async function POST(request: NextRequest) {
       });
     } catch (error) {
       // The conversation was archived or removed after it was loaded.
-      if (error instanceof SreSessionStoreError) {
+      if (error instanceof SreSessionStoreError && error.code === "not_found") {
         return NextResponse.json({ error: "This chat was archived" }, { status: 409 });
       }
       logger.error({ error }, "Failed to store Copilot message");
@@ -576,12 +567,6 @@ export async function POST(request: NextRequest) {
   const modelId = getActualModelName();
   const activeConversationId = conversation.id;
   const assistantMessageId = randomUUID();
-  // The regenerated reply replaces the old one: flag the old row so it neither reloads nor reaches later prompts.
-  const supersedeRegeneratedReply = async () => {
-    if (!regenerating || !regenerateTargetId) return;
-    await markSreMessageSuperseded({ ...scope, conversationId: activeConversationId, messageId: regenerateTargetId });
-  };
-
   const result = streamText({
     model: getProviderModel(),
     system,
@@ -661,17 +646,19 @@ export async function POST(request: NextRequest) {
         "Copilot could not complete the read-only check. No failed connector result was treated as evidence.";
 
       try {
-        await appendSreMessage({
-          id: assistantMessageId,
-          organizationId: context.organizationId,
-          projectId: context.project.id,
-          userId: context.userId,
-          conversationId: activeConversationId,
-          role: "assistant",
-          content: assistantText,
-          modelId,
-        });
-        await supersedeRegeneratedReply();
+        await appendSreMessage(
+          {
+            id: assistantMessageId,
+            organizationId: context.organizationId,
+            projectId: context.project.id,
+            userId: context.userId,
+            conversationId: activeConversationId,
+            role: "assistant",
+            content: assistantText,
+            modelId,
+          },
+          ...(regenerating && regenerateTargetId ? [{ supersedeMessageId: regenerateTargetId }] : []),
+        );
       } catch (error) {
         // The reply already streamed; a failed save (for example an archive mid-stream) must not throw out of the stream.
         logger.error({ error }, "Failed to store Copilot reply");

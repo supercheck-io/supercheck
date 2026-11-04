@@ -219,7 +219,8 @@ export async function listSreMessagesByIds(
     );
 }
 
-export async function appendSreMessage(input: AppendSreMessageInput) {
+/** `supersedeMessageId` flags the replaced reply in the same transaction as the new one. */
+export async function appendSreMessage(input: AppendSreMessageInput, options: { supersedeMessageId?: string } = {}) {
   const parsed = parseOrThrow(appendMessageSchema, input);
 
   return db.transaction(async (tx) => {
@@ -264,6 +265,10 @@ export async function appendSreMessage(input: AppendSreMessageInput) {
       .set({ updatedAt: now })
       .where(eq(sreChatConversations.id, conversation.id));
 
+    if (options.supersedeMessageId) {
+      await flagSuperseded(tx, conversation.id, options.supersedeMessageId);
+    }
+
     return message;
   });
 }
@@ -274,12 +279,16 @@ export async function markSreMessageSuperseded(
 ) {
   const { messageId, ...lookup } = input;
   const conversation = await getSreConversation(lookup);
-  await db
+  await flagSuperseded(db, conversation.id, messageId);
+}
+
+function flagSuperseded(executor: Pick<typeof db, "update">, conversationId: string, messageId: string) {
+  return executor
     .update(sreChatMessages)
     .set({
       attachments: sql`coalesce(${sreChatMessages.attachments}, '[]'::jsonb) || ${JSON.stringify([{ type: SRE_MESSAGE_SUPERSEDED }])}::jsonb`,
     })
-    .where(and(eq(sreChatMessages.id, messageId), eq(sreChatMessages.conversationId, conversation.id)));
+    .where(and(eq(sreChatMessages.id, messageId), eq(sreChatMessages.conversationId, conversationId)));
 }
 
 export async function archiveSreConversation(

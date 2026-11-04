@@ -343,6 +343,17 @@ describe("SreIncidentDetailView", () => {
     expect(screen.getByText("10 min")).toBeInTheDocument();
   });
 
+  it("shows the triage finding in the AI summary when no investigation exists", () => {
+    const detail = detailFixture();
+    detail.incident.rootCauseSummary = null;
+    detail.incident.confidenceScore = null;
+    detail.latestInvestigation = null;
+    detail.triageSummary = "Triage: connection pool exhausted";
+    render(<SreIncidentDetailView detail={detail} services={[]} />);
+    expect(screen.getByTestId("incident-ai-summary")).toHaveTextContent("connection pool exhausted");
+    expect(screen.queryByText(/No AI analysis yet/)).not.toBeInTheDocument();
+  });
+
   it("hides ownership actions for read-only users and shows the resolution summary when resolved", () => {
     const detail = detailFixture();
     detail.permissions.canUpdate = false;

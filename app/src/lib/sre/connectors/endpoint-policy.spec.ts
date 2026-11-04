@@ -5,7 +5,7 @@ jest.mock("node:dns/promises", () => ({
 }));
 
 import { lookup } from "node:dns/promises";
-import { assertEndpointAllowedForExecution, isMetadataOrLinkLocalAddress, isPrivateConnectorAddress } from "./endpoint-policy";
+import { assertEndpointAllowedForExecution, HostResolutionError, isMetadataOrLinkLocalAddress, isPrivateConnectorAddress, redactEndpointQuery } from "./endpoint-policy";
 
 const mockLookup = lookup as jest.MockedFunction<typeof lookup>;
 
@@ -91,11 +91,12 @@ describe("self-hosted metadata blocking", () => {
   it.each([
     "169.254.169.254", "100.100.100.200", "168.63.129.16", "192.0.0.192",
     "fe80::1", "fd00:ec2::254", "::ffff:169.254.169.254", "::ffff:a9fe:a9fe",
+    "64:ff9b::a9fe:a9fe", "64:ff9b:1::a9fe:a9fe", "2002:a9fe:a9fe::1", "::a9fe:a9fe",
   ])("blocks %s", (address) => {
     expect(isMetadataOrLinkLocalAddress(address)).toBe(true);
   });
 
-  it.each(["127.0.0.1", "10.0.0.5", "192.168.1.1", "::1", "8.8.8.8", "::ffff:10.0.0.1"])(
+  it.each(["127.0.0.1", "10.0.0.5", "192.168.1.1", "::1", "8.8.8.8", "::ffff:10.0.0.1", "64:ff9b::a00:5", "2002:a00:5::1"])(
     "allows %s",
     (address) => {
       expect(isMetadataOrLinkLocalAddress(address)).toBe(false);
@@ -112,11 +113,27 @@ describe("self-hosted metadata blocking", () => {
 });
 
 describe("cloud DNS failures", () => {
+  it("treats a DNS lookup timeout code as a host resolution failure", async () => {
+    delete process.env.SELF_HOSTED;
+    mockLookup.mockRejectedValueOnce(Object.assign(new Error("queryA ETIMEOUT x"), { code: "ETIMEOUT" }));
+    await expect(assertEndpointAllowedForExecution("https://slow.example.com", false)).rejects.toBeInstanceOf(
+      HostResolutionError,
+    );
+  });
+
   it("reports an unresolvable host plainly instead of raw getaddrinfo text", async () => {
     delete process.env.SELF_HOSTED;
     mockLookup.mockRejectedValueOnce(Object.assign(new Error("getaddrinfo ENOTFOUND nope.example.com"), { code: "ENOTFOUND" }));
     await expect(assertEndpointAllowedForExecution("https://nope.example.com", false)).rejects.toThrow(
       "Could not resolve host nope.example.com",
     );
+  });
+});
+
+describe("redactEndpointQuery", () => {
+  it("hides the query of a stored URL and leaves other values alone", () => {
+    expect(redactEndpointQuery("https://mcp.example.com/mcp?key=s3cret")).toBe("https://mcp.example.com/mcp?…");
+    expect(redactEndpointQuery("https://mcp.example.com/mcp")).toBe("https://mcp.example.com/mcp");
+    expect(redactEndpointQuery(undefined)).toBeNull();
   });
 });

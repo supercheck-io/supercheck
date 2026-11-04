@@ -144,6 +144,8 @@ The agent sends a heartbeat every 30 seconds. Supercheck shows it as disconnecte
 
 Rotating a token revokes the old credential and returns the agent to **pending** until it connects with the new one.
 
+When the control plane rejects the agent's credential three times in a row (HTTP 401, after a rotation or after the agent was disabled), the agent logs `Private Agent credential revoked or agent disabled` and exits with a non-zero code, so your container restart policy and monitoring show it. Start it again with the new token, or register a replacement agent.
+
 These optional variables tune the agent. The defaults suit most installs.
 
 | Variable | Default | Purpose |
