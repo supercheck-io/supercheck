@@ -334,6 +334,25 @@ describe("Secret Crypto", () => {
       }
     });
 
+    it("rejects a placeholder key in cloud production but not when self-hosted", () => {
+      const original = { key: process.env.SECRET_ENCRYPTION_KEY, env: process.env.NODE_ENV, host: process.env.SELF_HOSTED };
+      const warn = jest.spyOn(console, "warn").mockImplementation(() => undefined);
+      try {
+        process.env.SECRET_ENCRYPTION_KEY = "CHANGE_THIS".padEnd(64, "_");
+        Object.defineProperty(process.env, "NODE_ENV", { value: "production", configurable: true, writable: true });
+        process.env.SELF_HOSTED = "false";
+        expect(() => encryptSecret("test")).toThrow("placeholder");
+        process.env.SELF_HOSTED = "true";
+        expect(decryptSecret(encryptSecret("test"))).toBe("test");
+      } finally {
+        warn.mockRestore();
+        process.env.SECRET_ENCRYPTION_KEY = original.key;
+        Object.defineProperty(process.env, "NODE_ENV", { value: original.env, configurable: true, writable: true });
+        if (original.host === undefined) delete process.env.SELF_HOSTED;
+        else process.env.SELF_HOSTED = original.host;
+      }
+    });
+
     it("should throw if encryption key is not set", () => {
       const originalKey = process.env.SECRET_ENCRYPTION_KEY;
       delete process.env.SECRET_ENCRYPTION_KEY;
