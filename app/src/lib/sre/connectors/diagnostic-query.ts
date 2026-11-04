@@ -397,21 +397,12 @@ function rejectUnsafeFreeText(
   schemaValue: unknown,
   allowlistValue: unknown,
   quoted: boolean,
-  queryType: DiagnosticQueryType,
 ) {
   if (typeof value !== "string") return;
   const schema = normalizeParameterSchemaEntry(name, schemaValue);
   if (isConstrainedFreeText(schema, allowlistValue)) return;
   if (UNSAFE_FREE_TEXT.test(value)) {
     throw new Error(`Diagnostic query parameter "${name}" contains disallowed characters`);
-  }
-  // http_get templates are URL paths and queries: an unquoted value is URL-encoded at render time, so only
-  // path traversal needs rejecting here. Query languages keep the strict token rule.
-  if (queryType === "http_get") {
-    if (!quoted && value.split("/").includes("..")) {
-      throw new Error(`Diagnostic query parameter "${name}" must not contain ".." path segments`);
-    }
-    return;
   }
   // Typed date/duration values are validated by their own parsers.
   if (!quoted && (!schema || schema.type === "string") && value !== "" && (!UNQUOTED_SAFE_TOKEN.test(value) || value.includes(".."))) {
@@ -427,10 +418,7 @@ export function validateTemplateFreeTextPositions(
   template: string,
   parameterSchema: Record<string, unknown>,
   allowlist: Record<string, unknown>,
-  queryType?: DiagnosticQueryType,
 ): void {
-  // http_get values are URL-encoded when unquoted, so any position is safe.
-  if (queryType === "http_get") return;
   const pattern = new RegExp(TEMPLATE_PARAM_PATTERN.source, TEMPLATE_PARAM_PATTERN.flags);
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(template)) !== null) {
@@ -484,13 +472,9 @@ export function renderDiagnosticQueryTemplate(definition: DiagnosticQueryDefinit
     }
     validateParameterValue(name, value, definition.parameterSchema[name]);
     validateAllowlist(name, value, definition.allowlist[name]);
-    const quoted = isInsideQuotes(definition.template, offset);
-    rejectUnsafeFreeText(name, value, definition.parameterSchema[name], definition.allowlist[name], quoted, definition.queryType);
+    rejectUnsafeFreeText(name, value, definition.parameterSchema[name], definition.allowlist[name], isInsideQuotes(definition.template, offset));
     referencedParameters.add(name);
-    const freeText =
-      typeof value === "string" &&
-      !isConstrainedFreeText(normalizeParameterSchemaEntry(name, definition.parameterSchema[name]), definition.allowlist[name]);
-    return definition.queryType === "http_get" && !quoted && freeText ? encodeURIComponent(value) : formatParameterValue(value);
+    return formatParameterValue(value);
   });
 
   for (const name of Object.keys(parameters)) {

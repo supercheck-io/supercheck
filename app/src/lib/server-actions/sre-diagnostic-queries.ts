@@ -198,7 +198,7 @@ export async function createSreDiagnosticQuery(input: z.infer<typeof createDiagn
     try {
       validateDiagnosticQueryParameterSchema(parsed.data.parameterSchema);
       validateTemplatePlaceholderCoverage(parsed.data.template, parsed.data.allowlist);
-      validateTemplateFreeTextPositions(parsed.data.template, parsed.data.parameterSchema, parsed.data.allowlist, parsed.data.queryType);
+      validateTemplateFreeTextPositions(parsed.data.template, parsed.data.parameterSchema, parsed.data.allowlist);
     } catch (validationError) {
       return { success: false, error: validationError instanceof Error ? validationError.message : "Invalid diagnostic query definition" };
     }
