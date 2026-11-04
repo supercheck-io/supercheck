@@ -1,4 +1,4 @@
-import { and, eq, gt, gte, or, sql } from "drizzle-orm";
+import { and, eq, gt, gte, ne, or, sql } from "drizzle-orm";
 import {
   executionEntitlements,
   organization,
@@ -242,7 +242,7 @@ export async function countTrialInvestigations(
 /** Triage runs a trial may start in total; triage is cheaper than a full investigation, so it has its own cap. */
 export const TRIAL_TRIAGE_RUNS = 20;
 
-/** Triage runs a trial organization has started during its trial. */
+/** Triage runs a trial organization has started during its trial; failed runs produced no result and do not count. */
 export async function countTrialTriageRuns(
   organizationId: string,
   trialEndsAt: Date,
@@ -260,6 +260,7 @@ export async function countTrialTriageRuns(
         eq(sreInvestigationRuns.organizationId, organizationId),
         eq(sreInvestigationRuns.agentType, "triage"),
         eq(sreInvestigationRuns.billingTier, "trial"),
+        ne(sreInvestigationRuns.status, "failed"),
         gte(sreInvestigationRuns.createdAt, trialStartedAt),
       ),
     );

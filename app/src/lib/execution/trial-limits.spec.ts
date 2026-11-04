@@ -5,6 +5,7 @@ import {
   getActiveTrial,
   buildTrialEntitlement,
   countTrialInvestigations,
+  countTrialTriageRuns,
   getTrialUsage,
   getTrialSummary,
   isTrialActive,
@@ -260,6 +261,14 @@ describe("trial limits", () => {
       expect(text).toContain('"status"');
       expect(params).toEqual(expect.arrayContaining(["running", "completed"]));
       expect(params).not.toContain("failed");
+    });
+
+    it("does not count failed triage runs", async () => {
+      const database = selectCount(3) as unknown as { where: jest.Mock };
+      await expect(countTrialTriageRuns("org", new Date(Date.now() + 86_400_000), database as never)).resolves.toBe(3);
+      const { sql: text, params } = new PgDialect().sqlToQuery(database.where.mock.calls[0][0]);
+      expect(text).toContain('"status" <>');
+      expect(params).toEqual(expect.arrayContaining(["triage", "trial", "failed"]));
     });
 
     it("counts none when there is no row", async () => {
