@@ -5,7 +5,7 @@ jest.mock("@/lib/api-key-rate-limiter", () => ({
   apiKeyRateLimiter: { checkAndIncrement: (...args: unknown[]) => mockLimit(...args) },
 }));
 jest.mock("@/lib/session-security", () => ({ getClientIP: (...args: unknown[]) => mockIP(...args) }));
-import { prepareMcpOAuthRequest } from "./request-policy";
+import { prepareMcpOAuthRequest, requestWithHeaders } from "./request-policy";
 
 const request = (path = "register") => new Request(`https://app.example.com/api/auth/oauth2/${path}`, {
   method: "POST",
@@ -52,4 +52,14 @@ it("uses separate address and endpoint buckets with bounded token traffic", asyn
 it("applies the shared client limit to token revocation", async () => {
   await prepareMcpOAuthRequest(request("revoke"));
   expect(mockLimit).toHaveBeenCalledWith(expect.any(String), { enabled: true, timeWindow: 60, maxRequests: 30 });
+});
+
+it("copies method, body and url when swapping headers", async () => {
+  const original = new Request("https://app.example.com/api/mcp", { method: "POST", body: '{"a":1}', headers: { "content-type": "application/json" } });
+  const copy = requestWithHeaders(original, new Headers({ "x-test": "1" }));
+  expect(copy.method).toBe("POST");
+  expect(copy.url).toBe(original.url);
+  expect(copy.headers.get("x-test")).toBe("1");
+  expect(await copy.json()).toEqual({ a: 1 });
+  expect(requestWithHeaders(new Request("https://app.example.com/x"), new Headers()).body).toBeNull();
 });

@@ -7,6 +7,7 @@ import { auth } from "@/utils/auth";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { getMcpAllowedOrigins, getMcpResourceUrl, isMcpServerEnabled, MCP_READ_SCOPE } from "@/lib/mcp/config";
 import { McpAccessDeniedError, resolveMcpCallContext } from "@/lib/mcp/context";
+import { requestWithHeaders } from "@/lib/mcp/request-policy";
 import { registerMcpTools } from "@/lib/mcp/tools";
 import {
   McpBodyTimeoutError,
@@ -153,7 +154,7 @@ export async function POST(request: Request): Promise<Response> {
       resource: resource.toString(),
       requiredScopes: [MCP_READ_SCOPE],
     } as never);
-    const response = await protectedHandler(new Request(request, { headers }));
+    const response = await protectedHandler(requestWithHeaders(request, headers));
     const responseHeaders = new Headers(response.headers);
     responseHeaders.set("Cache-Control", "no-store");
     if (response.status >= 400) {
