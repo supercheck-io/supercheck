@@ -43,6 +43,7 @@ type SreAssistantUiMessageMetadata = {
   conversationId?: string;
   assistantMessageId?: string;
   modelId?: string;
+  interrupted?: boolean;
 };
 
 type SreAssistantUiMessage = UIMessage<SreAssistantUiMessageMetadata>;
@@ -597,6 +598,10 @@ export async function POST(request: NextRequest) {
     // The streamed reply carries the id it is stored under, so a later regenerate can name it.
     generateMessageId: () => assistantMessageId,
     messageMetadata: ({ part }) => {
+      // The server ended the reply (time budget or abort); tell the live view, which sees no Stop.
+      if (part.type === "abort") {
+        return { conversationId: activeConversationId, modelId, interrupted: true };
+      }
       if (part.type !== "finish") {
         return {
           conversationId: activeConversationId,

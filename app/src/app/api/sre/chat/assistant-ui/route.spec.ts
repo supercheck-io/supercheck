@@ -393,6 +393,15 @@ describe("Copilot assistant-ui chat API", () => {
   });
 
 
+  it("marks the streamed reply as interrupted when the stream aborts", async () => {
+    await send({ messages: [userTurn("u1", "q")] });
+    const options = jest.mocked(streamText).mock.results[0]!.value.toUIMessageStreamResponse.mock.calls[0][0];
+    expect(options.messageMetadata({ part: { type: "abort" } })).toEqual(
+      expect.objectContaining({ interrupted: true }),
+    );
+    expect(options.messageMetadata({ part: { type: "finish" } })).not.toHaveProperty("interrupted");
+  });
+
   it.each([
     ["isAborted", () => { streamAborted = true; }],
     ["an aborted outcome", () => { streamOutcomeAborted = true; }],

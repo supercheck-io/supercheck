@@ -221,14 +221,24 @@ function AssistantTextPart() {
 const INTERRUPTED_NOTICE = "Reply was interrupted.";
 
 /** Marks a live reply that was stopped, like the saved one shows after a reload. */
-export function InterruptedNotice({ status }: { status?: { type: string; reason?: string } }) {
-  if (status?.type !== "incomplete" || status.reason !== "cancelled") return null;
+export function InterruptedNotice({
+  status,
+  interrupted = false,
+}: {
+  status?: { type: string; reason?: string };
+  /** The server ended the reply (time budget or abort) and said so in the message metadata. */
+  interrupted?: boolean;
+}) {
+  if (!interrupted && !(status?.type === "incomplete" && status.reason === "cancelled")) return null;
   return <p className="mt-2 whitespace-pre-wrap">{INTERRUPTED_NOTICE}</p>;
 }
 
 function LiveInterruptedNotice() {
   const status = useAuiState((state) => state.message.status);
-  return <InterruptedNotice status={status} />;
+  const interrupted = useAuiState(
+    (state) => state.message.metadata?.custom?.interrupted === true,
+  );
+  return <InterruptedNotice status={status} interrupted={interrupted} />;
 }
 
 function AssistantMessage() {
