@@ -9,6 +9,7 @@
  */
 import { randomUUID } from "crypto";
 import { z } from "zod";
+import { HEX_COLOR_REGEX, normalizeHexColor } from "@/lib/status-page-branding";
 import { and, asc, eq, inArray, lt, ne, sql } from "drizzle-orm";
 import { db } from "@/utils/db";
 import {
@@ -98,7 +99,12 @@ export const createStatusPageSchema = z.object({
 
 export type CreateStatusPageInput = z.infer<typeof createStatusPageSchema>;
 
-const hexColor = z.string().regex(/^#[0-9A-Fa-f]{6}$/, "Invalid hex color").optional();
+// Accepts #rgb or #rrggbb and stores the 6-digit form.
+const hexColor = z
+  .string()
+  .regex(HEX_COLOR_REGEX, "Invalid hex color")
+  .transform((v) => normalizeHexColor(v)!)
+  .optional();
 
 /** Settings fields (everything the settings form can change, without the page id). */
 export const statusPageSettingsFieldsSchema = z.object({

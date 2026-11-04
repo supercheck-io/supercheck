@@ -15,9 +15,11 @@ import { db } from "@/utils/db";
 import {
   statusPages,
   statusPageComponents,
+  incidents,
 } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
+import { normalizeHexColor } from "@/lib/status-page-branding";
 import { normalizePublicStatusPageId } from "@/lib/public-status-page-id";
 
 /** Common headers for all SVG badge responses */
@@ -95,17 +97,13 @@ function escapeXml(text: string): string {
     .replace(/'/g, "&apos;");
 }
 
-const HEX_COLOR_REGEX = /^#[0-9a-fA-F]{6}$/;
 
 /**
- * Validate that a string is a valid 6-digit hex color code.
+ * Validate that a string is a valid hex color code (#rgb or #rrggbb).
  * Returns the color if valid, or the fallback otherwise.
  */
 function sanitizeColor(color: string | null | undefined, fallback: string): string {
-  if (color && HEX_COLOR_REGEX.test(color)) {
-    return color;
-  }
-  return fallback;
+  return normalizeHexColor(color) ?? fallback;
 }
 
 /**
@@ -211,7 +209,25 @@ export async function GET(
     ));
 
     const componentStatuses = pageComponents.map((c) => c.status);
-    const { message, color } = calculateOverallStatus(componentStatuses);
+    let { message, color } = calculateOverallStatus(componentStatuses);
+
+    // An open incident (not scheduled maintenance) keeps the badge off "operational".
+    if (message === "operational") {
+      const [openIncident] = await db
+        .select({ id: incidents.id })
+        .from(incidents)
+        .where(
+          and(
+            eq(incidents.statusPageId, statusPageId),
+            inArray(incidents.status, ["investigating", "identified", "monitoring"])
+          )
+        )
+        .limit(1);
+      if (openIncident) {
+        message = "incident";
+        color = "#f1c40f";
+      }
+    }
 
     // Use custom colors from the status page if available (validated)
     let badgeColor = color;
@@ -221,7 +237,7 @@ export async function GET(
       badgeColor = sanitizeColor(statusPage.cssReds, color);
     if (message === "partial outage")
       badgeColor = sanitizeColor(statusPage.cssOranges, color);
-    if (message === "degraded")
+    if (message === "degraded" || message === "incident")
       badgeColor = sanitizeColor(statusPage.cssYellows, color);
     if (message === "maintenance")
       badgeColor = sanitizeColor(statusPage.cssBlues, color);

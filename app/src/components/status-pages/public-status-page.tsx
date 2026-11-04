@@ -503,9 +503,7 @@ export function PublicStatusPage({
               color: brandedPage.font,
               "--sp-fg": brandedPage.font,
               "--sp-muted": brandedPage.lightFont,
-              "--sp-border":
-                brandedPage.border ??
-                `color-mix(in srgb, ${brandedPage.font} 20%, transparent)`,
+              "--sp-border": brandedPage.border,
             } as React.CSSProperties)
           : undefined
       }
