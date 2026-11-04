@@ -1,4 +1,4 @@
-import {
+import React, {
   ReactNode,
   useCallback,
   useEffect,
@@ -23,6 +23,11 @@ type SignedUrl = { source: string; url: string; mintedAt: number };
 
 // Signed report URLs live 1h (REPORT_TOKEN_TTL_SECONDS); refresh 5 minutes early. Not imported: that module is server-only.
 export const REPORT_URL_REFRESH_MS = 55 * 60 * 1000;
+/** Bound on each request of the background refresh, so a stall reaches the retry path. */
+export const REPORT_URL_REFRESH_TIMEOUT_MS = 30 * 1000;
+/** Bounds for a server-provided Retry-After on a rate-limited refresh. */
+const RETRY_AFTER_MIN_MS = 5 * 1000;
+const RETRY_AFTER_MAX_MS = 5 * 60 * 1000;
 /** Delay before retrying a failed background refresh; the current report keeps working meanwhile. */
 export const REPORT_URL_REFRESH_RETRY_MS = 5 * 60 * 1000;
 
@@ -291,8 +296,8 @@ export function ReportViewer({
     if (signedSourceRef.current !== source) return;
     let cancelled = false;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
-    const retryLater = () => {
-      if (!cancelled) retryTimer = setTimeout(() => setRefreshTick((n) => n + 1), REPORT_URL_REFRESH_RETRY_MS);
+    const retryLater = (delayMs = REPORT_URL_REFRESH_RETRY_MS) => {
+      if (!cancelled) retryTimer = setTimeout(() => setRefreshTick((n) => n + 1), delayMs);
     };
     (async () => {
       try {
@@ -300,10 +305,16 @@ export function ReportViewer({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ path: source }),
+          signal: AbortSignal.timeout(REPORT_URL_REFRESH_TIMEOUT_MS),
         });
         const minted = await mint.json().catch(() => null);
-        if (!mint.ok || !minted?.url) return retryLater();
-        const res = await fetch(minted.url, { cache: "no-store" });
+        if (!mint.ok || !minted?.url) {
+          const retryAfterSeconds = Number(mint.headers?.get("Retry-After"));
+          return mint.status === 429 && retryAfterSeconds > 0
+            ? retryLater(Math.min(Math.max(retryAfterSeconds * 1000, RETRY_AFTER_MIN_MS), RETRY_AFTER_MAX_MS))
+            : retryLater();
+        }
+        const res = await fetch(minted.url, { cache: "no-store", signal: AbortSignal.timeout(REPORT_URL_REFRESH_TIMEOUT_MS) });
         await res.text();
         if (!res.ok || (res.headers.get("content-type") || "").includes("json")) return retryLater();
         if (!cancelled) setPendingSigned({ source, url: minted.url, mintedAt: Date.now() });
@@ -365,8 +376,35 @@ export function ReportViewer({
   }, [currentReportUrl, retryNonce, separateOrigin, signedUrl, configReady]);
 
   // The new-tab link always takes the freshest minted URL, even while the iframe still holds the older one.
-  const openLinkHref =
-    (pendingSigned?.source === currentReportUrl ? pendingSigned.url : undefined) ?? iframeSrc;
+  const openLinkSigned =
+    pendingSigned?.source === currentReportUrl
+      ? pendingSigned
+      : signedUrl?.source === currentReportUrl
+        ? signedUrl
+        : null;
+  const openLinkHref = openLinkSigned?.url ?? iframeSrc;
+
+  // A report left visible past the refresh threshold holds an aged URL; mint a fresh one for the new tab.
+  // The tab opens synchronously (popup blockers) and is pointed at the minted URL afterwards.
+  const handleOpenInNewTab = async (event: React.MouseEvent<HTMLAnchorElement>) => {
+    if (!currentReportUrl || (openLinkSigned && Date.now() - openLinkSigned.mintedAt < REPORT_URL_REFRESH_MS)) return;
+    event.preventDefault();
+    const tab = window.open("about:blank", "_blank");
+    if (tab) tab.opener = null;
+    try {
+      const res = await fetch("/api/report-urls", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: currentReportUrl }),
+        signal: AbortSignal.timeout(REPORT_URL_REFRESH_TIMEOUT_MS),
+      });
+      const minted = await res.json().catch(() => null);
+      if (!res.ok || !minted?.url) throw new Error("mint failed");
+      if (tab) tab.location.href = minted.url;
+    } catch {
+      tab?.close();
+    }
+  };
 
   // Update URL when prop changes - deferred to avoid synchronous setState
   useEffect(() => {
@@ -698,7 +736,7 @@ export function ReportViewer({
               {separateOrigin && openLinkHref && (
                 // Safari cannot load the trace viewer inside a cross-site frame; as its own tab it works.
                 <Button size="sm" asChild className="cursor-pointer flex items-center gap-1 bg-secondary hover:bg-secondary/90">
-                  <a href={openLinkHref} target="_blank" rel="noopener noreferrer" title="Open report in a new tab" aria-label="Open report in a new tab">
+                  <a href={openLinkHref} onClick={handleOpenInNewTab} target="_blank" rel="noopener noreferrer" title="Open report in a new tab" aria-label="Open report in a new tab">
                     <ExternalLink className="h-4 w-4 text-secondary-foreground" />
                   </a>
                 </Button>

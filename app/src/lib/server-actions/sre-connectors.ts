@@ -57,7 +57,6 @@ import {
 import {
   McpEndpointMissingError,
   readCarriedMcpEndpoint,
-  resolveMcpEndpointUrl,
   urlHasQuery,
   withMcpEndpoint,
 } from "@/lib/sre/connectors/mcp-endpoint-secret";

@@ -3,6 +3,7 @@ process.env.SECRET_ENCRYPTION_KEY = "a".repeat(64);
 
 let mockCredentialRows: unknown[] = [];
 let mockLockedRows: unknown[] | null = null; // what FOR UPDATE sees inside the transaction; null = same as the read
+let mockLockedConfig: Record<string, unknown> = { tools: [] }; // the connector config FOR UPDATE sees
 let mockTxFails: unknown = null;
 const mockUpdates: Array<{ table: string; set: Record<string, unknown> }> = [];
 const mockInserts: Array<Record<string, unknown>> = [];
@@ -34,6 +35,7 @@ jest.mock("@/utils/db", () => ({
           for (const m of ["where", "limit"]) chain[m] = () => chain;
           chain.for = async () => {
             mockLockOrder.push(table);
+            if (table === "connectors" && !mockLockedRows) return [{ id: "c1", config: mockLockedConfig }];
             return rows();
           };
           chain.then = (r: (x: unknown) => unknown) => Promise.resolve(mockCredentialRows).then(r);
@@ -57,6 +59,7 @@ const row = (endpointUrl: unknown) =>
 beforeEach(() => {
   mockCredentialRows = [];
   mockLockedRows = null;
+  mockLockedConfig = { tools: [] };
   mockTxFails = null;
   mockUpdates.length = 0;
   mockInserts.length = 0;
@@ -89,6 +92,17 @@ describe("resolveMcpEndpointUrl", () => {
     expect(mockUpdates).toEqual([
       { table: "connectors", set: expect.objectContaining({ config: { endpointUrl: "https://mcp.example.com/mcp?…", tools: [] } }) },
     ]);
+  });
+
+  it("merges the redacted URL into the locked config, keeping concurrent changes", async () => {
+    // A concurrent allowlist save committed after the row snapshot was read.
+    mockLockedConfig = { tools: [], mcp: { allowlist: [{ name: "search" }] } };
+    await resolveMcpEndpointUrl(row("https://mcp.example.com/mcp?apiKey=s3cret"));
+    expect(mockUpdates.find((u) => u.table === "connectors")!.set.config).toEqual({
+      endpointUrl: "https://mcp.example.com/mcp?…",
+      tools: [],
+      mcp: { allowlist: [{ name: "search" }] },
+    });
   });
 
   it("re-encrypts an existing credential blob with the URL for a legacy row", async () => {

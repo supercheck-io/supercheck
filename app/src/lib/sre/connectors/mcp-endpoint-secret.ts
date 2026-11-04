@@ -93,7 +93,7 @@ export async function resolveMcpEndpointUrl(row: ConnectorRow): Promise<string |
     await db.transaction(async (tx) => {
       // Lock the connector row first, then the credential row: the order credential rotation uses.
       const [lockedConnector] = await tx
-        .select({ id: externalConnectors.id })
+        .select({ id: externalConnectors.id, config: externalConnectors.config })
         .from(externalConnectors)
         .where(and(eq(externalConnectors.id, row.id), sql`${externalConnectors.config}->>'endpointUrl' = ${stored}`))
         .for("update");
@@ -131,7 +131,7 @@ export async function resolveMcpEndpointUrl(row: ConnectorRow): Promise<string |
       }
       await tx
         .update(externalConnectors)
-        .set({ config: { ...row.config, endpointUrl: redactEndpointQuery(stored) }, updatedAt: new Date() })
+        .set({ config: { ...lockedConnector.config, endpointUrl: redactEndpointQuery(stored) }, updatedAt: new Date() })
         .where(and(eq(externalConnectors.id, row.id), sql`${externalConnectors.config}->>'endpointUrl' = ${stored}`));
     });
   } catch (error) {

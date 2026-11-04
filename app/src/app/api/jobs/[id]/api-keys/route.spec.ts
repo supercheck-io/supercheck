@@ -12,6 +12,8 @@ const chain = () => {
 };
 const mockRequireAuth = jest.fn();
 const mockImpersonated = jest.fn();
+const mockResolveContext = jest.fn();
+const mockCheckPermission = jest.fn();
 
 const mockExecute = jest.fn(async () => undefined);
 const mockTx = {
@@ -35,7 +37,8 @@ jest.mock("@/lib/auth-context", () => ({
   isAuthError: () => false,
 }));
 jest.mock("@/lib/rbac/middleware", () => ({
-  checkPermissionWithContext: () => true,
+  checkPermissionWithContext: (...a: unknown[]) => mockCheckPermission(...a),
+  resolveProjectPermissionContext: (...a: unknown[]) => mockResolveContext(...a),
   isImpersonatedSession: (...a: unknown[]) => mockImpersonated(...a),
 }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
@@ -60,6 +63,8 @@ const post = (body: unknown) =>
 beforeEach(() => {
   jest.useFakeTimers({ now: new Date("2026-10-27T00:00:00Z"), doNotFake: ["nextTick", "setImmediate", "queueMicrotask"] });
   mockImpersonated.mockReset().mockResolvedValue(false);
+  mockCheckPermission.mockReset().mockReturnValue(true);
+  mockResolveContext.mockReset().mockResolvedValue({ userId: "u1", organizationId: "o1", project: { id: "p1", userRole: "project_editor" } });
   selects.length = 0;
   inserted.length = 0;
   mockExecute.mockClear();
@@ -116,6 +121,31 @@ describe("POST /api/jobs/[id]/api-keys transaction checks", () => {
     mockExecute.mockImplementationOnce(async () => { jest.setSystemTime(Date.now() + 5000); });
     const res = await post({ name: "ci" });
     expect(res.status).toBe(400);
+    expect(inserted).toHaveLength(0);
+  });
+
+  it("refuses when the creator lost apiKey:create after the pre-lock check", async () => {
+    mockRequireAuth.mockResolvedValue(context);
+    mockCheckPermission.mockReturnValueOnce(true).mockReturnValueOnce(false);
+    expect((await post({ name: "ci" })).status).toBe(403);
+    expect(mockResolveContext).toHaveBeenCalledWith("u1", "p1");
+    expect(inserted).toHaveLength(0);
+  });
+
+  it("refuses when the creator can no longer resolve a project context", async () => {
+    mockRequireAuth.mockResolvedValue(context);
+    mockResolveContext.mockResolvedValue(null);
+    expect((await post({ name: "ci" })).status).toBe(403);
+    expect(inserted).toHaveLength(0);
+  });
+
+  it("re-checks the expiry just before the insert, after the in-lock checks", async () => {
+    mockRequireAuth.mockResolvedValue({ ...context, isCliAuth: true, cliTokenExpiresAt: new Date(Date.now() + 1000) });
+    mockResolveContext.mockImplementationOnce(async () => {
+      jest.setSystemTime(Date.now() + 5000);
+      return { userId: "u1", organizationId: "o1", project: { id: "p1", userRole: "project_editor" } };
+    });
+    expect((await post({ name: "ci" })).status).toBe(400);
     expect(inserted).toHaveLength(0);
   });
 

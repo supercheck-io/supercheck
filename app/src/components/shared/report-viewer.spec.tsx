@@ -183,4 +183,99 @@ describe("signed URL lifecycle", () => {
     expect(container.querySelector("iframe")).toHaveAttribute("src", OTHER);
     setVisibility("visible");
   });
+
+  it("bounds each refresh request with a timeout signal", async () => {
+    jest.useFakeTimers();
+    const { container } = render(<ReportViewer reportUrl="/api/test-results/run-1/report/index.html" />);
+    await waitFor(() => expect(container.querySelector("iframe")).toHaveAttribute("src", SIGNED));
+    fireEvent.load(container.querySelector("iframe")!);
+    fetchMock.mockClear();
+    await act(async () => {
+      jest.advanceTimersByTime(REPORT_URL_REFRESH_MS + 10);
+    });
+    await waitFor(() => expect(fetchMock.mock.calls.length).toBeGreaterThanOrEqual(2));
+    for (const [, init] of fetchMock.mock.calls) expect((init as RequestInit).signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("retries a rate-limited refresh after Retry-After, bounded, instead of the fixed delay", async () => {
+    jest.useFakeTimers();
+    setVisibility("visible");
+    const { container } = render(<ReportViewer reportUrl="/api/test-results/run-1/report/index.html" />);
+    await waitFor(() => expect(container.querySelector("iframe")).toHaveAttribute("src", SIGNED));
+    fireEvent.load(container.querySelector("iframe")!);
+    fetchMock.mockImplementation(async (url: string) =>
+      url === "/api/report-urls"
+        ? { ok: false, status: 429, headers: new Headers({ "Retry-After": "30" }), json: async () => ({ error: "slow down" }) }
+        : { ok: true, headers: new Headers(), text: async () => "" },
+    );
+    await act(async () => {
+      jest.advanceTimersByTime(REPORT_URL_REFRESH_MS + 10);
+    });
+    expect(mintCount()).toBe(2);
+    await act(async () => {
+      jest.advanceTimersByTime(29_000);
+    });
+    expect(mintCount()).toBe(2);
+    await act(async () => {
+      jest.advanceTimersByTime(2_000);
+    });
+    expect(mintCount()).toBe(3);
+    // A hostile or tiny value is clamped to the 5s floor.
+    fetchMock.mockImplementation(async (url: string) =>
+      url === "/api/report-urls"
+        ? { ok: false, status: 429, headers: new Headers({ "Retry-After": "1" }), json: async () => ({}) }
+        : { ok: true, headers: new Headers(), text: async () => "" },
+    );
+    await act(async () => {
+      jest.advanceTimersByTime(30_000);
+    });
+    expect(mintCount()).toBe(4);
+    await act(async () => {
+      jest.advanceTimersByTime(4_000);
+    });
+    expect(mintCount()).toBe(4);
+    await act(async () => {
+      jest.advanceTimersByTime(2_000);
+    });
+    expect(mintCount()).toBe(5);
+  });
+
+  it("mints a fresh URL on click when the shown one is older than the refresh threshold", async () => {
+    jest.useFakeTimers();
+    setVisibility("visible");
+    const { container } = render(<ReportViewer reportUrl="/api/test-results/run-1/report/index.html" />);
+    await waitFor(() => expect(container.querySelector("iframe")).toHaveAttribute("src", SIGNED));
+    fireEvent.load(container.querySelector("iframe")!);
+    const tab = { opener: "x", location: { href: "" }, close: jest.fn() };
+    const open = jest.spyOn(window, "open").mockReturnValue(tab as unknown as Window);
+    // Refresh fails, so the viewer still holds the aged URL when the timer passes the threshold.
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url !== "/api/report-urls") return { ok: true, headers: new Headers(), text: async () => "" };
+      return init?.signal && mintCount() > 1 ? { ok: true, json: async () => ({ url: NEW }) } : { ok: false, json: async () => ({}) };
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(REPORT_URL_REFRESH_MS + 10);
+    });
+    const link = screen.getByRole("link", { name: "Open report in a new tab" });
+    const aged = jest.spyOn(Date, "now").mockReturnValue(Date.now() + REPORT_URL_REFRESH_MS + 60_000);
+    await act(async () => {
+      fireEvent.click(link);
+    });
+    expect(open).toHaveBeenCalledWith("about:blank", "_blank");
+    expect(tab.opener).toBeNull();
+    await waitFor(() => expect(tab.location.href).toBe(NEW));
+    aged.mockRestore();
+    open.mockRestore();
+  });
+
+  it("opens the current URL untouched when it is still fresh", async () => {
+    const { container } = render(<ReportViewer reportUrl="/api/test-results/run-1/report/index.html" />);
+    await waitFor(() => expect(container.querySelector("iframe")).toHaveAttribute("src", SIGNED));
+    fireEvent.load(container.querySelector("iframe")!);
+    const open = jest.spyOn(window, "open");
+    const link = await screen.findByRole("link", { name: "Open report in a new tab" });
+    fireEvent.click(link);
+    expect(open).not.toHaveBeenCalled();
+    open.mockRestore();
+  });
 });

@@ -63,6 +63,7 @@ it("builds the index after the migration transaction and records the file only o
 }, 180_000);
 
 it("drops an INVALID index left by an interrupted build and rebuilds it", async () => {
+  await migrate(); // self-contained: do not rely on an earlier test having migrated this database
   // Simulate the leftover of a failed CONCURRENTLY build and an unrecorded migration.
   await client.unsafe(`UPDATE pg_index SET indisvalid = false WHERE indexrelid = '${INDEX}'::regclass`);
   const [{ id }] = await client<{ id: number }[]>`SELECT max(id) AS id FROM "__drizzle_migrations"`;

@@ -5,6 +5,7 @@ const mockUpdateWhere = jest.fn();
 const mockQueue = jest.fn();
 const mockWait = jest.fn();
 const mockForUpdate = jest.fn();
+const mockLockedWhere = jest.fn();
 let mockLockedConfig: Record<string, unknown> | undefined;
 
 jest.mock("server-only", () => ({}));
@@ -29,9 +30,10 @@ jest.mock("@/utils/db", () => ({
       fn({
         select: () => ({
           from: () => ({
-            where: () => ({
+            where: (predicate: unknown) => ({
               for: async (...a: unknown[]) => {
                 mockForUpdate(...a);
+                mockLockedWhere(predicate);
                 return [{ config: mockLockedConfig ?? (await mockFindConnector()).config }];
               },
             }),
@@ -57,6 +59,7 @@ jest.mock("@/lib/sre/private-agent-job-waiter", () => ({
   waitForPrivateAgentConnectorJob: (...a: unknown[]) => mockWait(...a),
 }));
 
+import { PgDialect } from "drizzle-orm/pg-core";
 import {
   discoverSreMcpTools,
   getSreMcpToolState,
@@ -185,5 +188,28 @@ describe("MCP connector actions", () => {
     const saved = mockUpdateWhere.mock.calls[0][0] as { config: { endpointUrl: string; mcp: { allowlist: unknown[] } } };
     expect(saved.config.endpointUrl).toBe("https://mcp.internal/rotated?…");
     expect(saved.config.mcp.allowlist).toHaveLength(1);
+  });
+
+  it("scopes both locked reads to the connector id, organization and project", async () => {
+    mockQueue.mockResolvedValue({ jobId: "job-1", privateAgentId: "agent-1", route: {} });
+    mockWait.mockResolvedValue({ state: "completed", job: { resultSummary: { evidence: [] } } });
+    mockLockedConfig = {
+      endpointUrl: "https://mcp.internal/mcp",
+      mcp: { discovered: [{ name: "search", description: "Search", inputSchema: schema, unsupportedReason: null }] },
+    };
+    const dialect = new PgDialect();
+    const expectScoped = () => {
+      expect(mockLockedWhere).toHaveBeenCalledTimes(1);
+      const { sql, params } = dialect.sqlToQuery(mockLockedWhere.mock.calls[0][0] as never);
+      expect(sql).toContain('"id"');
+      expect(sql).toContain('"organization_id"');
+      expect(sql).toContain('"project_id"');
+      expect(params).toEqual(expect.arrayContaining([id, "o1", "p1"]));
+      mockLockedWhere.mockClear();
+    };
+    await discoverSreMcpTools({ id });
+    expectScoped();
+    await saveSreMcpToolAllowlist({ id, tools: [{ name: "search" }] });
+    expectScoped();
   });
 });

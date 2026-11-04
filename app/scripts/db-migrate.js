@@ -240,6 +240,8 @@ async function createDatabaseIfNotExists() {
 
 // A file whose first comment line is `-- supercheck:no-transaction` cannot run inside the migration
 // transaction (CREATE INDEX CONCURRENTLY is refused there). Such files run after that transaction commits.
+// Rule: every CREATE INDEX CONCURRENTLY in such a file must use IF NOT EXISTS (a retry re-runs the whole
+// file); the runner rejects a violating file at load time, before any migration runs.
 const NO_TRANSACTION_MARKER = /^--\s*supercheck:no-transaction\s*$/m;
 const deferredMigrations = [];
 
@@ -250,24 +252,49 @@ function hasNoTransactionMarker(sql) {
   return NO_TRANSACTION_MARKER.test((end === -1 ? lines : lines.slice(0, end)).join("\n"));
 }
 
+const CONCURRENT_INDEX =
+  /CREATE\s+(?:UNIQUE\s+)?INDEX\s+CONCURRENTLY\s+(IF\s+NOT\s+EXISTS\s+)?"?([A-Za-z0-9_]+)"?(?:\s+ON\s+(?:ONLY\s+)?((?:"?[A-Za-z0-9_]+"?\.)?"?[A-Za-z0-9_]+"?))?/gi;
+
+function concurrentIndexes(sql) {
+  return [...sql.replace(/--[^\n]*/g, "").matchAll(CONCURRENT_INDEX)].map((m) => ({
+    name: m[2],
+    table: m[3],
+    ifNotExists: Boolean(m[1]),
+  }));
+}
+
 function concurrentIndexNames(sql) {
-  const names = [];
-  const pattern =
-    /CREATE\s+(?:UNIQUE\s+)?INDEX\s+CONCURRENTLY\s+(?:IF\s+NOT\s+EXISTS\s+)?"?([A-Za-z0-9_]+)"?/gi;
-  for (const match of sql.matchAll(pattern)) names.push(match[1]);
-  return names;
+  return concurrentIndexes(sql).map((i) => i.name);
+}
+
+// A deferred file re-runs every statement on each attempt, until the whole file succeeds and is recorded.
+// A plain CREATE INDEX CONCURRENTLY would then fail with "already exists" on the retry and block the
+// statements after it. So every CONCURRENTLY build in a no-transaction file must use IF NOT EXISTS.
+function assertDeferredFileRerunnable(file, sql) {
+  const plain = concurrentIndexes(sql).filter((i) => !i.ifNotExists);
+  if (plain.length > 0) {
+    throw new Error(
+      `${file}: no-transaction migrations must use CREATE INDEX CONCURRENTLY IF NOT EXISTS so a retry is safe (missing on: ${plain
+        .map((i) => i.name)
+        .join(", ")})`
+    );
+  }
 }
 
 // A failed or interrupted CONCURRENTLY build leaves an INVALID index; IF NOT EXISTS would then skip it
-// forever. Drop it so the retry rebuilds it.
+// forever. Drop it so the retry rebuilds it. The index lives in its table's schema, so match on the table
+// the statement names (resolved like CREATE INDEX resolves it) and drop from that schema.
 async function dropInvalidIndexes(client, sql) {
-  for (const name of concurrentIndexNames(sql)) {
+  for (const { name, table } of concurrentIndexes(sql)) {
+    if (!table) continue;
     const invalid = await client`
       SELECT n.nspname AS schema
-      FROM pg_class c
-      JOIN pg_index i ON i.indexrelid = c.oid
-      JOIN pg_namespace n ON n.oid = c.relnamespace
-      WHERE c.relname = ${name} AND n.nspname = current_schema() AND NOT i.indisvalid
+      FROM pg_index i
+      JOIN pg_class c ON c.oid = i.indexrelid
+      JOIN pg_class t ON t.oid = i.indrelid
+      JOIN pg_namespace n ON n.oid = t.relnamespace
+      WHERE c.relname = ${name} AND c.relnamespace = t.relnamespace
+        AND t.oid = to_regclass(${table}) AND NOT i.indisvalid
     `;
     for (const { schema } of invalid) {
       logWarning(`Dropping invalid index ${name} left by an earlier failed build`);
@@ -369,6 +396,18 @@ async function runMigrations(client) {
     if (migrationFiles.length === 0) {
       logWarning("No migration files found");
       return true;
+    }
+
+    // Fail fast, before anything runs, on a deferred file that is not safe to re-run.
+    for (const file of migrationFiles) {
+      const content = fs.readFileSync(path.join(migrationsDir, file), "utf8");
+      if (!hasNoTransactionMarker(content)) continue;
+      try {
+        assertDeferredFileRerunnable(file, content);
+      } catch (err) {
+        logError(err.message);
+        return false;
+      }
     }
 
     // Check if migrations table exists
@@ -885,7 +924,7 @@ async function validateAfterCommit() {
   }
 }
 
-module.exports = { hasNoTransactionMarker, concurrentIndexNames };
+module.exports = { hasNoTransactionMarker, concurrentIndexNames, concurrentIndexes, assertDeferredFileRerunnable };
 
 // Run the main function
 if (require.main === module) main();

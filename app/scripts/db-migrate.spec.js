@@ -1,4 +1,4 @@
-const { hasNoTransactionMarker, concurrentIndexNames } = require("./db-migrate.js");
+const { hasNoTransactionMarker, concurrentIndexNames, concurrentIndexes, assertDeferredFileRerunnable } = require("./db-migrate.js");
 
 describe("db-migrate no-transaction files", () => {
   it("detects the file-level marker only as its own comment line", () => {
@@ -19,5 +19,16 @@ describe("db-migrate no-transaction files", () => {
 CREATE UNIQUE INDEX CONCURRENTLY "runs_b_idx" ON runs (b);
 CREATE INDEX plain_idx ON runs (c);`;
     expect(concurrentIndexNames(sql)).toEqual(["runs_a_idx", "runs_b_idx"]);
+  });
+  it("captures the table each concurrent index is built on", () => {
+    expect(concurrentIndexes('CREATE INDEX CONCURRENTLY IF NOT EXISTS a_idx ON app.runs (a);')[0]).toEqual({
+      name: "a_idx", table: "app.runs", ifNotExists: true,
+    });
+  });
+  it("rejects a no-transaction file with a plain CREATE INDEX CONCURRENTLY", () => {
+    const ok = "CREATE INDEX CONCURRENTLY IF NOT EXISTS a_idx ON t (a);\n--> statement-breakpoint\nCREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS b_idx ON t (b);";
+    expect(() => assertDeferredFileRerunnable("0099.sql", ok)).not.toThrow();
+    const bad = `${ok}\n-- CREATE INDEX CONCURRENTLY ignored_in_comment ON t (c);\nCREATE INDEX CONCURRENTLY c_idx ON t (c);`;
+    expect(() => assertDeferredFileRerunnable("0099.sql", bad)).toThrow(/0099\.sql.*IF NOT EXISTS.*c_idx/);
   });
 });

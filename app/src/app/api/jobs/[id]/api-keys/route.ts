@@ -4,7 +4,7 @@ import { apikey, jobs, member, user } from "@/db/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { z } from "zod";
 import { logAuditEvent } from "@/lib/audit-logger";
-import { checkPermissionWithContext, isImpersonatedSession } from "@/lib/rbac/middleware";
+import { checkPermissionWithContext, isImpersonatedSession, resolveProjectPermissionContext } from "@/lib/rbac/middleware";
 import { createLogger } from "@/lib/logger/pino-config";
 import { hashApiKey, generateApiKey, getApiKeyPrefix } from "@/lib/security/api-key-hash";
 import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
@@ -229,17 +229,18 @@ export async function POST(
     const created = await db.transaction(async (tx) => {
       await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${job[0].id}, 0))`);
 
-      // The lock wait can outlast a short expiry computed before it.
-      if (expiresAt && expiresAt <= new Date()) {
-        return { error: "Expiry date must be in the future", status: 400 } as const;
-      }
-
       const [stillMember] = await tx
         .select({ id: member.id })
         .from(member)
         .where(and(eq(member.userId, userId), eq(member.organizationId, authCtx.organizationId)))
         .limit(1);
       if (!stillMember) return { error: "Insufficient permissions", status: 403 } as const;
+
+      // Re-resolve the creator's current role: the pre-lock check used a snapshot.
+      const freshContext = await resolveProjectPermissionContext(userId, authCtx.project.id);
+      if (!freshContext || !checkPermissionWithContext("apiKey", "create", freshContext)) {
+        return { error: "Insufficient permissions", status: 403 } as const;
+      }
 
       const [existingNamedKey] = await tx
         .select({ id: apikey.id })
@@ -253,6 +254,11 @@ export async function POST(
       const existingKeys = await tx.select({ id: apikey.id }).from(apikey).where(eq(apikey.jobId, job[0].id));
       if (existingKeys.length >= 10) {
         return { error: "Maximum of 10 API keys per job reached", status: 400 } as const;
+      }
+
+      // The lock wait and checks above can outlast a short expiry computed before them.
+      if (expiresAt && expiresAt <= new Date()) {
+        return { error: "Expiry date must be in the future", status: 400 } as const;
       }
 
       const rows = await tx.insert(apikey).values({
