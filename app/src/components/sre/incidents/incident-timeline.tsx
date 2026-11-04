@@ -5,7 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { addSreIncidentUpdate, type SreIncidentTimelineItem } from "@/actions/sre-incident-lifecycle";
+import { addSreIncidentUpdate, type SreIncidentTimelineItem, type SreIncidentTimelineRefs } from "@/actions/sre-incident-lifecycle";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -52,7 +52,30 @@ export function aiFindingHeadline(value: unknown) {
   return `${cut.slice(0, cut.lastIndexOf(" ") > 300 ? cut.lastIndexOf(" ") : 400)}…`;
 }
 
-export function describeTimelineEvent(event: Pick<SreIncidentTimelineItem, "eventType" | "eventData">): {
+const humanize = (value: string) => value.replace(/_/g, " ");
+
+/** "A -> B" lines for the fields an edit changed; empty for events recorded before values were stored. */
+function describeEdit(data: Record<string, unknown>) {
+  const previous = (data.previous ?? {}) as Record<string, unknown>;
+  const current = (data.current ?? {}) as Record<string, unknown>;
+  const lines: string[] = [];
+  for (const [key, label] of [["title", "Title"], ["severity", "Severity"], ["status", "Status"]] as const) {
+    const from = str(previous[key], 200);
+    const to = str(current[key], 200);
+    if (from && to && from !== to) {
+      lines.push(key === "title" ? `${label}: "${from}" → "${to}"` : `${label}: ${humanize(from)} → ${humanize(to)}`);
+    }
+  }
+  if (previous.primaryServiceId !== undefined && previous.primaryServiceId !== current.primaryServiceId) {
+    lines.push("Service changed");
+  }
+  return lines.join("\n") || null;
+}
+
+export function describeTimelineEvent(
+  event: Pick<SreIncidentTimelineItem, "eventType" | "eventData">,
+  refs?: SreIncidentTimelineRefs,
+): {
   title: string;
   body: string | null;
 } {
@@ -63,6 +86,19 @@ export function describeTimelineEvent(event: Pick<SreIncidentTimelineItem, "even
   }
   if (event.eventType === "state_change") {
     const state = str(data.state, 80) ?? "";
+    if (state === "incident_updated") {
+      return { title: STATE_LABELS[state], body: describeEdit(data) ?? str(data.comment) ?? str(data.summary) };
+    }
+    if (state === "assigned" || state === "commander_changed") {
+      const name = (id: unknown) => (typeof id === "string" ? (refs?.users[id] ?? "a former member") : null);
+      const from = name(data.previousAssigneeUserId) ?? "Unassigned";
+      const to = name(data.assigneeUserId) ?? "Unassigned";
+      return { title: STATE_LABELS[state], body: `${from} → ${to}` };
+    }
+    if (state === "alert_correlated") {
+      const alert = typeof data.alertEventId === "string" ? refs?.alerts[data.alertEventId] : undefined;
+      return { title: STATE_LABELS[state], body: alert ? `Linked: ${alert.slice(0, 200)}` : null };
+    }
     return { title: STATE_LABELS[state] ?? "Status change", body: str(data.comment) ?? str(data.summary) };
   }
   return { title: event.eventType.replace(/_/g, " "), body: null };
@@ -91,6 +127,7 @@ export function IncidentTimeline({
   const [pending, setPending] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const events = query.data?.success ? query.data.events : [];
+  const refs = query.data?.success ? query.data.refs : undefined;
 
   const post = async () => {
     if (pending || !text.trim()) return;
@@ -146,7 +183,7 @@ export function IncidentTimeline({
           ) : (
             <ol className="ml-1 space-y-3 border-l pl-4">
               {(showAll ? events : events.slice(0, TIMELINE_COLLAPSED)).map((event) => {
-                const { title, body } = describeTimelineEvent(event);
+                const { title, body } = describeTimelineEvent(event, refs);
                 return (
                   <li key={event.id} className="relative">
                     <span aria-hidden="true" className="absolute -left-[1.3rem] top-1.5 h-2 w-2 rounded-full bg-border" />

@@ -1,10 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 
-import { sreIncidents, sreIncidentTimelineEvents, user } from "@/db/schema";
+import { sreAlertEvents, sreIncidents, sreIncidentTimelineEvents, user } from "@/db/schema";
 import { createLogger } from "@/lib/logger/index";
 import { requireProjectContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
@@ -49,6 +49,9 @@ export type SreIncidentAssignee = {
   name: string;
   image: string | null;
 };
+
+/** Names for ids that timeline events store, so reassignments and linked alerts read as words. */
+export type SreIncidentTimelineRefs = { users: Record<string, string>; alerts: Record<string, string> };
 
 export type SreIncidentTimelineItem = {
   id: string;
@@ -195,7 +198,7 @@ export async function getSreIncidentAssignees(): Promise<
 export async function getSreIncidentTimeline(
   incidentId: string,
 ): Promise<
-  | { success: true; events: SreIncidentTimelineItem[] } // newest first
+  | { success: true; events: SreIncidentTimelineItem[]; refs: SreIncidentTimelineRefs } // newest first
   | { success: false; error: string; events: [] }
 > {
   try {
@@ -232,7 +235,33 @@ export async function getSreIncidentTimeline(
       .where(eq(sreIncidentTimelineEvents.incidentId, incident.id))
       .orderBy(desc(sreIncidentTimelineEvents.createdAt))
       .limit(500);
-    return { success: true, events };
+
+    const userIds = new Set<string>();
+    const alertIds = new Set<string>();
+    for (const { eventData: data } of events) {
+      for (const key of ["previousAssigneeUserId", "assigneeUserId"]) {
+        const value = data?.[key];
+        if (typeof value === "string" && z.string().uuid().safeParse(value).success) userIds.add(value);
+      }
+      const alertId = data?.alertEventId;
+      if (typeof alertId === "string" && z.string().uuid().safeParse(alertId).success) alertIds.add(alertId);
+    }
+    const [users, alerts] = await Promise.all([
+      userIds.size
+        ? db.select({ id: user.id, name: user.name }).from(user).where(inArray(user.id, [...userIds]))
+        : [],
+      alertIds.size
+        ? db
+            .select({ id: sreAlertEvents.id, title: sreAlertEvents.title })
+            .from(sreAlertEvents)
+            .where(and(inArray(sreAlertEvents.id, [...alertIds]), eq(sreAlertEvents.organizationId, auth.actor.organizationId)))
+        : [],
+    ]);
+    const refs: SreIncidentTimelineRefs = {
+      users: Object.fromEntries(users.map((row) => [row.id, row.name])),
+      alerts: Object.fromEntries(alerts.map((row) => [row.id, row.title])),
+    };
+    return { success: true, events, refs };
   } catch (error) {
     logger.error({ error }, "Error loading SRE incident timeline");
     return { success: false, error: "Failed to load timeline", events: [] };

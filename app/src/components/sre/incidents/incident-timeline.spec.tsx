@@ -26,6 +26,29 @@ beforeEach(() => {
   ready([]);
 });
 
+describe("describeTimelineEvent before and after detail", () => {
+  const refs = { users: { u1: "Ada", u2: "Grace" }, alerts: { a1: "API latency high" } };
+
+  it("shows old and new values for an edit", () => {
+    const event = { eventType: "state_change", eventData: { state: "incident_updated", previous: { title: "A", severity: "sev3", status: "investigating" }, current: { title: "B", severity: "sev1", status: "investigating" } } };
+    expect(describeTimelineEvent(event).body).toBe('Title: "A" → "B"\nSeverity: sev3 → sev1');
+  });
+
+  it("still renders an edit recorded without values", () => {
+    expect(describeTimelineEvent({ eventType: "state_change", eventData: { state: "incident_updated" } })).toEqual({ title: "Incident updated", body: null });
+  });
+
+  it("resolves user names for a reassignment and handles unassigned", () => {
+    expect(describeTimelineEvent({ eventType: "state_change", eventData: { state: "assigned", previousAssigneeUserId: "u1", assigneeUserId: "u2" } }, refs).body).toBe("Ada → Grace");
+    expect(describeTimelineEvent({ eventType: "state_change", eventData: { state: "assigned", previousAssigneeUserId: null, assigneeUserId: "gone" } }, refs).body).toBe("Unassigned → a former member");
+  });
+
+  it("names the correlated alert", () => {
+    expect(describeTimelineEvent({ eventType: "state_change", eventData: { state: "alert_correlated", alertEventId: "a1" } }, refs).body).toBe("Linked: API latency high");
+    expect(describeTimelineEvent({ eventType: "state_change", eventData: { state: "alert_correlated", alertEventId: "x" } }, refs).body).toBeNull();
+  });
+});
+
 describe("describeTimelineEvent", () => {
   it.each([
     ["recovered", "Recovered"],
