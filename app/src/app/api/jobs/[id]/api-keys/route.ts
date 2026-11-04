@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
-import { apikey, jobs, user } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { apikey, jobs, member, user } from "@/db/schema";
+import { eq, and, sql } from "drizzle-orm";
 import { z } from "zod";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { checkPermissionWithContext, isImpersonatedSession } from "@/lib/rbac/middleware";
@@ -202,36 +202,6 @@ export async function POST(
       return NextResponse.json({ error: "Job not found" }, { status: 404 });
     }
 
-    // Check for duplicate names within the same job
-    const existingNamedKey = await db
-      .select({ id: apikey.id })
-      .from(apikey)
-      .where(and(
-        eq(apikey.jobId, jobId),
-        eq(apikey.name, name.trim())
-      ))
-      .limit(1);
-
-    if (existingNamedKey.length > 0) {
-      return NextResponse.json(
-        { error: "An API key with this name already exists for this job" },
-        { status: 409 }
-      );
-    }
-
-    // Enforce max 10 keys per job
-    const existingKeys = await db
-      .select({ id: apikey.id })
-      .from(apikey)
-      .where(eq(apikey.jobId, jobId));
-    
-    if (existingKeys.length >= 10) {
-      return NextResponse.json(
-        { error: "Maximum of 10 API keys per job reached" },
-        { status: 400 }
-      );
-    }
-
     // Generate secure API key using cryptographic utility
     const apiKeyId = crypto.randomUUID();
     const apiKeyValue = generateApiKey(); // Uses crypto.randomBytes for secure generation
@@ -253,23 +223,55 @@ export async function POST(
       }
     }
     
-    // Create API key with hashed key for secure storage
-    // SECURITY: Only the hash is stored, the plain key is returned once to the user
-    const newApiKey = await db.insert(apikey).values({
-      id: apiKeyId,
-      configId: "default",
-      name: name.trim(),
-      start: apiKeyStart,
-      prefix: "job",
-      key: apiKeyHash, // Store hash instead of plain text
-      referenceId: userId,
-      jobId: jobId,
-      enabled: true,
-      expiresAt: expiresAt,
-      createdAt: now,
-      updatedAt: now,
-      permissions: [`trigger:${jobId}`],
-    }).returning();
+    // The membership re-check, name/cap checks and insert run under one per-job
+    // advisory lock, so concurrent requests cannot both pass the cap or name check.
+    // SECURITY: Only the hash is stored, the plain key is returned once to the user.
+    const created = await db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${jobId}, 0))`);
+
+      const [stillMember] = await tx
+        .select({ id: member.id })
+        .from(member)
+        .where(and(eq(member.userId, userId), eq(member.organizationId, authCtx.organizationId)))
+        .limit(1);
+      if (!stillMember) return { error: "Insufficient permissions", status: 403 } as const;
+
+      const [existingNamedKey] = await tx
+        .select({ id: apikey.id })
+        .from(apikey)
+        .where(and(eq(apikey.jobId, jobId), eq(apikey.name, name.trim())))
+        .limit(1);
+      if (existingNamedKey) {
+        return { error: "An API key with this name already exists for this job", status: 409 } as const;
+      }
+
+      const existingKeys = await tx.select({ id: apikey.id }).from(apikey).where(eq(apikey.jobId, jobId));
+      if (existingKeys.length >= 10) {
+        return { error: "Maximum of 10 API keys per job reached", status: 400 } as const;
+      }
+
+      const rows = await tx.insert(apikey).values({
+        id: apiKeyId,
+        configId: "default",
+        name: name.trim(),
+        start: apiKeyStart,
+        prefix: "job",
+        key: apiKeyHash, // Store hash instead of plain text
+        referenceId: userId,
+        jobId: jobId,
+        enabled: true,
+        expiresAt: expiresAt,
+        createdAt: now,
+        updatedAt: now,
+        permissions: [`trigger:${jobId}`],
+      }).returning();
+      return { rows } as const;
+    });
+
+    if ("error" in created) {
+      return NextResponse.json({ error: created.error }, { status: created.status });
+    }
+    const newApiKey = created.rows;
 
     if (!newApiKey || newApiKey.length === 0) {
       throw new Error("Failed to create API key in database");

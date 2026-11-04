@@ -13,15 +13,21 @@ const chain = () => {
 const mockRequireAuth = jest.fn();
 const mockImpersonated = jest.fn();
 
+const mockExecute = jest.fn(async () => undefined);
+const mockTx = {
+  select: () => chain(),
+  execute: (...a: unknown[]) => (mockExecute as (...x: unknown[]) => unknown)(...a),
+  insert: () => ({
+    values: (v: Record<string, unknown>) => {
+      inserted.push(v);
+      return { returning: async () => [{ ...v }] };
+    },
+  }),
+};
 jest.mock("@/utils/db", () => ({
   db: {
-    select: () => chain(),
-    insert: () => ({
-      values: (v: Record<string, unknown>) => {
-        inserted.push(v);
-        return { returning: async () => [{ ...v }] };
-      },
-    }),
+    select: () => mockTx.select(),
+    transaction: async (fn: (tx: typeof mockTx) => unknown) => fn(mockTx),
   },
 }));
 jest.mock("@/lib/auth-context", () => ({
@@ -56,8 +62,9 @@ beforeEach(() => {
   mockImpersonated.mockReset().mockResolvedValue(false);
   selects.length = 0;
   inserted.length = 0;
-  // job lookup, duplicate-name check, per-job key count
-  selects.push([{ id: jobId, organizationId: "o1", projectId: "p1", name: "Job" }], [], []);
+  mockExecute.mockClear();
+  // job lookup, then in the transaction: membership, duplicate-name check, per-job key count
+  selects.push([{ id: jobId, organizationId: "o1", projectId: "p1", name: "Job" }], [{ id: "m1" }], [], []);
 });
 afterEach(() => jest.useRealTimers());
 
@@ -78,6 +85,33 @@ describe("POST /api/jobs/[id]/api-keys", () => {
   it("refuses when the authenticating CLI token has expired", async () => {
     mockRequireAuth.mockResolvedValue({ ...context, isCliAuth: true, cliTokenExpiresAt: new Date(Date.now() - 1000) });
     expect((await post({ name: "ci" })).status).toBe(401);
+    expect(inserted).toHaveLength(0);
+  });
+});
+
+describe("POST /api/jobs/[id]/api-keys transaction checks", () => {
+  it("takes the per-job advisory lock before checking and inserting", async () => {
+    mockRequireAuth.mockResolvedValue(context);
+    expect((await post({ name: "ci" })).status).toBe(201);
+    expect(mockExecute).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses when the creator is no longer a member of the organization", async () => {
+    mockRequireAuth.mockResolvedValue(context);
+    selects.length = 0;
+    selects.push([{ id: jobId, organizationId: "o1", projectId: "p1", name: "Job" }], []);
+    expect((await post({ name: "ci" })).status).toBe(403);
+    expect(inserted).toHaveLength(0);
+  });
+
+  it("returns 409 for a duplicate name and 400 at the 10-key cap, without inserting", async () => {
+    mockRequireAuth.mockResolvedValue(context);
+    selects.length = 0;
+    selects.push([{ id: jobId, organizationId: "o1", projectId: "p1", name: "Job" }], [{ id: "m1" }], [{ id: "k" }]);
+    expect((await post({ name: "ci" })).status).toBe(409);
+    selects.length = 0;
+    selects.push([{ id: jobId, organizationId: "o1", projectId: "p1", name: "Job" }], [{ id: "m1" }], [], Array.from({ length: 10 }, (_, i) => ({ id: `k${i}` })));
+    expect((await post({ name: "ci" })).status).toBe(400);
     expect(inserted).toHaveLength(0);
   });
 });
