@@ -54,6 +54,12 @@ import {
   flatCredentialFields,
   providerEndpointRequirementError,
 } from "@/lib/sre/connectors/providers/provider-credentials";
+import {
+  McpEndpointMissingError,
+  readCarriedMcpEndpoint,
+  urlHasQuery,
+  withMcpEndpoint,
+} from "@/lib/sre/connectors/mcp-endpoint-secret";
 import { db } from "@/utils/db";
 
 const credentialTypes = [
@@ -131,6 +137,8 @@ const rotateConnectorCredentialSchema = z.object({
   credentialType: z.enum(credentialTypes),
   value: flatCredentialValueSchema,
   expiresAt: z.coerce.date().optional().nullable(),
+  // MCP only: the full endpoint URL, required when it is no longer stored anywhere readable.
+  endpointUrl: z.string().trim().url("Enter a valid endpoint URL").optional().or(z.literal("")),
 });
 
 const searchConnectorSchema = z.object({
@@ -988,6 +996,10 @@ export async function createSreConnector(
       }
     }
 
+    // A key in an MCP endpoint's query is a secret: the full URL goes into the encrypted credential blob
+    // and config keeps only the redacted form.
+    const secretEndpoint = parsed.data.type === "mcp" && endpointUrl && urlHasQuery(endpointUrl) ? endpointUrl : null;
+
     const connector = await db.transaction(async (tx) => {
       const [created] = await tx
         .insert(externalConnectors)
@@ -997,7 +1009,7 @@ export async function createSreConnector(
           privateAgentId: parsed.data.privateAgentId ?? null,
           name: parsed.data.name,
           type: parsed.data.type,
-          config: endpointUrl ? { endpointUrl } : {},
+          config: endpointUrl ? { endpointUrl: secretEndpoint ? redactEndpointQuery(endpointUrl) : endpointUrl } : {},
           riskLevel: parsed.data.riskLevel,
           permissionLevel: "read",
           sideEffectLevel: "none",
@@ -1014,9 +1026,10 @@ export async function createSreConnector(
         })
         .returning();
 
-      if (parsed.data.credential) {
+      if (parsed.data.credential || secretEndpoint) {
+        const credentialValue = parsed.data.credential?.value as ConnectorCredentialValue | undefined;
         const encrypted = encryptConnectorCredential(
-          parsed.data.credential.value as ConnectorCredentialValue,
+          secretEndpoint ? withMcpEndpoint(credentialValue, secretEndpoint) : (credentialValue as ConnectorCredentialValue),
           {
             organizationId,
             projectId: project.id,
@@ -1026,11 +1039,11 @@ export async function createSreConnector(
 
         await tx.insert(externalConnectorCredentials).values({
           connectorId: created.id,
-          credentialType: parsed.data.credential.credentialType,
+          credentialType: parsed.data.credential?.credentialType ?? "api_key",
           encryptedCredential: encrypted.encryptedCredential,
           encryptionVersion: encrypted.encryptionVersion,
           encryptionKeyContext: encrypted.encryptionKeyContext,
-          expiresAt: parsed.data.credential.expiresAt ?? null,
+          expiresAt: parsed.data.credential?.expiresAt ?? null,
           lastRotatedAt: new Date(),
           createdAt: new Date(),
           updatedAt: new Date(),
@@ -1326,6 +1339,8 @@ export async function validateSreConnector(
   }
 }
 
+class ConnectorChangedError extends Error {}
+
 export async function rotateSreConnectorCredential(
   input: z.infer<typeof rotateConnectorCredentialSchema>,
 ): Promise<SreConnectorActionResult> {
@@ -1373,44 +1388,94 @@ export async function rotateSreConnectorCredential(
       return { success: false, error: credentialError };
     }
 
-    const encrypted = encryptConnectorCredential(
-      parsed.data.value as ConnectorCredentialValue,
-      {
-        organizationId,
-        projectId: project.id,
-        connectorId: connector.id,
-      },
-    );
+    // Rotation replaces the whole blob, so carry the encrypted MCP endpoint URL over (this also moves a
+    // legacy URL out of config).
+    const storedEndpoint = typeof connector.config?.endpointUrl === "string" ? connector.config.endpointUrl : null;
+    let suppliedEndpoint: string | null = null;
+    if (connector.type === "mcp" && parsed.data.endpointUrl) {
+      try {
+        suppliedEndpoint = normalizeEndpointUrl(parsed.data.endpointUrl, "mcp");
+        await assertEndpointAllowedForExecution(suppliedEndpoint, true);
+      } catch (error) {
+        // These messages describe the admin's own endpoint input and are safe to show.
+        return { success: false, error: error instanceof Error ? error.message : "Endpoint is not allowed" };
+      }
+    }
+    try {
+      await db.transaction(async (tx) => {
+        // Serialise with the lazy MCP endpoint migration, which also locks the connector row first when
+        // there is no credential row yet; otherwise both could insert one.
+        const [locked] = await tx
+          .select({ updatedAt: externalConnectors.updatedAt })
+          .from(externalConnectors)
+          .where(eq(externalConnectors.id, connector.id))
+          .for("update");
+        // A concurrent rotation or edit since the snapshot would make the carried endpoint stale.
+        if (!locked || locked.updatedAt.getTime() !== connector.updatedAt.getTime()) {
+          throw new ConnectorChangedError();
+        }
 
-    await db.transaction(async (tx) => {
-      await tx
-        .delete(externalConnectorCredentials)
-        .where(eq(externalConnectorCredentials.connectorId, connector.id));
+        // Rotation replaces the whole blob, so carry the encrypted MCP endpoint URL over (this also moves a
+        // legacy URL out of config). Resolved only now, from the row verified under the lock.
+        let carriedEndpoint: string | null = null;
+        if (connector.type === "mcp") {
+          if (suppliedEndpoint) {
+            carriedEndpoint = urlHasQuery(suppliedEndpoint) ? suppliedEndpoint : null;
+          } else if (storedEndpoint && urlHasQuery(storedEndpoint)) {
+            carriedEndpoint = await readCarriedMcpEndpoint(tx, connector);
+          }
+        }
+        const encrypted = encryptConnectorCredential(
+          carriedEndpoint
+            ? withMcpEndpoint(parsed.data.value as ConnectorCredentialValue, carriedEndpoint)
+            : (parsed.data.value as ConnectorCredentialValue),
+          {
+            organizationId,
+            projectId: project.id,
+            connectorId: connector.id,
+          },
+        );
 
-      await tx.insert(externalConnectorCredentials).values({
-        connectorId: connector.id,
-        credentialType: parsed.data.credentialType,
-        encryptedCredential: encrypted.encryptedCredential,
-        encryptionVersion: encrypted.encryptionVersion,
-        encryptionKeyContext: encrypted.encryptionKeyContext,
-        expiresAt: parsed.data.expiresAt ?? null,
-        lastRotatedAt: new Date(),
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
+        await tx
+          .delete(externalConnectorCredentials)
+          .where(eq(externalConnectorCredentials.connectorId, connector.id));
 
-      await tx
-        .update(externalConnectors)
-        .set({
-          status: "configured",
-          lastValidatedAt: null,
-          lastValidationStatus: null,
-          lastValidationError: null,
-          lastValidationLatencyMs: null,
+        await tx.insert(externalConnectorCredentials).values({
+          connectorId: connector.id,
+          credentialType: parsed.data.credentialType,
+          encryptedCredential: encrypted.encryptedCredential,
+          encryptionVersion: encrypted.encryptionVersion,
+          encryptionKeyContext: encrypted.encryptionKeyContext,
+          expiresAt: parsed.data.expiresAt ?? null,
+          lastRotatedAt: new Date(),
+          createdAt: new Date(),
           updatedAt: new Date(),
-        })
-        .where(eq(externalConnectors.id, connector.id));
-    });
+        });
+
+        await tx
+          .update(externalConnectors)
+          .set({
+            status: "configured",
+            lastValidatedAt: null,
+            lastValidationStatus: null,
+            lastValidationError: null,
+            lastValidationLatencyMs: null,
+            ...(suppliedEndpoint
+              ? { config: { ...connector.config, endpointUrl: redactEndpointQuery(suppliedEndpoint) } }
+              : carriedEndpoint
+                ? { config: { ...connector.config, endpointUrl: redactEndpointQuery(carriedEndpoint) } }
+                : {}),
+            updatedAt: new Date(),
+          })
+          .where(eq(externalConnectors.id, connector.id));
+      });
+    } catch (error) {
+      if (error instanceof ConnectorChangedError) {
+        return { success: false, error: "Connector changed while rotating. Reload it and retry." };
+      }
+      if (error instanceof McpEndpointMissingError) return { success: false, error: error.message };
+      throw error;
+    }
 
     await logAuditEvent({
       userId,

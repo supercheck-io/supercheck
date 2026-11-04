@@ -42,6 +42,21 @@ describe("AI create-test input bounds", () => {
     expect(usageTracker.consumeAICredit).not.toHaveBeenCalled();
   });
 
+  it("answers 400, not 500, for a non-string current script", async () => {
+    const response = await post({ userRequest: "write a login test", testType: "playwright", currentScript: { a: 1 } });
+    expect(response.status).toBe(400);
+    expect(AIStreamingService.generateStreamingResponse).not.toHaveBeenCalled();
+  });
+
+  it("returns 403, not 401, for a permission AuthError", async () => {
+    const { AuthError } = jest.requireActual("@/lib/auth-context") as typeof import("@/lib/auth-context");
+    const { requireAuth } = jest.requireMock("@/lib/rbac/middleware") as { requireAuth: jest.Mock };
+    requireAuth.mockRejectedValueOnce(new AuthError("CLI access revoked", 403));
+    const response = await post({ userRequest: "write a login test", testType: "playwright" });
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ reason: "forbidden", message: expect.stringContaining("permission") });
+  });
+
   it("requires an active organization before any AI call or credit charge", async () => {
     getActiveOrganization.mockResolvedValue(null);
     const response = await post({ userRequest: "write a login test", testType: "playwright" });

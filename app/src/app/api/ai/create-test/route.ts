@@ -1,3 +1,4 @@
+import { authErrorStatus, AuthError } from "@/lib/auth-context";
 import { getClientIP } from "@/lib/session-security";
 import { NextRequest, NextResponse } from "next/server";
 import { AIStreamingService } from "@/lib/ai/ai-streaming-service";
@@ -42,6 +43,16 @@ export async function POST(request: NextRequest) {
 
     const userRequest = body.userRequest.trim();
     const testType = body.testType;
+    if (body.currentScript != null && typeof body.currentScript !== "string") {
+      return NextResponse.json(
+        {
+          success: false,
+          reason: "invalid_request",
+          message: "Current script must be a string",
+        },
+        { status: 400 }
+      );
+    }
     const currentScript = body.currentScript ? body.currentScript.trim() : "";
 
     // Validate user request length
@@ -219,6 +230,7 @@ export async function POST(request: NextRequest) {
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error";
     const isAuthError =
+      error instanceof AuthError ||
       errorMessage.includes("Authentication") ||
       errorMessage.includes("Unauthorized");
     const isRateLimitError =
@@ -228,13 +240,19 @@ export async function POST(request: NextRequest) {
 
     if (isAuthError) {
       return NextResponse.json(
-        {
-          success: false,
-          reason: "authentication_required",
-          message: "Authentication required to use AI create feature",
-          guidance: "Please log in and try again",
-        },
-        { status: 401 }
+        authErrorStatus(error) === 403
+          ? {
+              success: false,
+              reason: "forbidden",
+              message: "You no longer have permission to use AI create in this project",
+            }
+          : {
+              success: false,
+              reason: "authentication_required",
+              message: "Authentication required to use AI create feature",
+              guidance: "Please log in and try again",
+            },
+        { status: authErrorStatus(error) }
       );
     }
 

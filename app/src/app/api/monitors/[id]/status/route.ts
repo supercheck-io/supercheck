@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { monitors, projects } from "@/db/schema";
 import { and, eq, ne } from "drizzle-orm";
-import { isAuthError, requireUserAuthContext } from "@/lib/auth-context";
+import { isAuthError, requireUserAuthContext, authErrorStatus } from "@/lib/auth-context";
 import { monitorResumeBlockedResponse } from "@/lib/execution/trial-interval-response";
 import { hasPermissionForUser } from '@/lib/rbac/middleware';
 import { logAuditEvent } from "@/lib/audit-logger";
@@ -150,7 +150,7 @@ export async function PATCH(
     
   } catch (error) {
     if (isAuthError(error)) {
-      const status = (error as { status?: number }).status === 403 ? 403 : 401;
+      const status = authErrorStatus(error);
       return NextResponse.json({ error: error instanceof Error ? error.message : "Authentication required" }, { status });
     }
     logger.error({ err: error }, "Error updating monitor status");

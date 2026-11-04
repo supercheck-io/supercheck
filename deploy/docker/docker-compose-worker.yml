@@ -95,6 +95,9 @@ services:
       # "monitor" for a lightweight monitoring-only worker.
       WORKER_QUEUES: ${WORKER_QUEUES:-}
 
+      # Let monitors target private, loopback and reserved addresses (the worker refuses them otherwise).
+      ALLOW_INTERNAL_TARGETS: ${ALLOW_INTERNAL_TARGETS:-false}
+
       # Finalize runs cancelled while still queued. Leave off until every worker runs this version.
       CANCELLED_QUEUED_RECOVERY_ENABLED: ${CANCELLED_QUEUED_RECOVERY_ENABLED:-false}
 

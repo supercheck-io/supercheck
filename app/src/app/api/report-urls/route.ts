@@ -3,11 +3,13 @@ import { db } from "@/utils/db";
 import { reports, runs, projects } from "@/db/schema";
 import { desc, eq, or, sql } from "drizzle-orm";
 import { hasPermissionForUser } from "@/lib/rbac/middleware";
-import { requireUserAuthContext, isAuthError } from "@/lib/auth-context";
+import { requireUserAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { getPermissionResource, resolveAccessContext } from "@/lib/test-results-access";
+import { apiKeyRateLimiter, createRateLimitHeaders } from "@/lib/api-key-rate-limiter";
 import { buildReportUrl, getReportsOrigin, mintReportToken } from "@/lib/reports-origin";
 
 const BASE = "/api/test-results/";
+const REPORT_URL_RATE_LIMIT = { enabled: true, timeWindow: 60, maxRequests: 120 };
 
 /**
  * POST /api/report-urls { path: "/api/test-results/<id>/report/index.html?..." }
@@ -23,9 +25,18 @@ export async function POST(request: Request) {
     authContext = await requireUserAuthContext();
   } catch (error) {
     if (isAuthError(error)) {
-      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+      return NextResponse.json({ error: "Authentication required" }, { status: authErrorStatus(error) });
     }
     throw error;
+  }
+
+  const limit = await apiKeyRateLimiter.checkAndIncrement(`report-urls:${authContext.userId}`, REPORT_URL_RATE_LIMIT);
+  // Deliberate fail-open: read-only, auth- and permission-gated, short-lived token; failing closed would break all report viewing during a Redis outage.
+  if (!limit.allowed && !limit.unavailable) {
+    return NextResponse.json(
+      { error: "Too many requests. Try again later." },
+      { status: 429, headers: createRateLimitHeaders(limit) },
+    );
   }
 
   const body = (await request.json().catch(() => null)) as { path?: unknown } | null;

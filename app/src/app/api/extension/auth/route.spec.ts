@@ -75,6 +75,11 @@ jest.mock("@/lib/logger/pino-config", () => {
   };
 });
 
+const mockLimit = jest.fn();
+jest.mock("@/lib/api-key-rate-limiter", () => ({
+  apiKeyRateLimiter: { checkAndIncrement: (...a: unknown[]) => mockLimit(...a) ?? Promise.resolve({ allowed: true }) },
+  createRateLimitHeaders: () => ({ "Retry-After": "30" }),
+}));
 import { DELETE, POST } from "./route";
 import { db } from "@/utils/db";
 
@@ -118,6 +123,17 @@ const postRequest = (body: Record<string, unknown> = {}) =>
   });
 
 describe("Extension auth route", () => {
+  it("answers 429 with Retry-After when the connect limit is exceeded", async () => {
+    mockAuth.api.getSession.mockResolvedValue({ user: { id: "user-1" } });
+    mockRequireAuthContext.mockResolvedValue({ userId: "user-1" });
+    mockCanCreateKey.mockReturnValue(true);
+    mockLimit.mockResolvedValueOnce({ allowed: false });
+    const response = await POST(postRequest());
+    expect(response.status).toBe(429);
+    expect(response.headers.get("Retry-After")).toBe("30");
+  });
+
+
   it("allows a recorder to revoke only the key it holds without a session", async () => {
     const returning = jest.fn(async () => [{ id: 'extension-key' }]);
     const revokeWhere = jest.fn((_condition: SQL) => ({ returning }));

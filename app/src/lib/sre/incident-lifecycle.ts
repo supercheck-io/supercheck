@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, inArray, isNull, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
 
 import {
   alertHistory,
@@ -568,8 +568,6 @@ export async function applySourceRecovery(
     .innerJoin(sreIncidents, eq(sreIncidentAlerts.incidentId, sreIncidents.id))
     .innerJoin(sreAlertEvents, eq(sreIncidentAlerts.alertEventId, sreAlertEvents.id))
     .where(and(triggerSourceMatch(source), ne(sreIncidents.status, "resolved")));
-  if (open.length === 0) return { resolved: [], recovered: [] };
-
   // A failure alert newer than this recovery means the recovery is stale; leave the incident alone.
   // Compared in SQL: comparing in SQL avoids parsing the driver's timestamp text in JS.
   const [newerFailure] = await tx
@@ -588,6 +586,25 @@ export async function applySourceRecovery(
   if (newerFailure) {
     return { resolved: [], recovered: [] };
   }
+
+  // The failure alerts themselves end with the recovery, so the service "firing" count falls.
+  // Only alerts that fired before the recovery, and only types a passing check really ends.
+  await tx
+    .update(sreAlertEvents)
+    .set({ status: "resolved", resolvedAt: source.recoveredAt })
+    .where(
+      and(
+        eq(sreAlertEvents.organizationId, source.organizationId),
+        eq(sreAlertEvents.projectId, source.projectId),
+        eq(sreAlertEvents.sourceType, source.sourceType),
+        eq(sreAlertEvents.sourceId, source.sourceId),
+        eq(sreAlertEvents.status, "firing"),
+        lte(sreAlertEvents.firedAt, source.recoveredAt),
+        recoverableTrigger(),
+      ),
+    );
+
+  if (open.length === 0) return { resolved: [], recovered: [] };
 
   const resolved: { id: string }[] = [];
   const recovered: { id: string; assigneeUserId: string | null }[] = [];

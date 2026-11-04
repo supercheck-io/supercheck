@@ -91,6 +91,11 @@ const MIGRATION_LOCK_TIMEOUT_MS = parsePositiveIntegerEnv(
   DEFAULT_MIGRATION_LOCK_TIMEOUT_MS
 );
 
+const DEFERRED_STATEMENT_TIMEOUT_MS = parsePositiveIntegerEnv(
+  process.env.DB_DEFERRED_MIGRATION_TIMEOUT_MS,
+  30 * 60 * 1000
+);
+
 const {
   targetConnectionString: TARGET_DATABASE_URL,
   adminConnectionString: ADMIN_DATABASE_URL,
@@ -233,6 +238,136 @@ async function createDatabaseIfNotExists() {
   }
 }
 
+// A file whose first comment line is `-- supercheck:no-transaction` cannot run inside the migration
+// transaction (CREATE INDEX CONCURRENTLY is refused there). Such files run after that transaction commits.
+// Rule: every CREATE INDEX CONCURRENTLY in such a file must use IF NOT EXISTS (a retry re-runs the whole
+// file); the runner rejects a violating file at load time, before any migration runs.
+const NO_TRANSACTION_MARKER = /^--\s*supercheck:no-transaction\s*$/m;
+const deferredMigrations = [];
+
+function hasNoTransactionMarker(sql) {
+  // Only the leading comment block counts: a marker after SQL must not defer the file.
+  const lines = sql.split(/\r?\n/);
+  const end = lines.findIndex((l) => l.trim() !== "" && !l.trimStart().startsWith("--"));
+  return NO_TRANSACTION_MARKER.test((end === -1 ? lines : lines.slice(0, end)).join("\n"));
+}
+
+const CONCURRENT_INDEX =
+  /CREATE\s+(?:UNIQUE\s+)?INDEX\s+CONCURRENTLY\s+(IF\s+NOT\s+EXISTS\s+)?"?([A-Za-z0-9_]+)"?(?:\s+ON\s+(?:ONLY\s+)?((?:"?[A-Za-z0-9_]+"?\.)?"?[A-Za-z0-9_]+"?))?/gi;
+
+function concurrentIndexes(sql) {
+  // Blank string literals first, so a `--` or `/*` inside one is not read as a comment; then drop comments.
+  const code = sql
+    .replace(/'(?:[^']|'')*'/g, "''")
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/--[^\n]*/g, "");
+  return [...code.matchAll(CONCURRENT_INDEX)].map((m) => ({
+    name: m[2],
+    table: m[3],
+    ifNotExists: Boolean(m[1]),
+  }));
+}
+
+function concurrentIndexNames(sql) {
+  return concurrentIndexes(sql).map((i) => i.name);
+}
+
+// A deferred file re-runs every statement on each attempt, until the whole file succeeds and is recorded.
+// A plain CREATE INDEX CONCURRENTLY would then fail with "already exists" on the retry and block the
+// statements after it. So every CONCURRENTLY build in a no-transaction file must use IF NOT EXISTS.
+function assertDeferredFileRerunnable(file, sql) {
+  const plain = concurrentIndexes(sql).filter((i) => !i.ifNotExists);
+  if (plain.length > 0) {
+    throw new Error(
+      `${file}: no-transaction migrations must use CREATE INDEX CONCURRENTLY IF NOT EXISTS so a retry is safe (missing on: ${plain
+        .map((i) => i.name)
+        .join(", ")})`
+    );
+  }
+}
+
+// A failed or interrupted CONCURRENTLY build leaves an INVALID index; IF NOT EXISTS would then skip it
+// forever. Drop it so the retry rebuilds it. The index lives in its table's schema, so match on the table
+// the statement names (resolved like CREATE INDEX resolves it) and drop from that schema.
+async function dropInvalidIndexes(client, sql) {
+  for (const { name, table } of concurrentIndexes(sql)) {
+    if (!table) continue;
+    const invalid = await client`
+      SELECT n.nspname AS schema
+      FROM pg_index i
+      JOIN pg_class c ON c.oid = i.indexrelid
+      JOIN pg_class t ON t.oid = i.indrelid
+      JOIN pg_namespace n ON n.oid = t.relnamespace
+      WHERE c.relname = ${name} AND c.relnamespace = t.relnamespace
+        AND t.oid = to_regclass(${table}) AND NOT i.indisvalid
+    `;
+    for (const { schema } of invalid) {
+      logWarning(`Dropping invalid index ${name} left by an earlier failed build`);
+      await client.unsafe(
+        `DROP INDEX CONCURRENTLY IF EXISTS "${schema.replace(/"/g, '""')}"."${name.replace(/"/g, '""')}"`
+      );
+    }
+  }
+}
+
+// Runs the deferred no-transaction files after the main migration transaction has committed.
+// Locking matches the main runner (pooler-safe): a dedicated connection holds BEGIN +
+// pg_try_advisory_xact_lock on the same key for the whole step, and the CONCURRENTLY build runs on a
+// second connection in autocommit. A file is recorded only after every statement succeeded.
+// These files are performance work (indexes): a failed build is logged as a warning, left unrecorded so
+// the next deploy retries it, and never fails the run or blocks startup.
+async function runDeferredMigrations(items = deferredMigrations) {
+  if (items.length === 0) return true;
+  let lockClient;
+  let client;
+  try {
+    lockClient = await acquireMigrationLock(postgres, TARGET_DATABASE_URL, {
+      lockName: MIGRATION_LOCK_NAME,
+      timeoutMs: MIGRATION_LOCK_TIMEOUT_MS,
+      log,
+      logSuccess,
+      logError: logWarning,
+    });
+    if (!lockClient) {
+      logWarning("Skipping no-transaction migrations (lock unavailable); the next deploy retries them");
+      return true;
+    }
+    // A build that outlives the timeout fails like any other deferred failure: unrecorded, retried next deploy.
+    client = postgres(TARGET_DATABASE_URL, {
+      max: 1,
+      ssl: getDatabaseSSLConfig(),
+      onnotice: () => {},
+      connection: { statement_timeout: DEFERRED_STATEMENT_TIMEOUT_MS },
+    });
+    for (const { file, content, hash } of items) {
+      try {
+        const [applied] = await client`SELECT id FROM "__drizzle_migrations" WHERE hash = ${hash}`;
+        if (applied) continue;
+
+        log(`Applying migration outside a transaction: ${file}`);
+        await dropInvalidIndexes(client, content);
+        // No IF NOT EXISTS rewriting and no savepoints: the file is exactly what the author wrote.
+        for (const statement of content.split("--> statement-breakpoint")) {
+          if (statement.replace(/--[^\n]*/g, "").trim().length === 0) continue;
+          await client.unsafe(statement.trim());
+        }
+        await client`
+          INSERT INTO "__drizzle_migrations" (hash, created_at) VALUES (${hash}, ${Date.now()})
+        `;
+        logSuccess(`Migration ${file} applied successfully`);
+      } catch (err) {
+        logWarning(`Deferred migration ${file} failed and will be retried on the next deploy: ${err.message}`);
+      }
+    }
+  } catch (err) {
+    logWarning(`Deferred migrations skipped: ${err.message}`);
+  } finally {
+    await client?.end({ timeout: 5 }).catch(() => undefined);
+    await releaseMigrationLock(lockClient, { commit: false, logSuccess: () => undefined }).catch(() => undefined);
+  }
+  return true;
+}
+
 // Function to run migrations
 async function runMigrations(client) {
   log("Running database migrations...");
@@ -266,6 +401,18 @@ async function runMigrations(client) {
     if (migrationFiles.length === 0) {
       logWarning("No migration files found");
       return true;
+    }
+
+    // Fail fast, before anything runs, on a deferred file that is not safe to re-run.
+    for (const file of migrationFiles) {
+      const content = fs.readFileSync(path.join(migrationsDir, file), "utf8");
+      if (!hasNoTransactionMarker(content)) continue;
+      try {
+        assertDeferredFileRerunnable(file, content);
+      } catch (err) {
+        logError(err.message);
+        return false;
+      }
     }
 
     // Check if migrations table exists
@@ -304,6 +451,12 @@ async function runMigrations(client) {
 
       if (applied) {
         log(`Migration ${migrationFile} already applied, skipping`);
+        continue;
+      }
+
+      if (hasNoTransactionMarker(migrationContent)) {
+        log(`Migration ${migrationFile} runs after the migration transaction commits`);
+        deferredMigrations.push({ file: migrationFile, content: migrationContent, hash: migrationHash });
         continue;
       }
 
@@ -755,7 +908,10 @@ async function main() {
       commit: migrationCompleted,
       logSuccess,
     });
-    if (migrationCompleted) await validateAfterCommit();
+    if (migrationCompleted) {
+      await validateAfterCommit();
+      await runDeferredMigrations();
+    }
   }
 }
 
@@ -773,5 +929,7 @@ async function validateAfterCommit() {
   }
 }
 
+module.exports = { hasNoTransactionMarker, concurrentIndexNames, concurrentIndexes, assertDeferredFileRerunnable };
+
 // Run the main function
-main();
+if (require.main === module) main();

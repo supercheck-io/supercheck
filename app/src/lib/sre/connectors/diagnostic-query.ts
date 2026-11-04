@@ -255,6 +255,10 @@ export function validateDiagnosticQueryParameterSchema(parameterSchema: Record<s
       throw new Error(`Diagnostic query parameter schema contains invalid parameter name "${name}"`);
     }
     const schema = normalizeParameterSchemaEntry(name, parameterSchema[name]);
+    // Write-time only: saved broad patterns still load; they never exempt a value from the render-time free-text checks.
+    if (schema?.pattern && isOverBroadPattern(schema.pattern)) {
+      throw new Error(`Diagnostic query parameter schema for "${name}" pattern is too broad: it accepts quotes, braces, backslashes or newlines`);
+    }
     if (schema && "default" in schema) {
       validateParameterValue(name, schema.default ?? null, parameterSchema[name]);
     }
@@ -345,11 +349,112 @@ function formatParameterValue(value: DiagnosticQueryParameterValue) {
 // Values are spliced into the template verbatim, so free-text strings (no pattern, enum or allowlist)
 // must not carry query syntax that could escape the template's label/field constraints.
 const UNSAFE_FREE_TEXT = /["'`{}\\\n\r;]/;
-function rejectUnsafeFreeText(name: string, value: DiagnosticQueryParameterValue, schemaValue: unknown, allowlistValue: unknown) {
-  if (typeof value !== "string" || !UNSAFE_FREE_TEXT.test(value)) return;
+// An unquoted position has no delimiter to escape from, so operators, spaces, parens and pipes are
+// enough to change the query. Free text there must be a plain token.
+const UNQUOTED_SAFE_TOKEN = /^[A-Za-z0-9_.:/@-]+$/;
+// Values containing a character UNSAFE_FREE_TEXT rejects. A pattern that accepts any of them is not
+// constraining the value (".*", "^.+$", "[^x]+").
+const BROAD_PATTERN_CANARIES = ['a"b', "a'b", "a`b", "a{b}", "a\\b", "a\nb", "a;b", '"} or vector(1) #'];
+const NEGATED_CLASS = /\[\^(?:[^\]\\]|\\.)*\]/g;
+// Query-syntax characters written literally in the pattern (outside a negated class) mean it accepts them.
+const SYNTAX_LITERAL = /["'`#;]|\\[{}\\nrxu0]/;
+
+/** Save-time check: true when the pattern accepts values with query-syntax characters. */
+export function isOverBroadPattern(pattern: string): boolean {
+  try {
+    const re = new RegExp(pattern);
+    return BROAD_PATTERN_CANARIES.some((canary) => re.test(canary)) || SYNTAX_LITERAL.test(pattern.replace(NEGATED_CLASS, ""));
+  } catch {
+    return false;
+  }
+}
+
+const NON_TOKEN_CANARIES = [" ", "(", ")", "|", "=", "!", "<", ">", ",", "+", "*", "?", "&", "$", "%", "~", "[", "]"].map((c) => `a${c}a`);
+
+function acceptsNonToken(pattern: string): boolean {
+  try {
+    const re = new RegExp(pattern);
+    return NON_TOKEN_CANARIES.some((canary) => re.test(canary));
+  } catch {
+    return true;
+  }
+}
+
+const hasHashComments = (queryType?: DiagnosticQueryType) => queryType === "promql" || queryType === "logql";
+
+/** Whether the template position at `offset` is inside a quoted string ("...", '...' or `...`). */
+function isInsideQuotes(template: string, offset: number, hashComments = false): boolean {
+  let open: string | null = null;
+  for (let i = 0; i < offset; i++) {
+    const ch = template[i];
+    if (!open && hashComments && ch === "#") {
+      // PromQL and LogQL: a # outside a string comments out the rest of the line, so quotes in it do not count.
+      while (i < offset && template[i] !== "\n") i++;
+      continue;
+    }
+    if (open) {
+      // A backslash escapes only in "..." and '...' strings; backtick strings are raw.
+      if (ch === "\\" && open !== "`") i++;
+      else if (ch === open) open = null;
+    } else if (ch === '"' || ch === "'" || ch === "`") {
+      open = ch;
+    }
+  }
+  return open !== null;
+}
+
+// Only values the admin fixed up front (enum or allowlist) are exempt from the free-text checks.
+// A pattern is not: it can be loose, or accept query syntax, so it never replaces the guard.
+function isConstrainedFreeText(schema: NormalizedParameterSchema | null, allowlistValue: unknown) {
+  return Boolean(schema?.enum || (Array.isArray(allowlistValue) && allowlistValue.length > 0));
+}
+
+function rejectUnsafeFreeText(
+  name: string,
+  value: DiagnosticQueryParameterValue,
+  schemaValue: unknown,
+  allowlistValue: unknown,
+  quoted: boolean,
+) {
+  if (typeof value !== "string") return;
   const schema = normalizeParameterSchemaEntry(name, schemaValue);
-  if (schema?.pattern || schema?.enum || (Array.isArray(allowlistValue) && allowlistValue.length > 0)) return;
-  throw new Error(`Diagnostic query parameter "${name}" contains disallowed characters`);
+  if (isConstrainedFreeText(schema, allowlistValue)) return;
+  if (UNSAFE_FREE_TEXT.test(value)) {
+    throw new Error(`Diagnostic query parameter "${name}" contains disallowed characters`);
+  }
+  // Typed date/duration values are validated by their own parsers.
+  if (!quoted && (!schema || schema.type === "string") && value !== "" && (!UNQUOTED_SAFE_TOKEN.test(value) || value.includes(".."))) {
+    throw new Error(`Diagnostic query parameter "${name}" is unquoted free text and may only contain letters, digits and _ . : / @ -`);
+  }
+}
+
+/**
+ * Write-time guard: an unconstrained string parameter must sit inside quotes in the template.
+ * Saved definitions are not rewritten; at runtime they keep working for plain-token values only.
+ */
+export function validateTemplateFreeTextPositions(
+  template: string,
+  parameterSchema: Record<string, unknown>,
+  allowlist: Record<string, unknown>,
+  queryType?: DiagnosticQueryType,
+): void {
+  const hashComments = hasHashComments(queryType);
+  const pattern = new RegExp(TEMPLATE_PARAM_PATTERN.source, TEMPLATE_PARAM_PATTERN.flags);
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(template)) !== null) {
+    const name = match[1] ?? match[2];
+    if (!name) continue;
+    const schema = normalizeParameterSchemaEntry(name, parameterSchema[name]);
+    if (schema && schema.type !== "string") continue;
+    if (isConstrainedFreeText(schema, allowlist[name])) continue;
+    if (!isInsideQuotes(template, match.index, hashComments)) {
+      // A pattern that only admits plain tokens is consistent with the render-time token rule.
+      if (schema?.pattern && !acceptsNonToken(schema.pattern)) continue;
+      throw new Error(
+        `Diagnostic query parameter "${name}" is free text in an unquoted position; add an enum or allowlist, a pattern that admits only plain tokens, or put the placeholder inside quotes`,
+      );
+    }
+  }
 }
 
 function parameterDefault(name: string, schemaValue: unknown): DiagnosticQueryParameterValue | undefined {
@@ -377,7 +482,7 @@ export function assertReadOnlyDiagnosticQuery(queryType: DiagnosticQueryType, re
 
 export function renderDiagnosticQueryTemplate(definition: DiagnosticQueryDefinition, parameters: DiagnosticQueryParameters): RenderedDiagnosticQuery {
   const referencedParameters = new Set<string>();
-  const renderedQuery = definition.template.replace(TEMPLATE_PARAM_PATTERN, (_match, braceName: string | undefined, dollarName: string | undefined) => {
+  const renderedQuery = definition.template.replace(TEMPLATE_PARAM_PATTERN, (_match, braceName: string | undefined, dollarName: string | undefined, offset: number) => {
     const name = braceName ?? dollarName;
     if (!name) {
       throw new Error("Invalid diagnostic query placeholder");
@@ -389,7 +494,7 @@ export function renderDiagnosticQueryTemplate(definition: DiagnosticQueryDefinit
     }
     validateParameterValue(name, value, definition.parameterSchema[name]);
     validateAllowlist(name, value, definition.allowlist[name]);
-    rejectUnsafeFreeText(name, value, definition.parameterSchema[name], definition.allowlist[name]);
+    rejectUnsafeFreeText(name, value, definition.parameterSchema[name], definition.allowlist[name], isInsideQuotes(definition.template, offset, hasHashComments(definition.queryType)));
     referencedParameters.add(name);
     return formatParameterValue(value);
   });

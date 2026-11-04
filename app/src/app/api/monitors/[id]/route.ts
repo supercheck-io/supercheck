@@ -21,7 +21,7 @@ import {
 } from "@/lib/monitor-scheduler";
 import { MonitorJobData } from "@/lib/queue";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
-import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { logAuditEvent } from "@/lib/audit-logger";
 import {
   createS3CleanupService,
@@ -29,6 +29,7 @@ import {
 } from "@/lib/s3-cleanup";
 import { createLogger } from "@/lib/logger/index";
 import { validateMonitorConfiguration } from "@/lib/monitor-validation";
+import { validateMonitorTargetAddress } from "@/lib/monitor-target-policy";
 import {
   enabledAlertConfigError,
   normalizeMonitorAlertConfig,
@@ -131,7 +132,7 @@ export async function GET(
           error:
             error instanceof Error ? error.message : "Authentication required",
         },
-        { status: 401 },
+        { status: authErrorStatus(error) },
       );
     }
     logger.error({ err: error, monitorId: id }, "Error fetching monitor");
@@ -232,6 +233,14 @@ export async function PUT(
     });
     if (!configurationValidation.success) {
       return NextResponse.json(configurationValidation, { status: 400 });
+    }
+    // Only a changed target or type is checked, so a monitor already pointing at an internal host stays editable.
+    const effectiveU1 = { type: updateData.type ?? currentMonitor.type, target: updateData.target ?? currentMonitor.target };
+    if (effectiveU1.type !== currentMonitor.type || effectiveU1.target !== currentMonitor.target) {
+      const targetValidation = await validateMonitorTargetAddress(effectiveU1);
+      if (!targetValidation.success) {
+        return NextResponse.json(targetValidation, { status: 400 });
+      }
     }
 
     // Re-check ownership whenever the test is supplied or the monitor becomes synthetic (a stored testId is not trusted).
@@ -675,7 +684,7 @@ export async function PUT(
           error:
             error instanceof Error ? error.message : "Authentication required",
         },
-        { status: 401 },
+        { status: authErrorStatus(error) },
       );
     }
     logger.error({ err: error, monitorId: id }, "Error updating monitor");
@@ -812,6 +821,14 @@ export async function PATCH(
     if (!configurationValidation.success) {
       return NextResponse.json(configurationValidation, { status: 400 });
     }
+    // Only a changed target or type is checked, so a monitor already pointing at an internal host stays editable.
+    const effectiveU2 = { type: updatePayload.type ?? currentMonitor.type, target: updatePayload.target ?? currentMonitor.target };
+    if (effectiveU2.type !== currentMonitor.type || effectiveU2.target !== currentMonitor.target) {
+      const targetValidation = await validateMonitorTargetAddress(effectiveU2);
+      if (!targetValidation.success) {
+        return NextResponse.json(targetValidation, { status: 400 });
+      }
+    }
 
     const patchType = updatePayload.type ?? currentMonitor.type;
     const patchTestId = (updatePayload.config ?? currentMonitor.config)?.testId;
@@ -914,7 +931,7 @@ export async function PATCH(
           error:
             error instanceof Error ? error.message : "Authentication required",
         },
-        { status: 401 },
+        { status: authErrorStatus(error) },
       );
     }
     logger.error(
@@ -949,7 +966,7 @@ export async function DELETE(
     return NextResponse.json(result, { status });
   } catch (error) {
     if (isAuthError(error)) {
-      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+      return NextResponse.json({ error: "Authentication required" }, { status: authErrorStatus(error) });
     }
     console.error("Error deleting monitor:", error);
     return NextResponse.json({ success: false, error: "Failed to delete monitor" }, { status: 500 });

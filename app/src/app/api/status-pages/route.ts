@@ -3,7 +3,7 @@ import { db } from "@/utils/db";
 import { statusPages } from "@/db/schema";
 import { desc, eq, and, sql } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
-import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { z } from "zod";
 import {
   createStatusPage,
@@ -109,7 +109,7 @@ export async function GET(request: NextRequest) {
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     console.error("Error fetching status pages:", error);
@@ -190,7 +190,7 @@ export async function POST(request: NextRequest) {
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     if (error instanceof z.ZodError) {

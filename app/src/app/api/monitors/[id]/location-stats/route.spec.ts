@@ -7,6 +7,7 @@ jest.mock("@/lib/auth-context", () => {
     status = 401;
   }
   return {
+    authErrorStatus: (e: { status?: number }) => (e?.status === 403 ? 403 : 401),
     requireUserAuthContext: jest.fn(async () => ({ userId: "user" })),
     isAuthError: (e: unknown) => e instanceof AuthError,
     AuthError,
@@ -27,6 +28,12 @@ const get = () =>
   GET(new NextRequest("http://localhost/api/monitors/m/location-stats"), {
     params: Promise.resolve({ id: "00000000-0000-4000-8000-000000000002" }),
   });
+
+it("keeps a 403 AuthError as 403", async () => {
+  const { AuthError } = jest.requireMock("@/lib/auth-context");
+  jest.mocked(requireUserAuthContext).mockRejectedValueOnce(Object.assign(new AuthError("no access"), { status: 403 }));
+  expect((await get()).status).toBe(403);
+});
 
 it("answers 401 for an auth failure instead of 500 (c20)", async () => {
   const { AuthError } = jest.requireMock("@/lib/auth-context");

@@ -8,6 +8,7 @@ import {
   type ConnectorDefinition,
   type ConnectorOutputLimits,
 } from "@/lib/sre/connectors";
+import { resolveMcpEndpointUrl } from "@/lib/sre/connectors/mcp-endpoint-secret";
 import { db } from "@/utils/db";
 
 type ConnectorRow = typeof externalConnectors.$inferSelect;
@@ -79,6 +80,7 @@ export async function queueMcpPrivateAgentJob(input: {
   });
   if (!agent) throw new Error("Configured Private Agent was not found");
 
+  const endpointUrl = await resolveMcpEndpointUrl(connector);
   const now = new Date();
   const route = routeSreConnectorQuery({
     organizationId: input.organizationId,
@@ -86,7 +88,7 @@ export async function queueMcpPrivateAgentJob(input: {
     connector: {
       ...mcpConnectorDefinition(connector, input.scopedServiceIds),
       privateAgentId: connector.privateAgentId,
-      endpointUrl: mcpEndpointUrl(connector),
+      endpointUrl,
     },
     params: {
       query: input.query,

@@ -21,6 +21,10 @@ function createFakePostgres(acquiredResults) {
     return Promise.resolve([]);
   };
 
+  client.unsafe = (text) => {
+    queries.push(text.trim());
+    return Promise.resolve([{ acquired: acquiredResults.shift() }]);
+  };
   client.end = jest.fn(() => Promise.resolve());
 
   return { client, queries };
@@ -106,5 +110,18 @@ describe("migration advisory lock", () => {
     expect(logSuccess).toHaveBeenCalledWith(
       "Database migration transaction rolled back",
     );
+  });
+
+  it("polls with the simple query protocol and doubles quotes in the lock name", async () => {
+    const queries = [];
+    const client = jest.fn(() => Promise.resolve([]));
+    client.unsafe = jest.fn((text) => {
+      queries.push(text);
+      return Promise.resolve([{ acquired: true }]);
+    });
+    client.end = jest.fn(() => Promise.resolve());
+    const lock = await acquireMigrationLock(jest.fn(() => client), "postgres://db", { lockName: "it's-a-lock" });
+    expect(lock).toBe(client);
+    expect(queries).toEqual(["SELECT pg_try_advisory_xact_lock(hashtext('it''s-a-lock')) AS acquired"]);
   });
 });

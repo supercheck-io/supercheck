@@ -5,6 +5,7 @@ jest.mock("@/lib/auth-context", () => {
     status = 401;
   }
   return {
+    authErrorStatus: (e: { status?: number }) => (e?.status === 403 ? 403 : 401),
     requireUserAuthContext: jest.fn(async () => ({ userId: "user" })),
     isAuthError: (e: unknown) => e instanceof AuthError,
     AuthError,
@@ -49,6 +50,12 @@ it("refuses to resume a paused monitor without a plan (c9)", async () => {
   expect(response.status).toBe(402);
   expect(monitorResumeBlockedResponse).toHaveBeenCalledWith("org", "paused", { status: "up" });
   expect(db.update).not.toHaveBeenCalled();
+});
+
+it("keeps a 403 AuthError as 403", async () => {
+  const { AuthError } = jest.requireMock("@/lib/auth-context");
+  jest.mocked(requireUserAuthContext).mockRejectedValueOnce(Object.assign(new AuthError("no access"), { status: 403 }));
+  expect((await patch("paused")).status).toBe(403);
 });
 
 it("answers 401 for an auth failure instead of 500 (c20)", async () => {

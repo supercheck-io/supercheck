@@ -246,41 +246,6 @@ export async function checkSreChatRateLimit(
 }
 
 /**
- * Rate limit SRE chat attachment uploads.
- * Per-user, per-incident: max 10 uploads per minute and 100 uploads per day.
- * This protects S3/storage cost and prevents attachment spam on incident records.
- */
-export async function checkSreAttachmentUploadRateLimit(
-  userId: string,
-  incidentId: string,
-): Promise<SreRateLimitResult> {
-  const burst = await checkSreRateLimit(
-    `attachment-upload:minute:${userId}:${incidentId}`,
-    10,
-    60 * 1000,
-  );
-
-  if (!burst.allowed) {
-    return burst;
-  }
-
-  const daily = await checkSreRateLimit(
-    `attachment-upload:day:${userId}:${incidentId}`,
-    100,
-    24 * 60 * 60 * 1000,
-  );
-
-  if (!daily.allowed) {
-    return daily;
-  }
-
-  return {
-    allowed: true,
-    remaining: Math.min(burst.remaining, daily.remaining),
-  };
-}
-
-/**
  * Rate limit incident lifecycle writes (assign, acknowledge, resolve, update).
  * Per-user, per-incident: max 30 per minute. Unlike the AI limiters this fails
  * OPEN when Redis is unavailable: these are cheap writes an on-call engineer must

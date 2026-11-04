@@ -22,6 +22,7 @@ const del = jest.fn(() => makeChain());
 const txSelect = jest.fn((..._a: unknown[]) => makeChain());
 const transaction = jest.fn(async (run: (tx: unknown) => unknown) =>
   run({
+    query: { statusPages: { findFirst: (...a: unknown[]) => pageFindFirst(...a) } },
     select: (...a: unknown[]) => (txSelect as jest.Mock)(...a),
     update: (...a: unknown[]) => (update as jest.Mock)(...a),
     insert: (...a: unknown[]) => (insert as jest.Mock)(...a),
@@ -220,6 +221,16 @@ describe("status page service", () => {
         ok: false,
         code: "conflict",
       });
+    });
+
+    it("runs the release, uniqueness check and update in one transaction and aborts it on conflict", async () => {
+      transaction.mockClear();
+      pageFindFirst.mockResolvedValueOnce({ id: pageId, customDomain: null }).mockResolvedValueOnce({ id: "other" });
+      update.mockClear();
+      const result = await updateStatusPageSettings(ctx, pageId, { customDomain: "status.acme.com" });
+      expect(result).toMatchObject({ ok: false, code: "conflict" });
+      expect(transaction).toHaveBeenCalledTimes(1);
+      expect(update).toHaveBeenCalledTimes(1); // only the release; the page update never ran, and the throw rolls the release back
     });
 
     it("releases a stale unverified reservation of the hostname before claiming it", async () => {

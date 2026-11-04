@@ -9,7 +9,7 @@ import { eq, desc, or, sql } from "drizzle-orm";
 import { fetchFromS3 } from "@/lib/s3-proxy";
 import { notFound } from "next/navigation";
 import { hasPermissionForUser } from "@/lib/rbac/middleware";
-import { requireUserAuthContext, isAuthError } from "@/lib/auth-context";
+import { requireUserAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import {
   buildTimeoutResponse,
   isCancellationError,
@@ -178,7 +178,7 @@ export async function GET(request: Request) {
       if (isAuthError(error)) {
         return NextResponse.json(
           { error: error instanceof Error ? error.message : "Authentication required" },
-          { status: 401 }
+          { status: authErrorStatus(error) }
         );
       }
       return NextResponse.json(

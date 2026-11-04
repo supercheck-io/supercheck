@@ -5,7 +5,7 @@ import { tests, testTags, tags } from '@/db/schema';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { MAX_TAGS_PER_ENTITY, TagLimitError, tagPatchSchema } from '@/lib/tag-patch';
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
-import { requireAuthContext, isAuthError } from '@/lib/auth-context';
+import { requireAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-context';
 import { logAuditEvent } from '@/lib/audit-logger';
 
 // A tag deleted after validation fails the insert with FK violation 23503 (drizzle wraps the driver error in `cause`).
@@ -70,7 +70,7 @@ export async function GET(
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : 'Authentication required' },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     console.error('Error fetching test tags:', error);
@@ -204,7 +204,7 @@ export async function POST(
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : 'Authentication required' },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     if (isFkViolation(error)) return NextResponse.json({ error: "One or more tags no longer exist" }, { status: 400 });
@@ -317,7 +317,7 @@ export async function PATCH(
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : 'Authentication required' },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     if (isFkViolation(error)) return NextResponse.json({ error: "One or more tags no longer exist" }, { status: 400 });
@@ -399,7 +399,7 @@ export async function DELETE(
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : 'Authentication required' },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     console.error('Error removing test tag:', error);

@@ -440,3 +440,27 @@ it("joins an incident opened under the old webhook identity instead of opening a
   await alert("monitor_recovery", minutes(10));
   expect(await states(incident.id)).toContain("recovered");
 });
+
+it("resolves the firing alert events on recovery so the service firing count falls", async () => {
+  const firing = () =>
+    mockDatabase
+      .select({ status: schema.sreAlertEvents.status, resolvedAt: schema.sreAlertEvents.resolvedAt })
+      .from(schema.sreAlertEvents)
+      .where(eq(schema.sreAlertEvents.organizationId, orgId));
+  await alert("monitor_failure", minutes(0));
+  expect((await firing()).map((r) => r.status)).toEqual(["firing"]);
+  await alert("monitor_recovery", minutes(10));
+  const [row] = await firing();
+  expect(row.status).toBe("resolved");
+  expect(row.resolvedAt).toEqual(minutes(10));
+  // A relapse re-fires the same event.
+  await alert("monitor_failure", minutes(12));
+  expect((await firing()).map((r) => r.status)).toEqual(["firing"]);
+});
+
+it("leaves the alert firing when the recovery is older than the latest failure", async () => {
+  await alert("monitor_failure", minutes(12));
+  await alert("monitor_recovery", minutes(10));
+  const rows = await mockDatabase.select({ status: schema.sreAlertEvents.status }).from(schema.sreAlertEvents);
+  expect(rows.map((r) => r.status)).toEqual(["firing"]);
+});

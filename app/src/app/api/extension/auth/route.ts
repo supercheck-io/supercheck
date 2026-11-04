@@ -12,6 +12,7 @@ import { db } from "@/utils/db";
 import { apikey } from "@/db/schema";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { requireAuthContext } from "@/lib/auth-context";
+import { apiKeyRateLimiter, createRateLimitHeaders } from "@/lib/api-key-rate-limiter";
 import { checkPermissionWithContext, isImpersonatedSession } from "@/lib/rbac/middleware";
 
 const logger = createLogger({ module: "extension-auth" });
@@ -29,6 +30,7 @@ const EXTENSION_PERMISSION_STATEMENT = "recorder:save";
 // Each browser holds its own key, so reinstalls and extra devices leave older ones
 // behind. Minting beyond this cap disables the oldest.
 const MAX_ENABLED_EXTENSION_KEYS = 5;
+const EXTENSION_AUTH_RATE_LIMIT = { enabled: true, timeWindow: 600, maxRequests: 10 };
 
 const authRequestSchema = z.object({
   name: z.string().optional().default("Supercheck Recorder Extension"),
@@ -191,6 +193,14 @@ export async function POST(request: NextRequest) {
     }
 
     const userId = session.user.id;
+
+    const limit = await apiKeyRateLimiter.checkAndIncrement(`extension-auth:${userId}`, EXTENSION_AUTH_RATE_LIMIT);
+    if (!limit.allowed) {
+      return NextResponse.json(
+        { success: false, error: "Too many requests. Try again later." },
+        { status: limit.unavailable ? 503 : 429, headers: createRateLimitHeaders(limit) },
+      );
+    }
 
     // Parse request body
     let body;

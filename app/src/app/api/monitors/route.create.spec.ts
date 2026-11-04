@@ -40,6 +40,9 @@ const deleteScheduledMonitor = jest.fn(async () => true);
 jest.mock("@/lib/monitor-scheduler", () => ({ deleteScheduledMonitor }));
 jest.mock("@/lib/creators", () => ({ loadCreators: jest.fn() }));
 
+jest.mock("@/lib/sre/connectors/endpoint-policy", () => ({
+  lookupBounded: jest.fn(async () => [{ address: "93.184.216.34", family: 4 }]),
+}));
 import { POST, PUT } from "./route";
 
 const post = (alertConfig: object) =>
@@ -54,6 +57,19 @@ const post = (alertConfig: object) =>
 beforeEach(() => {
   jest.clearAllMocks();
   dbSelect.mockReturnValue({ from: () => ({ where: async () => [] }) });
+});
+
+it("rejects a private monitor target with 400 before inserting", async () => {
+  const res = await POST(
+    new NextRequest("http://localhost/api/monitors", {
+      method: "POST",
+      body: JSON.stringify({ name: "m", type: "http_request", target: "http://169.254.169.254/latest" }),
+      headers: { "content-type": "application/json" },
+    }),
+  );
+  expect(res.status).toBe(400);
+  expect((await res.json()).error).toBe("Invalid monitor target");
+  expect(insertWithinPlanLimit).not.toHaveBeenCalled();
 });
 
 it("rejects notification providers outside the project before inserting (c14)", async () => {

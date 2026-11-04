@@ -9,7 +9,7 @@ import {
   TestExecutionTask,
 } from "@/lib/queue";
 import { playwrightValidationService } from "@/lib/playwright-validator";
-import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { resolveProjectVariables, extractVariableNames, type VariableResolutionResult } from "@/lib/variable-resolver";
@@ -424,7 +424,7 @@ export async function POST(request: NextRequest) {
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     console.error("Error processing test request:", error);

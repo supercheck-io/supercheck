@@ -11,7 +11,7 @@ import {
 } from "@/db/schema";
 import { eq, desc, and, sql, inArray, ne } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
-import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { isUuid } from "@/lib/uuid";
 import {
   insertMonitorRecord,
@@ -39,6 +39,7 @@ import {
 import type { LocationConfig } from "@/db/schema";
 import { createLogger } from "@/lib/logger/index";
 import { validateMonitorConfiguration } from "@/lib/monitor-validation";
+import { validateMonitorTargetAddress } from "@/lib/monitor-target-policy";
 import { normalizeMonitorAlertConfig, providerIdsOutsideProject, syntheticFrequencyError } from "@/lib/monitor-write";
 import { loadCreators } from "@/lib/creators";
 
@@ -192,7 +193,7 @@ export async function GET(request: Request) {
           error:
             error instanceof Error ? error.message : "Authentication required",
         },
-        { status: 401 },
+        { status: authErrorStatus(error) },
       );
     }
     logger.error({ err: error }, "Error fetching monitors");
@@ -410,6 +411,10 @@ export async function POST(req: NextRequest) {
     });
     if (!configurationValidation.success) {
       return NextResponse.json(configurationValidation, { status: 400 });
+    }
+    const targetValidation = await validateMonitorTargetAddress({ type: rawData.type, target: rawData.target });
+    if (!targetValidation.success) {
+      return NextResponse.json(targetValidation, { status: 400 });
     }
 
     // Prepare alert configuration - ensure it's properly structured and saved to alertConfig column
@@ -677,7 +682,7 @@ export async function POST(req: NextRequest) {
           error:
             error instanceof Error ? error.message : "Authentication required",
         },
-        { status: 401 },
+        { status: authErrorStatus(error) },
       );
     }
     if (error instanceof SubscriptionAccessDeniedError) {
@@ -801,6 +806,14 @@ export async function PUT(req: NextRequest) {
     });
     if (!configurationValidation.success) {
       return NextResponse.json(configurationValidation, { status: 400 });
+    }
+    // Only a changed target or type is checked, so a monitor already pointing at an internal host stays editable.
+    const effectiveU3 = { type: updateData.type ?? monitorData[0].type, target: updateData.target ?? monitorData[0].target };
+    if (effectiveU3.type !== monitorData[0].type || effectiveU3.target !== monitorData[0].target) {
+      const targetValidation = await validateMonitorTargetAddress(effectiveU3);
+      if (!targetValidation.success) {
+        return NextResponse.json(targetValidation, { status: 400 });
+      }
     }
 
     // Validate synthetic test monitor updates
@@ -1041,7 +1054,7 @@ export async function PUT(req: NextRequest) {
           error:
             error instanceof Error ? error.message : "Authentication required",
         },
-        { status: 401 },
+        { status: authErrorStatus(error) },
       );
     }
     logger.error({ err: error }, "Error updating monitor");

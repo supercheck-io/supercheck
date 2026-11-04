@@ -1,4 +1,4 @@
-import { renderDiagnosticQueryTemplate, validateDiagnosticQueryParameterSchema, validateTemplatePlaceholderCoverage } from "./diagnostic-query";
+import { isOverBroadPattern, renderDiagnosticQueryTemplate, validateDiagnosticQueryParameterSchema, validateTemplateFreeTextPositions, validateTemplatePlaceholderCoverage } from "./diagnostic-query";
 
 const definition = {
   id: "018f0000-0000-7000-8000-000000000001",
@@ -162,5 +162,110 @@ describe("diagnostic query pattern matching path", () => {
     expect(() =>
       renderDiagnosticQueryTemplate(withPattern("^[a-z]+$"), { service: "Checkout1" })
     ).toThrow(/required pattern/);
+  });
+});
+
+describe("diagnostic query free-text and broad-pattern guards", () => {
+  const base = { ...definition, allowlist: {}, parameterSchema: { v: "string" } };
+  const render = (template: string, schema: Record<string, unknown>, value: string, allowlist = {}) =>
+    renderDiagnosticQueryTemplate({ ...base, template, parameterSchema: schema, allowlist }, { v: value });
+
+  it("rejects operators and spaces in an unquoted free-text position at render time", () => {
+    expect(() => render("up > $v", { v: "string" }, "1 or vector(1)")).toThrow("unquoted free text");
+    expect(() => render("/api/$v", { v: "string" }, "../admin")).toThrow("unquoted free text");
+    expect(() => render("/api/$v", { v: "string" }, "a?x=1&y=2")).toThrow("unquoted free text");
+  });
+
+  it("still renders a plain token in an unquoted position (saved definitions keep working)", () => {
+    expect(render("/api/$v", { v: "string" }, "checkout-api").query).toBe("/api/checkout-api");
+  });
+
+  it("allows spaces and operators inside quotes, but not the quote itself", () => {
+    expect(render('{app="$v"}', { v: "string" }, "a b | c").query).toBe('{app="a b | c"}');
+    expect(() => render('{app="$v"}', { v: "string" }, 'x"} or vector(1) #')).toThrow("disallowed characters");
+  });
+
+  it("never lets a pattern exempt a quoted value from the free-text check", () => {
+    const stored = { v: { type: "string", pattern: ".*" } };
+    expect(() => render('{app="$v"}', stored, 'x"} or {a="b')).toThrow("disallowed characters");
+    expect(render('{app="$v"}', stored, "benign").query).toBe('{app="benign"}');
+    // A saved pattern that admits syntax cannot smuggle it past render either.
+    const evil = { v: { type: "string", pattern: '^x"\\} or vector\\(1\\) #$' } };
+    expect(() => render('{app="$v"}', evil, 'x"} or vector(1) #')).toThrow("disallowed characters");
+  });
+
+  it("still applies the strict token rule to an unquoted placeholder that has a pattern", () => {
+    const loose = { v: { type: "string", pattern: "^[a-z ]+$" } };
+    expect(() => render("up > $v", loose, "a b")).toThrow("unquoted free text");
+    expect(render("up > $v", loose, "ab").query).toBe("up > ab");
+    expect(render("up > $v", { v: { type: "string", enum: ["a b"] } }, "a b").query).toBe("up > a b");
+  });
+
+  it("detects over-broad patterns", () => {
+    for (const p of [".*", "^.+$", "^[^x]+$", "a", "^[\\s\\S]*$"]) expect(isOverBroadPattern(p)).toBe(true);
+    for (const p of ["^[a-zA-Z0-9_.:-]+$", "^[a-z ]+$"]) expect(isOverBroadPattern(p)).toBe(false);
+    for (const p of ['^x"\\} or vector\\(1\\) #$', '^x"\\} or vector\\(1\\) #.*$', "^a#b$", "^a\\\\b$", "^a\\nb$"]) expect(isOverBroadPattern(p)).toBe(true);
+  });
+
+  it("rejects over-broad patterns when a definition is saved", () => {
+    expect(() => validateDiagnosticQueryParameterSchema({ v: { type: "string", pattern: ".*" } })).toThrow("too broad");
+    expect(() => validateDiagnosticQueryParameterSchema({ v: { type: "string", pattern: "^[a-z]+$" } })).not.toThrow();
+    expect(() => validateDiagnosticQueryParameterSchema({ v: { type: "string", pattern: '^x"\\} or vector\\(1\\) #$' } })).toThrow("too broad");
+  });
+
+  it("rejects unconstrained free text in an unquoted position when a definition is saved", () => {
+    expect(() => validateTemplateFreeTextPositions("up > $v", { v: "string" }, {})).toThrow("unquoted position");
+    expect(() => validateTemplateFreeTextPositions('{a="$v"}', { v: "string" }, {})).not.toThrow();
+    expect(() => validateTemplateFreeTextPositions("up > $v", { v: "number" }, {})).not.toThrow();
+    expect(() => validateTemplateFreeTextPositions("up > $v", { v: { type: "string", pattern: "^[a-z]+$" } }, {})).not.toThrow();
+    expect(() => validateTemplateFreeTextPositions("up > $v", { v: { type: "string", pattern: "^[a-z ]+$" } }, {})).toThrow("unquoted position");
+    expect(() => validateTemplateFreeTextPositions("up > $v", { v: "string" }, { v: ["a", "b"] })).not.toThrow();
+  });
+
+  it("every built-in recipe passes the save-time guards", () => {
+    const { diagnosticQueryAdapterRecipes } = jest.requireActual("./diagnostic-query-adapters");
+    for (const r of diagnosticQueryAdapterRecipes) {
+      expect(() => validateDiagnosticQueryParameterSchema(r.parameterSchema)).not.toThrow();
+      expect(() => validateTemplateFreeTextPositions(r.template, r.parameterSchema, r.allowlist)).not.toThrow();
+    }
+  });
+
+  describe("http_get templates", () => {
+    const httpRender = (template: string, value: string) =>
+      renderDiagnosticQueryTemplate({ ...base, queryType: "http_get", template }, { v: value });
+
+    it("renders values verbatim, never encoded (adapters encode when they build the request)", () => {
+      expect(httpRender("/api/v1/$v/pods", "ns/app").query).toBe("/api/v1/ns/app/pods");
+      expect(httpRender('/search?q="$v"', "a b,c=d").query).toBe('/search?q="a b,c=d"');
+    });
+
+    it("keeps the strict token rule for unquoted free text and rejects unsafe characters", () => {
+      expect(() => httpRender("/api/$v", "a b")).toThrow("unquoted free text");
+      expect(() => httpRender("/api/$v", "../admin")).toThrow("unquoted free text");
+      for (const bad of ['a"b', "a'b", "a`b", "a\\b", "a{b}", "a\nb", "a\rb"]) {
+        expect(() => httpRender("/api/$v", bad)).toThrow("disallowed characters");
+      }
+    });
+  });
+
+  it("skips # comments outside strings for PromQL/LogQL when judging quotes", () => {
+    // The apostrophe sits in a comment, so it must not open a string that makes $v look quoted.
+    const tpl = "up # don't\n> $v";
+    expect(() => validateTemplateFreeTextPositions(tpl, { v: "string" }, {}, "promql")).toThrow("unquoted position");
+    expect(() => validateTemplateFreeTextPositions(tpl, { v: "string" }, {}, "logql")).toThrow("unquoted position");
+    // Other query types have no # comments, so the apostrophe really does open a string.
+    expect(() => validateTemplateFreeTextPositions(tpl, { v: "string" }, {}, "http_get")).not.toThrow();
+    // A # inside a string is not a comment.
+    expect(() => validateTemplateFreeTextPositions('{a="#x $v"}', { v: "string" }, {}, "promql")).not.toThrow();
+    // Render path: a placeholder inside a comment is treated as unquoted.
+    expect(() =>
+      renderDiagnosticQueryTemplate({ ...base, queryType: "promql", template: 'up # "\n> $v', parameterSchema: { v: "string" } }, { v: "1 or vector(1)" }),
+    ).toThrow("unquoted free text");
+  });
+
+  it("treats a backslash as literal inside a backtick string", () => {
+    // `a\` closes at the second backtick, so $v after it is unquoted; in "..." the backslash would escape.
+    expect(() => validateTemplateFreeTextPositions("`a\\` > $v", { v: "string" }, {})).toThrow("unquoted position");
+    expect(() => validateTemplateFreeTextPositions('"a\\" > $v', { v: "string" }, {})).not.toThrow();
   });
 });

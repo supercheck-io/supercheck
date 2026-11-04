@@ -68,6 +68,7 @@ export function ConnectorCredentialDialog({
   const [datadogApiKey, setDatadogApiKey] = useState("");
   const [datadogApplicationKey, setDatadogApplicationKey] = useState("");
   const [atlassianEmail, setAtlassianEmail] = useState("");
+  const [mcpEndpointUrl, setMcpEndpointUrl] = useState("");
   const [providerValues, setProviderValues] = useState<Record<string, string>>({});
   const providerFields = getProviderCredentialFields(connector.type);
   const isCloudWatch = connector.type === "aws_cloudwatch";
@@ -121,6 +122,7 @@ export function ConnectorCredentialDialog({
     startTransition(async () => {
       const result = await rotateSreConnectorCredential({
         id: connector.id,
+        ...(connector.type === "mcp" && mcpEndpointUrl.trim() ? { endpointUrl: mcpEndpointUrl.trim() } : {}),
         credentialType:
           providerFields || isCloudWatch || isDatadog
             ? "api_key"
@@ -165,6 +167,7 @@ export function ConnectorCredentialDialog({
       setDatadogApiKey("");
       setDatadogApplicationKey("");
       setProviderValues({});
+      setMcpEndpointUrl("");
       toast.success(result.message);
       onOpenChange(false);
     });
@@ -317,6 +320,20 @@ export function ConnectorCredentialDialog({
                   placeholder="Paste read-only credential"
                 />
               </div>
+            </div>
+          )}
+
+          {connector.type === "mcp" && (
+            <div className="space-y-1.5">
+              <Label htmlFor="rotate-mcp-endpoint">Endpoint URL (only if it carries a key)</Label>
+              <Input
+                id="rotate-mcp-endpoint"
+                value={mcpEndpointUrl}
+                onChange={(event) => setMcpEndpointUrl(event.target.value)}
+                type="password"
+                autoComplete="off"
+                placeholder="Leave empty to keep the stored URL"
+              />
             </div>
           )}
 

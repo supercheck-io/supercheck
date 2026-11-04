@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getTrialSummary } from "@/lib/execution/trial-limits";
-import { requireUserAuthContext, isAuthError } from "@/lib/auth-context";
+import { requireUserAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { getUserOrgRole } from "@/lib/rbac/middleware";
 import { Role } from "@/lib/rbac/permissions";
 import { subscriptionService } from "@/lib/services/subscription-service";
@@ -110,7 +110,7 @@ export async function GET() {
     const periodEnd = org.usagePeriodEnd ?? org.subscriptionEndsAt;
 
     const toPercent = (used: number, included: number) =>
-      included > 0 ? Math.round((used / included) * 100) : 100;
+      included > 0 ? Math.floor((used / included) * 100) : 100;
 
     return NextResponse.json({
       organizationId,
@@ -199,7 +199,7 @@ export async function GET() {
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     console.error("Error fetching billing information:", error);

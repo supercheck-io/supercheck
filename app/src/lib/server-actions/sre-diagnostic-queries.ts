@@ -9,7 +9,7 @@ import { logAuditEvent } from "@/lib/audit-logger";
 import { requireProjectContext, type ProjectAuthContext, type ProjectContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { isDiagnosticQueryTypeCompatible } from "@/lib/sre/connectors/diagnostic-query-adapters";
-import { validateDiagnosticQueryParameterSchema, validateTemplatePlaceholderCoverage } from "@/lib/sre/connectors/diagnostic-query";
+import { validateDiagnosticQueryParameterSchema, validateTemplateFreeTextPositions, validateTemplatePlaceholderCoverage } from "@/lib/sre/connectors/diagnostic-query";
 import { db } from "@/utils/db";
 
 const diagnosticQueryTypes = ["promql", "logql", "traceql", "http_get"] as const;
@@ -198,6 +198,7 @@ export async function createSreDiagnosticQuery(input: z.infer<typeof createDiagn
     try {
       validateDiagnosticQueryParameterSchema(parsed.data.parameterSchema);
       validateTemplatePlaceholderCoverage(parsed.data.template, parsed.data.allowlist);
+      validateTemplateFreeTextPositions(parsed.data.template, parsed.data.parameterSchema, parsed.data.allowlist, parsed.data.queryType);
     } catch (validationError) {
       return { success: false, error: validationError instanceof Error ? validationError.message : "Invalid diagnostic query definition" };
     }

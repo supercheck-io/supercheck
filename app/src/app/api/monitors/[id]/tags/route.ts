@@ -3,7 +3,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/utils/db";
 import { monitors, monitorTags, tags } from "@/db/schema";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
-import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import { requireAuthContext, isAuthError, authErrorResponse } from "@/lib/auth-context";
 import { isUuid } from "@/lib/uuid";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { MAX_TAGS_PER_ENTITY, TagLimitError, tagPatchSchema } from "@/lib/tag-patch";
@@ -13,12 +13,6 @@ type RouteParams = { params: Promise<{ id: string }> };
 const MAX_TAGS_PER_MONITOR = MAX_TAGS_PER_ENTITY;
 
 const notFound = () => NextResponse.json({ error: "Monitor not found" }, { status: 404 });
-
-const authFailure = (error: unknown) =>
-  NextResponse.json(
-    { error: error instanceof Error ? error.message : "Authentication required" },
-    { status: 401 }
-  );
 
 async function monitorExists(monitorId: string, organizationId: string, projectId: string) {
   const rows = await db
@@ -67,7 +61,7 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
 
     return NextResponse.json({ tags: await loadTags(monitorId, project.id) });
   } catch (error) {
-    if (isAuthError(error)) return authFailure(error);
+    if (isAuthError(error)) return authErrorResponse(error);
     console.error("Error fetching monitor tags:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
@@ -168,7 +162,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     return NextResponse.json({ tags: await loadTags(monitorId, project.id) });
   } catch (error) {
-    if (isAuthError(error)) return authFailure(error);
+    if (isAuthError(error)) return authErrorResponse(error);
     if (isFkViolation(error)) return NextResponse.json({ error: "One or more tags no longer exist" }, { status: 400 });
     console.error("Error updating monitor tags:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
@@ -270,7 +264,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
     return NextResponse.json({ tags: await loadTags(monitorId, project.id) });
   } catch (error) {
-    if (isAuthError(error)) return authFailure(error);
+    if (isAuthError(error)) return authErrorResponse(error);
     if (isFkViolation(error)) return NextResponse.json({ error: "One or more tags no longer exist" }, { status: 400 });
     console.error("Error patching monitor tags:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
@@ -326,7 +320,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    if (isAuthError(error)) return authFailure(error);
+    if (isAuthError(error)) return authErrorResponse(error);
     console.error("Error removing monitor tag:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }

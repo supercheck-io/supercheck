@@ -9,6 +9,7 @@
  */
 import { randomUUID } from "crypto";
 import { z } from "zod";
+import { HEX_COLOR_REGEX, normalizeHexColor } from "@/lib/status-page-branding";
 import { and, asc, eq, inArray, lt, ne, sql } from "drizzle-orm";
 import { db } from "@/utils/db";
 import {
@@ -98,7 +99,12 @@ export const createStatusPageSchema = z.object({
 
 export type CreateStatusPageInput = z.infer<typeof createStatusPageSchema>;
 
-const hexColor = z.string().regex(/^#[0-9A-Fa-f]{6}$/, "Invalid hex color").optional();
+// Accepts #rgb or #rrggbb and stores the 6-digit form.
+const hexColor = z
+  .string()
+  .regex(HEX_COLOR_REGEX, "Invalid hex color")
+  .transform((v) => normalizeHexColor(v)!)
+  .optional();
 
 /** Settings fields (everything the settings form can change, without the page id). */
 export const statusPageSettingsFieldsSchema = z.object({
@@ -402,6 +408,8 @@ export async function createStatusPage(
   }
 }
 
+class CustomDomainConflictError extends Error {}
+
 export async function updateStatusPageSettings(
   ctx: StatusPageServiceContext,
   statusPageId: string,
@@ -430,6 +438,9 @@ export async function updateStatusPageSettings(
       updatedAt: new Date(),
     };
 
+    // Set when a new hostname is being claimed; the release and uniqueness check run in the update transaction.
+    let claimDomain: string | undefined;
+
     // If custom domain is being changed, reset verification status
     if (settings.customDomain !== undefined && settings.customDomain !== statusPage.customDomain) {
       updatePayload.customDomainVerified = false;
@@ -454,32 +465,7 @@ export async function updateStatusPageSettings(
           );
         }
 
-        // An unverified claim must not block the real owner forever: release
-        // reservations untouched for UNVERIFIED_DOMAIN_TTL_MS. shortcut: updatedAt
-        // is the only timestamp without a migration, so any edit by the squatter
-        // renews the claim; add a dedicated reserved-at column to harden this.
-        await db
-          .update(statusPages)
-          .set({ customDomain: null })
-          .where(
-            and(
-              eq(statusPages.customDomain, settings.customDomain),
-              ne(statusPages.id, statusPageId),
-              eq(statusPages.customDomainVerified, false),
-              lt(statusPages.updatedAt, new Date(Date.now() - UNVERIFIED_DOMAIN_TTL_MS))
-            )
-          );
-
-        const existingDomain = await db.query.statusPages.findFirst({
-          where: and(
-            eq(statusPages.customDomain, settings.customDomain),
-            ne(statusPages.id, statusPageId)
-          ),
-          columns: { id: true },
-        });
-        if (existingDomain) {
-          return fail("conflict", "This custom domain is already in use by another status page");
-        }
+        claimDomain = settings.customDomain;
       }
     }
 
@@ -492,16 +478,44 @@ export async function updateStatusPageSettings(
       updatePayload.supportUrl = normalizeStatusPageSupportContact(settings.supportUrl);
     }
 
-    await db
-      .update(statusPages)
-      .set(updatePayload)
-      .where(
-        and(
-          eq(statusPages.id, statusPageId),
-          eq(statusPages.organizationId, organizationId),
-          eq(statusPages.projectId, projectId)
-        )
-      );
+    // The stale-claim release, the uniqueness check and the update commit together, so a
+    // conflict or a failed update never leaves the previous owner's domain released.
+    await db.transaction(async (tx) => {
+      if (claimDomain) {
+        // An unverified claim must not block the real owner forever: release
+        // reservations untouched for UNVERIFIED_DOMAIN_TTL_MS. shortcut: updatedAt
+        // is the only timestamp without a migration, so any edit by the squatter
+        // renews the claim; add a dedicated reserved-at column to harden this.
+        await tx
+          .update(statusPages)
+          .set({ customDomain: null })
+          .where(
+            and(
+              eq(statusPages.customDomain, claimDomain),
+              ne(statusPages.id, statusPageId),
+              eq(statusPages.customDomainVerified, false),
+              lt(statusPages.updatedAt, new Date(Date.now() - UNVERIFIED_DOMAIN_TTL_MS))
+            )
+          );
+
+        const existingDomain = await tx.query.statusPages.findFirst({
+          where: and(eq(statusPages.customDomain, claimDomain), ne(statusPages.id, statusPageId)),
+          columns: { id: true },
+        });
+        if (existingDomain) throw new CustomDomainConflictError();
+      }
+
+      await tx
+        .update(statusPages)
+        .set(updatePayload)
+        .where(
+          and(
+            eq(statusPages.id, statusPageId),
+            eq(statusPages.organizationId, organizationId),
+            eq(statusPages.projectId, projectId)
+          )
+        );
+    });
 
     await logAuditEvent({
       userId,
@@ -521,10 +535,11 @@ export async function updateStatusPageSettings(
     console.error("Error updating status page settings:", error);
 
     if (
-      error &&
-      typeof error === "object" &&
-      "code" in error &&
-      (error as { code?: string }).code === "23505"
+      error instanceof CustomDomainConflictError ||
+      (error &&
+        typeof error === "object" &&
+        "code" in error &&
+        (error as { code?: string }).code === "23505")
     ) {
       return fail("conflict", "This custom domain is already in use by another status page");
     }

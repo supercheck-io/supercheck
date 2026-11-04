@@ -1,4 +1,4 @@
-import { contrastRatio, resolveBranding } from "./status-page-branding";
+import { contrastRatio, normalizeHexColor, resolveBranding } from "./status-page-branding";
 
 describe("resolveBranding", () => {
   it("keeps the theme for stored defaults and nulls", () => {
@@ -7,8 +7,8 @@ describe("resolveBranding", () => {
   });
 
   it("applies a custom background with readable custom text", () => {
-    const { page } = resolveBranding({ cssBodyBackgroundColor: "#112233", cssFontColor: "#eeeeee", cssLightFontColor: "#cccccc", cssBorderColor: "#445566" });
-    expect(page).toEqual({ background: "#112233", font: "#eeeeee", lightFont: "#cccccc", border: "#445566" });
+    const { page } = resolveBranding({ cssBodyBackgroundColor: "#112233", cssFontColor: "#eeeeee", cssLightFontColor: "#cccccc", cssBorderColor: "#778899" });
+    expect(page).toEqual({ background: "#112233", font: "#eeeeee", lightFont: "#cccccc", border: "#778899" });
   });
 
   it("falls back to black or white text when the configured pair is unreadable", () => {
@@ -27,5 +27,34 @@ describe("resolveBranding", () => {
 
   it("computes WCAG contrast", () => {
     expect(contrastRatio("#000000", "#ffffff")).toBeCloseTo(21, 0);
+  });
+});
+
+describe("hex normalisation", () => {
+  it("expands #rgb and rejects everything else", () => {
+    expect(normalizeHexColor("#AbC")).toBe("#AAbbCC");
+    expect(normalizeHexColor(" #112233 ")).toBe("#112233");
+    for (const bad of ["#12", "#1234", "#12345g", "red", "112233", "", null, undefined]) {
+      expect(normalizeHexColor(bad)).toBeNull();
+    }
+  });
+
+  it("accepts #rgb in branding", () => {
+    expect(resolveBranding({ cssBodyBackgroundColor: "#123" }).page?.background).toBe("#112233");
+  });
+});
+
+describe("border colour", () => {
+  const bg = { cssBodyBackgroundColor: "#eeeeee", cssFontColor: "#000000" };
+  it("keeps a high-contrast border", () => {
+    expect(resolveBranding({ ...bg, cssBorderColor: "#555555" }).page?.border).toBe("#555555");
+  });
+  it("keeps the owner's border even when it is low contrast", () => {
+    expect(resolveBranding({ ...bg, cssBorderColor: "#fefefe" }).page?.border).toBe("#fefefe");
+  });
+  it("derives plain colours when no border is set", () => {
+    const page = resolveBranding({ cssBodyBackgroundColor: "#eeeeee" }).page!;
+    expect(page.border).toMatch(/^#[0-9a-f]{6}$/);
+    expect(page.lightFont).toMatch(/^#[0-9a-f]{6}$/);
   });
 });

@@ -11,7 +11,7 @@ import {
 import { eq, and, ne, isNull, inArray, sql } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { monitorTargetForRead } from "@/lib/monitor-read-config";
-import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { generateProxyUrl } from "@/lib/asset-proxy";
 import { logAuditEvent } from "@/lib/audit-logger";
 import {
@@ -226,7 +226,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     console.error("Error fetching status page:", error);
@@ -312,7 +312,7 @@ export async function DELETE(
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     console.error("Error deleting status page:", error);
@@ -433,7 +433,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     console.error("Error updating status page:", error);

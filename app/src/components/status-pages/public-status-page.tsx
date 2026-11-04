@@ -31,6 +31,7 @@ import {
 import { StatusPageBranding } from "./status-page-branding";
 import { formatMaintenanceWindow } from "@/lib/incident-schedule";
 import { resolveBranding } from "@/lib/status-page-branding";
+import { IMPACT_BANNER_STATUS } from "@/lib/incident-impact";
 
 type ComponentStatus =
   | "operational"
@@ -104,14 +105,6 @@ type Incident = {
     id: string;
     name: string;
   }>;
-};
-
-// Banner severity of an open incident, so an incident with no visible components still shows.
-// Impact "none" is informational and does not change the banner.
-const IMPACT_BANNER_STATUS: Partial<Record<IncidentImpact, ComponentStatus>> = {
-  critical: "major_outage",
-  major: "partial_outage",
-  minor: "degraded_performance",
 };
 
 // Overrides the themed Tailwind colours when the owner configured a custom background.
@@ -503,9 +496,7 @@ export function PublicStatusPage({
               color: brandedPage.font,
               "--sp-fg": brandedPage.font,
               "--sp-muted": brandedPage.lightFont,
-              "--sp-border":
-                brandedPage.border ??
-                `color-mix(in srgb, ${brandedPage.font} 20%, transparent)`,
+              "--sp-border": brandedPage.border,
             } as React.CSSProperties)
           : undefined
       }
