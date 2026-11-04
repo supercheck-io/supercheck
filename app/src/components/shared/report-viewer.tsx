@@ -319,6 +319,11 @@ export function ReportViewer({
   useEffect(() => {
     if (!pendingSigned) return;
     const apply = () => {
+      // A URL minted for a report the viewer has since left must never replace the current one.
+      if (pendingSigned.source !== currentReportUrl) {
+        setPendingSigned(null);
+        return;
+      }
       if (document.visibilityState !== "hidden") return;
       setSignedUrl(pendingSigned);
       setPendingSigned(null);
@@ -326,7 +331,7 @@ export function ReportViewer({
     apply();
     document.addEventListener("visibilitychange", apply);
     return () => document.removeEventListener("visibilitychange", apply);
-  }, [pendingSigned]);
+  }, [pendingSigned, currentReportUrl]);
 
   // Lazy-loaded assets inside the frame cannot be retried from here (cross-origin), so re-mint on a timer.
   useEffect(() => {

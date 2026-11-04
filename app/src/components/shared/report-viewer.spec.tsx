@@ -107,4 +107,35 @@ describe("signed URL lifecycle", () => {
     await waitFor(() => expect(container.querySelector("iframe")).toHaveAttribute("src", NEW));
     setVisibility("visible");
   });
+
+  it("drops a refreshed URL minted for a previous report when the viewer switched reports", async () => {
+    jest.useFakeTimers();
+    setVisibility("visible");
+    const { container, rerender } = render(<ReportViewer reportUrl="/api/test-results/run-1/report/index.html" />);
+    await waitFor(() => expect(container.querySelector("iframe")).toHaveAttribute("src", SIGNED));
+    fireEvent.load(container.querySelector("iframe")!);
+    fetchMock.mockImplementation(async (url: string) =>
+      url === "/api/report-urls"
+        ? { ok: true, json: async () => ({ url: NEW }) }
+        : { ok: true, headers: new Headers({ "content-type": "text/html" }), text: async () => "<html></html>" },
+    );
+    await act(async () => {
+      jest.advanceTimersByTime(REPORT_URL_REFRESH_MS + 10);
+    });
+    expect(fetchMock.mock.calls.some(([u]) => u === NEW)).toBe(true); // pending URL for run-1 exists
+    const OTHER = "https://reports.example.test/api/test-results/~token3/run-2/report/index.html";
+    fetchMock.mockImplementation(async (url: string) =>
+      url === "/api/report-urls"
+        ? { ok: true, json: async () => ({ url: OTHER }) }
+        : { ok: true, headers: new Headers({ "content-type": "text/html" }), text: async () => "<html></html>" },
+    );
+    rerender(<ReportViewer reportUrl="/api/test-results/run-2/report/index.html" />);
+    await act(async () => {
+      jest.advanceTimersByTime(10);
+    });
+    await waitFor(() => expect(container.querySelector("iframe")).toHaveAttribute("src", OTHER));
+    act(() => setVisibility("hidden"));
+    expect(container.querySelector("iframe")).toHaveAttribute("src", OTHER);
+    setVisibility("visible");
+  });
 });
