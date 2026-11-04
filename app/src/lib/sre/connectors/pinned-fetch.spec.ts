@@ -88,6 +88,7 @@ describe("pinned public fetch", () => {
     process.env.SELF_HOSTED = "true";
     const originalFetch = global.fetch;
     global.fetch = jest.fn().mockResolvedValue(new Response("x".repeat(11)));
+    (mockLookup as jest.Mock).mockResolvedValueOnce([{ address: "10.0.0.5", family: 4 }]);
     try {
       const response = await fetchConnectorEndpoint("http://prometheus.internal:9090", {}, 10);
       await expect(response.text()).rejects.toThrow("exceeded 10 bytes");
@@ -204,4 +205,19 @@ it("aborts a public response once the caller's byte limit is exceeded", async ()
   });
   await expect(fetchPublicEndpoint("https://hooks.example.com", {}, 4096)).rejects.toThrow("exceeded 4096 bytes");
   expect(request.destroy).toHaveBeenCalledTimes(1);
+});
+
+it("self-hosted direct fetch still blocks metadata addresses (literal and DNS) but allows loopback", async () => {
+  process.env.SELF_HOSTED = "true";
+  try {
+    await expect(fetchConnectorEndpoint("http://169.254.169.254/latest")).rejects.toThrow("metadata");
+    await expect(fetchConnectorEndpoint("http://[::ffff:169.254.169.254]/")).rejects.toThrow("metadata");
+    (mockLookup as jest.Mock).mockResolvedValueOnce([{ address: "100.100.100.200", family: 4 }]);
+    await expect(fetchConnectorEndpoint("http://meta.example.com/")).rejects.toThrow("metadata");
+    const fetchSpy = jest.spyOn(globalThis, "fetch").mockResolvedValue(new Response("ok"));
+    await expect(fetchConnectorEndpoint("http://127.0.0.1:9090/")).resolves.toBeInstanceOf(Response);
+    fetchSpy.mockRestore();
+  } finally {
+    delete process.env.SELF_HOSTED;
+  }
 });

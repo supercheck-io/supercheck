@@ -1,8 +1,12 @@
-import { lookup } from "node:dns/promises";
 import https from "node:https";
 import { isIP } from "node:net";
 
-import { isPrivateConnectorAddress } from "./endpoint-policy";
+import {
+  isMetadataOrLinkLocalAddress,
+  isPrivateConnectorAddress,
+  lookupBounded,
+  METADATA_ADDRESS_ERROR,
+} from "./endpoint-policy";
 import { createPinnedLookup } from "./pinned-lookup";
 
 const MAX_RESPONSE_BYTES = 10 * 1024 * 1024;
@@ -34,7 +38,15 @@ async function fetchPinnedEndpoint(
   }
 
   if (allowSelfHostedPrivateNetworks && isSelfHosted()) {
-    // Self-hosted connector administrators intentionally may target private services.
+    // Self-hosted connector administrators intentionally may target private services,
+    // but never cloud metadata or link-local addresses (checked on DNS answers too).
+    const selfHost = url.hostname.replace(/^\[|\]$/g, "");
+    const resolved = isIP(selfHost)
+      ? [{ address: selfHost }]
+      : await lookupBounded(selfHost, init.signal).catch(() => []);
+    if (resolved.some(({ address }) => isMetadataOrLinkLocalAddress(address))) {
+      throw new Error(METADATA_ADDRESS_ERROR);
+    }
     return fetch(url, init); // lgtm [js/request-forgery]
   }
 
@@ -45,7 +57,7 @@ async function fetchPinnedEndpoint(
   const hostname = url.hostname.replace(/^\[|\]$/g, "");
   const addresses = isIP(hostname)
     ? [{ address: hostname, family: isIP(hostname) }]
-    : await lookup(hostname, { all: true, verbatim: true });
+    : await lookupBounded(hostname, init.signal);
   if (
     addresses.length === 0 ||
     addresses.some(({ address }) => isPrivateConnectorAddress(address))
