@@ -71,31 +71,29 @@ export async function getSreCopilotChatHistories(): Promise<
       .limit(30);
 
     // One query for every conversation's newest messages (not one query per chat); superseded replies are skipped.
-    const ranked = db
-      .select({
-        id: sreChatMessages.id,
-        conversationId: sreChatMessages.conversationId,
-        role: sreChatMessages.role,
-        content: sreChatMessages.content,
-        modelId: sreChatMessages.modelId,
-        attachments: sreChatMessages.attachments,
-        createdAt: sreChatMessages.createdAt,
-        rank: sql<number>`row_number() over (partition by ${sreChatMessages.conversationId} order by ${sreChatMessages.createdAt} desc)`.as("rank"),
-      })
-      .from(sreChatMessages)
-      .where(
-        and(
-          inArray(sreChatMessages.conversationId, conversations.map((conversation) => conversation.id)),
-          sql`not (coalesce(${sreChatMessages.attachments}, '[]'::jsonb) @> ${JSON.stringify([{ type: SRE_MESSAGE_SUPERSEDED }])}::jsonb)`,
-        ),
-      )
-      .as("ranked");
     const rows = conversations.length
-      ? await db
-          .select()
-          .from(ranked)
-          .where(lte(ranked.rank, MESSAGES_PER_CHAT))
-          .orderBy(asc(ranked.createdAt))
+      ? await (() => {
+          const ranked = db
+            .select({
+              id: sreChatMessages.id,
+              conversationId: sreChatMessages.conversationId,
+              role: sreChatMessages.role,
+              content: sreChatMessages.content,
+              modelId: sreChatMessages.modelId,
+              attachments: sreChatMessages.attachments,
+              createdAt: sreChatMessages.createdAt,
+              rank: sql<number>`row_number() over (partition by ${sreChatMessages.conversationId} order by ${sreChatMessages.createdAt} desc)`.as("rank"),
+            })
+            .from(sreChatMessages)
+            .where(
+              and(
+                inArray(sreChatMessages.conversationId, conversations.map((conversation) => conversation.id)),
+                sql`not (coalesce(${sreChatMessages.attachments}, '[]'::jsonb) @> ${JSON.stringify([{ type: SRE_MESSAGE_SUPERSEDED }])}::jsonb)`,
+              ),
+            )
+            .as("ranked");
+          return db.select().from(ranked).where(lte(ranked.rank, MESSAGES_PER_CHAT)).orderBy(asc(ranked.createdAt));
+        })()
       : [];
     const rowsByConversation = new Map<string, typeof rows>();
     for (const row of rows) {

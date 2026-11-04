@@ -81,6 +81,12 @@ it("includes incident chats in private project history", async () => {
   expect(query.sql).not.toContain('"incident_id" is null');
 });
 
+it("returns an empty history without a message query when there are no chats", async () => {
+  db.select.mockReturnValueOnce({ from: () => ({ where: () => ({ orderBy: () => ({ limit: async () => [] }) }) }) });
+  expect(await getSreCopilotChatHistories()).toEqual({ success: true, histories: [] });
+  expect(db.select).toHaveBeenCalledTimes(1);
+});
+
 it("loads all chats' messages in one bounded query instead of one per chat", async () => {
   const conversations = [conversationId, "018f0000-0000-7000-8000-000000000002"].map((id, i) => ({
     id, incidentId: null, title: `Chat ${i}`, updatedAt: new Date("2026-10-09"),

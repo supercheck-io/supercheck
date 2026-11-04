@@ -67,7 +67,7 @@ test.describe("AI SRE service catalog @aisre @critical", () => {
       await expect(page.getByRole("columnheader")).toHaveText([
         "Service ID",
         "Service",
-        "Env",
+        "Environment",
         "Description",
         "Tier",
         "Owner",

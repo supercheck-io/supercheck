@@ -134,7 +134,7 @@ export function IncidentTimeline({
         <div>
           {query.isPending ? (
             <p className="text-sm text-muted-foreground">Loading timeline...</p>
-          ) : query.isError || (query.data && !query.data.success) ? (
+          ) : (query.isError && !query.data) || (query.data && !query.data.success) ? (
             <div role="alert" className="flex items-center gap-2 text-sm text-destructive">
               <span>{query.data && !query.data.success ? query.data.error : "Could not load the timeline."}</span>
               <Button type="button" variant="outline" size="sm" onClick={() => void query.refetch()}>
