@@ -595,6 +595,9 @@ export function SreAssistantUiThread({
     () => historyMessagesToUiMessages(initialMessages),
     [initialMessages],
   );
+  const lastAssistantIdRef = useRef<string | undefined>(
+    uiMessages.findLast((message) => message.role === "assistant")?.id,
+  );
   const transport = useMemo(
     () =>
       new AssistantChatTransport<SreAssistantUiMessage>({
@@ -604,6 +607,20 @@ export function SreAssistantUiThread({
           incidentId,
           useLiveConnectorTools: useLiveConnectorTools && canUseLiveConnectors,
         },
+        // Regenerate trims the reply from `messages` and passes no id, so name it from the
+        // last reply we saw (its id is the stored row id) or the loaded history.
+        prepareSendMessagesRequest: (options) => ({
+          body: {
+            ...options.body,
+            id: options.id,
+            messages: options.messages,
+            trigger: options.trigger,
+            messageId:
+              options.messageId ??
+              (options.trigger === "regenerate-message" ? lastAssistantIdRef.current : undefined),
+            metadata: options.requestMetadata,
+          },
+        }),
       }),
     [conversationId, incidentId, useLiveConnectorTools, canUseLiveConnectors],
   );
@@ -616,6 +633,7 @@ export function SreAssistantUiThread({
     transport,
     onError: (error) => onError(formatCopilotError(error)),
     onFinish: ({ message, messages }) => {
+      if (message.role === "assistant") lastAssistantIdRef.current = message.id;
       if (!isActiveRef.current) {
         return;
       }
