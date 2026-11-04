@@ -18,6 +18,7 @@ import {
   resolveIncident,
   type IncidentActor,
 } from "@/lib/sre/incident-lifecycle";
+import { unwatchIncident, watchIncident } from "@/lib/sre/incident-watchers";
 import { checkSreIncidentUpdateRateLimit } from "@/lib/sre/sre-rate-limiter";
 import { db } from "@/utils/db";
 
@@ -128,6 +129,37 @@ export async function acknowledgeSreIncident(
   } catch (error) {
     logger.error({ error }, "Error acknowledging SRE incident");
     return { success: false, error: "Failed to acknowledge incident" };
+  }
+}
+
+/** Follow or stop following an incident. Open to anyone who can view it, viewers included. */
+export async function setSreIncidentWatching(
+  input: { incidentId: string; watching: boolean },
+): Promise<SreIncidentActionResult> {
+  try {
+    const parsed = z.object({ incidentId: z.string().uuid(), watching: z.boolean() }).safeParse(input);
+    if (!parsed.success) return { success: false, error: "Invalid incident" };
+    const auth = await guard("view");
+    if (!auth.ok) return { success: false, error: auth.error };
+    const [incident] = await db
+      .select({ id: sreIncidents.id })
+      .from(sreIncidents)
+      .where(
+        and(
+          eq(sreIncidents.id, parsed.data.incidentId),
+          eq(sreIncidents.organizationId, auth.actor.organizationId),
+          eq(sreIncidents.projectId, auth.actor.projectId),
+        ),
+      )
+      .limit(1);
+    if (!incident) return { success: false, error: "Incident not found or access denied" };
+    if (parsed.data.watching) await watchIncident(db, incident.id, auth.actor.userId);
+    else await unwatchIncident(db, incident.id, auth.actor.userId);
+    refresh(incident.id);
+    return { success: true, message: parsed.data.watching ? "You will get emails about this incident" : "You stopped watching this incident" };
+  } catch (error) {
+    logger.error({ error }, "Error changing SRE incident watch");
+    return { success: false, error: "Failed to update watch setting" };
   }
 }
 

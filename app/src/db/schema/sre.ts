@@ -432,6 +432,8 @@ export const sreIncidents = pgTable(
     mitigatedAt: timestamp("mitigated_at", { withTimezone: true }),
     resolutionSummary: text("resolution_summary"),
     postmortem: jsonb("postmortem").$type<SrePostmortem>(),
+    /** Set once when the unacknowledged re-notify step fires, so it never repeats. */
+    renotifiedAt: timestamp("renotified_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
@@ -474,6 +476,44 @@ export const sreIncidentAlerts = pgTable(
     alertEventIdIdx: index("sre_incident_alerts_alert_event_id_idx").on(table.alertEventId),
     incidentAlertUniqueIdx: uniqueIndex("sre_incident_alerts_incident_alert_unique_idx").on(table.incidentId, table.alertEventId),
     sreIncidentAlertsRoleCheck: check("sre_incident_alerts_role_check", sql`${table.role} IN ('trigger', 'related', 'red_herring')`),
+  })
+);
+
+/** People who get an email when the incident changes; unwatching is the per-user opt-out. */
+export const sreIncidentWatchers = pgTable(
+  "sre_incident_watchers",
+  {
+    id: uuidPk(),
+    incidentId: uuid("incident_id").notNull().references(() => sreIncidents.id, { onDelete: "cascade" }),
+    userId: uuid("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    incidentUserUniqueIdx: uniqueIndex("sre_incident_watchers_incident_user_unique_idx").on(table.incidentId, table.userId),
+    userIdIdx: index("sre_incident_watchers_user_id_idx").on(table.userId),
+  })
+);
+
+/** The project's one Default incident policy. No row means defaults: no channels, every option off. */
+export const notificationPolicies = pgTable(
+  "notification_policies",
+  {
+    id: uuidPk(),
+    organizationId: uuid("organization_id").notNull().references(() => organization.id, { onDelete: "cascade" }),
+    projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+    channelIds: jsonb("channel_ids").$type<string[]>().notNull().default([]),
+    emailServiceOwnersOnSev12: boolean("email_service_owners_on_sev12").notNull().default(false),
+    /** Minutes an incident may stay unacknowledged before one re-notify. Null turns it off. */
+    renotifyUnackedMinutes: integer("renotify_unacked_minutes"),
+    /** Run AI investigation (SEV1-2) or triage (SEV3-4) when an incident opens. Spends AI credits. */
+    autoInvestigateOnOpen: boolean("auto_investigate_on_open").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    projectUniqueIdx: uniqueIndex("notification_policies_project_unique_idx").on(table.projectId),
+    organizationIdIdx: index("notification_policies_organization_id_idx").on(table.organizationId),
+    renotifyRangeCheck: check("notification_policies_renotify_range_check", sql`${table.renotifyUnackedMinutes} IS NULL OR (${table.renotifyUnackedMinutes} BETWEEN 5 AND 1440)`),
   })
 );
 
@@ -1331,6 +1371,8 @@ const sreTables = {
   sreAlertEvents,
   sreIncidents,
   sreIncidentAlerts,
+  sreIncidentWatchers,
+  notificationPolicies,
   sreIncidentTimelineEvents,
   sreIncidentVerifications,
   sreEvidenceItems,

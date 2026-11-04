@@ -9,6 +9,7 @@ import {
   sreAlertEvents,
   sreIncidentAlerts,
   sreIncidents,
+  sreServiceOwners,
   sreServices,
   user,
   type PlainNotificationProviderConfig,
@@ -31,6 +32,9 @@ import {
 } from "@/lib/notification-providers/validation";
 import { getRedisConnection } from "@/lib/queue";
 import { fetchPublicEndpoint } from "@/lib/sre/connectors/pinned-fetch";
+import { listProjectAdmins, listWatchers } from "@/lib/sre/incident-watchers";
+import { getNotificationPolicy, listPolicyProviders } from "@/lib/sre/notification-policy";
+import { isUuid } from "@/lib/uuid";
 import { db } from "@/utils/db";
 
 const logger = createLogger({ module: "sre-incident-notifier" }) as {
@@ -44,7 +48,10 @@ export type IncidentNotifyEvent =
   | "ai_finding"
   | "resolved"
   | "recovered"
-  | "reopened";
+  | "reopened"
+  | "commented"
+  | "severity_changed"
+  | "unacknowledged";
 
 type IncidentNotifyInput = {
   organizationId: string;
@@ -72,7 +79,14 @@ const EVENT_LABEL: Record<IncidentNotifyEvent, string> = {
   resolved: "resolved",
   recovered: "recovered",
   reopened: "reopened",
+  commented: "has a new note",
+  severity_changed: "changed severity",
+  unacknowledged: "is still unacknowledged",
 };
+
+/** Emailed to the owner, commander and watchers only: the text can be internal, so channels never get it. */
+const PEOPLE_ONLY_EVENTS: IncidentNotifyEvent[] = ["commented", "severity_changed"];
+const MAX_POLICY_OWNERS = 5;
 
 const DEDUPE_TTL_SECONDS = 600;
 const SEND_TIMEOUT_MS = 8000;
@@ -408,6 +422,24 @@ async function triggerAlertDelivered(sourceType: "monitor" | "job", sourceId: st
   return rows.some((row) => row.status === "sent");
 }
 
+/** Owner user and primary user owners of the service, for the policy's SEV1-2 email. */
+async function serviceOwnerIds(serviceId: string | null) {
+  if (!serviceId) return [];
+  const [service] = await db
+    .select({ ownerUserId: sreServices.ownerUserId })
+    .from(sreServices)
+    .where(eq(sreServices.id, serviceId))
+    .limit(1);
+  const owners = await db
+    .select({ ownerRef: sreServiceOwners.ownerRef })
+    .from(sreServiceOwners)
+    .where(and(eq(sreServiceOwners.serviceId, serviceId), eq(sreServiceOwners.ownerType, "user")))
+    .limit(MAX_POLICY_OWNERS);
+  return [service?.ownerUserId, ...owners.map((owner) => owner.ownerRef)].filter(
+    (id): id is string => typeof id === "string" && isUuid(id),
+  );
+}
+
 /**
  * Announce an incident lifecycle event through the notification providers the
  * triggering monitor or job already uses, plus a direct email to the assignee.
@@ -428,6 +460,7 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<v
         acknowledgedAt: sreIncidents.acknowledgedAt,
         assigneeUserId: sreIncidents.assigneeUserId,
         commanderUserId: sreIncidents.commanderUserId,
+        serviceId: sreIncidents.primaryServiceId,
         serviceName: sreServices.name,
       })
       .from(sreIncidents)
@@ -448,12 +481,24 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<v
     // Participants (owner, commander, and the owner being replaced) get a direct email for
     // every lifecycle change, like ticket watchers; never the person who made the change.
     const ownerId = input.assigneeUserId ?? incident.assigneeUserId;
+    const policy = await getNotificationPolicy(input.projectId).catch(() => null);
+    // The project policy can add the service's owners to a SEV1-2 opening.
+    const policyOwnerIds =
+      input.event === "created" && policy?.emailServiceOwnersOnSev12 && ["sev1", "sev2"].includes(incident.severity)
+        ? await serviceOwnerIds(incident.serviceId).catch(() => [])
+        : [];
     const participantIds =
       input.event === "ai_finding"
         ? []
-        : [...new Set([ownerId, incident.commanderUserId, input.previousAssigneeUserId])].filter(
+        : [...new Set([ownerId, incident.commanderUserId, input.previousAssigneeUserId, ...policyOwnerIds])].filter(
             (id): id is string => Boolean(id) && id !== input.actorUserId,
           );
+    // Watchers hear about notes and severity changes; viewers may watch, so they skip the editor check.
+    const watchers = PEOPLE_ONLY_EVENTS.includes(input.event)
+      ? (await listWatchers(input.organizationId, input.projectId, incident.id).catch(() => [])).filter(
+          (watcher) => watcher.id !== input.actorUserId,
+        )
+      : [];
     const personIds = [...new Set([input.actorUserId, ownerId, ...participantIds].filter((id): id is string => Boolean(id)))];
     // Names are cosmetic: a failed lookup must not stop the channel posts below.
     const people = personIds.length
@@ -503,30 +548,39 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<v
     };
 
     const direct = await participantEmails(input, participantIds, person);
-    if (direct.emails.length > 0) {
+    const directEmails = [...direct.emails, ...watchers.map((watcher) => watcher.email)];
+    if (directEmails.length > 0) {
       try {
-        await sendEmail(direct.emails, message);
+        await sendEmail(directEmails, message);
       } catch (error) {
         await releaseRecipients(input, direct.claimed);
         logger.warn({ incidentId: incident.id, error: error instanceof Error ? error.message : "send failed" }, "Incident email to participants failed");
       }
     }
 
-    // Providers linked to the monitor/job that raised the alert; manual incidents have none.
+    if (PEOPLE_ONLY_EVENTS.includes(input.event)) return;
+
+    // Providers linked to the monitor/job that raised the alert; other incidents use the project policy.
     const [source] = await db
       .select({ sourceType: sreAlertEvents.sourceType, sourceId: sreAlertEvents.sourceId, dedupKey: sreAlertEvents.dedupKey })
       .from(sreIncidentAlerts)
       .innerJoin(sreAlertEvents, eq(sreAlertEvents.id, sreIncidentAlerts.alertEventId))
       .where(and(eq(sreIncidentAlerts.incidentId, incident.id), eq(sreIncidentAlerts.role, "trigger")))
       .limit(1);
-    if (!source?.sourceId || (source.sourceType !== "monitor" && source.sourceType !== "job")) return;
+    const fromMonitorOrJob = Boolean(source?.sourceId) && (source?.sourceType === "monitor" || source?.sourceType === "job");
 
     // One message per event: the worker already posted the alert (created) and the
     // recovery (automatic resolve, recovered) to these channels.
     // `created` is skipped only when the worker's alert was actually delivered; if every
     // delivery failed, the channels have not heard about it yet.
     if (input.event === "recovered" || ((input.event === "reopened" || input.event === "resolved") && input.automatic)) return;
-    if (input.event === "created" && (await triggerAlertDelivered(source.sourceType, source.sourceId, source.dedupKey))) return;
+    if (
+      fromMonitorOrJob &&
+      input.event === "created" &&
+      (await triggerAlertDelivered(source.sourceType as "monitor" | "job", source.sourceId as string, source.dedupKey))
+    ) {
+      return;
+    }
 
     const providerColumns = {
       id: notificationProviders.id,
@@ -539,20 +593,35 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<v
       eq(notificationProviders.organizationId, input.organizationId),
       eq(notificationProviders.projectId, input.projectId),
     );
+    // The re-notify step and incidents without a monitor or job use the project's Default policy;
+    // a monitor's or job's own hand-picked channels are left as they were.
     const providers =
-      source.sourceType === "monitor"
-        ? await db
-            .select(providerColumns)
-            .from(monitorNotificationSettings)
-            .innerJoin(notificationProviders, eq(notificationProviders.id, monitorNotificationSettings.notificationProviderId))
-            .where(and(eq(monitorNotificationSettings.monitorId, source.sourceId), providerScope))
-            .limit(10)
-        : await db
-            .select(providerColumns)
-            .from(jobNotificationSettings)
-            .innerJoin(notificationProviders, eq(notificationProviders.id, jobNotificationSettings.notificationProviderId))
-            .where(and(eq(jobNotificationSettings.jobId, source.sourceId), providerScope))
-            .limit(10);
+      !fromMonitorOrJob || input.event === "unacknowledged"
+        ? await listPolicyProviders(input.organizationId, input.projectId, policy?.channelIds ?? [])
+        : source.sourceType === "monitor"
+          ? await db
+              .select(providerColumns)
+              .from(monitorNotificationSettings)
+              .innerJoin(notificationProviders, eq(notificationProviders.id, monitorNotificationSettings.notificationProviderId))
+              .where(and(eq(monitorNotificationSettings.monitorId, source.sourceId as string), providerScope))
+              .limit(10)
+          : await db
+              .select(providerColumns)
+              .from(jobNotificationSettings)
+              .innerJoin(notificationProviders, eq(notificationProviders.id, jobNotificationSettings.notificationProviderId))
+              .where(and(eq(jobNotificationSettings.jobId, source.sourceId as string), providerScope))
+              .limit(10);
+
+    // Nobody owns it and nothing would reach a channel: tell the project's owners and admins.
+    if (input.event === "created" && !ownerId && providers.length === 0) {
+      const admins = await listProjectAdmins(input.organizationId, input.projectId).catch(() => []);
+      const emails = admins.filter((admin) => admin.id !== input.actorUserId).map((admin) => admin.email);
+      if (emails.length > 0) {
+        await sendEmail(emails, message).catch((error: unknown) =>
+          logger.warn({ incidentId: incident.id, error: error instanceof Error ? error.message : "send failed" }, "Incident email to project admins failed"),
+        );
+      }
+    }
 
     const delivered = await Promise.all(
       providers.map(async (provider) => {

@@ -32,6 +32,19 @@ let mockAssignable = [{ id: "assignee" }, { id: "actor" }, { id: "commander" }, 
 const mockIsAssignable = jest.fn(async (_org: string, _project: string, id: string) => mockAssignable.some((row) => row.id === id));
 jest.mock("./incident-lifecycle", () => ({ isAssignableUser: (...a: [string, string, string]) => mockIsAssignable(...a) }));
 
+const mockPolicy = jest.fn();
+const mockPolicyProviders = jest.fn();
+jest.mock("./notification-policy", () => ({
+  getNotificationPolicy: (...a: unknown[]) => mockPolicy(...a),
+  listPolicyProviders: (...a: unknown[]) => mockPolicyProviders(...a),
+}));
+const mockWatchers = jest.fn();
+const mockAdmins = jest.fn();
+jest.mock("./incident-watchers", () => ({
+  listWatchers: (...a: unknown[]) => mockWatchers(...a),
+  listProjectAdmins: (...a: unknown[]) => mockAdmins(...a),
+}));
+
 import { decryptNotificationProviderConfig } from "@/lib/notification-providers/crypto";
 import { buildIncidentUrl, notifyIncidentEvent } from "./incident-notifier";
 
@@ -54,6 +67,10 @@ beforeEach(() => {
   selectQueue.length = 0;
   mockAssignable = [{ id: "assignee" }, { id: "actor" }, { id: "commander" }, { id: "previous" }];
   redisSet.mockResolvedValue("OK");
+  mockPolicy.mockResolvedValue({ channelIds: [], emailServiceOwnersOnSev12: false, renotifyUnackedMinutes: null, autoInvestigateOnOpen: false });
+  mockPolicyProviders.mockResolvedValue([]);
+  mockWatchers.mockResolvedValue([]);
+  mockAdmins.mockResolvedValue([]);
   // Default: template fails, so the plain fallback email is what most tests check.
   renderIncidentUpdateEmail.mockRejectedValue(new Error("render unavailable"));
   process.env.NEXT_PUBLIC_APP_URL = "https://app.example.com/";
@@ -423,5 +440,72 @@ describe("event dedupe key release", () => {
     selectQueue.push([incident], people, source, []);
     await notifyIncidentEvent({ ...base, event: "acknowledged", assigneeUserId: null });
     expect(redisEval).not.toHaveBeenCalled();
+  });
+});
+
+describe("watchers, policy and fallback", () => {
+  const slack = { id: "p9", type: "slack", projectId: "project-1", config: { envelope: { webhookUrl: "https://hooks.slack.com/services/T/B/x" } } };
+
+  it("emails watchers (not the actor) on a note and never posts it to channels", async () => {
+    mockWatchers.mockResolvedValue([
+      { id: "viewer", name: "Vi", email: "vi@example.com" },
+      { id: "actor", name: "Grace", email: "grace@example.com" },
+    ]);
+    selectQueue.push([incident], people, [{ sourceType: "monitor", sourceId: "mon-1" }], [slack]);
+    await notifyIncidentEvent({ ...base, event: "commented", detail: "Rolled back the deploy", assigneeUserId: null });
+    expect(sendEmailToMultiple.mock.calls[0][0].recipients).toEqual(expect.arrayContaining(["vi@example.com"]));
+    expect(sendEmailToMultiple.mock.calls[0][0].recipients).not.toContain("grace@example.com");
+    expect(sendEmailToMultiple.mock.calls[0][0].text).toContain("Rolled back the deploy");
+    expect(fetchPublicEndpoint).not.toHaveBeenCalled();
+  });
+
+  it("emails watchers on a severity change", async () => {
+    mockWatchers.mockResolvedValue([{ id: "viewer", name: "Vi", email: "vi@example.com" }]);
+    selectQueue.push([incident], people, []);
+    await notifyIncidentEvent({ ...base, event: "severity_changed", assigneeUserId: null, detail: "SEV3 to SEV1" });
+    expect(sendEmailToMultiple.mock.calls[0][0].recipients).toContain("vi@example.com");
+  });
+
+  it("does not look up watchers for lifecycle events", async () => {
+    selectQueue.push([incident], people, []);
+    await notifyIncidentEvent({ ...base, event: "acknowledged", assigneeUserId: null });
+    expect(mockWatchers).not.toHaveBeenCalled();
+  });
+
+  it("posts a manual incident to the project's Default policy channels", async () => {
+    mockPolicy.mockResolvedValue({ channelIds: ["p9"], emailServiceOwnersOnSev12: false, renotifyUnackedMinutes: null, autoInvestigateOnOpen: false });
+    mockPolicyProviders.mockResolvedValue([slack]);
+    selectQueue.push([incident], people, []);
+    await notifyIncidentEvent({ ...base, event: "created", assigneeUserId: null });
+    expect(mockPolicyProviders).toHaveBeenCalledWith("org-1", "project-1", ["p9"]);
+    expect(fetchPublicEndpoint).toHaveBeenCalledTimes(1);
+  });
+
+  it("sends the re-notify step to policy channels, not the monitor's own channels", async () => {
+    mockPolicy.mockResolvedValue({ channelIds: ["p9"], emailServiceOwnersOnSev12: false, renotifyUnackedMinutes: 15, autoInvestigateOnOpen: false });
+    mockPolicyProviders.mockResolvedValue([slack]);
+    selectQueue.push([incident], people, [{ sourceType: "monitor", sourceId: "mon-1" }]);
+    await notifyIncidentEvent({ ...base, event: "unacknowledged", actorUserId: null, assigneeUserId: null });
+    expect(mockPolicyProviders).toHaveBeenCalled();
+    expect(JSON.parse(fetchPublicEndpoint.mock.calls[0][1].body).text).toContain("Incident still needs acknowledging: #7");
+  });
+
+  it("emails project owners and admins for an unassigned incident with no channels", async () => {
+    mockAdmins.mockResolvedValue([{ id: "admin", name: "Ops", email: "ops@example.com" }]);
+    selectQueue.push([{ ...incident, assigneeUserId: null }], people, []);
+    await notifyIncidentEvent({ ...base, event: "created", assigneeUserId: null, actorUserId: null });
+    expect(sendEmailToMultiple.mock.calls[0][0].recipients).toEqual(["ops@example.com"]);
+  });
+
+  it("does not use the admin fallback when a channel will be notified or the incident has an owner", async () => {
+    mockPolicyProviders.mockResolvedValue([slack]);
+    mockAdmins.mockResolvedValue([{ id: "admin", name: "Ops", email: "ops@example.com" }]);
+    selectQueue.push([{ ...incident, assigneeUserId: null }], people, []);
+    await notifyIncidentEvent({ ...base, event: "created", assigneeUserId: null, actorUserId: null });
+    expect(mockAdmins).not.toHaveBeenCalled();
+    selectQueue.push([incident], people, []);
+    mockPolicyProviders.mockResolvedValue([]);
+    await notifyIncidentEvent({ ...base, incidentId: "inc-2", event: "created", assigneeUserId: "assignee", actorUserId: null });
+    expect(mockAdmins).not.toHaveBeenCalled();
   });
 });

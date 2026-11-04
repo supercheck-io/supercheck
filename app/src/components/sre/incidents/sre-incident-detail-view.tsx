@@ -7,6 +7,7 @@ import { AlertTriangle, Check, ChevronLeft, Clock, FileSearch, FileText, History
 import type { SreIncidentDetail } from "@/actions/sre-incidents";
 import type { SreServiceListItem } from "@/actions/sre-services";
 import { AcknowledgeSreIncidentButton } from "@/components/sre/incidents/acknowledge-sre-incident-button";
+import { WatchSreIncidentButton } from "@/components/sre/incidents/watch-sre-incident-button";
 import { EditSreIncidentDialog } from "@/components/sre/incidents/edit-sre-incident-dialog";
 import { EvidenceDetailsDialog } from "@/components/sre/incidents/evidence-details-dialog";
 import { IncidentAiSummaryCard } from "@/components/sre/incidents/incident-ai-summary-card";
@@ -324,6 +325,7 @@ export function SreIncidentDetailView({
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2 pl-11 sm:pl-0">
+          <WatchSreIncidentButton incidentId={incident.id} watching={detail.watching ?? false} />
           {needsAck && <AcknowledgeSreIncidentButton incidentId={incident.id} />}
           {needsResolve && (
             <Button size="sm" onClick={() => setResolveOpen(true)}>

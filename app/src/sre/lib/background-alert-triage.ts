@@ -39,6 +39,7 @@ import { isAttemptedAlertStatus } from "@/lib/alert-escalation";
 import { alertIncidentTitle } from "@/lib/sre/alert-labels";
 import { linkStatusPageIncidentsToSreIncident } from "@/lib/status-page-reconciliation";
 import { notifyIncidentEvent } from "@/lib/sre/incident-notifier";
+import { watchIncident } from "@/lib/sre/incident-watchers";
 import { runSreIncidentTriage } from "@/sre/lib/triage-runner";
 import { db } from "@/utils/db";
 
@@ -694,6 +695,8 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
         updatedAt: new Date(),
       })
       .returning({ id: sreIncidents.id, assigneeUserId: sreIncidents.assigneeUserId });
+
+    if (incident.assigneeUserId) await watchIncident(tx, incident.id, incident.assigneeUserId);
 
     await tx.insert(sreIncidentAlerts).values({
       incidentId: incident.id,

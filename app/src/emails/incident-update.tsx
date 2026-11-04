@@ -9,7 +9,10 @@ export type IncidentUpdateEvent =
   | "ai_finding"
   | "resolved"
   | "recovered"
-  | "reopened";
+  | "reopened"
+  | "commented"
+  | "severity_changed"
+  | "unacknowledged";
 
 export type IncidentUpdateSeverity = "sev1" | "sev2" | "sev3" | "sev4";
 
@@ -50,6 +53,9 @@ export const INCIDENT_EVENT_COLOR: Record<IncidentUpdateEvent, string> = {
   ai_finding: "#6d28d9",
   resolved: "#15803d",
   recovered: "#15803d",
+  commented: "#1d4ed8",
+  severity_changed: "#c2410c",
+  unacknowledged: "#b91c1c",
 };
 
 export function incidentSeverityLabel(severity: string): string {
@@ -79,6 +85,12 @@ export function incidentUpdateHeadline(
       return "Monitoring recovered; the incident can be closed";
     case "reopened":
       return `Incident reopened${by}`;
+    case "commented":
+      return `New note${by}`;
+    case "severity_changed":
+      return `Severity changed${by}`;
+    case "unacknowledged":
+      return "Incident still needs acknowledging";
   }
 }
 
@@ -91,6 +103,9 @@ export const INCIDENT_EVENT_MESSAGE: Record<IncidentUpdateEvent, string> = {
   resolved: "This incident is resolved. Reopen it if the problem comes back.",
   recovered: "The checks that raised this incident are passing again. Resolve the incident once you have confirmed the fix.",
   reopened: "This incident was reopened and needs attention again.",
+  commented: "A note was added to this incident.",
+  severity_changed: "The severity of this incident changed.",
+  unacknowledged: "Nobody has acknowledged this incident yet. Acknowledge it so the team knows someone is on it.",
 };
 
 export function incidentUpdateFields(

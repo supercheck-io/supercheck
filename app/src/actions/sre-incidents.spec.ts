@@ -19,6 +19,7 @@ jest.mock("@/lib/sre/incident-lifecycle", () => ({
 }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 jest.mock("@/lib/sre/incident-notifier", () => ({ notifyIncidentEvent: jest.fn(async () => undefined) }));
+jest.mock("@/lib/sre/incident-watchers", () => ({ watchIncident: jest.fn(async () => undefined), isWatchingIncident: jest.fn(async () => false) }));
 jest.mock("@/sre/lib/session-store", () => ({ listSreConversations: jest.fn().mockResolvedValue([]) }));
 jest.mock("@/sre/lib/triage-automation", () => ({ maybeRunAutomaticSreTriage: jest.fn() }));
 jest.mock("@/sre/lib/feature-gates", () => ({ isSreInvestigationAgentEnabled: jest.fn(() => true), isSreAlertCorrelationEnabled: jest.fn(() => false) }));
@@ -121,7 +122,7 @@ describe("getSreIncidentDetails investigation summary", () => {
 
   it("reopening from the editor clears the acknowledgement, records the reopen and notifies", async () => {
     const incidentId = "00000000-0000-4000-8000-000000000001";
-    (db.query.sreIncidents.findFirst as jest.Mock).mockResolvedValue({ id: incidentId, status: "resolved" });
+    (db.query.sreIncidents.findFirst as jest.Mock).mockResolvedValue({ id: incidentId, status: "resolved", severity: "sev2" });
     const sets: Array<Record<string, unknown>> = [];
     const inserted: Array<Record<string, unknown>> = [];
     (db.transaction as jest.Mock).mockImplementation(async (callback) => callback({
@@ -144,9 +145,23 @@ describe("getSreIncidentDetails investigation summary", () => {
     );
   });
 
+  it("notifies watchers only when the severity actually changes", async () => {
+    const incidentId = "00000000-0000-4000-8000-000000000001";
+    (db.query.sreIncidents.findFirst as jest.Mock).mockResolvedValue({ id: incidentId, status: "investigating", severity: "sev3" });
+    (db.transaction as jest.Mock).mockImplementation(async (callback) => callback({
+      update: () => ({ set: () => ({ where: () => ({ returning: async () => [{ id: incidentId, incidentNumber: 4, title: "t" }] }) }) }),
+      insert: () => ({ values: async () => undefined }),
+    }));
+    const notify = jest.requireMock("@/lib/sre/incident-notifier").notifyIncidentEvent as jest.Mock;
+    await updateSreIncident({ id: incidentId, title: "t", severity: "sev3", status: "investigating", primaryServiceId: null });
+    expect(notify).not.toHaveBeenCalled();
+    await updateSreIncident({ id: incidentId, title: "t", severity: "sev1", status: "investigating", primaryServiceId: null });
+    expect(notify).toHaveBeenCalledWith(expect.objectContaining({ incidentId, event: "severity_changed", detail: "SEV3 to SEV1" }));
+  });
+
   it("reopening straight to Monitoring records mitigation", async () => {
     const incidentId = "00000000-0000-4000-8000-000000000001";
-    (db.query.sreIncidents.findFirst as jest.Mock).mockResolvedValue({ id: incidentId, status: "resolved", mitigatedAt: null });
+    (db.query.sreIncidents.findFirst as jest.Mock).mockResolvedValue({ id: incidentId, status: "resolved", severity: "sev2", mitigatedAt: null });
     const sets: Array<Record<string, unknown>> = [];
     (db.transaction as jest.Mock).mockImplementation(async (callback) => callback({
       update: () => ({ set: (values: Record<string, unknown>) => {
@@ -336,5 +351,9 @@ describe("createManualSreIncident default assignee", () => {
     const result = await createManualSreIncident({ title: "Checkout down", severity: "sev2" } as never);
     expect(result.success).toBe(true);
     expect(incidentValues[0]).toMatchObject({ createdByUserId: "creator-1", assigneeUserId: "creator-1" });
+    expect(jest.requireMock("@/lib/sre/incident-watchers").watchIncident).toHaveBeenCalledWith(expect.anything(), "incident-1", "creator-1");
+    expect(jest.requireMock("@/lib/sre/incident-notifier").notifyIncidentEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ incidentId: "incident-1", event: "created", actorUserId: "creator-1" }),
+    );
   });
 });

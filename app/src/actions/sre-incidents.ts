@@ -70,6 +70,7 @@ import {
 } from "@/lib/sre/incident-lifecycle";
 import { linkedAlertFields } from "@/lib/sre/incident-alert-snapshot";
 import { notifyIncidentEvent } from "@/lib/sre/incident-notifier";
+import { isWatchingIncident, watchIncident } from "@/lib/sre/incident-watchers";
 import { listMyFeedbackForRun, type MyFeedback } from "@/lib/sre/investigation-feedback";
 import { readStoredHypotheses, type SreInvestigationHypothesis } from "@/sre/lib/investigation-output";
 import { readStoredSteps, type SreInvestigationStep } from "@/sre/lib/investigation-trace";
@@ -212,6 +213,8 @@ export type SreIncidentChatHistory = {
 };
 
 export type SreIncidentDetail = {
+  /** Whether the current user watches this incident. */
+  watching?: boolean;
   publicIncident?: { id: string; statusPageId: string; status: string } | null;
   incident: SreIncidentListItem & {
     rootCauseSummary: string | null;
@@ -1138,10 +1141,12 @@ export async function getSreIncidentDetails(
       .limit(20);
     const [publicIncident] = incident.statusPageIncidentId ? await db.select({ id: statusPageIncidents.id, statusPageId: statusPageIncidents.statusPageId, status: statusPageIncidents.status }).from(statusPageIncidents).innerJoin(statusPages, eq(statusPages.id, statusPageIncidents.statusPageId)).where(and(eq(statusPageIncidents.id, incident.statusPageIncidentId), eq(statusPages.organizationId, organizationId), eq(statusPages.projectId, project.id))) : [];
 
+    const watching = await isWatchingIncident(incident.id, userId);
 
     return {
       success: true,
       detail: {
+        watching,
         publicIncident: publicIncident ?? null,
         linkedAlerts,
         currentUserId: userId,
@@ -1272,6 +1277,8 @@ export async function createManualSreIncident(
           title: sreIncidents.title,
         });
 
+      await watchIncident(tx, created.id, userId);
+
       await tx.insert(sreIncidentTimelineEvents).values({
         incidentId: created.id,
         eventType: "state_change",
@@ -1300,6 +1307,16 @@ export async function createManualSreIncident(
       },
       success: true,
     });
+
+    // Channels come from the project's Default policy; the creator owns it, so no direct email to them.
+    void notifyIncidentEvent({
+      organizationId,
+      projectId: project.id,
+      incidentId: incident.id,
+      event: "created",
+      actorUserId: userId,
+      assigneeUserId: userId,
+    }).catch(() => undefined);
 
     revalidatePath("/incidents");
     revalidatePath(`/incidents/${incident.id}`);
@@ -1491,6 +1508,17 @@ export async function updateSreIncident(
         incidentId: parsed.data.id,
         event: "reopened",
         actorUserId: userId,
+        dedupeDiscriminator: String(now.getTime()),
+      }).catch(() => undefined);
+    }
+    if (parsed.data.severity !== current.severity) {
+      void notifyIncidentEvent({
+        organizationId,
+        projectId: project.id,
+        incidentId: parsed.data.id,
+        event: "severity_changed",
+        actorUserId: userId,
+        detail: `${current.severity.toUpperCase()} to ${parsed.data.severity.toUpperCase()}`,
         dedupeDiscriminator: String(now.getTime()),
       }).catch(() => undefined);
     }
@@ -1935,6 +1963,10 @@ export async function createSreIncidentFromAlert(
           title: sreIncidents.title,
           assigneeUserId: sreIncidents.assigneeUserId,
         });
+
+      for (const watcherId of new Set([userId, incident.assigneeUserId])) {
+        if (watcherId) await watchIncident(tx, incident.id, watcherId);
+      }
 
       await tx.insert(sreIncidentAlerts).values({
         incidentId: incident.id,

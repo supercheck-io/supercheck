@@ -30,6 +30,10 @@ jest.mock("@/components/sre/incidents/acknowledge-sre-incident-button", () => ({
   AcknowledgeSreIncidentButton: () => <button type="button">Acknowledge</button>,
 }));
 
+jest.mock("@/components/sre/incidents/watch-sre-incident-button", () => ({
+  WatchSreIncidentButton: ({ watching }: { watching: boolean }) => <button type="button">{watching ? "Unwatch" : "Watch"}</button>,
+}));
+
 jest.mock("@/components/sre/incidents/incident-timeline", () => ({
   IncidentTimeline: () => <div>Mock timeline</div>,
 }));

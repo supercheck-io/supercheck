@@ -400,6 +400,13 @@
       "when": 1793814706945,
       "tag": "0056_drop_legacy_plan_and_subscriber_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1793825910264,
+      "tag": "0057_sre_incident_watchers_notification_policies",
+      "breakpoints": true
     }
   ]
 }

@@ -35,6 +35,7 @@ jest.mock("@/utils/db", () => ({
 }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn().mockResolvedValue(undefined) }));
 jest.mock("./incident-notifier", () => ({ notifyIncidentEvent: jest.fn().mockResolvedValue(undefined) }));
+jest.mock("./incident-watchers", () => ({ watchIncident: jest.fn().mockResolvedValue(undefined) }));
 
 import { logAuditEvent } from "@/lib/audit-logger";
 import { sreIncidents } from "@/db/schema";
@@ -51,6 +52,7 @@ import {
   resolveIncident,
 } from "./incident-lifecycle";
 import { notifyIncidentEvent } from "./incident-notifier";
+import { watchIncident } from "./incident-watchers";
 
 const actor = {
   organizationId: "018f0000-0000-7000-8000-00000000000a",
@@ -91,6 +93,7 @@ describe("assignIncident", () => {
     expect(inserts[0]).toMatchObject({ incidentId, eventType: "state_change", eventData: { state: "assigned", assigneeUserId: assignee } });
     expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ action: "sre_incident_assigned", organizationId: actor.organizationId }));
     expect(notifyIncidentEvent).toHaveBeenCalledWith(expect.objectContaining({ event: "assigned", assigneeUserId: assignee, incidentId }));
+    expect(watchIncident).toHaveBeenCalledWith(expect.anything(), incidentId, assignee);
   });
 
   it("does nothing when the assignee is unchanged", async () => {
@@ -200,6 +203,9 @@ describe("addIncidentUpdate", () => {
     selectQueue.push([ref]);
     expect(await addIncidentUpdate(actor, incidentId, " Checking logs ")).toMatchObject({ ok: true });
     expect(inserts[0]).toMatchObject({ eventType: "comment", eventData: { text: "Checking logs" } });
+    // The commenter follows the incident, and watchers are told about the note.
+    expect(watchIncident).toHaveBeenCalledWith(expect.anything(), incidentId, actor.userId);
+    expect(notifyIncidentEvent).toHaveBeenCalledWith(expect.objectContaining({ event: "commented", detail: "Checking logs", actorUserId: actor.userId }));
   });
 });
 
