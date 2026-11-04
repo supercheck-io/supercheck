@@ -1,5 +1,7 @@
 /** @jest-environment node */
 jest.mock("@/lib/auth-context", () => ({
+  authErrorStatus: (e: unknown) => ((e as { status?: number })?.status === 403 ? 403 : 401),
+  authErrorResponse: (e: unknown) => (jest.requireActual("next/server") as typeof import("next/server")).NextResponse.json({ error: e instanceof Error ? e.message : "Authentication required" }, { status: (e as { status?: number })?.status === 403 ? 403 : 401 }),
   requireAuthContext: jest.fn(),
   isAuthError: (e: unknown) => (e as { name?: string })?.name === "AuthError",
 }));

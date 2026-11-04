@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { isAuthError, requireAuthContext } from "@/lib/auth-context";
+import { isAuthError, requireAuthContext, authErrorStatus } from "@/lib/auth-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { sreBillingErrorMessage } from "@/lib/sre/billing-error-messages";
 import { checkSreIncidentUpdateRateLimit } from "@/lib/sre/sre-rate-limiter";
@@ -49,7 +49,7 @@ type SreApiAuthResult =
 function authErrorResponse(error: unknown) {
   return NextResponse.json(
     { error: isAuthError(error) ? "Authentication required" : "Unable to authorize SRE API request" },
-    { status: isAuthError(error) ? 401 : 500 },
+    { status: isAuthError(error) ? authErrorStatus(error) : 500 },
   );
 }
 

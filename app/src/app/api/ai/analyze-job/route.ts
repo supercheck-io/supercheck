@@ -13,7 +13,7 @@ import { db } from "@/utils/db";
 import { runs, jobs, reports } from "@/db/schema";
 import { eq, and, sql, inArray } from "drizzle-orm";
 import { getS3FileContentFromUrl, getS3FileContent } from "@/lib/s3-proxy";
-import { requireAuthContext } from "@/lib/auth-context";
+import { requireAuthContext, authErrorStatus, AuthError } from "@/lib/auth-context";
 
 
 interface AnalyzeJobRequest {
@@ -274,6 +274,7 @@ export async function POST(request: NextRequest) {
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error";
     const isAuthError =
+      error instanceof AuthError ||
       errorMessage.includes("Authentication") ||
       errorMessage.includes("Unauthorized");
     const isRateLimitError =
@@ -281,13 +282,19 @@ export async function POST(request: NextRequest) {
 
     if (isAuthError) {
       return NextResponse.json(
-        {
-          success: false,
-          reason: "authentication_required",
-          message: "Authentication required to use AI analyze feature",
-          guidance: "Please log in and try again",
-        },
-        { status: 401 }
+        authErrorStatus(error) === 403
+          ? {
+              success: false,
+              reason: "forbidden",
+              message: "You no longer have permission to use AI analysis in this project",
+            }
+          : {
+              success: false,
+              reason: "authentication_required",
+              message: "Authentication required to use AI analyze feature",
+              guidance: "Please log in and try again",
+            },
+        { status: authErrorStatus(error) }
       );
     }
 

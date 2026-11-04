@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { getProjectAvailableLocationsWithMeta } from "@/lib/location-registry";
 import { getActiveWorkerQueueNames } from "@/lib/worker-registry";
 
@@ -61,7 +61,7 @@ export async function GET(request: NextRequest) {
     if (isAuthError(error)) {
       return NextResponse.json(
         { success: false, error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     console.error("[locations/available] Failed to list locations:", error);

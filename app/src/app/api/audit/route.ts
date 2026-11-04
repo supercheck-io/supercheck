@@ -3,7 +3,7 @@ import { db } from "@/utils/db";
 import { auditLogs, user } from "@/db/schema";
 import { desc, eq, and, ilike, count, SQL, sql } from "drizzle-orm";
 import { getUserOrgRole } from '@/lib/rbac/middleware';
-import { requireUserAuthContext, isAuthError } from '@/lib/auth-context';
+import { requireUserAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-context';
 import { Role } from '@/lib/rbac/permissions';
 import { createLogger } from '@/lib/logger/pino-config';
 
@@ -146,7 +146,7 @@ export async function GET(request: NextRequest) {
     if (isAuthError(error)) {
       return NextResponse.json(
         { success: false, error: error instanceof Error ? error.message : 'Authentication required' },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     logger.error({ err: error }, 'Audit API error');

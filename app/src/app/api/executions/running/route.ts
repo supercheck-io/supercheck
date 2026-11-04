@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/utils/db';
 import { runs, jobs, projects } from '@/db/schema';
 import { eq, and, inArray, or } from 'drizzle-orm';
-import { requireAuthContext, isAuthError } from '@/lib/auth-context';
+import { requireAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-context';
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { hasOrganizationWideAccess, type Role } from '@/lib/rbac/permissions-client';
 import { checkCapacityLimits } from '@/lib/middleware/plan-enforcement';
@@ -238,7 +238,7 @@ export async function GET() {
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : 'Authentication required' },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     console.error('Error fetching running/queued executions:', error);

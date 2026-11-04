@@ -5,7 +5,7 @@ import { updateJob, JOB_CONFLICT_ERROR } from "@/lib/server-actions/update-job";
 import { db } from "@/utils/db";
 import { jobs, jobTests, tests as testsTable, testTags, tags } from "@/db/schema";
 import { eq, inArray, asc, and } from "drizzle-orm";
-import { requireAuthContext, isAuthError } from '@/lib/auth-context';
+import { requireAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-context';
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { loadCreators } from '@/lib/creators';
 import { logAuditEvent } from '@/lib/audit-logger';
@@ -135,7 +135,7 @@ export async function GET(
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     console.error("Error fetching job:", error);
@@ -211,7 +211,7 @@ export async function PATCH(
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     console.error("Error partially updating job:", error);
@@ -274,7 +274,7 @@ export async function PUT(
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     console.error("Error updating job:", error);
@@ -306,7 +306,7 @@ export async function DELETE(
     return NextResponse.json(result, { status });
   } catch (error) {
     if (isAuthError(error)) {
-      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+      return NextResponse.json({ error: "Authentication required" }, { status: authErrorStatus(error) });
     }
     console.error("Error deleting job:", error);
     return NextResponse.json({ success: false, error: "Failed to delete job" }, { status: 500 });

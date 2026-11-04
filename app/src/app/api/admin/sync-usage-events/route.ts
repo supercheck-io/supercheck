@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { polarUsageService } from "@/lib/services/polar-usage.service";
 import { isPolarEnabled } from "@/lib/feature-flags";
 import { isAdminAccessDeniedError, requireAdmin } from "@/lib/admin";
-import { isAuthError, requireUserAuthContext } from "@/lib/auth-context";
+import { isAuthError, requireUserAuthContext, authErrorStatus } from "@/lib/auth-context";
 
 /**
  * Sync pending usage events to Polar
@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
     if (isAuthError(error)) {
       return NextResponse.json(
         { success: false, error: "Authentication required" },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     if (isAdminAccessDeniedError(error)) {

@@ -1,3 +1,4 @@
+import { authErrorStatus, AuthError } from "@/lib/auth-context";
 import { getClientIP } from "@/lib/session-security";
 import { NextRequest, NextResponse } from "next/server";
 import { AIStreamingService } from "@/lib/ai/ai-streaming-service";
@@ -330,6 +331,7 @@ export async function POST(request: NextRequest) {
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error";
     const isAuthError =
+      error instanceof AuthError ||
       errorMessage.includes("Authentication") ||
       errorMessage.includes("Unauthorized");
     const isRateLimitError =
@@ -339,13 +341,19 @@ export async function POST(request: NextRequest) {
 
     if (isAuthError) {
       return NextResponse.json(
-        {
-          success: false,
-          reason: "authentication_required",
-          message: "Authentication required to use AI fix feature",
-          guidance: "Please log in and try again",
-        },
-        { status: 401 }
+        authErrorStatus(error) === 403
+          ? {
+              success: false,
+              reason: "forbidden",
+              message: "You no longer have permission to use AI fix in this project",
+            }
+          : {
+              success: false,
+              reason: "authentication_required",
+              message: "Authentication required to use AI fix feature",
+              guidance: "Please log in and try again",
+            },
+        { status: authErrorStatus(error) }
       );
     }
 

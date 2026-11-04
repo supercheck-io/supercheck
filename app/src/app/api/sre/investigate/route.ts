@@ -2,7 +2,7 @@ import { after, NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
 import { createLogger } from "@/lib/logger/index";
-import { isAuthError, requireAuthContext } from "@/lib/auth-context";
+import { isAuthError, requireAuthContext, authErrorStatus } from "@/lib/auth-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { assertCanStartSreInvestigation, SreInvestigationBillingError } from "@/lib/sre/investigation-billing";
 import { sreBillingErrorMessage } from "@/lib/sre/billing-error-messages";
@@ -27,7 +27,7 @@ const investigationLogger = createLogger({ module: "sre-investigate-api" }) as {
 function authErrorResponse(error: unknown) {
   return NextResponse.json(
     { error: isAuthError(error) ? "Authentication required" : "Unable to authorize SRE investigation" },
-    { status: isAuthError(error) ? 401 : 500 },
+    { status: isAuthError(error) ? authErrorStatus(error) : 500 },
   );
 }
 

@@ -15,6 +15,7 @@ import { isCredentialOwnerActive } from "@/lib/security/credential-owner";
  */
 
 import { headers } from "next/headers";
+import { NextResponse } from "next/server";
 import { defaultKeyHasher } from "@better-auth/api-key";
 import { db } from "@/utils/db";
 import { apikey, projects, member, projectMembers, organization, user } from "@/db/schema";
@@ -67,6 +68,14 @@ export class AuthError extends Error {
 /** HTTP status for an auth failure: 403 for scope denials, otherwise 401. */
 export function authErrorStatus(error: unknown): 401 | 403 {
   return error instanceof AuthError ? error.status : 401;
+}
+
+/** Standard JSON response for an auth failure, preserving 401 vs 403. */
+export function authErrorResponse(error: unknown): NextResponse {
+  return NextResponse.json(
+    { error: error instanceof Error ? error.message : "Authentication required" },
+    { status: authErrorStatus(error) },
+  );
 }
 
 /**

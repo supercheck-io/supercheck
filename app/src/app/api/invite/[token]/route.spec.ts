@@ -7,6 +7,9 @@ jest.mock("@/utils/db", () => ({ db: { select: jest.fn(), update: jest.fn(), tra
 jest.mock("@/utils/auth", () => ({ auth: { api: { getSession: jest.fn() } } }));
 jest.mock("@/lib/auth-context", () => ({
   requireUserAuthContext: jest.fn(), isAuthError: jest.fn(),
+  AuthError: jest.requireActual("@/lib/auth-context").AuthError,
+  authErrorStatus: jest.requireActual("@/lib/auth-context").authErrorStatus,
+  authErrorResponse: jest.requireActual("@/lib/auth-context").authErrorResponse,
 }));
 jest.mock("@/lib/session", () => ({ getCurrentUser: jest.fn() }));
 jest.mock("next/headers", () => ({ headers: jest.fn(async () => new Headers()) }));
@@ -17,6 +20,7 @@ import { isCloudHosted, isPolarEnabled } from "@/lib/feature-flags";
 
 const { db } = jest.requireMock("@/utils/db") as { db: { select: jest.Mock; update: jest.Mock; transaction: jest.Mock } };
 const { auth } = jest.requireMock("@/utils/auth") as { auth: { api: { getSession: jest.Mock } } };
+const { AuthError } = jest.requireActual("@/lib/auth-context");
 const { requireUserAuthContext } = jest.requireMock("@/lib/auth-context") as { requireUserAuthContext: jest.Mock };
 const { getCurrentUser } = jest.requireMock("@/lib/session") as { getCurrentUser: jest.Mock };
 
@@ -283,6 +287,14 @@ describe("invitation privacy and acceptance", () => {
     auth.api.getSession.mockResolvedValue(null);
     const response = await POST(new NextRequest("http://localhost/api/invite/11111111-1111-4111-8111-111111111111", { method: "POST" }), context);
     expect(response.status).toBe(401);
+    expect(db.transaction).not.toHaveBeenCalled();
+  });
+
+  it("returns 403 when the caller is authenticated but no longer permitted", async () => {
+    acceptance();
+    requireUserAuthContext.mockRejectedValue(new AuthError("No access", 403));
+    const response = await POST(new NextRequest("http://localhost/api/invite/11111111-1111-4111-8111-111111111111", { method: "POST" }), context);
+    expect(response.status).toBe(403);
     expect(db.transaction).not.toHaveBeenCalled();
   });
 });

@@ -4,7 +4,7 @@ import { db } from '@/utils/db';
 import { member, user as userTable, projectMembers, projects } from '@/db/schema';
 import { eq, and, inArray } from 'drizzle-orm';
 import { getUserOrgRole } from '@/lib/rbac/middleware';
-import { requireUserAuthContext, isAuthError } from '@/lib/auth-context';
+import { requireUserAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-context';
 import { Role } from '@/lib/rbac/permissions';
 import { logAuditEvent } from '@/lib/audit-logger';
 import { disableTriggerKeysForMember } from '@/lib/security/disable-trigger-keys';
@@ -338,7 +338,7 @@ export async function PUT(
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : 'Authentication required' },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     console.error('Error updating member role:', error);
@@ -506,7 +506,7 @@ export async function DELETE(
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : 'Authentication required' },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     console.error('Error removing member:', error);

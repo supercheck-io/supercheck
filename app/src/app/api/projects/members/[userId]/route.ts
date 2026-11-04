@@ -4,7 +4,7 @@ import { db } from '@/utils/db';
 import { projectMembers, projects } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { hasPermissionForUser } from '@/lib/rbac/middleware';
-import { requireUserAuthContext, isAuthError } from '@/lib/auth-context';
+import { requireUserAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-context';
 
 export async function GET(
   request: NextRequest,
@@ -59,7 +59,7 @@ export async function GET(
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : 'Authentication required' },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
 

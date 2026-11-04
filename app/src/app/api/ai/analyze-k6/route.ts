@@ -10,7 +10,7 @@ import { reserveAICredit } from "@/lib/ai/ai-credit-reservation";
 import { headers } from "next/headers";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { getS3FileContent } from "@/lib/s3-proxy";
-import { requireAuthContext } from "@/lib/auth-context";
+import { requireAuthContext, authErrorStatus, AuthError } from "@/lib/auth-context";
 import { db } from "@/utils/db";
 import { runs, projects } from "@/db/schema";
 import { and, eq, inArray } from "drizzle-orm";
@@ -263,6 +263,7 @@ export async function POST(request: NextRequest) {
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error";
     const isAuthError =
+      error instanceof AuthError ||
       errorMessage.includes("Authentication") ||
       errorMessage.includes("Unauthorized");
     const isRateLimitError =
@@ -270,13 +271,19 @@ export async function POST(request: NextRequest) {
 
     if (isAuthError) {
       return NextResponse.json(
-        {
-          success: false,
-          reason: "authentication_required",
-          message: "Authentication required to use AI analyze feature",
-          guidance: "Please log in and try again",
-        },
-        { status: 401 }
+        authErrorStatus(error) === 403
+          ? {
+              success: false,
+              reason: "forbidden",
+              message: "You no longer have permission to use AI analysis in this project",
+            }
+          : {
+              success: false,
+              reason: "authentication_required",
+              message: "Authentication required to use AI analyze feature",
+              guidance: "Please log in and try again",
+            },
+        { status: authErrorStatus(error) }
       );
     }
 

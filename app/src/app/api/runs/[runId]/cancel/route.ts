@@ -11,7 +11,7 @@ import {
   type RunStatus,
 } from "@/lib/job-status-utils";
 import { canCancelRunInProject } from "@/lib/rbac/middleware";
-import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { setCancellationSignal, RUN_CANCELLATION_MARKER } from "@/lib/cancellation-service";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { syncJobStatusFromRuns } from "@/lib/job-status-sync";
@@ -504,7 +504,7 @@ export async function POST(
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     logger.error({ error, runId: params.runId }, "Error cancelling run");

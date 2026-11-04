@@ -28,6 +28,7 @@ jest.mock("@/sre/lib/stale-run-recovery", () => ({ failStaleSreInvestigationRuns
 jest.mock("@/lib/sre/incident-notifier", () => ({ notifyIncidentEvent: jest.fn().mockResolvedValue(undefined) }));
 
 jest.mock("@/lib/auth-context", () => ({
+  authErrorStatus: (e: unknown) => ((e as { status?: number })?.status === 403 ? 403 : 401),
   requireAuthContext: jest.fn(),
   isAuthError: jest.fn((error: unknown) => error instanceof Error && error.message === "Authentication required"),
 }));

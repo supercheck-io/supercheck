@@ -4,7 +4,7 @@ import { db } from "@/utils/db";
 import { projectVariables } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { resolveProjectPermissionContext, checkPermissionWithContext } from "@/lib/rbac/middleware";
-import { requireUserAuthContext, isAuthError } from "@/lib/auth-context";
+import { requireUserAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { getS3Client } from "@/lib/s3-proxy";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { ALLOWED_FILE_MIME_TYPES } from "@/lib/validations/variable";
@@ -109,7 +109,7 @@ export async function GET(
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
 

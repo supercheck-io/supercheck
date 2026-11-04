@@ -1,5 +1,6 @@
 /** @jest-environment node */
-jest.mock('@/lib/auth-context', () => ({ requireAuthContext: jest.fn(), isAuthError: jest.fn() }));
+jest.mock('@/lib/auth-context', () => ({
+  authErrorStatus: (e: unknown) => ((e as { status?: number })?.status === 403 ? 403 : 401), requireAuthContext: jest.fn(), isAuthError: jest.fn() }));
 jest.mock('@/lib/location-registry', () => ({ getLocationDisplayData: jest.fn(), getEnabledLocations: jest.fn() }));
 jest.mock('@/lib/logger/index', () => ({ createLogger: () => ({ error: jest.fn() }) }));
 

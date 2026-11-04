@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUserAuthContext, isAuthError } from "@/lib/auth-context";
+import { requireUserAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { getUserOrgRole } from "@/lib/rbac/middleware";
 import { Role } from "@/lib/rbac/permissions";
 import { billingSettingsService } from "@/lib/services/billing-settings.service";
@@ -47,7 +47,7 @@ export async function GET() {
           error:
             error instanceof Error ? error.message : "Authentication required",
         },
-        { status: 401 },
+        { status: authErrorStatus(error) },
       );
     }
     console.error("Error fetching billing settings:", error);
@@ -223,7 +223,7 @@ export async function PATCH(request: NextRequest) {
           error:
             error instanceof Error ? error.message : "Authentication required",
         },
-        { status: 401 },
+        { status: authErrorStatus(error) },
       );
     }
     if (error instanceof BillingSettingsValidationError) {

@@ -4,7 +4,7 @@ import { type NotificationProviderConfig } from "@/db/schema";
 import { EmailService } from "@/lib/email-service";
 import { renderTestEmail } from "@/lib/email-renderer";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
-import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { normalizeWebhookMethod } from "@/lib/notification-providers/webhook-template";
 import { buildWebhookTestBody } from "@/lib/notification-providers/webhook-preview";
 import { normalizeWebhookHeaders } from "@/lib/notification-providers/validation";
@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
     if (isAuthError(error)) {
       return NextResponse.json(
         { success: false, error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     console.error("Error testing connection:", error);

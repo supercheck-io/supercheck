@@ -4,7 +4,7 @@ import { db } from "@/utils/db";
 import { monitors, monitorResults } from "@/db/schema";
 import { monitorResultDetailsForRead } from "@/lib/monitor-read-config";
 import { eq, desc, and, gte, lt, sql } from "drizzle-orm";
-import { requireAuthContext, isAuthError } from '@/lib/auth-context';
+import { requireAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-context';
 import { createLogger } from "@/lib/logger/index";
 
 const logger = createLogger({ module: "monitor-results-api" }) as {
@@ -176,7 +176,7 @@ export async function GET(
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     logger.error({ err: error, monitorId: id }, "Error fetching paginated monitor results");

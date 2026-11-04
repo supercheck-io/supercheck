@@ -5,7 +5,7 @@ import { z } from "zod";
 
 import { streamEvidenceBrief } from "@/lib/sre/evidence-brief-generator";
 import { runSreEvidenceBriefGeneration } from "@/lib/sre/evidence-brief-orchestrator";
-import { isAuthError, requireAuthContext } from "@/lib/auth-context";
+import { isAuthError, requireAuthContext, authErrorStatus } from "@/lib/auth-context";
 import { createLogger } from "@/lib/logger/index";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { checkSreEvidenceBriefRateLimit } from "@/lib/sre/sre-rate-limiter";
@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     return NextResponse.json(
       { success: false, error: "Authentication required" },
-      { status: isAuthError(error) ? 401 : 500 },
+      { status: isAuthError(error) ? authErrorStatus(error) : 500 },
     );
   }
   const { userId, organizationId, project } = context;

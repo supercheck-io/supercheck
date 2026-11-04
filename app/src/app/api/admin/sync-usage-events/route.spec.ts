@@ -4,7 +4,8 @@ import { NextRequest } from "next/server";
 jest.mock("@/lib/services/polar-usage.service", () => ({ polarUsageService: { syncPendingEvents: jest.fn() } }));
 jest.mock("@/lib/feature-flags", () => ({ isPolarEnabled: jest.fn(() => false) }));
 jest.mock("@/lib/admin", () => ({ requireAdmin: jest.fn(), isAdminAccessDeniedError: jest.fn(() => false) }));
-jest.mock("@/lib/auth-context", () => ({ requireUserAuthContext: jest.fn(), isAuthError: jest.fn((e) => e?.message === "unauthorized") }));
+jest.mock("@/lib/auth-context", () => ({
+  authErrorStatus: (e: unknown) => ((e as { status?: number })?.status === 403 ? 403 : 401), requireUserAuthContext: jest.fn(), isAuthError: jest.fn((e) => e?.message === "unauthorized") }));
 
 import { POST } from "./route";
 import { requireAdmin } from "@/lib/admin";
