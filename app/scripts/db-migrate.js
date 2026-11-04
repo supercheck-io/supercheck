@@ -91,6 +91,11 @@ const MIGRATION_LOCK_TIMEOUT_MS = parsePositiveIntegerEnv(
   DEFAULT_MIGRATION_LOCK_TIMEOUT_MS
 );
 
+const DEFERRED_STATEMENT_TIMEOUT_MS = parsePositiveIntegerEnv(
+  process.env.DB_DEFERRED_MIGRATION_TIMEOUT_MS,
+  30 * 60 * 1000
+);
+
 const {
   targetConnectionString: TARGET_DATABASE_URL,
   adminConnectionString: ADMIN_DATABASE_URL,
@@ -287,13 +292,18 @@ async function runDeferredMigrations(items = deferredMigrations) {
       log,
       logSuccess,
       logError: logWarning,
-      simpleProtocol: true,
     });
     if (!lockClient) {
       logWarning("Skipping no-transaction migrations (lock unavailable); the next deploy retries them");
       return true;
     }
-    client = postgres(TARGET_DATABASE_URL, { max: 1, ssl: getDatabaseSSLConfig(), onnotice: () => {} });
+    // A build that outlives the timeout fails like any other deferred failure: unrecorded, retried next deploy.
+    client = postgres(TARGET_DATABASE_URL, {
+      max: 1,
+      ssl: getDatabaseSSLConfig(),
+      onnotice: () => {},
+      connection: { statement_timeout: DEFERRED_STATEMENT_TIMEOUT_MS },
+    });
     for (const { file, content, hash } of items) {
       try {
         const [applied] = await client`SELECT id FROM "__drizzle_migrations" WHERE hash = ${hash}`;

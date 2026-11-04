@@ -2,7 +2,7 @@
 // CI-only: needs TEST_DATABASE_URL (run with `npm run test:db`).
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { cpSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -87,4 +87,60 @@ it("does not fail the run or record the file when a deferred build fails", async
   } finally {
     rmSync(work, { recursive: true, force: true });
   }
+}, 180_000);
+
+it("lets a build finish while another pod polls for the migration lock", async () => {
+  const { acquireMigrationLock } = require("../../../scripts/migration-lock") as typeof import("../../../scripts/migration-lock");
+  process.env.SELF_HOSTED = "true"; // the lock module reads the TLS mode from the environment
+  const holder = await acquireMigrationLock(postgres, databaseUrl, { lockName: "waiter-test", timeoutMs: 5_000 });
+  expect(holder).not.toBeNull();
+  // The second pod polls (BEGIN + try-lock) while the first runs its deferred build.
+  const waiter = acquireMigrationLock(postgres, databaseUrl, { lockName: "waiter-test", timeoutMs: 20_000, retryDelayMs: 100 });
+  await new Promise((resolve) => setTimeout(resolve, 500));
+
+  const builder = postgres(databaseUrl, { max: 1, onnotice: () => {}, connection: { statement_timeout: 15_000 } });
+  try {
+    await builder.unsafe(`CREATE INDEX CONCURRENTLY IF NOT EXISTS waiter_probe_idx ON runs ((metadata->>'probe'))`);
+  } finally {
+    await builder.end({ timeout: 5 });
+  }
+  expect(await client`SELECT 1 FROM pg_indexes WHERE indexname = 'waiter_probe_idx'`).toHaveLength(1);
+
+  await holder.unsafe("ROLLBACK");
+  await holder.end();
+  const acquired = await waiter;
+  expect(acquired).not.toBeNull();
+  await acquired.unsafe("ROLLBACK");
+  await acquired.end();
+}, 60_000);
+
+it("treats a build that exceeds the statement timeout as failed: warns, exits 0 and stays unrecorded", async () => {
+  const hash = require("node:crypto")
+    .createHash("md5")
+    .update(readFileSync(path.join(APP_ROOT, "src/db/migrations/0054_runs_test_id_index.sql"), "utf8"))
+    .digest("hex");
+  await client.unsafe(`DROP INDEX IF EXISTS ${INDEX}`);
+  await client`DELETE FROM "__drizzle_migrations" WHERE hash = ${hash}`;
+
+  // An open writer on runs makes CREATE INDEX CONCURRENTLY wait, so only the statement timeout ends it.
+  const writer = postgres(databaseUrl, { max: 1, onnotice: () => {} });
+  try {
+    await writer.unsafe("BEGIN");
+    await writer.unsafe("LOCK TABLE runs IN ROW EXCLUSIVE MODE");
+    const { stdout } = await execFileAsync(process.execPath, [path.join(APP_ROOT, "scripts/db-migrate.js")], {
+      cwd: APP_ROOT,
+      env: { ...process.env, DATABASE_URL: databaseUrl, SELF_HOSTED: "true", NODE_ENV: "test", DB_DEFERRED_MIGRATION_TIMEOUT_MS: "1500" },
+      timeout: 90_000,
+    });
+    expect(stdout).toMatch(/Deferred migration 0054_runs_test_id_index.sql failed and will be retried/);
+  } finally {
+    await writer.unsafe("ROLLBACK").catch(() => undefined);
+    await writer.end({ timeout: 5 });
+  }
+  // A cancelled build may leave an INVALID index; the file itself stays unrecorded.
+  expect((await indexState()).filter(Boolean)).toHaveLength(0);
+  expect(await client`SELECT 1 FROM "__drizzle_migrations" WHERE hash = ${hash}`).toHaveLength(0);
+
+  await migrate(); // the next deploy drops the invalid index and rebuilds
+  expect(await indexState()).toEqual([true]);
 }, 180_000);

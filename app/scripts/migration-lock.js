@@ -19,9 +19,6 @@ async function acquireMigrationLock(
     log = () => undefined,
     logSuccess = () => undefined,
     logError = () => undefined,
-    // The simple query protocol leaves the idle transaction without a snapshot (backend_xmin). With a
-    // bound parameter the snapshot stays, and CREATE INDEX CONCURRENTLY on another connection waits for it.
-    simpleProtocol = false,
   } = {},
 ) {
   const lockClient = postgres(connectionString, { max: 1, ssl: getDatabaseSSLConfig() });
@@ -33,13 +30,13 @@ async function acquireMigrationLock(
     await lockClient`BEGIN`;
 
     while (Date.now() < deadline) {
-      const result = simpleProtocol
-        ? await lockClient.unsafe(
-            `SELECT pg_try_advisory_xact_lock(hashtext('${lockName.replace(/'/g, "''")}')) AS acquired`,
-          )
-        : await lockClient`
-        SELECT pg_try_advisory_xact_lock(hashtext(${lockName})) AS acquired
-      `;
+      // Simple query protocol on purpose: with a bound parameter the idle transaction keeps a snapshot
+      // (backend_xmin), and a CREATE INDEX CONCURRENTLY on another connection waits for it, so a pod
+      // polling here would deadlock with the pod that holds the lock. Only the lock name is
+      // interpolated, with quotes doubled.
+      const result = await lockClient.unsafe(
+        `SELECT pg_try_advisory_xact_lock(hashtext('${lockName.replace(/'/g, "''")}')) AS acquired`,
+      );
 
       if (result[0]?.acquired === true) {
         logSuccess("Database migration advisory lock acquired");
