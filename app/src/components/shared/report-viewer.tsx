@@ -439,7 +439,7 @@ export function ReportViewer({
   }
 
   // Error state - only show if it's not a validation error
-  if (iframeError && !isRunning && !isValidationError) {
+  if (iframeError && !isValidationError) {
     // Show cancellation-specific error page if cancellation detected
     if (cancellationInfo?.isCancelled) {
       return (
@@ -496,8 +496,7 @@ export function ReportViewer({
       )}
 
       <div className="flex flex-col h-full w-full">
-        {!isRunning &&
-          currentReportUrl &&
+        {currentReportUrl &&
           !isReportLoading &&
           !iframeError &&
           !hideFullscreenButton && (
@@ -512,7 +511,7 @@ export function ReportViewer({
             </div>
           )}
 
-        {!isRunning && currentReportUrl && (
+        {currentReportUrl && (
           <iframe
             ref={iframeRef}
             key={iframeSrc}
