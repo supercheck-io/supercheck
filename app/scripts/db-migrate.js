@@ -310,6 +310,10 @@ async function dropInvalidIndexes(client, sql) {
   }
 }
 
+async function setStatementTimeout(client, ms) {
+  await client.unsafe(`SET statement_timeout = ${Number(ms)}`);
+}
+
 // Runs the deferred no-transaction files after the main migration transaction has committed.
 // Locking matches the main runner (pooler-safe): a dedicated connection holds BEGIN +
 // pg_try_advisory_xact_lock on the same key for the whole step, and the CONCURRENTLY build runs on a
@@ -337,8 +341,9 @@ async function runDeferredMigrations(items = deferredMigrations) {
       max: 1,
       ssl: getDatabaseSSLConfig(),
       onnotice: () => {},
-      connection: { statement_timeout: DEFERRED_STATEMENT_TIMEOUT_MS },
     });
+    // A session SET, not a startup parameter: poolers reject unsupported startup parameters.
+    await setStatementTimeout(client, DEFERRED_STATEMENT_TIMEOUT_MS);
     for (const { file, content, hash } of items) {
       try {
         const [applied] = await client`SELECT id FROM "__drizzle_migrations" WHERE hash = ${hash}`;
@@ -929,7 +934,7 @@ async function validateAfterCommit() {
   }
 }
 
-module.exports = { hasNoTransactionMarker, concurrentIndexNames, concurrentIndexes, assertDeferredFileRerunnable };
+module.exports = { setStatementTimeout, hasNoTransactionMarker, concurrentIndexNames, concurrentIndexes, assertDeferredFileRerunnable };
 
 // Run the main function
 if (require.main === module) main();
