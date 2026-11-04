@@ -1,6 +1,7 @@
 # Dependency Review configuration.
 #
-# The advisories below are reported only for the vendored upstream Playwright
+# Each allowlisted advisory is exempt repo-wide, so every entry states why.
+# The first five are reported only for the vendored upstream Playwright
 # sources under recorder/playwright/**. Those files are tracked solely for the
 # recorder build and are reviewed through the upstream Playwright security
 # process, so their lockfiles should not gate this repository. First-party

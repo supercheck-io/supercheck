@@ -195,6 +195,12 @@ export async function createSreDiagnosticQuery(input: z.infer<typeof createDiagn
       };
     }
 
+    // Parens are only safe as Azure resource-path characters; other connectors treat them as query grouping.
+    const schemaEntries = Object.values((parsed.data.parameterSchema ?? {}) as Record<string, unknown>);
+    if (connector.type !== "azure_monitor" && schemaEntries.some((entry) => (entry as { allowParens?: unknown } | null)?.allowParens !== undefined)) {
+      return { success: false, error: "allowParens is only supported for Azure Monitor connectors" };
+    }
+
     try {
       validateDiagnosticQueryParameterSchema(parsed.data.parameterSchema);
       validateTemplatePlaceholderCoverage(parsed.data.template, parsed.data.allowlist);
