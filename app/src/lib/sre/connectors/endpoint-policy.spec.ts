@@ -90,7 +90,7 @@ describe("connector endpoint policy", () => {
 describe("self-hosted metadata blocking", () => {
   it.each([
     "169.254.169.254", "100.100.100.200", "168.63.129.16", "192.0.0.192",
-    "fe80::1", "::ffff:169.254.169.254", "::ffff:a9fe:a9fe",
+    "fe80::1", "fd00:ec2::254", "::ffff:169.254.169.254", "::ffff:a9fe:a9fe",
   ])("blocks %s", (address) => {
     expect(isMetadataOrLinkLocalAddress(address)).toBe(true);
   });

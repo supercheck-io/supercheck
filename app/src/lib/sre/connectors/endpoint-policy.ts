@@ -14,7 +14,7 @@ export function isPrivateConnectorAddress(address: string) {
 const METADATA_IPV4_NETWORKS = ["169.254.0.0/16", "100.100.100.200/32", "168.63.129.16/32", "192.0.0.192/32"].map(
   (network) => new Address4(network),
 );
-const LINK_LOCAL_IPV6 = new Address6("fe80::/10");
+const LINK_LOCAL_IPV6 = [new Address6("fe80::/10"), new Address6("fd00:ec2::254/128")];
 
 /**
  * Cloud metadata and link-local addresses stay blocked even for self-hosted
@@ -33,7 +33,7 @@ export function isMetadataOrLinkLocalAddress(address: string) {
     if (embedded && (candidate.isMapped4() || candidate.is4())) {
       return METADATA_IPV4_NETWORKS.some((network) => embedded.isHostInSubnet(network));
     }
-    return candidate.isHostInSubnet(LINK_LOCAL_IPV6);
+    return LINK_LOCAL_IPV6.some((network) => candidate.isHostInSubnet(network));
   }
   return false;
 }
