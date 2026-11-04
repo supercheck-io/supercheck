@@ -14,6 +14,28 @@ describe('run status updates', () => {
   });
 });
 
+describe('updateJobStatus', () => {
+  const capture = async (runId?: string) => {
+    const where = jest.fn(async (_condition: SQL) => undefined);
+    const database = { update: () => ({ set: () => ({ where }) }) };
+    const service = new DbService(database as never, {} as never);
+    jest.spyOn(service['logger'], 'log').mockImplementation(() => undefined);
+    await service.updateJobStatus('job-id', ['failed'], runId);
+    return new PgDialect().sqlToQuery(where.mock.calls[0][0]);
+  };
+
+  it('only writes when the finishing run is the job newest run', async () => {
+    const query = await capture('run-id');
+    expect(query.sql).toContain('order by "runs"."created_at" desc limit 1');
+    expect(query.params).toEqual(['job-id', 'run-id', 'job-id']);
+  });
+
+  it('writes unconditionally without a finishing run id', async () => {
+    const query = await capture();
+    expect(query.sql).not.toContain('order by');
+  });
+});
+
 describe('getJobAlertStreakState', () => {
   it('flags unknown history when the alert history cannot be read', async () => {
     const database = {

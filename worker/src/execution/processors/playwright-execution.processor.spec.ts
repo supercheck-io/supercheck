@@ -824,7 +824,7 @@ describe('PlaywrightExecutionProcessor', () => {
         );
         expect(mockDbService.updateJobStatus).toHaveBeenCalledWith(jobId, [
           'error',
-        ]);
+        ], runId);
         expect(mockDbService.db.update).toHaveBeenCalled();
       });
 
@@ -871,7 +871,7 @@ describe('PlaywrightExecutionProcessor', () => {
 
         expect(mockDbService.updateJobStatus).toHaveBeenCalledWith(jobId, [
           'error',
-        ]);
+        ], runId);
       });
     });
 
@@ -887,7 +887,7 @@ describe('PlaywrightExecutionProcessor', () => {
         );
         expect(mockDbService.updateJobStatus).toHaveBeenCalledWith(jobId, [
           'passed',
-        ]);
+        ], runId);
       });
 
       it('keeps job running while another run is queued or running', async () => {
@@ -898,7 +898,7 @@ describe('PlaywrightExecutionProcessor', () => {
 
         expect(mockDbService.updateJobStatus).toHaveBeenCalledWith(jobId, [
           'running',
-        ]);
+        ], runId);
       });
 
       it('skips the job status write when the sibling-run lookup fails', async () => {

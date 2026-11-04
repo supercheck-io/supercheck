@@ -7,7 +7,6 @@ import { eq, and, inArray } from "drizzle-orm";
 import { getCapacityQueues } from "@/lib/queue";
 import { createLogger } from "@/lib/logger/index";
 import {
-  calculateJobStatus,
   canCancelRun,
   type RunStatus,
 } from "@/lib/job-status-utils";
@@ -15,6 +14,7 @@ import { canCancelRunInProject } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { setCancellationSignal, RUN_CANCELLATION_MARKER } from "@/lib/cancellation-service";
 import { logAuditEvent } from "@/lib/audit-logger";
+import { syncJobStatusFromRuns } from "@/lib/job-status-sync";
 import { getCapacityManager } from "@/lib/capacity-manager";
 
 const logger = createLogger({ module: "cancel-run-api" }) as {
@@ -465,22 +465,7 @@ export async function POST(
 
       // If this run belongs to a job, update the job status
       if (run.runJobId) {
-        // Get all run statuses for this job
-        const jobRuns = await tx.query.runs.findMany({
-          where: eq(runs.jobId, run.runJobId),
-          columns: {
-            status: true,
-          },
-        });
-
-        // Calculate job status using shared utility
-        const runStatuses = jobRuns.map((r) => r.status as RunStatus);
-        const jobStatus = calculateJobStatus(runStatuses);
-
-        await tx
-          .update(jobs)
-          .set({ status: jobStatus })
-          .where(eq(jobs.id, run.runJobId));
+        const jobStatus = await syncJobStatusFromRuns(tx, run.runJobId);
 
         logger.info(
           { runId, jobId: run.runJobId, jobStatus },

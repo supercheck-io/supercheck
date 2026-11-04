@@ -803,9 +803,11 @@ export class PlaywrightExecutionProcessor
         originalJobId,
         runId,
       );
-      await this.dbService.updateJobStatus(originalJobId, [
-        otherActive ? 'running' : status,
-      ]);
+      await this.dbService.updateJobStatus(
+        originalJobId,
+        [otherActive ? 'running' : status],
+        runId,
+      );
     } catch (err) {
       // A failed sibling lookup is "unknown", not "none active": skip the write instead of guessing.
       this.logger.error(
