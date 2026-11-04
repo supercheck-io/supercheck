@@ -390,7 +390,8 @@ export class JobNotificationService {
       try {
         const createdAlertHistoryRows: AlertHistoryTriageCandidate[] = [];
         for (const result of notificationResults.results) {
-          const status: AlertStatus = result.success ? 'sent' : 'failed';
+          const status: AlertStatus =
+            result.success || result.partial ? 'sent' : 'failed';
           // One failed insert must not drop the remaining rows or the triage enqueue.
           try {
             // The streak cap counts these rows: without a stored 'sent' row the next failing run alerts again.

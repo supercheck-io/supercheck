@@ -177,6 +177,11 @@ const WEBHOOK_BLOCKED_HEADERS = new Set([
   'user-agent',
 ]);
 
+/** Teams and Discord render markdown, so user text must not become links or formatting. */
+function escapeMarkdown(value: string): string {
+  return value.replace(/[\\`*_~|>[\]()]/g, '\\$&');
+}
+
 function clip(value: string, max: number): string {
   return value.length > max ? `${value.slice(0, max - 1)}…` : value;
 }
@@ -336,7 +341,8 @@ export class NotificationService {
         ? provider.config.preset
         : undefined;
     const targetType = this.getAlertTargetType(payload);
-    const deliveryStatus: AlertStatus = result.success ? 'sent' : 'failed';
+    const deliveryStatus: AlertStatus =
+      result.success || result.partial ? 'sent' : 'failed';
     const responseHash =
       details.responseBody !== undefined
         ? this.sha256(details.responseBody)
@@ -1532,15 +1538,15 @@ export class NotificationService {
           body: JSON.stringify({
             // Discord rejects the whole message when a field is over its limit
             // or the footer text is empty.
-            content: clip(formatted.title, 2000),
+            content: clip(escapeMarkdown(formatted.title), 2000),
             embeds: [
               {
-                title: clip(formatted.title, 256),
-                description: clip(formatted.message, 4096),
+                title: clip(escapeMarkdown(formatted.title), 256),
+                description: clip(escapeMarkdown(formatted.message), 4096),
                 color: parseInt(formatted.color.replace('#', ''), 16),
                 fields: formatted.fields.slice(0, 25).map((field) => ({
-                  name: clip(field.title, 256),
-                  value: clip(field.value || '-', 1024),
+                  name: clip(escapeMarkdown(field.title), 256),
+                  value: clip(escapeMarkdown(field.value || '-'), 1024),
                   inline: field.short || false,
                 })),
                 footer: { text: formatted.footer?.trim() || 'Supercheck' },
@@ -1649,12 +1655,11 @@ export class NotificationService {
       const sanitizeText = (text: string | undefined | null): string => {
         if (!text) return '';
         // Remove control characters (keeping line breaks) and limit length
-        return (
+        return escapeMarkdown(
           text
             // eslint-disable-next-line no-control-regex
-            .replace(/[\x00-\x09\x0B\x0C\x0E-\x1F\x7F]/g, '')
-            .substring(0, 5000)
-        );
+            .replace(/[\x00-\x09\x0B\x0C\x0E-\x1F\x7F]/g, ''),
+        ).substring(0, 5000);
       };
 
       // Build Adaptive Card payload for Teams

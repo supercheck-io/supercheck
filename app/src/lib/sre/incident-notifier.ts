@@ -84,10 +84,24 @@ export function buildIncidentUrl(incidentId: string) {
 }
 
 /** Returns true when this incident+event has not been announced recently. Fails open without Redis. */
+function eventKey(input: IncidentNotifyInput) {
+  return `supercheck:sre:incident-notify:${input.incidentId}:${input.event}:${input.dedupeDiscriminator ?? input.assigneeUserId ?? ""}`;
+}
+
+/** When every provider failed, the event was never announced; free the key so a retry can send. */
+async function releaseEvent(input: IncidentNotifyInput) {
+  try {
+    const redis = await getRedisConnection();
+    await redis.del(eventKey(input));
+  } catch {
+    // Best effort; the key expires on its own.
+  }
+}
+
 async function claimEvent(input: IncidentNotifyInput): Promise<boolean> {
   try {
     const redis = await getRedisConnection();
-    const key = `supercheck:sre:incident-notify:${input.incidentId}:${input.event}:${input.dedupeDiscriminator ?? input.assigneeUserId ?? ""}`;
+    const key = eventKey(input);
     return (await redis.set(key, "1", "EX", DEDUPE_TTL_SECONDS, "NX")) === "OK";
   } catch (error) {
     logger.warn({ error }, "Incident notification dedupe unavailable; sending anyway");
@@ -140,6 +154,11 @@ function escapeHtml(value: string) {
 /** Slack treats <...> as links and mentions (<!channel>), so user text must escape them. */
 function escapeSlack(value: string) {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+/** Teams and Discord render markdown, so user text must not become links or formatting. */
+function escapeMarkdown(value: string) {
+  return value.replace(/[\\`*_~|>[\]()]/g, "\\$&");
 }
 
 function clip(value: string, max: number) {
@@ -241,10 +260,10 @@ async function sendToProvider(
               type: "AdaptiveCard",
               version: "1.4",
               body: [
-                { type: "TextBlock", text: message.headline, weight: "bolder", size: "large", color: TEAMS_COLOR[message.event] ?? "default", wrap: true },
-                { type: "TextBlock", text: heading, weight: "bolder", wrap: true },
-                { type: "TextBlock", text: message.body, wrap: true, spacing: "small" },
-                { type: "FactSet", facts: message.fields.map((field) => ({ title: field.title, value: field.value })), spacing: "medium" },
+                { type: "TextBlock", text: escapeMarkdown(message.headline), weight: "bolder", size: "large", color: TEAMS_COLOR[message.event] ?? "default", wrap: true },
+                { type: "TextBlock", text: escapeMarkdown(heading), weight: "bolder", wrap: true },
+                { type: "TextBlock", text: escapeMarkdown(message.body), wrap: true, spacing: "small" },
+                { type: "FactSet", facts: message.fields.map((field) => ({ title: escapeMarkdown(field.title), value: escapeMarkdown(field.value) })), spacing: "medium" },
               ],
               actions: [{ type: "Action.OpenUrl", title: `Open incident #${message.incident.number}`, url: message.url }],
             },
@@ -254,14 +273,14 @@ async function sendToProvider(
       return;
     case "discord":
       await post(String(config.discordWebhookUrl), {
-        content: clip(message.headline, 2000),
+        content: clip(escapeMarkdown(message.headline), 2000),
         embeds: [
           {
-            title: clip(heading, 256),
+            title: clip(escapeMarkdown(heading), 256),
             url: message.url,
-            description: clip(message.body, 4096),
+            description: clip(escapeMarkdown(message.body), 4096),
             color: parseInt(color.slice(1), 16),
-            fields: message.fields.map((field) => ({ name: field.title, value: clip(field.value, 1024), inline: true })),
+            fields: message.fields.map((field) => ({ name: clip(escapeMarkdown(field.title), 256), value: clip(escapeMarkdown(field.value), 1024), inline: true })),
             footer: { text: "Supercheck" },
             timestamp: new Date().toISOString(),
           },
@@ -514,18 +533,21 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<v
             .where(and(eq(jobNotificationSettings.jobId, source.sourceId), providerScope))
             .limit(10);
 
-    await Promise.allSettled(
+    const delivered = await Promise.all(
       providers.map(async (provider) => {
         try {
           // Provider configs are stored as encrypted envelopes bound to their project.
           const config = decryptNotificationProviderConfig(provider.config, provider.projectId ?? undefined);
           validateProviderConfig(provider.type, config);
           await sendToProvider({ type: provider.type, config }, message);
+          return true;
         } catch (error) {
           logger.warn({ providerId: provider.id, type: provider.type, error: error instanceof Error ? error.message : "send failed" }, "Incident notification delivery failed");
+          return false;
         }
       }),
     );
+    if (delivered.length > 0 && !delivered.some(Boolean)) await releaseEvent(input);
   } catch (error) {
     logger.warn({ incidentId: input.incidentId, event: input.event, error: error instanceof Error ? error.message : "notify failed" }, "Incident notification skipped");
   }

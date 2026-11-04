@@ -214,6 +214,16 @@ describe("chat payloads", () => {
     expect(body.embeds[0]).toMatchObject({ title: "#7 @everyone down", url: "https://app.example.com/incidents/inc-1", footer: { text: "Supercheck" } });
   });
 
+  it("escapes markdown in Teams and Discord incident text", async () => {
+    const title = "[click](https://evil.example) *bold*";
+    const teams = await send({ type: "teams", config: { envelope: { teamsWebhookUrl: "https://example.webhook.office.com/x" } } }, title);
+    expect(teams.attachments[0].content.body[1].text).toBe("#7 \\[click\\]\\(https://evil.example\\) \\*bold\\*");
+    fetchPublicEndpoint.mockClear();
+    selectQueue.length = 0;
+    const discord = await send({ type: "discord", config: { envelope: { discordWebhookUrl: "https://discord.com/api/webhooks/1/x" } } }, title);
+    expect(discord.embeds[0].title).toBe("#7 \\[click\\]\\(https://evil.example\\) \\*bold\\*");
+  });
+
   it("escapes Slack control sequences in incident text", async () => {
     const body = await send({ type: "slack", config: { envelope: { webhookUrl: "https://hooks.slack.com/services/T/B/x" } } }, "<!channel> down");
     expect(body.text).not.toContain("<!channel>");
@@ -360,5 +370,25 @@ describe("one message per event for alert-triggered incidents", () => {
     await notifyIncidentEvent({ ...base, event: "recovered", assigneeUserId: "assignee", actorUserId: null });
     expect(sendEmailToMultiple.mock.calls[0][0].text).toContain("recovered");
     expect(fetchPublicEndpoint).not.toHaveBeenCalled();
+  });
+});
+
+describe("event dedupe key release", () => {
+  const discord = { id: "p1", type: "discord", projectId: "project-1", config: { envelope: { discordWebhookUrl: "https://discord.com/api/webhooks/1/x" } } };
+  const source = [{ sourceType: "monitor", sourceId: "mon-1" }];
+
+  it("releases the key when every provider failed", async () => {
+    fetchPublicEndpoint.mockResolvedValueOnce({ ok: false, status: 500 });
+    selectQueue.push([incident], people, source, [discord]);
+    await notifyIncidentEvent({ ...base, event: "acknowledged", assigneeUserId: null });
+    expect(redisDel).toHaveBeenCalledWith(expect.stringContaining("incident-notify:inc-1:acknowledged"));
+  });
+
+  it("keeps the key when a provider succeeded or there were none", async () => {
+    selectQueue.push([incident], people, source, [discord]);
+    await notifyIncidentEvent({ ...base, event: "acknowledged", assigneeUserId: null });
+    selectQueue.push([incident], people, source, []);
+    await notifyIncidentEvent({ ...base, event: "acknowledged", assigneeUserId: null });
+    expect(redisDel).not.toHaveBeenCalled();
   });
 });
