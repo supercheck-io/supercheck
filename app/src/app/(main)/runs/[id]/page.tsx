@@ -55,9 +55,9 @@ export default async function RunPage({ params }: Params) {
   ];
 
   return (
-    <div>
+    <div data-fit-viewport className="flex min-h-0 flex-1 flex-col lg:min-h-[560px] lg:overflow-hidden">
       <PageBreadcrumbs items={breadcrumbs} />
-      <div className="m-4">
+      <div className="m-4 flex min-h-0 flex-1 flex-col">
         <Suspense fallback={<DetailSkeleton />}>
           <RunDetails run={run} />
         </Suspense>
