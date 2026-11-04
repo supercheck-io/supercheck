@@ -148,6 +148,8 @@ const createNextConfig = (phase: string): NextConfig => {
       "canvas",
       // Document processing
       "mammoth",
+      // Native image bindings (avatar re-encode)
+      "sharp",
       // esbuild has native binaries - must be external for Webpack build
       "esbuild",
     ],

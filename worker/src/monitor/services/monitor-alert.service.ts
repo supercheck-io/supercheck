@@ -267,7 +267,10 @@ export class MonitorAlertService {
         targetType: 'monitor',
         monitorId: monitor.id,
         provider: result.provider.id,
-        status: result.success ? ('sent' as const) : ('failed' as const),
+        status:
+          result.success || result.partial
+            ? ('sent' as const)
+            : ('failed' as const),
         errorMessage: result.error,
         deliveryMetadata: result.deliveryMetadata,
         sentAt: new Date(),
@@ -453,7 +456,10 @@ export class MonitorAlertService {
         targetType: 'monitor',
         monitorId: monitor.id,
         provider: result.provider.id,
-        status: result.success ? ('sent' as const) : ('failed' as const),
+        status:
+          result.success || result.partial
+            ? ('sent' as const)
+            : ('failed' as const),
         errorMessage: result.error,
         deliveryMetadata: result.deliveryMetadata,
         sentAt: new Date(),

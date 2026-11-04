@@ -34,8 +34,7 @@ const mockDbService = {
   finalizeCancelledRun: jest.fn().mockResolvedValue(true),
   updateRunStatus: jest.fn(),
   failRunUnlessCancelled: jest.fn().mockResolvedValue(undefined),
-  updateJobStatus: jest.fn(),
-  hasOtherActiveRun: jest.fn(),
+  syncJobStatusFromRuns: jest.fn(),
   db: {
     update: jest.fn().mockReturnValue({
       set: jest.fn().mockReturnValue({
@@ -208,8 +207,7 @@ describe('PlaywrightExecutionProcessor', () => {
     mockDbService.getTerminalRun.mockResolvedValue(undefined);
     mockDbService.claimRunExecution.mockResolvedValue(true);
     mockDbService.updateRunStatus.mockResolvedValue(undefined);
-    mockDbService.updateJobStatus.mockResolvedValue(undefined);
-    mockDbService.hasOtherActiveRun.mockResolvedValue(false);
+    mockDbService.syncJobStatusFromRuns.mockResolvedValue(undefined);
     mockJobNotificationService.handleJobNotifications.mockResolvedValue(
       undefined,
     );
@@ -678,7 +676,7 @@ describe('PlaywrightExecutionProcessor', () => {
 
         await processor.process(job);
 
-        expect(mockDbService.updateJobStatus).toHaveBeenCalled();
+        expect(mockDbService.syncJobStatusFromRuns).toHaveBeenCalled();
       });
 
       it('should update lastRunAt on job', async () => {
@@ -822,9 +820,7 @@ describe('PlaywrightExecutionProcessor', () => {
           '0',
           'Cancellation requested by user',
         );
-        expect(mockDbService.updateJobStatus).toHaveBeenCalledWith(jobId, [
-          'error',
-        ]);
+        expect(mockDbService.syncJobStatusFromRuns).toHaveBeenCalledWith(jobId);
         expect(mockDbService.db.update).toHaveBeenCalled();
       });
 
@@ -869,9 +865,7 @@ describe('PlaywrightExecutionProcessor', () => {
 
         await processor.process(job);
 
-        expect(mockDbService.updateJobStatus).toHaveBeenCalledWith(jobId, [
-          'error',
-        ]);
+        expect(mockDbService.syncJobStatusFromRuns).toHaveBeenCalledWith(jobId);
       });
     });
 
@@ -881,36 +875,18 @@ describe('PlaywrightExecutionProcessor', () => {
 
         await processor.process(job);
 
-        expect(mockDbService.hasOtherActiveRun).toHaveBeenCalledWith(
-          jobId,
-          runId,
-        );
-        expect(mockDbService.updateJobStatus).toHaveBeenCalledWith(jobId, [
-          'passed',
-        ]);
+        expect(mockDbService.syncJobStatusFromRuns).toHaveBeenCalledWith(jobId);
       });
 
-      it('keeps job running while another run is queued or running', async () => {
-        mockDbService.hasOtherActiveRun.mockResolvedValue(true);
-        const job = createMockJob(mockJobTask);
-
-        await processor.process(job);
-
-        expect(mockDbService.updateJobStatus).toHaveBeenCalledWith(jobId, [
-          'running',
-        ]);
-      });
-
-      it('skips the job status write when the sibling-run lookup fails', async () => {
-        mockDbService.hasOtherActiveRun.mockRejectedValueOnce(
+      it('does not fail the run when the job status recompute fails', async () => {
+        mockDbService.syncJobStatusFromRuns.mockRejectedValueOnce(
           new Error('db down'),
         );
-        mockDbService.updateJobStatus.mockClear();
         const job = createMockJob(mockJobTask);
 
-        await processor.process(job);
+        await expect(processor.process(job)).resolves.toBeDefined();
 
-        expect(mockDbService.updateJobStatus).not.toHaveBeenCalled();
+        expect(mockDbService.syncJobStatusFromRuns).toHaveBeenCalledWith(jobId);
       });
 
       it('leaves the job alone when a cancelled run status could not be recorded', async () => {
@@ -918,12 +894,12 @@ describe('PlaywrightExecutionProcessor', () => {
         mockDbService.updateRunStatus.mockRejectedValueOnce(
           new Error('db down'),
         );
-        mockDbService.updateJobStatus.mockClear();
+        mockDbService.syncJobStatusFromRuns.mockClear();
         const job = createMockJob(mockJobTask);
 
         await processor.process(job);
 
-        expect(mockDbService.updateJobStatus).not.toHaveBeenCalled();
+        expect(mockDbService.syncJobStatusFromRuns).not.toHaveBeenCalled();
       });
 
       it('should handle single run status', async () => {
@@ -931,7 +907,7 @@ describe('PlaywrightExecutionProcessor', () => {
 
         await processor.process(job);
 
-        expect(mockDbService.updateJobStatus).toHaveBeenCalled();
+        expect(mockDbService.syncJobStatusFromRuns).toHaveBeenCalled();
       });
     });
   });

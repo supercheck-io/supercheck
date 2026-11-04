@@ -7,9 +7,9 @@
  * control-plane process closes the cycle (at quorum or at the deadline) and owns notification.
  */
 import { createHash } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, notExists, sql } from "drizzle-orm";
 import { db } from "@/utils/db";
-import { monitorCycles } from "@/db/schema";
+import { monitorCycleArrivals, monitorCycles, monitorResults } from "@/db/schema";
 import type { LocationConfig } from "@/db/schema";
 
 // A healthy region can legitimately take a while: queue wait, KEDA scale-from-zero, worker retries
@@ -110,7 +110,9 @@ export class MonitorCycleClosedError extends Error {
 }
 
 /**
- * Idempotent: a retry of the same cycle id reuses the existing row untouched. Publishing into a
+ * Idempotent: a retry of the same cycle id reuses the existing row. While the cycle is still open
+ * with no results or arrivals, the retry refreshes the expected-region snapshot to the regions the
+ * retry will actually publish to; once anything has landed the snapshot is frozen. Publishing into a
  * cycle that is no longer open would make every worker treat its result as diagnostic, so that
  * throws instead of publishing.
  */
@@ -146,6 +148,29 @@ export async function persistMonitorCycle(input: {
     .limit(1);
   if (existing && existing.status !== "open") {
     throw new MonitorCycleClosedError(input.id, existing.status);
+  }
+  if (existing) {
+    await db
+      .update(monitorCycles)
+      .set({ expectedLocations: Array.from(new Set(input.configuredLocations)) })
+      .where(
+        and(
+          eq(monitorCycles.id, input.id),
+          eq(monitorCycles.status, "open"),
+          notExists(
+            db
+              .select({ one: sql`1` })
+              .from(monitorCycleArrivals)
+              .where(eq(monitorCycleArrivals.cycleId, input.id)),
+          ),
+          notExists(
+            db
+              .select({ one: sql`1` })
+              .from(monitorResults)
+              .where(eq(monitorResults.executionGroupId, input.id)),
+          ),
+        ),
+      );
   }
   return { created: false };
 }

@@ -260,6 +260,22 @@ describe('Variable Resolver', () => {
   // ==========================================================================
 
   describe('extractVariableNames', () => {
+    it('ignores helper calls inside strings and comments', () => {
+      const script = `
+        // getVariable('IN_LINE_COMMENT')
+        /* getSecret('IN_BLOCK_COMMENT') */
+        const doc = "call getVariable('IN_STRING') first";
+        const tpl = \`getFile('IN_TEMPLATE')\`;
+        const real = getVariable('REAL');
+      `;
+      expect(extractVariableNames(script)).toEqual(['REAL']);
+    });
+
+    it('falls back to the regex scan when the script does not parse as JavaScript', () => {
+      const script = `const n: string = getVariable('TYPED'); // getVariable('GONE')`;
+      expect(extractVariableNames(script)).toEqual(['TYPED']);
+    });
+
     describe('Positive Cases', () => {
       it('should extract getVariable calls', () => {
         const script = `
