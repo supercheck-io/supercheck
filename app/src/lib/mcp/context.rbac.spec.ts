@@ -3,9 +3,9 @@
 // a resource name used by an MCP tool is not one the RBAC layer knows (for example "runs" instead of "run").
 jest.mock("@/utils/db", () => ({ db: {} }));
 
-import { assertCanView, McpAccessDeniedError, type McpCallContext } from "./context";
+import { assertCan, assertCanView, McpAccessDeniedError, type McpCallContext } from "./context";
 
-const as = (role: string): McpCallContext => ({ userId: "u", clientId: "c", organizationId: "o", projectId: "p", role });
+const as = (role: string): McpCallContext => ({ userId: "u", clientId: "c", organizationId: "o", projectId: "p", role, scopes: ["mcp:read", "mcp:incidents:write", "mcp:sre"] });
 const roles = ["super_admin", "org_owner", "org_admin", "project_admin", "project_editor", "project_viewer"];
 const resources = [
   "test", "job", "run", "monitor", "requirement", "status_page", "variable",
@@ -27,5 +27,21 @@ describe("assertCanView against the real RBAC tables", () => {
 
   it("denies a resource the RBAC layer does not know", () => {
     expect(() => assertCanView(as("project_admin"), "runs" as never)).toThrow(McpAccessDeniedError);
+  });
+});
+
+describe("assertCan against the real RBAC tables", () => {
+  it.each([
+    ["project_viewer", "update", false],
+    ["project_editor", "update", true],
+    ["project_viewer", "investigate", false],
+    ["project_editor", "investigate", true],
+  ] as const)("%s %s sre_incident -> %s", (role, action, allowed) => {
+    const scope = action === "update" ? "mcp:incidents:write" : "mcp:sre";
+    const call = () => assertCan(as(role), "sre_incident", action, scope);
+    if (allowed) expect(call).not.toThrow(); else expect(call).toThrow(McpAccessDeniedError);
+  });
+  it("knows the connector resource used for live investigations", () => {
+    expect(() => assertCan(as("project_admin"), "sre_connector", "investigate", "mcp:sre")).not.toThrow();
   });
 });

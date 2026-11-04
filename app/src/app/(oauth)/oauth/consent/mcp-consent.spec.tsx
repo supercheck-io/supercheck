@@ -34,6 +34,13 @@ describe("McpConsent", () => {
     expect(screen.getByText(/127\.0\.0\.1:8765/)).toBeInTheDocument();
   });
 
+  it("lists the optional write and AI SRE access only when requested", () => {
+    render(<McpConsent oauthQuery="q" userEmail="me@example.com" projects={projects} client={unverified} navigate={navigate} canWriteIncidents canRunSre />);
+    expect(screen.getByText(/assign, acknowledge and resolve incidents/i)).toBeInTheDocument();
+    expect(screen.getByText(/start ai sre triage/i)).toBeInTheDocument();
+    expect(screen.getByText(/cannot change anything else/i)).toBeInTheDocument();
+  });
+
   it("warns about an app that registered itself, and names the publisher of a verified one", () => {
     setup(unverified);
     expect(screen.getByText(/unverified app/i)).toBeInTheDocument();

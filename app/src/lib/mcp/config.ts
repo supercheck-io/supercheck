@@ -7,11 +7,15 @@
 /** Path of the MCP endpoint. Tokens are audience-bound to this URL. */
 export const MCP_RESOURCE_PATH = "/api/mcp";
 
-/** The only scope the read-only server grants. */
+/** The base scope: read-only access. Every connection needs it. */
 export const MCP_READ_SCOPE = "mcp:read";
+/** Optional: assign, acknowledge and resolve incidents. */
+export const MCP_INCIDENTS_WRITE_SCOPE = "mcp:incidents:write";
+/** Optional: start billable AI SRE work (triage, investigation, evidence brief). */
+export const MCP_SRE_SCOPE = "mcp:sre";
 
 /** Scopes this authorization server advertises and accepts. */
-export const MCP_SCOPES = [MCP_READ_SCOPE, "offline_access"] as const;
+export const MCP_SCOPES = [MCP_READ_SCOPE, MCP_INCIDENTS_WRITE_SCOPE, MCP_SRE_SCOPE, "offline_access"] as const;
 
 /** JWT claim carrying the project a consent was granted for. */
 export const MCP_PROJECT_CLAIM = "https://supercheck.io/project";

@@ -152,9 +152,9 @@ describe("createMcpAuthPlugins", () => {
     ]);
   });
 
-  it("is a read-only, public-client, authorization-code and refresh-token server", () => {
+  it("is a public-client, authorization-code and refresh-token server", () => {
     const options = provider(build()).options as Record<string, unknown>;
-    expect(options.scopes).toEqual(["mcp:read", "offline_access"]);
+    expect(options.scopes).toEqual(["mcp:read", "mcp:incidents:write", "mcp:sre", "offline_access"]);
     expect(options.grantTypes).toEqual(["authorization_code", "refresh_token"]);
     expect(options.loginPage).toBe("/sign-in");
     expect(options.consentPage).toBe("/oauth/consent");
@@ -162,7 +162,7 @@ describe("createMcpAuthPlugins", () => {
     expect(options.resources).toEqual([RESOURCE]);
     expect(options.accessTokenExpiresIn).toBe(15 * 60);
     expect(options.refreshTokenExpiresIn).toBe(30 * 24 * 60 * 60);
-    expect(options.clientRegistrationAllowedScopes).toEqual(["mcp:read", "offline_access"]);
+    expect(options.clientRegistrationAllowedScopes).toEqual(["mcp:read", "mcp:incidents:write", "mcp:sre", "offline_access"]);
     expect(options.clientRegistrationDefaultApplicationType).toBe("infer");
   });
 

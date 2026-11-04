@@ -5,7 +5,7 @@ import type { Metadata } from "next";
 import { verifyOAuthQueryParams } from "@better-auth/oauth-provider";
 import { auth } from "@/utils/auth";
 import { isImpersonatedSession } from "@/lib/rbac/middleware";
-import { MCP_READ_SCOPE, isMcpServerEnabled } from "@/lib/mcp/config";
+import { MCP_INCIDENTS_WRITE_SCOPE, MCP_READ_SCOPE, MCP_SRE_SCOPE, isMcpServerEnabled } from "@/lib/mcp/config";
 import { mcpAuthApi } from "@/lib/mcp/auth-api";
 import { listConnectableProjects } from "@/lib/mcp/connect-project";
 import { verifiedHostForClientId } from "@/lib/mcp/connections";
@@ -143,6 +143,8 @@ export default async function McpConsentPage({
       oauthQuery={oauthQuery}
       userEmail={session.user.email}
       projects={options}
+      canWriteIncidents={requested.includes(MCP_INCIDENTS_WRITE_SCOPE)}
+      canRunSre={requested.includes(MCP_SRE_SCOPE)}
       client={{
         name: displayClientName(client.client_name) || "An application",
         verifiedHost: verifiedHostForClientId(clientId),

@@ -7,7 +7,7 @@ import {
   checkPermissionWithContext,
   resolveProjectPermissionContext,
 } from "@/lib/rbac/middleware";
-import { MCP_PROJECT_CLAIM, MCP_READ_SCOPE } from "./config";
+import { MCP_PROJECT_CLAIM, MCP_READ_SCOPE, MCP_SCOPES } from "./config";
 
 /** What a tool call runs as: one user, in one project, through one client. */
 export interface McpCallContext {
@@ -16,6 +16,8 @@ export interface McpCallContext {
   organizationId: string;
   projectId: string;
   role: string;
+  /** Scopes this call may use: what the consent covers and the token carries. Always includes mcp:read. */
+  scopes: string[];
 }
 
 export class McpAccessDeniedError extends Error {
@@ -30,7 +32,8 @@ export class McpAccessDeniedError extends Error {
  * A JWT cannot be revoked, so Disconnect, project removal and bans must take effect here:
  *  1. the token names a project;
  *  2. the user is not banned (an expired ban no longer counts);
- *  3. the (client, user, project) consent row still exists and covers mcp:read;
+ *  3. the (client, user, project) consent row still exists and covers mcp:read; optional scopes (write, SRE)
+ *     count only when both the consent and the token carry them;
  *  4. the user still has a role on the project and may view it.
  */
 export async function resolveMcpCallContext(claims: JWTPayload): Promise<McpCallContext> {
@@ -68,6 +71,10 @@ export async function resolveMcpCallContext(claims: JWTPayload): Promise<McpCall
     throw new McpAccessDeniedError("consent_revoked");
   }
 
+  // A token without a scope claim gets the base scope only.
+  const tokenScopes = typeof claims.scope === "string" ? claims.scope.split(/\s+/) : [MCP_READ_SCOPE];
+  const scopes = MCP_SCOPES.filter((s) => s !== "offline_access" && consent.scopes.includes(s) && tokenScopes.includes(s));
+
   const permission = await resolveProjectPermissionContext(userId, projectId);
   if (!permission || !checkPermissionWithContext("project", "view", permission)) {
     throw new McpAccessDeniedError("no_project_access");
@@ -79,6 +86,7 @@ export async function resolveMcpCallContext(claims: JWTPayload): Promise<McpCall
     organizationId: permission.organizationId,
     projectId,
     role: permission.project.userRole,
+    scopes,
   };
 }
 
@@ -94,6 +102,7 @@ export type McpViewResource =
   | "sre_service"
   | "sre_incident"
   | "sre_investigation"
+  | "sre_connector"
   | "project";
 
 /** Per-tool check against the live role, on top of the project-level gate above. */
@@ -107,4 +116,20 @@ export function assertCanView(
     project: { id: context.projectId, userRole: context.role },
   });
   if (!allowed) throw new McpAccessDeniedError(`forbidden_${resource}`);
+}
+
+/** Write and SRE tools: the connection must hold the optional scope, and the live role must allow the action. */
+export function assertCan(
+  context: McpCallContext,
+  resource: McpViewResource,
+  action: string,
+  scope: string,
+): void {
+  if (!context.scopes.includes(scope)) throw new McpAccessDeniedError(`missing_scope_${scope}`);
+  const allowed = checkPermissionWithContext(resource, action, {
+    userId: context.userId,
+    organizationId: context.organizationId,
+    project: { id: context.projectId, userRole: context.role },
+  });
+  if (!allowed) throw new McpAccessDeniedError(`forbidden_${resource}_${action}`);
 }

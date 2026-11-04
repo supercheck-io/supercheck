@@ -18,6 +18,10 @@ interface Props {
   oauthQuery: string;
   userEmail: string;
   projects: McpConsentProject[];
+  /** The app also asked to assign, acknowledge and resolve incidents (mcp:incidents:write). */
+  canWriteIncidents?: boolean;
+  /** The app also asked to start AI SRE work (mcp:sre). */
+  canRunSre?: boolean;
   client: {
     name: string;
     /** Host that controls this client's metadata document; null when it registered itself. */
@@ -41,7 +45,7 @@ const ERROR_COPY: Record<string, string> = {
   project_required: "Choose a project first.",
 };
 
-export function McpConsent({ oauthQuery, userEmail, projects, client, navigate = (url) => window.location.assign(url) }: Props) {
+export function McpConsent({ oauthQuery, userEmail, projects, canWriteIncidents = false, canRunSre = false, client, navigate = (url) => window.location.assign(url) }: Props) {
   const [projectId, setProjectId] = useState((projects.find((p) => p.isDefault) ?? projects[0]).id);
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -101,10 +105,13 @@ export function McpConsent({ oauthQuery, userEmail, projects, client, navigate =
               in the project you choose
             </li>
             <li>See variable names and types, never their values</li>
+            {canWriteIncidents ? <li>Assign, acknowledge and resolve incidents, as you</li> : null}
+            {canRunSre ? <li>Start AI SRE triage, investigations and evidence briefs, which use AI credits</li> : null}
           </ul>
           <p className="text-muted-foreground">
-            It cannot change anything, run tests, or read secrets and variable values. It sees only what you can
-            see in that project, and you can disconnect it at any time.
+            It cannot {canWriteIncidents || canRunSre ? "change anything else, " : "change anything, "}run tests, or read
+            secrets and variable values. It can only do what your role allows in that project, and you can
+            disconnect it at any time.
           </p>
         </div>
 
