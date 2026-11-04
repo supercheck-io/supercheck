@@ -33,6 +33,8 @@ describe("new relic provider", () => {
   it("selects the US or EU endpoint", () => {
     expect(newRelicGraphqlUrl({})).toBe("https://api.newrelic.com/graphql");
     expect(newRelicGraphqlUrl({ region: "EU" })).toBe("https://api.eu.newrelic.com/graphql");
+    expect(newRelicGraphqlUrl({ region: "US" })).toBe("https://api.newrelic.com/graphql");
+    expect(() => newRelicGraphqlUrl({ region: "eu-west" })).toThrow("must be us or eu");
   });
 
   it("sends the NerdGraph request with API-Key auth and a bound variable", async () => {

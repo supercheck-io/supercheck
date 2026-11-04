@@ -26,10 +26,10 @@ const STRIP_TIME_CLAUSE =
   /\b(?:since|until)\b\s+(?:'[^']*'|"[^"]*"|\d+(?:\.\d+)?\s+[a-z]+\s+ago|\d+|[a-z]+(?:\s+ago)?)/gi;
 
 export function newRelicGraphqlUrl(credential: ProviderContext['credential']) {
-  const region = credentialText(credential, ['region'])?.toLowerCase();
-  return region === 'eu'
-    ? 'https://api.eu.newrelic.com/graphql'
-    : 'https://api.newrelic.com/graphql';
+  const region = credentialText(credential, ['region'])?.trim().toLowerCase();
+  if (region === 'eu') return 'https://api.eu.newrelic.com/graphql';
+  if (!region || region === 'us') return 'https://api.newrelic.com/graphql';
+  throw new Error('invalid credentials: New Relic region must be us or eu');
 }
 
 function nerdGraphAccess(ctx: ProviderContext) {
