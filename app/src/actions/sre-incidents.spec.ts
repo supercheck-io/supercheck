@@ -21,7 +21,8 @@ jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 jest.mock("@/lib/sre/incident-notifier", () => ({ notifyIncidentEvent: jest.fn(async () => undefined) }));
 jest.mock("@/lib/sre/incident-watchers", () => ({ watchIncident: jest.fn(async () => undefined), isWatchingIncident: jest.fn(async () => false) }));
 jest.mock("@/sre/lib/session-store", () => ({ listSreConversations: jest.fn().mockResolvedValue([]) }));
-jest.mock("@/sre/lib/triage-automation", () => ({ maybeRunAutomaticSreTriage: jest.fn() }));
+jest.mock("@/sre/lib/auto-investigate", () => ({ maybeAutoInvestigateOnOpen: jest.fn(async () => ({ handled: false })) }));
+jest.mock("@/sre/lib/triage-automation", () => ({ maybeRunAutomaticSreTriage: jest.fn(async () => ({ attempted: false, reason: "disabled" })) }));
 jest.mock("@/sre/lib/feature-gates", () => ({ isSreInvestigationAgentEnabled: jest.fn(() => true), isSreAlertCorrelationEnabled: jest.fn(() => false) }));
 
 import { db } from "@/utils/db";
@@ -265,6 +266,8 @@ describe("createSreIncidentFromAlert severity", () => {
     const result = await createSreIncidentFromAlert({ alertHistoryId: "00000000-0000-4000-8000-000000000009" });
     expect(result.success).toBe(true);
     expect(values).toContainEqual(expect.objectContaining({ title: expect.any(String), severity: "sev1" }));
+    // A new incident is offered to the project's automatic investigation (a no-op unless the project opted in).
+    expect(jest.requireMock("@/sre/lib/auto-investigate").maybeAutoInvestigateOnOpen).toHaveBeenCalled();
   });
 });
 
@@ -351,6 +354,9 @@ describe("createManualSreIncident default assignee", () => {
     const result = await createManualSreIncident({ title: "Checkout down", severity: "sev2" } as never);
     expect(result.success).toBe(true);
     expect(incidentValues[0]).toMatchObject({ createdByUserId: "creator-1", assigneeUserId: "creator-1" });
+    expect(jest.requireMock("@/sre/lib/auto-investigate").maybeAutoInvestigateOnOpen).toHaveBeenCalledWith(
+      expect.objectContaining({ incidentId: "incident-1", userId: "creator-1" }),
+    );
     expect(jest.requireMock("@/lib/sre/incident-watchers").watchIncident).toHaveBeenCalledWith(expect.anything(), "incident-1", "creator-1");
     expect(jest.requireMock("@/lib/sre/incident-notifier").notifyIncidentEvent).toHaveBeenCalledWith(
       expect.objectContaining({ incidentId: "incident-1", event: "created", actorUserId: "creator-1" }),

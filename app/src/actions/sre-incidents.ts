@@ -72,6 +72,7 @@ import {
 import { linkedAlertFields } from "@/lib/sre/incident-alert-snapshot";
 import { notifyIncidentEvent } from "@/lib/sre/incident-notifier";
 import { isWatchingIncident, watchIncident } from "@/lib/sre/incident-watchers";
+import { maybeAutoInvestigateOnOpen } from "@/sre/lib/auto-investigate";
 import { listMyFeedbackForRun, type MyFeedback } from "@/lib/sre/investigation-feedback";
 import { readStoredHypotheses, type SreInvestigationHypothesis } from "@/sre/lib/investigation-output";
 import { readStoredSteps, type SreInvestigationStep } from "@/sre/lib/investigation-trace";
@@ -1331,6 +1332,8 @@ export async function createManualSreIncident(
       actorUserId: userId,
       assigneeUserId: userId,
     }).catch(() => undefined);
+    // Project opt-in only; runs in the background and never blocks creating the incident.
+    void maybeAutoInvestigateOnOpen({ organizationId, projectId: project.id, incidentId: incident.id, userId }).catch(() => undefined);
 
     revalidatePath("/incidents");
     revalidatePath(`/incidents/${incident.id}`);
@@ -2073,7 +2076,11 @@ export async function createSreIncidentFromAlert(
       alertStatus,
     });
 
-    revalidatePath("/incidents");
+    // Project opt-in; instance-wide automatic triage above has priority when it already ran.
+    if (!triage.attempted && !result.existing && alertStatus !== "resolved") {
+      void maybeAutoInvestigateOnOpen({ organizationId, projectId: project.id, incidentId: result.incident.id, userId }).catch(() => undefined);
+    }
+
     revalidatePath("/incidents");
     revalidatePath(`/incidents/${result.incident.id}`);
 

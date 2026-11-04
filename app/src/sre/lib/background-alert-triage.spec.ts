@@ -21,6 +21,7 @@ jest.mock("@/lib/sre/incident-lifecycle", () => ({
 }));
 jest.mock("@/lib/status-page-reconciliation", () => ({ linkStatusPageIncidentsToSreIncident: jest.fn().mockResolvedValue([]) }));
 jest.mock("@/sre/lib/triage-runner", () => ({ runSreIncidentTriage: jest.fn() }));
+jest.mock("@/sre/lib/auto-investigate", () => ({ maybeAutoInvestigateOnOpen: jest.fn().mockResolvedValue({ handled: false }) }));
 
 const selectQueue: unknown[][] = [];
 const inserts: unknown[] = [];
@@ -145,6 +146,17 @@ describe("processSreBackgroundAlertTriageJob", () => {
       freshIncidentQueue();
       expect(await processSreBackgroundAlertTriageJob(JOB)).toEqual({ success: true, skipped: true, reason: "ai_not_configured" });
       expect(insertedIncident()).toBeDefined();
+      expect(runSreIncidentTriage).not.toHaveBeenCalled();
+    });
+
+    it("hands a new incident to the project's automatic investigation and skips the instance-wide triage", async () => {
+      const { maybeAutoInvestigateOnOpen } = jest.requireMock("@/sre/lib/auto-investigate");
+      maybeAutoInvestigateOnOpen.mockResolvedValueOnce({ handled: true });
+      mockAutomatic.mockReturnValue(true);
+      selectQueue.push([alertRow()]);
+      freshIncidentQueue();
+      expect(await processSreBackgroundAlertTriageJob(JOB)).toEqual({ success: true, skipped: true, reason: "auto_investigation" });
+      expect(maybeAutoInvestigateOnOpen).toHaveBeenCalledWith(expect.objectContaining({ incidentId: "new-id", userId: null }));
       expect(runSreIncidentTriage).not.toHaveBeenCalled();
     });
 

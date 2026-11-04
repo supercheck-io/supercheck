@@ -40,6 +40,7 @@ import { alertIncidentTitle } from "@/lib/sre/alert-labels";
 import { linkStatusPageIncidentsToSreIncident } from "@/lib/status-page-reconciliation";
 import { notifyIncidentEvent } from "@/lib/sre/incident-notifier";
 import { watchIncident } from "@/lib/sre/incident-watchers";
+import { maybeAutoInvestigateOnOpen } from "@/sre/lib/auto-investigate";
 import { runSreIncidentTriage } from "@/sre/lib/triage-runner";
 import { db } from "@/utils/db";
 
@@ -91,7 +92,8 @@ export type SreBackgroundAlertTriageResult =
         | "recovery_handled"
         | "recovered_before_triage"
         | "ai_disabled"
-        | "ai_not_configured";
+        | "ai_not_configured"
+        | "auto_investigation";
     }
   | {
       success: false;
@@ -830,6 +832,15 @@ export async function processSreBackgroundAlertTriageJob(
   if (incident.alreadyTriaged) {
     return { success: true, skipped: true, reason: "already_triaged" };
   }
+
+  // The project's own opt-in (SEV1-2 full investigation, SEV3-4 triage) takes over from the instance-wide triage below.
+  const auto = await maybeAutoInvestigateOnOpen({
+    organizationId: incident.organizationId,
+    projectId: incident.projectId,
+    incidentId: incident.incidentId,
+    userId: null,
+  });
+  if (auto.handled) return { success: true, skipped: true, reason: "auto_investigation" };
 
   // Incidents open regardless; AI triage is the optional part on top.
   if (!isSreAutomaticTriageEnabled()) {
