@@ -7,7 +7,7 @@ icon: ShieldCheck
 ## You stay in control
 
 - **You approve each connection** and choose the single project it can read.
-- **Read-only.** There is no tool that writes, triggers runs, starts AI SRE work or consumes quota.
+- **Read-only by default.** Tools that change incidents (`mcp:incidents:write`) or start AI SRE work (`mcp:sre`) exist only when the app asked for that scope and you approved it. Nothing creates, edits or deletes tests, monitors, jobs or variables, and nothing triggers runs.
 - **Disconnect works immediately.** Remove an app under **Account**, **Connected apps**.
 - **Your role applies on every call.** Access is re-checked for each request, not only when you connect, so these take effect at once:
   - you disconnect the app
@@ -20,7 +20,7 @@ icon: ShieldCheck
 | Property | Value |
 |---|---|
 | Protocol | OAuth 2.1 with PKCE (S256) and resource indicators |
-| Scope | `mcp:read` (plus `offline_access` for refresh) |
+| Scopes | `mcp:read` (always), optional `mcp:incidents:write` and `mcp:sre`, and `offline_access` for refresh. An optional tool works only while both your approval and the token carry its scope, and your role still allows the action |
 | Access token | 15 minutes, bound to this server's URL |
 | Refresh token | 30 days, rotated on use |
 | Client registration | Dynamic registration, or Client ID Metadata Documents. Operators can require metadata documents only |

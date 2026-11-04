@@ -17,7 +17,7 @@ Every command is `supercheck <group> <command>`. Run `supercheck <command> --hel
 | [Monitors](#monitors) | `monitor list/get/status/results/stats/create/update/delete` |
 | [Variables](#variables), [Tags](#tags) | `var list/get/set/upload/download/delete`, `tag list/create/delete` |
 | [Analytics](#analytics) | `analytics playwright/k6` |
-| [Tokens and projects](#tokens-and-projects) | `token list/create/enable/disable/revoke`, `project list` |
+| [Tokens and projects](#tokens-and-projects) | `token list/create/enable/disable/revoke`, `project list/members` |
 | [Notification providers](#notification-providers) | `notification list/get/create/update/delete/test` |
 | [Alerts and audit](#alerts--audit) | `alert history`, `audit` |
 | [AI SRE](#ai-sre) | `incident`, `sre`, `service` |
@@ -60,7 +60,7 @@ Config-aware commands (for example `config`, `diff`, `deploy`, `pull`, `validate
 </Accordion>
 <Accordion title="Terminal output details" id="investigation-status-and-terminal-output">
 
-Use `--wide` for unrestricted table values or `--json` for complete structured payloads. `--no-color` and `NO_COLOR` disable colors. Pipes have no colors or spinners. Interactive stream connections show elapsed waiting time; GET streams retry one failed initial connection. Writes and POST streams are not replayed. Ctrl+C exits 130; stream idle timeouts exit 5.
+Use `--wide` for unrestricted table values or `--json` for complete structured payloads. `--no-color` and `NO_COLOR` disable colors. Pipes have no colors or spinners, and closing a pipe early (`supercheck ... | head`) ends the command quietly. Interactive stream connections show elapsed waiting time; GET streams retry one failed initial connection. Writes and POST streams are not replayed. Ctrl+C exits 130; stream idle timeouts exit 5.
 
 `config print` uses indented JSON in human mode, with secret variable values masked. Test create/update summaries omit the script blob; use `test get <id> --include-script` to read decoded source.
 
@@ -581,8 +581,9 @@ supercheck audit --search "deploy"
 | `token enable <id>` / `token disable <id>` | Enable or disable a token | — |
 | `token revoke <id>` | Permanently revoke a token | `--force` (skip confirmation) |
 | `project list` | List projects visible to the token | — |
+| `project members [projectId]` | List members and roles of a project (default: the current one) | — |
 
-Organization administration (members, invitations, project creation) rejects CLI tokens and is available in the dashboard only. Tokens are project-scoped, so `project list` shows only the token's project.
+Changing members, invitations and project creation rejects CLI tokens and is available in the dashboard only. Tokens are project-scoped, so `project list` shows only the token's project.
 
 ---
 
