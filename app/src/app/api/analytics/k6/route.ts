@@ -9,7 +9,7 @@ import {
 } from "@/lib/dashboard/run-outcomes";
 import { subDays } from "date-fns";
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
-import { requireAuthContext, isAuthError } from '@/lib/auth-context';
+import { requireAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-context';
 
 /**
  * K6 Analytics API
@@ -359,7 +359,7 @@ export async function GET(request: NextRequest) {
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : 'Authentication required' },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     console.error("K6 Analytics API error:", error instanceof Error ? error.message : 'Unknown error');

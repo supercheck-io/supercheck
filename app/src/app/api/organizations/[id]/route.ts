@@ -1,7 +1,7 @@
 import { isUuid } from "@/lib/uuid";
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserOrgRole } from '@/lib/rbac/middleware';
-import { requireUserAuthContext, isAuthError } from '@/lib/auth-context';
+import { requireUserAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-context';
 import { db } from '@/utils/db';
 import { organization, member, projects, session } from '@/db/schema';
 import { eq, and, count } from 'drizzle-orm';
@@ -96,7 +96,7 @@ export async function GET(
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : 'Authentication required' },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     console.error('Failed to get organization:', error);
@@ -209,7 +209,7 @@ export async function PUT(
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : 'Authentication required' },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     console.error('Failed to update organization:', error);
@@ -303,7 +303,7 @@ export async function DELETE(
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : 'Authentication required' },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     console.error('Failed to delete organization:', error);

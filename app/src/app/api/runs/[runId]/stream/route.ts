@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/utils/db';
 import { runs, projects } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
-import { requireAuthContext, isAuthError } from '@/lib/auth-context';
+import { requireAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-context';
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { getRedisConnection, buildRedisOptions } from '@/lib/queue';
 import { createLogger } from '@/lib/logger/index';
@@ -308,7 +308,7 @@ export async function GET(request: NextRequest, context: RunStreamContext) {
     if (isAuthError(error)) {
       return new Response(
         JSON.stringify({ error: error instanceof Error ? error.message : 'Authentication required' }),
-        { status: 401, headers: { 'Content-Type': 'application/json' } }
+        { status: authErrorStatus(error), headers: { 'Content-Type': 'application/json' } }
       );
     }
     sseLogger.error({ err: error }, 'Error setting up SSE stream');

@@ -1,7 +1,7 @@
 import { isUuid } from "@/lib/uuid";
 import { NextRequest, NextResponse } from 'next/server';
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
-import { requireAuthContext, isAuthError } from '@/lib/auth-context';
+import { requireAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-context';
 import { db } from '@/utils/db';
 import { runs, jobs, projects } from '@/db/schema';
 import { and, eq } from 'drizzle-orm';
@@ -78,7 +78,7 @@ export async function GET(
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : 'Authentication required' },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     

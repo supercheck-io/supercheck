@@ -5,7 +5,7 @@ import { generateProxyUrl } from "@/lib/asset-proxy";
 import { db } from "@/utils/db";
 import { statusPages } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
-import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { requirePermissions } from "@/lib/rbac/middleware";
 import { v4 as uuidv4 } from "uuid";
 import { sniffImageType } from "@/lib/image-sniff";
@@ -206,7 +206,7 @@ export async function POST(request: Request, context: RouteContext) {
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     if (error instanceof Error && error.message.includes("Access denied")) {

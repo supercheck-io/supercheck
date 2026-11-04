@@ -22,7 +22,7 @@ import {
 } from "@/lib/api-key-rate-limiter";
 import { hashApiKey } from "@/lib/security/api-key-hash";
 import { isCredentialOwnerActive } from "@/lib/security/credential-owner";
-import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { checkPermissionWithContext, hasPermissionForUser } from "@/lib/rbac/middleware";
 import {
   assertProjectSupportsBrowser,
@@ -723,7 +723,7 @@ export async function GET(
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     console.error("Error getting trigger information:", error);

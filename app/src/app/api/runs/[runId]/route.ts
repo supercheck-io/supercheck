@@ -5,7 +5,7 @@ import { db } from "@/utils/db";
 import { runs, reports, jobs, jobTests, projects } from "@/db/schema";
 import { eq, and, count, sql, inArray } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
-import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 
 // Get run handler - scoped to current project
 export async function GET(
@@ -97,7 +97,7 @@ export async function GET(
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     console.error("Error fetching run:", error);
@@ -122,7 +122,7 @@ export async function DELETE(
     return NextResponse.json(result, { status });
   } catch (error) {
     if (isAuthError(error)) {
-      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+      return NextResponse.json({ error: "Authentication required" }, { status: authErrorStatus(error) });
     }
     console.error("Error deleting run:", error);
     return NextResponse.json({ success: false, error: "Failed to delete run" }, { status: 500 });

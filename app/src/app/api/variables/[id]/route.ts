@@ -14,7 +14,7 @@ import { db } from "@/utils/db";
 import { projectVariables } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
-import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { encryptValue } from "@/lib/encryption";
 import { getS3Client } from "@/lib/s3-proxy";
@@ -73,7 +73,7 @@ export async function GET(
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     console.error("Error fetching variable:", error);
@@ -251,7 +251,7 @@ export async function PUT(
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     if (isUniqueViolation(error)) {
@@ -355,7 +355,7 @@ export async function DELETE(
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     console.error("Error deleting variable:", error);

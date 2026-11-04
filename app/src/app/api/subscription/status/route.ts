@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireUserAuthContext, isAuthError } from "@/lib/auth-context";
+import { requireUserAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { subscriptionService } from "@/lib/services/subscription-service";
 import { getUserOrgRole } from "@/lib/rbac/middleware";
 import { getTrialSummary } from "@/lib/execution/trial-limits";
@@ -65,7 +65,7 @@ export async function GET(request: NextRequest) {
               ? error.message
               : "Authentication required",
         },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     console.error("Error fetching subscription status:", error);

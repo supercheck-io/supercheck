@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { updateOrganizationNameSchema } from '@/lib/validations/organization';
-import { requireUserAuthContext, isAuthError } from '@/lib/auth-context';
+import { requireUserAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-context';
 import { getSelectableOrganizations } from '@/lib/session';
 import { requireSameOriginRequest } from '@/lib/security/same-origin';
 import { createOrganization, OrganizationManagementError } from '@/lib/services/organization-management';
@@ -25,7 +25,7 @@ export async function GET() {
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : 'Authentication required' },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     console.error('Failed to get organizations:', error);

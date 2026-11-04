@@ -3,7 +3,7 @@ import { db } from "@/utils/db";
 import { reports, runs, projects } from "@/db/schema";
 import { desc, eq, or, sql } from "drizzle-orm";
 import { hasPermissionForUser } from "@/lib/rbac/middleware";
-import { requireUserAuthContext, isAuthError } from "@/lib/auth-context";
+import { requireUserAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { getPermissionResource, resolveAccessContext } from "@/lib/test-results-access";
 import { buildReportUrl, getReportsOrigin, mintReportToken } from "@/lib/reports-origin";
 
@@ -23,7 +23,7 @@ export async function POST(request: Request) {
     authContext = await requireUserAuthContext();
   } catch (error) {
     if (isAuthError(error)) {
-      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+      return NextResponse.json({ error: "Authentication required" }, { status: authErrorStatus(error) });
     }
     throw error;
   }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
-import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import { requireAuthContext, isAuthError, authErrorResponse } from "@/lib/auth-context";
 import { isUuid } from "@/lib/uuid";
 import {
   getRequirementDto,
@@ -16,12 +16,6 @@ type RouteParams = { params: Promise<{ id: string }> };
 
 const notFound = () =>
   NextResponse.json({ error: "Requirement not found" }, { status: 404 });
-
-const authFailure = (error: unknown) =>
-  NextResponse.json(
-    { error: error instanceof Error ? error.message : "Authentication required" },
-    { status: 401 }
-  );
 
 async function readJson(request: NextRequest): Promise<unknown | undefined> {
   try {
@@ -63,7 +57,7 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
     if (!linked) return notFound();
     return NextResponse.json({ tests: linked });
   } catch (error) {
-    if (isAuthError(error)) return authFailure(error);
+    if (isAuthError(error)) return authErrorResponse(error);
     console.error("Error fetching linked tests:", error);
     return NextResponse.json({ error: "Failed to fetch linked tests" }, { status: 500 });
   }
@@ -93,7 +87,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const result = await linkTestsRecord(ctx, id, Array.from(new Set(parsed.data.testIds)));
     return respondWithRequirement(ctx, id, result);
   } catch (error) {
-    if (isAuthError(error)) return authFailure(error);
+    if (isAuthError(error)) return authErrorResponse(error);
     console.error("Error linking tests:", error);
     return NextResponse.json({ error: "Failed to link tests" }, { status: 500 });
   }
@@ -125,7 +119,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     const result = await unlinkTestsRecord(ctx, id, Array.from(new Set(parsed.data.testIds)));
     return respondWithRequirement(ctx, id, result);
   } catch (error) {
-    if (isAuthError(error)) return authFailure(error);
+    if (isAuthError(error)) return authErrorResponse(error);
     console.error("Error unlinking tests:", error);
     return NextResponse.json({ error: "Failed to unlink tests" }, { status: 500 });
   }

@@ -4,7 +4,7 @@ import { db } from "@/utils/db";
 import { tests, testTags, tags } from "@/db/schema";
 import { desc, eq, and, inArray, ilike, count } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
-import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { subscriptionService, SubscriptionAccessDeniedError } from "@/lib/services/subscription-service";
 import type { TestType } from "@/db/schema/types";
 import { validateTestScript, normalizeTestType } from "@/lib/script-type-validator";
@@ -193,7 +193,7 @@ export async function GET(request: NextRequest) {
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     console.error("Error fetching tests:", error);
@@ -316,7 +316,7 @@ export async function POST(request: NextRequest) {
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     if (error instanceof SubscriptionAccessDeniedError) {

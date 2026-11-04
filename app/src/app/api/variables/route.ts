@@ -15,7 +15,7 @@ import { db } from "@/utils/db";
 import { projectVariables } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
-import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { encryptValue } from "@/lib/encryption";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { createVariableSchema } from "@/lib/validations/variable";
@@ -49,7 +49,7 @@ export async function GET() {
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     console.error("Error fetching variables:", error);
@@ -156,7 +156,7 @@ export async function POST(request: NextRequest) {
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     console.error("Error creating variable:", error);

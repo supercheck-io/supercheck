@@ -2,7 +2,7 @@ import { isUuid } from "@/lib/uuid";
 import { NextRequest, NextResponse } from 'next/server';
 import { hasPermissionForUser, getUserOrgRole } from '@/lib/rbac/middleware';
 import { resolveEffectiveProjectRole } from '@/lib/rbac/effective-project-role';
-import { requireUserAuthContext, isAuthError } from '@/lib/auth-context';
+import { requireUserAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-context';
 import { db } from '@/utils/db';
 import { projects, projectMembers, jobs, tests, monitors, statusPages } from '@/db/schema';
 import { eq, and, ne, count, isNotNull } from 'drizzle-orm';
@@ -106,7 +106,7 @@ export async function GET(
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : 'Authentication required' },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     console.error('Failed to get project:', error);
@@ -210,7 +210,7 @@ export async function PUT(
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : 'Authentication required' },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     if (isUniqueViolation(error)) {
@@ -353,7 +353,7 @@ export async function DELETE(
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : 'Authentication required' },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     console.error('Failed to delete project:', error);

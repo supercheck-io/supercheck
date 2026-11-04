@@ -7,7 +7,7 @@ import { logAuditEvent } from "@/lib/audit-logger";
 import { checkPermissionWithContext, isImpersonatedSession } from "@/lib/rbac/middleware";
 import { createLogger } from "@/lib/logger/pino-config";
 import { hashApiKey, generateApiKey, getApiKeyPrefix } from "@/lib/security/api-key-hash";
-import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { capExpiryToCliToken, clampExpiry } from "@/lib/auth/cli-token-expiry";
 import crypto from "crypto";
 
@@ -104,7 +104,7 @@ export async function GET(
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     logger.error({ err: error }, 'Error fetching job API keys');
@@ -315,7 +315,7 @@ export async function POST(
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     logger.error({ err: error }, 'Error creating API key');

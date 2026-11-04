@@ -2,7 +2,7 @@ import { isUuid } from "@/lib/uuid";
 import { NextRequest, NextResponse } from 'next/server';
 import { hasPermissionForUser } from '@/lib/rbac/middleware';
 import { getUserProjectRole } from '@/lib/session';
-import { requireUserAuthContext, isAuthError } from '@/lib/auth-context';
+import { requireUserAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-context';
 import { createLogger } from "@/lib/logger/index";
 
 const logger = createLogger({ module: "monitor-permissions-api" }) as {
@@ -97,7 +97,7 @@ export async function GET(
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : 'Authentication required' },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
 

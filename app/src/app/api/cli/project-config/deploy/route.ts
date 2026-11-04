@@ -10,7 +10,7 @@ import {
   type PlainNotificationProviderConfig,
 } from "@/db/schema";
 import { db } from "@/utils/db";
-import { isAuthError, requireAuthContext, type AuthContext } from "@/lib/auth-context";
+import { isAuthError, requireAuthContext, type AuthContext, authErrorStatus } from "@/lib/auth-context";
 import {
   analyzeCliProjectConfigDeployRequest,
   type CliProjectConfigDeployError,
@@ -183,7 +183,7 @@ export async function POST(request: NextRequest) {
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 },
+        { status: authErrorStatus(error) },
       );
     }
 

@@ -11,6 +11,7 @@ jest.mock("@/utils/db", () => ({
 }));
 
 jest.mock("@/lib/auth-context", () => ({
+  authErrorStatus: (e: unknown) => ((e as { status?: number })?.status === 403 ? 403 : 401),
   requireUserAuthContext: jest.fn(),
   isAuthError: jest.fn(),
 }));
@@ -150,6 +151,16 @@ describe("Audit API Route", () => {
     expect(response.status).toBe(401);
     expect(body.success).toBe(false);
     expect(body.error).toBe("Authentication required");
+  });
+
+  it("returns 403 when the AuthError is a permission denial", async () => {
+    mockRequireUserAuthContext.mockRejectedValue(Object.assign(new Error("CLI access revoked"), { status: 403 }));
+    mockIsAuthError.mockReturnValue(true);
+
+    const response = await GET(new NextRequest("http://localhost/api/audit"));
+
+    expect(response.status).toBe(403);
+    expect((await response.json()).error).toBe("CLI access revoked");
   });
 
   it("escapes LIKE wildcards in search and orders by an id tiebreaker", async () => {

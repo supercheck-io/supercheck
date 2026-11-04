@@ -7,7 +7,7 @@ jest.mock("@/lib/rbac/super-admin", () => ({ isSuperAdmin: jest.fn(async () => f
 jest.mock("@/lib/session", () => ({ getActiveOrganization: jest.fn() }));
 
 import { db } from "@/utils/db";
-import { AuthError, authErrorStatus, requireAuthContext } from "./auth-context";
+import { AuthError, authErrorResponse, authErrorStatus, requireAuthContext } from "./auth-context";
 
 const rows = (result: unknown[]) =>
   ({
@@ -37,6 +37,13 @@ describe("a valid CLI token whose owner lost access", () => {
     const error = await caught();
     expect(error).toBeInstanceOf(AuthError);
     expect(authErrorStatus(error)).toBe(403);
+  });
+
+  it("authErrorResponse keeps the 403 and message", async () => {
+    const response = authErrorResponse(new AuthError("no access", 403));
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: "no access" });
+    expect(authErrorResponse(new AuthError("expired")).status).toBe(401);
   });
 
   it("stays a 401 when the token is unknown or its project is gone", async () => {

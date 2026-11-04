@@ -4,7 +4,7 @@ import { db } from "@/utils/db";
 import { apikey, jobs } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
-import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { z } from "zod";
 
 const updateKeySchema = z.object({
@@ -91,7 +91,7 @@ export async function PATCH(
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     console.error("Error updating API key:", error);
@@ -153,7 +153,7 @@ export async function DELETE(
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     console.error("Error deleting API key:", error);

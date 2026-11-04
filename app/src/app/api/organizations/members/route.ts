@@ -4,7 +4,7 @@ import { member, user as userTable, invitation, projectMembers, projects } from 
 import { eq, desc, and, or } from 'drizzle-orm';
 import { withEffectiveStatus } from '@/lib/invitation-project-info';
 import { getUserOrgRole } from '@/lib/rbac/middleware';
-import { requireUserAuthContext, isAuthError } from '@/lib/auth-context';
+import { requireUserAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-context';
 import { Role } from '@/lib/rbac/permissions';
 
 export async function GET() {
@@ -126,7 +126,7 @@ export async function GET() {
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : 'Authentication required' },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     console.error('Error fetching organization members:', error);

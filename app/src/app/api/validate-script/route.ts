@@ -5,7 +5,7 @@ import {
   validateTestScript,
 } from "@/lib/script-type-validator";
 import { isK6Script } from "@/lib/k6-validator";
-import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { checkAdminRateLimit } from "@/lib/session-security";
 
 export async function POST(request: NextRequest) {
@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
                 ? error.message
                 : "Authentication required",
           },
-          { status: 401 },
+          { status: authErrorStatus(error) },
         );
       }
       throw error;

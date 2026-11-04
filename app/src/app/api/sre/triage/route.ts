@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
-import { isAuthError, requireAuthContext } from "@/lib/auth-context";
+import { isAuthError, requireAuthContext, authErrorStatus } from "@/lib/auth-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { sreDailyTokenLimitResponse } from "@/lib/sre/sre-daily-token-limit";
 import { checkSreTriageRateLimit } from "@/lib/sre/sre-rate-limiter";
@@ -16,7 +16,7 @@ const triageRequestSchema = z.object({
 function authErrorResponse(error: unknown) {
   return NextResponse.json(
     { error: isAuthError(error) ? "Authentication required" : "Unable to authorize SRE triage" },
-    { status: isAuthError(error) ? 401 : 500 },
+    { status: isAuthError(error) ? authErrorStatus(error) : 500 },
   );
 }
 

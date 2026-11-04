@@ -21,7 +21,7 @@ import {
 } from "@/lib/monitor-scheduler";
 import { MonitorJobData } from "@/lib/queue";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
-import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { logAuditEvent } from "@/lib/audit-logger";
 import {
   createS3CleanupService,
@@ -131,7 +131,7 @@ export async function GET(
           error:
             error instanceof Error ? error.message : "Authentication required",
         },
-        { status: 401 },
+        { status: authErrorStatus(error) },
       );
     }
     logger.error({ err: error, monitorId: id }, "Error fetching monitor");
@@ -675,7 +675,7 @@ export async function PUT(
           error:
             error instanceof Error ? error.message : "Authentication required",
         },
-        { status: 401 },
+        { status: authErrorStatus(error) },
       );
     }
     logger.error({ err: error, monitorId: id }, "Error updating monitor");
@@ -914,7 +914,7 @@ export async function PATCH(
           error:
             error instanceof Error ? error.message : "Authentication required",
         },
-        { status: 401 },
+        { status: authErrorStatus(error) },
       );
     }
     logger.error(
@@ -949,7 +949,7 @@ export async function DELETE(
     return NextResponse.json(result, { status });
   } catch (error) {
     if (isAuthError(error)) {
-      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+      return NextResponse.json({ error: "Authentication required" }, { status: authErrorStatus(error) });
     }
     console.error("Error deleting monitor:", error);
     return NextResponse.json({ success: false, error: "Failed to delete monitor" }, { status: 500 });

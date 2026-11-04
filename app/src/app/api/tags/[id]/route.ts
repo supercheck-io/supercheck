@@ -4,7 +4,7 @@ import { db } from '@/utils/db';
 import { tags, testTags, requirementTags } from '@/db/schema';
 import { eq, count, and } from 'drizzle-orm';
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
-import { requireAuthContext, isAuthError } from '@/lib/auth-context';
+import { requireAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-context';
 import { createLogger } from '@/lib/logger/index';
 
 const logger = createLogger({ module: 'tags' }) as {
@@ -105,7 +105,7 @@ export async function DELETE(
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : 'Authentication required' },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     logger.error({ err: error }, 'Error deleting tag');
@@ -159,7 +159,7 @@ export async function GET(
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : 'Authentication required' },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     logger.error({ err: error }, 'Error fetching tag');
@@ -241,7 +241,7 @@ export async function PUT(
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : 'Authentication required' },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     logger.error({ err: error }, 'Error updating tag');

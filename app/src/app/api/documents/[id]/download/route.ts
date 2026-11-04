@@ -3,7 +3,7 @@ import { NextRequest } from "next/server";
 import { db } from "@/utils/db";
 import { requirementDocuments } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
-import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { fetchFromS3 } from "@/lib/s3-proxy";
 import { buildContentDisposition } from "@/lib/content-disposition";
@@ -70,7 +70,7 @@ export async function GET(
   } catch (error) {
     if (isAuthError(error)) {
       return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "Authentication required" }), {
-        status: 401,
+        status: authErrorStatus(error),
         headers: { "Content-Type": "application/json" },
       });
     }

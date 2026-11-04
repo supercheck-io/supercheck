@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
-import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import { requireAuthContext, isAuthError, authErrorResponse } from "@/lib/auth-context";
 import { isUuid } from "@/lib/uuid";
 import {
   deleteRequirementRecord,
@@ -14,12 +14,6 @@ type RouteParams = { params: Promise<{ id: string }> };
 
 const notFound = () =>
   NextResponse.json({ error: "Requirement not found" }, { status: 404 });
-
-const authFailure = (error: unknown) =>
-  NextResponse.json(
-    { error: error instanceof Error ? error.message : "Authentication required" },
-    { status: 401 }
-  );
 
 export async function GET(_request: NextRequest, { params }: RouteParams) {
   try {
@@ -35,7 +29,7 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
     if (!requirement) return notFound();
     return NextResponse.json({ requirement });
   } catch (error) {
-    if (isAuthError(error)) return authFailure(error);
+    if (isAuthError(error)) return authErrorResponse(error);
     console.error("Error fetching requirement:", error);
     return NextResponse.json({ error: "Failed to fetch requirement" }, { status: 500 });
   }
@@ -82,7 +76,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     if (!requirement) return notFound();
     return NextResponse.json({ requirement });
   } catch (error) {
-    if (isAuthError(error)) return authFailure(error);
+    if (isAuthError(error)) return authErrorResponse(error);
     console.error("Error updating requirement:", error);
     return NextResponse.json({ error: "Failed to update requirement" }, { status: 500 });
   }
@@ -111,7 +105,7 @@ export async function DELETE(_request: NextRequest, { params }: RouteParams) {
     }
     return NextResponse.json({ success: true });
   } catch (error) {
-    if (isAuthError(error)) return authFailure(error);
+    if (isAuthError(error)) return authErrorResponse(error);
     console.error("Error deleting requirement:", error);
     return NextResponse.json({ error: "Failed to delete requirement" }, { status: 500 });
   }

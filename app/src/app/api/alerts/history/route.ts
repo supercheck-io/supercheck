@@ -3,7 +3,7 @@ import { db } from "@/utils/db";
 import { alertHistory, jobs, monitors, type AlertDeliveryMetadata } from "@/db/schema";
 import { and, eq, sql } from "drizzle-orm";
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
-import { requireAuthContext, isAuthError } from '@/lib/auth-context';
+import { requireAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-context';
 import { enqueueSreAlertTriageJob } from '@/sre/lib/background-alert-triage-queue';
 import { isUuid } from '@/lib/uuid';
 import { checkSreAlertHistoryWriteRateLimit } from '@/lib/sre/sre-rate-limiter';
@@ -231,7 +231,7 @@ export async function GET(request: NextRequest) {
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     console.error("[AlertHistory] Error fetching alert history:", error);
@@ -269,7 +269,7 @@ export async function POST(request: NextRequest) {
       if (isAuthError(error)) {
         return NextResponse.json(
           { error: error instanceof Error ? error.message : "Authentication required" },
-          { status: 401 }
+          { status: authErrorStatus(error) }
         );
       }
       return NextResponse.json(

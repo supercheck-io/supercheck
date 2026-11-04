@@ -5,6 +5,7 @@ jest.mock("@/utils/db", () => ({ db: { query: { statusPages: { findFirst: (...a:
 const requireAuthContext = jest.fn();
 class FakeAuthError extends Error {}
 jest.mock("@/lib/auth-context", () => ({
+  authErrorStatus: (e: unknown) => ((e as { status?: number })?.status === 403 ? 403 : 401),
   requireAuthContext: (...a: unknown[]) => requireAuthContext(...a),
   isAuthError: (e: unknown) => e instanceof FakeAuthError,
 }));

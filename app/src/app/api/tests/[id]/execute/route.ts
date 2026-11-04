@@ -10,7 +10,7 @@ import {
 } from "@/lib/location-registry";
 import { eq, and, inArray } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
-import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import {
   addK6TestToQueue,
   addTestToQueue,
@@ -258,7 +258,7 @@ export async function POST(request: NextRequest, context: ExecuteContext) {
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : "Authentication required" },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
 

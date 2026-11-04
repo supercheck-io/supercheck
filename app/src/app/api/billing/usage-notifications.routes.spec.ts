@@ -1,6 +1,7 @@
 /** @jest-environment node */
 const mockAuth = jest.fn();
 jest.mock("@/lib/auth-context", () => ({
+  authErrorStatus: (e: unknown) => ((e as { status?: number })?.status === 403 ? 403 : 401),
   requireUserAuthContext: () => mockAuth(),
   isAuthError: (error: unknown) =>
     error instanceof Error && error.name === "AuthError",

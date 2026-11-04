@@ -5,7 +5,7 @@ import { db } from "@/utils/db";
 import { tests, jobTests, jobs, monitors, TEST_TYPE_VALUES } from "@/db/schema";
 import { eq, and, count, sql } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
-import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { requireSameOriginRequest } from "@/lib/security/same-origin";
 import {
@@ -88,7 +88,7 @@ export async function GET(
           error:
             error instanceof Error ? error.message : "Authentication required",
         },
-        { status: 401 },
+        { status: authErrorStatus(error) },
       );
     }
     console.error("Error fetching test:", error);
@@ -257,7 +257,7 @@ export async function PUT(
           error:
             error instanceof Error ? error.message : "Authentication required",
         },
-        { status: 401 },
+        { status: authErrorStatus(error) },
       );
     }
     console.error(`Error updating test ${testId}:`, error);
@@ -415,7 +415,7 @@ export async function DELETE(
           error:
             error instanceof Error ? error.message : "Authentication required",
         },
-        { status: 401 },
+        { status: authErrorStatus(error) },
       );
     }
     console.error("Error deleting test:", error);

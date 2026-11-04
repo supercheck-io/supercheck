@@ -7,7 +7,7 @@ import { eq, and, gte, inArray, sql } from "drizzle-orm";
 import { checkTeamMemberLimit } from "@/lib/middleware/plan-enforcement";
 import { insertWithinPlanLimit } from "@/lib/middleware/plan-limit-lock";
 import { getUserOrgRole } from "@/lib/rbac/middleware";
-import { requireUserAuthContext, isAuthError } from "@/lib/auth-context";
+import { requireUserAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { Role } from "@/lib/rbac/permissions";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { EmailService } from "@/lib/email-service";
@@ -162,7 +162,7 @@ export async function DELETE(
               ? error.message
               : "Authentication required",
         },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     console.error("Error cancelling invitation:", error);
@@ -386,7 +386,7 @@ export async function POST(
               ? error.message
               : "Authentication required",
         },
-        { status: 401 }
+        { status: authErrorStatus(error) }
       );
     }
     console.error("Error resending invitation:", error);
