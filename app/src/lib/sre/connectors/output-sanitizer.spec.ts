@@ -96,3 +96,19 @@ describe("redactConnectorText", () => {
     expect(Date.now() - started).toBeLessThan(500);
   });
 });
+
+describe("redactConnectorText connection strings", () => {
+  it.each([
+    ["postgres://user:s3cret@db:5432/x", "postgres://user:[REDACTED]@db:5432/x"],
+    ["postgres://user:s3cret@db.example.com:5432/x", "postgres://user:[REDACTED]@db.example.com:5432/x"],
+    ["redis://admin:hunter2@cache.internal/0", "redis://admin:[REDACTED]@cache.internal/0"],
+  ])("redacts only the password in %s", (input, expected) => {
+    expect(redactConnectorText(input)).toBe(expected);
+  });
+
+  it("leaves URLs without credentials unchanged", () => {
+    for (const url of ["https://example.com:8443/path?a=1", "http://db:5432/x"]) {
+      expect(redactConnectorText(url)).toBe(url);
+    }
+  });
+});

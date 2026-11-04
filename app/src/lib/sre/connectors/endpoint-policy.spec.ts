@@ -5,7 +5,7 @@ jest.mock("node:dns/promises", () => ({
 }));
 
 import { lookup } from "node:dns/promises";
-import { assertEndpointAllowedForExecution, isPrivateConnectorAddress } from "./endpoint-policy";
+import { assertEndpointAllowedForExecution, isMetadataOrLinkLocalAddress, isPrivateConnectorAddress } from "./endpoint-policy";
 
 const mockLookup = lookup as jest.MockedFunction<typeof lookup>;
 
@@ -84,5 +84,39 @@ describe("connector endpoint policy", () => {
         true,
       ),
     ).rejects.toThrow("cannot include credentials");
+  });
+});
+
+describe("self-hosted metadata blocking", () => {
+  it.each([
+    "169.254.169.254", "100.100.100.200", "168.63.129.16", "192.0.0.192",
+    "fe80::1", "fd00:ec2::254", "::ffff:169.254.169.254", "::ffff:a9fe:a9fe",
+  ])("blocks %s", (address) => {
+    expect(isMetadataOrLinkLocalAddress(address)).toBe(true);
+  });
+
+  it.each(["127.0.0.1", "10.0.0.5", "192.168.1.1", "::1", "8.8.8.8", "::ffff:10.0.0.1"])(
+    "allows %s",
+    (address) => {
+      expect(isMetadataOrLinkLocalAddress(address)).toBe(false);
+    },
+  );
+
+  it("rejects self-hosted endpoints that resolve to metadata, allows private", async () => {
+    process.env.SELF_HOSTED = "true";
+    mockLookup.mockResolvedValueOnce([{ address: "169.254.169.254", family: 4 }] as never);
+    await expect(assertEndpointAllowedForExecution("http://prom.internal:9090", false)).rejects.toThrow("metadata");
+    mockLookup.mockResolvedValueOnce([{ address: "10.0.0.5", family: 4 }] as never);
+    await expect(assertEndpointAllowedForExecution("http://prom.internal:9090", false)).resolves.toBeUndefined();
+  });
+});
+
+describe("cloud DNS failures", () => {
+  it("reports an unresolvable host plainly instead of raw getaddrinfo text", async () => {
+    delete process.env.SELF_HOSTED;
+    mockLookup.mockRejectedValueOnce(Object.assign(new Error("getaddrinfo ENOTFOUND nope.example.com"), { code: "ENOTFOUND" }));
+    await expect(assertEndpointAllowedForExecution("https://nope.example.com", false)).rejects.toThrow(
+      "Could not resolve host nope.example.com",
+    );
   });
 });

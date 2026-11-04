@@ -5,7 +5,12 @@ import { z } from 'zod';
 import { getServiceVersion } from '../common/version';
 import { requestPrivateAgentEndpoint } from './private-agent-endpoint';
 import { executeObservabilityProviderJob } from './providers/provider-executor';
-import { executeMcpJob, McpError, mcpOperationSchema } from './mcp-client';
+import {
+  executeMcpJob,
+  McpError,
+  mcpOperationSchema,
+  redactMcpText,
+} from './mcp-client';
 import { isIP } from 'node:net';
 import { executeKnowledgeJob } from './private-agent-knowledge';
 
@@ -2040,7 +2045,7 @@ export async function processLeasedJob(
   } catch (error) {
     const errorCode =
       error instanceof Error
-        ? error.message.slice(0, 100)
+        ? redactMcpText(error.message).slice(0, 100)
         : 'private_agent_job_error';
     await submitResult(config, leased, 'failed', undefined, errorCode);
     console.warn(`Private Agent job failed: ${errorCode}`);
@@ -2066,7 +2071,7 @@ export async function startPrivateAgentRunner(): Promise<void> {
       lastError,
     ).catch((error) => {
       console.warn(
-        `Private Agent heartbeat failed: ${error instanceof Error ? error.message : String(error)}`,
+        `Private Agent heartbeat failed: ${redactMcpText(error instanceof Error ? error.message : String(error))}`,
       );
     });
   }, config.heartbeatIntervalMs);
@@ -2094,7 +2099,7 @@ export async function startPrivateAgentRunner(): Promise<void> {
       activeJobCount = 0;
       lastError =
         error instanceof Error
-          ? error.message.slice(0, 100)
+          ? redactMcpText(error.message).slice(0, 100)
           : 'private_agent_error';
       console.warn(`Private Agent job loop failed: ${lastError}`);
       await new Promise((resolve) =>

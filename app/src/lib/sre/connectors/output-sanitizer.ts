@@ -7,6 +7,8 @@ import {
 import { safeEvidenceSourceUri } from "@/lib/sre/evidence-source-uri";
 
 const REDACTION_PATTERNS: Array<[RegExp, string]> = [
+  // scheme://user:password@host keeps scheme, user and host; must run before the email pattern, which needs a dotted host.
+  [/\b([a-z][a-z0-9+.-]{0,30}:\/\/[^\s:/@]{1,200}:)[^\s@/]{1,500}(@)/gi, "$1[REDACTED]$2"],
   // Provider payloads commonly serialize secrets as quoted JSON fields.
   [/("(?:token|api[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|secret|password|passwd|pwd)"\s*:\s*)"(?:\\.|[^"\\])*"/gi, '$1"[REDACTED]"'],
   [/([?&](?:token|api[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|secret|password)=)[^&#\s]+/gi, "$1[REDACTED]"],

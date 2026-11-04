@@ -61,6 +61,7 @@ describe("Private Agent job lease route", () => {
             orderBy: jest.fn(() => ({
               limit: jest.fn().mockResolvedValue([]),
             })),
+            limit: jest.fn().mockResolvedValue([{ id: "cred" }]),
           })),
         })),
       })),
@@ -127,7 +128,7 @@ describe("Private Agent job lease route", () => {
       })),
       select: jest.fn(() => ({
         from: jest.fn(() => ({
-          where: jest.fn(() => ({ orderBy: jest.fn(() => ({ limit: jest.fn().mockResolvedValue([]) })) })),
+          where: jest.fn(() => ({ orderBy: jest.fn(() => ({ limit: jest.fn().mockResolvedValue([]) })), limit: jest.fn().mockResolvedValue([{ id: "cred" }]) })),
         })),
       })),
     };
@@ -140,5 +141,36 @@ describe("Private Agent job lease route", () => {
     expect(updateSets).toContainEqual(expect.objectContaining({ status: "timed_out", errorCode: "queued_too_long" }));
     expect(updateSets).toContainEqual(expect.objectContaining({ status: "failed", errorCode: "connector_disabled" }));
     expect(updateSets).toContainEqual(expect.objectContaining({ status: "failed", errorCode: "connector_reassigned" }));
+  });
+
+  it("leases nothing when the credential was revoked after authentication", async () => {
+    const selectedWork = jest.fn();
+    const sets: Array<Record<string, unknown>> = [];
+    const tx = {
+      update: jest.fn(() => ({
+        set: jest.fn((values: Record<string, unknown>) => {
+          sets.push(values);
+          return { where: jest.fn().mockResolvedValue([]) };
+        }),
+      })),
+      select: jest.fn(() => ({
+        from: jest.fn(() => ({
+          where: jest.fn(() => ({
+            limit: jest.fn().mockResolvedValue([]),
+            orderBy: selectedWork,
+          })),
+        })),
+      })),
+    };
+    mockDb.transaction.mockImplementation(async (cb: (t: typeof tx) => Promise<unknown>) => cb(tx));
+    mockDb.update.mockReturnValue({ set: jest.fn(() => ({ where: jest.fn().mockResolvedValue([]) })) });
+    const response = await POST(new NextRequest("http://localhost/api/private-agents/jobs/lease", {
+      method: "POST",
+      body: JSON.stringify({ waitMs: 0 }),
+    }));
+    expect(await response.json()).toEqual({ job: null });
+    // Only the agent heartbeat touch runs; no job state is changed.
+    expect(sets.every((values) => !("status" in values && values.status !== undefined))).toBe(true);
+    expect(selectedWork).not.toHaveBeenCalled();
   });
 });

@@ -8,7 +8,7 @@ import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 import { NextRequest } from "next/server";
 
-import { privateAgentJobs } from "@/db/schema";
+import { privateAgentCredentials, privateAgentJobs } from "@/db/schema";
 import { hashApiKey } from "@/lib/security/api-key-hash";
 import { hashConnectorPayload } from "@/lib/sre/connectors";
 
@@ -66,8 +66,10 @@ function update(table: unknown) {
 
 jest.mock("@/utils/db", () => {
   const select = () => ({
-    from: () => ({
+    from: (table: unknown) => ({
       where: (condition: SQL) => {
+        // The lease transaction re-checks that the agent credential is not revoked.
+        if (table === privateAgentCredentials) return { limit: async () => [{ id: "cred-1" }] };
         const rows = () => {
           const params = paramsOf(condition);
           const job = state.job;

@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, ne } from "drizzle-orm";
 import { z } from "zod";
 
 import { privateAgentCredentials, privateAgents } from "@/db/schema";
@@ -137,7 +137,13 @@ export async function POST(request: NextRequest) {
           ),
           updatedAt: now,
         })
-        .where(and(eq(privateAgents.id, agent.id), eq(privateAgents.registrationTokenHash, registrationTokenHash)))
+        .where(
+          and(
+            eq(privateAgents.id, agent.id),
+            eq(privateAgents.registrationTokenHash, registrationTokenHash),
+            ne(privateAgents.status, "disabled"),
+          ),
+        )
         .returning();
 
       if (!updated || updated.id !== agent.id) {

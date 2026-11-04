@@ -378,6 +378,12 @@ export function ConnectorAdminView({
 
       if (result.connector?.lastValidationStatus === "valid") {
         toast.success(result.message);
+      } else if (
+        result.connector?.lastValidationStatus === "policy_blocked" &&
+        result.connector.privateAgent
+      ) {
+        // A healthy Private Agent cannot be probed server-side; this is guidance, not a failure.
+        toast.info(result.message);
       } else {
         toast.warning(result.message);
       }
