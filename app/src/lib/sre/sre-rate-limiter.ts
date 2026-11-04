@@ -294,6 +294,17 @@ export async function checkSrePostmortemRateLimit(
 }
 
 /**
+ * Rate limit AI status update drafts (one bounded model call each).
+ * Per-user, per-incident: max 10 per hour.
+ */
+export async function checkSreStatusDraftRateLimit(
+  userId: string,
+  incidentId: string,
+): Promise<SreRateLimitResult> {
+  return checkSreRateLimit(`status-draft:${userId}:${incidentId}`, 10, 60 * 60 * 1000);
+}
+
+/**
  * Rate limit alert history writes (each accepted row can open or join an incident).
  * Per-user: max 60 per minute.
  */

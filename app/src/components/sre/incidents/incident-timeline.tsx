@@ -2,9 +2,10 @@
 
 import { useId, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
+import { Loader2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
+import { draftSreStatusUpdate } from "@/actions/sre-status-update-draft";
 import { addSreIncidentUpdate, type SreIncidentTimelineItem, type SreIncidentTimelineRefs } from "@/actions/sre-incident-lifecycle";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -131,9 +132,22 @@ export function IncidentTimeline({
   const [text, setText] = useState("");
   const [pending, setPending] = useState(false);
   const [postToStatusPage, setPostToStatusPage] = useState(false);
+  const [drafting, setDrafting] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const events = query.data?.success ? query.data.events : [];
   const refs = query.data?.success ? query.data.refs : undefined;
+
+  // Only fills the box: the person edits it and presses Add note.
+  const draft = async () => {
+    if (drafting || pending) return;
+    setDrafting(true);
+    const result = await draftSreStatusUpdate({ incidentId }).catch(() => null).finally(() => setDrafting(false));
+    if (!result?.success) {
+      toast.error(result?.error ?? "Could not draft an update");
+      return;
+    }
+    setText(result.text);
+  };
 
   const post = async () => {
     if (pending || !text.trim()) return;
@@ -178,12 +192,18 @@ export function IncidentTimeline({
               Add note
             </Button>
           </div>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-muted-foreground" onClick={draft} disabled={drafting || pending}>
+            {drafting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+            Draft customer update with AI
+          </Button>
           {canPostToStatusPage && (
             <label className="flex items-center gap-2 text-sm text-muted-foreground">
               <Checkbox checked={postToStatusPage} onCheckedChange={(checked) => setPostToStatusPage(checked === true)} disabled={pending} />
               Also post to status page (subscribers are emailed)
             </label>
           )}
+          </div>
           </div>
         )}
         <div>

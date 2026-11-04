@@ -684,6 +684,26 @@ export async function applySourceRecovery(
   return { resolved, recovered };
 }
 
+/** When the incident's source recovered, or null if it has not or a failure has returned since. */
+export async function getSourceRecoveredAt(incidentId: string): Promise<string | null> {
+  const [last] = await db
+    .select({
+      state: sql<string>`${sreIncidentTimelineEvents.eventData}->>'state'`,
+      recoveredAt: sql<string | null>`${sreIncidentTimelineEvents.eventData}->>'recoveredAt'`,
+      createdAt: sreIncidentTimelineEvents.createdAt,
+    })
+    .from(sreIncidentTimelineEvents)
+    .where(
+      and(
+        eq(sreIncidentTimelineEvents.incidentId, incidentId),
+        sql`${sreIncidentTimelineEvents.eventData}->>'state' in ('recovered', 'failure_returned')`,
+      ),
+    )
+    .orderBy(desc(sreIncidentTimelineEvents.createdAt))
+    .limit(1);
+  return last?.state === "recovered" ? (last.recoveredAt ?? new Date(last.createdAt).toISOString()) : null;
+}
+
 /**
  * The open incident already tracking this source's up/down failure, if any. A new
  * failure joins it even when its alert identity differs (for example incidents

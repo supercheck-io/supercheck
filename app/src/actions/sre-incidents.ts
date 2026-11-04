@@ -63,6 +63,7 @@ import {
   announceSystemTransition,
   findOpenIncidentForSource,
   getDefaultAssigneeId,
+  getSourceRecoveredAt,
   noteFailureReturned,
   INCIDENT_REOPEN_WINDOW_MS,
   RECOVERABLE_ALERT_TYPES,
@@ -215,6 +216,8 @@ export type SreIncidentChatHistory = {
 export type SreIncidentDetail = {
   /** Whether the current user watches this incident. */
   watching?: boolean;
+  /** Set when the source's checks passed again after the incident opened and no failure has returned since. */
+  recoveredAt?: string | null;
   publicIncident?: { id: string; statusPageId: string; status: string } | null;
   incident: SreIncidentListItem & {
     rootCauseSummary: string | null;
@@ -1150,11 +1153,13 @@ export async function getSreIncidentDetails(
     const [publicIncident] = incident.statusPageIncidentId ? await db.select({ id: statusPageIncidents.id, statusPageId: statusPageIncidents.statusPageId, status: statusPageIncidents.status }).from(statusPageIncidents).innerJoin(statusPages, eq(statusPages.id, statusPageIncidents.statusPageId)).where(and(eq(statusPageIncidents.id, incident.statusPageIncidentId), eq(statusPages.organizationId, organizationId), eq(statusPages.projectId, project.id))) : [];
 
     const watching = await isWatchingIncident(incident.id, userId);
+    const recoveredAt = await getSourceRecoveredAt(incident.id);
 
     return {
       success: true,
       detail: {
         watching,
+        recoveredAt,
         publicIncident: publicIncident ?? null,
         linkedAlerts,
         currentUserId: userId,

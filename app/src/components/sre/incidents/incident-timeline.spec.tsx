@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { toast } from "sonner";
 
 import { addSreIncidentUpdate } from "@/actions/sre-incident-lifecycle";
+import { draftSreStatusUpdate } from "@/actions/sre-status-update-draft";
 
 import { aiFindingHeadline, describeTimelineEvent, IncidentTimeline } from "./incident-timeline";
 
@@ -10,6 +11,7 @@ let mockQuery: { isPending: boolean; isError?: boolean; data?: unknown; refetch?
 
 jest.mock("sonner", () => ({ toast: { error: jest.fn(), warning: jest.fn() } }));
 jest.mock("@/actions/sre-incident-lifecycle", () => ({ addSreIncidentUpdate: jest.fn() }));
+jest.mock("@/actions/sre-status-update-draft", () => ({ draftSreStatusUpdate: jest.fn() }));
 jest.mock("@tanstack/react-query", () => ({ useQueryClient: () => ({ invalidateQueries: mockInvalidate }) }));
 jest.mock("@/hooks/use-sre", () => ({ useSreIncidentTimeline: () => mockQuery }));
 jest.mock("@/hooks/use-project-context", () => ({ useProjectContext: () => ({ projectId: "project-1" }) }));
@@ -165,6 +167,24 @@ describe("IncidentTimeline", () => {
     fireEvent.click(screen.getByLabelText(/Also post to status page/));
     fireEvent.click(screen.getByRole("button", { name: "Add note" }));
     await waitFor(() => expect(addUpdate).toHaveBeenCalledWith({ incidentId: "i1", text: "Customers affected", postToStatusPage: true }));
+  });
+
+  it("fills the box with an AI draft for the person to edit, and posts nothing by itself", async () => {
+    (draftSreStatusUpdate as jest.Mock).mockResolvedValue({ success: true, text: "We are investigating elevated errors." });
+    render(<IncidentTimeline incidentId="i1" canUpdate />);
+    fireEvent.click(screen.getByRole("button", { name: /Draft customer update with AI/ }));
+    await waitFor(() => expect(screen.getByPlaceholderText("Add a note for your team...")).toHaveValue("We are investigating elevated errors."));
+    expect(draftSreStatusUpdate).toHaveBeenCalledWith({ incidentId: "i1" });
+    expect(addUpdate).not.toHaveBeenCalled();
+  });
+
+  it("toasts and leaves the box alone when drafting is refused", async () => {
+    (draftSreStatusUpdate as jest.Mock).mockResolvedValue({ success: false, error: "AI drafts need a paid plan" });
+    render(<IncidentTimeline incidentId="i1" canUpdate />);
+    fireEvent.change(screen.getByPlaceholderText("Add a note for your team..."), { target: { value: "mine" } });
+    fireEvent.click(screen.getByRole("button", { name: /Draft customer update with AI/ }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("AI drafts need a paid plan"));
+    expect(screen.getByPlaceholderText("Add a note for your team...")).toHaveValue("mine");
   });
 
   it("warns when the note was saved but the status page post failed", async () => {

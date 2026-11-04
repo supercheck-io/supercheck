@@ -48,6 +48,7 @@ import {
   assignIncident,
   applySourceRecovery,
   getDefaultAssigneeId,
+  getSourceRecoveredAt,
   reopenRecentlyAutoResolved,
   resolveIncident,
 } from "./incident-lifecycle";
@@ -423,5 +424,21 @@ describe("announceSystemTransition", () => {
     (notifyIncidentEvent as jest.Mock).mockRejectedValueOnce(new Error("notify down"));
     await expect(announce("resolved")).resolves.toBeUndefined();
     expect(logAuditEvent).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("getSourceRecoveredAt", () => {
+  it("returns the recovery time while it is the latest source event", async () => {
+    selectQueue.push([{ state: "recovered", recoveredAt: "2026-06-24T12:00:00.000Z", createdAt: new Date("2026-06-24T12:01:00Z") }]);
+    expect(await getSourceRecoveredAt(incidentId)).toBe("2026-06-24T12:00:00.000Z");
+    selectQueue.push([{ state: "recovered", recoveredAt: null, createdAt: new Date("2026-06-24T12:01:00Z") }]);
+    expect(await getSourceRecoveredAt(incidentId)).toBe("2026-06-24T12:01:00.000Z");
+  });
+
+  it("is null when nothing recovered or a failure returned afterwards", async () => {
+    selectQueue.push([]);
+    expect(await getSourceRecoveredAt(incidentId)).toBeNull();
+    selectQueue.push([{ state: "failure_returned", recoveredAt: null, createdAt: new Date() }]);
+    expect(await getSourceRecoveredAt(incidentId)).toBeNull();
   });
 });
