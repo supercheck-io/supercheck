@@ -28,7 +28,7 @@ import { requireProjectContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { failStaleSreInvestigationRunsForIncident } from "@/sre/lib/stale-run-recovery";
 import { announceSystemTransition, findOpenIncidentForSource, reopenRecentlyAutoResolved } from "@/lib/sre/incident-lifecycle";
-import { createSreIncidentFromAlert, getSreIncidentDetails, getSreIncidents, updateSreIncident } from "./sre-incidents";
+import { createManualSreIncident, createSreIncidentFromAlert, getSreIncidentDetails, getSreIncidents, updateSreIncident } from "./sre-incidents";
 
 function selectRows(rows: unknown[]) {
   return Object.assign(Promise.resolve(rows), {
@@ -312,5 +312,29 @@ describe("createSreIncidentFromAlert join/reopen rules", () => {
     const result = await createSreIncidentFromAlert({ alertHistoryId: "00000000-0000-4000-8000-000000000009" });
     expect(result).toMatchObject({ success: true, existing: true, incident: { id: "inc-open" } });
     expect(announceSystemTransition).not.toHaveBeenCalled();
+  });
+});
+
+describe("createManualSreIncident default assignee", () => {
+  it("assigns a hand-created incident to its creator", async () => {
+    jest.mocked(requireProjectContext).mockResolvedValue({
+      userId: "creator-1", organizationId: "org-1",
+      project: { id: "project-1", name: "Prod", organizationId: "org-1", isDefault: true, userRole: "project_editor" },
+    });
+    jest.mocked(checkPermissionWithContext).mockReturnValue(true);
+    const incidentValues: Record<string, unknown>[] = [];
+    (db.transaction as jest.Mock).mockImplementation(async (callback) => callback({
+      execute: jest.fn(),
+      select: () => selectRows([{ nextIncidentNumber: 4 }]),
+      insert: () => ({
+        values: (values: Record<string, unknown>) => {
+          incidentValues.push(values);
+          return { returning: async () => [{ id: "incident-1", incidentNumber: 4, title: "t" }] };
+        },
+      }),
+    }));
+    const result = await createManualSreIncident({ title: "Checkout down", severity: "sev2" } as never);
+    expect(result.success).toBe(true);
+    expect(incidentValues[0]).toMatchObject({ createdByUserId: "creator-1", assigneeUserId: "creator-1" });
   });
 });

@@ -1261,6 +1261,8 @@ export async function createManualSreIncident(
           severity: parsed.data.severity,
           status: "triggered",
           createdByUserId: userId,
+          // A hand-created incident belongs to its creator until someone reassigns it.
+          assigneeUserId: userId,
           createdAt: now,
           updatedAt: now,
         })
