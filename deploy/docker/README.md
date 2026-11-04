@@ -90,7 +90,7 @@ When you are running the app locally on `http://localhost:3000`, Supercheck keep
 | `COMPOSE_FILE` | Compose files to combine, for example `docker-compose.yml:compose.dns01.yml` | `docker-compose.yml` |
 | `ACME_DNS_PROVIDER` | DNS provider code for `compose.dns01.yml`; its credentials go in `traefik-dns.env` | - |
 | `DB_BIND_ADDR`, `REDIS_BIND_ADDR`, `RUSTFS_BIND_ADDR` | Host address PostgreSQL, Redis and RustFS publish on. Set to a private address only for [Multi-Server](https://supercheck.io/docs/app/deployment/multi-server) workers | `127.0.0.1` |
-| `DB_HOST_PORT`, `REDIS_HOST_PORT` | Host port for PostgreSQL and Redis when the default is taken | `5432`, `6379` |
+| `APP_HOST_PORT`, `RUSTFS_HOST_PORT`, `DB_HOST_PORT`, `REDIS_HOST_PORT` | Host port for the app, RustFS, PostgreSQL and Redis in `docker-compose.yml` when the default is taken. A moved app port also moves the local URL (`http://localhost:<port>`). Workers on other servers then use the moved RustFS port in `S3_ENDPOINT` | `3000`, `9000`, `5432`, `6379` |
 | `WORKER_REPLICAS` | Number of worker containers (worker-side scaling knob) | `1` |
 | `RUNNING_CAPACITY` | App-side gate: max concurrent test runs (set equal to `WORKER_REPLICAS`) | `1` |
 | `QUEUED_CAPACITY` | App-side gate: max queued test runs before new submissions are rejected | `10` |

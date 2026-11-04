@@ -190,11 +190,12 @@ restore() {
 
   say "Starting Supercheck"
   dc up -d --wait --wait-timeout 300
-  if curl -fsS --max-time 10 http://127.0.0.1:3000/api/health >/dev/null 2>&1; then
+  local port; port="$(sed -n 's/^APP_HOST_PORT=//p' .env | tail -n1 | tr -cd '0-9')"; port="${port:-3000}"
+  if curl -fsS --max-time 10 "http://127.0.0.1:${port}/api/health" >/dev/null 2>&1; then
     say "Restore finished; the health check passed."
     echo "Queued jobs in Redis were not restored; runs queued before the backup will not resume."
   else
-    echo "Restore finished, but http://127.0.0.1:3000/api/health did not answer yet. Check: sudo docker compose logs --tail=100 app" >&2
+    echo "Restore finished, but http://127.0.0.1:${port}/api/health did not answer yet. Check: sudo docker compose logs --tail=100 app" >&2
   fi
 }
 
