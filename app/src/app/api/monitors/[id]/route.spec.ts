@@ -49,6 +49,9 @@ jest.mock("@/lib/location-registry", () => ({
 jest.mock("@/lib/worker-registry", () => ({ getActiveWorkerQueueNames: jest.fn() }));
 
 import { NextRequest, NextResponse } from "next/server";
+jest.mock("@/lib/sre/connectors/endpoint-policy", () => ({
+  lookupBounded: jest.fn(async () => [{ address: "93.184.216.34", family: 4 }]),
+}));
 import { DELETE, PATCH, PUT } from "./route";
 import { deleteScheduledMonitor, scheduleMonitor } from "@/lib/monitor-scheduler";
 

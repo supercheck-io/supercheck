@@ -45,6 +45,9 @@ jest.mock("@/lib/execution/trial-interval-response", () => ({
   monitorResumeBlockedResponse: jest.fn().mockResolvedValue(null),
 }));
 
+jest.mock("@/lib/sre/connectors/endpoint-policy", () => ({
+  lookupBounded: jest.fn(async () => [{ address: "93.184.216.34", family: 4 }]),
+}));
 import { POST } from "./route";
 import { SubscriptionAccessDeniedError } from "@/lib/services/subscription-service";
 

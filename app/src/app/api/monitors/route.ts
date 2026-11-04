@@ -39,6 +39,7 @@ import {
 import type { LocationConfig } from "@/db/schema";
 import { createLogger } from "@/lib/logger/index";
 import { validateMonitorConfiguration } from "@/lib/monitor-validation";
+import { validateMonitorTargetAddress } from "@/lib/monitor-target-policy";
 import { normalizeMonitorAlertConfig, providerIdsOutsideProject, syntheticFrequencyError } from "@/lib/monitor-write";
 import { loadCreators } from "@/lib/creators";
 
@@ -410,6 +411,10 @@ export async function POST(req: NextRequest) {
     });
     if (!configurationValidation.success) {
       return NextResponse.json(configurationValidation, { status: 400 });
+    }
+    const targetValidation = await validateMonitorTargetAddress({ type: rawData.type, target: rawData.target });
+    if (!targetValidation.success) {
+      return NextResponse.json(targetValidation, { status: 400 });
     }
 
     // Prepare alert configuration - ensure it's properly structured and saved to alertConfig column
@@ -801,6 +806,12 @@ export async function PUT(req: NextRequest) {
     });
     if (!configurationValidation.success) {
       return NextResponse.json(configurationValidation, { status: 400 });
+    }
+    if (updateData.target !== undefined || updateData.type !== undefined) {
+      const targetValidation = await validateMonitorTargetAddress({ type: updateData.type ?? monitorData[0].type, target: updateData.target ?? monitorData[0].target });
+      if (!targetValidation.success) {
+        return NextResponse.json(targetValidation, { status: 400 });
+      }
     }
 
     // Validate synthetic test monitor updates

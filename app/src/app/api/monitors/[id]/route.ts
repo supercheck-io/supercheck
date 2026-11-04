@@ -29,6 +29,7 @@ import {
 } from "@/lib/s3-cleanup";
 import { createLogger } from "@/lib/logger/index";
 import { validateMonitorConfiguration } from "@/lib/monitor-validation";
+import { validateMonitorTargetAddress } from "@/lib/monitor-target-policy";
 import {
   enabledAlertConfigError,
   normalizeMonitorAlertConfig,
@@ -232,6 +233,12 @@ export async function PUT(
     });
     if (!configurationValidation.success) {
       return NextResponse.json(configurationValidation, { status: 400 });
+    }
+    if (updateData.target !== undefined || updateData.type !== undefined) {
+      const targetValidation = await validateMonitorTargetAddress({ type: updateData.type ?? currentMonitor.type, target: updateData.target ?? currentMonitor.target });
+      if (!targetValidation.success) {
+        return NextResponse.json(targetValidation, { status: 400 });
+      }
     }
 
     // Re-check ownership whenever the test is supplied or the monitor becomes synthetic (a stored testId is not trusted).
@@ -811,6 +818,12 @@ export async function PATCH(
     });
     if (!configurationValidation.success) {
       return NextResponse.json(configurationValidation, { status: 400 });
+    }
+    if (updatePayload.target !== undefined || updatePayload.type !== undefined) {
+      const targetValidation = await validateMonitorTargetAddress({ type: updatePayload.type ?? currentMonitor.type, target: updatePayload.target ?? currentMonitor.target });
+      if (!targetValidation.success) {
+        return NextResponse.json(targetValidation, { status: 400 });
+      }
     }
 
     const patchType = updatePayload.type ?? currentMonitor.type;
