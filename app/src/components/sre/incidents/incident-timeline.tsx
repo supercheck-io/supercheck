@@ -14,6 +14,7 @@ import { UserCell } from "@/components/ui/user-cell";
 import { useSreIncidentTimeline } from "@/hooks/use-sre";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { getSreIncidentTimelineQueryKey } from "@/lib/sre/query-keys";
+import { getDisplayStatus } from "@/lib/sre/incident-status-display";
 import { stripEvidenceIdLists } from "@/sre/lib/investigation-output";
 
 const STATE_LABELS: Record<string, string> = {
@@ -52,8 +53,6 @@ export function aiFindingHeadline(value: unknown) {
   return `${cut.slice(0, cut.lastIndexOf(" ") > 300 ? cut.lastIndexOf(" ") : 400)}…`;
 }
 
-const humanize = (value: string) => value.replace(/_/g, " ");
-
 /** "A -> B" lines for the fields an edit changed; empty for events recorded before values were stored. */
 function describeEdit(data: Record<string, unknown>) {
   const previous = (data.previous ?? {}) as Record<string, unknown>;
@@ -63,7 +62,9 @@ function describeEdit(data: Record<string, unknown>) {
     const from = str(previous[key], 200);
     const to = str(current[key], 200);
     if (from && to && from !== to) {
-      lines.push(key === "title" ? `${label}: "${from}" → "${to}"` : `${label}: ${humanize(from)} → ${humanize(to)}`);
+      const show = (value: string) =>
+        key === "title" ? `"${value}"` : key === "status" ? getDisplayStatus(value as never, null).label : value.toUpperCase();
+      lines.push(`${label}: ${show(from)} → ${show(to)}`);
     }
   }
   if (previous.primaryServiceId !== undefined && previous.primaryServiceId !== current.primaryServiceId) {
@@ -96,7 +97,7 @@ export function describeTimelineEvent(
       return { title: STATE_LABELS[state], body: `${from} → ${to}` };
     }
     if (state === "alert_correlated") {
-      const alert = typeof data.alertEventId === "string" ? refs?.alerts[data.alertEventId] : undefined;
+      const alert = str(data.alertTitle, 200) ?? (typeof data.alertEventId === "string" ? refs?.alerts[data.alertEventId] : undefined);
       return { title: STATE_LABELS[state], body: alert ? `Linked: ${alert.slice(0, 200)}` : null };
     }
     return { title: STATE_LABELS[state] ?? "Status change", body: str(data.comment) ?? str(data.summary) };

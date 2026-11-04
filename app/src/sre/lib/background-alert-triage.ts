@@ -627,6 +627,8 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
             eventData: {
               state: "alert_correlated",
               alertEventId: alertEvent.id,
+              // Alert events are reused and retitled, so keep the name as it was when linked.
+              alertTitle: title.slice(0, 200),
               alertHistoryId: alert.id,
               score: correlation.score,
               signals: correlation.signals,

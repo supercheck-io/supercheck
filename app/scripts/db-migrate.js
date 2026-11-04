@@ -342,8 +342,6 @@ async function runDeferredMigrations(items = deferredMigrations) {
       ssl: getDatabaseSSLConfig(),
       onnotice: () => {},
     });
-    // A session SET, not a startup parameter: poolers reject unsupported startup parameters.
-    await setStatementTimeout(client, DEFERRED_STATEMENT_TIMEOUT_MS);
     for (const { file, content, hash } of items) {
       try {
         const [applied] = await client`SELECT id FROM "__drizzle_migrations" WHERE hash = ${hash}`;
@@ -354,6 +352,8 @@ async function runDeferredMigrations(items = deferredMigrations) {
         // No IF NOT EXISTS rewriting and no savepoints: the file is exactly what the author wrote.
         for (const statement of content.split("--> statement-breakpoint")) {
           if (statement.replace(/--[^\n]*/g, "").trim().length === 0) continue;
+          // A session SET, not a startup parameter (poolers reject those); repeated per statement in case the connection was replaced.
+          await setStatementTimeout(client, DEFERRED_STATEMENT_TIMEOUT_MS);
           await client.unsafe(statement.trim());
         }
         await client`

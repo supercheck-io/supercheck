@@ -31,7 +31,7 @@ describe("describeTimelineEvent before and after detail", () => {
 
   it("shows old and new values for an edit", () => {
     const event = { eventType: "state_change", eventData: { state: "incident_updated", previous: { title: "A", severity: "sev3", status: "investigating" }, current: { title: "B", severity: "sev1", status: "investigating" } } };
-    expect(describeTimelineEvent(event).body).toBe('Title: "A" → "B"\nSeverity: sev3 → sev1');
+    expect(describeTimelineEvent(event).body).toBe('Title: "A" → "B"\nSeverity: SEV3 → SEV1');
   });
 
   it("still renders an edit recorded without values", () => {
@@ -46,6 +46,12 @@ describe("describeTimelineEvent before and after detail", () => {
   it("names the correlated alert", () => {
     expect(describeTimelineEvent({ eventType: "state_change", eventData: { state: "alert_correlated", alertEventId: "a1" } }, refs).body).toBe("Linked: API latency high");
     expect(describeTimelineEvent({ eventType: "state_change", eventData: { state: "alert_correlated", alertEventId: "x" } }, refs).body).toBeNull();
+    expect(describeTimelineEvent({ eventType: "state_change", eventData: { state: "alert_correlated", alertEventId: "x", alertTitle: "Recorded name" } }, refs).body).toBe("Linked: Recorded name");
+  });
+
+  it("uses the user-facing status labels", () => {
+    const event = { eventType: "state_change", eventData: { state: "incident_updated", previous: { status: "user_applying_fix" }, current: { status: "verifying" } } };
+    expect(describeTimelineEvent(event).body).toBe("Status: Fixing → Monitoring");
   });
 });
 
