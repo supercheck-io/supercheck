@@ -71,7 +71,7 @@ type RunResponse = {
 // Below lg the page scrolls, so the report gets a viewport-relative height; at lg+ the
 // page is viewport-fit (data-fit-viewport) and the report fills the space under the header.
 const reportFitClass =
-  "h-[75svh] min-h-[420px] lg:h-auto lg:min-h-0 lg:flex-1";
+  "h-[75svh] min-h-[420px] lg:h-auto lg:min-h-[240px] lg:flex-1";
 
 export function RunDetails({
   run,
