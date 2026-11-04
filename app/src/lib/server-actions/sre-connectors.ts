@@ -1391,8 +1391,13 @@ export async function rotateSreConnectorCredential(
     const storedEndpoint = typeof connector.config?.endpointUrl === "string" ? connector.config.endpointUrl : null;
     let suppliedEndpoint: string | null = null;
     if (connector.type === "mcp" && parsed.data.endpointUrl) {
-      suppliedEndpoint = normalizeEndpointUrl(parsed.data.endpointUrl, "mcp");
-      await assertEndpointAllowedForExecution(suppliedEndpoint, true);
+      try {
+        suppliedEndpoint = normalizeEndpointUrl(parsed.data.endpointUrl, "mcp");
+        await assertEndpointAllowedForExecution(suppliedEndpoint, true);
+      } catch (error) {
+        // These messages describe the admin's own endpoint input and are safe to show.
+        return { success: false, error: error instanceof Error ? error.message : "Endpoint is not allowed" };
+      }
     }
     let carriedEndpoint: string | null = null;
     if (connector.type === "mcp") {
@@ -1419,6 +1424,13 @@ export async function rotateSreConnectorCredential(
     );
 
     await db.transaction(async (tx) => {
+      // Serialise with the lazy MCP endpoint migration, which also locks the connector row first when
+      // there is no credential row yet; otherwise both could insert one.
+      await tx
+        .select({ id: externalConnectors.id })
+        .from(externalConnectors)
+        .where(eq(externalConnectors.id, connector.id))
+        .for("update");
       await tx
         .delete(externalConnectorCredentials)
         .where(eq(externalConnectorCredentials.connectorId, connector.id));

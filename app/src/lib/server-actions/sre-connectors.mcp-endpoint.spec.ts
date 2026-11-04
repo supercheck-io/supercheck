@@ -5,6 +5,7 @@ const mockInserted: Array<Record<string, unknown>> = [];
 let mockSelectRows: unknown[] = [];
 const mockConnectorUpdates: Array<Record<string, unknown>> = [];
 let mockConnector: unknown;
+const mockLocked: string[] = [];
 jest.mock("server-only", () => ({}));
 jest.mock("next/cache", () => ({ revalidatePath: jest.fn() }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
@@ -14,6 +15,15 @@ jest.mock("@/lib/project-context", () => ({
 jest.mock("@/lib/rbac/middleware", () => ({ checkPermissionWithContext: () => true }));
 jest.mock("@/utils/db", () => {
   const tx = {
+    select: () => {
+      const chain: Record<string, unknown> = {};
+      for (const m of ["from", "where"]) chain[m] = () => chain;
+      chain.for = async () => {
+        mockLocked.push("connector");
+        return [{ id: "c1" }];
+      };
+      return chain;
+    },
     delete: () => ({ where: async () => undefined }),
     update: () => ({ set: (v: Record<string, unknown>) => (mockConnectorUpdates.push(v), { where: async () => undefined }) }),
     insert: () => ({
@@ -58,6 +68,7 @@ const base = {
 beforeEach(() => {
   mockInserted.length = 0;
   mockConnectorUpdates.length = 0;
+  mockLocked.length = 0;
   mockSelectRows = [];
 });
 
@@ -132,4 +143,20 @@ it("asks for the full endpoint URL when it is redacted and no credential holds i
     token: "new",
     endpointUrl: "https://mcp.example.com/mcp?apiKey=again",
   });
+});
+
+it("locks the connector row before replacing credentials on rotate", async () => {
+  const context = { organizationId: "o1", projectId: "p1", connectorId: "018f0000-0000-7000-8000-0000000000c1" };
+  mockConnector = { id: context.connectorId, organizationId: "o1", projectId: "p1", type: "mcp", status: "configured", config: { endpointUrl: "https://mcp.example.com/mcp" } };
+  await rotateSreConnectorCredential({ id: context.connectorId, credentialType: "bearer_token", value: { token: "new" } });
+  expect(mockLocked).toEqual(["connector"]);
+});
+
+it("returns the specific message for a rotate endpoint with a fragment or a non-http scheme", async () => {
+  const context = { connectorId: "018f0000-0000-7000-8000-0000000000c1" };
+  mockConnector = { id: context.connectorId, organizationId: "o1", projectId: "p1", type: "mcp", status: "configured", config: { endpointUrl: "https://mcp.example.com/mcp" } };
+  const rotate = (endpointUrl: string) =>
+    rotateSreConnectorCredential({ id: context.connectorId, credentialType: "bearer_token", value: { token: "new" }, endpointUrl });
+  expect(await rotate("https://mcp.example.com/mcp?k=1#frag")).toMatchObject({ success: false, error: "The endpoint URL must not include a fragment" });
+  expect(await rotate("ftp://mcp.example.com/mcp")).toMatchObject({ success: false, error: "Connector endpoint must use http or https" });
 });
