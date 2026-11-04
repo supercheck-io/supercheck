@@ -190,7 +190,10 @@ restore() {
 
   say "Starting Supercheck"
   dc up -d --wait --wait-timeout 300
-  local port; port="$(sed -n 's/^APP_HOST_PORT=//p' .env | tail -n1 | tr -cd '0-9')"; port="${port:-3000}"
+  # Shell value wins over .env, as in Compose; drop quotes, spaces and trailing comments.
+  local port; port="${APP_HOST_PORT:-$(sed -n 's/^APP_HOST_PORT=//p' .env | tail -n1)}"
+  port="${port%%#*}"; port="$(printf '%s' "$port" | tr -d "\"' \t\r")"
+  [[ "$port" =~ ^[0-9]+$ ]] || port=3000
   if curl -fsS --max-time 10 "http://127.0.0.1:${port}/api/health" >/dev/null 2>&1; then
     say "Restore finished; the health check passed."
     echo "Queued jobs in Redis were not restored; runs queued before the backup will not resume."

@@ -106,20 +106,51 @@ check_ports
 ''')
 
     def test_moved_app_and_rustfs_ports_are_checked(self):
-        output = self.run_shell(r'''printf 'APP_HOST_PORT=13000\nRUSTFS_HOST_PORT=19000\n' > "$COMPOSE_DIR/.env"
+        compose = 'echo "APP_HOST_PORT RUSTFS_HOST_PORT" > "$COMPOSE_DIR/docker-compose.yml"\n'
+        output = self.run_shell(compose + r'''printf 'APP_HOST_PORT=13000\nRUSTFS_HOST_PORT=19000\n' > "$COMPOSE_DIR/.env"
 port_in_use() { [[ "$1" == 19000 ]]; }
 docker() { :; }
 check_ports
 ''', 1)
         self.assertIn('Port 19000', output)
         self.assertIn('RUSTFS_HOST_PORT', output)
-        output = self.run_shell(r'''printf 'APP_HOST_PORT=13000\n' > "$COMPOSE_DIR/.env"
+        output = self.run_shell(compose + r'''printf 'APP_HOST_PORT=13000\n' > "$COMPOSE_DIR/.env"
+port_in_use() { [[ "$1" == 13000 ]]; }
+docker() { :; }
+check_ports
+''', 1)
+        self.assertIn('Port 13000', output)
+        output = self.run_shell(compose + r'''printf 'APP_HOST_PORT="13000" # moved\n' > "$COMPOSE_DIR/.env"
 port_in_use() { [[ "$1" == 3000 ]]; }
 docker() { :; }
 check_ports
 app_host_port
 ''')
         self.assertIn('13000', output)
+
+    def test_app_port_needs_a_compose_file_that_reads_it(self):
+        # An older release's Compose file still publishes 3000, so the installer must probe 3000.
+        output = self.run_shell(r'''echo 'ports: 3000' > "$COMPOSE_DIR/docker-compose.yml"
+printf 'APP_HOST_PORT=13000\n' > "$COMPOSE_DIR/.env"
+app_host_port
+''')
+        self.assertEqual(output.strip(), '3000')
+
+    def test_invalid_and_duplicate_ports_are_rejected(self):
+        compose = 'echo "APP_HOST_PORT RUSTFS_HOST_PORT" > "$COMPOSE_DIR/docker-compose.yml"\n'
+        for value in ('3001x', '0', '70000'):
+            with self.subTest(value=value):
+                output = self.run_shell(compose + f"export APP_HOST_PORT={value}\n" + r'''port_in_use() { false; }
+docker() { :; }
+check_ports
+''', 1)
+                self.assertIn('1 to 65535', output)
+        output = self.run_shell(compose + r'''export APP_HOST_PORT=9000
+port_in_use() { false; }
+docker() { :; }
+check_ports
+''', 1)
+        self.assertIn('Port 9000 is set for two', output)
 
     def test_generated_env_keeps_ports_moved_for_this_run(self):
         output = self.run_shell(r'''cd "$COMPOSE_DIR"

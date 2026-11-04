@@ -116,7 +116,7 @@ Allow about 10 minutes, mostly image downloads. Re-running is safe: it keeps you
 
 ### Open Supercheck
 
-The installer prints the URL: `https://<your-domain>` for a public install, or `http://localhost:3000` for a local one.
+The installer prints the URL: `https://<your-domain>` for a public install, or `http://localhost:3000` for a local one. If you moved the app port with `APP_HOST_PORT`, use that port instead of 3000 here and in the commands below.
 
 Port 3000 listens on the server only. From your laptop, forward it with `ssh -L 3000:localhost:3000 <user>@<server>`. For HTTPS, the certificate is issued on first visit and can take up to a minute.
 

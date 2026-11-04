@@ -473,7 +473,7 @@ generate_config() {
     # Persist host ports moved for this run, so later `docker compose up` keeps them.
     local var
     for var in APP_HOST_PORT RUSTFS_HOST_PORT DB_HOST_PORT REDIS_HOST_PORT; do
-      if [[ -n "${!var:-}" ]] && ! grep -q "^${var}=" .env.new; then echo "${var}=${!var//[^0-9]/}" >>.env.new; fi
+      if [[ -n "${!var:-}" ]] && ! grep -q "^${var}=" .env.new; then echo "${var}=${!var}" >>.env.new; fi
     done
     chmod 600 .env.new
     mv .env.new .env
@@ -762,23 +762,38 @@ preflight() {
   [[ "$problems" -eq 0 ]] || exit 1
 }
 
-# Host port the app publishes on (APP_HOST_PORT in .env, default 3000).
-app_host_port() {
-  local port="${APP_HOST_PORT:-$(env_get APP_HOST_PORT || true)}"
-  port="${port//[^0-9]/}"; echo "${port:-3000}"
+# host_port VAR DEFAULT: the shell value wins over .env, as in Compose. Quotes, CR, spaces and
+# trailing comments are dropped; anything that is not a port 1-65535 stops the install.
+# APP_HOST_PORT and RUSTFS_HOST_PORT only apply once the Compose file reads them (1.5.1+).
+host_port() {
+  local var="$1" default="$2" port
+  if [[ "$var" == APP_HOST_PORT || "$var" == RUSTFS_HOST_PORT ]] && ! grep -q "$var" "$(compose_dir)/docker-compose.yml" 2>/dev/null; then
+    echo "$default"; return
+  fi
+  # env_get fails under pipefail before .env exists (first install).
+  port="${!var:-$(env_get "$var" || true)}"
+  port="${port%%#*}"; port="${port//[[:space:]]/}"
+  [[ -z "$port" ]] && { echo "$default"; return; }
+  if [[ ! "$port" =~ ^[0-9]+$ ]] || (( 10#$port < 1 || 10#$port > 65535 )); then
+    die "$var must be a port number from 1 to 65535 (got \"$port\")." "Fix it in $(compose_dir)/.env or the shell, then re-run."
+  fi
+  echo "$((10#$port))"
 }
+
+# Host port the app publishes on (APP_HOST_PORT, default 3000).
+app_host_port() { host_port APP_HOST_PORT 3000; }
 
 check_ports() {
   # Compose binds the app, RustFS, PostgreSQL and Redis on loopback; each host port can be moved in .env.
   local app_port rustfs_port db_port redis_port
-  # env_get fails under pipefail before .env exists (first install).
-  app_port="${APP_HOST_PORT:-$(env_get APP_HOST_PORT || true)}"; rustfs_port="${RUSTFS_HOST_PORT:-$(env_get RUSTFS_HOST_PORT || true)}"
-  db_port="${DB_HOST_PORT:-$(env_get DB_HOST_PORT || true)}"; redis_port="${REDIS_HOST_PORT:-$(env_get REDIS_HOST_PORT || true)}"
-  # Keep digits only, so a stray CR or space from .env cannot reach port_in_use.
-  app_port="${app_port//[^0-9]/}"; rustfs_port="${rustfs_port//[^0-9]/}"
-  db_port="${db_port//[^0-9]/}"; redis_port="${redis_port//[^0-9]/}"
-  local ports=("${app_port:-3000}" "${rustfs_port:-9000}" "${db_port:-5432}" "${redis_port:-6379}")
+  app_port="$(host_port APP_HOST_PORT 3000)" || exit 1; rustfs_port="$(host_port RUSTFS_HOST_PORT 9000)" || exit 1
+  db_port="$(host_port DB_HOST_PORT 5432)" || exit 1; redis_port="$(host_port REDIS_HOST_PORT 6379)" || exit 1
+  local ports=("$app_port" "$rustfs_port" "$db_port" "$redis_port")
   [[ "$MODE" == "public" ]] && ports=(80 443 "${ports[@]}")
+  # Two services on one host port pass the listener check but fail at `docker compose up`.
+  local dup
+  dup="$(printf '%s\n' "${ports[@]}" | sort | uniq -d | head -n1)"
+  [[ -z "$dup" ]] || die "Port $dup is set for two Supercheck services." "Give each of APP_HOST_PORT, RUSTFS_HOST_PORT, DB_HOST_PORT and REDIS_HOST_PORT its own port."
   for p in "${ports[@]}"; do
     if port_in_use "$p"; then
       # A re-run on a running install legitimately finds our own stack listening.
@@ -1025,7 +1040,7 @@ main() {
   HEALTHY=false
   if [[ "$DRY_RUN" != true ]]; then
     health=""
-    APP_PORT="$(app_host_port)"
+    APP_PORT="$(app_host_port)" || exit 1
     for _ in $(seq 1 30); do
       health="$(curl -sS --max-time 5 "http://127.0.0.1:${APP_PORT}/api/health" 2>/dev/null || true)"
       [[ "$health" == '{"status":"ok"'* ]] && break
