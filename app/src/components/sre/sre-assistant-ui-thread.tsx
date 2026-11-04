@@ -111,7 +111,14 @@ export function historyMessagesToUiMessages(
     id: message.id,
     role: message.role,
     metadata: message.modelId ? { modelId: message.modelId } : undefined,
-    parts: [{ type: "text", text: message.content }],
+    parts: [
+      {
+        type: "text",
+        text: message.interrupted
+          ? `${message.content}\n\nReply was interrupted.`
+          : message.content,
+      },
+    ],
   }));
 }
 

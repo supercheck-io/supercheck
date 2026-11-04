@@ -5,7 +5,7 @@ import {
   getQuickRepliesForAssistantText,
 } from "./sre-generative-ui";
 import { CopilotChatHelp } from "./sre-copilot-chat-help";
-import { INCIDENT_STARTERS, SreAssistantUiThread } from "./sre-assistant-ui-thread";
+import { INCIDENT_STARTERS, SreAssistantUiThread, historyMessagesToUiMessages } from "./sre-assistant-ui-thread";
 import { AssistantChatTransport } from "@assistant-ui/react-ai-sdk";
 import { useProjectContext } from "@/hooks/use-project-context";
 
@@ -187,5 +187,16 @@ describe("SRE assistant-ui prompt helpers", () => {
     expect(
       formatCopilotError(new Error('{"error":"Invalid Copilot chat request"}')),
     ).toBe("Invalid Copilot chat request");
+  });
+});
+
+describe("historyMessagesToUiMessages", () => {
+  it("adds a short notice to an interrupted reply only", () => {
+    const [done, cut] = historyMessagesToUiMessages([
+      { id: "a", role: "assistant", content: "Finished", modelId: null },
+      { id: "b", role: "assistant", content: "Partial", modelId: null, interrupted: true },
+    ]);
+    expect(done.parts).toEqual([{ type: "text", text: "Finished" }]);
+    expect(cut.parts).toEqual([{ type: "text", text: "Partial\n\nReply was interrupted." }]);
   });
 });

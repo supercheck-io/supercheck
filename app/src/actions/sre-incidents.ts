@@ -201,6 +201,7 @@ export type SreIncidentChatHistory = {
     role: "user" | "assistant";
     content: string;
     modelId: string | null;
+    interrupted?: boolean;
   }>;
 };
 
@@ -564,6 +565,7 @@ async function getConversationHistory(input: {
           role: message.role,
           content: message.content,
           modelId: message.modelId,
+          interrupted: message.attachments?.some((item) => item.type === "interrupted") || undefined,
         },
       ];
     }),

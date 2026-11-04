@@ -30,6 +30,7 @@ import {
   createSreConversation,
   getSreConversation,
   listSreMessages,
+  listSreMessagesByIds,
   SreSessionStoreError,
 } from "@/sre/lib/session-store";
 import { SRE_CHART_PROMPT_LINES } from "@/sre/lib/chart-contract";
@@ -397,37 +398,75 @@ export async function POST(request: NextRequest) {
       { status: 413 },
     );
   }
-  // The prompt history comes from the stored conversation, never from client-sent
-  // assistant turns, which a caller could forge to steer the model.
+  // Client-sent history is only a claim. User turns are the caller's own words (their
+  // client ids are not storable), but an assistant turn counts only when a stored row in
+  // THIS conversation has the same id, role and text, so a forged reply is dropped.
   const regenerating = parsed.data.trigger === "regenerate-message";
-  let regenerateTargetFound = false;
-  const storedMessages: SreAssistantUiMessage[] = [];
+  const regenerateTargetId = parsed.data.messageId;
+  const newestUserIndex = messages.lastIndexOf(latestUserMessage);
+  let claimed = messages.slice(0, newestUserIndex);
+  if (regenerating) {
+    const targetIndex = messages.findIndex((message) => message.id === regenerateTargetId);
+    claimed = targetIndex >= 0 ? messages.slice(0, targetIndex) : messages;
+  }
+  const scope = {
+    organizationId: context.organizationId,
+    projectId: context.project.id,
+    userId: context.userId,
+  };
+  const isInterrupted = (row: { attachments: Record<string, unknown>[] | null }) =>
+    Boolean(row.attachments?.some((item) => item.type === INTERRUPTED_ATTACHMENT_TYPE));
+  const toUiMessage = (row: { id: string; role: string; content: string | null }) => ({
+    id: row.id,
+    role: row.role as "user" | "assistant",
+    parts: [{ type: "text" as const, text: row.content ?? "" }],
+  });
+  let history: SreAssistantUiMessage[] = [];
   if (conversation) {
     try {
-      const rows = await listSreMessages({
-        organizationId: context.organizationId,
-        projectId: context.project.id,
-        userId: context.userId,
-        conversationId: conversation.id,
-        limit: HISTORY_ROW_LIMIT,
+      const assistantIds = claimed
+        .filter((message) => message.role === "assistant" && z.string().uuid().safeParse(message.id).success)
+        .map((message) => message.id);
+      const lookupIds = regenerating && regenerateTargetId && z.string().uuid().safeParse(regenerateTargetId).success
+        ? [...assistantIds, regenerateTargetId]
+        : assistantIds;
+      const stored = new Map(
+        (await listSreMessagesByIds({ ...scope, conversationId: conversation.id, messageIds: lookupIds })).map(
+          (row) => [row.id, row],
+        ),
+      );
+      if (regenerating) {
+        const target = regenerateTargetId ? stored.get(regenerateTargetId) : undefined;
+        if (target?.role !== "assistant") {
+          return NextResponse.json(
+            { error: "Copilot message to regenerate was not found" },
+            { status: 400 },
+          );
+        }
+      }
+      const verified = claimed.filter((message) => {
+        if (message.role === "user") return true;
+        const row = stored.get(message.id);
+        return (
+          row?.role === "assistant" &&
+          !isInterrupted(row) &&
+          row.content?.trim() === getTextFromUiMessage(message)
+        );
       });
-      for (const row of rows) {
-        if (regenerating && row.id === parsed.data.messageId) {
-          regenerateTargetFound = true;
-          break;
-        }
-        if (
-          (row.role !== "user" && row.role !== "assistant") ||
-          !row.content?.trim() ||
-          row.attachments?.some((item) => item.type === INTERRUPTED_ATTACHMENT_TYPE)
-        ) {
-          continue;
-        }
-        // A regenerated reply supersedes the earlier one for the same user turn.
-        if (row.role === "assistant" && storedMessages.at(-1)?.role === "assistant") {
-          storedMessages.pop();
-        }
-        storedMessages.push({ id: row.id, role: row.role, parts: [{ type: "text", text: row.content }] });
+      const hadAssistantTurns = claimed.some((message) => message.role === "assistant");
+      const verifiedAssistantTurns = verified.some((message) => message.role === "assistant");
+      if (!regenerating && hadAssistantTurns && !verifiedAssistantTurns) {
+        // Conversations from before reply ids were stored: rebuild from the newest stored rows.
+        const rows = await listSreMessages({
+          ...scope,
+          conversationId: conversation.id,
+          limit: HISTORY_ROW_LIMIT,
+        });
+        history = rows
+          .filter((row) => (row.role === "user" || row.role === "assistant") && row.content?.trim() && !isInterrupted(row))
+          .map(toUiMessage);
+      } else {
+        history = verified.filter((message) => getTextFromUiMessage(message));
       }
     } catch (error) {
       logger.error({ error }, "Failed to load Copilot conversation history");
@@ -436,18 +475,16 @@ export async function POST(request: NextRequest) {
         { status: 500 },
       );
     }
+  } else if (regenerating) {
+    return NextResponse.json(
+      { error: "Copilot message to regenerate was not found" },
+      { status: 400 },
+    );
+  } else {
+    history = claimed.filter((message) => message.role === "user" && getTextFromUiMessage(message));
   }
-  let history = storedMessages;
   if (regenerating) {
-    // Regenerate the reply the client named: history is every stored turn before it.
-    if (!regenerateTargetFound) {
-      return NextResponse.json(
-        { error: "Copilot message to regenerate was not found" },
-        { status: 400 },
-      );
-    }
-    while (history.at(-1)?.role === "assistant") history = history.slice(0, -1);
-    if (history.length === 0) {
+    if (!history.some((message) => message.role === "user")) {
       return NextResponse.json(
         { error: "Copilot message to regenerate was not found" },
         { status: 400 },
@@ -455,7 +492,7 @@ export async function POST(request: NextRequest) {
     }
   } else {
     history = [
-      ...storedMessages,
+      ...history,
       { id: latestUserMessage.id, role: "user", parts: [{ type: "text", text: latestUserText }] },
     ];
   }

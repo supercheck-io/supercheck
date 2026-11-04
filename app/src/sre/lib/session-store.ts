@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, or } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or } from "drizzle-orm";
 import { z } from "zod";
 
 import {
@@ -193,6 +193,24 @@ export async function listSreMessages(
   if (!limit) return base.orderBy(asc(sreChatMessages.createdAt));
   const newest = await base.orderBy(desc(sreChatMessages.createdAt)).limit(limit);
   return newest.reverse();
+}
+
+/** Messages of one conversation by id; ids outside the conversation are simply not returned. */
+export async function listSreMessagesByIds(
+  input: z.infer<typeof conversationLookupSchema> & { messageIds: string[] },
+) {
+  const { messageIds, ...lookup } = input;
+  const conversation = await getSreConversation(lookup);
+  if (messageIds.length === 0) return [];
+  return db
+    .select()
+    .from(sreChatMessages)
+    .where(
+      and(
+        eq(sreChatMessages.conversationId, conversation.id),
+        inArray(sreChatMessages.id, messageIds),
+      ),
+    );
 }
 
 export async function appendSreMessage(input: AppendSreMessageInput) {

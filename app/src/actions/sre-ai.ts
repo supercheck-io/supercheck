@@ -25,6 +25,7 @@ export type SreCopilotChatHistory = {
     role: "user" | "assistant";
     content: string;
     modelId: string | null;
+    interrupted?: boolean;
   }>;
 };
 
@@ -93,6 +94,7 @@ export async function getSreCopilotChatHistories(): Promise<
                 role: message.role,
                 content: message.content,
                 modelId: message.modelId,
+                interrupted: message.attachments?.some((item) => item.type === "interrupted") || undefined,
               },
             ];
           }),
