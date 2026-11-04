@@ -71,6 +71,7 @@ import {
 } from "@/lib/sre/incident-lifecycle";
 import { linkedAlertFields } from "@/lib/sre/incident-alert-snapshot";
 import { notifyIncidentEvent } from "@/lib/sre/incident-notifier";
+import { checkSreIncidentUpdateRateLimit } from "@/lib/sre/sre-rate-limiter";
 import { isWatchingIncident, watchIncident } from "@/lib/sre/incident-watchers";
 import { maybeAutoInvestigateOnOpen } from "@/sre/lib/auto-investigate";
 import { listMyFeedbackForRun, type MyFeedback } from "@/lib/sre/investigation-feedback";
@@ -1374,6 +1375,11 @@ export async function updateSreIncident(
         success: false,
         error: "Insufficient permissions to update incidents",
       };
+    }
+
+    const limit = await checkSreIncidentUpdateRateLimit(userId, parsed.data.id);
+    if (!limit.allowed) {
+      return { success: false, error: "Too many incident updates. Try again in a minute." };
     }
 
     const current = await db.query.sreIncidents.findFirst({

@@ -356,7 +356,7 @@ async function participantEmails(
   try {
     // Lazy import: incident-lifecycle imports this module.
     const { isAssignableUser } = await import("./incident-lifecycle");
-    const throttled = SYSTEM_EVENTS.includes(input.event) || (input.event === "resolved" && input.automatic);
+    const throttled = isThrottledEmail(input);
     const emails: string[] = [];
     const claimed: string[] = [];
     for (const id of participantIds) {
@@ -376,6 +376,13 @@ async function participantEmails(
   }
 }
 
+/** Notes and severity edits can come in bursts: at most one email per person per incident per event per window. */
+const BURST_EVENT_TTL_SECONDS = 300;
+
+function isThrottledEmail(input: IncidentNotifyInput) {
+  return SYSTEM_EVENTS.includes(input.event) || PEOPLE_ONLY_EVENTS.includes(input.event) || (input.event === "resolved" && input.automatic === true);
+}
+
 function recipientKey(input: IncidentNotifyInput, userId: string) {
   return `supercheck:sre:incident-email:${input.incidentId}:${input.event}:${userId}`;
 }
@@ -383,7 +390,8 @@ function recipientKey(input: IncidentNotifyInput, userId: string) {
 async function claimRecipient(input: IncidentNotifyInput, userId: string) {
   try {
     const redis = await getRedisConnection();
-    return (await redis.set(recipientKey(input, userId), "1", "EX", DEDUPE_TTL_SECONDS, "NX")) === "OK";
+    const ttl = PEOPLE_ONLY_EVENTS.includes(input.event) ? BURST_EVENT_TTL_SECONDS : DEDUPE_TTL_SECONDS;
+    return (await redis.set(recipientKey(input, userId), "1", "EX", ttl, "NX")) === "OK";
   } catch {
     return true;
   }
@@ -494,11 +502,19 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<v
             (id): id is string => Boolean(id) && id !== input.actorUserId,
           );
     // Watchers hear about notes and severity changes; viewers may watch, so they skip the editor check.
-    const watchers = PEOPLE_ONLY_EVENTS.includes(input.event)
+    const watcherCandidates = PEOPLE_ONLY_EVENTS.includes(input.event)
       ? (await listWatchers(input.organizationId, input.projectId, incident.id).catch(() => [])).filter(
           (watcher) => watcher.id !== input.actorUserId,
         )
       : [];
+    const watchers: typeof watcherCandidates = [];
+    const claimedWatchers: string[] = [];
+    for (const watcher of watcherCandidates) {
+      // A person who is also a participant is claimed once, in participantEmails.
+      if (participantIds.includes(watcher.id) || !(await claimRecipient(input, watcher.id))) continue;
+      watchers.push(watcher);
+      claimedWatchers.push(watcher.id);
+    }
     const personIds = [...new Set([input.actorUserId, ownerId, ...participantIds].filter((id): id is string => Boolean(id)))];
     // Names are cosmetic: a failed lookup must not stop the channel posts below.
     const people = personIds.length
@@ -553,7 +569,7 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<v
       try {
         await sendEmail(directEmails, message);
       } catch (error) {
-        await releaseRecipients(input, direct.claimed);
+        await releaseRecipients(input, [...direct.claimed, ...claimedWatchers]);
         logger.warn({ incidentId: incident.id, error: error instanceof Error ? error.message : "send failed" }, "Incident email to participants failed");
       }
     }

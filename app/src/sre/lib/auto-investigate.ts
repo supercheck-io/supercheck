@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 import { sreIncidents, sreInvestigationRuns } from "@/db/schema";
 import { validateAIConfiguration } from "@/lib/ai/ai-provider";
@@ -35,7 +35,7 @@ export async function maybeAutoInvestigateOnOpen(input: AutoInvestigateInput): P
     if (!policy.autoInvestigateOnOpen) return { handled: false, reason: "disabled" };
 
     const [incident] = await db
-      .select({ severity: sreIncidents.severity, status: sreIncidents.status })
+      .select({ severity: sreIncidents.severity, status: sreIncidents.status, createdAt: sreIncidents.createdAt })
       .from(sreIncidents)
       .where(
         and(
@@ -46,6 +46,22 @@ export async function maybeAutoInvestigateOnOpen(input: AutoInvestigateInput): P
       )
       .limit(1);
     if (!incident || incident.status === "resolved") return { handled: false, reason: "not_open" };
+    // Only incidents opened after the policy was saved: switching it on must not spend credits on old ones.
+    if (policy.updatedAt && incident.createdAt < policy.updatedAt) return { handled: false, reason: "predates_policy" };
+
+    // The lock makes check-then-start atomic per incident; waiters then see the run and stop.
+    return await db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`auto-investigate:${input.incidentId}`}))`);
+      return startOnce(input, incident.severity);
+    });
+  } catch (error) {
+    logger.error({ error, incidentId: input.incidentId }, "Automatic investigation could not start");
+    return { handled: false, reason: "error" };
+  }
+}
+
+async function startOnce(input: AutoInvestigateInput, severity: string): Promise<{ handled: boolean; reason?: string }> {
+  try {
 
     // One automatic run per incident: later alerts joining it, or a retried job, must not bill again.
     const [existingRun] = await db
@@ -69,7 +85,7 @@ export async function maybeAutoInvestigateOnOpen(input: AutoInvestigateInput): P
 
     if (await sreDailyTokenLimitResponse(input.organizationId)) return { handled: false, reason: "daily_limit" };
 
-    if (incident.severity === "sev3" || incident.severity === "sev4") {
+    if (severity === "sev3" || severity === "sev4") {
       const triage = await runSreIncidentTriage(input);
       return { handled: triage.success, reason: triage.success ? undefined : "triage_refused" };
     }

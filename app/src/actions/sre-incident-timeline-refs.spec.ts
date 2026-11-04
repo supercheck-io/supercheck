@@ -20,6 +20,7 @@ const selectRows = (rows: unknown[]) =>
   Object.assign(Promise.resolve(rows), {
     from: jest.fn().mockReturnThis(),
     leftJoin: jest.fn().mockReturnThis(),
+    innerJoin: jest.fn().mockReturnThis(),
     where: jest.fn().mockReturnThis(),
     orderBy: jest.fn().mockReturnThis(),
     limit: jest.fn().mockReturnThis(),

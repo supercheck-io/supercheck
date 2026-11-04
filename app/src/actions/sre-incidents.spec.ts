@@ -17,6 +17,7 @@ jest.mock("@/lib/sre/incident-lifecycle", () => ({
   noteFailureReturned: jest.fn().mockResolvedValue(false),
   announceSystemTransition: jest.fn().mockResolvedValue(undefined),
 }));
+jest.mock("@/lib/sre/sre-rate-limiter", () => ({ checkSreIncidentUpdateRateLimit: jest.fn(async () => ({ allowed: true })) }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 jest.mock("@/lib/sre/incident-notifier", () => ({ notifyIncidentEvent: jest.fn(async () => undefined) }));
 jest.mock("@/lib/sre/incident-watchers", () => ({ watchIncident: jest.fn(async () => undefined), isWatchingIncident: jest.fn(async () => false) }));
@@ -144,6 +145,14 @@ describe("getSreIncidentDetails investigation summary", () => {
     expect(jest.requireMock("@/lib/sre/incident-notifier").notifyIncidentEvent).toHaveBeenCalledWith(
       expect.objectContaining({ incidentId, event: "reopened" }),
     );
+  });
+
+  it("refuses a rate-limited incident edit before reading or writing anything", async () => {
+    jest.mocked(jest.requireMock("@/lib/sre/sre-rate-limiter").checkSreIncidentUpdateRateLimit).mockResolvedValueOnce({ allowed: false });
+    (db.query.sreIncidents.findFirst as jest.Mock).mockClear();
+    const result = await updateSreIncident({ id: "00000000-0000-4000-8000-000000000001", title: "t", severity: "sev1", status: "investigating", primaryServiceId: null });
+    expect(result).toMatchObject({ success: false, error: expect.stringContaining("Too many") });
+    expect(db.query.sreIncidents.findFirst).not.toHaveBeenCalled();
   });
 
   it("notifies watchers only when the severity actually changes", async () => {

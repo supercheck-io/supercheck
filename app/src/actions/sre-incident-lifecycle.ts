@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 
-import { sreAlertEvents, sreIncidents, sreIncidentTimelineEvents, incidents as statusPageIncidents, statusPages, user } from "@/db/schema";
+import { member, sreAlertEvents, sreIncidents, sreIncidentTimelineEvents, incidents as statusPageIncidents, statusPages, user } from "@/db/schema";
 import { updateIncidentStatus } from "@/actions/update-incident-status";
 import { createLogger } from "@/lib/logger/index";
 import { requireProjectContext } from "@/lib/project-context";
@@ -329,13 +329,17 @@ export async function getSreIncidentTimeline(
     }
     const [users, alerts] = await Promise.all([
       userIds.size
-        ? db.select({ id: user.id, name: user.name }).from(user).where(inArray(user.id, [...userIds]))
+        ? db
+            .select({ id: user.id, name: user.name })
+            .from(user)
+            .innerJoin(member, and(eq(member.userId, user.id), eq(member.organizationId, auth.actor.organizationId)))
+            .where(inArray(user.id, [...userIds]))
         : [],
       alertIds.size
         ? db
             .select({ id: sreAlertEvents.id, title: sreAlertEvents.title })
             .from(sreAlertEvents)
-            .where(and(inArray(sreAlertEvents.id, [...alertIds]), eq(sreAlertEvents.organizationId, auth.actor.organizationId)))
+            .where(and(inArray(sreAlertEvents.id, [...alertIds]), eq(sreAlertEvents.organizationId, auth.actor.organizationId), eq(sreAlertEvents.projectId, auth.actor.projectId)))
         : [],
     ]);
     const refs: SreIncidentTimelineRefs = {

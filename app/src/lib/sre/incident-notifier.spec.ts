@@ -459,6 +459,15 @@ describe("watchers, policy and fallback", () => {
     expect(fetchPublicEndpoint).not.toHaveBeenCalled();
   });
 
+  it("sends a watcher at most one note email per window, with a 5 minute claim", async () => {
+    mockWatchers.mockResolvedValue([{ id: "viewer", name: "Vi", email: "vi@example.com" }]);
+    redisSet.mockImplementation(async (key: string) => (key.includes("incident-email") ? null : "OK"));
+    selectQueue.push([incident], people, []);
+    await notifyIncidentEvent({ ...base, event: "commented", assigneeUserId: null, detail: "x" });
+    expect(redisSet).toHaveBeenCalledWith("supercheck:sre:incident-email:inc-1:commented:viewer", "1", "EX", 300, "NX");
+    expect(sendEmailToMultiple).not.toHaveBeenCalled();
+  });
+
   it("emails watchers on a severity change", async () => {
     mockWatchers.mockResolvedValue([{ id: "viewer", name: "Vi", email: "vi@example.com" }]);
     selectQueue.push([incident], people, []);

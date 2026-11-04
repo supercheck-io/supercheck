@@ -22,6 +22,7 @@ let incidentRows: unknown[] = [];
 let runRows: unknown[] = [];
 jest.mock("@/utils/db", () => ({
   db: {
+    transaction: async (callback: (tx: unknown) => unknown) => callback({ execute: lockExecute }),
     select: () => {
       // First lookup is the incident, the second is any earlier investigation run.
       const rows = selects++ % 2 === 0 ? incidentRows : runRows;
@@ -33,6 +34,7 @@ jest.mock("@/utils/db", () => ({
   },
 }));
 let selects = 0;
+const lockExecute = jest.fn().mockResolvedValue(undefined);
 
 import { maybeAutoInvestigateOnOpen } from "./auto-investigate";
 
@@ -73,6 +75,18 @@ it.each(["sev3", "sev4"])("runs only a triage for %s", async (severity) => {
   incidentRows = [{ severity, status: "triggered" }];
   expect(await maybeAutoInvestigateOnOpen(input)).toEqual({ handled: true });
   expect(triage).toHaveBeenCalledWith(input);
+  expect(start).not.toHaveBeenCalled();
+});
+
+it("takes a per-incident advisory lock around check and start", async () => {
+  await maybeAutoInvestigateOnOpen(input);
+  expect(lockExecute).toHaveBeenCalledTimes(1);
+});
+
+it("skips incidents opened before the policy was last saved", async () => {
+  policy.mockResolvedValue({ autoInvestigateOnOpen: true, updatedAt: new Date("2026-06-02T00:00:00Z") });
+  incidentRows = [{ severity: "sev1", status: "triggered", createdAt: new Date("2026-06-01T00:00:00Z") }];
+  expect(await maybeAutoInvestigateOnOpen(input)).toEqual({ handled: false, reason: "predates_policy" });
   expect(start).not.toHaveBeenCalled();
 });
 
