@@ -544,19 +544,15 @@ describe("Copilot assistant-ui chat API", () => {
     expect(streamText).not.toHaveBeenCalled();
   });
 
-  it("without a message id, falls back to the last assistant turn sent if it verifies", async () => {
+  it("returns 400 asking for a reload when regenerate has no message id", async () => {
     mockListSreMessagesByIds.mockResolvedValue([storedRow(AID(2), "assistant", "a2")]);
     const response = await send({
       trigger: "regenerate-message",
       messages: [userTurn("u1", "q1"), assistantTurn(AID(2), "a2"), userTurn("u2", "q2")],
     });
-    expect(response.status).toBe(200);
-    expect(await sentIds()).toEqual(["u1", AID(2), "u2"]);
-    expect(mockAppendSreMessage).not.toHaveBeenCalledWith(expect.objectContaining({ role: "user" }));
-  });
-
-  it("returns 400 when regenerate has no message id and no verifiable assistant turn", async () => {
-    expect((await regenerate(undefined)).status).toBe(400);
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "Reload the chat and try again" });
+    expect(streamText).not.toHaveBeenCalled();
   });
 
   it("drops the oldest verified turns that do not fit the prompt budget and starts on a user turn", async () => {
