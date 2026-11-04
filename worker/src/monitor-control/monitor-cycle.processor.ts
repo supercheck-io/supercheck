@@ -5,16 +5,7 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
-import {
-  and,
-  asc,
-  eq,
-  inArray,
-  isNull,
-  lte,
-  notInArray,
-  sql,
-} from 'drizzle-orm';
+import { and, asc, eq, isNull, lte, sql } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
 import * as schema from '../db/schema';
 import { BillingVerificationError } from './billing-hold.service';
@@ -32,8 +23,6 @@ const POISON_MAX_BACKOFF_MS = 5 * 60_000;
 const POISON_GIVE_UP_AFTER = 20;
 /** Hard age bound: an open cycle this far past its deadline is aborted whatever the error (billing included). */
 const MAX_OPEN_AGE_MS = 24 * 60 * 60_000;
-/** Bind parameters per id list; postgres.js rejects a query above 65534 parameters. */
-const ID_QUERY_CHUNK = 1000;
 /**
  * Wall-clock budget for one notification. A tenant-controlled endpoint that trickles a response must
  * not stall every other organization's closures and alerts behind it.
@@ -199,13 +188,13 @@ export class MonitorCycleProcessor implements OnModuleInit, OnModuleDestroy {
   }
 
   private async processDeadlines(now: Date): Promise<number> {
-    // Cycles in backoff are excluded in SQL, so they can never crowd healthy ones out of the batch.
+    // Ids travel as one jsonb parameter, so a large outage cannot exceed the postgres.js bind limit.
+    const idList = (ids: string[]) =>
+      sql`(select jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb))`;
     const failingIds = [...this.failing.keys()];
-    // shortcut: only the first ID_QUERY_CHUNK backed-off ids are excluded in SQL (the loop below still
-    // skips the rest); beyond that a large outage can again crowd the batch, which the age bound clears.
+    // Cycles in backoff are excluded in SQL, so they can never crowd healthy ones out of the batch.
     const backedOff = [...this.failing]
       .filter(([, state]) => state.nextAt > Date.now())
-      .slice(0, ID_QUERY_CHUNK)
       .map(([id]) => id);
     const due = await this.dbService.db
       .select({
@@ -218,7 +207,7 @@ export class MonitorCycleProcessor implements OnModuleInit, OnModuleDestroy {
           eq(schema.monitorCycles.status, 'open'),
           lte(schema.monitorCycles.deadlineAt, now),
           backedOff.length
-            ? notInArray(schema.monitorCycles.id, backedOff)
+            ? sql`${schema.monitorCycles.id} not in ${idList(backedOff)}`
             : undefined,
         ),
       )
@@ -226,22 +215,19 @@ export class MonitorCycleProcessor implements OnModuleInit, OnModuleDestroy {
       .limit(BATCH);
     if (failingIds.length) {
       // Forget entries whose cycle was closed, deleted or aborted outside close(), on every pass.
-      const stillOpen = new Set<string>();
-      for (let i = 0; i < failingIds.length; i += ID_QUERY_CHUNK) {
-        const rows = await this.dbService.db
-          .select({ id: schema.monitorCycles.id })
-          .from(schema.monitorCycles)
-          .where(
-            and(
-              eq(schema.monitorCycles.status, 'open'),
-              inArray(
-                schema.monitorCycles.id,
-                failingIds.slice(i, i + ID_QUERY_CHUNK),
+      const stillOpen = new Set(
+        (
+          await this.dbService.db
+            .select({ id: schema.monitorCycles.id })
+            .from(schema.monitorCycles)
+            .where(
+              and(
+                eq(schema.monitorCycles.status, 'open'),
+                sql`${schema.monitorCycles.id} in ${idList(failingIds)}`,
               ),
-            ),
-          );
-        for (const row of rows) stillOpen.add(row.id);
-      }
+            )
+        ).map((row) => row.id),
+      );
       for (const id of failingIds)
         if (!stillOpen.has(id)) this.failing.delete(id);
     }
