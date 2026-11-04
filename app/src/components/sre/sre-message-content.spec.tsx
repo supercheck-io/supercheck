@@ -170,6 +170,13 @@ describe("SreMessageContent", () => {
     expect(screen.getByText("82")).toBeInTheDocument();
   });
 
+  it("keeps markdown for a 600-line reply and windows only pathological output", () => {
+    const content = ["## Findings", ...Array.from({ length: 599 }, (_, i) => `- point ${i}`)].join("\n");
+    render(<SreMessageContent content={content} />);
+    expect(screen.getByText("Findings")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: /Large Copilot output/ })).not.toBeInTheDocument();
+  });
+
   it("windows 10,000-line outputs instead of creating 10,000 DOM rows", async () => {
     const heightSpy = jest
       .spyOn(HTMLElement.prototype, "clientHeight", "get")

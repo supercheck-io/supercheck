@@ -1,12 +1,18 @@
 "use client";
 
 import { useCallback } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { ShieldCheck } from "lucide-react";
+import Link from "next/link";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Sparkles, ShieldCheck } from "lucide-react";
 
 import type { SreCopilotChatHistory } from "@/actions/sre-ai";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 import { SupercheckLoading } from "@/components/shared/supercheck-loading";
+import { Button } from "@/components/ui/button";
+import {
+  SUBSCRIPTION_STATUS_QUERY_KEY,
+  fetchSubscriptionStatus,
+} from "@/components/subscription-guard";
 import { SreAiConsole } from "@/components/sre/sre-ai-console";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { useSreCopilotHistories } from "@/hooks/use-sre";
@@ -22,6 +28,14 @@ export function SreCopilotPageClient({
   const { projectId, currentProject } = useProjectContext();
   const canInvestigate = canInvestigateWithSreCopilot(currentProject?.userRole);
   const query = useSreCopilotHistories({ enabled: canInvestigate });
+  // Copilot chat needs a paid plan (the server answers 402 to a trial); say so before the first send.
+  // Self-hosted reports an active plan. A failed status read never blocks: the server still decides.
+  const { data: subscription } = useQuery({
+    queryKey: SUBSCRIPTION_STATUS_QUERY_KEY,
+    queryFn: fetchSubscriptionStatus,
+    staleTime: 60_000,
+  });
+  const needsPaidPlan = canInvestigate && !!subscription && !subscription.isActive;
   const updateCachedHistories = useCallback(
     (histories: SreCopilotChatHistory[]) => {
       queryClient.setQueryData(getSreCopilotHistoriesQueryKey(projectId), {
@@ -40,6 +54,23 @@ export function SreCopilotPageClient({
       refetchType: "active",
     });
   }, [projectId, queryClient]);
+
+  if (needsPaidPlan) {
+    return (
+      <div className="flex h-full items-center justify-center p-6">
+        <DashboardEmptyState
+          icon={<Sparkles className="h-10 w-10" />}
+          title="Copilot needs a paid plan"
+          description="Copilot chat is not part of the free trial. Subscribe to ask questions about incidents and evidence."
+          action={
+            <Button asChild>
+              <Link href="/billing">View plans</Link>
+            </Button>
+          }
+        />
+      </div>
+    );
+  }
 
   if (!canInvestigate) {
     return (
