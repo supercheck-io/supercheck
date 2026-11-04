@@ -1021,7 +1021,7 @@ export async function searchIncidentLiveConnectorEvidence(
       status: "error",
       errorMessage:
         error instanceof Error
-          ? error.message.slice(0, 2000)
+          ? redactConnectorText(error.message).slice(0, 2000)
           : "Connector search failed",
       durationMs: Date.now() - startedAt,
       costEstimateCents: 0,
@@ -1212,7 +1212,7 @@ export async function executeIncidentDiagnosticQuery(
       status: "error",
       errorMessage:
         error instanceof Error
-          ? error.message.slice(0, 2000)
+          ? redactConnectorText(error.message).slice(0, 2000)
           : "Diagnostic query failed",
       durationMs: Date.now() - startedAt,
       costEstimateCents: 0,
@@ -1267,7 +1267,7 @@ export function createSreConnectorTools(scope: SreConnectorToolScope) {
               truncated: false,
               error: true,
               retryable: true,
-              message: `The connector rejected the query: ${error.message}`,
+              message: `The connector rejected the query: ${redactConnectorText(error.message)}`,
             };
           }
           connectorFailureGuard.markFailed(input.connectorId);
@@ -1337,7 +1337,33 @@ export function createSreConnectorTools(scope: SreConnectorToolScope) {
       description:
         "Execute one admin-approved read-only diagnostic query template with allowlisted parameters for the incident service or a selected project service.",
       inputSchema: diagnosticQueryInputSchema,
-      execute: async (input) => executeIncidentDiagnosticQuery(scope, input),
+      execute: async (input) => {
+        try {
+          return await executeIncidentDiagnosticQuery(scope, input);
+        } catch (error) {
+          if (error instanceof ConnectorQueryRejectedError) {
+            return {
+              executionMode: "error" as const,
+              queued: false,
+              evidence: [],
+              truncated: false,
+              error: true,
+              retryable: true,
+              message: `The connector rejected the query: ${redactConnectorText(error.message)}`,
+            };
+          }
+          return {
+            executionMode: "error" as const,
+            queued: false,
+            evidence: [],
+            truncated: false,
+            error: true,
+            retryable: false,
+            message:
+              "The diagnostic query failed. Do not retry it during the current run or treat the failed check as evidence.",
+          };
+        }
+      },
     }),
   };
 }
