@@ -115,6 +115,11 @@ function decodeEnvelope(payload: string): RawEnvelope {
   return parsed;
 }
 
+/** Fail-fast startup check: throws for a placeholder key in cloud production; a missing key is left to first use. */
+export function assertSecretKeyUsable(): void {
+  if (process.env[KEY_ENV]) selectKey();
+}
+
 export function encryptSecret(
   value: string,
   options: EncryptionOptions = {},

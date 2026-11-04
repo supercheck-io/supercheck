@@ -720,7 +720,7 @@ export async function noteFailureReturned(tx: Executor, incidentId: string, fire
  */
 export async function reopenRecentlyAutoResolved(
   tx: Executor,
-  source: SourceRef & { firedAt: Date },
+  source: SourceRef & { firedAt: Date; /** False for a late, manual open: only the stale-join case may apply. */ allowReopen?: boolean },
 ) {
   const [latest] = await tx
     .select({
@@ -747,6 +747,7 @@ export async function reopenRecentlyAutoResolved(
   if (source.firedAt.getTime() - latest.resolvedAt.getTime() >= INCIDENT_REOPEN_WINDOW_MS) {
     return null;
   }
+  if (source.allowReopen === false) return null;
 
   // Only when the most recent resolve/reopen was the automatic one; a person's later resolve wins.
   const [lastResolution] = await tx

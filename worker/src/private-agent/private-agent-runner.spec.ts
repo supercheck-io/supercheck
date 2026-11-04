@@ -8,8 +8,7 @@ import {
   executePrivateAgentConnectorJob,
   leaseJob,
   processLeasedJob,
-  nextAuthFailureCount,
-  MAX_CONSECUTIVE_AUTH_FAILURES,
+  trackAuthFailure,
   SUPPORTED_SRE_CONNECTOR_TYPES,
   unrunnableLeasedJob,
   type PrivateAgentConfig,
@@ -544,8 +543,9 @@ describe('private agent connector execution', () => {
     });
   });
 
-  it('counts consecutive 401s from the lease call and resets on any other outcome', async () => {
-    const config: PrivateAgentConfig = {
+  it('exits on 401s only after 3 in a row spanning 60 seconds, and resets otherwise', async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 401 });
+    const config = {
       apiUrl: 'https://app.supercheck.io',
       agentId: baseJob.id,
       token: 'scpac_runtime_1234567890',
@@ -555,17 +555,21 @@ describe('private agent connector execution', () => {
       retryIntervalMs: 5_000,
       leaseWaitMs: 25_000,
       heartbeatIntervalMs: 30_000,
-    };
-    global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 401 });
+    } as PrivateAgentConfig;
     const unauthorized = await leaseJob(config).catch(
       (error: unknown) => error,
     );
-    let count = 0;
-    for (let i = 0; i < MAX_CONSECUTIVE_AUTH_FAILURES; i += 1) {
-      count = nextAuthFailureCount(count, unauthorized);
-    }
-    expect(count).toBe(MAX_CONSECUTIVE_AUTH_FAILURES);
-    expect(nextAuthFailureCount(count, new Error('network down'))).toBe(0);
+    let state = trackAuthFailure({ count: 0, firstAt: null }, unauthorized, 0);
+    state = trackAuthFailure(state, unauthorized, 10_000);
+    state = trackAuthFailure(state, unauthorized, 20_000);
+    expect(state.count).toBe(3);
+    expect(state.exit).toBe(false);
+    expect(trackAuthFailure(state, unauthorized, 60_000).exit).toBe(true);
+    expect(trackAuthFailure(state, new Error('network down'), 70_000)).toEqual({
+      count: 0,
+      firstAt: null,
+      exit: false,
+    });
   });
 
   it('exchanges registration tokens for runtime credentials', async () => {

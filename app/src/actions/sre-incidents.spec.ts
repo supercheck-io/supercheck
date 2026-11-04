@@ -293,8 +293,17 @@ describe("createSreIncidentFromAlert join/reopen rules", () => {
     arrange(new Date(Date.now() - 2 * 60 * 60 * 1000));
     jest.mocked(findOpenIncidentForSource).mockResolvedValueOnce({ id: "inc-open", ...ref, triageInvestigationRunId: null });
     const result = await createSreIncidentFromAlert({ alertHistoryId: "00000000-0000-4000-8000-000000000009" });
-    expect(reopenRecentlyAutoResolved).not.toHaveBeenCalled();
+    expect(reopenRecentlyAutoResolved).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ allowReopen: false }));
+    expect(announceSystemTransition).not.toHaveBeenCalled();
     expect(result).toMatchObject({ success: true, existing: true, incident: { id: "inc-open" } });
+  });
+
+  it("still joins the resolved incident an old alert fired before (stale join)", async () => {
+    arrange(new Date(Date.now() - 2 * 60 * 60 * 1000));
+    jest.mocked(reopenRecentlyAutoResolved).mockResolvedValueOnce({ incidentId: "inc-resolved", ...ref, assigneeUserId: null, alreadyTriaged: true, stale: true });
+    const result = await createSreIncidentFromAlert({ alertHistoryId: "00000000-0000-4000-8000-000000000009" });
+    expect(result).toMatchObject({ success: true, existing: true, incident: { id: "inc-resolved" } });
+    expect(announceSystemTransition).not.toHaveBeenCalled();
   });
 
   it("joins the source's open incident instead of creating a duplicate", async () => {

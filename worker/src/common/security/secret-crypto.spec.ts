@@ -4,6 +4,7 @@ import {
   decryptSecret,
   encryptJson,
   encryptSecret,
+  assertSecretKeyUsable,
   isSecretEnvelope,
   maskSecret,
   type SecretEnvelope,
@@ -142,6 +143,22 @@ describe('secret-crypto', () => {
         if (SELF_HOSTED === undefined) delete process.env.SELF_HOSTED;
         else process.env.SELF_HOSTED = SELF_HOSTED;
         warn.mockRestore();
+      }
+    });
+
+    it('fails fast at startup for a placeholder key in cloud production', () => {
+      const { NODE_ENV, SELF_HOSTED } = process.env;
+      try {
+        process.env[KEY_ENV] = 'change_this'.padEnd(64, '_');
+        (process.env as Record<string, string>).NODE_ENV = 'production';
+        delete process.env.SELF_HOSTED;
+        expect(() => assertSecretKeyUsable()).toThrow('placeholder value');
+        process.env[KEY_ENV] = VALID_HEX_KEY;
+        expect(() => assertSecretKeyUsable()).not.toThrow();
+      } finally {
+        (process.env as Record<string, string | undefined>).NODE_ENV = NODE_ENV;
+        if (SELF_HOSTED === undefined) delete process.env.SELF_HOSTED;
+        else process.env.SELF_HOSTED = SELF_HOSTED;
       }
     });
 

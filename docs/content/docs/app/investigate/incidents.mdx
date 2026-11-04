@@ -223,7 +223,7 @@ Limits apply per person and incident, and exceeding one returns `429` with a ret
 | **Evidence brief** | 3 per minute |
 | **Copilot chat** | 30 messages per minute per person |
 
-Only one investigation or triage run can be active per incident (`409` otherwise). If a run has been marked running for more than five minutes, for example because the server restarted, starting a new run for that incident fails the old one first. On Supercheck Cloud, the billing reconciler also fails any run stuck for more than 15 minutes and retries missing billing records.
+Only one investigation or triage run can be active per incident (`409` otherwise). If a run has been marked running for more than five minutes, for example because the server restarted, starting a new run for that incident fails the old one first.
 
 On the free trial, AI triage is limited to 20 runs and investigations to the trial's included number. A run that fails does not count against either. Copilot chat and evidence briefs need a paid plan.
 

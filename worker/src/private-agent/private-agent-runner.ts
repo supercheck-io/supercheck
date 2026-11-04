@@ -1812,13 +1812,30 @@ async function postJson(
   return response.json();
 }
 
-/** A revoked credential or disabled agent answers 401 forever; after this many in a row the agent exits. */
-export const MAX_CONSECUTIVE_AUTH_FAILURES = 3;
+/** A revoked credential or disabled agent answers 401 forever; the agent exits once that has lasted this long. */
+export const MIN_AUTH_FAILURE_COUNT = 3;
+export const MIN_AUTH_FAILURE_SPAN_MS = 60_000;
 
-export function nextAuthFailureCount(previous: number, error: unknown) {
-  return error instanceof PrivateAgentHttpError && error.status === 401
-    ? previous + 1
-    : 0;
+export type AuthFailureState = { count: number; firstAt: number | null };
+
+/** Tracks consecutive 401s; any other outcome (error or success) resets it. `exit` needs 3+ spanning 60s+. */
+export function trackAuthFailure(
+  previous: AuthFailureState,
+  error: unknown,
+  now: number,
+): AuthFailureState & { exit: boolean } {
+  if (!(error instanceof PrivateAgentHttpError && error.status === 401)) {
+    return { count: 0, firstAt: null, exit: false };
+  }
+  const firstAt = previous.firstAt ?? now;
+  const count = previous.count + 1;
+  return {
+    count,
+    firstAt,
+    exit:
+      count >= MIN_AUTH_FAILURE_COUNT &&
+      now - firstAt >= MIN_AUTH_FAILURE_SPAN_MS,
+  };
 }
 
 class RegistrationExchangeHttpError extends Error {
@@ -2101,14 +2118,14 @@ export async function startPrivateAgentRunner(): Promise<void> {
     });
   }, config.heartbeatIntervalMs);
 
-  let authFailures = 0;
+  let authState: AuthFailureState = { count: 0, firstAt: null };
   for (;;) {
     try {
       const leased = await leaseJob(config);
       // A successful long-poll proves the control-plane connection recovered,
       // even when there is no queued job to execute.
       lastError = undefined;
-      authFailures = 0;
+      authState = { count: 0, firstAt: null };
       if (!leased) {
         if (config.leaseWaitMs <= 0) {
           await new Promise((resolve) =>
@@ -2129,10 +2146,11 @@ export async function startPrivateAgentRunner(): Promise<void> {
           ? redactMcpText(error.message).slice(0, 100)
           : 'private_agent_error';
       console.warn(`Private Agent job loop failed: ${lastError}`);
-      authFailures = nextAuthFailureCount(authFailures, error);
-      if (authFailures >= MAX_CONSECUTIVE_AUTH_FAILURES) {
+      const tracked = trackAuthFailure(authState, error, Date.now());
+      authState = tracked;
+      if (tracked.exit) {
         console.error(
-          `Private Agent credential revoked or agent disabled (HTTP 401 ${authFailures} times in a row). Exiting; re-enable the agent or issue a new registration token, then restart it.`,
+          `Private Agent credential revoked or agent disabled (HTTP 401 ${tracked.count} times over at least ${MIN_AUTH_FAILURE_SPAN_MS / 1000}s). Exiting; re-enable the agent or issue a new registration token, then restart it.`,
         );
         process.exit(1);
       }

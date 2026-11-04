@@ -42,6 +42,7 @@ import {
   createAgentConnectorFailureGuard,
   getAgentConnectorQueryGuidance,
 } from "@/lib/sre/connectors/agent-query-guidance";
+import { summarizeJobSpec } from "@/lib/sre/connectors/endpoint-policy";
 import { isValidKubernetesLabelSelector } from "@/lib/sre/connectors/kubernetes-label-selector";
 import { normalizePrivateAgentEvidenceSummaries } from "@/lib/sre/connector-job-evidence";
 import { waitForPrivateAgentConnectorJob } from "@/lib/sre/private-agent-job-waiter";
@@ -855,7 +856,7 @@ export async function searchIncidentLiveConnectorEvidence(
         connectorType: connector.type,
         toolName: "agent.connector.search.private_agent",
         inputHash: hashConnectorPayload(route.jobSpec),
-        inputSummary: redactConnectorText(JSON.stringify(route.jobSpec)),
+        inputSummary: redactConnectorText(summarizeJobSpec(route.jobSpec)),
         outputHash: route.jobSpecHash,
         outputSummary: "Private Agent connector search did not complete",
         status: "error",
@@ -884,7 +885,7 @@ export async function searchIncidentLiveConnectorEvidence(
         connectorType: connector.type,
         toolName: "agent.connector.search.private_agent",
         inputHash: hashConnectorPayload(route.jobSpec),
-        inputSummary: redactConnectorText(JSON.stringify(route.jobSpec)),
+        inputSummary: redactConnectorText(summarizeJobSpec(route.jobSpec)),
         outputHash: waitResult.job.resultHash ?? route.jobSpecHash,
         outputSummary: `Returned ${persistedEvidence.length} evidence item(s)${truncated ? " (truncated)" : ""}`,
         status: "success",
@@ -913,7 +914,7 @@ export async function searchIncidentLiveConnectorEvidence(
       connectorType: connector.type,
       toolName: "agent.connector.search.private_agent.queue",
       inputHash: hashConnectorPayload(route.jobSpec),
-      inputSummary: redactConnectorText(JSON.stringify(route.jobSpec)),
+      inputSummary: redactConnectorText(summarizeJobSpec(route.jobSpec)),
       outputHash: route.jobSpecHash,
       outputSummary: `Queued Private Agent connector job ${jobId}`,
       status: "success",

@@ -7,9 +7,9 @@ import {
 import { safeEvidenceSourceUri } from "@/lib/sre/evidence-source-uri";
 
 const REDACTION_PATTERNS: Array<[RegExp, string]> = [
-  // The password may contain "/" or "@": greedy to the last "@" before whitespace (bounded, so still linear); a port followed by a path is not a password.
+  // The password may contain "/" or "@": greedy to the last "@" before whitespace (bounded, so still linear); a port (then / ? # , or space) is not a password; an IPv6 bracket host is not a user.
   // scheme://user:password@host keeps scheme, user and host; must run before the email pattern, which needs a dotted host.
-  [/\b([a-z][a-z0-9+.-]{0,30}:\/\/[^\s:/@]{1,200}:)(?!\d{1,5}[/?#])[^\s]{1,500}(@)/gi, "$1[REDACTED]$2"],
+  [/\b([a-z][a-z0-9+.-]{0,30}:\/\/[^\s:/@\[]{0,200}:)(?!\d{1,5}(?:[/?#,\s]|$))[^\s]{1,500}(@)/gi, "$1[REDACTED]$2"],
   // scheme://<token>@host: the whole user part is a credential (ghp_, glpat-, sk-, xox*, or a long opaque string).
   [/\b([a-z][a-z0-9+.-]{0,30}:\/\/)(?:(?:(?:ghp|gho|ghu|ghs|ghr)_|glpat-|sk-|xox[a-z]-)[A-Za-z0-9_-]+|[A-Za-z0-9_-]{21,200})(@)/gi, "$1[REDACTED]$2"],
   // Provider payloads commonly serialize secrets as quoted JSON fields.

@@ -12,6 +12,14 @@ export function redactEndpointQuery(value: unknown) {
   return at === -1 ? value : `${value.slice(0, at)}?…`;
 }
 
+/** Tool-call and log summaries of a job spec: its endpoint query may hold a key under any name. */
+export function summarizeJobSpec(jobSpec: unknown) {
+  const spec = jobSpec && typeof jobSpec === "object" && "endpointUrl" in jobSpec
+    ? { ...jobSpec, endpointUrl: redactEndpointQuery((jobSpec as { endpointUrl?: unknown }).endpointUrl) }
+    : jobSpec;
+  return JSON.stringify(spec);
+}
+
 export function isPrivateConnectorAddress(address: string) {
   return isPrivateOrReservedAddress(address);
 }
@@ -21,7 +29,9 @@ const METADATA_IPV4_NETWORKS = ["169.254.0.0/16", "100.100.100.200/32", "168.63.
 );
 const LINK_LOCAL_IPV6 = [new Address6("fe80::/10"), new Address6("fd00:ec2::254/128")];
 
-const NAT64_NETWORKS = [new Address6("64:ff9b::/96"), new Address6("64:ff9b:1::/48")];
+const NAT64_NETWORKS = [new Address6("64:ff9b::/96")];
+// Local-use NAT64 prefix: the embedded address position varies, so the whole /48 is blocked.
+const NAT64_LOCAL_USE = new Address6("64:ff9b:1::/48");
 const IPV4_COMPATIBLE = new Address6("::/96");
 const SIX_TO_FOUR = new Address6("2002::/16");
 
@@ -53,7 +63,7 @@ export function isMetadataOrLinkLocalAddress(address: string) {
     if (embedded && METADATA_IPV4_NETWORKS.some((network) => embedded.isHostInSubnet(network))) {
       return true;
     }
-    return LINK_LOCAL_IPV6.some((network) => candidate.isHostInSubnet(network));
+    return candidate.isHostInSubnet(NAT64_LOCAL_USE) || LINK_LOCAL_IPV6.some((network) => candidate.isHostInSubnet(network));
   }
   return false;
 }
@@ -82,7 +92,7 @@ export async function lookupBounded(hostname: string, signal?: AbortSignal | nul
     return await Promise.race([lookup(hostname, { all: true, verbatim: true }), bound]);
   } catch (error) {
     const code = (error as { code?: unknown } | null)?.code;
-    if (code === "ENOTFOUND" || code === "EAI_AGAIN" || code === "ETIMEOUT") {
+    if (code === "ENOTFOUND" || code === "EAI_AGAIN") {
       throw new HostResolutionError(`Could not resolve host ${hostname}`);
     }
     throw error;

@@ -102,6 +102,7 @@ describe("redactConnectorText connection strings", () => {
     ["postgres://user:s3cret@db:5432/x", "postgres://user:[REDACTED]@db:5432/x"],
     ["postgres://user:s3cret@db.example.com:5432/x", "postgres://user:[REDACTED]@db.example.com:5432/x"],
     ["redis://admin:hunter2@cache.internal/0", "redis://admin:[REDACTED]@cache.internal/0"],
+    ["redis://:pw@host:6379", "redis://:[REDACTED]@host:6379"],
     ["postgres://user:pa/ss@host/db", "postgres://user:[REDACTED]@host/db"],
     ["postgres://u:p@ss@h/db", "postgres://u:[REDACTED]@h/db"],
     ["https://ghp_xxx@github.com/a/b", "https://[REDACTED]@github.com/a/b"],
@@ -111,8 +112,12 @@ describe("redactConnectorText connection strings", () => {
     expect(redactConnectorText(input)).toBe(expected);
   });
 
+  it("does not treat a port followed by a comma as a password (the email is still redacted)", () => {
+    expect(redactConnectorText("https://example.com:8080,owner@acme.io")).toBe("https://example.com:8080,[REDACTED_EMAIL]");
+  });
+
   it("leaves URLs without credentials unchanged", () => {
-    for (const url of ["https://example.com:8443/path?a=1", "http://db:5432/x", "https://example.com:8443/p?e=a@localhost"]) {
+    for (const url of ["https://example.com:8443/path?a=1", "http://db:5432/x", "https://example.com:8443/p?e=a@localhost", "http://[::1]:8080/path?x=a@b"]) {
       expect(redactConnectorText(url)).toBe(url);
     }
   });

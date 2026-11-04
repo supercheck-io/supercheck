@@ -1712,10 +1712,13 @@ export async function createSreIncidentFromAlert(
       // incident or joins the source's open one instead of creating a duplicate.
       if (sourceId && (RECOVERABLE_ALERT_TYPES as string[]).includes(alert.type)) {
         const source = { organizationId, projectId: project.id, sourceType, sourceId };
-        // An old alert opened by hand must not reopen a resolved incident; it may only join an open one.
-        const reopened = Date.now() - firedAt.getTime() > INCIDENT_REOPEN_WINDOW_MS
-          ? null
-          : await reopenRecentlyAutoResolved(tx, { ...source, firedAt });
+        // An old alert opened by hand must not reopen a resolved incident; it may still join the
+        // incident it fired before, and any open one.
+        const reopened = await reopenRecentlyAutoResolved(tx, {
+          ...source,
+          firedAt,
+          allowReopen: Date.now() - firedAt.getTime() <= INCIDENT_REOPEN_WINDOW_MS,
+        });
         const joined = reopened
           ? { id: reopened.incidentId, incidentNumber: reopened.incidentNumber, title: reopened.title }
           : await findOpenIncidentForSource(tx, source);

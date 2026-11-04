@@ -360,6 +360,12 @@ describe('redactMcpText connection strings', () => {
     ],
     ['http://db:5432/x', 'http://db:5432/x'],
     ['http://h:8443/p?e=a@b.io', 'http://h:8443/p?e=a@b.io'],
+    ['redis://:pw@host:6379', 'redis://:[REDACTED]@host:6379'],
+    ['http://[::1]:8080/path?x=a@b.com', 'http://[::1]:8080/path?x=a@b.com'],
+    [
+      'https://example.com:8080,owner@acme.io',
+      'https://example.com:8080,owner@acme.io',
+    ],
     ['postgres://user:pa/ss@host/db', 'postgres://user:[REDACTED]@host/db'],
     ['postgres://u:p@ss@h/db', 'postgres://u:[REDACTED]@h/db'],
     ['https://ghp_xxx@github.com/a/b', 'https://[REDACTED]@github.com/a/b'],
