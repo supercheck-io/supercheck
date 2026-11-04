@@ -150,7 +150,7 @@ export function historyMessagesToUiMessages(
       {
         type: "text",
         text: message.interrupted
-          ? `${message.content}\n\nReply was interrupted.`
+          ? `${message.content}\n\n${INTERRUPTED_NOTICE}`
           : message.content,
       },
     ],
@@ -218,6 +218,19 @@ function AssistantTextPart() {
   return <SreMessageContent content={part.text} isStreaming={part.status.type === "running"} />;
 }
 
+const INTERRUPTED_NOTICE = "Reply was interrupted.";
+
+/** Marks a live reply that was stopped, like the saved one shows after a reload. */
+export function InterruptedNotice({ status }: { status?: { type: string; reason?: string } }) {
+  if (status?.type !== "incomplete" || status.reason !== "cancelled") return null;
+  return <p className="mt-2 whitespace-pre-wrap">{INTERRUPTED_NOTICE}</p>;
+}
+
+function LiveInterruptedNotice() {
+  const status = useAuiState((state) => state.message.status);
+  return <InterruptedNotice status={status} />;
+}
+
 function AssistantMessage() {
   return (
     <MessagePrimitive.Root
@@ -232,6 +245,7 @@ function AssistantMessage() {
           <Badge variant="secondary">Copilot</Badge>
         </div>
         <MessagePrimitive.Content components={{ Text: AssistantTextPart }} />
+        <LiveInterruptedNotice />
         <ActionBarPrimitive.Root
           hideWhenRunning
           className="mt-2 flex items-center gap-2"

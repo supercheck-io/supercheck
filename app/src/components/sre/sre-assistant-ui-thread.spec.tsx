@@ -5,7 +5,7 @@ import {
   getQuickRepliesForAssistantText,
 } from "./sre-generative-ui";
 import { CopilotChatHelp } from "./sre-copilot-chat-help";
-import { INCIDENT_STARTERS, SreAssistantUiThread, historyMessagesToUiMessages } from "./sre-assistant-ui-thread";
+import { INCIDENT_STARTERS, SreAssistantUiThread, historyMessagesToUiMessages, InterruptedNotice } from "./sre-assistant-ui-thread";
 import { AssistantChatTransport, useChatRuntime } from "@assistant-ui/react-ai-sdk";
 import { useProjectContext } from "@/hooks/use-project-context";
 
@@ -250,5 +250,16 @@ describe("regenerate request", () => {
     runtimeOptions.onFinish({ message: { id: "a9", role: "assistant", parts: [{ type: "text", text: "x" }] }, messages: [] });
     expect(request("regenerate-message").messageId).toBe("a9");
     expect(request("regenerate-message", "a3").messageId).toBe("a3");
+  });
+});
+
+describe("InterruptedNotice", () => {
+  it("shows only for a cancelled reply", () => {
+    const { rerender } = render(<InterruptedNotice status={{ type: "incomplete", reason: "cancelled" }} />);
+    expect(screen.getByText("Reply was interrupted.")).toBeInTheDocument();
+    rerender(<InterruptedNotice status={{ type: "incomplete", reason: "error" }} />);
+    expect(screen.queryByText("Reply was interrupted.")).not.toBeInTheDocument();
+    rerender(<InterruptedNotice status={{ type: "complete" }} />);
+    expect(screen.queryByText("Reply was interrupted.")).not.toBeInTheDocument();
   });
 });
