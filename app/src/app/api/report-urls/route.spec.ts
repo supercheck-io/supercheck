@@ -48,6 +48,8 @@ describe("POST /api/report-urls", () => {
     mockLimit.mockResolvedValueOnce({ allowed: false, unavailable: true });
     const res = await POST(post("/api/test-results/run-1/report/index.html"));
     expect(res.status).toBe(200);
+    const { url } = await res.json();
+    expect(url).toEqual(expect.stringMatching(/^https:\/\/reports\.example\.net\//));
   });
 
   it("answers 429 with Retry-After when the minting limit is exceeded", async () => {

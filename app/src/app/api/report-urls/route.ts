@@ -31,7 +31,7 @@ export async function POST(request: Request) {
   }
 
   const limit = await apiKeyRateLimiter.checkAndIncrement(`report-urls:${authContext.userId}`, REPORT_URL_RATE_LIMIT);
-  // Read-only and already auth- and permission-gated: an unavailable limiter fails open.
+  // Deliberate fail-open: read-only, auth- and permission-gated, short-lived token; failing closed would break all report viewing during a Redis outage.
   if (!limit.allowed && !limit.unavailable) {
     return NextResponse.json(
       { error: "Too many requests. Try again later." },

@@ -1,7 +1,7 @@
 /** @jest-environment node */
 // CI-only: needs TEST_DATABASE_URL (run with `npm run test:db`).
 import { execFile } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -51,6 +51,11 @@ it("builds the index after the migration transaction and records the file only o
   expect(await indexState()).toEqual([true]);
   const [{ count }] = await client<{ count: number }[]>`SELECT count(*)::int AS count FROM "__drizzle_migrations"`;
   expect(count).toBeGreaterThan(50);
+  const hash0054 = createHash("md5")
+    .update(readFileSync(path.join(APP_ROOT, "src/db/migrations/0054_runs_test_id_index.sql"), "utf8"))
+    .digest("hex");
+  const recorded = await client<{ hash: string }[]>`SELECT hash FROM "__drizzle_migrations" WHERE hash = ${hash0054}`;
+  expect(recorded).toHaveLength(1);
   await migrate(); // a second deploy is a no-op
   expect(await indexState()).toEqual([true]);
   const [{ count: again }] = await client<{ count: number }[]>`SELECT count(*)::int AS count FROM "__drizzle_migrations"`;

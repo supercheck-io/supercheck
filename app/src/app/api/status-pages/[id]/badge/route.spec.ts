@@ -45,20 +45,38 @@ describe("status badge", () => {
     expect(svg).toContain('fill="#00ff00"');
   });
 
-  it("reflects an open incident when components look operational", async () => {
-    mockSelects.push([{ status: "operational" }], [{ id: "i1" }]);
-    expect(await call()).toContain("incident");
+  it.each([
+    ["critical", "major outage"],
+    ["major", "partial outage"],
+    ["minor", "degraded"],
+  ])("maps an open %s incident like the public banner (%s)", async (impact, message) => {
+    mockSelects.push([{ status: "operational" }], [{ impact }]);
+    expect(await call()).toContain(message);
   });
 
-  it("component outages take precedence over the incident lookup", async () => {
-    mockSelects.push([{ status: "major_outage" }]);
+  it("takes the worst impact across open incidents", async () => {
+    mockSelects.push([{ status: "operational" }], [{ impact: "minor" }, { impact: "critical" }, { impact: "none" }]);
     expect(await call()).toContain("major outage");
   });
 
-  it("does not count a maintenance window as an incident", async () => {
+  it("an impact of none does not change the badge", async () => {
+    mockSelects.push([{ status: "operational" }], [{ impact: "none" }]);
+    expect(await call()).toContain("operational");
+  });
+
+  it("a critical incident outranks a degraded component", async () => {
+    mockSelects.push([{ status: "degraded_performance" }], [{ impact: "critical" }]);
+    expect(await call()).toContain("major outage");
+  });
+
+  it("filters incidents to this page, open statuses and non-maintenance", async () => {
     mockSelects.push([{ status: "operational" }], []);
     await call();
-    const { sql } = new PgDialect().sqlToQuery(mockWheres[mockWheres.length - 1] as never);
-    expect(sql).toMatch(/"scheduled_for" is null or "incidents"."scheduled_until" is null|"scheduled_for" is null or .*"scheduled_until" is null/);
+    const { sql, params } = new PgDialect().sqlToQuery(mockWheres[mockWheres.length - 1] as never);
+    expect(sql).toBe(
+      '("incidents"."status_page_id" = $1 and "incidents"."status" in ($2, $3, $4) and ("incidents"."scheduled_for" is null or "incidents"."scheduled_until" is null))'
+    );
+    expect(params).toEqual([ID, "investigating", "identified", "monitoring"]);
+    expect(sql).not.toMatch(/\bnot\b/);
   });
 });

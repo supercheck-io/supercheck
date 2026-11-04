@@ -8,6 +8,11 @@ describe("db-migrate no-transaction files", () => {
     expect(hasNoTransactionMarker("CREATE INDEX x ON t (c);")).toBe(false);
   });
 
+  it("matches the marker only in the leading comment block", () => {
+    expect(hasNoTransactionMarker("\n-- a\n\n-- supercheck:no-transaction")).toBe(true);
+    expect(hasNoTransactionMarker("CREATE TABLE t (c int);\n-- supercheck:no-transaction\nSELECT 1;")).toBe(false);
+  });
+
   it("finds the indexes a file builds concurrently", () => {
     const sql = `CREATE INDEX CONCURRENTLY IF NOT EXISTS runs_a_idx ON runs (a);
 --> statement-breakpoint

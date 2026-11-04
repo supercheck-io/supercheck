@@ -244,7 +244,10 @@ const NO_TRANSACTION_MARKER = /^--\s*supercheck:no-transaction\s*$/m;
 const deferredMigrations = [];
 
 function hasNoTransactionMarker(sql) {
-  return NO_TRANSACTION_MARKER.test(sql);
+  // Only the leading comment block counts: a marker after SQL must not defer the file.
+  const lines = sql.split(/\r?\n/);
+  const end = lines.findIndex((l) => l.trim() !== "" && !l.trimStart().startsWith("--"));
+  return NO_TRANSACTION_MARKER.test((end === -1 ? lines : lines.slice(0, end)).join("\n"));
 }
 
 function concurrentIndexNames(sql) {

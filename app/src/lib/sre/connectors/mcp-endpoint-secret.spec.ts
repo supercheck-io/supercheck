@@ -38,7 +38,7 @@ jest.mock("@/utils/db", () => ({
 }));
 
 import { McpEndpointMissingError, resolveMcpEndpointUrl } from "./mcp-endpoint-secret";
-import { encryptConnectorCredential } from "./credential-vault";
+import { decryptConnectorCredential, encryptConnectorCredential } from "./credential-vault";
 
 const STAMP = new Date("2026-01-01T00:00:00Z");
 const context = { organizationId: "o1", projectId: "p1", connectorId: "c1" };
@@ -87,6 +87,11 @@ describe("resolveMcpEndpointUrl", () => {
     await resolveMcpEndpointUrl(row("https://mcp.example.com/mcp?apiKey=s3cret"));
     expect(mockInserts).toHaveLength(0);
     expect(mockUpdates.map((u) => u.table)).toEqual(["credentials", "connectors"]);
+    const written = mockUpdates.find((u) => u.table === "credentials")!.set.encryptedCredential as string;
+    expect(decryptConnectorCredential(written, context)).toEqual({
+      token: "t",
+      endpointUrl: "https://mcp.example.com/mcp?apiKey=s3cret",
+    });
   });
 
   it("skips the rewrite when a rotation changed the credential since it was read", async () => {

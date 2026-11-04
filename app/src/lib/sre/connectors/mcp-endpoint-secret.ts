@@ -38,6 +38,34 @@ export function withMcpEndpoint(value: ConnectorCredentialValue | undefined, end
 }
 
 /**
+ * The full endpoint URL a rotation must carry over, read through the caller's transaction (which already
+ * holds the connector row lock) so it cannot deadlock with the lazy migration in resolveMcpEndpointUrl.
+ */
+export async function readCarriedMcpEndpoint(
+  tx: Pick<typeof db, "select">,
+  row: ConnectorRow,
+): Promise<string> {
+  const stored = row.config?.endpointUrl as string;
+  const [credentialRow] = await tx
+    .select()
+    .from(externalConnectorCredentials)
+    .where(eq(externalConnectorCredentials.connectorId, row.id))
+    .orderBy(desc(externalConnectorCredentials.updatedAt))
+    .limit(1);
+  const blob = credentialRow
+    ? decryptConnectorCredential(credentialRow.encryptedCredential, {
+        organizationId: row.organizationId,
+        projectId: row.projectId,
+        connectorId: row.id,
+      })
+    : undefined;
+  const secret = blob?.[MCP_ENDPOINT_FIELD];
+  if (typeof secret === "string") return secret;
+  if (stored === redactEndpointQuery(stored)) throw new McpEndpointMissingError();
+  return stored;
+}
+
+/**
  * The URL to dial. Rows saved before the URL was encrypted still hold it in config; they keep working and
  * are moved into the credential blob (and redacted in config) the first time they are used.
  */

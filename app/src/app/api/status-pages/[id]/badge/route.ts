@@ -20,6 +20,7 @@ import {
 import { eq, and, inArray, isNull, or } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 import { normalizeHexColor } from "@/lib/status-page-branding";
+import { IMPACT_BANNER_STATUS } from "@/lib/incident-impact";
 import { normalizePublicStatusPageId } from "@/lib/public-status-page-id";
 
 /** Common headers for all SVG badge responses */
@@ -208,28 +209,23 @@ export async function GET(
       eq(statusPageComponents.showcase, true)
     ));
 
-    const componentStatuses = pageComponents.map((c) => c.status);
-    let { message, color } = calculateOverallStatus(componentStatuses);
-
-    // An open incident (not scheduled maintenance) keeps the badge off "operational".
-    if (message === "operational") {
-      const [openIncident] = await db
-        .select({ id: incidents.id })
-        .from(incidents)
-        .where(
-          and(
-            eq(incidents.statusPageId, statusPageId),
-            inArray(incidents.status, ["investigating", "identified", "monitoring"]),
-            // A maintenance window (both times set) is not an incident, as on the public page.
-            or(isNull(incidents.scheduledFor), isNull(incidents.scheduledUntil))
-          )
+    // Open incidents (not scheduled maintenance) count with the banner's impact mapping, worst wins.
+    const openIncidents = await db
+      .select({ impact: incidents.impact })
+      .from(incidents)
+      .where(
+        and(
+          eq(incidents.statusPageId, statusPageId),
+          inArray(incidents.status, ["investigating", "identified", "monitoring"]),
+          // A maintenance window (both times set) is not an incident, as on the public page.
+          or(isNull(incidents.scheduledFor), isNull(incidents.scheduledUntil))
         )
-        .limit(1);
-      if (openIncident) {
-        message = "incident";
-        color = "#f1c40f";
-      }
-    }
+      );
+
+    const { message, color } = calculateOverallStatus([
+      ...pageComponents.map((c) => c.status),
+      ...openIncidents.flatMap((i) => IMPACT_BANNER_STATUS[i.impact] ?? []),
+    ]);
 
     // Use custom colors from the status page if available (validated)
     let badgeColor = color;
@@ -239,7 +235,7 @@ export async function GET(
       badgeColor = sanitizeColor(statusPage.cssReds, color);
     if (message === "partial outage")
       badgeColor = sanitizeColor(statusPage.cssOranges, color);
-    if (message === "degraded" || message === "incident")
+    if (message === "degraded")
       badgeColor = sanitizeColor(statusPage.cssYellows, color);
     if (message === "maintenance")
       badgeColor = sanitizeColor(statusPage.cssBlues, color);
