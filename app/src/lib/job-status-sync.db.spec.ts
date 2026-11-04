@@ -110,8 +110,11 @@ it("follows the newest remaining run after a run is deleted", async () => {
   expect(await jobStatus()).toBe("passed");
 });
 
-it("leaves the status unchanged with no runs", async () => {
-  const before = await jobStatus();
+it("resets the job to pending when its last run is deleted", async () => {
+  const only = await addRun("passed", "2026-01-01T00:01:00Z");
   await syncJobStatusFromRuns(mockDatabase, jobId);
-  expect(await jobStatus()).toBe(before);
+  expect(await jobStatus()).toBe("passed");
+  await mockDatabase.delete(schema.runs).where(eq(schema.runs.id, only));
+  await syncJobStatusFromRuns(mockDatabase, jobId);
+  expect(await jobStatus()).toBe("pending");
 });
