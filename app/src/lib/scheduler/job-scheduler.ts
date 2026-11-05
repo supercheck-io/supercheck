@@ -176,7 +176,7 @@ export async function processScheduledJob(
         trigger: 'schedule',
         projectId,
         errorDetails: reason,
-        metadata: { jobType, executionEngine: isK6Job ? 'k6' : 'playwright' },
+        metadata: { jobType, executionEngine: isK6Job ? 'k6' : 'playwright', cronSchedule: jobRecord.cronSchedule },
       });
       insertedRunId = runId;
     };
@@ -241,6 +241,7 @@ export async function processScheduledJob(
           metadata: {
             jobType,
             executionEngine: isK6Job ? 'k6' : 'playwright',
+            cronSchedule: jobRecord.cronSchedule,
           },
         });
         return { success: true };
@@ -260,6 +261,8 @@ export async function processScheduledJob(
       metadata: {
         jobType,
         executionEngine: isK6Job ? 'k6' : 'playwright',
+        // The schedule that fired this run; the live job schedule can change later.
+        cronSchedule: jobRecord.cronSchedule,
         ...(isK6Job ? { location: resolvedLocation } : {}),
       },
     });

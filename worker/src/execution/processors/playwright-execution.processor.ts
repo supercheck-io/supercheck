@@ -195,6 +195,32 @@ export class PlaywrightExecutionProcessor
     }
   }
 
+  /** Meters observed run time when the result could not be saved; never writes status or masks the original error. */
+  private async meterUnsavedResult(
+    organizationId: string | undefined,
+    runId: string | null | undefined,
+    durationMs: number,
+    metadata: Record<string, unknown>,
+  ): Promise<void> {
+    if (!organizationId || !runId || durationMs <= 0) return;
+    await this.usageTrackerService
+      .completeRunWithUsage(
+        {
+          organizationId,
+          runId,
+          eventType: 'playwright_execution',
+          durationMs,
+          metadata,
+        },
+        async () => {},
+      )
+      .catch((err: Error) =>
+        this.logger.error(
+          `[${runId}] Failed to meter usage before rethrow: ${err.message}`,
+        ),
+      );
+  }
+
   /** Retries only the save of an already-produced result; gives up with a non-retryable error. */
   private async persistWithRetry(
     runId: string,
@@ -356,6 +382,12 @@ export class PlaywrightExecutionProcessor
       }
       if (error instanceof ResultNotPersistedError) {
         this.logger.error(error.message);
+        await this.meterUnsavedResult(
+          job.data.organizationId,
+          runId,
+          Math.max(getBillableMs(error), observedBillableMs),
+          { testId, type: 'single_test', executionError: true },
+        );
         throw error;
       }
       const errorMessage = (error as Error).message;
@@ -703,6 +735,12 @@ export class PlaywrightExecutionProcessor
       }
       if (error instanceof ResultNotPersistedError) {
         this.logger.error(error.message);
+        await this.meterUnsavedResult(
+          jobData.organizationId,
+          runId,
+          Math.max(getBillableMs(error), observedBillableMs),
+          { jobId: originalJobId, executionError: true },
+        );
         throw error;
       }
       ErrorHandler.logError(

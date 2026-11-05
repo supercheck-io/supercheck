@@ -38,7 +38,8 @@ export async function maybeAutoInvestigateOnOpen(input: AutoInvestigateInput): P
     if (!policy.autoInvestigateOnOpen) return { handled: false, reason: "disabled" };
 
     // The lock makes the decision atomic per incident; it is released before the run starts so no pooled
-    // connection is held across the LLM call. A racing start is stopped by the active-run unique index.
+    // connection is held across the LLM call. A racing start of the same agent type is stopped by the
+    // active-run unique index (it includes agent type, and severity picks one type per incident).
     // The incident is read after the lock so severity and status are current when the run is chosen.
     const decision = await db.transaction(async (tx) => {
       await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`auto-investigate:${input.incidentId}`}))`);
@@ -58,23 +59,8 @@ export async function maybeAutoInvestigateOnOpen(input: AutoInvestigateInput): P
       if (policy.autoInvestigateEnabledAt && incident.createdAt < policy.autoInvestigateEnabledAt) {
         return { reason: "predates_policy" } as const;
       }
-      // One automatic run per incident: later alerts joining it, or a retried job, must not bill again.
-      // A failed, aborted or timed-out run does not count, so it can be retried, up to a cap so a
-      // persistent provider failure does not spend credits on every alert that joins the incident.
-      const runs = await tx
-        .select({ status: sreInvestigationRuns.status })
-        .from(sreInvestigationRuns)
-        .where(
-          and(
-            eq(sreInvestigationRuns.incidentId, input.incidentId),
-            eq(sreInvestigationRuns.organizationId, input.organizationId),
-            eq(sreInvestigationRuns.projectId, input.projectId),
-          ),
-        );
-      if (runs.some((run) => run.status === "running" || run.status === "completed")) {
-        return { reason: "already_investigated" } as const;
-      }
-      if (runs.length >= MAX_AUTO_ATTEMPTS) return { reason: "retry_limit" } as const;
+      const blocked = await blockingRunReason(tx, input);
+      if (blocked) return { reason: blocked } as const;
       return { severity: incident.severity };
     });
     if ("reason" in decision) return { handled: false, reason: decision.reason };
@@ -83,6 +69,28 @@ export async function maybeAutoInvestigateOnOpen(input: AutoInvestigateInput): P
     logger.error({ error, incidentId: input.incidentId }, "Automatic investigation could not start");
     return { handled: false, reason: "error" };
   }
+}
+
+type Executor = Pick<typeof db, "select">;
+
+// One automatic run per incident: later alerts joining it, or a retried job, must not bill again.
+// A failed, aborted or timed-out run does not count, so it can be retried, up to a cap so a
+// persistent provider failure does not spend credits on every alert that joins the incident.
+// The cap counts manual runs too (no origin column); they also signal a failing provider.
+async function blockingRunReason(executor: Executor, input: AutoInvestigateInput) {
+  const runs = await executor
+    .select({ status: sreInvestigationRuns.status })
+    .from(sreInvestigationRuns)
+    .where(
+      and(
+        eq(sreInvestigationRuns.incidentId, input.incidentId),
+        eq(sreInvestigationRuns.organizationId, input.organizationId),
+        eq(sreInvestigationRuns.projectId, input.projectId),
+      ),
+    );
+  if (runs.some((run) => run.status === "running" || run.status === "completed")) return "already_investigated" as const;
+  if (runs.length >= MAX_AUTO_ATTEMPTS) return "retry_limit" as const;
+  return null;
 }
 
 async function startOnce(
@@ -97,6 +105,11 @@ async function startOnce(
     }
 
     if (await sreDailyTokenLimitResponse(input.organizationId)) return { handled: false, reason: "daily_limit" };
+
+    // The lock is gone by now: re-check just before starting so a run another trigger finished meanwhile
+    // is not repeated. Narrows the race (a start between this read and the runner's insert remains).
+    const blocked = await blockingRunReason(db, input);
+    if (blocked) return { handled: false, reason: blocked };
 
     if (severity === "sev3" || severity === "sev4") {
       const triage = await runSreIncidentTriage(input);

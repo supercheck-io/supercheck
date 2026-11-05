@@ -20,25 +20,29 @@ const triage = jest.fn();
 jest.mock("@/sre/lib/triage-runner", () => ({ runSreIncidentTriage: (...a: unknown[]) => triage(...a) }));
 let incidentRows: unknown[] = [];
 let runRows: unknown[] = [];
+// Runs visible to the re-check before starting, i.e. ones that appeared after the decision.
+let lateRunRows: unknown[] | null = null;
 let selects = 0;
 let inTransaction = false;
 const lockExecute = jest.fn().mockResolvedValue(undefined);
 // Inside the transaction the incident is read first, then any earlier investigation run.
+const chain = (rows: unknown[]) => {
+  const n: Record<string, unknown> = {};
+  for (const k of ["from", "where"]) n[k] = () => n;
+  n.limit = () => Promise.resolve(rows);
+  // The run query is awaited without .limit().
+  n.then = (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) =>
+    Promise.resolve(rows).then(resolve, reject);
+  return n;
+};
 const tx = {
   execute: (...a: unknown[]) => lockExecute(...a),
-  select: () => {
-    const rows = selects++ % 2 === 0 ? incidentRows : runRows;
-    const n: Record<string, unknown> = {};
-    for (const k of ["from", "where"]) n[k] = () => n;
-    n.limit = () => Promise.resolve(rows);
-    // The run query is awaited without .limit().
-    n.then = (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) =>
-      Promise.resolve(rows).then(resolve, reject);
-    return n;
-  },
+  select: () => chain(selects++ % 2 === 0 ? incidentRows : runRows),
 };
 jest.mock("@/utils/db", () => ({
   db: {
+    // Outside the transaction (the re-check before starting) only the run query is issued.
+    select: () => chain(lateRunRows ?? runRows),
     transaction: async (callback: (t: typeof tx) => unknown) => {
       inTransaction = true;
       try {
@@ -58,6 +62,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   selects = 0;
   runRows = [];
+  lateRunRows = null;
   sreEnabled.mockReturnValue(true);
   policy.mockResolvedValue({ autoInvestigateOnOpen: true });
   incidentRows = [{ severity: "sev1", status: "triggered" }];
@@ -147,6 +152,12 @@ it("does not start a second automatic run for an incident that already has one",
   expect(await maybeAutoInvestigateOnOpen(input)).toEqual({ handled: false, reason: "already_investigated" });
   expect(start).not.toHaveBeenCalled();
   expect(triage).not.toHaveBeenCalled();
+});
+
+it("re-checks just before starting, so a run another trigger completed meanwhile is not repeated", async () => {
+  lateRunRows = [{ status: "completed" }];
+  expect(await maybeAutoInvestigateOnOpen(input)).toEqual({ handled: false, reason: "already_investigated" });
+  expect(start).not.toHaveBeenCalled();
 });
 
 it("retries after failed runs, but stops after three failed automatic attempts", async () => {

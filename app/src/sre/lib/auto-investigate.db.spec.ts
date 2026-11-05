@@ -109,3 +109,10 @@ it("does not hold a pooled connection while the run starts", async () => {
   await maybeAutoInvestigateOnOpen(input);
   expect(idleInTransaction).toBe(0);
 });
+
+it("rejects a second running run for the same incident and agent type", async () => {
+  await run("running");
+  await expect(run("running")).rejects.toMatchObject({
+    cause: { code: "23505", constraint_name: "sre_investigation_runs_active_incident_unique" },
+  });
+});

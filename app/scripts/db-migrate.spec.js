@@ -57,9 +57,13 @@ describe("resolveDeferredTarget", () => {
     });
   });
   it("skips the SET when falling back to a pooled URL", () => {
-    for (const url of [pooled, "postgresql://u:p@x-pgbouncer.internal/app", "postgresql://u:p@h/app?pooler=1", "postgresql://u:p@db-pooler.example.com/app"]) {
-      expect(resolveDeferredTarget(url, undefined)).toEqual({ url, useStatementTimeout: false });
+    for (const url of [pooled, "postgresql://u:p@x-pgbouncer.internal/app", "postgresql://u:p@h/app?host=db-pooler.internal", "postgresql://u:p@db-pooler.example.com/app", "postgresql://u:p@db.example.com:5432/app?pgbouncer=true"]) {
+      expect(resolveDeferredTarget(url, "")).toEqual({ url, useStatementTimeout: false });
     }
+  });
+  it("ignores unrelated query parameters when detecting a pooler", () => {
+    const url = "postgresql://u:p@db.example.com:5432/app?application_name=pooler-maintenance";
+    expect(resolveDeferredTarget(url, "")).toEqual({ url, useStatementTimeout: true });
   });
   it("still sets the timeout on a non-pooled fallback", () => {
     const url = "postgresql://u:p@db.example.com:5432/app";

@@ -1168,15 +1168,41 @@ describe('PlaywrightExecutionProcessor', () => {
           expect(failure).toBeInstanceOf(ResultNotPersistedError);
           expect(failure).toBeInstanceOf(UnrecoverableError);
           expect(execute).toHaveBeenCalledTimes(1);
+          // 3 save attempts, then one metering-only call (rejects here too, and must not mask the error).
+          const calls = mockUsageTrackerService.completeRunWithUsage.mock.calls;
+          expect(calls).toHaveLength(4);
+          expect(calls[3][0]).toMatchObject({
+            runId,
+            eventType: 'playwright_execution',
+            durationMs: expect.any(Number),
+          });
+          expect(calls[3][0].durationMs).toBeGreaterThan(0);
+          expect(
+            mockDbService.updateRunStatus.mock.calls.filter(
+              ([id, status]) => id === runId && status === 'failed',
+            ),
+          ).toHaveLength(0);
+        },
+      );
+
+      it.each(['test', 'job'])(
+        'meters a %s run once when its saves fail but metering succeeds',
+        async (kind) => {
+          const { job, execute } = run(kind);
+          for (let i = 0; i < 3; i++) {
+            mockUsageTrackerService.completeRunWithUsage.mockRejectedValueOnce(
+              new Error('db down'),
+            );
+          }
+          mockUsageTrackerService.completeRunWithUsage.mockResolvedValueOnce(
+            undefined,
+          );
+          const failure = await processor.process(job).catch((e: unknown) => e);
+          expect(failure).toBeInstanceOf(ResultNotPersistedError);
+          expect(execute).toHaveBeenCalledTimes(1);
           expect(
             mockUsageTrackerService.completeRunWithUsage,
-          ).toHaveBeenCalledTimes(3);
-          expect(mockDbService.updateRunStatus).not.toHaveBeenCalledWith(
-            runId,
-            'failed',
-            expect.anything(),
-            expect.anything(),
-          );
+          ).toHaveBeenCalledTimes(4);
         },
       );
 

@@ -72,6 +72,13 @@ describe("Playground recorded code", () => {
     expect(screen.getByLabelText("editor")).toHaveValue("my work");
   });
 
+  it("asks when the saved script was cleared, since an empty editor is still unsaved work", async () => {
+    render(<Playground initialTestData={base} />);
+    fireEvent.change(screen.getByLabelText("editor"), { target: { value: "" } });
+    await send("recorded();");
+    expect(screen.getByText("Replace editor content with the recorded script?")).toBeInTheDocument();
+  });
+
   it("applies the recording on Replace", async () => {
     render(<Playground initialTestData={base} />);
     fireEvent.change(screen.getByLabelText("editor"), { target: { value: "my work" } });

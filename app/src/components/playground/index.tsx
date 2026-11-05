@@ -728,7 +728,7 @@ const Playground: React.FC<PlaygroundProps> = ({
       // until the user confirms if it would overwrite unsaved work.
       window.postMessage({ type: "SUPERCHECK_RECORDED_CODE_ACK" }, window.location.origin);
       const { current, initial } = editorStateRef.current;
-      if (current !== "" && current !== initial) {
+      if (current !== initial) {
         setPendingRecordedCode(code);
         return;
       }

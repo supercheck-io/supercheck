@@ -316,7 +316,13 @@ async function dropInvalidIndexes(client, sql) {
 function looksPooled(url) {
   try {
     const u = new URL(String(url).replace(/^postgres(ql)?:/i, "http:"));
-    return u.port === "6432" || /pgbouncer|pooler/i.test(`${u.hostname}${u.search}`);
+    // Hostname, the `host` parameter and the conventional `pgbouncer=true` flag only: other parameters
+    // (application_name=...) say nothing about the server.
+    return (
+      u.port === "6432" ||
+      u.searchParams.get("pgbouncer") === "true" ||
+      /pgbouncer|pooler/i.test(`${u.hostname} ${u.searchParams.get("host") ?? ""}`)
+    );
   } catch {
     return false;
   }
