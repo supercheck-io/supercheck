@@ -268,10 +268,7 @@ export async function deleteRunWithContext(runId: string, context: ProjectAuthCo
           }
 
           // The job's stored status must follow its newest remaining run, not the deleted one.
-          if (runData.jobId) {
-            await syncJobStatusFromRuns(tx, runData.jobId);
-            await updateCoverageSnapshotsForJob(runData.jobId, tx);
-          }
+          if (runData.jobId) await syncJobStatusFromRuns(tx, runData.jobId);
 
           console.log(
             "[DELETE_RUN] Transaction completed successfully - run and reports deleted"
@@ -299,6 +296,14 @@ export async function deleteRunWithContext(runId: string, context: ProjectAuthCo
       console.log(
         "[DELETE_RUN] Transaction successful, starting cleanup tasks..."
       );
+
+      // Requirement coverage follows the job's remaining runs. It is derived and recomputed on the next run,
+      // so a failure here must not fail a deletion that has already committed.
+      if (transactionResult.runData.jobId) {
+        await updateCoverageSnapshotsForJob(transactionResult.runData.jobId).catch((coverageError) => {
+          console.error("[DELETE_RUN] Error refreshing requirement coverage (run still deleted):", coverageError);
+        });
+      }
 
       // Log audit event (don't fail the whole operation if this fails)
       await logRunDeletionAudit(
