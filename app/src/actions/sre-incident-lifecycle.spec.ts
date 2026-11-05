@@ -90,6 +90,12 @@ describe("incident lifecycle actions", () => {
     expect(Object.values(lifecycle).every((fn) => fn.mock.calls.length === 0)).toBe(true);
   });
 
+  it("lowercases the assignee id before it reaches the lifecycle and timeline", async () => {
+    lifecycle.assignIncident.mockResolvedValue({ ok: true, incident: { incidentNumber: 1 }, changed: true });
+    await assignSreIncident({ incidentId, assigneeUserId: "018F0000-0000-7000-8000-0000000000E1" });
+    expect(lifecycle.assignIncident).toHaveBeenCalledWith(actor, incidentId, "018f0000-0000-7000-8000-0000000000e1", "assignee");
+  });
+
   it("scopes every call to the caller's organization and project", async () => {
     lifecycle.assignIncident.mockResolvedValue({ ok: true, incident: { incidentNumber: 1 }, changed: true });
     const assignee = "018f0000-0000-7000-8000-0000000000e1";

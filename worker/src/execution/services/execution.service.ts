@@ -177,6 +177,28 @@ export class ExecutionService implements OnModuleDestroy {
   private memoryCleanupInterval: NodeJS.Timeout;
   private readonly gcInterval: NodeJS.Timeout;
 
+  /**
+   * Refreshes requirement coverage once the run's terminal status is committed, so the
+   * linked-test status read sees this run. Best effort: errors are logged, never thrown.
+   */
+  async updateRequirementCoverageAfterRun(
+    task: Pick<JobExecutionTask, 'jobId' | 'organizationId' | 'projectId'>,
+    runId: string,
+  ): Promise<void> {
+    if (!task.jobId || !task.organizationId || !task.projectId) return;
+    try {
+      await this.requirementCoverageService.updateCoverageAfterJobRun(
+        task.jobId,
+        task.organizationId,
+        task.projectId,
+      );
+    } catch (err: unknown) {
+      this.logger.warn(
+        `[${runId}] Failed to update requirement coverage: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
   constructor(
     private configService: ConfigService,
     private s3Service: S3Service,
@@ -1135,22 +1157,6 @@ export class ExecutionService implements OnModuleDestroy {
       this.logger.log(
         `[Playwright Job] ${runId} ${finalStatus} (${durationMs}ms, ${testScripts.length} tests)`,
       );
-
-      // Update requirement coverage snapshots for any linked requirements
-      // This is done asynchronously and errors are logged but don't fail the job
-      if (task.jobId && task.organizationId && task.projectId) {
-        this.requirementCoverageService
-          .updateCoverageAfterJobRun(
-            task.jobId,
-            task.organizationId,
-            task.projectId,
-          )
-          .catch((err: unknown) => {
-            this.logger.warn(
-              `[${runId}] Failed to update requirement coverage: ${err instanceof Error ? err.message : String(err)}`,
-            );
-          });
-      }
     } catch (error) {
       const errorMessage = (error as Error).message;
       const isCancellation =

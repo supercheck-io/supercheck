@@ -109,6 +109,13 @@ export async function register() {
       console.error('[Instrumentation] Failed to initialize status page scheduler:', error);
     }
 
+    try {
+      const { initializeIncidentRenotifyScheduler } = await import('@/lib/sre/incident-renotify');
+      await initializeIncidentRenotifyScheduler();
+    } catch (error) {
+      console.error('[Instrumentation] Failed to initialize incident re-notify scheduler:', error);
+    }
+
     // Initialize email template processor
     try {
       console.log('[Instrumentation] Loading email template processor...');

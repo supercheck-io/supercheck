@@ -9,6 +9,7 @@ import {
   sreAlertEvents,
   sreIncidentAlerts,
   sreIncidents,
+  sreServiceOwners,
   sreServices,
   user,
   type PlainNotificationProviderConfig,
@@ -31,6 +32,9 @@ import {
 } from "@/lib/notification-providers/validation";
 import { getRedisConnection } from "@/lib/queue";
 import { fetchPublicEndpoint } from "@/lib/sre/connectors/pinned-fetch";
+import { listProjectAdmins, listWatchers } from "@/lib/sre/incident-watchers";
+import { getNotificationPolicy, listPolicyProviders } from "@/lib/sre/notification-policy";
+import { isUuid } from "@/lib/uuid";
 import { db } from "@/utils/db";
 
 const logger = createLogger({ module: "sre-incident-notifier" }) as {
@@ -44,7 +48,10 @@ export type IncidentNotifyEvent =
   | "ai_finding"
   | "resolved"
   | "recovered"
-  | "reopened";
+  | "reopened"
+  | "commented"
+  | "severity_changed"
+  | "unacknowledged";
 
 type IncidentNotifyInput = {
   organizationId: string;
@@ -72,12 +79,21 @@ const EVENT_LABEL: Record<IncidentNotifyEvent, string> = {
   resolved: "resolved",
   recovered: "recovered",
   reopened: "reopened",
+  commented: "has a new note",
+  severity_changed: "changed severity",
+  unacknowledged: "is still unacknowledged",
 };
+
+/** Emailed to the owner, commander and watchers only: the text can be internal, so channels never get it. */
+const PEOPLE_ONLY_EVENTS: IncidentNotifyEvent[] = ["commented", "severity_changed"];
+const MAX_POLICY_OWNERS = 5;
 
 const DEDUPE_TTL_SECONDS = 600;
 const SEND_TIMEOUT_MS = 8000;
 const MAX_DETAIL_LENGTH = 300;
 const MAX_EMAIL_RECIPIENTS = 20;
+/** Direct (participant and watcher) mail may span several batches. */
+const MAX_DIRECT_RECIPIENTS = 120;
 
 export function buildIncidentUrl(incidentId: string) {
   const base = (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/+$/, "");
@@ -185,13 +201,23 @@ function plainText(message: Message) {
   return `${message.text}\n\n${facts}\n\n${message.url}`;
 }
 
-async function sendEmail(recipients: string[], message: Message) {
+/** Sends in batches of MAX_EMAIL_RECIPIENTS so nobody who was throttled-in is silently dropped; `max` bounds the total. */
+async function sendEmail(recipients: string[], message: Message, max = MAX_EMAIL_RECIPIENTS) {
   const all = [...new Set(recipients.map((r) => r.trim()).filter(Boolean))];
-  if (all.length > MAX_EMAIL_RECIPIENTS) {
-    logger.warn({ recipients: all.length, max: MAX_EMAIL_RECIPIENTS }, "Incident email recipient list truncated");
+  if (all.length > max) {
+    logger.warn({ recipients: all.length, max }, "Incident email recipient list truncated");
   }
-  const unique = all.slice(0, MAX_EMAIL_RECIPIENTS);
+  const unique = all.slice(0, max);
   if (unique.length === 0) return;
+  let failures = 0;
+  for (let index = 0; index < unique.length; index += MAX_EMAIL_RECIPIENTS) {
+    failures += await sendEmailBatch(unique.slice(index, index + MAX_EMAIL_RECIPIENTS), message);
+  }
+  if (failures > 0) throw new Error(`email failed for ${failures}/${unique.length} recipient(s)`);
+}
+
+/** Returns how many recipients failed. */
+async function sendEmailBatch(unique: string[], message: Message): Promise<number> {
   let rendered: { subject: string; html: string; text: string };
   try {
     rendered = await renderIncidentUpdateEmail({
@@ -219,9 +245,7 @@ async function sendEmail(recipients: string[], message: Message) {
     };
   }
   const result = await EmailService.getInstance().sendEmailToMultiple({ recipients: unique, ...rendered });
-  if (result.failedAddresses.length > 0) {
-    throw new Error(`email failed for ${result.failedAddresses.length}/${unique.length} recipient(s)`);
-  }
+  return result.failedAddresses.length;
 }
 
 function hasCustomWebhookBody(config: Record<string, unknown>) {
@@ -237,16 +261,18 @@ const TEAMS_COLOR: Partial<Record<IncidentNotifyEvent, string>> = {
   recovered: "good",
 };
 
+/** Resolves true when a message went out, false when this provider type deliberately sends nothing. */
 async function sendToProvider(
   provider: { type: string; config: PlainNotificationProviderConfig },
   message: Message,
-) {
+): Promise<boolean> {
   const config = provider.config as Record<string, unknown>;
   const color = INCIDENT_EVENT_COLOR[message.event] ?? "#1f2937";
   const heading = `#${message.incident.number} ${message.email.title}`;
   switch (provider.type) {
     case "email":
-      return sendEmail(String(config.emails ?? "").split(","), message);
+      await sendEmail(String(config.emails ?? "").split(","), message);
+      return true;
     case "slack":
       await post(String(config.webhookUrl), {
         text: escapeSlack(`${message.headline}: ${heading}`),
@@ -262,7 +288,7 @@ async function sendToProvider(
           },
         ],
       });
-      return;
+      return true;
     case "teams":
       // Teams Workflows webhooks only accept Adaptive Card attachments, not { text }.
       await post(String(config.teamsWebhookUrl), {
@@ -285,7 +311,7 @@ async function sendToProvider(
           },
         ],
       });
-      return;
+      return true;
     case "discord":
       await post(String(config.discordWebhookUrl), {
         content: clip(escapeMarkdown(message.headline), 2000),
@@ -303,7 +329,7 @@ async function sendToProvider(
         // Incident titles are user text; never let them ping @everyone or roles.
         allowed_mentions: { parse: [] },
       });
-      return;
+      return true;
     case "telegram":
       // Plain text: no parse_mode, so incident titles cannot inject markup.
       await post(`https://api.telegram.org/bot${String(config.botToken)}/sendMessage`, {
@@ -312,21 +338,22 @@ async function sendToProvider(
         text: `${clip(`${message.headline}\n${plainText({ ...message, url: "" }).trimEnd()}`, 4000)}\n\n${message.url}`,
         disable_web_page_preview: true,
       });
-      return;
+      return true;
     case "webhook":
       // Presets and body templates shape payloads for one specific receiver; the fixed incident
       // JSON would be wrong for them, so only plain webhooks receive incident messages.
       if (hasCustomWebhookBody(config)) {
         logger.warn({ type: "webhook" }, "Incident notification skipped for a webhook with a preset or body template");
-        return;
+        return false;
       }
       await post(
         String(config.url),
         { event: `incident.${message.event}`, ...message.incident, title: message.title, text: message.text, url: message.url },
         normalizeWebhookHeaders(config.headers),
       );
-      return;
+      return true;
   }
+  return false;
 }
 
 // System events can repeat every check cycle while a monitor flaps.
@@ -342,7 +369,7 @@ async function participantEmails(
   try {
     // Lazy import: incident-lifecycle imports this module.
     const { isAssignableUser } = await import("./incident-lifecycle");
-    const throttled = SYSTEM_EVENTS.includes(input.event) || (input.event === "resolved" && input.automatic);
+    const throttled = isThrottledEmail(input);
     const emails: string[] = [];
     const claimed: string[] = [];
     for (const id of participantIds) {
@@ -362,6 +389,13 @@ async function participantEmails(
   }
 }
 
+/** Notes and severity edits can come in bursts: at most one email per person per incident per event per window. */
+const BURST_EVENT_TTL_SECONDS = 300;
+
+function isThrottledEmail(input: IncidentNotifyInput) {
+  return SYSTEM_EVENTS.includes(input.event) || PEOPLE_ONLY_EVENTS.includes(input.event) || (input.event === "resolved" && input.automatic === true);
+}
+
 function recipientKey(input: IncidentNotifyInput, userId: string) {
   return `supercheck:sre:incident-email:${input.incidentId}:${input.event}:${userId}`;
 }
@@ -369,7 +403,8 @@ function recipientKey(input: IncidentNotifyInput, userId: string) {
 async function claimRecipient(input: IncidentNotifyInput, userId: string) {
   try {
     const redis = await getRedisConnection();
-    return (await redis.set(recipientKey(input, userId), "1", "EX", DEDUPE_TTL_SECONDS, "NX")) === "OK";
+    const ttl = PEOPLE_ONLY_EVENTS.includes(input.event) ? BURST_EVENT_TTL_SECONDS : DEDUPE_TTL_SECONDS;
+    return (await redis.set(recipientKey(input, userId), "1", "EX", ttl, "NX")) === "OK";
   } catch {
     return true;
   }
@@ -408,15 +443,37 @@ async function triggerAlertDelivered(sourceType: "monitor" | "job", sourceId: st
   return rows.some((row) => row.status === "sent");
 }
 
+/** Owner user and primary user owners of the service, for the policy's SEV1-2 email. */
+async function serviceOwnerIds(serviceId: string | null) {
+  if (!serviceId) return [];
+  const [service] = await db
+    .select({ ownerUserId: sreServices.ownerUserId })
+    .from(sreServices)
+    .where(eq(sreServices.id, serviceId))
+    .limit(1);
+  const owners = await db
+    .select({ ownerRef: sreServiceOwners.ownerRef })
+    .from(sreServiceOwners)
+    .where(and(eq(sreServiceOwners.serviceId, serviceId), eq(sreServiceOwners.ownerType, "user")))
+    .limit(MAX_POLICY_OWNERS);
+  return [service?.ownerUserId, ...owners.map((owner) => owner.ownerRef)].filter(
+    (id): id is string => typeof id === "string" && isUuid(id),
+  );
+}
+
 /**
  * Announce an incident lifecycle event through the notification providers the
  * triggering monitor or job already uses, plus a direct email to the assignee.
  * Best effort: never throws, never carries raw evidence or secrets.
  */
-export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<void> {
+export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<boolean> {
+  // Counts real send attempts, so the caller can tell "nothing to send" from "everything failed".
+  let attempted = 0;
+  let sent = 0;
+  let claim: string | null = null;
   try {
-    const claim = await claimEvent(input);
-    if (claim === null) return;
+    claim = await claimEvent(input);
+    if (claim === null) return true;
 
     const [incident] = await db
       .select({
@@ -428,6 +485,7 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<v
         acknowledgedAt: sreIncidents.acknowledgedAt,
         assigneeUserId: sreIncidents.assigneeUserId,
         commanderUserId: sreIncidents.commanderUserId,
+        serviceId: sreIncidents.primaryServiceId,
         serviceName: sreServices.name,
       })
       .from(sreIncidents)
@@ -440,7 +498,9 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<v
         ),
       )
       .limit(1);
-    if (!incident) return;
+    if (!incident) return true;
+    // The reminder is claimed before it is sent; someone may have acknowledged or resolved since.
+    if (input.event === "unacknowledged" && (incident.acknowledgedAt || incident.status === "resolved")) return true;
 
     const url = buildIncidentUrl(incident.id);
     const detail = input.detail?.replace(/\s+/g, " ").trim().slice(0, MAX_DETAIL_LENGTH);
@@ -448,12 +508,32 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<v
     // Participants (owner, commander, and the owner being replaced) get a direct email for
     // every lifecycle change, like ticket watchers; never the person who made the change.
     const ownerId = input.assigneeUserId ?? incident.assigneeUserId;
+    const policy = await getNotificationPolicy(input.projectId).catch(() => null);
+    // The project policy can add the service's owners to a SEV1-2 opening.
+    const policyOwnerIds =
+      input.event === "created" && policy?.emailServiceOwnersOnSev12 && ["sev1", "sev2"].includes(incident.severity)
+        ? await serviceOwnerIds(incident.serviceId).catch(() => [])
+        : [];
     const participantIds =
       input.event === "ai_finding"
         ? []
-        : [...new Set([ownerId, incident.commanderUserId, input.previousAssigneeUserId])].filter(
+        : [...new Set([ownerId, incident.commanderUserId, input.previousAssigneeUserId, ...policyOwnerIds])].filter(
             (id): id is string => Boolean(id) && id !== input.actorUserId,
           );
+    // Watchers hear about notes and severity changes; viewers may watch, so they skip the editor check.
+    const watcherCandidates = PEOPLE_ONLY_EVENTS.includes(input.event)
+      ? (await listWatchers(input.organizationId, input.projectId, incident.id).catch(() => [])).filter(
+          (watcher) => watcher.id !== input.actorUserId,
+        )
+      : [];
+    const watchers: typeof watcherCandidates = [];
+    const claimedWatchers: string[] = [];
+    for (const watcher of watcherCandidates) {
+      // A person who is also a participant is claimed once, in participantEmails.
+      if (participantIds.includes(watcher.id) || !(await claimRecipient(input, watcher.id))) continue;
+      watchers.push(watcher);
+      claimedWatchers.push(watcher.id);
+    }
     const personIds = [...new Set([input.actorUserId, ownerId, ...participantIds].filter((id): id is string => Boolean(id)))];
     // Names are cosmetic: a failed lookup must not stop the channel posts below.
     const people = personIds.length
@@ -503,30 +583,41 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<v
     };
 
     const direct = await participantEmails(input, participantIds, person);
-    if (direct.emails.length > 0) {
+    const directEmails = [...direct.emails, ...watchers.map((watcher) => watcher.email)];
+    if (directEmails.length > 0) {
+      attempted += 1;
       try {
-        await sendEmail(direct.emails, message);
+        await sendEmail(directEmails, message, MAX_DIRECT_RECIPIENTS);
+        sent += 1;
       } catch (error) {
-        await releaseRecipients(input, direct.claimed);
+        await releaseRecipients(input, [...direct.claimed, ...claimedWatchers]);
         logger.warn({ incidentId: incident.id, error: error instanceof Error ? error.message : "send failed" }, "Incident email to participants failed");
       }
     }
 
-    // Providers linked to the monitor/job that raised the alert; manual incidents have none.
+    if (PEOPLE_ONLY_EVENTS.includes(input.event)) return attempted === 0 || sent > 0;
+
+    // Providers linked to the monitor/job that raised the alert; other incidents use the project policy.
     const [source] = await db
       .select({ sourceType: sreAlertEvents.sourceType, sourceId: sreAlertEvents.sourceId, dedupKey: sreAlertEvents.dedupKey })
       .from(sreIncidentAlerts)
       .innerJoin(sreAlertEvents, eq(sreAlertEvents.id, sreIncidentAlerts.alertEventId))
       .where(and(eq(sreIncidentAlerts.incidentId, incident.id), eq(sreIncidentAlerts.role, "trigger")))
       .limit(1);
-    if (!source?.sourceId || (source.sourceType !== "monitor" && source.sourceType !== "job")) return;
+    const fromMonitorOrJob = Boolean(source?.sourceId) && (source?.sourceType === "monitor" || source?.sourceType === "job");
 
     // One message per event: the worker already posted the alert (created) and the
     // recovery (automatic resolve, recovered) to these channels.
     // `created` is skipped only when the worker's alert was actually delivered; if every
     // delivery failed, the channels have not heard about it yet.
-    if (input.event === "recovered" || ((input.event === "reopened" || input.event === "resolved") && input.automatic)) return;
-    if (input.event === "created" && (await triggerAlertDelivered(source.sourceType, source.sourceId, source.dedupKey))) return;
+    if (input.event === "recovered" || ((input.event === "reopened" || input.event === "resolved") && input.automatic)) return attempted === 0 || sent > 0;
+    if (
+      fromMonitorOrJob &&
+      input.event === "created" &&
+      (await triggerAlertDelivered(source.sourceType as "monitor" | "job", source.sourceId as string, source.dedupKey))
+    ) {
+      return attempted === 0 || sent > 0;
+    }
 
     const providerColumns = {
       id: notificationProviders.id,
@@ -539,37 +630,83 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<v
       eq(notificationProviders.organizationId, input.organizationId),
       eq(notificationProviders.projectId, input.projectId),
     );
+    // The re-notify step and incidents without a monitor or job use the project's Default policy;
+    // a monitor's or job's own hand-picked channels are left as they were.
     const providers =
-      source.sourceType === "monitor"
-        ? await db
-            .select(providerColumns)
-            .from(monitorNotificationSettings)
-            .innerJoin(notificationProviders, eq(notificationProviders.id, monitorNotificationSettings.notificationProviderId))
-            .where(and(eq(monitorNotificationSettings.monitorId, source.sourceId), providerScope))
-            .limit(10)
-        : await db
-            .select(providerColumns)
-            .from(jobNotificationSettings)
-            .innerJoin(notificationProviders, eq(notificationProviders.id, jobNotificationSettings.notificationProviderId))
-            .where(and(eq(jobNotificationSettings.jobId, source.sourceId), providerScope))
-            .limit(10);
+      !fromMonitorOrJob || input.event === "unacknowledged"
+        ? await listPolicyProviders(input.organizationId, input.projectId, policy?.channelIds ?? [])
+        : source.sourceType === "monitor"
+          ? await db
+              .select(providerColumns)
+              .from(monitorNotificationSettings)
+              .innerJoin(notificationProviders, eq(notificationProviders.id, monitorNotificationSettings.notificationProviderId))
+              .where(and(eq(monitorNotificationSettings.monitorId, source.sourceId as string), providerScope))
+              .limit(10)
+          : await db
+              .select(providerColumns)
+              .from(jobNotificationSettings)
+              .innerJoin(notificationProviders, eq(notificationProviders.id, jobNotificationSettings.notificationProviderId))
+              .where(and(eq(jobNotificationSettings.jobId, source.sourceId as string), providerScope))
+              .limit(10);
 
+    attempted += providers.length;
     const delivered = await Promise.all(
       providers.map(async (provider) => {
         try {
           // Provider configs are stored as encrypted envelopes bound to their project.
           const config = decryptNotificationProviderConfig(provider.config, provider.projectId ?? undefined);
           validateProviderConfig(provider.type, config);
-          await sendToProvider({ type: provider.type, config }, message);
-          return true;
+          return await sendToProvider({ type: provider.type, config }, message);
         } catch (error) {
           logger.warn({ providerId: provider.id, type: provider.type, error: error instanceof Error ? error.message : "send failed" }, "Incident notification delivery failed");
-          return false;
+          return null;
         }
       }),
     );
-    if (delivered.length > 0 && !delivered.some(Boolean)) await releaseEvent(input, claim);
+    // null is a failed send; false is a provider that sends nothing (a webhook with a custom body).
+    sent += delivered.filter((result) => result === true).length;
+    if (delivered.length > 0 && !delivered.some((result) => result !== null)) await releaseEvent(input, claim);
+
+    // Nobody owns it and nothing reached a channel: tell the project's owners and admins.
+    // Also for the one re-notify, so it is never silently lost.
+    if (input.event === "created" || input.event === "unacknowledged") {
+      const reachedChannel = delivered.some((result) => result === true);
+      const hasEligibleOwner = await ownerCanAct(input, [ownerId, incident.commanderUserId]);
+      if (!reachedChannel && !hasEligibleOwner) {
+        const admins = await listProjectAdmins(input.organizationId, input.projectId).catch(() => []);
+        const emails = admins.filter((admin) => admin.id !== input.actorUserId).map((admin) => admin.email);
+        if (emails.length > 0) {
+          attempted += 1;
+          await sendEmail(emails, message)
+            .then(() => {
+              sent += 1;
+            })
+            .catch((error: unknown) =>
+              logger.warn({ incidentId: incident.id, error: error instanceof Error ? error.message : "send failed" }, "Incident email to project admins failed"),
+            );
+        }
+      }
+    }
+    if (attempted > 0 && sent === 0) await releaseEvent(input, claim);
+    return attempted === 0 || sent > 0;
   } catch (error) {
     logger.warn({ incidentId: input.incidentId, event: input.event, error: error instanceof Error ? error.message : "notify failed" }, "Incident notification skipped");
+    // Release the claim so a retry (for example the re-notify sweep) is not deduped away.
+    if (claim) await releaseEvent(input, claim).catch(() => undefined);
+    return false;
   }
+}
+
+/** True when the owner or commander can still act on the incident (a removed or demoted person cannot). */
+async function ownerCanAct(input: IncidentNotifyInput, ids: Array<string | null | undefined>) {
+  try {
+    const { isAssignableUser } = await import("./incident-lifecycle");
+    for (const id of ids) {
+      if (id && (await isAssignableUser(input.organizationId, input.projectId, id))) return true;
+    }
+  } catch {
+    // A failed lookup counts as "someone can act": better silent than a wrongly broadcast mail.
+    return true;
+  }
+  return false;
 }

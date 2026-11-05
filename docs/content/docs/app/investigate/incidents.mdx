@@ -10,8 +10,8 @@ Incidents are the responder queue for issues that need investigation, evidence r
 
 | From | How |
 |---|---|
-| **An alert** | Incidents open automatically when a monitor or job alert fires, with no setup beyond enabling alerts. Repeated alerts for the same target join the same incident. You can also select **Open incident** next to a failure in **Communicate → Notifications → Delivery history**. Neither path starts a full AI investigation |
-| **Scratch** | In **Respond → Incidents**, select **New incident** for issues that did not come from a Supercheck alert |
+| **An alert** | Incidents open automatically when a monitor or job alert fires, with no setup beyond enabling alerts. Repeated alerts for the same target join the same incident. You can also select **Open incident** next to a failure in **Communicate → Notifications → Delivery history**. Neither path starts a full AI investigation unless the project turned on **Investigate new incidents automatically** (see [Default policy](#default-policy)) |
+| **Scratch** | In **Respond → Incidents**, select **New incident** for issues that did not come from a Supercheck alert. You become the assignee |
 
 Both paths open the incident workspace. If AI triage fails, the timeline records a *triage failed* event with the error code, so the failure is visible on the incident. The timeline shows its own error and a retry when it cannot load, rather than *No activity yet*.
 
@@ -55,14 +55,14 @@ Incidents opened by an alert are titled `<target>: <alert type>`, for example *C
 
 ## Incident Workspace
 
-The header shows the incident number, title, severity, status, service, and when it opened. One primary button follows the incident: **Acknowledge**, then **Resolve incident**, then **Post-mortem** once resolved. The **...** menu holds **Edit incident**, **Add commander**, **Run investigation** (**Re-run investigation** after a run), and **Ask Copilot**. Hover the info icons for a one-sentence explanation of each term.
+The header shows the incident number, title, severity, status, service, and when it opened. One primary button follows the incident: **Acknowledge**, then **Resolve incident**, then **Post-mortem** once resolved. The **Watch** button follows the incident by email (**Unwatch** to stop). The **...** menu holds **Edit incident**, **Add commander**, **Run investigation** (**Re-run investigation** after a run), and **Ask Copilot**, which opens Copilot for this incident in a side drawer. Hover the info icons for a one-sentence explanation of each term.
 
 A progress line shows the six statuses: Triggered, Acknowledged, Investigating, Fixing, Monitoring, Resolved.
 
 | Area | Contents |
 |---|---|
 | **AI summary** | The conclusion (select **Show more** to expand), confidence, the top evidence, the next step, and **Right** / **Wrong** buttons. **Investigate** or **Investigation details** opens the side panel |
-| **Timeline** | A box to post updates above the event list |
+| **Timeline** | A box to post updates above the event list. **Draft customer update with AI** fills the box with a customer-safe draft for you to edit. **Also post to status page** publishes the note as an update on the incident's linked status page incident and emails its subscribers (needs permission to update status pages). The timeline shows old → new values for edits, severity and status changes, reassignments, and the alert that was linked |
 | **Investigation details** panel | Tabs: **Analysis** (run controls, hypotheses, step log, report snapshot), **Evidence**, **Brief**, **Similar**, and **Post-mortem** once resolved |
 
 The **Details** sidebar shows the assignee (and an optional commander), service, **Status page** state with **Post update**, start and acknowledgement times, **Time to acknowledge** and **Time to resolve**, linked **Alerts**, and **Similar past incidents** (only when there are matches). Open the panel directly with `?tab=investigation`, `?tab=evidence`, or `?tab=brief`.
@@ -176,7 +176,20 @@ Supercheck announces an incident when it is **opened**, **assigned**, **acknowle
 |---|---|
 | **The check's channels** | Assignment, acknowledgement, AI findings, and resolution or reopening by a person. Opening, recovery, automatic resolution and automatic reopening post nothing extra, because the worker's alert and recovery already went there. If every delivery of the opening alert failed, the channels get the incident-opened message instead |
 | **Participant email** | The assignee and the incident commander get a direct email for every change someone else makes: assignment, acknowledgement, resolution and reopening, plus recovery and automatic reopening. On a reassignment the previous assignee is told too. You are never emailed about your own change, and only people who can still act on the incident (owners, admins, and the project's admins and editors) receive mail. Requires email delivery |
-| **Incidents created by hand** | No source channels, so only the participants are emailed |
+| **Watchers** | Anyone who watches an incident gets an email for each new note and each severity change (never about their own). The creator, the assignee and everyone who comments are added automatically; **Unwatch** opts a person out. Viewers can watch |
+| **Incidents without a monitor or job** | Incidents created by hand or by a connector use the project's **Default policy** (below) instead of source channels |
+| **Nobody to tell** | If a new incident is unassigned and no channel will be notified, the project's owners and admins are emailed |
+
+### Default policy
+
+Each project has one **Default policy**, edited from **Organization → Projects → ... → Incident notifications**.
+
+| Setting | Effect |
+|---|---|
+| **Channels** | Notified about incidents created by hand or by a connector. Monitors and jobs keep the channels chosen on them |
+| **Email service owners for SEV1 and SEV2** | Also emails the incident's service owners when a SEV1 or SEV2 opens |
+| **Remind once if nobody acknowledges** | After the chosen minutes (5 to 1,440), re-sends once to the policy channels and the assignee and commander. Off by default |
+| **Investigate new incidents automatically** | Off by default because it uses AI credits. SEV1 and SEV2 get a full investigation, SEV3 and SEV4 a quick triage, through the same plan and usage limits as starting one by hand |
 
 Email, Slack, Teams, Discord, Telegram and plain webhook channels are supported; webhooks with a preset or body template are skipped for incident messages. Each message names the incident, severity and service and links to it, without raw evidence, logs, credentials or AI conclusions. The same event is announced once within a short window, and recovery and reopen emails reach each person at most once every 10 minutes, so a flapping check does not flood inboxes.
 
@@ -191,7 +204,7 @@ Email, Slack, Teams, Discord, Telegram and plain webhook channels are supported;
 | **Decide and fix** | Responder | Evaluates findings and applies remediation in external systems |
 | **Confirm recovery** | Responder | Re-runs synthetic tests, checks monitors, or observes metrics |
 | **Acknowledge** | Responder | Select **Acknowledge** to take ownership; the incident is assigned to you if nobody else holds it |
-| **Resolve** | Responder | Select **Resolve incident**. A resolution summary is required (up to 2,000 characters) and is pre-filled from the AI root cause when one exists. Edit it to state the fix and the checks that confirmed recovery |
+| **Resolve** | Responder | Select **Resolve incident**. A resolution summary is required (up to 2,000 characters) and is pre-filled from the recovery (when the checks that raised the incident are passing again) and the AI root cause. Edit it to state the fix and the checks that confirmed recovery |
 
 Resolving records your decision and the summary on the incident and its timeline. It does not run checks or apply remediation. Closing an incident through the edit dialog is not available; use **Resolve incident**.
 

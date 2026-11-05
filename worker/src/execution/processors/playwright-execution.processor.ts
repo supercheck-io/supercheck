@@ -616,6 +616,14 @@ export class PlaywrightExecutionProcessor
 
       usagePersisted = true;
 
+      // Right after the terminal status commits, so coverage sees this run and a later failure
+      // in the job bookkeeping below cannot skip it. Awaited so a shutdown cannot drop it; it never
+      // throws (errors are logged inside).
+      await this.executionService.updateRequirementCoverageAfterRun(
+        jobData,
+        runId,
+      );
+
       // Update job status based on all current run statuses
       if (originalJobId) {
         await this.syncJobStatus(originalJobId, runId);

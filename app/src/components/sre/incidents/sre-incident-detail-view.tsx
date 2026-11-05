@@ -7,6 +7,8 @@ import { AlertTriangle, Check, ChevronLeft, Clock, FileSearch, FileText, History
 import type { SreIncidentDetail } from "@/actions/sre-incidents";
 import type { SreServiceListItem } from "@/actions/sre-services";
 import { AcknowledgeSreIncidentButton } from "@/components/sre/incidents/acknowledge-sre-incident-button";
+import { IncidentCopilotSheet } from "@/components/sre/incidents/incident-copilot-sheet";
+import { WatchSreIncidentButton } from "@/components/sre/incidents/watch-sre-incident-button";
 import { EditSreIncidentDialog } from "@/components/sre/incidents/edit-sre-incident-dialog";
 import { EvidenceDetailsDialog } from "@/components/sre/incidents/evidence-details-dialog";
 import { IncidentAiSummaryCard } from "@/components/sre/incidents/incident-ai-summary-card";
@@ -146,6 +148,14 @@ function NativeEvidenceCard({ detail }: { detail: SreIncidentDetail }) {
   );
 }
 
+/** Pre-fills the resolve dialog; the person still reads and confirms it. */
+export function defaultResolutionNote(recoveredAt: string | null | undefined, rootCause: string | null) {
+  const recovery = recoveredAt
+    ? `The checks that raised this incident recovered on ${new Date(recoveredAt).toUTCString()} and are passing again.`
+    : "";
+  return [recovery, rootCause ?? ""].filter(Boolean).join("\n\n");
+}
+
 export function SreIncidentDetailView({
   detail,
   services,
@@ -163,6 +173,7 @@ export function SreIncidentDetailView({
   const [editOpen, setEditOpen] = useState(false);
   const [resolveOpen, setResolveOpen] = useState(false);
   const [showCommander, setShowCommander] = useState(false);
+  const [copilotOpen, setCopilotOpen] = useState(false);
 
   const openSheet = (tab: string = DEFAULT_TAB) => {
     setSheetTab(tab);
@@ -324,6 +335,7 @@ export function SreIncidentDetailView({
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2 pl-11 sm:pl-0">
+          <WatchSreIncidentButton incidentId={incident.id} watching={detail.watching ?? false} />
           {needsAck && <AcknowledgeSreIncidentButton incidentId={incident.id} />}
           {needsResolve && (
             <Button size="sm" onClick={() => setResolveOpen(true)}>
@@ -358,9 +370,7 @@ export function SreIncidentDetailView({
                   <DropdownMenuItem onSelect={() => openSheet("analysis")}>
                     {investigation ? "Re-run investigation" : "Run investigation"}
                   </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link href={`/copilot?incident=${incident.id}`}>Ask Copilot</Link>
-                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => setCopilotOpen(true)}>Ask Copilot</DropdownMenuItem>
                 </>
               )}
             </DropdownMenuContent>
@@ -401,7 +411,14 @@ export function SreIncidentDetailView({
               ) : null
             }
           />
-          <IncidentTimeline incidentId={incident.id} canUpdate={permissions.canUpdate && open} />
+          <IncidentTimeline
+            incidentId={incident.id}
+            canUpdate={permissions.canUpdate && open}
+            canPostToStatusPage={
+              Boolean(permissions.canPostToStatusPage) &&
+              ["investigating", "identified", "monitoring"].includes(detail.publicIncident?.status ?? "")
+            }
+          />
         </div>
         {/* Sticks below the app header while the timeline scrolls with the page. */}
         <div className="min-w-0 lg:sticky lg:top-16">
@@ -420,6 +437,9 @@ export function SreIncidentDetailView({
         tab={sheetTab}
         onTabChange={setSheetTab}
       />
+      {permissions.canInvestigate && (
+        <IncidentCopilotSheet open={copilotOpen} onOpenChange={setCopilotOpen} incidentId={incident.id} />
+      )}
       <EditSreIncidentDialog
         incident={incident}
         services={services}
@@ -431,7 +451,7 @@ export function SreIncidentDetailView({
       {(needsAck || needsResolve) && (
         <ResolveSreIncidentDialog
           incidentId={incident.id}
-          defaultSummary={incident.rootCauseSummary ?? ""}
+          defaultSummary={defaultResolutionNote(detail.recoveredAt, incident.rootCauseSummary)}
           open={resolveOpen}
           onOpenChange={setResolveOpen}
         />

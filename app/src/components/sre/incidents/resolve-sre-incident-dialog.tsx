@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState, useTransition } from "react";
+import { useEffect, useId, useState, useTransition } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Check, Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -48,6 +48,11 @@ export function ResolveSreIncidentDialog({
   const setOpen = onOpenChange ?? setInternalOpen;
   const [comment, setComment] = useState(defaultSummary.slice(0, 2000));
   const [error, setError] = useState<string | null>(null);
+  // The default can change while the page stays mounted (for example a recovery lands); each open starts from the current one.
+  useEffect(() => {
+    if (open) setComment(defaultSummary.slice(0, 2000));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only a (re)open should reset the draft, not typing
+  }, [open]);
   const [pending, startTransition] = useTransition();
 
   const resolve = () => {
