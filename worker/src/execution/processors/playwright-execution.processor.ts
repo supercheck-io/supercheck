@@ -617,8 +617,9 @@ export class PlaywrightExecutionProcessor
       usagePersisted = true;
 
       // Right after the terminal status commits, so coverage sees this run and a later failure
-      // in the job bookkeeping below cannot skip it (fire-and-forget; errors are logged inside).
-      void this.executionService.updateRequirementCoverageAfterRun(
+      // in the job bookkeeping below cannot skip it. Awaited so a shutdown cannot drop it; it never
+      // throws (errors are logged inside).
+      await this.executionService.updateRequirementCoverageAfterRun(
         jobData,
         runId,
       );

@@ -369,6 +369,9 @@ async function runDeferredMigrations(items = deferredMigrations) {
         logSuccess(`Migration ${file} applied successfully`);
       } catch (err) {
         logWarning(`Deferred migration ${file} failed and will be retried on the next deploy: ${err.message}`);
+        // A statement timeout or dropped connection can leave the pooled connection unusable.
+        await client.end({ timeout: 5 }).catch(() => undefined);
+        client = postgres(TARGET_DATABASE_URL, { max: 1, ssl: getDatabaseSSLConfig(), onnotice: () => {} });
       }
     }
   } catch (err) {

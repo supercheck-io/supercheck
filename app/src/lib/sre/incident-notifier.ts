@@ -470,8 +470,9 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<b
   // Counts real send attempts, so the caller can tell "nothing to send" from "everything failed".
   let attempted = 0;
   let sent = 0;
+  let claim: string | null = null;
   try {
-    const claim = await claimEvent(input);
+    claim = await claimEvent(input);
     if (claim === null) return true;
 
     const [incident] = await db
@@ -690,6 +691,8 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<b
     return attempted === 0 || sent > 0;
   } catch (error) {
     logger.warn({ incidentId: input.incidentId, event: input.event, error: error instanceof Error ? error.message : "notify failed" }, "Incident notification skipped");
+    // Release the claim so a retry (for example the re-notify sweep) is not deduped away.
+    if (claim) await releaseEvent(input, claim).catch(() => undefined);
     return false;
   }
 }

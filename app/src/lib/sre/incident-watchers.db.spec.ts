@@ -2,6 +2,7 @@
 // CI-only: needs TEST_DATABASE_URL (run with `npm run test:db`).
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { v7 as uuidv7 } from "uuid";
 import path from "node:path";
 import { promisify } from "node:util";
 import postgres from "postgres";
@@ -16,15 +17,15 @@ const APP_ROOT = path.resolve(__dirname, "../../..");
 const databaseName = `watchers_${randomUUID().replaceAll("-", "")}`;
 let maintenance: ReturnType<typeof postgres>;
 let client: ReturnType<typeof postgres>;
-const org = randomUUID();
-const project = randomUUID();
-const incident = randomUUID();
-const users = Object.fromEntries(["owner", "viewer", "editor", "editorNoRow", "staleAdmin", "admin"].map((name) => [name, randomUUID()]));
+const org = uuidv7();
+const project = uuidv7();
+const incident = uuidv7();
+const users = Object.fromEntries(["owner", "viewer", "editor", "editorNoRow", "staleAdmin", "admin"].map((name) => [name, uuidv7()]));
 
 async function person(name: keyof typeof users, orgRole: string, projectRole?: string) {
   const id = users[name];
   await client`INSERT INTO "user" (id, name, email, email_verified, created_at, updated_at) VALUES (${id}, ${name}, ${`${name}@example.com`}, true, now(), now())`;
-  await client`INSERT INTO member (id, organization_id, user_id, role, created_at) VALUES (${randomUUID()}, ${org}, ${id}, ${orgRole}, now())`;
+  await client`INSERT INTO member (id, organization_id, user_id, role, created_at) VALUES (${uuidv7()}, ${org}, ${id}, ${orgRole}, now())`;
   if (projectRole) await client`INSERT INTO project_members (id, user_id, project_id, role) VALUES (${randomUUID()}, ${id}, ${project}, ${projectRole})`;
   await client`INSERT INTO sre_incident_watchers (incident_id, user_id) VALUES (${incident}, ${id})`;
 }
