@@ -21,6 +21,7 @@ import {
   notifyIncidentEvent,
   type IncidentNotifyEvent,
 } from "./incident-notifier";
+import { watchIncident } from "./incident-watchers";
 
 export const MAX_RESOLUTION_SUMMARY_LENGTH = 2000;
 export const MAX_INCIDENT_UPDATE_LENGTH = 2000;
@@ -198,7 +199,7 @@ function notify(
   actor: IncidentActor,
   incidentId: string,
   event: IncidentNotifyEvent,
-  extra: { assigneeUserId?: string | null; previousAssigneeUserId?: string | null } = {},
+  extra: { assigneeUserId?: string | null; previousAssigneeUserId?: string | null; detail?: string } = {},
 ) {
   // Never let a delivery problem fail the user action; the notifier logs its own errors.
   void notifyIncidentEvent({
@@ -274,6 +275,8 @@ export async function assignIncident(
         .limit(1);
       return { incident: current, changed: false, previous: before.current };
     }
+
+    if (assigneeUserId) await watchIncident(tx, incidentId, assigneeUserId);
 
     await tx.insert(sreIncidentTimelineEvents).values({
       incidentId,
@@ -354,6 +357,9 @@ export async function acknowledgeIncident(
         .limit(1);
       return existing ? { existing, updated: null } : null;
     }
+
+    // Like assignIncident: whoever holds the incident after this follows it.
+    if (updated.assigneeUserId) await watchIncident(tx, incidentId, updated.assigneeUserId);
 
     await tx.insert(sreIncidentTimelineEvents).values({
       incidentId,
@@ -488,15 +494,21 @@ export async function addIncidentUpdate(
   if (!incident) {
     return { ok: false, code: "not_found", error: "Incident not found or access denied" };
   }
-  await db.insert(sreIncidentTimelineEvents).values({
-    incidentId,
-    eventType: "comment",
-    eventData: { text },
-    actorType: "user",
-    actorUserId: actor.userId,
-    createdAt: new Date(),
+  const now = new Date();
+  await db.transaction(async (tx) => {
+    await tx.insert(sreIncidentTimelineEvents).values({
+      incidentId,
+      eventType: "comment",
+      eventData: { text },
+      actorType: "user",
+      actorUserId: actor.userId,
+      createdAt: now,
+    });
+    // Anyone who comments follows the incident until they unwatch.
+    await watchIncident(tx, incidentId, actor.userId);
   });
   await audit(actor, "sre_incident_update_added", incident, {});
+  notify(actor, incidentId, "commented", { detail: text });
   return { ok: true, incident };
 }
 
@@ -673,6 +685,26 @@ export async function applySourceRecovery(
     recovered.push({ id: incident.id, assigneeUserId: incident.assigneeUserId });
   }
   return { resolved, recovered };
+}
+
+/** When the incident's source recovered, or null if it has not or a failure has returned since. */
+export async function getSourceRecoveredAt(incidentId: string): Promise<string | null> {
+  const [last] = await db
+    .select({
+      state: sql<string>`${sreIncidentTimelineEvents.eventData}->>'state'`,
+      recoveredAt: sql<string | null>`${sreIncidentTimelineEvents.eventData}->>'recoveredAt'`,
+      createdAt: sreIncidentTimelineEvents.createdAt,
+    })
+    .from(sreIncidentTimelineEvents)
+    .where(
+      and(
+        eq(sreIncidentTimelineEvents.incidentId, incidentId),
+        sql`${sreIncidentTimelineEvents.eventData}->>'state' in ('recovered', 'failure_returned')`,
+      ),
+    )
+    .orderBy(desc(sreIncidentTimelineEvents.createdAt))
+    .limit(1);
+  return last?.state === "recovered" ? (last.recoveredAt ?? new Date(last.createdAt).toISOString()) : null;
 }
 
 /**

@@ -63,6 +63,7 @@ import {
   announceSystemTransition,
   findOpenIncidentForSource,
   getDefaultAssigneeId,
+  getSourceRecoveredAt,
   noteFailureReturned,
   INCIDENT_REOPEN_WINDOW_MS,
   RECOVERABLE_ALERT_TYPES,
@@ -70,6 +71,9 @@ import {
 } from "@/lib/sre/incident-lifecycle";
 import { linkedAlertFields } from "@/lib/sre/incident-alert-snapshot";
 import { notifyIncidentEvent } from "@/lib/sre/incident-notifier";
+import { checkSreIncidentUpdateRateLimit } from "@/lib/sre/sre-rate-limiter";
+import { isWatchingIncident, watchIncident } from "@/lib/sre/incident-watchers";
+import { maybeAutoInvestigateOnOpen } from "@/sre/lib/auto-investigate";
 import { listMyFeedbackForRun, type MyFeedback } from "@/lib/sre/investigation-feedback";
 import { readStoredHypotheses, type SreInvestigationHypothesis } from "@/sre/lib/investigation-output";
 import { readStoredSteps, type SreInvestigationStep } from "@/sre/lib/investigation-trace";
@@ -212,6 +216,10 @@ export type SreIncidentChatHistory = {
 };
 
 export type SreIncidentDetail = {
+  /** Whether the current user watches this incident. */
+  watching?: boolean;
+  /** Set when the source's checks passed again after the incident opened and no failure has returned since. */
+  recoveredAt?: string | null;
   publicIncident?: { id: string; statusPageId: string; status: string } | null;
   incident: SreIncidentListItem & {
     rootCauseSummary: string | null;
@@ -296,6 +304,8 @@ export type SreIncidentDetail = {
     canUpdate: boolean;
     canInvestigate: boolean;
     canUseLiveConnectors: boolean;
+    /** May publish an incident note to the linked status page incident. */
+    canPostToStatusPage?: boolean;
   };
   capabilities: {
     investigationEnabled: boolean;
@@ -839,6 +849,12 @@ export async function getSreIncidentDetails(
         project,
       });
 
+    const canPostToStatusPage = checkPermissionWithContext("status_page", "update", {
+      userId,
+      organizationId,
+      project,
+    });
+
     if (!canView) {
       return {
         success: false,
@@ -1138,10 +1154,14 @@ export async function getSreIncidentDetails(
       .limit(20);
     const [publicIncident] = incident.statusPageIncidentId ? await db.select({ id: statusPageIncidents.id, statusPageId: statusPageIncidents.statusPageId, status: statusPageIncidents.status }).from(statusPageIncidents).innerJoin(statusPages, eq(statusPages.id, statusPageIncidents.statusPageId)).where(and(eq(statusPageIncidents.id, incident.statusPageIncidentId), eq(statusPages.organizationId, organizationId), eq(statusPages.projectId, project.id))) : [];
 
+    const watching = await isWatchingIncident(incident.id, userId);
+    const recoveredAt = await getSourceRecoveredAt(incident.id);
 
     return {
       success: true,
       detail: {
+        watching,
+        recoveredAt,
         publicIncident: publicIncident ?? null,
         linkedAlerts,
         currentUserId: userId,
@@ -1190,6 +1210,7 @@ export async function getSreIncidentDetails(
           canUpdate,
           canInvestigate,
           canUseLiveConnectors,
+          canPostToStatusPage,
         },
         capabilities: {
           investigationEnabled: isSreInvestigationAgentEnabled(),
@@ -1261,6 +1282,8 @@ export async function createManualSreIncident(
           severity: parsed.data.severity,
           status: "triggered",
           createdByUserId: userId,
+          // A hand-created incident belongs to its creator until someone reassigns it.
+          assigneeUserId: userId,
           createdAt: now,
           updatedAt: now,
         })
@@ -1269,6 +1292,8 @@ export async function createManualSreIncident(
           incidentNumber: sreIncidents.incidentNumber,
           title: sreIncidents.title,
         });
+
+      await watchIncident(tx, created.id, userId);
 
       await tx.insert(sreIncidentTimelineEvents).values({
         incidentId: created.id,
@@ -1298,6 +1323,18 @@ export async function createManualSreIncident(
       },
       success: true,
     });
+
+    // Channels come from the project's Default policy; the creator owns it, so no direct email to them.
+    void notifyIncidentEvent({
+      organizationId,
+      projectId: project.id,
+      incidentId: incident.id,
+      event: "created",
+      actorUserId: userId,
+      assigneeUserId: userId,
+    }).catch(() => undefined);
+    // Project opt-in only; runs in the background and never blocks creating the incident.
+    void maybeAutoInvestigateOnOpen({ organizationId, projectId: project.id, incidentId: incident.id, userId }).catch(() => undefined);
 
     revalidatePath("/incidents");
     revalidatePath(`/incidents/${incident.id}`);
@@ -1338,6 +1375,11 @@ export async function updateSreIncident(
         success: false,
         error: "Insufficient permissions to update incidents",
       };
+    }
+
+    const limit = await checkSreIncidentUpdateRateLimit(userId, parsed.data.id);
+    if (!limit.allowed) {
+      return { success: false, error: "Too many incident updates. Try again in a minute." };
     }
 
     const current = await db.query.sreIncidents.findFirst({
@@ -1414,6 +1456,8 @@ export async function updateSreIncident(
             eq(sreIncidents.projectId, project.id),
             // Optimistic guard: fail if a concurrent resolve/update changed the status since we read it.
             eq(sreIncidents.status, current.status),
+            // Same for severity, so a stale read cannot report or store the wrong previous value.
+            eq(sreIncidents.severity, current.severity),
           ),
         )
         .returning({
@@ -1489,6 +1533,17 @@ export async function updateSreIncident(
         incidentId: parsed.data.id,
         event: "reopened",
         actorUserId: userId,
+        dedupeDiscriminator: String(now.getTime()),
+      }).catch(() => undefined);
+    }
+    if (parsed.data.severity !== current.severity) {
+      void notifyIncidentEvent({
+        organizationId,
+        projectId: project.id,
+        incidentId: parsed.data.id,
+        event: "severity_changed",
+        actorUserId: userId,
+        detail: `${current.severity.toUpperCase()} to ${parsed.data.severity.toUpperCase()}`,
         dedupeDiscriminator: String(now.getTime()),
       }).catch(() => undefined);
     }
@@ -1705,6 +1760,8 @@ export async function createSreIncidentFromAlert(
         .limit(1);
 
       if (existingIncident) {
+        // A repeat of the failure that is already linked still counts as the failure returning after a recovery note.
+        await noteFailureReturned(tx, existingIncident.id, firedAt);
         return { incident: existingIncident, existing: true };
       }
 
@@ -1863,6 +1920,8 @@ export async function createSreIncidentFromAlert(
               eventData: {
                 state: "alert_correlated",
                 alertEventId: alertEvent.id,
+                // Alert events are reused and retitled, so keep the name as it was when linked.
+                alertTitle: title.slice(0, 200),
                 alertHistoryId: alert.id,
                 score: correlation.score,
                 signals: correlation.signals,
@@ -1931,6 +1990,10 @@ export async function createSreIncidentFromAlert(
           title: sreIncidents.title,
           assigneeUserId: sreIncidents.assigneeUserId,
         });
+
+      for (const watcherId of new Set([userId, incident.assigneeUserId])) {
+        if (watcherId) await watchIncident(tx, incident.id, watcherId);
+      }
 
       await tx.insert(sreIncidentAlerts).values({
         incidentId: incident.id,
@@ -2011,7 +2074,14 @@ export async function createSreIncidentFromAlert(
       });
     }
 
-    const triage = await maybeRunAutomaticSreTriage({
+    // The project's opt-in runs first (as in the background path): SEV1-2 get a full investigation instead of triage.
+    const auto =
+      !result.existing && alertStatus !== "resolved"
+        ? await maybeAutoInvestigateOnOpen({ organizationId, projectId: project.id, incidentId: result.incident.id, userId }).catch(() => ({ handled: false }))
+        : { handled: false };
+    const triage = auto.handled
+      ? ({ attempted: false, reason: "auto_investigation" } as const)
+      : await maybeRunAutomaticSreTriage({
       userId,
       organizationId,
       project: {
@@ -2023,7 +2093,6 @@ export async function createSreIncidentFromAlert(
       alertStatus,
     });
 
-    revalidatePath("/incidents");
     revalidatePath("/incidents");
     revalidatePath(`/incidents/${result.incident.id}`);
 

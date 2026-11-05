@@ -1,4 +1,4 @@
-const { hasNoTransactionMarker, concurrentIndexNames, concurrentIndexes, assertDeferredFileRerunnable } = require("./db-migrate.js");
+const { setStatementTimeout, hasNoTransactionMarker, concurrentIndexNames, concurrentIndexes, assertDeferredFileRerunnable } = require("./db-migrate.js");
 
 describe("db-migrate no-transaction files", () => {
   it("detects the file-level marker only as its own comment line", () => {
@@ -37,5 +37,13 @@ SELECT 'CREATE INDEX CONCURRENTLY quoted_idx ON t (a); -- x';
 CREATE INDEX CONCURRENTLY IF NOT EXISTS real_idx ON t (b);`;
     expect(concurrentIndexNames(sql)).toEqual(["real_idx"]);
     expect(() => assertDeferredFileRerunnable("0099.sql", sql)).not.toThrow();
+  });
+});
+
+describe("setStatementTimeout", () => {
+  it("sets the timeout with a session SET, not a startup parameter", async () => {
+    const unsafe = jest.fn().mockResolvedValue([]);
+    await setStatementTimeout({ unsafe }, 90000);
+    expect(unsafe).toHaveBeenCalledWith("SET statement_timeout = 90000");
   });
 });

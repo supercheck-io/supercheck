@@ -26,6 +26,7 @@ const mockExecutionService = {
   runSingleTest: jest.fn(),
   hasActiveExecution: jest.fn().mockResolvedValue(false),
   runJob: jest.fn(),
+  updateRequirementCoverageAfterRun: jest.fn().mockResolvedValue(undefined),
 };
 
 const mockDbService = {
@@ -677,6 +678,39 @@ describe('PlaywrightExecutionProcessor', () => {
         await processor.process(job);
 
         expect(mockDbService.syncJobStatusFromRuns).toHaveBeenCalled();
+      });
+
+      it('refreshes requirement coverage only after the terminal status write has settled', async () => {
+        let settleStatus: () => void = () => undefined;
+        mockDbService.updateRunStatus.mockImplementation(
+          () =>
+            new Promise<void>((resolve) => {
+              settleStatus = resolve;
+            }),
+        );
+        const done = processor.process(createMockJob(mockJobTask));
+        await new Promise((resolve) => setImmediate(resolve));
+        expect(mockDbService.updateRunStatus).toHaveBeenCalled();
+        expect(
+          mockExecutionService.updateRequirementCoverageAfterRun,
+        ).not.toHaveBeenCalled();
+        settleStatus();
+        await done;
+        expect(
+          mockExecutionService.updateRequirementCoverageAfterRun,
+        ).toHaveBeenCalledTimes(1);
+      });
+
+      it('still refreshes coverage when the lastRunAt bookkeeping fails afterwards', async () => {
+        mockDbService.db.update.mockImplementationOnce(() => {
+          throw new Error('lastRunAt write failed');
+        });
+        await processor
+          .process(createMockJob(mockJobTask))
+          .catch(() => undefined);
+        expect(
+          mockExecutionService.updateRequirementCoverageAfterRun,
+        ).toHaveBeenCalledTimes(1);
       });
 
       it('should update lastRunAt on job', async () => {

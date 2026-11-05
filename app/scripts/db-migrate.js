@@ -310,6 +310,10 @@ async function dropInvalidIndexes(client, sql) {
   }
 }
 
+async function setStatementTimeout(client, ms) {
+  await client.unsafe(`SET statement_timeout = ${Number(ms)}`);
+}
+
 // Runs the deferred no-transaction files after the main migration transaction has committed.
 // Locking matches the main runner (pooler-safe): a dedicated connection holds BEGIN +
 // pg_try_advisory_xact_lock on the same key for the whole step, and the CONCURRENTLY build runs on a
@@ -337,7 +341,6 @@ async function runDeferredMigrations(items = deferredMigrations) {
       max: 1,
       ssl: getDatabaseSSLConfig(),
       onnotice: () => {},
-      connection: { statement_timeout: DEFERRED_STATEMENT_TIMEOUT_MS },
     });
     for (const { file, content, hash } of items) {
       try {
@@ -345,11 +348,20 @@ async function runDeferredMigrations(items = deferredMigrations) {
         if (applied) continue;
 
         log(`Applying migration outside a transaction: ${file}`);
-        await dropInvalidIndexes(client, content);
-        // No IF NOT EXISTS rewriting and no savepoints: the file is exactly what the author wrote.
-        for (const statement of content.split("--> statement-breakpoint")) {
-          if (statement.replace(/--[^\n]*/g, "").trim().length === 0) continue;
-          await client.unsafe(statement.trim());
+        // One reserved connection holds the session SET and every statement, so they cannot land on
+        // different connections (a CREATE INDEX CONCURRENTLY cannot run in a transaction to pin them).
+        const reserved = await client.reserve();
+        try {
+          // A session SET, not a startup parameter: poolers reject unsupported startup parameters.
+          await setStatementTimeout(reserved, DEFERRED_STATEMENT_TIMEOUT_MS);
+          await dropInvalidIndexes(reserved, content);
+          // No IF NOT EXISTS rewriting and no savepoints: the file is exactly what the author wrote.
+          for (const statement of content.split("--> statement-breakpoint")) {
+            if (statement.replace(/--[^\n]*/g, "").trim().length === 0) continue;
+            await reserved.unsafe(statement.trim());
+          }
+        } finally {
+          reserved.release();
         }
         await client`
           INSERT INTO "__drizzle_migrations" (hash, created_at) VALUES (${hash}, ${Date.now()})
@@ -357,6 +369,9 @@ async function runDeferredMigrations(items = deferredMigrations) {
         logSuccess(`Migration ${file} applied successfully`);
       } catch (err) {
         logWarning(`Deferred migration ${file} failed and will be retried on the next deploy: ${err.message}`);
+        // A statement timeout or dropped connection can leave the pooled connection unusable.
+        await client.end({ timeout: 5 }).catch(() => undefined);
+        client = postgres(TARGET_DATABASE_URL, { max: 1, ssl: getDatabaseSSLConfig(), onnotice: () => {} });
       }
     }
   } catch (err) {
@@ -929,7 +944,7 @@ async function validateAfterCommit() {
   }
 }
 
-module.exports = { hasNoTransactionMarker, concurrentIndexNames, concurrentIndexes, assertDeferredFileRerunnable };
+module.exports = { setStatementTimeout, hasNoTransactionMarker, concurrentIndexNames, concurrentIndexes, assertDeferredFileRerunnable };
 
 // Run the main function
 if (require.main === module) main();

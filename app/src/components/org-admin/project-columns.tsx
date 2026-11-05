@@ -12,7 +12,7 @@ import {
 import { DateCell } from "@/components/ui/table-cells";
 import { TruncatedTextWithTooltip } from "@/components/ui/truncated-text-with-tooltip";
 
-import { Edit3, FolderOpen, MapPin, MoreHorizontal, Users } from "lucide-react";
+import { BellRing, Edit3, FolderOpen, MapPin, MoreHorizontal, Users } from "lucide-react";
 import { toast } from "sonner";
 import { DataTableColumnHeader } from "@/components/tests/data-table-column-header";
 import { UUIDField } from "@/components/ui/uuid-field";
@@ -41,7 +41,8 @@ export interface Project {
 export function createProjectColumns(
   onEditProject?: (project: Project) => void,
   canManageProject?: boolean,
-  onManageLocations?: (project: Project) => void
+  onManageLocations?: (project: Project) => void,
+  onManageIncidentPolicy?: (project: Project) => void
 ): ColumnDef<Project>[] {
   return [
     {
@@ -207,6 +208,12 @@ export function createProjectColumns(
                 <DropdownMenuItem onClick={() => onManageLocations(project)}>
                   <MapPin className="mr-2 h-3.5 w-3.5" />
                   Location restrictions
+                </DropdownMenuItem>
+              )}
+              {onManageIncidentPolicy && (
+                <DropdownMenuItem onClick={() => onManageIncidentPolicy(project)}>
+                  <BellRing className="mr-2 h-3.5 w-3.5" />
+                  Incident notifications
                 </DropdownMenuItem>
               )}
             </DropdownMenuContent>

@@ -35,6 +35,7 @@ jest.mock("@/utils/db", () => ({
 }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn().mockResolvedValue(undefined) }));
 jest.mock("./incident-notifier", () => ({ notifyIncidentEvent: jest.fn().mockResolvedValue(undefined) }));
+jest.mock("./incident-watchers", () => ({ watchIncident: jest.fn().mockResolvedValue(undefined) }));
 
 import { logAuditEvent } from "@/lib/audit-logger";
 import { sreIncidents } from "@/db/schema";
@@ -47,10 +48,12 @@ import {
   assignIncident,
   applySourceRecovery,
   getDefaultAssigneeId,
+  getSourceRecoveredAt,
   reopenRecentlyAutoResolved,
   resolveIncident,
 } from "./incident-lifecycle";
 import { notifyIncidentEvent } from "./incident-notifier";
+import { watchIncident } from "./incident-watchers";
 
 const actor = {
   organizationId: "018f0000-0000-7000-8000-00000000000a",
@@ -91,6 +94,7 @@ describe("assignIncident", () => {
     expect(inserts[0]).toMatchObject({ incidentId, eventType: "state_change", eventData: { state: "assigned", assigneeUserId: assignee } });
     expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ action: "sre_incident_assigned", organizationId: actor.organizationId }));
     expect(notifyIncidentEvent).toHaveBeenCalledWith(expect.objectContaining({ event: "assigned", assigneeUserId: assignee, incidentId }));
+    expect(watchIncident).toHaveBeenCalledWith(expect.anything(), incidentId, assignee);
   });
 
   it("does nothing when the assignee is unchanged", async () => {
@@ -124,6 +128,7 @@ describe("acknowledgeIncident", () => {
     updateQueue.push([{ ...ref, assigneeUserId: actor.userId }]);
     const result = await acknowledgeIncident(actor, incidentId);
     expect(result).toMatchObject({ ok: true, changed: true, autoAssigned: true });
+    expect(watchIncident).toHaveBeenCalledWith(expect.anything(), incidentId, actor.userId);
     expect(inserts[0]).toMatchObject({ eventData: { state: "acknowledged" } });
     expect(notifyIncidentEvent).toHaveBeenCalledWith(expect.objectContaining({ event: "acknowledged" }));
   });
@@ -200,6 +205,9 @@ describe("addIncidentUpdate", () => {
     selectQueue.push([ref]);
     expect(await addIncidentUpdate(actor, incidentId, " Checking logs ")).toMatchObject({ ok: true });
     expect(inserts[0]).toMatchObject({ eventType: "comment", eventData: { text: "Checking logs" } });
+    // The commenter follows the incident, and watchers are told about the note.
+    expect(watchIncident).toHaveBeenCalledWith(expect.anything(), incidentId, actor.userId);
+    expect(notifyIncidentEvent).toHaveBeenCalledWith(expect.objectContaining({ event: "commented", detail: "Checking logs", actorUserId: actor.userId }));
   });
 });
 
@@ -417,5 +425,21 @@ describe("announceSystemTransition", () => {
     (notifyIncidentEvent as jest.Mock).mockRejectedValueOnce(new Error("notify down"));
     await expect(announce("resolved")).resolves.toBeUndefined();
     expect(logAuditEvent).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("getSourceRecoveredAt", () => {
+  it("returns the recovery time while it is the latest source event", async () => {
+    selectQueue.push([{ state: "recovered", recoveredAt: "2026-06-24T12:00:00.000Z", createdAt: new Date("2026-06-24T12:01:00Z") }]);
+    expect(await getSourceRecoveredAt(incidentId)).toBe("2026-06-24T12:00:00.000Z");
+    selectQueue.push([{ state: "recovered", recoveredAt: null, createdAt: new Date("2026-06-24T12:01:00Z") }]);
+    expect(await getSourceRecoveredAt(incidentId)).toBe("2026-06-24T12:01:00.000Z");
+  });
+
+  it("is null when nothing recovered or a failure returned afterwards", async () => {
+    selectQueue.push([]);
+    expect(await getSourceRecoveredAt(incidentId)).toBeNull();
+    selectQueue.push([{ state: "failure_returned", recoveredAt: null, createdAt: new Date() }]);
+    expect(await getSourceRecoveredAt(incidentId)).toBeNull();
   });
 });

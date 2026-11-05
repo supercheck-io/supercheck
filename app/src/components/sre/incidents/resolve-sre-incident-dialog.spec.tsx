@@ -26,6 +26,14 @@ describe("ResolveSreIncidentDialog", () => {
     global.fetch = originalFetch;
   });
 
+  it("starts each open from the current default, not a stale one from an earlier render", () => {
+    const { rerender } = render(<ResolveSreIncidentDialog incidentId="incident-1" defaultSummary="Checks are passing again." open onOpenChange={jest.fn()} />);
+    expect(screen.getByRole("textbox")).toHaveValue("Checks are passing again.");
+    rerender(<ResolveSreIncidentDialog incidentId="incident-1" defaultSummary="Checks are passing again." open={false} onOpenChange={jest.fn()} />);
+    rerender(<ResolveSreIncidentDialog incidentId="incident-1" defaultSummary="Root cause only." open onOpenChange={jest.fn()} />);
+    expect(screen.getByRole("textbox")).toHaveValue("Root cause only.");
+  });
+
   it("requires an explicit recovery note, scopes the request, and refreshes all affected views", async () => {
     jest
       .mocked(fetch)
