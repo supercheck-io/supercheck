@@ -64,7 +64,7 @@ Private Agent mode supports GitHub, Kubernetes, Prometheus, Grafana, Sentry, Dat
 |---|---|
 | **Supercheck Cloud, Direct** | HTTPS only. Cannot reach localhost, private, or reserved addresses, including cloud metadata |
 | **Private Agent** | Reaches internal HTTP or HTTPS endpoints, except localhost and cloud metadata endpoints |
-| **Self-hosted Direct** | Reaches internal HTTP or HTTPS endpoints, including `localhost` and private ranges. Cloud metadata and link-local addresses (`169.254.0.0/16`, `100.100.100.200`, `168.63.129.16`, `192.0.0.192`, `fe80::/10`, `fd00:ec2::254`) are blocked. Supercheck resolves the host once, checks every address, and connects to that same address |
+| **Self-hosted Direct** | Reaches internal HTTP or HTTPS endpoints, including `localhost` and private ranges. Cloud metadata and link-local addresses (`169.254.0.0/16`, `100.100.100.200`, `168.63.129.16`, `192.0.0.192`, `fe80::/10`, `fd00:ec2::254`) are blocked. |
 | **All modes** | Reject credentials embedded in URLs, and a fragment (`#`) on the endpoint. A query string (`?`) is rejected too, except for MCP connectors, whose hosted servers sometimes carry the key in the URL; Supercheck treats that stored URL as secret and shows only `?…` in the console. Put paths in the endpoint and keys in the credential fields |
 
 </Accordion>
@@ -126,17 +126,13 @@ Tick the tools investigations may call and save. Nothing is callable until you a
 <Accordions>
 <Accordion title="How allowlisted MCP tools are controlled" id="mcp-controls">
 
-Allowlisted tools appear to the AI as `callMcpTool` targets together with their descriptions and argument names. Each call is checked before it leaves Supercheck, and again by the agent.
-
 | Control | Behavior |
 |---|---|
-| **Allowlist** | Only tools you ticked can be called. The tool description and input schema are saved when you allowlist, so later server changes do not widen access |
+| **Allowlist** | Only tools you ticked can be called. Later changes on the server do not widen access |
 | **Server hints** | Annotations such as read-only or destructive are shown for reference. They never authorize a call |
-| **Arguments** | Validated against the saved schema, size-limited, and unknown arguments are rejected. Tools whose schema uses unsupported JSON Schema keywords cannot be allowlisted |
-| **Output** | Text and JSON only. Images, resources, and binary content are dropped. Output is redacted, truncated, and marked as untrusted data, so the AI never treats it as instructions |
-| **Limits** | Calls count toward the connector search rate limit, the investigation step budget, the connector timeout, and the output size cap |
+| **Arguments** | Unknown arguments are rejected. Tools whose schema uses unsupported JSON Schema keywords cannot be allowlisted |
+| **Output** | Text and JSON only. Images, resources, and binary content are dropped. Output is redacted and truncated |
 | **Audit** | Each call, including rejected ones, appears in the investigation tool trace and the connector audit log with the tool name, and results are stored as evidence |
-| **Network** | The agent applies its endpoint policy: no localhost or cloud metadata targets, no redirects, and no credentials in URLs |
 
 </Accordion>
 </Accordions>
@@ -150,7 +146,7 @@ Allowlist only tools that cannot change anything. Supercheck cannot verify what 
 <Accordions>
 <Accordion title="Jira, Confluence and Notion" id="tickets-knowledge">
 
-Jira, Confluence, and Notion are read-only. They find related tickets, runbooks, and post-mortems for a service, and return titles, links, and short excerpts. Page text is stored as document evidence and is treated as untrusted data: it is redacted, fenced, and labeled so the AI treats it as evidence to cite, not as instructions. This reduces, but cannot fully eliminate, prompt-injection risk, so review cited sources before acting.
+Jira, Confluence, and Notion are read-only. They find related tickets, runbooks, and post-mortems for a service, and return titles, links, and short excerpts. Page text is treated as untrusted evidence to cite, not as instructions. This reduces, but cannot fully eliminate, prompt-injection risk, so review cited sources before acting.
 
 | Provider | Endpoint | Credential | Least privilege |
 |---|---|---|---|
@@ -206,10 +202,10 @@ Use dedicated, read-only credentials limited to the service scope.
 | **Jaeger** | Jaeger has no built-in authentication. Put it behind a gateway and use a read-only bearer token, or leave the credential empty on a private network |
 | **New Relic** | A User API key from a user or service user with read-only access to the account, plus the numeric account ID. Choose `us` or `eu` for the data region; any other value is rejected. Ingest and license keys do not work |
 | **Splunk** | An authentication token for a user whose role has search capability and read access only to the indexes you need. Do not grant admin, delete, or lookup-write capabilities. Use the management endpoint, usually port 8089 |
-| **Google Cloud** | A service account JSON key with only `roles/monitoring.viewer` and `roles/logging.viewer` on the project. Supercheck exchanges it for a short-lived token and never uses the `token_uri` in the file |
+| **Google Cloud** | A service account JSON key with only `roles/monitoring.viewer` and `roles/logging.viewer` on the project. |
 | **Azure Monitor** | An app registration (tenant ID, client ID, client secret) with `Monitoring Reader` on the resources and `Log Analytics Reader` on the workspace. Add the Log Analytics workspace ID to run KQL |
 
-New Relic, Google Cloud, and Azure Monitor call fixed vendor API hosts, so they have no endpoint URL to set. Their sign-in requests go only to the vendor's own hosts. Jaeger and Splunk use the endpoint you enter and follow the endpoint rules above.
+New Relic, Google Cloud, and Azure Monitor call fixed vendor API hosts, so they have no endpoint URL to set. Jaeger and Splunk use the endpoint you enter and follow the endpoint rules above.
 
 <Callout type="warn">
 Store credentials in the connector credential fields, not in prompts or endpoint URLs. Supercheck encrypts stored credentials and does not include them in AI prompts.

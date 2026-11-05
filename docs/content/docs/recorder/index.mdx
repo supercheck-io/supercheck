@@ -51,7 +51,7 @@ The extension connects automatically. No API key or URL entry is required.
 </Step>
 </Steps>
 
-This list is the extension's trust boundary and ships in the extension build. A new first-party host needs the allowlist in `recorder/examples/recorder-crx/src/supercheck/message-security.ts` updated and a new extension release. Until then, add the URL in **Options** as described under [Self-hosted Supercheck](#self-hosted-supercheck).
+To connect to any other host, add its URL in **Options** as described under [Self-hosted Supercheck](#self-hosted-supercheck).
 
 {/* The extension's Options page links to #self-hosted-supercheck; keep this heading. */}
 ### Self-hosted Supercheck
@@ -143,7 +143,7 @@ Pin the extension. Unpacked installs do not auto-update, so repeat this after ea
 </Step>
 </Steps>
 
-## Troubleshooting and maintainers
+## Troubleshooting
 
 <Accordions>
 <Accordion title="Troubleshooting" id="troubleshooting">
@@ -152,24 +152,12 @@ Pin the extension. Unpacked installs do not auto-update, so repeat this after ea
 |---|---|
 | The Record button shows **Install Supercheck Recorder** although the extension is installed | Confirm the page origin is one of the [hosted sites](#connect-supercheck), or save the instance URL in **Options** and reload the tab |
 | Extension is not detected on a self-hosted instance | Open **Options**, save the exact HTTPS origin shown in the Record dialog, reload the tab, then sign in |
-| **Too many connection checks** | The legacy verification endpoint is rate limited. Wait for the shown number of seconds, then reopen Options |
+| **Too many connection checks** | Connection checks are rate limited. Wait for the shown number of seconds, then reopen Options |
 | Connection fails | Confirm the instance URL uses HTTPS, then sign in and open an authenticated dashboard page in the same browser profile |
 | Extension stays **Not connected to Supercheck** after sign-in | If the extension still has its key, use **Disconnect** to revoke it, then reconnect from an authenticated page. If the extension was reinstalled or its storage was cleared, the app still holds the old key and will not issue a new one. There is no screen to revoke it yet: contact support (cloud) or your Supercheck administrator (self-hosted). If disconnect could not reach the server, keep the configuration and retry. |
 | Self-hosted instance is unreachable | Open the instance directly and verify its certificate and network access |
 | Recording does not start | Confirm the tab uses HTTP or HTTPS and no other debugger is attached |
 | Save is unavailable | Start the recording from Supercheck so the originating Playground context is available |
-
-</Accordion>
-<Accordion title="Release process (maintainers)" id="release-process">
-
-The recorder is released from the monorepo; app and extension versions are independent.
-
-1. Bump `version` in `recorder/examples/recorder-crx/public/manifest.json` and `recorder/examples/recorder-crx/package.json` (the publish workflow requires them to match) and add a `CHANGELOG.md` entry.
-2. Merge to `main`.
-3. Create and push a signed annotated tag: `git tag -s recorder-v<version> && git push origin recorder-v<version>`.
-4. The `Publish Recorder Extension` workflow builds the package, submits it to the Chrome Web Store and Edge Add-ons (gated by the `recorder-release` environment), and attaches the ZIP to a GitHub release.
-
-Store review can take days. The GitHub release is published in the same run, so QA and self-hosted users can install the ZIP before the stores finish reviewing.
 
 </Accordion>
 </Accordions>

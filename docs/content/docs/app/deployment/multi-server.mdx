@@ -4,7 +4,7 @@ description: Add execution workers on separate servers to your self-hosted insta
 icon: Server
 ---
 
-Add execution workers on separate Linux servers to an existing [Self-Hosted](/docs/app/deployment/self-hosted) installation. This guide is for infrastructure you manage; it does not describe Supercheck Cloud availability.
+Add execution workers on separate Linux servers to an existing [Self-Hosted](/docs/app/deployment/self-hosted) installation.
 
 ## Architecture
 
@@ -170,12 +170,12 @@ sudo docker compose -f docker-compose-worker.yml up -d --wait --wait-timeout 300
 
 ### Verify execution
 
-Confirm the execution entry shows **Active**, then run a monitor or k6 test against that entry and inspect the result. A heartbeat alone does not prove the database, Redis, and storage connections work.
+Confirm the execution entry shows **Active**, then run a monitor or k6 test against it and check the result.
 
 </Step>
 </Steps>
 
-Playwright uses a shared queue, so adding a worker does not pin browser tests to a particular server. Keep `local` for the default single-server setup; register distinct codes only for additional execution targets.
+Playwright tests use a shared queue, so they run on any worker.
 
 ## Optional worker settings
 
@@ -195,11 +195,7 @@ By default a worker consumes every queue, which suits most setups. To make a ser
 WORKER_QUEUES=monitor
 ```
 
-An unknown token stops the worker at startup. Which workloads users may run in a location is set separately in Super Admin ([Workload Capabilities](/docs/app/admin/super-admin#workload-capabilities)).
-
-`CANCELLED_QUEUED_RECOVERY_ENABLED` (default `false`) ends runs that were cancelled before they started and never picked up. Set it to `true` on every worker, only after all of them run the current version.
-
-For custom connection, bucket, or TLS settings, match the [worker Compose file](https://github.com/supercheck-io/supercheck/blob/v1.5.0/deploy/docker/docker-compose-worker.yml).
+An unknown token stops the worker at startup. Which workloads users may run in a location is set in Super Admin ([Workload Capabilities](/docs/app/admin/super-admin#workload-capabilities)).
 
 </Accordion>
 </Accordions>
@@ -219,20 +215,12 @@ Workers keep no data, so they need no backup; keep their `.env` private.
 
 ## Missing-region detection
 
-With workers in several locations, a silent region holds up a monitor result by default. This option closes each run at a deadline and counts silent regions as failed.
-
 <Accordions>
 <Accordion title="Missing-region detection (optional)" id="missing-region-detection-optional">
 
-| Step | Action |
-|---|---|
-| **1. Start the controller** | Add `monitor-control` to `COMPOSE_PROFILES` in `.env` (for example `https,monitor-control`), run `sudo docker compose up -d monitor-control`, and keep exactly one instance |
-| **2. Check it** | `sudo docker compose ps monitor-control` shows it healthy |
-| **3. Turn it on** | Set `MISSING_CYCLE_CLOSURE_ENABLED=true` in `.env` and recreate the app |
+By default a silent region holds up a monitor result. To count it as failed after a deadline, add `monitor-control` to `COMPOSE_PROFILES` in `.env`, run `sudo docker compose up -d monitor-control` (one instance only), then set `MISSING_CYCLE_CLOSURE_ENABLED=true` and recreate the app.
 
-`MISSING_CYCLE_DEADLINE_SECONDS` (default `300`, plus two check timeouts) sets how long a run waits. To turn it off, set `MISSING_CYCLE_CLOSURE_ENABLED=false`, keep `monitor-control` running until open runs close, then remove it from `COMPOSE_PROFILES`.
-
-Regions with no live worker when a run is scheduled (for example during a rollout) are skipped for that run, not counted as failed. A region whose worker goes offline after the run is scheduled is still expected and counts as failed at the deadline.
+Regions with no live worker when a run starts are skipped, not failed. To turn it off, set the flag to `false`, recreate the app, and keep `monitor-control` running until open runs close.
 
 </Accordion>
 </Accordions>

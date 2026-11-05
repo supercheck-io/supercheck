@@ -29,8 +29,6 @@ const dbJestConfig = {
 };
 
 module.exports = async () => {
-  // Deferred migrations in test subprocesses must target the temporary database, not a deployment URL.
-  delete process.env.MIGRATION_DATABASE_URL;
   const jestConfig = await createJestConfig(dbJestConfig)();
   // better-auth and friends are ESM-only; mirror jest.config.js so specs that
   // import the real RBAC layer can run against a real database.

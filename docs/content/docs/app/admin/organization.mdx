@@ -48,17 +48,12 @@ Select **Create Project** and fill in both required fields, then **Save**.
 
 ![Create Project](/screenshots/org-admin-create-project.png)
 
+Project slugs must be unique. Organization owners and admins can delete a project through the API; the dashboard has no delete action, and the default project cannot be deleted.
+
 <Accordions>
 <Accordion title="Incident notifications" id="project-incident-notifications">
 
 To set where hand-made and connector incidents are announced, open **Organization → Projects**, use the project's menu, and choose **Incident notifications**. Settings are described under [Incident notifications](/docs/app/investigate/incidents#notifications).
-
-</Accordion>
-<Accordion title="API limits and deletion" id="project-api-limits">
-
-The API accepts longer values: name up to 255 characters, description up to 2000, and an optional slug up to 100. A slug already in use returns a conflict error.
-
-Organization owners and admins can soft-delete a project through the API only. The default project cannot be deleted, and the UI has no delete action.
 
 </Accordion>
 </Accordions>
@@ -112,9 +107,9 @@ Sign up or sign in with the invited email address, then accept the invitation to
 <Accordions>
 <Accordion title="Leave an organization" id="leave-an-organization">
 
-Select a project in the team you want to leave, open your profile menu, choose **Account**, and select **Leave** next to the organization. Confirm the organization name. This removes your membership and project assignments in that team and clears its selected context from all your sessions. Other memberships remain in the project selector. If you have none left, the normal setup flow creates your personal organization and project.
+Select a project in the team you want to leave, open your profile menu, choose **Account**, and select **Leave** next to the organization. Confirm the organization name. This removes your membership and project assignments in that team. Other memberships remain in the project selector. If you have none left, the normal setup flow creates your personal organization and project.
 
-Organization owners cannot leave; transfer ownership or delete the organization first. Leaving needs an interactive browser session, so CLI tokens cannot do it. An administrator must invite you again to rejoin.
+Organization owners cannot leave; transfer ownership or delete the organization first. An administrator must invite you again to rejoin.
 
 </Accordion>
 <Accordion title="Delete the organization" id="delete-organization">

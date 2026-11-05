@@ -748,7 +748,7 @@
       "get": {
         "operationId": "getHealth",
         "summary": "Health check",
-        "description": "Returns the health status of the API and its dependencies (database, Redis, storage).",
+        "description": "Returns the health status of the API and its dependencies.",
         "tags": [
           "System"
         ],
@@ -2540,7 +2540,7 @@
       "patch": {
         "operationId": "updateTest",
         "summary": "Update a test",
-        "description": "Update test title, script, description, type, or priority. Requires `test:update`, checked before the ID; for an authorized caller, a malformed ID returns 404.",
+        "description": "Update test title, script, description, type, or priority. Requires `test:update`. Malformed IDs return 404.",
         "tags": [
           "Tests"
         ],
@@ -2660,7 +2660,7 @@
       "put": {
         "operationId": "updateTestLegacyPut",
         "summary": "Update a test using the legacy PUT alias",
-        "description": "Update test title, script, description, type, or priority. PUT is retained for CLI deploy and backward compatibility; interactive partial updates should prefer PATCH. Requires `test:update`, checked before the ID; for an authorized caller, a malformed ID returns 404.",
+        "description": "Update test title, script, description, type, or priority. PUT is retained for CLI deploy and backward compatibility; interactive partial updates should prefer PATCH. Requires `test:update`. Malformed IDs return 404.",
         "tags": [
           "Tests"
         ],
@@ -3461,7 +3461,7 @@
       "get": {
         "operationId": "getMonitorStats",
         "summary": "Get monitor statistics",
-        "description": "Returns 24-hour and 30-day performance statistics. All-locations reads prefer a combined rollup per period and fall back to legacy location rollups for periods without one. Each statistics window uses retained raw checks only when no rollups exist. meta.source identifies aggregates, aggregates+raw_p95, aggregates+raw, or raw.",
+        "description": "Returns 24-hour and 30-day performance statistics. `meta.source` identifies the data source: aggregates, aggregates+raw_p95, aggregates+raw, or raw.",
         "tags": [
           "Monitors"
         ],
@@ -4885,7 +4885,7 @@
       "post": {
         "operationId": "validateScript",
         "summary": "Validate a test script",
-        "description": "Check script syntax, size and statement limits, and Playwright or k6 compatibility. Validation provides submission feedback, not a runtime security boundary.",
+        "description": "Check script syntax, size and statement limits, and Playwright or k6 compatibility.",
         "tags": [
           "Tests"
         ],
@@ -5420,7 +5420,7 @@
       "get": {
         "operationId": "listOrganizations",
         "summary": "Get assigned organization",
-        "description": "Returns the selected project's host organization, or the default account organization when no project is selected. Users cannot create or switch organizations directly; they can select projects from their account and invited teams. The existing list response is preserved for compatibility: data contains zero or one organization and activeOrganizationId identifies that organization; it is not a directory of all team memberships.",
+        "description": "Returns the selected project's host organization, or the default account organization when no project is selected. Users cannot create or switch organizations directly; they can select projects from their account and invited teams. `data` contains zero or one organization and activeOrganizationId identifies that organization; it is not a directory of all team memberships.",
         "tags": [
           "Organizations"
         ],
@@ -6862,7 +6862,7 @@
         "tags": [
           "Requirements"
         ],
-        "description": "List requirements in the current project, newest first. Requires `requirement:view`. Each item includes the linked test IDs (`testIds`) and tag names (`tagNames`) so clients do not need a per-row detail request. The response also repeats the items under `requirements` for backward compatibility.",
+        "description": "List requirements in the current project, newest first. Requires `requirement:view`. Each item includes the linked test IDs (`testIds`) and tag names (`tagNames`) so clients do not need a per-row detail request.",
         "parameters": [
           {
             "name": "page",
@@ -9893,19 +9893,6 @@
           },
           "locationConfig": {
             "$ref": "#/components/schemas/MonitorLocationConfig"
-          },
-          "retryStrategy": {
-            "type": "object",
-            "properties": {
-              "maxRetries": {
-                "type": "integer"
-              },
-              "backoffFactor": {
-                "type": "integer"
-              }
-            },
-            "deprecated": true,
-            "description": "Unsupported for monitors. Accepted for compatibility but ignored; it does not change execution retries. Do not set this field in new configurations."
           },
           "alertChannels": {
             "type": "array",

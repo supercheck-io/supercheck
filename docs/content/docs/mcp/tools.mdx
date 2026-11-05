@@ -4,7 +4,7 @@ description: Reference for the tools the Supercheck MCP server exposes
 icon: Wrench
 ---
 
-Read tools are marked `readOnlyHint: true`; the optional tools below are not. Every tool returns both `structuredContent` and a JSON text copy, and is limited to the project of the connection.
+Read tools are marked `readOnlyHint: true`; the optional tools below are not. Every tool is limited to the project of the connection.
 
 Returned text (test titles, error excerpts, incident summaries, investigation findings) comes from your systems and is treated as **untrusted data**: tool descriptions tell the AI never to follow instructions found in it.
 
@@ -45,7 +45,7 @@ Returned text (test titles, error excerpts, incident summaries, investigation fi
 
 ## Optional tools
 
-Registered only when the connection holds the scope. Each call re-checks the scope and your live role, and writes an audit event (ids and timing, never arguments).
+Registered only when the connection holds the scope. Calls are recorded in the audit log (ids and timing, never arguments).
 
 | Tool | Scope | Needs permission | Arguments | Does |
 |---|---|---|---|---|
@@ -56,7 +56,7 @@ Registered only when the connection holds the scope. Each call re-checks the sco
 | `investigate_incident` | `mcp:sre` | investigate incidents | `incidentId`, `useLiveConnectors`, `guidance` | Starts a full investigation. Live connectors also need connector investigate permission |
 | `generate_incident_brief` | `mcp:sre` | investigate incidents | `incidentId` | Generates an evidence brief |
 
-The write tools run the same service code as the dashboard and `POST /api/sre/incidents/{id}/assign`, `/acknowledge` and `/resolve`, so notifications, timelines and rate limits behave the same. The `mcp:sre` tools use AI credits and apply the same checks as the dashboard (AI SRE enabled, plan, daily AI limit, rate limits). They return `accepted: true` at once; poll `list_investigations` with `incidentId`, then `get_investigation`. A Copilot chat is not available over MCP.
+The write tools behave like the dashboard: notifications and timelines are the same. The `mcp:sre` tools use AI credits and apply the same checks as the dashboard (AI SRE enabled, plan, daily AI limit, rate limits). They return `accepted: true` at once; poll `list_investigations` with `incidentId`, then `get_investigation`. A Copilot chat is not available over MCP.
 
 <Accordions>
 <Accordion title="Paging" id="paging">
