@@ -108,6 +108,13 @@ export function InvestigationReport({
   );
   const [briefConfidence, setBriefConfidence] = useState<string | null>(detail.latestBrief?.confidenceScore ?? null);
   const [streaming, setStreaming] = useState(false);
+  // A failed regeneration puts the saved brief back instead of leaving the section blank or half-written.
+  const restoreSavedBrief = () => {
+    setBriefSummary(savedSummary);
+    setBriefIsAi(savedProvider === "ai" ? true : savedProvider === "fallback" ? false : null);
+    setBriefConfidence(detail.latestBrief?.confidenceScore ?? null);
+    setStreaming(false);
+  };
 
   useEffect(() => {
     if (!focus) return;
@@ -122,7 +129,7 @@ export function InvestigationReport({
   const running = investigation?.status === "running";
   const failed = investigation?.status === "failed" || investigation?.status === "aborted" || investigation?.status === "timed_out";
   const structured = investigation?.structured ?? null;
-  const investigationConclusion = getInvestigationConclusion(investigation, incident.rootCauseSummary);
+  const investigationConclusion = getInvestigationConclusion(investigation, incident.rootCauseSummary ?? detail.triageSummary ?? null);
   // The brief stands in only until an investigation has produced something to read.
   const useBrief = !investigationConclusion && (Boolean(briefSummary) || streaming);
   const inconclusive = structured ? structured.outcome === "inconclusive" : false;
@@ -160,7 +167,7 @@ export function InvestigationReport({
               }
               setStreaming(false);
             },
-            onStreamError: () => setStreaming(false),
+            onStreamError: restoreSavedBrief,
           }
         : {})}
     />
@@ -316,7 +323,7 @@ export function InvestigationReport({
       </Section>
 
       {investigation && (
-        <InvestigationStepTrace steps={investigation.steps} running={running} />
+        <InvestigationStepTrace key={investigation.id} steps={investigation.steps} running={running} />
       )}
 
       {Boolean(similarCount) && (

@@ -212,7 +212,7 @@ export function SreIncidentDetailView({
       </div>
 
       <IncidentInvestigationSheet open={sheetOpen} onOpenChange={setSheetOpen}>
-        <InvestigationReport detail={detail} focus={focus} serviceMappingHref={`/incidents/${incident.id}?edit=service`} />
+        <InvestigationReport key={detail.latestBrief?.id ?? "no-brief"} detail={detail} focus={focus} serviceMappingHref={`/incidents/${incident.id}?edit=service`} />
       </IncidentInvestigationSheet>
       {permissions.canInvestigate && (
         <IncidentCopilotSheet open={copilotOpen} onOpenChange={setCopilotOpen} incidentId={incident.id} />

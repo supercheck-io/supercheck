@@ -241,6 +241,16 @@ describe("SreIncidentDetailView", () => {
     expect(within(sheet).getByRole("button", { name: "Download" })).toBeEnabled();
   });
 
+  it("shows the triage finding as the sheet conclusion when no investigation or root cause exists", () => {
+    const detail = detailFixture();
+    detail.latestInvestigation = null;
+    detail.latestBrief = null;
+    detail.incident.rootCauseSummary = null;
+    detail.triageSummary = "Triage: connection pool exhausted";
+    render(<SreIncidentDetailView detail={detail} services={[]} initialTab="investigation" />);
+    expect(within(screen.getByTestId("investigation-sheet")).getByText("Triage: connection pool exhausted")).toBeInTheDocument();
+  });
+
   it("keeps the brief out of the way once an investigation has a conclusion", () => {
     render(<SreIncidentDetailView detail={detailFixture()} services={[]} initialTab="brief" />);
     const sheet = screen.getByTestId("investigation-sheet");
