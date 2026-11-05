@@ -1,11 +1,10 @@
 import {
-  Button,
   Hr,
   Section,
   Text,
 } from "@react-email/components";
 import * as React from "react";
-import { BaseLayout } from "./base-layout";
+import { BaseLayout, EmailButton } from "./base-layout";
 
 interface OrganizationInvitationEmailProps {
   inviteUrl: string;
@@ -56,9 +55,7 @@ export const OrganizationInvitationEmail = ({
 
         {/* CTA Button */}
         <Section style={buttonContainer}>
-          <Button style={button} href={inviteUrl}>
-            Accept Invitation
-          </Button>
+          <EmailButton href={inviteUrl}>Accept Invitation</EmailButton>
         </Section>
 
         <Hr style={hr} />
@@ -154,17 +151,6 @@ const buttonContainer = {
   margin: "32px 0",
 };
 
-const button = {
-  backgroundColor: "#111827",
-  borderRadius: "6px",
-  color: "#ffffff",
-  fontSize: "15px",
-  fontWeight: "600" as const,
-  textDecoration: "none",
-  textAlign: "center" as const,
-  display: "inline-block",
-  padding: "14px 36px",
-};
 
 const hr = {
   borderColor: "#e5e7eb",

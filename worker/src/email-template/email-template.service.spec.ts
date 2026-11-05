@@ -1,4 +1,4 @@
-import { EmailTemplateService } from './email-template.service';
+import { EmailTemplateService, formatDuration } from './email-template.service';
 import * as monitorAlert from '../emails/monitor-alert';
 
 describe('EmailTemplateService (local render)', () => {
@@ -26,7 +26,7 @@ describe('EmailTemplateService (local render)', () => {
       message: 'ok',
       fields: [],
       footer: 'x',
-      type: 'success',
+      type: 'recovery',
       color: '#10b981',
       appUrl: 'https://app.example.com',
     });
@@ -78,5 +78,52 @@ describe('EmailTemplateService (local render)', () => {
     expect(r.html).toContain('&lt;script&gt;');
     expect(r.text).toContain('k: <script>');
     jest.restoreAllMocks();
+  });
+});
+
+describe('EmailTemplateService job and recovery emails', () => {
+  const service = new EmailTemplateService();
+  const base = {
+    jobName: 'Nightly',
+    duration: 65,
+    runId: 'run-1',
+    dashboardUrl: 'https://app.example.io/notification-run/run-1',
+  };
+
+  it('labels a job pass "Passed", without the Resolved chip', async () => {
+    const email = await service.renderJobSuccessEmail(base);
+    expect(email.html).toContain('Passed');
+    expect(email.html).not.toContain('Recovered');
+    expect(email.html).not.toContain('Resolved');
+  });
+
+  it('labels a monitor recovery "Recovered" with the Resolved chip', async () => {
+    const email = await service.renderMonitorAlertEmail({
+      title: 'Monitor Recovered - API',
+      message: 'Monitor "API" is back up.',
+      fields: [{ title: 'Status', value: 'UP' }],
+      footer: '',
+      type: 'recovery',
+      color: '#22c55e',
+    });
+    expect(email.html).toContain('Recovered');
+    expect(email.html).toContain('Resolved');
+  });
+
+  it('keeps detail labels and values apart in the plain-text part', async () => {
+    const email = await service.renderJobSuccessEmail(base);
+    expect(email.text).not.toMatch(/Job NameNightly/);
+    expect(email.text).toMatch(/Job Name\s+Nightly/);
+    expect(email.text).toMatch(/Duration\s+1m 05s/);
+  });
+
+  it.each([
+    [0, '0s'],
+    [1, '1s'],
+    [59, '59s'],
+    [65, '1m 05s'],
+    [3720, '1h 02m'],
+  ])('formats %s seconds as %s', (seconds, expected) => {
+    expect(formatDuration(seconds)).toBe(expected);
   });
 });
