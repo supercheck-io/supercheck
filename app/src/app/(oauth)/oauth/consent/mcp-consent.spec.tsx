@@ -120,6 +120,14 @@ describe("McpConsent", () => {
     expect(screen.getByRole("button", { name: "Approve" }).closest(".overflow-y-auto")).toBeNull();
   });
 
+  it("lists the preselected project first so it is visible without scrolling", () => {
+    const many = Array.from({ length: 20 }, (_, i) => ({ id: `p-${i}`, name: `Project ${i}`, organizationName: "Org", isDefault: i === 15 }));
+    setup(unverified, many);
+    const radios = screen.getAllByRole("radio");
+    expect(radios[0]).toHaveAccessibleName(/Project 15/);
+    expect(radios[0]).toBeChecked();
+  });
+
   it("preselects the default project and approves the chosen one", async () => {
     reply(200, { url: "http://127.0.0.1:8765/callback?code=abc" });
     setup();

@@ -51,6 +51,8 @@ const ERROR_COPY: Record<string, string> = {
 
 export function McpConsent({ oauthQuery, userEmail, projects, canWriteIncidents = false, canRunSre = false, keepsEarlierAccessProjectIds = [], client, navigate = (url) => window.location.assign(url) }: Props) {
   const [projectId, setProjectId] = useState((projects.find((p) => p.isDefault) ?? projects[0]).id);
+  const [initialProjectId] = useState(projectId);
+  const orderedProjects = [...projects].sort((a, b) => Number(b.id === initialProjectId) - Number(a.id === initialProjectId));
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
   const busy = phase !== "idle";
@@ -113,7 +115,7 @@ export function McpConsent({ oauthQuery, userEmail, projects, canWriteIncidents 
         )}
       </div>
 
-      <CardContent className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 pb-3">
+      <CardContent className="min-h-32 flex-1 space-y-3 overflow-y-auto px-4 pb-3">
         <div className="space-y-1.5 rounded-md border bg-muted/30 px-3 py-2 text-sm">
           <p className="font-medium">{client.name} will be able to:</p>
           <ul className="list-disc space-y-0.5 pl-5 text-muted-foreground">
@@ -137,7 +139,8 @@ export function McpConsent({ oauthQuery, userEmail, projects, canWriteIncidents 
             Project{sharedOrg ? <span className="font-normal text-muted-foreground"> · {sharedOrg}</span> : null}
           </legend>
           <RadioGroup value={projectId} onValueChange={setProjectId} className="max-h-56 gap-0 divide-y overflow-y-auto rounded-md border">
-            {projects.map((project) => (
+            {/* The preselected project comes first so it is never scrolled out of view. */}
+            {orderedProjects.map((project) => (
               <Label
                 key={project.id}
                 htmlFor={`project-${project.id}`}
@@ -177,7 +180,7 @@ export function McpConsent({ oauthQuery, userEmail, projects, canWriteIncidents 
             Deny
           </Button>
           <Button className="flex-1" disabled={busy} onClick={() => decide(true)}>
-            {phase === "idle" ? "Approve" : phase === "submitting" ? "Connecting…" : "Returning to the app…"}
+            {phase === "idle" ? "Approve" : phase === "submitting" ? "Connecting…" : "Redirecting…"}
           </Button>
         </div>
         <p className="text-center text-xs text-muted-foreground">
