@@ -219,10 +219,12 @@ describe('MonitorAlertService', () => {
   it('enqueues created alert-history rows after SSL notifications', async () => {
     const { service, sreAlertTriageQueueService } = createService();
 
-    await service.sendSslExpirationNotification(
-      'monitor-1',
-      'Certificate expires soon',
-    );
+    await expect(
+      service.sendSslExpirationNotification(
+        'monitor-1',
+        'Certificate expires soon',
+      ),
+    ).resolves.toBe(true);
 
     expect(
       sreAlertTriageQueueService.enqueueAlertHistoryRows,
@@ -266,5 +268,18 @@ describe('MonitorAlertService', () => {
     expect(
       notificationService.sendNotificationToMultipleProviders,
     ).not.toHaveBeenCalled();
+  });
+
+  it('reports an SSL alert as not sent when no provider config can be decrypted', async () => {
+    const { service } = createService();
+    const crypto = jest.requireMock(
+      '../../common/notification-provider-crypto',
+    );
+    crypto.decryptNotificationProviderConfig.mockImplementationOnce(() => {
+      throw new Error('bad auth tag');
+    });
+    await expect(
+      service.sendSslExpirationNotification('monitor-1', 'expiring'),
+    ).resolves.toBe(false);
   });
 });

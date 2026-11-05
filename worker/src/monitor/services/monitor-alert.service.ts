@@ -309,7 +309,7 @@ export class MonitorAlertService {
     monitorId: string,
     reason: string,
     metadata: Record<string, unknown> = {},
-  ) {
+  ): Promise<boolean> {
     this.logger.log(
       `[SSL-NOTIFY] SSL expiration notification for monitor ${monitorId}`,
     );
@@ -323,7 +323,7 @@ export class MonitorAlertService {
 
     if (!monitor) {
       this.logger.error(`[SSL-NOTIFY] Monitor not found: ${monitorId}`);
-      return;
+      return false;
     }
 
     // Get project information
@@ -344,7 +344,7 @@ export class MonitorAlertService {
       this.logger.log(
         `[SSL-NOTIFY] SSL alerts not enabled for monitor ${monitorId}`,
       );
-      return;
+      return false;
     }
 
     // Get notification providers
@@ -378,7 +378,7 @@ export class MonitorAlertService {
           ? `[SSL-NOTIFY] Not delivered for monitor ${monitorId}: no provider config could be decrypted`
           : `[SSL-NOTIFY] No notification providers configured for monitor ${monitorId}`,
       );
-      return;
+      return false;
     }
 
     const baseUrl =
@@ -476,5 +476,6 @@ export class MonitorAlertService {
         createdRows,
       );
     }
+    return successCount > 0;
   }
 }

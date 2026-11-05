@@ -674,20 +674,22 @@ export class MonitorEvaluator {
 
         // Only send SSL alerts once per day to avoid spam
         if (hoursSinceLastAlert >= 24) {
-          await this.monitorAlertService.sendSslExpirationNotification(
-            resultData.monitorId,
-            alertReason,
-            {
-              sslCertificate,
-              daysRemaining: sslCertificate?.daysRemaining,
-              responseTime: resultData.responseTimeMs,
-            },
-          );
+          const sent =
+            await this.monitorAlertService.sendSslExpirationNotification(
+              resultData.monitorId,
+              alertReason,
+              {
+                sslCertificate,
+                daysRemaining: sslCertificate?.daysRemaining,
+                responseTime: resultData.responseTimeMs,
+              },
+            );
 
           // Only log important SSL alerts
-          this.logger.log(
-            `Sent SSL expiration alert for monitor ${resultData.monitorId}: ${alertReason}`,
-          );
+          if (sent)
+            this.logger.log(
+              `Sent SSL expiration alert for monitor ${resultData.monitorId}: ${alertReason}`,
+            );
         }
         // Removed debug log for skipped alerts
       }
