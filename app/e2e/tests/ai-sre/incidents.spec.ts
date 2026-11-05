@@ -6,7 +6,7 @@ import type { Page } from "@playwright/test";
 
 // The root hydration flag can fire before nested Suspense boundaries hydrate, so
 // a first click on a fresh page may be dropped: retry until the sheet is open.
-async function openInvestigationSheet(page: Page, tab: string | RegExp) {
+async function openInvestigationSheet(page: Page) {
   const sheet = page.getByRole("dialog", { name: "Investigation", exact: true });
   const trigger = page
     .getByRole("button", { name: /^(Run investigation|View investigation)$/ })
@@ -15,7 +15,6 @@ async function openInvestigationSheet(page: Page, tab: string | RegExp) {
     if (!(await sheet.isVisible())) await trigger.click();
     await expect(sheet).toBeVisible({ timeout: 2000 });
   }).toPass({ timeout: 15_000 });
-  await sheet.getByRole("tab", { name: tab }).click();
   return sheet;
 }
 
@@ -83,31 +82,30 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
       ).toBeVisible();
 
       await expect(page.getByTestId("incident-ai-summary")).toBeVisible();
-      const sheet = await openInvestigationSheet(page, "Analysis");
-      await expect(sheet.getByRole("tab")).toContainText(["Analysis", "Evidence", "Brief"]);
-      await expect(sheet.getByLabel("Include live sources")).toBeDisabled();
+      const sheet = await openInvestigationSheet(page);
+      // One report, no tabs; live-source options sit behind the Run options control.
+      await expect(sheet.getByRole("tab")).toHaveCount(0);
+      await expect(sheet.getByRole("heading", { name: "Conclusion" })).toBeVisible();
+      await sheet.getByRole("button", { name: "Run options", exact: true }).click();
+      await expect(page.getByLabel("Include live sources")).toBeDisabled();
       await expect(
-        sheet.getByText("Link a service to use live sources.", { exact: false }),
+        page.getByText("Link a service to use live sources.", { exact: false }),
       ).toBeVisible();
-      await sheet.getByRole("tab", { name: "Brief", exact: true }).click();
+      await page.keyboard.press("Escape");
       await sheet
         .getByRole("button", { name: "Generate brief", exact: true })
         .click();
-      await expect(
-        sheet.getByText(/AI generated|Fallback brief/).first(),
-      ).toBeVisible({ timeout: 90_000 });
-      await expect(sheet.getByText(/^Confidence: (High|Medium|Low|Inconclusive)$/).first()).toBeVisible();
+      await expect(sheet.getByText(/^Confidence: (High|Medium|Low|Inconclusive)$/).first()).toBeVisible({ timeout: 90_000 });
       await expect(
         sheet.getByRole("button", { name: "Regenerate brief", exact: true }),
       ).toBeVisible();
 
       await page.reload();
-      const reloadedSheet = await openInvestigationSheet(page, "Brief");
+      const reloadedSheet = await openInvestigationSheet(page);
       await expect(
         reloadedSheet.getByRole("button", { name: "Regenerate brief", exact: true }),
       ).toBeVisible();
 
-      await reloadedSheet.getByRole("tab", { name: "Analysis", exact: true }).click();
       const investigationResponsePromise = page.waitForResponse(
         (response) =>
           response.request().method() === "POST" &&
@@ -120,15 +118,13 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
       expect([200, 202], await investigationResponse.text()).toContain(
         investigationResponse.status(),
       );
-      // The run may finish asynchronously (202); the snapshot control only
-      // offers its button once the run has completed.
-      await expect(
-        reloadedSheet.getByRole("heading", { name: "Report snapshot" }),
-      ).toBeVisible({ timeout: 120_000 });
+      // The run may finish asynchronously (202); the snapshot action only
+      // appears in the overflow menu once the run has completed.
       await reloadedSheet
-        .getByRole("button", { name: "Save report snapshot", exact: true })
+        .getByRole("button", { name: "More investigation actions", exact: true })
         .click({ timeout: 120_000 });
-      await expect(reloadedSheet.getByText(/^Snapshot saved/)).toBeVisible();
+      await page.getByRole("menuitem", { name: "Save report snapshot", exact: true }).click();
+      await expect(reloadedSheet.getByText(/Snapshot saved/)).toBeVisible();
       await page.keyboard.press("Escape");
 
       // Feedback now lives on the AI summary card as Right/Wrong plus a note.
@@ -156,8 +152,8 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
       // The saved note is shown in the verdict tooltip.
       await persistedRight.hover();
       await expect(page.getByRole("tooltip")).toContainText(`You marked this right: ${note}`);
-      const persistedSheet = await openInvestigationSheet(page, "Analysis");
-      await expect(persistedSheet.getByText(/^Snapshot saved/)).toBeVisible();
+      const persistedSheet = await openInvestigationSheet(page);
+      await expect(persistedSheet.getByText(/Snapshot saved/)).toBeVisible();
 
       const viewerSwitch = await viewerPage.request.post(
         "/api/projects/switch",
@@ -178,10 +174,10 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
       await expect(
         viewerPage.getByRole("group", { name: "Feedback on this investigation" }),
       ).toHaveCount(0);
-      const viewerSheet = await openInvestigationSheet(viewerPage, "Analysis");
-      await expect(viewerSheet.getByText(/^Snapshot saved/)).toBeVisible();
+      const viewerSheet = await openInvestigationSheet(viewerPage);
+      await expect(viewerSheet.getByText(/Snapshot saved/)).toBeVisible();
       await expect(viewerSheet.getByRole("group", { name: /^Feedback on / })).toHaveCount(0);
-      for (const name of ["Run investigation", "Run again", "Save report snapshot"]) {
+      for (const name of ["Run investigation", "Run again", "Run options", "More investigation actions"]) {
         await expect(
           viewerSheet.getByRole("button", { name, exact: true }),
         ).toHaveCount(0);

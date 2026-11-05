@@ -1,12 +1,11 @@
 "use client";
 
 import { useLayoutEffect, useRef, useState } from "react";
-import { FileSearch, PanelRightOpen, Sparkles } from "lucide-react";
+import { PanelRightOpen, Sparkles } from "lucide-react";
 
 import type { SreIncidentDetail } from "@/actions/sre-incidents";
 import { Button } from "@/components/ui/button";
 import { SreMessageContent } from "@/components/sre/sre-message-content";
-import { EvidenceDetailsDialog } from "@/components/sre/incidents/evidence-details-dialog";
 import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
 import {
   Card,
@@ -23,9 +22,8 @@ type IncidentAiSummaryCardProps = {
   /** Decimal string from the database (0-1). */
   confidenceScore: string | null;
   investigationStatus: "running" | "completed" | "failed" | "aborted" | "timed_out" | null;
-  /** Latest investigation run; enables citations, live progress and failure details. */
+  /** Latest investigation run; enables live progress and failure details. */
   investigation?: SreIncidentDetail["latestInvestigation"];
-  evidence?: SreIncidentDetail["evidence"];
   /** Whole-investigation feedback control, shown at the right of the footer. */
   feedback?: React.ReactNode;
   /** Opens the investigation sheet. */
@@ -62,12 +60,25 @@ export function stripReportBoilerplate(text: string) {
   return lines.slice(start).join("\n").trim();
 }
 
+/** The text shown as the conclusion: structured conclusion, else a legacy full report, else the stored headline. */
+export function getInvestigationConclusion(
+  investigation: SreIncidentDetail["latestInvestigation"] | undefined,
+  rootCauseSummary: string | null,
+) {
+  const structured = investigation?.structured ?? null;
+  // Runs without structured output keep their full report, which is longer than the stored headline.
+  const fullReport = !structured && investigation?.status === "completed" ? investigation.summary : null;
+  const raw = structured?.conclusion ?? fullReport ?? rootCauseSummary;
+  // Runs stored before ids were stripped at parse time still carry inline id lists.
+  const stripped = raw ? stripEvidenceIdLists(raw) : raw;
+  return stripped ? stripReportBoilerplate(stripped) || stripped : stripped;
+}
+
 export function IncidentAiSummaryCard({
   rootCauseSummary,
   confidenceScore,
   investigationStatus,
   investigation = null,
-  evidence = [],
   feedback,
   onOpenInvestigation,
   canInvestigate = false,
@@ -76,22 +87,12 @@ export function IncidentAiSummaryCard({
   const running = investigationStatus === "running";
   const failed = investigationStatus === "failed" || investigationStatus === "aborted" || investigationStatus === "timed_out";
   const structured = investigation?.structured ?? null;
-  // Runs without structured output keep their full report, which is longer than the stored headline.
-  const fullReport = !structured && investigationStatus === "completed" ? investigation?.summary : null;
-  const rawConclusion = structured?.conclusion ?? fullReport ?? rootCauseSummary;
-  // Runs stored before ids were stripped at parse time still carry inline id lists.
-  const stripped = rawConclusion ? stripEvidenceIdLists(rawConclusion) : rawConclusion;
-  const conclusion = stripped ? stripReportBoilerplate(stripped) || stripped : stripped;
+  const conclusion = getInvestigationConclusion(investigation, rootCauseSummary);
   const inconclusive = structured ? structured.outcome === "inconclusive" : false;
   const confidence = confidenceLabel(rootCauseSummary ? confidenceScore : null);
   // Runs before structured output stored no score; show no rating rather than a misleading one.
   const unrated = Boolean(rootCauseSummary) && confidenceScore === null && !structured;
-  const citations = (structured?.topEvidenceIds ?? [])
-    .map((id) => evidence.find((item) => item.id === id))
-    .filter((item): item is SreIncidentDetail["evidence"][number] => Boolean(item))
-    .slice(0, 3);
   const stepCount = investigation?.steps.length ?? 0;
-  const summaryOnly = investigationStatus === "completed" && Boolean(investigation) && !structured;
   const nextCheck = structured?.nextChecks[0] ?? null;
   const bodyRef = useRef<HTMLDivElement>(null);
   const [clampable, setClampable] = useState(false);
@@ -116,9 +117,9 @@ export function IncidentAiSummaryCard({
   return (
     <Card data-testid="incident-ai-summary" className="shrink-0 gap-3 py-4">
       <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0 px-4 py-0">
-        <CardTitle id="incident-ai-summary-title" className="flex items-center gap-2 text-sm">
+        <CardTitle id="incident-ai-summary-title" className="flex items-center gap-2 text-sm font-semibold">
           <Sparkles className="h-4 w-4 text-primary" aria-hidden="true" />
-          AI summary
+          Summary
         </CardTitle>
         {conclusion && !running && !unrated && (
           inconclusive || confidence.label === "Inconclusive" ? (
@@ -205,31 +206,10 @@ export function IncidentAiSummaryCard({
             </div>
           )
         )}
-        {citations.length > 0 && !running && (
-          <div className="flex flex-wrap items-center gap-2" aria-label={inconclusive ? "Reviewed evidence" : "Cited evidence"}>
-            {citations.map((item) => (
-              <EvidenceDetailsDialog key={item.id} item={item}>
-                <button
-                  type="button"
-                  aria-label={`View evidence: ${item.title}`}
-                  className="inline-flex max-w-full items-center gap-1.5 rounded-md border bg-muted/40 px-2 py-1 text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:max-w-[16rem]"
-                >
-                  <FileSearch className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-                  <span className="truncate">{item.title}</span>
-                </button>
-              </EvidenceDetailsDialog>
-            ))}
-          </div>
-        )}
         {nextCheck && !running && (
           <p className="line-clamp-2 break-words text-sm text-muted-foreground">
             <span className="font-medium text-foreground">Next step: </span>
             {nextCheck}
-          </p>
-        )}
-        {summaryOnly && (
-          <p className="text-xs text-muted-foreground">
-            Summary only: this run did not return structured hypotheses. Run it again for a ranked breakdown.
           </p>
         )}
         {(conclusion || running || failed) && (

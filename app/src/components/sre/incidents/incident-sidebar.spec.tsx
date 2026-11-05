@@ -10,6 +10,10 @@ jest.mock("@/components/sre/incidents/incident-assignee-picker", () => ({
   ),
 }));
 
+jest.mock("@/components/sre/incidents/watch-sre-incident-button", () => ({
+  WatchSreIncidentButton: ({ watching }: { watching: boolean }) => <button type="button">{watching ? "Unwatch" : "Watch"}</button>,
+}));
+
 const now = new Date("2026-06-24T12:00:00Z");
 function detailFixture(): SreIncidentDetail {
   return {
@@ -101,15 +105,15 @@ describe("IncidentSidebar", () => {
     expect(screen.queryByRole("button", { name: /Similar past incidents/ })).not.toBeInTheDocument();
   });
 
-  it("shows who acknowledged, time to acknowledge, and time to resolve once resolved", () => {
+  it("shows time to acknowledge (acknowledger on hover), and time to resolve once resolved", () => {
     const detail = detailFixture();
     detail.incident.acknowledgedAt = new Date("2026-06-24T12:10:00Z");
     detail.incident.acknowledgedByName = "Ada";
     detail.incident.resolvedAt = new Date("2026-06-24T14:05:00Z");
     detail.incident.status = "resolved";
     render(<IncidentSidebar detail={detail} />);
-    expect(screen.getByText(/by Ada/)).toBeInTheDocument();
-    expect(screen.getByText("10 min")).toBeInTheDocument();
+    // Who acknowledged is a hover detail, not a row.
+    expect(screen.getByText("10 min")).toHaveAttribute("title", expect.stringContaining("by Ada"));
     expect(screen.getByText("2 h 5 min")).toBeInTheDocument();
   });
 
@@ -119,7 +123,18 @@ describe("IncidentSidebar", () => {
     detail.incident.status = "resolved";
     render(<IncidentSidebar detail={detail} />);
     expect(screen.getByText("Skipped")).toBeInTheDocument();
-    expect(screen.queryByText("Time to acknowledge")).not.toBeInTheDocument();
-    expect(screen.getByRole("complementary", { name: "Details" })).toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "Properties" })).toBeInTheDocument();
+  });
+
+  it("lists status, severity and the watch toggle as plain properties", () => {
+    const detail = detailFixture();
+    (detail.incident as { severity: string }).severity = "sev2";
+    render(<IncidentSidebar detail={detail} />);
+    for (const label of ["Status", "Severity", "Assignee", "Service", "Started", "Status page", "Notifications"]) {
+      expect(screen.getByText(label)).toBeInTheDocument();
+    }
+    expect(screen.getByText("Investigating")).toBeInTheDocument();
+    expect(screen.getByText("sev2")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Watch" })).toBeInTheDocument();
   });
 });

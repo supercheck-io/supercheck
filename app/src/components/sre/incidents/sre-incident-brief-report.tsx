@@ -1,19 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { Copy, Download, Maximize2 } from "lucide-react";
+import { Copy, Download } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { MarkdownReportDialog } from "@/components/shared/markdown-report-dialog";
-import { SreMessageContent } from "@/components/sre/sre-message-content";
 
-type SreIncidentBriefReportProps = {
+type SreIncidentBriefReportActionsProps = {
   content: string;
-  isStreaming?: boolean;
-};
-
-type SreIncidentBriefReportActionsProps = SreIncidentBriefReportProps & {
   incidentNumber: number;
   incidentTitle: string;
   disabled?: boolean;
@@ -43,52 +37,6 @@ function safeFilePart(value: string) {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "")
     .slice(0, 48);
-}
-
-export function SreIncidentBriefReport({
-  content,
-  isStreaming = false,
-}: SreIncidentBriefReportProps) {
-  const markdown = normalizeReportMarkdown(content, !isStreaming);
-  const [isExpanded, setIsExpanded] = useState(false);
-
-  return (
-    <>
-      <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-md border bg-muted/20">
-        <div className="flex justify-end gap-1 border-b p-2">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setIsExpanded(true)}
-            aria-label="Expand evidence brief"
-            title="Expand evidence brief"
-          >
-            <Maximize2 className="h-4 w-4" />
-          </Button>
-        </div>
-        <div
-          role="region"
-          aria-label="Evidence brief content"
-          tabIndex={0}
-          aria-busy={isStreaming}
-          className="min-h-0 flex-1 overflow-auto break-words p-4 text-sm leading-6"
-        >
-          <SreMessageContent content={markdown} />
-        </div>
-      </div>
-
-      <MarkdownReportDialog
-        open={isExpanded}
-        onClose={() => setIsExpanded(false)}
-        content={markdown}
-        isStreaming={isStreaming}
-        title="Evidence Brief"
-        description="Incident investigation report"
-        downloadFilename="incident-evidence-brief.md"
-        loadingMessage="Generating evidence brief..."
-      />
-    </>
-  );
 }
 
 export function SreIncidentBriefReportActions({

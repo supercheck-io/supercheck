@@ -181,7 +181,7 @@ export function IncidentTimeline({
   return (
     <Card data-testid="incident-timeline" className="flex flex-col gap-3 py-4">
       <CardHeader className="shrink-0 px-4 py-0">
-        <CardTitle className="text-sm">Timeline</CardTitle>
+        <CardTitle className="text-sm font-semibold">Activity</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-3 px-4 pb-0">
         {canUpdate && (

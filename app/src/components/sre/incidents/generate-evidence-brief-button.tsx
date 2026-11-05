@@ -16,6 +16,8 @@ import {
 type GenerateEvidenceBriefButtonProps = {
   incidentId: string;
   hasBrief: boolean;
+  /** Secondary placements use a quieter button. */
+  variant?: "default" | "outline" | "ghost";
   onStreamStart?: () => void;
   onStreamContent?: (chunk: string) => void;
   onStreamDone?: (result: {
@@ -54,6 +56,7 @@ function errorMessage(value: unknown, fallback: string) {
 export function GenerateEvidenceBriefButton({
   incidentId,
   hasBrief,
+  variant = "default",
   onStreamStart,
   onStreamContent,
   onStreamDone,
@@ -173,7 +176,7 @@ export function GenerateEvidenceBriefButton({
     ]);
 
   return (
-    <Button onClick={handleClick} disabled={isPending}>
+    <Button size="sm" variant={variant} onClick={handleClick} disabled={isPending}>
       {isPending ? (
         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
       ) : (
