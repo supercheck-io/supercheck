@@ -295,7 +295,7 @@ it("keeps the incident link when Telegram text is clipped", async () => {
 it("never throws when delivery fails", async () => {
   fetchPublicEndpoint.mockRejectedValueOnce(new Error("boom"));
   selectQueue.push([incident], people, [{ sourceType: "job", sourceId: "job-1" }], [{ id: "p1", type: "discord", config: { discordWebhookUrl: "https://discord.com/api/webhooks/1/x" } }]);
-  await expect(notifyIncidentEvent({ ...base, event: "resolved", assigneeUserId: null })).resolves.toBeUndefined();
+  await expect(notifyIncidentEvent({ ...base, event: "resolved", assigneeUserId: null })).resolves.toBe(true);
   expect(fetchPublicEndpoint).toHaveBeenCalledTimes(1);
   expect(mockWarn).toHaveBeenCalledWith(expect.objectContaining({ error: "boom" }), "Incident notification delivery failed");
 });
@@ -523,5 +523,51 @@ describe("watchers, policy and fallback", () => {
     mockPolicyProviders.mockResolvedValue([]);
     await notifyIncidentEvent({ ...base, incidentId: "inc-2", event: "created", assigneeUserId: "assignee", actorUserId: null });
     expect(mockAdmins).not.toHaveBeenCalled();
+  });
+});
+
+describe("delivery outcome and recipients", () => {
+  const discord = { id: "p1", type: "discord", projectId: "project-1", config: { envelope: { discordWebhookUrl: "https://discord.com/api/webhooks/1/x" } } };
+
+  it("reports false when every send failed, so a caller can retry", async () => {
+    mockAssignable = [];
+    fetchPublicEndpoint.mockRejectedValueOnce(new Error("boom"));
+    selectQueue.push([incident], people, [{ sourceType: "job", sourceId: "job-1" }], [discord]);
+    expect(await notifyIncidentEvent({ ...base, event: "resolved", assigneeUserId: null })).toBe(false);
+  });
+
+  it("skips the unacknowledged reminder once the incident is acknowledged or resolved", async () => {
+    selectQueue.push([{ ...incident, acknowledgedAt: new Date() }]);
+    expect(await notifyIncidentEvent({ ...base, event: "unacknowledged", actorUserId: null })).toBe(true);
+    selectQueue.push([{ ...incident, status: "resolved" }]);
+    expect(await notifyIncidentEvent({ ...base, incidentId: "inc-2", event: "unacknowledged", actorUserId: null })).toBe(true);
+    expect(sendEmailToMultiple).not.toHaveBeenCalled();
+    expect(fetchPublicEndpoint).not.toHaveBeenCalled();
+  });
+
+  it("emails admins when the only policy channel is a webhook that cannot carry incident messages", async () => {
+    mockPolicyProviders.mockResolvedValue([{ id: "w1", type: "webhook", projectId: "project-1", config: { envelope: { url: "https://example.com/h", preset: "pagerduty" } } }]);
+    mockAdmins.mockResolvedValue([{ id: "admin", name: "Ops", email: "ops@example.com" }]);
+    selectQueue.push([{ ...incident, assigneeUserId: null }], people, []);
+    await notifyIncidentEvent({ ...base, event: "created", assigneeUserId: null, actorUserId: null });
+    expect(fetchPublicEndpoint).not.toHaveBeenCalled();
+    expect(sendEmailToMultiple.mock.calls[0][0].recipients).toEqual(["ops@example.com"]);
+  });
+
+  it("emails admins when the assignee can no longer act and no channel is set", async () => {
+    mockAssignable = [];
+    mockAdmins.mockResolvedValue([{ id: "admin", name: "Ops", email: "ops@example.com" }]);
+    selectQueue.push([incident], people, []);
+    await notifyIncidentEvent({ ...base, event: "unacknowledged", assigneeUserId: null, actorUserId: null });
+    expect(sendEmailToMultiple.mock.calls.flatMap((call) => call[0].recipients)).toContain("ops@example.com");
+  });
+
+  it("sends watcher mail in batches of 20 instead of dropping the rest", async () => {
+    mockWatchers.mockResolvedValue(Array.from({ length: 45 }, (_, i) => ({ id: `w${i}`, name: `W${i}`, email: `w${i}@example.com` })));
+    selectQueue.push([incident], people, []);
+    await notifyIncidentEvent({ ...base, event: "commented", assigneeUserId: null, detail: "x" });
+    const recipients = sendEmailToMultiple.mock.calls.map((call) => call[0].recipients);
+    expect(recipients.map((batch: string[]) => batch.length)).toEqual([20, 20, 6]);
+    expect(recipients.flat()).toContain("w44@example.com");
   });
 });

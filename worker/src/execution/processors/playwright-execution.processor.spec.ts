@@ -680,23 +680,37 @@ describe('PlaywrightExecutionProcessor', () => {
         expect(mockDbService.syncJobStatusFromRuns).toHaveBeenCalled();
       });
 
-      it('refreshes requirement coverage only after the terminal status is written', async () => {
-        const order: string[] = [];
-        mockDbService.updateRunStatus.mockImplementation(async () => {
-          order.push('status');
+      it('refreshes requirement coverage only after the terminal status write has settled', async () => {
+        let settleStatus: () => void = () => undefined;
+        mockDbService.updateRunStatus.mockImplementation(
+          () =>
+            new Promise<void>((resolve) => {
+              settleStatus = resolve;
+            }),
+        );
+        const done = processor.process(createMockJob(mockJobTask));
+        await new Promise((resolve) => setImmediate(resolve));
+        expect(mockDbService.updateRunStatus).toHaveBeenCalled();
+        expect(
+          mockExecutionService.updateRequirementCoverageAfterRun,
+        ).not.toHaveBeenCalled();
+        settleStatus();
+        await done;
+        expect(
+          mockExecutionService.updateRequirementCoverageAfterRun,
+        ).toHaveBeenCalledTimes(1);
+      });
+
+      it('still refreshes coverage when the lastRunAt bookkeeping fails afterwards', async () => {
+        mockDbService.db.update.mockImplementationOnce(() => {
+          throw new Error('lastRunAt write failed');
         });
-        mockExecutionService.updateRequirementCoverageAfterRun.mockImplementation(
-          async () => {
-            order.push('coverage');
-          },
-        );
-
-        await processor.process(createMockJob(mockJobTask));
-
-        expect(order.indexOf('status')).toBeGreaterThanOrEqual(0);
-        expect(order.indexOf('coverage')).toBeGreaterThan(
-          order.indexOf('status'),
-        );
+        await processor
+          .process(createMockJob(mockJobTask))
+          .catch(() => undefined);
+        expect(
+          mockExecutionService.updateRequirementCoverageAfterRun,
+        ).toHaveBeenCalledTimes(1);
       });
 
       it('should update lastRunAt on job', async () => {

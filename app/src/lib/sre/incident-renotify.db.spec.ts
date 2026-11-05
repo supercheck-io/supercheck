@@ -65,6 +65,17 @@ afterAll(async () => {
   }
 });
 
+it("gives the reminder back when every send failed, so a later tick retries it", async () => {
+  await client`UPDATE sre_incidents SET renotified_at = NULL WHERE id = ${ids.due}`;
+  notifyIncidentEvent.mockClear().mockResolvedValueOnce(false);
+  expect(await renotifyUnacknowledgedIncidents()).toBe(1);
+  const [row] = await client`SELECT renotified_at FROM sre_incidents WHERE id = ${ids.due}`;
+  expect(row.renotified_at).toBeNull();
+  expect(await renotifyUnacknowledgedIncidents()).toBe(1);
+  await client`UPDATE sre_incidents SET renotified_at = NULL WHERE id = ${ids.due}`;
+  notifyIncidentEvent.mockClear();
+});
+
 it("re-notifies only unacknowledged, open, recent incidents past their policy time, once", async () => {
   expect(await renotifyUnacknowledgedIncidents()).toBe(1);
   expect(notifyIncidentEvent).toHaveBeenCalledTimes(1);

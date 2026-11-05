@@ -36,6 +36,12 @@ describe("describeTimelineEvent before and after detail", () => {
     expect(describeTimelineEvent(event).body).toBe('Title: "A" → "B"\nSeverity: SEV3 → SEV1');
   });
 
+  it("shows a title edit made after character 200", () => {
+    const base = "x".repeat(250);
+    const event = { eventType: "state_change", eventData: { state: "incident_updated", previous: { title: `${base}a` }, current: { title: `${base}b` } } };
+    expect(describeTimelineEvent(event).body).toBe(`Title: "${base}a" → "${base}b"`);
+  });
+
   it("still renders an edit recorded without values", () => {
     expect(describeTimelineEvent({ eventType: "state_change", eventData: { state: "incident_updated" } })).toEqual({ title: "Incident updated", body: null });
   });
@@ -154,6 +160,8 @@ describe("IncidentTimeline", () => {
     await waitFor(() => expect(mockInvalidate).toHaveBeenCalled());
     expect(addUpdate).toHaveBeenCalledWith({ incidentId: "i1", text: "Fix deployed" });
     expect(mockInvalidate).toHaveBeenCalledWith({ queryKey: expect.arrayContaining(["project-1", "i1"]) });
+    // Both the timeline and the detail (watch state) are refreshed.
+    expect(mockInvalidate).toHaveBeenCalledTimes(2);
     expect(box).toHaveValue("");
   });
 
@@ -176,6 +184,19 @@ describe("IncidentTimeline", () => {
     await waitFor(() => expect(screen.getByPlaceholderText("Add a note for your team...")).toHaveValue("We are investigating elevated errors."));
     expect(draftSreStatusUpdate).toHaveBeenCalledWith({ incidentId: "i1" });
     expect(addUpdate).not.toHaveBeenCalled();
+  });
+
+  it("locks the composer while a draft is generating so typed text is not overwritten", async () => {
+    let finish: (value: unknown) => void = () => undefined;
+    (draftSreStatusUpdate as jest.Mock).mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+    render(<IncidentTimeline incidentId="i1" canUpdate />);
+    fireEvent.change(screen.getByPlaceholderText("Add a note for your team..."), { target: { value: "typing" } });
+    fireEvent.click(screen.getByRole("button", { name: /Draft customer update with AI/ }));
+    expect(screen.getByPlaceholderText("Add a note for your team...")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Add note" })).toBeDisabled();
+    finish({ success: true, text: "Drafted" });
+    await waitFor(() => expect(screen.getByPlaceholderText("Add a note for your team...")).toHaveValue("Drafted"));
+    expect(screen.getByPlaceholderText("Add a note for your team...")).not.toBeDisabled();
   });
 
   it("toasts and leaves the box alone when drafting is refused", async () => {

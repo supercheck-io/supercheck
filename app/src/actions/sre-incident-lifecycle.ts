@@ -29,7 +29,8 @@ const logger = createLogger({ module: "sre-incident-lifecycle" }) as {
 
 const assignSchema = z.object({
   incidentId: z.string().uuid(),
-  assigneeUserId: z.string().uuid().nullable(),
+  // Lowercased: timeline lookups key users by the database's lowercase ids.
+  assigneeUserId: z.string().uuid().transform((value) => value.toLowerCase()).nullable(),
   role: z.enum(["assignee", "commander"]).default("assignee"),
 });
 const incidentIdSchema = z.object({ incidentId: z.string().uuid() });

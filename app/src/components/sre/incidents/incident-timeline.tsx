@@ -15,7 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { UserCell } from "@/components/ui/user-cell";
 import { useSreIncidentTimeline } from "@/hooks/use-sre";
 import { useProjectContext } from "@/hooks/use-project-context";
-import { getSreIncidentTimelineQueryKey } from "@/lib/sre/query-keys";
+import { getSreIncidentDetailQueryKey, getSreIncidentTimelineQueryKey } from "@/lib/sre/query-keys";
 import { getDisplayStatus } from "@/lib/sre/incident-status-display";
 import { stripEvidenceIdLists } from "@/sre/lib/investigation-output";
 
@@ -61,8 +61,9 @@ function describeEdit(data: Record<string, unknown>) {
   const current = (data.current ?? {}) as Record<string, unknown>;
   const lines: string[] = [];
   for (const [key, label] of [["title", "Title"], ["severity", "Severity"], ["status", "Status"]] as const) {
-    const from = str(previous[key], 200);
-    const to = str(current[key], 200);
+    // Titles are stored up to 500 characters; compare at that length so late edits still show.
+    const from = str(previous[key], 500);
+    const to = str(current[key], 500);
     if (from && to && from !== to) {
       const show = (value: string) =>
         key === "title" ? `"${value}"` : key === "status" ? getDisplayStatus(value as never, null).label : value.toUpperCase();
@@ -150,7 +151,7 @@ export function IncidentTimeline({
   };
 
   const post = async () => {
-    if (pending || !text.trim()) return;
+    if (pending || drafting || !text.trim()) return;
     setPending(true);
     const result = await addSreIncidentUpdate({ incidentId, text, ...(canPostToStatusPage && postToStatusPage ? { postToStatusPage: true } : {}) })
       .catch(() => null)
@@ -162,7 +163,11 @@ export function IncidentTimeline({
     if (result.warning) toast.warning(result.warning);
     setText("");
     setPostToStatusPage(false);
-    await queryClient.invalidateQueries({ queryKey: getSreIncidentTimelineQueryKey(projectId, incidentId) });
+    // Posting a note also makes the author a watcher, which the header reads from the detail query.
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: getSreIncidentTimelineQueryKey(projectId, incidentId) }),
+      queryClient.invalidateQueries({ queryKey: getSreIncidentDetailQueryKey(projectId, incidentId) }),
+    ]);
   };
 
   return (
@@ -183,11 +188,11 @@ export function IncidentTimeline({
               onChange={(event) => setText(event.target.value)}
               maxLength={2000}
               rows={1}
-              disabled={pending}
+              disabled={pending || drafting}
               placeholder="Add a note for your team..."
               className="min-h-9 max-h-24 resize-none py-2"
             />
-            <Button size="sm" onClick={post} disabled={pending || !text.trim()}>
+            <Button size="sm" onClick={post} disabled={pending || drafting || !text.trim()}>
               {pending && <Loader2 className="h-4 w-4 animate-spin" />}
               Add note
             </Button>

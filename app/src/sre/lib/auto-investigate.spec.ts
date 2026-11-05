@@ -20,21 +20,32 @@ const triage = jest.fn();
 jest.mock("@/sre/lib/triage-runner", () => ({ runSreIncidentTriage: (...a: unknown[]) => triage(...a) }));
 let incidentRows: unknown[] = [];
 let runRows: unknown[] = [];
+let selects = 0;
+let inTransaction = false;
+const lockExecute = jest.fn().mockResolvedValue(undefined);
+// Inside the transaction the incident is read first, then any earlier investigation run.
+const tx = {
+  execute: (...a: unknown[]) => lockExecute(...a),
+  select: () => {
+    const rows = selects++ % 2 === 0 ? incidentRows : runRows;
+    const n: Record<string, unknown> = {};
+    for (const k of ["from", "where"]) n[k] = () => n;
+    n.limit = () => Promise.resolve(rows);
+    return n;
+  },
+};
 jest.mock("@/utils/db", () => ({
   db: {
-    transaction: async (callback: (tx: unknown) => unknown) => callback({ execute: lockExecute }),
-    select: () => {
-      // First lookup is the incident, the second is any earlier investigation run.
-      const rows = selects++ % 2 === 0 ? incidentRows : runRows;
-      const n: Record<string, unknown> = {};
-      for (const k of ["from", "where"]) n[k] = () => n;
-      n.limit = () => Promise.resolve(rows);
-      return n;
+    transaction: async (callback: (t: typeof tx) => unknown) => {
+      inTransaction = true;
+      try {
+        return await callback(tx);
+      } finally {
+        inTransaction = false;
+      }
     },
   },
 }));
-let selects = 0;
-const lockExecute = jest.fn().mockResolvedValue(undefined);
 
 import { maybeAutoInvestigateOnOpen } from "./auto-investigate";
 
@@ -68,6 +79,8 @@ it.each(["sev1", "sev2"])("starts a full investigation for %s through the billin
   expect(assertCanStart).toHaveBeenCalledWith("org-1");
   expect(dailyLimit).toHaveBeenCalledWith("org-1");
   expect(start).toHaveBeenCalledWith(expect.objectContaining({ incidentId: "i1", enableLiveConnectors: false }));
+  // The run is settled in the background with the started run and incident.
+  expect(complete).toHaveBeenCalledWith("run-1", { id: "i1" }, expect.objectContaining({ incidentId: "i1", enableLiveConnectors: false }));
   expect(triage).not.toHaveBeenCalled();
 });
 
@@ -78,13 +91,29 @@ it.each(["sev3", "sev4"])("runs only a triage for %s", async (severity) => {
   expect(start).not.toHaveBeenCalled();
 });
 
-it("takes a per-incident advisory lock around check and start", async () => {
+it("takes a per-incident advisory lock and starts while the transaction is still open", async () => {
+  const { PgDialect } = jest.requireActual("drizzle-orm/pg-core");
+  let startedInsideTransaction = false;
+  start.mockImplementationOnce(async () => {
+    startedInsideTransaction = inTransaction;
+    return { success: true, investigationRunId: "run-1", incident: { id: "i1" } };
+  });
   await maybeAutoInvestigateOnOpen(input);
   expect(lockExecute).toHaveBeenCalledTimes(1);
+  const lock = new PgDialect().sqlToQuery(lockExecute.mock.calls[0][0]);
+  expect(lock.sql).toContain("pg_advisory_xact_lock");
+  expect(lock.params).toEqual(["auto-investigate:i1"]);
+  expect(startedInsideTransaction).toBe(true);
 });
 
-it("skips incidents opened before the policy was last saved", async () => {
-  policy.mockResolvedValue({ autoInvestigateOnOpen: true, updatedAt: new Date("2026-06-02T00:00:00Z") });
+it("re-reads the incident after the lock, so one resolved while waiting is not investigated", async () => {
+  incidentRows = [{ severity: "sev1", status: "resolved", createdAt: new Date() }];
+  expect(await maybeAutoInvestigateOnOpen(input)).toEqual({ handled: false, reason: "not_open" });
+  expect(start).not.toHaveBeenCalled();
+});
+
+it("skips incidents opened before auto-investigate was switched on", async () => {
+  policy.mockResolvedValue({ autoInvestigateOnOpen: true, autoInvestigateEnabledAt: new Date("2026-06-02T00:00:00Z") });
   incidentRows = [{ severity: "sev1", status: "triggered", createdAt: new Date("2026-06-01T00:00:00Z") }];
   expect(await maybeAutoInvestigateOnOpen(input)).toEqual({ handled: false, reason: "predates_policy" });
   expect(start).not.toHaveBeenCalled();

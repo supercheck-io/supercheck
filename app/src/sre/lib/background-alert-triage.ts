@@ -841,6 +841,8 @@ export async function processSreBackgroundAlertTriageJob(
     userId: null,
   });
   if (auto.handled) return { success: true, skipped: true, reason: "auto_investigation" };
+  // Already investigated automatically: a later alert joining this incident must not start another AI run.
+  if (auto.reason === "already_investigated") return { success: true, skipped: true, reason: "already_triaged" };
 
   // Incidents open regardless; AI triage is the optional part on top.
   if (!isSreAutomaticTriageEnabled()) {

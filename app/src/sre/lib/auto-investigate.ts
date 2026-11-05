@@ -34,25 +34,27 @@ export async function maybeAutoInvestigateOnOpen(input: AutoInvestigateInput): P
     const policy = await getNotificationPolicy(input.projectId);
     if (!policy.autoInvestigateOnOpen) return { handled: false, reason: "disabled" };
 
-    const [incident] = await db
-      .select({ severity: sreIncidents.severity, status: sreIncidents.status, createdAt: sreIncidents.createdAt })
-      .from(sreIncidents)
-      .where(
-        and(
-          eq(sreIncidents.id, input.incidentId),
-          eq(sreIncidents.organizationId, input.organizationId),
-          eq(sreIncidents.projectId, input.projectId),
-        ),
-      )
-      .limit(1);
-    if (!incident || incident.status === "resolved") return { handled: false, reason: "not_open" };
-    // Only incidents opened after the policy was saved: switching it on must not spend credits on old ones.
-    if (policy.updatedAt && incident.createdAt < policy.updatedAt) return { handled: false, reason: "predates_policy" };
-
     // The lock makes check-then-start atomic per incident; waiters then see the run and stop.
+    // The incident is read after the lock so severity and status are current when the run is chosen.
     return await db.transaction(async (tx) => {
       await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`auto-investigate:${input.incidentId}`}))`);
-      return startOnce(input, incident.severity);
+      const [incident] = await tx
+        .select({ severity: sreIncidents.severity, status: sreIncidents.status, createdAt: sreIncidents.createdAt })
+        .from(sreIncidents)
+        .where(
+          and(
+            eq(sreIncidents.id, input.incidentId),
+            eq(sreIncidents.organizationId, input.organizationId),
+            eq(sreIncidents.projectId, input.projectId),
+          ),
+        )
+        .limit(1);
+      if (!incident || incident.status === "resolved") return { handled: false, reason: "not_open" };
+      // Only incidents opened after auto-investigate was switched on: enabling it must not spend credits on old ones.
+      if (policy.autoInvestigateEnabledAt && incident.createdAt < policy.autoInvestigateEnabledAt) {
+        return { handled: false, reason: "predates_policy" };
+      }
+      return startOnce(tx, input, incident.severity);
     });
   } catch (error) {
     logger.error({ error, incidentId: input.incidentId }, "Automatic investigation could not start");
@@ -60,11 +62,14 @@ export async function maybeAutoInvestigateOnOpen(input: AutoInvestigateInput): P
   }
 }
 
-async function startOnce(input: AutoInvestigateInput, severity: string): Promise<{ handled: boolean; reason?: string }> {
+async function startOnce(
+  tx: Pick<typeof db, "select">,
+  input: AutoInvestigateInput,
+  severity: string,
+): Promise<{ handled: boolean; reason?: string }> {
   try {
-
     // One automatic run per incident: later alerts joining it, or a retried job, must not bill again.
-    const [existingRun] = await db
+    const [existingRun] = await tx
       .select({ id: sreInvestigationRuns.id })
       .from(sreInvestigationRuns)
       .where(

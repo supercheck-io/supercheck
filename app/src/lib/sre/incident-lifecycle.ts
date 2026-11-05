@@ -358,6 +358,9 @@ export async function acknowledgeIncident(
       return existing ? { existing, updated: null } : null;
     }
 
+    // Like assignIncident: whoever holds the incident after this follows it.
+    if (updated.assigneeUserId) await watchIncident(tx, incidentId, updated.assigneeUserId);
+
     await tx.insert(sreIncidentTimelineEvents).values({
       incidentId,
       eventType: "state_change",

@@ -92,6 +92,8 @@ const DEDUPE_TTL_SECONDS = 600;
 const SEND_TIMEOUT_MS = 8000;
 const MAX_DETAIL_LENGTH = 300;
 const MAX_EMAIL_RECIPIENTS = 20;
+/** Direct (participant and watcher) mail may span several batches. */
+const MAX_DIRECT_RECIPIENTS = 120;
 
 export function buildIncidentUrl(incidentId: string) {
   const base = (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/+$/, "");
@@ -199,13 +201,23 @@ function plainText(message: Message) {
   return `${message.text}\n\n${facts}\n\n${message.url}`;
 }
 
-async function sendEmail(recipients: string[], message: Message) {
+/** Sends in batches of MAX_EMAIL_RECIPIENTS so nobody who was throttled-in is silently dropped; `max` bounds the total. */
+async function sendEmail(recipients: string[], message: Message, max = MAX_EMAIL_RECIPIENTS) {
   const all = [...new Set(recipients.map((r) => r.trim()).filter(Boolean))];
-  if (all.length > MAX_EMAIL_RECIPIENTS) {
-    logger.warn({ recipients: all.length, max: MAX_EMAIL_RECIPIENTS }, "Incident email recipient list truncated");
+  if (all.length > max) {
+    logger.warn({ recipients: all.length, max }, "Incident email recipient list truncated");
   }
-  const unique = all.slice(0, MAX_EMAIL_RECIPIENTS);
+  const unique = all.slice(0, max);
   if (unique.length === 0) return;
+  let failures = 0;
+  for (let index = 0; index < unique.length; index += MAX_EMAIL_RECIPIENTS) {
+    failures += await sendEmailBatch(unique.slice(index, index + MAX_EMAIL_RECIPIENTS), message);
+  }
+  if (failures > 0) throw new Error(`email failed for ${failures}/${unique.length} recipient(s)`);
+}
+
+/** Returns how many recipients failed. */
+async function sendEmailBatch(unique: string[], message: Message): Promise<number> {
   let rendered: { subject: string; html: string; text: string };
   try {
     rendered = await renderIncidentUpdateEmail({
@@ -233,9 +245,7 @@ async function sendEmail(recipients: string[], message: Message) {
     };
   }
   const result = await EmailService.getInstance().sendEmailToMultiple({ recipients: unique, ...rendered });
-  if (result.failedAddresses.length > 0) {
-    throw new Error(`email failed for ${result.failedAddresses.length}/${unique.length} recipient(s)`);
-  }
+  return result.failedAddresses.length;
 }
 
 function hasCustomWebhookBody(config: Record<string, unknown>) {
@@ -251,16 +261,18 @@ const TEAMS_COLOR: Partial<Record<IncidentNotifyEvent, string>> = {
   recovered: "good",
 };
 
+/** Resolves true when a message went out, false when this provider type deliberately sends nothing. */
 async function sendToProvider(
   provider: { type: string; config: PlainNotificationProviderConfig },
   message: Message,
-) {
+): Promise<boolean> {
   const config = provider.config as Record<string, unknown>;
   const color = INCIDENT_EVENT_COLOR[message.event] ?? "#1f2937";
   const heading = `#${message.incident.number} ${message.email.title}`;
   switch (provider.type) {
     case "email":
-      return sendEmail(String(config.emails ?? "").split(","), message);
+      await sendEmail(String(config.emails ?? "").split(","), message);
+      return true;
     case "slack":
       await post(String(config.webhookUrl), {
         text: escapeSlack(`${message.headline}: ${heading}`),
@@ -276,7 +288,7 @@ async function sendToProvider(
           },
         ],
       });
-      return;
+      return true;
     case "teams":
       // Teams Workflows webhooks only accept Adaptive Card attachments, not { text }.
       await post(String(config.teamsWebhookUrl), {
@@ -299,7 +311,7 @@ async function sendToProvider(
           },
         ],
       });
-      return;
+      return true;
     case "discord":
       await post(String(config.discordWebhookUrl), {
         content: clip(escapeMarkdown(message.headline), 2000),
@@ -317,7 +329,7 @@ async function sendToProvider(
         // Incident titles are user text; never let them ping @everyone or roles.
         allowed_mentions: { parse: [] },
       });
-      return;
+      return true;
     case "telegram":
       // Plain text: no parse_mode, so incident titles cannot inject markup.
       await post(`https://api.telegram.org/bot${String(config.botToken)}/sendMessage`, {
@@ -326,21 +338,22 @@ async function sendToProvider(
         text: `${clip(`${message.headline}\n${plainText({ ...message, url: "" }).trimEnd()}`, 4000)}\n\n${message.url}`,
         disable_web_page_preview: true,
       });
-      return;
+      return true;
     case "webhook":
       // Presets and body templates shape payloads for one specific receiver; the fixed incident
       // JSON would be wrong for them, so only plain webhooks receive incident messages.
       if (hasCustomWebhookBody(config)) {
         logger.warn({ type: "webhook" }, "Incident notification skipped for a webhook with a preset or body template");
-        return;
+        return false;
       }
       await post(
         String(config.url),
         { event: `incident.${message.event}`, ...message.incident, title: message.title, text: message.text, url: message.url },
         normalizeWebhookHeaders(config.headers),
       );
-      return;
+      return true;
   }
+  return false;
 }
 
 // System events can repeat every check cycle while a monitor flaps.
@@ -453,10 +466,13 @@ async function serviceOwnerIds(serviceId: string | null) {
  * triggering monitor or job already uses, plus a direct email to the assignee.
  * Best effort: never throws, never carries raw evidence or secrets.
  */
-export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<void> {
+export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<boolean> {
+  // Counts real send attempts, so the caller can tell "nothing to send" from "everything failed".
+  let attempted = 0;
+  let sent = 0;
   try {
     const claim = await claimEvent(input);
-    if (claim === null) return;
+    if (claim === null) return true;
 
     const [incident] = await db
       .select({
@@ -481,7 +497,9 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<v
         ),
       )
       .limit(1);
-    if (!incident) return;
+    if (!incident) return true;
+    // The reminder is claimed before it is sent; someone may have acknowledged or resolved since.
+    if (input.event === "unacknowledged" && (incident.acknowledgedAt || incident.status === "resolved")) return true;
 
     const url = buildIncidentUrl(incident.id);
     const detail = input.detail?.replace(/\s+/g, " ").trim().slice(0, MAX_DETAIL_LENGTH);
@@ -566,15 +584,17 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<v
     const direct = await participantEmails(input, participantIds, person);
     const directEmails = [...direct.emails, ...watchers.map((watcher) => watcher.email)];
     if (directEmails.length > 0) {
+      attempted += 1;
       try {
-        await sendEmail(directEmails, message);
+        await sendEmail(directEmails, message, MAX_DIRECT_RECIPIENTS);
+        sent += 1;
       } catch (error) {
         await releaseRecipients(input, [...direct.claimed, ...claimedWatchers]);
         logger.warn({ incidentId: incident.id, error: error instanceof Error ? error.message : "send failed" }, "Incident email to participants failed");
       }
     }
 
-    if (PEOPLE_ONLY_EVENTS.includes(input.event)) return;
+    if (PEOPLE_ONLY_EVENTS.includes(input.event)) return attempted === 0 || sent > 0;
 
     // Providers linked to the monitor/job that raised the alert; other incidents use the project policy.
     const [source] = await db
@@ -589,13 +609,13 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<v
     // recovery (automatic resolve, recovered) to these channels.
     // `created` is skipped only when the worker's alert was actually delivered; if every
     // delivery failed, the channels have not heard about it yet.
-    if (input.event === "recovered" || ((input.event === "reopened" || input.event === "resolved") && input.automatic)) return;
+    if (input.event === "recovered" || ((input.event === "reopened" || input.event === "resolved") && input.automatic)) return attempted === 0 || sent > 0;
     if (
       fromMonitorOrJob &&
       input.event === "created" &&
       (await triggerAlertDelivered(source.sourceType as "monitor" | "job", source.sourceId as string, source.dedupKey))
     ) {
-      return;
+      return attempted === 0 || sent > 0;
     }
 
     const providerColumns = {
@@ -628,34 +648,62 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<v
               .where(and(eq(jobNotificationSettings.jobId, source.sourceId as string), providerScope))
               .limit(10);
 
-    // Nobody owns it and nothing would reach a channel: tell the project's owners and admins.
-    // Also for the one re-notify, so it is never silently lost.
-    if ((input.event === "created" || input.event === "unacknowledged") && !ownerId && providers.length === 0) {
-      const admins = await listProjectAdmins(input.organizationId, input.projectId).catch(() => []);
-      const emails = admins.filter((admin) => admin.id !== input.actorUserId).map((admin) => admin.email);
-      if (emails.length > 0) {
-        await sendEmail(emails, message).catch((error: unknown) =>
-          logger.warn({ incidentId: incident.id, error: error instanceof Error ? error.message : "send failed" }, "Incident email to project admins failed"),
-        );
-      }
-    }
-
+    attempted += providers.length;
     const delivered = await Promise.all(
       providers.map(async (provider) => {
         try {
           // Provider configs are stored as encrypted envelopes bound to their project.
           const config = decryptNotificationProviderConfig(provider.config, provider.projectId ?? undefined);
           validateProviderConfig(provider.type, config);
-          await sendToProvider({ type: provider.type, config }, message);
-          return true;
+          return await sendToProvider({ type: provider.type, config }, message);
         } catch (error) {
           logger.warn({ providerId: provider.id, type: provider.type, error: error instanceof Error ? error.message : "send failed" }, "Incident notification delivery failed");
-          return false;
+          return null;
         }
       }),
     );
-    if (delivered.length > 0 && !delivered.some(Boolean)) await releaseEvent(input, claim);
+    // null is a failed send; false is a provider that sends nothing (a webhook with a custom body).
+    sent += delivered.filter((result) => result === true).length;
+    if (delivered.length > 0 && !delivered.some((result) => result !== null)) await releaseEvent(input, claim);
+
+    // Nobody owns it and nothing reached a channel: tell the project's owners and admins.
+    // Also for the one re-notify, so it is never silently lost.
+    if (input.event === "created" || input.event === "unacknowledged") {
+      const reachedChannel = delivered.some((result) => result === true);
+      const hasEligibleOwner = await ownerCanAct(input, [ownerId, incident.commanderUserId]);
+      if (!reachedChannel && !hasEligibleOwner) {
+        const admins = await listProjectAdmins(input.organizationId, input.projectId).catch(() => []);
+        const emails = admins.filter((admin) => admin.id !== input.actorUserId).map((admin) => admin.email);
+        if (emails.length > 0) {
+          attempted += 1;
+          await sendEmail(emails, message)
+            .then(() => {
+              sent += 1;
+            })
+            .catch((error: unknown) =>
+              logger.warn({ incidentId: incident.id, error: error instanceof Error ? error.message : "send failed" }, "Incident email to project admins failed"),
+            );
+        }
+      }
+    }
+    if (attempted > 0 && sent === 0) await releaseEvent(input, claim);
+    return attempted === 0 || sent > 0;
   } catch (error) {
     logger.warn({ incidentId: input.incidentId, event: input.event, error: error instanceof Error ? error.message : "notify failed" }, "Incident notification skipped");
+    return false;
   }
+}
+
+/** True when the owner or commander can still act on the incident (a removed or demoted person cannot). */
+async function ownerCanAct(input: IncidentNotifyInput, ids: Array<string | null | undefined>) {
+  try {
+    const { isAssignableUser } = await import("./incident-lifecycle");
+    for (const id of ids) {
+      if (id && (await isAssignableUser(input.organizationId, input.projectId, id))) return true;
+    }
+  } catch {
+    // A failed lookup counts as "someone can act": better silent than a wrongly broadcast mail.
+    return true;
+  }
+  return false;
 }

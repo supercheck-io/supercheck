@@ -1456,6 +1456,8 @@ export async function updateSreIncident(
             eq(sreIncidents.projectId, project.id),
             // Optimistic guard: fail if a concurrent resolve/update changed the status since we read it.
             eq(sreIncidents.status, current.status),
+            // Same for severity, so a stale read cannot report or store the wrong previous value.
+            eq(sreIncidents.severity, current.severity),
           ),
         )
         .returning({
@@ -1758,6 +1760,8 @@ export async function createSreIncidentFromAlert(
         .limit(1);
 
       if (existingIncident) {
+        // A repeat of the failure that is already linked still counts as the failure returning after a recovery note.
+        await noteFailureReturned(tx, existingIncident.id, firedAt);
         return { incident: existingIncident, existing: true };
       }
 
@@ -2070,7 +2074,14 @@ export async function createSreIncidentFromAlert(
       });
     }
 
-    const triage = await maybeRunAutomaticSreTriage({
+    // The project's opt-in runs first (as in the background path): SEV1-2 get a full investigation instead of triage.
+    const auto =
+      !result.existing && alertStatus !== "resolved"
+        ? await maybeAutoInvestigateOnOpen({ organizationId, projectId: project.id, incidentId: result.incident.id, userId }).catch(() => ({ handled: false }))
+        : { handled: false };
+    const triage = auto.handled
+      ? ({ attempted: false, reason: "auto_investigation" } as const)
+      : await maybeRunAutomaticSreTriage({
       userId,
       organizationId,
       project: {
@@ -2081,11 +2092,6 @@ export async function createSreIncidentFromAlert(
       existingIncident: result.existing,
       alertStatus,
     });
-
-    // Project opt-in; instance-wide automatic triage above has priority when it already ran.
-    if (!triage.attempted && !result.existing && alertStatus !== "resolved") {
-      void maybeAutoInvestigateOnOpen({ organizationId, projectId: project.id, incidentId: result.incident.id, userId }).catch(() => undefined);
-    }
 
     revalidatePath("/incidents");
     revalidatePath(`/incidents/${result.incident.id}`);

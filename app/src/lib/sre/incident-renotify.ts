@@ -34,13 +34,17 @@ export async function renotifyUnacknowledgedIncidents(now = new Date()) {
     .returning({ id: sreIncidents.id, organizationId: sreIncidents.organizationId, projectId: sreIncidents.projectId });
 
   for (const incident of claimed) {
-    await notifyIncidentEvent({
+    const delivered = await notifyIncidentEvent({
       organizationId: incident.organizationId,
       projectId: incident.projectId,
       incidentId: incident.id,
       event: "unacknowledged",
       dedupeDiscriminator: "renotify",
     });
+    // Every send failed: give the reminder back so the next tick tries again.
+    if (delivered === false) {
+      await db.update(sreIncidents).set({ renotifiedAt: null }).where(eq(sreIncidents.id, incident.id));
+    }
   }
   return claimed.length;
 }

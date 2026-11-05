@@ -9,6 +9,7 @@ import { createLogger } from "@/lib/logger/index";
 import { requireProjectContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { getDisplayStatus } from "@/lib/sre/incident-status-display";
+import { getSourceRecoveredAt } from "@/lib/sre/incident-lifecycle";
 import { checkSreStatusDraftRateLimit } from "@/lib/sre/sre-rate-limiter";
 import { generateStatusUpdateDraft } from "@/lib/sre/status-update-draft";
 import { db } from "@/utils/db";
@@ -66,7 +67,8 @@ export async function draftSreStatusUpdate(input: { incidentId: string }): Promi
     const notes = events.flatMap((event) =>
       event.type === "comment" && typeof event.data?.text === "string" ? [event.data.text] : [],
     );
-    const recovered = events.some((event) => event.type === "state_change" && event.data?.state === "recovered");
+    // Same source of truth as the incident page, with no row limit.
+    const recovered = (await getSourceRecoveredAt(incident.id)) !== null;
 
     const text = await generateStatusUpdateDraft(
       {

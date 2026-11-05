@@ -128,6 +128,7 @@ describe("acknowledgeIncident", () => {
     updateQueue.push([{ ...ref, assigneeUserId: actor.userId }]);
     const result = await acknowledgeIncident(actor, incidentId);
     expect(result).toMatchObject({ ok: true, changed: true, autoAssigned: true });
+    expect(watchIncident).toHaveBeenCalledWith(expect.anything(), incidentId, actor.userId);
     expect(inserts[0]).toMatchObject({ eventData: { state: "acknowledged" } });
     expect(notifyIncidentEvent).toHaveBeenCalledWith(expect.objectContaining({ event: "acknowledged" }));
   });

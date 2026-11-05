@@ -9,8 +9,8 @@ export type NotificationPolicy = {
   /** Minutes before one re-notify of an unacknowledged incident; null is off. */
   renotifyUnackedMinutes: number | null;
   autoInvestigateOnOpen: boolean;
-  /** When the policy was last saved; null for the built-in default. */
-  updatedAt: Date | null;
+  /** When auto-investigate was last switched on; null while it is off. */
+  autoInvestigateEnabledAt: Date | null;
 };
 
 /** A project with no saved policy behaves like this: nothing extra is sent or spent. */
@@ -19,7 +19,7 @@ export const DEFAULT_NOTIFICATION_POLICY: NotificationPolicy = {
   emailServiceOwnersOnSev12: false,
   renotifyUnackedMinutes: null,
   autoInvestigateOnOpen: false,
-  updatedAt: null,
+  autoInvestigateEnabledAt: null,
 };
 
 export async function getNotificationPolicy(projectId: string): Promise<NotificationPolicy> {
@@ -29,7 +29,7 @@ export async function getNotificationPolicy(projectId: string): Promise<Notifica
       emailServiceOwnersOnSev12: notificationPolicies.emailServiceOwnersOnSev12,
       renotifyUnackedMinutes: notificationPolicies.renotifyUnackedMinutes,
       autoInvestigateOnOpen: notificationPolicies.autoInvestigateOnOpen,
-      updatedAt: notificationPolicies.updatedAt,
+      autoInvestigateEnabledAt: notificationPolicies.autoInvestigateEnabledAt,
     })
     .from(notificationPolicies)
     .where(eq(notificationPolicies.projectId, projectId))

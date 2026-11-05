@@ -10,7 +10,7 @@ Incidents are the responder queue for issues that need investigation, evidence r
 
 | From | How |
 |---|---|
-| **An alert** | Incidents open automatically when a monitor or job alert fires, with no setup beyond enabling alerts. Repeated alerts for the same target join the same incident. You can also select **Open incident** next to a failure in **Communicate → Notifications → Delivery history**. Neither path starts a full AI investigation |
+| **An alert** | Incidents open automatically when a monitor or job alert fires, with no setup beyond enabling alerts. Repeated alerts for the same target join the same incident. You can also select **Open incident** next to a failure in **Communicate → Notifications → Delivery history**. Neither path starts a full AI investigation unless the project turned on **Investigate new incidents automatically** (see [Default policy](#default-policy)) |
 | **Scratch** | In **Respond → Incidents**, select **New incident** for issues that did not come from a Supercheck alert. You become the assignee |
 
 Both paths open the incident workspace. If AI triage fails, the timeline records a *triage failed* event with the error code, so the failure is visible on the incident. The timeline shows its own error and a retry when it cannot load, rather than *No activity yet*.

@@ -57,3 +57,30 @@ it("drops a saved channel that no longer exists so Save is not refused", async (
   fireEvent.click(screen.getByRole("button", { name: "Save" }));
   await waitFor(() => expect(savePolicy).toHaveBeenCalledWith("p1", expect.objectContaining({ channelIds: ["c1"] })));
 });
+
+it("shows an error instead of an endless spinner when the policy cannot be loaded", async () => {
+  getPolicy.mockRejectedValue(new Error("network"));
+  render(<ProjectIncidentPolicyDialog open onOpenChange={jest.fn()} projectId="p1" projectName="Prod" />);
+  expect(await screen.findByText(/Failed to load the policy/)).toBeInTheDocument();
+});
+
+it("keeps the dialog open and reports a failed save", async () => {
+  const onOpenChange = jest.fn();
+  savePolicy.mockRejectedValue(new Error("network"));
+  render(<ProjectIncidentPolicyDialog open onOpenChange={onOpenChange} projectId="p1" projectName="Prod" />);
+  await screen.findByText("Ops Slack");
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(require("sonner").toast.error).toHaveBeenCalledWith("Failed to save"));
+  expect(onOpenChange).not.toHaveBeenCalledWith(false);
+});
+
+it("stops offering channels once ten are selected, matching the server limit", async () => {
+  const channels = Array.from({ length: 12 }, (_, i) => ({ id: `c${i}`, name: `Channel ${i}`, type: "slack" }));
+  getPolicy.mockResolvedValue({ success: true, data: { policy: { ...loaded.data.policy, channelIds: channels.slice(0, 10).map((c) => c.id) }, channels } });
+  render(<ProjectIncidentPolicyDialog open onOpenChange={jest.fn()} projectId="p1" projectName="Prod" />);
+  await screen.findByText("Channel 11");
+  const boxes = screen.getAllByRole("checkbox").slice(0, 12);
+  expect(boxes[10]).toBeDisabled();
+  expect(boxes[11]).toBeDisabled();
+  expect(boxes[0]).not.toBeDisabled();
+});

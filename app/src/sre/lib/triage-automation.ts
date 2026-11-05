@@ -16,7 +16,7 @@ export type AutomaticSreTriageInput = {
 };
 
 export type AutomaticSreTriageResult =
-  | { attempted: false; reason: "disabled" | "existing_incident" | "resolved_alert" | "insufficient_permissions" | "ai_not_configured" }
+  | { attempted: false; reason: "disabled" | "auto_investigation" | "existing_incident" | "resolved_alert" | "insufficient_permissions" | "ai_not_configured" }
   | ({ attempted: true } & RunSreIncidentTriageResult);
 
 export async function maybeRunAutomaticSreTriage(input: AutomaticSreTriageInput): Promise<AutomaticSreTriageResult> {

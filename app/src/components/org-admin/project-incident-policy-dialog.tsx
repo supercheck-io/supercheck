@@ -23,6 +23,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 
+const MAX_POLICY_CHANNELS = 10;
+
 interface ProjectIncidentPolicyDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -47,10 +49,12 @@ export function ProjectIncidentPolicyDialog({ open, onOpenChange, projectId, pro
       setLoadError(false);
       return;
     }
-    void getProjectNotificationPolicy(projectId).then((result) => {
-      if (!result.success || !result.data) {
+    void getProjectNotificationPolicy(projectId)
+      .catch(() => null)
+      .then((result) => {
+      if (!result?.success || !result.data) {
         setLoadError(true);
-        toast.error(result.error ?? "Failed to load the notification policy");
+        toast.error(result?.error ?? "Failed to load the notification policy");
         return;
       }
       const { policy, channels: available } = result.data;
@@ -77,12 +81,12 @@ export function ProjectIncidentPolicyDialog({ open, onOpenChange, projectId, pro
         emailServiceOwnersOnSev12: emailOwners,
         renotifyUnackedMinutes: renotify ? minutesValue : null,
         autoInvestigateOnOpen: autoInvestigate,
-      });
-      if (result.success) {
+      }).catch(() => null);
+      if (result?.success) {
         toast.success("Incident notifications updated");
         onOpenChange(false);
       } else {
-        toast.error(result.error ?? "Failed to save");
+        toast.error(result?.error ?? "Failed to save");
       }
     } finally {
       setSaving(false);
@@ -126,6 +130,8 @@ export function ProjectIncidentPolicyDialog({ open, onOpenChange, projectId, pro
                     <label key={channel.id} className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-1.5 hover:bg-muted/50">
                       <Checkbox
                         checked={channelIds.has(channel.id)}
+                        // The server accepts at most MAX_POLICY_CHANNELS.
+                        disabled={!channelIds.has(channel.id) && channelIds.size >= MAX_POLICY_CHANNELS}
                         onCheckedChange={(checked) =>
                           setChannelIds((previous) => {
                             const next = new Set(previous);

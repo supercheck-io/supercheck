@@ -348,13 +348,20 @@ async function runDeferredMigrations(items = deferredMigrations) {
         if (applied) continue;
 
         log(`Applying migration outside a transaction: ${file}`);
-        await dropInvalidIndexes(client, content);
-        // No IF NOT EXISTS rewriting and no savepoints: the file is exactly what the author wrote.
-        for (const statement of content.split("--> statement-breakpoint")) {
-          if (statement.replace(/--[^\n]*/g, "").trim().length === 0) continue;
-          // A session SET, not a startup parameter (poolers reject those); repeated per statement in case the connection was replaced.
-          await setStatementTimeout(client, DEFERRED_STATEMENT_TIMEOUT_MS);
-          await client.unsafe(statement.trim());
+        // One reserved connection holds the session SET and every statement, so they cannot land on
+        // different connections (a CREATE INDEX CONCURRENTLY cannot run in a transaction to pin them).
+        const reserved = await client.reserve();
+        try {
+          // A session SET, not a startup parameter: poolers reject unsupported startup parameters.
+          await setStatementTimeout(reserved, DEFERRED_STATEMENT_TIMEOUT_MS);
+          await dropInvalidIndexes(reserved, content);
+          // No IF NOT EXISTS rewriting and no savepoints: the file is exactly what the author wrote.
+          for (const statement of content.split("--> statement-breakpoint")) {
+            if (statement.replace(/--[^\n]*/g, "").trim().length === 0) continue;
+            await reserved.unsafe(statement.trim());
+          }
+        } finally {
+          reserved.release();
         }
         await client`
           INSERT INTO "__drizzle_migrations" (hash, created_at) VALUES (${hash}, ${Date.now()})

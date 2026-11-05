@@ -507,6 +507,8 @@ export const notificationPolicies = pgTable(
     renotifyUnackedMinutes: integer("renotify_unacked_minutes"),
     /** Run AI investigation (SEV1-2) or triage (SEV3-4) when an incident opens. Spends AI credits. */
     autoInvestigateOnOpen: boolean("auto_investigate_on_open").notNull().default(false),
+    /** When auto-investigate was last switched on; incidents opened before it are never auto-run. */
+    autoInvestigateEnabledAt: timestamp("auto_investigate_enabled_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },

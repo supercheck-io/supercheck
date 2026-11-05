@@ -6,6 +6,8 @@ import { db } from "@/utils/db";
 type Executor = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 const ORG_WIDE_ROLES = ["org_owner", "org_admin"];
+// An org-level viewer sees every project (see getCurrentProjectContext); admins and editors need a project row.
+const ORG_VIEW_ROLES = [...ORG_WIDE_ROLES, "project_viewer"];
 const MAX_WATCHERS = 100;
 
 /** Idempotent: a second call for the same pair changes nothing. */
@@ -45,7 +47,7 @@ export async function listWatchers(organizationId: string, projectId: string, in
     .where(
       and(
         eq(sreIncidentWatchers.incidentId, incidentId),
-        or(inArray(member.role, ORG_WIDE_ROLES), sql`${projectMembers.id} IS NOT NULL`),
+        or(inArray(member.role, ORG_VIEW_ROLES), sql`${projectMembers.id} IS NOT NULL`),
       ),
     )
     .limit(MAX_WATCHERS);
@@ -61,7 +63,11 @@ export async function listProjectAdmins(organizationId: string, projectId: strin
     .where(
       and(
         eq(member.organizationId, organizationId),
-        or(inArray(member.role, ORG_WIDE_ROLES), eq(projectMembers.role, "project_admin")),
+        or(
+          inArray(member.role, ORG_WIDE_ROLES),
+          // Both roles must say admin, like assignment, so a stale project row cannot outlive an org downgrade.
+          and(eq(projectMembers.role, "project_admin"), eq(member.role, "project_admin")),
+        ),
       ),
     )
     .limit(limit);

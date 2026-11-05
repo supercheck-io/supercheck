@@ -15,6 +15,8 @@ const gate = jest.fn();
 jest.mock("@/app/api/sre/_auth", () => ({ requireSreSubscription: (...a: unknown[]) => gate(...a) }));
 const rateLimit = jest.fn();
 jest.mock("@/lib/sre/sre-rate-limiter", () => ({ checkSreStatusDraftRateLimit: (...a: unknown[]) => rateLimit(...a) }));
+const recoveredAt = jest.fn();
+jest.mock("@/lib/sre/incident-lifecycle", () => ({ getSourceRecoveredAt: (...a: unknown[]) => recoveredAt(...a) }));
 const generate = jest.fn();
 jest.mock("@/lib/sre/status-update-draft", () => ({ generateStatusUpdateDraft: (...a: unknown[]) => generate(...a) }));
 const queue: unknown[][] = [];
@@ -41,13 +43,12 @@ beforeEach(() => {
   gate.mockResolvedValue(null);
   rateLimit.mockResolvedValue({ allowed: true });
   generate.mockResolvedValue("We are investigating an issue with checkout.");
+  recoveredAt.mockResolvedValue(null);
 });
 
 it("drafts from the incident, its notes and the recovery signal, through the billing gate", async () => {
-  queue.push([incident], [
-    { type: "comment", data: { text: "db pool exhausted on host-7" } },
-    { type: "state_change", data: { state: "recovered" } },
-  ]);
+  recoveredAt.mockResolvedValue("2026-06-24T12:00:00.000Z");
+  queue.push([incident], [{ type: "comment", data: { text: "db pool exhausted on host-7" } }]);
   expect(await draftSreStatusUpdate({ incidentId: ids.incident })).toEqual({ success: true, text: "We are investigating an issue with checkout." });
   expect(gate).toHaveBeenCalledWith(ids.org, { allowTrial: false });
   expect(generate).toHaveBeenCalledWith(expect.objectContaining({ title: "Checkout down", statusLabel: "Investigating", recovered: true, notes: ["db pool exhausted on host-7"] }), ids.org);

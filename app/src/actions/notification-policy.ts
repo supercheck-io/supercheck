@@ -1,6 +1,6 @@
 "use server";
 
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { notificationPolicies, notificationProviders, projects } from "@/db/schema";
@@ -74,10 +74,25 @@ export async function saveProjectNotificationPolicy(
     }
 
     const values = { ...parsed.data, channelIds, updatedAt: new Date() };
+    // Stamped when auto-investigate turns on (kept while it stays on, cleared when off), so unrelated saves
+    // never move the cut-off that keeps older incidents from being auto-run.
     await db
       .insert(notificationPolicies)
-      .values({ organizationId: auth.organizationId, projectId, ...values })
-      .onConflictDoUpdate({ target: notificationPolicies.projectId, set: values });
+      .values({
+        organizationId: auth.organizationId,
+        projectId,
+        ...values,
+        autoInvestigateEnabledAt: values.autoInvestigateOnOpen ? new Date() : null,
+      })
+      .onConflictDoUpdate({
+        target: notificationPolicies.projectId,
+        set: {
+          ...values,
+          autoInvestigateEnabledAt: values.autoInvestigateOnOpen
+            ? sql`coalesce(${notificationPolicies.autoInvestigateEnabledAt}, now())`
+            : null,
+        },
+      });
     return { success: true };
   } catch {
     return { success: false, error: "Failed to save the notification policy" };

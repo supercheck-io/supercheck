@@ -21,10 +21,15 @@ beforeEach(() => {
   hasPermission.mockResolvedValue(true);
 });
 
-it("rejects a project outside the caller's organization", async () => {
+it("rejects a project outside the caller's organization, looking it up by project id AND organization", async () => {
+  const { PgDialect } = jest.requireActual("drizzle-orm/pg-core");
   findFirst.mockResolvedValue(undefined);
   expect(await saveProjectNotificationPolicy(project, valid)).toEqual({ success: false, error: "Access denied" });
   expect(insert).not.toHaveBeenCalled();
+  expect(hasPermission).not.toHaveBeenCalled();
+  const query = new PgDialect().sqlToQuery(findFirst.mock.calls[0][0].where);
+  expect(query.sql).toContain('"organization_id" = $');
+  expect(query.params).toEqual(expect.arrayContaining([project, "org-1"]));
 });
 
 it("requires update permission on the target project", async () => {
@@ -47,4 +52,19 @@ it("upserts the project's single policy", async () => {
   expect(await saveProjectNotificationPolicy(project, valid)).toEqual({ success: true });
   expect(values).toHaveBeenCalledWith(expect.objectContaining({ organizationId: "org-1", projectId: project, channelIds: [channel], renotifyUnackedMinutes: 30 }));
   expect(onConflictDoUpdate).toHaveBeenCalled();
+});
+
+it("stamps the auto-investigate time only while it is on", async () => {
+  select.mockReturnValue(rows([]));
+  const onConflictDoUpdate = jest.fn().mockResolvedValue(undefined);
+  const values = jest.fn((_row: Record<string, unknown>) => ({ onConflictDoUpdate }));
+  insert.mockReturnValue({ values });
+  await saveProjectNotificationPolicy(project, { ...valid, channelIds: [], autoInvestigateOnOpen: true });
+  expect(values.mock.calls[0][0].autoInvestigateEnabledAt).toBeInstanceOf(Date);
+  // On conflict the stored time is kept (coalesce), so an unrelated save does not move it.
+  expect(onConflictDoUpdate.mock.calls[0][0].set.autoInvestigateEnabledAt).toBeDefined();
+  expect(onConflictDoUpdate.mock.calls[0][0].set.autoInvestigateEnabledAt).not.toBeNull();
+  await saveProjectNotificationPolicy(project, { ...valid, channelIds: [], autoInvestigateOnOpen: false });
+  expect(values.mock.calls[1][0].autoInvestigateEnabledAt).toBeNull();
+  expect(onConflictDoUpdate.mock.calls[1][0].set.autoInvestigateEnabledAt).toBeNull();
 });

@@ -160,6 +160,25 @@ describe("processSreBackgroundAlertTriageJob", () => {
       expect(runSreIncidentTriage).not.toHaveBeenCalled();
     });
 
+    it("runs the project's automatic investigation even when instance-wide triage is off", async () => {
+      const { maybeAutoInvestigateOnOpen } = jest.requireMock("@/sre/lib/auto-investigate");
+      maybeAutoInvestigateOnOpen.mockResolvedValueOnce({ handled: true });
+      mockAutomatic.mockReturnValue(false);
+      selectQueue.push([alertRow()]);
+      freshIncidentQueue();
+      expect(await processSreBackgroundAlertTriageJob(JOB)).toEqual({ success: true, skipped: true, reason: "auto_investigation" });
+    });
+
+    it("does not start instance-wide triage for an incident that was already investigated automatically", async () => {
+      const { maybeAutoInvestigateOnOpen } = jest.requireMock("@/sre/lib/auto-investigate");
+      maybeAutoInvestigateOnOpen.mockResolvedValueOnce({ handled: false, reason: "already_investigated" });
+      mockAutomatic.mockReturnValue(true);
+      selectQueue.push([alertRow()]);
+      freshIncidentQueue();
+      expect(await processSreBackgroundAlertTriageJob(JOB)).toEqual({ success: true, skipped: true, reason: "already_triaged" });
+      expect(runSreIncidentTriage).not.toHaveBeenCalled();
+    });
+
     it("runs AI triage when automation is on and AI is configured", async () => {
       mockAutomatic.mockReturnValue(true);
       (runSreIncidentTriage as jest.Mock).mockResolvedValue({ success: true, investigationRunId: "run-1" });
