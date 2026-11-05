@@ -41,6 +41,18 @@ describe("POST /api/email/bounces/zeptomail", () => {
     expect((await POST(request(event("hardbounce", "a@b.io")))).status).toBe(404);
   });
 
+  it("answers an unsigned verification ping with 200 and changes nothing", async () => {
+    const ping = new Request("https://app.test/api/email/bounces/zeptomail", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: `payload=${encodeURIComponent(event("hardbounce", "a@b.io"))}`,
+    });
+    const response = await POST(ping);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ received: 0, suppressed: 0 });
+    expect(mockSuppressEmail).not.toHaveBeenCalled();
+  });
+
   it("rejects an invalid signature without touching the list", async () => {
     expect((await POST(request(event("hardbounce", "a@b.io"), "wrong"))).status).toBe(401);
     expect(mockSuppressEmail).not.toHaveBeenCalled();

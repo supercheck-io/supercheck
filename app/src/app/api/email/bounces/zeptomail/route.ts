@@ -48,7 +48,10 @@ export async function POST(request: Request) {
   const rawBody = await readCapped(request, MAX_BODY_BYTES);
   if (rawBody === null) return NextResponse.json({ error: "Payload too large" }, { status: 413 });
 
-  const eventJson = verifyZeptoMailWebhook(rawBody, request.headers.get("producer-signature"), key);
+  const signature = request.headers.get("producer-signature");
+  // ZeptoMail's "Verify" button posts unsigned and requires a 200; an unsigned call changes nothing.
+  if (!signature) return NextResponse.json({ received: 0, suppressed: 0 });
+  const eventJson = verifyZeptoMailWebhook(rawBody, signature, key);
   if (!eventJson) return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
 
   const bounces = parseZeptoMailBounces(eventJson).slice(0, MAX_EVENTS);
