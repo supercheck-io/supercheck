@@ -192,12 +192,14 @@ sudo docker compose -f docker-compose-worker.yml up -d --wait --wait-timeout 300
 
 Workers keep no data, so they need no backup; keep their `.env` private.
 
+## Missing-region detection
+
 <Accordions>
 <Accordion title="Missing-region detection (optional)" id="missing-region-detection-optional">
 
 By default a silent region holds up a monitor result. To count it as failed after a deadline, add `monitor-control` to `COMPOSE_PROFILES` in `.env`, run `sudo docker compose up -d monitor-control` (one instance only), then set `MISSING_CYCLE_CLOSURE_ENABLED=true` and recreate the app.
 
-To turn it off, set the flag to `false` and keep `monitor-control` running until open runs close.
+Regions with no live worker when a run starts are skipped, not failed. To turn it off, set the flag to `false`, recreate the app, and keep `monitor-control` running until open runs close.
 
 </Accordion>
 </Accordions>
