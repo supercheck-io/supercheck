@@ -111,7 +111,7 @@ supercheck:
 
 ### With Monitoring-as-Code deploy
 
-Commit `supercheck.state.json` with the project so CI can map local resources to IDs created by earlier deployments. It is scoped to the API origin and actual project. Never commit the transient `supercheck.state.json.lock` file. Keep `SUPERCHECK_TOKEN` in the CI secret store. The CLI checks configured project context before syncing.
+Commit `supercheck.state.json` with the project so CI can map local resources to IDs created by earlier deployments. Never commit the transient `supercheck.state.json.lock` file. Keep `SUPERCHECK_TOKEN` in the CI secret store.
 
 ```yaml title=".gitlab-ci.yml"
 stages:
@@ -234,7 +234,7 @@ env:
 
 | Practice | How |
 |---|---|
-| Machine-readable results | Use `--json`; add `--envelope` with `--json` for pagination metadata (default list arrays remain compatible) |
+| Machine-readable results | Use `--json`; add `--envelope` with `--json` for pagination metadata |
 | Inspect before writing | `supercheck diff --json` or `supercheck deploy --dry-run --json` |
 | Block until tests finish | Use `--wait`, and set `--timeout` to suit your suite |
 | Resume a wait | `supercheck run wait <run-id>` never triggers a new run |

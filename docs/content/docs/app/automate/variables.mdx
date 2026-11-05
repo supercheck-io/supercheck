@@ -50,15 +50,10 @@ Optionally add a **description** for your team, then select **Add Variable**.
 ![Add Variable](/screenshots/add-variable.png)
 
 <Callout type="info">
-Secret values are masked in the UI. Users with secret-view permission can reveal a value only through the audited reveal action. Converting a secret back to a variable requires a replacement value; the stored secret is never decrypted implicitly.
+Secret values are masked in the UI. Users with secret-view permission can reveal a value with the audited reveal action. Converting a secret back to a variable requires a replacement value.
 </Callout>
 
 <Accordions>
-<Accordion title="How secrets are injected at execution time" id="secret-injection">
-
-At execution time, the worker narrows the injected secret payload when it can reliably identify direct calls such as `getSecret('API_KEY')`. Dynamic keys, aliases, or unsupported source syntax use the project secret set to preserve compatibility. This source-based optimization does not limit which project secrets a test is authorized to request.
-
-</Accordion>
 <Accordion title="Using and rotating file variables" id="file-variables">
 
 In Playwright, `readFile(key)` returns the contents. In k6, use `open(getFile(key))` in the init context, and prefer `SharedArray` for datasets shared across VUs. To rotate a dataset without changing scripts, keep the key and upload a replacement file.
@@ -167,10 +162,10 @@ Masking covers console output, error messages, and text report files (`.html`, `
 <Accordions>
 <Accordion title="What is masked" id="secret-masking">
 
-- Secret values are replaced with `[SECRET]` in console output and errors. They are also replaced in `.html`, `.json`, `.txt`, `.md`, and `.xml` report files before the report is uploaded; files over 20 MB are skipped, and `.js` and `.css` files are not scanned. The same applies to the base64, URL-encoded, and JSON-escaped forms of each value.
+- Secret values are replaced with `[SECRET]` in console output and errors. They are also replaced in `.html`, `.json`, `.txt`, `.md`, and `.xml` report files, including base64, URL-encoded, and JSON-escaped forms of each value. Files over 20 MB are not masked.
 - Secrets shorter than 6 characters are not masked, because replacing short strings would damage unrelated output. Use longer secrets.
 - Binary or compressed artifacts are not scanned or rewritten: `trace.zip`, screenshots, videos, and the test data embedded in the Playwright HTML report.
-- A secret is only injected into a run when a script reads it with `getSecret('KEY')`. If a script that uses a secret cannot decrypt it, the run fails with a message naming the key. For Playwright tests, jobs, and synthetic monitors, a secret that no script uses does not affect a run, unless a script calls `getSecret` with a non-literal key. In that case every project secret is decrypted, and an undecryptable secret fails the run. k6 runs and the app-side resolver decrypt all project secrets, so an undecryptable secret can fail those runs too.
+- If a script uses a secret that cannot be decrypted, the run fails with a message naming the key. k6 runs, and scripts that call `getSecret` with a non-literal key, read every project secret, so any undecryptable secret can fail them.
 
 </Accordion>
 </Accordions>

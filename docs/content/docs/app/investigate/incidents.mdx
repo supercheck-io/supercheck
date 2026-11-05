@@ -13,7 +13,7 @@ Incidents are the responder queue for issues that need investigation, evidence r
 | **An alert** | Incidents open automatically when a monitor or job alert fires, with no setup beyond enabling alerts. Repeated alerts for the same target join the same incident. You can also select **Open incident** next to a failure in **Communicate → Notifications → Delivery history**. Neither path starts a full AI investigation unless the project turned on **Investigate new incidents automatically** (see [Default policy](#default-policy)) |
 | **Scratch** | In **Respond → Incidents**, select **New incident** for issues that did not come from a Supercheck alert. You become the assignee |
 
-Both paths open the incident workspace. If AI triage fails, the timeline records a *triage failed* event with the error code, so the failure is visible on the incident. The timeline shows its own error and a retry when it cannot load, rather than *No activity yet*.
+Both paths open the incident workspace. If AI triage fails, the timeline records a *triage failed* event with the error code, so the failure is visible on the incident.
 
 ![Create Incident Dialog](/screenshots/create-incident-dialog.png)
 
@@ -80,7 +80,7 @@ The summary card answers four questions in order.
 | **Cited evidence** | Up to three evidence items the conclusion rests on. Select one to read it |
 | **Hypotheses** | Ranked explanations, each marked **Validated**, **Ruled out**, or **Inconclusive**, with a short rationale and its evidence |
 
-**Inconclusive** is a normal result, not a failure. When the evidence does not establish a cause, the agent says what is missing and lists safe next checks instead of guessing. A hypothesis is only **Validated** when it cites real evidence from this incident. Runs from before structured results, or runs whose output could not be validated, show a plain summary without hypotheses or a confidence rating.
+**Inconclusive** is a normal result, not a failure. When the evidence does not establish a cause, the agent says what is missing and lists safe next checks instead of guessing. A hypothesis is only **Validated** when it cites real evidence from this incident. Runs whose output could not be validated show a plain summary without hypotheses or a confidence rating.
 
 In the **Investigation details** panel, **How I investigated** lists each check the agent ran: the tool, a short summary of its arguments (secrets are never shown), how many results came back, and how long it took. It updates live while a run is in progress.
 
@@ -94,11 +94,11 @@ In the **Investigation details** panel, **How I investigated** lists each check 
 | **Re-run with my note** | Starts a new investigation that also sees your note as guidance, plus the notes you left on earlier runs |
 | **Save report snapshot** | Locks the sanitized report for audit and review (**Analysis** tab) |
 
-Your notes are hints, not evidence. The agent is told to weigh them against the stored evidence and to ignore any instructions inside them. Recent notes on other incidents of the same service are also passed to future investigations as hints. If a run fails or times out, review the error and available evidence before retrying.
+Your notes are hints, not evidence. Recent notes on other incidents of the same service are also passed to future investigations as hints. If a run fails or times out, review the error and available evidence before retrying.
 
 ### Similar incidents
 
-The **Similar** tab (opened from **Similar past incidents** in the sidebar) lists up to five **resolved incidents from the last 180 days** (the top three first, with **Show more** for the rest) in the same project that share the primary service, the alert source, or words in the title. It shows why each one matched and how it was resolved. The same list, shortened, is given to the investigation as *past incidents (may be unrelated)*. A past root cause is context only: the investigation does not copy it without evidence from the current incident.
+The **Similar** tab (opened from **Similar past incidents** in the sidebar) lists up to five **resolved incidents from the last 180 days** (the top three first, with **Show more** for the rest) in the same project that share the primary service, the alert source, or words in the title. It shows why each one matched and how it was resolved. A past root cause is context only: the investigation does not copy it without evidence from the current incident.
 
 ### Evidence
 
@@ -122,7 +122,7 @@ When an incident is resolved, the **Post-mortem** card offers **Generate post-mo
 
 | Behavior | Detail |
 |---|---|
-| **Drafting** | One bounded AI call. If AI is unavailable, your organization's usage limit is reached, or the model returns something unusable, a template filled from the incident record is used instead, with placeholders where facts are missing. Nothing is invented |
+| **Drafting** | If AI is unavailable, your organization's usage limit is reached, or the model returns something unusable, a template filled from the incident record is used instead, with placeholders where facts are missing. Nothing is invented |
 | **Editing** | Every section is editable. Follow-ups are a list you can add to and remove from. **Save post-mortem** keeps your edits |
 | **Regenerate / Export** | **Regenerate draft** replaces the text after you confirm. **Export Markdown** downloads a `.md` file |
 | **Limits** | Five drafts per person per incident per hour. Drafting needs permission to update incidents; people with view access can read and export |
@@ -140,10 +140,9 @@ When a monitor or job alert fires (alerts enabled, a channel attached, outside a
 | Rule | Behavior |
 |---|---|
 | **One incident per source** | While an incident for a monitor or job is open, further failures join it as linked alerts. If the check fails again after a *recovered* note, the timeline shows **Failure returned** and the next recovery is noted again |
-| **Alert snapshot** | Each incident keeps the alert's message, severity and time as they were when it was linked, so a later failure of the same check does not change an older incident's evidence |
 | **Severity** | *Auto* derives SEV1 to SEV4 from the alert; a fixed level in the check's settings overrides it |
 | **Auto-resolve** | On recovery, an unacknowledged incident resolves itself with a note, even if recovery alerts are off. An acknowledged one stays open, gets a *recovered* note, and its participants are emailed. Applies to monitor-down and job failed or timed-out alerts; SSL-expiry incidents stay open until someone resolves them |
-| **Reopen** | A new failure within 30 minutes of an automatic resolution reopens the same incident. Reopening keeps the previous resolution summary. For monitor-down and job failed or timed-out alerts only, **Open incident** from delivery history follows the same rules: it joins the source's open incident or reopens a recently auto-resolved one instead of creating a duplicate. An alert older than 30 minutes only joins an open incident and never reopens one. A failure that fired before the recovery, but was processed after it, does not. Changing a resolved incident's status in **Edit** also reopens it and clears its acknowledgement |
+| **Reopen** | A new failure within 30 minutes of an automatic resolution reopens the same incident. Reopening keeps the previous resolution summary. For monitor-down and job failed or timed-out alerts only, **Open incident** from delivery history follows the same rules: it joins the source's open incident or reopens a recently auto-resolved one instead of creating a duplicate. An alert older than 30 minutes only joins an open incident and never reopens one. Changing a resolved incident's status in **Edit** also reopens it and clears its acknowledgement |
 
 Control this per check under **Alert Settings → Incidents**: **Open an incident when this alerts**, **Severity**, and **Resolve automatically on recovery if nobody acknowledged it** (both toggles on by default).
 
@@ -158,8 +157,8 @@ AI triage is separate and optional. Triage that starts by itself from an alert r
 | Action | Behavior |
 |---|---|
 | **Default assignee** | An incident opened from an alert is assigned to the linked service's owner user when one is set and that person can still act on incidents. Supercheck does not set service owners today: the service form has a free-text **Owner team** only, so alert incidents open unassigned until someone acknowledges or assigns them |
-| **Assign** | Choose any organization owner or admin, or a project admin or editor of this project. Viewers and people outside the project are rejected. Assigning again to the same person changes nothing |
-| **Acknowledge** | Stamps who acknowledged and when. If the incident is unassigned, the acknowledger becomes the assignee. Acknowledging twice is harmless |
+| **Assign** | Choose any organization owner or admin, or a project admin or editor of this project. Viewers and people outside the project are rejected. |
+| **Acknowledge** | Stamps who acknowledged and when. If the incident is unassigned, the acknowledger becomes the assignee. |
 | **Commander** | Optional single incident commander, set from the sidebar |
 
 Assignments, acknowledgements, status changes, and resolution all appear on the timeline and in the audit log.
@@ -172,7 +171,7 @@ Supercheck announces an incident when it is **opened**, **assigned**, **acknowle
 
 | Where | What is sent |
 |---|---|
-| **The check's channels** | Assignment, acknowledgement, AI findings, and resolution or reopening by a person. Opening, recovery, automatic resolution and automatic reopening post nothing extra, because the worker's alert and recovery already went there. If every delivery of the opening alert failed, the channels get the incident-opened message instead |
+| **The check's channels** | Assignment, acknowledgement, AI findings, and resolution or reopening by a person. Opening, recovery, automatic resolution and automatic reopening post nothing extra, because the alert and recovery already went there. If every delivery of the opening alert failed, the channels get the incident-opened message instead |
 | **Participant email** | The assignee and the incident commander get a direct email for every change someone else makes: assignment, acknowledgement, resolution and reopening, plus recovery and automatic reopening. On a reassignment the previous assignee is told too. You are never emailed about your own change, and only people who can still act on the incident (owners, admins, and the project's admins and editors) receive mail. Requires email delivery |
 | **Watchers** | Anyone who watches an incident gets an email for each new note and each severity change (never about their own). The creator, the assignee and everyone who comments are added automatically; **Unwatch** opts a person out. Viewers can watch |
 | **Incidents without a monitor or job** | Incidents created by hand or by a connector use the project's **Default policy** (below) instead of source channels |
@@ -187,9 +186,9 @@ Each project has one **Default policy**, edited from **Organization → Projects
 | **Channels** | Up to 10. Notified about incidents created by hand or by a connector. Monitors and jobs keep the channels chosen on them |
 | **Email service owners for SEV1 and SEV2** | Also emails the incident's service owners when a SEV1 or SEV2 opens |
 | **Remind once if nobody acknowledges** | After the chosen minutes (5 to 1,440), re-sends once to the policy channels and the assignee and commander. Off by default. Incidents more than two days old are not reminded |
-| **Investigate new incidents automatically** | Off by default because it uses AI credits. SEV1 and SEV2 get a full investigation, SEV3 and SEV4 a quick triage, through the same plan and usage limits as starting one by hand. Only incidents opened after you turn it on are covered, and automatic runs use stored evidence, not live sources. Each incident gets one automatic run at a time; if that run fails, a later trigger can try again, up to three attempts |
+| **Investigate new incidents automatically** | Off by default because it uses AI credits. SEV1 and SEV2 get a full investigation, SEV3 and SEV4 a quick triage, through the same plan and usage limits as starting one by hand. Only incidents opened after you turn it on are covered, and automatic runs use stored evidence, not live sources. A failed automatic run is tried again on a later trigger, up to three attempts. |
 
-Email, Slack, Teams, Discord, Telegram and plain webhook channels are supported; webhooks with a preset or body template are skipped for incident messages. Each message names the incident, severity and service and links to it, without raw evidence, logs, credentials or AI conclusions. The same event is announced once within a short window, and recovery and reopen emails reach each person at most once every 10 minutes, so a flapping check does not flood inboxes.
+Email, Slack, Teams, Discord, Telegram and plain webhook channels are supported; webhooks with a preset or body template are skipped for incident messages. Each message names the incident, severity and service and links to it, without raw evidence, logs, credentials or AI conclusions. Recovery and reopen emails reach each person at most once every 10 minutes, so a flapping check does not flood inboxes.
 
 </Accordion>
 
@@ -234,7 +233,7 @@ Limits apply per person and incident, and exceeding one returns `429` with a ret
 | **Evidence brief** | 3 per minute |
 | **Copilot chat** | 30 messages per minute per person |
 
-Only one investigation or triage run can be active per incident (`409` otherwise). If a run has been marked running for more than five minutes, for example because the server restarted, starting a new run for that incident fails the old one first.
+Only one investigation or triage run can be active per incident (`409` otherwise).
 
 On the free trial, AI triage is limited to 20 runs and investigations to the trial's included number. A run that fails does not count against either. Copilot chat and evidence briefs need a paid plan.
 

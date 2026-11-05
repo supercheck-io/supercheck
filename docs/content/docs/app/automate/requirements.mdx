@@ -84,7 +84,7 @@ flowchart LR
 ```
 
 <Callout type="info">
-Coverage is per test: when a job finishes, the worker stores each test's own outcome from the Playwright report in `runs.metadata.testStatuses`. Older runs, k6 performance runs, and runs where a test has no stored outcome fall back to the status of the whole run. Running a test in the Playground does not change coverage, and monitors are not linked to requirements.
+Coverage is per test, using each test's own result from the job run. Running a test in the Playground does not change coverage, and monitors are not linked to requirements.
 </Callout>
 
 ## Extract Requirements from a Document
@@ -138,7 +138,7 @@ See [Roles & Permissions](/docs/app/admin/roles-and-permissions) for how roles a
 | `priority` | `low`, `medium`, `high` | — |
 | `status` | `covered`, `failing`, `missing` | — |
 
-The status filter is applied before pagination, and `total` counts matching requirements. Requirements without a coverage snapshot count as `missing`. See the [API reference](/docs/api/requirements/listRequirements) for the response format.
+`total` counts matching requirements. See the [API reference](/docs/api/requirements/listRequirements) for the response format.
 
 </Accordion>
 <Accordion title="Manage requirements from the CLI and MCP" id="cli-mcp">
@@ -147,11 +147,6 @@ The status filter is applied before pagination, and `total` counts matching requ
 - **MCP:** `list_requirements` and `get_requirement` give AI tools read-only access. See [MCP tools](/docs/mcp/tools).
 
 Extracting requirements from a document is available in the dashboard only.
-
-</Accordion>
-<Accordion title="Deleting stored artifacts" id="deleting-artifacts">
-
-Deleting a resource with stored artifacts waits for storage cleanup to finish. If cleanup fails, the resource stays available so you can retry; a partial cleanup may already have removed some artifacts.
 
 </Accordion>
 </Accordions>
