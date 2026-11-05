@@ -37,7 +37,8 @@ export async function POST(
       variableId = resolvedParams.variableId;
 
       if (!isUuid((await params).id)) return NextResponse.json({ error: "Project not found" }, { status: 404 });
-      const permCtx = await resolveProjectPermissionContext(userId, projectId);
+      // Plaintext secrets need real project access: a super admin must be a member or impersonate one.
+      const permCtx = await resolveProjectPermissionContext(userId, projectId, { requireMembership: true });
       if (!permCtx) {
         return NextResponse.json(
           { error: "Project not found" },

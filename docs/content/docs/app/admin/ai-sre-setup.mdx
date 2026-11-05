@@ -32,7 +32,7 @@ Use **Services** to define systems such as `checkout-service` or `payment-gatewa
 
 ![Add Service Dialog](/screenshots/sre-add-service-dialog.png)
 
-For each service, set its name, tier, **Status** (`active`, `deprecated` or `merged`), environment, owner team, OpenTelemetry service name, **Slack channel**, repository URL, **Tags** and **Description**. The services list opens on **Active** services; archiving a service marks it deprecated, and you can show it again with the **Status** filter. The service detail page has three sections.
+For each service, set its name, tier, **Status** (`active`, `deprecated` or `merged`), environment, owner team, **Owner** (one person who is a project editor or admin; they are emailed when a SEV1 or SEV2 opens if the project's incident policy has **Email service owners** on, and an alert incident for the service is assigned to them), OpenTelemetry service name, **Slack channel**, repository URL, **Tags** and **Description**. The services list opens on **Active** services; archiving a service marks it deprecated, and you can show it again with the **Status** filter. The service detail page has three sections.
 
 | Section | Shows |
 |---|---|
@@ -67,6 +67,21 @@ In **Settings → Organization → Integrations**, choose **More → Saved queri
 | **Disabling** | Prevents future executions. Evidence already collected stays |
 
 ![Saved queries under Integrations](/screenshots/sre-integrations-saved-queries.png)
+
+Query names must be unique per connector among active queries.
+
+<Accordions>
+<Accordion title="Parameter rules and connector settings" id="saved-query-rules">
+
+- A parameter whose value can be free text must sit inside quotes in the template, for example `{service="$service"}`.
+- To use a parameter outside quotes, constrain it with an **enum**, an **allowlist**, or a **pattern** that admits only plain tokens (letters, digits and similar, no spaces or query syntax).
+- Over-broad patterns are rejected when you save, for example `.*`.
+- `allowParens` works only on Azure Monitor connectors, in `metrics:` templates.
+- **Grafana** connectors need the service account token saved under `apiKey`, `api_key` or `secret`. Any other key name is rejected when you save.
+- A connector's **default time window** is 60 minutes unless you change it. A search asking for a longer window is refused with a message naming the limit; raise the connector's window or shorten the search.
+
+</Accordion>
+</Accordions>
 
 ## Private Agents
 

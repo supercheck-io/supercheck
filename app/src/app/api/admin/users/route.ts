@@ -1,6 +1,7 @@
 import { suspendAccount } from "@/lib/security/suspend-account";
 import { NextRequest, NextResponse } from 'next/server';
 import { getAllUsers, requireAdmin } from '@/lib/admin';
+import { adminDeniedResponse } from '@/lib/admin-errors';
 import { db } from '@/utils/db';
 import { user } from '@/db/schema';
 import { eq } from 'drizzle-orm';
@@ -28,6 +29,8 @@ export async function GET(request: NextRequest) {
       }
     });
   } catch (error) {
+    const denied = adminDeniedResponse(error);
+    if (denied) return denied;
     console.error('Admin users GET error:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to fetch users' },
@@ -146,6 +149,8 @@ export async function PATCH(request: NextRequest) {
       data: result
     });
   } catch (error) {
+    const denied = adminDeniedResponse(error);
+    if (denied) return denied;
     console.error('Admin users PATCH error:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to update user' },

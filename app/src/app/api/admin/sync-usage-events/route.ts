@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { polarUsageService } from "@/lib/services/polar-usage.service";
 import { isPolarEnabled } from "@/lib/feature-flags";
 import { isAdminAccessDeniedError, requireAdmin } from "@/lib/admin";
+import { adminDeniedResponse } from "@/lib/admin-errors";
 import { isAuthError, requireUserAuthContext, authErrorStatus } from "@/lib/auth-context";
 
 /**
@@ -57,6 +58,8 @@ export async function POST(request: NextRequest) {
       ...result,
     });
   } catch (error) {
+    const denied = adminDeniedResponse(error);
+    if (denied) return denied;
     console.error("[Cron] Usage sync error:", error);
     if (isAuthError(error)) {
       return NextResponse.json(

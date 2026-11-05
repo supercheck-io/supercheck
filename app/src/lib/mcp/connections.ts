@@ -157,3 +157,37 @@ export async function revokeMcpConnection(input: {
     await tx.delete(oauthConsent).where(eq(oauthConsent.id, consent.id));
   });
 }
+
+/**
+ * Runs an approval and leaves the consent row holding every scope the user has approved for this
+ * client and project. Better Auth's consent upsert overwrites the scopes with the new request's, so
+ * re-approving a narrower set would silently revoke a broader grant (and 403 its live tokens).
+ * Revocation stays explicit: disconnecting deletes the row.
+ */
+export async function withMergedConsentScopes<T>(
+  key: { userId: string; clientId: string; projectId: string },
+  approved: string[],
+  approve: () => Promise<T>,
+): Promise<T> {
+  const where = and(
+    eq(oauthConsent.userId, key.userId),
+    eq(oauthConsent.clientId, key.clientId),
+    eq(oauthConsent.referenceId, key.projectId),
+  );
+  const [previous] = await db.select({ scopes: oauthConsent.scopes }).from(oauthConsent).where(where).limit(1);
+  const result = await approve();
+  if (previous) {
+    // shortcut: read-then-write, so two approvals racing for one project can still lose a scope; the user can re-approve.
+    await db.update(oauthConsent).set({ scopes: [...new Set([...previous.scopes, ...approved])] }).where(where);
+  }
+  return result;
+}
+
+/** Projects where this client already holds scopes beyond `requested`; a narrower approval will not reduce them. */
+export async function projectsKeepingBroaderGrant(userId: string, clientId: string, requested: string[]): Promise<string[]> {
+  const rows = await db
+    .select({ projectId: oauthConsent.referenceId, scopes: oauthConsent.scopes })
+    .from(oauthConsent)
+    .where(and(eq(oauthConsent.userId, userId), eq(oauthConsent.clientId, clientId)));
+  return rows.filter((row) => row.projectId && row.scopes.some((scope) => !requested.includes(scope))).map((row) => row.projectId as string);
+}

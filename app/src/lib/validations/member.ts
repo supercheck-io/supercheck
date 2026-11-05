@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { isUuid } from "@/lib/uuid"
 
 const rolesRequiringProjectAssignments = new Set([
   "project_editor",
@@ -16,7 +17,7 @@ export const inviteMemberSchema = z.object({
       error: "Please select a valid role"
     }),
   selectedProjects: z
-    .array(z.string())
+    .array(z.string().refine(isUuid, "Invalid project id"))
     .max(50, "Cannot select more than 50 projects"),
 }).refine((data) => {
   if (!rolesRequiringProjectAssignments.has(data.role)) {
@@ -34,7 +35,7 @@ export const updateMemberSchema = z.object({
       error: "Please select a valid role"
     }),
   selectedProjects: z
-    .array(z.string())
+    .array(z.string().refine(isUuid, "Invalid project id"))
     .max(50, "Cannot select more than 50 projects"),
 }).refine((data) => {
   if (!rolesRequiringProjectAssignments.has(data.role)) {

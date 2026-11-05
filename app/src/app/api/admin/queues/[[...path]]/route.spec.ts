@@ -182,7 +182,7 @@ describe("Bull Board replica state", () => {
     "authenticates %s before initialization", async (method, handler) => {
       mockGetCurrentUser.mockResolvedValue({ role: "org_owner" });
       const response = await handler(new NextRequest("http://localhost/api/admin/queues/api/queues", { method }), { params: Promise.resolve({ path: ["api", "queues"] }) });
-      expect(response.status).toBe(401);
+      expect(response.status).toBe(403);
       expect(mockGetQueues).not.toHaveBeenCalled();
     },
   );
@@ -261,9 +261,9 @@ describe("Bull Board replica state", () => {
     expect(mockInvalidateQueues).not.toHaveBeenCalled();
   });
 
-  it.each([null, { role: "org_owner" }])("does not initialize for an unauthorized user: %j", async (user) => {
+  it.each([[null, 401], [{ role: "org_owner" }, 403]])("does not initialize for an unauthorized user: %j", async (user, status) => {
     mockGetCurrentUser.mockResolvedValue(user);
-    expect((await poll()).status).toBe(401);
+    expect((await poll()).status).toBe(status);
     expect(mockGetEnabledCodes).not.toHaveBeenCalled();
     expect(mockGetQueues).not.toHaveBeenCalled();
     expect(mockCreateBullBoard).not.toHaveBeenCalled();

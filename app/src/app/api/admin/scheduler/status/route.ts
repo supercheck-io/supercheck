@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { isAdminAccessDeniedError, requireAdmin } from '@/lib/admin';
+import { adminDeniedResponse } from '@/lib/admin-errors';
 import { getQueues } from '@/lib/queue';
 import { db } from "@/utils/db";
 import { jobs, monitors } from "@/db/schema";
@@ -88,6 +89,8 @@ export async function GET() {
     });
 
   } catch (error: unknown) {
+    const denied = adminDeniedResponse(error);
+    if (denied) return denied;
     console.error('Scheduler status check error:', error);
     if (isAdminAccessDeniedError(error)) {
       return NextResponse.json(

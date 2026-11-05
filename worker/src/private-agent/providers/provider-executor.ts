@@ -1,4 +1,5 @@
 import * as crypto from 'node:crypto';
+import { redactMcpText } from '../mcp-client';
 import { requestPrivateAgentEndpoint } from '../private-agent-endpoint';
 import { searchAzure } from './azure-monitor';
 import { searchGcp } from './gcp-monitoring';
@@ -145,11 +146,10 @@ export async function executeObservabilityProviderJob(
   const evidence = result.records.slice(0, maxRows).map((record) => ({
     id: `connector_${hashPayload({ connectorId: input.connectorId, sourceUri: record.sourceUri, title: record.title, hash: record.hashInput }).slice(0, 24)}`,
     sourceUri: record.sourceUri.slice(0, 1000),
-    title: record.title.slice(0, 500),
-    summary: [record.summary, record.rawContent]
-      .filter(Boolean)
-      .join('\n')
-      .slice(0, 2000),
+    title: redactMcpText(record.title).slice(0, 500),
+    summary: redactMcpText(
+      [record.summary, record.rawContent].filter(Boolean).join('\n'),
+    ).slice(0, 2000),
     evidenceType: record.evidenceType,
     observedAt: record.observedAt,
     resultHash: hashPayload(record.hashInput),

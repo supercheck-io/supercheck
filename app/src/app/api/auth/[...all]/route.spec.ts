@@ -7,6 +7,10 @@ jest.mock("@/lib/session-security", () => ({ getClientIP: (...args: unknown[]) =
 const mockGet = jest.fn();
 const mockPost = jest.fn();
 jest.mock("better-auth/next-js", () => ({ toNextJsHandler: () => ({ GET: (...args: unknown[]) => mockGet(...args), POST: (...args: unknown[]) => mockPost(...args) }) }));
+const mockImpersonated = jest.fn();
+const mockSession = jest.fn();
+jest.mock("@/lib/rbac/middleware", () => ({ isImpersonatedSession: (...args: unknown[]) => mockImpersonated(...args) }));
+jest.mock("@/lib/session-cache", () => ({ getCachedAuthSession: (...args: unknown[]) => mockSession(...args) }));
 import { GET, POST } from "./route";
 import { organization } from "better-auth/plugins";
 import { apiKey } from "@better-auth/api-key";
@@ -17,6 +21,8 @@ describe("generic authentication organization safeguards", () => {
     jest.clearAllMocks();
     mockLimit.mockResolvedValue({ allowed: true });
     mockIP.mockReturnValue("192.0.2.5");
+    mockSession.mockResolvedValue(null);
+    mockImpersonated.mockResolvedValue(false);
     mockGet.mockResolvedValue(new Response("ok"));
     mockPost.mockResolvedValue(new Response("ok"));
   });
@@ -28,6 +34,10 @@ describe("generic authentication organization safeguards", () => {
       const allowed = path === "/organization/list" && method === "GET";
       expect(response.status).toBe(allowed ? 200 : 403);
     }
+    expect(mockPost).not.toHaveBeenCalled();
+  });
+  it("denies a doubled-slash organization write", async () => {
+    expect((await POST(new Request("https://app.supercheck.io/api/auth//organization/create", { method: "POST" }))).status).toBe(403);
     expect(mockPost).not.toHaveBeenCalled();
   });
   it.each(["future-write", "%69nvite-member", "update/member", "list"])("denies unknown, encoded and non-read organization requests: %s", async endpoint => {
@@ -50,6 +60,37 @@ describe("generic authentication organization safeguards", () => {
     expect((await POST(new Request(`https://app.supercheck.io/api/auth${path}`, { method: "POST" }))).status).toBe(403);
     expect(mockPost).not.toHaveBeenCalled();
   });
+  describe("account endpoints while impersonating", () => {
+    const accountPaths = ["change-password", "change-email", "delete-user", "set-password", "list-sessions", "revoke-session", "revoke-sessions", "revoke-other-sessions", "two-factor/enable", "link-social", "get-access-token", "account-info", "refresh-token", "update-user", "delete-user/callback", "future-endpoint", "/change-password", "sign-in/email"];
+    beforeEach(() => {
+      mockSession.mockResolvedValue({ user: { id: "u1" } });
+      mockImpersonated.mockResolvedValue(true);
+    });
+    it.each(accountPaths)("refuses %s with 403 impersonation_not_allowed", async (endpoint) => {
+      const url = `https://app.supercheck.io/api/auth/${endpoint}`;
+      for (const response of [await POST(new Request(url, { method: "POST" })), await GET(new Request(url))]) {
+        expect(response.status).toBe(403);
+        expect(await response.json()).toEqual({ error: "impersonation_not_allowed" });
+      }
+      expect(mockPost).not.toHaveBeenCalled();
+      expect(mockGet).not.toHaveBeenCalled();
+    });
+    it.each(accountPaths)("lets %s through for a normal session", async (endpoint) => {
+      mockImpersonated.mockResolvedValue(false);
+      expect((await POST(new Request(`https://app.supercheck.io/api/auth/${endpoint}`, { method: "POST" }))).status).toBe(200);
+    });
+    it("leaves anonymous callers to Better Auth", async () => {
+      mockSession.mockResolvedValue(null);
+      expect((await POST(new Request("https://app.supercheck.io/api/auth/change-password", { method: "POST" }))).status).toBe(200);
+      expect(mockImpersonated).not.toHaveBeenCalled();
+    });
+    it.each(["get-session", "sign-out", "admin/stop-impersonating"])("allows %s without any session lookup", async (endpoint) => {
+      expect((await POST(new Request(`https://app.supercheck.io/api/auth/${endpoint}`, { method: "POST" }))).status).toBe(200);
+      expect(mockSession).not.toHaveBeenCalled();
+      expect(mockImpersonated).not.toHaveBeenCalled();
+    });
+  });
+
   it("does not block unrelated routes that merely contain the text", async () => {
     expect((await POST(new Request("https://app.supercheck.io/api/auth/verify-key-not-a-plugin-route", { method: "POST" }))).status).toBe(200);
   });

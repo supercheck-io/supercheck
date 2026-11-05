@@ -8,7 +8,7 @@ import { isImpersonatedSession } from "@/lib/rbac/middleware";
 import { MCP_INCIDENTS_WRITE_SCOPE, MCP_READ_SCOPE, MCP_SRE_SCOPE, isMcpServerEnabled } from "@/lib/mcp/config";
 import { mcpAuthApi } from "@/lib/mcp/auth-api";
 import { listConnectableProjects } from "@/lib/mcp/connect-project";
-import { verifiedHostForClientId } from "@/lib/mcp/connections";
+import { projectsKeepingBroaderGrant, verifiedHostForClientId } from "@/lib/mcp/connections";
 import { displayClientName } from "@/lib/mcp/client-metadata";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { CheckIcon } from "@/components/logo/supercheck-logo";
@@ -140,6 +140,7 @@ export default async function McpConsentPage({
 
   return (
     <McpConsent
+      keepsEarlierAccessProjectIds={await projectsKeepingBroaderGrant(session.user.id, clientId, requested)}
       oauthQuery={oauthQuery}
       userEmail={session.user.email}
       projects={options}

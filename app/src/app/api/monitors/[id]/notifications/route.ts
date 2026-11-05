@@ -7,10 +7,8 @@ import {
   monitors,
 } from "@/db/schema";
 import { eq, and, count } from "drizzle-orm";
-import {
-  hasPermissionForUser,
-} from "@/lib/rbac/middleware";
-import { requireUserAuthContext } from "@/lib/auth-context";
+import { hasPermissionForUser, forbiddenOrNotFound } from "@/lib/rbac/middleware";
+import { requireUserAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { createLogger } from "@/lib/logger/index";
 
 const logger = createLogger({ module: "monitor-notifications-api" }) as {
@@ -59,10 +57,7 @@ export async function GET(
     });
 
     if (!canView) {
-      return NextResponse.json(
-        { error: "Insufficient permissions to view monitor notifications" },
-        { status: 403 }
-      );
+      return forbiddenOrNotFound(userId, monitor.organizationId, "Insufficient permissions to view monitor notifications", "Monitor not found");
     }
 
     // Get all notification providers linked to this monitor
@@ -86,6 +81,12 @@ export async function GET(
 
     return NextResponse.json(linkedProviders);
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: authErrorStatus(error) }
+      );
+    }
     logger.error({ err: error, monitorId: id }, "Error fetching notification settings");
     return NextResponse.json(
       { error: "Failed to fetch notification settings" },
@@ -133,10 +134,7 @@ export async function POST(
     });
 
     if (!canUpdate) {
-      return NextResponse.json(
-        { error: "Insufficient permissions to update monitor notifications" },
-        { status: 403 }
-      );
+      return forbiddenOrNotFound(userId, monitor.organizationId, "Insufficient permissions to update monitor notifications", "Monitor not found");
     }
 
     const { notificationProviderId } = await request.json();
@@ -212,6 +210,12 @@ export async function POST(
 
     return NextResponse.json(newLink, { status: 201 });
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: authErrorStatus(error) }
+      );
+    }
     logger.error({ err: error, monitorId: id }, "Error linking notification provider");
     return NextResponse.json(
       { error: "Failed to link notification provider" },
@@ -259,10 +263,7 @@ export async function DELETE(
     });
 
     if (!canUpdate) {
-      return NextResponse.json(
-        { error: "Insufficient permissions to update monitor notifications" },
-        { status: 403 }
-      );
+      return forbiddenOrNotFound(userId, monitor.organizationId, "Insufficient permissions to update monitor notifications", "Monitor not found");
     }
 
     const { notificationProviderId } = await request.json();
@@ -294,6 +295,12 @@ export async function DELETE(
 
     return NextResponse.json({ success: true });
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: authErrorStatus(error) }
+      );
+    }
     logger.error({ err: error, monitorId: id }, "Error unlinking notification provider");
     return NextResponse.json(
       { error: "Failed to unlink notification provider" },

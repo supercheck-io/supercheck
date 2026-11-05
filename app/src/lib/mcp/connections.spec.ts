@@ -23,7 +23,7 @@ jest.mock("@/utils/db", () => ({
 }));
 jest.mock("./connect-project", () => ({ listConnectableProjects: (...a: unknown[]) => mockListProjects(...a) }));
 
-import { McpConnectionNotFoundError, listMcpConnections, revokeMcpConnection, verifiedHostForClientId } from "./connections";
+import { McpConnectionNotFoundError, listMcpConnections, projectsKeepingBroaderGrant, revokeMcpConnection, verifiedHostForClientId } from "./connections";
 
 const row = (over: Record<string, unknown> = {}) => ({
   id: "c1", clientId: "dcr-client", clientName: "My Agent", redirectUris: ["http://127.0.0.1:9000/cb"],
@@ -88,6 +88,17 @@ describe("listMcpConnections", () => {
 
   it("returns nothing for a user with no connections", async () => {
     await expect(listMcpConnections("u1")).resolves.toEqual([]);
+  });
+});
+
+describe("projectsKeepingBroaderGrant", () => {
+  it("lists only projects whose stored scopes exceed the request", async () => {
+    mockRows = [
+      { projectId: "p1", scopes: ["mcp:read", "mcp:sre"] },
+      { projectId: "p2", scopes: ["mcp:read"] },
+      { projectId: null, scopes: ["mcp:sre"] },
+    ];
+    expect(await projectsKeepingBroaderGrant("u1", "c", ["mcp:read"])).toEqual(["p1"]);
   });
 });
 

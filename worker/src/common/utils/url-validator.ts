@@ -129,11 +129,97 @@ export function isPrivateOrReservedAddress(address: string): boolean {
   return false;
 }
 
+const METADATA_IPV4_NETWORKS = [
+  '169.254.0.0/16',
+  '100.100.100.200/32',
+  '168.63.129.16/32',
+  '192.0.0.192/32',
+].map((network) => new Address4(network));
+const LINK_LOCAL_IPV6_NETWORKS = ['fe80::/10', 'fd00:ec2::254/128'].map(
+  (network) => new Address6(network),
+);
+// Mirrors app/src/lib/sre/connectors/endpoint-policy.ts.
+const NAT64_WELL_KNOWN = new Address6('64:ff9b::/96');
+// Local-use NAT64: the embedded address position varies, so the whole /48 is blocked.
+const NAT64_LOCAL_USE = new Address6('64:ff9b:1::/48');
+const IPV4_COMPATIBLE = new Address6('::/96');
+const SIX_TO_FOUR = new Address6('2002::/16');
+
+/** IPv4 carried inside an IPv6 address by mapping, NAT64, 6to4 or the deprecated ::/96 form. */
+function embeddedIpv4(candidate: Address6): Address4 | null {
+  const bytes = candidate.toByteArray();
+  const at = (offset: number) =>
+    Address4.fromHex(
+      bytes
+        .slice(offset, offset + 4)
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join(''),
+    );
+  if (
+    candidate.isMapped4() ||
+    candidate.isHostInSubnet(IPV4_COMPATIBLE) ||
+    candidate.isHostInSubnet(NAT64_WELL_KNOWN)
+  )
+    return at(12);
+  if (candidate.isHostInSubnet(SIX_TO_FOUR)) return at(2);
+  return null;
+}
+
+/** Cloud metadata and link-local addresses: blocked even when internal targets are allowed. */
+export function isMetadataOrLinkLocalAddress(address: string): boolean {
+  const normalized = address.toLowerCase().replace(/^\[|\]$/g, '');
+  const family = isIP(normalized);
+  if (family === 4) {
+    const candidate = new Address4(normalized);
+    return METADATA_IPV4_NETWORKS.some((n) => candidate.isHostInSubnet(n));
+  }
+  if (family === 6) {
+    const candidate = new Address6(normalized);
+    const embedded = embeddedIpv4(candidate);
+    if (
+      embedded &&
+      METADATA_IPV4_NETWORKS.some((n) => embedded.isHostInSubnet(n))
+    )
+      return true;
+    return (
+      candidate.isHostInSubnet(NAT64_LOCAL_USE) ||
+      LINK_LOCAL_IPV6_NETWORKS.some((n) => candidate.isHostInSubnet(n))
+    );
+  }
+  return false;
+}
+
+function isMetadataHost(hostname: string): boolean {
+  const normalized = hostname
+    .trim()
+    .toLowerCase()
+    .replace(/\.$/, '')
+    .replace(/^\[|\]$/g, '');
+  return (
+    isMetadataOrLinkLocalAddress(normalized) ||
+    /^metadata\.(google|azure)\.internal$/.test(normalized)
+  );
+}
+
+/**
+ * Same rule as the app: only a self-hosted install with ALLOW_INTERNAL_TARGETS exactly "true"
+ * may point webhook channels at private hosts and plain http.
+ */
+export function allowInternalWebhookTargets(): boolean {
+  const selfHosted = ['true', '1'].includes(
+    (process.env.SELF_HOSTED ?? '').trim().toLowerCase(),
+  );
+  return selfHosted && process.env.ALLOW_INTERNAL_TARGETS === 'true';
+}
+
 /**
  * Validate if a URL is safe for outbound webhook requests.
  * Returns { safe: true } or { safe: false, reason: string }.
  */
-export function isUrlSafeForOutbound(urlString: string): {
+export function isUrlSafeForOutbound(
+  urlString: string,
+  options: { allowInternal?: boolean } = {},
+): {
   safe: boolean;
   reason?: string;
 } {
@@ -145,8 +231,12 @@ export function isUrlSafeForOutbound(urlString: string): {
       return { safe: false, reason: 'Invalid protocol' };
     }
 
-    // Block private/internal hosts
-    if (isPrivateHost(url.hostname)) {
+    // Block private/internal hosts (metadata and link-local stay blocked when internal is allowed)
+    if (
+      options.allowInternal
+        ? isMetadataHost(url.hostname)
+        : isPrivateHost(url.hostname)
+    ) {
       return {
         safe: false,
         reason: 'Cannot send to private or internal networks',

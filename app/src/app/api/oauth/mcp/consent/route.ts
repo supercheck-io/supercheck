@@ -9,6 +9,8 @@ import { isImpersonatedSession } from "@/lib/rbac/middleware";
 import { requireSameOriginRequest } from "@/lib/security/same-origin";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { createLogger } from "@/lib/logger/pino-config";
+import { MCP_READ_SCOPE } from "@/lib/mcp/config";
+import { withMergedConsentScopes } from "@/lib/mcp/connections";
 import { guardMcpEnabled, mcpJson, readJsonBody } from "@/lib/mcp/http";
 import {
   McpProjectAccessError,
@@ -63,8 +65,14 @@ export async function POST(request: NextRequest) {
   }
 
   const userId = session.user.id;
+  const params = new URLSearchParams(oauthQuery);
+  const clientId = params.get("client_id");
+  const approvedScopes = (params.get("scope") ?? "").split(" ").filter(Boolean);
 
   if (accept) {
+    // A token without mcp:read fails every call (insufficient_scope); never record such a connection.
+    if (!approvedScopes.includes(MCP_READ_SCOPE)) return mcpJson({ error: "invalid_scope" }, 400);
+    if (!clientId) return mcpJson({ error: "invalid_request" }, 400);
     if (!projectId) return mcpJson({ error: "project_required" }, 400);
     try {
       await assertCanConnectProject(userId, projectId);
@@ -78,7 +86,9 @@ export async function POST(request: NextRequest) {
     const consent = () => submitConsent({ headers: requestHeaders, accept, oauthQuery });
     // The chosen project reaches Better Auth through this call's own context, not shared
     // storage, so two approvals in flight (two tabs, one session) cannot read each other's.
-    const result = accept && projectId ? await runWithConsentProject({ userId, projectId }, consent) : await consent();
+    const result = accept && projectId && clientId
+      ? await withMergedConsentScopes({ userId, clientId, projectId }, approvedScopes, () => runWithConsentProject({ userId, projectId }, consent))
+      : await consent();
     const url = result.url;
     if (!isSafeRedirectTarget(url)) return mcpJson({ error: "consent_failed" }, 502);
 

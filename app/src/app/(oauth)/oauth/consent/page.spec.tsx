@@ -21,6 +21,11 @@ jest.mock("@/lib/rbac/middleware", () => ({ isImpersonatedSession: (...a: unknow
 jest.mock("@/lib/mcp/config", () => ({ MCP_READ_SCOPE: "mcp:read", isMcpServerEnabled: () => mockEnabled }));
 jest.mock("@/lib/mcp/auth-api", () => ({ mcpAuthApi: () => ({ getOAuthClientPublic: (...a: unknown[]) => mockClient(...a) }) }));
 jest.mock("@/lib/mcp/connect-project", () => ({ listConnectableProjects: (...a: unknown[]) => mockProjects(...a) }));
+const mockBroader = jest.fn();
+jest.mock("@/lib/mcp/connections", () => ({
+  ...jest.requireActual("@/lib/mcp/connections"),
+  projectsKeepingBroaderGrant: (...a: unknown[]) => mockBroader(...a),
+}));
 jest.mock("./mcp-consent", () => ({
   McpConsent: (props: unknown) => <pre data-testid="consent">{JSON.stringify(props)}</pre>,
 }));
@@ -47,6 +52,7 @@ beforeEach(() => {
   mockVerify.mockResolvedValue(true);
   mockGetSession.mockResolvedValue({ user: { id: "u1", email: "me@example.com" }, session: { id: "s1" } });
   mockImpersonated.mockResolvedValue(false);
+  mockBroader.mockResolvedValue([]);
   mockClient.mockResolvedValue({ client_id: signed.client_id, client_name: "Agent Co" });
   mockProjects.mockResolvedValue([
     { id: "p1", name: "Alpha", organizationName: "Org", isDefault: true },
@@ -84,6 +90,13 @@ describe("MCP consent page", () => {
     await renderPage();
     expect(screen.getByText(/connecting apps is not enabled/i)).toBeInTheDocument();
     expect(mockVerify).not.toHaveBeenCalled();
+  });
+
+  it("passes the projects where the app keeps broader earlier access", async () => {
+    mockBroader.mockResolvedValue(["p1"]);
+    await renderPage();
+    expect(mockBroader).toHaveBeenCalledWith("u1", signed.client_id, ["mcp:read", "offline_access"]);
+    expect(JSON.parse(screen.getByTestId("consent").textContent!).keepsEarlierAccessProjectIds).toEqual(["p1"]);
   });
 
   it("rejects a request whose signature does not verify, before looking anything up", async () => {

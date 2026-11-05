@@ -12,6 +12,7 @@ import { db } from "@/utils/db";
 import { session } from "@/db/schema";
 import { eq, and, ne } from "drizzle-orm";
 import { logAuditEvent } from "@/lib/audit-logger";
+import { isImpersonatedSession } from "@/lib/rbac/middleware";
 import { createLogger } from "@/lib/logger/pino-config";
 
 const logger = createLogger({ module: "invalidate-sessions" });
@@ -27,6 +28,7 @@ const logger = createLogger({ module: "invalidate-sessions" });
  * Returns:
  * - 200: Sessions invalidated successfully
  * - 401: Not authenticated
+ * - 403: Impersonating super admin (impersonation_not_allowed)
  * - 500: Server error
  */
 export async function POST(request: NextRequest) {
@@ -41,6 +43,11 @@ export async function POST(request: NextRequest) {
         { error: "Authentication required" },
         { status: 401 }
       );
+    }
+
+    // An impersonating super admin must not act on the impersonated user's sessions.
+    if (await isImpersonatedSession()) {
+      return NextResponse.json({ error: "impersonation_not_allowed" }, { status: 403 });
     }
 
     const userId = authSession.user.id;
@@ -150,6 +157,11 @@ export async function GET() {
         { error: "Authentication required" },
         { status: 401 }
       );
+    }
+
+    // An impersonating super admin must not act on the impersonated user's sessions.
+    if (await isImpersonatedSession()) {
+      return NextResponse.json({ error: "impersonation_not_allowed" }, { status: 403 });
     }
 
     const userId = authSession.user.id;
