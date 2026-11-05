@@ -71,14 +71,15 @@ export function AuditLogsTable({ className }: AuditLogsTableProps) {
       const first = await getPage(1);
       if (!first) return;
       const lastPage = Math.min(first.pagination.totalPages, MAX_PAGES);
-      const rest = await Promise.all(
-        Array.from({ length: Math.max(lastPage - 1, 0) }, (_, i) => getPage(i + 2))
-      );
-      if (rest.some((page) => !page)) return;
-      setData({
-        logs: [first.logs, ...rest.map((page) => page!.logs)].flat(),
-        filters: first.filters,
-      });
+      // Show the newest page at once, then add older pages one request at a time; a failed page keeps what loaded.
+      let logs = first.logs;
+      setData({ logs, filters: first.filters });
+      for (let page = 2; page <= lastPage; page++) {
+        const next = await getPage(page);
+        if (!next) break;
+        logs = [...logs, ...next.logs];
+        setData({ logs, filters: first.filters });
+      }
     } catch (error) {
       console.error("Error fetching audit logs:", error);
       toast.error("Failed to load audit logs");
