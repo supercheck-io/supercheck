@@ -27,7 +27,7 @@ One app may send up to 300 requests a minute and 4 at a time; all your apps toge
 </Accordion>
 <Accordion title="503 rate_limiter_unavailable" id="mcp-t5">
 
-The server's rate limiter is temporarily unavailable, so the call was refused rather than let through unchecked. Retry after the `Retry-After` seconds. An administrator should check that Redis is reachable
+The server could not check rate limits, so the call was refused. Retry after the `Retry-After` seconds. Self-hosted: an administrator should check that Redis is reachable
 
 </Accordion>
 <Accordion title="400 batch_too_large" id="mcp-t6">

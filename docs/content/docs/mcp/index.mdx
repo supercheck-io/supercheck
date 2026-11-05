@@ -13,7 +13,7 @@ By default the server is **read-only**. Two optional scopes, approved as part of
 | | |
 |---|---|
 | Endpoint | `https://<your-supercheck-host>/api/mcp` |
-| Transport | Streamable HTTP, stateless |
+| Transport | Streamable HTTP |
 | Sign-in | OAuth 2.1 with PKCE; you approve each connection in the browser |
 | Access | One project per connection. Scope `mcp:read`, plus optional `mcp:incidents:write` and `mcp:sre` |
 | Tools | Read-only unless you grant an optional scope. See [Tools](/docs/mcp/tools) |
@@ -32,7 +32,6 @@ sequenceDiagram
     U->>S: Sign in, pick a project, Approve
     S-->>A: Access token (15 min) + refresh token (30 days)
     A->>S: Tools calls with the token
-    S->>S: Re-check consent, membership and ban on every call
     S-->>A: Redacted, project-scoped results
 ```
 

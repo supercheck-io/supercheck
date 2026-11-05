@@ -17,9 +17,7 @@ Copilot is read-only. It gathers evidence and suggests checks, but cannot change
 | Entry | What you get |
 |---|---|
 | **Respond → Copilot** | The full-page chat with history, for general or incident questions |
-| **Incident page → ... → Ask Copilot** | A side drawer beside the incident, scoped to that incident. **Open full page** goes to `/copilot?incident=<id>`, which opens the most recently updated thread for that incident |
-
-The drawer loads chat history only while it is open.
+| **Incident page → ... → Ask Copilot** | A side drawer beside the incident, scoped to that incident. **Open full page** opens the most recent chat for that incident |
 
 ## Chat Modes
 
@@ -62,10 +60,10 @@ Ask one focused question, then review citations and any evidence gaps before act
 | Limit | Value |
 |---|---|
 | **Message length** | 4,000 characters, applied to the newest message only. Earlier replies in the chat can be longer |
-| **Conversation length** | Long chats keep working. If a request would exceed Copilot's prompt budget, the oldest turns are left out of what it reads. A request body over about 2 MB is rejected with *Copilot chat history is too large* |
-| **Tool calls per reply** | Up to 4 steps. On the last step Copilot cannot call tools and answers from what it has gathered. If a reply still ends without text, it says *Copilot reached its tool-call limit for this turn. Ask a narrower question or continue.* |
+| **Conversation length** | Long chats keep working; when a chat gets very long, the oldest turns are left out of what Copilot reads. A chat that is too large is rejected with *Copilot chat history is too large* |
+| **Tool calls per reply** | Up to 4. On the last step Copilot answers from what it has gathered. If it still can't, it says *Copilot reached its tool-call limit for this turn.* Ask a narrower question |
 | **Rate** | 30 messages per minute per person |
-| **Images, videos and files** | File upload is not supported, and Copilot does not open or inspect file contents. The chat API still accepts a file attachment that references storage scoped to the same incident, but only its metadata reaches the model. Paste relevant text instead |
+| **Images, videos and files** | File upload is not supported, and Copilot does not open or inspect file contents. Paste relevant text instead |
 
 Answers can include markdown tables and small bar, line or area charts (up to 4 series and 48 points). Charts use only values from evidence, tool results or your messages; a chart without numeric values is shown as raw data instead.
 

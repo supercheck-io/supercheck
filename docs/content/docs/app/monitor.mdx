@@ -130,14 +130,6 @@ Set the check interval (minimum 5 minutes). Supercheck runs the test and reports
 </Step>
 </Steps>
 
-<Accordions>
-<Accordion title="Multi-location synthetic checks" id="multi-location-synthetic">
-
-When a legacy single queue job runs a synthetic monitor from several locations, it checks those locations one at a time. This lets each browser execution use an organization's single available execution slot. Lightweight HTTP, website, ping, and port checks can still run in parallel; distributed per-location jobs keep their existing behavior.
-
-</Accordion>
-</Accordions>
-
 ![Create Synthetic Monitor](/screenshots/create-synthetic-monitor.png)
 
 ## Locations
@@ -239,11 +231,6 @@ Nine key metrics are displayed prominently below the header:
 **P95** is the response time that 95% of checks complete within, which exposes tail latency that averages hide.
 
 </Accordion>
-<Accordion title="How statistics are computed" id="statistics-rollups">
-
-All-locations history uses one combined rollup per hour or day. Older periods that only have per-location rollups are summed instead, and the two are never counted together. A statistics window falls back to retained raw checks only when it has no rollups; deleted raw history cannot be reconstructed.
-
-</Accordion>
 <Accordion title="Availability and response time charts" id="charts">
 
 | Chart | What it shows |
@@ -310,28 +297,6 @@ Available intervals: 1 minute, 5 minutes, 10 minutes, 15 minutes, 30 minutes, 1 
 <Callout type="info">
 Synthetic monitors start at 5 minutes. Set the interval longer than your test's run time so executions do not overlap: for a 2-minute test, use 5 minutes or more.
 </Callout>
-
-## Configuration and cleanup
-
-<Accordions>
-<Accordion title="Configuration access" id="configuration-access">
-
-Monitor viewers can read check settings and results, but request credentials, request headers, and request bodies are omitted from the configuration returned to them. Users with monitor update permission retain the full configuration needed to edit a monitor. Notification detail links check access to the monitor's own organization and project.
-
-</Accordion>
-<Accordion title="Editing a monitor and the legacy retryStrategy field" id="legacy-retry-strategy">
-
-Updating a monitor's target, type, or configuration refreshes its scheduled checks. Paused monitors remain paused when their configuration changes.
-
-The legacy `config.retryStrategy` field is unsupported for monitors. It is accepted for compatibility but ignored; omit it from new configurations. It does not control execution retries. This deprecation does not change monitor execution or job retry behavior, and existing saved configurations require no migration.
-
-</Accordion>
-<Accordion title="Deleting stored artifacts" id="deleting-stored-artifacts">
-
-Deleting a resource with stored artifacts waits for storage cleanup to finish. If cleanup fails, Supercheck keeps the resource available for another deletion attempt. Restore storage access and retry; a partial cleanup may already have removed some artifacts.
-
-</Accordion>
-</Accordions>
 
 ## Next steps
 

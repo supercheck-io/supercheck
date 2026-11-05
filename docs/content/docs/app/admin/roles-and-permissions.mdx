@@ -151,14 +151,14 @@ Use the matrix below for each role's exact permissions and project scope.
 | **Create & update incidents** (assign, acknowledge, resolve, post updates) | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 | **Delete incidents** | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
 | **Watch or unwatch an incident** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Post an incident update to a status page** (also needs `status_page:update`) | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| **Edit a project's incident notifications** (needs `project:update`, see [Organization](/docs/app/admin/organization#projects)) | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
+| **Post an incident update to a status page** (also needs status page update permission) | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
+| **Edit a project's incident notifications** (needs project update permission, see [Organization](/docs/app/admin/organization#projects)) | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
 | **Investigate stored evidence** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 | **Configure & investigate live connectors** | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
 | **Approve topology suggestions** | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
 
 <Callout type="info">
-*\* Project Admin and Project Editor permissions apply only to their assigned projects. Project Editors can investigate stored evidence and manage incidents, but cannot query or configure live external connectors (`sre_connector:investigate`).*
+*\* Project Admin and Project Editor permissions apply only to their assigned projects. Project Editors can investigate stored evidence and manage incidents, but cannot query or configure live external connectors.*
 </Callout>
 
 </Tab>
@@ -196,7 +196,7 @@ These permissions are exclusive to **Super Admin** users:
 | **User Management** | View, ban, and unban any user |
 | **User Impersonation** | Log in as any user for troubleshooting |
 | **View All Organizations** | Access any organization's data |
-| **Queue Monitoring** | View and manage BullMQ job queues |
+| **Queue Monitoring** | View and manage job queues |
 | **System Statistics** | View platform-wide metrics |
 
 </Accordion>

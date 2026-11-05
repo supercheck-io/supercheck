@@ -22,9 +22,9 @@ icon: ShieldCheck
 |---|---|
 | Protocol | OAuth 2.1 with PKCE (S256) and resource indicators |
 | Scopes | `mcp:read` (always), optional `mcp:incidents:write` and `mcp:sre`, and `offline_access` for refresh. An optional tool works only while both your approval and the token carry its scope, and your role still allows the action |
-| Access token | Up to 15 minutes, bound to this server's URL |
-| Refresh token | 30 days, rotated on use. The previous token stays valid for 30 seconds so a retry after a dropped response still works |
-| Client registration | Dynamic registration (public clients only, limited to 5 per minute per IP), or Client ID Metadata Documents. Operators can require metadata documents only |
+| Access token | 15 minutes |
+| Refresh token | 30 days, rotated on use. The previous token keeps working for 30 seconds, so a retry after a dropped response succeeds |
+| Client registration | Public clients only, at most 5 registrations per minute per IP address |
 
 <Accordions>
 <Accordion title="What is filtered" id="what-is-filtered">
@@ -42,14 +42,14 @@ Tests, logs and incidents can contain text written by someone else. Tool descrip
 </Accordion>
 <Accordion title="Limits" id="limits">
 
-Each connected app may send up to 300 requests a minute, and all of your connected apps together up to 600 (every call in a batch counts as one request). An app may have at most 4 requests running at a time, and you at most 8 across your apps. A batch carries at most 20 calls. Over a limit, the server answers `429` with `Retry-After`. If the rate limiter itself is unavailable, it answers `503` with `Retry-After` and still refuses the call; an outage never lifts a limit.
+Each connected app may send up to 300 requests a minute, and all of your connected apps together up to 600 (every call in a batch counts as one request). An app may have at most 4 requests running at a time, and you at most 8 across your apps. A batch carries at most 20 calls. Over a limit, the server answers `429` with `Retry-After`.
 
-Resetting your password signs you out everywhere and disconnects every connected app, including one you reconnect before the cleanup has finished. Reconnect the ones you still use. If the cleanup cannot finish straight away it is retried automatically every hour. Job trigger keys used by pipelines are not affected.
+Resetting your password signs you out everywhere and disconnects every connected app. Reconnect the ones you still use. Job trigger keys used by pipelines are not affected.
 
 </Accordion>
 <Accordion title="Audit" id="audit">
 
-Tool calls (user, app, project, duration) and access-denied events (user, app, reason) are written to the audit log on a best-effort basis. Arguments and results are not stored.
+Tool calls (user, app, project, duration) and access-denied events (user, app, reason) are written to the audit log. Arguments and results are not stored.
 
 Self-hosted: see [Self-Hosted](/docs/app/deployment/self-hosted#connecting-ai-tools-mcp-off-by-default).
 
