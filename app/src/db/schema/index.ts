@@ -68,3 +68,5 @@ export * from "./deviceAuthorization";
 
 export * from "./execution-entitlements";
 export * from './run-callback';
+
+export * from "./email-suppression";

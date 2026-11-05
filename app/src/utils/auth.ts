@@ -135,6 +135,7 @@ async function deliverPasswordResetEmail({
     subject: emailContent.subject,
     text: emailContent.text,
     html: emailContent.html,
+    bypassSuppression: true,
   });
   if (!result.success) {
     throw new Error(`Failed to send password reset email: ${result.error}`);
@@ -273,6 +274,7 @@ export const auth = betterAuth({
               subject: emailContent.subject,
               text: emailContent.text,
               html: emailContent.html,
+              bypassSuppression: true,
             });
 
             if (!result.success) {
