@@ -107,7 +107,7 @@ async function main(): Promise<void> {
 
   // --- discovery
   const metadata = (await (await send("/api/auth/.well-known/oauth-authorization-server")).json()) as Record<string, unknown>;
-  check("advertises exactly mcp:read and offline_access", JSON.stringify(metadata.scopes_supported) === JSON.stringify(["mcp:read", "offline_access"]), JSON.stringify(metadata.scopes_supported));
+  check("advertises exactly the MCP scopes and offline_access", JSON.stringify(metadata.scopes_supported) === JSON.stringify(["mcp:read", "mcp:incidents:write", "mcp:sre", "offline_access"]), JSON.stringify(metadata.scopes_supported));
   check("supports only S256 PKCE", JSON.stringify(metadata.code_challenge_methods_supported) === JSON.stringify(["S256"]));
   check("supports Client ID Metadata Documents", metadata.client_id_metadata_document_supported === true);
   const grants = metadata.grant_types_supported as string[] | undefined;
@@ -277,7 +277,7 @@ async function main(): Promise<void> {
   const verified = await jwtVerify(tokens.access_token as string, createLocalJWKSet(jwks), { issuer: `${BASE}/api/auth`, audience: RESOURCE }).catch(() => null);
   check("the access token verifies against the JWKS for this issuer and the MCP audience", verified !== null);
   check("the token is bound to the MCP URL", claims.aud === RESOURCE || (Array.isArray(claims.aud) && claims.aud.includes(RESOURCE)));
-  check("the token carries only the read scope (plus refresh)", (claims as { scope?: string }).scope === "mcp:read offline_access", String((claims as { scope?: string }).scope));
+  check("the token carries only the scopes that were requested (plus refresh)", (claims as { scope?: string }).scope === "mcp:read offline_access", String((claims as { scope?: string }).scope));
   check("the token names the project the user chose", (claims as Record<string, unknown>)[MCP_PROJECT_CLAIM] === PROJECT);
   check("the token lives 15 minutes", (claims.exp ?? 0) - (claims.iat ?? 0) === 900, String((claims.exp ?? 0) - (claims.iat ?? 0)));
   const wrongAudience = await jwtVerify(tokens.access_token as string, createLocalJWKSet(jwks), { audience: "http://localhost:3000/api/other" }).catch(() => null);

@@ -41,6 +41,16 @@ describe("resolveMcpCallContext", () => {
     expect(resolveProjectPermissionContext).not.toHaveBeenCalled();
   });
 
+  it("grants optional scopes only when both the consent and the token carry them", async () => {
+    selectResults.push([{ banned: false }], [{ disabled: false }], [{ scopes: ["mcp:read", "mcp:sre", "mcp:incidents:write"] }]);
+    const ctx = await resolveMcpCallContext({ ...claims, scope: "mcp:read mcp:sre offline_access" });
+    expect(ctx.scopes).toEqual(["mcp:read", "mcp:sre"]);
+  });
+  it("gives a token with no scope claim the base scope only", async () => {
+    selectResults.push([{ banned: false }], [{ disabled: false }], [{ scopes: ["mcp:read", "mcp:sre"] }]);
+    expect((await resolveMcpCallContext(claims)).scopes).toEqual(["mcp:read"]);
+  });
+
   it("rejects a token without a project claim", async () => {
     await denied(resolveMcpCallContext({ sub: "u1", azp: "client" }), "token_missing_project");
   });
@@ -81,6 +91,6 @@ describe("resolveMcpCallContext", () => {
 describe("assertCanView", () => {
   it("throws when the role cannot view the resource", () => {
     checkPermissionWithContext.mockReturnValue(false);
-    expect(() => assertCanView({ userId: "u", clientId: "c", organizationId: "o", projectId: "p", role: "x" }, "job")).toThrow(McpAccessDeniedError);
+    expect(() => assertCanView({ userId: "u", clientId: "c", organizationId: "o", projectId: "p", role: "x", scopes: ["mcp:read"] }, "job")).toThrow(McpAccessDeniedError);
   });
 });

@@ -34,8 +34,8 @@ describe("MCP server flags", () => {
     },
   );
 
-  it("only ever offers the read scope and refresh", () => {
-    expect([...MCP_SCOPES]).toEqual(["mcp:read", "offline_access"]);
+  it("offers read, incident write, AI SRE and refresh", () => {
+    expect([...MCP_SCOPES]).toEqual(["mcp:read", "mcp:incidents:write", "mcp:sre", "offline_access"]);
   });
 });
 

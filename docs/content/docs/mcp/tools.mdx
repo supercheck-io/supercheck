@@ -1,10 +1,10 @@
 ---
 title: Tools
-description: Reference for the read-only tools the Supercheck MCP server exposes
+description: Reference for the tools the Supercheck MCP server exposes
 icon: Wrench
 ---
 
-Every tool is marked `readOnlyHint: true`, returns both `structuredContent` and a JSON text copy, and is limited to the project of the connection.
+Read tools are marked `readOnlyHint: true`; the optional tools below are not. Every tool returns both `structuredContent` and a JSON text copy, and is limited to the project of the connection.
 
 Returned text (test titles, error excerpts, incident summaries, investigation findings) comes from your systems and is treated as **untrusted data**: tool descriptions tell the AI never to follow instructions found in it.
 
@@ -12,7 +12,7 @@ Returned text (test titles, error excerpts, incident summaries, investigation fi
 
 | Tool | Needs permission to view | Arguments | Returns |
 |---|---|---|---|
-| `get_context` | project | none | The connected project and your role |
+| `get_context` | project | none | The connected project, your role and the scopes this connection holds |
 | `list_tests` | tests | `limit`, `cursor`, `type`, `priority`, `search` | `id`, `title`, `type`, `priority`, `updatedAt` (no scripts) |
 | `get_test` | tests | `id` | Metadata and description for one test (no script) |
 | `list_jobs` | jobs | `limit`, `cursor` | `id`, `name`, `jobType`, `status`, `cronSchedule`, `lastRunAt`, `nextRunAt` (no alert settings) |
@@ -32,7 +32,23 @@ Returned text (test titles, error excerpts, incident summaries, investigation fi
 | `get_incident` | incidents | `id` | One incident with `statusLabel`, its root-cause summary, resolution summary, assignment and acknowledgement, and `alertCount` (linked alerts) |
 | `list_investigations` | investigations | `limit`, `cursor`, `incidentId` | AI SRE investigation runs: `agentType`, `status`, start and end, `durationMs`, `confidenceScore` |
 | `get_investigation` | investigations | `id` | One investigation with its root-cause hypothesis and recommendations |
-| `prepare_local_authoring` | project | none | CLI commands for creating or editing tests, requirements and status pages (this server never writes) |
+| `prepare_local_authoring` | project | none | CLI commands for creating or editing tests, requirements and status pages (this server does not author tests) |
+
+
+## Optional tools
+
+Registered only when the connection holds the scope. Each call re-checks the scope and your live role, and writes an audit event (ids and timing, never arguments).
+
+| Tool | Scope | Needs permission | Arguments | Does |
+|---|---|---|---|---|
+| `assign_incident` | `mcp:incidents:write` | update incidents | `id`, `assigneeUserId` (or `null` to unassign), `role` (`assignee` or `commander`) | Assigns the incident or sets its commander |
+| `acknowledge_incident` | `mcp:incidents:write` | update incidents | `id` | Acknowledges it, claiming it for you if unassigned |
+| `resolve_incident` | `mcp:incidents:write` | update incidents | `id`, `resolutionSummary` (up to 2000 characters) | Resolves it with a summary |
+| `triage_incident` | `mcp:sre` | investigate incidents | `incidentId` | Starts AI triage |
+| `investigate_incident` | `mcp:sre` | investigate incidents | `incidentId`, `useLiveConnectors`, `guidance` | Starts a full investigation. Live connectors also need connector investigate permission |
+| `generate_incident_brief` | `mcp:sre` | investigate incidents | `incidentId` | Generates an evidence brief |
+
+The write tools run the same service code as the dashboard and `POST /api/sre/incidents/{id}/assign`, `/acknowledge` and `/resolve`, so notifications, timelines and rate limits behave the same. The `mcp:sre` tools use AI credits and apply the same checks as the dashboard (AI SRE enabled, plan, daily AI limit, rate limits). They return `accepted: true` at once; poll `list_investigations` with `incidentId`, then `get_investigation`. A Copilot chat is not available over MCP.
 
 <Accordions>
 <Accordion title="Paging" id="paging">
@@ -47,6 +63,8 @@ List tools accept `limit` (1 to 50, default 20) and `cursor`. When more results 
 | `forbidden` | Your role cannot view this kind of resource |
 | `not_found` | No such item in the connected project |
 | `internal_error` | The request failed; try again |
+| `rate_limited`, `daily_limit`, `subscription_required`, `unavailable`, `feature_disabled` | An `mcp:sre` start was refused by the same limits and plan checks as the dashboard |
+| `invalid`, `conflict` | An incident write was refused (for example an assignee who cannot act on incidents) |
 
 Invalid arguments (an `id` that is not a UUID, or a `limit` outside 1 to 50) return a validation error. Connection-level problems return HTTP errors instead, each as a JSON-RPC error with the code in `error.data.code`: `400` (`parse_error` when the body is not JSON, `batch_too_large` over 20 calls), `401` (sign in again), `403` (`access_denied` when access was removed, `invalid_request_origin`, or `insufficient_scope`), `404` (MCP is off), `405` (only POST is accepted), `413` (request over 1 MB), `429` (`rate_limited` or `too_many_concurrent_requests`, with `Retry-After`), `500` (`server_error`), `503` (`rate_limiter_unavailable` or `server_unavailable`, with `Retry-After` when the server can say when to retry).
 
@@ -57,12 +75,12 @@ Filters are optional and combine with paging. `list_runs` accepts `status` (`que
 </Accordion>
 <Accordion title="AI SRE" id="ai-sre">
 
-Investigation results that AI SRE already produced (hypotheses, confidence and recommendations) are readable, as are incidents and the service catalog. Starting an investigation, triage, a Copilot chat or an evidence brief is not available over MCP: those run AI work on your account and stream their output, so they stay in the dashboard and the CLI (`supercheck sre`).
+Results AI SRE already produced (hypotheses, confidence, recommendations) are readable with the base scope. Starting AI work needs `mcp:sre`, and always runs asynchronously: the tool returns before the run ends, so poll for the result. Copilot chat stays in the dashboard and the CLI (`supercheck sre ask`).
 
 </Accordion>
 <Accordion title="Not available" id="not-available">
 
-Writes of any kind, starting AI SRE work, test scripts, variable values, monitor credentials and request settings, notification channels, status page subscribers, run reports and artifact files, investigation evidence and tool calls, and an incident timeline. Use the [CLI](/docs/cli/commands) for authoring and deploys.
+Creating, editing or deleting tests, monitors, jobs and variables, test scripts, variable values, monitor credentials and request settings, notification channels, status page subscribers, run reports and artifact files, investigation evidence and tool calls, and an incident timeline. Use the [CLI](/docs/cli/commands) for authoring and deploys.
 
 </Accordion>
 </Accordions>

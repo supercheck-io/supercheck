@@ -2,6 +2,20 @@ import { createHash } from "node:crypto";
 import { apiKeyRateLimiter } from "@/lib/api-key-rate-limiter";
 import { getClientIP } from "@/lib/session-security";
 
+/**
+ * Copies a request with new headers. `new Request(request, init)` throws a private-field error on the request
+ * objects Next.js hands to route handlers, so the parts are copied instead.
+ */
+export function requestWithHeaders(request: Request, headers: Headers): Request {
+  const hasBody = request.method !== "GET" && request.method !== "HEAD";
+  return new Request(request.url, {
+    method: request.method,
+    headers,
+    signal: request.signal,
+    ...(hasBody ? { body: request.body, duplex: "half" } : {}),
+  } as RequestInit);
+}
+
 const LIMITS: Record<string, number> = {
   "/api/auth/oauth2/register": 5,
   "/api/auth/oauth2/authorize": 30,
@@ -37,5 +51,5 @@ export async function prepareMcpOAuthRequest(request: Request): Promise<Request 
   headers.set("x-forwarded-for", ip);
   headers.delete("cf-connecting-ip");
   headers.delete("x-real-ip");
-  return new Request(request, { headers });
+  return requestWithHeaders(request, headers);
 }

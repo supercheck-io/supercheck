@@ -48,6 +48,14 @@ supercheck agent install --target claude   # or cursor, codex, opencode, generic
 
 Existing files are never overwritten without `--force`. See [Commands](/docs/cli/commands) for every flag.
 
+## Let the agent read your project over MCP
+
+For questions about runs, monitors and incidents, connect the [MCP server](/docs/mcp/connect) too. It is read-only by default; `mcp:incidents:write` (assign, acknowledge, resolve) and `mcp:sre` (start AI SRE analysis) are optional scopes an app can request; you approve or deny the whole request in one browser screen.
+
+## Self-hosted
+
+Browser sign-in needs `DEVICE_AUTH_ENABLED=true` on the server. Without it `supercheck login` says so; use `--token` with a CLI token instead.
+
 ## Guardrails
 
 | Rule | Detail |

@@ -1,3 +1,4 @@
+import { ignoreBrokenPipe } from '../utils/broken-pipe.js'
 import { agentCommand } from '../commands/agent.js'
 import { discoverCommand } from '../commands/discover.js'
 import { onboardCommand } from '../commands/onboard.js'
@@ -203,6 +204,9 @@ function configureErrors(command: Command): void {
   for (const child of command.commands) configureErrors(child)
 }
 configureErrors(program)
+
+ignoreBrokenPipe(process.stdout)
+ignoreBrokenPipe(process.stderr)
 
 async function main(): Promise<void> {
   try {
