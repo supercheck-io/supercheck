@@ -146,9 +146,21 @@ function clip(
 function credentialSecrets(job: LeasedJob): string[] {
   return (
     Object.values(job.credential?.value ?? {})
-      .filter((v): v is string => typeof v === 'string')
+      // Numbers too: credentialString sends a numeric secret as String(value).
+      .filter(
+        (v): v is string | number =>
+          typeof v === 'string' || typeof v === 'number',
+      )
+      .map(String)
       // Also the URL-encoded form: sourceUri values are built with encodeURIComponent.
-      .flatMap((v) => [...new Set([v, encodeURIComponent(v)])])
+      .flatMap((v) => {
+        try {
+          return [...new Set([v, encodeURIComponent(v)])];
+        } catch {
+          // A lone surrogate can't be URI-encoded; the raw value still applies.
+          return [v];
+        }
+      })
   );
 }
 
@@ -1127,7 +1139,13 @@ async function executeDatadog(
         sourceUri,
         title: `Datadog event: ${title}`,
         summary: clip(
-          [item.alert_type, item.source, item.host, clip(item.text, 180)]
+          [
+            item.alert_type,
+            item.source,
+            item.host,
+            // Redact before this cut too, or a secret straddling char 180 keeps its prefix.
+            clip(item.text, 180, credentialSecrets(job)),
+          ]
             .filter(Boolean)
             .join(' - '),
           2000,

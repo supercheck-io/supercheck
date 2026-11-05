@@ -77,10 +77,14 @@ function detectK6Script(script: string): boolean | undefined {
 
 /** Job and requirement test references are exact names or UUIDs; a glob can never resolve, so deploy would reject it. */
 export function rejectGlobTestRefs(resources: Array<{ type: string; name: string; definition: Record<string, unknown> }>): void {
+  // A ref that exactly names a local test resolves by name, even with a literal `*`.
+  const localTestNames = new Set(resources.filter((r) => r.type === 'test').map((r) => r.name))
   for (const resource of resources) {
     if ((resource.type !== 'job' && resource.type !== 'requirement') || !Array.isArray(resource.definition.tests)) continue
     // Only `*`: brackets, braces and `?` can appear in real test file names.
-    const glob = resource.definition.tests.map(String).find((ref) => ref.includes('*'))
+    const glob = resource.definition.tests
+      .map(String)
+      .find((ref) => ref.includes('*') && !localTestNames.has(ref.replace(/^_supercheck_\//, '')))
     if (glob) throw new CLIError(`${resource.type}/${resource.name}: test reference "${glob}" is a glob pattern. List each test by name or UUID.`, ExitCode.ConfigError)
   }
 }

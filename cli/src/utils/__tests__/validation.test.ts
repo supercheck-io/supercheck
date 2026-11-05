@@ -29,6 +29,13 @@ describe('rejectGlobTestRefs', () => {
     expect(() => rejectGlobTestRefs([{ type: 'requirement', name: 'r', definition: { tests: ['**/*.pw.ts'] } }])).toThrow(CLIError)
   })
 
+  it('accepts a reference that exactly names a local test, even with a literal `*`', () => {
+    expect(() => rejectGlobTestRefs([
+      { type: 'test', name: 'star*.pw.ts', definition: {} },
+      { type: 'job', name: 'j', definition: { tests: ['star*.pw.ts', '_supercheck_/star*.pw.ts'] } },
+    ])).not.toThrow()
+  })
+
   it('accepts names with brackets or braces, UUIDs, and other resource types', () => {
     expect(() => rejectGlobTestRefs([
       { type: 'job', name: 'j', definition: { tests: ['checkout [smoke].pw.ts', '{a}.pw.ts', '018f0000-0000-7000-8000-000000000001'] } },

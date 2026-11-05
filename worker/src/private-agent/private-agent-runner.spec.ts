@@ -238,6 +238,66 @@ describe('private agent connector execution', () => {
     );
   });
 
+  it('redacts a Datadog secret that straddles the 180-character text cut', async () => {
+    const secret = 'straddle_secret_value';
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        events: [{ id: 8, title: 't', text: `${'a'.repeat(170)}${secret}` }],
+      }),
+    });
+
+    const result = await executePrivateAgentConnectorJob({
+      ...baseJob,
+      credential: {
+        credentialType: 'api_key',
+        value: { apiKey: secret, applicationKey: 'dd_app' },
+      },
+      jobSpec: {
+        ...baseJob.jobSpec,
+        connectorType: 'datadog',
+        endpointUrl: 'https://api.datadoghq.com',
+        query: 'service:checkout',
+      },
+    });
+
+    expect(result.evidence[0].summary).not.toContain(secret.slice(0, 10));
+  });
+
+  it('redacts numeric secrets and tolerates a credential with a lone surrogate', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        data: {
+          result: [
+            {
+              stream: { pin: '98765432' },
+              values: [['1782120000000000000', 'error']],
+            },
+          ],
+        },
+      }),
+    });
+
+    const result = await executePrivateAgentConnectorJob({
+      ...baseJob,
+      credential: {
+        credentialType: 'bearer_token',
+        value: { secret: 98765432, note: 'bad\uD800' },
+      },
+      jobSpec: {
+        ...baseJob.jobSpec,
+        connectorType: 'loki',
+        endpointUrl: 'https://loki.internal',
+        query: '{app="checkout"}',
+      },
+    } as unknown as Parameters<typeof executePrivateAgentConnectorJob>[0]);
+
+    expect(result.evidence[0].summary).not.toContain('98765432');
+  });
+
   it('clips and redacts Loki label summaries and source URLs', async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,

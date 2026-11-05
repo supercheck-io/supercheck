@@ -37,7 +37,7 @@ describe("unsubscribe rate limit", () => {
     limiter.mockResolvedValue({ allowed: false });
 
     expect(await unsubscribeFromStatusPage(token)).toMatchObject({ success: false, rateLimited: true, retryAfter: 600 });
-    expect(await getSubscriberByToken(token)).toEqual({ success: false, subscriber: null });
+    expect(await getSubscriberByToken(token)).toEqual({ success: false, subscriber: null, rateLimited: true, retryAfter: 600 });
     expect(findFirst).not.toHaveBeenCalled();
   });
 
@@ -53,13 +53,36 @@ describe("unsubscribe rate limit", () => {
     expect(findFirst).toHaveBeenCalled();
   });
 
-  it("gives callers with an unresolved IP a larger shared bucket", async () => {
-    (headers as jest.Mock).mockResolvedValue(new Headers());
+  it("uses a different bucket for each client IP", async () => {
     limiter.mockResolvedValue({ allowed: true });
+    await unsubscribeFromStatusPage(token);
+    (headers as jest.Mock).mockResolvedValue(new Headers({ "x-forwarded-for": "198.51.100.9" }));
+    await unsubscribeFromStatusPage(token);
+
+    expect(limiter.mock.calls[0][0]).not.toBe(limiter.mock.calls[1][0]);
+  });
+
+  it("skips the per-IP cap when the client IP can't be resolved, so no shared bucket exists", async () => {
+    (headers as jest.Mock).mockResolvedValue(new Headers());
 
     await unsubscribeFromStatusPage(token);
 
-    expect(limiter.mock.calls[0][1]).toMatchObject({ maxRequests: 600 });
+    expect(limiter).not.toHaveBeenCalled();
+    expect(findFirst).toHaveBeenCalled();
+  });
+
+  it("fails open when the limiter does not answer in time", async () => {
+    jest.useFakeTimers();
+    jest.spyOn(console, "error").mockImplementation(() => {});
+    limiter.mockReturnValue(new Promise(() => {}));
+    try {
+      const pending = getSubscriberByToken(token);
+      await jest.advanceTimersByTimeAsync(2000);
+      await pending;
+      expect(findFirst).toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it("fails open when the limiter is unavailable", async () => {

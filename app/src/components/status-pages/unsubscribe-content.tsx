@@ -13,7 +13,8 @@ import {
 import { getTranslations } from "@/lib/status-page-translations";
 
 export function UnsubscribeContent({ token }: { token: string }) {
-  const [loadingState, setLoadingState] = useState<"loading" | "loaded" | "error">("loading");
+  const [loadingState, setLoadingState] = useState<"loading" | "loaded" | "error" | "rate_limited">("loading");
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [unsubscribeState, setUnsubscribeState] = useState<
     "pending" | "success" | "error" | "already_unsubscribed"
   >("pending");
@@ -40,12 +41,13 @@ export function UnsubscribeContent({ token }: { token: string }) {
           setUnsubscribeState("already_unsubscribed");
         }
       } else {
-        setLoadingState("error");
+        // A throttled lookup is temporary; don't call a valid link invalid.
+        setLoadingState("rateLimited" in result && result.rateLimited ? "rate_limited" : "error");
       }
     };
 
     loadSubscriber();
-  }, [token]);
+  }, [token, loadAttempt]);
 
   const t = getTranslations(subscriber?.statusPage?.language || "en");
 
@@ -78,6 +80,25 @@ export function UnsubscribeContent({ token }: { token: string }) {
         <Loader2 className="h-16 w-16 text-muted-foreground mx-auto mb-4 animate-spin" />
         <h2 className="text-2xl font-semibold mb-2">{t.loading}</h2>
         <p className="text-muted-foreground">{t.pleaseWait}</p>
+      </div>
+    );
+  }
+
+  if (loadingState === "rate_limited") {
+    return (
+      <div className="text-center py-12">
+        <AlertCircle className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+        <h2 className="text-2xl font-semibold mb-2">{t.unsubscribeError}</h2>
+        <p className="text-muted-foreground mb-6">{t.unsubscribeErrorDescription}</p>
+        <Button
+          variant="outline"
+          onClick={() => {
+            setLoadingState("loading");
+            setLoadAttempt((n) => n + 1);
+          }}
+        >
+          {t.unsubscribe}
+        </Button>
       </div>
     );
   }

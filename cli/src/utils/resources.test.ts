@@ -14,6 +14,21 @@ function paginatedEmptyResponse() {
   }
 }
 
+describe('job test reference normalization', () => {
+  it('keeps a glob as written instead of binding it to the UUID it ends with', () => {
+    const uuid = '019efa02-c173-7608-9c9d-7e5bc3661fb8'
+    const config = {
+      schemaVersion: '1.0',
+      project: { organization: 'org-id', project: 'project-id' },
+      jobs: [{ name: 'nightly', tests: [`checkout*.${uuid}.pw.ts`, `login.${uuid}.pw.ts`] }],
+    } as unknown as SupercheckConfig
+
+    const job = buildLocalResources(config, process.cwd()).find((r) => r.type === 'job')
+
+    expect(job?.definition.tests).toEqual([`checkout*.${uuid}.pw.ts`, uuid])
+  })
+})
+
 describe('notification provider resources', () => {
   it('includes notification providers in local resources', () => {
     const config: SupercheckConfig = {

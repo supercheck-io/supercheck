@@ -640,14 +640,17 @@ describe('read-only and operational commands', () => {
       mockLoadConfig.mockResolvedValueOnce({ config, configPath: '/repo/supercheck.config.ts' })
       mockBuildLocalResources.mockReturnValueOnce([
         { type: 'requirement', name: 'Login', definition: { tests: ['_supercheck_/playwright/home.pw.ts', '019a0000-0000-7000-8000-000000000001', 'gone.pw.ts'] } },
+        // A UUID in the middle of a name is not an id; deploy can't resolve it either.
+        { type: 'job', name: 'Nightly', definition: { tests: ['missing-019a0000-0000-7000-8000-000000000001-other'] } },
         { type: 'test', name: 'playwright/home.pw.ts', definition: { script: 'page.goto()', testType: 'playwright' } },
       ])
       mockValidateScripts.mockResolvedValueOnce([{ name: 'playwright/home.pw.ts', valid: true }])
 
       await validateCommand.parseAsync(['node', 'validate'])
 
-      expect(mockWarn).toHaveBeenCalledTimes(1)
+      expect(mockWarn).toHaveBeenCalledTimes(2)
       expect(mockWarn).toHaveBeenCalledWith(expect.stringContaining('requirement/Login: test reference "gone.pw.ts" matches no local test file'))
+      expect(mockWarn).toHaveBeenCalledWith(expect.stringContaining('job/Nightly: test reference "missing-019a0000'))
     })
 
     it('warns when a job cron is not 5 fields', async () => {
