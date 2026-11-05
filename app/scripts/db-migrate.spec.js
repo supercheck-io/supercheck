@@ -1,4 +1,4 @@
-const { resolveDeferredTarget, setStatementTimeout, hasNoTransactionMarker, concurrentIndexNames, concurrentIndexes, assertDeferredFileRerunnable } = require("./db-migrate.js");
+const { looksPooled, setStatementTimeout, hasNoTransactionMarker, concurrentIndexNames, concurrentIndexes, assertDeferredFileRerunnable } = require("./db-migrate.js");
 
 describe("db-migrate no-transaction files", () => {
   it("detects the file-level marker only as its own comment line", () => {
@@ -48,25 +48,14 @@ describe("setStatementTimeout", () => {
   });
 });
 
-describe("resolveDeferredTarget", () => {
-  const pooled = "postgresql://u:p@db.example.com:6432/app";
-  it("uses the direct MIGRATION_DATABASE_URL when set, with the timeout", () => {
-    expect(resolveDeferredTarget(pooled, " postgresql://u:p@db.example.com:5432/app ")).toEqual({
-      url: "postgresql://u:p@db.example.com:5432/app",
-      useStatementTimeout: true,
-    });
-  });
-  it("skips the SET when falling back to a pooled URL", () => {
-    for (const url of [pooled, "postgresql://u:p@x-pgbouncer.internal/app", "postgresql://u:p@h/app?host=db-pooler.internal", "postgresql://u:p@db-pooler.example.com/app", "postgresql://u:p@db.example.com:5432/app?pgbouncer=true"]) {
-      expect(resolveDeferredTarget(url, "")).toEqual({ url, useStatementTimeout: false });
+describe("looksPooled", () => {
+  it("detects a pooler by port, hostname, host parameter or pgbouncer flag", () => {
+    for (const url of ["postgresql://u:p@db.example.com:6432/app", "postgresql://u:p@x-pgbouncer.internal/app", "postgresql://u:p@h/app?host=db-pooler.internal", "postgresql://u:p@db-pooler.example.com/app", "postgresql://u:p@db.example.com:5432/app?pgbouncer=true"]) {
+      expect(looksPooled(url)).toBe(true);
     }
   });
-  it("ignores unrelated query parameters when detecting a pooler", () => {
-    const url = "postgresql://u:p@db.example.com:5432/app?application_name=pooler-maintenance";
-    expect(resolveDeferredTarget(url, "")).toEqual({ url, useStatementTimeout: true });
-  });
-  it("still sets the timeout on a non-pooled fallback", () => {
-    const url = "postgresql://u:p@db.example.com:5432/app";
-    expect(resolveDeferredTarget(url, "  ")).toEqual({ url, useStatementTimeout: true });
+  it("treats a direct URL as not pooled, ignoring unrelated parameters", () => {
+    expect(looksPooled("postgresql://u:p@db.example.com:5432/app")).toBe(false);
+    expect(looksPooled("postgresql://u:p@db.example.com:5432/app?application_name=pooler-maintenance")).toBe(false);
   });
 });
