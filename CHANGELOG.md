@@ -6,6 +6,8 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-11-05
+
 This release adds incident watchers, a per-project notification policy and an AI-assisted incident workflow, with a broad database hardening pass (relationships, constraints, timestamps, indexes) that needs migrations applied before you update.
 
 ### Upgrade notes
@@ -370,7 +372,8 @@ Read these before upgrading a self-hosted installation.
 - Add test execution, reports, and results visualization.
 - Add project and team management, authentication, and authorization.
 
-[Unreleased]: https://github.com/supercheck-io/supercheck/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/supercheck-io/supercheck/compare/v1.5.1...HEAD
+[1.5.1]: https://github.com/supercheck-io/supercheck/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/supercheck-io/supercheck/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/supercheck-io/supercheck/compare/v1.3.6...v1.4.0
 [1.3.6]: https://github.com/supercheck-io/supercheck/compare/v1.3.5...v1.3.6

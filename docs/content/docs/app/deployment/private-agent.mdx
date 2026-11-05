@@ -80,7 +80,7 @@ Copy the **Agent ID** and **Registration token**. The dialog also shows the envi
     ```bash
     mkdir -p ~/supercheck-private-agent
     cd ~/supercheck-private-agent
-    curl -fsSL -o docker-compose-private-agent.yml https://raw.githubusercontent.com/supercheck-io/supercheck/v1.5.0/deploy/docker/docker-compose-private-agent.yml
+    curl -fsSL -o docker-compose-private-agent.yml https://raw.githubusercontent.com/supercheck-io/supercheck/v1.5.1/deploy/docker/docker-compose-private-agent.yml
     ```
 
     Create `.env` beside it, using your dashboard's HTTPS origin without `/api`:
@@ -89,7 +89,7 @@ Copy the **Agent ID** and **Registration token**. The dialog also shows the envi
     SUPERCHECK_API_URL=https://your-supercheck-instance.example
     PRIVATE_AGENT_ID=your-agent-id
     PRIVATE_AGENT_TOKEN=your-registration-token
-    SUPERCHECK_VERSION=1.5.0
+    SUPERCHECK_VERSION=1.5.1
     ```
 
     ```bash

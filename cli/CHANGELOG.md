@@ -4,6 +4,8 @@ Notable changes to `@supercheck/cli`. The format follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-05
+
 ### Added
 
 - `project members [projectId]` lists the project's members and their roles (defaults to the current project).
@@ -138,7 +140,8 @@ Requirements, status pages, test priority and tags now work from the terminal an
 
 - First tracked release of `@supercheck/cli`.
 
-[Unreleased]: https://github.com/supercheck-io/supercheck/compare/cli-v0.4.0...HEAD
+[Unreleased]: https://github.com/supercheck-io/supercheck/compare/cli-v0.5.0...HEAD
+[0.5.0]: https://github.com/supercheck-io/supercheck/compare/cli-v0.4.0...cli-v0.5.0
 [0.4.0]: https://github.com/supercheck-io/supercheck/compare/cli-v0.3.2...cli-v0.4.0
 [0.3.2]: https://github.com/supercheck-io/supercheck/compare/cli-v0.2.1...cli-v0.3.2
 [0.2.1]: https://github.com/supercheck-io/supercheck/releases/tag/cli-v0.2.1
