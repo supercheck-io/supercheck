@@ -1,5 +1,6 @@
 import type { ApiClient } from '../api/client.js'
 import { ApiRequestError, CLIError, ExitCode, TimeoutError } from './errors.js'
+import { publicReportUrl } from './report-url.js'
 
 const terminalSuccess = ['passed', 'completed', 'success']
 const terminalFailure = ['failed', 'error', 'blocked', 'cancelled', 'canceled', 'aborted']
@@ -24,7 +25,7 @@ export async function waitForRun(client: ApiClient, runId: string, timeoutMs: nu
       const { data } = await client.request<Record<string, unknown>>('GET', `/api/runs/${runId}`, { timeout: pollTimeout(deadline - Date.now()), retries: 0 })
       lastError = undefined
       const status = String(data.status ?? '').toLowerCase()
-      if (terminalSuccess.includes(status)) return data
+      if (terminalSuccess.includes(status)) return publicReportUrl(client, data)
       if (terminalFailure.includes(status)) throw new CLIError(`Run ${runId} ended with status ${status}.`, ExitCode.GeneralError, { runId, status })
     } catch (error) {
       if (!isTransient(error)) throw error

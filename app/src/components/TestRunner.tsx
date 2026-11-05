@@ -168,7 +168,7 @@ export default function TestRunner() {
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                View Report (S3 Link)
+                View Report
               </a>
             ) : (
               <p>(Report URL not available)</p>

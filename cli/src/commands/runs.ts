@@ -8,15 +8,9 @@ import { CLIError, ExitCode } from '../utils/errors.js'
 import type { PaginatedResponse } from '../api/client.js'
 import { withSpinner } from '../utils/spinner.js'
 import { getSse } from '../utils/sse.js'
+import { publicReportUrl } from '../utils/report-url.js'
 
-/**
- * The API stores the report's storage location (an internal host such as http://rustfs:9000/...).
- * Show the address that works from outside: the application's own report route.
- */
-export function publicReportUrl(client: { getBaseUrl(): string }, run: Record<string, unknown>): Record<string, unknown> {
-  if (typeof run.reportUrl !== 'string' || !run.reportUrl || typeof run.id !== 'string') return run
-  return { ...run, reportUrl: `${client.getBaseUrl().replace(/\/$/, '')}/api/test-results/${encodeURIComponent(run.id)}/report/index.html` }
-}
+export { publicReportUrl }
 
 export const runCommand = new Command('run')
   .description('Manage runs')
@@ -80,7 +74,7 @@ runCommand
       'Fetching run status',
       () => client.get<Record<string, unknown>>(`/api/runs/${id}/status`),
     )
-    outputDetail(data)
+    outputDetail(publicReportUrl(client, data))
   })
 
 runCommand

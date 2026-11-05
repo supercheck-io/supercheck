@@ -1,3 +1,7 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 jest.mock('node:dns/promises', () => ({
   lookup: jest.fn().mockResolvedValue([{ address: '10.0.0.5', family: 4 }]),
 }));
@@ -940,6 +944,34 @@ describe('private agent connector execution', () => {
 
     await expect(exchangeRegistrationToken(config)).resolves.toBe(config);
     expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('refuses to spend the registration token when the credential file cannot be written', async () => {
+    // A regular file as the parent directory fails for every user, root included.
+    const dir = mkdtempSync(join(tmpdir(), 'pa-cred-'));
+    const blocker = join(dir, 'not-a-dir');
+    writeFileSync(blocker, '');
+    const config: PrivateAgentConfig = {
+      apiUrl: 'https://app.supercheck.io',
+      agentId: '018f0000-0000-7000-8000-000000000001',
+      token: 'scpa_registration',
+      tokenSource: 'env',
+      credentialFile: join(blocker, 'private-agent-token'),
+      agentVersion: '1.3.6',
+      retryIntervalMs: 5_000,
+      leaseWaitMs: 25_000,
+      heartbeatIntervalMs: 30_000,
+    };
+    global.fetch = jest.fn();
+
+    try {
+      await expect(exchangeRegistrationToken(config)).rejects.toThrow(
+        /is not writable/,
+      );
+      expect(global.fetch).not.toHaveBeenCalled();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 
