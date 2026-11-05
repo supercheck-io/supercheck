@@ -2,14 +2,16 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { toast } from "sonner";
 
 import { addSreIncidentUpdate } from "@/actions/sre-incident-lifecycle";
+import { draftSreStatusUpdate } from "@/actions/sre-status-update-draft";
 
 import { aiFindingHeadline, describeTimelineEvent, IncidentTimeline } from "./incident-timeline";
 
 const mockInvalidate = jest.fn().mockResolvedValue(undefined);
 let mockQuery: { isPending: boolean; isError?: boolean; data?: unknown; refetch?: () => void };
 
-jest.mock("sonner", () => ({ toast: { error: jest.fn() } }));
+jest.mock("sonner", () => ({ toast: { error: jest.fn(), warning: jest.fn() } }));
 jest.mock("@/actions/sre-incident-lifecycle", () => ({ addSreIncidentUpdate: jest.fn() }));
+jest.mock("@/actions/sre-status-update-draft", () => ({ draftSreStatusUpdate: jest.fn() }));
 jest.mock("@tanstack/react-query", () => ({ useQueryClient: () => ({ invalidateQueries: mockInvalidate }) }));
 jest.mock("@/hooks/use-sre", () => ({ useSreIncidentTimeline: () => mockQuery }));
 jest.mock("@/hooks/use-project-context", () => ({ useProjectContext: () => ({ projectId: "project-1" }) }));
@@ -24,6 +26,41 @@ const ready = (events: unknown[]) => { mockQuery = { isPending: false, data: { s
 beforeEach(() => {
   jest.clearAllMocks();
   ready([]);
+});
+
+describe("describeTimelineEvent before and after detail", () => {
+  const refs = { users: { u1: "Ada", u2: "Grace" }, alerts: { a1: "API latency high" } };
+
+  it("shows old and new values for an edit", () => {
+    const event = { eventType: "state_change", eventData: { state: "incident_updated", previous: { title: "A", severity: "sev3", status: "investigating" }, current: { title: "B", severity: "sev1", status: "investigating" } } };
+    expect(describeTimelineEvent(event).body).toBe('Title: "A" → "B"\nSeverity: SEV3 → SEV1');
+  });
+
+  it("shows a title edit made after character 200", () => {
+    const base = "x".repeat(250);
+    const event = { eventType: "state_change", eventData: { state: "incident_updated", previous: { title: `${base}a` }, current: { title: `${base}b` } } };
+    expect(describeTimelineEvent(event).body).toBe(`Title: "${base}a" → "${base}b"`);
+  });
+
+  it("still renders an edit recorded without values", () => {
+    expect(describeTimelineEvent({ eventType: "state_change", eventData: { state: "incident_updated" } })).toEqual({ title: "Incident updated", body: null });
+  });
+
+  it("resolves user names for a reassignment and handles unassigned", () => {
+    expect(describeTimelineEvent({ eventType: "state_change", eventData: { state: "assigned", previousAssigneeUserId: "u1", assigneeUserId: "u2" } }, refs).body).toBe("Ada → Grace");
+    expect(describeTimelineEvent({ eventType: "state_change", eventData: { state: "assigned", previousAssigneeUserId: null, assigneeUserId: "gone" } }, refs).body).toBe("Unassigned → a former member");
+  });
+
+  it("names the correlated alert", () => {
+    expect(describeTimelineEvent({ eventType: "state_change", eventData: { state: "alert_correlated", alertEventId: "a1" } }, refs).body).toBe("Linked: API latency high");
+    expect(describeTimelineEvent({ eventType: "state_change", eventData: { state: "alert_correlated", alertEventId: "x" } }, refs).body).toBeNull();
+    expect(describeTimelineEvent({ eventType: "state_change", eventData: { state: "alert_correlated", alertEventId: "x", alertTitle: "Recorded name" } }, refs).body).toBe("Linked: Recorded name");
+  });
+
+  it("uses the user-facing status labels", () => {
+    const event = { eventType: "state_change", eventData: { state: "incident_updated", previous: { status: "user_applying_fix" }, current: { status: "verifying" } } };
+    expect(describeTimelineEvent(event).body).toBe("Status: Fixing → Monitoring");
+  });
 });
 
 describe("describeTimelineEvent", () => {
@@ -123,7 +160,60 @@ describe("IncidentTimeline", () => {
     await waitFor(() => expect(mockInvalidate).toHaveBeenCalled());
     expect(addUpdate).toHaveBeenCalledWith({ incidentId: "i1", text: "Fix deployed" });
     expect(mockInvalidate).toHaveBeenCalledWith({ queryKey: expect.arrayContaining(["project-1", "i1"]) });
+    // Both the timeline and the detail (watch state) are refreshed.
+    expect(mockInvalidate).toHaveBeenCalledTimes(2);
     expect(box).toHaveValue("");
+  });
+
+  it("offers the status page checkbox only when allowed, and sends the flag only when ticked", async () => {
+    addUpdate.mockResolvedValue({ success: true });
+    const { unmount } = render(<IncidentTimeline incidentId="i1" canUpdate />);
+    expect(screen.queryByLabelText(/Also post to status page/)).not.toBeInTheDocument();
+    unmount();
+    render(<IncidentTimeline incidentId="i1" canUpdate canPostToStatusPage />);
+    fireEvent.change(screen.getByPlaceholderText("Add a note for your team..."), { target: { value: "Customers affected" } });
+    fireEvent.click(screen.getByLabelText(/Also post to status page/));
+    fireEvent.click(screen.getByRole("button", { name: "Add note" }));
+    await waitFor(() => expect(addUpdate).toHaveBeenCalledWith({ incidentId: "i1", text: "Customers affected", postToStatusPage: true }));
+  });
+
+  it("fills the box with an AI draft for the person to edit, and posts nothing by itself", async () => {
+    (draftSreStatusUpdate as jest.Mock).mockResolvedValue({ success: true, text: "We are investigating elevated errors." });
+    render(<IncidentTimeline incidentId="i1" canUpdate />);
+    fireEvent.click(screen.getByRole("button", { name: /Draft customer update with AI/ }));
+    await waitFor(() => expect(screen.getByPlaceholderText("Add a note for your team...")).toHaveValue("We are investigating elevated errors."));
+    expect(draftSreStatusUpdate).toHaveBeenCalledWith({ incidentId: "i1" });
+    expect(addUpdate).not.toHaveBeenCalled();
+  });
+
+  it("locks the composer while a draft is generating so typed text is not overwritten", async () => {
+    let finish: (value: unknown) => void = () => undefined;
+    (draftSreStatusUpdate as jest.Mock).mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+    render(<IncidentTimeline incidentId="i1" canUpdate />);
+    fireEvent.change(screen.getByPlaceholderText("Add a note for your team..."), { target: { value: "typing" } });
+    fireEvent.click(screen.getByRole("button", { name: /Draft customer update with AI/ }));
+    expect(screen.getByPlaceholderText("Add a note for your team...")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Add note" })).toBeDisabled();
+    finish({ success: true, text: "Drafted" });
+    await waitFor(() => expect(screen.getByPlaceholderText("Add a note for your team...")).toHaveValue("Drafted"));
+    expect(screen.getByPlaceholderText("Add a note for your team...")).not.toBeDisabled();
+  });
+
+  it("toasts and leaves the box alone when drafting is refused", async () => {
+    (draftSreStatusUpdate as jest.Mock).mockResolvedValue({ success: false, error: "AI drafts need a paid plan" });
+    render(<IncidentTimeline incidentId="i1" canUpdate />);
+    fireEvent.change(screen.getByPlaceholderText("Add a note for your team..."), { target: { value: "mine" } });
+    fireEvent.click(screen.getByRole("button", { name: /Draft customer update with AI/ }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("AI drafts need a paid plan"));
+    expect(screen.getByPlaceholderText("Add a note for your team...")).toHaveValue("mine");
+  });
+
+  it("warns when the note was saved but the status page post failed", async () => {
+    addUpdate.mockResolvedValue({ success: true, warning: "The status page post failed: nope" });
+    render(<IncidentTimeline incidentId="i1" canUpdate canPostToStatusPage />);
+    fireEvent.change(screen.getByPlaceholderText("Add a note for your team..."), { target: { value: "x" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add note" }));
+    await waitFor(() => expect(toast.warning).toHaveBeenCalledWith("The status page post failed: nope"));
   });
 
   it.each([

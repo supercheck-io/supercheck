@@ -39,9 +39,9 @@ x-common-env: &common-env # Database Configuration
   REDIS_TLS_REJECT_UNAUTHORIZED: ${REDIS_TLS_REJECT_UNAUTHORIZED:-false}
 
   # App Configuration
-  NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-${APP_DOMAIN:+https://}${APP_DOMAIN:-http://localhost:3000}}
-  APP_URL: ${APP_URL:-${NEXT_PUBLIC_APP_URL:-${APP_DOMAIN:+https://}${APP_DOMAIN:-http://localhost:3000}}}
-  BETTER_AUTH_URL: ${BETTER_AUTH_URL:-${NEXT_PUBLIC_APP_URL:-${APP_DOMAIN:+https://}${APP_DOMAIN:-http://localhost:3000}}}
+  NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-${APP_DOMAIN:+https://}${APP_DOMAIN:-http://localhost:${APP_HOST_PORT:-3000}}}
+  APP_URL: ${APP_URL:-${NEXT_PUBLIC_APP_URL:-${APP_DOMAIN:+https://}${APP_DOMAIN:-http://localhost:${APP_HOST_PORT:-3000}}}}
+  BETTER_AUTH_URL: ${BETTER_AUTH_URL:-${NEXT_PUBLIC_APP_URL:-${APP_DOMAIN:+https://}${APP_DOMAIN:-http://localhost:${APP_HOST_PORT:-3000}}}}
 
   # Status Page Domain Configuration
   STATUS_PAGE_DOMAIN: ${STATUS_PAGE_DOMAIN:-${APP_DOMAIN:-localhost}}
@@ -339,7 +339,7 @@ services:
   app:
     image: ghcr.io/supercheck-io/supercheck/app:${SUPERCHECK_VERSION:-1.5.0}
     ports:
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:${APP_HOST_PORT:-3000}:3000"
     environment:
       <<: *common-env
       # App-specific configuration (inherits all common env vars)
@@ -510,8 +510,8 @@ services:
       DB_USER: ${DB_USER:-postgres}
       DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is missing from .env. New install? Run ./init-secrets.sh. Existing install? Restore the .env you installed with; never generate a new one}
       DB_NAME: ${DB_NAME:-supercheck}
-      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-${APP_DOMAIN:+https://}${APP_DOMAIN:-http://localhost:3000}}
-      APP_URL: ${APP_URL:-${NEXT_PUBLIC_APP_URL:-${APP_DOMAIN:+https://}${APP_DOMAIN:-http://localhost:3000}}}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-${APP_DOMAIN:+https://}${APP_DOMAIN:-http://localhost:${APP_HOST_PORT:-3000}}}
+      APP_URL: ${APP_URL:-${NEXT_PUBLIC_APP_URL:-${APP_DOMAIN:+https://}${APP_DOMAIN:-http://localhost:${APP_HOST_PORT:-3000}}}}
       SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:-CHANGE_THIS_GENERATE_32_CHAR_HEX}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
@@ -627,7 +627,7 @@ services:
   rustfs:
     image: ghcr.io/rustfs/rustfs:1.0.1
     ports:
-      - "${RUSTFS_BIND_ADDR:-127.0.0.1}:9000:9000"
+      - "${RUSTFS_BIND_ADDR:-127.0.0.1}:${RUSTFS_HOST_PORT:-9000}:9000"
     environment:
       - RUSTFS_CONSOLE_ENABLE=false # the app only needs the S3 API
       - RUSTFS_ACCESS_KEY=${AWS_ACCESS_KEY_ID:?AWS_ACCESS_KEY_ID is required}

@@ -39,6 +39,8 @@ import { isAttemptedAlertStatus } from "@/lib/alert-escalation";
 import { alertIncidentTitle } from "@/lib/sre/alert-labels";
 import { linkStatusPageIncidentsToSreIncident } from "@/lib/status-page-reconciliation";
 import { notifyIncidentEvent } from "@/lib/sre/incident-notifier";
+import { watchIncident } from "@/lib/sre/incident-watchers";
+import { maybeAutoInvestigateOnOpen } from "@/sre/lib/auto-investigate";
 import { runSreIncidentTriage } from "@/sre/lib/triage-runner";
 import { db } from "@/utils/db";
 
@@ -90,7 +92,8 @@ export type SreBackgroundAlertTriageResult =
         | "recovery_handled"
         | "recovered_before_triage"
         | "ai_disabled"
-        | "ai_not_configured";
+        | "ai_not_configured"
+        | "auto_investigation";
     }
   | {
       success: false;
@@ -627,6 +630,8 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
             eventData: {
               state: "alert_correlated",
               alertEventId: alertEvent.id,
+              // Alert events are reused and retitled, so keep the name as it was when linked.
+              alertTitle: title.slice(0, 200),
               alertHistoryId: alert.id,
               score: correlation.score,
               signals: correlation.signals,
@@ -692,6 +697,8 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
         updatedAt: new Date(),
       })
       .returning({ id: sreIncidents.id, assigneeUserId: sreIncidents.assigneeUserId });
+
+    if (incident.assigneeUserId) await watchIncident(tx, incident.id, incident.assigneeUserId);
 
     await tx.insert(sreIncidentAlerts).values({
       incidentId: incident.id,
@@ -825,6 +832,17 @@ export async function processSreBackgroundAlertTriageJob(
   if (incident.alreadyTriaged) {
     return { success: true, skipped: true, reason: "already_triaged" };
   }
+
+  // The project's own opt-in (SEV1-2 full investigation, SEV3-4 triage) takes over from the instance-wide triage below.
+  const auto = await maybeAutoInvestigateOnOpen({
+    organizationId: incident.organizationId,
+    projectId: incident.projectId,
+    incidentId: incident.incidentId,
+    userId: null,
+  });
+  if (auto.handled) return { success: true, skipped: true, reason: "auto_investigation" };
+  // Already investigated automatically: a later alert joining this incident must not start another AI run.
+  if (auto.reason === "already_investigated") return { success: true, skipped: true, reason: "already_triaged" };
 
   // Incidents open regardless; AI triage is the optional part on top.
   if (!isSreAutomaticTriageEnabled()) {

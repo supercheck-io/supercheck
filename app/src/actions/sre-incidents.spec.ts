@@ -17,10 +17,13 @@ jest.mock("@/lib/sre/incident-lifecycle", () => ({
   noteFailureReturned: jest.fn().mockResolvedValue(false),
   announceSystemTransition: jest.fn().mockResolvedValue(undefined),
 }));
+jest.mock("@/lib/sre/sre-rate-limiter", () => ({ checkSreIncidentUpdateRateLimit: jest.fn(async () => ({ allowed: true })) }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 jest.mock("@/lib/sre/incident-notifier", () => ({ notifyIncidentEvent: jest.fn(async () => undefined) }));
+jest.mock("@/lib/sre/incident-watchers", () => ({ watchIncident: jest.fn(async () => undefined), isWatchingIncident: jest.fn(async () => false) }));
 jest.mock("@/sre/lib/session-store", () => ({ listSreConversations: jest.fn().mockResolvedValue([]) }));
-jest.mock("@/sre/lib/triage-automation", () => ({ maybeRunAutomaticSreTriage: jest.fn() }));
+jest.mock("@/sre/lib/auto-investigate", () => ({ maybeAutoInvestigateOnOpen: jest.fn(async () => ({ handled: false })) }));
+jest.mock("@/sre/lib/triage-automation", () => ({ maybeRunAutomaticSreTriage: jest.fn(async () => ({ attempted: false, reason: "disabled" })) }));
 jest.mock("@/sre/lib/feature-gates", () => ({ isSreInvestigationAgentEnabled: jest.fn(() => true), isSreAlertCorrelationEnabled: jest.fn(() => false) }));
 
 import { db } from "@/utils/db";
@@ -28,7 +31,7 @@ import { requireProjectContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { failStaleSreInvestigationRunsForIncident } from "@/sre/lib/stale-run-recovery";
 import { announceSystemTransition, findOpenIncidentForSource, reopenRecentlyAutoResolved } from "@/lib/sre/incident-lifecycle";
-import { createSreIncidentFromAlert, getSreIncidentDetails, getSreIncidents, updateSreIncident } from "./sre-incidents";
+import { createManualSreIncident, createSreIncidentFromAlert, getSreIncidentDetails, getSreIncidents, updateSreIncident } from "./sre-incidents";
 
 function selectRows(rows: unknown[]) {
   return Object.assign(Promise.resolve(rows), {
@@ -121,7 +124,7 @@ describe("getSreIncidentDetails investigation summary", () => {
 
   it("reopening from the editor clears the acknowledgement, records the reopen and notifies", async () => {
     const incidentId = "00000000-0000-4000-8000-000000000001";
-    (db.query.sreIncidents.findFirst as jest.Mock).mockResolvedValue({ id: incidentId, status: "resolved" });
+    (db.query.sreIncidents.findFirst as jest.Mock).mockResolvedValue({ id: incidentId, status: "resolved", severity: "sev2" });
     const sets: Array<Record<string, unknown>> = [];
     const inserted: Array<Record<string, unknown>> = [];
     (db.transaction as jest.Mock).mockImplementation(async (callback) => callback({
@@ -144,9 +147,47 @@ describe("getSreIncidentDetails investigation summary", () => {
     );
   });
 
+  it("refuses a rate-limited incident edit before reading or writing anything", async () => {
+    jest.mocked(jest.requireMock("@/lib/sre/sre-rate-limiter").checkSreIncidentUpdateRateLimit).mockResolvedValueOnce({ allowed: false });
+    (db.query.sreIncidents.findFirst as jest.Mock).mockClear();
+    const result = await updateSreIncident({ id: "00000000-0000-4000-8000-000000000001", title: "t", severity: "sev1", status: "investigating", primaryServiceId: null });
+    expect(result).toMatchObject({ success: false, error: expect.stringContaining("Too many") });
+    expect(db.query.sreIncidents.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("guards the edit on the severity that was read, so a stale read loses with the conflict error", async () => {
+    const { PgDialect } = jest.requireActual("drizzle-orm/pg-core");
+    const incidentId = "00000000-0000-4000-8000-000000000001";
+    (db.query.sreIncidents.findFirst as jest.Mock).mockResolvedValue({ id: incidentId, status: "investigating", severity: "sev3" });
+    let guard: unknown;
+    (db.transaction as jest.Mock).mockImplementation(async (callback) => callback({
+      update: () => ({ set: () => ({ where: (condition: unknown) => { guard = condition; return { returning: async () => [] }; } }) }),
+      insert: () => ({ values: async () => undefined }),
+    }));
+    const result = await updateSreIncident({ id: incidentId, title: "t", severity: "sev1", status: "investigating", primaryServiceId: null });
+    expect(result).toMatchObject({ success: false, error: expect.stringContaining("changed by another request") });
+    const query = new PgDialect().sqlToQuery(guard as never);
+    expect(query.sql).toContain('"severity" = $');
+    expect(query.params).toContain("sev3");
+  });
+
+  it("notifies watchers only when the severity actually changes", async () => {
+    const incidentId = "00000000-0000-4000-8000-000000000001";
+    (db.query.sreIncidents.findFirst as jest.Mock).mockResolvedValue({ id: incidentId, status: "investigating", severity: "sev3" });
+    (db.transaction as jest.Mock).mockImplementation(async (callback) => callback({
+      update: () => ({ set: () => ({ where: () => ({ returning: async () => [{ id: incidentId, incidentNumber: 4, title: "t" }] }) }) }),
+      insert: () => ({ values: async () => undefined }),
+    }));
+    const notify = jest.requireMock("@/lib/sre/incident-notifier").notifyIncidentEvent as jest.Mock;
+    await updateSreIncident({ id: incidentId, title: "t", severity: "sev3", status: "investigating", primaryServiceId: null });
+    expect(notify).not.toHaveBeenCalled();
+    await updateSreIncident({ id: incidentId, title: "t", severity: "sev1", status: "investigating", primaryServiceId: null });
+    expect(notify).toHaveBeenCalledWith(expect.objectContaining({ incidentId, event: "severity_changed", detail: "SEV3 to SEV1" }));
+  });
+
   it("reopening straight to Monitoring records mitigation", async () => {
     const incidentId = "00000000-0000-4000-8000-000000000001";
-    (db.query.sreIncidents.findFirst as jest.Mock).mockResolvedValue({ id: incidentId, status: "resolved", mitigatedAt: null });
+    (db.query.sreIncidents.findFirst as jest.Mock).mockResolvedValue({ id: incidentId, status: "resolved", severity: "sev2", mitigatedAt: null });
     const sets: Array<Record<string, unknown>> = [];
     (db.transaction as jest.Mock).mockImplementation(async (callback) => callback({
       update: () => ({ set: (values: Record<string, unknown>) => {
@@ -250,6 +291,8 @@ describe("createSreIncidentFromAlert severity", () => {
     const result = await createSreIncidentFromAlert({ alertHistoryId: "00000000-0000-4000-8000-000000000009" });
     expect(result.success).toBe(true);
     expect(values).toContainEqual(expect.objectContaining({ title: expect.any(String), severity: "sev1" }));
+    // A new incident is offered to the project's automatic investigation (a no-op unless the project opted in).
+    expect(jest.requireMock("@/sre/lib/auto-investigate").maybeAutoInvestigateOnOpen).toHaveBeenCalled();
   });
 });
 
@@ -306,11 +349,69 @@ describe("createSreIncidentFromAlert join/reopen rules", () => {
     expect(announceSystemTransition).not.toHaveBeenCalled();
   });
 
+  it("notes a returned failure when the alert is already linked to an open incident", async () => {
+    arrange();
+    const rows = [{ id: "inc-linked", incidentNumber: 4, title: "API down" }];
+    const chain = (): unknown => Object.assign(Promise.resolve(rows), {
+      from: chain, where: chain, innerJoin: chain, leftJoin: chain, orderBy: chain, limit: chain, for: chain,
+      set: chain, values: chain, returning: chain, onConflictDoNothing: chain,
+    });
+    (db.transaction as jest.Mock).mockImplementation(async (cb) => cb({ execute: jest.fn(), select: chain, insert: chain, update: chain }));
+    const { noteFailureReturned } = jest.requireMock("@/lib/sre/incident-lifecycle");
+    noteFailureReturned.mockClear();
+    const result = await createSreIncidentFromAlert({ alertHistoryId: "00000000-0000-4000-8000-000000000009" });
+    expect(result).toMatchObject({ success: true, existing: true, incident: { id: "inc-linked" } });
+    expect(noteFailureReturned).toHaveBeenCalledWith(expect.anything(), "inc-linked", expect.any(Date));
+  });
+
+  it("runs the project's automatic investigation before instance-wide triage and skips triage when it started", async () => {
+    arrange();
+    const auto = jest.requireMock("@/sre/lib/auto-investigate").maybeAutoInvestigateOnOpen as jest.Mock;
+    const triage = jest.requireMock("@/sre/lib/triage-automation").maybeRunAutomaticSreTriage as jest.Mock;
+    auto.mockClear().mockResolvedValueOnce({ handled: true });
+    triage.mockClear();
+    const result = await createSreIncidentFromAlert({ alertHistoryId: "00000000-0000-4000-8000-000000000009" });
+    expect(result).toMatchObject({ success: true, triage: { attempted: false, reason: "auto_investigation" } });
+    expect(auto).toHaveBeenCalled();
+    expect(triage).not.toHaveBeenCalled();
+  });
+
   it("joins the source's open incident instead of creating a duplicate", async () => {
     arrange();
     jest.mocked(findOpenIncidentForSource).mockResolvedValueOnce({ id: "inc-open", ...ref, triageInvestigationRunId: null });
     const result = await createSreIncidentFromAlert({ alertHistoryId: "00000000-0000-4000-8000-000000000009" });
     expect(result).toMatchObject({ success: true, existing: true, incident: { id: "inc-open" } });
     expect(announceSystemTransition).not.toHaveBeenCalled();
+  });
+});
+
+describe("createManualSreIncident default assignee", () => {
+  it("assigns a hand-created incident to its creator", async () => {
+    jest.mocked(requireProjectContext).mockResolvedValue({
+      userId: "creator-1", organizationId: "org-1",
+      project: { id: "project-1", name: "Prod", organizationId: "org-1", isDefault: true, userRole: "project_editor" },
+    });
+    jest.mocked(checkPermissionWithContext).mockReturnValue(true);
+    const incidentValues: Record<string, unknown>[] = [];
+    (db.transaction as jest.Mock).mockImplementation(async (callback) => callback({
+      execute: jest.fn(),
+      select: () => selectRows([{ nextIncidentNumber: 4 }]),
+      insert: () => ({
+        values: (values: Record<string, unknown>) => {
+          incidentValues.push(values);
+          return { returning: async () => [{ id: "incident-1", incidentNumber: 4, title: "t" }] };
+        },
+      }),
+    }));
+    const result = await createManualSreIncident({ title: "Checkout down", severity: "sev2" } as never);
+    expect(result.success).toBe(true);
+    expect(incidentValues[0]).toMatchObject({ createdByUserId: "creator-1", assigneeUserId: "creator-1" });
+    expect(jest.requireMock("@/sre/lib/auto-investigate").maybeAutoInvestigateOnOpen).toHaveBeenCalledWith(
+      expect.objectContaining({ incidentId: "incident-1", userId: "creator-1" }),
+    );
+    expect(jest.requireMock("@/lib/sre/incident-watchers").watchIncident).toHaveBeenCalledWith(expect.anything(), "incident-1", "creator-1");
+    expect(jest.requireMock("@/lib/sre/incident-notifier").notifyIncidentEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ incidentId: "incident-1", event: "created", actorUserId: "creator-1" }),
+    );
   });
 });

@@ -52,7 +52,7 @@ Use `./init-secrets.sh` to generate secure defaults, then configure:
 | `TELEMETRY_RETENTION_ENABLED` | Hourly purge of operational telemetry (default: `true`); `TELEMETRY_RETENTION_CRON` (`45 * * * *`), `TELEMETRY_RETENTION_BATCH_SIZE` (`1000`, range 1-10000) and `TELEMETRY_RETENTION_SAFETY_LIMIT` (`200000` rows per table per run; heartbeats use at least `2000000`) tune it. Invalid values fall back to the defaults. Agents send about 2,880 heartbeats per day each |
 | `PRIVATE_AGENT_HEARTBEAT_RETENTION_DAYS` | Days to keep private agent heartbeats; each agent's newest is always kept (default: `7`) |
 | `SRE_HEALTH_SNAPSHOT_RETENTION_DAYS` / `SRE_DEPENDENCY_OBSERVATION_RETENTION_DAYS` / `SRE_ALERT_EVENT_RETENTION_DAYS` | Days to keep service health snapshots (latest per service is kept), dependency observations, and resolved alert events not linked to an incident (default: `90` each) |
-| `NEXT_PUBLIC_APP_URL` | Browser-reachable app origin, including scheme and port, with no trailing slash (bundled stack: derived as `https://${APP_DOMAIN}` when set, otherwise `http://localhost:3000`; external-services variant requires an explicit value) |
+| `NEXT_PUBLIC_APP_URL` | Browser-reachable app origin, including scheme and port, with no trailing slash (bundled stack: derived as `https://${APP_DOMAIN}` when set, otherwise `http://localhost:${APP_HOST_PORT:-3000}`; external-services variant requires an explicit value) |
 | `DATABASE_URL` | PostgreSQL connection. For an external server that requires TLS, add `?sslmode=require` (or `verify-full`): app, worker and migrations then verify the server certificate against the system CAs, so a private CA must be trusted in those containers. `sslmode=disable` turns TLS off |
 
 OAuth (`GITHUB_*` / `GOOGLE_*`) is optional in self-hosted mode.
@@ -90,7 +90,7 @@ When you are running the app locally on `http://localhost:3000`, Supercheck keep
 | `COMPOSE_FILE` | Compose files to combine, for example `docker-compose.yml:compose.dns01.yml` | `docker-compose.yml` |
 | `ACME_DNS_PROVIDER` | DNS provider code for `compose.dns01.yml`; its credentials go in `traefik-dns.env` | - |
 | `DB_BIND_ADDR`, `REDIS_BIND_ADDR`, `RUSTFS_BIND_ADDR` | Host address PostgreSQL, Redis and RustFS publish on. Set to a private address only for [Multi-Server](https://supercheck.io/docs/app/deployment/multi-server) workers | `127.0.0.1` |
-| `DB_HOST_PORT`, `REDIS_HOST_PORT` | Host port for PostgreSQL and Redis when the default is taken | `5432`, `6379` |
+| `APP_HOST_PORT`, `RUSTFS_HOST_PORT`, `DB_HOST_PORT`, `REDIS_HOST_PORT` | Host port for the app, RustFS, PostgreSQL and Redis in `docker-compose.yml` when the default is taken. A moved app port also moves the derived local URL, unless `APP_DOMAIN` or an explicit `NEXT_PUBLIC_APP_URL` is set. Workers on other servers use the moved ports in `DATABASE_URL`, `REDIS_PORT` and `S3_ENDPOINT`. Needs 1.5.1 or later for the app and RustFS ports | `3000`, `9000`, `5432`, `6379` |
 | `WORKER_REPLICAS` | Number of worker containers (worker-side scaling knob) | `1` |
 | `RUNNING_CAPACITY` | App-side gate: max concurrent test runs (set equal to `WORKER_REPLICAS`) | `1` |
 | `QUEUED_CAPACITY` | App-side gate: max queued test runs before new submissions are rejected | `10` |

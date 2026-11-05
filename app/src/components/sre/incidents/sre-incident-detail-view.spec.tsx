@@ -2,7 +2,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 
 import type { SreIncidentDetail } from "@/actions/sre-incidents";
 
-import { SreIncidentDetailView } from "./sre-incident-detail-view";
+import { defaultResolutionNote, SreIncidentDetailView } from "./sre-incident-detail-view";
 
 jest.mock("@/components/sre/incidents/generate-evidence-brief-button", () => ({
   GenerateEvidenceBriefButton: () => (
@@ -28,6 +28,15 @@ jest.mock("@/components/sre/incidents/incident-assignee-picker", () => ({
 
 jest.mock("@/components/sre/incidents/acknowledge-sre-incident-button", () => ({
   AcknowledgeSreIncidentButton: () => <button type="button">Acknowledge</button>,
+}));
+
+jest.mock("@/components/sre/incidents/watch-sre-incident-button", () => ({
+  WatchSreIncidentButton: ({ watching }: { watching: boolean }) => <button type="button">{watching ? "Unwatch" : "Watch"}</button>,
+}));
+
+jest.mock("@/components/sre/incidents/incident-copilot-sheet", () => ({
+  IncidentCopilotSheet: ({ open, incidentId }: { open: boolean; incidentId: string }) =>
+    open ? <div data-testid="copilot-sheet">{incidentId}</div> : null,
 }));
 
 jest.mock("@/components/sre/incidents/incident-timeline", () => ({
@@ -382,6 +391,15 @@ describe("SreIncidentDetailView actions menu and primary button", () => {
     expect(screen.getByRole("menuitem", { name: "Resolve incident" })).toBeInTheDocument();
   });
 
+  it("opens incident-scoped Copilot in a drawer from the menu", () => {
+    const detail = detailFixture();
+    render(<SreIncidentDetailView detail={detail} services={[]} />);
+    expect(screen.queryByTestId("copilot-sheet")).not.toBeInTheDocument();
+    openMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Ask Copilot" }));
+    expect(screen.getByTestId("copilot-sheet")).toHaveTextContent(detail.incident.id);
+  });
+
   it("adds a commander from the menu instead of a permanent sidebar link", () => {
     render(<SreIncidentDetailView detail={detailFixture()} services={[]} />);
     expect(screen.queryByText("Commander: None")).not.toBeInTheDocument();
@@ -449,5 +467,18 @@ describe("SreIncidentDetailView actions menu and primary button", () => {
     detail.incident.resolutionSummary = "Scaled the pool.";
     render(<SreIncidentDetailView detail={detail} services={[]} />);
     expect(screen.getByTestId("resolution-summary")).toHaveTextContent("Resolution: Scaled the pool.");
+  });
+});
+
+describe("defaultResolutionNote", () => {
+  it("leads with the recovery when the source recovered, then the AI root cause", () => {
+    expect(defaultResolutionNote("2026-06-24T12:00:00Z", "Bad deploy")).toBe(
+      "The checks that raised this incident recovered on Wed, 24 Jun 2026 12:00:00 GMT and are passing again.\n\nBad deploy",
+    );
+  });
+
+  it("falls back to the root cause alone, or nothing", () => {
+    expect(defaultResolutionNote(null, "Bad deploy")).toBe("Bad deploy");
+    expect(defaultResolutionNote(undefined, null)).toBe("");
   });
 });
