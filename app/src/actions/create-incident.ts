@@ -58,6 +58,9 @@ const createIncidentSchema = z.object({
   deliverNotifications: z.boolean().default(true),
 });
 
+// Safe to show as is: the message names no data beyond what the caller already sent.
+class IncidentLinkError extends Error {}
+
 export type CreateIncidentData = z.infer<typeof createIncidentSchema>;
 
 export async function createIncident(data: CreateIncidentData) {
@@ -179,8 +182,8 @@ export async function createIncident(data: CreateIncidentData) {
           ),
         });
         if (linked)
-          throw new Error(
-            "This SRE incident already has a public incident on this page.",
+          throw new IncidentLinkError(
+            "This incident already has a public incident on this status page.",
           );
       }
       if (validatedData.sreIncidentId) {
@@ -197,8 +200,8 @@ export async function createIncident(data: CreateIncidentData) {
           .for("update");
         if (!source) throw new Error("SRE incident not found or access denied");
         if (source.statusPageIncidentId)
-          throw new Error(
-            "This SRE incident is already linked to a public incident.",
+          throw new IncidentLinkError(
+            "This incident already has a public incident on this status page.",
           );
       }
       // Create the incident
@@ -346,6 +349,10 @@ export async function createIncident(data: CreateIncidentData) {
         success: false,
         message: error.issues[0]?.message || "Invalid data provided",
       };
+    }
+
+    if (error instanceof IncidentLinkError) {
+      return { success: false, message: error.message };
     }
 
     return {

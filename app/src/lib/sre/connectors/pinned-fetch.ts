@@ -10,6 +10,7 @@ import {
   METADATA_ADDRESS_ERROR,
 } from "./endpoint-policy";
 import { createPinnedLookup } from "./pinned-lookup";
+import { allowInternalWebhookTargets } from "@/lib/url-validator";
 
 const MAX_RESPONSE_BYTES = 10 * 1024 * 1024;
 
@@ -146,6 +147,14 @@ export function fetchConnectorEndpoint(
   maxResponseBytes = MAX_RESPONSE_BYTES,
 ) {
   return fetchPinnedEndpoint(input, init, true, maxResponseBytes);
+}
+
+/** Webhook notification channel: like a public webhook, but see allowInternalWebhookTargets. */
+export function fetchChannelWebhookEndpoint(
+  input: string | URL,
+  init: RequestInit = {},
+) {
+  return fetchPinnedEndpoint(input, init, allowInternalWebhookTargets());
 }
 
 /** Public webhook variant: always validates and pins the destination. */

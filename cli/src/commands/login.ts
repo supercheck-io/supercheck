@@ -10,7 +10,7 @@ import {
 } from '../auth/store.js'
 import { getApiClient } from '../api/client.js'
 import { logger } from '../utils/logger.js'
-import { ApiRequestError, CLIError, ExitCode } from '../utils/errors.js'
+import { ApiRequestError, AUTH_HINT, CLIError, ExitCode } from '../utils/errors.js'
 import { safeTokenPreview } from '../utils/resources.js'
 import { withSpinner } from '../utils/spinner.js'
 import { getOutputFormat } from '../output/formatter.js'
@@ -177,7 +177,7 @@ export const whoamiCommand = new Command('whoami')
     } catch (error) {
       if (!(error instanceof ApiRequestError && [401, 403].includes(error.statusCode ?? 0))) throw error
       throw new CLIError(
-        'Failed to verify authentication. Your token may be expired or invalid.',
+        `Failed to verify authentication. Your token may be expired or invalid.${(error as ApiRequestError).statusCode === 401 ? ` ${AUTH_HINT}` : ''}`,
         ExitCode.AuthError,
         // Lets the JSON error handler classify this like any other 401/403 (code, retryable, nextActions).
         { status: (error as ApiRequestError).statusCode },

@@ -19,7 +19,8 @@ jest.mock("@/utils/db", () => ({
   },
 }));
 
-import { createSreConnector, searchSreConnectorEvidence } from "./sre-connectors";
+import { ConnectorPolicyError } from "@/lib/sre/connectors";
+import { connectorSearchErrorMessage, createSreConnector, searchSreConnectorEvidence } from "./sre-connectors";
 
 const { db } = jest.requireMock("@/utils/db");
 const base = {
@@ -86,5 +87,20 @@ describe("MCP connector creation and search guards", () => {
       filters: {},
     });
     expect(result).toMatchObject({ success: false, error: expect.stringContaining("not searchable") });
+  });
+});
+
+describe("connectorSearchErrorMessage", () => {
+  it("explains a time window above the connector policy", () => {
+    const error = new ConnectorPolicyError({
+      allowed: false,
+      code: "time_window_exceeded",
+      reason: "Connector query time window exceeds connector policy",
+    });
+    expect(connectorSearchErrorMessage(error)).toMatch(/time window is longer/i);
+  });
+
+  it("keeps unknown errors generic", () => {
+    expect(connectorSearchErrorMessage(new Error("boom"))).toBe("Failed to search connector evidence");
   });
 });

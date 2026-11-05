@@ -43,7 +43,7 @@ import { tokenCommand } from '../commands/tokens.js'
 import { projectCommand } from '../commands/projects.js'
 import { setOutputFormat, setWideOutput, setJsonEnvelope, flushJsonList, type OutputFormat } from '../output/formatter.js'
 import { logger, getOutputCount, setMachineMode, setQuietMode, setLogLevel } from '../utils/logger.js'
-import { ApiRequestError, CLIError, ExitCode } from '../utils/errors.js'
+import { ApiRequestError, authHint, CLIError, ExitCode } from '../utils/errors.js'
 import { DependencyError } from '../utils/deps.js'
 import { CLI_VERSION } from '../version.js'
 import { createAuthenticatedClient, getResolvedDeclaredBaseUrl, getResolvedProject, resolveAndSetConfigBaseUrl } from '../api/authenticated-client.js'
@@ -246,6 +246,7 @@ async function main(): Promise<void> {
 
       const suffix = details ? `\n${details}\n` : '\n'
       console.error(pc.red(redactText(`\n✗ ${err.message}${suffix}`)))
+      if (authHint(err)) console.error(pc.yellow(authHint(err)!))
       process.exit(err.exitCode)
     }
 
@@ -259,6 +260,7 @@ async function main(): Promise<void> {
     if (err instanceof CLIError) {
       if (err.exitCode !== ExitCode.Success) {
         console.error(pc.red(redactText(`\n✗ ${err.message}\n`)))
+        if (authHint(err)) console.error(pc.yellow(authHint(err)!))
       }
       process.exit(err.exitCode)
     }

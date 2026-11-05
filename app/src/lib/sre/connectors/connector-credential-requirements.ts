@@ -60,6 +60,12 @@ export function connectorCredentialRequirementError(
     return null;
   }
 
+  if (connectorType === "grafana") {
+    return trimmedCredentialField(value, ["apiKey", "api_key", "secret"])
+      ? null
+      : "Grafana requires a service account token under apiKey, api_key or secret";
+  }
+
   if (connectorType === "notion") {
     return trimmedCredentialField(value, ["apiKey", "api_key", "secret"])
       ? null

@@ -21,7 +21,7 @@ export const variableDefinitionSchema = z.object({
 export const notificationProviderDefinitionSchema = z.object({
   /** Database UUID. Present for existing resources, omitted for new ones. */
   id: z.string().uuid().optional(),
-  name: z.string().min(1),
+  name: z.string().min(1).max(255),
   type: z.enum(['email', 'slack', 'webhook', 'telegram', 'discord', 'teams']),
   config: z.record(z.string(), z.unknown()),
 }).strict()
@@ -67,7 +67,7 @@ export const testsConfigSchema = z.object({
 export const monitorDefinitionSchema = z.object({
   /** Database UUID. Present for existing resources, omitted for new ones. */
   id: z.string().uuid().optional(),
-  name: z.string().min(1),
+  name: z.string().min(1).max(255),
   description: z.string().optional(),
   type: z.enum(['http_request', 'website', 'ping_host', 'port_check', 'synthetic_test']),
   target: z.string().optional(),
@@ -75,7 +75,7 @@ export const monitorDefinitionSchema = z.object({
   enabled: z.boolean().optional(),
   config: z.record(z.string(), z.unknown()).optional(),
   alertConfig: alertConfigSchema.optional(),
-  tags: z.array(z.string()).optional(),
+  tags: z.array(z.string()).max(10).optional(),
 }).strict()
 
 // --- Jobs ---
@@ -83,7 +83,7 @@ export const monitorDefinitionSchema = z.object({
 export const jobDefinitionSchema = z.object({
   /** Database UUID. Present for existing resources, omitted for new ones. */
   id: z.string().uuid().optional(),
-  name: z.string().min(1),
+  name: z.string().min(1).max(255),
   description: z.string().optional(),
   jobType: z.enum(['playwright', 'k6']).optional(),
   tests: z.array(z.string()).min(1),

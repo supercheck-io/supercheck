@@ -25,6 +25,7 @@ import { requireProjectContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { createLogger } from "@/lib/logger/index";
+import { isAssignableUser } from "@/lib/sre/incident-lifecycle";
 
 const logger = createLogger({ module: "sre-services" }) as {
   error: (data: unknown, message?: string) => void;
@@ -52,6 +53,8 @@ const serviceInputSchema = z.object({
   tier: serviceTierSchema.default("3"),
   environment: z.string().trim().max(50).optional().nullable(),
   ownerTeam: z.string().trim().max(100).optional().nullable(),
+  // One person who gets "email service owners" mail; omitted on update leaves the owner unchanged.
+  ownerUserId: z.string().uuid().nullable().optional(),
   repoUrl: optionalHttpUrlSchema.optional(),
   otelServiceName: z.string().trim().max(100).optional().nullable(),
   slackChannel: z.string().trim().max(100).optional().nullable(),
@@ -106,6 +109,7 @@ export type SreServiceListItem = {
   tier: "1" | "2" | "3" | "4";
   environment: string | null;
   ownerTeam: string | null;
+  ownerUserId: string | null;
   repoUrl: string | null;
   otelServiceName: string | null;
   slackChannel: string | null;
@@ -271,6 +275,7 @@ function normalizeService(row: typeof sreServices.$inferSelect): SreServiceListI
     tier: row.tier,
     environment: row.environment,
     ownerTeam: row.ownerTeam,
+    ownerUserId: row.ownerUserId,
     repoUrl: row.repoUrl,
     otelServiceName: row.otelServiceName,
     slackChannel: row.slackChannel,
@@ -278,6 +283,17 @@ function normalizeService(row: typeof sreServices.$inferSelect): SreServiceListI
     tags,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
+  };
+}
+
+// The owner must be an org member who can act on this project's incidents (editor or above).
+async function ownerRejection(organizationId: string, projectId: string, ownerUserId: string | null | undefined) {
+  if (!ownerUserId) return null;
+  if (await isAssignableUser(organizationId, projectId, ownerUserId)) return null;
+  return {
+    success: false as const,
+    error: "Service owner must be an editor or admin of this project",
+    fieldErrors: { ownerUserId: ["Select an editor or admin of this project"] },
   };
 }
 
@@ -359,6 +375,9 @@ export async function createSreService(input: z.infer<typeof serviceInputSchema>
       return { success: false, error: "An active service with this name already exists" };
     }
 
+    const ownerError = await ownerRejection(organizationId, project.id, parsed.data.ownerUserId);
+    if (ownerError) return ownerError;
+
     const [service] = await db
       .insert(sreServices)
       .values({
@@ -369,6 +388,7 @@ export async function createSreService(input: z.infer<typeof serviceInputSchema>
         tier: parsed.data.tier,
         environment: normalizeOptional(parsed.data.environment),
         ownerTeam: normalizeOptional(parsed.data.ownerTeam),
+        ownerUserId: parsed.data.ownerUserId ?? null,
         repoUrl: normalizeOptional(parsed.data.repoUrl),
         otelServiceName: normalizeOptional(parsed.data.otelServiceName),
         slackChannel: normalizeOptional(parsed.data.slackChannel),
@@ -426,7 +446,7 @@ export async function updateSreService(input: z.infer<typeof updateServiceInputS
         eq(sreServices.organizationId, organizationId),
         eq(sreServices.projectId, project.id)
       ),
-      columns: { id: true, name: true },
+      columns: { id: true, name: true, ownerUserId: true },
     });
 
     if (!current) {
@@ -448,6 +468,12 @@ export async function updateSreService(input: z.infer<typeof updateServiceInputS
       return { success: false, error: "Another active service with this name already exists" };
     }
 
+    // A stored owner who was since demoted or removed must not block unrelated edits; validate only a change.
+    const ownerError = parsed.data.ownerUserId === current.ownerUserId
+      ? null
+      : await ownerRejection(organizationId, project.id, parsed.data.ownerUserId);
+    if (ownerError) return ownerError;
+
     const [service] = await db
       .update(sreServices)
       .set({
@@ -456,6 +482,8 @@ export async function updateSreService(input: z.infer<typeof updateServiceInputS
         tier: parsed.data.tier,
         environment: normalizeOptional(parsed.data.environment),
         ownerTeam: normalizeOptional(parsed.data.ownerTeam),
+        // undefined leaves the owner as is; null clears it.
+        ownerUserId: parsed.data.ownerUserId,
         repoUrl: normalizeOptional(parsed.data.repoUrl),
         otelServiceName: normalizeOptional(parsed.data.otelServiceName),
         slackChannel: normalizeOptional(parsed.data.slackChannel),

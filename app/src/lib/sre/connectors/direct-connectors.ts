@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { describeConnectionError } from "./connection-error";
 
 import { fetchConnectorEndpoint } from "./pinned-fetch";
+import { redactConnectorText } from "./output-sanitizer";
 import {
   ObservabilityProviderConnector,
   isObservabilityProviderType,
@@ -113,6 +114,13 @@ async function fetchOk({
 function safeEndpoint(endpointUrl: string | null | undefined) {
   if (!endpointUrl) return null;
   return endpointUrl.replace(/\/$/, "");
+}
+
+// Redact before clipping: a secret cut at the limit would no longer match its pattern.
+function clipRedacted(value: string, max: number): string;
+function clipRedacted(value: string | undefined, max: number): string | undefined;
+function clipRedacted(value: string | undefined, max: number) {
+  return value === undefined ? undefined : redactConnectorText(value).slice(0, max);
 }
 
 function evidenceId(connectorId: string, sourceUri: string, title: string) {
@@ -576,7 +584,7 @@ export class GitHubConnector extends BaseDirectConnector {
           repository?: { full_name?: string };
         };
         const title =
-          commit.commit?.message?.split("\n")[0]?.slice(0, 180) ||
+          clipRedacted(commit.commit?.message?.split("\n")[0], 180) ||
           commit.sha ||
           "GitHub commit";
         const sourceUri =
@@ -696,7 +704,7 @@ export class GitLabConnector extends BaseDirectConnector {
         web_url?: string;
       };
       const title =
-        commit.title?.slice(0, 180) || commit.short_id || "GitLab commit";
+        clipRedacted(commit.title, 180) || commit.short_id || "GitLab commit";
       const sourceUri =
         commit.web_url ??
         `${this.endpointUrl}/projects/${encodeURIComponent(project)}/repository/commits/${commit.id ?? ""}`;
@@ -851,7 +859,7 @@ export class PagerDutyConnector extends BaseDirectConnector {
           assignments?: Array<{ assignee?: { summary?: string } }>;
         };
         const title =
-          incident.title?.slice(0, 180) ||
+          clipRedacted(incident.title, 180) ||
           `PagerDuty incident #${incident.incident_number ?? "unknown"}`;
         const sourceUri =
           incident.html_url ??
@@ -997,7 +1005,7 @@ export class OpsgenieConnector extends BaseDirectConnector {
           integration?: { name?: string; type?: string };
         };
         const title =
-          alert.message?.slice(0, 180) ||
+          clipRedacted(alert.message, 180) ||
           `Opsgenie alert #${alert.tinyId ?? "unknown"}`;
         const sourceUri = `${this.endpointUrl}/v2/alerts/${encodeURIComponent(alert.id ?? alert.tinyId ?? "")}`;
 
@@ -1154,6 +1162,15 @@ export class GrafanaConnector extends BaseDirectConnector {
       evidenceTypes: ["document", "topology"],
       requires: ["credentials", "network", "service_scope"],
     });
+  }
+
+  // Create-time validation accepts apiKey, api_key or secret, so reads must too.
+  protected secret() {
+    const credential = this.credential;
+    for (const value of [credential?.secret, credential?.apiKey, credential?.fields?.api_key]) {
+      if (typeof value === "string" && value.trim()) return value.trim();
+    }
+    return null;
   }
 
   metadata(): ConnectorMetadata {
@@ -1620,7 +1637,7 @@ export class DatadogConnector extends BaseDirectConnector {
           item.alert_type,
           item.source,
           item.host,
-          item.text?.slice(0, 180),
+          clipRedacted(item.text, 180),
         ]
           .filter(Boolean)
           .join(" · "),
@@ -1729,7 +1746,7 @@ export class LokiConnector extends BaseDirectConnector {
         if (entries.length >= params.budget.maxRows) return entries;
 
         const observedAt = dateFromUnixNs(timestampNs, params.timeWindow.end);
-        const titleLine = line.trim().slice(0, 160) || "Loki log line";
+        const titleLine = clipRedacted(line.trim(), 160) || "Loki log line";
         const sourceUri = `${this.endpointUrl}/loki/api/v1/query_range?query=${encodeURIComponent(params.query)}&ts=${encodeURIComponent(timestampNs)}`;
 
         entries.push({
@@ -1856,7 +1873,7 @@ export class ElasticsearchConnector extends BaseDirectConnector {
       const source = item._source ?? {};
       const message =
         sourceString(source, ["message", "log", "event.original", "body"]) ??
-        JSON.stringify(source).slice(0, 500);
+        clipRedacted(JSON.stringify(source), 500);
       const service = sourceString(source, [
         "service.name",
         "service",
@@ -1873,7 +1890,7 @@ export class ElasticsearchConnector extends BaseDirectConnector {
         ? new Date(timestamp)
         : params.timeWindow.end;
       const titleLine =
-        message.slice(0, 160) || item._id || "Elasticsearch log document";
+        clipRedacted(message, 160) || item._id || "Elasticsearch log document";
       const sourceUri = `${this.endpointUrl}/${encodeURIComponent(item._index ?? index ?? "_all")}/_doc/${encodeURIComponent(item._id ?? titleLine)}`;
 
       return {

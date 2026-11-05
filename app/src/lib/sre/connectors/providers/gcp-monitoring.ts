@@ -415,7 +415,7 @@ async function searchLogs(
     const severity = stringOf(entry.severity, 20)?.toUpperCase();
     const logName = stringOf(entry.logName, 200)?.split('/').pop();
     return {
-      title: `Google Cloud log: ${message.slice(0, 160)}`,
+      title: `Google Cloud log: ${message}`,
       summary: [
         severity,
         stringOf(resource.type, 80),

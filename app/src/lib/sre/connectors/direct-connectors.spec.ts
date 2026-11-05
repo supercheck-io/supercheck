@@ -549,6 +549,40 @@ describe("direct connectors", () => {
     );
   });
 
+  it("sends a Grafana token saved as apiKey", async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, status: 200, json: async () => [] }) as unknown as typeof fetch;
+    const connector = createDirectConnector({
+      ...baseDefinition,
+      type: "grafana",
+      endpointUrl: "https://grafana.example.com",
+      credential: { apiKey: "glsa_token" },
+    });
+    await connector.validate();
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ headers: expect.objectContaining({ Authorization: "Bearer glsa_token" }) }),
+    );
+  });
+
+  it("redacts a Loki secret that straddles the title length limit", async () => {
+    const line = `${"x".repeat(150)} AKIAABCDEFGHIJKLMNOP tail`;
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ data: { result: [{ stream: { service: "checkout" }, values: [["1782038700000000000", line]] }] } }),
+    }) as unknown as typeof fetch;
+    const connector = createDirectConnector({
+      ...baseDefinition,
+      type: "loki",
+      endpointUrl: "https://loki.example.com",
+      surfaces: ["logs"],
+      evidenceTypes: ["log"],
+    });
+    const evidence = await connector.search({ ...params, query: '{service="checkout"}' });
+    expect(evidence[0].title).not.toMatch(/AKIA/);
+    expect(evidence[0].title).toContain("[REDACTED");
+  });
+
   it("validates Loki through its query API instead of the readiness probe", async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,

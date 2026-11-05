@@ -54,3 +54,18 @@ it("scopes the for-update locks on the status page and SRE incident to the org a
     expect(new PgDialect().sqlToQuery(where as never).params).toEqual(expect.arrayContaining(["o", "p"]));
   }
 });
+
+it("tells the user when the SRE incident already has a public incident on the page", async () => {
+  (db.query.statusPages.findFirst as jest.Mock).mockResolvedValue({ id: uuid(1), language: "en" });
+  (db.query.sreIncidents.findFirst as jest.Mock).mockResolvedValue({ id: uuid(2) });
+  (db as unknown as { select: jest.Mock }).select = jest.fn(() => ({ from: () => ({ where: async () => [{ id: uuid(3) }] }) }));
+  (db.transaction as jest.Mock).mockImplementation(async (callback) => callback({
+    select: () => ({ from: () => ({ where: () => ({ for: async () => [] }) }) }),
+    query: { incidents: { findFirst: async () => ({ id: uuid(9) }) } },
+  }));
+  const result = await createIncident({
+    statusPageId: uuid(1), sreIncidentId: uuid(2), name: "Outage", status: "investigating", impact: "minor",
+    affectedComponentIds: [uuid(3)], componentStatus: "partial_outage", deliverNotifications: false,
+  } as never);
+  expect(result).toEqual({ success: false, message: "This incident already has a public incident on this status page." });
+});

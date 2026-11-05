@@ -14,7 +14,10 @@ import {
   isValidTeamsWebhookDomain,
   getTeamsWebhookDomainError,
 } from './notification.constants';
-import { isUrlSafeForOutbound } from '../common/utils/url-validator';
+import {
+  allowInternalWebhookTargets,
+  isUrlSafeForOutbound,
+} from '../common/utils/url-validator';
 import { fetchPublicEndpoint } from '../common/utils/pinned-public-fetch';
 
 // Utility function to safely get error message
@@ -608,7 +611,9 @@ export class NotificationService {
           const webhookConfig = provider.config as WebhookConfig;
           if (!webhookConfig.url) return false;
           // SSRF defense-in-depth: re-validate URL at send-time
-          const webhookCheck = isUrlSafeForOutbound(webhookConfig.url);
+          const webhookCheck = isUrlSafeForOutbound(webhookConfig.url, {
+            allowInternal: allowInternalWebhookTargets(),
+          });
           if (!webhookCheck.safe) {
             this.logger.warn(
               `Blocked unsafe webhook URL for provider ${provider.id}: ${webhookCheck.reason}`,
@@ -1099,12 +1104,16 @@ export class NotificationService {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
 
-      const response = await fetchPublicEndpoint(webhookUrl, {
-        method,
-        headers,
-        body: method === 'GET' ? undefined : body,
-        signal: controller.signal,
-      });
+      const response = await fetchPublicEndpoint(
+        webhookUrl,
+        {
+          method,
+          headers,
+          body: method === 'GET' ? undefined : body,
+          signal: controller.signal,
+        },
+        { allowInternal: allowInternalWebhookTargets() },
+      );
 
       clearTimeout(timeoutId);
       const responseText = await response

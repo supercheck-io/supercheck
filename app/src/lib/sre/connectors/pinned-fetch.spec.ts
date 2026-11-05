@@ -15,7 +15,7 @@ jest.mock("node:https", () => ({
 import { lookup } from "node:dns/promises";
 import http from "node:http";
 import https from "node:https";
-import { fetchConnectorEndpoint, fetchPublicEndpoint } from "./pinned-fetch";
+import { fetchChannelWebhookEndpoint, fetchConnectorEndpoint, fetchPublicEndpoint } from "./pinned-fetch";
 
 const mockLookup = lookup as jest.MockedFunction<typeof lookup>;
 const mockHttpRequest = http.request as jest.MockedFunction<typeof http.request>;
@@ -291,5 +291,33 @@ describe("self-hosted pinned fetch", () => {
     });
     const response = await fetchConnectorEndpoint("http://127.0.0.1:9090/");
     expect(response.status).toBe(200);
+  });
+});
+
+describe("webhook channel fetch", () => {
+  beforeEach(() => { jest.resetAllMocks(); });
+  afterEach(() => { delete process.env.SELF_HOSTED; delete process.env.ALLOW_INTERNAL_TARGETS; });
+
+  it.each([
+    ["cloud", undefined, "true"],
+    ["self-hosted without ALLOW_INTERNAL_TARGETS", "true", undefined],
+  ])("refuses plain http and private hosts in %s", async (_name, selfHosted, allow) => {
+    if (selfHosted) process.env.SELF_HOSTED = selfHosted;
+    if (allow) process.env.ALLOW_INTERNAL_TARGETS = allow;
+    await expect(fetchChannelWebhookEndpoint("http://10.0.0.5/hook")).rejects.toThrow();
+    expect(mockHttpRequest).not.toHaveBeenCalled();
+  });
+
+  it("reaches an internal http endpoint when self-hosted and ALLOW_INTERNAL_TARGETS=true, but never metadata", async () => {
+    process.env.SELF_HOSTED = "true";
+    process.env.ALLOW_INTERNAL_TARGETS = "true";
+    (mockHttpRequest as unknown as jest.Mock).mockImplementation((_u: URL, _o: unknown, onResponse: Function) => {
+      const response = Object.assign(new EventEmitter(), { statusCode: 200, headers: {}, statusMessage: "OK" });
+      onResponse(response);
+      queueMicrotask(() => response.emit("end"));
+      return fakeRequest();
+    });
+    expect((await fetchChannelWebhookEndpoint("http://10.0.0.5:8080/hook")).status).toBe(200);
+    await expect(fetchChannelWebhookEndpoint("http://169.254.169.254/latest")).rejects.toThrow("metadata");
   });
 });

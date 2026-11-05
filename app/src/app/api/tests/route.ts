@@ -211,6 +211,9 @@ export async function GET(request: NextRequest) {
   }
 }
 
+// Matches the tests.title varchar(255) column.
+const MAX_TITLE_LENGTH = 255;
+
 export async function POST(request: NextRequest) {
   try {
     const context = await requireAuthContext();
@@ -237,6 +240,13 @@ export async function POST(request: NextRequest) {
     if (!title) {
       return NextResponse.json(
         { error: "Test title is required" },
+        { status: 400 }
+      );
+    }
+
+    if (typeof title !== "string" || [...title].length > MAX_TITLE_LENGTH) {
+      return NextResponse.json(
+        { error: `Title must be 1-${MAX_TITLE_LENGTH} characters` },
         { status: 400 }
       );
     }

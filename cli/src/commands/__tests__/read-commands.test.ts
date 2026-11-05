@@ -538,6 +538,7 @@ describe('read-only and operational commands', () => {
     })
 
     it('describes the configuration schema without network access', async () => {
+      outputFormat = 'json'
       await schemaCommand.parseAsync(['node', 'schema', 'config'])
 
       expect(mockGet).not.toHaveBeenCalled()

@@ -34,7 +34,7 @@ The CLI prints a URL and a short code. You approve the request in your browser a
 supercheck whoami
 ```
 
-Shows your API URL, authenticated project and role. Use `supercheck --json whoami` to also see the organization. Token identity and expiry are shown when your role can view API keys. Read-only users can verify access too.
+Shows your API URL, authenticated project and role. Use `supercheck --json whoami` to also see the organization. Token identity and expiry are shown when your role can view API keys. A project viewer cannot create a CLI token or sign in with the CLI (it lacks the API key permission), so it cannot use the CLI. A 401 prints a hint to run `supercheck login --reauth` or set a valid `SUPERCHECK_TOKEN`.
 
 </Step>
 </Steps>

@@ -14,7 +14,7 @@ import {
   scheduleMonitor,
   deleteScheduledMonitor,
 } from "@/lib/monitor-scheduler";
-import { updateMonitorHandler, scheduleCreatedMonitor } from "./monitor-service";
+import { updateMonitorHandler, scheduleCreatedMonitor, insertMonitorRecord } from "./monitor-service";
 
 describe("updateMonitorHandler schedule synchronization", () => {
   const existing = {
@@ -190,5 +190,23 @@ describe("updateMonitorHandler write safety", () => {
   it("rejects config null instead of wiping the stored config", async () => {
     await expect(updateMonitorHandler(existing.id, { config: null })).rejects.toMatchObject({ statusCode: 400 });
     expect(db.update).not.toHaveBeenCalled();
+  });
+});
+
+describe("insertMonitorRecord enabled flag", () => {
+  const base = { name: "m", type: "http_request", target: "https://example.com", frequencyMinutes: 5, organizationId: "00000000-0000-4000-8000-000000000001", projectId: "00000000-0000-4000-8000-000000000002" };
+  const executor = () => {
+    const values = jest.fn().mockReturnValue({ returning: jest.fn().mockResolvedValue([{}]) });
+    return { values, executor: { insert: jest.fn().mockReturnValue({ values }) } };
+  };
+  it("stores enabled=false with status paused", async () => {
+    const { values, executor: ex } = executor();
+    await insertMonitorRecord({ ...base, enabled: false } as never, ex as never);
+    expect(values).toHaveBeenCalledWith(expect.objectContaining({ enabled: false, status: "paused" }));
+  });
+  it("stores enabled=true by default", async () => {
+    const { values, executor: ex } = executor();
+    await insertMonitorRecord(base as never, ex as never);
+    expect(values).toHaveBeenCalledWith(expect.objectContaining({ enabled: true, status: "pending" }));
   });
 });

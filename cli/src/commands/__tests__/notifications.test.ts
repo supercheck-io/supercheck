@@ -66,7 +66,7 @@ describe('notification provider command', () => {
 
   it('lists providers with the documented columns', async () => {
     mockGet.mockResolvedValueOnce({
-      data: [{ id: 'np-1', name: 'On call', type: 'slack', enabled: true }],
+      data: [{ id: 'np-1', name: 'On call', type: 'slack', isEnabled: true }],
     })
 
     await notificationCommand.parseAsync(['node', 'notification', 'list'])
@@ -81,7 +81,7 @@ describe('notification provider command', () => {
       'id',
       'name',
       'type',
-      'enabled',
+      'isEnabled',
       'lastUsed',
     ])
   })

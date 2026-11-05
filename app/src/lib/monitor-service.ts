@@ -68,6 +68,7 @@ export async function insertMonitorRecord(
     organizationId: validatedData.organizationId,
     projectId: validatedData.projectId,
     createdByUserId: validatedData.createdByUserId,
+    enabled: validatedData.enabled !== false,
     status: (validatedData.enabled === false
       ? "paused"
       : "pending") as DBMonitorStatus,

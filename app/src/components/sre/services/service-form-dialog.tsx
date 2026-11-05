@@ -28,6 +28,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { UserAvatar } from "@/components/ui/user-cell";
+import { useSreIncidentAssignees } from "@/hooks/use-sre";
 
 type ServiceFormDialogProps = {
   open: boolean;
@@ -35,6 +37,8 @@ type ServiceFormDialogProps = {
   service: SreServiceListItem | null;
   onSaved: (service: SreServiceListItem) => void;
 };
+
+const NO_OWNER = "__none__";
 
 type FieldErrors = Record<string, string[] | undefined>;
 
@@ -82,6 +86,11 @@ export function ServiceFormDialog({
   const [tier, setTier] = useState<"1" | "2" | "3" | "4">(service?.tier ?? "3");
   const [environment, setEnvironment] = useState(service?.environment ?? "");
   const [ownerTeam, setOwnerTeam] = useState(service?.ownerTeam ?? "");
+  const [ownerUserId, setOwnerUserId] = useState<string | null>(service?.ownerUserId ?? null);
+  const owners = useSreIncidentAssignees(open);
+  const people = owners.data?.success ? owners.data.assignees : [];
+  // A stored owner who was demoted or removed is not in the list; keep it visible so it can be cleared.
+  const staleOwner = Boolean(owners.data?.success && ownerUserId && !people.some((person) => person.id === ownerUserId));
   const [repoUrl, setRepoUrl] = useState(service?.repoUrl ?? "");
   const [otelServiceName, setOtelServiceName] = useState(service?.otelServiceName ?? "");
   const [slackChannel, setSlackChannel] = useState(service?.slackChannel ?? "");
@@ -99,6 +108,7 @@ export function ServiceFormDialog({
       tier,
       environment,
       ownerTeam,
+      ownerUserId,
       repoUrl,
       otelServiceName,
       slackChannel,
@@ -201,6 +211,33 @@ export function ServiceFormDialog({
                 onChange={(event) => setOwnerTeam(event.target.value)}
                 placeholder="payments-platform"
               />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="service-owner-user">Owner (emailed for SEV1-2)</Label>
+              <Select
+                value={ownerUserId ?? NO_OWNER}
+                onValueChange={(value) => setOwnerUserId(value === NO_OWNER ? null : value)}
+              >
+                <SelectTrigger id="service-owner-user" aria-invalid={Boolean(firstError(fieldErrors, "ownerUserId"))}>
+                  <SelectValue placeholder="No owner" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_OWNER}>No owner</SelectItem>
+                  {staleOwner && ownerUserId && <SelectItem value={ownerUserId}>Current owner (no longer eligible)</SelectItem>}
+                  {people.map((person) => (
+                    <SelectItem key={person.id} value={person.id}>
+                      <span className="flex items-center gap-2">
+                        <UserAvatar name={person.name} userId={person.id} image={person.image} className="h-5 w-5" />
+                        {person.name}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {firstError(fieldErrors, "ownerUserId") && (
+                <p className="text-xs text-destructive">{firstError(fieldErrors, "ownerUserId")}</p>
+              )}
             </div>
 
             <div className="space-y-1.5">

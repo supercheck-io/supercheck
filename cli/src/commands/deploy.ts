@@ -115,8 +115,8 @@ export function assertReferencesResolvable(
   for (const change of actionable) {
     if (change.action === 'delete' || !change.local) continue
     const definition = change.local.definition
-    if (change.type === 'requirement' && Array.isArray(definition.tests)) {
-      for (const ref of definition.tests) check(`requirement/${change.name}`, 'test', String(ref))
+    if ((change.type === 'requirement' || change.type === 'job') && Array.isArray(definition.tests)) {
+      for (const ref of definition.tests) check(`${change.type}/${change.name}`, 'test', String(ref))
     }
     if (change.type === 'statusPage') {
       validateStatusPageDefinition(definition, change.name)

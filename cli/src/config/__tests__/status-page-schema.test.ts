@@ -1,5 +1,5 @@
 import { describe, expect, it } from '@jest/globals'
-import { jobDefinitionSchema, requirementDefinitionSchema, statusPageDefinitionSchema } from '../schema.js'
+import { jobDefinitionSchema, monitorDefinitionSchema, requirementDefinitionSchema, statusPageDefinitionSchema } from '../schema.js'
 
 describe('status page schema', () => {
   it('leaves absent notification flags undefined (no defaults)', () => {
@@ -71,5 +71,18 @@ describe('requirement externalUrl', () => {
     for (const externalUrl of ['javascript:alert(1)', 'ftp://example.com', 'mailto:a@b.co']) {
       expect(requirementDefinitionSchema.safeParse({ title: 'R', externalUrl }).success).toBe(false)
     }
+  })
+})
+
+describe('server length limits caught by validate', () => {
+  const monitor = { name: 'm', type: 'website', target: 'https://example.com' }
+  it('rejects more than 10 monitor tags', () => {
+    const tags = Array.from({ length: 11 }, (_, i) => `t${i}`)
+    expect(monitorDefinitionSchema.safeParse({ ...monitor, tags }).success).toBe(false)
+    expect(monitorDefinitionSchema.safeParse({ ...monitor, tags: tags.slice(0, 10) }).success).toBe(true)
+  })
+  it('rejects names over 255 characters', () => {
+    expect(monitorDefinitionSchema.safeParse({ ...monitor, name: 'x'.repeat(256) }).success).toBe(false)
+    expect(jobDefinitionSchema.safeParse({ name: 'x'.repeat(256), tests: ['a'] }).success).toBe(false)
   })
 })

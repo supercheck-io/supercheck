@@ -12,7 +12,7 @@ import { db } from "@/utils/db";
 import { user, member } from "@/db/schema";
 import { and, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { apiKeyRateLimiter, createRateLimitHeaders } from "@/lib/api-key-rate-limiter";
-import { fetchPublicEndpoint } from "@/lib/sre/connectors/pinned-fetch";
+import { fetchChannelWebhookEndpoint, fetchPublicEndpoint } from "@/lib/sre/connectors/pinned-fetch";
 
 export async function POST(req: NextRequest) {
   try {
@@ -310,8 +310,10 @@ async function testWebhookConnection(config: NotificationProviderConfig) {
       throw new Error("URL is required");
     }
 
-    const { validateWebhookUrlString } = await import("@/lib/url-validator");
-    const urlValidation = validateWebhookUrlString(typedConfig.url as string);
+    const { allowInternalWebhookTargets, validateWebhookUrlString } = await import("@/lib/url-validator");
+    const urlValidation = validateWebhookUrlString(typedConfig.url as string, {
+      allowInternal: allowInternalWebhookTargets(),
+    });
     if (!urlValidation.valid) {
       throw new Error(urlValidation.error || "Invalid webhook URL");
     }
@@ -339,7 +341,7 @@ async function testWebhookConnection(config: NotificationProviderConfig) {
     const timeout = setTimeout(() => controller.abort(), 10000);
 
     try {
-      const response = await fetchPublicEndpoint(targetUrl, {
+      const response = await fetchChannelWebhookEndpoint(targetUrl, {
         method,
         headers,
         body,
