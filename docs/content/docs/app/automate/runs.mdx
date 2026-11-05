@@ -36,7 +36,7 @@ Runs recorded before this column was added show **Unknown**.
 
 Tests, jobs, monitors, requirements, variables and notification channels show a **Created by** column. On the jobs and monitors tables it is hidden by default; turn it on from the column menu.
 
-When cancellation is requested for a running execution, the run ends as **Cancelled**, with cancellation details on the run page. The worker may still be finishing report uploads.
+When cancellation is requested for a running execution, the run ends as **Cancelled**, with cancellation details on the run page.
 
 ## Run Details
 
@@ -214,9 +214,7 @@ Area chart showing test duration over time. Monitor for performance regressions,
 <Accordions>
 <Accordion title="Deleting runs and stored artifacts" id="deleting-runs">
 
-Queued or running executions cannot be deleted. Stop the execution before retrying. Deletion waits for artifact storage cleanup; if storage is unavailable, the run stays available so you can retry. A partial cleanup may already have removed some artifacts.
-
-Reports belong to individual runs, including repeated executions of the same saved test. If a worker upload completes after a run has been deleted, background cleanup removes the late artifacts. This cleanup can take another scheduled pass.
+Queued or running executions cannot be deleted. Stop the execution before retrying. If deletion fails, the run stays available so you can retry.
 
 </Accordion>
 </Accordions>

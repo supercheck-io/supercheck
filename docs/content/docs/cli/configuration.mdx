@@ -190,13 +190,6 @@ Validate with `supercheck config validate`, preview with `supercheck diff`, appl
 |---|---|---|---|
 | `baseUrl` | `string` | `https://app.supercheck.io` | API base URL |
 
-**`defaults`** (reserved for future use: defined in the schema but not currently applied during local CLI execution)
-
-| Field | Type | Description |
-|---|---|---|
-| `runLocation` | `string` | Default worker routing code (e.g. `local`) |
-| `timeout` | `number` | Default execution timeout in milliseconds |
-
 </Accordion>
 <Accordion title="tests.playwright and tests.k6" id="tests-playwright">
 
@@ -246,7 +239,7 @@ Jobs have no `tags` field; a config containing one fails validation.
 </Accordion>
 <Accordion title="requirements[]" id="requirements">
 
-Needs a server with the requirements API. Remote requirements are compared, and pruned by `deploy --delete`, only when the config has a `requirements` key; a config without one leaves dashboard requirements alone. Omitting `description`, `priority`, `externalId` or `externalUrl` leaves the remote value unchanged. Set `description`, `priority`, `externalId` or `externalUrl` to `""` to clear it.
+Remote requirements are compared, and pruned by `deploy --delete`, only when the config has a `requirements` key; a config without one leaves dashboard requirements alone. Omitting `description`, `priority`, `externalId` or `externalUrl` leaves the remote value unchanged. Set `description`, `priority`, `externalId` or `externalUrl` to `""` to clear it.
 
 | Field | Type | Description |
 |---|---|---|
@@ -262,7 +255,7 @@ Needs a server with the requirements API. Remote requirements are compared, and 
 </Accordion>
 <Accordion title="statusPages[]" id="statuspages">
 
-Needs a server with the status page write API. `config validate` checks the server's length limits and formats, so most bad values fail before anything is written; the server stays the final check (for example, custom domain availability on your plan). Omitting a field leaves the remote value unchanged; `""` clears `headline`, `description`, `supportUrl` or `customDomain`.
+`config validate` checks length limits and formats, so most bad values fail before anything is written; custom domain availability on your plan is checked at deploy. Omitting a field leaves the remote value unchanged; `""` clears `headline`, `description`, `supportUrl` or `customDomain`.
 
 | Field | Type | Description |
 |---|---|---|
@@ -346,9 +339,7 @@ Successful deploys record server-assigned IDs for created resources, and the cur
 <Accordions>
 <Accordion title="State file and ownership details" id="state-details">
 
-The mapping is scoped to the API origin and the actual organization and project returned by the server, and tracks replacement IDs when a managed remote resource is deleted and recreated. `diff` and dry runs do not persist state. The `.lock` file coordinates deploys only on a shared local filesystem.
-
-Names alone never establish ownership. If a same-name remote resource has no ID in the local config or state file, deploy stops and asks you to pull the resource or provide its explicit ID. Renaming an ID-less non-test resource creates a separate resource; the old remote resource remains unless you deploy with `--delete`. Carry its explicit ID or pull it first to update the existing resource. Deploy resolves newly created test IDs before dependent jobs and synthetic monitors, and preserves local test file paths instead of renaming them after deployment. Monitor and job tag assignments are rejected before writes; standalone tag CRUD remains supported.
+Names alone never establish ownership. If a same-name remote resource has no ID in the local config or state file, deploy stops and asks you to pull the resource or provide its explicit ID. Renaming an ID-less non-test resource creates a separate resource; the old remote resource remains unless you deploy with `--delete`. Carry its explicit ID or pull it first to update the existing resource. Deploy does not rename local test files.
 
 </Accordion>
 <Accordion title="Offline validation and pull behavior" id="offline-and-pull">

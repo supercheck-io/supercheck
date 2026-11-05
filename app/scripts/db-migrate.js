@@ -311,8 +311,7 @@ async function dropInvalidIndexes(client, sql) {
 }
 
 // Through a transaction-mode pooler (PgBouncer, PlanetScale) a session SET and the next statement can hit
-// different backends, and the SET can leak to a backend other clients use. So the deferred step prefers a
-// direct MIGRATION_DATABASE_URL, and on a pooled fallback skips the SET rather than leak it.
+// different backends, and the SET can leak to a backend other clients use, so it is skipped there.
 function looksPooled(url) {
   try {
     const u = new URL(String(url).replace(/^postgres(ql)?:/i, "http:"));
@@ -326,12 +325,6 @@ function looksPooled(url) {
   } catch {
     return false;
   }
-}
-
-function resolveDeferredTarget(fallbackUrl, directUrl = process.env.MIGRATION_DATABASE_URL) {
-  const direct = typeof directUrl === "string" ? directUrl.trim() : "";
-  if (direct) return { url: direct, useStatementTimeout: true };
-  return { url: fallbackUrl, useStatementTimeout: !looksPooled(fallbackUrl) };
 }
 
 async function setStatementTimeout(client, ms) {
@@ -348,7 +341,7 @@ async function runDeferredMigrations(items = deferredMigrations) {
   if (items.length === 0) return true;
   let lockClient;
   let client;
-  const deferred = resolveDeferredTarget(TARGET_DATABASE_URL);
+  const useStatementTimeout = !looksPooled(TARGET_DATABASE_URL);
   try {
     lockClient = await acquireMigrationLock(postgres, TARGET_DATABASE_URL, {
       lockName: MIGRATION_LOCK_NAME,
@@ -362,14 +355,14 @@ async function runDeferredMigrations(items = deferredMigrations) {
       return true;
     }
     // A build that outlives the timeout fails like any other deferred failure: unrecorded, retried next deploy.
-    if (!deferred.useStatementTimeout) {
-      logWarning(
-        "DATABASE_URL looks like a pooler and MIGRATION_DATABASE_URL is not set: deferred index builds run without a statement timeout"
-      );
+    if (!useStatementTimeout) {
+      log("DATABASE_URL is a connection pooler: deferred index builds run without a statement timeout");
     }
-    client = postgres(deferred.url, {
+    // prepare: false keeps queries working through a transaction-mode pooler without prepared statements.
+    client = postgres(TARGET_DATABASE_URL, {
       max: 1,
-      ssl: getDatabaseSSLConfig(deferred.url),
+      prepare: false,
+      ssl: getDatabaseSSLConfig(),
       onnotice: () => {},
     });
     for (const { file, content, hash } of items) {
@@ -383,7 +376,7 @@ async function runDeferredMigrations(items = deferredMigrations) {
         const reserved = await client.reserve();
         try {
           // A session SET, not a startup parameter: poolers reject unsupported startup parameters.
-          if (deferred.useStatementTimeout) await setStatementTimeout(reserved, DEFERRED_STATEMENT_TIMEOUT_MS);
+          if (useStatementTimeout) await setStatementTimeout(reserved, DEFERRED_STATEMENT_TIMEOUT_MS);
           await dropInvalidIndexes(reserved, content);
           // No IF NOT EXISTS rewriting and no savepoints: the file is exactly what the author wrote.
           for (const statement of content.split("--> statement-breakpoint")) {
@@ -401,7 +394,7 @@ async function runDeferredMigrations(items = deferredMigrations) {
         logWarning(`Deferred migration ${file} failed and will be retried on the next deploy: ${err.message}`);
         // A statement timeout or dropped connection can leave the pooled connection unusable.
         await client.end({ timeout: 5 }).catch(() => undefined);
-        client = postgres(deferred.url, { max: 1, ssl: getDatabaseSSLConfig(deferred.url), onnotice: () => {} });
+        client = postgres(TARGET_DATABASE_URL, { max: 1, prepare: false, ssl: getDatabaseSSLConfig(), onnotice: () => {} });
       }
     }
   } catch (err) {
@@ -974,7 +967,7 @@ async function validateAfterCommit() {
   }
 }
 
-module.exports = { resolveDeferredTarget, setStatementTimeout, hasNoTransactionMarker, concurrentIndexNames, concurrentIndexes, assertDeferredFileRerunnable };
+module.exports = { looksPooled, setStatementTimeout, hasNoTransactionMarker, concurrentIndexNames, concurrentIndexes, assertDeferredFileRerunnable };
 
 // Run the main function
 if (require.main === module) main();

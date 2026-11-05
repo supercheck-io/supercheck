@@ -77,7 +77,7 @@ flowchart TD
 
 - PostgreSQL 18+ and Drizzle ORM are current (the schema relies on the PostgreSQL 18-native `uuidv7()`). Do not introduce Prisma, MySQL assumptions, or NextAuth patterns.
 - Follow neighboring schema conventions for UUIDs, timestamps, indexes, foreign keys, uniqueness, and delete behavior.
-- Migration conventions: every timestamp is `timestamptz` (since 0053); every foreign key has a deliberate `ON DELETE` rule (0048); status/type columns get CHECK constraints (0052). A file starting with `-- supercheck:no-transaction` runs after the migration transaction commits (use it for `CREATE INDEX CONCURRENTLY`, e.g. 0054); it uses `MIGRATION_DATABASE_URL` (a direct Postgres URL) when `DATABASE_URL` is a pooler.
+- Migration conventions: every timestamp is `timestamptz` (since 0053); every foreign key has a deliberate `ON DELETE` rule (0048); status/type columns get CHECK constraints (0052). A file starting with `-- supercheck:no-transaction` runs after the migration transaction commits (use it for `CREATE INDEX CONCURRENTLY`, e.g. 0054); behind a connection pooler it skips the session `statement_timeout`, which would otherwise leak to other clients.
 - Add indexes for real filters, joins, ordering, and uniqueness—not as a template exercise.
 - Generate and inspect migrations. New non-null columns need safe behavior for existing rows.
 - Analyze destructive changes, backfills, transaction duration, locks, rollback/recovery, and rolling app/worker compatibility.

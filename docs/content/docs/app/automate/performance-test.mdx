@@ -28,8 +28,7 @@ Run and analyze results
 <Accordions>
 <Accordion title="Worker availability (503 EXECUTION_QUEUE_UNAVAILABLE)" id="worker-availability">
 
-K6 submissions require a live worker heartbeat that advertises the requested K6 queue before capacity is reserved. If the worker is offline, its heartbeat lookup fails, or its latest heartbeat does not yet advertise that queue, the API returns HTTP 503 with response code `EXECUTION_QUEUE_UNAVAILABLE`. A newly started worker can publish its first heartbeat before it registers its K6 queues; wait for the next heartbeat, then retry.
-
+If no worker is available to run k6 tests, the API returns HTTP 503 with code `EXECUTION_QUEUE_UNAVAILABLE`. Self-hosted: make sure a worker is running, wait for it to finish starting, then retry.
 </Accordion>
 </Accordions>
 
