@@ -64,7 +64,7 @@ export async function GET(
   const days = parseInt(searchParams.get("days") || "7", 10);
 
   // Validate days parameter
-  if (days < 1 || days > 90) {
+  if (!Number.isInteger(days) || days < 1 || days > 90) {
     return NextResponse.json(
       { error: "Days must be between 1 and 90" },
       { status: 400 }

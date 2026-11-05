@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/utils/db";
 import { jobs, runs } from "@/db/schema";
 import { getQueueEventHub, NormalizedQueueEvent } from "@/lib/queue-event-hub";
-import { requireAuthContext } from "@/lib/auth-context";
+import { authErrorStatus, isAuthError, requireAuthContext } from "@/lib/auth-context";
 
 const encoder = new TextEncoder();
 
@@ -60,9 +60,12 @@ export async function GET(request: Request) {
     const context = await requireAuthContext();
     projectContext = { project: context.project, organizationId: context.organizationId };
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Authentication required";
-    const status = message.includes("Authentication") ? 401 : 404;
-    return NextResponse.json({ error: message }, { status });
+    if (!isAuthError(error)) {
+      console.error("job-status events auth lookup failed:", error);
+      return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    }
+    const status = authErrorStatus(error);
+    return NextResponse.json({ error: status === 403 ? "Forbidden" : "Unauthorized" }, { status });
   }
 
   if (!isUuid(runId)) return NextResponse.json({ error: "Run not found" }, { status: 404 });

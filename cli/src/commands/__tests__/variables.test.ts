@@ -317,9 +317,10 @@ describe('var command', () => {
   it('does not delete a key that does not exist', async () => {
     mockGet.mockResolvedValueOnce({ data: variables })
 
-    await expect(varCommand.parseAsync(['node', 'var', 'delete', 'MISSING', '--force'])).rejects.toBeInstanceOf(
-      CLIError,
-    )
+    await expect(varCommand.parseAsync(['node', 'var', 'delete', 'MISSING', '--force'])).rejects.toMatchObject({
+      name: 'ApiRequestError',
+      exitCode: ExitCode.ApiError,
+    })
     expect(mockDelete).not.toHaveBeenCalled()
   })
 

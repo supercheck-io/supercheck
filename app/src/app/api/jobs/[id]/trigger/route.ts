@@ -1,9 +1,9 @@
 import { getExecutionPolicy, ExecutionWorkloadError, type ExecutionPolicy } from "@/lib/execution/execution-policy";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
-import { jobs, apikey, runs, JobTrigger, user } from "@/db/schema";
+import { jobs, apikey, runs, JobTrigger, user, projects } from "@/db/schema";
 import type { JobType, K6Location } from "@/db/schema";
-import { eq, sql, and, inArray } from "drizzle-orm";
+import { eq, sql, and, inArray, or, isNull } from "drizzle-orm";
 import crypto from "crypto";
 import {
   addJobToQueue,
@@ -232,7 +232,9 @@ export async function POST(
         jobType: jobs.jobType,
       })
       .from(jobs)
-      .where(eq(jobs.id, jobId))
+      // A deleted project's jobs keep their trigger keys; they must stop running.
+      .leftJoin(projects, eq(projects.id, jobs.projectId))
+      .where(and(eq(jobs.id, jobId), or(isNull(jobs.projectId), eq(projects.status, "active"))))
       .limit(1);
 
     if (jobResult.length === 0) {

@@ -14,6 +14,7 @@ import {
 } from '../../notification/notification.service';
 import { decryptNotificationProviderConfig } from '../../common/notification-provider-crypto';
 import { SreAlertTriageQueueService } from './sre-alert-triage-queue.service';
+import { getErrorMessage } from '../../common/validation';
 
 type ProviderRow = {
   id: string;
@@ -32,6 +33,24 @@ export class MonitorAlertService {
     private readonly notificationService: NotificationService,
     private readonly sreAlertTriageQueueService: SreAlertTriageQueueService,
   ) {}
+
+  /** One channel whose config cannot be decrypted must not block delivery to the others. */
+  private decryptProviders(providers: ProviderRow[]): NotificationProvider[] {
+    return providers.flatMap((provider): NotificationProvider[] => {
+      try {
+        const config = decryptNotificationProviderConfig(
+          provider.config,
+          provider.projectId ?? undefined,
+        );
+        return [{ id: provider.id, type: provider.type, config }];
+      } catch (error) {
+        this.logger.error(
+          `[NOTIFY] Skipping notification provider ${provider.id}: config could not be decrypted (${getErrorMessage(error)})`,
+        );
+        return [];
+      }
+    });
+  }
 
   /** Lets an open incident for this monitor auto-resolve, whether or not a recovery alert goes out. */
   async signalRecovery(monitorId: string, recoveredAt: Date): Promise<void> {
@@ -133,20 +152,7 @@ export class MonitorAlertService {
         ),
       )) as ProviderRow[];
 
-    const decryptedProviders = providers.map(
-      (provider): NotificationProvider => {
-        const decryptedConfig = decryptNotificationProviderConfig(
-          provider.config,
-          provider.projectId ?? undefined,
-        );
-
-        return {
-          id: provider.id,
-          type: provider.type,
-          config: decryptedConfig,
-        };
-      },
-    );
+    const decryptedProviders = this.decryptProviders(providers);
 
     if (decryptedProviders.length === 0) {
       this.logger.log(
@@ -359,20 +365,7 @@ export class MonitorAlertService {
         ),
       )) as ProviderRow[];
 
-    const decryptedProviders = providers.map(
-      (provider): NotificationProvider => {
-        const decryptedConfig = decryptNotificationProviderConfig(
-          provider.config,
-          provider.projectId ?? undefined,
-        );
-
-        return {
-          id: provider.id,
-          type: provider.type,
-          config: decryptedConfig,
-        };
-      },
-    );
+    const decryptedProviders = this.decryptProviders(providers);
 
     if (decryptedProviders.length === 0) {
       this.logger.log(

@@ -231,4 +231,17 @@ describe('MonitorAlertService', () => {
       { id: 'history-2', status: 'failed' },
     ]);
   });
+
+  it('skips a provider whose config cannot be decrypted and keeps the rest', () => {
+    const { service } = createService();
+    const crypto = jest.requireMock('../../common/notification-provider-crypto');
+    crypto.decryptNotificationProviderConfig.mockImplementationOnce(() => {
+      throw new Error('bad auth tag');
+    });
+    const providers = service['decryptProviders']([
+      { id: 'broken', type: 'webhook', config: {}, projectId: 'project-1' },
+      { id: 'ok', type: 'webhook', config: { url: 'u' }, projectId: 'project-1' },
+    ] as never);
+    expect(providers.map((p: { id: string }) => p.id)).toEqual(['ok']);
+  });
 });

@@ -1,6 +1,7 @@
 /** @jest-environment node */
 
 import { NextRequest } from "next/server";
+import { PgDialect } from "drizzle-orm/pg-core";
 import { getExecutionPolicy } from "@/lib/execution/execution-policy";
 import { ExecutionQueueError } from "@/lib/execution-errors";
 
@@ -721,7 +722,7 @@ describe("Execution route regressions", () => {
     const apiKeySelect = triggerKeySelect(jobId);
 
     const jobSelect = {
-      from: jest.fn().mockReturnValue({
+      from: jest.fn().mockReturnValue({ leftJoin: jest.fn().mockReturnValue({
         where: jest.fn().mockReturnValue({
           limit: jest.fn().mockResolvedValue([
             {
@@ -735,7 +736,7 @@ describe("Execution route regressions", () => {
             },
           ]),
         }),
-      }),
+      }) }),
     };
 
     mockDb.select
@@ -780,7 +781,7 @@ describe("Execution route regressions", () => {
     mockDb.select
       .mockReturnValueOnce(triggerKeySelect(jobId))
       .mockReturnValueOnce({
-        from: jest.fn().mockReturnValue({
+        from: jest.fn().mockReturnValue({ leftJoin: jest.fn().mockReturnValue({
           where: jest.fn().mockReturnValue({
             limit: jest.fn().mockResolvedValue([
               {
@@ -789,7 +790,7 @@ describe("Execution route regressions", () => {
               },
             ]),
           }),
-        }),
+        }) }),
       });
     mockDb.insert.mockReturnValue({ values: jest.fn().mockResolvedValue(undefined) });
     mockDb.update.mockReturnValue({ set: jest.fn().mockReturnValue({ where: jest.fn().mockResolvedValue(undefined) }) });
@@ -809,12 +810,35 @@ describe("Execution route regressions", () => {
 
   // Covers an owner who was demoted to viewer, removed from the project or org, or removed
   // while the key was being created: the key itself stays enabled, so the check must run here.
+  it("POST /api/jobs/[id]/trigger only finds jobs in active projects", async () => {
+    const jobId = "00000000-0000-4000-8000-000000000015";
+    const where = jest.fn().mockReturnValue({ limit: jest.fn().mockResolvedValue([]) });
+    mockDb.select
+      .mockReturnValueOnce(triggerKeySelect(jobId))
+      .mockReturnValueOnce({ from: jest.fn().mockReturnValue({ leftJoin: jest.fn().mockReturnValue({ where }) }) });
+
+    const response = await postTrigger(
+      new NextRequest(`http://localhost/api/jobs/${jobId}/trigger`, {
+        method: "POST",
+        headers: { authorization: "Bearer supercheck_api_key_123456789", "content-type": "application/json" },
+        body: JSON.stringify({}),
+      }),
+      { params: Promise.resolve({ id: jobId }) },
+    );
+
+    expect(response.status).toBe(404);
+    const { sql, params } = new PgDialect().sqlToQuery(where.mock.calls[0][0]);
+    expect(sql).toContain('"projects"."status"');
+    expect(params).toContain("active");
+    expect(mockAddJobToQueue).not.toHaveBeenCalled();
+  });
+
   it("POST /api/jobs/[id]/trigger refuses a job without a project", async () => {
     const jobId = "00000000-0000-4000-8000-000000000014";
     mockDb.select
       .mockReturnValueOnce(triggerKeySelect(jobId))
       .mockReturnValueOnce({
-        from: jest.fn().mockReturnValue({
+        from: jest.fn().mockReturnValue({ leftJoin: jest.fn().mockReturnValue({
           where: jest.fn().mockReturnValue({
             limit: jest.fn().mockResolvedValue([
               {
@@ -823,7 +847,7 @@ describe("Execution route regressions", () => {
               },
             ]),
           }),
-        }),
+        }) }),
       });
 
     const response = await postTrigger(
@@ -845,7 +869,7 @@ describe("Execution route regressions", () => {
     mockDb.select
       .mockReturnValueOnce(triggerKeySelect(jobId, { userId: "key-owner" }))
       .mockReturnValueOnce({
-        from: jest.fn().mockReturnValue({
+        from: jest.fn().mockReturnValue({ leftJoin: jest.fn().mockReturnValue({
           where: jest.fn().mockReturnValue({
             limit: jest.fn().mockResolvedValue([
               {
@@ -854,7 +878,7 @@ describe("Execution route regressions", () => {
               },
             ]),
           }),
-        }),
+        }) }),
       });
     mockHasPermissionForUser.mockResolvedValueOnce(false);
 
@@ -973,9 +997,9 @@ describe("Execution route regressions", () => {
     it("POST /api/jobs/[id]/trigger records the key owner and a key-name snapshot", async () => {
       const jobId = "00000000-0000-4000-8000-000000000021";
       mockDb.select.mockReturnValueOnce(triggerKeySelect(jobId, { userId: "key-owner" })).mockReturnValueOnce({
-        from: jest.fn().mockReturnValue({ where: jest.fn().mockReturnValue({ limit: jest.fn().mockResolvedValue([
+        from: jest.fn().mockReturnValue({ leftJoin: jest.fn().mockReturnValue({ where: jest.fn().mockReturnValue({ limit: jest.fn().mockResolvedValue([
           { id: jobId, name: "Nightly", status: "idle", createdByUserId: "job-creator", organizationId: "org-1", projectId: "project-1", jobType: "playwright" },
-        ]) }) }),
+        ]) }) }) }),
       });
       const insertValues = jest.fn().mockResolvedValue(undefined);
       mockDb.insert.mockReturnValue({ values: insertValues });

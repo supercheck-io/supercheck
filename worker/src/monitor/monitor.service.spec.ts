@@ -1450,6 +1450,35 @@ describe('MonitorService', () => {
       }
       mockDbService.db.query.monitorResults.findFirst.mockReset();
     });
+
+    it('records the outage length on the up streak that follows it', async () => {
+      let lastResult: Record<string, unknown> | undefined;
+      const values = jest
+        .fn()
+        .mockImplementation(async (value: Record<string, unknown>) => {
+          lastResult = value;
+        });
+      mockDbService.db.insert.mockReturnValue({ values });
+      mockDbService.db.query.monitorResults.findFirst.mockImplementation(
+        async () => lastResult,
+      );
+      const seen: unknown[] = [];
+      for (const isUp of [false, false, true, true, false]) {
+        await service['saveMonitorResultToDb']({
+          monitorId: mockMonitor.id,
+          location: 'eu',
+          checkedAt: new Date(),
+          status: isUp ? 'up' : 'down',
+          isUp,
+        });
+        seen.push(
+          (lastResult?.details as { priorFailureCount?: number })
+            .priorFailureCount,
+        );
+      }
+      expect(seen).toEqual([undefined, undefined, 2, 2, undefined]);
+      mockDbService.db.query.monitorResults.findFirst.mockReset();
+    });
     it('continues failure counters per location, ignoring other regions', async () => {
       const rows: Array<Record<string, unknown>> = [];
       const values = jest

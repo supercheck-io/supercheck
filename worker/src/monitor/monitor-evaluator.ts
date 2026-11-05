@@ -22,6 +22,8 @@ export type AggregatedAlertState = {
   alertsSentForFailure: number;
   alertsSentForRecovery: number;
   recoverySequence?: boolean;
+  /** Failure count of the outage this recovery follows; absent on state written before it existed. */
+  priorFailureCount?: number;
   executionGroupId?: string;
 };
 
@@ -101,6 +103,9 @@ export class MonitorEvaluator {
         rawAlertState?.alertsSentForRecovery,
       ),
       recoverySequence: rawAlertState?.recoverySequence === true,
+      ...(typeof rawAlertState?.priorFailureCount === 'number'
+        ? { priorFailureCount: toSafeCounter(rawAlertState.priorFailureCount) }
+        : {}),
     };
   }
 
@@ -139,6 +144,12 @@ export class MonitorEvaluator {
       recoverySequence:
         previousStatus === 'down' ||
         (continuingRecoverySequence && previousState.recoverySequence === true),
+      ...(previousStatus === 'down'
+        ? { priorFailureCount: previousState.consecutiveFailureCount }
+        : continuingRecoverySequence &&
+            previousState.priorFailureCount !== undefined
+          ? { priorFailureCount: previousState.priorFailureCount }
+          : {}),
     };
   }
 
@@ -348,9 +359,23 @@ export class MonitorEvaluator {
         await this.monitorAlertService.signalRecovery(monitorId, new Date());
       }
 
+      // A blip shorter than the failure threshold was never an outage, so it gets no recovery alert.
+      // Unknown or uncounted (0: older state, or alerts were off during the outage) still alerts.
+      const priorFailureCount = isMultiLocationEvaluation
+        ? aggregatedAlertState?.priorFailureCount
+        : (latestResult?.details as { priorFailureCount?: unknown } | null)
+            ?.priorFailureCount;
+      const outageReachedThreshold = !(
+        typeof priorFailureCount === 'number' &&
+        priorFailureCount > 0 &&
+        priorFailureCount <
+          ((monitorAlertConfig?.failureThreshold as number) || 1)
+      );
+
       shouldSendAlert =
         consecutiveSuccessCount >= recoveryThreshold &&
         alertsSentForRecovery === 0 &&
+        outageReachedThreshold &&
         ((monitorAlertConfig?.alertOnRecovery as boolean) || false);
 
       if (!shouldSendAlert) {

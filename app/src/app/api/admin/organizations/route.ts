@@ -10,8 +10,9 @@ export async function GET(request: NextRequest) {
     await requireAdmin();
 
     const { searchParams } = new URL(request.url);
-    const limit = parseInt(searchParams.get("limit") || "50");
-    const offset = parseInt(searchParams.get("offset") || "0");
+    // No upper cap: the Super Admin page loads every organization in one request.
+    const limit = Math.max(parseInt(searchParams.get("limit") || "50", 10) || 50, 1);
+    const offset = Math.max(parseInt(searchParams.get("offset") || "0", 10) || 0, 0);
     const includeStats = searchParams.get("stats") === "true";
 
     // Base query for organizations

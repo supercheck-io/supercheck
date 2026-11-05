@@ -2223,6 +2223,16 @@ export class MonitorService {
             resultData.isUp &&
             (lastResult?.isUp === false ||
               lastResult?.details?.recoverySequence === true),
+          // Length of the outage this up streak follows; gates the recovery alert on the failure threshold.
+          ...(resultData.isUp && lastResult
+            ? lastResult.isUp
+              ? typeof lastResult.details?.priorFailureCount === 'number'
+                ? { priorFailureCount: lastResult.details.priorFailureCount }
+                : {}
+              : {
+                  priorFailureCount: lastResult.consecutiveFailureCount || 0,
+                }
+            : {}),
         },
         isUp: resultData.isUp,
         isStatusChange: isStatusChange,

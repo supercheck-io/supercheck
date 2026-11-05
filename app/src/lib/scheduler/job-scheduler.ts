@@ -378,7 +378,9 @@ export async function processScheduledJob(
 
         // Update run status based on capacity result
         if (result.status === 'running') {
-          await db.update(runs).set({ status: 'running' }).where(and(eq(runs.id, runId), eq(runs.status, 'queued')));
+          // Already enqueued: a failed status write must not mark the live run failed.
+          await db.update(runs).set({ status: 'running' }).where(and(eq(runs.id, runId), eq(runs.status, 'queued')))
+            .catch((statusError: unknown) => logger.warn({ jobId, runId, statusError }, 'Enqueued run but could not mark it running'));
         }
         // If 'queued', status is already 'queued'
       } catch (error) {
@@ -420,7 +422,9 @@ export async function processScheduledJob(
 
         // Update run status based on capacity result
         if (result.status === 'running') {
-          await db.update(runs).set({ status: 'running' }).where(and(eq(runs.id, runId), eq(runs.status, 'queued')));
+          // Already enqueued: a failed status write must not mark the live run failed.
+          await db.update(runs).set({ status: 'running' }).where(and(eq(runs.id, runId), eq(runs.status, 'queued')))
+            .catch((statusError: unknown) => logger.warn({ jobId, runId, statusError }, 'Enqueued run but could not mark it running'));
         }
       } catch (error) {
         logger.error({ jobId, runId, error }, 'Failed to enqueue Playwright job');

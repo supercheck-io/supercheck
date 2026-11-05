@@ -247,6 +247,8 @@ export class MonitorAggregationService {
           .select({ id: monitors.id, organizationId: monitors.organizationId })
           .from(monitors)
           .where(eq(monitors.enabled, true))
+          // Stable order, or offset paging can skip or repeat monitors between batches.
+          .orderBy(monitors.id)
           .limit(AGGREGATION_CONFIG.MONITOR_BATCH_SIZE)
           .offset(offset);
 
@@ -340,6 +342,8 @@ export class MonitorAggregationService {
           .select({ id: monitors.id, organizationId: monitors.organizationId })
           .from(monitors)
           .where(eq(monitors.enabled, true))
+          // Stable order, or offset paging can skip or repeat monitors between batches.
+          .orderBy(monitors.id)
           .limit(AGGREGATION_CONFIG.MONITOR_BATCH_SIZE)
           .offset(offset);
 
