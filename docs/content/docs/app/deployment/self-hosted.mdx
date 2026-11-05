@@ -223,15 +223,6 @@ Off by default. Lets Claude, Cursor, VS Code and other [MCP clients](/docs/mcp) 
 Optional: `MCP_DYNAMIC_CLIENT_REGISTRATION=false` accepts only clients with a Client ID Metadata Document.
 
 </Accordion>
-<Accordion title="Migrations behind a connection pooler" id="migration-database-url">
-
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `MIGRATION_DATABASE_URL` | unset | Optional direct (non-pooled) Postgres URL, used only by the deferred no-transaction migrations such as `CREATE INDEX CONCURRENTLY` |
-
-If `DATABASE_URL` points at PgBouncer or another pooler and this is unset, deferred index builds run without a statement timeout. Set it to a direct connection to the same database to keep the timeout (`DB_DEFERRED_MIGRATION_TIMEOUT_MS`) in force; its own `sslmode` applies. `docker-compose-external.yml` passes it through. The bundled PostgreSQL needs neither.
-
-</Accordion>
 <Accordion title="Status page HTTPS" id="status-page-https">
 
 The app domain gets its certificate automatically (HTTP-01). Status pages are different:
