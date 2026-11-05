@@ -1,4 +1,4 @@
-import { CLIError, ExitCode } from '../utils/errors.js'
+import { ApiRequestError, CLIError, ExitCode } from '../utils/errors.js'
 import { Command } from 'commander'
 import { createAuthenticatedClient } from '../api/authenticated-client.js'
 import { logger } from '../utils/logger.js'
@@ -40,7 +40,10 @@ tagCommand
         name,
         color: options.color,
       }),
-    )
+    ).catch((error: unknown) => {
+      if (error instanceof ApiRequestError && error.statusCode === 409) throw new CLIError(`Tag '${name}' already exists`, ExitCode.ApiError)
+      throw error
+    })
 
     logger.success(`Tag "${name}" created (${data.id})`)
     outputDetail(data)

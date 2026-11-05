@@ -93,7 +93,12 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   try {
     await requireAdmin();
     
-    const body = await request.json();
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
     const { name, slug, logo, metadata } = body;
     
     if (!isUuid((await params).id)) return NextResponse.json({ error: "Organization not found" }, { status: 404 });

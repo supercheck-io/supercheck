@@ -6,6 +6,13 @@ import {
 } from "@/lib/notification-providers/validation";
 
 describe("notification provider validation", () => {
+  it("requires valid email addresses for email providers", () => {
+    expect(() => validateProviderConfig("email", { emails: [] })).toThrow("at least one");
+    expect(() => validateProviderConfig("email", { emails: "not-an-email" })).toThrow("valid email");
+    expect(() => validateProviderConfig("email", { emails: "a@b.co, bad" })).toThrow("valid email");
+    expect(() => validateProviderConfig("email", { emails: "a@b.co, c@d.io" })).not.toThrow();
+  });
+
   it("allows integration auth headers for generic webhooks", () => {
     expect(() =>
       validateProviderConfig("webhook", {

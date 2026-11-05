@@ -118,7 +118,7 @@ const { runCommand, dashboardCommand } = await import('../runs.js')
 const { configCommand } = await import('../config.js')
 const { skillsCommand, schemaCommand, capabilitiesCommand } = await import('../skills.js')
 const { validateCommand } = await import('../validate.js')
-const { ExitCode } = await import('../../utils/errors.js')
+const { ExitCode, ApiRequestError } = await import('../../utils/errors.js')
 
 function resetCommandState(command: import('commander').Command): void {
   for (const option of command.options) {
@@ -172,6 +172,15 @@ describe('read-only and operational commands', () => {
 
       expect(mockPost).toHaveBeenCalledWith('/api/tags', { name: 'smoke', color: '#ff0000' })
       expect(mockSuccess).toHaveBeenCalledWith('Tag "smoke" created (tag-1)')
+    })
+
+    it('reports a duplicate tag as a friendly conflict', async () => {
+      mockPost.mockRejectedValueOnce(new ApiRequestError('API request failed: POST /api/tags → 409', 409, { error: 'exists' }))
+
+      await expect(tagCommand.parseAsync(['node', 'tag', 'create', 'smoke'])).rejects.toMatchObject({
+        exitCode: ExitCode.ApiError,
+        message: "Tag 'smoke' already exists",
+      })
     })
 
     it('rejects tag names outside the documented length', async () => {

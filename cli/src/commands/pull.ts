@@ -331,9 +331,13 @@ export function pullTests(tests: RemoteTest[], cwd: string, summary: PullSummary
       if (existingFilename && existingFilename !== currentFile) {
         const oldPath = resolveWithin(cwd, existingFilename)
         if (existsSync(oldPath)) {
-          const backup = `${oldPath}.supercheck-backup.${randomUUID()}`
-          writeFileSync(backup, readFileSync(oldPath), { mode: 0o600, flag: 'wx' })
-          summary.backups.push(backup)
+          const oldContent = readFileSync(oldPath)
+          // Identical to what was just written: nothing to lose, so no backup.
+          if (!oldContent.equals(readFileSync(filePath))) {
+            const backup = `${oldPath}.supercheck-backup.${randomUUID()}`
+            writeFileSync(backup, oldContent, { mode: 0o600, flag: 'wx' })
+            summary.backups.push(backup)
+          }
           unlinkSync(oldPath)
         }
       }

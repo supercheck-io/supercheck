@@ -9,6 +9,7 @@ import {
   isValidTeamsWebhookDomain,
 } from "@/lib/notification-providers/constants";
 import { getWebhookPreset } from "@/lib/notification-providers/webhook-presets";
+import { VALIDATION_PATTERNS } from "@/lib/error-utils";
 
 const WEBHOOK_HEADER_NAME_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
 const WEBHOOK_MAX_HEADERS = 20;
@@ -116,10 +117,19 @@ export function validateProviderConfig(
 
   switch (type) {
     case "email":
-      if (missing("emails")) {
-        throw new Error(
-          "Email notification providers require at least one email address."
-        );
+      {
+        const raw = config.emails;
+        const list = (Array.isArray(raw) ? raw : typeof raw === "string" ? raw.split(",") : [])
+          .map((e) => (typeof e === "string" ? e.trim() : ""))
+          .filter(Boolean);
+        if (list.length === 0) {
+          throw new Error(
+            "Email notification providers require at least one email address."
+          );
+        }
+        if (!list.every((e) => VALIDATION_PATTERNS.email.test(e))) {
+          throw new Error("Email notification providers require valid email addresses.");
+        }
       }
       break;
     case "slack":

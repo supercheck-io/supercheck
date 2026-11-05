@@ -127,7 +127,12 @@ export async function POST(req: NextRequest) {
     const context = await requireAuthContext();
     const { userId, project, organizationId } = context;
 
-    const rawData = await req.json();
+    let rawData;
+    try {
+      rawData = await req.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
 
     // Use current project and organization context
     const targetProjectId = project.id;
@@ -149,6 +154,7 @@ export async function POST(req: NextRequest) {
       name: rawData.config?.name || rawData.name || "Unnamed Provider",
       type: rawData.type,
       config: rawData.config,
+      isEnabled: rawData.isEnabled,
       organizationId: targetOrganizationId,
       projectId: targetProjectId,
       createdByUserId: userId,
@@ -205,6 +211,7 @@ export async function POST(req: NextRequest) {
         name: newProviderData.name!,
         type: newProviderData.type as NotificationProviderType,
         config: encryptedConfig,
+        isEnabled: newProviderData.isEnabled ?? true,
         organizationId: newProviderData.organizationId,
         projectId: newProviderData.projectId,
         createdByUserId: newProviderData.createdByUserId,

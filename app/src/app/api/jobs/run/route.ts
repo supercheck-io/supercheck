@@ -48,7 +48,12 @@ export async function POST(request: NextRequest) {
       if (originError) return originError;
     }
     
-    const data = await request.json();
+    let data;
+    try {
+      data = await request.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
     jobId = data.jobId as string;
     const testData = data.tests;
     const trigger = data.trigger as JobTrigger; // Requested trigger from request body

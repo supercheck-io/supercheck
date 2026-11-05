@@ -139,7 +139,12 @@ export async function PUT(
       );
     }
 
-    const rawData = await req.json();
+    let rawData;
+    try {
+      rawData = await req.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
     const transformedData = {
       ...rawData,
       name: rawData.name ?? existingProvider.name,
@@ -237,6 +242,7 @@ export async function PUT(
           name: updateData.name!,
           type: updateData.type as NotificationProviderType,
           config: encryptedConfig,
+          ...(updateData.isEnabled !== undefined && { isEnabled: updateData.isEnabled }),
           updatedAt: new Date(),
         })
         .where(
@@ -274,6 +280,7 @@ export async function PUT(
           name: updateData.name!,
           type: updateData.type as NotificationProviderType,
           config: encryptNotificationProviderConfig(renamedConfig as PlainNotificationProviderConfig, project.id),
+          ...(updateData.isEnabled !== undefined && { isEnabled: updateData.isEnabled }),
           updatedAt: new Date(),
         })
         .where(

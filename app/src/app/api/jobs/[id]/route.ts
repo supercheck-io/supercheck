@@ -166,7 +166,12 @@ export async function PATCH(
     }
     if (!isUuid(jobId)) return NextResponse.json({ error: "Job not found" }, { status: 404 });
 
-    const rawData = await request.json();
+    let rawData;
+    try {
+      rawData = await request.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
 
     // Fetch existing job to get required fields for updateJob action
     const existingJob = await db.query.jobs.findFirst({
@@ -252,7 +257,12 @@ export async function PUT(
       return NextResponse.json({ error: "Job not found" }, { status: 404 });
     }
 
-    const body = await request.json();
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
     const result = await updateJob({
       ...body,
       jobId: params.id,
