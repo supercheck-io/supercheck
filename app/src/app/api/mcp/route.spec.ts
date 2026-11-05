@@ -10,6 +10,7 @@ jest.mock("@/utils/auth", () => ({ auth: {} }));
 jest.mock("@/lib/mcp/config", () => ({
   MCP_READ_SCOPE: "mcp:read",
   getMcpResourceUrl: () => "https://app.example.com/api/mcp",
+  getMcpJwksUrl: () => "http://localhost:3000/api/auth/jwks",
   isMcpServerEnabled: () => isMcpServerEnabled(),
   getMcpAllowedOrigins: () => getMcpAllowedOrigins(),
 }));
@@ -177,6 +178,7 @@ describe("/api/mcp", () => {
     await POST(rpc("initialize"));
     expect(requireMcpAuth.mock.calls[0][2]).toMatchObject({
       resource: "https://app.example.com/api/mcp",
+      jwksUrl: "http://localhost:3000/api/auth/jwks",
       requiredScopes: ["mcp:read"],
     });
   });
