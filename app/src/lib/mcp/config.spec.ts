@@ -101,5 +101,6 @@ describe("getMcpJwksUrl", () => {
     expect(getMcpJwksUrl({ PORT: "abc" })).toBe("http://localhost:3000/api/auth/jwks");
     expect(getMcpJwksUrl({ PORT: "70000" })).toBe("http://localhost:3000/api/auth/jwks");
     expect(getMcpJwksUrl({ MCP_JWKS_URL: " http://app:3000/api/auth/jwks " })).toBe("http://app:3000/api/auth/jwks");
+    expect(getMcpJwksUrl({ MCP_JWKS_URL: "   " })).toBe("http://localhost:3000/api/auth/jwks");
   });
 });
