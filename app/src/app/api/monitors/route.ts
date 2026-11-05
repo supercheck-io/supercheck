@@ -209,6 +209,14 @@ export async function POST(req: NextRequest) {
     const authCtx = await requireAuthContext();
     const { userId, project, organizationId } = authCtx;
 
+    // Authorize before rate limiting or billing checks, so a viewer gets 403 rather than 429/402.
+    if (!checkPermissionWithContext("monitor", "create", authCtx)) {
+      return NextResponse.json(
+        { error: "Insufficient permissions to create monitors" },
+        { status: 403 },
+      );
+    }
+
     // SECURITY: Rate limiting to prevent API abuse
     const { checkMonitorApiRateLimit } = await import("@/lib/session-security");
     const rateLimitResult = await checkMonitorApiRateLimit(
@@ -471,16 +479,6 @@ export async function POST(req: NextRequest) {
 
     // Use current project context
     const targetProjectId = project.id;
-
-    // Check permission to create monitors
-    const canCreate = checkPermissionWithContext("monitor", "create", authCtx);
-
-    if (!canCreate) {
-      return NextResponse.json(
-        { error: "Insufficient permissions to create monitors" },
-        { status: 403 },
-      );
-    }
 
     // Use the monitor service to create the monitor
     const monitorData = {

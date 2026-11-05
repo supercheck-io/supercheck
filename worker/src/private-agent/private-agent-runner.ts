@@ -144,8 +144,27 @@ function clip(
 }
 /** The job's own credential values, so evidence that echoes one is redacted whatever its format. */
 function credentialSecrets(job: LeasedJob): string[] {
-  return Object.values(job.credential?.value ?? {}).filter(
-    (v): v is string => typeof v === 'string',
+  return (
+    Object.values(job.credential?.value ?? {})
+      // Numbers too: credentialString sends a numeric secret as String(value).
+      .filter(
+        (v): v is string | number =>
+          typeof v === 'string' || typeof v === 'number',
+      )
+      .map(String)
+      // Also the trimmed form (credentialString authenticates with it) and the URL-encoded
+      // forms (sourceUri values are built with encodeURIComponent).
+      .flatMap((v) => {
+        const forms = new Set([v, v.trim()]);
+        for (const form of [...forms]) {
+          try {
+            forms.add(encodeURIComponent(form));
+          } catch {
+            // A lone surrogate can't be URI-encoded; the raw value still applies.
+          }
+        }
+        return [...forms];
+      })
   );
 }
 
@@ -1108,23 +1127,34 @@ async function executeDatadog(
         tags?: string[];
         url?: string;
       };
-      const title = item.title ?? `Datadog event ${item.id ?? 'unknown'}`;
-      const sourceUri =
+      // Result schema caps title at 500 and sourceUri at 1000; one oversized event must not fail the whole job.
+      const title = clip(
+        item.title ?? `Datadog event ${item.id ?? 'unknown'}`,
+        400,
+        credentialSecrets(job),
+      );
+      const fullUri =
         item.url ??
         `${endpoint}/event/event?id=${encodeURIComponent(String(item.id ?? title))}`;
+      const sourceUri = clip(fullUri, 1000, credentialSecrets(job));
 
       return {
-        id: evidenceId(spec.connectorId, sourceUri, title),
+        id: evidenceId(spec.connectorId, fullUri, title),
         sourceUri,
         title: `Datadog event: ${title}`,
-        summary: [
-          item.alert_type,
-          item.source,
-          item.host,
-          clip(item.text, 180, credentialSecrets(job)),
-        ]
-          .filter(Boolean)
-          .join(' - '),
+        summary: clip(
+          [
+            item.alert_type,
+            item.source,
+            item.host,
+            // Redact before this cut too, or a secret straddling char 180 keeps its prefix.
+            clip(item.text, 180, credentialSecrets(job)),
+          ]
+            .filter(Boolean)
+            .join(' - '),
+          2000,
+          credentialSecrets(job),
+        ),
         evidenceType: 'event',
         observedAt: item.date_happened
           ? new Date(item.date_happened * 1000).toISOString()
@@ -1170,9 +1200,13 @@ async function executeLoki(job: LeasedJob): Promise<ConnectorExecutionResult> {
       values?: Array<[string, string]>;
     };
     const labels = item.stream ?? {};
-    const labelSummary = Object.entries(labels)
-      .map(([key, value]) => `${key}=${value}`)
-      .join(', ');
+    const labelSummary = clip(
+      Object.entries(labels)
+        .map(([key, value]) => `${key}=${value}`)
+        .join(', '),
+      1000,
+      credentialSecrets(job),
+    );
 
     for (const [timestampNs, line] of item.values ?? []) {
       if (evidence.length >= spec.budget.maxRows) {
@@ -1182,16 +1216,22 @@ async function executeLoki(job: LeasedJob): Promise<ConnectorExecutionResult> {
       const observedAt = dateFromUnixNs(timestampNs, spec.timeWindow.end);
       const titleLine =
         clip(line.trim(), 160, credentialSecrets(job)) || 'Loki log line';
-      const sourceUri = `${endpoint}/loki/api/v1/query_range?query=${encodeURIComponent(spec.query)}&ts=${encodeURIComponent(timestampNs)}`;
+      const fullUri = `${endpoint}/loki/api/v1/query_range?query=${encodeURIComponent(spec.query)}&ts=${encodeURIComponent(timestampNs)}`;
+      const sourceUri = clip(fullUri, 1000, credentialSecrets(job));
       const severity = severityFromLogLine(line);
 
       evidence.push({
-        id: evidenceId(spec.connectorId, sourceUri, titleLine),
+        // Hash the unclipped URI: truncation can drop &ts= and make rows collide. It is never emitted.
+        id: evidenceId(spec.connectorId, fullUri, titleLine),
         sourceUri,
         title: `Loki log: ${titleLine}`,
-        summary: [labelSummary || `LogQL match for ${spec.query}`, severity]
-          .filter(Boolean)
-          .join(' - '),
+        summary: clip(
+          [labelSummary || `LogQL match for ${spec.query}`, severity]
+            .filter(Boolean)
+            .join(' - '),
+          2000,
+          credentialSecrets(job),
+        ),
         evidenceType: 'log',
         observedAt,
         resultHash: hashPayload({ labels, timestampNs, line }),
@@ -1281,25 +1321,30 @@ async function executeElasticsearch(
         : observedAt.toISOString();
       const titleLine =
         clip(message, 160, credentialSecrets(job)) ||
-        item._id ||
+        clip(item._id, 160, credentialSecrets(job)) ||
         'Elasticsearch log document';
-      const sourceUri = `${endpoint}/${encodeURIComponent(item._index ?? index ?? '_all')}/_doc/${encodeURIComponent(item._id ?? titleLine)}`;
+      const fullUri = `${endpoint}/${encodeURIComponent(item._index ?? index ?? '_all')}/_doc/${encodeURIComponent(item._id ?? titleLine)}`;
+      const sourceUri = clip(fullUri, 1000, credentialSecrets(job));
       const severity = level ?? severityFromLogLine(message);
 
       return {
-        id: evidenceId(spec.connectorId, sourceUri, titleLine),
+        id: evidenceId(spec.connectorId, fullUri, titleLine),
         sourceUri,
         title: `Elasticsearch log: ${titleLine}`,
-        summary: [
-          item._index,
-          service,
-          severity,
-          typeof item._score === 'number'
-            ? `score ${item._score.toFixed(2)}`
-            : null,
-        ]
-          .filter(Boolean)
-          .join(' - '),
+        summary: clip(
+          [
+            item._index,
+            service,
+            severity,
+            typeof item._score === 'number'
+              ? `score ${item._score.toFixed(2)}`
+              : null,
+          ]
+            .filter(Boolean)
+            .join(' - '),
+          2000,
+          credentialSecrets(job),
+        ),
         evidenceType: 'log',
         observedAt: safeObservedAt,
         resultHash: hashPayload(item),

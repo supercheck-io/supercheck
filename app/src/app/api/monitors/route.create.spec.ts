@@ -59,6 +59,21 @@ beforeEach(() => {
   dbSelect.mockReturnValue({ from: () => ({ where: async () => [] }) });
 });
 
+it("returns 403 to a caller without monitor:create before rate limiting or billing checks", async () => {
+  const { checkPermissionWithContext } = jest.requireMock("@/lib/rbac/middleware") as { checkPermissionWithContext: jest.Mock };
+  const { checkMonitorApiRateLimit } = jest.requireMock("@/lib/session-security") as { checkMonitorApiRateLimit: jest.Mock };
+  const { subscriptionService } = jest.requireMock("@/lib/services/subscription-service") as {
+    subscriptionService: { blockUntilSubscribed: jest.Mock; requireValidPolarCustomer: jest.Mock };
+  };
+  checkPermissionWithContext.mockReturnValueOnce(false);
+  const res = await post({ enabled: false, notificationProviders: [] });
+  expect(res.status).toBe(403);
+  expect(checkPermissionWithContext).toHaveBeenCalledWith("monitor", "create", expect.objectContaining({ organizationId: "org-1" }));
+  expect(checkMonitorApiRateLimit).not.toHaveBeenCalled();
+  expect(subscriptionService.blockUntilSubscribed).not.toHaveBeenCalled();
+  expect(subscriptionService.requireValidPolarCustomer).not.toHaveBeenCalled();
+});
+
 it("rejects a private monitor target with 400 before inserting", async () => {
   const res = await POST(
     new NextRequest("http://localhost/api/monitors", {
