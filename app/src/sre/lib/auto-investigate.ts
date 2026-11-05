@@ -77,6 +77,15 @@ export async function maybeAutoInvestigateOnOpen(input: AutoInvestigateInput): P
   }
 }
 
+// The lock transaction pins a pool connection while the start needs a second one; one at a time per process
+// means a burst of orgs can never hold every connection waiting for another.
+let startChain: Promise<unknown> = Promise.resolve();
+function oneStartAtATime<T>(run: () => Promise<T>): Promise<T> {
+  const next = startChain.then(run, run);
+  startChain = next.catch(() => undefined);
+  return next;
+}
+
 type Executor = Pick<typeof db, "select">;
 
 // One automatic run per incident: later alerts joining it, or a retried job, must not bill again.
@@ -148,7 +157,7 @@ async function startOnce(
     // over the re-check and the run-row insert (fast; the LLM work is detached below). It is taken only after the
     // per-incident lock is released, so the two never nest. shortcut: the triage path (insert happens inside the
     // runner, which also runs the LLM) is not covered and can still overshoot the cap by a racing start.
-    const outcome = await db.transaction(async (tx) => {
+    const outcome = await oneStartAtATime(() => db.transaction(async (tx) => {
       await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`auto-investigate-org:${input.organizationId}`}))`);
       const blocked = await blockingRunReason(tx, input, autoAgentType(severity));
       if (blocked) return { reason: blocked } as const;
@@ -160,7 +169,7 @@ async function startOnce(
       const result = await startSreIncidentInvestigation({ ...input, enableLiveConnectors: false });
       if (!result.success) return { reason: result.status === 409 ? "already_running" : "not_started" } as const;
       return { started: result } as const;
-    });
+    }));
     if ("reason" in outcome) return { handled: false, reason: outcome.reason };
     const started = outcome.started;
     // Settles in the background, like the investigate API; billing is taken only on completion.

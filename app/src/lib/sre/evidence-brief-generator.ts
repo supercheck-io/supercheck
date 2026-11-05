@@ -375,7 +375,7 @@ export async function streamEvidenceBrief(
     const result = await streamText({
       model: getProviderModel(),
       prompt: buildStreamingBriefPrompt(input),
-      // Usage is recorded by the SDK callbacks so aborts and timeouts are billed too, not just normal completion.
+      // Usage is recorded by the SDK callbacks, not only after a clean read; an abort reports finished steps only.
       onError: ({ error }) => { streamError = error; },
       onFinish: ({ totalUsage }) => recordSreTokenUsage(input.organizationId, totalUsage),
       onAbort: ({ steps }) => recordSreTokenUsage(input.organizationId, { totalTokens: steps.reduce((sum, step) => sum + (step.usage.totalTokens ?? 0), 0) }),
