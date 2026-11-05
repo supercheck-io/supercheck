@@ -161,7 +161,9 @@ AWS_SECRET_ACCESS_KEY=YOUR_S3_SECRET_KEY
 chmod 600 .env
 sudo docker compose -f docker-compose-worker.yml pull
 # Load the worker image into the sandbox so the first run does not time out downloading it.
-sudo docker save --platform "linux/$(dpkg --print-architecture)" ghcr.io/supercheck-io/supercheck/worker:1.6.0 | sudo k3s ctr -n k8s.io images import -
+# The image tag Compose resolved (honours SUPERCHECK_VERSION in .env).
+WORKER_IMAGE=$(sudo docker compose -f docker-compose-worker.yml config --images | grep '/worker:' | head -n1)
+sudo docker save --platform "linux/$(dpkg --print-architecture)" "$WORKER_IMAGE" | sudo k3s ctr -n k8s.io images import -
 sudo docker compose -f docker-compose-worker.yml up -d --wait --wait-timeout 300
 ```
 
@@ -211,7 +213,9 @@ After [upgrading the main server](/docs/app/deployment/self-hosted#upgrade), upg
 ```bash
 sudo bash setup-k3s.sh
 sudo docker compose -f docker-compose-worker.yml pull
-sudo docker save --platform "linux/$(dpkg --print-architecture)" ghcr.io/supercheck-io/supercheck/worker:<x.y.z> | sudo k3s ctr -n k8s.io images import -
+# The image tag Compose resolved (honours SUPERCHECK_VERSION in .env).
+WORKER_IMAGE=$(sudo docker compose -f docker-compose-worker.yml config --images | grep '/worker:' | head -n1)
+sudo docker save --platform "linux/$(dpkg --print-architecture)" "$WORKER_IMAGE" | sudo k3s ctr -n k8s.io images import -
 sudo docker compose -f docker-compose-worker.yml up -d --wait --wait-timeout 300
 ```
 

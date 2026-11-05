@@ -87,7 +87,9 @@ Both modes use the main Compose file:
 sudo docker compose config -q
 sudo docker compose pull
 # Import the ~3 GB worker image into the sandbox so the first test run does not time out pulling it.
-sudo docker save --platform "linux/$(dpkg --print-architecture)" ghcr.io/supercheck-io/supercheck/worker:1.6.0 | sudo k3s ctr -n k8s.io images import -
+# The image tag Compose resolved (honours SUPERCHECK_VERSION in .env).
+WORKER_IMAGE=$(sudo docker compose config --images | grep '/worker:' | head -n1)
+sudo docker save --platform "linux/$(dpkg --print-architecture)" "$WORKER_IMAGE" | sudo k3s ctr -n k8s.io images import -
 sudo docker compose up -d --wait --wait-timeout 300
 ```
 
