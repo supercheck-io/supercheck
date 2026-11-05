@@ -40,7 +40,7 @@ const monitor = {
   recentResults: [],
 } as never;
 
-it("keeps check result cells on one line and shows the full text on hover", async () => {
+it("keeps check result cells on one line with an ellipsis", async () => {
   const error = "Received status code: 500, expected: 200-299 from https://example.test/health";
   mockResults = [
     {
@@ -63,9 +63,7 @@ it("keeps check result cells on one line and shows the full text on hover", asyn
       expect(cell).toHaveClass("truncate");
       expect(cell.closest("td")).toHaveClass("overflow-hidden");
     }
-
-    fireEvent.mouseEnter(location);
-    expect(await screen.findAllByText("Asia Pacific Southeast Two")).toHaveLength(2);
+    // Hover and keyboard reveal of clipped text is covered in truncated-text-with-tooltip.spec.tsx.
   } finally {
     mockResults = [];
   }
