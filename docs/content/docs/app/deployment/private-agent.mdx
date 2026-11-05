@@ -18,6 +18,32 @@ Use the supplied Compose file: it keeps the agent non-root, read-only, and capab
 
 ## Set up
 
+```mermaid
+sequenceDiagram
+    accTitle: Private Agent setup
+    accDescr: Register, start, validate, and use an agent for private evidence.
+    autonumber
+    participant You as You
+    participant App as Supercheck
+    participant Environment as Your Docker host
+
+    rect rgba(139, 92, 246, 0.08)
+        You->>App: Register agent
+        App-->>You: Agent ID and token
+        You->>Environment: Configure .env and start Compose
+    end
+    rect rgba(59, 130, 246, 0.08)
+        You->>App: Confirm connected status
+        You->>App: Add connector and select agent
+        You->>App: Validate and test a query
+        App-->>You: Validation result
+    end
+    rect rgba(16, 185, 129, 0.08)
+        You->>App: Enable live sources and investigate
+        App-->>You: Cited findings and evidence gaps
+    end
+```
+
 <Steps>
 <Step>
 

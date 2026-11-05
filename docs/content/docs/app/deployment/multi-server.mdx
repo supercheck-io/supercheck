@@ -74,6 +74,27 @@ Never expose PostgreSQL, Redis, or S3 publicly. Docker-published ports bypass `u
 
 ## Set up
 
+```mermaid
+sequenceDiagram
+    accTitle: Additional worker setup
+    accDescr: Register an execution target, start a matching worker, and verify a test run.
+    autonumber
+    participant You as Administrator
+    participant App as Supercheck
+    participant Environment as Worker server
+
+    rect rgba(139, 92, 246, 0.08)
+        You->>App: Add and enable execution target
+        You->>Environment: Set matching WORKER_LOCATION
+        You->>Environment: Set connections and start Compose
+    end
+    rect rgba(16, 185, 129, 0.08)
+        You->>App: Confirm worker is Active
+        You->>App: Run k6 or a monitor check
+        App-->>You: Check results
+    end
+```
+
 <Steps>
 <Step>
 

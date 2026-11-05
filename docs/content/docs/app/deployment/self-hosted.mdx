@@ -6,6 +6,51 @@ icon: Container
 
 Self-host Supercheck on one Linux server. One command installs Docker, the isolated test sandbox, and every Supercheck service, then checks that it is healthy.
 
+## Architecture
+
+<p className="text-sm md:hidden">Scroll horizontally to view the full diagram.</p>
+
+<div className="overflow-x-auto" role="region" aria-label="Self-Hosted deployment layout diagram" tabIndex={0}>
+<div className="min-w-[52rem]">
+
+```mermaid
+flowchart TB
+    Users[Users / CI/CD] --> T[Traefik Proxy<br/>HTTPS profile]
+    T --> App[Next.js App<br/>UI + API]
+    App --> DB[(PostgreSQL<br/>Primary DB)] & Redis[(Redis + BullMQ<br/>Queue + Cache)] & S3[(RustFS<br/>Artifacts)]
+    App --> SRE[AI SRE Engine<br/>Read-only investigations]
+    SRE -.-> Private[Private Agents<br/>Outbound-only queries]
+
+    Redis --> W1
+    Redis --> W2
+    Redis --> WN
+
+    subgraph SERVER["Single Server"]
+        W1[Worker 1<br/>NestJS + BullMQ<br/>WORKER_LOCATION=local] --> K3S_1[K3s + gVisor<br/>Sandboxed Execution]
+        W2[Worker 2<br/>NestJS + BullMQ<br/>WORKER_LOCATION=local] --> K3S_2[K3s + gVisor<br/>Sandboxed Execution]
+        WN[Worker N<br/>NestJS + BullMQ<br/>WORKER_LOCATION=local] --> K3S_N[K3s + gVisor<br/>Sandboxed Execution]
+    end
+
+    style Users fill:#6366f1,stroke:#4338ca,color:#fff
+    style T fill:#0ea5e9,stroke:#0369a1,color:#fff
+    style App fill:#3b82f6,stroke:#1e40af,color:#fff
+    style DB fill:#f59e0b,stroke:#b45309,color:#fff
+    style Redis fill:#ef4444,stroke:#b91c1c,color:#fff
+    style S3 fill:#8b5cf6,stroke:#6d28d9,color:#fff
+    style SRE fill:#0ea5e9,stroke:#0369a1,color:#fff
+    style Private fill:#8b5cf6,stroke:#6d28d9,color:#fff
+    style W1 fill:#10b981,stroke:#047857,color:#fff
+    style W2 fill:#10b981,stroke:#047857,color:#fff
+    style WN fill:#10b981,stroke:#047857,color:#fff
+    style K3S_1 fill:#059669,stroke:#047857,color:#fff
+    style K3S_2 fill:#059669,stroke:#047857,color:#fff
+    style K3S_N fill:#059669,stroke:#047857,color:#fff
+    style SERVER fill:none,stroke:#3b82f6,stroke-width:2px
+```
+
+</div>
+</div>
+
 ## Prerequisites
 
 | Requirement | Details |
