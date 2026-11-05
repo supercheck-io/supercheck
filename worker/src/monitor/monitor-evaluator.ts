@@ -22,7 +22,7 @@ export type AggregatedAlertState = {
   alertsSentForFailure: number;
   alertsSentForRecovery: number;
   recoverySequence?: boolean;
-  /** Failure count of the outage this recovery follows; absent on state written before it existed. */
+  /** Failure count of the outage this recovery follows, when that outage sent no failure alert. */
   priorFailureCount?: number;
   executionGroupId?: string;
 };
@@ -144,8 +144,11 @@ export class MonitorEvaluator {
       recoverySequence:
         previousStatus === 'down' ||
         (continuingRecoverySequence && previousState.recoverySequence === true),
+      // Recorded only when the outage sent no failure alert: an alerted outage always gets its recovery.
       ...(previousStatus === 'down'
-        ? { priorFailureCount: previousState.consecutiveFailureCount }
+        ? previousState.alertsSentForFailure === 0
+          ? { priorFailureCount: previousState.consecutiveFailureCount }
+          : {}
         : continuingRecoverySequence &&
             previousState.priorFailureCount !== undefined
           ? { priorFailureCount: previousState.priorFailureCount }

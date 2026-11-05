@@ -24,6 +24,7 @@ export type MonitorCycleEvaluation = {
     alertsSentForFailure: number;
     alertsSentForRecovery: number;
     recoverySequence?: boolean;
+    priorFailureCount?: number;
     executionGroupId?: string;
   };
   reason: string;

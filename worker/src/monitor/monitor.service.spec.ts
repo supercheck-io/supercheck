@@ -1477,6 +1477,21 @@ describe('MonitorService', () => {
         );
       }
       expect(seen).toEqual([undefined, undefined, 2, 2, undefined]);
+
+      // An outage that already alerted records nothing, so its recovery always goes out.
+      lastResult = {
+        isUp: false,
+        consecutiveFailureCount: 2,
+        alertsSentForFailure: 1,
+      };
+      await service['saveMonitorResultToDb']({
+        monitorId: mockMonitor.id,
+        location: 'eu',
+        checkedAt: new Date(),
+        status: 'up',
+        isUp: true,
+      });
+      expect(lastResult?.details).not.toHaveProperty('priorFailureCount');
       mockDbService.db.query.monitorResults.findFirst.mockReset();
     });
     it('continues failure counters per location, ignoring other regions', async () => {

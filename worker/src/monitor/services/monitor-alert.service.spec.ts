@@ -234,14 +234,37 @@ describe('MonitorAlertService', () => {
 
   it('skips a provider whose config cannot be decrypted and keeps the rest', () => {
     const { service } = createService();
-    const crypto = jest.requireMock('../../common/notification-provider-crypto');
+    const crypto = jest.requireMock(
+      '../../common/notification-provider-crypto',
+    );
     crypto.decryptNotificationProviderConfig.mockImplementationOnce(() => {
       throw new Error('bad auth tag');
     });
     const providers = service['decryptProviders']([
       { id: 'broken', type: 'webhook', config: {}, projectId: 'project-1' },
-      { id: 'ok', type: 'webhook', config: { url: 'u' }, projectId: 'project-1' },
+      {
+        id: 'ok',
+        type: 'webhook',
+        config: { url: 'u' },
+        projectId: 'project-1',
+      },
     ] as never);
     expect(providers.map((p: { id: string }) => p.id)).toEqual(['ok']);
+  });
+
+  it('reports a delivery failure when no provider config can be decrypted', async () => {
+    const { service, notificationService } = createService();
+    const crypto = jest.requireMock(
+      '../../common/notification-provider-crypto',
+    );
+    crypto.decryptNotificationProviderConfig.mockImplementationOnce(() => {
+      throw new Error('bad auth tag');
+    });
+    await expect(
+      service.sendNotification('monitor-1', 'failure', 'down'),
+    ).resolves.toEqual({ delivered: false });
+    expect(
+      notificationService.sendNotificationToMultipleProviders,
+    ).not.toHaveBeenCalled();
   });
 });

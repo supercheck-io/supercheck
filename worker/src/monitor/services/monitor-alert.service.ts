@@ -154,6 +154,11 @@ export class MonitorAlertService {
 
     const decryptedProviders = this.decryptProviders(providers);
 
+    // Channels exist but none could be decrypted: a delivery failure, not an empty channel list.
+    if (providers.length > 0 && decryptedProviders.length === 0) {
+      return { delivered: false };
+    }
+
     if (decryptedProviders.length === 0) {
       this.logger.log(
         `[NOTIFY] No notification providers configured for monitor ${monitorId}`,

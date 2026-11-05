@@ -105,9 +105,10 @@ describe('MonitorEvaluator recovery alert after a short blip', () => {
     multiLocation: boolean,
     priorFailureCount: number | undefined,
     alertOnFailure = true,
+    alertsSentForFailure = 0,
   ) {
     const details =
-      priorFailureCount === undefined
+      priorFailureCount === undefined || alertsSentForFailure > 0
         ? { recoverySequence: true }
         : { recoverySequence: true, priorFailureCount };
     const dbService = {
@@ -157,7 +158,7 @@ describe('MonitorEvaluator recovery alert after a short blip', () => {
             {
               consecutiveFailureCount: priorFailureCount ?? 0,
               consecutiveSuccessCount: 0,
-              alertsSentForFailure: 0,
+              alertsSentForFailure,
               alertsSentForRecovery: 0,
             },
             'down',
@@ -185,6 +186,25 @@ describe('MonitorEvaluator recovery alert after a short blip', () => {
   );
 
   it.each([false, true])(
+    'sends recovery after an alerted outage even if the threshold was raised since (multi=%s)',
+    async (multi) => {
+      expect(await recoverySent(multi, 2, true, 1)).toBe(true);
+    },
+  );
+
+  it('reads the outage length back from persisted state', () => {
+    const evaluator = new MonitorEvaluator({} as never, {} as never);
+    expect(
+      evaluator.readAggregatedAlertState({
+        aggregatedAlertState: { priorFailureCount: 2 },
+      }).priorFailureCount,
+    ).toBe(2);
+    expect(
+      evaluator.readAggregatedAlertState({}).priorFailureCount,
+    ).toBeUndefined();
+  });
+
+  it.each([false, true])(
     'sends recovery when the outage length is unknown (multi=%s)',
     async (multi) => {
       expect(await recoverySent(multi, undefined)).toBe(true);
@@ -205,7 +225,8 @@ describe('MonitorEvaluator recovery alert after a short blip', () => {
     );
     expect(first.priorFailureCount).toBe(2);
     expect(
-      evaluator.getNextAggregatedAlertState(first, 'up', 'up').priorFailureCount,
+      evaluator.getNextAggregatedAlertState(first, 'up', 'up')
+        .priorFailureCount,
     ).toBe(2);
     expect(
       evaluator.getNextAggregatedAlertState(first, 'up', 'down')

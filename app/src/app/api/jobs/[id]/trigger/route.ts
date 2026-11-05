@@ -232,7 +232,7 @@ export async function POST(
         jobType: jobs.jobType,
       })
       .from(jobs)
-      // A deleted project's jobs keep their trigger keys; they must stop running.
+      // Jobs keep their trigger keys after project deletion; only active projects may run (as for CLI tokens).
       .leftJoin(projects, eq(projects.id, jobs.projectId))
       .where(and(eq(jobs.id, jobId), or(isNull(jobs.projectId), eq(projects.status, "active"))))
       .limit(1);
