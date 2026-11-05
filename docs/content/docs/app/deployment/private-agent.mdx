@@ -141,7 +141,7 @@ Preserve the `private-agent-state` volume; do not use `down -v` during maintenan
 
 If the registration token expires, choose **Rotate token** (not available while a super admin is impersonating a user), replace it in `.env`, and recreate the agent within 15 minutes with the start command above.
 
-When the control plane keeps rejecting the agent's credential (HTTP 401 at least three times in a row over at least 60 seconds, after a rotation or after the agent was disabled), the agent logs `Private Agent credential revoked or agent disabled` and exits with a non-zero code. Run it under a restart policy (for example `restart: unless-stopped`) so a restart picks up a new token and the exit is visible to your monitoring. Start it with the new token, or register a replacement agent.
+When the control plane keeps rejecting the agent's credential (HTTP 401 at least three times in a row over at least 60 seconds, after a rotation or after the agent was disabled), the agent logs `Private Agent credential revoked or agent disabled` and exits with a non-zero code. Run it under a restart policy (for example `restart: unless-stopped`) so the exit is visible to your monitoring and the agent restarts after it exits. A restart does not reload `PRIVATE_AGENT_TOKEN` from `.env`: to use a new token, edit `.env` and recreate the container (for example `docker compose up -d private-agent`), or register a replacement agent.
 
 </Accordion>
 <Accordion title="Tuning variables" id="tuning-variables">

@@ -31,7 +31,7 @@ Every command is `supercheck <group> <command>`. Run `supercheck <command> --hel
 | Sign in | `supercheck login` | [Authentication](#authentication) |
 | See what to do next in a repo | `supercheck onboard` | [Authentication](#authentication) |
 | Run tests locally, no account | `supercheck test run --offline --all` | [Tests](#tests) |
-| Preview and publish config | `supercheck diff`, `supercheck deploy --dry-run` | [Monitoring-as-Code](#monitoring-as-code) |
+| Preview and publish config | `supercheck diff`, `supercheck deploy --dry-run`, then `supercheck deploy` | [Monitoring-as-Code](#monitoring-as-code) |
 | Trigger a job from CI | `supercheck job trigger <job-id> --wait` | [Jobs](#jobs) |
 | Check why a run failed | `supercheck run get <run-id>` | [Runs](#runs) |
 | Check monitor health | `supercheck monitor status <monitor-id>` | [Monitors](#monitors) |

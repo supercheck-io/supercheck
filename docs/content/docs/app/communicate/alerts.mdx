@@ -99,7 +99,7 @@ SSL expiration warnings are evaluated independently of the monitor's up/down res
 
 At most **3 failure alerts** go out per failure streak, for monitors and jobs: the first when the threshold is reached, then reminders after every further `max(5, 2 × threshold)` failures. A passing run resets the streak, and each recovery sends one alert. The interval is not configurable.
 
-If delivery to a channel fails, the same job run retries that channel later. Channels that already received the alert are not sent it again.
+A transient delivery error can be retried within a single send attempt. If that attempt fails, the job run does not retry the channel. Channels that already received the alert are not sent it again.
 
 </Tab>
 <Tab value="Example">

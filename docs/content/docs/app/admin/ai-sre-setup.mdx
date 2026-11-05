@@ -114,9 +114,9 @@ flowchart TB
     Native --> Need{Need external evidence?}
     Need -->|No| Review[Review cited findings]
     Need -->|Yes| Services[Add service and link incident]
-    Services --> Private{Provider private?}
-    Private -->|Yes| Agent[Deploy a Private Agent]
-    Private -->|No| Connectors[Add connector and validate query]
+    Services --> Reach{Can Supercheck reach it directly?}
+    Reach -->|No| Agent[Deploy a Private Agent]
+    Reach -->|Yes| Connectors[Add connector and validate query]
     Agent --> Connectors
     Connectors --> Live[Enable live sources and investigate]
     Live --> Review
@@ -124,7 +124,7 @@ flowchart TB
     classDef action fill:#1d4ed8,stroke:#60a5fa,color:#fff
     classDef decision fill:#92400e,stroke:#fbbf24,color:#fff
     class Incident,Native,Services,Agent,Connectors,Live,Review action
-    class Need,Private decision
+    class Need,Reach decision
 ```
 
 Optionally save a query for bounded questions responders repeat, and validate each connector with live sources enabled before relying on it during an incident.

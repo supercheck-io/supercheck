@@ -29,12 +29,12 @@ This release adds incident watchers, a per-project notification policy and an AI
 
 ### Changed
 
-- **Permission failures return 403** instead of 401 when the caller is signed in but lacks permission (#759).
+- **Permission failures return 403** instead of 401 when the caller is signed in but lacks permission (#759), including the realtime queue and test status streams.
 - **Requirement coverage is computed per test** from each test's own result, falling back to the run status (#760).
 - **Avatars** are re-encoded to 256px WebP and addressed by user id (#755).
 - **Run report** fits the viewport height (#756).
-- **Job failure alerts** are race-free: one alert per job run and provider, and a failed provider is retried for the same run.
-- **Runs table "Triggered by"** shows the job schedule for scheduled runs, and the key name and its owner for API runs.
+- **Job failure alerts** are race-free: each job run and provider reserves its alert slot before sending, so concurrent or repeated runs do not over-send. A timed-out send can be retried within one attempt, so a provider may rarely receive a duplicate. A provider that fails is not retried later.
+- **Runs table "Triggered by"** shows the schedule that started a scheduled run in plain words, and the key name and its owner for API runs.
 
 ### Fixed
 

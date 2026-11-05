@@ -84,7 +84,7 @@ flowchart LR
 ```
 
 <Callout type="info">
-Coverage is per test: when a job finishes, the worker stores each test's own outcome from the Playwright report in `runs.metadata.testStatuses`. Older runs and k6 performance runs fall back to the status of the whole run. Running a test in the Playground does not change coverage, and monitors are not linked to requirements.
+Coverage is per test: when a job finishes, the worker stores each test's own outcome from the Playwright report in `runs.metadata.testStatuses`. Older runs, k6 performance runs, and runs where a test has no stored outcome fall back to the status of the whole run. Running a test in the Playground does not change coverage, and monitors are not linked to requirements.
 </Callout>
 
 ## Extract Requirements from a Document
