@@ -79,12 +79,16 @@ describe("migration warnings and hints", () => {
   it("counts the rows violating each CHECK left NOT VALID", async () => {
     const calls = [];
     const client = jest.fn().mockResolvedValue([{ table_name: "jobs", conname: "jobs_status_check", expr: "status = ANY (ARRAY['a'])" }]);
-    client.unsafe = jest.fn(async (sql) => { calls.push(sql); return [{ n: 3 }]; });
+    const tx = jest.fn(async (strings) => { calls.push(strings.join("?")); return []; });
+    tx.unsafe = jest.fn(async (sql) => { calls.push(sql); return [{ n: 3 }]; });
+    client.begin = jest.fn(async (fn) => fn(tx));
     const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
     await reportNotValidViolations(client);
     const output = log.mock.calls.map((c) => c[0]).join("\n");
     log.mockRestore();
-    expect(calls[0]).toBe("SELECT count(*)::int AS n FROM jobs WHERE NOT (status = ANY (ARRAY['a']))");
+    // The count runs in a transaction that first bounds lock and statement time.
+    expect(calls[0]).toMatch(/set_config\('lock_timeout'.*set_config\('statement_timeout'/);
+    expect(calls[1]).toBe("SELECT count(*)::int AS n FROM jobs WHERE NOT (status = ANY (ARRAY['a']))");
     expect(output).toMatch(/jobs_status_check on jobs is NOT VALID: 3 existing row\(s\)/);
   });
 });
@@ -106,5 +110,9 @@ describe("db-migrate target safety", () => {
   });
   it("treats a blank DATABASE_URL as unset", () => {
     expect(run({ DATABASE_URL: "  " }).status).toBe(1);
+  });
+  it("falls back to the DB_* target when DATABASE_URL is blank but DB_HOST is set", () => {
+    const result = run({ DATABASE_URL: "   ", DB_HOST: "db.invalid", DB_PORT: "1", DB_NAME: "app" });
+    expect(result.stdout).toMatch(/Database URL: postgresql:\/\/postgres:\*\*\*@db\.invalid:1\/app/);
   });
 });

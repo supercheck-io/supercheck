@@ -50,10 +50,8 @@ export async function GET(
     }
 
     if (!monitor.organizationId || !monitor.projectId) {
-      return NextResponse.json(
-        { error: "Monitor data incomplete" },
-        { status: 500 }
-      );
+      // A row with no owner cannot be access-checked; answer like a missing monitor rather than confirming it exists.
+      return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
     }
 
     const [canView, canEdit, canDelete, canToggle, userRole] = await Promise.all([
@@ -80,7 +78,7 @@ export async function GET(
     ]);
 
     if (!canView) {
-      return forbiddenOrNotFound(userId, monitor.organizationId, 'Insufficient permissions', 'Monitor not found');
+      return await forbiddenOrNotFound(userId, monitor.organizationId, 'Insufficient permissions', 'Monitor not found');
     }
 
     return NextResponse.json({

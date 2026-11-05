@@ -5,6 +5,7 @@ jest.mock("@/utils/db", () => ({
   db: { select: jest.fn(), transaction: jest.fn(), query: {
     sreIncidents: { findFirst: jest.fn() },
     sreInvestigationReports: { findFirst: jest.fn().mockResolvedValue(null) },
+    sreServices: { findFirst: jest.fn() },
   } },
 }));
 jest.mock("@/sre/lib/stale-run-recovery", () => ({ failStaleSreInvestigationRunsForIncident: jest.fn().mockResolvedValue(undefined) }));
@@ -159,6 +160,28 @@ describe("getSreIncidentDetails investigation summary", () => {
     expect(result).toMatchObject({ success: true, changed: false });
     expect(db.transaction).not.toHaveBeenCalled();
     expect(audit).not.toHaveBeenCalled();
+  });
+
+  it("saves an edit that only changes the primary service", async () => {
+    const incidentId = "00000000-0000-4000-8000-000000000001";
+    const serviceId = "00000000-0000-4000-8000-0000000000aa";
+    (db.query.sreIncidents.findFirst as jest.Mock).mockResolvedValue({
+      id: incidentId, incidentNumber: 4, title: "t", status: "investigating", severity: "sev2", primaryServiceId: null,
+    });
+    (db.query.sreServices.findFirst as jest.Mock).mockResolvedValue({ id: serviceId, status: "active" });
+    const sets: Array<Record<string, unknown>> = [];
+    (db.transaction as jest.Mock).mockClear().mockImplementation(async (callback) => callback({
+      update: () => ({ set: (values: Record<string, unknown>) => {
+        sets.push(values);
+        return { where: () => ({ returning: async () => [{ id: incidentId, incidentNumber: 4, title: "t" }] }) };
+      } }),
+      insert: () => ({ values: async () => undefined }),
+    }));
+    const result = await updateSreIncident({ id: incidentId, title: "t", severity: "sev2", status: "investigating", primaryServiceId: serviceId });
+    expect(result).not.toMatchObject({ changed: false });
+    expect(result).toMatchObject({ success: true });
+    expect(db.transaction).toHaveBeenCalledTimes(1);
+    expect(sets[0]).toMatchObject({ primaryServiceId: serviceId });
   });
 
   it("refuses a rate-limited incident edit before reading or writing anything", async () => {

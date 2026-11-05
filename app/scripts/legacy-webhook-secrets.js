@@ -19,6 +19,11 @@ function baseKey() {
         "uses (openssl rand -hex 32 for a new one) and run the migration again."
     );
   }
+  // Same rule as the app's getBaseKey: a placeholder key would encrypt secrets the app then cannot read.
+  const selfHosted = ["true", "1"].includes((process.env.SELF_HOSTED ?? "").trim().toLowerCase());
+  if (/change[_-]?this/i.test(key) && process.env.NODE_ENV === "production" && !selfHosted) {
+    throw new Error("SECRET_ENCRYPTION_KEY is set to a placeholder value. Generate one with: openssl rand -hex 32.");
+  }
   const buf = /^[0-9a-fA-F]+$/.test(key) && key.length >= 64 ? Buffer.from(key.slice(0, 64), "hex") : Buffer.from(key, "utf8");
   return buf.subarray(0, 32);
 }
@@ -51,7 +56,7 @@ async function encryptLegacyWebhookSecrets(client, log = () => undefined) {
   for (const { id, webhook_secret: secret } of rows) {
     await client`
       UPDATE status_page_subscribers SET webhook_secret_encrypted = ${encryptValue(secret, WEBHOOK_SECRET_CONTEXT, key)}
-      WHERE id = ${id}`;
+      WHERE id = ${id} AND webhook_secret_encrypted IS NULL`;
   }
   log(`Encrypted ${rows.length} legacy status page webhook secret(s)`);
   return rows.length;

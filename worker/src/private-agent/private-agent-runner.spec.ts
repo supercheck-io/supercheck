@@ -259,6 +259,36 @@ describe('private agent connector execution', () => {
     expect(JSON.stringify(result.evidence)).not.toContain('ghp_A');
   });
 
+  it('redacts the connector credential value from Loki evidence even without a token format', async () => {
+    const secret = 'plain-credential-no-token-format';
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        data: {
+          result: [
+            {
+              stream: {},
+              values: [['1782122100000000000', `auth failed for ${secret}`]],
+            },
+          ],
+        },
+      }),
+    });
+    const result = await executePrivateAgentConnectorJob({
+      ...baseJob,
+      credential: { credentialType: 'bearer_token', value: { secret } },
+      jobSpec: {
+        ...baseJob.jobSpec,
+        connectorType: 'loki',
+        endpointUrl: 'https://loki.internal',
+        query: '{service="checkout"}',
+      },
+    });
+    expect(JSON.stringify(result.evidence)).not.toContain(secret);
+    expect(result.evidence[0].title).toContain('[REDACTED]');
+  });
+
   it('executes Elasticsearch jobs without returning raw documents', async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,

@@ -62,4 +62,10 @@ describe("GET /api/monitors/[id]/permissions", () => {
     mockStanding.value = false;
     expect((await call()).status).toBe(404);
   });
+
+  it("answers 404, like a missing monitor, for a row with no organization or project", async () => {
+    findFirst.mockResolvedValue({ organizationId: null, projectId: "p1" });
+    expect((await call()).status).toBe(404);
+    expect(hasPermissionForUser).not.toHaveBeenCalled();
+  });
 });

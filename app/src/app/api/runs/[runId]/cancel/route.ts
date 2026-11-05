@@ -125,10 +125,8 @@ export async function POST(
 
     if (!organizationIdForRbac) {
       logger.warn({ runId }, "Cannot determine organization for run");
-      return NextResponse.json(
-        { error: "Cannot determine organization for this run" },
-        { status: 400 }
-      );
+      // Same answer as a missing run, so an orphaned run id cannot be told from an absent one.
+      return NextResponse.json({ error: "Run not found" }, { status: 404 });
     }
 
     // RBAC: Verify user has access to this organization

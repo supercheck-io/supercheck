@@ -35,6 +35,14 @@ export class McpConnectionNotFoundError extends Error {
   }
 }
 
+/** The approval went through but the earlier, broader grant could not be written back onto the consent row. */
+export class McpConsentScopeRestoreError extends Error {
+  constructor() {
+    super("Consent scopes could not be restored");
+    this.name = "McpConsentScopeRestoreError";
+  }
+}
+
 function hostOf(value: string): string | null {
   try {
     return new URL(value).host;
@@ -174,11 +182,16 @@ export async function withMergedConsentScopes<T>(
     eq(oauthConsent.clientId, key.clientId),
     eq(oauthConsent.referenceId, key.projectId),
   );
-  const [previous] = await db.select({ scopes: oauthConsent.scopes }).from(oauthConsent).where(where).limit(1);
+  const [previous] = await db.select({ id: oauthConsent.id, scopes: oauthConsent.scopes }).from(oauthConsent).where(where).limit(1);
   const result = await approve();
   if (previous) {
+    // Updated by the id read above, so a row created after a concurrent Disconnect is never overwritten with old scopes.
     // shortcut: read-then-write, so two approvals racing for one project can still lose a scope; the user can re-approve.
-    await db.update(oauthConsent).set({ scopes: [...new Set([...previous.scopes, ...approved])] }).where(where);
+    try {
+      await db.update(oauthConsent).set({ scopes: [...new Set([...previous.scopes, ...approved])] }).where(eq(oauthConsent.id, previous.id));
+    } catch {
+      throw new McpConsentScopeRestoreError();
+    }
   }
   return result;
 }

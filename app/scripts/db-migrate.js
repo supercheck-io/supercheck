@@ -36,7 +36,7 @@ const HAS_EXPLICIT_DATABASE_URL =
 // The localhost defaults below are for DB_* fallbacks only; main() refuses to run without an explicit target.
 const HAS_EXPLICIT_TARGET = HAS_EXPLICIT_DATABASE_URL || Boolean(process.env.DB_HOST?.trim());
 const DATABASE_URL =
-  process.env.DATABASE_URL ||
+  (HAS_EXPLICIT_DATABASE_URL && process.env.DATABASE_URL) ||
   `postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}`;
 
 function getConnectionTargets(connectionString) {
@@ -1020,7 +1020,11 @@ async function reportNotValidViolations(client) {
     ORDER BY 1, 2`;
   for (const { table_name: table, conname: name, expr } of checks) {
     try {
-      const [{ n }] = await client.unsafe(`SELECT count(*)::int AS n FROM ${table} WHERE NOT (${expr})`);
+      // Bounded: start.sh waits for this script, so a slow count must time out and warn, not delay startup.
+      const [{ n }] = await client.begin(async (tx) => {
+        await tx`SELECT set_config('lock_timeout', '5s', true), set_config('statement_timeout', '10min', true)`;
+        return tx.unsafe(`SELECT count(*)::int AS n FROM ${table} WHERE NOT (${expr})`);
+      });
       logWarning(
         `Constraint ${name} on ${table} is NOT VALID: ${n} existing row(s) violate it and cannot be updated until corrected (SELECT * FROM ${table} WHERE NOT (${expr}))`
       );

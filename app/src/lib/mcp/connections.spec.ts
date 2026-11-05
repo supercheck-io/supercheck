@@ -13,17 +13,23 @@ let mockRows: unknown[] = [];
 let mockConsentRow: unknown[] = [];
 const mockDeleted: unknown[] = [];
 const mockListProjects = jest.fn();
+const mockUpdateWhere = jest.fn();
+const mockUpdateSet = jest.fn();
 
 const mockTx = {
   select: () => chain(mockConsentRow),
   delete: (table: unknown) => ({ where: () => { mockDeleted.push(table); return Promise.resolve(); } }),
 };
 jest.mock("@/utils/db", () => ({
-  db: { select: () => chain(mockRows), transaction: async (fn: (tx: typeof mockTx) => Promise<void>) => fn(mockTx) },
+  db: {
+    select: () => chain(mockRows),
+    update: () => ({ set: (values: unknown) => { mockUpdateSet(values); return { where: (condition: unknown) => mockUpdateWhere(condition) }; } }),
+    transaction: async (fn: (tx: typeof mockTx) => Promise<void>) => fn(mockTx),
+  },
 }));
 jest.mock("./connect-project", () => ({ listConnectableProjects: (...a: unknown[]) => mockListProjects(...a) }));
 
-import { McpConnectionNotFoundError, listMcpConnections, projectsKeepingBroaderGrant, revokeMcpConnection, verifiedHostForClientId } from "./connections";
+import { McpConnectionNotFoundError, McpConsentScopeRestoreError, listMcpConnections, projectsKeepingBroaderGrant, revokeMcpConnection, verifiedHostForClientId, withMergedConsentScopes } from "./connections";
 
 const row = (over: Record<string, unknown> = {}) => ({
   id: "c1", clientId: "dcr-client", clientName: "My Agent", redirectUris: ["http://127.0.0.1:9000/cb"],
@@ -36,6 +42,7 @@ beforeEach(() => {
   mockRows = [];
   mockConsentRow = [];
   mockDeleted.length = 0;
+  mockUpdateWhere.mockResolvedValue(undefined);
   mockListProjects.mockResolvedValue([{ id: "p1" }]);
 });
 
@@ -126,5 +133,37 @@ describe("revokeMcpConnection", () => {
     const error = new McpConnectionNotFoundError();
     expect(error.name).toBe("McpConnectionNotFoundError");
     expect(error.message).toBe("Connection not found");
+  });
+});
+
+describe("withMergedConsentScopes", () => {
+  const key = { userId: "u1", clientId: "c", projectId: "p1" };
+
+  it("writes the union of the earlier and approved scopes back onto the row it read", async () => {
+    mockRows = [{ id: "consent-1", scopes: ["mcp:read", "mcp:sre"] }];
+    const approve = jest.fn().mockResolvedValue({ url: "x" });
+    await expect(withMergedConsentScopes(key, ["mcp:read", "mcp:incidents:write"], approve)).resolves.toEqual({ url: "x" });
+    expect(mockUpdateSet).toHaveBeenCalledWith({ scopes: ["mcp:read", "mcp:sre", "mcp:incidents:write"] });
+    expect(mockUpdateWhere).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves a first approval alone, since there is nothing to merge", async () => {
+    mockRows = [];
+    await expect(withMergedConsentScopes(key, ["mcp:read"], async () => "ok")).resolves.toBe("ok");
+    expect(mockUpdateSet).not.toHaveBeenCalled();
+  });
+
+  it("does not touch the row when the approval itself fails", async () => {
+    mockRows = [{ id: "consent-1", scopes: ["mcp:read", "mcp:sre"] }];
+    await expect(withMergedConsentScopes(key, ["mcp:read"], async () => { throw new Error("rejected"); })).rejects.toThrow("rejected");
+    expect(mockUpdateSet).not.toHaveBeenCalled();
+  });
+
+  it("reports a failed restore as a distinct error", async () => {
+    mockRows = [{ id: "consent-1", scopes: ["mcp:read", "mcp:sre"] }];
+    mockUpdateWhere.mockRejectedValue(new Error("db down"));
+    const error = await withMergedConsentScopes(key, ["mcp:read"], async () => "ok").catch((e) => e);
+    expect(error).toBeInstanceOf(McpConsentScopeRestoreError);
+    expect(error.name).toBe("McpConsentScopeRestoreError");
   });
 });

@@ -1212,6 +1212,23 @@ describe('PlaywrightExecutionProcessor', () => {
         },
       );
 
+      it('does not flag a user-cancelled job run as an alert-worthy error when its result cannot be saved', async () => {
+        const { job, execute } = run('job');
+        execute.mockResolvedValueOnce({
+          success: false,
+          error: 'Cancellation requested by user',
+          results: [],
+        });
+        mockUsageTrackerService.completeRunWithUsage.mockRejectedValue(
+          new Error('db down'),
+        );
+        const failure = await processor.process(job).catch((e: unknown) => e);
+        expect(failure).toBeInstanceOf(ResultNotPersistedError);
+        expect(
+          mockJobNotificationService.handleJobNotifications,
+        ).toHaveBeenCalledWith(expect.objectContaining({ cancelled: true }));
+      });
+
       it.each(['test', 'job'])(
         'meters a %s run once when its saves fail but metering succeeds',
         async (kind) => {

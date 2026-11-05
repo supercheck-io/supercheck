@@ -445,6 +445,16 @@ describe("event dedupe key release", () => {
     expect(redisEval).not.toHaveBeenCalled();
   });
 
+  it("retries the release when Redis errors, so a failed reminder is not suppressed for the dedupe window", async () => {
+    redisEval.mockRejectedValueOnce(new Error("redis down")).mockResolvedValueOnce(1);
+    fetchPublicEndpoint.mockResolvedValueOnce({ ok: false, status: 500 });
+    selectQueue.push([{ ...incident, assigneeUserId: null }], people, source, [discord]);
+    await notifyIncidentEvent({ ...base, event: "acknowledged", assigneeUserId: null });
+    // The first attempt throws; a later one succeeds (compare-and-delete is safe to repeat).
+    expect(redisEval.mock.calls.length).toBeGreaterThanOrEqual(2);
+    await expect(redisEval.mock.results[1].value).resolves.toBe(1);
+  });
+
   it("keeps the key when a provider succeeded or there were none", async () => {
     selectQueue.push([incident], people, source, [discord]);
     await notifyIncidentEvent({ ...base, event: "acknowledged", assigneeUserId: null });

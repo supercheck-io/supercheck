@@ -70,13 +70,18 @@ export async function isOrgAdmin(): Promise<boolean> {
 }
 
 export async function requireAdmin(userId?: string) {
-  if (!userId && !(await getCurrentUser())) {
+  // Resolve the caller once; a role-lookup failure for the session user still reads as a plain denial.
+  const current = userId ? null : await getCurrentUser();
+  if (!userId && !current) {
     throw new AdminAccessDeniedError(401);
   }
-  const isUserAdmin = userId
-    ? (await getUserRole(userId)) === Role.SUPER_ADMIN
-    : await isAdmin();
-  if (!isUserAdmin) {
+  const role = userId
+    ? await getUserRole(userId)
+    : await getUserRole(current!.id).catch((error) => {
+        console.error("Error checking admin status:", error);
+        return null;
+      });
+  if (role !== Role.SUPER_ADMIN) {
     throw new AdminAccessDeniedError();
   }
 }

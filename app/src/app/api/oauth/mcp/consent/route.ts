@@ -10,7 +10,7 @@ import { requireSameOriginRequest } from "@/lib/security/same-origin";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { createLogger } from "@/lib/logger/pino-config";
 import { MCP_READ_SCOPE } from "@/lib/mcp/config";
-import { withMergedConsentScopes } from "@/lib/mcp/connections";
+import { McpConsentScopeRestoreError, withMergedConsentScopes } from "@/lib/mcp/connections";
 import { guardMcpEnabled, mcpJson, readJsonBody } from "@/lib/mcp/http";
 import {
   McpProjectAccessError,
@@ -103,6 +103,8 @@ export async function POST(request: NextRequest) {
     return mcpJson({ url });
   } catch (error) {
     logger.warn({ error: error instanceof Error ? error.name : "unknown" }, "MCP consent failed");
+    // Approved, but with fewer scopes than before: say so, since approving the same narrow set again cannot fix it.
+    if (error instanceof McpConsentScopeRestoreError) return mcpJson({ error: "consent_scopes_not_restored" }, 500);
     // A rejected session is not an expired request: tell the screen to ask the user to sign in again.
     if (error instanceof ConsentRejectedError && error.status === 401) {
       return mcpJson({ error: "authentication_required" }, 401);

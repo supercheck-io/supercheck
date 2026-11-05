@@ -32,7 +32,7 @@ Use **Services** to define systems such as `checkout-service` or `payment-gatewa
 
 ![Add Service Dialog](/screenshots/sre-add-service-dialog.png)
 
-For each service, set its name, tier, **Status** (`active`, `deprecated` or `merged`), environment, owner team, **Owner** (one person who is a project editor or admin; they are emailed when a SEV1 or SEV2 opens if the project's incident policy has **Email service owners** on, and an alert incident for the service is assigned to them), OpenTelemetry service name, **Slack channel**, repository URL, **Tags** and **Description**. The services list opens on **Active** services; archiving a service marks it deprecated, and you can show it again with the **Status** filter. The service detail page has three sections.
+For each service, set its name, tier, **Status** (`active`, `deprecated` or `merged`), environment, owner team, **Owner** (one person who is a project editor or admin; they are emailed when a SEV1 or SEV2 opens if the project's incident policy has **Email service owners** on and the incident is opened by someone else, and an alert incident for the service is assigned to them), OpenTelemetry service name, **Slack channel**, repository URL, **Tags** and **Description**. The services list opens on **Active** services; archiving a service marks it deprecated, and you can show it again with the **Status** filter. The service detail page has three sections.
 
 | Section | Shows |
 |---|---|

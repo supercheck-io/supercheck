@@ -83,7 +83,17 @@ export function mcpAuthorizeRequiresResource(resource: string): BetterAuthPlugin
             }
             // A named scope set without mcp:read would yield a token that is refused on every call.
             // An omitted scope is defaulted later; the consent route re-checks the final set.
-            const scope = [...named(ctx.query, "scope"), ...named(ctx.body, "scope")];
+            const queryScope = named(ctx.query, "scope");
+            const bodyScope = named(ctx.body, "scope");
+            // The provider reads scope from the body on POST and the query on GET, so a scope in both is ambiguous:
+            // the one checked here could differ from the one granted.
+            if (queryScope.length > 0 && bodyScope.length > 0) {
+              throw new APIError("BAD_REQUEST", {
+                error: "invalid_scope",
+                error_description: "The scope parameter must be sent in one place only",
+              });
+            }
+            const scope = [...queryScope, ...bodyScope];
             if (scope.length > 0 && !scope.some((v) => typeof v === "string" && v.split(" ").includes(MCP_READ_SCOPE))) {
               throw new APIError("BAD_REQUEST", {
                 error: "invalid_scope",

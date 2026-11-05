@@ -57,9 +57,10 @@ export async function fetchPublicEndpoint(
         lookup(hostname, { all: true, verbatim: true }),
         init.signal,
       );
-  const blocked = allowInternal
-    ? isMetadataOrLinkLocalAddress
-    : isPrivateOrReservedAddress;
+  // Metadata addresses are refused in both modes; the private ranges only when internal targets are not allowed.
+  const blocked = (address: string) =>
+    isMetadataOrLinkLocalAddress(address) ||
+    (!allowInternal && isPrivateOrReservedAddress(address));
   if (
     addresses.length === 0 ||
     addresses.some(({ address }) => blocked(address))

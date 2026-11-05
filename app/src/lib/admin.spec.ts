@@ -29,6 +29,20 @@ describe("requireAdmin", () => {
     await expect(requireAdmin()).rejects.toMatchObject({ status: 403 });
   });
 
+  it("resolves the session user once and reads a failed role lookup as a 403", async () => {
+    jest.spyOn(console, "error").mockImplementation(() => undefined);
+    getCurrentUser.mockResolvedValue({ id: "u1" });
+    getUserRole.mockRejectedValue(new Error("db down"));
+    await expect(requireAdmin()).rejects.toMatchObject({ status: 403 });
+    expect(getCurrentUser).toHaveBeenCalledTimes(1);
+  });
+
+  it("checks a supplied user id without reading the session", async () => {
+    getUserRole.mockResolvedValue("super_admin");
+    await expect(requireAdmin("u9")).resolves.toBeUndefined();
+    expect(getCurrentUser).not.toHaveBeenCalled();
+  });
+
   it("allows super admins", async () => {
     getCurrentUser.mockResolvedValue({ id: "u1" });
     getUserRole.mockResolvedValue("super_admin");

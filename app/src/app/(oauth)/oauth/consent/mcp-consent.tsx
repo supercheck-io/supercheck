@@ -45,6 +45,7 @@ const ERROR_COPY: Record<string, string> = {
   invalid_request: "Something is wrong with this request. Go back to the app and try again.",
   consent_failed: "This request expired or was already used. Go back to the app and start again.",
   project_required: "Choose a project first.",
+  consent_scopes_not_restored: "The connection was saved with fewer permissions than before. Disconnect it in Connected apps, then connect again and approve every permission.",
 };
 
 export function McpConsent({ oauthQuery, userEmail, projects, canWriteIncidents = false, canRunSre = false, keepsEarlierAccessProjectIds = [], client, navigate = (url) => window.location.assign(url) }: Props) {

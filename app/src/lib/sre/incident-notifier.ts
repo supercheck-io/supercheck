@@ -108,17 +108,21 @@ function eventKey(input: IncidentNotifyInput) {
 /** When every provider failed, the event was never announced; free the key so a retry can send. */
 async function releaseEvent(input: IncidentNotifyInput, token: string) {
   if (!token) return;
-  try {
-    const redis = await getRedisConnection();
-    // Compare-and-delete: never free a key another invocation has since claimed.
-    await redis.eval(
-      "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end",
-      1,
-      eventKey(input),
-      token,
-    );
-  } catch {
-    // Best effort; the key expires on its own.
+  // Retried: a key left behind suppresses the re-notify for DEDUPE_TTL_SECONDS and the reminder is lost.
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const redis = await getRedisConnection();
+      // Compare-and-delete: never free a key another invocation has since claimed (so retrying is safe).
+      await redis.eval(
+        "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end",
+        1,
+        eventKey(input),
+        token,
+      );
+      return;
+    } catch {
+      // Best effort; the key expires on its own.
+    }
   }
 }
 

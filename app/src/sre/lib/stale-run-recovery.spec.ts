@@ -26,4 +26,10 @@ describe("failStaleSreInvestigationRunsForIncident", () => {
       agentStateSnapshot: expect.objectContaining({ errorCode: "stale_run" }),
     }));
   });
+
+  it("clamps the recorded duration to the integer column before the cast", async () => {
+    await failStaleSreInvestigationRunsForIncident({ organizationId: "o", projectId: "p", incidentId: "i" });
+    const { durationMs } = set.mock.calls[0][0] as { durationMs: never };
+    expect(new PgDialect().sqlToQuery(durationMs).sql).toMatch(/LEAST\(2147483647, GREATEST\(0, .*\)\)\)::integer/);
+  });
 });
