@@ -27,7 +27,7 @@ export async function failStaleSreInvestigationRunsForIncident(input: {
     .set({
       status: "failed",
       completedAt: sql`now()`,
-      durationMs: sql<number>`GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (now() - ${sreInvestigationRuns.startedAt})) * 1000)::integer)`,
+      durationMs: sql<number>`LEAST(2147483647, GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (now() - ${sreInvestigationRuns.startedAt})) * 1000)))::integer`,
       agentStateSnapshot: {
         mode: "sre_investigation_recovery",
         error: "Investigation did not finish. Try again.",

@@ -512,6 +512,7 @@ export class PlaywrightExecutionProcessor
     const startTime = new Date();
     let usagePersisted = false;
     let observedBillableMs = 0;
+    let runWasCancelled = false;
 
     this.logger.log(
       `[${runId}] Job execution job ID: ${job.id} received for processing${originalJobId ? ` (job ${originalJobId})` : ''}`,
@@ -612,6 +613,8 @@ export class PlaywrightExecutionProcessor
       // Delegate the actual execution to the service
       const result = await this.executionService.runJob(job.data);
       observedBillableMs = result.billableMs ?? 0;
+      runWasCancelled =
+        !result.success && !!result.error?.includes(RUN_CANCELLATION_MARKER);
 
       await job
         .updateProgress(100)
@@ -749,7 +752,7 @@ export class PlaywrightExecutionProcessor
             projectId: jobData.projectId,
             runId,
             finalStatus: 'error',
-            cancelled: false,
+            cancelled: runWasCancelled,
             durationSeconds: Math.max(
               0,
               Math.floor((Date.now() - startTime.getTime()) / 1000),

@@ -114,7 +114,7 @@ async function blockingRunReason(executor: Executor, input: AutoInvestigateInput
       ),
     );
   if (running >= MAX_RUNNING_PER_ORG) {
-    logger.error({ organizationId: input.organizationId, incidentId: input.incidentId }, "Automatic investigation deferred: organization concurrency limit");
+    logger.error({ organizationId: input.organizationId, incidentId: input.incidentId }, "Automatic investigation skipped: organization concurrency limit (start it by hand once a run finishes)");
     return "org_concurrency_limit" as const;
   }
   return null;

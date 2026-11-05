@@ -101,9 +101,21 @@ it("gives the claim back when a send throws, and keeps going with the rest", asy
 
 it("sends at most 50 reminders per tick, in batches", async () => {
   await client`UPDATE sre_incidents SET renotified_at = now() WHERE project_id = ${policyProject}`;
-  for (let i = 0; i < 60; i++) await incident(100 + i, randomUUID(), policyProject, 40);
+  const batch: string[] = [];
+  for (let i = 0; i < 60; i++) {
+    const id = randomUUID();
+    batch.push(id);
+    await incident(100 + i, id, policyProject, 40);
+  }
   notifyIncidentEvent.mockClear();
+  // Recorded inside the mock: an expect there would be swallowed by the send try/catch.
+  let claimedBeforeFirstSend = Infinity;
+  notifyIncidentEvent.mockImplementationOnce(async () => {
+    const [row] = await client`SELECT count(*)::int AS n FROM sre_incidents WHERE id = ANY(${batch}::uuid[]) AND renotified_at IS NOT NULL`;
+    claimedBeforeFirstSend = row.n;
+  });
   expect(await renotifyUnacknowledgedIncidents()).toBe(50);
+  expect(claimedBeforeFirstSend).toBeLessThanOrEqual(10);
   expect(notifyIncidentEvent).toHaveBeenCalledTimes(50);
   expect(await renotifyUnacknowledgedIncidents()).toBe(10);
 });

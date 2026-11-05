@@ -58,6 +58,8 @@ npm run db:migrate
 npm run dev
 ```
 
+Sourcing `.env` applies shell parsing, so wrap any value containing spaces, `$`, `&` or `;` in single quotes (dotenv strips them too).
+
 The app is available at `http://localhost:3000`. In another terminal for the worker, run from the repository root:
 
 ```bash
