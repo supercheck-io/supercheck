@@ -16,9 +16,10 @@ jest.mock("@/hooks/use-monitors", () => ({
   MONITOR_QUERY_KEY: ["monitor"],
 }));
 jest.mock("@/hooks/use-dashboard", () => ({ DASHBOARD_QUERY_KEY: ["dashboard"] }));
+let mockResults: unknown[] = [];
 jest.mock("@/hooks/use-monitor-details", () => ({
   useMonitorStats: () => ({ stats: null }),
-  useMonitorResults: () => ({ results: [], pagination: null, isFetching: false }),
+  useMonitorResults: () => ({ results: mockResults, pagination: null, isFetching: false }),
   useMonitorPermissions: () => ({ canEdit: true, canDelete: true, canToggle: true, isLoading: false }),
 }));
 jest.mock("@/components/shared/report-viewer", () => ({ ReportViewer: () => null }));
@@ -38,6 +39,37 @@ const monitor = {
   frequencyMinutes: 5,
   recentResults: [],
 } as never;
+
+it("keeps check result cells on one line and shows the full text on hover", async () => {
+  const error = "Received status code: 500, expected: 200-299 from https://example.test/health";
+  mockResults = [
+    {
+      id: "r1",
+      monitorId: "m1",
+      checkedAt: new Date(Date.now() - 20_000).toISOString(),
+      isUp: false,
+      responseTimeMs: 360,
+      location: "asia-pacific-southeast-two",
+      details: { errorMessage: error },
+    },
+  ];
+  try {
+    render(<MonitorDetailClient monitor={monitor} />);
+
+    const errorCell = await screen.findByText(error);
+    const checkedAt = screen.getByText("less than a minute ago");
+    const location = screen.getByText("Asia Pacific Southeast Two");
+    for (const cell of [errorCell, checkedAt, location]) {
+      expect(cell).toHaveClass("truncate");
+      expect(cell.closest("td")).toHaveClass("overflow-hidden");
+    }
+
+    fireEvent.mouseEnter(location);
+    expect(await screen.findAllByText("Asia Pacific Southeast Two")).toHaveLength(2);
+  } finally {
+    mockResults = [];
+  }
+});
 
 it("invalidates the dashboard and the single-monitor cache after pausing", async () => {
   global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({}) }) as never;

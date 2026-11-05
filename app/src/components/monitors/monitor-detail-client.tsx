@@ -1090,12 +1090,12 @@ export function MonitorDetailClient({
                   </div>
                 )}
                 <div className="w-full">
-                  <table className="w-full min-w-[520px] table-fixed divide-y divide-border">
+                  <table className="w-full min-w-[640px] table-fixed divide-y divide-border">
                     <colgroup>
                       <col className="w-[64px]" />
-                      <col className="w-[144px]" />
-                      <col className="w-[96px]" />
-                      <col className="w-[116px]" />
+                      <col className="w-[192px]" />
+                      <col className="w-[136px]" />
+                      <col className="w-[124px]" />
                       <col />
                     </colgroup>
                     <thead className="bg-background sticky top-0 z-10 border-b">
@@ -1206,34 +1206,44 @@ export function MonitorDetailClient({
                               <td className="px-4 py-[11.5px] whitespace-nowrap text-sm">
                                 <SimpleStatusIcon isUp={result.isUp} />
                               </td>
-                              <td className="px-4 py-[11.5px] whitespace-nowrap text-sm text-muted-foreground">
-                                {formatDateTime(result.checkedAt)}
+                              {/* Cells stay on one line; long values end in an ellipsis and show in full on hover. */}
+                              <td className="px-4 py-[11.5px] overflow-hidden text-sm text-muted-foreground">
+                                <TruncatedTextWithTooltip
+                                  text={formatDateTime(result.checkedAt)}
+                                  maxWidth="100%"
+                                  maxLength={22}
+                                />
                               </td>
-                              <td className="px-4 py-[11.5px] whitespace-nowrap overflow-hidden text-ellipsis text-xs text-muted-foreground">
+                              <td className="px-4 py-[11.5px] overflow-hidden text-xs text-muted-foreground">
                                 {locationMetadata ? (
-                                  <span className="flex items-center gap-1">
+                                  <span className="flex min-w-0 items-center gap-1">
                                     {locationMetadata.flag && (
-                                      <span className="text-[16px]">
+                                      <span className="shrink-0 text-[16px]">
                                         {locationMetadata.flag}
                                       </span>
                                     )}
-                                    <span className="font-medium">
-                                      {locationMetadata.name}
-                                    </span>
+                                    <TruncatedTextWithTooltip
+                                      text={locationMetadata.name}
+                                      className="min-w-0 font-medium"
+                                      maxWidth="100%"
+                                      maxLength={12}
+                                    />
                                   </span>
-                                ) : result.location ? (
-                                  result.location
                                 ) : (
-                                  "N/A"
+                                  <TruncatedTextWithTooltip
+                                    text={result.location || "N/A"}
+                                    maxWidth="100%"
+                                    maxLength={14}
+                                  />
                                 )}
                               </td>
-                              <td className="px-4 py-[11.5px] whitespace-nowrap text-sm text-muted-foreground">
+                              <td className="px-4 py-[11.5px] whitespace-nowrap overflow-hidden text-ellipsis text-sm text-muted-foreground">
                                 {result.responseTimeMs !== null &&
                                   result.responseTimeMs !== undefined
                                   ? `${(result.responseTimeMs / 1000).toFixed(2)} s`
                                   : "N/A"}
                               </td>
-                              <td className="px-4 py-[11.5px] text-sm text-muted-foreground">
+                              <td className="px-4 py-[11.5px] overflow-hidden text-sm text-muted-foreground">
                                 {monitor.type === "synthetic_test" ? (
                                   // Synthetic test: show report on failure, N/A on success
                                   syntheticReportAvailable ? (
