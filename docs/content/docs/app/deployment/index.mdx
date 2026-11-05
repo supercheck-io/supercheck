@@ -29,35 +29,9 @@ Run Supercheck on your own infrastructure. Start with a single server; add worke
   />
 </Cards>
 
-## Requirements
-
-| Requirement | Minimum |
-|-------------|---------|
-| OS | Linux: Ubuntu 22.04+ or Debian 12+ |
-| Architecture | x86_64 or arm64 |
-| CPU and memory | 2 vCPU and 4 GB RAM minimum; 4 vCPU and 8 GB recommended |
-| Disk | 10 GB free minimum, 15 GB to start, 30–50 GB for regular use |
-| Docker and Compose | Docker Engine with Compose v2.24.4+ (the installer sets these up) |
-| Domain | Optional; required for public HTTPS |
-
-<Callout type="warn">
-**Linux only.** The test sandbox needs the Linux kernel. macOS, Windows, Docker Desktop, and WSL2 are not supported.
-</Callout>
-
-## Services
-
-| Service | Purpose |
-|---------|---------|
-| `app` | Next.js UI and API |
-| `worker` | Test execution (Playwright and k6) in a gVisor sandbox |
-| `postgres` | Database |
-| `redis` | Job queues |
-| `rustfs` | S3-compatible artifact storage |
-| `traefik` | HTTPS reverse proxy (HTTPS profile only) |
+Requires a Linux server (Ubuntu 22.04+ or Debian 12+) with at least 2 vCPU and 4 GB RAM; see [Prerequisites](/docs/app/deployment/self-hosted#prerequisites).
 
 ## Platform Architecture
-
-Interactive map of the platform: services, data stores, execution, and alerting.
 
 <DiagramEmbed
   src="/diagrams/supercheck-architecture.html"
