@@ -16,6 +16,7 @@ const {
   withMigrationTimeouts,
 } = require("./migration-lock.js");
 const { validatePendingConstraints } = require("./validate-constraints.js");
+const { encryptLegacyWebhookSecrets } = require("./legacy-webhook-secrets.js");
 
 // Configuration
 const MAX_RETRIES = 20;
@@ -32,6 +33,8 @@ const DB_NAME = process.env.DB_NAME || "supercheck";
 const HAS_EXPLICIT_DATABASE_URL =
   typeof process.env.DATABASE_URL === "string" &&
   process.env.DATABASE_URL.trim().length > 0;
+// The localhost defaults below are for DB_* fallbacks only; main() refuses to run without an explicit target.
+const HAS_EXPLICIT_TARGET = HAS_EXPLICIT_DATABASE_URL || Boolean(process.env.DB_HOST?.trim());
 const DATABASE_URL =
   process.env.DATABASE_URL ||
   `postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}`;
@@ -133,6 +136,15 @@ function logError(message) {
 
 function logWarning(message) {
   console.log(`[${new Date().toISOString()}] [WARNING] ${message}`);
+}
+
+// RAISE WARNING from a migration (e.g. an index skipped because duplicate rows exist) is repeated in the
+// final summary. Every other notice (identifier truncation, RAISE NOTICE) stays quiet.
+const migrationWarnings = [];
+function onNotice(notice) {
+  if (notice?.severity !== "WARNING") return;
+  migrationWarnings.push(notice.message);
+  logWarning(notice.message);
 }
 
 
@@ -406,6 +418,17 @@ async function runDeferredMigrations(items = deferredMigrations) {
   return true;
 }
 
+const WEBHOOK_SECRET_DROP_MIGRATION = "0056_";
+
+// 0053 refuses a non-UTC database that already holds data; its own message does not say how to proceed.
+function migrationFailureHint(err) {
+  if (!/0053_timestamptz stopped/.test(String(err?.message))) return null;
+  return (
+    `Hint: if you have confirmed the stored timestamps are UTC, set the database TimeZone to UTC ` +
+    `(ALTER DATABASE "${TARGET_DB_NAME.replace(/"/g, '""')}" SET timezone TO 'UTC';), reconnect, and run the migration again.`
+  );
+}
+
 // Function to run migrations
 async function runMigrations(client) {
   log("Running database migrations...");
@@ -501,6 +524,11 @@ async function runMigrations(client) {
       log(`Applying migration: ${migrationFile}`);
 
       try {
+        // 0056 drops the plaintext webhook secrets; they must be encrypted first (same transaction, sees 0047's column).
+        if (migrationFile.startsWith(WEBHOOK_SECRET_DROP_MIGRATION)) {
+          await encryptLegacyWebhookSecrets(client, log);
+        }
+
         // Make migration idempotent by adding IF NOT EXISTS to CREATE statements
         migrationContent = migrationContent.replace(
           /CREATE TABLE "([^"]+)"/g,
@@ -555,6 +583,8 @@ async function runMigrations(client) {
         logSuccess(`Migration ${migrationFile} applied successfully`);
       } catch (err) {
         logError(`Failed to apply migration ${migrationFile}: ${err.message}`);
+        const hint = migrationFailureHint(err);
+        if (hint) logError(hint);
         return false;
       }
     }
@@ -812,6 +842,14 @@ async function verifyPlanLimitsSeeded(client) {
 
 // Main function
 async function main() {
+  if (!HAS_EXPLICIT_TARGET) {
+    logError(
+      "Refusing to run: neither DATABASE_URL nor DB_HOST is set, so the migrator would target " +
+        "postgres:postgres@localhost:5432. Set DATABASE_URL (npm scripts do not load .env: " +
+        "`set -a; . ./.env; set +a` first, or pass DATABASE_URL=... explicitly)."
+    );
+    process.exit(1);
+  }
   let migrationLockClient;
   let migrationCompleted = false;
 
@@ -884,6 +922,7 @@ async function main() {
         log,
         logSuccess,
         logError,
+        onnotice: onNotice,
       },
     );
     if (!migrationLockClient) {
@@ -960,6 +999,10 @@ async function validateAfterCommit() {
   try {
     client = postgres(TARGET_DATABASE_URL, { max: 1, ssl: getDatabaseSSLConfig() });
     await validatePendingConstraints(client, { log, logWarning });
+    await reportNotValidViolations(client);
+    if (migrationWarnings.length) {
+      logWarning(`Migration warnings (${migrationWarnings.length}): ${migrationWarnings.join(" | ")}`);
+    }
   } catch (err) {
     logWarning(`Skipped constraint validation: ${err.message}`);
   } finally {
@@ -967,7 +1010,27 @@ async function validateAfterCommit() {
   }
 }
 
-module.exports = { looksPooled, setStatementTimeout, hasNoTransactionMarker, concurrentIndexNames, concurrentIndexes, assertDeferredFileRerunnable };
+// A CHECK left NOT VALID is enforced on every new write AND on any UPDATE of an existing row, so a legacy row
+// that violates it cannot be edited until fixed. Count them per constraint so operators can clean them up.
+async function reportNotValidViolations(client) {
+  const checks = await client`
+    SELECT conrelid::regclass::text AS table_name, conname, pg_get_expr(conbin, conrelid) AS expr
+    FROM pg_constraint
+    WHERE connamespace = 'public'::regnamespace AND NOT convalidated AND contype = 'c'
+    ORDER BY 1, 2`;
+  for (const { table_name: table, conname: name, expr } of checks) {
+    try {
+      const [{ n }] = await client.unsafe(`SELECT count(*)::int AS n FROM ${table} WHERE NOT (${expr})`);
+      logWarning(
+        `Constraint ${name} on ${table} is NOT VALID: ${n} existing row(s) violate it and cannot be updated until corrected (SELECT * FROM ${table} WHERE NOT (${expr}))`
+      );
+    } catch (err) {
+      logWarning(`Could not count violations of ${name}: ${err.message}`);
+    }
+  }
+}
+
+module.exports = { migrationFailureHint, onNotice, migrationWarnings, reportNotValidViolations, looksPooled, setStatementTimeout, hasNoTransactionMarker, concurrentIndexNames, concurrentIndexes, assertDeferredFileRerunnable };
 
 // Run the main function
 if (require.main === module) main();

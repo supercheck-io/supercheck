@@ -15,6 +15,9 @@ import { decryptValue, encryptValue } from "@/lib/encryption";
 const SIGNING_CONTEXT = "status-page-unsubscribe-v1";
 const WEBHOOK_SECRET_CONTEXT = "status-page-webhook-secret-v1";
 const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+// Pre-1.6 emails carry the stored random hex token (generateHexToken). Accepted for one more release; drop
+// with the unsubscribe_token column after 1.6.x, once pre-1.6 emails have aged out.
+const LEGACY_TOKEN = /^[0-9a-f]{32,128}$/;
 const SIGNED_TOKEN = new RegExp(`^(${UUID})\\.([A-Za-z0-9_-]{43})$`, "i");
 
 export const hashVerificationToken = (token: string) =>
@@ -40,13 +43,17 @@ export function verifyUnsubscribeToken(token: string): string | null {
     : null;
 }
 
-/** Row condition for a signed unsubscribe token; null when the token is malformed or forged. */
+/**
+ * Row condition for an unsubscribe token; null when it is malformed or a forged signed token.
+ * A legacy hex token is one indexed equality lookup on the stored random value.
+ */
 export function unsubscribeTokenCondition(token: string): SQL | null {
+  if (LEGACY_TOKEN.test(token)) return eq(statusPageSubscribers.unsubscribeToken, token);
   const id = verifyUnsubscribeToken(token);
   return id ? eq(statusPageSubscribers.id, id) : null;
 }
 
-export const isUnsubscribeTokenShape = (token: string) => SIGNED_TOKEN.test(token);
+export const isUnsubscribeTokenShape = (token: string) => SIGNED_TOKEN.test(token) || LEGACY_TOKEN.test(token);
 
 export const encryptWebhookSecret = (secret: string) =>
   encryptValue(secret, WEBHOOK_SECRET_CONTEXT);

@@ -40,11 +40,17 @@ describe("signed unsubscribe token", () => {
       expect(verifyUnsubscribeToken(v)).toBeNull();
     }
   });
-  it("no longer accepts a legacy 64-hex stored token", () => {
+  it("accepts a legacy 64-hex stored token as a stored-token lookup, never as a signed token", () => {
     const legacy = "a".repeat(64);
-    expect(isUnsubscribeTokenShape(legacy)).toBe(false);
+    expect(isUnsubscribeTokenShape(legacy)).toBe(true);
     expect(verifyUnsubscribeToken(legacy)).toBeNull();
-    expect(unsubscribeTokenCondition(legacy)).toBeNull();
+    expect(unsubscribeTokenCondition(legacy)).not.toBeNull();
+  });
+  it("rejects strings that are neither signed nor legacy-shaped", () => {
+    for (const v of ["", "short", "g".repeat(64), "a".repeat(31), "a".repeat(129), "A".repeat(64), "'; drop table x; --"]) {
+      expect(isUnsubscribeTokenShape(v)).toBe(false);
+      expect(unsubscribeTokenCondition(v)).toBeNull();
+    }
   });
   it("stops verifying once the key changes", () => {
     const token = signUnsubscribeToken(A);

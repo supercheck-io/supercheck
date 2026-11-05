@@ -117,9 +117,10 @@ describe("0047 subscriber secret storage", () => {
     expect(row.verification_token_hash).toBe(hashVerificationToken(hashedVerify));
   });
 
-  it("resolves signed unsubscribe links; the stored legacy token is no longer accepted", async () => {
+  it("resolves signed unsubscribe links and, for one more release, the stored legacy token", async () => {
     expect((await getSubscriberByToken(signUnsubscribeToken(A1))).subscriber?.id).toBe(A1);
-    expect((await getSubscriberByToken(legacyUnsub)).success).toBe(false);
+    expect((await getSubscriberByToken(legacyUnsub)).subscriber?.id).toBe(A1);
+    expect((await getSubscriberByToken("d".repeat(64))).success).toBe(false);
     const forged = `${A1}.${"A".repeat(43)}`;
     expect((await getSubscriberByToken(forged)).success).toBe(false);
   });

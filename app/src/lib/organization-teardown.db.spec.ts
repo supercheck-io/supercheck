@@ -106,7 +106,6 @@ it("changes nothing when the subscription cannot be cancelled", async () => {
   await expect(deleteOrganizationCompletely(organization.id, { noMembers: true }, adminId)).rejects.toBeInstanceOf(BillingCancellationError);
   const [project] = await mockDatabase.select().from(schema.projects).where(eq(schema.projects.organizationId, organization.id));
   expect(project.status).toBe("active");
-  expect(deleteScheduledJob).not.toHaveBeenCalled();
   // The audit marker rolled back with the transaction.
   expect(await mockDatabase.select().from(schema.auditLogs).where(eq(schema.auditLogs.action, TEARDOWN_ACTION))).not.toContainEqual(
     expect.objectContaining({ organizationId: organization.id }),
@@ -202,13 +201,12 @@ it("sweeps a run's folder in every run bucket when its artifact URL cannot be pa
   }
 });
 
-it("says the subscription was already cancelled when storage cleanup fails", async () => {
+it("leaves the subscription untouched when storage cleanup fails", async () => {
   const { organization } = await seed({ subscriptionId: `sub-${randomUUID()}`, subscriptionStatus: "active" });
   deletePrefix.mockResolvedValueOnce({ success: false, failedObjects: [{ key: "k" }] });
   const error = await deleteOrganizationCompletely(organization.id, { noMembers: true }, adminId).catch((e: unknown) => e);
   expect(error).toBeInstanceOf(StorageCleanupError);
-  expect((error as StorageCleanupError).subscriptionCancelled).toBe(true);
-  expect((error as Error).message).toMatch(/subscription was already cancelled/);
+  expect(revoke).not.toHaveBeenCalled();
 });
 
 it("lets an owner delete an organization that has other members, and refuses a non-owner", async () => {

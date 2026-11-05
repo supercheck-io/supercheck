@@ -741,6 +741,28 @@ export class PlaywrightExecutionProcessor
           Math.max(getBillableMs(error), observedBillableMs),
           { jobId: originalJobId, executionError: true },
         );
+        // The stalled-run sweep sends no alert, so tell the owners now; never mask the original error.
+        await this.jobNotificationService
+          .handleJobNotifications({
+            jobId: jobIdForLookup,
+            organizationId: jobData.organizationId,
+            projectId: jobData.projectId,
+            runId,
+            finalStatus: 'error',
+            cancelled: false,
+            durationSeconds: Math.max(
+              0,
+              Math.floor((Date.now() - startTime.getTime()) / 1000),
+            ),
+            results: [{ success: false }],
+            jobType: jobData.jobType ?? 'playwright',
+            errorMessage: error.message,
+          })
+          .catch((notificationError: unknown) =>
+            this.logger.error(
+              `[${runId}] Failed to send error notification: ${String(notificationError)}`,
+            ),
+          );
         throw error;
       }
       ErrorHandler.logError(

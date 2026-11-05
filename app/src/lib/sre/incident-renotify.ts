@@ -1,4 +1,4 @@
-import { and, eq, gte, isNotNull, isNull, lte, ne, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, isNotNull, isNull, lte, ne, notInArray, sql } from "drizzle-orm";
 import { Queue, Worker } from "bullmq";
 
 import { notificationPolicies, sreIncidents } from "@/db/schema";
@@ -11,42 +11,69 @@ const TICK_MS = 60_000;
 // A policy switched on late must not wake incidents from long ago.
 const MAX_AGE_MS = 2 * 24 * 60 * 60 * 1000;
 
+// Claim small batches so a restart mid-tick loses at most one batch; the cap keeps a late-enabled
+// policy on a busy project from bursting (the rest follows on later ticks).
+const CLAIM_BATCH = 10;
+const MAX_PER_TICK = 50;
+
 /**
- * Re-sends once to incidents that stayed unacknowledged past their project's policy time. The
- * UPDATE claims each incident (renotified_at) before sending, so ticks and replicas never repeat it.
+ * Re-sends once to incidents that stayed unacknowledged past their project's policy time. Each batch
+ * is claimed (renotified_at, FOR UPDATE SKIP LOCKED) before sending, so ticks and replicas never
+ * repeat it; a failed or thrown send gives the claim back for the next tick.
  */
 export async function renotifyUnacknowledgedIncidents(now = new Date()) {
-  const claimed = await db
-    .update(sreIncidents)
-    .set({ renotifiedAt: now })
-    .from(notificationPolicies)
-    .where(
-      and(
-        eq(notificationPolicies.projectId, sreIncidents.projectId),
-        isNotNull(notificationPolicies.renotifyUnackedMinutes),
-        ne(sreIncidents.status, "resolved"),
-        isNull(sreIncidents.acknowledgedAt),
-        isNull(sreIncidents.renotifiedAt),
-        gte(sreIncidents.createdAt, new Date(now.getTime() - MAX_AGE_MS)),
-        lte(sreIncidents.createdAt, sql`${now.toISOString()}::timestamptz - make_interval(mins => ${notificationPolicies.renotifyUnackedMinutes})`),
-      ),
-    )
-    .returning({ id: sreIncidents.id, organizationId: sreIncidents.organizationId, projectId: sreIncidents.projectId });
+  let total = 0;
+  const released: string[] = [];
+  while (total < MAX_PER_TICK) {
+    const due = db
+      .select({ id: sreIncidents.id })
+      .from(sreIncidents)
+      .innerJoin(notificationPolicies, eq(notificationPolicies.projectId, sreIncidents.projectId))
+      .where(
+        and(
+          isNotNull(notificationPolicies.renotifyUnackedMinutes),
+          ne(sreIncidents.status, "resolved"),
+          isNull(sreIncidents.acknowledgedAt),
+          isNull(sreIncidents.renotifiedAt),
+          released.length ? notInArray(sreIncidents.id, released) : undefined,
+          gte(sreIncidents.createdAt, new Date(now.getTime() - MAX_AGE_MS)),
+          lte(sreIncidents.createdAt, sql`${now.toISOString()}::timestamptz - make_interval(mins => ${notificationPolicies.renotifyUnackedMinutes})`),
+        ),
+      )
+      .orderBy(sreIncidents.createdAt)
+      .limit(Math.min(CLAIM_BATCH, MAX_PER_TICK - total))
+      .for("update", { of: sreIncidents, skipLocked: true });
+    const claimed = await db
+      .update(sreIncidents)
+      .set({ renotifiedAt: now })
+      .where(inArray(sreIncidents.id, due))
+      .returning({ id: sreIncidents.id, organizationId: sreIncidents.organizationId, projectId: sreIncidents.projectId, createdAt: sreIncidents.createdAt });
+    if (!claimed.length) break;
+    total += claimed.length;
+    // RETURNING has no order guarantee; send oldest first.
+    claimed.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
 
-  for (const incident of claimed) {
-    const delivered = await notifyIncidentEvent({
-      organizationId: incident.organizationId,
-      projectId: incident.projectId,
-      incidentId: incident.id,
-      event: "unacknowledged",
-      dedupeDiscriminator: "renotify",
-    });
-    // Every send failed: give the reminder back so the next tick tries again.
-    if (delivered === false) {
-      await db.update(sreIncidents).set({ renotifiedAt: null }).where(eq(sreIncidents.id, incident.id));
+    for (const incident of claimed) {
+      let delivered = false;
+      try {
+        delivered = await notifyIncidentEvent({
+          organizationId: incident.organizationId,
+          projectId: incident.projectId,
+          incidentId: incident.id,
+          event: "unacknowledged",
+          dedupeDiscriminator: "renotify",
+        });
+      } catch (error) {
+        queueLogger.error({ err: error, incidentId: incident.id }, "Incident re-notify send failed");
+      }
+      // Every send failed (or threw): give the reminder back so the next tick tries again.
+      if (delivered === false) {
+        released.push(incident.id);
+        await db.update(sreIncidents).set({ renotifiedAt: null }).where(eq(sreIncidents.id, incident.id));
+      }
     }
   }
-  return claimed.length;
+  return total;
 }
 
 let worker: Worker | undefined;

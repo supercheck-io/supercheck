@@ -11209,6 +11209,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "unsubscribe_token": {
+          "name": "unsubscribe_token",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        },
         "webhook_secret_encrypted": {
           "name": "webhook_secret_encrypted",
           "type": "text",
@@ -11334,6 +11340,22 @@
           ],
           "isUnique": false,
           "where": "verification_token IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "status_page_subscribers_unsubscribe_token_idx": {
+          "name": "status_page_subscribers_unsubscribe_token_idx",
+          "columns": [
+            {
+              "expression": "unsubscribe_token",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "unsubscribe_token IS NOT NULL",
           "concurrently": false,
           "method": "btree",
           "with": {}

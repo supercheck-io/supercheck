@@ -665,7 +665,8 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<b
     );
     // null is a failed send; false is a provider that sends nothing (a webhook with a custom body).
     sent += delivered.filter((result) => result === true).length;
-    if (delivered.length > 0 && !delivered.some((result) => result !== null)) await releaseEvent(input, claim);
+    // Keep the claim once anything went out (participant emails): a retry would email those people again.
+    if (sent === 0 && delivered.length > 0 && !delivered.some((result) => result !== null)) await releaseEvent(input, claim);
 
     // Nobody owns it and nothing reached a channel: tell the project's owners and admins.
     // Also for the one re-notify, so it is never silently lost.

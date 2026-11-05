@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, count, eq, gt, sql } from "drizzle-orm";
 
 import { sreIncidents, sreInvestigationRuns } from "@/db/schema";
 import { validateAIConfiguration } from "@/lib/ai/ai-provider";
@@ -8,11 +8,14 @@ import { getNotificationPolicy } from "@/lib/sre/notification-policy";
 import { sreDailyTokenLimitResponse } from "@/lib/sre/sre-daily-token-limit";
 import { isSreEnabled } from "@/sre/lib/feature-gates";
 import { completeSreIncidentInvestigation, startSreIncidentInvestigation } from "@/sre/lib/investigation-runner";
+import { STALE_RUN_AFTER_MS, failStaleSreInvestigationRunsForIncident } from "@/sre/lib/stale-run-recovery";
 import { runSreIncidentTriage } from "@/sre/lib/triage-runner";
 import { db } from "@/utils/db";
 
 // Failed automatic attempts per incident before it stops retrying; a person can still start one.
 const MAX_AUTO_ATTEMPTS = 3;
+// An outage opening many incidents must not start that many LLM runs at once and overshoot the daily token limit.
+const MAX_RUNNING_PER_ORG = 3;
 
 const logger = createLogger({ module: "sre-auto-investigate" }) as {
   error: (data: unknown, message?: string) => void;
@@ -36,6 +39,9 @@ export async function maybeAutoInvestigateOnOpen(input: AutoInvestigateInput): P
     if (!isSreEnabled()) return { handled: false, reason: "sre_disabled" };
     const policy = await getNotificationPolicy(input.projectId);
     if (!policy.autoInvestigateOnOpen) return { handled: false, reason: "disabled" };
+
+    // A run left "running" by a restart would otherwise block this incident forever.
+    await failStaleSreInvestigationRunsForIncident(input);
 
     // The lock makes the decision atomic per incident; it is released before the run starts so no pooled
     // connection is held across the LLM call. A racing start of the same agent type is stopped by the
@@ -90,6 +96,21 @@ async function blockingRunReason(executor: Executor, input: AutoInvestigateInput
     );
   if (runs.some((run) => run.status === "running" || run.status === "completed")) return "already_investigated" as const;
   if (runs.length >= MAX_AUTO_ATTEMPTS) return "retry_limit" as const;
+  // Runs past the stale age are dead, not in flight, so they do not hold a slot.
+  const [{ running }] = await executor
+    .select({ running: count() })
+    .from(sreInvestigationRuns)
+    .where(
+      and(
+        eq(sreInvestigationRuns.organizationId, input.organizationId),
+        eq(sreInvestigationRuns.status, "running"),
+        gt(sreInvestigationRuns.startedAt, new Date(Date.now() - STALE_RUN_AFTER_MS)),
+      ),
+    );
+  if (running >= MAX_RUNNING_PER_ORG) {
+    logger.error({ organizationId: input.organizationId, incidentId: input.incidentId }, "Automatic investigation deferred: organization concurrency limit");
+    return "org_concurrency_limit" as const;
+  }
   return null;
 }
 

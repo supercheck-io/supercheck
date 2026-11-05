@@ -22,10 +22,10 @@ let incidentRows: unknown[] = [];
 let runRows: unknown[] = [];
 // Runs visible to the re-check before starting, i.e. ones that appeared after the decision.
 let lateRunRows: unknown[] | null = null;
-let selects = 0;
+let orgRunning = 0;
 let inTransaction = false;
 const lockExecute = jest.fn().mockResolvedValue(undefined);
-// Inside the transaction the incident is read first, then any earlier investigation run.
+// Queries are told apart by the columns they select: the incident, the org's running count, else the incident's runs.
 const chain = (rows: unknown[]) => {
   const n: Record<string, unknown> = {};
   for (const k of ["from", "where"]) n[k] = () => n;
@@ -35,14 +35,19 @@ const chain = (rows: unknown[]) => {
     Promise.resolve(rows).then(resolve, reject);
   return n;
 };
+const recoverStale = jest.fn().mockResolvedValue(undefined);
+jest.mock("@/sre/lib/stale-run-recovery", () => ({
+  STALE_RUN_AFTER_MS: 300_000,
+  failStaleSreInvestigationRunsForIncident: (...a: unknown[]) => recoverStale(...a),
+}));
 const tx = {
   execute: (...a: unknown[]) => lockExecute(...a),
-  select: () => chain(selects++ % 2 === 0 ? incidentRows : runRows),
+  select: (cols: Record<string, unknown>) => chain("severity" in cols ? incidentRows : "running" in cols ? [{ running: orgRunning }] : runRows),
 };
 jest.mock("@/utils/db", () => ({
   db: {
     // Outside the transaction (the re-check before starting) only the run query is issued.
-    select: () => chain(lateRunRows ?? runRows),
+    select: (cols: Record<string, unknown>) => chain("running" in cols ? [{ running: orgRunning }] : lateRunRows ?? runRows),
     transaction: async (callback: (t: typeof tx) => unknown) => {
       inTransaction = true;
       try {
@@ -60,8 +65,8 @@ const input = { organizationId: "org-1", projectId: "p1", incidentId: "i1", user
 
 beforeEach(() => {
   jest.clearAllMocks();
-  selects = 0;
   runRows = [];
+  orgRunning = 0;
   lateRunRows = null;
   sreEnabled.mockReturnValue(true);
   policy.mockResolvedValue({ autoInvestigateOnOpen: true });
@@ -129,7 +134,6 @@ it("treats a lost race on the active-run index as already running", async () => 
   start.mockResolvedValue({ success: false, status: 409, error: "running" });
   expect(await maybeAutoInvestigateOnOpen(input)).toEqual({ handled: false, reason: "already_running" });
   incidentRows = [{ severity: "sev4", status: "triggered" }];
-  selects = 0;
   triage.mockResolvedValue({ success: false, status: 409, error: "running" });
   expect(await maybeAutoInvestigateOnOpen(input)).toEqual({ handled: false, reason: "already_running" });
 });
@@ -166,7 +170,6 @@ it("retries after failed runs, but stops after three failed automatic attempts",
   expect(start).toHaveBeenCalledTimes(1);
 
   jest.clearAllMocks();
-  selects = 0;
   runRows = [{ status: "failed" }, { status: "aborted" }, { status: "failed" }];
   expect(await maybeAutoInvestigateOnOpen(input)).toEqual({ handled: false, reason: "retry_limit" });
   expect(start).not.toHaveBeenCalled();
@@ -180,7 +183,7 @@ it("applies the daily token limit to triage as well", async () => {
 });
 
 it("starts nothing when billing, the daily limit, the AI config or the incident state refuse", async () => {
-  const call = () => { selects = 0; return maybeAutoInvestigateOnOpen(input); };
+  const call = () => maybeAutoInvestigateOnOpen(input);
   assertCanStart.mockRejectedValue(new Error("no plan"));
   expect(await call()).toMatchObject({ handled: false, reason: "billing" });
   assertCanStart.mockResolvedValue(undefined);
@@ -193,4 +196,21 @@ it("starts nothing when billing, the daily limit, the AI config or the incident 
   incidentRows = [{ severity: "sev1", status: "resolved" }];
   expect(await call()).toMatchObject({ handled: false, reason: "not_open" });
   expect(start).not.toHaveBeenCalled();
+});
+
+it("starts nothing while the organization already has the maximum runs in flight", async () => {
+  orgRunning = 3;
+  expect(await maybeAutoInvestigateOnOpen(input)).toEqual({ handled: false, reason: "org_concurrency_limit" });
+  expect(start).not.toHaveBeenCalled();
+  expect(triage).not.toHaveBeenCalled();
+  // A slot freed after the decision is still honoured by the re-check before starting.
+  orgRunning = 0;
+  lateRunRows = [];
+  expect(await maybeAutoInvestigateOnOpen(input)).toEqual({ handled: true });
+});
+
+it("recovers stale runs of the incident before looking for a blocking run", async () => {
+  await maybeAutoInvestigateOnOpen(input);
+  expect(recoverStale).toHaveBeenCalledWith(input);
+  expect(recoverStale.mock.invocationCallOrder[0]).toBeLessThan(lockExecute.mock.invocationCallOrder[0]);
 });

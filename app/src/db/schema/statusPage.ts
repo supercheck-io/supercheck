@@ -366,8 +366,11 @@ export const statusPageSubscribers = pgTable("status_page_subscribers", {
   // Legacy plaintext; new tokens are stored only as a SHA-256 hash.
   verificationToken: varchar("verification_token", { length: 255 }),
   verificationTokenHash: varchar("verification_token_hash", { length: 64 }),
+  // Legacy random token from releases before 1.6, kept only so unsubscribe links already emailed still work.
+  // New links are signed and store nothing. Drop (with its index) after 1.6.x, once pre-1.6 emails have aged out.
+  unsubscribeToken: varchar("unsubscribe_token", { length: 255 }),
   // Webhook security and delivery tracking
-  // Encrypted (secret-crypto) signing secret; webhook_secret is the legacy plaintext, cleared on first use.
+  // Encrypted (secret-crypto) signing secret. The legacy plaintext column is encrypted into this one and dropped by migration 0056.
   webhookSecretEncrypted: text("webhook_secret_encrypted"),
   // Ownership challenge for webhook subscribers. The raw token is only sent to
   // the endpoint; the row keeps its SHA-256 hash and expiry.
@@ -393,6 +396,9 @@ export const statusPageSubscribers = pgTable("status_page_subscribers", {
   uniqueVerificationTokenHash: uniqueIndex("status_page_subscribers_verification_token_hash_idx")
     .on(table.verificationTokenHash)
     .where(sql`verification_token_hash IS NOT NULL`),
+  legacyUnsubscribeToken: index("status_page_subscribers_unsubscribe_token_idx")
+    .on(table.unsubscribeToken)
+    .where(sql`unsubscribe_token IS NOT NULL`),
   legacyVerificationToken: index("status_page_subscribers_verification_token_idx")
     .on(table.verificationToken)
     .where(sql`verification_token IS NOT NULL`),

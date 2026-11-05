@@ -1,4 +1,4 @@
-const { looksPooled, setStatementTimeout, hasNoTransactionMarker, concurrentIndexNames, concurrentIndexes, assertDeferredFileRerunnable } = require("./db-migrate.js");
+const { migrationFailureHint, onNotice, migrationWarnings, reportNotValidViolations, looksPooled, setStatementTimeout, hasNoTransactionMarker, concurrentIndexNames, concurrentIndexes, assertDeferredFileRerunnable } = require("./db-migrate.js");
 
 describe("db-migrate no-transaction files", () => {
   it("detects the file-level marker only as its own comment line", () => {
@@ -57,5 +57,54 @@ describe("looksPooled", () => {
   it("treats a direct URL as not pooled, ignoring unrelated parameters", () => {
     expect(looksPooled("postgresql://u:p@db.example.com:5432/app")).toBe(false);
     expect(looksPooled("postgresql://u:p@db.example.com:5432/app?application_name=pooler-maintenance")).toBe(false);
+  });
+});
+
+describe("migration warnings and hints", () => {
+  it("collects RAISE WARNING notices and ignores other notices", () => {
+    migrationWarnings.length = 0;
+    const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+    onNotice({ severity: "NOTICE", message: "identifier will be truncated" });
+    onNotice({ severity: "WARNING", message: "invitation_pending_org_email_unique_idx not created: duplicate rows exist" });
+    log.mockRestore();
+    expect(migrationWarnings).toEqual(["invitation_pending_org_email_unique_idx not created: duplicate rows exist"]);
+  });
+
+  it("explains how to get past the 0053 TimeZone guard, and only for that error", () => {
+    const hint = migrationFailureHint(new Error("Migration 0053_timestamptz stopped: the database TimeZone is Asia/Kolkata (not UTC)"));
+    expect(hint).toMatch(/ALTER DATABASE ".*" SET timezone TO 'UTC'/);
+    expect(migrationFailureHint(new Error("something else"))).toBeNull();
+  });
+
+  it("counts the rows violating each CHECK left NOT VALID", async () => {
+    const calls = [];
+    const client = jest.fn().mockResolvedValue([{ table_name: "jobs", conname: "jobs_status_check", expr: "status = ANY (ARRAY['a'])" }]);
+    client.unsafe = jest.fn(async (sql) => { calls.push(sql); return [{ n: 3 }]; });
+    const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+    await reportNotValidViolations(client);
+    const output = log.mock.calls.map((c) => c[0]).join("\n");
+    log.mockRestore();
+    expect(calls[0]).toBe("SELECT count(*)::int AS n FROM jobs WHERE NOT (status = ANY (ARRAY['a']))");
+    expect(output).toMatch(/jobs_status_check on jobs is NOT VALID: 3 existing row\(s\)/);
+  });
+});
+
+describe("db-migrate target safety", () => {
+  const { spawnSync } = require("node:child_process");
+  const run = (env) =>
+    spawnSync(process.execPath, [require("node:path").join(__dirname, "db-migrate.js")], {
+      env: { PATH: process.env.PATH, ...env },
+      encoding: "utf8",
+      timeout: 20000,
+    });
+
+  it("refuses to run without DATABASE_URL or DB_HOST instead of targeting localhost", () => {
+    const result = run({});
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(/Refusing to run: neither DATABASE_URL nor DB_HOST is set/);
+    expect(result.stdout).not.toMatch(/Waiting for/);
+  });
+  it("treats a blank DATABASE_URL as unset", () => {
+    expect(run({ DATABASE_URL: "  " }).status).toBe(1);
   });
 });

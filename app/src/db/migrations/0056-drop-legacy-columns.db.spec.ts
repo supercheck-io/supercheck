@@ -51,14 +51,18 @@ it("refuses to drop webhook_secret while a plaintext secret has no encrypted cop
   expect(await columns("status_page_subscribers")).toContain("webhook_secret");
 });
 
-it("drops the legacy columns and index once every secret is encrypted", async () => {
+it("drops the plaintext secret and sso_enabled once every secret is encrypted, keeping the legacy unsubscribe token", async () => {
   await client`UPDATE status_page_subscribers SET webhook_secret_encrypted = 'enc:v1:x'`;
   await client`INSERT INTO status_page_subscribers (unsubscribe_token) VALUES ('t')`;
   await migrate();
   expect(await columns("status_page_subscribers")).toEqual(expect.arrayContaining(["id", "webhook_secret_encrypted"]));
-  expect(await columns("status_page_subscribers")).not.toContain("unsubscribe_token");
+  expect(await columns("status_page_subscribers")).toContain("unsubscribe_token");
   expect(await columns("status_page_subscribers")).not.toContain("webhook_secret");
   expect(await columns("plan_limits")).not.toContain("sso_enabled");
   const [{ count }] = await client<{ count: number }[]>`SELECT count(*)::int AS count FROM pg_indexes WHERE indexname = 'status_page_subscribers_unsubscribe_token_idx'`;
-  expect(count).toBe(0);
+  expect(count).toBe(1);
+});
+
+it("is re-runnable once the columns are gone", async () => {
+  await migrate();
 });

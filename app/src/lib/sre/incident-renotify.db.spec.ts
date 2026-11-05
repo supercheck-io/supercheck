@@ -84,3 +84,26 @@ it("re-notifies only unacknowledged, open, recent incidents past their policy ti
   expect(await renotifyUnacknowledgedIncidents()).toBe(0);
   expect(notifyIncidentEvent).toHaveBeenCalledTimes(1);
 });
+
+it("gives the claim back when a send throws, and keeps going with the rest", async () => {
+  await client`UPDATE sre_incidents SET renotified_at = NULL WHERE id = ${ids.due}`;
+  const extra = randomUUID();
+  await incident(7, extra, policyProject, 46);
+  notifyIncidentEvent.mockClear().mockRejectedValueOnce(new Error("provider down")).mockResolvedValueOnce(true);
+  expect(await renotifyUnacknowledgedIncidents()).toBe(2);
+  const rows = await client`SELECT id, renotified_at FROM sre_incidents WHERE id IN (${ids.due}, ${extra})`;
+  // Oldest first: the thrown send is released for the next tick, the other stays claimed.
+  expect(rows.find((r) => r.id === extra)?.renotified_at).toBeNull();
+  expect(rows.find((r) => r.id === ids.due)?.renotified_at).not.toBeNull();
+  await client`DELETE FROM sre_incidents WHERE id = ${extra}`;
+  notifyIncidentEvent.mockReset().mockResolvedValue(undefined);
+});
+
+it("sends at most 50 reminders per tick, in batches", async () => {
+  await client`UPDATE sre_incidents SET renotified_at = now() WHERE project_id = ${policyProject}`;
+  for (let i = 0; i < 60; i++) await incident(100 + i, randomUUID(), policyProject, 40);
+  notifyIncidentEvent.mockClear();
+  expect(await renotifyUnacknowledgedIncidents()).toBe(50);
+  expect(notifyIncidentEvent).toHaveBeenCalledTimes(50);
+  expect(await renotifyUnacknowledgedIncidents()).toBe(10);
+});

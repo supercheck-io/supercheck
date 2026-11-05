@@ -19,9 +19,14 @@ async function acquireMigrationLock(
     log = () => undefined,
     logSuccess = () => undefined,
     logError = () => undefined,
+    onnotice,
   } = {},
 ) {
-  const lockClient = postgres(connectionString, { max: 1, ssl: getDatabaseSSLConfig() });
+  const lockClient = postgres(connectionString, {
+    max: 1,
+    ssl: getDatabaseSSLConfig(),
+    ...(onnotice ? { onnotice } : {}),
+  });
   const deadline = Date.now() + timeoutMs;
 
   log(`Waiting up to ${timeoutMs}ms for the ${lockName} advisory lock...`);

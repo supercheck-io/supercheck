@@ -326,7 +326,8 @@ export function registerMcpTools(server: McpServer, ctx: McpCallContext): void {
       .limit(1);
     if (!i) throw new NotFoundError("Incident not found");
     const [alerts] = await db.select({ count: sql<number>`count(*)::int` }).from(sreIncidentAlerts).where(eq(sreIncidentAlerts.incidentId, i.id));
-    return { incident: { ...i, ...lifecycleDto(i), alertCount: alerts?.count ?? 0, title: safeText(i.title, 500), rootCauseSummary: safeText(i.rootCauseSummary), resolutionSummary: safeText(i.resolutionSummary), createdAt: iso(i.createdAt), resolvedAt: iso(i.resolvedAt) } };
+    return { incident: { ...i, ...lifecycleDto(i), alertCount: alerts?.count ?? 0, title: safeText(i.title, 500), rootCauseSummary: safeText(i.rootCauseSummary), // A reopened incident keeps its previous resolution in the database; only a resolved one reports it.
+      resolutionSummary: i.status === "resolved" ? safeText(i.resolutionSummary) : null, createdAt: iso(i.createdAt), resolvedAt: iso(i.resolvedAt) } };
   });
 
   // Incident settings of an alert config; both switches default to on.

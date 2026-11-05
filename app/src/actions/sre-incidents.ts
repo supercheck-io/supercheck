@@ -2057,10 +2057,11 @@ export async function createSreIncidentFromAlert(
     });
 
     if ("reopened" in result && result.reopened) {
-      await announceSystemTransition(organizationId, project.id, result.incident.id, "reopened", {
+      // Not awaited: provider sends can take seconds each and must not hold the request.
+      void announceSystemTransition(organizationId, project.id, result.incident.id, "reopened", {
         assigneeUserId: result.reopenedAssigneeUserId,
         discriminator: alert.id,
-      });
+      }).catch((error) => logger.warn({ error, incidentId: result.incident.id }, "Reopen announcement failed"));
     }
 
     if (!result.existing && !correlation && alertStatus !== "resolved") {

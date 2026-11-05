@@ -6,9 +6,9 @@ import { unsubscribeFromStatusPage } from "@/actions/unsubscribe-from-status-pag
 import { POST } from "./route";
 
 const token = `11111111-1111-4111-8111-111111111111.${"a".repeat(43)}`;
-const call = (body: BodyInit | null, headers: Record<string, string>) =>
+const call = (body: BodyInit | null, headers: Record<string, string>, t = token) =>
   POST(new Request("http://localhost/x", { method: "POST", body, headers }), {
-    params: Promise.resolve({ token }),
+    params: Promise.resolve({ token: t }),
   });
 
 describe("one-click unsubscribe (RFC 8058)", () => {
@@ -36,6 +36,16 @@ describe("one-click unsubscribe (RFC 8058)", () => {
       "content-type": "application/x-www-form-urlencoded",
     });
     expect(res.status).toBe(400);
+    expect(unsubscribeFromStatusPage).not.toHaveBeenCalled();
+  });
+
+  it("accepts a legacy hex token from a pre-1.6 email and rejects other shapes", async () => {
+    const legacy = "ab12".repeat(16);
+    const form = { "content-type": "application/x-www-form-urlencoded" };
+    expect((await call("List-Unsubscribe=One-Click", form, legacy)).status).toBe(200);
+    expect(unsubscribeFromStatusPage).toHaveBeenCalledWith(legacy);
+    jest.clearAllMocks();
+    expect((await call("List-Unsubscribe=One-Click", form, "not-a-token")).status).toBe(400);
     expect(unsubscribeFromStatusPage).not.toHaveBeenCalled();
   });
 });

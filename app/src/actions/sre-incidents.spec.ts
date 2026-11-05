@@ -324,6 +324,17 @@ describe("createSreIncidentFromAlert join/reopen rules", () => {
   };
   const ref = { incidentNumber: 4, title: "API down" };
 
+  it("does not wait for, or fail on, the reopen announcement", async () => {
+    arrange();
+    jest.mocked(reopenRecentlyAutoResolved).mockResolvedValueOnce({ incidentId: "inc-old", ...ref, assigneeUserId: "u-9", alreadyTriaged: false, stale: false });
+    jest.mocked(announceSystemTransition).mockReturnValueOnce(new Promise(() => undefined));
+    await expect(createSreIncidentFromAlert({ alertHistoryId: "00000000-0000-4000-8000-000000000009" })).resolves.toMatchObject({ success: true, existing: true });
+    arrange();
+    jest.mocked(reopenRecentlyAutoResolved).mockResolvedValueOnce({ incidentId: "inc-old", ...ref, assigneeUserId: "u-9", alreadyTriaged: false, stale: false });
+    jest.mocked(announceSystemTransition).mockRejectedValueOnce(new Error("provider down"));
+    await expect(createSreIncidentFromAlert({ alertHistoryId: "00000000-0000-4000-8000-000000000009" })).resolves.toMatchObject({ success: true });
+  });
+
   it("reopens a recently auto-resolved incident instead of creating one, and announces it", async () => {
     arrange();
     jest.mocked(reopenRecentlyAutoResolved).mockResolvedValueOnce({ incidentId: "inc-old", ...ref, assigneeUserId: "u-9", alreadyTriaged: false, stale: false });
