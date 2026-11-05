@@ -47,8 +47,8 @@ function pendingOutcome(apiUrl: string, pending: PendingDevice, now: number): Lo
 
 /**
  * One non-blocking step of device login. Safe to call repeatedly (and from agents):
- * it creates or resumes exactly one grant per API origin and polls at most once. A caller that is
- * resuming a stored grant passes `pollNow` so the person's approval is seen at once; a loop must not.
+ * it creates or resumes exactly one grant per API origin and polls at most once, never before the
+ * server's interval. Only the attended `--wait` loop passes `pollNow`, on its first iteration.
  */
 export async function loginStep(apiUrl: string, deps: LoginDeps, options: { pollNow?: boolean } = {}): Promise<LoginOutcome> {
   return deps.store.withLock(async () => {
