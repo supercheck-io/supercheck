@@ -19,6 +19,9 @@ interface AuditLogsTableProps {
   className?: string;
 }
 
+const PAGE_SIZE = 100; // the API clamps limit to 100
+const MAX_PAGES = 20;
+
 export function AuditLogsTable({ className }: AuditLogsTableProps) {
   const [data, setData] = useState<AuditData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -37,41 +40,45 @@ export function AuditLogsTable({ className }: AuditLogsTableProps) {
 
     setLoading(true);
     try {
-      // Fetch a large number of records to use client-side pagination
-      const params = new URLSearchParams({
-        page: "1",
-        limit: "1000", // Large limit to get most/all records
-        sortBy: "createdAt",
-        sortOrder: "desc",
-      });
-
-      const response = await fetch(`/api/audit?${params}`);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(
-          "Audit API failed:",
-          response.status,
-          response.statusText,
-          errorText
-        );
-        toast.error(
-          `Failed to load audit logs: ${response.status} ${response.statusText}`
-        );
-        return;
-      }
-
-      const result = await response.json();
-
-      if (result.success) {
-        setData({
-          logs: result.data.logs,
-          filters: result.data.filters,
+      // The API caps a page at 100 rows, so read the pages in turn; the table then pages and filters
+      // client-side. shortcut: capped at MAX_PAGES (2,000 newest rows), move to server paging beyond that.
+      const getPage = async (page: number) => {
+        const params = new URLSearchParams({
+          page: String(page),
+          limit: String(PAGE_SIZE),
+          sortBy: "createdAt",
+          sortOrder: "desc",
         });
-      } else {
-        console.error("Audit API error:", result.error);
-        toast.error(result.error || "Failed to load audit logs");
-      }
+        const response = await fetch(`/api/audit?${params}`);
+        if (!response.ok) {
+          console.error("Audit API failed:", response.status, response.statusText);
+          toast.error(`Failed to load audit logs: ${response.status} ${response.statusText}`);
+          return null;
+        }
+        const result = await response.json();
+        if (!result.success) {
+          console.error("Audit API error:", result.error);
+          toast.error(result.error || "Failed to load audit logs");
+          return null;
+        }
+        return result.data as {
+          logs: AuditLog[];
+          filters: AuditData["filters"];
+          pagination: { totalPages: number };
+        };
+      };
+
+      const first = await getPage(1);
+      if (!first) return;
+      const lastPage = Math.min(first.pagination.totalPages, MAX_PAGES);
+      const rest = await Promise.all(
+        Array.from({ length: Math.max(lastPage - 1, 0) }, (_, i) => getPage(i + 2))
+      );
+      if (rest.some((page) => !page)) return;
+      setData({
+        logs: [first.logs, ...rest.map((page) => page!.logs)].flat(),
+        filters: first.filters,
+      });
     } catch (error) {
       console.error("Error fetching audit logs:", error);
       toast.error("Failed to load audit logs");

@@ -12,6 +12,7 @@ import {
 } from "@/lib/job-status-utils";
 import { canCancelRunInProject } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
+import { updateCoverageSnapshotsForJob } from "@/lib/requirements-internal";
 import { setCancellationSignal, RUN_CANCELLATION_MARKER } from "@/lib/cancellation-service";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { syncJobStatusFromRuns } from "@/lib/job-status-sync";
@@ -465,6 +466,9 @@ export async function POST(
           { runId, jobId: run.runJobId },
           "Updated job status after run cancellation"
         );
+
+        // The run no longer counts toward requirement coverage; recompute in the same transaction.
+        if (cancellationComplete) await updateCoverageSnapshotsForJob(run.runJobId, tx);
       }
     });
 

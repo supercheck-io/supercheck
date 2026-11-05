@@ -91,7 +91,7 @@ import {
   useMonitorPermissions,
 } from "@/hooks/use-monitor-details";
 import { useQueryClient } from "@tanstack/react-query";
-import { formatUptime, getResumeStatus, invalidateMonitorCaches } from "./monitor-actions";
+import { formatUptime, getResumeStatus, invalidateMonitorCaches, invalidateDeletedMonitorCaches } from "./monitor-actions";
 import { useLocationMetadata } from "@/hooks/use-locations";
 
 export interface MonitorResultItem {
@@ -335,8 +335,8 @@ export function MonitorDetailClient({
 
       toast.success(`Monitor "${monitor.name}" deleted successfully.`);
 
-      // Invalidate Monitors cache to ensure fresh data on monitors list
-      invalidateMonitorCaches(queryClient, monitor.id);
+      // Refresh the list; the deleted monitor's own queries would only 404 if refetched
+      invalidateDeletedMonitorCaches(queryClient, monitor.id);
 
       router.push("/monitors");
       router.refresh();

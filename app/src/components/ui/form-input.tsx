@@ -15,7 +15,9 @@ interface FormInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
 export const FormInput = React.forwardRef<HTMLInputElement, FormInputProps>(
   ({ label, error, maxLength, showCharacterCount = false, className, labelClassName, ...props }, ref) => {
     const [charCount, setCharCount] = React.useState(props.value?.toString().length || 0)
-    
+    // Controlled inputs report their own length; uncontrolled ones are tracked on change.
+    const shownCount = props.value !== undefined ? String(props.value).length : charCount
+
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       setCharCount(e.target.value.length)
       props.onChange?.(e)
@@ -31,16 +33,18 @@ export const FormInput = React.forwardRef<HTMLInputElement, FormInputProps>(
         <div className="relative">
           <Input
             ref={ref}
+            maxLength={maxLength}
             className={cn(
+              showCharacterCount && maxLength && "pr-14",
               error && "border-destructive focus-visible:ring-destructive",
               className
             )}
-            onChange={handleChange}
             {...props}
+            onChange={handleChange}
           />
           {showCharacterCount && maxLength && (
             <div className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
-              {charCount}/{maxLength}
+              {shownCount}/{maxLength}
             </div>
           )}
         </div>

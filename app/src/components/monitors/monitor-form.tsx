@@ -1238,7 +1238,16 @@ export function MonitorForm({
                     <FormItem className="space-y-2">
                       <FormLabel>Monitor Name</FormLabel>
                       <FormControl>
-                        <Input placeholder="My Website" {...field} />
+                        <Input
+                          placeholder={
+                            type === "ping_host"
+                              ? "Production server"
+                              : type === "port_check"
+                                ? "Database port"
+                                : "My Website"
+                          }
+                          {...field}
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

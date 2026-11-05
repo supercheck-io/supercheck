@@ -139,6 +139,10 @@ describe('CronUtils', () => {
       expect(formatted).toMatch(/2024/);
     });
 
+    it('should format in UTC regardless of the local timezone', () => {
+      expect(formatNextRunDate(new Date('2024-01-15T23:30:00Z'))).toMatch(/Jan 15, 2024.*11:30 PM UTC/);
+    });
+
     it('should include time component', () => {
       const date = new Date('2024-06-20T09:45:00Z');
       const formatted = formatNextRunDate(date);

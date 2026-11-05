@@ -27,6 +27,15 @@ export function invalidateMonitorCaches(queryClient: QueryClient, monitorId?: st
   void queryClient.invalidateQueries({ queryKey: [...MONITOR_RESULTS_KEY, monitorId], ...opts });
 }
 
+/** After a delete: refresh the list, but drop (not refetch) the monitor's own queries, which would 404. */
+export function invalidateDeletedMonitorCaches(queryClient: QueryClient, monitorId: string) {
+  invalidateMonitorCaches(queryClient);
+  for (const key of [MONITOR_QUERY_KEY, MONITOR_STATS_KEY, MONITOR_RESULTS_KEY]) {
+    void queryClient.cancelQueries({ queryKey: [...key, monitorId] });
+    queryClient.removeQueries({ queryKey: [...key, monitorId] });
+  }
+}
+
 export interface IntervalOption {
   value: string;
   label: string;

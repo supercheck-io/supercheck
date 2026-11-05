@@ -541,7 +541,7 @@ export function CliTokensTable() {
                   CLI documentation
                 </a>
               </p>
-              <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+              <Dialog open={createOpen} onOpenChange={(open) => (open ? setCreateOpen(true) : handleCreateClose())}>
                 <DialogTrigger asChild>
                   <Button>
                     <Plus className="h-4 w-4 mr-2" />

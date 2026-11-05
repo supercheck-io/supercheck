@@ -8,10 +8,11 @@ import {
   runs,
 } from "@/db/schema";
 import { computeCoverageStatus } from "@/lib/requirements/coverage-status";
+import { RUN_CANCELLATION_MARKER } from "@/lib/cancellation-service";
 import { db } from "@/utils/db";
 
 // Either the shared pool or a transaction handle, so a caller can make the tag writes part of its own transaction.
-export type Executor = Pick<typeof db, "select" | "selectDistinctOn" | "insert" | "delete" | "update">;
+export type Executor = Pick<typeof db, "select" | "selectDistinctOn" | "selectDistinct" | "insert" | "delete" | "update">;
 
 /** Raised when a requirement would exceed the tag cap; services map it to a validation failure (not a 500). */
 export class TagLimitError extends Error {
@@ -170,7 +171,12 @@ export async function updateCoverageSnapshot(
     .leftJoin(jobTests, eq(jobTests.testId, testRequirements.testId))
     .leftJoin(
       runs,
-      and(eq(runs.jobId, jobTests.jobId), inArray(runs.status, ["passed", "failed", "error"]))
+      // A cancelled run is stored as "error" but has no test outcomes, so it must not decide coverage.
+      and(
+        eq(runs.jobId, jobTests.jobId),
+        inArray(runs.status, ["passed", "failed", "error"]),
+        sql`${runs.errorDetails} is distinct from ${RUN_CANCELLATION_MARKER}`
+      )
     )
     .where(eq(testRequirements.requirementId, requirementId))
     .orderBy(testRequirements.testId, sql`${runs.completedAt} desc nulls last`, desc(runs.id));
@@ -207,4 +213,14 @@ export async function updateCoverageSnapshot(
       updatedAt: new Date(),
     })
     .where(eq(requirementCoverageSnapshots.requirementId, requirementId));
+}
+
+/** Recompute every requirement linked to a test in the job (after a run is cancelled or deleted). */
+export async function updateCoverageSnapshotsForJob(jobId: string, executor: Executor = db): Promise<void> {
+  const rows = await executor
+    .selectDistinct({ requirementId: testRequirements.requirementId })
+    .from(testRequirements)
+    .innerJoin(jobTests, eq(jobTests.testId, testRequirements.testId))
+    .where(eq(jobTests.jobId, jobId));
+  for (const { requirementId } of rows) await updateCoverageSnapshot(requirementId, executor);
 }

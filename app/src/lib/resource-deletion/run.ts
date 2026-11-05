@@ -1,4 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
+import { updateCoverageSnapshotsForJob } from "@/lib/requirements-internal";
 import { db } from "@/utils/db";
 import { runs, reports } from "@/db/schema";
 import { eq, and, inArray, or } from "drizzle-orm";
@@ -267,7 +268,10 @@ export async function deleteRunWithContext(runId: string, context: ProjectAuthCo
           }
 
           // The job's stored status must follow its newest remaining run, not the deleted one.
-          if (runData.jobId) await syncJobStatusFromRuns(tx, runData.jobId);
+          if (runData.jobId) {
+            await syncJobStatusFromRuns(tx, runData.jobId);
+            await updateCoverageSnapshotsForJob(runData.jobId, tx);
+          }
 
           console.log(
             "[DELETE_RUN] Transaction completed successfully - run and reports deleted"

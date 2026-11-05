@@ -1,4 +1,4 @@
-import { createNotificationProviderSchema } from "./notification-provider-form";
+import { createNotificationProviderSchema, getSaveErrorMessage } from "./notification-provider-form";
 
 const webhookConfig = {
   name: "Production webhook",
@@ -54,5 +54,17 @@ describe("notification provider form validation", () => {
         ]),
       );
     }
+  });
+});
+
+describe("getSaveErrorMessage", () => {
+  it("surfaces the API validation message", () => {
+    expect(getSaveErrorMessage(new Error("Target URL: Webhook URL must use HTTPS"), "webhook")).toBe(
+      "Target URL: Webhook URL must use HTTPS",
+    );
+  });
+
+  it("falls back to the generic text for network failures", () => {
+    expect(getSaveErrorMessage(new TypeError("Failed to fetch"), "webhook")).toMatch(/webhook/);
   });
 });
