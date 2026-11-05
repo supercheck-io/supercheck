@@ -42,7 +42,7 @@ export const SEVERITY_TONES: Record<SreIncidentDetail["incident"]["severity"], T
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="grid min-h-8 grid-cols-[9.5rem_minmax(0,1fr)] items-center gap-x-3 text-sm">
+    <div className="grid min-h-8 grid-cols-[8rem_minmax(0,1fr)] items-center gap-x-3 text-sm">
       <dt className="text-muted-foreground">{label}</dt>
       <dd className="min-w-0 break-words" suppressHydrationWarning>{children}</dd>
     </div>
