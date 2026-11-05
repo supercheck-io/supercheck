@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { AdminDataTable } from "./admin-data-table";
 import { AuditTableToolbar } from "./audit-table-toolbar";
 import { auditLogColumns, type AuditLog } from "./audit-columns";
@@ -26,12 +26,14 @@ export function AuditLogsTable({ className }: AuditLogsTableProps) {
   const [data, setData] = useState<AuditData | null>(null);
   const [loading, setLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
 
   // Set mounted to true after initial render
   useEffect(() => {
     setMounted(true);
     return () => {
       setMounted(false);
+      abortRef.current?.abort();
     };
   }, []);
 
@@ -39,6 +41,10 @@ export function AuditLogsTable({ className }: AuditLogsTableProps) {
     if (!mounted) return;
 
     setLoading(true);
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const { signal } = controller;
     try {
       // The API caps a page at 100 rows, so read the pages in turn; the table then pages and filters
       // client-side. shortcut: capped at MAX_PAGES (2,000 newest rows), move to server paging beyond that.
@@ -49,7 +55,7 @@ export function AuditLogsTable({ className }: AuditLogsTableProps) {
           sortBy: "createdAt",
           sortOrder: "desc",
         });
-        const response = await fetch(`/api/audit?${params}`);
+        const response = await fetch(`/api/audit?${params}`, { signal });
         if (!response.ok) {
           console.error("Audit API failed:", response.status, response.statusText);
           toast.error(`Failed to load audit logs: ${response.status} ${response.statusText}`);
@@ -73,14 +79,18 @@ export function AuditLogsTable({ className }: AuditLogsTableProps) {
       const lastPage = Math.min(first.pagination.totalPages, MAX_PAGES);
       // Show the newest page at once, then add older pages one request at a time; a failed page keeps what loaded.
       let logs = first.logs;
+      const seen = new Set(logs.map((log) => log.id));
       setData({ logs, filters: first.filters });
-      for (let page = 2; page <= lastPage; page++) {
+      setLoading(false);
+      for (let page = 2; page <= lastPage && !signal.aborted; page++) {
         const next = await getPage(page);
         if (!next) break;
-        logs = [...logs, ...next.logs];
+        // Offset pages shift when new events arrive mid-load; drop rows already shown.
+        logs = [...logs, ...next.logs.filter((log) => !seen.has(log.id) && seen.add(log.id))];
         setData({ logs, filters: first.filters });
       }
     } catch (error) {
+      if (signal.aborted) return;
       console.error("Error fetching audit logs:", error);
       toast.error("Failed to load audit logs");
     } finally {

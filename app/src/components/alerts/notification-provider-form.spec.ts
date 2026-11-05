@@ -1,3 +1,4 @@
+import { getUserFriendlyError } from "@/lib/error-utils";
 import { createNotificationProviderSchema, getSaveErrorMessage } from "./notification-provider-form";
 
 const webhookConfig = {
@@ -65,6 +66,7 @@ describe("getSaveErrorMessage", () => {
   });
 
   it("falls back to the generic text for network failures", () => {
-    expect(getSaveErrorMessage(new TypeError("Failed to fetch"), "webhook")).toMatch(/webhook/);
+    expect(getSaveErrorMessage(new TypeError("Failed to fetch"), "webhook")).toBe(getUserFriendlyError(new TypeError("Failed to fetch"), "webhook"));
+    expect(getSaveErrorMessage(new TypeError("Failed to fetch"), "webhook")).not.toContain("Failed to fetch");
   });
 });

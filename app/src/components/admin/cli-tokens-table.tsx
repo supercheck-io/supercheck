@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import type { ColumnDef, Table as TableType } from "@tanstack/react-table";
 import { AdminDataTable } from "@/components/admin/admin-data-table";
 import { AdminListToolbar } from "@/components/admin/admin-list-toolbar";
@@ -181,12 +181,25 @@ export function CliTokensTable() {
     setCopied(false);
   };
 
+  const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleCreateClose = () => {
+    // The plaintext token is shown once: never close while the request that returns it is in flight.
+    if (isCreating) return;
     setCreateOpen(false);
-    setTimeout(() => {
-      if (createdToken) loadTokens();
+    // Refresh now, however the dialog was closed; clear the form after the close animation.
+    loadTokens();
+    resetTimer.current = setTimeout(() => {
+      resetTimer.current = null;
       resetCreateForm();
     }, 200);
+  };
+  const handleCreateOpen = () => {
+    if (resetTimer.current) {
+      clearTimeout(resetTimer.current);
+      resetTimer.current = null;
+      resetCreateForm();
+    }
+    setCreateOpen(true);
   };
 
   const copyToClipboard = async (text: string) => {
@@ -541,7 +554,7 @@ export function CliTokensTable() {
                   CLI documentation
                 </a>
               </p>
-              <Dialog open={createOpen} onOpenChange={(open) => (open ? setCreateOpen(true) : handleCreateClose())}>
+              <Dialog open={createOpen} onOpenChange={(open) => (open ? handleCreateOpen() : handleCreateClose())}>
                 <DialogTrigger asChild>
                   <Button>
                     <Plus className="h-4 w-4 mr-2" />

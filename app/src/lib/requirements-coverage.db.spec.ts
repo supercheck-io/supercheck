@@ -89,3 +89,11 @@ it("ignores a cancelled run: the latest non-cancelled run decides coverage", asy
   ]);
   expect(snapshot).toMatchObject({ status: "covered", linked: 2, passed: 2, failed: 0 });
 });
+
+it("still counts an error run that was not cancelled as failing", async () => {
+  const snapshot = await scenario([
+    { status: "passed", at: "2026-01-01" },
+    { status: "error", at: "2026-01-02" },
+  ]);
+  expect(snapshot).toMatchObject({ status: "failing", passed: 0, failed: 2 });
+});
