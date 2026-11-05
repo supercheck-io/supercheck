@@ -9,4 +9,9 @@ describe("describeEvidenceBrief", () => {
   it("falls back when fields are missing", () => {
     expect(describeEvidenceBrief({})).toBe("Evidence brief generated.");
   });
+  it("keeps zero values and drops non-finite confidence", () => {
+    expect(describeEvidenceBrief({ evidenceCount: 0, confidenceScore: 0 })).toBe("0 evidence items reviewed; confidence 0%.");
+    expect(describeEvidenceBrief({ evidenceCount: 2, confidenceScore: NaN })).toBe("2 evidence items reviewed.");
+    expect(describeEvidenceBrief({ evidenceCount: 2, confidenceScore: Infinity })).toBe("2 evidence items reviewed.");
+  });
 });

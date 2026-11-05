@@ -66,6 +66,17 @@ describe("EditSreIncidentDialog", () => {
     await waitFor(() => expect(updateSreIncident).toHaveBeenCalledWith(expect.objectContaining({ status: "investigating" })));
   });
 
+  it("omits status when the person reselects the stored Fixing status", async () => {
+    render(<EditSreIncidentDialog incident={incident("recommendations_ready")} services={[]} canUpdate open onOpenChange={jest.fn()} />);
+    fireEvent.keyDown(screen.getByLabelText("Status"), { key: "Enter" });
+    fireEvent.click(screen.getByRole("option", { name: "Investigating" }));
+    fireEvent.keyDown(screen.getByLabelText("Status"), { key: "Enter" });
+    fireEvent.click(screen.getByRole("option", { name: "Fixing" }));
+    fireEvent.click(screen.getByRole("button", { name: /Save/ }));
+    await waitFor(() => expect(updateSreIncident).toHaveBeenCalled());
+    expect(updateSreIncident.mock.calls[0]![0]).not.toHaveProperty("status");
+  });
+
   it("warns that saving reopens a resolved incident", () => {
     render(<EditSreIncidentDialog incident={incident("resolved")} services={[]} canUpdate open onOpenChange={jest.fn()} />);
     expect(screen.queryByText(/Saving reopens the incident/)).not.toBeInTheDocument();

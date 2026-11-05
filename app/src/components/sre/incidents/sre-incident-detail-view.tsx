@@ -216,7 +216,12 @@ export function SreIncidentDetailView({
           <>
             {/* Findings first; the run controls follow once there is something to read. */}
             {investigation && (
-              <InvestigationHypotheses investigation={investigation} evidence={detail.evidence} />
+              <InvestigationHypotheses
+                incidentId={incident.id}
+                investigation={investigation}
+                evidence={detail.evidence}
+                canGiveFeedback={permissions.canUpdate}
+              />
             )}
             {investigation && (
               // The trace carries its own "How I investigated" title.
