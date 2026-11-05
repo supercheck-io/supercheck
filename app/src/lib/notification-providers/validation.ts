@@ -109,7 +109,9 @@ export function validateProviderWebhookUrl(
 
 export function validateProviderConfig(
   type: NotificationProviderType,
-  config: Record<string, unknown>
+  config: Record<string, unknown>,
+  // "send" re-checks stored configs at delivery: address format is enforced only on write, so older providers keep delivering.
+  mode: "write" | "send" = "write"
 ) {
   const missing = (field: string) =>
     !config[field] ||
@@ -127,7 +129,7 @@ export function validateProviderConfig(
             "Email notification providers require at least one email address."
           );
         }
-        if (!list.every((e) => VALIDATION_PATTERNS.email.test(e))) {
+        if (mode === "write" && !list.every((e) => VALIDATION_PATTERNS.email.test(e))) {
           throw new Error("Email notification providers require valid email addresses.");
         }
       }

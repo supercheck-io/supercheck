@@ -10,6 +10,9 @@ describe("notification provider validation", () => {
     expect(() => validateProviderConfig("email", { emails: [] })).toThrow("at least one");
     expect(() => validateProviderConfig("email", { emails: "not-an-email" })).toThrow("valid email");
     expect(() => validateProviderConfig("email", { emails: "a@b.co, bad" })).toThrow("valid email");
+    // Delivery of an already-stored provider is not blocked by the stricter write-time format check.
+    expect(() => validateProviderConfig("email", { emails: "a@b.co, bad" }, "send")).not.toThrow();
+    expect(() => validateProviderConfig("email", { emails: [] }, "send")).toThrow("at least one");
     expect(() => validateProviderConfig("email", { emails: "a@b.co, c@d.io" })).not.toThrow();
   });
 
