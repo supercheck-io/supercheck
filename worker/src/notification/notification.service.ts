@@ -19,6 +19,7 @@ import {
   isUrlSafeForOutbound,
 } from '../common/utils/url-validator';
 import { fetchPublicEndpoint } from '../common/utils/pinned-public-fetch';
+import { isUndeliverableRecipient } from '../common/utils/email-recipient-policy';
 
 // Utility function to safely get error message
 function getErrorMessage(error: unknown): string {
@@ -752,11 +753,21 @@ export class NotificationService {
   ): Promise<NotificationSendResult> {
     try {
       // Parse email addresses from config
-      const emailAddresses = this.parseEmailAddresses(
+      const parsedAddresses = this.parseEmailAddresses(
         config as Record<string, unknown>,
       );
-      if (emailAddresses.length === 0) {
+      if (parsedAddresses.length === 0) {
         throw new Error('No valid email addresses found');
+      }
+      // Reserved/blocked domains only bounce; skip them so they never reach SMTP or the retry path.
+      const emailAddresses = parsedAddresses.filter(
+        (email) => !isUndeliverableRecipient(email),
+      );
+      if (emailAddresses.length === 0) {
+        this.logger.warn(
+          `Skipped email for ${payload.type}: every recipient is on a domain that does not accept email`,
+        );
+        return { success: true };
       }
 
       // Render email using centralized template service (React Email templates)
@@ -800,7 +811,11 @@ export class NotificationService {
           message: formatted.message,
           fields: formatted.fields,
           footer: formatted.footer,
-          type: this.mapSeverityToType(payload.severity),
+          // Only a recovery is "Recovered"; a plain pass (job_success) has its own template.
+          type:
+            payload.type === 'monitor_recovery'
+              ? 'recovery'
+              : this.mapSeverityToType(payload.severity),
           color: formatted.color,
           appUrl,
         });
@@ -875,10 +890,17 @@ export class NotificationService {
       return [];
     }
 
+    // Case-insensitive dedupe so one address is not mailed twice.
+    const seen = new Set<string>();
     return config.emails
       .split(',')
       .map((email: string) => email.trim())
-      .filter((email: string) => email && this.isValidEmail(email));
+      .filter((email: string) => {
+        const key = email.toLowerCase();
+        if (!email || !this.isValidEmail(email) || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
   }
 
   private isValidEmail(email: string): boolean {

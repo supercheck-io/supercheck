@@ -348,6 +348,26 @@ describe('MCP validator shared cases', () => {
   });
 });
 
+describe('redactMcpText extra secrets', () => {
+  it('redacts a longer secret fully even when a shorter one is its prefix', () => {
+    expect(redactMcpText('k=abcdef123456', ['abcdef', 'abcdef123456'])).toBe(
+      'k=[REDACTED]',
+    );
+  });
+
+  it('redacts the union of overlapping secrets', () => {
+    expect(redactMcpText('x abcdefghi y', ['abcdef', 'defghi'])).toBe(
+      'x [REDACTED] y',
+    );
+  });
+
+  it('redacts every occurrence and ignores secrets shorter than 6 chars', () => {
+    expect(redactMcpText('s3cret1 and s3cret1 pin', ['s3cret1', 'pin'])).toBe(
+      '[REDACTED] and [REDACTED] pin',
+    );
+  });
+});
+
 describe('redactMcpText connection strings', () => {
   it.each([
     [

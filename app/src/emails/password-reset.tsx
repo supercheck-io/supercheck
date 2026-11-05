@@ -1,12 +1,11 @@
 import {
-  Button,
   Hr,
   Link,
   Section,
   Text,
 } from "@react-email/components";
 import * as React from "react";
-import { BaseLayout } from "./base-layout";
+import { BaseLayout, EmailButton } from "./base-layout";
 
 interface PasswordResetEmailProps {
   resetUrl: string;
@@ -39,9 +38,7 @@ export const PasswordResetEmail = ({
 
         {/* CTA Button */}
         <Section style={buttonContainer}>
-          <Button style={button} href={resetUrl}>
-            Reset Password
-          </Button>
+          <EmailButton href={resetUrl}>Reset Password</EmailButton>
         </Section>
 
         {/* Alternative Link */}
@@ -118,17 +115,6 @@ const buttonContainer = {
   margin: "32px 0",
 };
 
-const button = {
-  backgroundColor: "#1f2937",
-  borderRadius: "6px",
-  color: "#ffffff",
-  fontSize: "15px",
-  fontWeight: "600" as const,
-  textDecoration: "none",
-  textAlign: "center" as const,
-  display: "inline-block",
-  padding: "14px 36px",
-};
 
 // ============================================================================
 // LINK STYLES

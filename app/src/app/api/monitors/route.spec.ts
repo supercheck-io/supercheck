@@ -36,7 +36,7 @@ jest.mock("@/lib/services/subscription-service", () => {
 });
 jest.mock("@/utils/db", () => ({ db: {} }));
 jest.mock("@/lib/rbac/middleware", () => ({
-  checkPermissionWithContext: jest.fn(),
+  checkPermissionWithContext: jest.fn(() => true),
 }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 // Trial interval enforcement reads the database; these tests are about request validation.

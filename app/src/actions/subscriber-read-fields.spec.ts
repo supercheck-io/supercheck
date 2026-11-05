@@ -8,6 +8,10 @@ jest.mock("@/lib/project-context", () => ({ requireProjectContext: jest.fn() }))
 jest.mock("@/lib/rbac/middleware", () => ({ requirePermissions: jest.fn() }));
 jest.mock("@/lib/email-service", () => ({ EmailService: jest.fn() }));
 jest.mock("@/lib/email-renderer", () => ({ renderStatusPageVerificationEmail: jest.fn() }));
+jest.mock("next/headers", () => ({ headers: jest.fn(async () => new Headers()) }));
+jest.mock("@/lib/api-key-rate-limiter", () => ({
+  apiKeyRateLimiter: { checkAndIncrement: jest.fn(async () => ({ allowed: true })) },
+}));
 import { db } from "@/utils/db";
 import { requireProjectContext } from "@/lib/project-context";
 import { getStatusPageSubscribers } from "./get-status-page-subscribers";

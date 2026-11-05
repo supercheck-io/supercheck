@@ -12,7 +12,7 @@ type Invitation = {
 };
 
 function uniqueEmail(label: string): string {
-  return `${label}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@e2e-test.supercheck.io`;
+  return `${label}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@e2e-test.invalid`;
 }
 
 async function createInvitation(

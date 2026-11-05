@@ -399,6 +399,8 @@ function normalizeJobTestsToIds(tests: string[] | undefined): string[] | undefin
   if (!tests) return tests
 
   return tests.map((t) => {
+    // Keep a glob as written so validate/diff/deploy reject it instead of binding it to one UUID.
+    if (t.includes('*')) return t
     const id = extractUuidFromFilename(t)
     return id ?? t
   })

@@ -28,6 +28,8 @@ describe('worker outbound address policy', () => {
     '2001:0:4136:e378::1',
     '2002:7f00:1::',
     '64:ff9b::7f00:1',
+    '64:ff9b:1::a00:1',
+    '64:ff9b:1:ffff::a00:1', // beyond the first /96 of the local-use /48
     '::ffff:127.0.0.1',
     '::ffff:ac12:5',
     '[::ffff:ac12:5]',

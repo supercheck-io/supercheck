@@ -96,7 +96,7 @@ describe('NotificationService', () => {
   const emailProvider: NotificationProvider = {
     id: 'provider-email',
     type: 'email',
-    config: { emails: 'test@example.com,admin@example.com' },
+    config: { emails: 'test@test.com,admin@test.com' },
   };
 
   const slackProvider: NotificationProvider = {
@@ -188,6 +188,42 @@ describe('NotificationService', () => {
           basePayload,
         );
         expect(result).toBe(true);
+      });
+
+      it('never sends to undeliverable or duplicate addresses', async () => {
+        const nodemailer = require('nodemailer');
+        const sendMail = jest.fn().mockResolvedValue({ messageId: 'm' });
+        (nodemailer.createTransport as jest.Mock).mockReturnValue({
+          verify: jest.fn().mockResolvedValue(true),
+          sendMail,
+        });
+        await service.sendNotification(
+          {
+            ...emailProvider,
+            config: {
+              emails: 'a@test.com, A@test.com, x@example.com, y@e2e.invalid',
+            },
+          },
+          basePayload,
+        );
+        expect(sendMail).toHaveBeenCalledTimes(1);
+        expect(sendMail).toHaveBeenCalledWith(
+          expect.objectContaining({ to: 'a@test.com' }),
+        );
+      });
+
+      it('reports success without SMTP when every recipient is undeliverable', async () => {
+        const nodemailer = require('nodemailer');
+        (nodemailer.createTransport as jest.Mock).mockClear();
+        const result = await service.sendNotification(
+          {
+            ...emailProvider,
+            config: { emails: 'x@example.com, y@e2e.invalid' },
+          },
+          basePayload,
+        );
+        expect(result).toBe(true);
+        expect(nodemailer.createTransport).not.toHaveBeenCalled();
       });
 
       it('should reject invalid email addresses', async () => {
@@ -1817,7 +1853,7 @@ describe('NotificationService', () => {
     it('should validate single email address', async () => {
       const provider = {
         ...emailProvider,
-        config: { emails: 'valid@example.com' },
+        config: { emails: 'valid@test.com' },
       };
 
       const result = await service.sendNotification(provider, basePayload);

@@ -1,6 +1,6 @@
-import { Button, Hr, Link, Section, Text } from "@react-email/components";
+import { Hr, Link, Section, Text } from "@react-email/components";
 import * as React from "react";
-import { BaseLayout } from "./base-layout";
+import { BaseLayout, EmailButton } from "./base-layout";
 
 interface EmailVerificationEmailProps {
   verificationUrl: string;
@@ -34,9 +34,7 @@ export const EmailVerificationEmail = ({
 
         {/* CTA Button */}
         <Section style={buttonContainer}>
-          <Button style={button} href={verificationUrl}>
-            Verify Email Address
-          </Button>
+          <EmailButton href={verificationUrl}>Verify Email Address</EmailButton>
         </Section>
 
         {/* Alternative Link */}
@@ -114,20 +112,6 @@ const buttonContainer = {
   margin: "24px 0",
 };
 
-const button = {
-  backgroundColor: "#111827",
-  borderRadius: "8px",
-  color: "#ffffff",
-  display: "inline-block",
-  fontFamily:
-    '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Ubuntu, sans-serif',
-  fontSize: "15px",
-  fontWeight: "600" as const,
-  lineHeight: "1",
-  padding: "14px 28px",
-  textDecoration: "none",
-  textAlign: "center" as const,
-};
 
 // ============================================================================
 // LINK STYLES
