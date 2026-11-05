@@ -3,10 +3,10 @@
 Install on an Ubuntu 22.04+ or Debian 12+ server with sudo access and `curl` (at least 2 vCPU, 4 GB RAM, and 15 GB free disk):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/supercheck-io/supercheck/v1.5.0/deploy/docker/install.sh -o install.sh && sudo bash install.sh --version 1.5.0
+curl -fsSL https://raw.githubusercontent.com/supercheck-io/supercheck/v1.6.0/deploy/docker/install.sh -o install.sh && sudo bash install.sh --version 1.6.0
 ```
 
-This installs **1.5.0**, which includes RustFS. Choose local evaluation or public HTTPS and follow the prompts. The installer installs Docker and Compose, generates secrets, prepares the execution sandbox, starts the services, and checks health. Open the printed URL to create your account and run a test.
+This installs **1.6.0**, which includes RustFS. Choose local evaluation or public HTTPS and follow the prompts. The installer installs Docker and Compose, generates secrets, prepares the execution sandbox, starts the services, and checks health. Open the printed URL to create your account and run a test.
 
 For HTTPS, point your domain at the server and allow inbound ports 80 and 443. macOS, Windows, WSL2, and Docker Desktop are not supported.
 
@@ -43,7 +43,7 @@ Use `./init-secrets.sh` to generate secure defaults, then configure:
 
 | Variable | Description |
 |----------|-------------|
-| `SUPERCHECK_VERSION` | App/worker image tag for prebuilt Compose variants, including the sandbox image (default in this checkout: `1.5.0`); set explicitly in `.env` when upgrading |
+| `SUPERCHECK_VERSION` | App/worker image tag for prebuilt Compose variants, including the sandbox image (default in this checkout: `1.6.0`); set explicitly in `.env` when upgrading |
 | `SELF_HOSTED` | Self-hosted mode toggle (default: `true`) |
 | `SIGNUP_ENABLED` | Toggle open email/password signup (default: `true`) |
 | `ALLOWED_EMAIL_DOMAINS` | Optional comma-separated signup allowlist (default: empty = allow all) |
@@ -90,7 +90,7 @@ When you are running the app locally on `http://localhost:3000`, Supercheck keep
 | `COMPOSE_FILE` | Compose files to combine, for example `docker-compose.yml:compose.dns01.yml` | `docker-compose.yml` |
 | `ACME_DNS_PROVIDER` | DNS provider code for `compose.dns01.yml`; its credentials go in `traefik-dns.env` | - |
 | `DB_BIND_ADDR`, `REDIS_BIND_ADDR`, `RUSTFS_BIND_ADDR` | Host address PostgreSQL, Redis and RustFS publish on. Set to a private address only for [Multi-Server](https://supercheck.io/docs/app/deployment/multi-server) workers | `127.0.0.1` |
-| `APP_HOST_PORT`, `RUSTFS_HOST_PORT`, `DB_HOST_PORT`, `REDIS_HOST_PORT` | Host port for the app, RustFS, PostgreSQL and Redis in `docker-compose.yml` when the default is taken. A moved app port also moves the derived local URL, unless `APP_DOMAIN` or an explicit `NEXT_PUBLIC_APP_URL` is set. Workers on other servers use the moved ports in `DATABASE_URL`, `REDIS_PORT` and `S3_ENDPOINT`. Needs 1.5.1 or later for the app and RustFS ports | `3000`, `9000`, `5432`, `6379` |
+| `APP_HOST_PORT`, `RUSTFS_HOST_PORT`, `DB_HOST_PORT`, `REDIS_HOST_PORT` | Host port for the app, RustFS, PostgreSQL and Redis in `docker-compose.yml` when the default is taken. A moved app port also moves the derived local URL, unless `APP_DOMAIN` or an explicit `NEXT_PUBLIC_APP_URL` is set. Workers on other servers use the moved ports in `DATABASE_URL`, `REDIS_PORT` and `S3_ENDPOINT`. Needs 1.6.0 or later for the app and RustFS ports | `3000`, `9000`, `5432`, `6379` |
 | `WORKER_REPLICAS` | Number of worker containers (worker-side scaling knob) | `1` |
 | `RUNNING_CAPACITY` | App-side gate: max concurrent test runs (set equal to `WORKER_REPLICAS`) | `1` |
 | `QUEUED_CAPACITY` | App-side gate: max queued test runs before new submissions are rejected | `10` |
