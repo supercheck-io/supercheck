@@ -69,7 +69,7 @@ export async function GET(
     });
 
     if (!canView) {
-      return forbiddenOrNotFound(userId, project.organizationId, 'Insufficient permissions', 'Project not found');
+      return await forbiddenOrNotFound(userId, project.organizationId, 'Insufficient permissions', 'Project not found');
     }
     
     // Get project stats using SQL count() aggregate (not fetching all rows)
@@ -153,7 +153,7 @@ export async function PUT(
     });
 
     if (!canUpdate) {
-      return forbiddenOrNotFound(userId, organizationId, 'Insufficient permissions to update project', 'Project not found');
+      return await forbiddenOrNotFound(userId, organizationId, 'Insufficient permissions to update project', 'Project not found');
     }
     
     const parsed = updateProjectSchema.safeParse(await request.json().catch(() => null));
@@ -257,7 +257,7 @@ export async function DELETE(
     });
 
     if (!canDelete) {
-      return forbiddenOrNotFound(userId, organizationId, 'Insufficient permissions to delete project', 'Project not found');
+      return await forbiddenOrNotFound(userId, organizationId, 'Insufficient permissions to delete project', 'Project not found');
     }
 
     // After the permission check so non-owners cannot probe which project is the default.

@@ -235,7 +235,7 @@ export function isUrlSafeForOutbound(
     if (
       options.allowInternal
         ? isMetadataHost(url.hostname)
-        : isPrivateHost(url.hostname)
+        : isPrivateHost(url.hostname) || isMetadataHost(url.hostname)
     ) {
       return {
         safe: false,

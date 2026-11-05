@@ -103,6 +103,7 @@ describe("McpConsent", () => {
     ["forbidden", /no longer have access/i],
     ["impersonation_not_allowed", /impersonating/i],
     ["consent_failed", /expired or was already used/i],
+    ["consent_scopes_not_restored", /fewer permissions/i],
     ["something_new", /something went wrong/i],
   ])("explains %s and lets the user try again", async (error, message) => {
     reply(error === "forbidden" ? 403 : 400, { error });

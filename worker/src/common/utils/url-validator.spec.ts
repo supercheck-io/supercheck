@@ -119,5 +119,7 @@ describe('internal webhook targets (self-hosted opt-in)', () => {
         false,
       );
     }
+    // Also refused in the default mode, where 168.63.129.16 is not in the private ranges.
+    expect(isUrlSafeForOutbound('https://168.63.129.16/x').safe).toBe(false);
   });
 });

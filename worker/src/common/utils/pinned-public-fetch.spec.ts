@@ -179,6 +179,17 @@ describe('worker pinned public fetch', () => {
     expect(mockRequest).not.toHaveBeenCalled();
   });
 
+  it('rejects the Azure wireserver answer in the default mode too', async () => {
+    (mockLookup as jest.Mock).mockResolvedValueOnce([
+      { address: '168.63.129.16', family: 4 },
+    ]);
+
+    await expect(
+      fetchPublicEndpoint('https://hooks.example.com/events'),
+    ).rejects.toThrow('private or internal networks');
+    expect(mockRequest).not.toHaveBeenCalled();
+  });
+
   it.each([
     '100.64.0.1',
     '192.0.0.1',

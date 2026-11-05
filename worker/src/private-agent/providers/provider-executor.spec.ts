@@ -73,6 +73,27 @@ describe('private agent observability providers', () => {
     }
   });
 
+  it('redacts the connector credential value from titles and summaries', async () => {
+    const secret = 'plain-credential-no-token-format';
+    const http: ProviderHttp = async () => ({
+      status: 200,
+      text: JSON.stringify({
+        result: {
+          _raw: `auth failed for ${secret}`,
+          _time: '2026-10-27T11:30:00Z',
+          index: 'main',
+        },
+      }),
+      truncated: false,
+    });
+    const { evidence } = await executeObservabilityProviderJob(
+      { ...baseJob, connectorType: 'splunk', credential: { secret } },
+      http,
+    );
+    expect(JSON.stringify(evidence)).not.toContain(secret);
+    expect(evidence[0].title).toContain('[REDACTED]');
+  });
+
   it('rejects write commands before calling the transport', async () => {
     const http = jest.fn();
     await expect(

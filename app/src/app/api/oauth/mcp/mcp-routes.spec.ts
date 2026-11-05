@@ -37,8 +37,10 @@ jest.mock("@/lib/mcp/connect-project", () => {
 });
 jest.mock("@/lib/mcp/connections", () => {
   class McpConnectionNotFoundError extends Error {}
+  class McpConsentScopeRestoreError extends Error {}
   return {
     McpConnectionNotFoundError,
+    McpConsentScopeRestoreError,
     listMcpConnections: (...a: unknown[]) => mockList(...a),
     revokeMcpConnection: (...a: unknown[]) => mockRevoke(...a),
     withMergedConsentScopes: (...a: unknown[]) => mockMerge(...a),
@@ -196,6 +198,14 @@ describe("POST /api/oauth/mcp/consent", () => {
     const response = await consentPost(consentRequest(approve));
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({ error: "consent_failed" });
+  });
+
+  it("reports a failed scope restore as its own error, not as an expired request", async () => {
+    const { McpConsentScopeRestoreError } = jest.requireMock("@/lib/mcp/connections");
+    mockMerge.mockRejectedValue(new McpConsentScopeRestoreError());
+    const response = await consentPost(consentRequest(approve));
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({ error: "consent_scopes_not_restored" });
   });
 
   it("rejects a valid JSON body over the size cap", async () => {

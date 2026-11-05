@@ -95,7 +95,7 @@ export async function GET(
     });
 
     if (!canView) {
-      return forbiddenOrNotFound(userId, monitor.organizationId, "Insufficient permissions to view this monitor", "Monitor not found");
+      return await forbiddenOrNotFound(userId, monitor.organizationId, "Insufficient permissions to view this monitor", "Monitor not found");
     }
 
     // Calculate date range

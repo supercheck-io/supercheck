@@ -57,7 +57,7 @@ export async function GET(
     });
 
     if (!canView) {
-      return forbiddenOrNotFound(userId, monitor.organizationId, "Insufficient permissions to view monitor notifications", "Monitor not found");
+      return await forbiddenOrNotFound(userId, monitor.organizationId, "Insufficient permissions to view monitor notifications", "Monitor not found");
     }
 
     // Get all notification providers linked to this monitor
@@ -134,7 +134,7 @@ export async function POST(
     });
 
     if (!canUpdate) {
-      return forbiddenOrNotFound(userId, monitor.organizationId, "Insufficient permissions to update monitor notifications", "Monitor not found");
+      return await forbiddenOrNotFound(userId, monitor.organizationId, "Insufficient permissions to update monitor notifications", "Monitor not found");
     }
 
     const { notificationProviderId } = await request.json();
@@ -263,7 +263,7 @@ export async function DELETE(
     });
 
     if (!canUpdate) {
-      return forbiddenOrNotFound(userId, monitor.organizationId, "Insufficient permissions to update monitor notifications", "Monitor not found");
+      return await forbiddenOrNotFound(userId, monitor.organizationId, "Insufficient permissions to update monitor notifications", "Monitor not found");
     }
 
     const { notificationProviderId } = await request.json();

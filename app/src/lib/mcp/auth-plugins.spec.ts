@@ -94,6 +94,10 @@ describe("mcpAuthorizeRequiresResource scope", () => {
     const error = await refusal(run(plugin, { query: { resource: RESOURCE, scope } }));
     expect(error?.body?.error).toBe("invalid_scope");
   });
+  it("rejects a scope sent in both the query and the body", async () => {
+    const error = await refusal(run(plugin, { query: { resource: RESOURCE, scope: "mcp:read" }, body: { scope: "mcp:sre" } }));
+    expect(error?.body?.error).toBe("invalid_scope");
+  });
   it.each([["mcp:read"], ["mcp:read mcp:sre"], [undefined]])("accepts scope %p", async (scope) => {
     await expect(run(plugin, { query: { resource: RESOURCE, scope } })).resolves.not.toThrow();
   });

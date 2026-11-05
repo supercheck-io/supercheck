@@ -339,3 +339,11 @@ describe("cancellation drain", () => {
     expect(await response.json()).toMatchObject({ queueRemoved: true });
   });
 });
+
+it("answers 404, like a missing run, when the run's organization cannot be resolved", async () => {
+  jest.clearAllMocks();
+  (db.select as jest.Mock).mockReturnValue({ from: () => ({ leftJoin: () => ({ where: () => ({ limit: async () => [{ jobId: null, runProjectId: null, jobOrganizationId: null, runStatus: "running" }] }) }) }) });
+  const response = await POST(new NextRequest("http://localhost/api/runs/4f87e7cf-200f-5ec1-8ce4-3edcb1590232/cancel", { method: "POST" }), { params: Promise.resolve({ runId: "4f87e7cf-200f-5ec1-8ce4-3edcb1590232" }) });
+  expect(response.status).toBe(404);
+  expect(setCancellationSignal).not.toHaveBeenCalled();
+});

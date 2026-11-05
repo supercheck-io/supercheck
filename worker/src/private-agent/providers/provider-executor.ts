@@ -143,12 +143,16 @@ export async function executeObservabilityProviderJob(
     },
   );
 
+  const secrets = Object.values(input.credential ?? {}).filter(
+    (v): v is string => typeof v === 'string',
+  );
   const evidence = result.records.slice(0, maxRows).map((record) => ({
     id: `connector_${hashPayload({ connectorId: input.connectorId, sourceUri: record.sourceUri, title: record.title, hash: record.hashInput }).slice(0, 24)}`,
     sourceUri: record.sourceUri.slice(0, 1000),
-    title: redactMcpText(record.title).slice(0, 500),
+    title: redactMcpText(record.title, secrets).slice(0, 500),
     summary: redactMcpText(
       [record.summary, record.rawContent].filter(Boolean).join('\n'),
+      secrets,
     ).slice(0, 2000),
     evidenceType: record.evidenceType,
     observedAt: record.observedAt,
