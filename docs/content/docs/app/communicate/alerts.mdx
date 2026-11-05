@@ -147,11 +147,14 @@ SMTP_PASSWORD=your-api-key
 If your SMTP server does not require auth, leave `SMTP_USER` and `SMTP_PASSWORD` empty,
 but keep `SMTP_FROM_EMAIL` set.
 
-Supercheck never sends to reserved domains that cannot receive mail (`example.com`,
-`example.net`, `example.org`, and anything under `.example`, `.invalid`, `.test` or `.localhost`).
-Those recipients are skipped rather than bounced, which keeps your bounce rate down. To skip
-more domains, such as a test domain without an MX record, list them in
-`SMTP_BLOCKED_RECIPIENT_DOMAINS` (comma-separated; subdomains are included):
+Supercheck skips recipients that would only bounce, which keeps your bounce rate down:
+reserved domains (`example.com`, `example.net`, `example.org`, and anything under `.example`,
+`.invalid`, `.test` or `.localhost`) and domains whose DNS has no MX record, a null MX, or no
+entry at all. A domain with only an A record counts as having no MX. MX answers are cached for
+10 minutes, and a DNS error or timeout never blocks a send. Set
+`SMTP_SKIP_MX_CHECK=true` if your relay delivers to internal domains that publish no MX. To skip
+more domains, list them in `SMTP_BLOCKED_RECIPIENT_DOMAINS` (comma-separated; subdomains are
+included):
 
 ```bash
 SMTP_BLOCKED_RECIPIENT_DOMAINS=qa.yourdomain.com

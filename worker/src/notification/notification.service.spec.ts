@@ -34,6 +34,15 @@ import {
 } from './notification.service';
 import { EmailTemplateService } from '../email-template/email-template.service';
 
+// Recipient MX checks must not hit real DNS.
+jest.mock('node:dns/promises', () => ({
+  ...jest.requireActual('node:dns/promises'),
+  Resolver: jest.fn().mockImplementation(() => ({
+    resolveMx: () =>
+      Promise.resolve([{ exchange: 'mx.test.com', priority: 10 }]),
+  })),
+}));
+
 // Mock nodemailer
 jest.mock('nodemailer', () => ({
   createTransport: jest.fn().mockReturnValue({

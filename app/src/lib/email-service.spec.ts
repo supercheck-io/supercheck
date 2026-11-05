@@ -1,6 +1,12 @@
 import nodemailer from "nodemailer";
 import { EmailService } from "./email-service";
 
+jest.mock("node:dns/promises", () => ({
+  Resolver: jest.fn().mockImplementation(() => ({
+    resolveMx: async () => [{ exchange: "mx.test.com", priority: 10 }],
+  })),
+}));
+
 jest.mock("nodemailer", () => ({
   __esModule: true,
   default: {

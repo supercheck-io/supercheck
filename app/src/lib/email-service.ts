@@ -1,5 +1,5 @@
 import nodemailer, { type Transporter } from "nodemailer";
-import { isUndeliverableRecipient } from "@/lib/email-recipient-policy";
+import { partitionRecipients } from "@/lib/email-recipient-policy";
 
 export interface EmailOptions {
   to: string;
@@ -86,8 +86,8 @@ export class EmailService {
   async sendEmail(
     options: EmailOptions
   ): Promise<{ success: boolean; message: string; error?: string }> {
-    // Reserved/blocked domains only bounce (and bounces get the SMTP account blocked); treat as done.
-    if (isUndeliverableRecipient(options.to)) {
+    // Domains that cannot take mail only bounce (and bounces get the SMTP account blocked); treat as done.
+    if ((await partitionRecipients([options.to])).skipped.length > 0) {
       return { success: true, message: "Skipped: recipient domain does not accept email" };
     }
     const transporterOrError = this.transporter ?? buildSmtpTransporter();
@@ -127,8 +127,7 @@ export class EmailService {
     options: MultiRecipientEmailOptions
   ): Promise<MultiRecipientResult> {
     // Reserved/blocked domains are skipped: neither sent nor failed, so callers don't retry them.
-    const deliverable = options.recipients.filter((r) => !isUndeliverableRecipient(r));
-    const skippedAddresses = options.recipients.filter((r) => isUndeliverableRecipient(r));
+    const { deliverable, skipped: skippedAddresses } = await partitionRecipients(options.recipients);
     if (deliverable.length === 0) {
       return { sentCount: 0, failedAddresses: [], errors: {}, skippedAddresses };
     }
