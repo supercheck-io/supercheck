@@ -1,6 +1,6 @@
 {
   "name": "Supercheck Recorder",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": "Record browser interactions as Playwright code and send them to the Supercheck Playground",
   "manifest_version": 3,
   "minimum_chrome_version": "114",

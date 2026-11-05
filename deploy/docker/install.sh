@@ -3,7 +3,7 @@
 #
 # Takes a fresh Ubuntu 22.04+/Debian 12+ server to a running, verified Supercheck.
 #
-#   curl -fsSL https://raw.githubusercontent.com/supercheck-io/supercheck/v1.5.0/deploy/docker/install.sh -o install.sh
+#   curl -fsSL https://raw.githubusercontent.com/supercheck-io/supercheck/v1.6.0/deploy/docker/install.sh -o install.sh
 #   less install.sh                 # read it first
 #   sudo bash install.sh            # guided; asks only what it cannot detect
 #
@@ -23,7 +23,7 @@
 set -Eeuo pipefail
 
 # Keep in sync with the SUPERCHECK_VERSION default in docker-compose.yml (validate.sh enforces it).
-SUPERCHECK_VERSION_DEFAULT="1.5.0"
+SUPERCHECK_VERSION_DEFAULT="1.6.0"
 REPO_URL="https://github.com/supercheck-io/supercheck.git"
 MIN_COMPOSE="2.24.4"
 KUBECONFIG_FILE="/etc/rancher/k3s/supercheck-worker.kubeconfig"
@@ -72,7 +72,7 @@ Examples:
   sudo bash install.sh
   sudo bash install.sh --local --yes
   sudo bash install.sh --domain app.example.com --email ops@example.com --yes
-  sudo bash install.sh --upgrade --version 1.5.0
+  sudo bash install.sh --upgrade --version 1.6.0
 EOF
 }
 
@@ -764,7 +764,7 @@ preflight() {
 
 # host_port VAR DEFAULT: a shell value (even empty) wins over .env, as in Compose. Quotes, CR,
 # spaces and trailing comments are dropped; anything that is not a port 1-65535 stops the install.
-# APP_HOST_PORT and RUSTFS_HOST_PORT only apply when the Compose file reads them (1.5.1+); before
+# APP_HOST_PORT and RUSTFS_HOST_PORT only apply when the Compose file reads them (1.6.0+); before
 # the source is fetched the requested value is used, and check_ports runs again after the fetch.
 host_port() {
   local var="$1" default="$2" port file

@@ -4,35 +4,51 @@ Notable changes to `@supercheck/cli`. The format follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-05
+
+This release adds project, analytics, variable, token and run commands, and makes `deploy` safer and quieter.
+
+### Upgrade notes
+
+- **Config arrays.** `monitors` and `statusPages` must be inline arrays, and a job `status` is rejected. Glob strings and job status were previously ignored, so `deploy --delete` could plan to delete every remote monitor and status page. Remove them from your config.
+- **Resource ids.** `id` values in config and `supercheck.state.json` must be UUIDs. Ids issued by the server already are.
+- **Plain HTTP.** The CLI no longer sends your API token over plain `http://`, except to `localhost` or `127.0.0.1`. An empty `SUPERCHECK_URL` is treated as unset.
+
 ### Added
 
-- `project members [projectId]` lists the project's members and their roles (defaults to the current project).
+- `project list` and `project members [projectId]`.
+- `analytics playwright|k6`, `dashboard` and `run delete <id>`.
+- `var upload` and `var download` for file variables.
+- `token list|create|enable|disable|revoke` for CLI tokens.
+- A requirement's `priority` can be cleared with `priority: ""`. This needs Supercheck 1.5.0 or later.
+
+### Changed
+
+- `test tag add` and `test tag remove` change one tag at a time, so concurrent tag changes are no longer lost. Older servers fall back to replacing the whole set.
+- `update` commands exit with code 3 when no field to update is given.
+- `deploy --verify` names the failed verification runs in its error message.
+- `supercheck schema config` describes constraints in the new validation library's format, for example `{"check":"min_length","minimum":1}`.
 
 ### Fixed
 
-- Piping output into a closed pipe (for example `| head`) no longer crashes; the command exits quietly with its own exit code.
-- `deploy`, `diff` and `destroy` compare a config job or monitor `alertConfig` the way the server stores it (defaults filled, default values dropped), so an unchanged alert config no longer shows as an update on every run. They also treat a DELETE that finds the resource already gone after a retry as done.
-- `monitors` and `statusPages` in config must be inline arrays, and a job `status` is rejected: glob strings and job status were ignored, and `deploy --delete` then planned to delete every remote monitor and status page. Remove them from the config.
-- `pull` no longer writes the monitor config keys the server rejects (`responseBodyJsonPath`, `checkExpiration`, `daysUntilExpirationWarning`, `checkRevocation`, `sslCheckOnStatusChange`), and `diff` ignores them on the remote side. `pull` and `validate` warn when a job `cronSchedule` is not 5 fields, which the server rejects on update.
-- The CLI refuses to send the API token over plain `http://` (except to `localhost` or `127.0.0.1`) and tells you to use https. An empty `SUPERCHECK_URL` is treated as unset.
-- `job update`, `monitor update`, `test update` and `notification update` exit non-zero (code 3) when no updatable field is given, instead of exiting 0.
-- `test tag add` and `test tag remove` now send an atomic per-tag change (`PATCH /api/tests/<id>/tags`) instead of replacing the whole set, so concurrent tag changes are no longer lost. Older servers fall back to the previous read-then-replace. Removing an unknown tag is now a no-op.
-- `deploy --verify` now names the failed verification runs (title and run ID) in the human-readable error, not only in `--json` output.
-- `deploy` checks requirement support with a validation-only `POST /api/requirements` instead of exporting every requirement (which also wrote an export audit event). A status page route's own JSON 404 is no longer mistaken for an old server.
-- `deploy` rejects a test or monitor with more than 10 distinct tags before any write, instead of saving the resource and then failing to apply its tags.
-- Requirement `externalUrl` in config must be an `http://` or `https://` URL, matching the server.
-
-- `deploy` removes a status page draft it just created when applying its settings, components or status then fails (for example a custom domain the plan or server rejects), so no orphan draft is left behind. The original error is shown; if the cleanup itself fails, a warning names the draft and the error still reports its ID. Pages that existed before the run are never deleted.
+- `schema config` no longer hangs when printed as a table.
+- A job test reference that doesn't resolve (for example a glob) is rejected when `deploy` plans, not part-way through.
+- `destroy` removes tests, monitors, requirements and jobs before their tags, so a tag in use no longer stops it.
+- `validate` rejects more than 10 monitor tags and names over 255 characters, which the server would reject.
+- `notification list` shows the Enabled column correctly.
+- `var set` checks the variable key format before sending it.
+- `login --reauth` always starts a new sign-in, and `login` never polls faster than the server allows.
+- A 401 now tells you to run `supercheck login --reauth`.
+- An unchanged job or monitor alert config no longer shows as an update on every `deploy` and `diff`.
+- `pull` no longer writes monitor settings the server rejects, and `pull` and `validate` warn about a job schedule that is not five cron fields.
+- `deploy` removes a status page draft it just created when a later step fails, and never deletes a page that existed before the run.
+- `deploy` rejects a test or monitor with more than 10 tags before writing anything.
+- `deploy`, `diff` and `destroy` treat a resource that is already gone after a retry as deleted.
+- Piping output into a command that closes early, such as `| head`, no longer crashes the CLI.
 
 ### Security
 
-- Upgraded `zod` to ^4.6.7, fixing GHSA-mrhx-c7xc-m3w5. `supercheck schema config` constraint entries now use zod 4's shape (for example `{"check":"min_length","minimum":1}`). Resource `id` values in config and `supercheck.state.json` must now be RFC 4122 UUIDs, matching the server; ids the server issued already are.
-
-### Added
-
-- `analytics playwright|k6` (`GET /api/analytics/<type>`), `var upload`/`var download` for file variables (multipart `POST /api/projects/<id>/variables`), `token list/create/enable/disable/revoke` (`/api/cli-tokens`, revoke confirms unless `--force`) and `project list`. Not included: service create/update/delete and requirement document upload (no REST route), organization members and project creation (the server rejects CLI tokens).
-- `run delete <id>` (`DELETE /api/runs/<id>`, confirms unless `--force`) and `dashboard` (`GET /api/dashboard`) for project metrics. Status-page incident create/update/delete is not included: the app exposes it only as server actions, not a REST route.
-- A requirement's `priority` can be cleared from config with `priority: ""`. This needs a server that accepts a null priority (the release after 1.4.0); an older server rejects that write with a 400.
+- Updated `zod` to 4.6.7 (GHSA-mrhx-c7xc-m3w5).
 
 ## [0.4.0] - 2026-10-26
 
@@ -138,7 +154,8 @@ Requirements, status pages, test priority and tags now work from the terminal an
 
 - First tracked release of `@supercheck/cli`.
 
-[Unreleased]: https://github.com/supercheck-io/supercheck/compare/cli-v0.4.0...HEAD
+[Unreleased]: https://github.com/supercheck-io/supercheck/compare/cli-v0.5.0...HEAD
+[0.5.0]: https://github.com/supercheck-io/supercheck/compare/cli-v0.4.0...cli-v0.5.0
 [0.4.0]: https://github.com/supercheck-io/supercheck/compare/cli-v0.3.2...cli-v0.4.0
 [0.3.2]: https://github.com/supercheck-io/supercheck/compare/cli-v0.2.1...cli-v0.3.2
 [0.2.1]: https://github.com/supercheck-io/supercheck/releases/tag/cli-v0.2.1
