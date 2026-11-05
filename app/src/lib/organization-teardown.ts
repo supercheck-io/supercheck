@@ -56,7 +56,7 @@ async function revokeSubscription(subscriptionId: string): Promise<void> {
   } catch (error) {
     if (isAlreadyGone(error)) return;
     console.error(`[ORG_TEARDOWN] Failed to revoke subscription ${subscriptionId}:`, error);
-    throw new BillingCancellationError("Could not cancel the subscription with the billing provider; nothing was deleted");
+    throw new BillingCancellationError("Could not cancel the subscription with the billing provider. Stored files may already be removed; organization records are unchanged. Retry the deletion once billing is available.");
   }
 }
 

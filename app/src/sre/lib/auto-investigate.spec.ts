@@ -223,6 +223,16 @@ it("starts nothing while the organization already has the maximum runs in flight
   expect(await maybeAutoInvestigateOnOpen(input)).toEqual({ handled: true });
 });
 
+it("re-checks the organization cap after the decision, before starting", async () => {
+  orgRunning = 2;
+  dailyLimit.mockImplementationOnce(async () => {
+    orgRunning = 3;
+    return null;
+  });
+  expect(await maybeAutoInvestigateOnOpen(input)).toEqual({ handled: false, reason: "org_concurrency_limit" });
+  expect(start).not.toHaveBeenCalled();
+});
+
 it("recovers stale runs of the incident before looking for a blocking run", async () => {
   await maybeAutoInvestigateOnOpen(input);
   expect(recoverStale).toHaveBeenCalledWith(input);

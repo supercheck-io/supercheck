@@ -48,4 +48,36 @@ describe("encryptLegacyWebhookSecrets", () => {
     expect(updates[0].values[0]).toMatch(/^enc:v1:/);
     expect(updates[0].values[1]).toBe("a");
   });
+
+  it("only overwrites rows that still have no ciphertext, so a concurrent rotation is kept", async () => {
+    process.env.SECRET_ENCRYPTION_KEY = "k".repeat(40);
+    const client = fakeClient([{ id: "a", webhook_secret: "s1" }]);
+    await encryptLegacyWebhookSecrets(client);
+    expect(client.calls.find((c) => c.sql.includes("UPDATE")).sql).toMatch(/AND webhook_secret_encrypted IS NULL/);
+  });
+
+  describe("placeholder keys", () => {
+    const env = { NODE_ENV: process.env.NODE_ENV, SELF_HOSTED: process.env.SELF_HOSTED };
+    afterEach(() => {
+      for (const [k, v] of Object.entries(env)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    });
+    const rows = () => fakeClient([{ id: "a", webhook_secret: "s" }]);
+
+    it("rejects a placeholder key in cloud production so the upgrade rolls back", async () => {
+      process.env.SECRET_ENCRYPTION_KEY = "change_this_to_a_real_key_0123456789";
+      process.env.NODE_ENV = "production";
+      delete process.env.SELF_HOSTED;
+      await expect(encryptLegacyWebhookSecrets(rows())).rejects.toThrow(/placeholder/);
+    });
+
+    it("accepts it for self-hosted installs, matching the app", async () => {
+      process.env.SECRET_ENCRYPTION_KEY = "change-this-to-a-real-key-0123456789";
+      process.env.NODE_ENV = "production";
+      process.env.SELF_HOSTED = "true";
+      await expect(encryptLegacyWebhookSecrets(rows())).resolves.toBe(1);
+    });
+  });
 });
