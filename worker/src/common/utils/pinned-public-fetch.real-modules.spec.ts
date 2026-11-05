@@ -48,13 +48,13 @@ describe('fetchPublicEndpoint with real node modules', () => {
   });
 
   it('reaches node:https (a TLS failure, not a missing module)', async () => {
-    // Errors from node internals come from another realm, so match the message, not the class.
+    // A TLS handshake against a plain HTTP server fails with EPROTO, which proves https.request ran.
     await expect(
       fetchPublicEndpoint(
         url.replace('http:', 'https:'),
         {},
         { allowInternal: true },
       ),
-    ).rejects.not.toThrow(/reading 'request'/);
+    ).rejects.toMatchObject({ code: 'EPROTO' });
   });
 });
