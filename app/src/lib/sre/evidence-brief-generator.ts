@@ -364,15 +364,21 @@ export async function streamEvidenceBrief(
     return streamFallback();
   }
 
+  let started = false;
   try {
     if (!(await checkSreDailyTokenLimit(input.organizationId)).allowed) {
       return streamFallback();
     }
     validateAIConfiguration();
 
+    let streamError: unknown;
     const result = await streamText({
       model: getProviderModel(),
       prompt: buildStreamingBriefPrompt(input),
+      // Usage is recorded by the SDK callbacks so aborts and timeouts are billed too, not just normal completion.
+      onError: ({ error }) => { streamError = error; },
+      onFinish: ({ totalUsage }) => recordSreTokenUsage(input.organizationId, totalUsage),
+      onAbort: ({ steps }) => recordSreTokenUsage(input.organizationId, { totalTokens: steps.reduce((sum, step) => sum + (step.usage.totalTokens ?? 0), 0) }),
       temperature: 0.1,
       maxRetries: 2,
       maxOutputTokens: 1800,
@@ -382,10 +388,11 @@ export async function streamEvidenceBrief(
     const chunks: string[] = [];
     for await (const chunk of result.textStream) {
       chunks.push(chunk);
+      started = true;
       await onChunk(chunk);
     }
 
-    await recordSreTokenUsage(input.organizationId, await result.totalUsage);
+    if (streamError) throw streamError;
     const summary = chunks.join("").trim();
     if (!summary) {
       return streamFallback(new Error("AI provider returned an empty brief"));
@@ -401,6 +408,8 @@ export async function streamEvidenceBrief(
     };
   } catch (error) {
     signal?.throwIfAborted();
+    // Partial AI text is already with the client: fail the run instead of appending an unrelated deterministic report.
+    if (started) throw error;
     return streamFallback(error);
   }
 }

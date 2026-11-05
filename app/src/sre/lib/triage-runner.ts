@@ -131,8 +131,8 @@ export async function runSreIncidentTriage(input: RunSreIncidentTriageInput): Pr
       budget: { maxSteps: 4, maxOutputTokens: 1200, timeoutMs: 45_000 },
     });
 
-    await db.transaction(async (tx) => {
-      await tx
+    const completed = await db.transaction(async (tx) => {
+      const updated = await tx
         .update(sreInvestigationRuns)
         .set({
           status: "completed",
@@ -148,7 +148,10 @@ export async function runSreIncidentTriage(input: RunSreIncidentTriageInput): Pr
           completedAt: new Date(),
           durationMs: Date.now() - startedAt,
         })
-        .where(eq(sreInvestigationRuns.id, run.id));
+        .where(and(eq(sreInvestigationRuns.id, run.id), eq(sreInvestigationRuns.status, "running")))
+        .returning({ id: sreInvestigationRuns.id });
+      // Stale recovery or a cancel already closed this run: write no finding and send no notification.
+      if (updated.length === 0) return false;
 
       await tx
         .update(sreIncidents)
@@ -178,7 +181,11 @@ export async function runSreIncidentTriage(input: RunSreIncidentTriageInput): Pr
         agentRunId: run.id,
         createdAt: new Date(),
       });
+      return true;
     });
+    if (!completed) {
+      return { success: false, status: 409, error: "Triage run is no longer active", investigationRunId: run.id };
+    }
 
     void notifyIncidentEvent({
       organizationId: input.organizationId,
