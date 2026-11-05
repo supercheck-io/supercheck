@@ -14,6 +14,10 @@ let client: ReturnType<typeof postgres>;
 let mockDb: ReturnType<typeof drizzle>;
 
 jest.mock("next/cache", () => ({ revalidatePath: jest.fn() }));
+jest.mock("next/headers", () => ({ headers: jest.fn(async () => new Headers()) }));
+jest.mock("@/lib/api-key-rate-limiter", () => ({
+  apiKeyRateLimiter: { checkAndIncrement: jest.fn(async () => ({ allowed: true })) },
+}));
 jest.mock("@/utils/db", () => ({
   get db() {
     return mockDb;

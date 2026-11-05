@@ -16,7 +16,26 @@ import {
   validateScriptTypeMatch,
   normalizeTestTypeForApi,
   validateScripts,
+  rejectGlobTestRefs,
 } from '../validation.js'
+
+describe('rejectGlobTestRefs', () => {
+  it('rejects a job test glob, which deploy could never resolve', () => {
+    expect(() => rejectGlobTestRefs([{ type: 'job', name: 'nightly', definition: { tests: ['login.pw.ts', 'checkout/*.pw.ts'] } }]))
+      .toThrow(expect.objectContaining({ exitCode: ExitCode.ConfigError, message: expect.stringContaining('job/nightly: test reference "checkout/*.pw.ts"') }))
+  })
+
+  it('rejects a requirement test glob', () => {
+    expect(() => rejectGlobTestRefs([{ type: 'requirement', name: 'r', definition: { tests: ['**/*.pw.ts'] } }])).toThrow(CLIError)
+  })
+
+  it('accepts names with brackets or braces, UUIDs, and other resource types', () => {
+    expect(() => rejectGlobTestRefs([
+      { type: 'job', name: 'j', definition: { tests: ['checkout [smoke].pw.ts', '{a}.pw.ts', '018f0000-0000-7000-8000-000000000001'] } },
+      { type: 'monitor', name: 'm', definition: { tests: ['*'] } },
+    ])).not.toThrow()
+  })
+})
 
 describe('parseIntStrict', () => {
   it('rejects integers that cannot be represented precisely', () => {
