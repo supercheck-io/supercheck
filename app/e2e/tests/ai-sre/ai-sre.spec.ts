@@ -196,6 +196,10 @@ test.describe("AI SRE investigation surfaces @aisre @critical", () => {
     await page
       .getByRole("button", { name: "Archive chat", exact: true })
       .click();
+    await page
+      .getByRole("alertdialog", { name: "Archive chat?" })
+      .getByRole("button", { name: "Archive", exact: true })
+      .click();
     await expect(
       page.getByText("Copilot session archived", { exact: true }),
     ).toBeVisible();
