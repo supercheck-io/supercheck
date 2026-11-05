@@ -1,6 +1,7 @@
 import { lookup } from 'node:dns/promises';
-import http from 'node:http';
-import https from 'node:https';
+// Namespace imports: the worker compiles to CommonJS without esModuleInterop, so a default import is undefined at runtime.
+import * as http from 'node:http';
+import * as https from 'node:https';
 import { isIP } from 'node:net';
 
 import { createPinnedLookup } from './pinned-lookup';

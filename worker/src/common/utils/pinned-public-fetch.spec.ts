@@ -1,17 +1,12 @@
 import { lookup } from 'node:dns/promises';
 import { EventEmitter } from 'node:events';
-import http from 'node:http';
-import https from 'node:https';
+import * as http from 'node:http';
+import * as https from 'node:https';
 
 jest.mock('node:dns/promises', () => ({ lookup: jest.fn() }));
-jest.mock('node:http', () => ({
-  __esModule: true,
-  default: { request: jest.fn() },
-}));
-jest.mock('node:https', () => ({
-  __esModule: true,
-  default: { request: jest.fn() },
-}));
+// Same shape as the real CommonJS modules: no synthetic `default` export.
+jest.mock('node:http', () => ({ request: jest.fn() }));
+jest.mock('node:https', () => ({ request: jest.fn() }));
 
 import { fetchPublicEndpoint } from './pinned-public-fetch';
 
