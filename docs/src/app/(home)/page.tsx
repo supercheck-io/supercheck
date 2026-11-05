@@ -1,9 +1,9 @@
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowRight, Play } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { SiteHeader } from "../../components/site-header";
 import { CodeWindow } from "../../components/landing/code-window";
-import { CopyCommand } from "../../components/landing/interactive";
+import { CopyCommand, HeroVideo } from "../../components/landing/interactive";
 import { CheckList, Screenshot, SectionHeading, SolutionCards, primaryButton, secondaryButton, textLink } from "../../components/landing/ui";
 import { SiteFooter } from "../../components/site-footer";
 import { toolGroups } from "../../components/landing/tool-logos";
@@ -116,8 +116,6 @@ const runOptions = [
   },
 ];
 
-const OVERVIEW_VIDEO_URL = "https://youtu.be/D9dqy93zL9o";
-
 export default async function HomePage() {
   return (
     <div className="min-h-screen w-full overflow-x-clip bg-fd-background text-fd-foreground">
@@ -162,32 +160,18 @@ export default async function HomePage() {
           </div>
 
           <div className="mt-14 md:mt-16">
-            <a
-              href={OVERVIEW_VIDEO_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="Watch the Supercheck overview video on YouTube (3 minutes)"
-              className="group relative block aspect-video w-full overflow-hidden rounded-xl border border-fd-border bg-fd-card shadow-[0_1px_2px_rgb(0_0_0/0.04),0_24px_48px_-24px_rgb(0_0_0/0.25)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-fd-primary"
-            >
-              <Image
-                src={versioned("/supercheck-screenshot.webp")}
-                alt=""
-                fill
-                sizes="(min-width: 1152px) 1152px, 100vw"
-                className="object-cover object-top"
-                priority
-              />
-              <span className="absolute inset-0 bg-black/20 transition-colors group-hover:bg-black/30" aria-hidden="true" />
-              <span
-                className="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center gap-3 whitespace-nowrap rounded-full bg-fd-background/95 py-3 pl-3 pr-5 text-sm font-medium text-fd-foreground shadow-lg ring-1 ring-fd-border transition-transform group-hover:scale-105"
-                aria-hidden="true"
-              >
-                <span className="flex size-10 items-center justify-center rounded-full bg-fd-primary text-fd-primary-foreground">
-                  <Play className="ml-0.5 size-4 fill-current" />
-                </span>
-                Watch the overview · 3 min
-              </span>
-            </a>
+            <div className="relative aspect-video w-full overflow-hidden rounded-xl border border-fd-border bg-fd-card shadow-[0_1px_2px_rgb(0_0_0/0.04),0_24px_48px_-24px_rgb(0_0_0/0.25)]">
+              <HeroVideo>
+                <Image
+                  src={versioned("/supercheck-screenshot.webp")}
+                  alt=""
+                  fill
+                  sizes="(min-width: 1152px) 1152px, 100vw"
+                  className="object-cover object-top"
+                  priority
+                />
+              </HeroVideo>
+            </div>
           </div>
         </section>
 
