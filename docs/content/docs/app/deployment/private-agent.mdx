@@ -6,12 +6,17 @@ icon: ShieldCheck
 
 Connect private services to AI SRE investigations through an outbound-only, read-only agent. For test execution workers on separate servers, see [Multi-Server](/docs/app/deployment/multi-server).
 
-## Setup Workflow
+## Prerequisites
 
-<p className="text-sm md:hidden">Scroll horizontally to view the full diagram.</p>
+| Requirement | Details |
+|-------------|---------|
+| Permission | Organization owner or admin. The server requires the connector-configure permission; an org-wide agent also needs organization-level rights. **Settings → Organization** is not shown to other roles |
+| Host | Docker Engine with Compose v2 that can reach Supercheck and your provider endpoints |
+| Network | Outbound HTTPS to the Supercheck API, with no browser challenge in front. No inbound ports for remote agents; colocated agents use the private Docker network |
 
-<div className="overflow-x-auto" role="region" aria-label="Private Agent workflow diagram" tabIndex={0}>
-<div className="min-w-[48rem]">
+Use the supplied Compose file: it keeps the agent non-root, read-only, and capability-free.
+
+## Set up
 
 ```mermaid
 sequenceDiagram
@@ -38,21 +43,6 @@ sequenceDiagram
         App-->>You: Cited findings and evidence gaps
     end
 ```
-
-</div>
-</div>
-
-## Prerequisites
-
-| Requirement | Details |
-|-------------|---------|
-| Permission | Organization owner or admin. The server requires the connector-configure permission; an org-wide agent also needs organization-level rights. **Settings → Organization** is not shown to other roles |
-| Host | Docker Engine with Compose v2 that can reach Supercheck and your provider endpoints |
-| Network | Outbound HTTPS to the Supercheck API, with no browser challenge in front. No inbound ports for remote agents; colocated agents use the private Docker network |
-
-Use the supplied Compose file: it keeps the agent non-root, read-only, and capability-free.
-
-## Set up
 
 <Steps>
 <Step>
@@ -116,9 +106,7 @@ Copy the **Agent ID** and **Registration token**. The dialog also shows the envi
 
 Confirm the agent shows **connected**. In the same project's **Settings → Organization → Integrations**, add a connector, select **Private Agent**, and choose this agent.
 
-Enter a container-reachable provider endpoint and a read-only credential. Loopback addresses such as `localhost` and cloud metadata endpoints (AWS, GCP, Azure, Alibaba) are rejected. Response size is capped per path: a provider response over 4 MiB is truncated, Jira and Confluence over 2 MiB, and any other connector response over 10 MiB fails the query. A job result the agent sends back is limited to 1 MiB. Validate the connector and test a known-result query. See [Connectors](/docs/app/investigate/connectors) for provider requirements.
-
-Private Agents are also the only way to use an [MCP server](/docs/app/investigate/connectors#mcp-servers-private-agent-only) inside your network. The agent connects over Streamable HTTP, applies the same endpoint policy as other connectors, and runs only tools you allowlisted. Discovery and tool calls run as agent jobs, so the agent must be connected. Each agent reports the connector types it supports. Supercheck sends it only those, and asks you to upgrade an older agent before it can run newer types such as MCP, Jira or Confluence.
+Enter a container-reachable provider endpoint and a read-only credential, then validate the connector and test a known-result query. See [Connectors](/docs/app/investigate/connectors) for provider requirements and [Connector limits](#connector-limits).
 
 </Step>
 <Step>
@@ -140,13 +128,25 @@ The agent sends a heartbeat every 30 seconds. Supercheck shows it as disconnecte
 | **connected** | Heartbeats are arriving |
 | **disconnected** | No heartbeat for 90 seconds |
 | **unhealthy** | Connected, but it reported a problem. Also shown as disconnected once heartbeats stop |
-| **disabled** | Turned off. This is permanent: queued and in-flight jobs fail with `agent_disabled`, the token stops working, and the agent cannot be rotated or revived. Register a new agent to replace it |
+| **disabled** | Turned off, permanently. Queued and in-flight jobs fail with `agent_disabled`, the token stops working, and the agent cannot be rotated or revived. Register a new agent to replace it |
 
 Rotating a token revokes the old credential and returns the agent to **pending** until it connects with the new one.
 
-When the control plane keeps rejecting the agent's credential (HTTP 401 at least three times in a row over at least 60 seconds, after a rotation or after the agent was disabled), the agent logs `Private Agent credential revoked or agent disabled` and exits with a non-zero code. Run it under a restart policy (for example `restart: unless-stopped`) so a restart picks up a new token, and so the exit is visible to your monitoring. Start it with the new token, or register a replacement agent.
+<Callout type="warn">
+Preserve the `private-agent-state` volume; do not use `down -v` during maintenance.
+</Callout>
 
-These optional variables tune the agent. The defaults suit most installs.
+<Accordions>
+<Accordion title="Token expired or credential revoked" id="credential-revoked">
+
+If the registration token expires, choose **Rotate token** (not available while a super admin is impersonating a user), replace it in `.env`, and recreate the agent within 15 minutes with the start command above.
+
+When the control plane keeps rejecting the agent's credential (HTTP 401 at least three times in a row over at least 60 seconds, after a rotation or after the agent was disabled), the agent logs `Private Agent credential revoked or agent disabled` and exits with a non-zero code. Run it under a restart policy (for example `restart: unless-stopped`) so a restart picks up a new token and the exit is visible to your monitoring. Start it with the new token, or register a replacement agent.
+
+</Accordion>
+<Accordion title="Tuning variables" id="tuning-variables">
+
+The defaults suit most installs.
 
 | Variable | Default | Purpose |
 |---|---|---|
@@ -154,6 +154,18 @@ These optional variables tune the agent. The defaults suit most installs.
 | `PRIVATE_AGENT_RETRY_INTERVAL_MS` | `5000` | Delay before retrying after an error |
 | `PRIVATE_AGENT_HEARTBEAT_INTERVAL_MS` | `30000` | Heartbeat interval. Keep it well under 90 seconds |
 
-<Callout type="warn">
-Preserve the `private-agent-state` volume; do not use `down -v` during maintenance. If the registration token expires, choose **Rotate token** (not available while a super admin is impersonating a user), replace it in `.env`, and recreate the agent within 15 minutes with the start command above.
-</Callout>
+</Accordion>
+<Accordion title="Connector limits and MCP servers" id="connector-limits">
+
+Loopback addresses such as `localhost` and cloud metadata endpoints (AWS, GCP, Azure, Alibaba) are rejected. Response size is capped per path:
+
+| Response | Limit |
+|---|---|
+| Provider response | Truncated over 4 MiB (Jira and Confluence: 2 MiB) |
+| Any other connector response | Over 10 MiB fails the query |
+| Job result sent back by the agent | 1 MiB |
+
+Private Agents are also the only way to use an [MCP server](/docs/app/investigate/connectors#mcp-servers-private-agent-only) inside your network. The agent connects over Streamable HTTP, applies the same endpoint policy as other connectors, and runs only tools you allowlisted. Discovery and tool calls run as agent jobs, so the agent must be connected. Each agent reports the connector types it supports; Supercheck sends it only those, and asks you to upgrade an older agent before it can run newer types such as MCP, Jira or Confluence.
+
+</Accordion>
+</Accordions>

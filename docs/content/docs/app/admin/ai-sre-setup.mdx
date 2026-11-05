@@ -48,11 +48,9 @@ Suggested relationships are not used as service dependencies or for alert correl
 
 ## Integrations
 
-Use **Settings → Organization → Integrations** to add read-only evidence sources. Each connector has a service scope, validation status, execution mode, and output limits. Select **Add connector** and choose a **Connector type** to connect providers such as Prometheus, Grafana, Loki, or GitHub.
+Add read-only evidence sources under **Settings → Organization → Integrations**: select **Add connector**, choose the **Connector type** (Prometheus, Grafana, Loki, GitHub, and more), and set its service scope. Use the narrowest credential and scope your queries need, and validate after setup. See [Connectors](/docs/app/investigate/connectors) for supported providers.
 
-Use the narrowest credential and service scope that supports your queries, and validate the connector after setup. See [Connectors](/docs/app/investigate/connectors) for supported providers and query examples.
-
-Connectors are optional. Start with stored Supercheck evidence, then add external sources your team needs.
+Connectors are optional: start with stored Supercheck evidence and add external sources as needed.
 
 ## Saved queries (optional)
 
@@ -109,58 +107,27 @@ Keep provider credentials in the connector's dedicated credential fields.
 
 ## Setup Order
 
-<p className="text-sm">Scroll horizontally on smaller screens to view all steps.</p>
-
-<div className="overflow-x-auto" role="region" aria-label="AI SRE setup workflow" tabIndex={0}>
-<div className="min-w-[84rem]">
-
 ```mermaid
 %%{init: {"flowchart":{"nodeSpacing":20,"rankSpacing":24,"padding":12,"wrappingWidth":140}}}%%
-flowchart LR
+flowchart TB
     Incident[Open an incident] --> Native[Investigate stored evidence]
     Native --> Need{Need external evidence?}
-    Need -->|No|Review[Review cited findings]
-    Need -->|Yes|Services[Add service and link incident]
-    Services --> Connectors[Add connector and validate query]
+    Need -->|No| Review[Review cited findings]
+    Need -->|Yes| Services[Add service and link incident]
+    Services --> Private{Provider private?}
+    Private -->|Yes| Agent[Deploy a Private Agent]
+    Private -->|No| Connectors[Add connector and validate query]
+    Agent --> Connectors
     Connectors --> Live[Enable live sources and investigate]
     Live --> Review
 
     classDef action fill:#1d4ed8,stroke:#60a5fa,color:#fff
     classDef decision fill:#92400e,stroke:#fbbf24,color:#fff
-    class Incident,Native,Services,Connectors,Live,Review action
-    class Need decision
+    class Incident,Native,Services,Agent,Connectors,Live,Review action
+    class Need,Private decision
 ```
 
-</div>
-</div>
-
-<Steps>
-<Step>
-
-Investigate an incident using stored Supercheck evidence.
-
-</Step>
-<Step>
-
-Add service context when you need service links, dependencies, or live connectors.
-
-</Step>
-<Step>
-
-Optionally add connectors for external evidence. If a provider is private, deploy a Private Agent first.
-
-</Step>
-<Step>
-
-Optionally save a query if responders repeat the same bounded question.
-
-</Step>
-<Step>
-
-Validate each connector and run an investigation with live sources enabled before relying on it during an incident.
-
-</Step>
-</Steps>
+Optionally save a query for bounded questions responders repeat, and validate each connector with live sources enabled before relying on it during an incident.
 
 <Accordions>
 <Accordion title="Usage limit and stuck runs" id="usage-limit">
@@ -169,7 +136,7 @@ Each organization has a daily AI usage limit shared by investigations, triage, e
 
 Self-hosted deployments set the limit with `SRE_DAILY_TOKEN_LIMIT_PER_ORG` (default `2000000`; `0` disables the limit). The limit needs Redis and is enforced by the app only.
 
-If an investigation stops reporting because the server restarted while it ran, it is marked failed once it has run for more than five minutes and you start a new run for that incident. You can then start a new run for the same incident. Failed runs are not charged and do not use the free-trial allowance.
+If an investigation stops reporting because the server restarted while it ran, it is marked failed once it has run for more than five minutes and you start a new run for that incident. Failed runs are not charged and do not use the free-trial allowance.
 
 </Accordion>
 </Accordions>

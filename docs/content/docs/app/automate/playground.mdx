@@ -8,50 +8,9 @@ Write, run, and debug test scripts in the Playground. Review AI suggestions befo
 
 ![Playground Editor](/screenshots/playground-editor.png)
 
-## Editor Features
+## Editor and Runs
 
-Use the editor to write and check your script:
-
-- **Syntax Highlighting** — Full TypeScript/JavaScript support with Playwright API recognition
-- **Auto-completion** — IntelliSense for Playwright methods, selectors, and assertions
-- **Error Detection** — Real-time syntax validation before you run
-- **Code Formatting** — Automatic formatting for clean, readable code
-- **Variable Access** — Use `getVariable()` and `getSecret()` for project configuration
-
-## Running Tests
-
-Use the Playground to check a script before adding it to an automated job or monitor.
-
-<Steps>
-<Step>
-Click **Run**.
-</Step>
-<Step>
-Watch the run status and live logs in the results panel.
-</Step>
-<Step>
-Open the report when the run finishes. Review errors and available screenshots or traces.
-</Step>
-<Step>
-Update the script and run it again until it checks the expected behavior.
-</Step>
-<Step>
-**Save** the test to reuse it in a job or synthetic monitor.
-</Step>
-</Steps>
-
-<Callout type="info">
-Use **Cancel** to stop a running test. Review the cancellation details in its result.
-</Callout>
-
-<Callout type="warn">
-You can save a draft at any time, including before the test has run or while it is failing. Run and validate the test before relying on it in a job or monitor.
-</Callout>
-
-<p className="text-sm md:hidden">Scroll horizontally to view the full diagram.</p>
-
-<div className="overflow-x-auto" role="region" aria-label="Playground workflow diagram" tabIndex={0}>
-<div className="min-w-[36rem]">
+The editor is Monaco with TypeScript/JavaScript highlighting, Playwright IntelliSense, live syntax checks, auto-formatting, and `getVariable()` / `getSecret()` for project configuration. Check a script here before adding it to a job or monitor.
 
 ```mermaid
 sequenceDiagram
@@ -75,8 +34,7 @@ sequenceDiagram
     end
 ```
 
-</div>
-</div>
+Use **Cancel** to stop a running test. You can save a draft at any time, even while it is failing; run and validate it before relying on it in a job or monitor.
 
 ## AI Create
 
@@ -92,19 +50,13 @@ Describe the behavior you want to test. AI Create suggests a script for you to r
 
 <Steps>
 <Step>
-Click the **AI Create** button (purple gradient)
+Select **AI Create** and describe the test in plain language.
 </Step>
 <Step>
-Describe what you want to test in natural language
+Select **Generate** and review the streamed script in the diff viewer.
 </Step>
 <Step>
-Click **Generate** to start streaming the code
-</Step>
-<Step>
-Review the generated script in the diff viewer
-</Step>
-<Step>
-Click **Apply to Editor** to use the code, or **Discard** to close it
+Select **Apply to Editor**, or **Discard** to close it.
 </Step>
 </Steps>
 
@@ -152,19 +104,13 @@ Keep the run's organization selected and make sure you can view its project. AI 
 
 <Steps>
 <Step>
-Run a test that fails
+After a failed run, select **AI Fix**. It analyzes the error report and your code.
 </Step>
 <Step>
-Click the **AI Fix** button (appears after failure)
+Review the original-versus-suggested diff, edit if needed, then **Accept & Apply** or **Reject**.
 </Step>
 <Step>
-AI analyzes the error report and your code
-</Step>
-<Step>
-A diff viewer shows original vs. suggested fix
-</Step>
-<Step>
-Review changes, edit if needed, then **Accept & Apply** or **Reject**
+Run the test again to verify the change.
 </Step>
 </Steps>
 
@@ -198,13 +144,9 @@ Some failures require manual investigation rather than code changes. In these ca
 </Accordion>
 </Accordions>
 
-<Callout type="info">
-Review the suggested diff before applying it, then run the test again to verify the change.
-</Callout>
-
 ## Templates
 
-Start with pre-built templates for common testing scenarios. Templates provide working code that you can customize for your application.
+Start with working templates for common scenarios, then customize them.
 
 ![Code Templates](/screenshots/code-template.png)
 
@@ -269,25 +211,16 @@ Start with pre-built templates for common testing scenarios. Templates provide w
 
 <Steps>
 <Step>
-Click **Templates** in the editor toolbar
+Select **Templates** in the toolbar, browse or search, and click one to preview it.
 </Step>
 <Step>
-Browse categories or search for specific scenarios
-</Step>
-<Step>
-Click a template to preview the code
-</Step>
-<Step>
-Click **Apply Template** to insert it into the editor
-</Step>
-<Step>
-Customize URLs, selectors, and test data for your app
+Select **Apply Template**, then customize URLs, selectors, and test data.
 </Step>
 </Steps>
 
 ## Test Reports
 
-Every test run generates a detailed report with artifacts for debugging:
+Every run produces a report with debugging artifacts:
 
 ![Playground Report](/screenshots/playground-report.png)
 
@@ -303,19 +236,14 @@ Every test run generates a detailed report with artifacts for debugging:
 <Accordions>
 <Accordion title="Viewing traces" id="viewing-traces">
 
-The Playwright Trace Viewer lets you:
-- Step through each action in your test
-- See the page state before and after each step
-- Inspect DOM elements and their properties
-- View network requests with timing
-- Debug timing and selector issues
+The Playwright Trace Viewer steps through each action, showing page state before and after, DOM, and network timing, which helps with timing and selector issues.
 
 </Accordion>
 </Accordions>
 
 ## Using Variables
 
-Access project-level configuration, secrets, and file-backed test data in your tests:
+Read project configuration, secrets, and file-backed test data:
 
 ```javascript
 

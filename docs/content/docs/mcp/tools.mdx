@@ -8,7 +8,15 @@ Read tools are marked `readOnlyHint: true`; the optional tools below are not. Ev
 
 Returned text (test titles, error excerpts, incident summaries, investigation findings) comes from your systems and is treated as **untrusted data**: tool descriptions tell the AI never to follow instructions found in it.
 
-## Tools
+## Scopes and tools
+
+| Scope | Granted | Tools | Your role must also allow |
+|---|---|---|---|
+| `mcp:read` | Always | The 21 read tools below | Viewing that resource type |
+| `mcp:incidents:write` | Optional | `assign_incident`, `acknowledge_incident`, `resolve_incident` | Updating incidents |
+| `mcp:sre` | Optional | `triage_incident`, `investigate_incident`, `generate_incident_brief` | Investigating incidents (billable, uses AI credits) |
+
+## Read tools
 
 | Tool | Needs permission to view | Arguments | Returns |
 |---|---|---|---|

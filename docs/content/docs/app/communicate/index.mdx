@@ -48,52 +48,15 @@ Adaptive Card notifications via Power Automate workflows
 </Card>
 </Cards>
 
-<Accordions>
-<Accordion title="Smart alert thresholds (example)" id="smart-alert-thresholds">
-
-Choose failure and recovery thresholds to avoid notifications for brief interruptions. This example uses a failure threshold of **3** and a recovery threshold of **2**.
-
-| Check | Status | Failure Count | Alert? |
-|-------|--------|---------------|--------|
-| 1 | ❌ Fail | 1/3 | No |
-| 2 | ❌ Fail | 2/3 | No |
-| 3 | ❌ Fail | 3/3 | **Yes - Failure Alert** |
-| 4 | ✅ Pass | 1/2 successes | No |
-| 5 | ✅ Pass | 2/2 successes | **Yes - Recovery Alert** |
-
-**Recommended settings:**
-- **Failure threshold: 2-3** — Balances speed vs. false positives
-- **Recovery threshold: 2** — Confirms service is truly stable
-
-</Accordion>
-</Accordions>
+Failure and recovery thresholds keep brief interruptions quiet: see [Threshold configuration](/docs/app/communicate/alerts#threshold-configuration).
 
 ## Public Status Pages
 
-Communicate service health to your users with branded status pages:
-
-- **Component Management** — Organize services with individual status tracking and linked monitors
-- **Incident Workflow** — Investigating → Identified → Monitoring → Resolved
-- **Scheduled Maintenance** — Publish planned-downtime updates and change their status as work progresses
-- **Subscriber Notifications** — Email, Slack, and webhook updates for incidents and status changes
-- **Custom Branding** — Match your brand with logos, colors, and custom domains
-- **90-Day Uptime History** — Visual uptime charts for transparency
-
-<Accordions>
-<Accordion title="Use cases" id="use-cases">
-
-**For Internal Teams**
-
-- **On-call alerts** — Route critical failures to Slack and PagerDuty
-- **Job results** — Send email notifications for the job outcomes you enable
-- **CI/CD notifications** — Webhook integration with build pipelines
-
-**For External Users**
-
-- **Service status** — Public page showing current system health
-- **Incident updates** — Real-time communication during outages
-- **Maintenance windows** — Advance notice of planned downtime
-- **Subscriber notifications** — Send incident updates when **Notify subscribers** is selected.
-
-</Accordion>
-</Accordions>
+| Capability | Detail |
+|---|---|
+| **Components** | Individual status tracking with linked monitors |
+| **Incidents** | Investigating, Identified, Monitoring, Resolved |
+| **Maintenance** | Scheduled planned-downtime updates with their own status |
+| **Subscribers** | Email, Slack and webhook updates for incidents and status changes |
+| **Branding** | Logos, colors and custom domains |
+| **Uptime** | 90-day uptime history |

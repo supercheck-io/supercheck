@@ -223,6 +223,15 @@ Off by default. Lets Claude, Cursor, VS Code and other [MCP clients](/docs/mcp) 
 Optional: `MCP_DYNAMIC_CLIENT_REGISTRATION=false` accepts only clients with a Client ID Metadata Document.
 
 </Accordion>
+<Accordion title="Migrations behind a connection pooler" id="migration-database-url">
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `MIGRATION_DATABASE_URL` | unset | Optional direct (non-pooled) Postgres URL, used only by the deferred no-transaction migrations such as `CREATE INDEX CONCURRENTLY` |
+
+If `DATABASE_URL` points at PgBouncer or another pooler and this is unset, deferred index builds run without a statement timeout. Set it to a direct connection to the same database to keep the timeout (`DB_DEFERRED_MIGRATION_TIMEOUT_MS`) in force; its own `sslmode` applies. `docker-compose-external.yml` passes it through. The bundled PostgreSQL needs neither.
+
+</Accordion>
 <Accordion title="Status page HTTPS" id="status-page-https">
 
 The app domain gets its certificate automatically (HTTP-01). Status pages are different:
@@ -232,25 +241,40 @@ The app domain gets its certificate automatically (HTTP-01). Status pages are di
 | `<id>.STATUS_PAGE_DOMAIN` (default) | Needs a wildcard certificate for `*.STATUS_PAGE_DOMAIN`. HTTP-01 cannot issue wildcards, so until you enable DNS-01 below, browsers warn on these pages |
 | Custom domain (`status.example.net`) | Not issued automatically. Add your own certificate to Traefik, or put the domain behind a proxy that terminates TLS, such as Cloudflare |
 
-To issue the wildcard certificate with DNS-01, from `deploy/docker`:
+To issue the wildcard certificate with DNS-01, work from `deploy/docker`:
 
-1. Add a wildcard DNS record `*.STATUS_PAGE_DOMAIN` pointing at the server (`STATUS_PAGE_DOMAIN` defaults to your app domain).
-2. Find your DNS provider's code and credential variables in the [Traefik provider list](https://doc.traefik.io/traefik/https/acme/#providers).
-3. Put the credentials in `traefik-dns.env`, which only Traefik reads:
+<Steps>
+<Step>
 
-   ```bash
-   sudo install -m 600 /dev/null traefik-dns.env
-   sudoedit traefik-dns.env    # for example: CF_DNS_API_TOKEN=...
-   ```
+Add a wildcard DNS record `*.STATUS_PAGE_DOMAIN` pointing at the server (`STATUS_PAGE_DOMAIN` defaults to your app domain).
 
-4. Add to `.env`, then apply with `sudo docker compose up -d`:
+</Step>
+<Step>
 
-   ```dotenv
-   COMPOSE_FILE=docker-compose.yml:compose.dns01.yml
-   ACME_DNS_PROVIDER=cloudflare
-   ```
+Find your DNS provider's code and credential variables in the [Traefik provider list](https://doc.traefik.io/traefik/https/acme/#providers), and put the credentials in `traefik-dns.env`, which only Traefik reads:
 
-5. Check `sudo docker compose logs traefik | grep -i acme`, then open `https://<id>.STATUS_PAGE_DOMAIN`.
+```bash
+sudo install -m 600 /dev/null traefik-dns.env
+sudoedit traefik-dns.env    # for example: CF_DNS_API_TOKEN=...
+```
+
+</Step>
+<Step>
+
+Add to `.env`, then apply with `sudo docker compose up -d`:
+
+```dotenv
+COMPOSE_FILE=docker-compose.yml:compose.dns01.yml
+ACME_DNS_PROVIDER=cloudflare
+```
+
+</Step>
+<Step>
+
+Check `sudo docker compose logs traefik | grep -i acme`, then open `https://<id>.STATUS_PAGE_DOMAIN`.
+
+</Step>
+</Steps>
 
 To turn it off, remove both lines from `.env` and run `sudo docker compose up -d`.
 
@@ -268,10 +292,20 @@ sudo bash install.sh --upgrade
 
 Replace `v1.5.0` with the target release. `--upgrade` moves to the script's own release; add `--version <x.y.z>` for a different one, or `--dry-run` to see the plan first. The upgrade:
 
-1. Stops early if tracked files in the installation were edited (keep changes in `.env` instead) or if the target is older than the installed release.
-2. Dumps the database to `/var/backups/supercheck/pre-upgrade-<time>.dump` and keeps a copy of `.env`.
-3. Checks out the release's deployment files, re-runs the sandbox setup, pulls the images and imports the worker image into the sandbox.
-4. Restarts the stack, which applies database migrations, and checks health.
+<Steps>
+<Step>
+Stops early if tracked files in the installation were edited (keep changes in `.env` instead) or if the target is older than the installed release.
+</Step>
+<Step>
+Dumps the database to `/var/backups/supercheck/pre-upgrade-<time>.dump` and keeps a copy of `.env`.
+</Step>
+<Step>
+Checks out the release's deployment files, re-runs the sandbox setup, pulls the images and imports the worker image into the sandbox.
+</Step>
+<Step>
+Restarts the stack, which applies database migrations, and checks health.
+</Step>
+</Steps>
 
 Expect a few minutes of downtime. Upgrade remote workers afterwards ([Multi-Server](/docs/app/deployment/multi-server#upgrade-workers)).
 

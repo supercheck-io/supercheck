@@ -4,34 +4,31 @@ description: Schedule and automate test execution
 icon: CalendarClock
 ---
 
-Jobs let you group tests together and run them automatically on a schedule or trigger them from your CI/CD pipeline. Use jobs to automate regression testing, smoke tests, and continuous validation of your applications.
+Jobs group tests and run them on a schedule, on demand, or from your CI/CD pipeline: nightly regression, post-deploy smoke tests and continuous checks of critical flows.
 
 ![Jobs List](/screenshots/jobs-list.png)
 
 ## What Jobs Do
 
-A job is a collection of tests that run together. When a job executes:
+When a job executes:
 
 <Steps>
 <Step>
-All selected tests run in sequence (Playwright jobs). A k6 performance job runs exactly one test
+
+Selected tests run in sequence (Playwright jobs). A k6 performance job runs exactly one test.
+
 </Step>
 <Step>
-Results are collected and aggregated
+
+Results are collected and aggregated, and reports are generated.
+
 </Step>
 <Step>
-Your selected channels receive notifications for the alert types you enable
-</Step>
-<Step>
-Reports are generated with full details
+
+Your selected channels are notified for the alert types you enable.
+
 </Step>
 </Steps>
-
-**Use jobs for:**
-- **Scheduled regression tests** — Run nightly or hourly to catch issues early
-- **Smoke tests** — Quick validation after deployments
-- **CI/CD integration** — Trigger tests from your build pipeline
-- **Monitoring** — Regular checks of critical user flows
 
 ## Creating a Job
 
@@ -55,13 +52,7 @@ Add a **description** explaining what the job tests (required)
 
 ### Step 2: Select Tests
 
-Choose which tests to include in the job. You can select any combination of:
-- Browser tests (Playwright)
-- API tests
-- Database tests
-- Custom tests
-
-A job can include up to 50 tests. A k6 performance job runs exactly one performance test.
+Pick any mix of browser, API, database and custom tests, up to 50 per job. A k6 performance job runs exactly one performance test.
 
 ![Select Tests](/screenshots/create-job-select-tests.png)
 
@@ -83,7 +74,8 @@ Choose when and how the job runs:
 
 The builder offers hourly and longer periods. Schedules are stored as five-field cron expressions (minute, hour, day of month, month, day of week), so the CLI and API can set any cron down to one minute. Schedules run in UTC.
 
-**Common cron examples:**
+<Accordions>
+<Accordion title="Common cron examples" id="cron-examples">
 
 | Schedule | Cron Expression |
 |----------|-----------------|
@@ -91,6 +83,9 @@ The builder offers hourly and longer periods. Schedules are stored as five-field
 | Every day at midnight | `0 0 * * *` |
 | Every Monday at 9 AM | `0 9 * * 1` |
 | Every 6 hours | `0 */6 * * *` |
+
+</Accordion>
+</Accordions>
 
 <Callout type="info">
 The Jobs list shows your 100 most recently created jobs. A job beyond that is still reachable by its direct link.
@@ -240,34 +235,20 @@ Use a unique key per pipeline, store it as a CI secret, rotate it periodically, 
 
 <Steps>
 <Step>
-Go to **Jobs** list
+
+Open the **Jobs** list and select **Run** on a job.
+
 </Step>
 <Step>
-Click the **Run** button on any job
-</Step>
-<Step>
-View real-time progress in the execution dialog
-</Step>
-<Step>
-Results appear when complete
+
+Follow live progress in the execution dialog; results appear when it completes.
+
 </Step>
 </Steps>
 
 ### Canceling Jobs
 
-You can cancel a running job at any time:
-
-<Steps>
-<Step>
-Click the **Cancel** button on the running job
-</Step>
-<Step>
-Confirm the cancellation
-</Step>
-<Step>
-Review the cancellation status and any partial results in the run details
-</Step>
-</Steps>
+Select **Cancel** on a running job and confirm. Partial results and the cancellation status are in the run details.
 
 Open a run to see its summary, per-test results, reports (screenshots, traces, logs), and history. See [Runs](/docs/app/automate/runs).
 

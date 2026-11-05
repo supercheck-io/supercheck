@@ -4,7 +4,7 @@ description: Store configuration, secrets, and data files securely
 icon: Variable
 ---
 
-Variables let you store configuration values, sensitive credentials, and reusable test data that your tests can access at runtime. Use variables for URLs, timeouts, and settings. Use secrets for API keys, passwords, and tokens that need encryption. Use file variables for CSV datasets, JSON fixtures, YAML/XML configuration, and other text-based test assets.
+Variables give your tests configuration, credentials and test data at runtime.
 
 ![Variables List](/screenshots/variables-list.png)
 
@@ -23,34 +23,34 @@ Use file variables for non-sensitive test data and fixtures. Keep passwords, API
 
 ## Creating Variables
 
-<Tabs items={['Add Variable', 'Add Secret', 'Add File']}>
-<Tab value="Add Variable">
+<Steps>
+<Step>
 
-1. Go to your project's **Variables** page
-2. Click **Add Variable**
-3. Select the **Variable** type (default)
-4. Enter a **key** (e.g., `BASE_URL`)
-5. Enter the **value** (e.g., `https://staging.example.com`)
-6. Optionally add a **description** for your team
-7. Click **Add Variable**
+Open your project's **Variables** page and select **Add Variable**.
+
+</Step>
+<Step>
+
+Choose the **Type**, then enter a **key** and its value.
+
+| Type | Key example | Value |
+|---|---|---|
+| **Variable** (default) | `BASE_URL` | Plain text, e.g. `https://staging.example.com` |
+| **Secret** | `API_KEY` | Text, encrypted and masked |
+| **File** | `TEST_DATA` | Upload CSV, JSON, YAML, XML, TSV or plain text, max 5 MB |
+
+</Step>
+<Step>
+
+Optionally add a **description** for your team, then select **Add Variable**.
+
+</Step>
+</Steps>
 
 ![Add Variable](/screenshots/add-variable.png)
 
-</Tab>
-<Tab value="Add Secret">
-
-1. Go to your project's **Variables** page
-2. Click **Add Variable**
-3. Select the **Secret** type from the Type dropdown
-4. Enter a **key** (e.g., `API_KEY`)
-5. Enter the **value**
-6. Optionally add a **description**
-7. Click **Add Variable**
-
-![Add Secret](/screenshots/add-secret.png)
-
 <Callout type="info">
-Secret values are masked by default in the UI. Users with secret-view permission can reveal an existing value only through the audited reveal action. Changing a secret back to a regular variable requires supplying a replacement value; the update action never decrypts and converts the stored secret implicitly.
+Secret values are masked in the UI. Users with secret-view permission can reveal a value only through the audited reveal action. Converting a secret back to a variable requires a replacement value; the stored secret is never decrypted implicitly.
 </Callout>
 
 <Accordions>
@@ -59,25 +59,12 @@ Secret values are masked by default in the UI. Users with secret-view permission
 At execution time, the worker narrows the injected secret payload when it can reliably identify direct calls such as `getSecret('API_KEY')`. Dynamic keys, aliases, or unsupported source syntax use the project secret set to preserve compatibility. This source-based optimization does not limit which project secrets a test is authorized to request.
 
 </Accordion>
+<Accordion title="Using and rotating file variables" id="file-variables">
+
+In Playwright, `readFile(key)` returns the contents. In k6, use `open(getFile(key))` in the init context, and prefer `SharedArray` for datasets shared across VUs. To rotate a dataset without changing scripts, keep the key and upload a replacement file.
+
+</Accordion>
 </Accordions>
-
-</Tab>
-<Tab value="Add File">
-
-1. Go to your project's **Variables** page
-2. Click **Add Variable**
-3. Select the **File** type
-4. Enter a **key** (e.g., `TEST_DATA`)
-5. Upload a file (CSV, JSON, YAML, XML, TSV, or plain text — max 5 MB)
-6. Optionally add a **description**
-7. Click **Add Variable**
-
-<Callout type="info">
-In Playwright, use `readFile(key)` to read the contents directly. In k6, use `open(getFile(key))` during init context, and prefer `SharedArray` for datasets reused across VUs. To rotate a dataset without changing scripts, keep the same variable key and upload a replacement file.
-</Callout>
-
-</Tab>
-</Tabs>
 
 ## Using Variables in Tests
 

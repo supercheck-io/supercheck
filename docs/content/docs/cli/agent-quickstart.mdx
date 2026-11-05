@@ -54,7 +54,7 @@ For questions about runs, monitors and incidents, connect the [MCP server](/docs
 
 ## Self-hosted
 
-Browser sign-in needs `DEVICE_AUTH_ENABLED=true` on the server. Without it `supercheck login` says so; use `--token` with a CLI token instead.
+Browser sign-in needs `DEVICE_AUTH_ENABLED=true` on the server (default is off). Without it `supercheck login` says so; use `supercheck login --token <token>` or `SUPERCHECK_TOKEN` instead.
 
 ## Guardrails
 
@@ -63,3 +63,11 @@ Browser sign-in needs `DEVICE_AUTH_ENABLED=true` on the server. Without it `supe
 | Person-only actions | Sign-up, payment and plan changes |
 | Review before deploy | Read the `--dry-run` output first; use `--force` only for approved non-interactive runs |
 | Secrets | Keep tokens in environment variables or your CI secret store, never in the repository |
+
+## Next steps
+
+<Cards className="grid-cols-1 sm:grid-cols-3">
+<Card title="Commands" href="/docs/cli/commands">Every command and flag</Card>
+<Card title="CI/CD" href="/docs/cli/ci-cd">Run and deploy from pipelines</Card>
+<Card title="MCP" href="/docs/mcp/connect">Read project data from your agent</Card>
+</Cards>

@@ -57,46 +57,34 @@ Run full Playwright browser tests on a schedule to validate complete user journe
 </Card>
 </Cards>
 
+<Callout type="warn">
+Creating or updating an HTTP, website, ping or port monitor returns `400` when the target is a private, loopback or reserved address, including a hostname that resolves to one. Self-hosted instances can allow these with `ALLOW_INTERNAL_TARGETS=true` (see [Optional configuration](/docs/app/deployment/self-hosted#optional-configuration)).
+</Callout>
+
 ## HTTP Monitor
 
-The most versatile monitor type for APIs and web services.
+Checks availability, status code, response time and body content of APIs and web services.
 
-**What it checks:**
-- HTTP/HTTPS endpoint availability
-- Response status codes (2xx, 3xx, 4xx, 5xx)
-- Response time and latency
-- Response body content (keyword validation)
-- HTTPS connectivity
-
-**Configuration options:**
-- **HTTP Method** — GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS
-- **Custom Headers** — Add authentication tokens, API keys, or custom headers
-- **Request Body** — Send JSON or form data for POST/PUT requests
-- **Authentication** — Basic Auth or Bearer Token support
-- **Expected Status** — Validate specific status codes or ranges
-- **Keyword Validation** — Check for presence or absence of text in response
+| Option | Details |
+|---|---|
+| **HTTP Method** | GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS |
+| **Custom Headers** | Tokens, API keys, any header |
+| **Request Body** | JSON or form data for POST/PUT |
+| **Authentication** | Basic Auth or Bearer Token |
+| **Expected Status** | Specific codes or ranges |
+| **Keyword Validation** | Text must be present or absent in the response |
 
 ![Create HTTP Monitor](/screenshots/create-http-monitor.png)
 
-<Callout type="info">
-Use HTTP monitors for APIs, health check endpoints, and any service that responds to HTTP requests.
-</Callout>
-
 ## Website Monitor
 
-Simplified monitoring for web pages with built-in SSL tracking.
+Web page availability with built-in SSL tracking, for marketing sites, landing pages and public apps.
 
-**What it checks:**
-- Page returns an expected status code (2xx by default)
-- SSL certificate is valid
-- SSL certificate expiration date
-- Optional keyword presence on page
-
-**Best for:**
-- Marketing websites
-- Landing pages
-- Public-facing web applications
-- SSL certificate expiration alerts
+| Checks | Details |
+|---|---|
+| **Status** | Expected status code (2xx by default) |
+| **SSL** | Certificate is valid; expiration date |
+| **Keyword** | Optional text on the page |
 
 Website monitors accept custom headers and Basic or Bearer authentication. The form always sends `GET` with no request body; use an HTTP monitor to send another method or a body.
 
@@ -104,17 +92,7 @@ Website monitors accept custom headers and Basic or Bearer authentication. The f
 
 ## Ping Monitor
 
-TCP reachability monitoring for hosts that do not expose an HTTP endpoint.
-
-**What it checks:**
-- Host is reachable over TCP on port 443 or 80
-- Connection latency (response time)
-
-**Best for:**
-- Server availability
-- Network infrastructure
-- VPN endpoints
-- Internal services
+TCP reachability and connection latency for hosts without an HTTP endpoint, on port 443 or 80. Suited to servers, network infrastructure and VPN endpoints; the host must be reachable from the worker.
 
 ![Create Ping Monitor](/screenshots/create-ping-monitor.png)
 
@@ -124,18 +102,7 @@ Ping monitors use TCP connectivity on ports 443 and 80 rather than ICMP. If the 
 
 ## Port Monitor
 
-Verify that specific services are listening on expected ports.
-
-**What it checks:**
-- TCP or UDP port is open and accepting connections
-- Connection can be established within timeout
-- Service is responding on the specified port
-
-**Best for:**
-- Database servers (PostgreSQL 5432, MySQL 3306)
-- Cache servers (Redis 6379, Memcached 11211)
-- Mail servers (SMTP 25/587, IMAP 993)
-- Custom services on non-standard ports
+Verifies that a TCP or UDP port accepts connections within the timeout, for example databases (5432, 3306), caches (6379, 11211), mail (25, 587, 993) or custom services.
 
 ![Create Port Monitor](/screenshots/create-port-monitor.png)
 
@@ -143,26 +110,25 @@ UDP checks send a packet; a passing result does not confirm that the application
 
 ## Synthetic Monitor
 
-Run full Playwright browser tests on a schedule to validate complete user flows.
+Runs a Playwright browser test on a schedule to validate full user journeys such as login, signup and checkout, including JavaScript-rendered pages and multi-step flows.
 
-**What it checks:**
-- Complete user journeys (login, checkout, form submission)
-- JavaScript-rendered content
-- Multi-step workflows
-- Visual elements and interactions
+<Steps>
+<Step>
 
-**Best for:**
-- Critical user flows (login, signup, checkout)
-- Single-page applications (SPAs)
-- Complex workflows requiring browser interaction
-- End-to-end validation of user experience
+Create a Playwright test in the [Playground](/docs/app/automate/playground) and save it to your project.
 
-**Set up a synthetic monitor:**
-1. Create a Playwright test in the [Playground](/docs/app/automate/playground)
-2. Save the test to your project
-3. Create a Synthetic Monitor and select your test
-4. Set the check interval (minimum 5 minutes)
-5. Supercheck runs your test and reports pass/fail status
+</Step>
+<Step>
+
+Create a **Synthetic Monitor** and select the test.
+
+</Step>
+<Step>
+
+Set the check interval (minimum 5 minutes). Supercheck runs the test and reports pass or fail.
+
+</Step>
+</Steps>
 
 <Accordions>
 <Accordion title="Multi-location synthetic checks" id="multi-location-synthetic">
@@ -173,8 +139,6 @@ When a legacy single queue job runs a synthetic monitor from several locations, 
 </Accordions>
 
 ![Create Synthetic Monitor](/screenshots/create-synthetic-monitor.png)
-
-📚 [Playwright Documentation](https://playwright.dev/docs/intro) — Learn more about writing browser tests
 
 ## Locations
 
@@ -230,7 +194,7 @@ See [How alerts become incidents](/docs/app/investigate/incidents#how-alerts-bec
 
 ## Monitor Details Page
 
-The monitor details page provides comprehensive visibility into your monitor's health, performance, and history.
+Health, performance and history for one monitor.
 
 ![Monitor Details Page](/screenshots/monitor-details.png)
 
@@ -244,13 +208,14 @@ The monitor details page provides comprehensive visibility into your monitor's h
 
 ### AI Analyze
 
-Click **AI Analyze** in the header to generate an AI-powered analysis report for your monitor.
+**AI Analyze** in the header generates a report from your monitor's own data.
 
-**What AI Analyze Provides:**
-- **Health Assessment** — Clear status summary based on actual metrics
-- **Performance Analysis** — Response time trends using your monitor's exact data
-- **Issue Diagnosis** — Suggested causes with available error messages and timestamps
-- **Recommendations** — Actionable next steps based on observed issues (only when problems exist)
+| Section | Content |
+|---|---|
+| **Health Assessment** | Status summary from actual metrics |
+| **Performance Analysis** | Response time trends |
+| **Issue Diagnosis** | Suggested causes with error messages and timestamps |
+| **Recommendations** | Next steps, only when problems exist |
 
 Self-hosted: an administrator must [configure an AI provider](/docs/app/deployment/self-hosted#optional-configuration) first.
 
@@ -271,22 +236,14 @@ Nine key metrics are displayed prominently below the header:
 | **Avg Resp (30d)** | Average response time over the last 30 days |
 | **P95 Resp (30d)** | 95th percentile response time (30d) — long-term performance indicator |
 
-<Callout type="info">
-**P95 Response Time** represents the response time that 95% of your checks complete within. This metric helps identify tail latency issues that averages might hide.
-</Callout>
+**P95** is the response time that 95% of checks complete within, which exposes tail latency that averages hide.
 
-<Accordions>
+</Accordion>
 <Accordion title="How statistics are computed" id="statistics-rollups">
 
-All-locations history uses one combined rollup for each hour or day. For older periods that only have per-location rollups, those location rows are summed instead. Combined and location rows for the same period are never counted together. Each statistics window falls back to retained raw checks only when that window has no rollups; deleted raw history cannot be reconstructed.
+All-locations history uses one combined rollup per hour or day. Older periods that only have per-location rollups are summed instead, and the two are never counted together. A statistics window falls back to retained raw checks only when it has no rollups; deleted raw history cannot be reconstructed.
 
 </Accordion>
-</Accordions>
-
-</Accordion>
-</Accordions>
-
-<Accordions>
 <Accordion title="Availability and response time charts" id="charts">
 
 | Chart | What it shows |
@@ -295,9 +252,6 @@ All-locations history uses one combined rollup for each hour or day. For older p
 | **Response Time Chart** | Interactive line chart of the most recent 100 check results. Hover for the exact response time and timestamp; use it to identify latency spikes, trends, and anomalies, and to spot performance degradation before it impacts users |
 
 </Accordion>
-</Accordions>
-
-<Accordions>
 <Accordion title="Recent check results table" id="check-results">
 
 A paginated table showing detailed results for each check:

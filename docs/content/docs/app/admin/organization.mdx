@@ -4,7 +4,15 @@ description: Manage organization members, projects, and settings
 icon: UserCog
 ---
 
-Use the **Organization** page in the sidebar to manage projects, members, CLI tokens, AI SRE setup, and the audit log.
+Use **Organization** in the sidebar to manage projects, members, CLI tokens, AI SRE setup and the audit log.
+
+| Tab | Use it to |
+|---|---|
+| **Projects** | [Create projects](#projects) and set their incident notifications |
+| **Members** | [Invite teammates](#members) and assign roles |
+| **CLI Tokens** | [Create tokens](#cli-tokens) for automation |
+| **Integrations**, **Private Agents** | [Set up AI SRE](#ai-sre-setup) |
+| **Audit** | [Review who did what](#audit-log) |
 
 ![Organization overview](/screenshots/org-admin-overview.png)
 
@@ -16,23 +24,24 @@ You can accept invitations to projects in other organizations and keep your defa
 
 ## Projects
 
-Only organization owners and admins create and manage projects. Project admins can update their assigned projects through the API, not the UI.
+Only organization owners and admins create and manage projects in the UI. Project admins can update their assigned projects through the API.
 
 ![Projects List](/screenshots/org-admin-projects.png)
 
 <Steps>
 <Step>
 
-### Open the Projects tab
-
-Select **Organization** in the sidebar, then the **Projects** tab.
+Open **Organization** in the sidebar, then the **Projects** tab.
 
 </Step>
 <Step>
 
-### Create the project
+Select **Create Project** and fill in both required fields, then **Save**.
 
-Select **Create Project**. Enter a name (up to 20 characters: letters, numbers, spaces, hyphens, underscores) and a description (up to 100 characters). Both are required. Select **Save**.
+| Field | Limit |
+|---|---|
+| **Name** | Up to 20 characters: letters, numbers, spaces, hyphens, underscores |
+| **Description** | Up to 100 characters |
 
 </Step>
 </Steps>
@@ -40,6 +49,11 @@ Select **Create Project**. Enter a name (up to 20 characters: letters, numbers, 
 ![Create Project](/screenshots/org-admin-create-project.png)
 
 <Accordions>
+<Accordion title="Incident notifications" id="project-incident-notifications">
+
+To set where hand-made and connector incidents are announced, open **Organization → Projects**, use the project's menu, and choose **Incident notifications**. Settings are described under [Incident notifications](/docs/app/investigate/incidents#notifications).
+
+</Accordion>
 <Accordion title="API limits and deletion" id="project-api-limits">
 
 The API accepts longer values: name up to 255 characters, description up to 2000, and an optional slug up to 100. A slug already in use returns a conflict error.
@@ -56,10 +70,18 @@ Invite teammates and assign roles. Roles are described in [Roles & Permissions](
 <Tabs items={['Invite Member', 'Email Invitation', 'Accept Invitation', 'Signup']}>
 <Tab value="Invite Member">
 
-1. Open **Organization** and select the **Members** tab.
-2. Select **Invite Member**.
-3. Enter the email address and choose a role.
-4. Send the invitation.
+<Steps>
+<Step>
+
+Open **Organization** and select the **Members** tab.
+
+</Step>
+<Step>
+
+Select **Invite Member**, enter the email address, choose a role, and send.
+
+</Step>
+</Steps>
 
 ![Invite Member Dialog](/screenshots/org-admin-member-invite-dialog.png)
 
@@ -109,21 +131,15 @@ CLI tokens give project-scoped API access for automation. A token inherits its o
 <Steps>
 <Step>
 
-### Open the CLI Tokens tab
-
-Select **Organization**, then the **CLI Tokens** tab.
+Open **Organization**, then the **CLI Tokens** tab.
 
 </Step>
 <Step>
 
-### Create the token
-
-Select **Create Token**. Enter a name that is unique within the project and, optionally, an expiry date (at least 1 hour ahead, at most 1 year).
+Select **Create Token**. Enter a name unique within the project and, optionally, an expiry date (1 hour to 1 year ahead).
 
 </Step>
 <Step>
-
-### Copy the token
 
 Copy the generated token and store it securely.
 
@@ -134,7 +150,7 @@ A project can have at most 20 active CLI tokens (enabled and not expired). Anyon
 
 ## AI SRE setup
 
-Administrators configure project-level AI SRE from the **Integrations** and **Private Agents** tabs, so responders do not manage setup during an incident. Register services on the top-level **Services** page first. See [AI SRE Setup](/docs/app/admin/ai-sre-setup) for the full flow.
+Administrators configure AI SRE from the **Integrations** and **Private Agents** tabs so responders do not set up during an incident. Register services on the top-level **Services** page first, then follow [AI SRE Setup](/docs/app/admin/ai-sre-setup).
 
 ## Audit log
 

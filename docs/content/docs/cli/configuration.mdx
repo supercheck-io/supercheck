@@ -18,6 +18,9 @@ The CLI rejects unknown keys in typed configuration sections so misspellings sur
 
 ## Full Example
 
+<Accordions>
+<Accordion title="supercheck.config.ts with every section" id="full-example">
+
 ```ts title="supercheck.config.ts"
 import { defineConfig } from '@supercheck/cli'
 
@@ -107,6 +110,9 @@ export default defineConfig({
 })
 ```
 
+</Accordion>
+</Accordions>
+
 ## Precedence
 
 Settings resolve in this order, highest priority first:
@@ -157,19 +163,14 @@ Test files pulled from the cloud use `slug.{uuid}.pw.ts` and `slug.{uuid}.k6.ts`
 
 ## Validate and Deploy
 
-| Command | What it does |
+Validate with `supercheck config validate`, preview with `supercheck diff`, apply with `supercheck deploy` (see [Monitoring-as-Code](/docs/cli/commands#monitoring-as-code) for every flag).
+
+| Behavior | Detail |
 |---|---|
-| `supercheck config validate` | Validate config syntax and schema |
-| `supercheck config print` | Print the resolved configuration (with env var expansion) |
-| `supercheck diff` | Preview changes between config and server state |
-| `supercheck deploy` | Create/update resources; `--dry-run` previews, `--delete` removes remote resources absent from config, `--force` skips confirmation |
-| `supercheck destroy` | Tear down all managed resources; `--dry-run` previews, `--force` confirms |
-
-Resources are reconciled by database `id`. Pulled resources include their `id` (UUID); new resources omit it and are created on deploy. `diff` includes notification provider settings such as webhook `bodyTemplate`, so review it before deploying and keep test scripts as editable source files.
-
-`diff` and `deploy` preserve remote resources absent from config by default. Use `diff --delete` to preview pruning, then `deploy --delete` to apply it. Pruning includes resources created outside this config. `--no-delete` remains supported.
-
-Before sync operations, the CLI verifies configured organization and project IDs or slugs against the authenticated API context, catching config that would point at a different project than the token.
+| Identity | Resources reconcile by database `id`. Pulled resources carry it; new ones omit it and are created |
+| Pruning | Remote resources absent from config are kept. `diff --delete` previews pruning, `deploy --delete` applies it, including resources created outside this config |
+| Context check | The CLI verifies the configured organization and project against the authenticated context before syncing |
+| Review | `diff` includes notification provider settings such as webhook `bodyTemplate` |
 
 ## Schema Reference
 

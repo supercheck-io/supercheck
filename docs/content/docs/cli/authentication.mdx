@@ -44,6 +44,19 @@ Shows your API URL, authenticated project and role. Use `supercheck --json whoam
 </Step>
 </Steps>
 
+```mermaid
+sequenceDiagram
+    participant C as CLI
+    participant S as Supercheck
+    participant B as Browser
+    C->>S: Request device code
+    S-->>C: URL and short code
+    C->>B: Open URL (or print it)
+    B->>S: Sign in, choose project, approve
+    C->>S: Poll (or re-run login)
+    S-->>C: Project-scoped CLI key (90 days)
+```
+
 The key created by browser login is project-scoped, expires after 90 days, and appears under **CLI Tokens** where you can revoke it. Each project holds up to 20 active (enabled and unexpired) CLI tokens, and every browser login creates a new one, so revoke tokens you no longer use. See [`supercheck login`](/docs/cli/commands#supercheck-login) for flags and agent-friendly usage. Signing in to the dashboard in a browser does not authenticate the CLI.
 
 Resetting your account password revokes all your CLI tokens, so sign in again afterwards. Trigger keys are not affected.
@@ -142,7 +155,7 @@ The CLI handles rate limiting with exponential backoff. When the API returns `42
 </Accordion>
 <Accordion title="Self-hosted" id="self-hosted">
 
-Set `SUPERCHECK_URL` or pass `--url` when logging in: `supercheck login --url https://supercheck.yourdomain.com`. If your server does not enable browser login, the command explains how to use `--token`.
+Set `SUPERCHECK_URL` or pass `--url` when logging in: `supercheck login --url https://supercheck.yourdomain.com`. Browser sign-in needs `DEVICE_AUTH_ENABLED=true` on the server (HTTPS or localhost). Without it, `login` explains the setting; create a token in the dashboard and use `supercheck login --token <token>`.
 
 </Accordion>
 </Accordions>

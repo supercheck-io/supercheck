@@ -11,7 +11,7 @@ Requirements keep testable expectations next to the tests that verify them, so y
 Every linked test that has run passed
 </Card>
 <Card icon={<XCircle className="text-red-500" />} title="Failing">
-At least one linked test failed its latest run
+At least one linked test's latest result failed
 </Card>
 <Card icon={<CircleDashed className="text-gray-400" />} title="Missing">
 No linked tests, or none have run yet
@@ -71,7 +71,7 @@ flowchart LR
     L -->|None| M[Missing]
     L -->|Yes| S{Any test run yet?}
     S -->|No| M
-    S -->|Yes| F{Any latest run failed?}
+    S -->|Yes| F{Any linked test's latest result failed?}
     F -->|Yes| X[Failing]
     F -->|No| C[Covered]
 
@@ -84,7 +84,7 @@ flowchart LR
 ```
 
 <Callout type="info">
-Coverage is recalculated only when a **job** finishes. Running a test in the Playground does not change coverage, and monitors are not linked to requirements.
+Coverage is per test: when a job finishes, the worker stores each test's own outcome from the Playwright report in `runs.metadata.testStatuses`. Older runs and k6 performance runs fall back to the status of the whole run. Running a test in the Playground does not change coverage, and monitors are not linked to requirements.
 </Callout>
 
 ## Extract Requirements from a Document

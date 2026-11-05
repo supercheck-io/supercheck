@@ -10,38 +10,6 @@ Notifications tell your team when monitors fail, jobs break, or services recover
 
 **Communicate → Notifications** has two tabs: **Channels**, where you set up where alerts go, and **Delivery history**, which lists the latest 200 alert notifications sent for your monitors and jobs. Each failure alert also opens an incident, unless you turn that off in the check's **Incidents** settings. See [How alerts become incidents](/docs/app/investigate/incidents#how-alerts-become-incidents).
 
-## Alert Workflow
-
-<p className="text-sm md:hidden">Scroll horizontally to view the full diagram.</p>
-
-<div className="overflow-x-auto" role="region" aria-label="Alerts workflow diagram" tabIndex={0}>
-<div className="min-w-[48rem]">
-
-```mermaid
-sequenceDiagram
-    accTitle: Configure and respond to alerts
-    accDescr: Configure and test a channel, attach it, and follow an enabled notification.
-    autonumber
-    participant You as You
-    participant App as Supercheck
-    participant Environment as Your alert channel
-
-    rect rgba(139, 92, 246, 0.08)
-        You->>App: Configure notification channel
-        You->>App: Select Test Connection
-        Environment-->>You: Test notification
-        You->>App: Attach channel and set thresholds
-    end
-    opt An enabled alert condition occurs
-        Environment-->>You: Failure or recovery notification
-        App-->>You: Incident opened (or joined) for the check
-        You->>App: Open linked monitor, run, or incident
-    end
-```
-
-</div>
-</div>
-
 ## Set Up a Channel
 
 <Brands names={["slack", "teams", "discord", "telegram", "webhook"]} />
@@ -64,6 +32,28 @@ Test sends are rate limited per user: email tests allow 5 per 10 minutes and may
 Select the channel in a monitor's or job's **Alert Settings**.
 </Step>
 </Steps>
+
+```mermaid
+sequenceDiagram
+    accTitle: Configure and respond to alerts
+    accDescr: Configure and test a channel, attach it, and follow an enabled notification.
+    autonumber
+    participant You as You
+    participant App as Supercheck
+    participant Environment as Your alert channel
+
+    rect rgba(139, 92, 246, 0.08)
+        You->>App: Configure notification channel
+        You->>App: Select Test Connection
+        Environment-->>You: Test notification
+        You->>App: Attach channel and set thresholds
+    end
+    opt An enabled alert condition occurs
+        Environment-->>You: Failure or recovery notification
+        App-->>You: Incident opened (or joined) for the check
+        You->>App: Open linked monitor, run, or incident
+    end
+```
 
 ## Alert Types
 
@@ -105,11 +95,11 @@ The number of consecutive healthy checks required before sending a recovery aler
 
 SSL expiration warnings are evaluated independently of the monitor's up/down result. Enable **SSL Expiration Alerts** on a website monitor and set its warning window; a warning is sent at most once every 24 hours while the certificate remains within that window.
 
-**Job failures** follow the same rule as monitors: the first alert at the failure threshold, then repeats after every further `max(5, 2 × threshold)` failures, at most 3 alerts per failure streak. A passing run resets the streak.
+**Alert limiting**
 
-**Alert Limiting**
+At most **3 failure alerts** go out per failure streak, for monitors and jobs: the first when the threshold is reached, then reminders after every further `max(5, 2 × threshold)` failures. A passing run resets the streak, and each recovery sends one alert. The interval is not configurable.
 
-At most **3 failure alerts** go out per failure streak: the first when the threshold is reached, then reminders after every further `max(5, 2 × threshold)` failures. Each recovery sends one alert. The interval is not configurable.
+If delivery to a channel fails, the same job run retries that channel later. Channels that already received the alert are not sent it again.
 
 </Tab>
 <Tab value="Example">
@@ -167,50 +157,75 @@ but keep `SMTP_FROM_EMAIL` set.
 </Tab>
 <Tab value="Slack">
 
-1. Go to [Slack API](https://api.slack.com/messaging/webhooks) and create an Incoming Webhook
-2. Select the channel to post to
-3. Copy the webhook URL
-4. Add the URL in Supercheck
-
+<Steps>
+<Step>
+Create an Incoming Webhook in the [Slack API](https://api.slack.com/messaging/webhooks) and select the channel to post to.
+</Step>
+<Step>
+Copy the webhook URL.
+</Step>
+<Step>
+Add the URL in Supercheck.
+</Step>
+</Steps>
 **Example:** `https://hooks.slack.com/services/T00000000/B00000000/XXXX`
 
 </Tab>
 <Tab value="Discord">
 
-1. In Discord, go to **Server Settings → Integrations → Webhooks**
-2. Create a new webhook and select the channel
-3. Copy the webhook URL
-4. Add the URL in Supercheck
-
+<Steps>
+<Step>
+In Discord, go to **Server Settings → Integrations → Webhooks**, create a webhook and select the channel.
+</Step>
+<Step>
+Copy the webhook URL.
+</Step>
+<Step>
+Add the URL in Supercheck.
+</Step>
+</Steps>
 **Example:** `https://discord.com/api/webhooks/000000000000000000/XXXX`
 
 </Tab>
 <Tab value="Telegram">
 
-1. Create a bot with [@BotFather](https://t.me/botfather)
-2. Get your bot token
-3. Get your chat ID (use [@userinfobot](https://t.me/userinfobot))
-4. Add both in Supercheck
-
+<Steps>
+<Step>
+Create a bot with [@BotFather](https://t.me/botfather) and copy its token.
+</Step>
+<Step>
+Get your chat ID (use [@userinfobot](https://t.me/userinfobot)).
+</Step>
+<Step>
+Add both in Supercheck.
+</Step>
+</Steps>
 </Tab>
 <Tab value="Microsoft Teams">
 
 Teams uses Power Automate Workflows to receive webhook notifications.
 
-1. Go to the Teams channel where you want notifications
-2. Click **•••** → **Workflows** → **Create a workflow**
-3. Choose a template:
-   - **Send webhook alerts to a channel** — posts to a Teams channel
-4. Follow the prompts to select the destination channel
-5. Copy the generated webhook URL
-6. Add the URL in Supercheck Notification Channel
+<Steps>
+<Step>
+In the Teams channel, select **•••** → **Workflows** → **Create a workflow**.
+</Step>
+<Step>
+Choose the **Send webhook alerts to a channel** template and select the destination channel.
+</Step>
+<Step>
+Copy the generated webhook URL and add it in Supercheck.
+</Step>
+</Steps>
 
 **Example:** `https://prod-00.westus.environment.api.powerplatform.com:443/powerautomate/...`
 
 Accepted URL hosts (HTTPS only):
-- Power Automate Workflows: `*.powerplatform.com`
-- Azure Logic Apps: `*.logic.azure.com`
-- Legacy Office 365 connectors: `*.webhook.office.com`
+
+| Source | Host |
+|---|---|
+| Power Automate Workflows | `*.powerplatform.com` |
+| Azure Logic Apps | `*.logic.azure.com` |
+| Legacy Office 365 connectors | `*.webhook.office.com` |
 
 Other Microsoft hosts, such as `outlook.office.com` or `*.azurewebsites.net`, are rejected.
 
@@ -227,7 +242,7 @@ Other Microsoft hosts, such as `outlook.office.com` or `*.azurewebsites.net`, ar
 
 Use a publicly reachable HTTPS webhook endpoint (plain HTTP is rejected); private and internal targets are blocked. Enter credentials in the channel settings and use **Test Connection** before relying on delivery.
 
-Because webhook URLs and custom headers are treated as secrets, they are cleared when you reopen an existing channel for editing. Leave a cleared secret blank to keep its existing value, or enter a replacement to change it. The same behavior applies to masked Slack, Teams, Discord, and Telegram credentials. Use **Test Connection** after replacing a credential to confirm it works.
+Webhook URLs, custom headers and other channel credentials are secrets, so they are cleared when you reopen a channel to edit it. Leave one blank to keep its value, or enter a replacement and use **Test Connection**.
 
 ### Webhook Presets
 
@@ -434,13 +449,14 @@ Review the latest 200 alert notifications in **Notifications → Delivery histor
 
 ![Alert History](/screenshots/alert-history.png)
 
-- Alert type and severity
-- Target (monitor or job name)
-- Notification channels used
-- Delivery status
-- The incident the alert belongs to, linked. A sent failure alert with no incident (for example, when incidents are turned off for that check) shows **Open incident** to create one. See [How alerts become incidents](/docs/app/investigate/incidents#how-alerts-become-incidents).
-- Timestamp
-- Delivery correlation metadata for AI SRE, including provider type/preset, dedup key, event action, response status, attempt count, and response hash when available
+| Column | Shows |
+|---|---|
+| **Alert** | Type and severity |
+| **Target** | Monitor or job name |
+| **Channels** | Notification channels used, and delivery status |
+| **Incident** | The incident the alert belongs to, linked. A sent failure alert with no incident (for example, incidents turned off for that check) shows **Open incident** to create one. See [How alerts become incidents](/docs/app/investigate/incidents#how-alerts-become-incidents) |
+| **Time** | When it was sent |
+| **Delivery metadata** | For AI SRE correlation: provider type or preset, dedup key, event action, response status, attempt count and response hash when available |
 
 <Callout type="info">
 Use delivery status and HTTP diagnostics to troubleshoot failed notifications. Raw provider response bodies and credential values are not displayed.

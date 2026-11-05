@@ -4,50 +4,109 @@ description: Record browser interactions as Playwright code and send them to the
 icon: MousePointerClick
 ---
 
-The Supercheck Recorder is a Chrome and Edge extension that turns browser interactions into Playwright code. Review or edit the generated test, then send it to the Supercheck Playground.
+The Supercheck Recorder Chrome and Edge extension turns browser interactions into Playwright code. Review or edit the generated test, then send it to the Supercheck Playground.
+
+```mermaid
+flowchart LR
+    A[Record in the browser] --> B[Review code in side panel]
+    B --> C[Send to Playground]
+    C --> D[Save the test]
+```
 
 ## Install
 
-- [Install from the Chrome Web Store](https://chromewebstore.google.com/detail/supercheck-recorder/gfmbcelfhhfmifdkccnbgdadibdfhioe)
-- [Install from Microsoft Edge Add-ons](https://microsoftedge.microsoft.com/addons/detail/supercheck-recorder/ngmlkgfgmdnfpddohcbfdgihennolnem)
+| Browser | Source |
+|---|---|
+| Chrome | [Chrome Web Store](https://chromewebstore.google.com/detail/supercheck-recorder/gfmbcelfhhfmifdkccnbgdadibdfhioe) |
+| Edge | [Microsoft Edge Add-ons](https://microsoftedge.microsoft.com/addons/detail/supercheck-recorder/ngmlkgfgmdnfpddohcbfdgihennolnem) |
 
-The extension requires Chrome or Edge with Manifest V3 side-panel support. Store builds update automatically; GitHub releases are available for air-gapped or enterprise installs (see [Install without the stores](#install-without-the-stores)).
+The extension requires Chrome or Edge with Manifest V3 side-panel support. Store builds update automatically; GitHub releases cover air-gapped and enterprise installs (see [Install without the stores](#install-without-the-stores)).
 
-## Connect to Supercheck
+## Connect Supercheck
 
-### Supercheck-hosted sites
+### Supercheck-hosted
 
-The extension connects without any setup on these origins:
+The extension connects without setup on these origins:
 
 | Instance | URL |
 |---|---|
 | Supercheck Cloud | `https://app.supercheck.io` |
 | Live demo | `https://demo.supercheck.dev` |
 
-1. Install the extension in the browser profile you use for Supercheck.
-2. Open the instance, sign in, and visit any authenticated dashboard page.
-3. The extension connects automatically — no API key or URL entry required.
+<Steps>
+<Step>
 
-The list is the extension's trust boundary and ships in the extension build. A new first-party host needs the allowlist in `recorder/examples/recorder-crx/src/supercheck/message-security.ts` updated and a new extension release. Until then, add the URL in **Options** as described below.
+Install the extension in the browser profile you use for Supercheck.
 
+</Step>
+<Step>
+
+Open the instance, sign in, and visit any authenticated dashboard page.
+
+</Step>
+<Step>
+
+The extension connects automatically. No API key or URL entry is required.
+
+</Step>
+</Steps>
+
+This list is the extension's trust boundary and ships in the extension build. A new first-party host needs the allowlist in `recorder/examples/recorder-crx/src/supercheck/message-security.ts` updated and a new extension release. Until then, add the URL in **Options** as described under [Self-hosted Supercheck](#self-hosted-supercheck).
+
+{/* The extension's Options page links to #self-hosted-supercheck; keep this heading. */}
 ### Self-hosted Supercheck
 
 Self-hosted deployments are not trusted automatically: saving the URL once is the explicit trust decision, and the extension only talks to that exact origin.
 
-1. Open the extension's **Options** page.
-2. Expand **Self-hosted instance**, enter the HTTPS URL of your deployment and select **Save**.
-3. Sign in to that instance in the same browser profile. The extension connects automatically and stays connected on later visits.
+<Steps>
+<Step>
+
+Open the extension's **Options** page.
+
+</Step>
+<Step>
+
+Expand **Self-hosted instance**, enter the HTTPS URL of your deployment and select **Save**.
+
+</Step>
+<Step>
+
+Sign in to that instance in the same browser profile. The extension connects automatically and stays connected on later visits.
+
+</Step>
+</Steps>
 
 Changing the URL clears the credential saved for the previous instance. Keys are scoped to one instance and are never sent to another host.
 
 ## Record a test
 
-1. Open the originating Supercheck Playground and start a recording for the page you want to test.
-2. Click the Supercheck Recorder icon in the browser toolbar to begin recording, or press `Shift+Alt+R`.
-3. Interact with the page — the side panel displays the generated Playwright code.
-4. Review or edit the code.
-5. Select **Save** in the recorder to insert the code into the originating Supercheck Playground editor.
-6. In the Playground, select **Save** (or **Update**) to persist the test to your project.
+<Steps>
+<Step>
+
+Open the originating Supercheck Playground and start a recording for the page you want to test.
+
+</Step>
+<Step>
+
+Click the Supercheck Recorder icon in the toolbar, or press `Shift+Alt+R`.
+
+</Step>
+<Step>
+
+Interact with the page. The side panel shows the generated Playwright code. Review or edit it.
+
+</Step>
+<Step>
+
+Select **Save** in the recorder to send the code to the originating Playground editor. If the editor has unsaved changes, the Playground asks before replacing them.
+
+</Step>
+<Step>
+
+In the Playground, select **Save** (or **Update**) to persist the test to your project.
+
+</Step>
+</Steps>
 
 Press `Shift+Alt+C` to inspect elements without recording actions.
 
@@ -55,16 +114,34 @@ Press `Shift+Alt+C` to inspect elements without recording actions.
 
 The extension requests debugger, tabs, storage, side-panel, scripting, and HTTP/HTTPS host access to record actions in the selected tab and hand the code to the Playground. Recorded interactions can include text entered into forms, so review generated code before saving and avoid recording real secrets. Treat the browser profile as sensitive: the extension stores its connection details there, so disconnect it before sharing the profile and revoke the key in Supercheck if the profile or device is lost.
 
-The extension injects its page API only on the origins listed under [Supercheck-hosted sites](#supercheck-hosted-sites) and on the instance URL saved in Options. Other pages cannot use the recorder API, read the stored credential, or start a recording.
+The extension injects its page API only on the origins listed under [Connect Supercheck](#connect-supercheck) and on the instance URL saved in Options. Other pages cannot use the recorder API, read the stored credential, or start a recording.
 
 ## Install without the stores
 
 Enterprise and air-gapped environments can install the packaged extension from GitHub releases instead of the Chrome Web Store. The release asset is the same build that is submitted to both stores.
 
-1. Download `supercheck-recorder-v<version>.zip` from [Recorder releases](https://github.com/supercheck-io/supercheck/releases?q=recorder-v).
-2. Unzip it and open `chrome://extensions`.
-3. Enable **Developer mode**, select **Load unpacked**, and choose the unzipped folder.
-4. Pin the extension. Unpacked installs do not auto-update, so repeat this after each recorder release.
+<Steps>
+<Step>
+
+Download `supercheck-recorder-v<version>.zip` from [Recorder releases](https://github.com/supercheck-io/supercheck/releases?q=recorder-v).
+
+</Step>
+<Step>
+
+Unzip it and open `chrome://extensions`.
+
+</Step>
+<Step>
+
+Enable **Developer mode**, select **Load unpacked**, and choose the unzipped folder.
+
+</Step>
+<Step>
+
+Pin the extension. Unpacked installs do not auto-update, so repeat this after each recorder release.
+
+</Step>
+</Steps>
 
 ## Troubleshooting and maintainers
 
@@ -73,7 +150,7 @@ Enterprise and air-gapped environments can install the packaged extension from G
 
 | Problem | Check |
 |---|---|
-| The Record button shows **Install Supercheck Recorder** although the extension is installed | Confirm the page origin is one of the [hosted sites](#supercheck-hosted-sites), or save the instance URL in **Options** and reload the tab |
+| The Record button shows **Install Supercheck Recorder** although the extension is installed | Confirm the page origin is one of the [hosted sites](#connect-supercheck), or save the instance URL in **Options** and reload the tab |
 | Extension is not detected on a self-hosted instance | Open **Options**, save the exact HTTPS origin shown in the Record dialog, reload the tab, then sign in |
 | **Too many connection checks** | The legacy verification endpoint is rate limited. Wait for the shown number of seconds, then reopen Options |
 | Connection fails | Confirm the instance URL uses HTTPS, then sign in and open an authenticated dashboard page in the same browser profile |

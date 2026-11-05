@@ -31,8 +31,8 @@ Some errors include additional context:
 | `200` | Success | — |
 | `201` | Created | Resource created successfully |
 | `400` | Bad Request | Fix the request body or parameters |
-| `401` | Unauthorized | Check token validity and permissions |
-| `403` | Forbidden | Insufficient RBAC permissions |
+| `401` | Unauthorized | Credentials are missing, invalid, expired or revoked. Check the token |
+| `403` | Forbidden | Authenticated but not permitted: RBAC role, project scope, or browser-only operation |
 | `404` | Not Found | Verify the resource ID exists |
 | `409` | Conflict | Duplicate resource (e.g. token name) |
 | `429` | Rate Limited | Wait and retry (see `Retry-After` header) |
@@ -115,7 +115,7 @@ HTTP/1.1 403 Forbidden
 {"error": "Insufficient permissions"}
 ```
 
-**Fix:** The CLI token inherits the creating user's RBAC role. Contact your org admin to adjust permissions.
+**Fix:** The CLI token inherits the creating user's RBAC role and is limited to one project. Ask an org admin to adjust your role, or use a token for the right project. Organization administration needs a browser session.
 
 ### Resource Not Found
 

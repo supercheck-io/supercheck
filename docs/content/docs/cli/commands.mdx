@@ -24,6 +24,20 @@ Every command is `supercheck <group> <command>`. Run `supercheck <command> --hel
 | [Monitoring-as-Code](#monitoring-as-code) | `pull`, `diff`, `deploy`, `destroy` |
 | [Utilities](#utilities) | `health`, `locations`, `upgrade`, `doctor` |
 
+## Common tasks
+
+| I want to | Run | Details |
+|---|---|---|
+| Sign in | `supercheck login` | [Authentication](#authentication) |
+| See what to do next in a repo | `supercheck onboard` | [Authentication](#authentication) |
+| Run tests locally, no account | `supercheck test run --offline --all` | [Tests](#tests) |
+| Preview and publish config | `supercheck diff`, `supercheck deploy --dry-run` | [Monitoring-as-Code](#monitoring-as-code) |
+| Trigger a job from CI | `supercheck job trigger <job-id> --wait` | [Jobs](#jobs) |
+| Check why a run failed | `supercheck run get <run-id>` | [Runs](#runs) |
+| Check monitor health | `supercheck monitor status <monitor-id>` | [Monitors](#monitors) |
+| Work an incident | `supercheck incident list`, `supercheck sre ask "..."` | [AI SRE](#ai-sre) |
+| Diagnose my setup | `supercheck doctor` | [Utilities](#utilities) |
+
 ## Global Flags
 
 Available on all commands, before or after the subcommand:
@@ -220,6 +234,9 @@ Points `supercheck.config.ts` at the organization and project you are logged in 
 | `supercheck validate` | Validate local test scripts using the same rules as Playground | — |
 | `supercheck config print` | Print the resolved configuration with environment variable expansion | `--offline` |
 
+<Accordions>
+<Accordion title="Examples" id="config-examples">
+
 ```bash
 supercheck init
 supercheck init --force              # Overwrite existing config
@@ -232,6 +249,9 @@ supercheck validate
 supercheck config print
 supercheck config print --offline
 ```
+
+</Accordion>
+</Accordions>
 
 `--offline` validates or prints a local-only config without API credentials. Both modes require an existing config file; `--offline` skips cloud project identity checks. `config print` redacts sensitive provider values, including webhook URLs and config headers; monitor URLs remain visible and credential headers are masked.
 
@@ -249,6 +269,9 @@ supercheck config print --offline
 | `job run` | Run a job immediately, bypassing the cron schedule | `--id`, `--local`, `--cloud`, `--offline`, `--playwright-config` |
 | `job trigger <job-id>` | Trigger a job with a trigger key, optionally wait | `--wait`, `--timeout` (300) |
 | `job keys` | List, create and revoke trigger keys | `create --name --expires-in`, `delete` |
+
+<Accordions>
+<Accordion title="Examples" id="jobs-examples">
 
 ```bash
 supercheck job list --page 2 --limit 10
@@ -271,6 +294,9 @@ supercheck --show-secrets job keys create <job-id> --name "CI Trigger"
 supercheck --show-secrets job keys create <job-id> --name "Temp Key" --expires-in 86400
 supercheck job keys delete <job-id> <key-id>
 ```
+
+</Accordion>
+</Accordions>
 
 <Accordions>
 <Accordion title="Job types, status and local runs" id="supercheck-job-run">
@@ -350,6 +376,9 @@ supercheck analytics k6 --left-run <run-id> --right-run <run-id>
 
 Test types: `browser`, `performance`, `api`, `database`, `custom`. Priorities: `low`, `medium`, `high`.
 
+<Accordions>
+<Accordion title="Examples" id="tests-examples">
+
 ```bash
 supercheck test list --search "checkout" --type browser
 supercheck test list --priority high
@@ -374,6 +403,9 @@ supercheck test execute <test-id> --wait --timeout 600
 supercheck test execute <test-id> --location us-east --wait
 supercheck test status <test-id> --idle-timeout 120
 ```
+
+</Accordion>
+</Accordions>
 
 <Callout type="warn">
 Use `supercheck test run --file <path>` for local execution, or `supercheck job trigger <id>` for cloud execution.
@@ -405,6 +437,9 @@ Requirements track what the product must do and which tests prove it. `superchec
 | `requirement coverage [id]` | Coverage for one requirement, or a count per coverage status | — |
 | `requirement export` | Export requirements as CSV to stdout or a file | `--output <file>`, `--force` |
 
+<Accordions>
+<Accordion title="Examples" id="requirements-examples">
+
 ```bash
 supercheck requirement list --priority high --status failing
 supercheck requirement get <requirement-id>
@@ -417,6 +452,9 @@ supercheck requirement coverage
 supercheck requirement export --output requirements.csv
 supercheck requirement delete <requirement-id> --force
 ```
+
+</Accordion>
+</Accordions>
 
 `--tag` and `--test` repeat or take comma-separated values (up to 10 tags of 50 characters, and 100 tests). On `update` they replace the whole set; `--clear-tags` and `--clear-tests` empty it and cannot be combined with them. Requirement tags that do not exist yet are created by the server. `export` refuses to overwrite a file unless you pass `--force`, never writes through a symbolic link, and leaves the file readable only by you. With `--json` and no `--output`, it prints `{ "format": "csv", "content": "..." }`.
 
@@ -439,6 +477,9 @@ Extracting requirements from an uploaded document (PDF, DOCX, Markdown or TXT) w
 | `monitor update <monitor-id>` | Update a monitor | `--name`, `--url`, `--interval-minutes`, `--timeout`, `--method`, `--active`, `--dry-run` |
 | `monitor delete <monitor-id>` | Delete with confirmation | `--force` |
 
+<Accordions>
+<Accordion title="Examples" id="monitors-examples">
+
 ```bash
 supercheck monitor list --page 2 --limit 10
 supercheck monitor results <monitor-id> --page 2 --limit 20
@@ -452,6 +493,9 @@ supercheck monitor update <monitor-id> --interval-minutes 1 --active false
 supercheck monitor update <monitor-id> --name "Updated" --method POST --dry-run
 supercheck monitor delete <monitor-id> --force
 ```
+
+</Accordion>
+</Accordions>
 
 <Accordions>
 <Accordion title="monitor create and update flags" id="supercheck-monitor-create">
@@ -491,6 +535,9 @@ The `--interval` flag (seconds) is deprecated on `monitor create` and `monitor u
 | `var download <key>` | Print a file variable's content, or save it to a new file (owner-only permissions on macOS and Linux) | `--out <path>`, `--force` (overwrite an existing file) |
 | `var delete <key>` | Delete a variable | `--force` |
 
+<Accordions>
+<Accordion title="Examples" id="variables-examples">
+
 ```bash
 supercheck var set API_KEY sk-secret-value --secret
 printf '%s' "$API_KEY" | supercheck var set API_KEY --secret --value-stdin
@@ -499,6 +546,9 @@ supercheck var upload TEST_DATA ./users.csv
 supercheck var download TEST_DATA --out ./users.csv
 supercheck var delete <key> --force
 ```
+
+</Accordion>
+</Accordions>
 
 `--secret` encrypts the value. Prefer `--value-stdin` for secrets so they do not end up in shell history or process arguments.
 
@@ -534,6 +584,9 @@ supercheck tag delete <id> --force    # Skip confirmation
 
 Types: `email`, `slack`, `webhook`, `telegram`, `discord`, `teams`. `--payload` is a JSON object; `--data` and the legacy `--config` are aliases.
 
+<Accordions>
+<Accordion title="Examples" id="notifications-examples">
+
 ```bash
 supercheck notification create --type slack --name "Slack Alerts" \
   --payload '{"webhookUrl":"https://hooks.slack.com/..."}'
@@ -542,6 +595,9 @@ supercheck notification update <id> --type webhook --payload '{...}'
 supercheck notification delete <id> --force
 supercheck notification test --type slack --payload '{"webhookUrl":"https://hooks.slack.com/..."}'
 ```
+
+</Accordion>
+</Accordions>
 
 <Accordions>
 <Accordion title="Updating providers with secret fields" id="supercheck-notification-update">
@@ -671,6 +727,9 @@ These commands are read-only and require `sre_service:view`.
 | `deploy` | Push configuration to the API | `--dry-run`, `--delete`, `--no-delete`, `--force`, `--verify`, `--verify-timeout <seconds>` |
 | `destroy` | Tear down all managed resources defined with IDs in the local config, including notification providers, requirements and status pages | `--dry-run`, `--force` |
 
+<Accordions>
+<Accordion title="Examples" id="mac-examples">
+
 ```bash
 supercheck pull
 supercheck pull --dry-run
@@ -689,6 +748,9 @@ supercheck deploy --force --verify   # Then run each created/updated browser tes
 supercheck destroy --dry-run      # Preview resources to be deleted
 supercheck destroy --force        # Confirm and delete resources
 ```
+
+</Accordion>
+</Accordions>
 
 <Callout type="warn">
 `supercheck destroy` requires `--force` to confirm deletion, or `--dry-run` to preview. Bare `supercheck destroy` errors without `--force`.
@@ -740,6 +802,9 @@ Deploy pushes notification provider config and webhook body templates too. Renam
 | `upgrade` | Upgrade the CLI to the latest release | `--tag <tag>`, `--package-manager <pm>`, `-y, --yes`, `--dry-run` |
 | `doctor` | Check dependencies and configuration | `--strict`, `--fix` |
 
+<Accordions>
+<Accordion title="Examples" id="utilities-examples">
+
 ```bash
 supercheck health
 supercheck health --url https://supercheck.yourdomain.com
@@ -755,6 +820,9 @@ supercheck doctor
 supercheck doctor --strict # Exit non-zero unless deps, config and server-verified credentials are in place
 supercheck doctor --fix    # Auto-install Playwright browsers; prints install hints for other deps
 ```
+
+</Accordion>
+</Accordions>
 
 `upgrade --tag` defaults to `latest` and accepts explicit versions; `--dry-run` previews the upgrade command without executing.
 

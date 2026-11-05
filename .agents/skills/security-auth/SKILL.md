@@ -33,6 +33,7 @@ flowchart LR
 - Permission checks use the effective (impersonated) user, not the admin who started impersonation. Credential-minting and similar sensitive actions must refuse under impersonation (`isImpersonatedSession` in `rbac/middleware.ts`).
 - Credentials whose owning user is suspended or gone must be rejected (`isCredentialOwnerActive`).
 - Return `401` when identity is absent/invalid and `403` when an authenticated identity lacks permission.
+- Permission failures from `AuthError` return `403`, never a hard-coded `401`. Status page unsubscribe links are signed tokens only (the legacy `unsubscribe_token` column was dropped in 0056) and subscriber webhook secrets exist only encrypted (`webhook_secret_encrypted`).
 - Session cookies retain secure, HTTP-only, same-site, domain, expiration, revocation, and proxy-aware behavior.
 - OAuth redirect URLs must exactly match provider configuration. GitHub applications require access to user email; Google requires configured consent and callback URLs.
 
