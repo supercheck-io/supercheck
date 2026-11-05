@@ -1,5 +1,6 @@
 import nodemailer, { type Transporter } from "nodemailer";
 import { partitionRecipients } from "@/lib/email-recipient-policy";
+import { findSuppressedEmails } from "@/lib/email-suppression";
 
 export interface EmailOptions {
   to: string;
@@ -7,6 +8,8 @@ export interface EmailOptions {
   text: string;
   html: string;
   headers?: Record<string, string>;
+  /** Account mail (password reset, verification) is sent even to a previously bounced address. */
+  bypassSuppression?: boolean;
 }
 
 export interface MultiRecipientEmailOptions {
@@ -87,8 +90,9 @@ export class EmailService {
     options: EmailOptions
   ): Promise<{ success: boolean; message: string; error?: string }> {
     // Domains that cannot take mail only bounce (and bounces get the SMTP account blocked); treat as done.
-    if ((await partitionRecipients([options.to])).skipped.length > 0) {
-      return { success: true, message: "Skipped: recipient domain does not accept email" };
+    const lookup = options.bypassSuppression ? undefined : findSuppressedEmails;
+    if ((await partitionRecipients([options.to], lookup)).skipped.length > 0) {
+      return { success: true, message: "Skipped: recipient cannot receive email (bounced or no mail server)" };
     }
     const transporterOrError = this.transporter ?? buildSmtpTransporter();
     if (isSmtpConfigError(transporterOrError)) {
@@ -127,7 +131,7 @@ export class EmailService {
     options: MultiRecipientEmailOptions
   ): Promise<MultiRecipientResult> {
     // Reserved/blocked domains are skipped: neither sent nor failed, so callers don't retry them.
-    const { deliverable, skipped: skippedAddresses } = await partitionRecipients(options.recipients);
+    const { deliverable, skipped: skippedAddresses } = await partitionRecipients(options.recipients, findSuppressedEmails);
     if (deliverable.length === 0) {
       return { sentCount: 0, failedAddresses: [], errors: {}, skippedAddresses };
     }

@@ -65,9 +65,16 @@ async function domainAcceptsMail(domain: string): Promise<boolean> {
   return acceptsMail;
 }
 
-/** Splits recipients into those worth sending to and those that would only bounce. */
+/** Returns the lowercased addresses that are on the bounce suppression list. */
+export type SuppressionLookup = (emails: string[]) => Promise<Set<string>>;
+
+/**
+ * Splits recipients into those worth sending to and those that would only bounce:
+ * reserved or blocked domains, domains without MX, and addresses that hard-bounced before.
+ */
 export async function partitionRecipients(
   recipients: string[],
+  isSuppressed?: SuppressionLookup,
 ): Promise<{ deliverable: string[]; skipped: string[] }> {
   const checkMx = process.env.SMTP_SKIP_MX_CHECK !== 'true';
   const domains = [
@@ -85,11 +92,22 @@ export async function partitionRecipients(
       ),
     ),
   );
+  let suppressed = new Set<string>();
+  if (isSuppressed && recipients.length > 0) {
+    try {
+      suppressed = await isSuppressed(
+        recipients.map((r) => r.trim().toLowerCase()),
+      );
+    } catch {
+      // Fail open: a database hiccup must not drop alerts.
+    }
+  }
   const deliverable: string[] = [];
   const skipped: string[] = [];
   for (const recipient of recipients) {
     const blocked =
       isUndeliverableRecipient(recipient) ||
+      suppressed.has(recipient.trim().toLowerCase()) ||
       acceptsMail.get(recipientDomain(recipient)) === false;
     (blocked ? skipped : deliverable).push(recipient);
   }

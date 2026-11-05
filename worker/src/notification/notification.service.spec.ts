@@ -199,6 +199,34 @@ describe('NotificationService', () => {
         expect(result).toBe(true);
       });
 
+      it('skips addresses on the bounce suppression list', async () => {
+        const nodemailer = require('nodemailer');
+        const sendMail = jest.fn().mockResolvedValue({ messageId: 'm' });
+        (nodemailer.createTransport as jest.Mock).mockReturnValue({
+          verify: jest.fn().mockResolvedValue(true),
+          sendMail,
+        });
+        const where = jest.fn().mockResolvedValue([{ email: 'gone@test.com' }]);
+        const dbService = {
+          db: { select: () => ({ from: () => ({ where }) }) },
+        };
+        const withDb = new NotificationService(
+          module.get(EmailTemplateService),
+          dbService as never,
+        );
+        await withDb.sendNotification(
+          {
+            ...emailProvider,
+            config: { emails: 'Gone@test.com, ok@test.com' },
+          },
+          basePayload,
+        );
+        expect(sendMail).toHaveBeenCalledTimes(1);
+        expect(sendMail).toHaveBeenCalledWith(
+          expect.objectContaining({ to: 'ok@test.com' }),
+        );
+      });
+
       it('never sends to undeliverable or duplicate addresses', async () => {
         const nodemailer = require('nodemailer');
         const sendMail = jest.fn().mockResolvedValue({ messageId: 'm' });

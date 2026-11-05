@@ -1,4 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { inArray } from 'drizzle-orm';
 import { createHash } from 'crypto';
 import * as nodemailer from 'nodemailer';
 import {
@@ -20,6 +21,8 @@ import {
 } from '../common/utils/url-validator';
 import { fetchPublicEndpoint } from '../common/utils/pinned-public-fetch';
 import { partitionRecipients } from '../common/utils/email-recipient-policy';
+import { DbService } from '../db/db.service';
+import { emailSuppressions } from '../db/schema';
 
 // Utility function to safely get error message
 function getErrorMessage(error: unknown): string {
@@ -201,7 +204,10 @@ function clip(value: string, max: number): string {
 export class NotificationService {
   private readonly logger = new Logger(NotificationService.name);
 
-  constructor(private readonly emailTemplateService: EmailTemplateService) {
+  constructor(
+    private readonly emailTemplateService: EmailTemplateService,
+    @Optional() private readonly dbService?: DbService,
+  ) {
     this.logger.log('NotificationService initialized');
   }
 
@@ -760,8 +766,10 @@ export class NotificationService {
         throw new Error('No valid email addresses found');
       }
       // Domains that cannot take mail only bounce; skip them so they never reach SMTP or the retry path.
-      const { deliverable: emailAddresses } =
-        await partitionRecipients(parsedAddresses);
+      const { deliverable: emailAddresses } = await partitionRecipients(
+        parsedAddresses,
+        (emails) => this.findSuppressedEmails(emails),
+      );
       if (emailAddresses.length === 0) {
         this.logger.warn(
           `Skipped email for ${payload.type}: every recipient is on a domain that does not accept email`,
@@ -882,6 +890,16 @@ export class NotificationService {
       default:
         return 'warning';
     }
+  }
+
+  /** Addresses the email provider reported as hard bounces (written by the app's bounce webhook). */
+  private async findSuppressedEmails(emails: string[]): Promise<Set<string>> {
+    if (!this.dbService || emails.length === 0) return new Set();
+    const rows = await this.dbService.db
+      .select({ email: emailSuppressions.email })
+      .from(emailSuppressions)
+      .where(inArray(emailSuppressions.email, emails));
+    return new Set(rows.map((row) => row.email));
   }
 
   private parseEmailAddresses(config: Record<string, unknown>): string[] {

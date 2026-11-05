@@ -7,6 +7,11 @@ jest.mock("node:dns/promises", () => ({
   })),
 }));
 
+const mockFindSuppressed = jest.fn(async (_emails: string[]) => new Set<string>());
+jest.mock("@/lib/email-suppression", () => ({
+  findSuppressedEmails: (emails: string[]) => mockFindSuppressed(emails),
+}));
+
 jest.mock("nodemailer", () => ({
   __esModule: true,
   default: {
@@ -137,6 +142,42 @@ describe("EmailService", () => {
     expect(multi.skippedAddresses).toEqual(["a@example.com"]);
     expect(mockSendMail).toHaveBeenCalledTimes(1);
     expect(mockSendMail).toHaveBeenCalledWith(expect.objectContaining({ to: "ok@test.com" }));
+  });
+
+  it("skips addresses on the bounce suppression list", async () => {
+    const mockSendMail = jest.fn().mockResolvedValue({ messageId: "m" });
+    mockedCreateTransport.mockReturnValue({ verify: jest.fn().mockResolvedValue(true), sendMail: mockSendMail });
+    mockFindSuppressed.mockResolvedValueOnce(new Set(["gone@test.com"]));
+
+    const result = await service.sendEmailToMultiple({
+      recipients: ["Gone@test.com", "ok@test.com"],
+      subject: "Alert",
+      text: "Alert body",
+      html: "<p>Alert body</p>",
+    });
+    expect(result.skippedAddresses).toEqual(["Gone@test.com"]);
+    expect(mockSendMail).toHaveBeenCalledTimes(1);
+    expect(mockSendMail).toHaveBeenCalledWith(expect.objectContaining({ to: "ok@test.com" }));
+  });
+
+  it("sends account mail even to a suppressed address", async () => {
+    const mockSendMail = jest.fn().mockResolvedValue({ messageId: "m" });
+    mockedCreateTransport.mockReturnValue({ verify: jest.fn().mockResolvedValue(true), sendMail: mockSendMail });
+    mockFindSuppressed.mockResolvedValue(new Set(["gone@test.com"]));
+    await service.sendEmail({ to: "gone@test.com", subject: "s", text: "t", html: "<p>t</p>" });
+    expect(mockSendMail).not.toHaveBeenCalled();
+    await service.sendEmail({ to: "gone@test.com", subject: "s", text: "t", html: "<p>t</p>", bypassSuppression: true });
+    expect(mockSendMail).toHaveBeenCalledTimes(1);
+    mockFindSuppressed.mockResolvedValue(new Set());
+  });
+
+  it("still sends when the suppression lookup fails", async () => {
+    const mockSendMail = jest.fn().mockResolvedValue({ messageId: "m" });
+    mockedCreateTransport.mockReturnValue({ verify: jest.fn().mockResolvedValue(true), sendMail: mockSendMail });
+    mockFindSuppressed.mockRejectedValueOnce(new Error("db down"));
+    const result = await service.sendEmail({ to: "ok@test.com", subject: "s", text: "t", html: "<p>t</p>" });
+    expect(result.success).toBe(true);
+    expect(mockSendMail).toHaveBeenCalledTimes(1);
   });
 
   it("returns all recipients as failed when SMTP verification fails", async () => {
