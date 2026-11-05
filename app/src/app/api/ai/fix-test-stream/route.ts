@@ -42,8 +42,15 @@ export async function POST(request: NextRequest) {
   let refundCredit: (() => Promise<void>) | undefined;
   try {
     // Step 1: Input validation and sanitization
-    const body = await request.json();
-    const validatedInput = AISecurityService.validateInputs(body);
+    let validatedInput: ReturnType<typeof AISecurityService.validateInputs>;
+    try {
+      validatedInput = AISecurityService.validateInputs(await request.json());
+    } catch {
+      return NextResponse.json(
+        { success: false, reason: "invalid_request", message: "Invalid request body" },
+        { status: 400 },
+      );
+    }
     const { failedScript, testType, testId } = validatedInput;
 
     // Step 2: Authentication and authorization

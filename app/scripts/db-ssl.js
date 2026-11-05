@@ -1,7 +1,7 @@
 // Migration and seed connections use the same TLS posture as app/worker (worker/src/db/db-ssl.ts).
 // postgres.js ignores ?sslmode= when an ssl option is passed, so it is read here instead.
-function readSslMode() {
-  const connectionString = process.env.DATABASE_URL?.trim();
+function readSslMode(rawUrl) {
+  const connectionString = rawUrl?.trim();
   if (!connectionString) return undefined;
   try {
     const url = new URL(connectionString.replace(/^postgres(ql)?:/i, "http:"));
@@ -11,8 +11,9 @@ function readSslMode() {
   }
 }
 
-function getDatabaseSSLConfig() {
-  const sslMode = readSslMode();
+// connectionString: the URL being connected to (defaults to DATABASE_URL).
+function getDatabaseSSLConfig(connectionString = process.env.DATABASE_URL) {
+  const sslMode = readSslMode(connectionString);
   if (sslMode === "disable") return undefined;
   // postgres.js reads an explicit ssl option instead of ?sslmode=, so keep opportunistic TLS here.
   if (["allow", "prefer"].includes(sslMode)) return "prefer";

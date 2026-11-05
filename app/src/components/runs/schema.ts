@@ -5,6 +5,7 @@ export const runSchema = z.object({
   triggeredByName: z.string().nullable().optional(),
   triggeredByImage: z.string().nullable().optional(),
   triggerKeyName: z.string().nullable().optional(),
+  cronSchedule: z.string().nullable().optional(),
   id: z.string(),
   jobId: z.string(),
   jobName: z.string().optional(),

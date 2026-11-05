@@ -1,4 +1,4 @@
-const { setStatementTimeout, hasNoTransactionMarker, concurrentIndexNames, concurrentIndexes, assertDeferredFileRerunnable } = require("./db-migrate.js");
+const { resolveDeferredTarget, setStatementTimeout, hasNoTransactionMarker, concurrentIndexNames, concurrentIndexes, assertDeferredFileRerunnable } = require("./db-migrate.js");
 
 describe("db-migrate no-transaction files", () => {
   it("detects the file-level marker only as its own comment line", () => {
@@ -45,5 +45,24 @@ describe("setStatementTimeout", () => {
     const unsafe = jest.fn().mockResolvedValue([]);
     await setStatementTimeout({ unsafe }, 90000);
     expect(unsafe).toHaveBeenCalledWith("SET statement_timeout = 90000");
+  });
+});
+
+describe("resolveDeferredTarget", () => {
+  const pooled = "postgresql://u:p@db.example.com:6432/app";
+  it("uses the direct MIGRATION_DATABASE_URL when set, with the timeout", () => {
+    expect(resolveDeferredTarget(pooled, " postgresql://u:p@db.example.com:5432/app ")).toEqual({
+      url: "postgresql://u:p@db.example.com:5432/app",
+      useStatementTimeout: true,
+    });
+  });
+  it("skips the SET when falling back to a pooled URL", () => {
+    for (const url of [pooled, "postgresql://u:p@x-pgbouncer.internal/app", "postgresql://u:p@h/app?pooler=1", "postgresql://u:p@db-pooler.example.com/app"]) {
+      expect(resolveDeferredTarget(url, undefined)).toEqual({ url, useStatementTimeout: false });
+    }
+  });
+  it("still sets the timeout on a non-pooled fallback", () => {
+    const url = "postgresql://u:p@db.example.com:5432/app";
+    expect(resolveDeferredTarget(url, "  ")).toEqual({ url, useStatementTimeout: true });
   });
 });

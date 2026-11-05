@@ -1,5 +1,5 @@
 import type { ColumnDef } from "@tanstack/react-table";
-import { CalendarIcon, ClockIcon, KeyRound } from "lucide-react";
+import { CalendarClock, CalendarIcon, ClockIcon, KeyRound } from "lucide-react";
 
 import { runStatuses, triggerTypes } from "./data";
 import type { TestRun } from "./schema";
@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/popover";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { describeCron } from "@/lib/describe-cron";
 import { PlaywrightLogo } from "@/components/logo/playwright-logo";
 import { K6Logo } from "@/components/logo/k6-logo";
 import {
@@ -205,20 +206,31 @@ export const createColumns = (
     {
       id: "triggeredBy",
       accessorFn: (row) =>
-        row.trigger === "schedule" ? "Schedule" : (row.triggerKeyName ?? row.triggeredByName ?? ""),
+        row.trigger === "schedule"
+          ? (row.cronSchedule ? describeCron(row.cronSchedule) : "Scheduler")
+          : (row.triggerKeyName ?? row.triggeredByName ?? ""),
       header: ({ column }) => (
         <DataTableColumnHeader column={column} title="Triggered by" />
       ),
       cell: ({ row }) => {
         const run = row.original;
         if (run.trigger === "schedule") {
-          return <span className="text-sm text-muted-foreground">Schedule</span>;
+          return (
+            <div
+              className="flex w-[150px] items-center gap-2 text-sm text-muted-foreground"
+              title={run.cronSchedule ? `${run.cronSchedule} (UTC)` : undefined}
+            >
+              <CalendarClock className="h-4 w-4 shrink-0" aria-hidden="true" />
+              <span className="truncate">{run.cronSchedule ? describeCron(run.cronSchedule) : "Scheduler"}</span>
+            </div>
+          );
         }
         if (run.triggerKeyName) {
           return (
-            <div className="flex w-[150px] items-center gap-2 text-sm" title={run.triggeredByName ? `Key owner: ${run.triggeredByName}` : undefined}>
+            <div className="flex w-[180px] items-center gap-2 text-sm" title={run.triggeredByName ? `API key · ${run.triggeredByName}` : "API key"}>
               <KeyRound className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
               <span className="truncate">{run.triggerKeyName}</span>
+              {run.triggeredByName ? <UserCell name={run.triggeredByName} image={run.triggeredByImage} compact avatarClassName="size-5" className="ml-auto shrink-0" /> : null}
             </div>
           );
         }

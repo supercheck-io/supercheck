@@ -98,6 +98,7 @@ export async function GET(request: NextRequest) {
           jobId: runs.jobId,
           jobName: jobs.name,
           jobType: jobs.jobType,
+          cronSchedule: jobs.cronSchedule,
           status: runs.status,
           durationMs: runs.durationMs,
           startedAt: runs.startedAt,

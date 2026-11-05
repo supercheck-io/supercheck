@@ -75,4 +75,13 @@ describe("streaming AI Fix artifact access", () => {
       { Bucket: jobId ? process.env.S3_K6_JOB_BUCKET_NAME || "k6-job-artifacts" : process.env.S3_K6_TEST_BUCKET_NAME || "k6-test-artifacts", Key: "latest-run-id/report/summary.json" },
     ]);
   });
+  it.each([["streaming", POST], ["regular", fixTest]] as const)("returns 400, not 500, for malformed or invalid %s fix input", async (_name, post) => {
+    jest.mocked(jest.requireMock("@/lib/ai/ai-security").AISecurityService.validateInputs).mockImplementationOnce(() => { throw new Error("Invalid failedScript parameter"); });
+    const invalid = await post(new NextRequest("http://localhost/api/ai/fix-test", { method: "POST", body: JSON.stringify({ testId: "t", testType: "browser", failedScript: 5 }) }));
+    expect(invalid.status).toBe(400);
+    expect(await invalid.json()).toEqual({ success: false, reason: "invalid_request", message: "Invalid request body" });
+    const malformed = await post(new NextRequest("http://localhost/api/ai/fix-test", { method: "POST", body: "{not json" }));
+    expect(malformed.status).toBe(400);
+    expect(AuthService.validateUserAccess).not.toHaveBeenCalled();
+  });
 });

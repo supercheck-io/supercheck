@@ -34,6 +34,8 @@ name: supercheck
 # YAML anchors for shared configuration
 x-common-env: &common-env # Database Configuration - External PostgreSQL
   DATABASE_URL: ${DATABASE_URL}
+  # Optional direct (non-pooled) URL for deferred index migrations when DATABASE_URL is a pooler.
+  MIGRATION_DATABASE_URL: ${MIGRATION_DATABASE_URL:-}
   DB_HOST: ${DB_HOST}
   DB_PORT: ${DB_PORT:-5432}
   DB_USER: ${DB_USER}
