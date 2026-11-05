@@ -3,6 +3,9 @@ import { Resolver } from 'node:dns/promises';
 // Short and single-try: a dead resolver must not stall a send (lookup errors fail open).
 const resolver = new Resolver({ timeout: 2000, tries: 1 });
 
+const isSelfHosted = () =>
+  process.env.SELF_HOSTED === 'true' || process.env.SELF_HOSTED === '1';
+
 // Keep in sync with app/src/lib/email-recipient-policy.ts.
 /**
  * Domains that can never receive mail (RFC 2606 / RFC 6761 / RFC 7505 null MX).
@@ -10,13 +13,6 @@ const resolver = new Resolver({ timeout: 2000, tries: 1 });
  */
 const RESERVED_DOMAINS = ['example.com', 'example.net', 'example.org'];
 const RESERVED_TLDS = ['example', 'invalid', 'test', 'localhost'];
-
-function configuredBlockedDomains(): string[] {
-  return (process.env.SMTP_BLOCKED_RECIPIENT_DOMAINS ?? '')
-    .split(',')
-    .map((domain) => domain.trim().toLowerCase().replace(/^\.+/, ''))
-    .filter(Boolean);
-}
 
 const matchesDomain = (domain: string, blocked: string) =>
   domain === blocked || domain.endsWith(`.${blocked}`);
@@ -31,9 +27,7 @@ export function isUndeliverableRecipient(email: string): boolean {
   // Dotless hosts (an internal relay on a self-hosted install) are allowed, except the reserved names.
   const tld = domain.slice(domain.lastIndexOf('.') + 1);
   if (RESERVED_TLDS.includes(tld)) return true;
-  return [...RESERVED_DOMAINS, ...configuredBlockedDomains()].some((blocked) =>
-    matchesDomain(domain, blocked),
-  );
+  return RESERVED_DOMAINS.some((blocked) => matchesDomain(domain, blocked));
 }
 
 const MX_CACHE_TTL_MS = 10 * 60 * 1000;
@@ -76,7 +70,8 @@ export async function partitionRecipients(
   recipients: string[],
   isSuppressed?: SuppressionLookup,
 ): Promise<{ deliverable: string[]; skipped: string[] }> {
-  const checkMx = process.env.SMTP_SKIP_MX_CHECK !== 'true';
+  // Cloud only: a self-hosted relay may deliver to internal domains that publish no MX.
+  const checkMx = !isSelfHosted();
   const domains = [
     ...new Set(
       recipients
@@ -93,7 +88,7 @@ export async function partitionRecipients(
     ),
   );
   let suppressed = new Set<string>();
-  if (isSuppressed && recipients.length > 0) {
+  if (isSuppressed && checkMx && recipients.length > 0) {
     try {
       suppressed = await isSuppressed(
         recipients.map((r) => r.trim().toLowerCase()),

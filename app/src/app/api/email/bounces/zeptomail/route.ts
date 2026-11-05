@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createLogger } from "@/lib/logger/index";
+import { isCloudHosted } from "@/lib/feature-flags";
 import { suppressEmail } from "@/lib/email-suppression";
 import { parseZeptoMailBounces, verifyZeptoMailWebhook } from "@/lib/zeptomail-webhook";
 
@@ -35,11 +36,12 @@ const logger = createLogger({ module: "zeptomail-bounce-webhook" }) as {
 /**
  * ZeptoMail bounce webhook. Hard bounces go on the suppression list, so the address is never
  * mailed again; soft bounces are only logged (the provider retries those itself).
- * Disabled (404) until ZEPTOMAIL_WEBHOOK_KEY is set to the mail agent's Authentication Key.
+ * Cloud only; 404 unless ZEPTOMAIL_WEBHOOK_KEY (the mail agent's Authentication Key) is set.
  */
 export async function POST(request: Request) {
+  // Supercheck Cloud only; self-hosted installs bring their own SMTP provider.
   const key = process.env.ZEPTOMAIL_WEBHOOK_KEY?.trim();
-  if (!key) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (!isCloudHosted() || !key) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const length = Number(request.headers.get("content-length") ?? 0);
   if (length > MAX_BODY_BYTES) return NextResponse.json({ error: "Payload too large" }, { status: 413 });

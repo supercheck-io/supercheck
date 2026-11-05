@@ -205,9 +205,6 @@ x-common-env: &common-env # Database Configuration
   SMTP_PASSWORD: ${SMTP_PASSWORD:-}
   SMTP_SECURE: ${SMTP_SECURE:-false}
   SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-}
-  SMTP_BLOCKED_RECIPIENT_DOMAINS: ${SMTP_BLOCKED_RECIPIENT_DOMAINS:-}
-  SMTP_SKIP_MX_CHECK: ${SMTP_SKIP_MX_CHECK:-false}
-  ZEPTOMAIL_WEBHOOK_KEY: ${ZEPTOMAIL_WEBHOOK_KEY:-}
 
   # ==========================================================================
   # AI Features Configuration (AI Fix, AI Create, AI Analyze)

@@ -14,10 +14,6 @@ jest.mock("node:dns/promises", () => ({
 const dnsError = (code: string) => Object.assign(new Error(code), { code });
 
 describe("isUndeliverableRecipient", () => {
-  afterEach(() => {
-    delete process.env.SMTP_BLOCKED_RECIPIENT_DOMAINS;
-  });
-
   it.each([
     "a@example.com",
     "a@sub.example.org",
@@ -36,18 +32,11 @@ describe("isUndeliverableRecipient", () => {
     },
   );
 
-  it("blocks configured domains and their subdomains", () => {
-    process.env.SMTP_BLOCKED_RECIPIENT_DOMAINS = " e2e-test.supercheck.io , .qa.example ";
-    expect(isUndeliverableRecipient("x@e2e-test.supercheck.io")).toBe(true);
-    expect(isUndeliverableRecipient("x@a.e2e-test.supercheck.io")).toBe(true);
-    expect(isUndeliverableRecipient("x@supercheck.io")).toBe(false);
-  });
-
   describe("partitionRecipients", () => {
     beforeEach(() => {
       clearRecipientMxCache();
       mockResolveMx.mockReset();
-      delete process.env.SMTP_SKIP_MX_CHECK;
+      delete process.env.SELF_HOSTED;
     });
 
     it("skips domains with no MX, a null MX, or no DNS entry", async () => {
@@ -74,10 +63,18 @@ describe("isUndeliverableRecipient", () => {
       expect(mockResolveMx).toHaveBeenCalledTimes(1);
     });
 
-    it("skips the MX lookup when disabled or for dotless hosts", async () => {
-      process.env.SMTP_SKIP_MX_CHECK = "true";
-      await expect(partitionRecipients(["a@nomx.dev"])).resolves.toEqual({ deliverable: ["a@nomx.dev"], skipped: [] });
-      delete process.env.SMTP_SKIP_MX_CHECK;
+    it("self-hosted: no MX lookup and no suppression lookup, reserved domains still skipped", async () => {
+      process.env.SELF_HOSTED = "true";
+      const lookup = jest.fn(async () => new Set(["a@nomx.dev"]));
+      await expect(partitionRecipients(["a@nomx.dev", "b@x.invalid"], lookup)).resolves.toEqual({
+        deliverable: ["a@nomx.dev"],
+        skipped: ["b@x.invalid"],
+      });
+      expect(mockResolveMx).not.toHaveBeenCalled();
+      expect(lookup).not.toHaveBeenCalled();
+    });
+
+    it("never looks up MX for dotless hosts", async () => {
       await expect(partitionRecipients(["ops@corp"])).resolves.toEqual({ deliverable: ["ops@corp"], skipped: [] });
       expect(mockResolveMx).not.toHaveBeenCalled();
     });

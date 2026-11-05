@@ -147,28 +147,6 @@ SMTP_PASSWORD=your-api-key
 If your SMTP server does not require auth, leave `SMTP_USER` and `SMTP_PASSWORD` empty,
 but keep `SMTP_FROM_EMAIL` set.
 
-Supercheck skips recipients that would only bounce, which keeps your bounce rate down:
-reserved domains (`example.com`, `example.net`, `example.org`, and anything under `.example`,
-`.invalid`, `.test` or `.localhost`) and domains whose DNS has no MX record, a null MX, or no
-entry at all. A domain with only an A record counts as having no MX. MX answers are cached for
-10 minutes, and a DNS error or timeout never blocks a send. Set
-`SMTP_SKIP_MX_CHECK=true` if your relay delivers to internal domains that publish no MX. To skip
-more domains, list them in `SMTP_BLOCKED_RECIPIENT_DOMAINS` (comma-separated; subdomains are
-included):
-
-```bash
-SMTP_BLOCKED_RECIPIENT_DOMAINS=qa.yourdomain.com
-```
-
-If you send through ZeptoMail, also turn on bounce suppression. In the mail agent, set an
-Authentication Key and add a webhook for **Hard bounce** pointing to
-`https://<your-app>/api/email/bounces/zeptomail`, then set the same key as
-`ZEPTOMAIL_WEBHOOK_KEY`. Every hard-bounced address is then added to a suppression list and is
-never emailed alerts again. Password reset and verification emails still go through, so a
-user is never locked out. A suppression expires 90 days after the last bounce. To lift one
-earlier, delete the row: `DELETE FROM email_suppressions WHERE email = 'user@example.org';`.
-Requests without a valid signature are rejected.
-
 **Supported providers:** Resend, SendGrid, Mailgun, Amazon SES, Gmail, Office 365
 
 </Accordion>

@@ -27,6 +27,13 @@ describe("POST /api/email/bounces/zeptomail", () => {
   });
   afterAll(() => {
     delete process.env.ZEPTOMAIL_WEBHOOK_KEY;
+    delete process.env.SELF_HOSTED;
+  });
+
+  it("is disabled on self-hosted installs", async () => {
+    process.env.SELF_HOSTED = "true";
+    expect((await POST(request(event("hardbounce", "a@b.io")))).status).toBe(404);
+    delete process.env.SELF_HOSTED;
   });
 
   it("is disabled without a configured key", async () => {
