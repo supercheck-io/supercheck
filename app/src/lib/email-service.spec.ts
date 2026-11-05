@@ -88,6 +88,7 @@ describe("EmailService", () => {
       errors: {
         "bad@test.com": "Recipient rejected",
       },
+      skippedAddresses: [],
     });
     expect(mockSendMail).toHaveBeenCalledTimes(3);
     expect(mockSendMail).toHaveBeenNthCalledWith(
@@ -102,6 +103,34 @@ describe("EmailService", () => {
       3,
       expect.objectContaining({ to: "third@test.com" }),
     );
+  });
+
+  it("never hands undeliverable recipients to SMTP", async () => {
+    const mockSendMail = jest.fn().mockResolvedValue({ messageId: "msg-1" });
+    mockedCreateTransport.mockReturnValue({
+      verify: jest.fn().mockResolvedValue(true),
+      sendMail: mockSendMail,
+    });
+
+    const single = await service.sendEmail({
+      to: "nobody@example.invalid",
+      subject: "Hi",
+      text: "Hi",
+      html: "<p>Hi</p>",
+    });
+    expect(single).toEqual(expect.objectContaining({ success: true }));
+
+    const multi = await service.sendEmailToMultiple({
+      recipients: ["a@example.com", "ok@test.com"],
+      subject: "Alert",
+      text: "Alert body",
+      html: "<p>Alert body</p>",
+    });
+    expect(multi.sentCount).toBe(1);
+    expect(multi.failedAddresses).toEqual([]);
+    expect(multi.skippedAddresses).toEqual(["a@example.com"]);
+    expect(mockSendMail).toHaveBeenCalledTimes(1);
+    expect(mockSendMail).toHaveBeenCalledWith(expect.objectContaining({ to: "ok@test.com" }));
   });
 
   it("returns all recipients as failed when SMTP verification fails", async () => {
@@ -124,6 +153,7 @@ describe("EmailService", () => {
         "first@test.com": "Connection failed",
         "second@test.com": "Connection failed",
       },
+      skippedAddresses: [],
     });
   });
 });

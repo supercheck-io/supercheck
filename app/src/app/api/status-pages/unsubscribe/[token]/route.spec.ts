@@ -31,6 +31,15 @@ describe("one-click unsubscribe (RFC 8058)", () => {
     expect((await call(form, {})).status).toBe(200);
   });
 
+  it("answers 429 with Retry-After when rate limited, so the mailbox provider retries", async () => {
+    (unsubscribeFromStatusPage as jest.Mock).mockResolvedValue({ success: false, rateLimited: true, retryAfter: 600 });
+    const res = await call("List-Unsubscribe=One-Click", {
+      "content-type": "application/x-www-form-urlencoded",
+    });
+    expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBe("600");
+  });
+
   it("rejects other bodies without unsubscribing", async () => {
     const res = await call("List-Unsubscribe=Nope", {
       "content-type": "application/x-www-form-urlencoded",

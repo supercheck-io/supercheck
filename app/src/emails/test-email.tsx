@@ -27,8 +27,8 @@ export const TestEmail = ({
         <Section style={infoBox}>
           <Text style={infoTitle}>Email Details</Text>
           <Text style={infoText}>
-            • Status: Delivered Successfully
-            <br />• Timestamp: {new Date().toLocaleString()}
+            • Status: Sent
+            <br />• Sent at: {new Date().toUTCString()}
           </Text>
         </Section>
 

@@ -1,3 +1,7 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 jest.mock('node:dns/promises', () => ({
   lookup: jest.fn().mockResolvedValue([{ address: '10.0.0.5', family: 4 }]),
 }));
@@ -199,6 +203,198 @@ describe('private agent connector execution', () => {
         }),
       }),
     );
+  });
+
+  it('clips and redacts oversized Datadog titles and source URLs to the result schema limits', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        events: [
+          {
+            id: 7,
+            title: `leak dd_api_secret_value ${'x'.repeat(900)}`,
+            url: `https://app.datadoghq.com/e?k=dd_api_secret_value&${'y'.repeat(2000)}`,
+          },
+        ],
+      }),
+    });
+
+    const result = await executePrivateAgentConnectorJob({
+      ...baseJob,
+      credential: {
+        credentialType: 'api_key',
+        value: { apiKey: 'dd_api_secret_value', applicationKey: 'dd_app' },
+      },
+      jobSpec: {
+        ...baseJob.jobSpec,
+        connectorType: 'datadog',
+        endpointUrl: 'https://api.datadoghq.com',
+        query: 'service:checkout',
+      },
+    });
+
+    const [evidence] = result.evidence;
+    expect(evidence.title.length).toBeLessThanOrEqual(500);
+    expect(evidence.sourceUri.length).toBeLessThanOrEqual(1000);
+    expect(JSON.stringify(result.evidence)).not.toContain(
+      'dd_api_secret_value',
+    );
+  });
+
+  it('redacts a Datadog secret that straddles the 180-character text cut', async () => {
+    const secret = 'straddle_secret_value';
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        events: [{ id: 8, title: 't', text: `${'a'.repeat(170)}${secret}` }],
+      }),
+    });
+
+    const result = await executePrivateAgentConnectorJob({
+      ...baseJob,
+      credential: {
+        credentialType: 'api_key',
+        value: { apiKey: secret, applicationKey: 'dd_app' },
+      },
+      jobSpec: {
+        ...baseJob.jobSpec,
+        connectorType: 'datadog',
+        endpointUrl: 'https://api.datadoghq.com',
+        query: 'service:checkout',
+      },
+    });
+
+    expect(result.evidence[0].summary).not.toContain(secret.slice(0, 10));
+  });
+
+  it('redacts the trimmed form of a credential stored with surrounding whitespace', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        events: [{ id: 9, title: 'echo trimmed_key_value', text: 'x' }],
+      }),
+    });
+
+    const result = await executePrivateAgentConnectorJob({
+      ...baseJob,
+      credential: {
+        credentialType: 'api_key',
+        value: { apiKey: '  trimmed_key_value\n', applicationKey: 'dd_app' },
+      },
+      jobSpec: {
+        ...baseJob.jobSpec,
+        connectorType: 'datadog',
+        endpointUrl: 'https://api.datadoghq.com',
+        query: 'service:checkout',
+      },
+    });
+
+    expect(JSON.stringify(result.evidence)).not.toContain('trimmed_key_value');
+  });
+
+  it('redacts numeric secrets and tolerates a credential with a lone surrogate', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        data: {
+          result: [
+            {
+              stream: { pin: '98765432' },
+              values: [['1782120000000000000', 'error']],
+            },
+          ],
+        },
+      }),
+    });
+
+    const result = await executePrivateAgentConnectorJob({
+      ...baseJob,
+      credential: {
+        credentialType: 'bearer_token',
+        value: { secret: 98765432, note: 'bad\uD800' },
+      },
+      jobSpec: {
+        ...baseJob.jobSpec,
+        connectorType: 'loki',
+        endpointUrl: 'https://loki.internal',
+        query: '{app="checkout"}',
+      },
+    } as unknown as Parameters<typeof executePrivateAgentConnectorJob>[0]);
+
+    expect(result.evidence[0].summary).not.toContain('98765432');
+  });
+
+  it('clips and redacts Loki label summaries and source URLs', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        data: {
+          result: [
+            {
+              stream: { auth: 'loki_secret_value', big: 'z'.repeat(3000) },
+              values: [
+                ['1782120000000000000', 'error: boom'],
+                ['1782120001000000000', 'error: boom'],
+              ],
+            },
+          ],
+        },
+      }),
+    });
+
+    const result = await executePrivateAgentConnectorJob({
+      ...baseJob,
+      credential: {
+        credentialType: 'bearer_token',
+        value: { secret: 'loki_secret_value' },
+      },
+      jobSpec: {
+        ...baseJob.jobSpec,
+        connectorType: 'loki',
+        endpointUrl: 'https://loki.internal',
+        // At the 500-char job query cap, URL encoding pushes the URI past 1000 and the clip drops &ts=.
+        query: `{app="checkout"} |= "${'" | "'.repeat(95)}"`.slice(0, 500),
+      },
+    });
+
+    const [first, second] = result.evidence;
+    expect(first.summary.length).toBeLessThanOrEqual(2000);
+    expect(first.sourceUri.length).toBeLessThanOrEqual(1000);
+    expect(first.summary).not.toContain('loki_secret_value');
+    // Same text, different timestamps: the ids must stay distinct after the URI is clipped.
+    expect(first.sourceUri).toBe(second.sourceUri);
+    expect(first.id).not.toBe(second.id);
+  });
+
+  it('redacts the URL-encoded form of a credential in an Elasticsearch source URI and _id title', async () => {
+    const secret = 'es+secret/value=';
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        hits: { hits: [{ _id: `doc-${secret}`, _index: 'logs', _source: {} }] },
+      }),
+    });
+
+    const result = await executePrivateAgentConnectorJob({
+      ...baseJob,
+      credential: { credentialType: 'bearer_token', value: { secret } },
+      jobSpec: {
+        ...baseJob.jobSpec,
+        connectorType: 'elasticsearch',
+        endpointUrl: 'https://es.internal',
+        query: 'level:error',
+      },
+    });
+
+    const serialized = JSON.stringify(result.evidence);
+    expect(serialized).not.toContain(secret);
+    expect(serialized).not.toContain(encodeURIComponent(secret));
   });
 
   it('executes Loki jobs and flattens log streams into bounded evidence', async () => {
@@ -748,6 +944,34 @@ describe('private agent connector execution', () => {
 
     await expect(exchangeRegistrationToken(config)).resolves.toBe(config);
     expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('refuses to spend the registration token when the credential file cannot be written', async () => {
+    // A regular file as the parent directory fails for every user, root included.
+    const dir = mkdtempSync(join(tmpdir(), 'pa-cred-'));
+    const blocker = join(dir, 'not-a-dir');
+    writeFileSync(blocker, '');
+    const config: PrivateAgentConfig = {
+      apiUrl: 'https://app.supercheck.io',
+      agentId: '018f0000-0000-7000-8000-000000000001',
+      token: 'scpa_registration',
+      tokenSource: 'env',
+      credentialFile: join(blocker, 'private-agent-token'),
+      agentVersion: '1.3.6',
+      retryIntervalMs: 5_000,
+      leaseWaitMs: 25_000,
+      heartbeatIntervalMs: 30_000,
+    };
+    global.fetch = jest.fn();
+
+    try {
+      await expect(exchangeRegistrationToken(config)).rejects.toThrow(
+        /is not writable/,
+      );
+      expect(global.fetch).not.toHaveBeenCalled();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

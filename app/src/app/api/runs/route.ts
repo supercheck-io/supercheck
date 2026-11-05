@@ -7,6 +7,7 @@ import { requireAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-con
 import { isUuid } from '@/lib/uuid';
 import { loadCreators } from "@/lib/creators";
 import { RUN_CANCELLATION_MARKER } from "@/lib/cancellation-service";
+import { runReportPath } from "@/lib/run-report-url";
 
 export async function GET(request: NextRequest) {
   try {
@@ -177,6 +178,7 @@ export async function GET(request: NextRequest) {
         ...withoutTriggeredByUserId(run),
         triggeredByName: creatorOf(run.triggeredByUserId).createdByName,
         triggeredByImage: creatorOf(run.triggeredByUserId).createdByImage,
+        reportUrl: runReportPath(run.id, run.reportUrl),
         duration: computeDuration(),
         startedAt: run.startedAt ? run.startedAt.toISOString() : null,
         completedAt: run.completedAt ? run.completedAt.toISOString() : null,

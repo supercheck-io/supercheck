@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { render } from '@react-email/render';
 import { MonitorAlertEmail } from '../emails/monitor-alert';
+import { PLAIN_TEXT_RENDER_OPTIONS } from '../emails/base-layout';
 
 /**
  * Email Template Service
@@ -17,7 +18,7 @@ interface RenderedEmail {
   text: string;
 }
 
-type AlertType = 'failure' | 'success' | 'warning';
+type AlertType = 'failure' | 'success' | 'recovery' | 'warning';
 type Field = { title: string; value: string };
 
 interface AlertParams {
@@ -36,6 +37,16 @@ const COLOR_SUCCESS = '#10b981';
 const COLOR_FAILURE = '#dc2626';
 const COLOR_WARNING = '#f59e0b';
 const JOB_FOOTER = 'Supercheck Job Monitoring';
+
+/** 1s, 59s, 1m 05s, 1h 02m. */
+export const formatDuration = (totalSeconds: number): string => {
+  const seconds = Math.max(0, Math.round(totalSeconds));
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60)
+    return `${minutes}m ${String(seconds % 60).padStart(2, '0')}s`;
+  return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, '0')}m`;
+};
 
 const escapeHtml = (s: string) =>
   s
@@ -62,7 +73,7 @@ export class EmailTemplateService {
       return {
         subject: params.title,
         html: await render(component, { pretty: false }),
-        text: await render(component, { plainText: true }),
+        text: await render(component, PLAIN_TEXT_RENDER_OPTIONS),
       };
     } catch (error) {
       this.logger.error(
@@ -83,7 +94,7 @@ export class EmailTemplateService {
     const fields: Field[] = [
       { title: 'Job Name', value: params.jobName },
       { title: 'Status', value: 'Failed' },
-      { title: 'Duration', value: `${params.duration} seconds` },
+      { title: 'Duration', value: formatDuration(params.duration) },
     ];
     if (params.errorMessage) {
       fields.push({ title: 'Error', value: params.errorMessage });
@@ -110,7 +121,7 @@ export class EmailTemplateService {
     const fields: Field[] = [
       { title: 'Job Name', value: params.jobName },
       { title: 'Status', value: 'Success' },
-      { title: 'Duration', value: `${params.duration} seconds` },
+      { title: 'Duration', value: formatDuration(params.duration) },
     ];
     this.pushRunFields(fields, params);
     return this.renderMonitorAlertEmail({
@@ -133,12 +144,12 @@ export class EmailTemplateService {
     const fields: Field[] = [
       { title: 'Job Name', value: params.jobName },
       { title: 'Status', value: 'Timeout' },
-      { title: 'Duration', value: `${params.duration} seconds` },
+      { title: 'Duration', value: formatDuration(params.duration) },
     ];
     this.pushRunFields(fields, params);
     return this.renderMonitorAlertEmail({
       title: `Job Timeout - ${params.jobName}`,
-      message: `Job "${params.jobName}" timed out after ${params.duration} seconds. No ping received within expected interval.`,
+      message: `Job "${params.jobName}" timed out after ${formatDuration(params.duration)}. No ping received within expected interval.`,
       fields,
       footer: JOB_FOOTER,
       type: 'warning',
@@ -153,7 +164,7 @@ export class EmailTemplateService {
   ): void {
     if (p.runId) fields.push({ title: 'Run ID', value: p.runId });
     if (p.dashboardUrl) {
-      fields.push({ title: '🔗 Job Details', value: p.dashboardUrl });
+      fields.push({ title: 'Job details', value: p.dashboardUrl });
     }
   }
 

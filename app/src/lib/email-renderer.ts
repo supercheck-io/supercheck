@@ -22,6 +22,7 @@ import {
   UsageNotificationEmail,
   TrialNotificationEmail,
   trialNotificationSubject,
+  PLAIN_TEXT_RENDER_OPTIONS,
   type TrialNotificationKind,
 } from "@/emails";
 import {
@@ -48,7 +49,7 @@ export async function renderPasswordResetEmail(params: {
   return {
     subject: "Reset your Supercheck password",
     html: await render(component, { pretty: false }),
-    text: await render(component, { plainText: true }),
+    text: await render(component, PLAIN_TEXT_RENDER_OPTIONS),
   };
 }
 
@@ -65,7 +66,7 @@ export async function renderEmailVerificationEmail(params: {
   return {
     subject: "Verify your email address - Supercheck",
     html: await render(component, { pretty: false }),
-    text: await render(component, { plainText: true }),
+    text: await render(component, PLAIN_TEXT_RENDER_OPTIONS),
   };
 }
 
@@ -83,7 +84,7 @@ export async function renderOrganizationInvitationEmail(params: {
   return {
     subject: `You're invited to join ${params.organizationName} on Supercheck`,
     html: await render(component, { pretty: false }),
-    text: await render(component, { plainText: true }),
+    text: await render(component, PLAIN_TEXT_RENDER_OPTIONS),
   };
 }
 
@@ -101,7 +102,7 @@ export async function renderStatusPageVerificationEmail(params: {
   return {
     subject: `${t.emailSubjectVerify} ${params.statusPageName}`,
     html: await render(component, { pretty: false }),
-    text: await render(component, { plainText: true }),
+    text: await render(component, PLAIN_TEXT_RENDER_OPTIONS),
   };
 }
 
@@ -120,7 +121,7 @@ export async function renderStatusPageWelcomeEmail(params: {
   return {
     subject: `${t.emailSubjectWelcome} ${params.statusPageName}`,
     html: await render(component, { pretty: false }),
-    text: await render(component, { plainText: true }),
+    text: await render(component, PLAIN_TEXT_RENDER_OPTIONS),
   };
 }
 
@@ -149,7 +150,7 @@ export async function renderIncidentNotificationEmail(params: {
   return {
     subject: `[${translatedStatus.toLocaleUpperCase(locale)}] ${params.incidentName} - ${params.statusPageName}`,
     html: await render(component, { pretty: false }),
-    text: await render(component, { plainText: true }),
+    text: await render(component, PLAIN_TEXT_RENDER_OPTIONS),
   };
 }
 
@@ -170,7 +171,7 @@ export async function renderMonitorAlertEmail(params: {
   return {
     subject: params.title,
     html: await render(component, { pretty: false }),
-    text: await render(component, { plainText: true }),
+    text: await render(component, PLAIN_TEXT_RENDER_OPTIONS),
   };
 }
 
@@ -185,7 +186,7 @@ export async function renderTestEmail(params?: {
   return {
     subject: "Test Email from Supercheck",
     html: await render(component, { pretty: false }),
-    text: await render(component, { plainText: true }),
+    text: await render(component, PLAIN_TEXT_RENDER_OPTIONS),
   };
 }
 
@@ -226,7 +227,7 @@ export async function renderUsageNotificationEmail(params: {
       subjectMap[params.notificationType] ||
       `Usage Alert - ${params.organizationName}`,
     html: await render(component, { pretty: false }),
-    text: await render(component, { plainText: true }),
+    text: await render(component, PLAIN_TEXT_RENDER_OPTIONS),
   };
 }
 
@@ -244,7 +245,7 @@ export async function renderTrialNotificationEmail(params: {
   return {
     subject: trialNotificationSubject(params.kind, params.organizationName, params.daysRemaining),
     html: await render(component, { pretty: false }),
-    text: await render(component, { plainText: true }),
+    text: await render(component, PLAIN_TEXT_RENDER_OPTIONS),
   };
 }
 
@@ -260,6 +261,6 @@ export async function renderIncidentUpdateEmail(
   return {
     subject: `[${params.severity.toUpperCase()}] ${incidentUpdateHeadline(params.event, params.actorName, params.assigneeName)}: #${params.incidentNumber} ${params.title}`,
     html: await render(component, { pretty: false }),
-    text: await render(component, { plainText: true }),
+    text: await render(component, PLAIN_TEXT_RENDER_OPTIONS),
   };
 }
