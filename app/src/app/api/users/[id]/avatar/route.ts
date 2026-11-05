@@ -5,6 +5,7 @@ import { db } from "@/utils/db";
 import { member, user } from "@/db/schema";
 import { getCurrentUser } from "@/lib/session";
 import { isUuid } from "@/lib/uuid";
+import { isSuperAdmin } from "@/lib/rbac/super-admin";
 import { AVATAR_CONTENT_TYPES, avatarVersionOf, getAvatar, type AvatarExt } from "@/lib/user-avatar";
 
 export const dynamic = "force-dynamic";
@@ -18,8 +19,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const viewer = await getCurrentUser();
   if (!viewer) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
 
-  // Visible to the owner and to people who share an organization with them.
-  if (viewer.id !== id) {
+  // Visible to the owner, to super admins (admin user lists) and to people who share an organization with them.
+  if (viewer.id !== id && !(await isSuperAdmin(viewer.id))) {
     const theirs = alias(member, "their_member");
     const [shared] = await db
       .select({ id: member.id })
@@ -27,7 +28,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       .innerJoin(theirs, eq(theirs.organizationId, member.organizationId))
       .where(and(eq(member.userId, viewer.id), eq(theirs.userId, id)))
       .limit(1);
-    if (!shared) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    // 404, not 403: a user in no shared organization must not be confirmable by id.
+    if (!shared) return notFound();
   }
 
   // The object key comes from the stored profile, never from the request.

@@ -5,6 +5,8 @@ import { isOAuthEndpointDenied, withReachableEndpointsOnly } from "@/lib/mcp/htt
 import { isMcpServerEnabled } from "@/lib/mcp/config";
 import { prepareMcpOAuthRequest } from "@/lib/mcp/request-policy";
 import { isCredentialOwnerActive } from "@/lib/security/credential-owner";
+import { isImpersonatedSession } from "@/lib/rbac/middleware";
+import { getCachedAuthSession } from "@/lib/session-cache";
 
 const handlers = toNextJsHandler(auth);
 
@@ -14,19 +16,16 @@ const allowedOrganizationReads = new Set(["list"]);
 
 function decodedPath(request: Request): string | null {
   try {
-    return decodeURIComponent(new URL(request.url).pathname).replace(/\/+$/, "");
+    // Decode once, then collapse repeated slashes so "/api/auth//x" cannot dodge an exact-path rule.
+    return decodeURIComponent(new URL(request.url).pathname).replace(/\/{2,}/g, "/").replace(/\/+$/, "");
   } catch {
     return null;
   }
 }
 
 function organizationPolicyError(request: Request) {
-  let path: string;
-  try {
-    path = decodeURIComponent(new URL(request.url).pathname).replace(/\/+$/, "");
-  } catch {
-    return NextResponse.json({ error: "Invalid request path" }, { status: 400 });
-  }
+  const path = decodedPath(request);
+  if (path === null) return NextResponse.json({ error: "Invalid request path" }, { status: 400 });
   // The api-key plugin would let any signed-in user mint keys directly (any prefix, no RBAC, no limits, no
   // audit trail). Keys are created only through the application's own routes.
   if (path === "/api/auth/api-key" || path.startsWith("/api/auth/api-key/")) {
@@ -45,15 +44,32 @@ function organizationPolicyError(request: Request) {
   }
 }
 
+// An impersonating super admin acts as the user for support, but must not touch credentials, linked provider
+// tokens, sessions or the account itself: the effects would outlive the impersonation. Default-deny: only what
+// the impersonation UI needs is reachable (the app's own /api/auth/* routes and /api/admin/stop-impersonation
+// are separate route files and unaffected).
+const impersonationAllowed = new Set(["get-session", "sign-out", "admin/stop-impersonating"]);
+
+async function impersonationPolicyError(request: Request) {
+  const path = decodedPath(request);
+  const endpoint = path?.startsWith("/api/auth/") ? path.slice("/api/auth/".length) : null;
+  if (!endpoint || impersonationAllowed.has(endpoint)) return;
+  // Anonymous callers fall through so Better Auth keeps answering 401 (and sign-in/OAuth flows are untouched).
+  if (!(await getCachedAuthSession())) return;
+  if (await isImpersonatedSession()) {
+    return NextResponse.json({ error: "impersonation_not_allowed" }, { status: 403 });
+  }
+}
+
 export async function POST(request: Request) {
-  const denied = organizationPolicyError(request);
+  const denied = organizationPolicyError(request) ?? (await impersonationPolicyError(request));
   if (denied) return denied;
   const prepared = isMcpServerEnabled() ? await prepareMcpOAuthRequest(request) : request;
   return prepared instanceof Response ? prepared : handlers.POST(prepared);
 }
 
 export async function GET(request: Request) {
-  const denied = organizationPolicyError(request);
+  const denied = organizationPolicyError(request) ?? (await impersonationPolicyError(request));
   if (denied) return denied;
   const prepared = isMcpServerEnabled() ? await prepareMcpOAuthRequest(request) : request;
   if (prepared instanceof Response) return prepared;

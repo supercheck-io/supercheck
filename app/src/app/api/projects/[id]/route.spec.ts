@@ -1,6 +1,14 @@
 /** @jest-environment node */
 import { NextRequest } from "next/server";
-jest.mock("@/lib/rbac/middleware", () => ({ hasPermissionForUser: jest.fn() }));
+const mockStanding = { value: true };
+jest.mock("@/lib/rbac/middleware", () => ({
+  hasPermissionForUser: jest.fn(),
+  // Stands in for the real helper: 403 for an org member, 404 for a caller with no standing in the org.
+  forbiddenOrNotFound: jest.fn(async (_u: string, _o: string, forbidden: string, notFound: string) => {
+    const { NextResponse } = jest.requireActual("next/server");
+    return mockStanding.value ? NextResponse.json({ error: forbidden }, { status: 403 }) : NextResponse.json({ error: notFound }, { status: 404 });
+  }),
+}));
 jest.mock("@/lib/auth-context", () => ({ requireUserAuthContext: jest.fn(), isAuthError: jest.fn() }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 jest.mock("@/lib/job-scheduler", () => ({ deleteScheduledJob: jest.fn().mockResolvedValue(true) }));
@@ -36,6 +44,7 @@ const project = (status = "active") => ({
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockStanding.value = true;
   (requireUserAuthContext as jest.Mock).mockResolvedValue({ userId: "u1" });
   (hasPermissionForUser as jest.Mock).mockResolvedValue(true);
   (db.select as jest.Mock).mockReturnValue(project());
@@ -73,6 +82,23 @@ describe("PUT /api/projects/[id]", () => {
   it("denies callers without project:update", async () => {
     (hasPermissionForUser as jest.Mock).mockResolvedValue(false);
     expect((await put({ name: "x" })).status).toBe(403);
+  });
+
+  it("answers 404, not 403, for a project in an organization the caller is not in", async () => {
+    (hasPermissionForUser as jest.Mock).mockResolvedValue(false);
+    mockStanding.value = false;
+    expect((await put({ name: "x" })).status).toBe(404);
+  });
+});
+
+describe("cross-tenant GET and DELETE", () => {
+  it.each([["GET", GET], ["DELETE", DELETE]] as const)("%s answers 404 without standing and 403 for a member", async (_n, handler) => {
+    (hasPermissionForUser as jest.Mock).mockResolvedValue(false);
+    (db.select as jest.Mock).mockReturnValue(project());
+    const call = () => handler(new NextRequest(`http://localhost/api/projects/${ID}`), { params: Promise.resolve({ id: ID }) });
+    expect((await call()).status).toBe(403);
+    mockStanding.value = false;
+    expect((await call()).status).toBe(404);
   });
 });
 

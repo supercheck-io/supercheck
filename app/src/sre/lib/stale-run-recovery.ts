@@ -10,7 +10,7 @@ const logger = createLogger({ module: "sre-stale-run-recovery" }) as {
 
 // An investigation is capped at 90s of agent time (120s hard limit); a run
 // still "running" well past that lost its process (crash, deploy, restart).
-const STALE_RUN_AFTER_MS = 5 * 60_000;
+export const STALE_RUN_AFTER_MS = 5 * 60_000;
 
 /**
  * Releases the one-active-run reservation of a run whose process died, so the
@@ -27,7 +27,7 @@ export async function failStaleSreInvestigationRunsForIncident(input: {
     .set({
       status: "failed",
       completedAt: sql`now()`,
-      durationMs: sql<number>`GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (now() - ${sreInvestigationRuns.startedAt})) * 1000)::integer)`,
+      durationMs: sql<number>`LEAST(2147483647, GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (now() - ${sreInvestigationRuns.startedAt})) * 1000)))::integer`,
       agentStateSnapshot: {
         mode: "sre_investigation_recovery",
         error: "Investigation did not finish. Try again.",

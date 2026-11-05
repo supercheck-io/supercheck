@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSystemStats, requireAdmin } from '@/lib/admin';
+import { adminDeniedResponse } from '@/lib/admin-errors';
 
 export async function GET() {
   try {
@@ -12,6 +13,8 @@ export async function GET() {
       data: stats
     });
   } catch (error) {
+    const denied = adminDeniedResponse(error);
+    if (denied) return denied;
     console.error('Admin stats GET error:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to fetch system statistics' },

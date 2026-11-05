@@ -56,7 +56,7 @@ Registered only when the connection holds the scope. Calls are recorded in the a
 | `investigate_incident` | `mcp:sre` | investigate incidents | `incidentId`, `useLiveConnectors`, `guidance` | Starts a full investigation. Live connectors also need connector investigate permission |
 | `generate_incident_brief` | `mcp:sre` | investigate incidents | `incidentId` | Generates an evidence brief |
 
-The write tools behave like the dashboard: notifications and timelines are the same. The `mcp:sre` tools use AI credits and apply the same checks as the dashboard (AI SRE enabled, plan, daily AI limit, rate limits). They return `accepted: true` at once; poll `list_investigations` with `incidentId`, then `get_investigation`. A Copilot chat is not available over MCP.
+The write tools behave like the dashboard: notifications and timelines are the same. The `mcp:sre` tools use AI credits and apply the same checks as the dashboard (AI SRE enabled, plan, daily AI limit, rate limits). They return `accepted: true` at once, or `conflict` if a run of that kind is already in progress; poll `list_investigations` with `incidentId`, then `get_investigation`. A Copilot chat is not available over MCP.
 
 <Accordions>
 <Accordion title="Paging" id="paging">
@@ -74,7 +74,7 @@ List tools accept `limit` (1 to 50, default 20) and `cursor`. When more results 
 | `rate_limited`, `daily_limit`, `subscription_required`, `unavailable`, `feature_disabled` | An `mcp:sre` start was refused by the same limits and plan checks as the dashboard |
 | `invalid`, `conflict` | An incident write was refused (for example an assignee who cannot act on incidents) |
 
-Invalid arguments (an `id` that is not a UUID, or a `limit` outside 1 to 50) return a validation error. Connection-level problems return HTTP errors instead, each as a JSON-RPC error with the code in `error.data.code`: `400` (`parse_error` when the body is not JSON, `batch_too_large` over 20 calls), `401` (sign in again), `403` (`access_denied` when access was removed, `invalid_request_origin`, or `insufficient_scope`), `404` (MCP is off), `405` (only POST is accepted), `413` (request over 1 MB), `429` (`rate_limited` or `too_many_concurrent_requests`, with `Retry-After`), `500` (`server_error`), `503` (`rate_limiter_unavailable` or `server_unavailable`, with `Retry-After` when the server can say when to retry).
+Invalid arguments (an `id` that is not a UUID, or a `limit` outside 1 to 50) return a validation error. Connection-level problems return HTTP errors instead, each as a JSON-RPC error with the code in `error.data.code`: `400` (`parse_error` when the body is not JSON, `invalid_request` for an empty batch, `batch_too_large` over 20 calls), `401` (`invalid_token` when the token is expired or invalid, with `error="invalid_token"` in `WWW-Authenticate`: sign in again), `403` (`access_denied` when access was removed, `invalid_request_origin`, or `insufficient_scope`), `404` (MCP is off), `405` (only POST is accepted; `Allow: POST`), `413` (request over 1 MB), `429` (`rate_limited` or `too_many_concurrent_requests`, with `Retry-After`), `500` (`server_error`), `503` (`rate_limiter_unavailable` or `server_unavailable`, with `Retry-After` when the server can say when to retry).
 
 `get_incident` takes the incident `id` from `list_incidents`, not the incident number.
 

@@ -84,3 +84,38 @@ it("re-notifies only unacknowledged, open, recent incidents past their policy ti
   expect(await renotifyUnacknowledgedIncidents()).toBe(0);
   expect(notifyIncidentEvent).toHaveBeenCalledTimes(1);
 });
+
+it("gives the claim back when a send throws, and keeps going with the rest", async () => {
+  await client`UPDATE sre_incidents SET renotified_at = NULL WHERE id = ${ids.due}`;
+  const extra = randomUUID();
+  await incident(7, extra, policyProject, 46);
+  notifyIncidentEvent.mockClear().mockRejectedValueOnce(new Error("provider down")).mockResolvedValueOnce(true);
+  expect(await renotifyUnacknowledgedIncidents()).toBe(2);
+  const rows = await client`SELECT id, renotified_at FROM sre_incidents WHERE id IN (${ids.due}, ${extra})`;
+  // Oldest first: the thrown send is released for the next tick, the other stays claimed.
+  expect(rows.find((r) => r.id === extra)?.renotified_at).toBeNull();
+  expect(rows.find((r) => r.id === ids.due)?.renotified_at).not.toBeNull();
+  await client`DELETE FROM sre_incidents WHERE id = ${extra}`;
+  notifyIncidentEvent.mockReset().mockResolvedValue(undefined);
+});
+
+it("sends at most 50 reminders per tick, in batches", async () => {
+  await client`UPDATE sre_incidents SET renotified_at = now() WHERE project_id = ${policyProject}`;
+  const batch: string[] = [];
+  for (let i = 0; i < 60; i++) {
+    const id = randomUUID();
+    batch.push(id);
+    await incident(100 + i, id, policyProject, 40);
+  }
+  notifyIncidentEvent.mockClear();
+  // Recorded inside the mock: an expect there would be swallowed by the send try/catch.
+  let claimedBeforeFirstSend = Infinity;
+  notifyIncidentEvent.mockImplementationOnce(async () => {
+    const [row] = await client`SELECT count(*)::int AS n FROM sre_incidents WHERE id = ANY(${batch}::uuid[]) AND renotified_at IS NOT NULL`;
+    claimedBeforeFirstSend = row.n;
+  });
+  expect(await renotifyUnacknowledgedIncidents()).toBe(50);
+  expect(claimedBeforeFirstSend).toBeLessThanOrEqual(10);
+  expect(notifyIncidentEvent).toHaveBeenCalledTimes(50);
+  expect(await renotifyUnacknowledgedIncidents()).toBe(10);
+});

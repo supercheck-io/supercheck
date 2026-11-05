@@ -51,7 +51,7 @@ sequenceDiagram
 
 In your Cloud or self-hosted dashboard, select the project and open **Settings → Organization → Private Agents → Register agent**. Keep project scope selected unless the agent must serve other projects.
 
-Copy the **Agent ID** and **Registration token**. The dialog also shows the environment variables (`PRIVATE_AGENT_ID`, `PRIVATE_AGENT_TOKEN`, `SUPERCHECK_API_URL`) and the Compose file name. Start the agent within **15 minutes**, before the token expires.
+Copy the **Agent ID** and **Registration token**, and start the agent within **15 minutes**, before the token expires.
 
 </Step>
 <Step>
@@ -120,17 +120,13 @@ Link the connector's service to an incident and run an investigation with **Incl
 
 ## Agent status and options
 
-The agent sends a heartbeat every 30 seconds. Supercheck shows it as disconnected when none arrives for 90 seconds.
-
 | Status | Meaning |
 |---|---|
 | **pending** | Registered or rotated, not connected yet |
 | **connected** | Heartbeats are arriving |
 | **disconnected** | No heartbeat for 90 seconds |
-| **unhealthy** | Connected, but it reported a problem. Also shown as disconnected once heartbeats stop |
-| **disabled** | Turned off, permanently. Queued and in-flight jobs fail with `agent_disabled`, the token stops working, and the agent cannot be rotated or revived. Register a new agent to replace it |
-
-Rotating a token revokes the old credential and returns the agent to **pending** until it connects with the new one.
+| **unhealthy** | Connected, but it reported a problem |
+| **disabled** | Turned off permanently; register a new agent to replace it |
 
 <Callout type="warn">
 Preserve the `private-agent-state` volume; do not use `down -v` during maintenance.
@@ -139,20 +135,7 @@ Preserve the `private-agent-state` volume; do not use `down -v` during maintenan
 <Accordions>
 <Accordion title="Token expired or credential revoked" id="credential-revoked">
 
-If the registration token expires, choose **Rotate token** (not available while a super admin is impersonating a user), replace it in `.env`, and recreate the agent within 15 minutes with the start command above.
-
-When Supercheck keeps rejecting the agent's credential (after a rotation or after the agent was disabled), the agent logs `Private Agent credential revoked or agent disabled` and exits with a non-zero code. Run it under a restart policy (for example `restart: unless-stopped`) so the exit is visible to your monitoring and the agent restarts after it exits. A restart does not reload `PRIVATE_AGENT_TOKEN` from `.env`: to use a new token, edit `.env` and recreate the container (for example `docker compose up -d private-agent`), or register a replacement agent.
-
-</Accordion>
-<Accordion title="Tuning variables" id="tuning-variables">
-
-The defaults suit most installs.
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `PRIVATE_AGENT_LEASE_WAIT_MS` | `25000` | How long one request waits for a job (up to 25 seconds) |
-| `PRIVATE_AGENT_RETRY_INTERVAL_MS` | `5000` | Delay before retrying after an error |
-| `PRIVATE_AGENT_HEARTBEAT_INTERVAL_MS` | `30000` | Heartbeat interval. Keep it well under 90 seconds |
+Choose **Rotate token**, put the new token in `.env`, and recreate the container within 15 minutes (`docker compose up -d private-agent`); a plain restart does not reload `.env`. A revoked agent logs `Private Agent credential revoked or agent disabled` and exits.
 
 </Accordion>
 <Accordion title="Connector limits and MCP servers" id="connector-limits">
@@ -165,7 +148,7 @@ Loopback addresses such as `localhost` and cloud metadata endpoints (AWS, GCP, A
 | Any other connector response | Over 10 MiB fails the query |
 | Job result sent back by the agent | 1 MiB |
 
-Private Agents are also the only way to use an [MCP server](/docs/app/investigate/connectors#mcp-servers-private-agent-only) inside your network. The agent connects over Streamable HTTP, applies the same endpoint policy as other connectors, and runs only tools you allowlisted. Discovery and tool calls run as agent jobs, so the agent must be connected. Each agent reports the connector types it supports; Supercheck sends it only those, and asks you to upgrade an older agent before it can run newer types such as MCP, Jira or Confluence.
+Private Agents are also the only way to use an [MCP server](/docs/app/investigate/connectors#mcp-servers-private-agent-only) inside your network; the agent runs only tools you allowlisted. Upgrade older agents to use newer connector types such as MCP, Jira or Confluence.
 
 </Accordion>
 </Accordions>

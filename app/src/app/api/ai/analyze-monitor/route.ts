@@ -60,9 +60,19 @@ async function getTestReportContent(testReportS3Url: string): Promise<string | n
 export async function POST(request: NextRequest) {
   let refundCredit: (() => Promise<void>) | undefined;
   try {
-    // Step 1: Parse and validate input
-    const body = await request.json();
-    const { monitorId } = validateRequest(body);
+    // Step 1: Parse and validate input. Invalid input is a 400, never a 500; an anonymous caller still gets 401.
+    const body = await request.json().catch(() => null);
+    let input: ReturnType<typeof validateRequest>;
+    try {
+      input = validateRequest((body ?? {}) as Record<string, unknown>);
+    } catch {
+      await AuthService.validateUserAccess(request, "");
+      return NextResponse.json(
+        { success: false, reason: "invalid_request", message: "Invalid request body" },
+        { status: 400 },
+      );
+    }
+    const { monitorId } = input;
 
     // Step 2: Authentication and authorization
     const session = await AuthService.validateUserAccess(request, monitorId);

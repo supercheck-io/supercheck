@@ -146,13 +146,14 @@
     "path-to-regexp@^8.0.0": ">=8.4.0",
     "brace-expansion@^2.0.0": "2.1.7",
     "brace-expansion@^5.0.0": "5.0.12",
-    "qs": "6.16.0",
+    "qs": "6.16.1",
     "esbuild": "^0.28.1",
     "ip-address": "10.7.4",
     "@azure/identity": "4.13.1",
     "ws": "8.21.0",
     "proxy-addr": "2.0.8",
     "fast-copy@^4.0.0": "4.1.0",
-    "@azure/msal-node": "7.1.1"
+    "@azure/msal-node": "7.1.1",
+    "glob": "14.0.2"
   }
 }

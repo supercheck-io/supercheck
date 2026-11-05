@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDataLifecycleService } from '@/lib/data-lifecycle-service';
 import { requireAdmin } from '@/lib/admin';
+import { adminDeniedResponse } from '@/lib/admin-errors';
 
 /**
  * GET /api/admin/playground-cleanup - Get playground cleanup status
@@ -34,6 +35,8 @@ export async function GET() {
       },
     });
   } catch (error) {
+    const denied = adminDeniedResponse(error);
+    if (denied) return denied;
     console.error('[API] Error getting playground cleanup status:', error);
     return NextResponse.json(
       {
@@ -80,6 +83,8 @@ export async function POST() {
       },
     });
   } catch (error) {
+    const denied = adminDeniedResponse(error);
+    if (denied) return denied;
     console.error('[API] Error triggering manual playground cleanup:', error);
     return NextResponse.json(
       {

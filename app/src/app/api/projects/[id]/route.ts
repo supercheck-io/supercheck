@@ -1,6 +1,6 @@
 import { isUuid } from "@/lib/uuid";
 import { NextRequest, NextResponse } from 'next/server';
-import { hasPermissionForUser, getUserOrgRole } from '@/lib/rbac/middleware';
+import { hasPermissionForUser, getUserOrgRole, forbiddenOrNotFound } from '@/lib/rbac/middleware';
 import { resolveEffectiveProjectRole } from '@/lib/rbac/effective-project-role';
 import { requireUserAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-context';
 import { db } from '@/utils/db';
@@ -69,10 +69,7 @@ export async function GET(
     });
 
     if (!canView) {
-      return NextResponse.json(
-        { error: 'Insufficient permissions' },
-        { status: 403 }
-      );
+      return await forbiddenOrNotFound(userId, project.organizationId, 'Insufficient permissions', 'Project not found');
     }
     
     // Get project stats using SQL count() aggregate (not fetching all rows)
@@ -156,10 +153,7 @@ export async function PUT(
     });
 
     if (!canUpdate) {
-      return NextResponse.json(
-        { error: 'Insufficient permissions to update project' },
-        { status: 403 }
-      );
+      return await forbiddenOrNotFound(userId, organizationId, 'Insufficient permissions to update project', 'Project not found');
     }
     
     const parsed = updateProjectSchema.safeParse(await request.json().catch(() => null));
@@ -263,10 +257,7 @@ export async function DELETE(
     });
 
     if (!canDelete) {
-      return NextResponse.json(
-        { error: 'Insufficient permissions to delete project' },
-        { status: 403 }
-      );
+      return await forbiddenOrNotFound(userId, organizationId, 'Insufficient permissions to delete project', 'Project not found');
     }
 
     // After the permission check so non-owners cannot probe which project is the default.

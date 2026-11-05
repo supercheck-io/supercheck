@@ -13,13 +13,9 @@ import { count, eq, desc, or, isNull, gte, and, sql } from "drizzle-orm";
 import { getCurrentUser, getActiveOrganization } from "./session";
 import { getUserRole, getUserOrgRole } from "./rbac/middleware";
 import { Role } from "./rbac/permissions";
+import { AdminAccessDeniedError } from "./admin-errors";
 
-export class AdminAccessDeniedError extends Error {
-  constructor() {
-    super("Admin privileges required");
-    this.name = "AdminAccessDeniedError";
-  }
-}
+export { AdminAccessDeniedError, adminDeniedResponse } from "./admin-errors";
 
 export function isAdminAccessDeniedError(error: unknown): boolean {
   return error instanceof AdminAccessDeniedError;
@@ -74,10 +70,18 @@ export async function isOrgAdmin(): Promise<boolean> {
 }
 
 export async function requireAdmin(userId?: string) {
-  const isUserAdmin = userId
-    ? (await getUserRole(userId)) === Role.SUPER_ADMIN
-    : await isAdmin();
-  if (!isUserAdmin) {
+  // Resolve the caller once; a role-lookup failure for the session user still reads as a plain denial.
+  const current = userId ? null : await getCurrentUser();
+  if (!userId && !current) {
+    throw new AdminAccessDeniedError(401);
+  }
+  const role = userId
+    ? await getUserRole(userId)
+    : await getUserRole(current!.id).catch((error) => {
+        console.error("Error checking admin status:", error);
+        return null;
+      });
+  if (role !== Role.SUPER_ADMIN) {
     throw new AdminAccessDeniedError();
   }
 }

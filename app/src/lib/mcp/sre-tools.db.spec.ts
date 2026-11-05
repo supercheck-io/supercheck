@@ -46,6 +46,7 @@ beforeAll(async () => {
   mockDatabase = drizzle(client, { schema });
   // Only the columns the start gate reads.
   await client.unsafe(`CREATE TABLE sre_incidents (id uuid PRIMARY KEY, organization_id uuid NOT NULL, project_id uuid NOT NULL)`);
+  await client.unsafe(`CREATE TABLE sre_investigation_runs (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), organization_id uuid NOT NULL, project_id uuid NOT NULL, incident_id uuid, agent_type text NOT NULL, status text NOT NULL, started_at timestamptz NOT NULL)`);
   await client`INSERT INTO sre_incidents VALUES (${own}, ${org}, ${project}), (${foreignOrg}, ${otherOrg}, ${project}), (${foreignProject}, ${org}, ${otherProject})`;
 });
 afterAll(async () => {
@@ -67,6 +68,16 @@ describe("MCP AI SRE start gate against a real database", () => {
       expect(afterCallbacks).toHaveLength(0);
       expect(runSreIncidentTriage).not.toHaveBeenCalled();
     });
+  it("returns conflict while a run of that kind is in flight, but not for a stale or other-kind run", async () => {
+    const busy = randomUUID();
+    await client`INSERT INTO sre_incidents VALUES (${busy}, ${org}, ${project})`;
+    await client`INSERT INTO sre_investigation_runs (organization_id, project_id, incident_id, agent_type, status, started_at) VALUES
+      (${org}, ${project}, ${busy}, 'triage', 'running', now()), (${org}, ${project}, ${busy}, 'sre_ai', 'running', now() - interval '10 minutes')`;
+    await expect(tool("triage_incident")({ incidentId: busy })).rejects.toMatchObject({ code: "conflict" });
+    // The brief run is older than the stale window, so the runner would recover it: not a conflict.
+    await expect(tool("generate_incident_brief")({ incidentId: busy })).resolves.toMatchObject({ accepted: true });
+    afterCallbacks.length = 0;
+  });
   it("accepts an incident of the connected project", async () => {
     await expect(tool("triage_incident")({ incidentId: own })).resolves.toMatchObject({ accepted: true });
     expect(afterCallbacks).toHaveLength(1);

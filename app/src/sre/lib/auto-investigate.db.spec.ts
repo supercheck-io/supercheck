@@ -70,12 +70,12 @@ beforeEach(async () => {
   input = { organizationId: org.id, projectId: project.id, incidentId: incident.id, userId: null };
 });
 
-async function run(status: "running" | "completed" | "failed" | "aborted" | "timed_out") {
+async function run(status: "running" | "completed" | "failed" | "aborted" | "timed_out", agentType: "triage" | "investigation" = "investigation") {
   await mockDatabase.insert(schema.sreInvestigationRuns).values({
     organizationId: input.organizationId,
     projectId: input.projectId,
     incidentId: input.incidentId,
-    agentType: "triage",
+    agentType,
     status,
     modelId: "m",
   } as never);
@@ -91,6 +91,27 @@ it.each(["running", "completed"] as const)("does not start again after a %s run"
   await run(status);
   expect(await maybeAutoInvestigateOnOpen(input)).toEqual({ handled: false, reason: "already_investigated" });
   expect(start).not.toHaveBeenCalled();
+});
+
+it("is not blocked by a manual triage when a SEV1 needs its automatic investigation", async () => {
+  await run("completed", "triage");
+  await run("failed", "triage");
+  await run("failed", "triage");
+  await maybeAutoInvestigateOnOpen(input);
+  expect(start).toHaveBeenCalledTimes(1);
+});
+
+it("still counts running runs of every agent type toward the org concurrency cap", async () => {
+  for (let i = 0; i < 3; i++) {
+    const [incident] = await mockDatabase
+      .insert(schema.sreIncidents)
+      .values({ organizationId: input.organizationId, projectId: input.projectId, incidentNumber: 10 + i, title: "Other", severity: "sev3" })
+      .returning();
+    await mockDatabase.insert(schema.sreInvestigationRuns).values({
+      organizationId: input.organizationId, projectId: input.projectId, incidentId: incident.id, agentType: "triage", status: "running", modelId: "m",
+    } as never);
+  }
+  expect(await maybeAutoInvestigateOnOpen(input)).toEqual({ handled: false, reason: "org_concurrency_limit" });
 });
 
 it("stops retrying after three failed automatic attempts", async () => {

@@ -134,6 +134,21 @@ type ConnectorExecutionResult = {
   resultHash: string;
 };
 
+/** Evidence text is redacted before it is clipped, so a secret cannot straddle the cut and survive. */
+function clip(
+  text: string | undefined,
+  max: number,
+  secrets: string[] = [],
+): string {
+  return redactMcpText(text ?? '', secrets).slice(0, max);
+}
+/** The job's own credential values, so evidence that echoes one is redacted whatever its format. */
+function credentialSecrets(job: LeasedJob): string[] {
+  return Object.values(job.credential?.value ?? {}).filter(
+    (v): v is string => typeof v === 'string',
+  );
+}
+
 function stableStringify(value: unknown): string {
   if (Array.isArray(value)) {
     return `[${value.map(stableStringify).join(',')}]`;
@@ -784,7 +799,11 @@ async function executeGitHub(
         repository?: { full_name?: string };
       };
       const title =
-        commit.commit?.message?.split('\n')[0]?.slice(0, 180) ||
+        clip(
+          commit.commit?.message?.split('\n')[0],
+          180,
+          credentialSecrets(job),
+        ) ||
         commit.sha ||
         'GitHub commit';
       const sourceUri =
@@ -1102,7 +1121,7 @@ async function executeDatadog(
           item.alert_type,
           item.source,
           item.host,
-          item.text?.slice(0, 180),
+          clip(item.text, 180, credentialSecrets(job)),
         ]
           .filter(Boolean)
           .join(' - '),
@@ -1161,7 +1180,8 @@ async function executeLoki(job: LeasedJob): Promise<ConnectorExecutionResult> {
       }
 
       const observedAt = dateFromUnixNs(timestampNs, spec.timeWindow.end);
-      const titleLine = line.trim().slice(0, 160) || 'Loki log line';
+      const titleLine =
+        clip(line.trim(), 160, credentialSecrets(job)) || 'Loki log line';
       const sourceUri = `${endpoint}/loki/api/v1/query_range?query=${encodeURIComponent(spec.query)}&ts=${encodeURIComponent(timestampNs)}`;
       const severity = severityFromLogLine(line);
 
@@ -1240,7 +1260,7 @@ async function executeElasticsearch(
       const source = item._source ?? {};
       const message =
         sourceString(source, ['message', 'log', 'event.original', 'body']) ??
-        JSON.stringify(source).slice(0, 500);
+        clip(JSON.stringify(source), 500, credentialSecrets(job));
       const service = sourceString(source, [
         'service.name',
         'service',
@@ -1260,7 +1280,9 @@ async function executeElasticsearch(
         ? spec.timeWindow.end
         : observedAt.toISOString();
       const titleLine =
-        message.slice(0, 160) || item._id || 'Elasticsearch log document';
+        clip(message, 160, credentialSecrets(job)) ||
+        item._id ||
+        'Elasticsearch log document';
       const sourceUri = `${endpoint}/${encodeURIComponent(item._index ?? index ?? '_all')}/_doc/${encodeURIComponent(item._id ?? titleLine)}`;
       const severity = level ?? severityFromLogLine(message);
 

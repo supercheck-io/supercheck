@@ -51,6 +51,49 @@ describe('private agent observability providers', () => {
     expect(call.target).toBe('endpoint');
   });
 
+  it('redacts before clipping, so a token straddling the cut is fully removed', async () => {
+    const token = `ghp_${'B'.repeat(36)}`;
+    for (const pad of [1970, 1985, 1995]) {
+      const http: ProviderHttp = async () => ({
+        status: 200,
+        text: JSON.stringify({
+          result: {
+            _raw: `${'x'.repeat(pad)} ${token}`,
+            _time: '2026-10-27T11:30:00Z',
+            index: 'main',
+          },
+        }),
+        truncated: false,
+      });
+      const { evidence } = await executeObservabilityProviderJob(
+        { ...baseJob, connectorType: 'splunk' },
+        http,
+      );
+      expect(evidence[0].summary).not.toContain('ghp_');
+    }
+  });
+
+  it('redacts the connector credential value from titles and summaries', async () => {
+    const secret = 'plain-credential-no-token-format';
+    const http: ProviderHttp = async () => ({
+      status: 200,
+      text: JSON.stringify({
+        result: {
+          _raw: `auth failed for ${secret}`,
+          _time: '2026-10-27T11:30:00Z',
+          index: 'main',
+        },
+      }),
+      truncated: false,
+    });
+    const { evidence } = await executeObservabilityProviderJob(
+      { ...baseJob, connectorType: 'splunk', credential: { secret } },
+      http,
+    );
+    expect(JSON.stringify(evidence)).not.toContain(secret);
+    expect(evidence[0].title).toContain('[REDACTED]');
+  });
+
   it('rejects write commands before calling the transport', async () => {
     const http = jest.fn();
     await expect(

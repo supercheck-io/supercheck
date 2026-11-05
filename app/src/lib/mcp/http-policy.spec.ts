@@ -10,6 +10,8 @@ const metadata = {
   introspection_endpoint: `${BASE}/api/auth/oauth2/introspect`,
   introspection_endpoint_auth_methods_supported: ["private_key_jwt"],
   introspection_endpoint_auth_signing_alg_values_supported: ["EdDSA"],
+  token_endpoint_auth_methods_supported: ["client_secret_basic", "client_secret_post"],
+  revocation_endpoint_auth_methods_supported: ["client_secret_basic", "client_secret_post"],
   jwks_uri: `${BASE}/api/auth/jwks`,
   scopes_supported: ["mcp:read"],
 };
@@ -21,6 +23,11 @@ describe("pruneUnreachableEndpoints", () => {
     expect(pruned).not.toHaveProperty("introspection_endpoint");
     expect(pruned).not.toHaveProperty("introspection_endpoint_auth_methods_supported");
     expect(pruned).not.toHaveProperty("introspection_endpoint_auth_signing_alg_values_supported");
+  });
+
+  it("advertises only the public-client auth method that registration allows", () => {
+    expect(pruned.token_endpoint_auth_methods_supported).toEqual(["none"]);
+    expect(pruned.revocation_endpoint_auth_methods_supported).toEqual(["none"]);
   });
 
   it("keeps everything that is reachable, and every non-endpoint field", () => {

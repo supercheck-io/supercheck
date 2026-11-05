@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from '@/lib/admin';
+import { adminDeniedResponse } from '@/lib/admin-errors';
 import { initializeJobSchedulers, cleanupJobScheduler } from '@/lib/job-scheduler';
 import { initializeMonitorSchedulers, cleanupMonitorScheduler } from '@/lib/monitor-scheduler';
 
@@ -46,6 +47,8 @@ export async function POST(request: Request) {
     });
 
   } catch (error: unknown) {
+    const denied = adminDeniedResponse(error);
+    if (denied) return denied;
     console.error('Manual scheduler initialization error:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to initialize schedulers' },

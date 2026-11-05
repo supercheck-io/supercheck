@@ -72,6 +72,10 @@ export function pruneUnreachableEndpoints(metadata: Record<string, unknown>): Re
       if (key.startsWith(`${name}_endpoint_`)) delete pruned[key];
     }
   }
+  // Registration only admits public clients, so advertise only the method a client can actually use.
+  for (const key of ["token_endpoint_auth_methods_supported", "revocation_endpoint_auth_methods_supported"]) {
+    if (key in pruned) pruned[key] = ["none"];
+  }
   return pruned;
 }
 

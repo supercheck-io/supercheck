@@ -1,9 +1,13 @@
 import { lookup } from 'node:dns/promises';
+import http from 'node:http';
 import https from 'node:https';
 import { isIP } from 'node:net';
 
 import { createPinnedLookup } from './pinned-lookup';
-import { isPrivateOrReservedAddress } from './url-validator';
+import {
+  isMetadataOrLinkLocalAddress,
+  isPrivateOrReservedAddress,
+} from './url-validator';
 
 const MAX_RESPONSE_BYTES = 10 * 1024 * 1024;
 
@@ -37,10 +41,14 @@ function abortable<T>(
 export async function fetchPublicEndpoint(
   input: string | URL,
   init: RequestInit = {},
+  // Webhook channels on an opted-in self-hosted install: http and private hosts, never metadata.
+  options: { allowInternal?: boolean } = {},
 ): Promise<Response> {
   const url = new URL(input);
+  const { allowInternal = false } = options;
   if (allowsDevelopmentPrivateNetworks()) return fetch(url, init);
-  if (url.protocol !== 'https:') throw new Error('Webhook URL must use HTTPS');
+  if (url.protocol !== 'https:' && !(allowInternal && url.protocol === 'http:'))
+    throw new Error('Webhook URL must use HTTPS');
 
   const hostname = url.hostname.replace(/^\[|\]$/g, '');
   const addresses = isIP(hostname)
@@ -49,9 +57,13 @@ export async function fetchPublicEndpoint(
         lookup(hostname, { all: true, verbatim: true }),
         init.signal,
       );
+  // Metadata addresses are refused in both modes; the private ranges only when internal targets are not allowed.
+  const blocked = (address: string) =>
+    isMetadataOrLinkLocalAddress(address) ||
+    (!allowInternal && isPrivateOrReservedAddress(address));
   if (
     addresses.length === 0 ||
-    addresses.some(({ address }) => isPrivateOrReservedAddress(address))
+    addresses.some(({ address }) => blocked(address))
   ) {
     throw new Error('Cannot send to private or internal networks');
   }
@@ -62,7 +74,7 @@ export async function fetchPublicEndpoint(
     headers.set('Content-Length', String(Buffer.byteLength(init.body)));
 
   return new Promise<Response>((resolve, reject) => {
-    const request = https.request(
+    const request = (url.protocol === 'http:' ? http : https).request(
       url,
       {
         method: init.method ?? 'GET',

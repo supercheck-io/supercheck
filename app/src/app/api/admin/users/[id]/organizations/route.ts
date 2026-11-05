@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/utils/db';
 import { member, organization } from '@/db/schema';
 import { requireAdmin } from '@/lib/admin';
+import { adminDeniedResponse } from '@/lib/admin-errors';
 import { eq } from 'drizzle-orm';
 import { roleToDisplayName, normalizeRole } from '@/lib/rbac/role-normalizer';
 import { soleMemberOrganizations } from '@/lib/organization-teardown';
@@ -54,6 +55,8 @@ export async function GET(
     });
     
   } catch (error) {
+    const denied = adminDeniedResponse(error);
+    if (denied) return denied;
     console.error('Failed to get user organizations:', error);
     return NextResponse.json(
       { 

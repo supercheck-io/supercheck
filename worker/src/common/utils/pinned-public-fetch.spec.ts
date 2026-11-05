@@ -1,8 +1,13 @@
 import { lookup } from 'node:dns/promises';
 import { EventEmitter } from 'node:events';
+import http from 'node:http';
 import https from 'node:https';
 
 jest.mock('node:dns/promises', () => ({ lookup: jest.fn() }));
+jest.mock('node:http', () => ({
+  __esModule: true,
+  default: { request: jest.fn() },
+}));
 jest.mock('node:https', () => ({
   __esModule: true,
   default: { request: jest.fn() },
@@ -11,6 +16,9 @@ jest.mock('node:https', () => ({
 import { fetchPublicEndpoint } from './pinned-public-fetch';
 
 const mockLookup = lookup as jest.MockedFunction<typeof lookup>;
+const mockHttpRequest = http.request as jest.MockedFunction<
+  typeof http.request
+>;
 const mockRequest = https.request as jest.MockedFunction<typeof https.request>;
 
 describe('worker pinned public fetch', () => {
@@ -104,6 +112,51 @@ describe('worker pinned public fetch', () => {
     expect(opts!.headers['content-length']).toBe('6');
   });
 
+  it('reaches an internal http host with allowInternal, but never a metadata address', async () => {
+    (mockLookup as jest.Mock).mockResolvedValueOnce([
+      { address: '10.0.0.5', family: 4 },
+    ]);
+    const request = Object.assign(new EventEmitter(), {
+      end: jest.fn(),
+      write: jest.fn(),
+      destroy: jest.fn(),
+    });
+    (mockHttpRequest as unknown as jest.Mock).mockImplementation(
+      (_u: URL, _o: unknown, onResponse: (r: EventEmitter) => void) => {
+        const response = Object.assign(new EventEmitter(), {
+          statusCode: 200,
+          headers: {},
+        });
+        onResponse(response);
+        queueMicrotask(() => response.emit('end'));
+        return request;
+      },
+    );
+    const response = await fetchPublicEndpoint(
+      'http://hooks.internal/e',
+      {},
+      { allowInternal: true },
+    );
+    expect(response.status).toBe(200);
+    await expect(
+      fetchPublicEndpoint(
+        'http://169.254.169.254/x',
+        {},
+        { allowInternal: true },
+      ),
+    ).rejects.toThrow('private or internal networks');
+    await expect(
+      fetchPublicEndpoint(
+        'http://[64:ff9b::a9fe:a9fe]/x',
+        {},
+        { allowInternal: true },
+      ),
+    ).rejects.toThrow('private or internal networks');
+    await expect(
+      fetchPublicEndpoint('http://hooks.internal/e'),
+    ).rejects.toThrow('HTTPS');
+  });
+
   it('aborts while DNS resolution is still pending', async () => {
     (mockLookup as jest.Mock).mockReturnValueOnce(new Promise(() => undefined));
     const controller = new AbortController();
@@ -118,6 +171,17 @@ describe('worker pinned public fetch', () => {
   it('rejects private DNS answers before webhook delivery connects', async () => {
     (mockLookup as jest.Mock).mockResolvedValueOnce([
       { address: '127.0.0.1', family: 4 },
+    ]);
+
+    await expect(
+      fetchPublicEndpoint('https://hooks.example.com/events'),
+    ).rejects.toThrow('private or internal networks');
+    expect(mockRequest).not.toHaveBeenCalled();
+  });
+
+  it('rejects the Azure wireserver answer in the default mode too', async () => {
+    (mockLookup as jest.Mock).mockResolvedValueOnce([
+      { address: '168.63.129.16', family: 4 },
     ]);
 
     await expect(

@@ -380,7 +380,8 @@ export async function acknowledgeIncident(
   }
   if (!result.updated) {
     const { existing } = result;
-    if (existing.status === "resolved" && !existing.acknowledgedAt) {
+    // Resolved is a conflict even if it was acknowledged first, so every caller (action, API, MCP) agrees.
+    if (existing.status === "resolved") {
       return { ok: false, code: "conflict", error: "Incident is already resolved" };
     }
     return { ok: true, incident: existing, changed: false, autoAssigned: false };

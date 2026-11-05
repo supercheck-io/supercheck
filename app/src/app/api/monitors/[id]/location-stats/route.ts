@@ -6,9 +6,7 @@ import {
   monitorResults,
 } from "@/db/schema";
 import { eq, and, gte, sql, desc } from "drizzle-orm";
-import {
-  hasPermissionForUser,
-} from "@/lib/rbac/middleware";
+import { hasPermissionForUser, forbiddenOrNotFound } from "@/lib/rbac/middleware";
 import { isAuthError, requireUserAuthContext, authErrorStatus } from "@/lib/auth-context";
 import { createLogger } from "@/lib/logger/index";
 import type {
@@ -97,10 +95,7 @@ export async function GET(
     });
 
     if (!canView) {
-      return NextResponse.json(
-        { error: "Insufficient permissions to view this monitor" },
-        { status: 403 }
-      );
+      return await forbiddenOrNotFound(userId, monitor.organizationId, "Insufficient permissions to view this monitor", "Monitor not found");
     }
 
     // Calculate date range

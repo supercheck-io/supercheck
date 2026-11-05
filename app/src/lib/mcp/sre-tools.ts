@@ -14,11 +14,12 @@ import { isSreEnabled } from "@/sre/lib/feature-gates";
 import { completeSreIncidentInvestigation, startSreIncidentInvestigation } from "@/sre/lib/investigation-runner";
 import { runSreIncidentTriage } from "@/sre/lib/triage-runner";
 import { createLogger } from "@/lib/logger/index";
-import { and, eq } from "drizzle-orm";
-import { sreIncidents } from "@/db/schema";
+import { and, eq, gte } from "drizzle-orm";
+import { sreIncidents, sreInvestigationRuns } from "@/db/schema";
+import { STALE_RUN_AFTER_MS } from "@/sre/lib/stale-run-recovery";
 import { db } from "@/utils/db";
 import { assertCan, type McpCallContext } from "./context";
-import { MCP_INCIDENTS_WRITE_SCOPE, MCP_SRE_SCOPE } from "./config";
+import { MCP_INCIDENTS_WRITE_SCOPE, MCP_SRE_SCOPE, UNTRUSTED } from "./config";
 
 const logger = createLogger({ module: "mcp-sre-tools" }) as { error: (data: unknown, message?: string) => void };
 
@@ -62,6 +63,16 @@ async function startGate(ctx: McpCallContext, kind: "triage" | "investigate" | "
   const [incident] = await db.select({ id: sreIncidents.id }).from(sreIncidents)
     .where(and(eq(sreIncidents.id, incidentId), eq(sreIncidents.organizationId, ctx.organizationId), eq(sreIncidents.projectId, ctx.projectId))).limit(1);
   if (!incident) throw new McpToolFailure("not_found", "Incident not found");
+  // Triage and briefs run detached, so a run already in flight (the runner's one-active-run 409) is refused here,
+  // not just logged. Runs older than the stale window do not count: the runner recovers them when it starts.
+  if (kind !== "investigate") {
+    const [active] = await db.select({ id: sreInvestigationRuns.id }).from(sreInvestigationRuns).where(and(
+      eq(sreInvestigationRuns.organizationId, ctx.organizationId), eq(sreInvestigationRuns.projectId, ctx.projectId),
+      eq(sreInvestigationRuns.incidentId, incidentId), eq(sreInvestigationRuns.agentType, kind === "triage" ? "triage" : "sre_ai"),
+      eq(sreInvestigationRuns.status, "running"), gte(sreInvestigationRuns.startedAt, new Date(Date.now() - STALE_RUN_AFTER_MS)),
+    )).limit(1);
+    if (active) throw new McpToolFailure("conflict", `A ${kind === "triage" ? "triage" : "evidence brief"} run is already in progress for this incident`);
+  }
   const limit = await (kind === "triage" ? checkSreTriageRateLimit : kind === "brief" ? checkSreEvidenceBriefRateLimit : checkSreInvestigationRateLimit)(ctx.userId, incidentId);
   if (!limit.allowed) throw new McpToolFailure("rate_limited", retryMessage(limit, kind));
   const daily = await checkSreDailyTokenLimit(ctx.organizationId);
@@ -92,19 +103,19 @@ export function registerSreTools(tool: ToolRegistrar, ctx: McpCallContext): void
   }
 
   if (ctx.scopes.includes(MCP_INCIDENTS_WRITE_SCOPE)) {
-    tool("assign_incident", "Assign an incident, or set its commander. Pass assigneeUserId null to unassign. The assignee must be someone who can act on the incident.", write,
+    tool("assign_incident", "Assign an incident, or set its commander. Pass assigneeUserId null to unassign. The assignee must be someone who can act on the incident." + UNTRUSTED, write,
       { id: idArg, assigneeUserId: idArg.nullable(), role: z.enum(["assignee", "commander"]).default("assignee") },
       ({ id, assigneeUserId, role }) => lifecycle(id, () => assignIncident(actor, id, assigneeUserId, role)));
-    tool("acknowledge_incident", "Acknowledge an incident. Claims it for you if it is unassigned.", write, { id: idArg },
+    tool("acknowledge_incident", "Acknowledge an incident. Claims it for you if it is unassigned." + UNTRUSTED, write, { id: idArg },
       ({ id }) => lifecycle(id, () => acknowledgeIncident(actor, id)));
-    tool("resolve_incident", "Resolve an incident with a resolution summary.", write,
+    tool("resolve_incident", "Resolve an incident with a resolution summary." + UNTRUSTED, write,
       { id: idArg, resolutionSummary: z.string().trim().min(1).max(MAX_RESOLUTION_SUMMARY_LENGTH) },
       ({ id, resolutionSummary }) => lifecycle(id, () => resolveIncident(actor, id, resolutionSummary)));
   }
 
   if (ctx.scopes.includes(MCP_SRE_SCOPE)) {
     const sre = { resource: "sre_incident", action: "investigate", scope: MCP_SRE_SCOPE } as const;
-    tool("triage_incident", "Start AI triage of an incident. Billable. " + POLL, sre, { incidentId: idArg }, async ({ incidentId }) => {
+    tool("triage_incident", "Start AI triage of an incident. Billable. " + POLL + UNTRUSTED, sre, { incidentId: idArg }, async ({ incidentId }) => {
       await startGate(ctx, "triage", incidentId);
       // Detached: triage can outlive the request. The run row is created inside, so it shows up in list_investigations.
       after(() => runSreIncidentTriage({ ...actor, incidentId }).then((r) => {
@@ -112,7 +123,7 @@ export function registerSreTools(tool: ToolRegistrar, ctx: McpCallContext): void
       }, (error) => logger.error({ err: error, incidentId }, "MCP triage failed")));
       return { accepted: true, incidentId, next: POLL };
     });
-    tool("investigate_incident", "Start a full AI investigation of an incident. Billable. Live connectors need the connector investigate permission. " + POLL, sre,
+    tool("investigate_incident", "Start a full AI investigation of an incident. Billable. Live connectors need the connector investigate permission. " + POLL + UNTRUSTED, sre,
       { incidentId: idArg, useLiveConnectors: z.boolean().default(false), guidance: investigationGuidanceSchema.nullish() },
       async ({ incidentId, useLiveConnectors, guidance }) => {
         await startGate(ctx, "investigate", incidentId, useLiveConnectors);
@@ -124,7 +135,7 @@ export function registerSreTools(tool: ToolRegistrar, ctx: McpCallContext): void
         }, (error) => logger.error({ err: error, incidentId, investigationRunId: started.investigationRunId }, "MCP investigation failed")));
         return { accepted: true, investigationRunId: started.investigationRunId, next: POLL };
       });
-    tool("generate_incident_brief", "Generate an AI evidence brief for an incident. Billable, needs a plan. " + POLL, sre, { incidentId: idArg }, async ({ incidentId }) => {
+    tool("generate_incident_brief", "Generate an AI evidence brief for an incident. Billable, needs a plan. " + POLL + UNTRUSTED, sre, { incidentId: idArg }, async ({ incidentId }) => {
       await startGate(ctx, "brief", incidentId);
       after(() => runSreEvidenceBriefGeneration({ ...actor, incidentId, generateBrief: generateEvidenceBrief }).then((r) => {
         if (!r.success) return logger.error({ incidentId }, "MCP evidence brief did not complete");
