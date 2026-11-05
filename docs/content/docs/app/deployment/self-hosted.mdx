@@ -6,51 +6,6 @@ icon: Container
 
 Self-host Supercheck on one Linux server. One command installs Docker, the isolated test sandbox, and every Supercheck service, then checks that it is healthy.
 
-## Architecture
-
-<p className="text-sm md:hidden">Scroll horizontally to view the full diagram.</p>
-
-<div className="overflow-x-auto" role="region" aria-label="Self-Hosted deployment layout diagram" tabIndex={0}>
-<div className="min-w-[52rem]">
-
-```mermaid
-flowchart TB
-    Users[Users / CI/CD] --> T[Traefik Proxy<br/>HTTPS profile]
-    T --> App[Next.js App<br/>UI + API]
-    App --> DB[(PostgreSQL<br/>Primary DB)] & Redis[(Redis + BullMQ<br/>Queue + Cache)] & S3[(RustFS<br/>Artifacts)]
-    App --> SRE[AI SRE Engine<br/>Read-only investigations]
-    SRE -.-> Private[Private Agents<br/>Outbound-only queries]
-
-    Redis --> W1
-    Redis --> W2
-    Redis --> WN
-
-    subgraph SERVER["Single Server"]
-        W1[Worker 1<br/>NestJS + BullMQ<br/>WORKER_LOCATION=local] --> K3S_1[K3s + gVisor<br/>Sandboxed Execution]
-        W2[Worker 2<br/>NestJS + BullMQ<br/>WORKER_LOCATION=local] --> K3S_2[K3s + gVisor<br/>Sandboxed Execution]
-        WN[Worker N<br/>NestJS + BullMQ<br/>WORKER_LOCATION=local] --> K3S_N[K3s + gVisor<br/>Sandboxed Execution]
-    end
-
-    style Users fill:#6366f1,stroke:#4338ca,color:#fff
-    style T fill:#0ea5e9,stroke:#0369a1,color:#fff
-    style App fill:#3b82f6,stroke:#1e40af,color:#fff
-    style DB fill:#f59e0b,stroke:#b45309,color:#fff
-    style Redis fill:#ef4444,stroke:#b91c1c,color:#fff
-    style S3 fill:#8b5cf6,stroke:#6d28d9,color:#fff
-    style SRE fill:#0ea5e9,stroke:#0369a1,color:#fff
-    style Private fill:#8b5cf6,stroke:#6d28d9,color:#fff
-    style W1 fill:#10b981,stroke:#047857,color:#fff
-    style W2 fill:#10b981,stroke:#047857,color:#fff
-    style WN fill:#10b981,stroke:#047857,color:#fff
-    style K3S_1 fill:#059669,stroke:#047857,color:#fff
-    style K3S_2 fill:#059669,stroke:#047857,color:#fff
-    style K3S_N fill:#059669,stroke:#047857,color:#fff
-    style SERVER fill:none,stroke:#3b82f6,stroke-width:2px
-```
-
-</div>
-</div>
-
 ## Prerequisites
 
 | Requirement | Details |
@@ -75,7 +30,7 @@ flowchart TB
 curl -fsSL https://raw.githubusercontent.com/supercheck-io/supercheck/v1.5.0/deploy/docker/install.sh -o install.sh
 ```
 
-The URL uses the release tag (`v1.5.0`), the same release you pass to `--version`, so the script and the installed version match. Read it first with `less install.sh` if you like. Add `--dry-run` in the next step to see the plan without changing anything.
+Use the same release in the URL and in `--version`. Add `--dry-run` in the next step to preview the plan.
 
 </Step>
 <Step>
@@ -109,18 +64,14 @@ The URL uses the release tag (`v1.5.0`), the same release you pass to `--version
   </Tab>
 </Tabs>
 
-Allow about 10 minutes, mostly image downloads. Re-running is safe: it keeps your existing `.env` and secrets and skips finished steps.
+Allow about 10 minutes. Re-running is safe: it keeps your `.env` and secrets.
 
 </Step>
 <Step>
 
 ### Open Supercheck
 
-The installer prints the URL: `https://<your-domain>` for a public install, or `http://localhost:3000` for a local one. If you moved the app port with `APP_HOST_PORT`, use that port instead of 3000 here and in the commands below.
-
-Port 3000 listens on the server only. From your laptop, forward it with `ssh -L 3000:localhost:3000 <user>@<server>`. For HTTPS, the certificate is issued on first visit and can take up to a minute.
-
-Create your account, then add a test and run it.
+Open the URL the installer prints: `https://<your-domain>`, or `http://localhost:3000` for a local install (from your laptop: `ssh -L 3000:localhost:3000 <user>@<server>`). The HTTPS certificate can take a minute on first visit.
 
 </Step>
 </Steps>
@@ -130,7 +81,7 @@ On a public server, sign-up is open to anyone who can reach the URL. Create your
 </Callout>
 
 <Accordions>
-<Accordion title="Installer options and exit codes" id="installer-options">
+<Accordion title="Installer options" id="installer-options">
 
 | Option | Purpose |
 |--------|---------|
@@ -145,10 +96,7 @@ On a public server, sign-up is open to anyone who can reach the URL. Create your
 | `--no-prewarm` | Skip importing the ~3 GB worker image into the sandbox; the first test run downloads it instead |
 | `--docker-group` | Add the invoking sudo user to the `docker` group (root-equivalent access) |
 | `--ignore-minio` | Start with empty storage even though a volume from the retired MinIO storage exists. Without it the installer stops, so data is not left behind by accident |
-| `--no-color` | Plain output (`NO_COLOR` is honoured too) |
 | `--help`, `-h` | Show all options |
-
-Exit codes: `0` healthy, `1` failed, `2` bad usage, `3` installed but the health check reports a problem. The log is `/var/log/supercheck/install.log`.
 
 </Accordion>
 </Accordions>
@@ -196,7 +144,7 @@ Edit `.env` in `deploy/docker`, then run `sudo docker compose up -d --force-recr
 | `AI_PROVIDER`, `AI_MODEL`, `OPENAI_API_KEY` | `openai`, `gpt-6-luna`, unset | AI features and AI SRE. Other providers: [Docker environment reference](https://github.com/supercheck-io/supercheck/blob/v1.5.0/deploy/docker/README.md#environment-variables) |
 | `SRE_AUTOMATION_ENABLED` | `false` | AI triage of alert incidents; can incur provider charges. Incidents open from alerts without it. Set in the app (the worker only needs `SRE_ENABLED`) |
 | `SRE_DAILY_TOKEN_LIMIT_PER_ORG` | `2000000` | Daily AI token limit per organization for AI SRE (UTC day). `0` disables. App only |
-| `ALLOW_INTERNAL_TARGETS` | `false` | `true` lets monitors target private, loopback and reserved addresses. Set it in `.env`: the Compose files pass it to both the app (rejects such targets when a monitor is saved) and the worker (refuses them when it runs the check). Recreate the containers after changing it |
+| `ALLOW_INTERNAL_TARGETS` | `false` | `true` lets monitors target private, loopback and reserved addresses |
 | `DEVICE_AUTH_ENABLED` | `false` | Browser sign-in for `supercheck login`. Needs HTTPS (or localhost) |
 | `TRUSTED_PROXY_HOPS` | `0` | Extra trusted proxies in front of Traefik, such as a CDN |
 | `TRUST_CF_CONNECTING_IP` | `false` | `true` only if the server is reachable exclusively through Cloudflare |
@@ -211,15 +159,7 @@ sudo docker compose exec app node scripts/bootstrap-admin.js your-email@example.
 </Accordion>
 <Accordion title="Connecting AI tools (MCP)" id="connecting-ai-tools-mcp-off-by-default">
 
-Off by default. Lets Claude, Cursor, VS Code and other [MCP clients](/docs/mcp) work with one project over OAuth 2.1: read access by default, plus optional incident actions and AI SRE runs when the user approves them.
-
-| Step | Action |
-|---|---|
-| **1. Enable** | Set `MCP_SERVER_ENABLED=true` and recreate the app |
-| **2. Public URL** | `BETTER_AUTH_URL` must be the public HTTPS URL (`http://localhost:3000` for local use). Docker derives it from `APP_DOMAIN` |
-| **3. Check** | `/api/config/app` reports `mcp.enabled: true`; `POST /api/mcp` returns `401` with `WWW-Authenticate` |
-
-Optional: `MCP_DYNAMIC_CLIENT_REGISTRATION=false` accepts only clients with a Client ID Metadata Document.
+Off by default. Set `MCP_SERVER_ENABLED=true` and recreate the app to let [MCP clients](/docs/mcp) such as Claude, Cursor and VS Code connect over OAuth. `BETTER_AUTH_URL` must be the public HTTPS URL (Docker derives it from `APP_DOMAIN`).
 
 </Accordion>
 <Accordion title="Status page HTTPS" id="status-page-https">
@@ -280,24 +220,7 @@ curl -fsSL https://raw.githubusercontent.com/supercheck-io/supercheck/v1.5.0/dep
 sudo bash install.sh --upgrade
 ```
 
-Replace `v1.5.0` with the target release. `--upgrade` moves to the script's own release; add `--version <x.y.z>` for a different one, or `--dry-run` to see the plan first. The upgrade:
-
-<Steps>
-<Step>
-Stops early if tracked files in the installation were edited (keep changes in `.env` instead) or if the target is older than the installed release.
-</Step>
-<Step>
-Dumps the database to `/var/backups/supercheck/pre-upgrade-<time>.dump` and keeps a copy of `.env`.
-</Step>
-<Step>
-Checks out the release's deployment files, re-runs the sandbox setup, pulls the images and imports the worker image into the sandbox.
-</Step>
-<Step>
-Restarts the stack, which applies database migrations, and checks health.
-</Step>
-</Steps>
-
-Expect a few minutes of downtime. Upgrade remote workers afterwards ([Multi-Server](/docs/app/deployment/multi-server#upgrade-workers)).
+Replace `v1.5.0` with the target release. The upgrade dumps the database to `/var/backups/supercheck/` first, applies migrations, and checks health; expect a few minutes of downtime. Keep your changes in `.env`: the upgrade stops if tracked files were edited. Then [upgrade remote workers](/docs/app/deployment/multi-server#upgrade-workers).
 
 <Callout type="warn">
 Never run `docker compose down -v`: it deletes the database, stored artifacts, and the queue.
@@ -306,11 +229,11 @@ Never run `docker compose down -v`: it deletes the database, stored artifacts, a
 <Accordions>
 <Accordion title="Manual update" id="manual-update">
 
-Use this for a git checkout of a release (what `install.sh` creates) when `--upgrade` is unavailable, or when you prefer to run each step. A directory unpacked from an archive is not a checkout: install fresh with `install.sh` and restore a backup into it. Replace `<x.y.z>` with the target release and `/opt/supercheck` with your `--dir`:
+For an `install.sh` checkout when `--upgrade` is unavailable. Replace `<x.y.z>` with the target release:
 
 ```bash
 cd /opt/supercheck/deploy/docker
-sudo bash backup.sh                      # see Backups for releases without backup.sh
+sudo bash backup.sh
 sudo git -C /opt/supercheck fetch --depth 1 origin refs/tags/v<x.y.z>:refs/tags/v<x.y.z>
 sudo git -C /opt/supercheck checkout --detach refs/tags/v<x.y.z>
 sudo bash setup-k3s.sh
@@ -320,8 +243,6 @@ sudo docker save --platform "linux/$(dpkg --print-architecture)" ghcr.io/superch
 sudo docker compose up -d --wait --wait-timeout 300
 curl --fail --silent --show-error http://localhost:3000/api/health
 ```
-
-Importing the worker image keeps the first test run after the update from timing out while the sandbox downloads it. `docker compose pull` alone only downloads the version already selected in `.env`.
 
 </Accordion>
 <Accordion title="Upgrading from MinIO (releases before 1.4.0)" id="upgrading-from-minio-breaking">
@@ -333,7 +254,7 @@ sudo curl -fsSL https://raw.githubusercontent.com/supercheck-io/supercheck/v1.5.
 sudo bash migrate-minio-to-rustfs.sh && sudo rm -- migrate-minio-to-rustfs.sh
 ```
 
-Continue only after it succeeds. It stops the local app and worker, copies and verifies storage, and keeps `.env.pre-rustfs` and the `minio-data` volume for recovery. Then upgrade, and run `sudo docker compose up -d --remove-orphans` once to remove the old MinIO container. Check a status page and a test report before deleting the old volume.
+Continue only after it succeeds; it keeps the `minio-data` volume for recovery. Then upgrade and run `sudo docker compose up -d --remove-orphans` once. Check a status page and a test report before deleting the old volume.
 
 Releases before `1.3.3` predate the current sandbox: back up, then run `sudo bash setup-k3s.sh` before upgrading.
 
@@ -348,46 +269,21 @@ From `deploy/docker`:
 sudo bash backup.sh
 ```
 
-This writes `/var/backups/supercheck/<UTC time>/` (readable by root only) with the database dump, RustFS storage (reports, artifacts, status-page assets, documents), `.env`, the HTTPS certificates, and `traefik-dns.env` when you use DNS-01. The app and worker stop while data is copied, usually for under a minute, and start again afterwards, also if the backup fails. Use `--out <dir>` for another location.
+This saves the database, storage, `.env` and certificates to `/var/backups/supercheck/<UTC time>/`, stopping the app and worker for about a minute. Copy backups off the server and keep them private: they contain your secrets.
 
-Copy each backup off the server and keep it private: its `env` file holds the secrets needed to read encrypted data. Old backups are not deleted for you.
-
-To restore, stop remote workers, then:
+To restore, stop remote workers, then run the command below with the same release as the backup. It replaces the current `.env`, storage and database:
 
 ```bash
 sudo bash backup.sh --restore /var/backups/supercheck/<UTC time>
 ```
 
-Restore needs the same release as the backup, asks you to type `restore`, and replaces `.env` (the old file is kept as `.env.pre-restore-<time>`), storage, and the database before starting the stack and checking health. Pass `--yes` to skip the prompt in scripts. Jobs that were queued in Redis are not part of a backup, so runs queued at backup time do not resume.
-
-<Accordions>
-<Accordion title="Daily backups with cron" id="scheduled-backups">
+For daily backups:
 
 ```bash
 echo '0 3 * * * root cd /opt/supercheck/deploy/docker && bash backup.sh >>/var/log/supercheck/backup.log 2>&1' | sudo tee /etc/cron.d/supercheck-backup
 ```
 
-Each run briefly stops the app and worker, so pick a quiet hour.
-
-</Accordion>
-<Accordion title="Releases without backup.sh (1.4.0 and earlier)" id="backups-without-script">
-
-These commands assume the RustFS volume of 1.4.0. On an older MinIO install, run the [MinIO migration](#upgrading-from-minio-breaking) first, or archive the `minio-data` volume instead. Back up `.env`, a database dump and the storage volume. Run from `deploy/docker`; `docker volume ls` shows the volume name if you changed the project name:
-
-```bash
-sudo install -m 600 .env "$HOME/supercheck.env"
-install -m 600 /dev/null "$HOME/supercheck-backup.sql" && \
-  sudo docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > "$HOME/supercheck-backup.sql"
-sudo docker compose stop app worker
-sudo docker run --rm -v supercheck_rustfs-data:/data:ro -v "$HOME":/backup --entrypoint tar postgres:18 \
-  --numeric-owner -czf /backup/supercheck-rustfs.tar.gz -C /data .
-sudo docker compose start app worker
-```
-
-</Accordion>
-</Accordions>
-
-External PostgreSQL, Redis, or S3 (`docker-compose-external.yml`) are not covered; use your provider's backups.
+External PostgreSQL, Redis or S3 are not covered; use your provider's backups.
 
 ## Troubleshooting
 
