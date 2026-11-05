@@ -1,9 +1,8 @@
 name: Full E2E Test Suite
 
 on:
-  schedule:
-    - cron: "0 2 * * *" # Daily at 02:00 UTC
-  # Manual trigger
+  # No schedule: each run sends real invitation emails from the target deployment.
+  # Run it manually or from the release pipeline.
   workflow_dispatch:
     inputs:
       test_filter:
