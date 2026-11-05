@@ -159,8 +159,19 @@ export async function POST(request: Request): Promise<Response> {
     const responseHeaders = new Headers(response.headers);
     responseHeaders.set("Cache-Control", "no-store");
     if (response.status >= 400) {
-      const body = await response.clone().json().catch(() => null) as { jsonrpc?: string; error?: { data?: { code?: string } } } | null;
-      if (body?.jsonrpc !== "2.0" || !body.error?.data?.code) {
+      type RpcBody = { jsonrpc?: string; id?: unknown; error?: { code?: number; message?: string; data?: { code?: string } } };
+      const body = await response.clone().json().catch(() => null) as RpcBody | null;
+      const isRpc = body?.jsonrpc === "2.0" && typeof body.error?.message === "string";
+      // Transport errors (406, -32700, -32600) are already JSON-RPC: keep their code and message, only add data.code.
+      // The auth wrapper's refusals (they carry a challenge) and non-JSON-RPC bodies are rewritten.
+      if (isRpc && !body!.error!.data?.code && !response.headers.has("www-authenticate")) {
+        responseHeaders.delete("content-length");
+        responseHeaders.delete("content-encoding");
+        const code = response.status === 406 ? "not_acceptable" : "request_failed";
+        const error = { ...body!.error, data: { ...body!.error!.data, code } };
+        return json({ ...body, error }, response.status, responseHeaders);
+      }
+      if (!isRpc || !body!.error!.data?.code) {
         responseHeaders.delete("content-length");
         responseHeaders.delete("content-type");
         responseHeaders.delete("content-encoding");

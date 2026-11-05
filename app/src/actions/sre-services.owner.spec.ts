@@ -57,4 +57,17 @@ describe("service owner", () => {
     await updateSreService({ ...base, id });
     expect(mockUpdateSet.mock.calls.at(-1)![0].ownerUserId).toBeUndefined();
   });
+  it("saves an unchanged stale owner but still rejects a changed ineligible one", async () => {
+    const { db } = jest.requireMock("@/utils/db");
+    const id = "018f0000-0000-7000-8000-0000000000b1";
+    db.query.sreServices.findFirst
+      .mockResolvedValueOnce({ id: "s1", name: "api", ownerUserId: owner }).mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: "s1", name: "api", ownerUserId: owner }).mockResolvedValueOnce(null);
+    mockIsAssignable.mockResolvedValue(false);
+    expect(await updateSreService({ ...base, name: "renamed", id, ownerUserId: owner })).toMatchObject({ success: true });
+    expect(mockIsAssignable).not.toHaveBeenCalled();
+    const other = "018f0000-0000-7000-8000-0000000000a2";
+    expect(await updateSreService({ ...base, id, ownerUserId: other })).toMatchObject({ success: false });
+    expect(mockIsAssignable).toHaveBeenCalledWith("o1", "p1", other);
+  });
 });

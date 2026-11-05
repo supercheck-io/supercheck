@@ -146,6 +146,13 @@ describe('worker pinned public fetch', () => {
       ),
     ).rejects.toThrow('private or internal networks');
     await expect(
+      fetchPublicEndpoint(
+        'http://[64:ff9b::a9fe:a9fe]/x',
+        {},
+        { allowInternal: true },
+      ),
+    ).rejects.toThrow('private or internal networks');
+    await expect(
       fetchPublicEndpoint('http://hooks.internal/e'),
     ).rejects.toThrow('HTTPS');
   });

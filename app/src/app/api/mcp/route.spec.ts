@@ -134,7 +134,8 @@ describe("/api/mcp", () => {
     const headers = new Headers(rpc("initialize").headers); headers.set("accept", "application/json");
     const res = await POST(new Request(rpc("initialize"), { headers }));
     expect(res.status).toBe(406);
-    expect(await res.json()).toMatchObject({ jsonrpc: "2.0", error: expect.any(Object) });
+    // The transport's own code and message survive; only data.code is added.
+    expect(await res.json()).toMatchObject({ jsonrpc: "2.0", error: { code: -32000, message: expect.stringContaining("Not Acceptable"), data: { code: "not_acceptable" } } });
   });
 
   it("is 404 when the flag is off", async () => {

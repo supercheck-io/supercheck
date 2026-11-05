@@ -80,10 +80,23 @@ describe('device login selection', () => {
     expect(d.finalize).not.toHaveBeenCalled()
   })
 
-  it('polls a stored grant once immediately on re-run, before the poll interval', async () => {
+  it('never polls faster than the stored interval, and a slow_down is persisted and respected', async () => {
     const d = deps()
     await runDeviceLogin({}, d)
     expect(d.pollToken).not.toHaveBeenCalled()
+    // A re-run before nextPollAt does not poll.
+    await runDeviceLogin({}, d)
+    expect(d.pollToken).not.toHaveBeenCalled()
+    // Once the interval has passed it polls; the server says slow down.
+    const start = d.store.load()!.nextPollAt
+    d.now = () => start
+    d.pollToken = jest.fn<LoginDeps['pollToken']>(async () => ({ kind: 'slow_down' }))
+    await runDeviceLogin({}, d)
+    expect(d.pollToken).toHaveBeenCalledTimes(1)
+    const slowed = d.store.load()!
+    expect(slowed.interval).toBeGreaterThan(5)
+    expect(slowed.nextPollAt).toBe(start + slowed.interval * 1000)
+    // An immediate re-run is held back by the persisted slower interval.
     await runDeviceLogin({}, d)
     expect(d.pollToken).toHaveBeenCalledTimes(1)
   })

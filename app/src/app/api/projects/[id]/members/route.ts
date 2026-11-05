@@ -158,8 +158,8 @@ export async function POST(
     
     if (targetUser.length === 0) {
       return NextResponse.json(
-        { error: 'User not found' },
-        { status: 404 }
+        { error: 'User is not a member of this organization' },
+        { status: 400 }
       );
     }
 

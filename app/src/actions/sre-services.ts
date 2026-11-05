@@ -446,7 +446,7 @@ export async function updateSreService(input: z.infer<typeof updateServiceInputS
         eq(sreServices.organizationId, organizationId),
         eq(sreServices.projectId, project.id)
       ),
-      columns: { id: true, name: true },
+      columns: { id: true, name: true, ownerUserId: true },
     });
 
     if (!current) {
@@ -468,7 +468,10 @@ export async function updateSreService(input: z.infer<typeof updateServiceInputS
       return { success: false, error: "Another active service with this name already exists" };
     }
 
-    const ownerError = await ownerRejection(organizationId, project.id, parsed.data.ownerUserId);
+    // A stored owner who was since demoted or removed must not block unrelated edits; validate only a change.
+    const ownerError = parsed.data.ownerUserId === current.ownerUserId
+      ? null
+      : await ownerRejection(organizationId, project.id, parsed.data.ownerUserId);
     if (ownerError) return ownerError;
 
     const [service] = await db

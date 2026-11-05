@@ -182,3 +182,12 @@ export async function withMergedConsentScopes<T>(
   }
   return result;
 }
+
+/** Projects where this client already holds scopes beyond `requested`; a narrower approval will not reduce them. */
+export async function projectsKeepingBroaderGrant(userId: string, clientId: string, requested: string[]): Promise<string[]> {
+  const rows = await db
+    .select({ projectId: oauthConsent.referenceId, scopes: oauthConsent.scopes })
+    .from(oauthConsent)
+    .where(and(eq(oauthConsent.userId, userId), eq(oauthConsent.clientId, clientId)));
+  return rows.filter((row) => row.projectId && row.scopes.some((scope) => !requested.includes(scope))).map((row) => row.projectId as string);
+}

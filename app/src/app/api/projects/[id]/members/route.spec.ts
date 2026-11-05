@@ -30,6 +30,13 @@ beforeEach(() => {
   tx.select.mockReturnValue(rows([]));
   lock.mockResolvedValue([]);
 });
+it("answers an unknown user exactly like a user outside the organization", async () => {
+  (db.select as jest.Mock).mockReset().mockReturnValueOnce(rows([{ organizationId: "org-1" }])).mockReturnValueOnce(rows([]));
+  const unknown = await post();
+  expect(unknown.status).toBe(400);
+  expect(await unknown.json()).toEqual({ error: "User is not a member of this organization" });
+  expect(db.transaction).not.toHaveBeenCalled();
+});
 it("rejects a user outside the project's organization inside the insert transaction", async () => {
   expect((await post()).status).toBe(400);
   expect(lock).toHaveBeenCalledWith("update");

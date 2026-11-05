@@ -21,6 +21,8 @@ describe("generic authentication organization safeguards", () => {
     jest.clearAllMocks();
     mockLimit.mockResolvedValue({ allowed: true });
     mockIP.mockReturnValue("192.0.2.5");
+    mockSession.mockResolvedValue(null);
+    mockImpersonated.mockResolvedValue(false);
     mockGet.mockResolvedValue(new Response("ok"));
     mockPost.mockResolvedValue(new Response("ok"));
   });
@@ -32,6 +34,10 @@ describe("generic authentication organization safeguards", () => {
       const allowed = path === "/organization/list" && method === "GET";
       expect(response.status).toBe(allowed ? 200 : 403);
     }
+    expect(mockPost).not.toHaveBeenCalled();
+  });
+  it("denies a doubled-slash organization write", async () => {
+    expect((await POST(new Request("https://app.supercheck.io/api/auth//organization/create", { method: "POST" }))).status).toBe(403);
     expect(mockPost).not.toHaveBeenCalled();
   });
   it.each(["future-write", "%69nvite-member", "update/member", "list"])("denies unknown, encoded and non-read organization requests: %s", async endpoint => {
@@ -55,7 +61,7 @@ describe("generic authentication organization safeguards", () => {
     expect(mockPost).not.toHaveBeenCalled();
   });
   describe("account endpoints while impersonating", () => {
-    const accountPaths = ["change-password", "change-email", "delete-user", "set-password", "list-sessions", "revoke-session", "revoke-sessions", "revoke-other-sessions", "two-factor/enable"];
+    const accountPaths = ["change-password", "change-email", "delete-user", "set-password", "list-sessions", "revoke-session", "revoke-sessions", "revoke-other-sessions", "two-factor/enable", "link-social", "get-access-token", "account-info", "refresh-token", "update-user", "delete-user/callback", "future-endpoint", "/change-password", "sign-in/email"];
     beforeEach(() => {
       mockSession.mockResolvedValue({ user: { id: "u1" } });
       mockImpersonated.mockResolvedValue(true);
@@ -78,8 +84,9 @@ describe("generic authentication organization safeguards", () => {
       expect((await POST(new Request("https://app.supercheck.io/api/auth/change-password", { method: "POST" }))).status).toBe(200);
       expect(mockImpersonated).not.toHaveBeenCalled();
     });
-    it("does not touch other routes", async () => {
-      expect((await POST(new Request("https://app.supercheck.io/api/auth/sign-in/email", { method: "POST" }))).status).toBe(200);
+    it.each(["get-session", "sign-out", "admin/stop-impersonating"])("allows %s without any session lookup", async (endpoint) => {
+      expect((await POST(new Request(`https://app.supercheck.io/api/auth/${endpoint}`, { method: "POST" }))).status).toBe(200);
+      expect(mockSession).not.toHaveBeenCalled();
       expect(mockImpersonated).not.toHaveBeenCalled();
     });
   });

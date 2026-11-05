@@ -89,6 +89,8 @@ export function ServiceFormDialog({
   const [ownerUserId, setOwnerUserId] = useState<string | null>(service?.ownerUserId ?? null);
   const owners = useSreIncidentAssignees(open);
   const people = owners.data?.success ? owners.data.assignees : [];
+  // A stored owner who was demoted or removed is not in the list; keep it visible so it can be cleared.
+  const staleOwner = Boolean(owners.data?.success && ownerUserId && !people.some((person) => person.id === ownerUserId));
   const [repoUrl, setRepoUrl] = useState(service?.repoUrl ?? "");
   const [otelServiceName, setOtelServiceName] = useState(service?.otelServiceName ?? "");
   const [slackChannel, setSlackChannel] = useState(service?.slackChannel ?? "");
@@ -222,6 +224,7 @@ export function ServiceFormDialog({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={NO_OWNER}>No owner</SelectItem>
+                  {staleOwner && ownerUserId && <SelectItem value={ownerUserId}>Current owner (no longer eligible)</SelectItem>}
                   {people.map((person) => (
                     <SelectItem key={person.id} value={person.id}>
                       <span className="flex items-center gap-2">

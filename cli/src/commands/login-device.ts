@@ -162,7 +162,8 @@ export async function runDeviceLogin(options: DeviceLoginOptions, depsOverride?:
     (!json && Boolean(process.stdin.isTTY && process.stderr.isTTY) && !process.env.CI)
 
   if (!interactive) {
-    const outcome = await loginStep(apiUrl, deps, { pollNow: true })
+    // Honour the stored nextPollAt (and any slow_down): a looping agent must never poll faster than the server allows.
+    const outcome = await loginStep(apiUrl, deps)
     if (json) {
       logger.output(JSON.stringify(printable(outcome)))
       return

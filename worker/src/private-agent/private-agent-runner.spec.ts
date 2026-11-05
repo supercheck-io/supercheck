@@ -234,6 +234,31 @@ describe('private agent connector execution', () => {
     });
   });
 
+  it('redacts a token before clipping Loki titles, so a cut cannot leave a partial secret', async () => {
+    const token = `ghp_${'A'.repeat(36)}`;
+    // Pad so the 160-character cut falls inside the token.
+    const line = `${'x'.repeat(150)} ${token}`;
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        data: {
+          result: [{ stream: {}, values: [['1782122100000000000', line]] }],
+        },
+      }),
+    });
+    const result = await executePrivateAgentConnectorJob({
+      ...baseJob,
+      jobSpec: {
+        ...baseJob.jobSpec,
+        connectorType: 'loki',
+        endpointUrl: 'https://loki.internal',
+        query: '{service="checkout"}',
+      },
+    });
+    expect(JSON.stringify(result.evidence)).not.toContain('ghp_A');
+  });
+
   it('executes Elasticsearch jobs without returning raw documents', async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
