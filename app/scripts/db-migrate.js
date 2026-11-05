@@ -358,8 +358,10 @@ async function runDeferredMigrations(items = deferredMigrations) {
     if (!useStatementTimeout) {
       log("DATABASE_URL is a connection pooler: deferred index builds run without a statement timeout");
     }
+    // prepare: false keeps queries working through a transaction-mode pooler without prepared statements.
     client = postgres(TARGET_DATABASE_URL, {
       max: 1,
+      prepare: false,
       ssl: getDatabaseSSLConfig(),
       onnotice: () => {},
     });
@@ -392,7 +394,7 @@ async function runDeferredMigrations(items = deferredMigrations) {
         logWarning(`Deferred migration ${file} failed and will be retried on the next deploy: ${err.message}`);
         // A statement timeout or dropped connection can leave the pooled connection unusable.
         await client.end({ timeout: 5 }).catch(() => undefined);
-        client = postgres(TARGET_DATABASE_URL, { max: 1, ssl: getDatabaseSSLConfig(), onnotice: () => {} });
+        client = postgres(TARGET_DATABASE_URL, { max: 1, prepare: false, ssl: getDatabaseSSLConfig(), onnotice: () => {} });
       }
     }
   } catch (err) {
