@@ -51,6 +51,7 @@ flowchart TD
 
 - Requirements are traceability and coverage objects. They are never executed and do not own an independent pass/fail state.
 - Coverage is derived from linked test executions and must remain explainable.
+- Coverage is computed per test from `runs.metadata.testStatuses`, falling back to the run status when a run has none. Runs tables show Triggered by as the job schedule (scheduled runs) or the key name and its owner (API runs).
 - Requirement, document, test, and tag links are tenant-scoped and protected against cross-project IDOR.
 - Browser requirements follow the recorder-first authoring path where applicable.
 - REST: `app/src/app/api/requirements/**` (list/create, `[id]`, `[id]/tests`, `[id]/tags`, `export`). Shared logic lives in `app/src/lib/requirements/service.ts`, which dashboard server actions and REST both call; add behavior there, not in a route or action alone.

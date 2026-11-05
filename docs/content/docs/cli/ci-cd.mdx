@@ -82,18 +82,7 @@ jobs:
           SUPERCHECK_TOKEN: ${{ secrets.SUPERCHECK_TOKEN }}
 ```
 
-### Deployment gating
-
-Use the CLI exit code to stop the workflow when the run fails, is blocked, or times out:
-
-```yaml
-- name: Gate Deployment
-  run: |
-    supercheck job trigger "${{ vars.JOB_ID }}" --wait
-  env:
-    SUPERCHECK_TRIGGER_KEY: ${{ secrets.SUPERCHECK_TRIGGER_KEY }}
-    SUPERCHECK_TOKEN: ${{ secrets.SUPERCHECK_TOKEN }}
-```
+The step fails the workflow on any non-zero [exit code](#exit-codes), so a failed, blocked or timed-out run stops the pipeline.
 
 </Tab>
 <Tab value="GitLab CI">

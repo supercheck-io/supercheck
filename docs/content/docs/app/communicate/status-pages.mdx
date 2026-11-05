@@ -291,23 +291,36 @@ sequenceDiagram
 
 ![Email Subscription](/screenshots/status-page-subscribe-email.png)
 
-Choose **Subscribe**, enter an email, select **Subscribe via Email**, then open the verification link.
+Choose **Subscribe**, enter an email, select **Subscribe via Email**, then open the verification link. Unsubscribe links are signed.
 
 </Tab>
 <Tab value="Slack">
 
 ![Slack Subscription](/screenshots/status-page-subscribe-slack.png)
 
-1. Create a Slack app at [api.slack.com/apps](https://api.slack.com/apps) and enable **Incoming Webhooks**
-2. Add the webhook to a channel and copy its URL
-3. Paste the URL in the subscription dialog
+<Steps>
+<Step>
+Create a Slack app at [api.slack.com/apps](https://api.slack.com/apps) and enable **Incoming Webhooks**.
+</Step>
+<Step>
+Add the webhook to a channel and copy its URL.
+</Step>
+<Step>
+Paste the URL in the subscription dialog.
+</Step>
+</Steps>
 
 Messages are color-coded by impact and link back to the status page.
 
 </Tab>
 <Tab value="Webhook">
 
-New webhook subscriptions stay **Pending** until the endpoint proves it owns the URL. Supercheck sends one `POST` (10-second timeout):
+New webhook subscriptions stay **Pending** until the endpoint proves it owns the URL.
+
+<Accordions>
+<Accordion title="Verification and signature details" id="webhook-details">
+
+Supercheck sends one `POST` (10-second timeout):
 
 ```json
 {
@@ -336,6 +349,9 @@ const valid = actual.length === expected.length &&
 if (!valid) throw new Error("Invalid webhook signature");
 ```
 
+</Accordion>
+</Accordions>
+
 </Tab>
 <Tab value="Feeds">
 
@@ -348,7 +364,7 @@ Add the iCal URL (`/api/status-pages/[id]/ical`) as a calendar subscription in G
 
 The **Subscribers** tab lists email, Slack, and webhook subscribers with verification status, search, CSV export, delivery history, and retry for failed deliveries. Slack webhook URLs are masked.
 
-Subscribers are notified when an incident is created, updated, or resolved, and when you publish maintenance updates, but only for updates sent with **Notify subscribers** selected.
+Subscribers are notified when an incident is created, updated or resolved, and when you publish maintenance updates, only for updates sent with **Notify subscribers** selected.
 
 ## Settings
 
@@ -381,12 +397,7 @@ flowchart LR
     class Share complete
 ```
 
-| Step | Action |
-|---|---|
-| **1. Save** | Enter the hostname in **Settings** and save |
-| **2. Add DNS** | A **CNAME** to the target shown in Settings, and the **TXT** proof at `_supercheck-challenge.<custom-hostname>` |
-| **3. Verify** | After propagation, choose **Verify DNS**. The page must be published |
-| **4. Check HTTPS** | Open the URL and confirm the certificate before sharing |
+Add a **CNAME** to the target shown in Settings and the **TXT** proof at `_supercheck-challenge.<custom-hostname>`. The page must be published before **Verify DNS**.
 
 Keep the TXT record in place; ownership is rechecked daily. To remove the domain, clear the field and save; the default URL keeps working.
 
@@ -395,7 +406,7 @@ On Cloudflare, use **DNS only** while verifying. Turn on the proxy only after th
 </Callout>
 
 <Accordions>
-<Accordion title="Self-hosted DNS and HTTPS">
+<Accordion title="Self-hosted DNS and HTTPS" id="self-hosted-dns">
 
 | Purpose | Hostname | DNS record |
 |---|---|---|
@@ -408,7 +419,7 @@ Keep custom hostnames outside the `STATUS_PAGE_DOMAIN` namespace. DNS verificati
 Local development uses `http://localhost:3000/status/[subdomain]`; custom domains need a publicly reachable `STATUS_PAGE_DOMAIN`.
 
 </Accordion>
-<Accordion title="Troubleshooting">
+<Accordion title="Troubleshooting" id="custom-domain-troubleshooting">
 
 | Problem | Check |
 |---|---|

@@ -24,7 +24,15 @@ Every test or job execution creates a run with results, logs, and artifacts.
 
 Open **Automate → Runs** and select a run to view its details. The list shows the newest 1000 runs; older runs are not loaded and search and filters only cover the loaded ones.
 
-The **Triggered by** column shows who started each run: the user for manual and CLI runs, the trigger key name for runs started with a job trigger key (hover to see the key owner), or **Schedule** for scheduled runs. Runs recorded before this column was added show **Unknown**.
+The **Triggered by** column shows who started each run:
+
+| Trigger | Shows |
+|---|---|
+| Manual or CLI | The user |
+| Trigger key | The key name and the key owner |
+| Schedule | The schedule in plain words, for example **Every 4 hours** or **Daily at 09:00**. Hover to see the cron (UTC). Uncommon schedules show the cron itself |
+
+Runs recorded before this column was added show **Unknown**.
 
 Tests, jobs, monitors, requirements, variables and notification channels show a **Created by** column. On the jobs and monitors tables it is hidden by default; turn it on from the column menu.
 

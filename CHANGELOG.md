@@ -5,9 +5,47 @@ Notable changes to the Supercheck app and worker, including upgrade requirements
 The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prerelease builds (`-canary.N`) are not listed.
 
 ## [Unreleased]
+
+This release adds incident watchers, a per-project notification policy and an AI-assisted incident workflow, with a broad database hardening pass (relationships, constraints, timestamps, indexes) that needs migrations applied before you update.
+
+### Upgrade notes
+
+- **Database migrations.** Apply migrations `0047` to `0058` before updating the app and the worker. `0053` converts every timestamp column to `timestamptz` and rebuilds the indexes on those columns, locking each table while it does, so plan a maintenance window on large installs; it fails instead of guessing when the database holds data and its `TimeZone` is not UTC. `0056` aborts if any status page subscriber still has only a plaintext webhook secret (encrypt or rotate it first) and drops `plan_limits.sso_enabled`, `status_page_subscribers.webhook_secret` and `unsubscribe_token`: unsubscribe links that use the legacy token stop working, and the previous release still reads those columns, so deploy with workers stopped or in a short window and do not roll back the image afterwards. `0057` and `0058` add the watcher and notification policy tables and columns. `0054` is marked `-- supercheck:no-transaction`: it builds its index `CONCURRENTLY` after the migration transaction commits.
+- **New optional settings.** `APP_HOST_PORT` and `RUSTFS_HOST_PORT` change the host ports the app and RustFS publish on; `install.sh` and `backup.sh --restore` follow them. `MIGRATION_DATABASE_URL` is a direct PostgreSQL URL used for deferred index builds when `DATABASE_URL` points at a connection pooler.
+- **MCP scopes.** Clients can now request the optional scopes `mcp:incidents:write` and `mcp:sre`. Existing clients stay read-only until they re-consent.
+- **Reports origin removed.** The optional `REPORTS_ORIGIN` setting and `POST /api/report-urls` are gone; report HTML is always served from the app origin again. Remove `REPORTS_ORIGIN` from your environment (it is now ignored) and any DNS, TLS or proxy routing you added for that host, which would otherwise serve the full app.
 - **Diagnostic queries.** Saving a query now rejects an unconstrained text parameter placed outside quotes in a PromQL, LogQL or TraceQL template, and a pattern that accepts any value; add a pattern, enum or allowlist, or put the placeholder in quotes. Already-saved queries are not rewritten, and at run time they accept plain tokens only.
 - **Monitor targets.** Creating or changing an HTTP, website, ping or port monitor now returns 400 when its target is a private, loopback or reserved address (including a name that resolves to one). Set `ALLOW_INTERNAL_TARGETS=true` on both the app and the worker to allow them. Existing monitors keep working and stay editable until their target or type changes.
-- **Reports origin removed.** The optional `REPORTS_ORIGIN` setting and `POST /api/report-urls` are gone; report HTML is always served from the app origin again. Remove `REPORTS_ORIGIN` from your environment (it is now ignored) and any DNS, TLS or proxy routing you added for that host, which would otherwise serve the full app.
+
+### Added
+
+- **Incident watchers.** Watch an incident to get its updates by email; read-only viewers can watch too.
+- **Default notification policy** per project: the channels used for incidents, an email to the service owner for SEV1 and SEV2, and one re-notify when an incident is still unacknowledged. The incident timeline composer has **Also post to status page** (subscribers are emailed) for an incident with a linked status page incident.
+- **Incident Copilot** opens in a side drawer on the incident page. AI drafts the customer status update and a recovery-aware resolution note for you to edit.
+- **Auto-investigation** is opt-in per project policy (off by default): SEV1 and SEV2 incidents get a full investigation, SEV3 and SEV4 a triage. A failed run is retried on a later trigger, up to three attempts per incident.
+- **MCP incident tools** `assign_incident`, `acknowledge_incident`, `resolve_incident` (scope `mcp:incidents:write`) and `triage_incident`, `investigate_incident`, `generate_incident_brief` (scope `mcp:sre`); each is checked against the caller's role per call.
+- **Organization deletion.** Owners can delete their organization, and super admins can delete a user's sole-member organizations after confirmation; both remove projects, data and stored files.
+- **Telemetry purge.** Operational telemetry (for example Private Agent heartbeats and service health snapshots) is purged on a schedule, set per table by `*_RETENTION_DAYS` settings such as `PRIVATE_AGENT_HEARTBEAT_RETENTION_DAYS` and `SRE_HEALTH_SNAPSHOT_RETENTION_DAYS`; incident history and chat are never purged.
+
+### Changed
+
+- **Permission failures return 403** instead of 401 when the caller is signed in but lacks permission (#759), including the realtime queue and test status streams.
+- **Requirement coverage is computed per test** from each test's own result, falling back to the run status (#760).
+- **Avatars** are re-encoded to 256px WebP and addressed by user id (#755).
+- **Run report** fits the viewport height (#756).
+- **Job failure alerts** are race-free: each job run and provider reserves its alert slot before sending, so concurrent or repeated runs do not over-send. A timed-out send can be retried within one attempt, so a provider may rarely receive a duplicate. A provider that fails is not retried later.
+- **Runs table "Triggered by"** shows the schedule that started a scheduled run in plain words, and the key name and its owner for API runs.
+
+### Fixed
+
+- **Database hardening.** Foreign keys have deliberate `ON DELETE` rules (`0048`), missing foreign key and lookup indexes were added and covered ones dropped (`0049`, `0054`), relationships, uniqueness and required tenant columns are enforced (`0050`), retention lookups are indexed (`0051`), and status and type columns accept known values only (`0052`).
+- **Status page subscriber secrets** are protected at rest (`0047`): verification tokens are hashed, webhook secrets are stored encrypted only, and unsubscribe links are signed tokens only.
+- **Auth.** Suspended accounts are rejected on every session path, and verify-key, status page upload, and extension auth routes are rate limited.
+- **MCP and OAuth** routes no longer return 500 on Next request objects (#763).
+- A Playwright run is no longer re-executed when only saving its result fails.
+- AI fix-test routes return 400 for malformed input.
+- The recorder hand-off asks before replacing unsaved editor content.
+- **Also fixed:** MCP endpoint URLs that contain a key are stored encrypted (#758); status page incident emails are sent when the encryption key is unset (#746); monitor-cycle outages and private-agent limits (#753); deleted-project lifecycle and upload and webhook URL checks (#748).
 
 ## [1.5.0] - 2026-10-30
 

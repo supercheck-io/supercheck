@@ -4,8 +4,13 @@ Notable changes to `@supercheck/cli`. The format follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Added
+
+- `project members [projectId]` lists the project's members and their roles (defaults to the current project).
+
 ### Fixed
 
+- Piping output into a closed pipe (for example `| head`) no longer crashes; the command exits quietly with its own exit code.
 - `deploy`, `diff` and `destroy` compare a config job or monitor `alertConfig` the way the server stores it (defaults filled, default values dropped), so an unchanged alert config no longer shows as an update on every run. They also treat a DELETE that finds the resource already gone after a retry as done.
 - `monitors` and `statusPages` in config must be inline arrays, and a job `status` is rejected: glob strings and job status were ignored, and `deploy --delete` then planned to delete every remote monitor and status page. Remove them from the config.
 - `pull` no longer writes the monitor config keys the server rejects (`responseBodyJsonPath`, `checkExpiration`, `daysUntilExpirationWarning`, `checkRevocation`, `sslCheckOnStatusChange`), and `diff` ignores them on the remote side. `pull` and `validate` warn when a job `cronSchedule` is not 5 fields, which the server rejects on update.

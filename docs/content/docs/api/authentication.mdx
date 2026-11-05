@@ -95,7 +95,7 @@ POST /api/jobs/{id}/trigger
 Authorization: Bearer sck_trigger_f1e2d3c4b5a6789012345678901234cd
 ```
 
-Trigger keys **cannot** access any other API endpoint. Attempts to use them on general endpoints return `401 Unauthorized`.
+Trigger keys **cannot** access any other API endpoint. Using one on a general endpoint returns `401 Unauthorized`. Missing or invalid credentials return `401`; a valid token that lacks permission returns `403 Forbidden`.
 
 ## Keep Tokens Secure
 

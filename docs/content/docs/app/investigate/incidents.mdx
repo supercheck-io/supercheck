@@ -112,22 +112,20 @@ The **Evidence** section of the panel organizes observations from Supercheck che
 ![Investigation details](/screenshots/incident-evidence-brief.png)
 
 <Callout type="info">
-Stored evidence stays available when a connector is disabled. Disabling a connector stops new live searches but does not remove evidence already collected.
+Stored evidence stays available when a connector is disabled. Disabling a connector stops new live searches but does not remove evidence already collected. **Save report snapshot** and the **Evidence brief** can be downloaded to share; credentials and raw connector responses are excluded.
 </Callout>
 
-
-## Saving and Sharing
-
-Use **Save report snapshot** to keep the findings of a completed investigation, and the **Evidence brief** for a shorter summary. Download either to share. Credentials and raw connector responses are excluded.
 
 ## Post-mortem
 
 When an incident is resolved, the **Post-mortem** card offers **Generate post-mortem draft**. The draft is built from the timeline, the resolution summary, the hypotheses, and the evidence titles, in these sections: **Summary**, **Impact**, **Timeline**, **Root cause**, **Contributing factors**, and **Follow-ups**.
 
-- One bounded AI call writes the draft. If AI is unavailable, your organization's usage limit is reached, or the model returns something unusable, you get a template filled from the incident record instead, with placeholders where facts are missing. Nothing is invented.
-- Every section is editable. Follow-ups are a simple list you can add to and remove from. Select **Save post-mortem** to keep your edits.
-- **Regenerate draft** replaces the current text after you confirm. **Export Markdown** downloads the post-mortem as a `.md` file.
-- Drafting is limited to five drafts per person per incident per hour. It needs permission to update incidents; people with view access can read and export it.
+| Behavior | Detail |
+|---|---|
+| **Drafting** | One bounded AI call. If AI is unavailable, your organization's usage limit is reached, or the model returns something unusable, a template filled from the incident record is used instead, with placeholders where facts are missing. Nothing is invented |
+| **Editing** | Every section is editable. Follow-ups are a list you can add to and remove from. **Save post-mortem** keeps your edits |
+| **Regenerate / Export** | **Regenerate draft** replaces the text after you confirm. **Export Markdown** downloads a `.md` file |
+| **Limits** | Five drafts per person per incident per hour. Drafting needs permission to update incidents; people with view access can read and export |
 
 Review the draft before sharing it. The incident timeline and resolution summary remain the record of what happened.
 
@@ -186,10 +184,10 @@ Each project has one **Default policy**, edited from **Organization → Projects
 
 | Setting | Effect |
 |---|---|
-| **Channels** | Notified about incidents created by hand or by a connector. Monitors and jobs keep the channels chosen on them |
+| **Channels** | Up to 10. Notified about incidents created by hand or by a connector. Monitors and jobs keep the channels chosen on them |
 | **Email service owners for SEV1 and SEV2** | Also emails the incident's service owners when a SEV1 or SEV2 opens |
-| **Remind once if nobody acknowledges** | After the chosen minutes (5 to 1,440), re-sends once to the policy channels and the assignee and commander. Off by default |
-| **Investigate new incidents automatically** | Off by default because it uses AI credits. SEV1 and SEV2 get a full investigation, SEV3 and SEV4 a quick triage, through the same plan and usage limits as starting one by hand |
+| **Remind once if nobody acknowledges** | After the chosen minutes (5 to 1,440), re-sends once to the policy channels and the assignee and commander. Off by default. Incidents more than two days old are not reminded |
+| **Investigate new incidents automatically** | Off by default because it uses AI credits. SEV1 and SEV2 get a full investigation, SEV3 and SEV4 a quick triage, through the same plan and usage limits as starting one by hand. Only incidents opened after you turn it on are covered, and automatic runs use stored evidence, not live sources. Each incident gets one automatic run at a time; if that run fails, a later trigger can try again, up to three attempts |
 
 Email, Slack, Teams, Discord, Telegram and plain webhook channels are supported; webhooks with a preset or body template are skipped for incident messages. Each message names the incident, severity and service and links to it, without raw evidence, logs, credentials or AI conclusions. The same event is announced once within a short window, and recovery and reopen emails reach each person at most once every 10 minutes, so a flapping check does not flood inboxes.
 

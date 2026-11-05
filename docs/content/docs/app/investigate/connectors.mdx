@@ -32,6 +32,23 @@ For OpenTelemetry, connect the backend your collector exports to (Tempo, Jaeger,
 
 ## Choose How to Connect
 
+```mermaid
+%%{init: {"flowchart":{"nodeSpacing":20,"rankSpacing":24,"padding":12,"wrappingWidth":140}}}%%
+flowchart TB
+    Provider[Choose a provider] --> Reachable{Can Supercheck reach it directly?}
+    Reachable -->|Yes| Direct[Direct]
+    Reachable -->|No| Agent[Private Agent]
+    Direct --> Configure[Set endpoint, credentials, and service scope]
+    Agent --> Configure
+    Configure --> Validate[Validate and run a known-result query]
+    Validate --> Use[Enable live sources in an investigation]
+
+    classDef action fill:#1d4ed8,stroke:#60a5fa,color:#fff
+    classDef decision fill:#92400e,stroke:#fbbf24,color:#fff
+    class Provider,Direct,Agent,Configure,Validate,Use action
+    class Reachable decision
+```
+
 | Your provider | Choose | What to do |
 |---|---|---|
 | A public API Supercheck can reach | **Direct** | Enter the endpoint and read-only credentials. Cloud endpoints must use HTTPS |
@@ -40,6 +57,9 @@ For OpenTelemetry, connect the backend your collector exports to (Tempo, Jaeger,
 
 Private Agent mode supports GitHub, Kubernetes, Prometheus, Grafana, Sentry, Datadog, Loki, Elasticsearch / OpenSearch, Tempo, AWS CloudWatch, Jaeger, New Relic, Splunk, Google Cloud, Azure Monitor, Jira, Confluence, and MCP servers. GitLab, PagerDuty, Opsgenie, and Notion support **Direct** only.
 
+<Accordions>
+<Accordion title="Endpoint rules by mode" id="endpoint-rules">
+
 | Mode | Endpoint rules |
 |---|---|
 | **Supercheck Cloud, Direct** | HTTPS only. Cannot reach localhost, private, or reserved addresses, including cloud metadata |
@@ -47,47 +67,17 @@ Private Agent mode supports GitHub, Kubernetes, Prometheus, Grafana, Sentry, Dat
 | **Self-hosted Direct** | Reaches internal HTTP or HTTPS endpoints, including `localhost` and private ranges. Cloud metadata and link-local addresses (`169.254.0.0/16`, `100.100.100.200`, `168.63.129.16`, `192.0.0.192`, `fe80::/10`, `fd00:ec2::254`) are blocked. Supercheck resolves the host once, checks every address, and connects to that same address |
 | **All modes** | Reject credentials embedded in URLs, and a fragment (`#`) on the endpoint. A query string (`?`) is rejected too, except for MCP connectors, whose hosted servers sometimes carry the key in the URL; Supercheck treats that stored URL as secret and shows only `?…` in the console. Put paths in the endpoint and keys in the credential fields |
 
-<p className="text-sm">Scroll horizontally on smaller screens to view all steps.</p>
-
-<div className="overflow-x-auto" role="region" aria-label="Connector setup workflow" tabIndex={0}>
-<div className="min-w-[84rem]">
-
-```mermaid
-%%{init: {"flowchart":{"nodeSpacing":20,"rankSpacing":24,"padding":12,"wrappingWidth":140}}}%%
-flowchart LR
-    Provider[Choose a supported provider] --> Reachable{Can Supercheck reach it directly?}
-    Reachable -->|Yes|Direct[Choose Direct]
-    Reachable -->|No|Agent[Register and start a Private Agent]
-    Agent --> Private[Choose Private Agent and select it]
-    Direct --> Configure[Set endpoint, credentials, and service scope]
-    Private --> Configure
-    Configure --> Validate[Validate and run a known-result query]
-    Validate --> Use[Enable live sources in an investigation]
-
-    classDef action fill:#1d4ed8,stroke:#60a5fa,color:#fff
-    classDef decision fill:#92400e,stroke:#fbbf24,color:#fff
-    class Provider,Direct,Agent,Private,Configure,Validate,Use action
-    class Reachable decision
-```
-
-</div>
-</div>
+</Accordion>
+</Accordions>
 
 ## Add a Connector
 
 <Steps>
 <Step>
 
-### Open Integrations
+### Add the connector
 
-Go to **Settings → Organization → Integrations** and select **Add connector**.
-
-</Step>
-<Step>
-
-### Pick the provider
-
-Select the provider type and give it a recognizable name, such as `Production GitHub`.
+Go to **Settings → Organization → Integrations**, select **Add connector**, pick the provider and give it a recognizable name, such as `Production GitHub`.
 
 </Step>
 <Step>
@@ -99,16 +89,9 @@ Choose **Direct** or **Private Agent**. For Private Agent, first register an age
 </Step>
 <Step>
 
-### Add endpoint and credential
+### Add endpoint, credential and scope
 
-Enter the API endpoint URL and a least-privilege read-only credential.
-
-</Step>
-<Step>
-
-### Set the service scope
-
-Define the **Service scope** to restrict which services may use this connector.
+Enter the API endpoint URL and a least-privilege read-only credential, then set the **Service scope** to restrict which services may use the connector.
 
 </Step>
 <Step>

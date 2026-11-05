@@ -140,7 +140,7 @@ export default defineConfig({
 | Run tests | `test run`, `test execute <id> --wait`, `job run --id <id>`, `job trigger <id> --wait` |
 | Follow a run | `run wait <id>`, `run stream <id>`, `run status <id>`, `run cancel <id>`, `run delete <id> [--force]`, `dashboard`, `analytics playwright/k6` |
 | Inspect resources | `test list`, `monitor list`, `job list`, `run list`, `monitor results <id>` |
-| Manage resources | `test` (incl. `--priority`, `tag add/remove`), `monitor`, `job`, `requirement` (`list`, `get`, `create`, `update`, `delete`, `link`, `unlink`, `coverage`, `export`), `var` (incl. `upload`/`download` for file variables), `tag`, `token` (`list`, `create`, `enable`, `disable`, `revoke`), `project list`, `notification` (`create`, `update`, `delete`) |
+| Manage resources | `test` (incl. `--priority`, `tag add/remove`), `monitor`, `job`, `requirement` (`list`, `get`, `create`, `update`, `delete`, `link`, `unlink`, `coverage`, `export`), `var` (incl. `upload`/`download` for file variables), `tag`, `token` (`list`, `create`, `enable`, `disable`, `revoke`), `project list`, `project members [projectId]`, `notification` (`create`, `update`, `delete`) |
 | AI SRE | `incident list/get/timeline/assign/unassign/ack/resolve`, `sre triage/investigate/ask/brief/status`, `service list/get` |
 
 Run `supercheck <command> --help` for options, or see the [command reference](https://supercheck.io/docs/cli/commands).

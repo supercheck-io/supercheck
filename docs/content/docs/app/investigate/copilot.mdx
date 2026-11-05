@@ -4,7 +4,7 @@ description: Ask operational questions using incident evidence and connected sou
 icon: Bot
 ---
 
-Open **Respond → Copilot** to ask about your services, errors, or logs. From an incident, select **Ask Copilot** to bring its saved evidence into the same chat screen.
+Ask about your services, errors, or logs from **Respond → Copilot**, or from an incident with **Ask Copilot**.
 
 <Callout type="info">
 Copilot is read-only. It gathers evidence and suggests checks, but cannot change your systems or apply a fix.
@@ -12,8 +12,16 @@ Copilot is read-only. It gathers evidence and suggests checks, but cannot change
 
 ![Copilot Chat](/screenshots/sre-copilot-chat.png)
 
-## Chat Modes
+## Where to open it
 
+| Entry | What you get |
+|---|---|
+| **Respond → Copilot** | The full-page chat with history, for general or incident questions |
+| **Incident page → ... → Ask Copilot** | A side drawer beside the incident, scoped to that incident. **Open full page** goes to `/copilot?incident=<id>`, which opens the most recently updated thread for that incident |
+
+The drawer loads chat history only while it is open.
+
+## Chat Modes
 
 <Cards className="grid-cols-1 sm:grid-cols-2">
 <Card icon={<MessageSquare className="text-blue-500" />} title="General chat">
