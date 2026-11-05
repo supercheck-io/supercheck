@@ -17,6 +17,7 @@ import {
 jest.mock("@react-email/render", () => {
   const { renderToStaticMarkup } = jest.requireActual("react-dom/server");
   return {
+    plainTextSelectors: [],
     render: async (el: React.ReactElement, opts?: { plainText?: boolean }) =>
       opts?.plainText ? "plain: " + renderToStaticMarkup(el).replace(/<[^>]+>/g, " ") : renderToStaticMarkup(el),
   };

@@ -162,7 +162,7 @@ export function validateEnv(): void {
 export function generateTestEmail(prefix = "test"): string {
   const timestamp = Date.now();
   const random = Math.random().toString(36).substring(2, 8);
-  return `${prefix}-${timestamp}-${random}@e2e-test.supercheck.io`;
+  return `${prefix}-${timestamp}-${random}@e2e-test.invalid`;
 }
 
 /**
