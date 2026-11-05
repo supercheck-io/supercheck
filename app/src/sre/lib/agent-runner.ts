@@ -25,6 +25,8 @@ export type RunSreAgentInput<TTools extends ToolSet = ToolSet> = {
   organizationId?: string;
   /** Aborts the run early, for example when the requesting client disconnects. */
   abortSignal?: AbortSignal;
+  /** Forbid tools on the last step so a capped run still ends with an answer. */
+  finalStepWithoutTools?: boolean;
 };
 
 export class SreAgentEmptyResponseError extends Error {
@@ -70,6 +72,12 @@ export async function runSreAgent<TTools extends ToolSet = ToolSet>(input: RunSr
     prompt,
     tools: input.tools,
     stopWhen: stepCountIs(budget.maxSteps),
+    ...(input.finalStepWithoutTools
+      ? {
+          prepareStep: ({ stepNumber }: { stepNumber: number }) =>
+            stepNumber === budget.maxSteps - 1 ? { toolChoice: "none" as const } : undefined,
+        }
+      : {}),
     maxOutputTokens: budget.maxOutputTokens,
     abortSignal,
     onStepFinish: async (event) => {

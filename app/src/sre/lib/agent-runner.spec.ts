@@ -3,6 +3,8 @@ import type {
   LanguageModelV3StreamPart,
   LanguageModelV3StreamResult,
 } from "@ai-sdk/provider";
+import { tool } from "ai";
+import { z } from "zod";
 import { MockLanguageModelV3, simulateReadableStream } from "ai/test";
 
 import { logger } from "@/lib/logger/index";
@@ -108,6 +110,41 @@ describe("runSreAgent", () => {
     }, "SRE model step usage");
     expect(model.doStreamCalls).toHaveLength(1);
     expect(stepEvents).toHaveLength(1);
+  });
+
+  it("with finalStepWithoutTools the last step forbids tools and still answers, counting its usage", async () => {
+    const usage = { inputTokens: { total: 10, noCache: 10, cacheRead: 0, cacheWrite: 0 }, outputTokens: { total: 5, text: 5, reasoning: 0 } };
+    let call = 0;
+    const model = new MockLanguageModelV3({
+      doStream: async (): Promise<LanguageModelV3StreamResult> => {
+        call += 1;
+        const chunks: LanguageModelV3StreamPart[] = call === 1
+          ? [
+              { type: "stream-start", warnings: [] },
+              { type: "tool-call", toolCallId: "c1", toolName: "lookup", input: "{}" },
+              { type: "finish", finishReason: { unified: "tool-calls", raw: "tool_calls" }, usage },
+            ]
+          : [
+              { type: "stream-start", warnings: [] },
+              { type: "text-start", id: "t" },
+              { type: "text-delta", id: "t", delta: "Answer from gathered results." },
+              { type: "text-end", id: "t" },
+              { type: "finish", finishReason: { unified: "stop", raw: "stop" }, usage },
+            ];
+        return { stream: simulateReadableStream({ chunks }) };
+      },
+    });
+    jest.mocked(recordSreTokenUsage).mockClear();
+    const result = await runSreAgent({
+      model, validateConfiguration: false, system: "s", prompt: "p", organizationId: "org-a",
+      tools: { lookup: tool({ description: "d", inputSchema: z.object({}), execute: async () => "ok" }) },
+      budget: { maxSteps: 2, maxOutputTokens: 100, timeoutMs: 10_000 },
+      finalStepWithoutTools: true,
+    });
+    expect(result.text).toBe("Answer from gathered results.");
+    expect(model.doStreamCalls[0]!.toolChoice).not.toEqual({ type: "none" });
+    expect(model.doStreamCalls[1]!.toolChoice).toEqual({ type: "none" });
+    expect(recordSreTokenUsage).toHaveBeenCalledTimes(2);
   });
 
   it("fails closed when the model ends on tool calls without a report", async () => {

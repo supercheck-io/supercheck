@@ -163,6 +163,8 @@ export type CreateManualSreIncidentResult =
 export type UpdateSreIncidentResult =
   | {
       success: true;
+      /** False when the edit matched the stored incident and nothing was written. */
+      changed?: boolean;
       incident: {
         id: string;
         incidentNumber: number;
@@ -1420,6 +1422,21 @@ export async function updateSreIncident(
       }
     }
 
+    // A save that changes nothing writes no timeline event and no audit entry.
+    if (
+      truncate(parsed.data.title, 500) === current.title &&
+      parsed.data.severity === current.severity &&
+      parsed.data.status === current.status &&
+      parsed.data.primaryServiceId === current.primaryServiceId
+    ) {
+      return {
+        success: true,
+        changed: false,
+        incident: { id: current.id, incidentNumber: current.incidentNumber, title: current.title },
+        message: "No changes to save",
+      };
+    }
+
     const now = new Date();
     const reopening = current.status === "resolved" && parsed.data.status !== "resolved";
     const incident = await db.transaction(async (tx) => {
@@ -2057,10 +2074,11 @@ export async function createSreIncidentFromAlert(
     });
 
     if ("reopened" in result && result.reopened) {
-      await announceSystemTransition(organizationId, project.id, result.incident.id, "reopened", {
+      // Not awaited: provider sends can take seconds each and must not hold the request.
+      void announceSystemTransition(organizationId, project.id, result.incident.id, "reopened", {
         assigneeUserId: result.reopenedAssigneeUserId,
         discriminator: alert.id,
-      });
+      }).catch((error) => logger.warn({ error, incidentId: result.incident.id }, "Reopen announcement failed"));
     }
 
     if (!result.existing && !correlation && alertStatus !== "resolved") {

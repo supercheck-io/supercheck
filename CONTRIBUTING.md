@@ -53,6 +53,7 @@ In a separate terminal for the app, run from the repository root:
 cd /path/to/supercheck/app
 test -f .env || cp .env.example .env
 npm ci
+set -a; . ./.env; set +a   # the migrator reads DATABASE_URL from the environment and refuses to run without it
 npm run db:migrate
 npm run dev
 ```

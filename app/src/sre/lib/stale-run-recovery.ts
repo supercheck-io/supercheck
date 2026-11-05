@@ -10,7 +10,7 @@ const logger = createLogger({ module: "sre-stale-run-recovery" }) as {
 
 // An investigation is capped at 90s of agent time (120s hard limit); a run
 // still "running" well past that lost its process (crash, deploy, restart).
-const STALE_RUN_AFTER_MS = 5 * 60_000;
+export const STALE_RUN_AFTER_MS = 5 * 60_000;
 
 /**
  * Releases the one-active-run reservation of a run whose process died, so the

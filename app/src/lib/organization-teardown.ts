@@ -163,22 +163,18 @@ async function sweepProjectArtifacts(
 }
 
 /** Stored files could not all be removed. The database is unchanged (some files may be gone); a retry finishes. */
-export class StorageCleanupError extends Error {
-  constructor(message: string, readonly subscriptionCancelled: boolean) {
-    super(message);
-  }
-}
+export class StorageCleanupError extends Error {}
 
 /**
  * Permanently deletes an organization and everything it owns, in one transaction that holds the
  * organization row lock (FOR UPDATE). The lock conflicts with the foreign-key locks of new members,
  * projects, monitors, tests and jobs, so the organization is frozen until the delete commits.
  *
- * Order: membership guard and audit marker; end the subscription (BillingCancellationError, nothing
- * changed); stop schedules; remove stored files (StorageCleanupError if any object fails, nothing
- * deleted from the database); delete projects and the organization. Audit logs are kept.
- * Rollback leaves the subscription ended and schedules removed; a retry finishes the job (an ended
- * subscription counts as done) and active monitors are rescheduled on the next app start.
+ * Order: membership guard and audit marker; stop schedules; remove stored files (StorageCleanupError
+ * if any object fails, nothing deleted from the database and billing untouched); end the subscription
+ * last (BillingCancellationError, nothing deleted); delete projects and the organization. Audit logs
+ * are kept. Rollback leaves schedules removed and some files gone; a retry finishes the job (the sweep
+ * is idempotent, an ended subscription counts as done) and active monitors are rescheduled on the next app start.
  */
 export async function deleteOrganizationCompletely(
   organizationId: string,
@@ -202,7 +198,6 @@ export async function deleteOrganizationCompletely(
       organizationId, subscriptionId: org.subscriptionId ?? undefined,
     }, tx);
     const subscriptionCancelled = hasCancellableSubscription(org);
-    if (subscriptionCancelled) await revokeSubscription(org.subscriptionId!);
 
     const projectIds = (await tx.select({ id: projects.id }).from(projects).where(eq(projects.organizationId, organizationId))).map((p) => p.id);
     if (projectIds.length) {
@@ -226,11 +221,13 @@ export async function deleteOrganizationCompletely(
       const failures = await deleteProjectArtifacts(projectIds, monitorRows.map((m) => m.id), pages.map((p) => p.id));
       if (failures) {
         throw new StorageCleanupError(
-          `${failures} stored file(s) could not be removed. The organization and its data are still in the database (some files may already be gone); retry the deletion to finish`
-            + (subscriptionCancelled ? ". Its billing subscription was already cancelled" : ""),
-          subscriptionCancelled,
+          `${failures} stored file(s) could not be removed. The organization and its data are still in the database (some files may already be gone); retry the deletion to finish`,
         );
       }
+    }
+    // Last step before the irreversible deletes: any earlier failure leaves billing untouched.
+    if (subscriptionCancelled) await revokeSubscription(org.subscriptionId!);
+    if (projectIds.length) {
       // MCP consents reference projects by id without a foreign key.
       await tx.delete(oauthConsent).where(inArray(oauthConsent.referenceId, projectIds));
       await tx.delete(projects).where(eq(projects.organizationId, organizationId));

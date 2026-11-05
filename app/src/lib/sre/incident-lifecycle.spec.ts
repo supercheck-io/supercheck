@@ -156,6 +156,13 @@ describe("acknowledgeIncident", () => {
     expect(notifyIncidentEvent).not.toHaveBeenCalled();
   });
 
+  it("refuses to acknowledge a resolved incident even when it was acknowledged before it resolved", async () => {
+    selectQueue.push([{ id: actor.userId }]);
+    updateQueue.push([]);
+    selectQueue.push([{ ...ref, status: "resolved", acknowledgedAt: new Date() }]);
+    expect(await acknowledgeIncident(actor, incidentId)).toMatchObject({ ok: false, code: "conflict", error: "Incident is already resolved" });
+  });
+
   it("refuses to acknowledge a resolved incident and reports missing ones", async () => {
     selectQueue.push([{ id: actor.userId }]);
     updateQueue.push([]);
