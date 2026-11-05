@@ -4,7 +4,8 @@ const plan = jest.fn()
 const remote = { id: 'unrelated', type: 'monitor' as const, name: 'Dashboard monitor', raw: {} }
 jest.unstable_mockModule('../../api/authenticated-client.js', () => ({ createAuthenticatedClient: () => ({ delete: remove }) }))
 jest.unstable_mockModule('../../config/loader.js', () => ({ loadConfig: async () => ({ config: {} }) }))
-jest.unstable_mockModule('../../utils/resources.js', () => ({ buildLocalResources: () => [], fetchRemoteResources: async () => [remote], getApiEndpoint: () => '/api/monitors' }))
+const buildLocal = jest.fn<() => unknown[]>(() => [])
+jest.unstable_mockModule('../../utils/resources.js', () => ({ buildLocalResources: buildLocal, fetchRemoteResources: async () => [remote], getApiEndpoint: () => '/api/monitors' }))
 jest.unstable_mockModule('../../utils/reconcile.js', () => ({ reconcile: () => [{ action: 'delete', ...remote, remote }], formatChangePlan: plan }))
 jest.unstable_mockModule('../../utils/discovery.js', () => ({ discoverFiles: () => [] }))
 jest.unstable_mockModule('../../utils/spinner.js', () => ({ withSpinner: async (_text: string, fn: () => Promise<unknown>) => fn() }))
@@ -39,5 +40,19 @@ describe('deletion opt-in', () => {
     expect(plan).toHaveBeenLastCalledWith([])
     await diffCommand.parseAsync(['node', 'diff', '--delete'])
     expect(plan).toHaveBeenLastCalledWith([expect.objectContaining({ action: 'delete' })])
+  })
+})
+
+describe('glob test references', () => {
+  it.each([['deploy', ['node', 'deploy', '--force']], ['diff', ['node', 'diff']]] as const)('%s rejects a job test glob before resolving tests', async (_name, argv) => {
+    const glob = [{ type: 'job', name: 'nightly', definition: { tests: ['checkout*.019a0000-0000-7000-8000-000000000001.pw.ts'] } }]
+    buildLocal.mockReturnValue(glob)
+    const command = argv[1] === 'deploy' ? deployCommand : diffCommand
+    try {
+      await expect(command.parseAsync([...argv])).rejects.toThrow('is a glob pattern')
+    } finally {
+      buildLocal.mockReturnValue([])
+    }
+    expect(remove).not.toHaveBeenCalled()
   })
 })

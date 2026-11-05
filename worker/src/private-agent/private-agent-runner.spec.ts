@@ -265,6 +265,32 @@ describe('private agent connector execution', () => {
     expect(result.evidence[0].summary).not.toContain(secret.slice(0, 10));
   });
 
+  it('redacts the trimmed form of a credential stored with surrounding whitespace', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        events: [{ id: 9, title: 'echo trimmed_key_value', text: 'x' }],
+      }),
+    });
+
+    const result = await executePrivateAgentConnectorJob({
+      ...baseJob,
+      credential: {
+        credentialType: 'api_key',
+        value: { apiKey: '  trimmed_key_value\n', applicationKey: 'dd_app' },
+      },
+      jobSpec: {
+        ...baseJob.jobSpec,
+        connectorType: 'datadog',
+        endpointUrl: 'https://api.datadoghq.com',
+        query: 'service:checkout',
+      },
+    });
+
+    expect(JSON.stringify(result.evidence)).not.toContain('trimmed_key_value');
+  });
+
   it('redacts numeric secrets and tolerates a credential with a lone surrogate', async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,

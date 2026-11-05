@@ -152,14 +152,18 @@ function credentialSecrets(job: LeasedJob): string[] {
           typeof v === 'string' || typeof v === 'number',
       )
       .map(String)
-      // Also the URL-encoded form: sourceUri values are built with encodeURIComponent.
+      // Also the trimmed form (credentialString authenticates with it) and the URL-encoded
+      // forms (sourceUri values are built with encodeURIComponent).
       .flatMap((v) => {
-        try {
-          return [...new Set([v, encodeURIComponent(v)])];
-        } catch {
-          // A lone surrogate can't be URI-encoded; the raw value still applies.
-          return [v];
+        const forms = new Set([v, v.trim()]);
+        for (const form of [...forms]) {
+          try {
+            forms.add(encodeURIComponent(form));
+          } catch {
+            // A lone surrogate can't be URI-encoded; the raw value still applies.
+          }
         }
+        return [...forms];
       })
   );
 }
