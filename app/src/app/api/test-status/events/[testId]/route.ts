@@ -4,7 +4,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/utils/db";
 import { tests, runs } from "@/db/schema";
 import { getQueueEventHub, NormalizedQueueEvent } from "@/lib/queue-event-hub";
-import { requireAuthContext } from "@/lib/auth-context";
+import { AuthError, requireAuthContext } from "@/lib/auth-context";
 import {
   fetchEventStatusReport,
   fetchInitialStatusReport,
@@ -72,8 +72,13 @@ export async function GET(request: Request) {
   let projectContext;
   try {
     projectContext = await requireAuthContext();
-  } catch {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  } catch (error) {
+    // 401 when unauthenticated, 403 when signed in but not permitted.
+    const forbidden = error instanceof AuthError && error.status === 403;
+    return NextResponse.json(
+      { error: forbidden ? "Forbidden" : "Unauthorized" },
+      { status: forbidden ? 403 : 401 }
+    );
   }
 
   // Check if this is a saved test OR a playground run

@@ -39,3 +39,11 @@ it("PATCH forwards neither stored tests nor a stored description it was not give
   expect(data.tests).toBeUndefined();
   expect(ctx.inherited.description).toBe(true);
 });
+
+it("PUT returns the schedule warning, and no next run, in the HTTP response", async () => {
+  const urlId = "018f0000-0000-7000-8000-000000000001";
+  mockUpdateJob.mockResolvedValueOnce({ success: true, job: { id: urlId, nextRunAt: null, warning: "Schedule could not be registered" } });
+  const res = await PUT(new NextRequest(`http://localhost/api/jobs/${urlId}`, { method: "PUT", body: JSON.stringify({ name: "x" }) }), { params: Promise.resolve({ id: urlId }) });
+  expect(res.status).toBe(200);
+  expect(await res.json()).toMatchObject({ warning: "Schedule could not be registered", nextRunAt: null });
+});

@@ -53,3 +53,10 @@ test("sslmode in DATABASE_URL overrides the hosting-mode default", () => {
     });
   }
 });
+
+test("an explicit URL (MIGRATION_DATABASE_URL) is read instead of DATABASE_URL", () => {
+  withEnv({ SELF_HOSTED: "true", DATABASE_URL: "postgres://u:p@pooler:6432/db?sslmode=disable" }, () => {
+    assert.equal(getDatabaseSSLConfig("postgres://u:p@direct:5432/db?sslmode=require"), "verify-full");
+    assert.equal(getDatabaseSSLConfig(), undefined);
+  });
+});

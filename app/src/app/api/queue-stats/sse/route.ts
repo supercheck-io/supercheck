@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { getQueueStats } from "@/lib/queue-stats";
-import { requireAuthContext } from "@/lib/auth-context";
+import { AuthError, requireAuthContext } from "@/lib/auth-context";
 import { getQueueEventHub, NormalizedQueueEvent } from "@/lib/queue-event-hub";
 
 // SSE Configuration
@@ -29,9 +29,10 @@ export async function GET(request: NextRequest) {
   try {
     const projectContext = await requireAuthContext();
     organizationId = projectContext.organizationId;
-  } catch {
-    // Return 401 for unauthenticated requests
-    return new Response('Unauthorized', { status: 401 });
+  } catch (error) {
+    // 401 when unauthenticated, 403 when signed in but not permitted.
+    const forbidden = error instanceof AuthError && error.status === 403;
+    return new Response(forbidden ? 'Forbidden' : 'Unauthorized', { status: forbidden ? 403 : 401 });
   }
 
   // Set up response headers for SSE

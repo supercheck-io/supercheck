@@ -36,6 +36,12 @@ import { GlobalQueueCapabilityGuard } from '../../common/location/global-queue-g
 import type { ExecutionUsageTransaction } from '../services/execution-usage-receipts';
 import { captureJobFailure } from '../../common/sentry-reporter';
 
+/** The run executed but its result could not be saved; a BullMQ retry would re-run (and re-bill) it. */
+export class ResultNotPersistedError extends UnrecoverableError {}
+
+const PERSIST_ATTEMPTS = 3;
+const PERSIST_BACKOFF_MS = 250;
+
 @Processor(PLAYWRIGHT_QUEUE, {
   concurrency: 1,
   lockDuration: 70 * 60 * 1000,
@@ -189,6 +195,57 @@ export class PlaywrightExecutionProcessor
     }
   }
 
+  /** Meters observed run time when the result could not be saved; never writes status or masks the original error. */
+  private async meterUnsavedResult(
+    organizationId: string | undefined,
+    runId: string | null | undefined,
+    durationMs: number,
+    metadata: Record<string, unknown>,
+  ): Promise<void> {
+    if (!organizationId || !runId || durationMs <= 0) return;
+    await this.usageTrackerService
+      .completeRunWithUsage(
+        {
+          organizationId,
+          runId,
+          eventType: 'playwright_execution',
+          durationMs,
+          metadata,
+        },
+        async () => {},
+      )
+      .catch((err: Error) =>
+        this.logger.error(
+          `[${runId}] Failed to meter usage before rethrow: ${err.message}`,
+        ),
+      );
+  }
+
+  /** Retries only the save of an already-produced result; gives up with a non-retryable error. */
+  private async persistWithRetry(
+    runId: string,
+    persist: () => Promise<unknown>,
+  ): Promise<void> {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        await persist();
+        return;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (attempt >= PERSIST_ATTEMPTS) {
+          // The stalled-run sweep marks the run error; a retry here would execute it again.
+          throw new ResultNotPersistedError(
+            `[${runId}] Result could not be saved after ${attempt} attempts and the run will not be re-executed: ${message}`,
+          );
+        }
+        this.logger.warn(
+          `[${runId}] Saving result failed (attempt ${attempt}/${PERSIST_ATTEMPTS}): ${message}`,
+        );
+        await new Promise((r) => setTimeout(r, PERSIST_BACKOFF_MS * attempt));
+      }
+    }
+  }
+
   private async processTest(job: Job<TestExecutionTask>): Promise<TestResult> {
     const testId = job.data.testId;
     const runId = job.data.runId; // runId is the database run ID for playground tests
@@ -283,20 +340,20 @@ export class PlaywrightExecutionProcessor
             errorDetails,
             transaction,
           );
-        if (job.data.organizationId) {
-          await this.usageTrackerService.completeRunWithUsage(
-            {
-              organizationId: job.data.organizationId,
-              runId,
-              durationMs: billableMs,
-              eventType: 'playwright_execution',
-              metadata: { testId, type: 'single_test' },
-            },
-            persistResult,
-          );
-        } else {
-          await persistResult();
-        }
+        await this.persistWithRetry(runId, () =>
+          job.data.organizationId
+            ? this.usageTrackerService.completeRunWithUsage(
+                {
+                  organizationId: job.data.organizationId,
+                  runId,
+                  durationMs: billableMs,
+                  eventType: 'playwright_execution',
+                  metadata: { testId, type: 'single_test' },
+                },
+                persistResult,
+              )
+            : persistResult(),
+        );
       }
 
       usagePersisted = true;
@@ -322,6 +379,16 @@ export class PlaywrightExecutionProcessor
         return deferForCapacity(job, (reason) =>
           this.failRunAfterCapacityWait(runId, reason),
         );
+      }
+      if (error instanceof ResultNotPersistedError) {
+        this.logger.error(error.message);
+        await this.meterUnsavedResult(
+          job.data.organizationId,
+          runId,
+          Math.max(getBillableMs(error), observedBillableMs),
+          { testId, type: 'single_test', executionError: true },
+        );
+        throw error;
       }
       const errorMessage = (error as Error).message;
       const isCancellation =
@@ -576,25 +643,27 @@ export class PlaywrightExecutionProcessor
       }
 
       // Update the run status with duration first
-      await this.usageTrackerService.completeRunWithUsage(
-        {
-          organizationId: jobData.organizationId,
-          runId,
-          durationMs: billableMs,
-          eventType: 'playwright_execution',
-          metadata: {
-            jobId: originalJobId,
-            testCount: result.results?.length || 0,
-          },
-        },
-        async (transaction) =>
-          this.dbService.updateRunStatus(
+      await this.persistWithRetry(runId, () =>
+        this.usageTrackerService.completeRunWithUsage(
+          {
+            organizationId: jobData.organizationId,
             runId,
-            finalStatus,
-            durationSeconds.toString(),
-            result.error || undefined,
-            transaction,
-          ),
+            durationMs: billableMs,
+            eventType: 'playwright_execution',
+            metadata: {
+              jobId: originalJobId,
+              testCount: result.results?.length || 0,
+            },
+          },
+          async (transaction) =>
+            this.dbService.updateRunStatus(
+              runId,
+              finalStatus,
+              durationSeconds.toString(),
+              result.error || undefined,
+              transaction,
+            ),
+        ),
       );
 
       usagePersisted = true;
@@ -628,12 +697,19 @@ export class PlaywrightExecutionProcessor
       if (originalJobId) {
         await this.syncJobStatus(originalJobId, runId);
 
-        // Always update lastRunAt after a run completes
-        await this.dbService.db
-          .update(jobs)
-          .set({ lastRunAt: new Date() })
-          .where(eq(jobs.id, originalJobId))
-          .execute();
+        // Always update lastRunAt after a run completes. The result is already saved, so a failure
+        // here must not reach the retry path and re-execute the job.
+        try {
+          await this.dbService.db
+            .update(jobs)
+            .set({ lastRunAt: new Date() })
+            .where(eq(jobs.id, originalJobId))
+            .execute();
+        } catch (err) {
+          this.logger.warn(
+            `[${runId}] Could not update lastRunAt: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
       }
 
       // Send notifications for job completion
@@ -656,6 +732,16 @@ export class PlaywrightExecutionProcessor
         return deferForCapacity(job, (reason) =>
           this.failRunAfterCapacityWait(runId, reason),
         );
+      }
+      if (error instanceof ResultNotPersistedError) {
+        this.logger.error(error.message);
+        await this.meterUnsavedResult(
+          jobData.organizationId,
+          runId,
+          Math.max(getBillableMs(error), observedBillableMs),
+          { jobId: originalJobId, executionError: true },
+        );
+        throw error;
       }
       ErrorHandler.logError(
         this.logger,

@@ -11,6 +11,9 @@ import { completeSreIncidentInvestigation, startSreIncidentInvestigation } from 
 import { runSreIncidentTriage } from "@/sre/lib/triage-runner";
 import { db } from "@/utils/db";
 
+// Failed automatic attempts per incident before it stops retrying; a person can still start one.
+const MAX_AUTO_ATTEMPTS = 3;
+
 const logger = createLogger({ module: "sre-auto-investigate" }) as {
   error: (data: unknown, message?: string) => void;
 };
@@ -34,9 +37,11 @@ export async function maybeAutoInvestigateOnOpen(input: AutoInvestigateInput): P
     const policy = await getNotificationPolicy(input.projectId);
     if (!policy.autoInvestigateOnOpen) return { handled: false, reason: "disabled" };
 
-    // The lock makes check-then-start atomic per incident; waiters then see the run and stop.
+    // The lock makes the decision atomic per incident; it is released before the run starts so no pooled
+    // connection is held across the LLM call. A racing start of the same agent type is stopped by the
+    // active-run unique index (it includes agent type, and severity picks one type per incident).
     // The incident is read after the lock so severity and status are current when the run is chosen.
-    return await db.transaction(async (tx) => {
+    const decision = await db.transaction(async (tx) => {
       await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`auto-investigate:${input.incidentId}`}))`);
       const [incident] = await tx
         .select({ severity: sreIncidents.severity, status: sreIncidents.status, createdAt: sreIncidents.createdAt })
@@ -49,39 +54,50 @@ export async function maybeAutoInvestigateOnOpen(input: AutoInvestigateInput): P
           ),
         )
         .limit(1);
-      if (!incident || incident.status === "resolved") return { handled: false, reason: "not_open" };
+      if (!incident || incident.status === "resolved") return { reason: "not_open" } as const;
       // Only incidents opened after auto-investigate was switched on: enabling it must not spend credits on old ones.
       if (policy.autoInvestigateEnabledAt && incident.createdAt < policy.autoInvestigateEnabledAt) {
-        return { handled: false, reason: "predates_policy" };
+        return { reason: "predates_policy" } as const;
       }
-      return startOnce(tx, input, incident.severity);
+      const blocked = await blockingRunReason(tx, input);
+      if (blocked) return { reason: blocked } as const;
+      return { severity: incident.severity };
     });
+    if ("reason" in decision) return { handled: false, reason: decision.reason };
+    return await startOnce(input, decision.severity);
   } catch (error) {
     logger.error({ error, incidentId: input.incidentId }, "Automatic investigation could not start");
     return { handled: false, reason: "error" };
   }
 }
 
+type Executor = Pick<typeof db, "select">;
+
+// One automatic run per incident: later alerts joining it, or a retried job, must not bill again.
+// A failed, aborted or timed-out run does not count, so it can be retried, up to a cap so a
+// persistent provider failure does not spend credits on every alert that joins the incident.
+// The cap counts manual runs too (no origin column); they also signal a failing provider.
+async function blockingRunReason(executor: Executor, input: AutoInvestigateInput) {
+  const runs = await executor
+    .select({ status: sreInvestigationRuns.status })
+    .from(sreInvestigationRuns)
+    .where(
+      and(
+        eq(sreInvestigationRuns.incidentId, input.incidentId),
+        eq(sreInvestigationRuns.organizationId, input.organizationId),
+        eq(sreInvestigationRuns.projectId, input.projectId),
+      ),
+    );
+  if (runs.some((run) => run.status === "running" || run.status === "completed")) return "already_investigated" as const;
+  if (runs.length >= MAX_AUTO_ATTEMPTS) return "retry_limit" as const;
+  return null;
+}
+
 async function startOnce(
-  tx: Pick<typeof db, "select">,
   input: AutoInvestigateInput,
   severity: string,
 ): Promise<{ handled: boolean; reason?: string }> {
   try {
-    // One automatic run per incident: later alerts joining it, or a retried job, must not bill again.
-    const [existingRun] = await tx
-      .select({ id: sreInvestigationRuns.id })
-      .from(sreInvestigationRuns)
-      .where(
-        and(
-          eq(sreInvestigationRuns.incidentId, input.incidentId),
-          eq(sreInvestigationRuns.organizationId, input.organizationId),
-          eq(sreInvestigationRuns.projectId, input.projectId),
-        ),
-      )
-      .limit(1);
-    if (existingRun) return { handled: false, reason: "already_investigated" };
-
     try {
       validateAIConfiguration();
     } catch {
@@ -90,8 +106,14 @@ async function startOnce(
 
     if (await sreDailyTokenLimitResponse(input.organizationId)) return { handled: false, reason: "daily_limit" };
 
+    // The lock is gone by now: re-check just before starting so a run another trigger finished meanwhile
+    // is not repeated. Narrows the race (a start between this read and the runner's insert remains).
+    const blocked = await blockingRunReason(db, input);
+    if (blocked) return { handled: false, reason: blocked };
+
     if (severity === "sev3" || severity === "sev4") {
       const triage = await runSreIncidentTriage(input);
+      if (!triage.success && triage.status === 409) return { handled: false, reason: "already_running" };
       return { handled: triage.success, reason: triage.success ? undefined : "triage_refused" };
     }
 
@@ -101,7 +123,7 @@ async function startOnce(
       return { handled: false, reason: "billing" };
     }
     const started = await startSreIncidentInvestigation({ ...input, enableLiveConnectors: false });
-    if (!started.success) return { handled: false, reason: "not_started" };
+    if (!started.success) return { handled: false, reason: started.status === 409 ? "already_running" : "not_started" };
     // Settles in the background, like the investigate API; billing is taken only on completion.
     void completeSreIncidentInvestigation(started.investigationRunId, started.incident, {
       ...input,
