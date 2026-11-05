@@ -6,7 +6,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 
 jest.mock("@/utils/db", () => ({ db: {} }));
 import { updateCoverageSnapshot } from "./requirements-internal";
-import { RUN_CANCELLATION_MARKER } from "./cancellation-service";
+import { RUN_CANCELLATION_MARKER } from "./run-cancellation-marker";
 
 const databaseName = `requirements_coverage_${randomUUID().replaceAll("-", "")}`;
 let maintenance: ReturnType<typeof postgres>;

@@ -376,7 +376,7 @@ const SAVE_ERROR_TOAST_ID = "notification-provider-save-error";
 
 /** The API's 400 messages are specific and safe to show; only network failures need the generic text. */
 export function getSaveErrorMessage(error: unknown, type: string): string {
-  return error instanceof Error && !(error instanceof TypeError) && error.message
+  return error instanceof Error && !(error instanceof TypeError || error instanceof SyntaxError) && error.message
     ? error.message
     : getUserFriendlyError(error, type);
 }

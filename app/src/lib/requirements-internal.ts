@@ -8,7 +8,7 @@ import {
   runs,
 } from "@/db/schema";
 import { computeCoverageStatus } from "@/lib/requirements/coverage-status";
-import { RUN_CANCELLATION_MARKER } from "@/lib/cancellation-service";
+import { RUN_CANCELLATION_MARKER } from "@/lib/run-cancellation-marker";
 import { db } from "@/utils/db";
 
 // Either the shared pool or a transaction handle, so a caller can make the tag writes part of its own transaction.
