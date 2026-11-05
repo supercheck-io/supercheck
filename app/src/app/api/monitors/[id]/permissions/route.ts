@@ -1,7 +1,9 @@
 import { isUuid } from "@/lib/uuid";
 import { NextRequest, NextResponse } from 'next/server';
-import { hasPermissionForUser } from '@/lib/rbac/middleware';
+import { hasPermissionForUser, forbiddenOrNotFound } from '@/lib/rbac/middleware';
 import { getUserProjectRole } from '@/lib/session';
+import { isSuperAdmin } from '@/lib/rbac/super-admin';
+import { Role } from '@/lib/rbac/permissions-client';
 import { requireUserAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-context';
 import { createLogger } from "@/lib/logger/index";
 
@@ -71,14 +73,14 @@ export async function GET(
         organizationId: monitor.organizationId,
         projectId: monitor.projectId,
       }),
-      getUserProjectRole(userId, monitor.organizationId, monitor.projectId),
+      // A super admin without membership has no org role; report the role their permissions come from.
+      isSuperAdmin(userId).then((isSA) =>
+        isSA ? Role.SUPER_ADMIN : getUserProjectRole(userId, monitor.organizationId!, monitor.projectId!),
+      ),
     ]);
 
     if (!canView) {
-      return NextResponse.json(
-        { error: 'Insufficient permissions' },
-        { status: 403 }
-      );
+      return forbiddenOrNotFound(userId, monitor.organizationId, 'Insufficient permissions', 'Monitor not found');
     }
 
     return NextResponse.json({

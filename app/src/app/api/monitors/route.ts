@@ -300,6 +300,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Matches the monitors.name varchar(255) column; longer values would fail the insert with a 500.
+    if (typeof rawData.name !== "string" || [...rawData.name].length > 255) {
+      return NextResponse.json(
+        { error: "Invalid name", details: "name must be 1-255 characters" },
+        { status: 400 },
+      );
+    }
+
     // Validate frequency bounds (1 minute minimum, 1440 minutes = 24 hours maximum)
     // This prevents resource exhaustion from too-frequent checks and ensures reasonable monitoring intervals
     const MIN_FREQUENCY_MINUTES = 1;

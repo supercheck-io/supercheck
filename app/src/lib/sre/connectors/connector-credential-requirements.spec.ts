@@ -16,6 +16,13 @@ describe("connectorCredentialRequirementError", () => {
     ).toBeNull();
   });
 
+  it("requires Grafana's token under apiKey, api_key or secret", () => {
+    expect(connectorCredentialRequirementError("grafana", { token: "glsa_x" })).toMatch(/apiKey, api_key or secret/);
+    for (const key of ["apiKey", "api_key", "secret"]) {
+      expect(connectorCredentialRequirementError("grafana", { [key]: "glsa_x" })).toBeNull();
+    }
+  });
+
   it("does not require a second key for single-secret connectors", () => {
     expect(
       connectorCredentialRequirementError("github", { secret: "ghp_lab" }),

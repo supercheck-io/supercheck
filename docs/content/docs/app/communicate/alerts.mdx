@@ -240,7 +240,7 @@ Other Microsoft hosts, such as `outlook.office.com` or `*.azurewebsites.net`, ar
 - **Rendered sample payload:** Preview of the JSON body generated from sample alert values before you test or save
 - **Test diagnostics:** Redacted test results showing method, target host, sent header names, HTTP status, elapsed time, request hash, and response hash
 
-Use a publicly reachable HTTPS webhook endpoint (plain HTTP is rejected); private and internal targets are blocked. Enter credentials in the channel settings and use **Test Connection** before relying on delivery.
+Use a publicly reachable HTTPS webhook endpoint (plain HTTP is rejected); private and internal targets are blocked. On a self-hosted install with `SELF_HOSTED=true` and `ALLOW_INTERNAL_TARGETS=true`, webhook channels (not Slack, Teams, Discord or Telegram) may also use internal hosts and plain `http://` URLs. Cloud metadata and link-local addresses such as `169.254.169.254` stay blocked. Enter credentials in the channel settings and use **Test Connection** before relying on delivery.
 
 Webhook URLs, custom headers and other channel credentials are secrets, so they are cleared when you reopen a channel to edit it. Leave one blank to keep its value, or enter a replacement and use **Test Connection**.
 

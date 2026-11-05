@@ -129,11 +129,66 @@ export function isPrivateOrReservedAddress(address: string): boolean {
   return false;
 }
 
+const METADATA_IPV4_NETWORKS = [
+  '169.254.0.0/16',
+  '100.100.100.200/32',
+  '168.63.129.16/32',
+  '192.0.0.192/32',
+].map((network) => new Address4(network));
+const LINK_LOCAL_IPV6_NETWORKS = ['fe80::/10', 'fd00:ec2::254/128'].map(
+  (network) => new Address6(network),
+);
+
+/** Cloud metadata and link-local addresses: blocked even when internal targets are allowed. */
+export function isMetadataOrLinkLocalAddress(address: string): boolean {
+  const normalized = address.toLowerCase().replace(/^\[|\]$/g, '');
+  const family = isIP(normalized);
+  if (family === 4) {
+    const candidate = new Address4(normalized);
+    return METADATA_IPV4_NETWORKS.some((n) => candidate.isHostInSubnet(n));
+  }
+  if (family === 6) {
+    const candidate = new Address6(normalized);
+    const embedded = candidate.isMapped4() ? candidate.embeddedIPv4() : null;
+    if (embedded) {
+      return METADATA_IPV4_NETWORKS.some((n) => embedded.isHostInSubnet(n));
+    }
+    return LINK_LOCAL_IPV6_NETWORKS.some((n) => candidate.isHostInSubnet(n));
+  }
+  return false;
+}
+
+function isMetadataHost(hostname: string): boolean {
+  const normalized = hostname
+    .trim()
+    .toLowerCase()
+    .replace(/\.$/, '')
+    .replace(/^\[|\]$/g, '');
+  return (
+    isMetadataOrLinkLocalAddress(normalized) ||
+    /^metadata\.(google|azure)\.internal$/.test(normalized)
+  );
+}
+
+/**
+ * Same rule as the app: only a self-hosted install with ALLOW_INTERNAL_TARGETS exactly "true"
+ * may point webhook channels at private hosts and plain http.
+ */
+export function allowInternalWebhookTargets(): boolean {
+  const selfHosted = ['true', '1'].includes(
+    (process.env.SELF_HOSTED ?? '').trim().toLowerCase(),
+  );
+  return selfHosted && process.env.ALLOW_INTERNAL_TARGETS === 'true';
+}
+
 /**
  * Validate if a URL is safe for outbound webhook requests.
  * Returns { safe: true } or { safe: false, reason: string }.
  */
-export function isUrlSafeForOutbound(urlString: string): {
+export function isUrlSafeForOutbound(
+  urlString: string,
+  options: { allowInternal?: boolean } = {},
+): {
   safe: boolean;
   reason?: string;
 } {
@@ -145,8 +200,12 @@ export function isUrlSafeForOutbound(urlString: string): {
       return { safe: false, reason: 'Invalid protocol' };
     }
 
-    // Block private/internal hosts
-    if (isPrivateHost(url.hostname)) {
+    // Block private/internal hosts (metadata and link-local stay blocked when internal is allowed)
+    if (
+      options.allowInternal
+        ? isMetadataHost(url.hostname)
+        : isPrivateHost(url.hostname)
+    ) {
       return {
         safe: false,
         reason: 'Cannot send to private or internal networks',

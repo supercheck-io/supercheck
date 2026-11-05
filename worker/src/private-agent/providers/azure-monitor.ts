@@ -393,7 +393,7 @@ async function searchLogs(
     const message = textColumn ? stringOf(record[textColumn], 4000) : null;
     const summary = summarizeFields(record);
     return {
-      title: `Azure ${type === 'log' ? 'log' : 'result'}: ${(message ?? summary ?? 'row').slice(0, 160)}`,
+      title: `Azure ${type === 'log' ? 'log' : 'result'}: ${message ?? summary ?? 'row'}`,
       summary: summary || 'KQL result row',
       rawContent: message ?? boundedJson(record),
       evidenceType: type,

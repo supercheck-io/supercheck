@@ -1,4 +1,8 @@
-import { isPrivateOrReservedAddress } from './url-validator';
+import {
+  allowInternalWebhookTargets,
+  isPrivateOrReservedAddress,
+  isUrlSafeForOutbound,
+} from './url-validator';
 
 describe('worker outbound address policy', () => {
   it.each([
@@ -37,5 +41,54 @@ describe('worker outbound address policy', () => {
     '2606:4700:4700::1111',
   ])('allows public address %s', (address) => {
     expect(isPrivateOrReservedAddress(address)).toBe(false);
+  });
+});
+
+describe('internal webhook targets (self-hosted opt-in)', () => {
+  const saved = {
+    SELF_HOSTED: process.env.SELF_HOSTED,
+    ALLOW_INTERNAL_TARGETS: process.env.ALLOW_INTERNAL_TARGETS,
+  };
+  afterEach(() => {
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+
+  it.each([
+    [undefined, 'true'],
+    ['true', undefined],
+    ['true', '1'],
+  ])(
+    'stays strict for SELF_HOSTED=%s ALLOW_INTERNAL_TARGETS=%s',
+    (sh, allow) => {
+      if (sh === undefined) delete process.env.SELF_HOSTED;
+      else process.env.SELF_HOSTED = sh;
+      if (allow === undefined) delete process.env.ALLOW_INTERNAL_TARGETS;
+      else process.env.ALLOW_INTERNAL_TARGETS = allow;
+      expect(allowInternalWebhookTargets()).toBe(false);
+    },
+  );
+
+  it('allows private and http only with the flag, and always blocks metadata', () => {
+    process.env.SELF_HOSTED = 'true';
+    process.env.ALLOW_INTERNAL_TARGETS = 'true';
+    expect(allowInternalWebhookTargets()).toBe(true);
+    for (const url of ['http://10.0.0.5:8080/h', 'http://localhost/h']) {
+      expect(isUrlSafeForOutbound(url, { allowInternal: true }).safe).toBe(
+        true,
+      );
+      expect(isUrlSafeForOutbound(url).safe).toBe(false);
+    }
+    for (const url of [
+      'http://169.254.169.254/x',
+      'http://[fd00:ec2::254]/x',
+      'http://metadata.google.internal/x',
+    ]) {
+      expect(isUrlSafeForOutbound(url, { allowInternal: true }).safe).toBe(
+        false,
+      );
+    }
   });
 });

@@ -32,6 +32,7 @@ import {
   createDirectConnector,
   connectorRequiresCredentials,
   enforceConnectorPolicy,
+  ConnectorPolicyError,
   hashConnectorPayload,
   isDirectValidationConnectorType,
   isPrivateAgentConnectorType,
@@ -1872,8 +1873,27 @@ export async function searchSreConnectorEvidence(
     };
   } catch (error) {
     console.error("Error searching SRE connector evidence:", error);
-    return { success: false, error: "Failed to search connector evidence" };
+    return { success: false, error: connectorSearchErrorMessage(error) };
   }
+}
+
+const POLICY_ERROR_MESSAGES: Record<string, string> = {
+  time_window_exceeded:
+    "The time window is longer than this connector allows. Use a shorter window or raise the connector's default time window.",
+  invalid_time_window: "The time window is invalid. Use a positive number of minutes.",
+  budget_exceeded: "The query budget is above this connector's output limits.",
+  scope_violation: "This connector is not scoped to the selected service.",
+  connector_disabled: "This connector is disabled. Enable it to search.",
+  connector_unavailable: "This connector is unavailable. Check its status and credentials.",
+  read_only_violation: "This connector is not read-only, so it cannot be searched.",
+};
+
+/** Known policy rejections get a clear message; anything else stays generic. */
+export function connectorSearchErrorMessage(error: unknown): string {
+  if (error instanceof ConnectorPolicyError) {
+    return POLICY_ERROR_MESSAGES[error.decision.code] ?? error.decision.reason;
+  }
+  return "Failed to search connector evidence";
 }
 
 export async function disableSreConnector(

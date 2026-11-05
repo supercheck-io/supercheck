@@ -10,6 +10,14 @@ Notable changes to `@supercheck/cli`. The format follows [Keep a Changelog](http
 
 ### Fixed
 
+- `schema config` no longer hangs in table output: it prints one row per field, and any table cell is bounded (the table library took cubic time on a very long cell) with a safe fallback for cyclic objects.
+- `jobs[].tests` references that do not resolve (for example a glob) are rejected when planning, as requirements are, instead of failing at apply with "Unresolved test reference".
+- `destroy` deletes monitors, requirements and jobs and tests before tags, so a tag still in use no longer returns 409.
+- `validate` now rejects more than 10 monitor `tags` and monitor, job and notification provider names over 255 characters, which the server rejects on deploy.
+- `notification list` shows the Enabled column from `isEnabled`.
+- `var set` validates the key like `var upload`: 4-20 characters, an uppercase letter, then uppercase letters, digits or underscores.
+- `login` polls a stored pending code once immediately when re-run instead of waiting out the poll interval, and `login --reauth` discards any stored pending code and starts a fresh one.
+- A 401 prints `Run \`supercheck login --reauth\` (or set a valid SUPERCHECK_TOKEN)` in human mode, including from `whoami`.
 - Piping output into a closed pipe (for example `| head`) no longer crashes; the command exits quietly with its own exit code.
 - `deploy`, `diff` and `destroy` compare a config job or monitor `alertConfig` the way the server stores it (defaults filled, default values dropped), so an unchanged alert config no longer shows as an update on every run. They also treat a DELETE that finds the resource already gone after a retry as done.
 - `monitors` and `statusPages` in config must be inline arrays, and a job `status` is rejected: glob strings and job status were ignored, and `deploy --delete` then planned to delete every remote monitor and status page. Remove them from the config.

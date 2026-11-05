@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin";
+import { adminDeniedResponse } from "@/lib/admin-errors";
 import { db } from "@/utils/db";
 import { locations } from "@/db/schema/locations";
 import { eq } from "drizzle-orm";
@@ -66,6 +67,8 @@ export async function GET() {
       },
     });
   } catch (error) {
+    const denied = adminDeniedResponse(error);
+    if (denied) return denied;
     const message = error instanceof Error ? error.message : "Internal server error";
     const status = message.includes("privileges required") ? 403 : 500;
     return NextResponse.json({ success: false, error: message }, { status });
@@ -180,6 +183,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, data: created }, { status: 201 });
   } catch (error: unknown) {
+    const denied = adminDeniedResponse(error);
+    if (denied) return denied;
     if (error != null && typeof error === "object" && "code" in error && (error as { code: string }).code === "23505") {
       return NextResponse.json(
         { success: false, error: "Another location is already set as default. Please try again." },

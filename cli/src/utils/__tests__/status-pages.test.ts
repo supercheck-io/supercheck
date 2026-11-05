@@ -238,6 +238,7 @@ describe('assertReferencesResolvable', () => {
 
   it('rejects unresolved requirement tests and status page monitors before any write', () => {
     expect(() => assertReferencesResolvable([change('requirement', 'R', { tests: ['nope'] })], { resolve })).toThrow('requirement/R')
+    expect(() => assertReferencesResolvable([change('job', 'J', { tests: ['_supercheck_/playwright/*.pw.ts'] })], { resolve })).toThrow('job/J')
     expect(() => assertReferencesResolvable([change('statusPage', 'P', { components: [{ name: 'c', monitors: ['nope'] }] })], { resolve })).toThrow('statusPage/P')
   })
 

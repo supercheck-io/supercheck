@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { member, projects, organization, user } from "@/db/schema";
 import { requireAdmin } from "@/lib/admin";
+import { adminDeniedResponse } from "@/lib/admin-errors";
 import { eq, count, desc, and, sql } from "drizzle-orm";
 
 export async function GET(request: NextRequest) {
@@ -109,6 +110,8 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
+    const denied = adminDeniedResponse(error);
+    if (denied) return denied;
     console.error("Admin organizations GET error:", error);
     return NextResponse.json(
       { success: false, error: "Failed to fetch organizations" },

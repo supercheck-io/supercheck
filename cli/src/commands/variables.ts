@@ -92,7 +92,7 @@ varCommand
   .option('--value-stdin', 'Read the variable value from stdin')
   .option('--description <description>', 'Variable description')
   .action(async (key: string, value: string | undefined, options: { secret?: boolean; valueStdin?: boolean; description?: string }) => {
-    if (key.length < 4 || key.length > 20) throw new CLIError('Variable key must be 4–20 characters.', ExitCode.ConfigError)
+    assertVariableKey(key)
     const client = createAuthenticatedClient()
 
     if (options.valueStdin && value !== undefined) {
@@ -180,7 +180,12 @@ varCommand
     outputMutation({ id: variable.id, key, deleted: true })
   })
 
-const FILE_VARIABLE_KEY = /^[A-Z][A-Z0-9_]{3,19}$/
+const VARIABLE_KEY = /^[A-Z][A-Z0-9_]{3,19}$/
+function assertVariableKey(key: string): void {
+  if (!VARIABLE_KEY.test(key)) {
+    throw new CLIError('Variable key must be 4–20 characters: an uppercase letter, then uppercase letters, digits or underscores.', ExitCode.ConfigError)
+  }
+}
 const FILE_VARIABLE_EXTENSIONS = new Set(['.csv', '.json', '.txt', '.tsv', '.xml', '.yaml', '.yml'])
 const MAX_FILE_VARIABLE_BYTES = 5 * 1024 * 1024
 // Server-provided names may contain terminal escape sequences.
@@ -196,9 +201,7 @@ varCommand
   .description('Create a file variable from a local file (.csv, .json, .txt, .tsv, .xml, .yaml, .yml; max 5 MB)')
   .option('--description <description>', 'Variable description')
   .action(async (key: string, file: string, options: { description?: string }) => {
-    if (!FILE_VARIABLE_KEY.test(key)) {
-      throw new CLIError('Variable key must be 4–20 characters: an uppercase letter, then uppercase letters, digits or underscores.', ExitCode.ConfigError)
-    }
+    assertVariableKey(key)
     if (!FILE_VARIABLE_EXTENSIONS.has(extname(file).toLowerCase())) {
       throw new CLIError(`File type must be one of ${[...FILE_VARIABLE_EXTENSIONS].join(' ')}.`, ExitCode.ConfigError)
     }

@@ -9,6 +9,7 @@ const mockRunWith = jest.fn();
 const mockList = jest.fn();
 const mockRevoke = jest.fn();
 const mockAudit = jest.fn();
+const mockMerge = jest.fn();
 let mockEnabled = true;
 
 jest.mock("next/headers", () => ({ headers: async () => new Headers({ cookie: "session=1" }) }));
@@ -24,7 +25,7 @@ jest.mock("@/lib/mcp/auth-api", () => {
 jest.mock("@/lib/rbac/middleware", () => ({ isImpersonatedSession: (...a: unknown[]) => mockImpersonated(...a) }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: (...a: unknown[]) => mockAudit(...a) }));
 jest.mock("@/lib/logger/pino-config", () => ({ createLogger: () => ({ warn: jest.fn(), error: jest.fn(), info: jest.fn() }) }));
-jest.mock("@/lib/mcp/config", () => ({ isMcpServerEnabled: () => mockEnabled }));
+jest.mock("@/lib/mcp/config", () => ({ isMcpServerEnabled: () => mockEnabled, MCP_READ_SCOPE: "mcp:read" }));
 jest.mock("@/lib/mcp/connect-project", () => {
   class McpProjectAccessError extends Error {}
   return {
@@ -40,6 +41,7 @@ jest.mock("@/lib/mcp/connections", () => {
     McpConnectionNotFoundError,
     listMcpConnections: (...a: unknown[]) => mockList(...a),
     revokeMcpConnection: (...a: unknown[]) => mockRevoke(...a),
+    withMergedConsentScopes: (...a: unknown[]) => mockMerge(...a),
   };
 });
 
@@ -65,7 +67,7 @@ function consentRequest(body: unknown, headers: Record<string, string> = { origi
 const approve = {
   accept: true,
   projectId: PROJECT,
-  oauth_query: "client_id=c&sig=s&exp=1&redirect_uri=http%3A%2F%2F127.0.0.1%3A8765%2Fcallback",
+  oauth_query: "client_id=c&scope=mcp%3Aread+mcp%3Asre&sig=s&exp=1&redirect_uri=http%3A%2F%2F127.0.0.1%3A8765%2Fcallback",
 };
 
 beforeEach(() => {
@@ -77,6 +79,7 @@ beforeEach(() => {
   mockRunWith.mockImplementation(async (_selection: unknown, fn: () => Promise<unknown>) => fn());
   mockConsent.mockResolvedValue({ url: "http://127.0.0.1:8765/callback?code=abc&state=xyz" });
   mockRevoke.mockResolvedValue(undefined);
+  mockMerge.mockImplementation(async (_key: unknown, _scopes: unknown, fn: () => Promise<unknown>) => fn());
 });
 
 describe("POST /api/oauth/mcp/consent", () => {
@@ -91,6 +94,18 @@ describe("POST /api/oauth/mcp/consent", () => {
     // The choice must be recorded before consent is granted.
     expect(mockAssert.mock.invocationCallOrder[0]).toBeLessThan(mockConsent.mock.invocationCallOrder[0]);
     expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: "mcp_connection_approved", userId: "user-1", success: true }));
+  });
+
+  it("approves through the scope merge so a narrower re-approval cannot revoke a broader grant", async () => {
+    await consentPost(consentRequest(approve));
+    expect(mockMerge).toHaveBeenCalledWith({ userId: "user-1", clientId: "c", projectId: PROJECT }, ["mcp:read", "mcp:sre"], expect.any(Function));
+  });
+
+  it.each(["scope=mcp%3Asre", ""])("refuses to approve a scope set without mcp:read (%p)", async (scope) => {
+    const response = await consentPost(consentRequest({ ...approve, oauth_query: `client_id=c&${scope}&redirect_uri=http%3A%2F%2F127.0.0.1%3A8765%2Fcallback` }));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "invalid_scope" });
+    expect(mockConsent).not.toHaveBeenCalled();
   });
 
   it("denies without selecting a project", async () => {

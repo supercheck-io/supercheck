@@ -13,13 +13,9 @@ import { count, eq, desc, or, isNull, gte, and, sql } from "drizzle-orm";
 import { getCurrentUser, getActiveOrganization } from "./session";
 import { getUserRole, getUserOrgRole } from "./rbac/middleware";
 import { Role } from "./rbac/permissions";
+import { AdminAccessDeniedError } from "./admin-errors";
 
-export class AdminAccessDeniedError extends Error {
-  constructor() {
-    super("Admin privileges required");
-    this.name = "AdminAccessDeniedError";
-  }
-}
+export { AdminAccessDeniedError, adminDeniedResponse } from "./admin-errors";
 
 export function isAdminAccessDeniedError(error: unknown): boolean {
   return error instanceof AdminAccessDeniedError;
@@ -74,6 +70,9 @@ export async function isOrgAdmin(): Promise<boolean> {
 }
 
 export async function requireAdmin(userId?: string) {
+  if (!userId && !(await getCurrentUser())) {
+    throw new AdminAccessDeniedError(401);
+  }
   const isUserAdmin = userId
     ? (await getUserRole(userId)) === Role.SUPER_ADMIN
     : await isAdmin();

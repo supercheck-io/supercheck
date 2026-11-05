@@ -28,6 +28,7 @@ jest.mock("@/lib/email-renderer", () => ({ renderOrganizationInvitationEmail: je
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 jest.mock("@/lib/middleware/plan-enforcement", () => ({ checkTeamMemberLimit: jest.fn(async () => ({ allowed: true })) }));
 
+const HOST_PROJECT = "11111111-1111-4111-8111-111111111111";
 const mockSelect = db.select as jest.Mock;
 const mockInsert = db.insert as jest.Mock;
 const mockUpdate = db.update as jest.Mock;
@@ -37,14 +38,14 @@ function rows(data: unknown[]) {
   return { from: jest.fn().mockReturnThis(), where: jest.fn().mockReturnThis(), limit: jest.fn().mockResolvedValue(data),
     then: (resolve: (value: unknown[]) => unknown) => Promise.resolve(data).then(resolve) };
 }
-function request(role = "project_editor", selectedProjects = ["host-project"]) {
+function request(role = "project_editor", selectedProjects = [HOST_PROJECT]) {
   return new NextRequest("https://app.supercheck.io/api/organizations/members/invite", { method: "POST", body: JSON.stringify({ email: "owner@example.com", role, selectedProjects }) });
 }
 beforeEach(() => {
   jest.clearAllMocks(); mockSelect.mockReset();
   (getUserOrgRole as jest.Mock).mockResolvedValue("org_owner");
   mockSelect.mockReturnValueOnce(rows([{ id: "own-org-owner", role: "user", email: "owner@example.com" }]))
-    .mockReturnValueOnce(rows([])).mockReturnValueOnce(rows([])).mockReturnValueOnce(rows([{ id: "host-project", name: "Project" }]));
+    .mockReturnValueOnce(rows([])).mockReturnValueOnce(rows([])).mockReturnValueOnce(rows([{ id: HOST_PROJECT, name: "Project" }]));
   values.mockReturnValue({ returning: jest.fn(async () => [{ id: "invite", email: "owner@example.com", role: "project_editor", expiresAt: new Date() }]) });
   mockInsert.mockReturnValue({ values });
   mockUpdate.mockReturnValue({ set: jest.fn(() => ({ where: expireWhere })) });
@@ -55,7 +56,7 @@ afterEach(() => jest.restoreAllMocks());
 it("invites an existing account owner into the host's project with only the requested role", async () => {
   const response = await POST(request());
   expect(response.status).toBe(200);
-  expect(values).toHaveBeenCalledWith(expect.objectContaining({ organizationId: "host", role: "project_editor", selectedProjects: ["host-project"] }));
+  expect(values).toHaveBeenCalledWith(expect.objectContaining({ organizationId: "host", role: "project_editor", selectedProjects: [HOST_PROJECT] }));
   // Project validation is bound to the host rather than the invitee's home.
   const where = mockSelect.mock.results[3].value.where.mock.calls[0][0];
   expect(new PgDialect().sqlToQuery(where).params).toContain("host");
@@ -63,6 +64,15 @@ it("invites an existing account owner into the host's project with only the requ
     projectInfo: expect.stringContaining("Other active projects in this team remain visible with read-only access"),
   }));
 });
+it("rejects a malformed project id with 400 before any database access", async () => {
+  mockSelect.mockReset();
+  const response = await POST(request("project_editor", ["zzz"]));
+  expect(response.status).toBe(400);
+  expect((await response.json()).error).toBe("Invalid project id");
+  expect(mockSelect).not.toHaveBeenCalled();
+  expect(mockInsert).not.toHaveBeenCalled();
+});
+
 it("rejects a foreign or archived project before creating the invitation", async () => {
   mockSelect.mockReset().mockReturnValueOnce(rows([])).mockReturnValueOnce(rows([])).mockReturnValueOnce(rows([]));
   expect((await POST(request())).status).toBe(400); expect(mockInsert).not.toHaveBeenCalled();
@@ -205,7 +215,7 @@ describe("accepted invitation quota", () => {
       .mockReset()
       .mockReturnValueOnce(rows([]))
       .mockReturnValueOnce(rows([]))
-      .mockReturnValueOnce(rows([{ id: "host-project", name: "Project" }]));
+      .mockReturnValueOnce(rows([{ id: HOST_PROJECT, name: "Project" }]));
   }
   beforeEach(() => {
     entries.clear();

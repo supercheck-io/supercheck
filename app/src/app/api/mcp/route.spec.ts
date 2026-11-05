@@ -38,7 +38,7 @@ jest.mock("@/lib/mcp/call-limits", () => {
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 jest.mock("@/lib/mcp/tools", () => ({ registerMcpTools: jest.fn() }));
 
-import { DELETE, GET, POST } from "./route";
+import { DELETE, GET, PATCH, POST, PUT } from "./route";
 import { MCP_BODY_READ_TIMEOUT_MS } from "@/lib/mcp/call-limits";
 
 const init = {
@@ -144,9 +144,31 @@ describe("/api/mcp", () => {
     expect(requireMcpAuth).not.toHaveBeenCalled();
   });
 
-  it("answers GET and DELETE with 405", async () => {
-    expect((await GET()).status).toBe(405);
-    expect((await DELETE()).status).toBe(405);
+  it.each([GET, DELETE, PUT, PATCH])("answers other methods with a JSON-RPC 405 and Allow: POST (%#)", async (method) => {
+    const res = await method();
+    expect(res.status).toBe(405);
+    expect(res.headers.get("allow")).toBe("POST");
+    expect(await res.json()).toMatchObject({ jsonrpc: "2.0", error: { data: { code: "method_not_allowed" } } });
+  });
+
+  it("rejects an empty batch as an Invalid Request", async () => {
+    resolveMcpCallContext.mockResolvedValue(init.ctx);
+    const res = await POST(new Request(rpc("initialize"), { body: "[]" }));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ jsonrpc: "2.0", error: { code: -32600 } });
+    expect(resolveMcpCallContext).not.toHaveBeenCalled();
+  });
+
+  it("marks a rejected token invalid_token in the challenge and the JSON-RPC data, keeping resource_metadata and scope", async () => {
+    const challenge = 'Bearer resource_metadata="https://app.example.com/.well-known/oauth-protected-resource/api/mcp", scope="mcp:read"';
+    requireMcpAuth.mockImplementation(() => () => new Response(JSON.stringify({ jsonrpc: "2.0", id: null, error: { code: -32000, message: "bad token" } }), {
+      status: 401, headers: { "WWW-Authenticate": challenge, "Content-Type": "application/json" },
+    }));
+    const req = new Request(rpc("initialize"), { headers: { authorization: "Bearer expired" } });
+    const res = await POST(req);
+    expect(res.status).toBe(401);
+    expect(res.headers.get("www-authenticate")).toBe(`Bearer error="invalid_token", ${challenge.slice(7)}`);
+    expect(await res.json()).toMatchObject({ jsonrpc: "2.0", error: { data: { code: "invalid_token" } } });
   });
 
   it("requires mcp:read and the MCP resource audience via the auth wrapper", async () => {

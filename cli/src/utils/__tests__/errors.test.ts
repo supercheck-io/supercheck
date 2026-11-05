@@ -160,3 +160,12 @@ describe('ApiRequestError exit codes', () => {
     expect(new ApiRequestError('x', 404).exitCode).toBe(ExitCode.ApiError)
   })
 })
+
+describe('authHint', () => {
+  it('hints only for a 401 API error', async () => {
+    const { authHint, ApiRequestError, CLIError } = await import('../errors.js')
+    expect(authHint(new ApiRequestError('x', 401))).toContain('supercheck login --reauth')
+    expect(authHint(new ApiRequestError('x', 500))).toBeNull()
+    expect(authHint(new CLIError('x'))).toBeNull()
+  })
+})

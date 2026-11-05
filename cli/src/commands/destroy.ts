@@ -177,6 +177,12 @@ function logDestroyFetchError(resourceType: string, err: unknown): void {
   }
 }
 
+/**
+ * Dependents before what they reference: status pages -> monitors; requirements and jobs -> tests; synthetic
+ * monitors -> tests; jobs and monitors -> notification providers; tests, monitors and requirements -> tags (409 "tag in use").
+ */
+export const DELETE_ORDER = ['statusPage', 'requirement', 'job', 'monitor', 'test', 'notificationProvider', 'variable', 'tag']
+
 export const destroyCommand = new Command('destroy')
   .description('Tear down managed resources from the Supercheck project')
   .option('--config <path>', 'Path to config file')
@@ -234,11 +240,7 @@ export const destroyCommand = new Command('destroy')
     let succeeded = 0
     let failed = 0
 
-    // Delete in reverse dependency order:
-    // Jobs reference tests, so jobs must be deleted first to unblock test deletion.
-    // Monitors and status pages are independent, then vars/tags last.
-    const deleteOrder = ['statusPage', 'requirement', 'job', 'monitor', 'notificationProvider', 'variable', 'tag', 'test']
-    const sorted = [...managed].sort((a, b) => deleteOrder.indexOf(a.type) - deleteOrder.indexOf(b.type))
+    const sorted = [...managed].sort((a, b) => DELETE_ORDER.indexOf(a.type) - DELETE_ORDER.indexOf(b.type))
 
     for (const resource of sorted) {
       try {

@@ -46,6 +46,26 @@ it("does not create assignments when the membership update affects no rows", asy
   expect(tx.insert).not.toHaveBeenCalled();
 });
 
+describe("project list on PUT", () => {
+  const put = (body: unknown) => PUT(new NextRequest("http://localhost/api/organizations/members/target", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }), { params: Promise.resolve({ memberId: "0c11ab1e-7460-5139-b3b8-920f69f95082" }) });
+
+  it("accepts selectedProjects as an alias for projectAssignments", async () => {
+    const response = await put({ role: "project_editor", selectedProjects: ["11111111-1111-4111-8111-111111111111"] });
+    // An editor needs at least one project; the 400 for none means the alias was ignored.
+    expect(response.status).not.toBe(400);
+  });
+
+  it("rejects a malformed project id with 400 before any database access", async () => {
+    (db.select as jest.Mock).mockClear();
+    for (const body of [{ role: "project_editor", selectedProjects: ["zzz"] }, { role: "project_editor", projectAssignments: [{ projectId: "zzz" }] }]) {
+      const response = await put(body);
+      expect(response.status).toBe(400);
+      expect((await response.json()).error).toBe("Invalid project id");
+    }
+    expect(db.select).not.toHaveBeenCalled();
+  });
+});
+
 describe("DELETE", () => {
   const memberId = "0c11ab1e-7460-5139-b3b8-920f69f95082";
   const del = () => DELETE(new NextRequest("http://localhost/api/organizations/members/x", { method: "DELETE" }), { params: Promise.resolve({ memberId }) });

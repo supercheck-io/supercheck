@@ -146,12 +146,8 @@ export async function POST(
         { runId, userId, orgId: organizationIdForRbac },
         "Access denied - not a member of organization"
       );
-      return NextResponse.json(
-        {
-          error: "Access denied - You don't have permission to cancel this run",
-        },
-        { status: 403 }
-      );
+      // Same response as a missing run, so another tenant's run id cannot be confirmed.
+      return NextResponse.json({ error: "Run not found" }, { status: 404 });
     }
 
     // RBAC: Check if user has permission to cancel runs in this project

@@ -178,7 +178,7 @@ export async function searchSplunk(
     const raw = stringOf(row._raw, 4000);
     const title = (raw ?? summarizeFields(row, 6, 60)) || 'Splunk result';
     return {
-      title: `Splunk ${raw ? 'log' : 'result'}: ${title.slice(0, 160)}`,
+      title: `Splunk ${raw ? 'log' : 'result'}: ${title}`,
       summary: raw
         ? [row.index, row.source, row.sourcetype, row.host]
             .map((value) => stringOf(value, 80))

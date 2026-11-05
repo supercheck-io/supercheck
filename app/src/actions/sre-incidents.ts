@@ -163,6 +163,8 @@ export type CreateManualSreIncidentResult =
 export type UpdateSreIncidentResult =
   | {
       success: true;
+      /** False when the edit matched the stored incident and nothing was written. */
+      changed?: boolean;
       incident: {
         id: string;
         incidentNumber: number;
@@ -1418,6 +1420,21 @@ export async function updateSreIncident(
           fieldErrors: { primaryServiceId: ["Select a valid service"] },
         };
       }
+    }
+
+    // A save that changes nothing writes no timeline event and no audit entry.
+    if (
+      truncate(parsed.data.title, 500) === current.title &&
+      parsed.data.severity === current.severity &&
+      parsed.data.status === current.status &&
+      parsed.data.primaryServiceId === current.primaryServiceId
+    ) {
+      return {
+        success: true,
+        changed: false,
+        incident: { id: current.id, incidentNumber: current.incidentNumber, title: current.title },
+        message: "No changes to save",
+      };
     }
 
     const now = new Date();

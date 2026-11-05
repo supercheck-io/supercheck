@@ -29,6 +29,20 @@ jest.unstable_mockModule('../../utils/logger.js', () => ({
 const { output, outputDetail, setOutputFormat, getOutputFormat, setWideOutput, outputNarrative } = await import('../formatter.js')
 const { setRevealSecrets } = await import('../../utils/redact.js')
 
+describe('Formatter large and cyclic values', () => {
+  beforeEach(() => { mockOutput.mockClear(); setOutputFormat('table') })
+  it('terminates on a very long nested cell', () => {
+    outputDetail({ schema: { blob: '{"ab":1},'.repeat(5000) } })
+    expect(mockOutput).toHaveBeenCalled()
+  }, 5000)
+  it('terminates on a cyclic object', () => {
+    const cyc: Record<string, unknown> = { a: 1 }
+    cyc.self = cyc
+    outputDetail({ x: { cyc } }, { redact: false })
+    expect(mockOutput).toHaveBeenCalled()
+  }, 5000)
+})
+
 describe('Formatter', () => {
   beforeEach(() => {
     mockOutput.mockClear()

@@ -19,7 +19,10 @@ jest.mock("@/lib/queue", () => ({ getRedisConnection: jest.fn(async () => ({ set
 const sendEmailToMultiple = jest.fn().mockResolvedValue({ sentCount: 1, failedAddresses: [], errors: {} });
 jest.mock("@/lib/email-service", () => ({ EmailService: { getInstance: () => ({ sendEmailToMultiple }) } }));
 const fetchPublicEndpoint = jest.fn().mockResolvedValue({ ok: true });
-jest.mock("@/lib/sre/connectors/pinned-fetch", () => ({ fetchPublicEndpoint: (...args: unknown[]) => fetchPublicEndpoint(...args) }));
+jest.mock("@/lib/sre/connectors/pinned-fetch", () => ({
+  fetchPublicEndpoint: (...args: unknown[]) => fetchPublicEndpoint(...args),
+  fetchChannelWebhookEndpoint: (...args: unknown[]) => fetchPublicEndpoint(...args),
+}));
 jest.mock("@/lib/notification-providers/crypto", () => ({
   decryptNotificationProviderConfig: jest.fn((config: { envelope?: Record<string, unknown> }) => config.envelope ?? config),
 }));

@@ -88,6 +88,17 @@ describe("mcpAuthorizeRequiresResource", () => {
   });
 });
 
+describe("mcpAuthorizeRequiresResource scope", () => {
+  const plugin = mcpAuthorizeRequiresResource(RESOURCE);
+  it.each([["mcp:sre"], ["mcp:incidents:write mcp:sre"]])("rejects %p without mcp:read as invalid_scope", async (scope) => {
+    const error = await refusal(run(plugin, { query: { resource: RESOURCE, scope } }));
+    expect(error?.body?.error).toBe("invalid_scope");
+  });
+  it.each([["mcp:read"], ["mcp:read mcp:sre"], [undefined]])("accepts scope %p", async (scope) => {
+    await expect(run(plugin, { query: { resource: RESOURCE, scope } })).resolves.not.toThrow();
+  });
+});
+
 describe("mcpConsentRequiresProject", () => {
   const resolve = jest.fn();
   const plugin = mcpConsentRequiresProject(resolve);

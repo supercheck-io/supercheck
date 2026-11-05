@@ -63,6 +63,7 @@ Ask one focused question, then review citations and any evidence gaps before act
 |---|---|
 | **Message length** | 4,000 characters, applied to the newest message only. Earlier replies in the chat can be longer |
 | **Conversation length** | Long chats keep working. If a request would exceed Copilot's prompt budget, the oldest turns are left out of what it reads. A request body over about 2 MB is rejected with *Copilot chat history is too large* |
+| **Tool calls per reply** | Up to 4 steps. On the last step Copilot cannot call tools and answers from what it has gathered. If a reply still ends without text, it says *Copilot reached its tool-call limit for this turn. Ask a narrower question or continue.* |
 | **Rate** | 30 messages per minute per person |
 | **Images, videos and files** | File upload is not supported, and Copilot does not open or inspect file contents. The chat API still accepts a file attachment that references storage scoped to the same incident, but only its metadata reaches the model. Paste relevant text instead |
 

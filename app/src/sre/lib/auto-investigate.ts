@@ -65,7 +65,7 @@ export async function maybeAutoInvestigateOnOpen(input: AutoInvestigateInput): P
       if (policy.autoInvestigateEnabledAt && incident.createdAt < policy.autoInvestigateEnabledAt) {
         return { reason: "predates_policy" } as const;
       }
-      const blocked = await blockingRunReason(tx, input);
+      const blocked = await blockingRunReason(tx, input, autoAgentType(incident.severity));
       if (blocked) return { reason: blocked } as const;
       return { severity: incident.severity };
     });
@@ -82,8 +82,13 @@ type Executor = Pick<typeof db, "select">;
 // One automatic run per incident: later alerts joining it, or a retried job, must not bill again.
 // A failed, aborted or timed-out run does not count, so it can be retried, up to a cap so a
 // persistent provider failure does not spend credits on every alert that joins the incident.
-// The cap counts manual runs too (no origin column); they also signal a failing provider.
-async function blockingRunReason(executor: Executor, input: AutoInvestigateInput) {
+// Only runs of the agent type this path would start count, so a manual triage of a SEV1 does not
+// block its automatic full investigation. The per-org running cap below counts every agent type.
+function autoAgentType(severity: string) {
+  return severity === "sev3" || severity === "sev4" ? ("triage" as const) : ("investigation" as const);
+}
+
+async function blockingRunReason(executor: Executor, input: AutoInvestigateInput, agentType: "triage" | "investigation") {
   const runs = await executor
     .select({ status: sreInvestigationRuns.status })
     .from(sreInvestigationRuns)
@@ -92,6 +97,7 @@ async function blockingRunReason(executor: Executor, input: AutoInvestigateInput
         eq(sreInvestigationRuns.incidentId, input.incidentId),
         eq(sreInvestigationRuns.organizationId, input.organizationId),
         eq(sreInvestigationRuns.projectId, input.projectId),
+        eq(sreInvestigationRuns.agentType, agentType),
       ),
     );
   if (runs.some((run) => run.status === "running" || run.status === "completed")) return "already_investigated" as const;
@@ -129,7 +135,7 @@ async function startOnce(
 
     // The lock is gone by now: re-check just before starting so a run another trigger finished meanwhile
     // is not repeated. Narrows the race (a start between this read and the runner's insert remains).
-    const blocked = await blockingRunReason(db, input);
+    const blocked = await blockingRunReason(db, input, autoAgentType(severity));
     if (blocked) return { handled: false, reason: blocked };
 
     if (severity === "sev3" || severity === "sev4") {

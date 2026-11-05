@@ -8,7 +8,7 @@ const hasPermission = jest.fn();
 jest.mock("@/lib/rbac/middleware", () => ({ hasPermission: (...a: unknown[]) => hasPermission(...a) }));
 jest.mock("@/lib/sre/notification-policy", () => ({ getNotificationPolicy: jest.fn() }));
 
-import { saveProjectNotificationPolicy } from "./notification-policy";
+import { getProjectNotificationPolicy, saveProjectNotificationPolicy } from "./notification-policy";
 
 const project = "018f0000-0000-7000-8000-00000000000b";
 const channel = "018f0000-0000-7000-8000-0000000000c1";
@@ -67,4 +67,12 @@ it("stamps the auto-investigate time only while it is on", async () => {
   await saveProjectNotificationPolicy(project, { ...valid, channelIds: [], autoInvestigateOnOpen: false });
   expect(values.mock.calls[1][0].autoInvestigateEnabledAt).toBeNull();
   expect(onConflictDoUpdate.mock.calls[1][0].set.autoInvestigateEnabledAt).toBeNull();
+});
+
+it("rejects a malformed project id before any database access", async () => {
+  expect(await getProjectNotificationPolicy("zzz")).toEqual({ success: false, error: "Access denied" });
+  expect(await saveProjectNotificationPolicy("zzz", valid)).toEqual({ success: false, error: "Access denied" });
+  expect(findFirst).not.toHaveBeenCalled();
+  expect(select).not.toHaveBeenCalled();
+  expect(insert).not.toHaveBeenCalled();
 });

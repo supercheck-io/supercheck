@@ -447,8 +447,11 @@ async function handleRequest(
 ) {
   try {
     const user = await getCurrentUser();
-    if (!user || user.role !== Role.SUPER_ADMIN) {
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    if (user.role !== Role.SUPER_ADMIN) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
   } catch (error) {
     console.error("[Bull-Board] Auth error:", error);

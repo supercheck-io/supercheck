@@ -1,5 +1,5 @@
 import type { NotificationProviderType } from "@/db/schema";
-import { validateWebhookUrlString } from "@/lib/url-validator";
+import { allowInternalWebhookTargets, validateWebhookUrlString } from "@/lib/url-validator";
 import {
   normalizeWebhookMethod,
   parseWebhookJsonTemplate,
@@ -57,7 +57,10 @@ export function validateProviderWebhookUrl(
   fieldName: string = "URL"
 ): void {
   // SSRF validation: block private/internal IPs and require HTTPS
-  const urlValidation = validateWebhookUrlString(url);
+  // Only generic webhook channels may target internal hosts, and only on opted-in self-hosted installs.
+  const urlValidation = validateWebhookUrlString(url, {
+    allowInternal: providerType === "webhook" && allowInternalWebhookTargets(),
+  });
   if (!urlValidation.valid) {
     throw new Error(`${fieldName}: ${urlValidation.error || "Invalid URL"}`);
   }

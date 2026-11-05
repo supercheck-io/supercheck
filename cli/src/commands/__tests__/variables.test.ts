@@ -145,6 +145,12 @@ describe('var command', () => {
     })
   })
 
+  it.each(['abc', 'lower_case', '1ABC', 'WAY_TOO_LONG_KEY_NAME_HERE'])('rejects the invalid key %s before any request', async (key) => {
+    await expect(varCommand.parseAsync(['node', 'var', 'set', key, 'v'])).rejects.toThrow('Variable key must be 4–20 characters: an uppercase letter')
+    expect(mockGet).not.toHaveBeenCalled()
+    expect(mockPost).not.toHaveBeenCalled()
+  })
+
   it('creates a variable when the key is unused', async () => {
     mockGet.mockResolvedValueOnce({ data: variables })
     mockPost.mockResolvedValueOnce({ data: { id: 'var-4' } })
@@ -200,8 +206,8 @@ describe('var command', () => {
   })
 
   it.each([
-    ['too short key', ['AB', 'value'], 'Variable key must be 4–20 characters.'],
-    ['too long key', ['A'.repeat(21), 'value'], 'Variable key must be 4–20 characters.'],
+    ['too short key', ['AB', 'value'], 'Variable key must be 4–20 characters: an uppercase letter, then uppercase letters, digits or underscores.'],
+    ['too long key', ['A'.repeat(21), 'value'], 'Variable key must be 4–20 characters: an uppercase letter, then uppercase letters, digits or underscores.'],
   ])('rejects a %s before calling the API', async (_label, argv, message) => {
     await expect(varCommand.parseAsync(['node', 'var', 'set', ...argv])).rejects.toMatchObject({
       exitCode: ExitCode.ConfigError,

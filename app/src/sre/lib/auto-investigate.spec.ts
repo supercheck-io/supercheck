@@ -24,11 +24,13 @@ let runRows: unknown[] = [];
 let lateRunRows: unknown[] | null = null;
 let orgRunning = 0;
 let inTransaction = false;
+const wheres: unknown[] = [];
 const lockExecute = jest.fn().mockResolvedValue(undefined);
 // Queries are told apart by the columns they select: the incident, the org's running count, else the incident's runs.
 const chain = (rows: unknown[]) => {
   const n: Record<string, unknown> = {};
-  for (const k of ["from", "where"]) n[k] = () => n;
+  n.from = () => n;
+  n.where = (condition: unknown) => { wheres.push(condition); return n; };
   n.limit = () => Promise.resolve(rows);
   // The run query is awaited without .limit().
   n.then = (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) =>
@@ -66,6 +68,7 @@ const input = { organizationId: "org-1", projectId: "p1", incidentId: "i1", user
 beforeEach(() => {
   jest.clearAllMocks();
   runRows = [];
+  wheres.length = 0;
   orgRunning = 0;
   lateRunRows = null;
   sreEnabled.mockReturnValue(true);
@@ -156,6 +159,17 @@ it("does not start a second automatic run for an incident that already has one",
   expect(await maybeAutoInvestigateOnOpen(input)).toEqual({ handled: false, reason: "already_investigated" });
   expect(start).not.toHaveBeenCalled();
   expect(triage).not.toHaveBeenCalled();
+});
+
+it.each([["sev1", "investigation"], ["sev3", "triage"]])("counts only %s's own agent type (%s) when deciding to skip", async (severity, agentType) => {
+  const { PgDialect } = jest.requireActual("drizzle-orm/pg-core");
+  incidentRows = [{ severity, status: "triggered" }];
+  await maybeAutoInvestigateOnOpen(input);
+  // The incident-runs query is the one filtered by incident id and agent type.
+  const sqls = wheres.map((w) => new PgDialect().sqlToQuery(w as never));
+  const runsQuery = sqls.find((q) => q.sql.includes('"agent_type"'));
+  expect(runsQuery?.params).toContain(agentType);
+  expect(runsQuery?.params).not.toContain(agentType === "triage" ? "investigation" : "triage");
 });
 
 it("re-checks just before starting, so a run another trigger completed meanwhile is not repeated", async () => {

@@ -6,7 +6,10 @@ jest.mock("@/utils/db", () => ({ db: { select: jest.fn() } }));
 jest.mock("@/lib/api-key-rate-limiter", () => ({ apiKeyRateLimiter: { checkAndIncrement: jest.fn() }, createRateLimitHeaders: jest.fn(() => ({})) }));
 jest.mock("@/lib/email-renderer", () => ({ renderTestEmail: jest.fn(async () => ({ subject: "s", text: "t", html: "h" })) }));
 jest.mock("@/lib/email-service", () => ({ EmailService: { getInstance: jest.fn() } }));
-jest.mock("@/lib/sre/connectors/pinned-fetch", () => ({ fetchPublicEndpoint: jest.fn() }));
+jest.mock("@/lib/sre/connectors/pinned-fetch", () => {
+  const fetchPublicEndpoint = jest.fn();
+  return { fetchPublicEndpoint, fetchChannelWebhookEndpoint: fetchPublicEndpoint };
+});
 import { POST } from "./route";
 import { db } from "@/utils/db";
 import { requireAuthContext } from "@/lib/auth-context";

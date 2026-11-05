@@ -488,6 +488,7 @@ export async function POST(request: NextRequest) {
             : {}),
         },
         budget: { maxSteps: 4, maxOutputTokens: 1200, timeoutMs: 45_000 },
+        finalStepWithoutTools: true,
         onStepFinish: (event) =>
           send("agent.step", sanitizeSreAgentStepEvent(event)),
       });

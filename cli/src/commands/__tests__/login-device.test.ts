@@ -80,6 +80,25 @@ describe('device login selection', () => {
     expect(d.finalize).not.toHaveBeenCalled()
   })
 
+  it('polls a stored grant once immediately on re-run, before the poll interval', async () => {
+    const d = deps()
+    await runDeviceLogin({}, d)
+    expect(d.pollToken).not.toHaveBeenCalled()
+    await runDeviceLogin({}, d)
+    expect(d.pollToken).toHaveBeenCalledTimes(1)
+  })
+
+  it('--reauth discards a stored pending grant and starts a fresh one', async () => {
+    const d = deps()
+    await runDeviceLogin({}, d)
+    const first = d.store.load()
+    d.store.save({ ...first!, deviceCode: 'denied'.repeat(8) })
+    await runDeviceLogin({ reauth: true }, d)
+    expect(d.pollToken).not.toHaveBeenCalled()
+    expect(d.requestCode).toHaveBeenCalledTimes(2)
+    expect(d.store.load()!.deviceCode).toBe(pendingGrant.deviceCode)
+  })
+
   it('does not consume a pending reauth grant while an environment token takes precedence', async () => {
     token = 'sck_live_' + 'a'.repeat(32)
     storedUrl = 'https://app.example.com'

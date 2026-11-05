@@ -15,6 +15,8 @@ jest.mock("@/db/schema", () => ({ member: { id: "id", userId: "u", organizationI
 jest.mock("drizzle-orm", () => ({ and: jest.fn(), eq: jest.fn() }));
 jest.mock("drizzle-orm/pg-core", () => ({ alias: (t: unknown) => t }));
 jest.mock("@/lib/session", () => ({ getCurrentUser: () => mockViewer() }));
+const mockIsSuperAdmin = jest.fn();
+jest.mock("@/lib/rbac/super-admin", () => ({ isSuperAdmin: (...a: unknown[]) => mockIsSuperAdmin(...a) }));
 jest.mock("@/lib/user-avatar", () => ({ ...jest.requireActual("@/lib/user-avatar"), getAvatar: (...a: unknown[]) => mockGet(...a) }));
 
 import { GET } from "./route";
@@ -26,6 +28,7 @@ const call = (id = TARGET) => GET(new Request("http://localhost"), { params: Pro
 describe("GET /api/users/[id]/avatar", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockIsSuperAdmin.mockResolvedValue(false);
     mockViewer.mockResolvedValue({ id: "0192a000-0000-7000-8000-000000000002" });
     mockGet.mockResolvedValue(new Uint8Array([1, 2, 3]));
   });
@@ -39,11 +42,17 @@ describe("GET /api/users/[id]/avatar", () => {
     expect((await call()).status).toBe(401);
   });
 
-  it("403 when the users share no organization", async () => {
+  it("404 (not 403) when the users share no organization", async () => {
     mockRows.mockResolvedValueOnce([]);
     const res = await call();
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(404);
     expect(mockGet).not.toHaveBeenCalled();
+  });
+
+  it("serves a super admin without a shared organization", async () => {
+    mockIsSuperAdmin.mockResolvedValue(true);
+    mockRows.mockResolvedValueOnce([{ image: `/api/users/${TARGET}/avatar?v=${VERSION}` }]);
+    expect((await call()).status).toBe(200);
   });
 
   it("serves the image with safe headers to an organization peer", async () => {

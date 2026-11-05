@@ -10,6 +10,7 @@ import {
   auditLogs, member,
 } from '@/db/schema';
 import { requireAdmin } from '@/lib/admin';
+import { adminDeniedResponse } from '@/lib/admin-errors';
 import { getCurrentUser } from '@/lib/session';
 import { auth } from '@/utils/auth';
 import { headers } from 'next/headers';
@@ -45,6 +46,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       data: userData
     });
   } catch (error) {
+    const denied = adminDeniedResponse(error);
+    if (denied) return denied;
     console.error('Admin user GET error:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to fetch user' },
@@ -145,6 +148,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       data: updatedUser
     });
   } catch (error) {
+    const denied = adminDeniedResponse(error);
+    if (denied) return denied;
     console.error('Admin user PUT error:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to update user' },
@@ -313,6 +318,8 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       data: { message: 'User deleted successfully' }
     });
   } catch (error) {
+    const denied = adminDeniedResponse(error);
+    if (denied) return denied;
     console.error('Admin user DELETE error:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to delete user', ...(deletedOrganizationIds.length ? { deletedOrganizationIds } : {}) },
@@ -490,6 +497,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       { status: 400 }
     );
   } catch (error) {
+    const denied = adminDeniedResponse(error);
+    if (denied) return denied;
     console.error('Admin user POST error:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to perform action' },

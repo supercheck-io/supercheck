@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/utils/db';
 import { organization, member, projects, user } from '@/db/schema';
 import { requireAdmin } from '@/lib/admin';
+import { adminDeniedResponse } from '@/lib/admin-errors';
 import { getCurrentUser } from '@/lib/session';
 import { logAdminEvent } from '@/lib/audit-logger';
 import { BillingCancellationError, OrganizationMembershipChangedError, StorageCleanupError, deleteOrganizationCompletely } from '@/lib/organization-teardown';
@@ -77,6 +78,8 @@ export async function GET(
       }
     });
   } catch (error) {
+    const denied = adminDeniedResponse(error);
+    if (denied) return denied;
     console.error('Admin organization GET error:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to fetch organization' },
@@ -117,6 +120,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       data: updatedOrg
     });
   } catch (error) {
+    const denied = adminDeniedResponse(error);
+    if (denied) return denied;
     console.error('Admin organization PUT error:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to update organization' },
@@ -202,6 +207,8 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       data: { message: 'Organization deleted successfully' }
     });
   } catch (error) {
+    const denied = adminDeniedResponse(error);
+    if (denied) return denied;
     console.error('Admin organization DELETE error:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to delete organization' },

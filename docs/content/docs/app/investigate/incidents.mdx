@@ -157,7 +157,7 @@ AI triage is separate and optional. Triage that starts by itself from an alert r
 
 | Action | Behavior |
 |---|---|
-| **Default assignee** | An incident opened from an alert is assigned to the linked service's owner user when one is set and that person can still act on incidents. Supercheck does not set service owners today: the service form has a free-text **Owner team** only, so alert incidents open unassigned until someone acknowledges or assigns them |
+| **Default assignee** | An incident opened from an alert is assigned to the linked service's owner user when one is set and that person can still act on incidents. Set the owner on the service (**Services → Edit → Owner**); it must be a project editor or admin. The free-text **Owner team** is a label only. Without an owner, alert incidents open unassigned until someone acknowledges or assigns them |
 | **Assign** | Choose any organization owner or admin, or a project admin or editor of this project. Viewers and people outside the project are rejected. Assigning again to the same person changes nothing |
 | **Acknowledge** | Stamps who acknowledged and when. If the incident is unassigned, the acknowledger becomes the assignee. Acknowledging twice is harmless |
 | **Commander** | Optional single incident commander, set from the sidebar |
@@ -173,9 +173,9 @@ Supercheck announces an incident when it is **opened**, **assigned**, **acknowle
 | Where | What is sent |
 |---|---|
 | **The check's channels** | Assignment, acknowledgement, AI findings, and resolution or reopening by a person. Opening, recovery, automatic resolution and automatic reopening post nothing extra, because the worker's alert and recovery already went there. If every delivery of the opening alert failed, the channels get the incident-opened message instead |
-| **Participant email** | The assignee and the incident commander get a direct email for every change someone else makes: assignment, acknowledgement, resolution and reopening, plus recovery and automatic reopening. On a reassignment the previous assignee is told too. You are never emailed about your own change, and only people who can still act on the incident (owners, admins, and the project's admins and editors) receive mail. Requires email delivery |
-| **Watchers** | Anyone who watches an incident gets an email for each new note and each severity change (never about their own). The creator, the assignee and everyone who comments are added automatically; **Unwatch** opts a person out. Viewers can watch |
-| **Incidents without a monitor or job** | Incidents created by hand or by a connector use the project's **Default policy** (below) instead of source channels |
+| **Participant email** | The assignee and the incident commander get a direct email for every change someone else makes: assignment, acknowledgement, resolution and reopening, plus recovery and automatic reopening. They always get new-note and severity-change emails too, whether or not they watch the incident (**Unwatch** only affects watchers). On a reassignment the previous assignee is told too. You are never emailed about your own change, and only people who can still act on the incident (owners, admins, and the project's admins and editors) receive mail. Requires email delivery |
+| **Watchers** | Anyone who watches an incident gets an email for each new note and each severity change (never about their own). The creator, the assignee and everyone who comments are added automatically; **Unwatch** opts a person out. Viewers can watch. Note and severity emails are limited to one per event type per person every 5 minutes |
+| **Incidents without a monitor or job** | Incidents created by hand or by a connector use the project's **Default policy** (below) instead of source channels, and its channels get the same lifecycle messages (opened, assigned, acknowledged, AI finding, resolved, reopened). Incidents from a monitor or job use the channels chosen on it; the policy channels only get their reminder. Notes and severity changes are emailed to people, never posted to channels |
 | **Nobody to tell** | If a new incident is unassigned and no channel will be notified, the project's owners and admins are emailed |
 
 ### Default policy
@@ -184,10 +184,10 @@ Each project has one **Default policy**, edited from **Organization → Projects
 
 | Setting | Effect |
 |---|---|
-| **Channels** | Up to 10. Notified about incidents created by hand or by a connector. Monitors and jobs keep the channels chosen on them |
+| **Channels** | Up to 10. Notified about incidents created by hand or by a connector, and about reminders for every incident. Monitors and jobs keep the channels chosen on them |
 | **Email service owners for SEV1 and SEV2** | Also emails the incident's service owners when a SEV1 or SEV2 opens |
 | **Remind once if nobody acknowledges** | After the chosen minutes (5 to 1,440), re-sends once to the policy channels and the assignee and commander. Off by default. Incidents more than two days old are not reminded |
-| **Investigate new incidents automatically** | Off by default because it uses AI credits. SEV1 and SEV2 get a full investigation, SEV3 and SEV4 a quick triage, through the same plan and usage limits as starting one by hand. Only incidents opened after you turn it on are covered, and automatic runs use stored evidence, not live sources. Each incident gets one automatic run at a time; if that run fails, a later trigger can try again, up to three attempts |
+| **Investigate new incidents automatically** | Off by default because it uses AI credits. SEV1 and SEV2 get a full investigation, SEV3 and SEV4 a quick triage, through the same plan and usage limits as starting one by hand. Only incidents opened after you turn it on are covered, and automatic runs use stored evidence, not live sources. Only runs of the type the automatic path would start count: a SEV1 or SEV2 that someone triaged by hand still gets its automatic full investigation, and a SEV3 or SEV4 that someone investigated by hand still gets its triage. Each incident gets one automatic run at a time; if that run fails, a later trigger can try again, up to three attempts of that type. At most three runs per organization are in progress at once |
 
 Email, Slack, Teams, Discord, Telegram and plain webhook channels are supported; webhooks with a preset or body template are skipped for incident messages. Each message names the incident, severity and service and links to it, without raw evidence, logs, credentials or AI conclusions. The same event is announced once within a short window, and recovery and reopen emails reach each person at most once every 10 minutes, so a flapping check does not flood inboxes.
 

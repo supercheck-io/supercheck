@@ -147,6 +147,20 @@ describe("getSreIncidentDetails investigation summary", () => {
     );
   });
 
+  it("writes no timeline event or audit entry when the edit changes nothing", async () => {
+    const incidentId = "00000000-0000-4000-8000-000000000001";
+    (db.query.sreIncidents.findFirst as jest.Mock).mockResolvedValue({
+      id: incidentId, incidentNumber: 4, title: "t", status: "investigating", severity: "sev2", primaryServiceId: null,
+    });
+    (db.transaction as jest.Mock).mockClear();
+    const audit = jest.requireMock("@/lib/audit-logger").logAuditEvent as jest.Mock;
+    audit.mockClear();
+    const result = await updateSreIncident({ id: incidentId, title: "t", severity: "sev2", status: "investigating", primaryServiceId: null });
+    expect(result).toMatchObject({ success: true, changed: false });
+    expect(db.transaction).not.toHaveBeenCalled();
+    expect(audit).not.toHaveBeenCalled();
+  });
+
   it("refuses a rate-limited incident edit before reading or writing anything", async () => {
     jest.mocked(jest.requireMock("@/lib/sre/sre-rate-limiter").checkSreIncidentUpdateRateLimit).mockResolvedValueOnce({ allowed: false });
     (db.query.sreIncidents.findFirst as jest.Mock).mockClear();

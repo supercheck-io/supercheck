@@ -795,6 +795,9 @@ export async function PATCH(
     if (rawData.enabled !== undefined && typeof rawData.enabled !== "boolean") {
       return NextResponse.json({ error: "enabled must be boolean" }, { status: 400 });
     }
+    if (rawData.name !== undefined && (typeof rawData.name !== "string" || !rawData.name.trim() || [...rawData.name].length > 255)) {
+      return NextResponse.json({ error: "name must be 1-255 characters" }, { status: 400 });
+    }
     if (rawData.frequencyMinutes !== undefined &&
       (typeof rawData.frequencyMinutes !== "number" || !Number.isFinite(rawData.frequencyMinutes) ||
        rawData.frequencyMinutes < 1 || rawData.frequencyMinutes > 1440)) {

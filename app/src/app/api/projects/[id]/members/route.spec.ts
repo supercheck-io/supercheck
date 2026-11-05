@@ -1,9 +1,17 @@
 /** @jest-environment node */
 import { NextRequest } from "next/server";
-jest.mock("@/lib/rbac/middleware", () => ({ hasPermissionForUser: jest.fn() }));
+const mockStanding = { value: true };
+jest.mock("@/lib/rbac/middleware", () => ({
+  hasPermissionForUser: jest.fn(),
+  // Stands in for the real helper: 403 for an org member, 404 for a caller with no standing in the org.
+  forbiddenOrNotFound: jest.fn(async (_u: string, _o: string, forbidden: string, notFound: string) => {
+    const { NextResponse } = jest.requireActual("next/server");
+    return mockStanding.value ? NextResponse.json({ error: forbidden }, { status: 403 }) : NextResponse.json({ error: notFound }, { status: 404 });
+  }),
+}));
 jest.mock("@/lib/auth-context", () => ({ requireUserAuthContext: jest.fn(), isAuthError: jest.fn() }));
 jest.mock("@/utils/db", () => ({ db: { select: jest.fn(), transaction: jest.fn() } }));
-import { DELETE, POST, PUT } from "./route";
+import { DELETE, GET, POST, PUT } from "./route";
 import { db } from "@/utils/db";
 import { hasPermissionForUser } from "@/lib/rbac/middleware";
 import { requireUserAuthContext } from "@/lib/auth-context";
@@ -14,6 +22,7 @@ const rows = (data: unknown[]) => ({ from: () => ({ where: () => ({ limit: async
 const post = () => POST(new NextRequest("http://localhost/api/projects/93ce4a2e-7846-5b60-b753-1ab3563f0fce/members", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ userId: "target-user", role: "project_admin" }) }), { params: Promise.resolve({ id: "93ce4a2e-7846-5b60-b753-1ab3563f0fce" }) });
 beforeEach(() => {
   jest.clearAllMocks();
+  mockStanding.value = true;
   (requireUserAuthContext as jest.Mock).mockResolvedValue({ userId: "admin-1" });
   (hasPermissionForUser as jest.Mock).mockResolvedValue(true);
   (db.select as jest.Mock).mockReturnValueOnce(rows([{ organizationId: "org-1" }])).mockReturnValueOnce(rows([{ id: "target-user" }]));
@@ -58,4 +67,31 @@ it("refuses a project role above the member's organization role instead of silen
   expect(res.status).toBe(400);
   expect((await res.json()).error).toMatch(/higher than the member's organization role/);
   expect(insert).not.toHaveBeenCalled();
+});
+
+describe("denied callers", () => {
+  const url = "http://localhost/api/projects/93ce4a2e-7846-5b60-b753-1ab3563f0fce/members?userId=target-user";
+  const ctx = { params: Promise.resolve({ id: "93ce4a2e-7846-5b60-b753-1ab3563f0fce" }) };
+  const json = { "content-type": "application/json" };
+  const calls = {
+    GET: () => GET(new NextRequest(url), ctx),
+    POST: () => post(),
+    PUT: () => PUT(new NextRequest(url, { method: "PUT", headers: json, body: JSON.stringify({ userId: "target-user", role: "project_viewer" }) }), ctx),
+    DELETE: () => DELETE(new NextRequest(url, { method: "DELETE" }), ctx),
+  } as const;
+  beforeEach(() => (db.select as jest.Mock).mockReset().mockReturnValueOnce(rows([{ organizationId: "org-1" }])));
+
+  it.each(Object.keys(calls) as (keyof typeof calls)[])("%s is 403 for an organization member and 404 for another tenant", async (method) => {
+    (hasPermissionForUser as jest.Mock).mockResolvedValue(false);
+    expect((await calls[method]()).status).toBe(403);
+    (db.select as jest.Mock).mockReturnValueOnce(rows([{ organizationId: "org-1" }]));
+    mockStanding.value = false;
+    expect((await calls[method]()).status).toBe(404);
+    expect(db.transaction).not.toHaveBeenCalled();
+  });
+
+  it.each(["POST", "PUT", "DELETE"] as const)("%s is authorised by project:manage_members, which project admins hold", async (method) => {
+    await calls[method]();
+    expect(hasPermissionForUser).toHaveBeenCalledWith("admin-1", "project", "manage_members", expect.objectContaining({ organizationId: "org-1" }));
+  });
 });

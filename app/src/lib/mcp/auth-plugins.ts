@@ -10,6 +10,7 @@ import type { ClientMetadataResourceFetch } from "@better-auth/oauth-provider";
 import {
   MCP_ACCESS_TOKEN_TTL_SECONDS,
   MCP_PROJECT_CLAIM,
+  MCP_READ_SCOPE,
   MCP_REFRESH_TOKEN_TTL_SECONDS,
   MCP_SCOPES,
 } from "./config";
@@ -69,15 +70,24 @@ export function mcpAuthorizeRequiresResource(resource: string): BetterAuthPlugin
           matcher: (ctx) => ctx.path === "/oauth2/authorize",
           handler: createAuthMiddleware(async (ctx) => {
             // The authorize endpoint accepts GET (query) and POST (form body).
-            const named = (source: unknown) => {
-              const value = (source as { resource?: unknown } | undefined)?.resource;
+            const named = (source: unknown, key: string) => {
+              const value = (source as Record<string, unknown> | undefined)?.[key];
               return value === undefined ? [] : Array.isArray(value) ? value : [value];
             };
-            const values = [...named(ctx.query), ...named(ctx.body)];
+            const values = [...named(ctx.query, "resource"), ...named(ctx.body, "resource")];
             if (values.length !== 1 || values[0] !== resource) {
               throw new APIError("BAD_REQUEST", {
                 error: "invalid_target",
                 error_description: `The resource parameter must be ${resource}`,
+              });
+            }
+            // A named scope set without mcp:read would yield a token that is refused on every call.
+            // An omitted scope is defaulted later; the consent route re-checks the final set.
+            const scope = [...named(ctx.query, "scope"), ...named(ctx.body, "scope")];
+            if (scope.length > 0 && !scope.some((v) => typeof v === "string" && v.split(" ").includes(MCP_READ_SCOPE))) {
+              throw new APIError("BAD_REQUEST", {
+                error: "invalid_scope",
+                error_description: `The scope parameter must include ${MCP_READ_SCOPE}`,
               });
             }
           }),

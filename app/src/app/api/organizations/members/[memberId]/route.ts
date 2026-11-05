@@ -44,15 +44,17 @@ export async function PUT(
       return NextResponse.json({ error: 'Invalid JSON in request body' }, { status: 400 });
     }
 
-    if (body.projectAssignments !== undefined && !Array.isArray(body.projectAssignments)) {
+    // `selectedProjects` is the invite endpoint's name for the same list; accept it as an alias.
+    const projectAssignments = body.projectAssignments ?? body.selectedProjects;
+    if (projectAssignments !== undefined && !Array.isArray(projectAssignments)) {
       return NextResponse.json(
         { error: 'Invalid project assignments' },
         { status: 400 }
       );
     }
 
-    const rawProjectAssignments: unknown[] = Array.isArray(body.projectAssignments)
-      ? body.projectAssignments
+    const rawProjectAssignments: unknown[] = Array.isArray(projectAssignments)
+      ? projectAssignments
       : [];
 
     const extractedProjectIds = rawProjectAssignments.map((assignment) => {

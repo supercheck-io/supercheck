@@ -5,6 +5,8 @@ import { isOAuthEndpointDenied, withReachableEndpointsOnly } from "@/lib/mcp/htt
 import { isMcpServerEnabled } from "@/lib/mcp/config";
 import { prepareMcpOAuthRequest } from "@/lib/mcp/request-policy";
 import { isCredentialOwnerActive } from "@/lib/security/credential-owner";
+import { isImpersonatedSession } from "@/lib/rbac/middleware";
+import { getCachedAuthSession } from "@/lib/session-cache";
 
 const handlers = toNextJsHandler(auth);
 
@@ -45,15 +47,33 @@ function organizationPolicyError(request: Request) {
   }
 }
 
+// Account-level Better Auth endpoints. An impersonating super admin acts as the user for support, but must not
+// change credentials, delete the account or touch sessions: the effects would outlive the impersonation.
+const accountEndpoints = new Set([
+  "change-password", "set-password", "change-email", "delete-user", "unlink-account",
+  "list-sessions", "revoke-session", "revoke-sessions", "revoke-other-sessions",
+]);
+
+async function impersonationPolicyError(request: Request) {
+  const path = decodedPath(request);
+  const endpoint = path?.startsWith("/api/auth/") ? path.slice("/api/auth/".length) : null;
+  if (!endpoint || !(accountEndpoints.has(endpoint) || endpoint.startsWith("two-factor/"))) return;
+  // Anonymous callers fall through so Better Auth keeps answering 401.
+  if (!(await getCachedAuthSession())) return;
+  if (await isImpersonatedSession()) {
+    return NextResponse.json({ error: "impersonation_not_allowed" }, { status: 403 });
+  }
+}
+
 export async function POST(request: Request) {
-  const denied = organizationPolicyError(request);
+  const denied = organizationPolicyError(request) ?? (await impersonationPolicyError(request));
   if (denied) return denied;
   const prepared = isMcpServerEnabled() ? await prepareMcpOAuthRequest(request) : request;
   return prepared instanceof Response ? prepared : handlers.POST(prepared);
 }
 
 export async function GET(request: Request) {
-  const denied = organizationPolicyError(request);
+  const denied = organizationPolicyError(request) ?? (await impersonationPolicyError(request));
   if (denied) return denied;
   const prepared = isMcpServerEnabled() ? await prepareMcpOAuthRequest(request) : request;
   if (prepared instanceof Response) return prepared;

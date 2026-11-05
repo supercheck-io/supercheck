@@ -29,7 +29,7 @@ jest.unstable_mockModule('../../utils/logger.js', () => ({
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), success: jest.fn(), debug: jest.fn(), newline: jest.fn(), header: jest.fn(), output: jest.fn() },
 }))
 
-const { destroyCommand } = await import('../destroy.js')
+const { destroyCommand, DELETE_ORDER } = await import('../destroy.js')
 const { ApiRequestError } = await import('../../utils/errors.js')
 
 beforeEach(() => {
@@ -60,5 +60,16 @@ describe('destroy requirements', () => {
     fetchRequirements.mockRejectedValue(new ApiRequestError('boom', 500))
     await expect(destroyCommand.parseAsync(['node', 'destroy', '--force'])).rejects.toThrow('Incomplete inventory: could not fetch requirements')
     expect(del).not.toHaveBeenCalled()
+  })
+})
+
+describe('destroy delete order', () => {
+  it.each([
+    ['statusPage', 'monitor'], ['requirement', 'test'], ['job', 'test'], ['monitor', 'test'],
+    ['job', 'notificationProvider'], ['monitor', 'notificationProvider'],
+    ['test', 'tag'], ['monitor', 'tag'], ['requirement', 'tag'],
+  ])('deletes %s before %s', (dependent, dependency) => {
+    expect(DELETE_ORDER.indexOf(dependent)).toBeGreaterThanOrEqual(0)
+    expect(DELETE_ORDER.indexOf(dependent)).toBeLessThan(DELETE_ORDER.indexOf(dependency))
   })
 })

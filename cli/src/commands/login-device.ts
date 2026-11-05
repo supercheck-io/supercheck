@@ -113,7 +113,13 @@ export async function runDeviceLogin(options: DeviceLoginOptions, depsOverride?:
   const apiUrl = apiBase(requestedUrl)
   const envToken = Boolean(process.env.SUPERCHECK_TOKEN?.trim())
   let deps = depsOverride
-  const pending = envToken ? null : (deps ??= defaultDeps()).store.load()
+  let pending = envToken ? null : (deps ??= defaultDeps()).store.load()
+  if (pending && options.reauth) {
+    // A stored code may already be denied or consumed; --reauth always starts a fresh grant.
+    const store = deps!.store
+    await store.withLock(async () => store.clear())
+    pending = null
+  }
   const resuming = pending?.apiUrl === apiUrl && pending.clientId === DEVICE_CLIENT_ID && pending.expiresAt > (deps?.now() ?? Date.now())
 
   // Resume an in-flight account switch before accepting the old login. The stored
@@ -156,7 +162,7 @@ export async function runDeviceLogin(options: DeviceLoginOptions, depsOverride?:
     (!json && Boolean(process.stdin.isTTY && process.stderr.isTTY) && !process.env.CI)
 
   if (!interactive) {
-    const outcome = await loginStep(apiUrl, deps)
+    const outcome = await loginStep(apiUrl, deps, { pollNow: true })
     if (json) {
       logger.output(JSON.stringify(printable(outcome)))
       return

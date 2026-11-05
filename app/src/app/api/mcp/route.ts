@@ -76,6 +76,7 @@ async function handle(request: Request, claims: JWTPayload): Promise<Response> {
 
     if (parsedBody === undefined) return rpcError(400, "parse_error", "Parse error", {}, -32700);
     const messages = Array.isArray(parsedBody) ? parsedBody : [parsedBody];
+    if (messages.length === 0) return rpcError(400, "invalid_request", "Invalid Request", {}, -32600);
     for (const message of messages) {
       const rpcRequest = JSONRPCRequestSchema.safeParse(message);
       if (!rpcRequest.success || rpcRequest.data.method !== "initialize") continue;
@@ -158,12 +159,18 @@ export async function POST(request: Request): Promise<Response> {
     const responseHeaders = new Headers(response.headers);
     responseHeaders.set("Cache-Control", "no-store");
     if (response.status >= 400) {
-      const body = await response.clone().json().catch(() => null) as { jsonrpc?: string } | null;
-      if (body?.jsonrpc !== "2.0") {
+      const body = await response.clone().json().catch(() => null) as { jsonrpc?: string; error?: { data?: { code?: string } } } | null;
+      if (body?.jsonrpc !== "2.0" || !body.error?.data?.code) {
         responseHeaders.delete("content-length");
         responseHeaders.delete("content-type");
         responseHeaders.delete("content-encoding");
-        const code = response.status === 401 ? "unauthorized" : response.status === 403 ? "access_denied" : "request_failed";
+        // RFC 6750: a presented-but-rejected token is invalid_token; a request with no credentials carries no error.
+        const rejected = response.status === 401 && request.headers.has("authorization");
+        const challenge = responseHeaders.get("www-authenticate");
+        if (rejected && challenge?.startsWith("Bearer ") && !/\berror=/.test(challenge)) {
+          responseHeaders.set("www-authenticate", challenge.replace("Bearer ", 'Bearer error="invalid_token", '));
+        }
+        const code = rejected ? "invalid_token" : response.status === 401 ? "unauthorized" : response.status === 403 ? "access_denied" : "request_failed";
         return rpcError(response.status, code, response.status === 401 ? "Authentication required" : "Request refused", responseHeaders);
       }
     }
@@ -181,3 +188,5 @@ function notAllowed(): Response {
 
 export const GET = notAllowed;
 export const DELETE = notAllowed;
+export const PUT = notAllowed;
+export const PATCH = notAllowed;

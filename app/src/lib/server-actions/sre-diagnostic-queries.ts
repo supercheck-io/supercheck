@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, desc, eq, ne } from "drizzle-orm";
+import { and, desc, eq, ne, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
@@ -211,6 +211,24 @@ export async function createSreDiagnosticQuery(input: z.infer<typeof createDiagn
       validateTemplateFreeTextPositions(parsed.data.template, parsed.data.parameterSchema, parsed.data.allowlist, parsed.data.queryType);
     } catch (validationError) {
       return { success: false, error: validationError instanceof Error ? validationError.message : "Invalid diagnostic query definition" };
+    }
+
+    // No unique index covers (connector, name); two queries with one name cannot be told apart in the picker.
+    const [duplicate] = await db
+      .select({ id: diagnosticQueries.id })
+      .from(diagnosticQueries)
+      .where(and(
+        eq(diagnosticQueries.connectorId, connector.id),
+        eq(diagnosticQueries.status, "active"),
+        sql`lower(${diagnosticQueries.name}) = lower(${parsed.data.name})`,
+      ))
+      .limit(1);
+    if (duplicate) {
+      return {
+        success: false,
+        error: "This connector already has a saved query with that name. Choose a different name.",
+        fieldErrors: { name: ["A saved query with this name already exists"] },
+      };
     }
 
     const now = new Date();
