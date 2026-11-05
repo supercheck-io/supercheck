@@ -5,6 +5,7 @@ jest.mock("@/utils/db", () => ({
   db: { select: jest.fn(), transaction: jest.fn(), query: {
     sreIncidents: { findFirst: jest.fn() },
     sreInvestigationReports: { findFirst: jest.fn().mockResolvedValue(null) },
+    sreServices: { findFirst: jest.fn() },
   } },
 }));
 jest.mock("@/sre/lib/stale-run-recovery", () => ({ failStaleSreInvestigationRunsForIncident: jest.fn().mockResolvedValue(undefined) }));
@@ -145,6 +146,42 @@ describe("getSreIncidentDetails investigation summary", () => {
     expect(jest.requireMock("@/lib/sre/incident-notifier").notifyIncidentEvent).toHaveBeenCalledWith(
       expect.objectContaining({ incidentId, event: "reopened" }),
     );
+  });
+
+  it("writes no timeline event or audit entry when the edit changes nothing", async () => {
+    const incidentId = "00000000-0000-4000-8000-000000000001";
+    (db.query.sreIncidents.findFirst as jest.Mock).mockResolvedValue({
+      id: incidentId, incidentNumber: 4, title: "t", status: "investigating", severity: "sev2", primaryServiceId: null,
+    });
+    (db.transaction as jest.Mock).mockClear();
+    const audit = jest.requireMock("@/lib/audit-logger").logAuditEvent as jest.Mock;
+    audit.mockClear();
+    const result = await updateSreIncident({ id: incidentId, title: "t", severity: "sev2", status: "investigating", primaryServiceId: null });
+    expect(result).toMatchObject({ success: true, changed: false });
+    expect(db.transaction).not.toHaveBeenCalled();
+    expect(audit).not.toHaveBeenCalled();
+  });
+
+  it("saves an edit that only changes the primary service", async () => {
+    const incidentId = "00000000-0000-4000-8000-000000000001";
+    const serviceId = "00000000-0000-4000-8000-0000000000aa";
+    (db.query.sreIncidents.findFirst as jest.Mock).mockResolvedValue({
+      id: incidentId, incidentNumber: 4, title: "t", status: "investigating", severity: "sev2", primaryServiceId: null,
+    });
+    (db.query.sreServices.findFirst as jest.Mock).mockResolvedValue({ id: serviceId, status: "active" });
+    const sets: Array<Record<string, unknown>> = [];
+    (db.transaction as jest.Mock).mockClear().mockImplementation(async (callback) => callback({
+      update: () => ({ set: (values: Record<string, unknown>) => {
+        sets.push(values);
+        return { where: () => ({ returning: async () => [{ id: incidentId, incidentNumber: 4, title: "t" }] }) };
+      } }),
+      insert: () => ({ values: async () => undefined }),
+    }));
+    const result = await updateSreIncident({ id: incidentId, title: "t", severity: "sev2", status: "investigating", primaryServiceId: serviceId });
+    expect(result).not.toMatchObject({ changed: false });
+    expect(result).toMatchObject({ success: true });
+    expect(db.transaction).toHaveBeenCalledTimes(1);
+    expect(sets[0]).toMatchObject({ primaryServiceId: serviceId });
   });
 
   it("refuses a rate-limited incident edit before reading or writing anything", async () => {
@@ -323,6 +360,17 @@ describe("createSreIncidentFromAlert join/reopen rules", () => {
     return inserted;
   };
   const ref = { incidentNumber: 4, title: "API down" };
+
+  it("does not wait for, or fail on, the reopen announcement", async () => {
+    arrange();
+    jest.mocked(reopenRecentlyAutoResolved).mockResolvedValueOnce({ incidentId: "inc-old", ...ref, assigneeUserId: "u-9", alreadyTriaged: false, stale: false });
+    jest.mocked(announceSystemTransition).mockReturnValueOnce(new Promise(() => undefined));
+    await expect(createSreIncidentFromAlert({ alertHistoryId: "00000000-0000-4000-8000-000000000009" })).resolves.toMatchObject({ success: true, existing: true });
+    arrange();
+    jest.mocked(reopenRecentlyAutoResolved).mockResolvedValueOnce({ incidentId: "inc-old", ...ref, assigneeUserId: "u-9", alreadyTriaged: false, stale: false });
+    jest.mocked(announceSystemTransition).mockRejectedValueOnce(new Error("provider down"));
+    await expect(createSreIncidentFromAlert({ alertHistoryId: "00000000-0000-4000-8000-000000000009" })).resolves.toMatchObject({ success: true });
+  });
 
   it("reopens a recently auto-resolved incident instead of creating one, and announces it", async () => {
     arrange();

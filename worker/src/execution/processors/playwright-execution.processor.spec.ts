@@ -1186,6 +1186,50 @@ describe('PlaywrightExecutionProcessor', () => {
       );
 
       it.each(['test', 'job'])(
+        'alerts once for a %s run whose result could not be saved (jobs only) and never masks the error',
+        async (kind) => {
+          const { job } = run(kind);
+          mockUsageTrackerService.completeRunWithUsage.mockRejectedValue(
+            new Error('db down'),
+          );
+          mockJobNotificationService.handleJobNotifications.mockRejectedValue(
+            new Error('smtp down'),
+          );
+          const failure = await processor.process(job).catch((e: unknown) => e);
+          expect(failure).toBeInstanceOf(ResultNotPersistedError);
+          const alerts =
+            mockJobNotificationService.handleJobNotifications.mock.calls;
+          if (kind === 'job') {
+            expect(alerts).toHaveLength(1);
+            expect(alerts[0][0]).toMatchObject({
+              runId,
+              finalStatus: 'error',
+              cancelled: false,
+            });
+          } else {
+            expect(alerts).toHaveLength(0);
+          }
+        },
+      );
+
+      it('does not flag a user-cancelled job run as an alert-worthy error when its result cannot be saved', async () => {
+        const { job, execute } = run('job');
+        execute.mockResolvedValueOnce({
+          success: false,
+          error: 'Cancellation requested by user',
+          results: [],
+        });
+        mockUsageTrackerService.completeRunWithUsage.mockRejectedValue(
+          new Error('db down'),
+        );
+        const failure = await processor.process(job).catch((e: unknown) => e);
+        expect(failure).toBeInstanceOf(ResultNotPersistedError);
+        expect(
+          mockJobNotificationService.handleJobNotifications,
+        ).toHaveBeenCalledWith(expect.objectContaining({ cancelled: true }));
+      });
+
+      it.each(['test', 'job'])(
         'meters a %s run once when its saves fail but metering succeeds',
         async (kind) => {
           const { job, execute } = run(kind);

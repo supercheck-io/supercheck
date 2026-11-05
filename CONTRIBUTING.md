@@ -53,9 +53,12 @@ In a separate terminal for the app, run from the repository root:
 cd /path/to/supercheck/app
 test -f .env || cp .env.example .env
 npm ci
+set -a; . ./.env; set +a   # the migrator reads DATABASE_URL from the environment and refuses to run without it
 npm run db:migrate
 npm run dev
 ```
+
+Sourcing `.env` applies shell parsing, so wrap any value containing spaces, `$`, `&` or `;` in single quotes (dotenv strips them too).
 
 The app is available at `http://localhost:3000`. In another terminal for the worker, run from the repository root:
 
