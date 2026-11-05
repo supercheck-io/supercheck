@@ -10,7 +10,7 @@ test.describe("CLI project-config deployment @api @cli @critical", () => {
     const request = projectAdminPage.request;
     const suffix = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const providerName = `E2E CLI provider ${suffix}`;
-    const recipient = `cli-${suffix}@e2e-test.supercheck.io`;
+    const recipient = `cli-${suffix}@e2e-test.invalid`;
     const explicitProvider = {
       name: providerName,
       type: "email",

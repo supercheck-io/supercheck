@@ -109,8 +109,32 @@ const REDACTIONS: Array<[RegExp, string]> = [
 
 export function redactMcpText(value: string, extraSecrets: string[] = []) {
   let out = value.length > 256 * 1024 ? value.slice(0, 256 * 1024) : value;
+  // Find every match in the original text and redact the merged spans in one pass, so a
+  // secret that overlaps or prefixes another can't leave part of it behind.
+  const spans: Array<[number, number]> = [];
   for (const secret of extraSecrets) {
-    if (secret.length >= 6) out = out.split(secret).join('[REDACTED]');
+    if (secret.length < 6) continue;
+    for (
+      let i = out.indexOf(secret);
+      i !== -1;
+      i = out.indexOf(secret, i + 1)
+    ) {
+      spans.push([i, i + secret.length]);
+    }
+  }
+  if (spans.length > 0) {
+    spans.sort((a, b) => a[0] - b[0]);
+    let redacted = '';
+    let cursor = 0;
+    for (const [start, end] of spans) {
+      if (start < cursor) {
+        cursor = Math.max(cursor, end);
+        continue;
+      }
+      redacted += `${out.slice(cursor, start)}[REDACTED]`;
+      cursor = end;
+    }
+    out = redacted + out.slice(cursor);
   }
   return REDACTIONS.reduce((cur, [p, r]) => cur.replace(p, r), out);
 }

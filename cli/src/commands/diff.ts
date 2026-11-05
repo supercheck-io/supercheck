@@ -10,6 +10,7 @@ import {
 } from '../utils/reconcile.js'
 import { buildLocalResources, fetchRemoteResources } from '../utils/resources.js'
 import { withSpinner } from '../utils/spinner.js'
+import { rejectGlobTestRefs } from '../utils/validation.js'
 
 
 export const diffCommand = new Command('diff')
@@ -21,6 +22,8 @@ export const diffCommand = new Command('diff')
     const { config, configPath, declaredBaseUrl } = await loadConfig({ cwd, configPath: options.config })
     const client = createAuthenticatedClient(config.api?.baseUrl)
 
+    const builtLocal = buildLocalResources(config, cwd)
+    rejectGlobTestRefs(builtLocal)
     const context = await verifyContext(client, config, false, declaredBaseUrl)
     logger.info(`Target: ${describeTarget(context)}`)
   const state = managedState(client, context, configPath)
@@ -29,7 +32,7 @@ export const diffCommand = new Command('diff')
     const { localResources, remoteResources } = await withSpinner(
       'Comparing local and remote resources...',
       async () => {
-        const local = state.resolveTests(state.apply(buildLocalResources(config, cwd)))
+        const local = state.resolveTests(state.apply(builtLocal))
         const remote = await fetchRemoteResources(client, { requirements: config.requirements !== undefined })
         return { localResources: local, remoteResources: remote }
       },

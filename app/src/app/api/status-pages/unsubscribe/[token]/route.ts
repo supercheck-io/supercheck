@@ -14,5 +14,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
   }
   if (typeof value !== "string" || value.trim() !== "One-Click") return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   const result = await unsubscribeFromStatusPage(token);
+  // 429 + Retry-After so a mailbox provider retries instead of treating the opt-out as failed.
+  if ("rateLimited" in result && result.rateLimited) {
+    return NextResponse.json(
+      { success: false },
+      { status: 429, headers: { "Retry-After": String(result.retryAfter) } },
+    );
+  }
   return NextResponse.json({ success: result.success }, { status: result.success ? 200 : 400 });
 }

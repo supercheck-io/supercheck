@@ -5,6 +5,7 @@ import { runs, reports, jobs, ReportType } from "@/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
 import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
+import { runReportPath } from "@/lib/run-report-url";
 
 export async function GET(
   request: Request, 
@@ -80,7 +81,7 @@ export async function GET(
       durationMs: run.durationMs,
       errorDetails: run.errorDetails,
       // Use s3Url from reportResult if found, otherwise null
-      reportUrl: reportResult?.s3Url || null,
+      reportUrl: runReportPath(run.id, reportResult?.s3Url),
     });
 
   } catch (error) {

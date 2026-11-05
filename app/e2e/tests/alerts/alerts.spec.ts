@@ -14,7 +14,7 @@ test.describe('Notification providers lifecycle @alerts @channels', () => {
   let providerId: string | undefined;
   const providerName = `E2E email channel ${Date.now()}`;
   const renamedProvider = `${providerName} renamed`;
-  const recipient = `alerts-${Date.now()}@e2e-test.supercheck.io`;
+  const recipient = `alerts-${Date.now()}@e2e-test.invalid`;
 
   test('creates, persists, renders, updates, and deletes an email channel @critical @positive', async ({ projectAdminPage, cleanup }) => {
     const request = projectAdminPage.request;

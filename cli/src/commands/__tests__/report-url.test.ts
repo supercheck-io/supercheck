@@ -8,6 +8,10 @@ describe('publicReportUrl', () => {
     expect(publicReportUrl(client, { id: 'r1', reportUrl: 'http://rustfs:9000/b/r1/report/index.html' }).reportUrl)
       .toBe('https://app.example.com/api/test-results/r1/report/index.html')
   })
+  it('uses runId from the run status route', () => {
+    expect(publicReportUrl(client, { runId: 'r2', reportUrl: 'http://rustfs:9000/b/r2/report/index.html' }).reportUrl)
+      .toBe('https://app.example.com/api/test-results/r2/report/index.html')
+  })
   it('leaves runs without a report untouched', () => {
     const run = { id: 'r1', reportUrl: null }
     expect(publicReportUrl(client, run)).toEqual(run)

@@ -21,6 +21,7 @@ const mockLoadConfig = jest.fn<(...args: unknown[]) => Promise<{ config: Record<
 const mockWaitForRun = jest.fn<(...args: unknown[]) => Promise<Record<string, unknown>>>()
 const mockBuildLocalResources = jest.fn<(...args: unknown[]) => Array<Record<string, unknown>>>()
 const mockValidateScripts = jest.fn<(...args: unknown[]) => Promise<Array<Record<string, unknown>>>>()
+const mockRejectGlobTestRefs = jest.fn<(...args: unknown[]) => void>()
 const mockConfirmPrompt = jest.fn<(...args: unknown[]) => Promise<void>>()
 let outputFormat = 'table'
 let authenticated = true
@@ -103,6 +104,7 @@ jest.unstable_mockModule('../../utils/resources.js', () => ({
 jest.unstable_mockModule('../../utils/validation.js', () => ({
   normalizeTestTypeForApi: (value: unknown) => value ?? 'playwright',
   validateScripts: mockValidateScripts,
+  rejectGlobTestRefs: mockRejectGlobTestRefs,
   validateScriptTypeMatch: (script: string, declaredType: string) =>
     script.includes('k6') && declaredType !== 'k6' ? 'script does not match declared test type' : null,
 }))
@@ -587,6 +589,17 @@ describe('read-only and operational commands', () => {
       expect(mockSuccess).toHaveBeenCalledWith('All tests passed validation.')
     })
 
+    it('rejects glob test references before calling the server', async () => {
+      const resources = [{ type: 'job', name: 'nightly', definition: { tests: ['*.pw.ts'] } }]
+      mockLoadConfig.mockResolvedValueOnce({ config, configPath: '/repo/supercheck.config.ts' })
+      mockBuildLocalResources.mockReturnValueOnce(resources)
+      mockRejectGlobTestRefs.mockImplementationOnce(() => { throw new Error('glob') })
+
+      await expect(validateCommand.parseAsync(['node', 'validate'])).rejects.toThrow('glob')
+      expect(mockRejectGlobTestRefs).toHaveBeenCalledWith(resources)
+      expect(mockValidateScripts).not.toHaveBeenCalled()
+    })
+
     it('fails when the server rejects a script', async () => {
       mockLoadConfig.mockResolvedValueOnce({ config, configPath: '/repo/supercheck.config.ts' })
       mockBuildLocalResources.mockReturnValueOnce([
@@ -627,14 +640,17 @@ describe('read-only and operational commands', () => {
       mockLoadConfig.mockResolvedValueOnce({ config, configPath: '/repo/supercheck.config.ts' })
       mockBuildLocalResources.mockReturnValueOnce([
         { type: 'requirement', name: 'Login', definition: { tests: ['_supercheck_/playwright/home.pw.ts', '019a0000-0000-7000-8000-000000000001', 'gone.pw.ts'] } },
+        // A UUID in the middle of a name is not an id; deploy can't resolve it either.
+        { type: 'job', name: 'Nightly', definition: { tests: ['missing-019a0000-0000-7000-8000-000000000001-other'] } },
         { type: 'test', name: 'playwright/home.pw.ts', definition: { script: 'page.goto()', testType: 'playwright' } },
       ])
       mockValidateScripts.mockResolvedValueOnce([{ name: 'playwright/home.pw.ts', valid: true }])
 
       await validateCommand.parseAsync(['node', 'validate'])
 
-      expect(mockWarn).toHaveBeenCalledTimes(1)
+      expect(mockWarn).toHaveBeenCalledTimes(2)
       expect(mockWarn).toHaveBeenCalledWith(expect.stringContaining('requirement/Login: test reference "gone.pw.ts" matches no local test file'))
+      expect(mockWarn).toHaveBeenCalledWith(expect.stringContaining('job/Nightly: test reference "missing-019a0000'))
     })
 
     it('warns when a job cron is not 5 fields', async () => {

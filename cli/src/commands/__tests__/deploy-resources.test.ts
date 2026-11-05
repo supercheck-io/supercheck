@@ -32,7 +32,7 @@ jest.unstable_mockModule('../../utils/resources.js', () => ({
   getApiEndpoint: (type: string) => ({ requirement: '/api/requirements', statusPage: '/api/status-pages', monitor: '/api/monitors', test: '/api/tests' })[type],
 }))
 jest.unstable_mockModule('../../utils/validation.js', () => ({
-  normalizeTestTypeForApi: () => 'browser', validateScripts: async () => [], validateScriptTypeMatch: () => null,
+  normalizeTestTypeForApi: () => 'browser', validateScripts: async () => [], validateScriptTypeMatch: () => null, rejectGlobTestRefs: () => {},
 }))
 jest.unstable_mockModule('../../utils/spinner.js', () => ({ withSpinner: async (_text: string, fn: () => Promise<unknown>) => fn() }))
 jest.unstable_mockModule('../../utils/logger.js', () => ({ logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), success: jest.fn(), debug: jest.fn(), newline: jest.fn(), header: jest.fn(), output: jest.fn() } }))

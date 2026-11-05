@@ -82,6 +82,7 @@ RUN mkdir -p playwright-reports report \
     k6-reports \
     /home/pwuser/.npm \
     /home/pwuser/.cache \
+    /home/pwuser/.supercheck \
     /root/.npm \
     /tmp/.npm \
     /tmp/supercheck \
@@ -90,7 +91,7 @@ RUN mkdir -p playwright-reports report \
     /tmp/playwright-reports && \
     chown -R pwuser:pwuser playwright-reports report k6-reports /worker /home/pwuser /tmp/supercheck /tmp/playwright-tests /tmp/playwright-videos /tmp/playwright-reports && \
     chmod -R 755 playwright-reports report k6-reports && \
-    chmod -R 700 /home/pwuser/.npm /home/pwuser/.cache && \
+    chmod -R 700 /home/pwuser/.npm /home/pwuser/.cache /home/pwuser/.supercheck && \
     chmod -R 755 /tmp/supercheck && \
     chmod -R 777 /root/.npm /tmp/.npm /tmp/playwright-tests /tmp/playwright-videos /tmp/playwright-reports
 

@@ -7,7 +7,8 @@ interface MonitorAlertEmailProps {
   message: string;
   fields: DetailField[];
   footer: string;
-  type: "failure" | "success" | "warning";
+  /** success = a plain pass (e.g. a job run); recovery = back to healthy after a failure. */
+  type: "failure" | "success" | "recovery" | "warning";
   color?: string;
   /** Absolute link to the incidents page; when set, failure/warning emails get a "View incidents" button. */
   incidentsUrl?: string;
@@ -16,13 +17,15 @@ interface MonitorAlertEmailProps {
 /** Header colours: dark enough for white text, shared with the incident emails. */
 const HEADER_TITLE = {
   failure: "Alert",
-  success: "Recovered",
+  success: "Passed",
+  recovery: "Recovered",
   warning: "Warning",
 } as const;
 
 const HEADER_COLOR = {
   failure: "#b91c1c",
   success: "#15803d",
+  recovery: "#15803d",
   warning: "#b45309",
 } as const;
 
@@ -34,6 +37,7 @@ const getStatusColor = (type: string): string => {
     case "failure":
       return "#ef4444"; // Red-500
     case "success":
+    case "recovery":
       return "#22c55e"; // Green-500
     case "warning":
       return "#f59e0b"; // Amber-500
@@ -78,7 +82,7 @@ export const MonitorAlertEmail = ({
     >
       {/* Alert Title */}
       <Section style={titleSection}>
-        {type === "success" && <Text style={resolvedChip}>&#10003; Resolved</Text>}
+        {type === "recovery" && <Text style={resolvedChip}>&#10003; Resolved</Text>}
         <Text style={alertTitle}>{title}</Text>
       </Section>
 
@@ -90,7 +94,7 @@ export const MonitorAlertEmail = ({
       <DetailsTable heading="Alert details" fields={fields} />
 
       {/* Incident follow-up (failure/warning only) */}
-      {type !== "success" && incidentsUrl && (
+      {(type === "failure" || type === "warning") && incidentsUrl && (
         <Section style={incidentSection}>
           <Text style={incidentText}>
             Ongoing failures are tracked as incidents. Review status, owner and

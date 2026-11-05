@@ -15,7 +15,7 @@ import { resolveTagIds, setAssignedTags } from '../utils/tag-assignment.js'
 import { buildLocalResources, fetchRemoteResources, getApiEndpoint } from '../utils/resources.js'
 import { confirmPrompt } from '../utils/prompt.js'
 import { withSpinner } from '../utils/spinner.js'
-import { normalizeTestTypeForApi, validateScripts, validateScriptTypeMatch } from '../utils/validation.js'
+import { normalizeTestTypeForApi, rejectGlobTestRefs, validateScripts, validateScriptTypeMatch } from '../utils/validation.js'
 import { encodeStoredTestScript } from '../utils/script.js'
 import pc from '../utils/colors.js'
 import { waitForRun } from '../utils/wait.js'
@@ -392,7 +392,10 @@ export const deployCommand = new Command('deploy')
       const { localResources, remoteResources } = await withSpinner(
         'Comparing local and remote resources...',
         async () => {
-          const local = state.resolveTests(state.apply(buildLocalResources(config, cwd)))
+          const built = buildLocalResources(config, cwd)
+          // Before resolveTests: it would pull the UUID out of a glob and bind it to one test.
+          rejectGlobTestRefs(built)
+          const local = state.resolveTests(state.apply(built))
           const remote = await fetchRemoteResources(client, { requirements: config.requirements !== undefined })
           return { localResources: local, remoteResources: remote }
         },
