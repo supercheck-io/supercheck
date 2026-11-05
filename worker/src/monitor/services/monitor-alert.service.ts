@@ -374,7 +374,9 @@ export class MonitorAlertService {
 
     if (decryptedProviders.length === 0) {
       this.logger.log(
-        `[SSL-NOTIFY] No notification providers configured for monitor ${monitorId}`,
+        providers.length > 0
+          ? `[SSL-NOTIFY] Not delivered for monitor ${monitorId}: no provider config could be decrypted`
+          : `[SSL-NOTIFY] No notification providers configured for monitor ${monitorId}`,
       );
       return;
     }

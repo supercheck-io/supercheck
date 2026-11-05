@@ -24,6 +24,8 @@ export type AggregatedAlertState = {
   recoverySequence?: boolean;
   /** Failure count of the outage this recovery follows, when that outage sent no failure alert. */
   priorFailureCount?: number;
+  /** Some cycles of the current failure sequence were not counted (alerts off or paused). */
+  failureCountUnknown?: boolean;
   executionGroupId?: string;
 };
 
@@ -106,6 +108,9 @@ export class MonitorEvaluator {
       ...(typeof rawAlertState?.priorFailureCount === 'number'
         ? { priorFailureCount: toSafeCounter(rawAlertState.priorFailureCount) }
         : {}),
+      ...(rawAlertState?.failureCountUnknown === true
+        ? { failureCountUnknown: true }
+        : {}),
     };
   }
 
@@ -127,6 +132,9 @@ export class MonitorEvaluator {
           : 0,
         alertsSentForRecovery: 0,
         recoverySequence: false,
+        ...(continuingFailureSequence && previousState.failureCountUnknown
+          ? { failureCountUnknown: true }
+          : {}),
       };
     }
 
@@ -146,7 +154,8 @@ export class MonitorEvaluator {
         (continuingRecoverySequence && previousState.recoverySequence === true),
       // Recorded only when the outage sent no failure alert: an alerted outage always gets its recovery.
       ...(previousStatus === 'down'
-        ? previousState.alertsSentForFailure === 0
+        ? previousState.alertsSentForFailure === 0 &&
+          !previousState.failureCountUnknown
           ? { priorFailureCount: previousState.consecutiveFailureCount }
           : {}
         : continuingRecoverySequence &&
@@ -171,7 +180,8 @@ export class MonitorEvaluator {
           previousStatus,
           currentStatus,
         )
-      : previousState;
+      : // Uncounted cycles leave the outage length unknown, so a later recovery is not gated on it.
+        { ...previousState, failureCountUnknown: true };
   }
 
   async persistAggregatedAlertState(

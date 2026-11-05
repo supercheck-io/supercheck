@@ -233,4 +233,42 @@ describe('MonitorEvaluator recovery alert after a short blip', () => {
         .priorFailureCount,
     ).toBeUndefined();
   });
+
+  it('does not gate recovery on a failure count frozen while alerts were off', () => {
+    const evaluator = new MonitorEvaluator({} as never, {} as never);
+    const frozen = evaluator.advanceAggregatedAlertState(
+      false,
+      {
+        aggregatedAlertState: {
+          consecutiveFailureCount: 1,
+          consecutiveSuccessCount: 0,
+          alertsSentForFailure: 0,
+          alertsSentForRecovery: 0,
+        },
+      },
+      'down',
+      'down',
+    );
+    const recovered = evaluator.getNextAggregatedAlertState(
+      frozen,
+      'down',
+      'up',
+    );
+    expect(frozen.consecutiveFailureCount).toBe(1);
+    // Counting resumes but the outage length stays unknown, so recovery is not suppressed.
+    const resumed = evaluator.getNextAggregatedAlertState(
+      frozen,
+      'down',
+      'down',
+    );
+    expect(
+      evaluator.getNextAggregatedAlertState(recovered, 'up', 'up')
+        .priorFailureCount,
+    ).toBeUndefined();
+    expect(recovered.priorFailureCount).toBeUndefined();
+    expect(
+      evaluator.getNextAggregatedAlertState(resumed, 'down', 'up')
+        .priorFailureCount,
+    ).toBeUndefined();
+  });
 });

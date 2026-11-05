@@ -828,7 +828,7 @@ describe("Execution route regressions", () => {
 
     expect(response.status).toBe(404);
     const { sql, params } = new PgDialect().sqlToQuery(where.mock.calls[0][0]);
-    expect(sql).toContain('"projects"."status"');
+    expect(sql).toMatch(/"projects"\."status" = \$\d+/);
     expect(params).toContain("active");
     expect(mockAddJobToQueue).not.toHaveBeenCalled();
   });

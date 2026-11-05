@@ -320,6 +320,7 @@ describe('var command', () => {
     await expect(varCommand.parseAsync(['node', 'var', 'delete', 'MISSING', '--force'])).rejects.toMatchObject({
       name: 'ApiRequestError',
       exitCode: ExitCode.ApiError,
+      statusCode: 404,
     })
     expect(mockDelete).not.toHaveBeenCalled()
   })

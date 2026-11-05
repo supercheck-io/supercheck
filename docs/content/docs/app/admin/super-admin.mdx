@@ -22,7 +22,7 @@ docker compose exec app node scripts/bootstrap-admin.js admin@yourdomain.com
 ```
 
 <Callout type="info">
-Without an argument the script reads `SUPER_ADMIN_EMAIL`. The app container also runs it on every start, so setting `SUPER_ADMIN_EMAIL` promotes that user at startup.
+Without an argument the script reads `SUPER_ADMIN_EMAIL`. The app container also runs it on every start, so a `SUPER_ADMIN_EMAIL` passed into the container promotes that user at startup once they have signed up.
 </Callout>
 
 </Tab>
