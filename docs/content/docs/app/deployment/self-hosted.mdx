@@ -285,6 +285,7 @@ Upgrading to 1.6.0 or later from an earlier release runs migration `0056`, which
 
 - Run it in a short maintenance window, and don't roll back to the previous image afterwards; restore the pre-upgrade backup instead.
 - Status page webhook secrets stored by earlier releases are encrypted automatically during the upgrade, using `SECRET_ENCRYPTION_KEY`. Keep the key the app already uses; the upgrade stops if it is missing.
+- Unsubscribe links in status page emails sent before the upgrade stop working. New emails carry working links.
 </Callout>
 
 Replace `v1.6.0` with the target release. `--upgrade` moves to the script's own release; add `--version <x.y.z>` for a different one, or `--dry-run` to see the plan first. The upgrade:
