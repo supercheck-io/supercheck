@@ -28,9 +28,9 @@ type IncidentAiSummaryCardProps = {
   evidence?: SreIncidentDetail["evidence"];
   /** Whole-investigation feedback control, shown at the right of the footer. */
   feedback?: React.ReactNode;
-  /** Opens the investigation details sheet. */
-  onOpenDetails?: () => void;
-  /** Shows a compact "Investigate" action in the empty state. */
+  /** Opens the investigation sheet. */
+  onOpenInvestigation?: () => void;
+  /** Labels the empty-state action "Run investigation" instead of "View investigation". */
   canInvestigate?: boolean;
 };
 
@@ -69,7 +69,7 @@ export function IncidentAiSummaryCard({
   investigation = null,
   evidence = [],
   feedback,
-  onOpenDetails,
+  onOpenInvestigation,
   canInvestigate = false,
 }: IncidentAiSummaryCardProps) {
   const [expanded, setExpanded] = useState(false);
@@ -190,16 +190,16 @@ export function IncidentAiSummaryCard({
           !running && !failed && (
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-sm text-muted-foreground">No AI analysis yet.</p>
-              {onOpenDetails && (
+              {onOpenInvestigation && (
                 <Button
                   type="button"
                   variant={canInvestigate ? "outline" : "ghost"}
                   size="sm"
                   className="h-8"
-                  onClick={onOpenDetails}
+                  onClick={onOpenInvestigation}
                 >
                   {canInvestigate ? <Sparkles className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
-                  {canInvestigate ? "Investigate" : "Investigation details"}
+                  {canInvestigate ? "Run investigation" : "View investigation"}
                 </Button>
               )}
             </div>
@@ -234,10 +234,10 @@ export function IncidentAiSummaryCard({
         )}
         {(conclusion || running || failed) && (
         <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3">
-          {onOpenDetails && (
-            <Button type="button" variant="ghost" size="sm" className="-ml-2 h-7 text-muted-foreground" onClick={onOpenDetails}>
+          {onOpenInvestigation && (
+            <Button type="button" variant="ghost" size="sm" className="-ml-2 h-7 text-muted-foreground" onClick={onOpenInvestigation}>
               <PanelRightOpen className="h-4 w-4" />
-              Investigation details
+              View investigation
             </Button>
           )}
           {feedback}

@@ -7,9 +7,9 @@ import type { Page } from "@playwright/test";
 // The root hydration flag can fire before nested Suspense boundaries hydrate, so
 // a first click on a fresh page may be dropped: retry until the sheet is open.
 async function openInvestigationSheet(page: Page, tab: string | RegExp) {
-  const sheet = page.getByRole("dialog", { name: "Investigation details" });
+  const sheet = page.getByRole("dialog", { name: "Investigation", exact: true });
   const trigger = page
-    .getByRole("button", { name: /^(Investigate|Investigation details)$/ })
+    .getByRole("button", { name: /^(Run investigation|View investigation)$/ })
     .first();
   await expect(async () => {
     if (!(await sheet.isVisible())) await trigger.click();

@@ -13,7 +13,7 @@ export type InvestigationTab = {
   content: React.ReactNode | null;
 };
 
-/** Right-hand sheet behind "Investigation details": one tab per topic, so only one thing shows at a time. */
+/** Right-hand sheet behind "View investigation": one tab per topic, so only one thing shows at a time. */
 export function IncidentInvestigationSheet({
   open,
   onOpenChange,
@@ -33,7 +33,7 @@ export function IncidentInvestigationSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full gap-0 sm:max-w-[600px] md:max-w-[700px] lg:max-w-[800px] xl:max-w-[950px]" data-testid="investigation-sheet">
         <SheetHeader className="border-b px-6 pr-12">
-          <SheetTitle>Investigation details</SheetTitle>
+          <SheetTitle>Investigation</SheetTitle>
           <SheetDescription>What the AI checked, the evidence it used, and related history.</SheetDescription>
         </SheetHeader>
         <Tabs value={active} onValueChange={onTabChange} className="flex min-h-0 flex-1 flex-col gap-0">

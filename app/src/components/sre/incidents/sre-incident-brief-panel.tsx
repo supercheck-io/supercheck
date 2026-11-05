@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { FileText, Siren } from "lucide-react";
+import { Siren } from "lucide-react";
 
 import { GenerateEvidenceBriefButton } from "@/components/sre/incidents/generate-evidence-brief-button";
 import {
@@ -126,16 +126,9 @@ export function SreIncidentBriefPanel({
             />
           </div>
         ) : (
-          <div className="rounded-lg border border-dashed p-8 text-center">
-            <FileText className="mx-auto h-10 w-10 text-muted-foreground" />
-            <h3 className="mt-3 text-base font-medium">
-              No evidence brief generated
-            </h3>
-            <p className="mx-auto mt-1 max-w-lg text-sm text-muted-foreground">
-              Generate a brief when you need native evidence citations for this
-              incident.
-            </p>
-          </div>
+          <p className="rounded-lg border border-dashed px-4 py-3 text-sm text-muted-foreground">
+            No evidence brief generated. Generate one when you need native evidence citations for this incident.
+          </p>
         )}
       </CardContent>
     </Card>

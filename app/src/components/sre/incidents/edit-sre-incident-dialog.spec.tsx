@@ -11,7 +11,7 @@ jest.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
   usePathname: () => "/incidents/inc-1",
 }));
-jest.mock("@tanstack/react-query", () => ({ useQueryClient: () => ({ invalidateQueries: jest.fn() }) }));
+jest.mock("@tanstack/react-query", () => ({ useQueryClient: () => ({ invalidateQueries: jest.fn(), refetchQueries: jest.fn() }) }));
 jest.mock("@/hooks/use-project-context", () => ({ useProjectContext: () => ({ projectId: "p1" }) }));
 jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
 
@@ -38,11 +38,32 @@ beforeEach(() => {
 });
 
 describe("EditSreIncidentDialog", () => {
-  it("shows a stored fixing sub-state as Fixing and keeps it when saved", async () => {
+  it("shows a stored fixing sub-state as Fixing and does not post a status it did not change", async () => {
     render(<EditSreIncidentDialog incident={incident("recommendations_ready")} services={[]} canUpdate open onOpenChange={jest.fn()} />);
     expect(screen.getByLabelText("Status")).toHaveTextContent("Fixing");
     fireEvent.click(screen.getByRole("button", { name: /Save/ }));
-    await waitFor(() => expect(updateSreIncident).toHaveBeenCalledWith(expect.objectContaining({ status: "recommendations_ready" })));
+    await waitFor(() => expect(updateSreIncident).toHaveBeenCalled());
+    expect(updateSreIncident.mock.calls[0]![0]).not.toHaveProperty("status");
+  });
+
+  it("shows an acknowledged incident as Acknowledged and saves other fields without a status", async () => {
+    const acked = { ...(incident("triggered") as object), acknowledgedAt: "2026-01-01T00:00:00Z" } as never;
+    render(<EditSreIncidentDialog incident={acked} services={[]} canUpdate open onOpenChange={jest.fn()} />);
+    expect(screen.getByLabelText("Status")).toHaveTextContent("Acknowledged");
+    fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Checkout down hard" } });
+    fireEvent.click(screen.getByRole("button", { name: /Save/ }));
+    await waitFor(() => expect(updateSreIncident).toHaveBeenCalled());
+    const sent = updateSreIncident.mock.calls[0]![0];
+    expect(sent).toMatchObject({ title: "Checkout down hard" });
+    expect(sent).not.toHaveProperty("status");
+  });
+
+  it("posts the status once the person picks one", async () => {
+    render(<EditSreIncidentDialog incident={incident("triggered")} services={[]} canUpdate open onOpenChange={jest.fn()} />);
+    fireEvent.keyDown(screen.getByLabelText("Status"), { key: "Enter" });
+    fireEvent.click(screen.getByRole("option", { name: "Investigating" }));
+    fireEvent.click(screen.getByRole("button", { name: /Save/ }));
+    await waitFor(() => expect(updateSreIncident).toHaveBeenCalledWith(expect.objectContaining({ status: "investigating" })));
   });
 
   it("warns that saving reopens a resolved incident", () => {

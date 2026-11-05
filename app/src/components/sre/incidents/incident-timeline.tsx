@@ -17,6 +17,7 @@ import { useSreIncidentTimeline } from "@/hooks/use-sre";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { getSreIncidentDetailQueryKey, getSreIncidentTimelineQueryKey } from "@/lib/sre/query-keys";
 import { getDisplayStatus } from "@/lib/sre/incident-status-display";
+import { describeEvidenceBrief } from "@/lib/sre/evidence-brief-summary";
 import { stripEvidenceIdLists } from "@/sre/lib/investigation-output";
 
 const STATE_LABELS: Record<string, string> = {
@@ -39,7 +40,7 @@ function str(value: unknown, max = 600) {
   return typeof value === "string" ? value.slice(0, max) : null;
 }
 
-/** First paragraph of an AI report as plain text; the full report lives in Investigation details. */
+/** First paragraph of an AI report as plain text; the full report lives in the Investigation sheet. */
 export function aiFindingHeadline(value: unknown) {
   if (typeof value !== "string") return null;
   const firstParagraph = stripEvidenceIdLists(value.trim().split(/\n\s*\n/)[0] ?? "");
@@ -86,7 +87,14 @@ export function describeTimelineEvent(
   const data = event.eventData ?? {};
   if (event.eventType === "comment") return { title: "Note", body: str(data.text) };
   if (event.eventType === "ai_finding") {
-    return { title: "AI finding", body: aiFindingHeadline(data.summary) ?? str(data.error) };
+    return {
+      title: "AI finding",
+      body:
+        aiFindingHeadline(data.summary) ??
+        str(data.error) ??
+        // Brief rows stored before the summary was written at the source.
+        (data.type === "native_evidence_brief" ? describeEvidenceBrief(data) : null),
+    };
   }
   if (event.eventType === "state_change") {
     const state = str(data.state, 80) ?? "";

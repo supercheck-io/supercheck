@@ -191,14 +191,14 @@ describe("describeTimelineEvent", () => {
 
 describe("IncidentAiSummaryCard compact layout", () => {
   it("clamps a long conclusion until Show more is pressed and exposes the details button", () => {
-    const onOpenDetails = jest.fn();
+    const onOpenInvestigation = jest.fn();
     jest.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValueOnce(400);
     render(
       <IncidentAiSummaryCard
         rootCauseSummary={"Long conclusion. ".repeat(40)}
         confidenceScore="0.6"
         investigationStatus="completed"
-        onOpenDetails={onOpenDetails}
+        onOpenInvestigation={onOpenInvestigation}
         feedback={<span>Was this right?</span>}
       />,
     );
@@ -206,8 +206,8 @@ describe("IncidentAiSummaryCard compact layout", () => {
     expect(more).toHaveAttribute("aria-expanded", "false");
     fireEvent.click(more);
     expect(screen.getByRole("button", { name: "Show less" })).toHaveAttribute("aria-expanded", "true");
-    fireEvent.click(screen.getByRole("button", { name: "Investigation details" }));
-    expect(onOpenDetails).toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "View investigation" }));
+    expect(onOpenInvestigation).toHaveBeenCalled();
     expect(screen.getByText("Was this right?")).toBeInTheDocument();
   });
 

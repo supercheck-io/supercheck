@@ -2,10 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ChevronRight } from "lucide-react";
 
 import type { SreIncidentDetail } from "@/actions/sre-incidents";
-import { useSimilarIncidentCount } from "@/components/sre/incidents/similar-incidents-card";
 import { IncidentAssigneePicker } from "@/components/sre/incidents/incident-assignee-picker";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { InfoTip } from "@/components/ui/info-tip";
@@ -47,13 +45,10 @@ function Row({ label, tip, children }: { label: string; tip?: React.ReactNode; c
 export function IncidentSidebar({
   detail,
   showCommander = false,
-  onOpenSimilar,
 }: {
   detail: SreIncidentDetail;
   /** The page's "Add commander" action reveals the commander picker. */
   showCommander?: boolean;
-  /** Opens the similar-incidents list in the investigation sheet. */
-  onOpenSimilar?: () => void;
 }) {
   const { incident } = detail;
   const canUpdate = detail.permissions.canUpdate;
@@ -61,7 +56,6 @@ export function IncidentSidebar({
   const editable = canUpdate && open;
   const [allAlerts, setAllAlerts] = useState(false);
   const alerts = allAlerts ? detail.linkedAlerts : detail.linkedAlerts.slice(0, ALERTS_COLLAPSED);
-  const similarCount = useSimilarIncidentCount(incident.id);
 
   return (
     <aside aria-labelledby="incident-details-title">
@@ -183,23 +177,6 @@ export function IncidentSidebar({
               </>
             )}
           </section>
-
-          {similarCount !== null && similarCount > 0 && onOpenSimilar && (
-            <>
-              <Separator />
-              <button
-                type="button"
-                onClick={onOpenSimilar}
-                className="flex w-full items-center justify-between rounded-sm text-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <span>Similar past incidents</span>
-                <span className="flex items-center gap-1 tabular-nums">
-                  {similarCount}
-                  <ChevronRight className="h-4 w-4" aria-hidden="true" />
-                </span>
-              </button>
-            </>
-          )}
         </CardContent>
       </Card>
     </aside>

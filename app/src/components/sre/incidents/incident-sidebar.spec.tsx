@@ -4,10 +4,6 @@ import type { SreIncidentDetail } from "@/actions/sre-incidents";
 
 import { IncidentSidebar } from "./incident-sidebar";
 
-let mockSimilar: unknown[] = [];
-jest.mock("@/hooks/use-sre", () => ({
-  useSreSimilarIncidents: () => ({ data: { success: true, incidents: mockSimilar } }),
-}));
 jest.mock("@/components/sre/incidents/incident-assignee-picker", () => ({
   IncidentAssigneePicker: ({ label, assigneeName }: { label: string; assigneeName: string | null }) => (
     <div data-testid={`picker-${label}`}>{label}: {assigneeName ?? "Unassigned"}</div>
@@ -31,7 +27,6 @@ function detailFixture(): SreIncidentDetail {
 const alerts = (n: number) =>
   Array.from({ length: n }, (_, i) => ({ id: `a${i}`, title: `Alert ${i}`, status: "firing", severity: "sev2", role: "trigger", firedAt: now }));
 
-beforeEach(() => { mockSimilar = []; });
 
 describe("IncidentSidebar", () => {
   it("shows the commander picker only when one is set or the page asks for it", () => {
@@ -101,19 +96,10 @@ describe("IncidentSidebar", () => {
     expect(screen.getByText("No alerts linked.")).toBeInTheDocument();
   });
 
-  it("shows one Similar past incidents row that opens the list, only when there are matches", () => {
-    const onOpenSimilar = jest.fn();
-    const view = render(<IncidentSidebar detail={detailFixture()} onOpenSimilar={onOpenSimilar} />);
+  it("has no Similar row; similar incidents live in the investigation sheet", () => {
+    render(<IncidentSidebar detail={detailFixture()} />);
     expect(screen.queryByRole("button", { name: /Similar past incidents/ })).not.toBeInTheDocument();
-    view.unmount();
-    mockSimilar = [{ id: "s1" }, { id: "s2" }];
-    render(<IncidentSidebar detail={detailFixture()} onOpenSimilar={onOpenSimilar} />);
-    const row = screen.getByRole("button", { name: /Similar past incidents/ });
-    expect(row).toHaveTextContent("2");
-    fireEvent.click(row);
-    expect(onOpenSimilar).toHaveBeenCalled();
   });
-
 
   it("shows who acknowledged, time to acknowledge, and time to resolve once resolved", () => {
     const detail = detailFixture();

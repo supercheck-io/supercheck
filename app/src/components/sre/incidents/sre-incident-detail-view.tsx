@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, Check, ChevronLeft, Clock, FileSearch, FileText, History, MoreHorizontal, NotebookPen, Sparkles } from "lucide-react";
+import { Check, ChevronLeft, Clock, FileSearch, FileText, History, MoreHorizontal, NotebookPen, Sparkles } from "lucide-react";
 
 import type { SreIncidentDetail } from "@/actions/sre-incidents";
 import type { SreServiceListItem } from "@/actions/sre-services";
@@ -15,14 +15,13 @@ import { IncidentAiSummaryCard } from "@/components/sre/incidents/incident-ai-su
 import { IncidentInvestigationSheet, type InvestigationTab } from "@/components/sre/incidents/incident-investigation-sheet";
 import { IncidentSidebar } from "@/components/sre/incidents/incident-sidebar";
 import { IncidentStatusStepper } from "@/components/sre/incidents/incident-status-stepper";
-import { SimilarIncidentsList } from "@/components/sre/incidents/similar-incidents-card";
+import { SimilarIncidentsList, useSimilarIncidentCount } from "@/components/sre/incidents/similar-incidents-card";
 import { IncidentTimeline } from "@/components/sre/incidents/incident-timeline";
 import { InvestigationFeedback } from "@/components/sre/incidents/investigation-feedback";
 import { InvestigationHypotheses } from "@/components/sre/incidents/investigation-hypotheses";
 import { InvestigationStepTrace } from "@/components/sre/incidents/investigation-step-trace";
 import { PostmortemCard } from "@/components/sre/incidents/postmortem-card";
 import { OPEN_POSTMORTEM_EVENT, ResolveSreIncidentDialog } from "@/components/sre/incidents/resolve-sre-incident-dialog";
-import { formatAgo } from "@/components/sre/incidents/incident-age";
 import { SreIncidentBriefPanel } from "@/components/sre/incidents/sre-incident-brief-panel";
 import { SreInvestigationPanel, SreReportSnapshotControl } from "@/components/sre/incidents/sre-investigation-panel";
 import { Button } from "@/components/ui/button";
@@ -100,14 +99,9 @@ function getBriefProvider(detail: SreIncidentDetail) {
 function NativeEvidenceCard({ detail }: { detail: SreIncidentDetail }) {
   if (detail.evidence.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed p-6 text-center">
-        <AlertTriangle className="mx-auto h-8 w-8 text-muted-foreground" aria-hidden="true" />
-        <h3 className="mt-2 text-sm font-medium">No evidence gathered yet</h3>
-        <p className="mx-auto mt-1 max-w-lg text-sm text-muted-foreground">
-          Link a monitor or alert, then generate a brief to collect Supercheck evidence. Authorized live investigations
-          can also collect connector evidence.
-        </p>
-      </div>
+      <p className="rounded-lg border border-dashed px-4 py-3 text-sm text-muted-foreground">
+        No evidence gathered yet. Link a monitor or alert, then generate a brief to collect it.
+      </p>
     );
   }
   return (
@@ -174,6 +168,7 @@ export function SreIncidentDetailView({
   const [resolveOpen, setResolveOpen] = useState(false);
   const [showCommander, setShowCommander] = useState(false);
   const [copilotOpen, setCopilotOpen] = useState(false);
+  const similarCount = useSimilarIncidentCount(incident.id);
 
   const openSheet = (tab: string = DEFAULT_TAB) => {
     setSheetTab(tab);
@@ -220,22 +215,14 @@ export function SreIncidentDetailView({
         investigation || runPanel ? (
           <>
             {/* Findings first; the run controls follow once there is something to read. */}
-            {!investigation && runPanel}
             {investigation && (
-              <SheetSection title="Hypotheses">
-                <InvestigationHypotheses
-                  incidentId={incident.id}
-                  investigation={investigation}
-                  evidence={detail.evidence}
-                  canGiveFeedback={permissions.canUpdate}
-                />
-              </SheetSection>
+              <InvestigationHypotheses investigation={investigation} evidence={detail.evidence} />
             )}
             {investigation && (
               // The trace carries its own "How I investigated" title.
               <InvestigationStepTrace steps={investigation.steps} running={investigation.status === "running"} />
             )}
-            {investigation && runPanel}
+            {runPanel}
             {investigation && (
               <SheetSection title="Report snapshot">
                 <SreReportSnapshotControl
@@ -280,7 +267,7 @@ export function SreIncidentDetailView({
         />
       ),
     },
-    { id: "similar", title: "Similar", icon: History, content: <SimilarIncidentsList incidentId={incident.id} /> },
+    { id: "similar", title: similarCount ? `Similar (${similarCount})` : "Similar", icon: History, content: <SimilarIncidentsList incidentId={incident.id} /> },
     {
       id: "postmortem",
       title: "Post-mortem",
@@ -300,82 +287,67 @@ export function SreIncidentDetailView({
 
   return (
     <div className="flex min-w-0 flex-col gap-3">
-      <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex min-w-0 items-start gap-3">
-          {/* Same back control as the monitor and job detail pages. */}
-          <Button asChild variant="outline" size="icon" className="mt-0.5 h-8 w-8 shrink-0">
-            <Link href="/incidents" aria-label="Back to incidents">
-              <ChevronLeft className="h-4 w-4" />
-            </Link>
-          </Button>
-          <div className="min-w-0 space-y-1.5">
-            <h1 className="break-words text-xl font-semibold leading-tight">
+      {/* Same header card as the monitor and job detail pages. */}
+      <header className="rounded-lg border bg-card p-2 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-3">
+            <Button asChild variant="outline" size="icon" className="h-8 w-8 shrink-0">
+              <Link href="/incidents">
+                <ChevronLeft className="h-4 w-4" />
+                <span className="sr-only">Back to incidents</span>
+              </Link>
+            </Button>
+            <h1 className="min-w-0 break-words text-xl font-semibold leading-tight sm:text-2xl">
               <span className="mr-2 text-muted-foreground">#{incident.incidentNumber}</span>
               {incident.title}
             </h1>
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span tabIndex={0} className="rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                    <TableBadge tone={severityTones[incident.severity]} compact className="uppercase">
-                      {incident.severity}
-                    </TableBadge>
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent className="max-w-xs text-xs">
-                  SEV1 is a customer-facing outage; SEV4 is minor with no customer impact.
-                </TooltipContent>
-              </Tooltip>
-              {incident.primaryServiceName && <span>{incident.primaryServiceName}</span>}
-              {incident.primaryServiceName && <span aria-hidden="true">·</span>}
-              <span suppressHydrationWarning title={formatDate(incident.createdAt)}>
-                Opened {formatAgo(incident.createdAt)}
-              </span>
-            </div>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span tabIndex={0} className="shrink-0 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  <TableBadge tone={severityTones[incident.severity]} compact className="uppercase">
+                    {incident.severity}
+                  </TableBadge>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs text-xs">
+                SEV1 is a customer-facing outage; SEV4 is minor with no customer impact.
+              </TooltipContent>
+            </Tooltip>
           </div>
-        </div>
-        <div className="flex shrink-0 items-center gap-2 pl-11 sm:pl-0">
-          <WatchSreIncidentButton incidentId={incident.id} watching={detail.watching ?? false} />
-          {needsAck && <AcknowledgeSreIncidentButton incidentId={incident.id} />}
-          {needsResolve && (
-            <Button size="sm" onClick={() => setResolveOpen(true)}>
-              <Check className="h-4 w-4" />
-              Resolve incident
-            </Button>
-          )}
-          {!open && (
-            <Button size="sm" variant="outline" onClick={() => openSheet("postmortem")}>
-              <FileText className="h-4 w-4" />
-              Post-mortem
-            </Button>
-          )}
-          {(permissions.canUpdate || permissions.canInvestigate) && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="icon" className="h-8 w-8" aria-label="More actions">
-                <MoreHorizontal className="h-4 w-4" />
+          <div className="flex shrink-0 items-center gap-2">
+            <WatchSreIncidentButton incidentId={incident.id} watching={detail.watching ?? false} />
+            {needsAck && <AcknowledgeSreIncidentButton incidentId={incident.id} />}
+            {needsResolve && (
+              <Button size="sm" onClick={() => setResolveOpen(true)}>
+                <Check className="h-4 w-4" />
+                Resolve incident
               </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {permissions.canUpdate && (
-                <DropdownMenuItem onSelect={() => setEditOpen(true)}>Edit incident</DropdownMenuItem>
-              )}
-              {canAddCommander && (
-                <DropdownMenuItem onSelect={() => setShowCommander(true)}>Add commander</DropdownMenuItem>
-              )}
-              {needsAck && <DropdownMenuItem onSelect={() => setResolveOpen(true)}>Resolve incident</DropdownMenuItem>}
-              {permissions.canInvestigate && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onSelect={() => openSheet("analysis")}>
-                    {investigation ? "Re-run investigation" : "Run investigation"}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => setCopilotOpen(true)}>Ask Copilot</DropdownMenuItem>
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-          )}
+            )}
+            {(permissions.canUpdate || permissions.canInvestigate) && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="icon" className="h-8 w-8" aria-label="More actions">
+                    <MoreHorizontal className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  {permissions.canUpdate && (
+                    <DropdownMenuItem onSelect={() => setEditOpen(true)}>Edit incident</DropdownMenuItem>
+                  )}
+                  {canAddCommander && (
+                    <DropdownMenuItem onSelect={() => setShowCommander(true)}>Add commander</DropdownMenuItem>
+                  )}
+                  {needsAck && <DropdownMenuItem onSelect={() => setResolveOpen(true)}>Resolve incident</DropdownMenuItem>}
+                  {permissions.canInvestigate && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onSelect={() => setCopilotOpen(true)}>Ask Copilot</DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </div>
         </div>
       </header>
 
@@ -396,7 +368,7 @@ export function SreIncidentDetailView({
             investigationStatus={investigation?.status ?? null}
             investigation={investigation}
             evidence={detail.evidence}
-            onOpenDetails={() => openSheet()}
+            onOpenInvestigation={() => openSheet()}
             canInvestigate={permissions.canInvestigate}
             feedback={
               permissions.canUpdate && investigation?.status === "completed" ? (
@@ -425,7 +397,6 @@ export function SreIncidentDetailView({
           <IncidentSidebar
             detail={detail}
             showCommander={showCommander}
-            onOpenSimilar={() => openSheet("similar")}
           />
         </div>
       </div>

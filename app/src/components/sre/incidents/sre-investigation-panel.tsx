@@ -264,19 +264,16 @@ export function SreInvestigationPanel({
         )}
 
         {!latestInvestigation && (
-          <div className="rounded-lg border border-dashed p-6">
-            <p className="font-medium">Start with the evidence</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {evidenceReferences.length > 0
-                ? `${evidenceReferences.length} saved evidence ${evidenceReferences.length === 1 ? "item is" : "items are"} available. Run an investigation to review likely causes and next checks.`
-                : "No evidence is saved yet. Generate an evidence brief to collect available Supercheck context before investigating."}
-            </p>
-            {evidenceReferences.length === 0 && canInvestigate && (
-              <Button type="button" variant="link" className="mt-2 h-auto p-0" onClick={onCollectEvidence}>
+          <p className="rounded-lg border border-dashed px-4 py-3 text-sm text-muted-foreground">
+            {evidenceReferences.length > 0
+              ? `${evidenceReferences.length} saved evidence ${evidenceReferences.length === 1 ? "item is" : "items are"} available. Run an investigation to review likely causes and next checks.`
+              : "No evidence is saved yet. Generate an evidence brief to collect Supercheck context before investigating."}
+            {evidenceReferences.length === 0 && (
+              <Button type="button" variant="link" className="ml-1 h-auto p-0" onClick={onCollectEvidence}>
                 Collect evidence
               </Button>
             )}
-          </div>
+          </p>
         )}
 
         {toolMetrics.total > 0 && (
