@@ -73,6 +73,10 @@ describe('CLI authentication', () => {
     await whoamiCommand.parseAsync(['node', 'whoami'])
     expect(JSON.parse(String(output.mock.calls[0][0]))).toMatchObject({ project: context.project, organization: context.organization, role: 'project_viewer', userId: 'u1', tokenName: null })
   })
+  it('whoami adds a re-login hint when the token is rejected with 401', async () => {
+    get.mockRejectedValue(new ApiRequestError('Unauthorized', 401))
+    await expect(whoamiCommand.parseAsync(['node', 'whoami'])).rejects.toThrow('supercheck login --reauth')
+  })
   it('identifies a malformed supplied token instead of reporting missing authentication', async () => {
     defaultLoggedIn = false
     process.env.SUPERCHECK_TOKEN = 'not-a-cli-token'

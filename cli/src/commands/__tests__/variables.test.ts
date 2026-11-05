@@ -145,6 +145,12 @@ describe('var command', () => {
     })
   })
 
+  it.each(['abc', 'lower_case', '1ABC', 'WAY_TOO_LONG_KEY_NAME_HERE'])('rejects the invalid key %s before any request', async (key) => {
+    await expect(varCommand.parseAsync(['node', 'var', 'set', key, 'v'])).rejects.toThrow('Variable key must be 4–20 characters: an uppercase letter')
+    expect(mockGet).not.toHaveBeenCalled()
+    expect(mockPost).not.toHaveBeenCalled()
+  })
+
   it('creates a variable when the key is unused', async () => {
     mockGet.mockResolvedValueOnce({ data: variables })
     mockPost.mockResolvedValueOnce({ data: { id: 'var-4' } })
@@ -200,14 +206,20 @@ describe('var command', () => {
   })
 
   it.each([
-    ['too short key', ['AB', 'value'], 'Variable key must be 4–20 characters.'],
-    ['too long key', ['A'.repeat(21), 'value'], 'Variable key must be 4–20 characters.'],
+    ['too short key', ['AB', 'value'], 'Variable key must be 4–20 characters: an uppercase letter, then uppercase letters, digits or underscores.'],
+    ['too long key', ['A'.repeat(21), 'value'], 'Variable key must be 4–20 characters: an uppercase letter, then uppercase letters, digits or underscores.'],
   ])('rejects a %s before calling the API', async (_label, argv, message) => {
     await expect(varCommand.parseAsync(['node', 'var', 'set', ...argv])).rejects.toMatchObject({
       exitCode: ExitCode.ConfigError,
       message,
     })
     expect(mockGet).not.toHaveBeenCalled()
+  })
+
+  it('rejects an invalid key before any request', async () => {
+    await expect(varCommand.parseAsync(['node', 'var', 'set', 'bad', 'v'])).rejects.toThrow('uppercase letter')
+    expect(mockGet).not.toHaveBeenCalled()
+    expect(mockPost).not.toHaveBeenCalled()
   })
 
   it('rejects passing both a positional value and --value-stdin', async () => {
@@ -405,6 +417,35 @@ describe('var command', () => {
       mockGetBytes.mockResolvedValueOnce({ data: new Uint8Array([0x61]) })
       await varCommand.parseAsync(['node', 'var', 'download', 'UPLOAD', '--out', out])
       expect(mockSuccess).toHaveBeenCalledWith(`Saved a[31mb.csv to ${out}`)
+    })
+
+    it('falls back to the key / "unknown" when a file variable has no file name', async () => {
+      const unnamed = variables.map((v) => (v.key === 'UPLOAD' ? { ...v, fileName: undefined } : v))
+      mockGet.mockResolvedValueOnce({ data: unnamed })
+      await varCommand.parseAsync(['node', 'var', 'get', 'UPLOAD'])
+      expect(mockOutputDetail).toHaveBeenCalledWith(expect.objectContaining({ value: '[FILE: unknown]' }))
+
+      const out = join(await mkdtemp(join(tmpdir(), 'var-')), 'out.bin')
+      mockGet.mockResolvedValueOnce({ data: unnamed }).mockResolvedValueOnce({ data: { project: { id: 'proj-1' } } })
+      mockGetBytes.mockResolvedValueOnce({ data: new Uint8Array([0x61]) })
+      await varCommand.parseAsync(['node', 'var', 'download', 'UPLOAD', '--out', out])
+      expect(mockSuccess).toHaveBeenCalledWith(`Saved UPLOAD to ${out}`)
+    })
+
+    it('reports a not-found error when downloading an unknown key', async () => {
+      mockGet.mockResolvedValueOnce({ data: variables })
+      await expect(varCommand.parseAsync(['node', 'var', 'download', 'MISSING_KEY'])).rejects.toThrow('not found')
+    })
+
+    it('uploads without a description and accepts an unwrapped response', async () => {
+      const file = join(await mkdtemp(join(tmpdir(), 'var-')), 'users.csv')
+      await writeFile(file, 'a\n')
+      mockGet.mockResolvedValueOnce({ data: { project: { id: 'proj-1' } } })
+      mockPost.mockResolvedValueOnce({ data: { id: 'var-10' } })
+      await varCommand.parseAsync(['node', 'var', 'upload', 'USERS', file])
+      const [, form] = mockPost.mock.calls[0] as [string, FormData]
+      expect(form.has('description')).toBe(false)
+      expect(mockOutputMutation).toHaveBeenCalledWith(expect.objectContaining({ id: 'var-10', action: 'created' }))
     })
 
     it('refuses to download a non-file variable', async () => {

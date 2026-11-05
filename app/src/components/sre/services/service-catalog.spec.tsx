@@ -35,6 +35,7 @@ const service: SreServiceListItem = {
   tier: "1",
   environment: "production",
   ownerTeam: "payments",
+  ownerUserId: null,
   repoUrl: null,
   otelServiceName: "checkout-api",
   slackChannel: null,

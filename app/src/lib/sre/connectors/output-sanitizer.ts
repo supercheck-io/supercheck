@@ -39,6 +39,8 @@ export type SanitizedConnectorOutput = {
 // Redaction is O(n) per pattern; bound n so one oversized log line cannot stall the event loop.
 const MAX_REDACTION_INPUT_CHARS = 64 * 1024;
 
+const MAX_EVIDENCE_TITLE_CHARS = 200;
+
 export function redactConnectorText(value: string): string {
   const bounded = value.length > MAX_REDACTION_INPUT_CHARS
       ? `${value.slice(0, MAX_REDACTION_INPUT_CHARS)} [TRUNCATED]`
@@ -81,7 +83,8 @@ function redactEvidenceItem(item: ConnectorEvidenceItem): ConnectorEvidenceItem 
   return {
     ...item,
     sourceUri: safeEvidenceSourceUri(redactConnectorText(item.sourceUri)),
-    title: redactConnectorText(item.title),
+    // Clip after redacting so a secret cut at the limit cannot escape its pattern.
+    title: redactConnectorText(item.title).slice(0, MAX_EVIDENCE_TITLE_CHARS),
     summary: redactConnectorText(item.summary),
     rawContent,
     citation: {

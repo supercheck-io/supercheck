@@ -1,6 +1,6 @@
 import { Command } from 'commander'
 import { logger } from '../utils/logger.js'
-import { getOutputFormat, outputDetail } from '../output/formatter.js'
+import { getOutputFormat, output, outputDetail } from '../output/formatter.js'
 import { CLIError, ExitCode } from '../utils/errors.js'
 import { supercheckConfigSchema } from '../config/schema.js'
 import { CLI_VERSION } from '../version.js'
@@ -53,7 +53,26 @@ function describeSchema(schema: z.ZodType): unknown {
   return { type: String(def.type), ...(Array.isArray(def.checks) && def.checks.length ? { constraints: def.checks.map((check) => (check as { _zod: { def: unknown } })._zod.def) } : {}) }
 }
 export const schemaCommand = new Command('schema').description('Inspect configuration input fields without loading repository code')
-schemaCommand.command('config').description('Describe the installed configuration schema').action(() => outputDetail({ version: CLI_VERSION, schema: describeSchema(supercheckConfigSchema) }, { redact: false }))
+// Human view: one row per field path, so the nested tree never becomes one giant table cell.
+export function flattenSchema(node: unknown, path = '', rows: Array<{ field: string; type: string }> = [], optional = false): Array<{ field: string; type: string }> {
+  const n = node as Record<string, unknown>
+  if (n.optional) return flattenSchema(n.value, path, rows, true)
+  if ('default' in n) return flattenSchema(n.value, path, rows, true)
+  const mark = optional ? ' (optional)' : ''
+  if (n.properties) {
+    if (path) rows.push({ field: path, type: `object${mark}` })
+    for (const [key, value] of Object.entries(n.properties as Record<string, unknown>)) flattenSchema(value, path ? `${path}.${key}` : key, rows)
+  } else if (n.items) flattenSchema(n.items, `${path}[]`, rows, optional)
+  else if (n.additionalProperties) flattenSchema(n.additionalProperties, `${path}.*`, rows, optional)
+  else if (n.anyOf) rows.push({ field: path, type: `${(n.anyOf as Array<{ type?: string; const?: unknown }>).map((item) => item.type ?? JSON.stringify(item.const ?? item)).join(' | ')}${mark}` })
+  else rows.push({ field: path, type: `${n.enum ? (n.enum as unknown[]).join(' | ') : n.const !== undefined ? JSON.stringify(n.const) : String(n.type)}${mark}` })
+  return rows
+}
+schemaCommand.command('config').description('Describe the installed configuration schema (--json for the full structure)').action(() => {
+  const schema = describeSchema(supercheckConfigSchema)
+  if (getOutputFormat() === 'table') output(flattenSchema(schema), { columns: [{ key: 'field', header: 'Field' }, { key: 'type', header: 'Type' }] })
+  else outputDetail({ version: CLI_VERSION, schema }, { redact: false })
+})
 export const capabilitiesCommand = new Command('capabilities')
   .description('Inspect installed capabilities and optionally verify server context')
   .option('--online', 'Verify the current server context using credentials')

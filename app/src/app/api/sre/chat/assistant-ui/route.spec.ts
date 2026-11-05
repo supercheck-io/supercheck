@@ -154,6 +154,7 @@ describe("Copilot assistant-ui chat API", () => {
   let streamOnError: ((error: unknown) => string) | undefined;
   let onFinishPromise: Promise<void> | undefined;
   let streamAborted = false;
+  let streamFinishReason = "stop";
   let streamOutcomeAborted = false;
 
   beforeEach(() => {
@@ -164,6 +165,7 @@ describe("Copilot assistant-ui chat API", () => {
     streamOnError = undefined;
     onFinishPromise = undefined;
     streamAborted = false;
+    streamFinishReason = "stop";
     streamOutcomeAborted = false;
     mockListSreMessages.mockResolvedValue([]);
     mockListSreMessagesByIds.mockResolvedValue([]);
@@ -215,7 +217,7 @@ describe("Copilot assistant-ui chat API", () => {
             isContinuation: false,
             isAborted: streamAborted,
             outcome: { status: streamOutcomeAborted ? "aborted" : "completed" },
-            finishReason: "stop",
+            finishReason: streamFinishReason,
           }),
         );
         return new Response("assistant-ui-stream", { status: 200 });
@@ -366,6 +368,27 @@ describe("Copilot assistant-ui chat API", () => {
 
     expect(streamOnError?.(new Error("raw connector failure"))).toBe(
       "Copilot could not complete the read-only check. No failed connector result was treated as evidence.",
+    );
+  });
+
+  it("forbids tools on the last allowed step so a capped turn still answers", async () => {
+    await send({ messages: [userTurn("u1", "q")] });
+    const { prepareStep, stopWhen } = jest.mocked(streamText).mock.calls[0]![0] as never as {
+      prepareStep: (o: { stepNumber: number }) => unknown;
+      stopWhen: { maxSteps: number };
+    };
+    expect(stopWhen.maxSteps).toBe(4);
+    expect(prepareStep({ stepNumber: 2 })).toBeUndefined();
+    expect(prepareStep({ stepNumber: 3 })).toEqual({ toolChoice: "none" });
+  });
+
+  it("saves a tool-call-limit message when the capped turn ends without text", async () => {
+    assistantResponseText = "";
+    streamFinishReason = "tool-calls";
+    await send({ messages: [userTurn("u1", "q")] });
+    await onFinishPromise;
+    expect(mockAppendSreMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({ content: expect.stringContaining("tool-call limit") }),
     );
   });
 

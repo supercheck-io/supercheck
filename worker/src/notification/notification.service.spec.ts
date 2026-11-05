@@ -14,9 +14,16 @@
  * - Multiple Providers (parallel delivery)
  */
 
+const mockPublicFetchOptions = jest.fn();
 jest.mock('../common/utils/pinned-public-fetch', () => ({
-  fetchPublicEndpoint: (...args: Parameters<typeof fetch>) =>
-    global.fetch(...args),
+  fetchPublicEndpoint: (
+    url: Parameters<typeof fetch>[0],
+    init: Parameters<typeof fetch>[1],
+    options?: unknown,
+  ) => {
+    mockPublicFetchOptions(options);
+    return global.fetch(url, init);
+  },
 }));
 
 import { Test, TestingModule } from '@nestjs/testing';
@@ -615,6 +622,37 @@ describe('NotificationService', () => {
   // ==========================================================================
 
   describe('Webhook Notifications', () => {
+    it('allows internal webhook targets only on an opted-in self-hosted install', async () => {
+      const saved = { ...process.env };
+      try {
+        process.env.SELF_HOSTED = 'true';
+        process.env.ALLOW_INTERNAL_TARGETS = 'true';
+        const internal = {
+          ...webhookProvider,
+          config: {
+            ...webhookProvider.config,
+            url: 'http://10.0.0.5:8080/hook',
+          },
+        };
+        await service.sendNotification(internal, basePayload);
+        expect(mockPublicFetchOptions).toHaveBeenLastCalledWith({
+          allowInternal: true,
+        });
+
+        delete process.env.ALLOW_INTERNAL_TARGETS;
+        mockFetch.mockClear();
+        const result = await service.sendNotification(internal, basePayload);
+        expect(mockFetch).not.toHaveBeenCalled();
+        expect(result).toBe(false);
+      } finally {
+        process.env.SELF_HOSTED = saved.SELF_HOSTED;
+        process.env.ALLOW_INTERNAL_TARGETS = saved.ALLOW_INTERNAL_TARGETS;
+        if (saved.SELF_HOSTED === undefined) delete process.env.SELF_HOSTED;
+        if (saved.ALLOW_INTERNAL_TARGETS === undefined)
+          delete process.env.ALLOW_INTERNAL_TARGETS;
+      }
+    });
+
     it('should send full payload to webhook', async () => {
       await service.sendNotification(webhookProvider, basePayload);
 

@@ -114,7 +114,9 @@ function outputTable<T extends Record<string, unknown>>(
     // Safely access each column value
     table.push(cols.map((c, index) => {
       const value = formatValue(item?.[c.key], c, item)
-      const displayed = truncateValues && !wideOutput && value.length > 200 ? `${value.slice(0, 197)}…` : value
+      // cli-table3 measures width in time cubic in cell length (wrapped; an 8 KB cell took 25 s), so every cell is bounded.
+      const limit = truncateValues ? 200 : MAX_CELL_CHARS
+      const displayed = !wideOutput && value.length > limit ? `${value.slice(0, limit - 3)}…` : value
       return wideOutput ? displayed : wrapAnsi(displayed, Math.max(1, widths[index] - 2), { hard: true, trim: false })
     }))
   }
@@ -191,6 +193,10 @@ function formatStatus(status: string): string {
   }
 }
 
+function safeStringify(value: unknown): string {
+  try { return JSON.stringify(value) ?? String(value) } catch { return '[unserializable]' }
+}
+
 function formatValue(value: unknown, column?: OutputColumn, row?: Record<string, unknown>): string {
   if (column?.key === 'script' && typeof value === 'string') return `[script: ${value.length} chars; use test get <id> --include-script]`
   if (column?.format && row) {
@@ -208,7 +214,7 @@ function formatValue(value: unknown, column?: OutputColumn, row?: Record<string,
   if (Array.isArray(value)) {
     // If the array contains objects, serialize them as JSON instead of producing [object Object]
     if (value.length > 0 && typeof value[0] === 'object' && value[0] !== null) {
-      return JSON.stringify(value)
+      return safeStringify(value)
     }
     return value.join(', ')
   }
@@ -219,7 +225,7 @@ function formatValue(value: unknown, column?: OutputColumn, row?: Record<string,
     return String(value)
   }
 
-  if (typeof value === 'object') return JSON.stringify(value)
+  if (typeof value === 'object') return safeStringify(value)
 
   const strValue = String(value)
 
@@ -234,6 +240,7 @@ function formatValue(value: unknown, column?: OutputColumn, row?: Record<string,
   return strValue
 }
 
+const MAX_CELL_CHARS = 2000
 const DATE_KEY_PATTERN = /(At|Date|Time|Timestamp)$/i
 
 function maybeFormatDate(value: string | number, key?: string): string | null {

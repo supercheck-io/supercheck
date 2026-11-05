@@ -28,6 +28,7 @@ const created: SreServiceListItem = {
   tier: "2",
   environment: null,
   ownerTeam: null,
+  ownerUserId: null,
   repoUrl: null,
   otelServiceName: null,
   slackChannel: null,

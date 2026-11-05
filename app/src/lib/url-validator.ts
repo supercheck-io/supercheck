@@ -5,7 +5,25 @@
  * by blocking requests to private/internal networks.
  */
 
+import { isMetadataOrLinkLocalAddress } from "@/lib/sre/connectors/endpoint-policy";
+import { isSelfHosted } from "@/lib/feature-flags";
 import { isPrivateOrReservedAddress } from "./outbound-address-policy";
+
+/**
+ * Self-hosted installs that set ALLOW_INTERNAL_TARGETS=true (exactly) may point webhook channels at
+ * private hosts and plain http, as monitors may. Cloud never does, and metadata/link-local stay blocked.
+ */
+export function allowInternalWebhookTargets(): boolean {
+  return isSelfHosted() && process.env.ALLOW_INTERNAL_TARGETS === "true";
+}
+
+function isMetadataHost(hostname: string): boolean {
+  const normalized = hostname.trim().toLowerCase().replace(/\.$/, "").replace(/^\[|\]$/g, "");
+  return (
+    isMetadataOrLinkLocalAddress(normalized) ||
+    /^metadata\.(google|azure)\.internal$/.test(normalized)
+  );
+}
 
 // Private IP ranges that should not be accessible via webhooks
 const PRIVATE_IP_PATTERNS = [
@@ -73,14 +91,18 @@ export function isPrivateHost(hostname: string): boolean {
  * @param url - The URL to validate
  * @returns true if the URL is safe, false otherwise
  */
-export function isValidWebhookUrl(url: URL): { valid: boolean; error?: string } {
+export function isValidWebhookUrl(
+  url: URL,
+  options: { allowInternal?: boolean } = {},
+): { valid: boolean; error?: string } {
+  const { allowInternal = false } = options;
   // Public webhooks use the pinned TLS transport in every environment.
-  if (url.protocol !== 'https:') {
+  if (url.protocol !== 'https:' && !(allowInternal && url.protocol === 'http:')) {
     return { valid: false, error: 'Webhook URL must use HTTPS' };
   }
 
   // Check for private/internal hosts
-  if (isPrivateHost(url.hostname)) {
+  if (allowInternal ? isMetadataHost(url.hostname) : isPrivateHost(url.hostname)) {
     return { valid: false, error: 'Cannot connect to private or internal networks' };
   }
 
@@ -98,10 +120,13 @@ export function isValidWebhookUrl(url: URL): { valid: boolean; error?: string } 
  * @param urlString - The URL string to validate
  * @returns Validation result with optional error message
  */
-export function validateWebhookUrlString(urlString: string): { valid: boolean; error?: string } {
+export function validateWebhookUrlString(
+  urlString: string,
+  options: { allowInternal?: boolean } = {},
+): { valid: boolean; error?: string } {
   try {
     const url = new URL(urlString);
-    return isValidWebhookUrl(url);
+    return isValidWebhookUrl(url, options);
   } catch {
     return { valid: false, error: 'Invalid URL format' };
   }

@@ -83,3 +83,9 @@ export function networkErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error)
   return codes.size ? `${message} (${[...codes].join(', ')})` : message
 }
+
+export const AUTH_HINT = 'Run `supercheck login --reauth` to sign in again (or set a valid SUPERCHECK_TOKEN).'
+/** One recovery line for a rejected credential; JSON mode carries the same advice in nextActions. */
+export function authHint(error: unknown): string | null {
+  return error instanceof ApiRequestError && error.statusCode === 401 ? AUTH_HINT : null
+}

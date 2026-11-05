@@ -21,6 +21,13 @@ const item: ConnectorEvidenceItem = {
 };
 
 describe("sanitizeConnectorEvidence", () => {
+  it("redacts titles before clipping so a key cut at the limit is still caught", () => {
+    const title = `${"x".repeat(190)} AKIAABCDEFGHIJKLMNOP`;
+    const [row] = sanitizeConnectorEvidence([{ ...item, title }]).items;
+    expect(row.title).not.toMatch(/AKIA/);
+    expect(row.title.length).toBeLessThanOrEqual(200);
+  });
+
   it("redacts JSON secret fields including escaped quotes before persistence", () => {
     const rawContent = JSON.stringify({
       password: 'private "quoted" value',

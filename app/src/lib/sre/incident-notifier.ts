@@ -31,7 +31,7 @@ import {
   validateProviderConfig,
 } from "@/lib/notification-providers/validation";
 import { getRedisConnection } from "@/lib/queue";
-import { fetchPublicEndpoint } from "@/lib/sre/connectors/pinned-fetch";
+import { fetchChannelWebhookEndpoint, fetchPublicEndpoint } from "@/lib/sre/connectors/pinned-fetch";
 import { listProjectAdmins, listWatchers } from "@/lib/sre/incident-watchers";
 import { getNotificationPolicy, listPolicyProviders } from "@/lib/sre/notification-policy";
 import { isUuid } from "@/lib/uuid";
@@ -160,11 +160,16 @@ type Message = {
   };
 };
 
-async function post(url: string, body: unknown, headers: Record<string, string> = {}) {
+async function post(
+  url: string,
+  body: unknown,
+  headers: Record<string, string> = {},
+  fetcher: typeof fetchPublicEndpoint = fetchPublicEndpoint,
+) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), SEND_TIMEOUT_MS);
   try {
-    const response = await fetchPublicEndpoint(url, {
+    const response = await fetcher(url, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...headers },
       body: JSON.stringify(body),
@@ -354,6 +359,7 @@ async function sendToProvider(
         String(config.url),
         { event: `incident.${message.event}`, ...message.incident, title: message.title, text: message.text, url: message.url },
         normalizeWebhookHeaders(config.headers),
+        fetchChannelWebhookEndpoint,
       );
       return true;
   }
@@ -669,7 +675,8 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<b
     );
     // null is a failed send; false is a provider that sends nothing (a webhook with a custom body).
     sent += delivered.filter((result) => result === true).length;
-    if (delivered.length > 0 && !delivered.some((result) => result !== null)) await releaseEvent(input, claim);
+    // Keep the claim once anything went out (participant emails): a retry would email those people again.
+    if (sent === 0 && delivered.length > 0 && !delivered.some((result) => result !== null)) await releaseEvent(input, claim);
 
     // Nobody owns it and nothing reached a channel: tell the project's owners and admins.
     // Also for the one re-notify, so it is never silently lost.

@@ -101,4 +101,16 @@ describe("test priority validation", () => {
     );
     expect(response.status).toBe(400);
   });
+
+  it("POST rejects a title over 255 characters with 400 instead of a DB error", async () => {
+    const response = await POST(
+      new NextRequest("http://localhost/api/tests", {
+        method: "POST",
+        body: JSON.stringify({ title: "x".repeat(256) }),
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toContain("255");
+  });
 });

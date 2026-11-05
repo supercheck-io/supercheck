@@ -61,6 +61,8 @@ supercheck config validate --json
 
 Config-aware commands (for example `config`, `diff`, `deploy`, `pull`, `validate`, `destroy`) also accept `--config <path>` to point at a specific config file.
 
+Delete commands (`job`, `test`, `monitor`, `run`, `requirement`, `var`, `tag` and `notification` `delete`) and `destroy` need project admin or higher.
+
 <Accordions>
 <Accordion title="JSON output and secret redaction" id="json-output">
 
@@ -101,10 +103,10 @@ An operation that requires confirmation exits `3` when declined or when input cl
 
 | Command | What it does | Key flags |
 |---|---|---|
-| `supercheck skills [topic]` | Print the offline workflow index or a focused guide (`local`, `sync`, `configure`, `execute`, `investigate`). Bundled with the CLI version; no credentials | — |
+| `supercheck skills [topic]` | Print the offline workflow index or a focused guide (`onboarding`, `authoring`, `local`, `sync`, `configure`, `execute`, `ci`, `safety`, `investigate`). Bundled with the CLI version; no credentials | — |
 | `supercheck skills install` | Write a small `.agents/skills/supercheck/SKILL.md` pointer. Existing skill files are preserved unless `--force` | `--path <directory>`, `--force` |
 | `supercheck capabilities` | Report CLI version, local workflow capabilities, and whether credentials are present | `--online` |
-| `supercheck schema config` | Describe the installed configuration schema without loading repository code | `--json` |
+| `supercheck schema config` | Describe the installed configuration schema without loading repository code; a field list, or the full structure with `--json` | `--json` |
 
 ```bash
 supercheck skills
@@ -170,7 +172,7 @@ supercheck whoami
 supercheck logout
 ```
 
-`whoami` includes token identity and expiry when your role permits viewing API keys (user, token name, API URL, expiry); read-only users can still verify their context.
+`whoami` includes token identity and expiry when your role permits viewing API keys (user, token name, API URL, expiry). A project viewer cannot create a CLI token or sign in with the CLI, so it cannot use `whoami` either.
 
 <Accordions>
 <Accordion title="supercheck login: flags and browser sign-in" id="supercheck-login">

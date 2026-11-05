@@ -72,6 +72,18 @@ it("rejects a private monitor target with 400 before inserting", async () => {
   expect(insertWithinPlanLimit).not.toHaveBeenCalled();
 });
 
+it("rejects a name over 255 characters with 400 before inserting", async () => {
+  const res = await POST(
+    new NextRequest("http://localhost/api/monitors", {
+      method: "POST",
+      body: JSON.stringify({ name: "n".repeat(256), type: "http_request", target: "https://example.com" }),
+      headers: { "content-type": "application/json" },
+    }),
+  );
+  expect(res.status).toBe(400);
+  expect(insertWithinPlanLimit).not.toHaveBeenCalled();
+});
+
 it("rejects notification providers outside the project before inserting (c14)", async () => {
   const res = await post({ enabled: true, notificationProviders: ["00000000-0000-4000-8000-0000000000aa"], alertOnFailure: true });
   expect(res.status).toBe(400);

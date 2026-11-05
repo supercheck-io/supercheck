@@ -19,7 +19,10 @@ jest.mock("@/lib/queue", () => ({ getRedisConnection: jest.fn(async () => ({ set
 const sendEmailToMultiple = jest.fn().mockResolvedValue({ sentCount: 1, failedAddresses: [], errors: {} });
 jest.mock("@/lib/email-service", () => ({ EmailService: { getInstance: () => ({ sendEmailToMultiple }) } }));
 const fetchPublicEndpoint = jest.fn().mockResolvedValue({ ok: true });
-jest.mock("@/lib/sre/connectors/pinned-fetch", () => ({ fetchPublicEndpoint: (...args: unknown[]) => fetchPublicEndpoint(...args) }));
+jest.mock("@/lib/sre/connectors/pinned-fetch", () => ({
+  fetchPublicEndpoint: (...args: unknown[]) => fetchPublicEndpoint(...args),
+  fetchChannelWebhookEndpoint: (...args: unknown[]) => fetchPublicEndpoint(...args),
+}));
 jest.mock("@/lib/notification-providers/crypto", () => ({
   decryptNotificationProviderConfig: jest.fn((config: { envelope?: Record<string, unknown> }) => config.envelope ?? config),
 }));
@@ -418,7 +421,7 @@ describe("event dedupe key release", () => {
 
   it("releases the key when every provider failed", async () => {
     fetchPublicEndpoint.mockResolvedValueOnce({ ok: false, status: 500 });
-    selectQueue.push([incident], people, source, [discord]);
+    selectQueue.push([{ ...incident, assigneeUserId: null }], people, source, [discord]);
     await notifyIncidentEvent({ ...base, event: "acknowledged", assigneeUserId: null });
     const token = redisSet.mock.calls[0][1];
     expect(redisEval).toHaveBeenCalledWith(expect.stringContaining("redis.call('get'"), 1, expect.stringContaining("incident-notify:inc-1:acknowledged"), token);
@@ -426,7 +429,7 @@ describe("event dedupe key release", () => {
 
   it("releases only with the claim token so another owner's key survives", async () => {
     fetchPublicEndpoint.mockResolvedValueOnce({ ok: false, status: 500 });
-    selectQueue.push([incident], people, source, [discord]);
+    selectQueue.push([{ ...incident, assigneeUserId: null }], people, source, [discord]);
     await notifyIncidentEvent({ ...base, event: "acknowledged", assigneeUserId: null });
     const [script, , , token] = redisEval.mock.calls[0];
     expect(script).toContain("== ARGV[1]");
@@ -434,12 +437,22 @@ describe("event dedupe key release", () => {
     expect(token).not.toBe("1");
   });
 
+  it("keeps the key when every provider failed but a participant email already went out", async () => {
+    fetchPublicEndpoint.mockResolvedValueOnce({ ok: false, status: 500 });
+    selectQueue.push([incident], people, source, [discord]);
+    await notifyIncidentEvent({ ...base, event: "acknowledged", assigneeUserId: "assignee", actorUserId: null });
+    expect(sendEmailToMultiple).toHaveBeenCalled();
+    expect(redisEval).not.toHaveBeenCalled();
+  });
+
   it("retries the release when Redis errors, so a failed reminder is not suppressed for the dedupe window", async () => {
     redisEval.mockRejectedValueOnce(new Error("redis down")).mockResolvedValueOnce(1);
     fetchPublicEndpoint.mockResolvedValueOnce({ ok: false, status: 500 });
-    selectQueue.push([incident], people, source, [discord]);
+    selectQueue.push([{ ...incident, assigneeUserId: null }], people, source, [discord]);
     await notifyIncidentEvent({ ...base, event: "acknowledged", assigneeUserId: null });
-    expect(redisEval).toHaveBeenCalledTimes(2);
+    // The first attempt throws; a later one succeeds (compare-and-delete is safe to repeat).
+    expect(redisEval.mock.calls.length).toBeGreaterThanOrEqual(2);
+    await expect(redisEval.mock.results[1].value).resolves.toBe(1);
   });
 
   it("keeps the key when a provider succeeded or there were none", async () => {

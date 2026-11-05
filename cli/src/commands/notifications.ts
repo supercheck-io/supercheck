@@ -44,7 +44,7 @@ notificationCommand
         { key: 'id', header: 'ID' },
         { key: 'name', header: 'Name' },
         { key: 'type', header: 'Type' },
-        { key: 'enabled', header: 'Enabled' },
+        { key: 'isEnabled', header: 'Enabled' },
         { key: 'lastUsed', header: 'Last Used' },
       ],
     })

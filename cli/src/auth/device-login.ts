@@ -47,10 +47,10 @@ function pendingOutcome(apiUrl: string, pending: PendingDevice, now: number): Lo
 
 /**
  * One non-blocking step of device login. Safe to call repeatedly (and from agents):
- * it creates or resumes exactly one grant per API origin, polls at most once, and
- * never makes a network request before the server-mandated next poll time.
+ * it creates or resumes exactly one grant per API origin and polls at most once, never before the
+ * server's interval. Only the attended `--wait` loop passes `pollNow`, on its first iteration.
  */
-export async function loginStep(apiUrl: string, deps: LoginDeps): Promise<LoginOutcome> {
+export async function loginStep(apiUrl: string, deps: LoginDeps, options: { pollNow?: boolean } = {}): Promise<LoginOutcome> {
   return deps.store.withLock(async () => {
     const now = deps.now()
     let pending = deps.store.load()
@@ -76,7 +76,7 @@ export async function loginStep(apiUrl: string, deps: LoginDeps): Promise<LoginO
       return pendingOutcome(apiUrl, pending, now)
     }
 
-    if (now < pending.nextPollAt) return pendingOutcome(apiUrl, pending, now)
+    if (now < pending.nextPollAt && !options.pollNow) return pendingOutcome(apiUrl, pending, now)
 
     // A poll that may have committed server-side is never retried automatically: persist the
     // next poll time first so a crash or lost response cannot cause a hot retry loop.
@@ -143,7 +143,7 @@ export async function loginWait(
 ): Promise<Extract<LoginOutcome, { state: 'authenticated' }>> {
   let announced = false
   let grantExpiresAt = Infinity
-  for (;;) {
+  for (let first = true; ; first = false) {
     // Never silently start a second grant: the person only saw the first code.
     if (deps.now() >= grantExpiresAt) {
       deps.store.clear()
@@ -151,7 +151,7 @@ export async function loginWait(
     }
     let outcome: LoginOutcome
     try {
-      outcome = await loginStep(apiUrl, deps)
+      outcome = await loginStep(apiUrl, deps, { pollNow: first })
     } catch (error) {
       // Once the person has the code, a dropped connection or a slow response must not end the wait: loginStep saved
       // the next poll time before polling, so retrying is safe. Anything with an HTTP status (denied, expired, ...) is final.

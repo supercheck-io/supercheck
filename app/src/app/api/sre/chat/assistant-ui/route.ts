@@ -598,6 +598,9 @@ export async function POST(request: NextRequest) {
         : {}),
     },
     stopWhen: stepCountIs(budget.maxSteps),
+    // The last allowed step cannot call tools, so the model answers from what it gathered.
+    prepareStep: ({ stepNumber }) =>
+      stepNumber === budget.maxSteps - 1 ? { toolChoice: "none" as const } : undefined,
     maxOutputTokens: budget.maxOutputTokens,
     onStepFinish: (event) => recordSreTokenUsage(context.organizationId, event.usage),
     // Stop the model when the client disconnects, not only on the time budget.
@@ -631,7 +634,7 @@ export async function POST(request: NextRequest) {
     },
     onError: () =>
       "Copilot could not complete the read-only check. No failed connector result was treated as evidence.",
-    onFinish: async ({ responseMessage, isAborted, outcome }) => {
+    onFinish: async ({ responseMessage, isAborted, outcome, finishReason }) => {
       // On a client disconnect onFinish can run from cancel() with isAborted false, so check the outcome too.
       if (isAborted || outcome?.status === "aborted") {
         const partial = getTextFromUiMessage(responseMessage);
@@ -655,7 +658,9 @@ export async function POST(request: NextRequest) {
 
       const assistantText =
         getTextFromUiMessage(responseMessage) ||
-        "Copilot could not complete the read-only check. No failed connector result was treated as evidence.";
+        (finishReason === "tool-calls"
+          ? "Copilot reached its tool-call limit for this turn. Ask a narrower question or continue."
+          : "Copilot could not complete the read-only check. No failed connector result was treated as evidence.");
 
       try {
         await appendSreMessage(
