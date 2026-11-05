@@ -1,7 +1,6 @@
 import { expect, test } from "../../fixtures/roles.fixture";
 
 import { requireRbacUser } from "../../utils/env";
-import { createMonitor, deleteMonitor } from "../../utils/test-data";
 
 import type { Page } from "@playwright/test";
 
@@ -26,12 +25,11 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
     requireRbacUser("viewer");
   });
 
-  test("persists a manual incident, bounded brief, stored-evidence investigation, and legacy redirect", async ({
+  test("persists a manual incident, bounded brief, investigation, and legacy redirect", async ({
     orgOwnerPage: page,
     viewerPage,
   }) => {
-    // This acceptance flow performs two bounded AI operations in addition to
-    // the incident, evidence, download, and cleanup lifecycle.
+    // Bounded AI operations (brief, investigation) plus the incident and cleanup lifecycle.
     test.setTimeout(300_000);
     const projects = await page.request.get("/api/projects");
     expect(projects.status()).toBe(200);
@@ -49,7 +47,6 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
     expect(createProject.status(), await createProject.text()).toBe(201);
     const projectId = ((await createProject.json()) as { data: { id: string } })
       .data.id;
-    let monitorId = "";
 
     try {
       // Switch inside the try so a failed selection still cleans up the project.
@@ -58,150 +55,7 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
       });
       expect(switchProject.status(), await switchProject.text()).toBe(200);
 
-      const monitor = await createMonitor(page.request, {
-        name: `E2E SRE alert source ${Date.now()}`,
-        enabled: false,
-      });
-      monitorId = monitor.id;
-      const alertMessage = `E2E actionable failure ${Date.now()}`;
-      const alertResponse = await page.request.post("/api/alerts/history", {
-        data: {
-          type: "monitor_failure",
-          message: alertMessage,
-          target: monitor.name,
-          targetType: "monitor",
-          monitorId,
-          provider: "email",
-          status: "sent",
-        },
-      });
-      expect(alertResponse.status(), await alertResponse.text()).toBe(200);
-
-      await page.goto("/notifications?tab=history", { waitUntil: "domcontentloaded" });
-      await expect(
-        page.getByRole("tab", { name: "Delivery history", exact: true }),
-      ).toBeVisible();
-      const alertRow = page.getByRole("row").filter({ hasText: monitor.name }).first();
-      // The SRE worker opens the incident asynchronously: the row shows "#N" once it has, else the promote button (idempotent).
-      await alertRow
-        .getByRole("link", { name: /^#\d+$/ })
-        .or(alertRow.getByRole("button", { name: `Open incident for ${monitor.name}`, exact: true }))
-        .first()
-        .click();
-      await expect(page).toHaveURL(/\/incidents\/[0-9a-f-]{36}$/i);
-      await expect(
-        page.getByRole("heading", { name: new RegExp(monitor.name) }),
-      ).toBeVisible({ timeout: 30_000 });
-      await expect(
-        page.getByRole("heading", { name: /^Alerts\s*1$/ }),
-      ).toBeVisible();
-
-      const promotedIncidentId = page.url().split("/").pop();
-      expect(promotedIncidentId).toMatch(/^[0-9a-f-]{36}$/i);
-      const briefSheet = await openInvestigationSheet(page, "Brief");
-      await briefSheet
-        .getByRole("button", { name: "Generate brief", exact: true })
-        .click();
-      await expect(
-        briefSheet.getByText(/AI generated|Fallback brief/).first(),
-      ).toBeVisible({
-        timeout: 90_000,
-      });
-      const downloadPromise = page.waitForEvent("download");
-      await briefSheet
-        .getByRole("button", { name: "Download", exact: true })
-        .click();
-      const briefDownload = await downloadPromise;
-      expect(briefDownload.suggestedFilename()).toMatch(
-        /^incident-\d+-.+-brief\.md$/,
-      );
-      await briefSheet.getByRole("tab", { name: /^Evidence/ }).click();
-      const evidenceRows = briefSheet.locator('tr[id^="sre-evidence-"]');
-      await expect(evidenceRows.first()).toBeVisible();
-      const evidenceId = (
-        await evidenceRows.first().getAttribute("id")
-      )?.replace("sre-evidence-", "");
-      expect(evidenceId).toMatch(/^[0-9a-f-]{36}$/i);
-
-      // Evidence rows live in the investigation sheet; ?tab=evidence opens it.
-      await page.goto(`/incidents/${promotedIncidentId}?tab=evidence#sre-evidence-${evidenceId}`, {
-        waitUntil: "domcontentloaded",
-      });
-      await expect(page.locator(`#sre-evidence-${evidenceId}`)).toBeVisible();
-
-      await page.keyboard.press("Escape");
-      await expect(page.getByTestId("investigation-sheet")).toBeHidden();
-      const askCopilot = page.getByRole("menuitem", {
-        name: "Ask Copilot",
-        exact: true,
-      });
-      await expect(async () => {
-        if (!(await askCopilot.isVisible())) {
-          await page.getByRole("button", { name: "More actions" }).click();
-        }
-        await expect(askCopilot).toBeVisible({ timeout: 2000 });
-      }).toPass({ timeout: 15_000 });
-      await askCopilot.click();
-      // Ask Copilot opens an incident-scoped dialog; its link opens the full page.
-      await page
-        .getByRole("dialog", { name: "Copilot" })
-        .getByRole("link", { name: "Open full page" })
-        .click();
-      await expect(page).toHaveURL(
-        new RegExp(`/copilot\\?incident=${promotedIncidentId}$`),
-      );
-      await expect(
-        page.getByText("Scoped to this incident. Answers cite saved evidence.", {
-          exact: true,
-        }),
-      ).toBeVisible();
-      await page.getByRole("button", { name: "New chat", exact: true }).click();
-      await expect(page).toHaveURL(
-        new RegExp(`/copilot\\?incident=${promotedIncidentId}$`),
-      );
-      await page.reload();
-      await expect(
-        page.getByPlaceholder("Ask about this incident or its evidence..."),
-      ).toBeEnabled();
-      const liveSources = page.getByRole("switch", {
-        name: "Live sources",
-      });
-      await expect(liveSources).toBeChecked();
-      await liveSources.click();
-      await expect(liveSources).not.toBeChecked();
-      await liveSources.click();
-      await expect(liveSources).toBeChecked();
-      const scopedPrompt = `Summarize stored and live evidence ${Date.now()}`;
-      await page
-        .getByPlaceholder("Ask about this incident or its evidence...")
-        .fill(scopedPrompt);
-      const scopedResponsePromise = page.waitForResponse(
-        (response) =>
-          response.request().method() === "POST" &&
-          response.url().includes("/api/sre/chat/assistant-ui"),
-      );
-      await page.getByRole("button", { name: "Send", exact: true }).click();
-      const scopedResponse = await scopedResponsePromise;
-      const scopedBody = scopedResponse.request().postDataJSON() as {
-        incidentId?: string;
-        useLiveConnectorTools?: boolean;
-      };
-      expect(scopedBody).toMatchObject({
-        incidentId: promotedIncidentId,
-        useLiveConnectorTools: true,
-      });
-      expect(scopedResponse.status(), await scopedResponse.text()).toBe(200);
-      await expect(
-        page.getByLabel("User message").filter({
-          hasText: scopedPrompt,
-        }),
-      ).toBeVisible();
-      await expect(
-        page.locator('[aria-label="Copilot message"]:not(textarea)').last(),
-      ).not.toBeEmpty({
-        timeout: 60_000,
-      });
-
+      // No alert-promoted incident here: an incident nobody owns emails the project admins.
       const incidentTitle = `E2E SRE incident ${Date.now()}`;
       const initialNotes = "No root cause is asserted without cited evidence.";
       await page.goto("/incidents");
@@ -340,9 +194,6 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
       await page.goto("/copilot/investigations");
       await expect(page).toHaveURL(/\/incidents$/);
     } finally {
-      if (monitorId) {
-        await deleteMonitor(page.request, monitorId);
-      }
       const restore = await page.request.post("/api/projects/switch", {
         data: { projectId: originalProjectId },
       });
