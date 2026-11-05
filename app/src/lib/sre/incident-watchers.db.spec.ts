@@ -24,8 +24,8 @@ const users = Object.fromEntries(["owner", "viewer", "editor", "editorNoRow", "s
 async function person(name: keyof typeof users, orgRole: string, projectRole?: string) {
   const id = users[name];
   await client`INSERT INTO "user" (id, name, email, email_verified, created_at, updated_at) VALUES (${id}, ${name}, ${`${name}@example.com`}, true, now(), now())`;
-  await client`INSERT INTO member (organization_id, user_id, role, created_at) VALUES (${org}, ${id}, ${orgRole}, now())`;
-  if (projectRole) await client`INSERT INTO project_members (user_id, project_id, role) VALUES (${id}, ${project}, ${projectRole})`;
+  await client`INSERT INTO member (id, organization_id, user_id, role, created_at) VALUES (${randomUUID()}, ${org}, ${id}, ${orgRole}, now())`;
+  if (projectRole) await client`INSERT INTO project_members (id, user_id, project_id, role) VALUES (${randomUUID()}, ${id}, ${project}, ${projectRole})`;
   await client`INSERT INTO sre_incident_watchers (incident_id, user_id) VALUES (${incident}, ${id})`;
 }
 
