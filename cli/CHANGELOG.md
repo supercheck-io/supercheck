@@ -31,6 +31,14 @@ This release adds project, analytics, variable, token and run commands, and make
 
 ### Fixed
 
+- `schema config` no longer hangs when printed as a table.
+- A job test reference that doesn't resolve (for example a glob) is rejected when `deploy` plans, not part-way through.
+- `destroy` removes tests, monitors, requirements and jobs before their tags, so a tag in use no longer stops it.
+- `validate` rejects more than 10 monitor tags and names over 255 characters, which the server would reject.
+- `notification list` shows the Enabled column correctly.
+- `var set` checks the variable key format before sending it.
+- `login --reauth` always starts a new sign-in, and `login` never polls faster than the server allows.
+- A 401 now tells you to run `supercheck login --reauth`.
 - An unchanged job or monitor alert config no longer shows as an update on every `deploy` and `diff`.
 - `pull` no longer writes monitor settings the server rejects, and `pull` and `validate` warn about a job schedule that is not five cron fields.
 - `deploy` removes a status page draft it just created when a later step fails, and never deletes a page that existed before the run.
