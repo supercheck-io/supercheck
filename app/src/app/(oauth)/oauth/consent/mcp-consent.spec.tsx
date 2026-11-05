@@ -61,6 +61,9 @@ describe("McpConsent", () => {
   it("warns about an app that registered itself, and names the publisher of a verified one", () => {
     setup(unverified);
     expect(screen.getByText(/unverified app/i)).toBeInTheDocument();
+    // The warning is not in the scrolling region, and only errors use role=alert.
+    expect(screen.getByText(/unverified app/i).closest(".overflow-y-auto")).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("shows the publisher host for a metadata-document client", () => {
@@ -75,6 +78,46 @@ describe("McpConsent", () => {
     setup({ name: "<img src=x onerror=alert(1)>", verifiedHost: null, redirectHost: null });
     expect(document.querySelector("img")).toBeNull();
     expect(screen.getByRole("heading", { name: /<img src=x onerror=alert\(1\)>/ })).toBeInTheDocument();
+  });
+
+  it("names a shared organization once in the legend instead of on every row", () => {
+    setup();
+    expect(screen.getByText(/^Project/, { selector: "legend" })).toHaveTextContent("Project · Org");
+    expect(screen.queryAllByText("Org")).toHaveLength(0);
+  });
+
+  it("shows each project's organization on its row when they differ", () => {
+    setup(unverified, [
+      { id: "p-1", name: "Alpha", organizationName: "Org A", isDefault: true },
+      { id: "p-2", name: "Beta", organizationName: "Org B", isDefault: false },
+    ]);
+    expect(screen.getByText(/^Project/, { selector: "legend" })).not.toHaveTextContent("·");
+    expect(screen.getByText("Org A")).toBeInTheDocument();
+    expect(screen.getByText("Org B")).toBeInTheDocument();
+  });
+
+  it("shows the organization in the legend for a single project, and nothing when it is blank", () => {
+    const one = render(<McpConsent oauthQuery="q" userEmail="a@b.c" projects={[projects[0]]} client={unverified} navigate={navigate} />);
+    expect(screen.getByText(/^Project/, { selector: "legend" })).toHaveTextContent("Project · Org");
+    one.unmount();
+    setup(unverified, [{ id: "p-9", name: "Solo", organizationName: "", isDefault: true }]);
+    expect(screen.getByText(/^Project/, { selector: "legend" })).not.toHaveTextContent("·");
+  });
+
+  it("shows a failed approval next to the buttons, outside the scrolling content", async () => {
+    reply(403, { error: "forbidden" });
+    setup();
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+    expect((await screen.findByRole("alert")).closest(".overflow-y-auto")).toBeNull();
+  });
+
+  it("keeps many projects in a scrolling list and Approve outside it", () => {
+    const many = Array.from({ length: 20 }, (_, i) => ({ id: `p-${i}`, name: `Project ${i}`, organizationName: "Org", isDefault: i === 0 }));
+    setup(unverified, many);
+    const list = screen.getByRole("radiogroup");
+    expect(list).toHaveClass("overflow-y-auto");
+    // Approve, Deny and the error stay outside every scrolling region.
+    expect(screen.getByRole("button", { name: "Approve" }).closest(".overflow-y-auto")).toBeNull();
   });
 
   it("preselects the default project and approves the chosen one", async () => {
