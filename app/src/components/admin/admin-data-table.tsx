@@ -47,6 +47,8 @@ interface AdminDataTableProps<TData, TValue> {
   emptyDescription?: string;
   emptyFilteredTitle?: string;
   emptyFilteredDescription?: string;
+  /** Keep the current page when `data` grows (rows streaming in). The page index is still clamped to the row count. */
+  keepPageOnDataChange?: boolean;
 }
 
 // Define the extended meta type locally
@@ -114,6 +116,7 @@ export function AdminDataTable<TData, TValue>({
   emptyDescription,
   emptyFilteredTitle,
   emptyFilteredDescription,
+  keepPageOnDataChange = false,
 }: AdminDataTableProps<TData, TValue>) {
   const [rowSelection, setRowSelection] = React.useState({});
   const [columnVisibility, setColumnVisibility] =
@@ -239,6 +242,7 @@ export function AdminDataTable<TData, TValue>({
           globalFilter: "",
         },
     onPaginationChange,
+    autoResetPageIndex: !keepPageOnDataChange,
     enableRowSelection: true,
     onRowSelectionChange: safeSetRowSelection,
     onSortingChange: safeSetSorting,

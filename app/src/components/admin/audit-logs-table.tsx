@@ -144,6 +144,7 @@ export function AuditLogsTable({ className }: AuditLogsTableProps) {
         data={data?.logs || []}
         toolbar={CustomToolbar}
         itemName="audit logs"
+        keepPageOnDataChange
         meta={{
           globalFilterColumns: ["action", "user", "details"],
         }}
