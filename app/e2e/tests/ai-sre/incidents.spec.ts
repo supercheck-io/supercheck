@@ -142,6 +142,11 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
         await expect(askCopilot).toBeVisible({ timeout: 2000 });
       }).toPass({ timeout: 15_000 });
       await askCopilot.click();
+      // Ask Copilot opens an incident-scoped dialog; its link opens the full page.
+      await page
+        .getByRole("dialog", { name: "Copilot" })
+        .getByRole("link", { name: "Open full page" })
+        .click();
       await expect(page).toHaveURL(
         new RegExp(`/copilot\\?incident=${promotedIncidentId}$`),
       );
@@ -205,7 +210,7 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
       ).toBeVisible();
       // Severity and Status headers carry info-tip text, so match prefixes in exact order.
       await expect(page.getByRole("columnheader")).toHaveText([
-        /^#/, /^Title/, /^Severity/, /^Status/, /^Service/, /^Assignee/, /^Age/, /^AI/,
+        /^#/, /^Title/, /^Severity/, /^Status/, /^Service/, /^Assignee/, /^Age/, /^Updated/, /^AI/,
       ]);
       await page
         .getByRole("button", { name: "New incident", exact: true })
