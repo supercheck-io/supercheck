@@ -476,6 +476,7 @@ export class MonitorAlertService {
         createdRows,
       );
     }
-    return successCount > 0;
+    // A partial email delivery reached recipients, as in sendNotification.
+    return successCount > 0 || deliveryResults.results.some((r) => r.partial);
   }
 }
