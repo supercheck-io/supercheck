@@ -30,6 +30,8 @@ interface Props {
     clientIdUrl?: string | null;
     redirectHost: string | null;
   };
+  /** Projects where the app already holds broader access than this request; approving cannot narrow it. */
+  keepsEarlierAccessProjectIds?: string[];
   /** Leaves the page for the client's redirect URI. Replaceable so tests need not navigate. */
   navigate?: (url: string) => void;
 }
@@ -43,9 +45,10 @@ const ERROR_COPY: Record<string, string> = {
   invalid_request: "Something is wrong with this request. Go back to the app and try again.",
   consent_failed: "This request expired or was already used. Go back to the app and start again.",
   project_required: "Choose a project first.",
+  consent_scopes_not_restored: "The connection was saved with fewer permissions than before. Disconnect it in Connected apps, then connect again and approve every permission.",
 };
 
-export function McpConsent({ oauthQuery, userEmail, projects, canWriteIncidents = false, canRunSre = false, client, navigate = (url) => window.location.assign(url) }: Props) {
+export function McpConsent({ oauthQuery, userEmail, projects, canWriteIncidents = false, canRunSre = false, keepsEarlierAccessProjectIds = [], client, navigate = (url) => window.location.assign(url) }: Props) {
   const [projectId, setProjectId] = useState((projects.find((p) => p.isDefault) ?? projects[0]).id);
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -135,6 +138,12 @@ export function McpConsent({ oauthQuery, userEmail, projects, canWriteIncidents 
             ))}
           </RadioGroup>
         </fieldset>
+
+        {keepsEarlierAccessProjectIds.includes(projectId) ? (
+          <p className="text-xs text-muted-foreground">
+            This app keeps the access you approved earlier. Disconnect it in Connected apps to reduce access.
+          </p>
+        ) : null}
 
         {client.redirectHost ? (
           <p className="text-xs text-muted-foreground">

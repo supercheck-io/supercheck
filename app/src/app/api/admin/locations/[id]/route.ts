@@ -1,6 +1,7 @@
 import { isUuid } from "@/lib/uuid";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin";
+import { adminDeniedResponse } from "@/lib/admin-errors";
 import { db } from "@/utils/db";
 import { locations } from "@/db/schema/locations";
 import { eq, ne } from "drizzle-orm";
@@ -190,6 +191,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
     return NextResponse.json({ success: true, data: updated });
   } catch (error: unknown) {
+    const denied = adminDeniedResponse(error);
+    if (denied) return denied;
     if (error != null && typeof error === "object" && "code" in error && (error as { code: string }).code === "23505") {
       return NextResponse.json(
         { success: false, error: "Another location is already set as default. Please try again." },
@@ -331,6 +334,8 @@ export async function DELETE(_request: NextRequest, { params }: RouteParams) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
+    const denied = adminDeniedResponse(error);
+    if (denied) return denied;
     const message = error instanceof Error ? error.message : "Internal server error";
     if (message.startsWith("CONFLICT:")) {
       return NextResponse.json(

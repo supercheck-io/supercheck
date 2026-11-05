@@ -58,7 +58,8 @@ it.each([false, true])("tenant membership gate respects super-admin=%s", async (
   (db.query.member.findFirst as jest.Mock).mockResolvedValue(null);
   (db.select as jest.Mock).mockReturnValue({ from: () => ({ leftJoin: () => ({ where: () => ({ limit: async () => [{ jobId: "job", jobOrganizationId: "org", jobProjectId: "project", runStatus: "passed" }] }) }) }) });
   const response = await POST(new NextRequest("http://localhost/api/runs/4f87e7cf-200f-5ec1-8ce4-3edcb1590232/cancel", { method: "POST" }), { params: Promise.resolve({ runId: "4f87e7cf-200f-5ec1-8ce4-3edcb1590232" }) });
-  expect(response.status).toBe(superAdmin ? 400 : 403);
+  // A non-member gets the same 404 as a missing run (no existence oracle).
+  expect(response.status).toBe(superAdmin ? 400 : 404);
   // A super admin reaches the ordinary terminal-run status check, without signaling it.
   expect(setCancellationSignal).not.toHaveBeenCalled();
   if (superAdmin) expect(db.query.member.findFirst).not.toHaveBeenCalled();
@@ -337,4 +338,12 @@ describe("cancellation drain", () => {
     expect(set).toHaveBeenCalledWith(expect.objectContaining({ status: "error", completedAt: expect.any(Date) }));
     expect(await response.json()).toMatchObject({ queueRemoved: true });
   });
+});
+
+it("answers 404, like a missing run, when the run's organization cannot be resolved", async () => {
+  jest.clearAllMocks();
+  (db.select as jest.Mock).mockReturnValue({ from: () => ({ leftJoin: () => ({ where: () => ({ limit: async () => [{ jobId: null, runProjectId: null, jobOrganizationId: null, runStatus: "running" }] }) }) }) });
+  const response = await POST(new NextRequest("http://localhost/api/runs/4f87e7cf-200f-5ec1-8ce4-3edcb1590232/cancel", { method: "POST" }), { params: Promise.resolve({ runId: "4f87e7cf-200f-5ec1-8ce4-3edcb1590232" }) });
+  expect(response.status).toBe(404);
+  expect(setCancellationSignal).not.toHaveBeenCalled();
 });

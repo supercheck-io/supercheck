@@ -3,6 +3,7 @@ import { db } from "@/utils/db";
 import { user, member, organization } from "@/db/schema";
 import { desc, eq, inArray } from "drizzle-orm";
 import { requireAdmin } from "@/lib/admin";
+import { adminDeniedResponse } from "@/lib/admin-errors";
 import { buildContentDisposition } from "@/lib/content-disposition";
 
 // Batch size for fetching users - keeps memory usage low
@@ -172,6 +173,8 @@ export async function GET() {
       },
     });
   } catch (error) {
+    const denied = adminDeniedResponse(error);
+    if (denied) return denied;
     console.error("Admin users export error:", error);
     return NextResponse.json(
       { success: false, error: "Failed to export users" },

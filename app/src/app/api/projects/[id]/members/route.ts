@@ -1,10 +1,10 @@
 import { isUuid } from "@/lib/uuid";
 import { NextRequest, NextResponse } from 'next/server';
-import { hasPermissionForUser } from '@/lib/rbac/middleware';
+import { hasPermissionForUser, forbiddenOrNotFound } from '@/lib/rbac/middleware';
 import { requireUserAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-context';
 import { db } from '@/utils/db';
 import { member, projects, projectMembers, user } from '@/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, ne } from 'drizzle-orm';
 import { projectRoleExceedsOrgRole } from '@/lib/rbac/effective-project-role';
 
 const ROLE_ABOVE_ORG_ROLE_MESSAGE = "This role is higher than the member's organization role. Change their organization role first.";
@@ -27,7 +27,7 @@ export async function GET(
     const projectData = await db
       .select({ organizationId: projects.organizationId })
       .from(projects)
-      .where(eq(projects.id, projectId))
+      .where(and(eq(projects.id, projectId), ne(projects.status, 'deleted')))
       .limit(1);
     
     if (projectData.length === 0) {
@@ -42,10 +42,7 @@ export async function GET(
     // Check permission
     const canView = await hasPermissionForUser(userId, 'project', 'view', { organizationId, projectId });
     if (!canView) {
-      return NextResponse.json(
-        { error: 'Insufficient permissions' },
-        { status: 403 }
-      );
+      return await forbiddenOrNotFound(userId, organizationId, 'Insufficient permissions', 'Project not found');
     }
     
     // Get project members with user details
@@ -115,7 +112,7 @@ export async function POST(
     const projectData = await db
       .select({ organizationId: projects.organizationId })
       .from(projects)
-      .where(eq(projects.id, projectId))
+      .where(and(eq(projects.id, projectId), ne(projects.status, 'deleted')))
       .limit(1);
     
     if (projectData.length === 0) {
@@ -128,12 +125,9 @@ export async function POST(
     const organizationId = projectData[0].organizationId;
     
     // Check permission
-    const canInvite = await hasPermissionForUser(userId, 'member', 'create', { organizationId, projectId });
+    const canInvite = await hasPermissionForUser(userId, 'project', 'manage_members', { organizationId, projectId });
     if (!canInvite) {
-      return NextResponse.json(
-        { error: 'Insufficient permissions to add members' },
-        { status: 403 }
-      );
+      return await forbiddenOrNotFound(userId, organizationId, 'Insufficient permissions to add members', 'Project not found');
     }
     
     const body = await request.json();
@@ -164,8 +158,8 @@ export async function POST(
     
     if (targetUser.length === 0) {
       return NextResponse.json(
-        { error: 'User not found' },
-        { status: 404 }
+        { error: 'User is not a member of this organization' },
+        { status: 400 }
       );
     }
 
@@ -242,7 +236,7 @@ export async function PUT(
     const projectData = await db
       .select({ organizationId: projects.organizationId })
       .from(projects)
-      .where(eq(projects.id, projectId))
+      .where(and(eq(projects.id, projectId), ne(projects.status, 'deleted')))
       .limit(1);
     
     if (projectData.length === 0) {
@@ -255,12 +249,9 @@ export async function PUT(
     const organizationId = projectData[0].organizationId;
     
     // Check permission
-    const canManage = await hasPermissionForUser(userId, 'member', 'update', { organizationId, projectId });
+    const canManage = await hasPermissionForUser(userId, 'project', 'manage_members', { organizationId, projectId });
     if (!canManage) {
-      return NextResponse.json(
-        { error: 'Insufficient permissions to manage members' },
-        { status: 403 }
-      );
+      return await forbiddenOrNotFound(userId, organizationId, 'Insufficient permissions to manage members', 'Project not found');
     }
     
     const body = await request.json();
@@ -352,7 +343,7 @@ export async function DELETE(
     const projectData = await db
       .select({ organizationId: projects.organizationId })
       .from(projects)
-      .where(eq(projects.id, projectId))
+      .where(and(eq(projects.id, projectId), ne(projects.status, 'deleted')))
       .limit(1);
     
     if (projectData.length === 0) {
@@ -365,12 +356,9 @@ export async function DELETE(
     const organizationId = projectData[0].organizationId;
     
     // Check permission
-    const canManage = await hasPermissionForUser(userId, 'member', 'update', { organizationId, projectId });
+    const canManage = await hasPermissionForUser(userId, 'project', 'manage_members', { organizationId, projectId });
     if (!canManage) {
-      return NextResponse.json(
-        { error: 'Insufficient permissions to remove members' },
-        { status: 403 }
-      );
+      return await forbiddenOrNotFound(userId, organizationId, 'Insufficient permissions to remove members', 'Project not found');
     }
     
     const { searchParams } = new URL(request.url);

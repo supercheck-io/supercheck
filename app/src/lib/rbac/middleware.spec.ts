@@ -102,6 +102,7 @@ import {
   getProjectIdFromUrl,
   hasPermission,
   hasPermissionForUser,
+  forbiddenOrNotFound,
 } from "./middleware";
 
 // Cast mocks - use explicit jest.Mock for deeply nested mocks
@@ -568,6 +569,37 @@ describe("RBAC Middleware", () => {
         expect(result).not.toBeNull();
         expect(result!.project.userRole).toBe(Role.SUPER_ADMIN);
         expect(result!.organizationId).toBe(testOrgId);
+      });
+
+      describe("with requireMembership", () => {
+        const stubSelects = (membership: unknown[]) => {
+          let callCount = 0;
+          mockDbSelect.mockImplementation(() => {
+            callCount++;
+            return {
+              from: jest.fn().mockReturnThis(),
+              where: jest.fn().mockReturnThis(),
+              limit: jest.fn().mockResolvedValue(
+                callCount === 1 ? [{ id: testProjectId, organizationId: testOrgId }] : membership,
+              ),
+            } as unknown;
+          });
+        };
+
+        it("returns null for a super admin who is not a member", async () => {
+          mockIsSuperAdmin.mockResolvedValue(true);
+          stubSelects([]);
+          const result = await resolveProjectPermissionContext(testUserId, testProjectId, { requireMembership: true });
+          expect(result).toBeNull();
+        });
+
+        it("resolves a member super admin from their membership, not super_admin", async () => {
+          mockIsSuperAdmin.mockResolvedValue(true);
+          mockNormalizeRole.mockReturnValue(Role.ORG_OWNER);
+          stubSelects([{ role: "org_owner" }]);
+          const result = await resolveProjectPermissionContext(testUserId, testProjectId, { requireMembership: true });
+          expect(result!.project.userRole).toBe(Role.ORG_OWNER);
+        });
       });
 
       it("should return ORG_OWNER role for org owners", async () => {
@@ -1051,6 +1083,42 @@ describe("RBAC Middleware", () => {
       });
       expect(result).toBe(false);
       expect(mockDbSelect).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("forbiddenOrNotFound", () => {
+    const membership = (rows: unknown[]) =>
+      mockDbSelect.mockReturnValue({
+        from: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockResolvedValue(rows),
+      } as unknown);
+
+    it("answers 404, like a missing id, when the caller has no standing in the organization", async () => {
+      mockIsSuperAdmin.mockResolvedValue(false);
+      membership([]);
+      const res = await forbiddenOrNotFound(testUserId, "other-org", "forbidden", "missing");
+      expect(res.status).toBe(404);
+      expect(await res.json()).toEqual({ error: "missing" });
+    });
+
+    it("answers 404 for a resource with no organization", async () => {
+      mockIsSuperAdmin.mockResolvedValue(false);
+      expect((await forbiddenOrNotFound(testUserId, null, "forbidden", "missing")).status).toBe(404);
+    });
+
+    it("answers 403 to a member of the organization", async () => {
+      mockIsSuperAdmin.mockResolvedValue(false);
+      mockNormalizeRole.mockReturnValue(Role.PROJECT_VIEWER);
+      membership([{ role: "project_viewer" }]);
+      const res = await forbiddenOrNotFound(testUserId, testOrgId, "forbidden", "missing");
+      expect(res.status).toBe(403);
+      expect(await res.json()).toEqual({ error: "forbidden" });
+    });
+
+    it("answers 403 to a super admin", async () => {
+      mockIsSuperAdmin.mockResolvedValue(true);
+      expect((await forbiddenOrNotFound(testUserId, testOrgId, "forbidden", "missing")).status).toBe(403);
     });
   });
 

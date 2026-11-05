@@ -27,6 +27,7 @@ import {
   listMcpConnections,
   revokeMcpConnection,
   verifiedHostForClientId,
+  withMergedConsentScopes,
 } from "./connections";
 import { cleanupMcpOAuthRows } from "./cleanup";
 
@@ -101,6 +102,19 @@ afterAll(async () => {
 });
 
 describe("MCP connections", () => {
+  it("re-approving a narrower scope set keeps the broader grant; disconnect still revokes it", async () => {
+    const id = await seedConnection({ userId: aliceId, clientId: dcrClient, projectId: projectA });
+    await client`UPDATE oauth_consent SET scopes = ARRAY['mcp:read','mcp:incidents:write','mcp:sre'] WHERE id = ${id}`;
+    // Better Auth's own upsert replaces the scopes with the new request's.
+    await withMergedConsentScopes({ userId: aliceId, clientId: dcrClient, projectId: projectA }, ["mcp:read"], async () => {
+      await client`UPDATE oauth_consent SET scopes = ARRAY['mcp:read'] WHERE id = ${id}`;
+    });
+    const [row] = await client<{ scopes: string[] }[]>`SELECT scopes FROM oauth_consent WHERE id = ${id}`;
+    expect([...row.scopes].sort()).toEqual(["mcp:incidents:write", "mcp:read", "mcp:sre"]);
+    await revokeMcpConnection({ userId: aliceId, consentId: id });
+    expect(await client`SELECT 1 FROM oauth_consent WHERE id = ${id}`).toHaveLength(0);
+  });
+
   afterEach(async () => {
     await client`DELETE FROM oauth_access_token`;
     await client`DELETE FROM oauth_refresh_token`;

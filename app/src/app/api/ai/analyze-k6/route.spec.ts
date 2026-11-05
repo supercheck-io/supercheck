@@ -10,7 +10,11 @@ jest.mock("@/lib/ai/ai-streaming-service", () => ({ AIStreamingService: {
 } }));
 jest.mock("@/lib/ai/ai-prompts", () => ({ AIPromptBuilder: { buildK6AnalyzePrompt: jest.fn() } }));
 jest.mock("@/lib/session", () => ({ getActiveOrganization: jest.fn() }));
-jest.mock("@/lib/auth-context", () => ({ requireAuthContext: jest.fn() }));
+jest.mock("@/lib/auth-context", () => ({
+  requireAuthContext: jest.fn(),
+  AuthError: jest.requireActual("@/lib/auth-context").AuthError,
+  authErrorStatus: jest.requireActual("@/lib/auth-context").authErrorStatus,
+}));
 jest.mock("@/lib/services/usage-tracker", () => ({ usageTracker: { consumeAICredit: jest.fn(), refundAICredit: jest.fn() } }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 jest.mock("@/lib/s3-proxy", () => ({ getS3FileContent: jest.fn() }));
@@ -59,5 +63,30 @@ describe("k6 AI analysis tenant boundary", () => {
     expect(response.status).toBe(404);
     expect(getS3FileContent).not.toHaveBeenCalled();
     expect(AIStreamingService.generateStreamingResponse).not.toHaveBeenCalled();
+  });
+});
+
+describe("k6 AI analysis input validation", () => {
+  const post = (body?: string) =>
+    POST(new NextRequest("http://localhost/api/ai/analyze-k6", { method: "POST", headers: { "content-type": "application/json" }, body }));
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    AuthService.validateUserAccess.mockResolvedValue({ user: { id: "user-1", organizationId: "org-1" }, tier: "free" });
+  });
+
+  it.each([[undefined], ["not json"], ["{}"], ["null"], [JSON.stringify({ runId: "zzz", monitorId: "zzz", baselineRun: "zzz", compareRun: "zzz" })]])(
+    "answers 400, not 500, for invalid input %p",
+    async (body) => {
+      const response = await post(body);
+      expect(response.status).toBe(400);
+      expect((await response.json()).reason).toBe("invalid_request");
+      expect(AIStreamingService.generateStreamingResponse).not.toHaveBeenCalled();
+    },
+  );
+
+  it("answers 401 to an anonymous caller, even with invalid input", async () => {
+    AuthService.validateUserAccess.mockRejectedValue(new Error("Authentication required"));
+    expect((await post("{}")).status).toBe(401);
   });
 });

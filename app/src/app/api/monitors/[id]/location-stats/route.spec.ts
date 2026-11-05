@@ -13,7 +13,15 @@ jest.mock("@/lib/auth-context", () => {
     AuthError,
   };
 });
-jest.mock("@/lib/rbac/middleware", () => ({ hasPermissionForUser: jest.fn().mockResolvedValue(true) }));
+const mockStanding = { value: true };
+jest.mock("@/lib/rbac/middleware", () => ({
+  hasPermissionForUser: jest.fn().mockResolvedValue(true),
+  // Stands in for the real helper: 403 for an org member, 404 for a caller with no standing in the org.
+  forbiddenOrNotFound: jest.fn(async (_u: string, _o: string, forbidden: string, notFound: string) => {
+    const { NextResponse } = jest.requireActual("next/server");
+    return mockStanding.value ? NextResponse.json({ error: forbidden }, { status: 403 }) : NextResponse.json({ error: notFound }, { status: 404 });
+  }),
+}));
 jest.mock("drizzle-orm", () => {
   const actual = jest.requireActual("drizzle-orm");
   return { ...actual, gte: jest.fn(actual.gte) };
@@ -23,6 +31,7 @@ import { NextRequest } from "next/server";
 import { db } from "@/utils/db";
 import { requireUserAuthContext } from "@/lib/auth-context";
 import { GET } from "./route";
+import { hasPermissionForUser } from "@/lib/rbac/middleware";
 
 const get = () =>
   GET(new NextRequest("http://localhost/api/monitors/m/location-stats"), {
@@ -39,6 +48,17 @@ it("answers 401 for an auth failure instead of 500 (c20)", async () => {
   const { AuthError } = jest.requireMock("@/lib/auth-context");
   jest.mocked(requireUserAuthContext).mockRejectedValueOnce(new AuthError("expired"));
   expect((await get()).status).toBe(401);
+});
+
+it("answers 403 to an organization member without view and 404 to another tenant", async () => {
+  jest.mocked(db.query.monitors.findFirst).mockResolvedValue({ id: "m", organizationId: "o", projectId: "p" } as never);
+  jest.mocked(hasPermissionForUser).mockResolvedValueOnce(false);
+  mockStanding.value = true;
+  expect((await get()).status).toBe(403);
+  jest.mocked(hasPermissionForUser).mockResolvedValueOnce(false);
+  mockStanding.value = false;
+  expect((await get()).status).toBe(404);
+  mockStanding.value = true;
 });
 
 const builder = (rows: unknown[], wheres: unknown[] = []) => {

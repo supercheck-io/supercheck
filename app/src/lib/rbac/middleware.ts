@@ -261,6 +261,26 @@ export async function hasPermissionForUser(
   }
 }
 
+/**
+ * Response for a denied permission check on a tenant-owned resource that exists.
+ * A caller with no standing in the resource's organization gets the same 404 as a
+ * missing id (no existence oracle); a member of that organization lacking the
+ * permission gets 403.
+ */
+export async function forbiddenOrNotFound(
+  userId: string,
+  organizationId: string | null | undefined,
+  forbiddenMessage: string,
+  notFoundMessage: string,
+): Promise<NextResponse> {
+  const hasStanding =
+    !!organizationId &&
+    ((await isSuperAdmin(userId)) || !!(await getUserOrgRole(userId, organizationId)));
+  return hasStanding
+    ? NextResponse.json({ error: forbiddenMessage }, { status: 403 })
+    : NextResponse.json({ error: notFoundMessage }, { status: 404 });
+}
+
 // ============================================================================
 // PROJECT PERMISSION CONTEXT RESOLUTION
 // ============================================================================
@@ -299,6 +319,8 @@ export interface ProjectPermissionContext {
 export async function resolveProjectPermissionContext(
   userId: string,
   projectId: string,
+  /** `requireMembership`: resolve a super admin from their real membership only (null without one). */
+  options?: { requireMembership?: boolean },
 ): Promise<ProjectPermissionContext | null> {
   // 1. Verify project exists and get org ID (1 DB query)
   const [project] = await db
@@ -310,7 +332,7 @@ export async function resolveProjectPermissionContext(
   if (!project) return null;
 
   // 2. Check super admin status (1 DB query)
-  const isSA = await isSuperAdmin(userId);
+  const isSA = !options?.requireMembership && (await isSuperAdmin(userId));
   if (isSA) {
     return {
       userId,

@@ -32,8 +32,8 @@ Some errors include additional context:
 | `201` | Created | Resource created successfully |
 | `400` | Bad Request | Fix the request body or parameters |
 | `401` | Unauthorized | Credentials are missing, invalid, expired or revoked. Check the token |
-| `403` | Forbidden | Authenticated but not permitted: RBAC role, project scope, or browser-only operation |
-| `404` | Not Found | Verify the resource ID exists |
+| `403` | Forbidden | Authenticated but not permitted: RBAC role, project scope, or browser-only operation. Admin-only (`/api/admin/*`) endpoints return `401` when signed out and `403` for non-admins |
+| `404` | Not Found | Verify the resource ID exists. A resource in an organization you do not belong to also returns `404`, the same as a missing ID |
 | `409` | Conflict | Duplicate resource (e.g. token name) |
 | `429` | Rate Limited | Wait and retry (see `Retry-After` header) |
 | `500` | Server Error | Check whether a mutation succeeded before retrying; report persistent errors |

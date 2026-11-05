@@ -8,7 +8,8 @@ icon: ShieldCheck
 
 - **You approve each connection** and choose the single project it can read.
 - **Read-only by default.** Tools that change incidents (`mcp:incidents:write`) or start AI SRE work (`mcp:sre`) exist only when the app asked for that scope and you approved it. Nothing creates, edits or deletes tests, monitors, jobs or variables, and nothing triggers runs.
-- **Disconnect works immediately.** Remove an app under **Account**, **Connected apps**.
+- **Disconnect works immediately.** Remove an app under **Account**, **Connected apps**. `/oauth2/revoke` revokes refresh tokens only; an access token keeps its signature for up to 15 minutes, but every call re-checks your approval, so Disconnect refuses it at once.
+- **Approvals add up.** Approving again for the same app and project keeps every scope you approved before; a narrower request never removes a broader grant. Only Disconnect removes scopes. `mcp:read` is always required: a request without it is refused.
 - **Your role applies on every call.** Access is re-checked for each request, not only when you connect, so these take effect at once:
   - you disconnect the app
   - you are removed from the organization (if you are removed only from the project, you keep read-only access as a viewer while you remain in the organization)
@@ -22,7 +23,8 @@ icon: ShieldCheck
 | Protocol | OAuth 2.1 with PKCE (S256) and resource indicators |
 | Scopes | `mcp:read` (always), optional `mcp:incidents:write` and `mcp:sre`, and `offline_access` for refresh. An optional tool works only while both your approval and the token carry its scope, and your role still allows the action |
 | Access token | 15 minutes |
-| Refresh token | 30 days, rotated on use |
+| Refresh token | 30 days, rotated on use. The previous token keeps working for 30 seconds, so a retry after a dropped response succeeds |
+| Client registration | Public clients only, at most 5 registrations per minute per IP address |
 
 <Accordions>
 <Accordion title="What is filtered" id="what-is-filtered">

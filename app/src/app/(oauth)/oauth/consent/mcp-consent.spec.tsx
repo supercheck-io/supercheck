@@ -34,6 +34,14 @@ describe("McpConsent", () => {
     expect(screen.getByText(/127\.0\.0\.1:8765/)).toBeInTheDocument();
   });
 
+  it("tells the user a narrower approval keeps the earlier access, only for the chosen project", () => {
+    const { unmount } = render(<McpConsent oauthQuery="q" userEmail="me@example.com" projects={projects} client={unverified} navigate={navigate} keepsEarlierAccessProjectIds={[projects[1].id]} />);
+    expect(screen.getByText(/keeps the access you approved earlier\. Disconnect it in Connected apps to reduce access/i)).toBeInTheDocument();
+    unmount();
+    render(<McpConsent oauthQuery="q" userEmail="me@example.com" projects={projects} client={unverified} navigate={navigate} keepsEarlierAccessProjectIds={["other"]} />);
+    expect(screen.queryByText(/keeps the access you approved earlier/i)).toBeNull();
+  });
+
   it("lists the optional write and AI SRE access only when requested", () => {
     render(<McpConsent oauthQuery="q" userEmail="me@example.com" projects={projects} client={unverified} navigate={navigate} canWriteIncidents canRunSre />);
     expect(screen.getByText(/assign, acknowledge and resolve incidents/i)).toBeInTheDocument();
@@ -95,6 +103,7 @@ describe("McpConsent", () => {
     ["forbidden", /no longer have access/i],
     ["impersonation_not_allowed", /impersonating/i],
     ["consent_failed", /expired or was already used/i],
+    ["consent_scopes_not_restored", /fewer permissions/i],
     ["something_new", /something went wrong/i],
   ])("explains %s and lets the user try again", async (error, message) => {
     reply(error === "forbidden" ? 403 : 400, { error });

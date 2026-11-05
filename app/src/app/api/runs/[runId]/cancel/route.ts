@@ -125,10 +125,8 @@ export async function POST(
 
     if (!organizationIdForRbac) {
       logger.warn({ runId }, "Cannot determine organization for run");
-      return NextResponse.json(
-        { error: "Cannot determine organization for this run" },
-        { status: 400 }
-      );
+      // Same answer as a missing run, so an orphaned run id cannot be told from an absent one.
+      return NextResponse.json({ error: "Run not found" }, { status: 404 });
     }
 
     // RBAC: Verify user has access to this organization
@@ -146,12 +144,8 @@ export async function POST(
         { runId, userId, orgId: organizationIdForRbac },
         "Access denied - not a member of organization"
       );
-      return NextResponse.json(
-        {
-          error: "Access denied - You don't have permission to cancel this run",
-        },
-        { status: 403 }
-      );
+      // Same response as a missing run, so another tenant's run id cannot be confirmed.
+      return NextResponse.json({ error: "Run not found" }, { status: 404 });
     }
 
     // RBAC: Check if user has permission to cancel runs in this project

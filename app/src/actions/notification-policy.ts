@@ -6,6 +6,7 @@ import { z } from "zod";
 import { notificationPolicies, notificationProviders, projects } from "@/db/schema";
 import { requireProjectContext } from "@/lib/project-context";
 import { hasPermission } from "@/lib/rbac/middleware";
+import { isUuid } from "@/lib/uuid";
 import { getNotificationPolicy, type NotificationPolicy } from "@/lib/sre/notification-policy";
 import { db } from "@/utils/db";
 
@@ -23,6 +24,8 @@ const policySchema = z.object({
 /** The target project must belong to the caller's organization; org admins may manage any of its projects. */
 async function authorize(projectId: string, action: "view" | "update") {
   const { organizationId } = await requireProjectContext();
+  // A malformed id must not reach the uuid column (Postgres would raise); answer as for any inaccessible project.
+  if (!isUuid(projectId)) return { ok: false as const, error: "Access denied" };
   const project = await db.query.projects.findFirst({
     where: and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)),
     columns: { id: true },
