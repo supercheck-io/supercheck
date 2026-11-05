@@ -138,5 +138,28 @@ class ComposeTests(unittest.TestCase):
                         self.assertEqual(published[0]['protocol'], 'tcp')
 
 
+    def test_bundled_app_and_rustfs_host_ports_can_move(self):
+        env = {key: value for key, value in os.environ.items()
+               if key not in ('APP_HOST_PORT', 'RUSTFS_HOST_PORT', 'APP_DOMAIN',
+                              'NEXT_PUBLIC_APP_URL', 'APP_URL', 'BETTER_AUTH_URL', 'COMPOSE_PROFILES')}
+        for app_port, rustfs_port in ((None, None), ('3201', '3209')):
+            with self.subTest(app_port=app_port):
+                run_env = dict(env)
+                if app_port:
+                    run_env.update(APP_HOST_PORT=app_port, RUSTFS_HOST_PORT=rustfs_port)
+                result = subprocess.run(
+                    ['docker', 'compose', '--env-file', '/dev/null', '-f', 'docker-compose.yml',
+                     'config', '--format', 'json'],
+                    cwd=DEPLOY, env=run_env, text=True, capture_output=True, check=True, timeout=30)
+                services = json.loads(result.stdout)['services']
+                app = services['app']
+                self.assertEqual(int(app['ports'][0]['published']), int(app_port or 3000))
+                self.assertEqual(app['ports'][0]['target'], 3000)
+                self.assertEqual(int(services['rustfs']['ports'][0]['published']), int(rustfs_port or 9000))
+                # The local URL follows the host port so sign-in redirects work.
+                self.assertEqual(app['environment']['BETTER_AUTH_URL'],
+                                 f"http://localhost:{app_port or 3000}")
+
+
 if __name__ == '__main__':
     unittest.main()

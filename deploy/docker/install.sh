@@ -470,6 +470,11 @@ generate_config() {
     SUPERCHECK_ENV_FILE="$PWD/.env.new" bash ./init-secrets.sh
     [[ -s .env.new ]]
     if [[ "$MODE" == "public" ]]; then public_block "https" >>.env.new; fi
+    # Persist host ports moved for this run, so later `docker compose up` keeps them.
+    local var
+    for var in APP_HOST_PORT RUSTFS_HOST_PORT DB_HOST_PORT REDIS_HOST_PORT; do
+      if [[ -n "${!var:-}" ]] && ! grep -q "^${var}=" .env.new; then echo "${var}=${!var}" >>.env.new; fi
+    done
     chmod 600 .env.new
     mv .env.new .env
   )
@@ -757,21 +762,46 @@ preflight() {
   [[ "$problems" -eq 0 ]] || exit 1
 }
 
+# host_port VAR DEFAULT: a shell value (even empty) wins over .env, as in Compose. Quotes, CR,
+# spaces and trailing comments are dropped; anything that is not a port 1-65535 stops the install.
+# APP_HOST_PORT and RUSTFS_HOST_PORT only apply when the Compose file reads them (1.5.1+); before
+# the source is fetched the requested value is used, and check_ports runs again after the fetch.
+host_port() {
+  local var="$1" default="$2" port file
+  file="$(compose_dir)/docker-compose.yml"
+  if [[ "$var" == APP_HOST_PORT || "$var" == RUSTFS_HOST_PORT ]] && [[ -f "$file" ]] && ! grep -q "$var" "$file"; then
+    echo "$default"; return
+  fi
+  if [[ -n "${!var+set}" ]]; then port="${!var}"
+  else port="$(env_get "$var" || true)"; fi # env_get fails under pipefail before .env exists.
+  port="${port%%#*}"; port="${port//[[:space:]]/}"
+  [[ -z "$port" ]] && { echo "$default"; return; }
+  if [[ ! "$port" =~ ^[0-9]+$ ]] || (( 10#$port < 1 || 10#$port > 65535 )); then
+    die "$var must be a port number from 1 to 65535 (got \"$port\")." "Fix it in $(compose_dir)/.env or the shell, then re-run."
+  fi
+  echo "$((10#$port))"
+}
+
+# Host port the app publishes on (APP_HOST_PORT, default 3000).
+app_host_port() { host_port APP_HOST_PORT 3000; }
+
 check_ports() {
-  # Compose also binds PostgreSQL and Redis on loopback; their host ports can be moved in .env.
-  local db_port redis_port
-  # env_get fails under pipefail before .env exists (first install).
-  db_port="${DB_HOST_PORT:-$(env_get DB_HOST_PORT || true)}"; redis_port="${REDIS_HOST_PORT:-$(env_get REDIS_HOST_PORT || true)}"
-  # Keep digits only, so a stray CR or space from .env cannot reach port_in_use.
-  db_port="${db_port//[^0-9]/}"; redis_port="${redis_port//[^0-9]/}"
-  local ports=(3000 9000 "${db_port:-5432}" "${redis_port:-6379}")
+  # Compose binds the app, RustFS, PostgreSQL and Redis on loopback; each host port can be moved in .env.
+  local app_port rustfs_port db_port redis_port
+  app_port="$(host_port APP_HOST_PORT 3000)" || exit 1; rustfs_port="$(host_port RUSTFS_HOST_PORT 9000)" || exit 1
+  db_port="$(host_port DB_HOST_PORT 5432)" || exit 1; redis_port="$(host_port REDIS_HOST_PORT 6379)" || exit 1
+  local ports=("$app_port" "$rustfs_port" "$db_port" "$redis_port")
   [[ "$MODE" == "public" ]] && ports=(80 443 "${ports[@]}")
+  # Two services on one host port pass the listener check but fail at `docker compose up`.
+  local dup
+  dup="$(printf '%s\n' "${ports[@]}" | sort | uniq -d | head -n1)"
+  [[ -z "$dup" ]] || die "Port $dup is set for two Supercheck services." "Give each of APP_HOST_PORT, RUSTFS_HOST_PORT, DB_HOST_PORT and REDIS_HOST_PORT its own port."
   for p in "${ports[@]}"; do
     if port_in_use "$p"; then
       # A re-run on a running install legitimately finds our own stack listening.
       if docker ps --filter "label=com.docker.compose.project=$(project_name)" --format '{{.Ports}}' 2>/dev/null | grep -Eq ":${p}->"; then note "Port $p is held by the existing Supercheck stack."
       else fail "Port $p is already in use by another process."; note "Find it with: ss -ltnp 'sport = :$p'"
-        [[ "$p" == "${db_port:-5432}" || "$p" == "${redis_port:-6379}" ]] && note "Or move Supercheck's port with DB_HOST_PORT or REDIS_HOST_PORT in $(compose_dir)/.env."
+        [[ "$p" != 80 && "$p" != 443 ]] && note "Or move Supercheck's port: set APP_HOST_PORT, RUSTFS_HOST_PORT, DB_HOST_PORT or REDIS_HOST_PORT in $(compose_dir)/.env, or on a first install run e.g. sudo APP_HOST_PORT=3001 bash install.sh."
         exit 1; fi
     fi
   done
@@ -966,6 +996,8 @@ main() {
       "Install a release that includes the RustFS storage change: see https://github.com/supercheck-io/supercheck/releases" \
       "then re-run with --version <that release>, or run install.sh from a checkout of its source."
   fi
+  # The fetched release decides which host ports its Compose file publishes.
+  if [[ "${SOURCE_FETCHED:-false}" == true || "$UPGRADE" == true ]]; then check_ports; fi
   if [[ -f "$(compose_dir)/.env" ]]; then
     ok "Keeping existing .env (secrets are never regenerated)"
     if [[ "$NEED_PUBLIC_APPLY" == true ]]; then run_step "Applying HTTPS settings to .env" apply_public_config; fi
@@ -1012,8 +1044,9 @@ main() {
   HEALTHY=false
   if [[ "$DRY_RUN" != true ]]; then
     health=""
+    APP_PORT="$(app_host_port)" || exit 1
     for _ in $(seq 1 30); do
-      health="$(curl -sS --max-time 5 http://127.0.0.1:3000/api/health 2>/dev/null || true)"
+      health="$(curl -sS --max-time 5 "http://127.0.0.1:${APP_PORT}/api/health" 2>/dev/null || true)"
       [[ "$health" == '{"status":"ok"'* ]] && break
       sleep 2
     done
@@ -1028,7 +1061,7 @@ main() {
       note "$health"
       note "Inspect with: cd $(compose_dir) && sudo docker compose logs --tail=100 app worker"
     else
-      die "The app did not answer on http://127.0.0.1:3000." "Inspect with: cd $(compose_dir) && sudo docker compose logs --tail=100 app worker"
+      die "The app did not answer on http://127.0.0.1:${APP_PORT}." "Inspect with: cd $(compose_dir) && sudo docker compose logs --tail=100 app worker"
     fi
   fi
 
@@ -1043,7 +1076,7 @@ main() {
 
   # Report what is actually configured, not what was requested.
   if env_has_https; then MODE="public"; DOMAIN="$(env_get APP_DOMAIN)"; else MODE="local"; fi
-  if [[ "$MODE" == "public" ]]; then URL="https://${DOMAIN}"; else URL="http://localhost:3000"; fi
+  if [[ "$MODE" == "public" ]]; then URL="https://${DOMAIN}"; else URL="http://localhost:$(app_host_port)"; fi
   if [[ "$HEALTHY" == true && "$UPGRADE" == true ]]; then
     printf '\n%s  Supercheck %s is ready.%s %s(%ss)%s\n\n' "$GREEN$BOLD" "$VERSION" "$RESET" "$DIM" "$SECONDS" "$RESET"
   elif [[ "$HEALTHY" == true ]]; then
@@ -1053,7 +1086,7 @@ main() {
   fi
   printf '  Open        %s%s%s\n' "$BOLD" "$URL" "$RESET"
   if [[ "$MODE" == "local" ]]; then
-    note "Port 3000 listens on this server only. From your laptop: ssh -L 3000:localhost:3000 <user>@<this-server>"
+    note "Port $(app_host_port) listens on this server only. From your laptop: ssh -L $(app_host_port):localhost:$(app_host_port) <user>@<this-server>"
   else
     note "The certificate is issued on first visit and can take up to a minute. If the browser warns, wait and reload."
   fi

@@ -190,11 +190,16 @@ restore() {
 
   say "Starting Supercheck"
   dc up -d --wait --wait-timeout 300
-  if curl -fsS --max-time 10 http://127.0.0.1:3000/api/health >/dev/null 2>&1; then
+  # A shell value (even empty) wins over .env, as in Compose; accept KEY=v, KEY = v and KEY: v,
+  # then drop quotes, spaces and trailing comments.
+  local port; port="${APP_HOST_PORT-$(sed -nE 's/^[[:space:]]*APP_HOST_PORT[[:space:]]*[=:][[:space:]]*//p' .env | tail -n1)}"
+  port="${port%%#*}"; port="$(printf '%s' "$port" | tr -d "\"' \t\r")"
+  [[ "$port" =~ ^[0-9]+$ ]] || port=3000
+  if curl -fsS --max-time 10 "http://127.0.0.1:${port}/api/health" >/dev/null 2>&1; then
     say "Restore finished; the health check passed."
     echo "Queued jobs in Redis were not restored; runs queued before the backup will not resume."
   else
-    echo "Restore finished, but http://127.0.0.1:3000/api/health did not answer yet. Check: sudo docker compose logs --tail=100 app" >&2
+    echo "Restore finished, but http://127.0.0.1:${port}/api/health did not answer yet. Check: sudo docker compose logs --tail=100 app" >&2
   fi
 }
 
