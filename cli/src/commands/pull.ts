@@ -3,7 +3,7 @@ import { managedState, verifyContext } from '../utils/managed.js'
 import { getOutputFormat } from '../output/formatter.js'
 import { randomUUID } from 'node:crypto'
 import { Command } from 'commander'
-import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, unlinkSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, statSync, unlinkSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { createAuthenticatedClient } from '../api/authenticated-client.js'
 import { tryLoadConfig } from '../config/loader.js'
@@ -330,7 +330,12 @@ export function pullTests(tests: RemoteTest[], cwd: string, summary: PullSummary
 
       if (existingFilename && existingFilename !== currentFile) {
         const oldPath = resolveWithin(cwd, existingFilename)
-        if (existsSync(oldPath)) {
+        // On a case-insensitive volume a case-only rename makes oldPath the file just written: never unlink it.
+        const sameFile = (a: string, b: string) => {
+          const sa = statSync(a), sb = statSync(b)
+          return sa.dev === sb.dev && sa.ino === sb.ino
+        }
+        if (existsSync(oldPath) && !sameFile(oldPath, filePath)) {
           const oldContent = readFileSync(oldPath)
           // Identical to what was just written: nothing to lose, so no backup.
           if (!oldContent.equals(readFileSync(filePath))) {

@@ -121,7 +121,11 @@ export function validateProviderConfig(
     case "email":
       {
         const raw = config.emails;
-        const list = (Array.isArray(raw) ? raw : typeof raw === "string" ? raw.split(",") : [])
+        // Stored, tested and delivered as one comma-separated string; an array would pass here and fail later.
+        if (raw !== undefined && raw !== null && typeof raw !== "string") {
+          throw new Error("Email notification providers require emails as a comma-separated string.");
+        }
+        const list = (raw ?? "").split(",")
           .map((e) => (typeof e === "string" ? e.trim() : ""))
           .filter(Boolean);
         if (list.length === 0) {

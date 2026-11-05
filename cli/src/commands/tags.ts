@@ -41,7 +41,7 @@ tagCommand
         color: options.color,
       }),
     ).catch((error: unknown) => {
-      if (error instanceof ApiRequestError && error.statusCode === 409) throw new CLIError(`Tag '${name}' already exists`, ExitCode.ApiError)
+      if (error instanceof ApiRequestError && error.statusCode === 409) throw new CLIError(`Tag '${name}' already exists`, ExitCode.ApiError, { status: error.statusCode })
       throw error
     })
 

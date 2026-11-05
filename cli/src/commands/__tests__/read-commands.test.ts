@@ -180,6 +180,7 @@ describe('read-only and operational commands', () => {
       await expect(tagCommand.parseAsync(['node', 'tag', 'create', 'smoke'])).rejects.toMatchObject({
         exitCode: ExitCode.ApiError,
         message: "Tag 'smoke' already exists",
+        details: { status: 409 },
       })
     })
 

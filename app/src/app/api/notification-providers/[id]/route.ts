@@ -269,17 +269,23 @@ export async function PUT(
         maskedFields,
       });
     } else {
-      // Rename the decrypted config server-side so masked credentials remain intact.
-      const renamedConfig = {
-        ...decryptNotificationProviderConfig(existingProvider.config, project.id),
-        name: updateData.name!,
-      };
+      // Rename the decrypted config server-side so masked credentials remain intact. An enable/disable-only
+      // update leaves the stored config untouched, so a provider whose config no longer decrypts can still be disabled.
+      const renamed = updateData.name !== existingProvider.name;
+      const renamedConfig = renamed
+        ? {
+            ...decryptNotificationProviderConfig(existingProvider.config, project.id),
+            name: updateData.name!,
+          }
+        : null;
       const [updatedProvider] = await db
         .update(notificationProviders)
         .set({
           name: updateData.name!,
           type: updateData.type as NotificationProviderType,
-          config: encryptNotificationProviderConfig(renamedConfig as PlainNotificationProviderConfig, project.id),
+          ...(renamedConfig && {
+            config: encryptNotificationProviderConfig(renamedConfig as PlainNotificationProviderConfig, project.id),
+          }),
           ...(updateData.isEnabled !== undefined && { isEnabled: updateData.isEnabled }),
           updatedAt: new Date(),
         })
@@ -292,14 +298,17 @@ export async function PUT(
         )
         .returning();
 
-      const decryptedConfig = decryptNotificationProviderConfig(
-        updatedProvider.config,
-        project.id
-      );
-      const { sanitizedConfig, maskedFields } = sanitizeConfigForClient(
-        updatedProvider.type as NotificationProviderType,
-        decryptedConfig
-      );
+      let decryptedConfig: PlainNotificationProviderConfig | null = null;
+      try {
+        decryptedConfig = decryptNotificationProviderConfig(updatedProvider.config, project.id);
+      } catch (error) {
+        // The toggle is saved; a stored config that no longer decrypts is reported, not a 500.
+        if (renamedConfig) throw error;
+        console.warn("Notification provider config could not be decrypted after update", { id });
+      }
+      const { sanitizedConfig, maskedFields } = decryptedConfig
+        ? sanitizeConfigForClient(updatedProvider.type as NotificationProviderType, decryptedConfig)
+        : { sanitizedConfig: {}, maskedFields: [] as string[] };
 
       return NextResponse.json({
         ...updatedProvider,
