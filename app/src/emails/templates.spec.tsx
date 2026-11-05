@@ -36,11 +36,22 @@ describe("email templates", () => {
     expect(html.toLowerCase()).toContain(FOOTER_MARK);
   });
 
-  it("monitor alert: recovery says Resolved and has no incidents button", () => {
+  it("monitor alert: recovery says Recovered/Resolved and has no incidents button", () => {
     const html = renderToStaticMarkup(
-      <MonitorAlertEmail title="Up" message="ok" fields={[]} footer="x" type="success" incidentsUrl="https://app.io/incidents" />,
+      <MonitorAlertEmail title="Up" message="ok" fields={[]} footer="x" type="recovery" incidentsUrl="https://app.io/incidents" />,
     );
+    expect(html).toContain("Recovered");
     expect(html).toContain("Resolved");
+    expect(html).not.toContain("View incidents");
+  });
+
+  it("monitor alert: a plain pass says Passed, not Recovered or Resolved", () => {
+    const html = renderToStaticMarkup(
+      <MonitorAlertEmail title="Job Completed - x" message="ok" fields={[]} footer="x" type="success" incidentsUrl="https://app.io/incidents" />,
+    );
+    expect(html).toContain("Passed");
+    expect(html).not.toContain("Recovered");
+    expect(html).not.toContain("Resolved");
     expect(html).not.toContain("View incidents");
   });
 

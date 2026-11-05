@@ -6,7 +6,7 @@
  * across the application and worker services.
  */
 
-export { BaseLayout } from "./base-layout";
+export { BaseLayout, PLAIN_TEXT_RENDER_OPTIONS } from "./base-layout";
 export { PasswordResetEmail } from "./password-reset";
 export { EmailVerificationEmail } from "./email-verification";
 export { OrganizationInvitationEmail } from "./organization-invitation";

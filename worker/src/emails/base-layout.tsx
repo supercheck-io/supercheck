@@ -10,6 +10,7 @@ import {
   Section,
   Text,
 } from "@react-email/components";
+import { plainTextSelectors } from "@react-email/render";
 import * as React from "react";
 
 interface BaseLayoutProps {
@@ -222,6 +223,23 @@ function isHttpUrl(value: string) {
 }
 
 /** Shared label/value table so alert and incident emails show details the same way. */
+/**
+ * Options for the plain-text part. Without them the details table's cells run together
+ * ("Job NameRhona McleanStatusSuccess"); render it as aligned columns instead.
+ */
+export const PLAIN_TEXT_RENDER_OPTIONS = {
+  plainText: true,
+  htmlToTextOptions: {
+    // Custom selectors replace react-email's defaults (skip images and preview padding, plain links), so keep them.
+    selectors: [
+      ...plainTextSelectors,
+      { selector: "table.sc-details", format: "dataTable" },
+      // Layout tables carry no data; keep their text flowing as blocks.
+      { selector: "table", format: "block" },
+    ],
+  },
+};
+
 export const DetailsTable = ({
   heading,
   fields,
@@ -231,7 +249,7 @@ export const DetailsTable = ({
 }) => (
   <Section style={detailsSection}>
     <Text style={detailsTitle}>{heading}</Text>
-    <table style={detailsTable}>
+    <table className="sc-details" style={detailsTable}>
       <tbody>
         {fields.map((field, index) => (
           <tr key={index}>
