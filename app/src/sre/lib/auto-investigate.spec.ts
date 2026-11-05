@@ -24,7 +24,6 @@ let runRows: unknown[] = [];
 let lateRunRows: unknown[] | null = null;
 let orgRunning = 0;
 let inTransaction = false;
-let txCount = 0;
 const wheres: unknown[] = [];
 const lockExecute = jest.fn().mockResolvedValue(undefined);
 // Queries are told apart by the columns they select: the incident, the org's running count, else the incident's runs.
@@ -45,7 +44,7 @@ jest.mock("@/sre/lib/stale-run-recovery", () => ({
 }));
 const tx = {
   execute: (...a: unknown[]) => lockExecute(...a),
-  select: (cols: Record<string, unknown>) => chain("severity" in cols ? incidentRows : "running" in cols ? [{ running: orgRunning }] : txCount > 1 ? lateRunRows ?? runRows : runRows),
+  select: (cols: Record<string, unknown>) => chain("severity" in cols ? incidentRows : "running" in cols ? [{ running: orgRunning }] : runRows),
 };
 jest.mock("@/utils/db", () => ({
   db: {
@@ -53,7 +52,6 @@ jest.mock("@/utils/db", () => ({
     select: (cols: Record<string, unknown>) => chain("running" in cols ? [{ running: orgRunning }] : lateRunRows ?? runRows),
     transaction: async (callback: (t: typeof tx) => unknown) => {
       inTransaction = true;
-      txCount++;
       try {
         return await callback(tx);
       } finally {
@@ -73,7 +71,6 @@ beforeEach(() => {
   wheres.length = 0;
   orgRunning = 0;
   lateRunRows = null;
-  txCount = 0;
   sreEnabled.mockReturnValue(true);
   policy.mockResolvedValue({ autoInvestigateOnOpen: true });
   incidentRows = [{ severity: "sev1", status: "triggered" }];
@@ -110,7 +107,7 @@ it.each(["sev3", "sev4"])("runs only a triage for %s", async (severity) => {
   expect(start).not.toHaveBeenCalled();
 });
 
-it("takes a per-incident lock released before the org-level lock, which covers the run-row insert", async () => {
+it("takes a per-incident advisory lock and releases it before the run starts", async () => {
   const { PgDialect } = jest.requireActual("drizzle-orm/pg-core");
   let startedInsideTransaction: boolean | undefined;
   start.mockImplementationOnce(async () => {
@@ -118,11 +115,11 @@ it("takes a per-incident lock released before the org-level lock, which covers t
     return { success: true, investigationRunId: "run-1", incident: { id: "i1" } };
   });
   await maybeAutoInvestigateOnOpen(input);
-  expect(lockExecute).toHaveBeenCalledTimes(2);
-  const locks = lockExecute.mock.calls.map((c) => new PgDialect().sqlToQuery(c[0]));
-  expect(locks[0].sql).toContain("pg_advisory_xact_lock");
-  expect(locks.map((l) => l.params)).toEqual([["auto-investigate:i1"], ["auto-investigate-org:org-1"]]);
-  expect(startedInsideTransaction).toBe(true);
+  expect(lockExecute).toHaveBeenCalledTimes(1);
+  const lock = new PgDialect().sqlToQuery(lockExecute.mock.calls[0][0]);
+  expect(lock.sql).toContain("pg_advisory_xact_lock");
+  expect(lock.params).toEqual(["auto-investigate:i1"]);
+  expect(startedInsideTransaction).toBe(false);
 });
 
 it("runs triage outside the transaction too", async () => {

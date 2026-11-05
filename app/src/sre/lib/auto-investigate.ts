@@ -77,15 +77,6 @@ export async function maybeAutoInvestigateOnOpen(input: AutoInvestigateInput): P
   }
 }
 
-// The lock transaction pins a pool connection while the start needs a second one; one at a time per process
-// means a burst of orgs can never hold every connection waiting for another.
-let startChain: Promise<unknown> = Promise.resolve();
-function oneStartAtATime<T>(run: () => Promise<T>): Promise<T> {
-  const next = startChain.then(run, run);
-  startChain = next.catch(() => undefined);
-  return next;
-}
-
 type Executor = Pick<typeof db, "select">;
 
 // One automatic run per incident: later alerts joining it, or a retried job, must not bill again.
@@ -142,36 +133,24 @@ async function startOnce(
 
     if (await sreDailyTokenLimitResponse(input.organizationId)) return { handled: false, reason: "daily_limit" };
 
-    const lowSeverity = severity === "sev3" || severity === "sev4";
-    if (lowSeverity) {
-      // The lock is gone by now: re-check just before starting so a run another trigger finished meanwhile
-      // is not repeated. Narrows the race (a start between this read and the runner's insert remains).
-      const blocked = await blockingRunReason(db, input, autoAgentType(severity));
-      if (blocked) return { handled: false, reason: blocked };
+    // The lock is gone by now: re-check just before starting so a run another trigger finished meanwhile
+    // is not repeated. Narrows the race (a start between this read and the runner's insert remains).
+    const blocked = await blockingRunReason(db, input, autoAgentType(severity));
+    if (blocked) return { handled: false, reason: blocked };
+
+    if (severity === "sev3" || severity === "sev4") {
       const triage = await runSreIncidentTriage(input);
       if (!triage.success && triage.status === 409) return { handled: false, reason: "already_running" };
       return { handled: triage.success, reason: triage.success ? undefined : "triage_refused" };
     }
 
-    // The org cap counts rows across incidents, so the per-incident lock cannot serialize it. Hold an org-level lock
-    // over the re-check and the run-row insert (fast; the LLM work is detached below). It is taken only after the
-    // per-incident lock is released, so the two never nest. shortcut: the triage path (insert happens inside the
-    // runner, which also runs the LLM) is not covered and can still overshoot the cap by a racing start.
-    const outcome = await oneStartAtATime(() => db.transaction(async (tx) => {
-      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`auto-investigate-org:${input.organizationId}`}))`);
-      const blocked = await blockingRunReason(tx, input, autoAgentType(severity));
-      if (blocked) return { reason: blocked } as const;
-      try {
-        await assertCanStartSreInvestigation(input.organizationId);
-      } catch {
-        return { reason: "billing" } as const;
-      }
-      const result = await startSreIncidentInvestigation({ ...input, enableLiveConnectors: false });
-      if (!result.success) return { reason: result.status === 409 ? "already_running" : "not_started" } as const;
-      return { started: result } as const;
-    }));
-    if ("reason" in outcome) return { handled: false, reason: outcome.reason };
-    const started = outcome.started;
+    try {
+      await assertCanStartSreInvestigation(input.organizationId);
+    } catch {
+      return { handled: false, reason: "billing" };
+    }
+    const started = await startSreIncidentInvestigation({ ...input, enableLiveConnectors: false });
+    if (!started.success) return { handled: false, reason: started.status === 409 ? "already_running" : "not_started" };
     // Settles in the background, like the investigate API; billing is taken only on completion.
     void completeSreIncidentInvestigation(started.investigationRunId, started.incident, {
       ...input,
