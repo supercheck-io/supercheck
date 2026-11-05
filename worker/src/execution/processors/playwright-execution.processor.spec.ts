@@ -107,7 +107,10 @@ jest.mock('../../common/utils/error-handler', () => ({
 }));
 
 // Import after mocks
-import { PlaywrightExecutionProcessor } from './playwright-execution.processor';
+import {
+  PlaywrightExecutionProcessor,
+  ResultNotPersistedError,
+} from './playwright-execution.processor';
 import { ErrorHandler } from '../../common/utils/error-handler';
 import { CAPACITY_DEFERRAL_LIMIT } from '../../common/capacity-deferral';
 import { ExecutionCapacityError } from '../services/execution-admission.service';
@@ -287,6 +290,29 @@ describe('PlaywrightExecutionProcessor', () => {
       expect(
         mockUsageTrackerService.completeRunWithUsage,
       ).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not execute a committed run again when the lastRunAt update fails', async () => {
+      const originalUpdate = mockDbService.db.update;
+      mockDbService.db.update = jest.fn().mockReturnValue({
+        set: (values: Record<string, unknown>) => ({
+          where: () => ({
+            execute: () =>
+              'lastRunAt' in values
+                ? Promise.reject(new Error('db blip'))
+                : Promise.resolve(),
+          }),
+        }),
+      });
+      try {
+        const job = createMockJob(mockJobTask);
+        await expect(processor.process(job)).resolves.toMatchObject({
+          success: true,
+        });
+        expect(mockExecutionService.runJob).toHaveBeenCalledTimes(1);
+      } finally {
+        mockDbService.db.update = originalUpdate;
+      }
     });
 
     it('delays a duplicate attempt without changing status or starting another pod', async () => {
@@ -1093,6 +1119,104 @@ describe('PlaywrightExecutionProcessor', () => {
 
         expect(mockDbService.updateRunStatus).toHaveBeenCalled();
       });
+    });
+
+    describe('Result persistence failures', () => {
+      const run = (kind: string) => {
+        const job = createMockJob(kind === 'test' ? mockTestTask : mockJobTask);
+        job.opts = { attempts: 3 };
+        job.attemptsMade = 0;
+        const execute =
+          kind === 'test'
+            ? mockExecutionService.runSingleTest
+            : mockExecutionService.runJob;
+        return { job, execute };
+      };
+
+      it.each(['test', 'job'])(
+        'retries only the save of a %s result when it fails once',
+        async (kind) => {
+          const { job, execute } = run(kind);
+          mockUsageTrackerService.completeRunWithUsage.mockRejectedValueOnce(
+            new Error('db down'),
+          );
+          await expect(processor.process(job)).resolves.toMatchObject({
+            success: true,
+          });
+          expect(execute).toHaveBeenCalledTimes(1);
+          expect(
+            mockUsageTrackerService.completeRunWithUsage,
+          ).toHaveBeenCalledTimes(2);
+          expect(mockDbService.updateRunStatus).toHaveBeenCalledWith(
+            runId,
+            'passed',
+            expect.any(String),
+            undefined,
+            expect.anything(),
+          );
+        },
+      );
+
+      it.each(['test', 'job'])(
+        'throws UnrecoverableError without re-running when %s saves keep failing',
+        async (kind) => {
+          const { job, execute } = run(kind);
+          mockUsageTrackerService.completeRunWithUsage.mockRejectedValue(
+            new Error('db down'),
+          );
+          const failure = await processor.process(job).catch((e: unknown) => e);
+          expect(failure).toBeInstanceOf(ResultNotPersistedError);
+          expect(failure).toBeInstanceOf(UnrecoverableError);
+          expect(execute).toHaveBeenCalledTimes(1);
+          // 3 save attempts, then one metering-only call (rejects here too, and must not mask the error).
+          const calls = mockUsageTrackerService.completeRunWithUsage.mock.calls;
+          expect(calls).toHaveLength(4);
+          expect(calls[3][0]).toMatchObject({
+            runId,
+            eventType: 'playwright_execution',
+            durationMs: expect.any(Number),
+          });
+          expect(calls[3][0].durationMs).toBeGreaterThan(0);
+          expect(
+            mockDbService.updateRunStatus.mock.calls.filter(
+              ([id, status]) => id === runId && status === 'failed',
+            ),
+          ).toHaveLength(0);
+        },
+      );
+
+      it.each(['test', 'job'])(
+        'meters a %s run once when its saves fail but metering succeeds',
+        async (kind) => {
+          const { job, execute } = run(kind);
+          for (let i = 0; i < 3; i++) {
+            mockUsageTrackerService.completeRunWithUsage.mockRejectedValueOnce(
+              new Error('db down'),
+            );
+          }
+          mockUsageTrackerService.completeRunWithUsage.mockResolvedValueOnce(
+            undefined,
+          );
+          const failure = await processor.process(job).catch((e: unknown) => e);
+          expect(failure).toBeInstanceOf(ResultNotPersistedError);
+          expect(execute).toHaveBeenCalledTimes(1);
+          expect(
+            mockUsageTrackerService.completeRunWithUsage,
+          ).toHaveBeenCalledTimes(4);
+        },
+      );
+
+      it.each(['test', 'job'])(
+        'still retries a %s execution that fails before any result exists',
+        async (kind) => {
+          const { job, execute } = run(kind);
+          execute.mockRejectedValueOnce(new Error('Pod scheduling failed'));
+          const failure = await processor.process(job).catch((e: unknown) => e);
+          expect(failure).toBeInstanceOf(Error);
+          expect(failure).not.toBeInstanceOf(UnrecoverableError);
+          expect(execute).toHaveBeenCalledTimes(1);
+        },
+      );
     });
 
     describe('Container-start metering', () => {

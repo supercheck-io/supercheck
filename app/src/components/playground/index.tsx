@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -225,6 +225,11 @@ const Playground: React.FC<PlaygroundProps> = ({
   );
   // Warn before leaving the page with unsaved editor changes
   const hasUnsavedChanges = editorContent !== initialEditorContent;
+  const editorStateRef = useRef({ current: editorContent, initial: initialEditorContent });
+  useEffect(() => {
+    editorStateRef.current = { current: editorContent, initial: initialEditorContent };
+  }, [editorContent, initialEditorContent]);
+  const [pendingRecordedCode, setPendingRecordedCode] = useState<string | null>(null);
   useEffect(() => {
     if (!hasUnsavedChanges) return;
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
@@ -695,6 +700,13 @@ const Playground: React.FC<PlaygroundProps> = ({
     }
   }, []);
 
+  const applyRecordedCode = useCallback((code: string) => {
+    setEditorContent(code);
+    setTestCase((prev) => ({ ...prev, script: code }));
+    setShowRecordingBanner(false);
+    toast.success("Recording saved to editor");
+  }, []);
+
   // Listen for recorded code from Supercheck Recorder extension
   useEffect(() => {
     const handleRecordedCode = (event: MessageEvent) => {
@@ -712,17 +724,20 @@ const Playground: React.FC<PlaygroundProps> = ({
         return;
       }
 
-      setEditorContent(code);
-      setTestCase((prev) => ({ ...prev, script: code }));
-      // Lets the recorder know the code arrived before it closes its window.
+      // Ack on receipt (the recorder only waits 3s); the code stays pending
+      // until the user confirms if it would overwrite unsaved work.
       window.postMessage({ type: "SUPERCHECK_RECORDED_CODE_ACK" }, window.location.origin);
-      setShowRecordingBanner(false);
-      toast.success("Recording saved to editor");
+      const { current, initial } = editorStateRef.current;
+      if (current !== initial) {
+        setPendingRecordedCode(code);
+        return;
+      }
+      applyRecordedCode(code);
     };
 
     window.addEventListener("message", handleRecordedCode);
     return () => window.removeEventListener("message", handleRecordedCode);
-  }, []);
+  }, [applyRecordedCode]);
 
   const validateForm = () => {
     try {
@@ -1519,6 +1534,32 @@ const Playground: React.FC<PlaygroundProps> = ({
                         </TooltipProvider>
                       )}
                     </div>
+
+                    <AlertDialog
+                      open={pendingRecordedCode !== null}
+                      onOpenChange={(open) => !open && setPendingRecordedCode(null)}
+                    >
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>
+                            Replace editor content with the recorded script?
+                          </AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Your editor has unsaved changes that will be lost.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Keep current</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => {
+                              if (pendingRecordedCode !== null) applyRecordedCode(pendingRecordedCode);
+                            }}
+                          >
+                            Replace
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
 
                     {/* Cancel Confirmation Dialog */}
                     <AlertDialog

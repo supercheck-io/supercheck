@@ -275,7 +275,7 @@ describe("scheduled execution admission", () => {
     expect(values).toHaveBeenCalledWith(
       expect.objectContaining({
         status: "failed",
-        metadata: expect.objectContaining({ executionEngine: "k6" }),
+        metadata: expect.objectContaining({ executionEngine: "k6", cronSchedule: "*/5 * * * *" }),
       }),
     );
   });
