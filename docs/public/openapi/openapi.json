@@ -2310,7 +2310,16 @@
             "$ref": "#/components/parameters/Page"
           },
           {
-            "$ref": "#/components/parameters/Limit"
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 200,
+              "minimum": 1,
+              "maximum": 1000,
+              "example": 200
+            },
+            "description": "Items per page"
           },
           {
             "name": "includeScript",
@@ -3387,7 +3396,16 @@
             "$ref": "#/components/parameters/Page"
           },
           {
-            "$ref": "#/components/parameters/Limit"
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 10,
+              "minimum": 1,
+              "maximum": 100,
+              "example": 10
+            },
+            "description": "Items per page"
           },
           {
             "name": "date",
@@ -3776,19 +3794,40 @@
       "delete": {
         "operationId": "deleteTag",
         "summary": "Delete a tag",
-        "description": "Delete a tag. Resources using this tag will have it removed.",
+        "description": "Delete a tag. Fails with 409 while tests or requirements still use it.",
         "tags": [
           "Tags"
         ],
         "responses": {
           "200": {
-            "description": "Tag deleted"
+            "description": "Tag deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    },
+                    "deletedTag": {
+                      "$ref": "#/components/schemas/Tag"
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "Tag is still used by tests or requirements"
           }
         }
       },
@@ -4162,7 +4201,16 @@
             "$ref": "#/components/parameters/Page"
           },
           {
-            "$ref": "#/components/parameters/Limit"
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 50,
+              "minimum": 1,
+              "maximum": 200,
+              "example": 50
+            },
+            "description": "Items per page"
           }
         ],
         "responses": {
@@ -4230,11 +4278,20 @@
                   "message",
                   "target",
                   "targetType",
-                  "provider"
+                  "provider",
+                  "status"
                 ],
                 "properties": {
                   "type": {
-                    "type": "string"
+                    "type": "string",
+                    "enum": [
+                      "monitor_failure",
+                      "monitor_recovery",
+                      "job_failed",
+                      "job_success",
+                      "job_timeout",
+                      "ssl_expiring"
+                    ]
                   },
                   "message": {
                     "type": "string"
@@ -4243,14 +4300,22 @@
                     "type": "string"
                   },
                   "targetType": {
-                    "type": "string"
+                    "type": "string",
+                    "enum": [
+                      "monitor",
+                      "job"
+                    ]
                   },
                   "provider": {
                     "type": "string"
                   },
                   "status": {
                     "type": "string",
-                    "nullable": true
+                    "enum": [
+                      "sent",
+                      "failed",
+                      "pending"
+                    ]
                   },
                   "monitorId": {
                     "type": "string",
@@ -4310,7 +4375,16 @@
             "$ref": "#/components/parameters/Page"
           },
           {
-            "$ref": "#/components/parameters/Limit"
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 10,
+              "minimum": 1,
+              "maximum": 100,
+              "example": 10
+            },
+            "description": "Items per page"
           },
           {
             "name": "action",
@@ -5276,9 +5350,32 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/MonitorLocationStats"
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/MonitorLocationStats"
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "monitorId": {
+                          "type": "string"
+                        },
+                        "daysAnalyzed": {
+                          "type": "integer"
+                        },
+                        "startDate": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      }
+                    }
                   }
                 }
               }
@@ -5609,7 +5706,7 @@
       "put": {
         "operationId": "updateOrganization",
         "summary": "Update organization",
-        "description": "Update the organization name (2\u201350 characters after trim). Optional slug, logo, and metadata. Requires org_admin or org_owner. Browser updates require a same-origin request; CLI tokens retain their existing authorization. Requires an interactive browser session. Project-scoped CLI tokens receive 403.",
+        "description": "Update the organization name (2\u201350 characters after trim). Optional slug, logo, and metadata. Requires org_admin or org_owner. Browser updates require a same-origin request. Requires an interactive browser session. Project-scoped CLI tokens receive 403.",
         "tags": [
           "Organizations"
         ],
@@ -8047,7 +8144,7 @@
           "maximum": 100,
           "example": 50
         },
-        "description": "Monitors per page. For backward compatibility, omitting both page and limit returns all matching monitors."
+        "description": "Monitors per page. Omitting both page and limit returns up to 200 monitors, with `pagination.hasMore` set when more may exist."
       },
       "RunLimit": {
         "name": "limit",
@@ -9364,6 +9461,10 @@
           },
           "region": {
             "type": "string"
+          },
+          "code": {
+            "type": "string",
+            "description": "Location code used by `location` fields"
           }
         }
       },
