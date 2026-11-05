@@ -19,7 +19,7 @@ import {
   isUrlSafeForOutbound,
 } from '../common/utils/url-validator';
 import { fetchPublicEndpoint } from '../common/utils/pinned-public-fetch';
-import { isUndeliverableRecipient } from '../common/utils/email-recipient-policy';
+import { partitionRecipients } from '../common/utils/email-recipient-policy';
 
 // Utility function to safely get error message
 function getErrorMessage(error: unknown): string {
@@ -759,10 +759,9 @@ export class NotificationService {
       if (parsedAddresses.length === 0) {
         throw new Error('No valid email addresses found');
       }
-      // Reserved/blocked domains only bounce; skip them so they never reach SMTP or the retry path.
-      const emailAddresses = parsedAddresses.filter(
-        (email) => !isUndeliverableRecipient(email),
-      );
+      // Domains that cannot take mail only bounce; skip them so they never reach SMTP or the retry path.
+      const { deliverable: emailAddresses } =
+        await partitionRecipients(parsedAddresses);
       if (emailAddresses.length === 0) {
         this.logger.warn(
           `Skipped email for ${payload.type}: every recipient is on a domain that does not accept email`,
