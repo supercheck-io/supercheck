@@ -1,5 +1,12 @@
 import * as crypto from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  accessSync,
+  constants as fsConstants,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname } from 'node:path';
 import { z } from 'zod';
 import { getServiceVersion } from '../common/version';
@@ -1796,6 +1803,22 @@ function readCredentialFile(filePath: string) {
   return token.length > 0 ? token : null;
 }
 
+// The registration token is single use, so prove the credential path is writable before spending it.
+function assertCredentialFileWritable(filePath: string) {
+  try {
+    mkdirSync(dirname(filePath), { recursive: true, mode: 0o700 });
+    accessSync(
+      existsSync(filePath) ? filePath : dirname(filePath),
+      fsConstants.W_OK,
+    );
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code ?? 'unknown';
+    throw new Error(
+      `PRIVATE_AGENT_CREDENTIAL_FILE ${filePath} is not writable (${code}); fix the volume ownership before registering`,
+    );
+  }
+}
+
 function writeCredentialFile(filePath: string, token: string) {
   mkdirSync(dirname(filePath), { recursive: true, mode: 0o700 });
   writeFileSync(filePath, `${token}\n`, { encoding: 'utf8', mode: 0o600 });
@@ -1931,6 +1954,12 @@ export async function exchangeRegistrationToken(
     fallbackRegistrationToken !== config.token &&
     isRegistrationToken(fallbackRegistrationToken),
   );
+  if (
+    config.credentialFile &&
+    (isRegistrationToken(config.token) || canUseFallbackRegistrationToken)
+  ) {
+    assertCredentialFileWritable(config.credentialFile);
+  }
 
   if (!isRegistrationToken(config.token)) {
     if (canUseFallbackRegistrationToken) {
