@@ -27,6 +27,8 @@ describe("storedRootCause", () => {
     // An investigation conclusion that uses its own headings is not a legacy report.
     const conclusion = "## Cause\nDeploy 42.\n\n## Evidence\nError rate rose at 10:02.";
     expect(storedRootCause(conclusion)).toBe(conclusion);
+    const withSummaryHeading = "## Executive Summary\nDeploy 42 caused the failure.\n\n## Evidence\nErrors rose after deployment.";
+    expect(storedRootCause(withSummaryHeading)).toBe(withSummaryHeading);
   });
 });
 

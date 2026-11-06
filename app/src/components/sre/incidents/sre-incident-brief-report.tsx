@@ -26,7 +26,8 @@ function ensureReportFooter(content: string) {
 export function normalizeReportMarkdown(input: string, title: string) {
   const content = ensureReportFooter(input);
   // A "# comment" inside a code fence is not a title.
-  const outsideCode = content.replace(/^(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\1[^\n]*$/gm, "");
+  // CommonMark fences may be indented up to three spaces.
+  const outsideCode = content.replace(/^ {0,3}(`{3,}|~{3,})[^\n]*\n[\s\S]*?^ {0,3}\1[^\n]*$/gm, "");
   return /^#\s/m.test(outsideCode) ? content : `# ${title}\n\n${content}`;
 }
 

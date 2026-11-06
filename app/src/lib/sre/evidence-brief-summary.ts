@@ -8,8 +8,9 @@ const INLINE_SUMMARY = /^\s*\*\*(?:executive summary|summary|conclusion):?\*\*:?
 // Other "**Label:** text" lines carry findings and are kept.
 const META_LINE =
   /^\s*(?:[-*]\s+)?\*\*(?:incident(?: title)?|title|severity|status|(?:primary )?service|evidence source|evidence items|primary signal)(?:\*\*\s*:|:\*\*)|^\s*\*\*[^*\n]*\b(?:report|overview|classification|details|analysis|hypotheses)\b[^*\n]*\*\*:?\s*$|^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/i;
-// Only the old evidence-brief report format; an investigation conclusion with its own headings is kept whole.
-const LEGACY_REPORT = /^\s*#{1,6}\s*(?:incident (?:investigation )?report|report details|executive summary)\b/im;
+// Only the old evidence-brief report format, which always had this title or a Report Details section.
+// Any other heading (Executive Summary included) can be an investigation's own structure and is kept whole.
+const LEGACY_REPORT = /^\s*#{1,6}\s*(?:incident (?:investigation )?report|report details)\b/im;
 
 function plain(text: string) {
   return text

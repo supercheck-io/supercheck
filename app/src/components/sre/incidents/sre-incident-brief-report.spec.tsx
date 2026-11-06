@@ -16,4 +16,9 @@ describe("normalizeReportMarkdown", () => {
     const brief = "## Summary\nFailed.\n\n```bash\n# restart the worker\nkubectl rollout restart\n```";
     expect(normalizeReportMarkdown(brief, "Incident #3: Checkout (evidence brief)")).toMatch(/^# Incident #3: Checkout \(evidence brief\)\n/);
   });
+
+  it("also ignores # lines inside a fence indented up to three spaces", () => {
+    const brief = "## Summary\nFailed.\n\n  ~~~sh\n# comment\n  ~~~";
+    expect(normalizeReportMarkdown(brief, "Incident #3: Checkout (evidence brief)")).toMatch(/^# Incident #3: Checkout \(evidence brief\)\n/);
+  });
 });
