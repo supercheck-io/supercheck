@@ -296,6 +296,9 @@ const TYPE_BADGES: Record<string, { label: string; tone: TableBadgeTone; icon: L
   file: { label: "File", tone: "success", icon: FileText },
 };
 
+const typeBadgeKey = (type: unknown) =>
+  typeof type === "string" && Object.hasOwn(TYPE_BADGES, type) ? type : "variable";
+
 export const columns: ColumnDef<Variable>[] = [
   {
     accessorKey: "key",
@@ -324,8 +327,7 @@ export const columns: ColumnDef<Variable>[] = [
       <DataTableColumnHeader column={column} title="Type" />
     ),
     cell: ({ row }) => {
-      const type = (row.getValue("type") as string) || "variable";
-      const config = TYPE_BADGES[type] ?? TYPE_BADGES.variable;
+      const config = TYPE_BADGES[typeBadgeKey(row.getValue("type"))];
       const TypeIcon = config.icon;
       return (
         <div className="flex items-center w-[120px]">
@@ -337,8 +339,7 @@ export const columns: ColumnDef<Variable>[] = [
       );
     },
     filterFn: (row, id, value) => {
-      const type = (row.getValue(id) as string) || "variable";
-      return value.includes(type);
+      return value.includes(typeBadgeKey(row.getValue(id)));
     },
   },
   {

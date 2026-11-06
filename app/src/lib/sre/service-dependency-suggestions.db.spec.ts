@@ -65,3 +65,8 @@ it("keeps the row cap", async () => {
   const rows = await listServiceDependencySuggestions({ organizationId: ORG, projectId: PROJECT, serviceId: OTHER, limit: 100 });
   expect(rows).toHaveLength(100);
 });
+
+it("caps at 100 rows by default", async () => {
+  const rows = await listServiceDependencySuggestions({ organizationId: ORG, projectId: PROJECT, serviceId: OTHER });
+  expect(rows).toHaveLength(100);
+});

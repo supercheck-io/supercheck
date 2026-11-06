@@ -1,6 +1,6 @@
 import { Info, type LucideIcon } from "lucide-react";
 
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 
 export type IconTone = "violet" | "amber" | "blue" | "emerald" | "rose" | "slate" | "indigo" | "sky";
@@ -88,8 +88,9 @@ export function SectionTitle({
           )}
         </Heading>
         {hint && (
-          <Tooltip>
-            <TooltipTrigger asChild>
+          // A popover, not a tooltip, so a tap on touch screens opens and keeps the hint.
+          <Popover>
+            <PopoverTrigger asChild>
               <button
                 type="button"
                 aria-label={`About ${typeof children === "string" ? children.toLowerCase() : "this section"}`}
@@ -97,9 +98,9 @@ export function SectionTitle({
               >
                 <Info className="size-3.5" aria-hidden="true" />
               </button>
-            </TooltipTrigger>
-            <TooltipContent className="max-w-xs text-xs">{hint}</TooltipContent>
-          </Tooltip>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto max-w-xs p-3 text-xs">{hint}</PopoverContent>
+          </Popover>
         )}
       </div>
       {action}

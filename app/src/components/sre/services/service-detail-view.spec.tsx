@@ -265,6 +265,36 @@ describe("ServiceDetailView", () => {
     expect(screen.getByRole("button", { name: "Show fewer" })).toHaveAttribute("aria-expanded", "true");
   });
 
+  it("expands recent deployments past five and collapses them again", () => {
+    render(
+      <ServiceDetailView
+        initialDetail={detailFixture({
+          recentDeployments: Array.from({ length: 6 }, (_, index) => ({
+            id: `deploy-${index}`,
+            source: "github" as const,
+            commitSha: null,
+            commitMessage: `Deploy ${index}`,
+            deployedAt: new Date("2026-11-01T00:00:00Z"),
+          })),
+        })}
+      />,
+    );
+
+    expect(screen.queryByText("Deploy 5")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show all 6" }));
+    expect(screen.getByText("Deploy 5")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show fewer" }));
+    expect(screen.queryByText("Deploy 5")).not.toBeInTheDocument();
+  });
+
+  it("opens a section hint on click so touch users can read it", () => {
+    render(<ServiceDetailView initialDetail={detailFixture()} />);
+    const hint = screen.getByRole("button", { name: "About recent incidents" });
+    expect(hint).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(hint);
+    expect(hint).toHaveAttribute("aria-expanded", "true");
+  });
+
   it("shows a snapshot health score when no live signal overrides it", () => {
     const base = detailFixture();
     render(<ServiceDetailView initialDetail={{ ...base, health: { ...base.health, health: "healthy", score: 0.92 } }} />);
