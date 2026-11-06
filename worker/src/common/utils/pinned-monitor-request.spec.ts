@@ -355,6 +355,21 @@ describe('pinned HTTP monitor requests', () => {
     expect(execute).not.toHaveBeenCalled();
   });
 
+  it('aborts a DNS lookup that outlives the check deadline', async () => {
+    (mockLookup as jest.Mock).mockImplementationOnce(
+      () => new Promise(() => undefined),
+    );
+    const execute = jest.fn();
+    await expect(
+      requestPinnedMonitorTarget(
+        { url: 'https://slow-dns.example/', timeout: 20 },
+        { allowInternalTargets: false, maxRedirects: 5 },
+        execute,
+      ),
+    ).rejects.toMatchObject({ code: 'ERR_CANCELED' });
+    expect(execute).not.toHaveBeenCalled();
+  });
+
   it('bounds a slow-drip response with a wall-clock abort signal', async () => {
     (mockLookup as jest.Mock).mockResolvedValueOnce([
       { address: '203.0.114.10', family: 4 },

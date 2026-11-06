@@ -125,6 +125,42 @@ export class StalledJobHandlerService implements OnModuleInit, OnModuleDestroy {
   /**
    * Check for runs that are still in "running" status but are from stalled jobs
    */
+  private async notifyStalledRuns(
+    erroredRuns: Array<{
+      id: string;
+      jobId: string | null;
+      location: string | null;
+      errorDetails: string | null;
+    }>,
+    stalledRuns: Array<{ id: string; ageMs: number }>,
+  ): Promise<void> {
+    const outcomes = await Promise.allSettled(
+      erroredRuns
+        .filter((run) => run.jobId)
+        .map((run) =>
+          this.jobNotificationService.handleJobNotifications({
+            jobId: run.jobId as string,
+            runId: run.id,
+            finalStatus: 'error',
+            cancelled: run.errorDetails === RUN_CANCELLATION_MARKER,
+            durationSeconds: Math.floor(
+              (stalledRuns.find((r) => r.id === run.id)?.ageMs ?? 0) / 1000,
+            ),
+            results: [{ success: false }],
+            location: run.location,
+            errorMessage: STALLED_ERROR_MESSAGE,
+          }),
+        ),
+    );
+    for (const outcome of outcomes) {
+      if (outcome.status === 'rejected') {
+        this.logger.error(
+          `Failed to send stalled-run notification: ${(outcome.reason as Error)?.message}`,
+        );
+      }
+    }
+  }
+
   private async checkAndHandleStalledJobs(): Promise<void> {
     if (!this.redisClient) {
       this.logger.warn('Redis client not ready, skipping stalled job check');
@@ -357,87 +393,71 @@ export class StalledJobHandlerService implements OnModuleInit, OnModuleDestroy {
 
         this.logger.log(`Successfully marked ${runIds.length} runs as error`);
 
-        // A stalled sweep is a job failure too; the per-run alert claim dedupes repeats. Sent before
-        // the job-status sync so a status failure cannot drop them.
-        for (const run of erroredRuns ?? []) {
-          if (!run.jobId) continue;
-          const stalled = stalledRuns.find((r) => r.id === run.id);
-          try {
-            await this.jobNotificationService.handleJobNotifications({
-              jobId: run.jobId,
-              runId: run.id,
-              finalStatus: 'error',
-              cancelled: run.errorDetails === RUN_CANCELLATION_MARKER,
-              durationSeconds: Math.floor((stalled?.ageMs ?? 0) / 1000),
-              results: [{ success: false }],
-              location: run.location,
-              errorMessage: STALLED_ERROR_MESSAGE,
+        try {
+          // Get unique job IDs that need status updates
+          const uniqueJobIds = [
+            ...new Set(
+              stalledRuns
+                .map((r) => r.jobId)
+                .filter((id): id is string => id !== null),
+            ),
+          ];
+
+          if (uniqueJobIds.length > 0) {
+            // Batch fetch all run statuses for affected jobs
+            // Newest first: a job reflects its latest run, or running while any run is still active.
+            const allJobRuns = await this.dbService.db.query.runs.findMany({
+              where: inArray(schema.runs.jobId, uniqueJobIds),
+              columns: {
+                id: true,
+                jobId: true,
+                status: true,
+              },
+              orderBy: [desc(schema.runs.createdAt)],
             });
-          } catch (notificationError) {
-            this.logger.error(
-              `[${run.id}] Failed to send stalled-run notification: ${(notificationError as Error).message}`,
-            );
-          }
-        }
 
-        // Get unique job IDs that need status updates
-        const uniqueJobIds = [
-          ...new Set(
-            stalledRuns
-              .map((r) => r.jobId)
-              .filter((id): id is string => id !== null),
-          ),
-        ];
-
-        if (uniqueJobIds.length > 0) {
-          // Batch fetch all run statuses for affected jobs
-          // Newest first: a job reflects its latest run, or running while any run is still active.
-          const allJobRuns = await this.dbService.db.query.runs.findMany({
-            where: inArray(schema.runs.jobId, uniqueJobIds),
-            columns: {
-              id: true,
-              jobId: true,
-              status: true,
-            },
-            orderBy: [desc(schema.runs.createdAt)],
-          });
-
-          // Group runs by job ID
-          const runsByJob = new Map<
-            string,
-            Array<
-              | 'pending'
-              | 'running'
-              | 'passed'
-              | 'failed'
-              | 'error'
-              | 'queued'
-              | 'blocked'
-            >
-          >();
-          for (const jobRun of allJobRuns) {
-            if (jobRun.jobId) {
-              if (!runsByJob.has(jobRun.jobId)) {
-                runsByJob.set(jobRun.jobId, []);
+            // Group runs by job ID
+            const runsByJob = new Map<
+              string,
+              Array<
+                | 'pending'
+                | 'running'
+                | 'passed'
+                | 'failed'
+                | 'error'
+                | 'queued'
+                | 'blocked'
+              >
+            >();
+            for (const jobRun of allJobRuns) {
+              if (jobRun.jobId) {
+                if (!runsByJob.has(jobRun.jobId)) {
+                  runsByJob.set(jobRun.jobId, []);
+                }
+                runsByJob.get(jobRun.jobId)!.push(jobRun.status);
               }
-              runsByJob.get(jobRun.jobId)!.push(jobRun.status);
             }
-          }
 
-          for (const [jobId, runStatuses] of runsByJob.entries()) {
-            const active = runStatuses.find(
-              (status) => status === 'running' || status === 'queued',
-            );
-            // Jobs have no blocked status; a policy-blocked tick never ran, so use the last real run.
-            const latestExecuted =
-              runStatuses.find((status) => status !== 'blocked') ??
-              runStatuses[0];
-            await this.dbService.updateJobStatus(jobId, [
-              active ?? latestExecuted,
-            ]);
-          }
+            for (const [jobId, runStatuses] of runsByJob.entries()) {
+              const active = runStatuses.find(
+                (status) => status === 'running' || status === 'queued',
+              );
+              // Jobs have no blocked status; a policy-blocked tick never ran, so use the last real run.
+              const latestExecuted =
+                runStatuses.find((status) => status !== 'blocked') ??
+                runStatuses[0];
+              await this.dbService.updateJobStatus(jobId, [
+                active ?? latestExecuted,
+              ]);
+            }
 
-          this.logger.log(`Updated status for ${uniqueJobIds.length} jobs`);
+            this.logger.log(`Updated status for ${uniqueJobIds.length} jobs`);
+          }
+        } finally {
+          // A stalled sweep is a job failure too; the per-run alert claim dedupes repeats. Sent after
+          // the job-status sync but in a finally, so a status failure cannot drop them, and
+          // concurrently so slow providers do not serialise the sweep.
+          await this.notifyStalledRuns(erroredRuns ?? [], stalledRuns);
         }
       } catch (error) {
         this.logger.error(

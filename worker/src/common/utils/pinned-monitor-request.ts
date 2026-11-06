@@ -4,6 +4,7 @@ import { Agent as HttpsAgent } from 'node:https';
 import type { LookupAddress } from 'node:dns';
 import { isIP, type LookupFunction } from 'node:net';
 import {
+  AxiosError,
   AxiosHeaders,
   type AxiosRequestConfig,
   type AxiosResponse,
@@ -104,10 +105,23 @@ async function pinRequestConfig(
     throw new Error('Monitor URLs cannot include credentials');
   }
 
-  const selected = await resolvePublicAddress(
+  // dns.lookup cannot take a signal, so race it: a slow resolver must not outlive the check deadline.
+  const signal = input.signal as AbortSignal | undefined;
+  const resolving = resolvePublicAddress(
     url.hostname.replace(/^\[|\]$/g, ''),
     allowInternalTargets,
   );
+  const selected = await (signal
+    ? Promise.race([
+        resolving,
+        new Promise<never>((_resolve, reject) => {
+          const abort = () =>
+            reject(new AxiosError('canceled', AxiosError.ERR_CANCELED));
+          if (signal.aborted) abort();
+          else signal.addEventListener('abort', abort, { once: true });
+        }),
+      ])
+    : resolving);
   const pinnedLookup = createPinnedLookup(selected);
 
   const httpAgent = new HttpAgent({ lookup: pinnedLookup });
