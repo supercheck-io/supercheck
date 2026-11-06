@@ -10,7 +10,7 @@ const TOKEN_PREFIX_TRIGGER_LEGACY = 'job_'
 const VALID_CLI_PREFIXES = [TOKEN_PREFIX_LIVE, TOKEN_PREFIX_TEST]
 const VALID_TRIGGER_PREFIXES = [TOKEN_PREFIX_TRIGGER, TOKEN_PREFIX_TRIGGER_LEGACY]
 
-interface AuthData {
+type AuthData = {
   token?: string
   baseUrl?: string
   organization?: string
