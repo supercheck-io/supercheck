@@ -162,10 +162,21 @@ describe('ApiRequestError exit codes', () => {
 })
 
 describe('authHint', () => {
+  it('does not suggest browser login when SUPERCHECK_TOKEN is the rejected credential', async () => {
+    const { authHint, ApiRequestError } = await import('../errors.js')
+    const saved = process.env.SUPERCHECK_TOKEN
+    process.env.SUPERCHECK_TOKEN = 'bad'
+    try { expect(authHint(new ApiRequestError('x', 401))).toMatch(/SUPERCHECK_TOKEN is set and was rejected/) }
+    finally { if (saved === undefined) delete process.env.SUPERCHECK_TOKEN; else process.env.SUPERCHECK_TOKEN = saved }
+  })
   it('hints only for a 401 API error', async () => {
     const { authHint, ApiRequestError, CLIError } = await import('../errors.js')
-    expect(authHint(new ApiRequestError('x', 401))).toBe('Run `supercheck login --reauth` to sign in again (or set a valid SUPERCHECK_TOKEN).')
-    expect(authHint(new ApiRequestError('x', 500))).toBeNull()
-    expect(authHint(new CLIError('x'))).toBeNull()
+    const saved = process.env.SUPERCHECK_TOKEN
+    delete process.env.SUPERCHECK_TOKEN
+    try {
+      expect(authHint(new ApiRequestError('x', 401))).toBe('Run `supercheck login --reauth` to sign in again (or set a valid SUPERCHECK_TOKEN).')
+      expect(authHint(new ApiRequestError('x', 500))).toBeNull()
+      expect(authHint(new CLIError('x'))).toBeNull()
+    } finally { if (saved !== undefined) process.env.SUPERCHECK_TOKEN = saved }
   })
 })

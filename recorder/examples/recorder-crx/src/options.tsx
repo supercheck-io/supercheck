@@ -274,7 +274,7 @@ function OptionsPage() {
         status: 'disconnected',
         message: revoked
           ? 'Disconnected. The recorder key was revoked on the server.'
-          : 'Disconnected locally. The key could not be revoked on the server; remove it in Supercheck settings.',
+          : 'Disconnected locally, but the server could not be reached to revoke the key (Disconnect revokes it). Reconnect and disconnect again once the server is reachable.',
       });
     } catch (error) {
       suppressStorageSyncRef.current = false;

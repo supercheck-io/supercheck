@@ -108,6 +108,10 @@ describe('ci workflow', () => {
     expect(yaml).toContain('permissions:\n  contents: read')
     expect(yaml).toContain('playwright install')
     expect(yaml).toContain('deploy --force --json --verify')
+    // Deploy state must persist between runs, saved even after a partial failure.
+    expect(deployJob).toContain('actions/cache/restore@v4')
+    expect(deployJob).toMatch(/actions\/cache\/save@v4\n\s+if: always\(\)/)
+    expect(deployJob).toContain('path: supercheck.state.json')
   })
   it('adapts to pnpm and omits browsers when unused', () => {
     const yaml = githubWorkflow('pnpm', false)

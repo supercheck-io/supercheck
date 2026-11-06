@@ -23,7 +23,7 @@ projectCommand
     const id = projectId ?? (await client.get<{ project: { id: string } }>('/api/context')).data.project.id
     if (!isUuid(id)) throw new CLIError('projectId must be a valid UUID.', ExitCode.ConfigError)
     const { data } = await withSpinner('Fetching members', () =>
-      client.get<{ members: { userId: string; role: string; user: { name: string | null; email: string } }[] }>(`/api/projects/${id}/members`))
+      client.get<{ members: { userId: string; role: string; user: { name: string | null; email: string } }[] }>(`/api/projects/${encodeURIComponent(id)}/members`))
     output(data.members.map((m) => ({ id: m.userId, userId: m.userId, name: m.user.name, email: m.user.email, role: m.role })), {
       columns: [{ key: 'userId', header: 'User ID' }, { key: 'name', header: 'Name' }, { key: 'email', header: 'Email' }, { key: 'role', header: 'Role' }],
     })

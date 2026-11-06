@@ -161,7 +161,7 @@ requirementCommand
   .action(async (id: string) => {
     requireId(id)
     const client = createAuthenticatedClient()
-    const { data } = await withSpinner('Fetching requirement', () => client.get<{ requirement: RequirementDto }>(`/api/requirements/${id}`))
+    const { data } = await withSpinner('Fetching requirement', () => client.get<{ requirement: RequirementDto }>(`/api/requirements/${encodeURIComponent(id)}`))
     outputDetail(detail(data.requirement))
   })
 
@@ -194,7 +194,7 @@ addFieldOptions(
   if (options.clearTests) body.testIds = []
   if (Object.keys(body).length === 0) throw new CLIError('Nothing to update. Pass at least one field option.', ExitCode.ConfigError)
   const client = createAuthenticatedClient()
-  const { data } = await withSpinner('Updating requirement', () => client.put<{ requirement: RequirementDto }>(`/api/requirements/${id}`, body))
+  const { data } = await withSpinner('Updating requirement', () => client.put<{ requirement: RequirementDto }>(`/api/requirements/${encodeURIComponent(id)}`, body))
   logger.success(`Requirement ${id} updated`)
   outputMutation({ ...detail(data.requirement), action: 'updated' })
 })
@@ -210,7 +210,7 @@ requirementCommand
       await confirmPrompt(`Delete requirement ${id}?`, { default: false })
     }
     const client = createAuthenticatedClient()
-    await withSpinner('Deleting requirement', () => client.delete(`/api/requirements/${id}`))
+    await withSpinner('Deleting requirement', () => client.delete(`/api/requirements/${encodeURIComponent(id)}`))
     logger.success(`Requirement ${id} deleted`)
     outputMutation({ id, deleted: true })
   })
@@ -222,7 +222,7 @@ requirementCommand
     requireId(id)
     const ids = requireTestIds(testIds)
     const client = createAuthenticatedClient()
-    const { data } = await withSpinner('Linking tests', () => client.post<{ requirement: RequirementDto }>(`/api/requirements/${id}/tests`, { testIds: ids }))
+    const { data } = await withSpinner('Linking tests', () => client.post<{ requirement: RequirementDto }>(`/api/requirements/${encodeURIComponent(id)}/tests`, { testIds: ids }))
     logger.success(`Linked ${ids.length} test(s) to requirement ${id}`)
     outputMutation({ ...detail(data.requirement), action: 'linked' })
   })
@@ -234,7 +234,7 @@ requirementCommand
     requireId(id)
     const ids = requireTestIds(testIds)
     const client = createAuthenticatedClient()
-    const { data } = await withSpinner('Unlinking tests', () => client.delete<{ requirement: RequirementDto }>(`/api/requirements/${id}/tests`, { testIds: ids }))
+    const { data } = await withSpinner('Unlinking tests', () => client.delete<{ requirement: RequirementDto }>(`/api/requirements/${encodeURIComponent(id)}/tests`, { testIds: ids }))
     logger.success(`Unlinked ${ids.length} test(s) from requirement ${id}`)
     outputMutation({ ...detail(data.requirement), action: 'unlinked' })
   })
@@ -246,7 +246,7 @@ requirementCommand
     const client = createAuthenticatedClient()
     if (id) {
       requireId(id)
-      const { data } = await withSpinner('Fetching coverage', () => client.get<{ requirement: RequirementDto }>(`/api/requirements/${id}`))
+      const { data } = await withSpinner('Fetching coverage', () => client.get<{ requirement: RequirementDto }>(`/api/requirements/${encodeURIComponent(id)}`))
       const requirement = data.requirement
       outputDetail({
         id: requirement.id,

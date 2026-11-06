@@ -67,7 +67,15 @@ ${setupPm}      - uses: actions/setup-node@v4
           node-version: 24
           cache: ${cache}
       - run: ${install}
-${browsers}      # The token is exposed only to the deploy steps, never to dependency install scripts.
+${browsers}      # Restore the resource IDs from the last deploy so CI updates resources instead of creating duplicates.
+      # Caches can be evicted, and a restored copy replaces a committed supercheck.state.json: keep the file
+      # in sync (commit it, or delete the cache after a local deploy). Never commit its .lock file.
+      - uses: actions/cache/restore@v4
+        with:
+          path: supercheck.state.json
+          key: supercheck-state-\${{ github.run_id }}
+          restore-keys: supercheck-state-
+      # The token is exposed only to the deploy steps, never to dependency install scripts.
       # Create a dedicated CLI token (Dashboard > CLI Tokens) and add it as a repository secret.
       - run: ${run} supercheck deploy --dry-run --json
         env:
@@ -77,6 +85,12 @@ ${browsers}      # The token is exposed only to the deploy steps, never to depen
         env:
           SUPERCHECK_TOKEN: \${{ secrets.SUPERCHECK_TOKEN }}
           SUPERCHECK_URL: \${{ vars.SUPERCHECK_URL }}
+      # Save even after a partial failure: resources it created already exist remotely.
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: supercheck.state.json
+          key: supercheck-state-\${{ github.run_id }}
 `
 }
 
@@ -105,11 +119,11 @@ ciCommand.command('init')
       path: file,
       secretsRequired: [
         { name: 'SUPERCHECK_TOKEN', kind: 'repository secret', note: 'Create a dedicated CLI token in the dashboard; do not reuse an interactive login key.' },
-        { name: 'SUPERCHECK_URL', kind: 'repository variable', note: 'Self-hosted installs only.' },
+        { name: 'SUPERCHECK_URL', kind: 'repository variable', note: 'Self-hosted only. Leave unset (or blank) to use the API URL in supercheck.config.ts, which defaults to Supercheck Cloud.' },
       ],
       reminders: [
         'The workflow file does not create these secrets. A person must add them in the repository settings.',
-        'Commit supercheck.state.json so CI updates existing resources rather than creating duplicates. Never commit its .lock file.',
+        'The workflow caches supercheck.state.json between deploys. Caches can be evicted, so also commit the file; after a local deploy delete the CI cache, since a restored copy replaces the committed one. Never commit its .lock file.',
       ],
     })
   })
