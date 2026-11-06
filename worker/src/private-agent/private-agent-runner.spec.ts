@@ -160,10 +160,36 @@ describe('private agent connector execution', () => {
   it.each([
     [
       'sentry',
-      [{ id: '1', title: `boom sk-test-0123456789abcdef ${'x'.repeat(600)}`, permalink: `https://s.example.com/sk-test-0123456789abcdef/${'p'.repeat(1200)}`, culprit: "sk-test-0123456789abcdef" }],
+      [
+        {
+          id: '1',
+          title: `boom sk-test-0123456789abcdef ${'x'.repeat(600)}`,
+          permalink: `https://s.example.com/sk-test-0123456789abcdef/${'p'.repeat(1200)}`,
+          culprit: 'sk-test-0123456789abcdef',
+        },
+      ],
     ],
-    ['grafana', [{ title: `   `, url: `/d/sk-test-0123456789abcdef/${'g'.repeat(1200)}` }]],
-    ['github', { items: [{ sha: 'abc', html_url: `https://github.com/sk-test-0123456789abcdef/${'h'.repeat(1200)}`, commit: { message: '' } }] }],
+    [
+      'grafana',
+      [
+        {
+          title: `   `,
+          url: `/d/sk-test-0123456789abcdef/${'g'.repeat(1200)}`,
+        },
+      ],
+    ],
+    [
+      'github',
+      {
+        items: [
+          {
+            sha: 'abc',
+            html_url: `https://github.com/sk-test-0123456789abcdef/${'h'.repeat(1200)}`,
+            commit: { message: '' },
+          },
+        ],
+      },
+    ],
   ] as const)(
     'clips and redacts %s evidence to the result schema',
     async (connectorType, body) => {

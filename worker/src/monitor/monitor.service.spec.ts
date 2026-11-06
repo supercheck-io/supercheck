@@ -780,7 +780,7 @@ describe('MonitorService', () => {
       );
       const result = await service['executeHttpRequest'](
         'https://example.com',
-        { timeoutSeconds: 1 } as never,
+        { timeoutSeconds: 1 },
       );
       expect(result.status).toBe('timeout');
       expect(result.isUp).toBe(false);
