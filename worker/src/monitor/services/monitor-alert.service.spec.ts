@@ -253,13 +253,61 @@ describe('MonitorAlertService', () => {
     ).not.toHaveBeenCalled();
   });
 
-  it('stamps an incident-only failure with the failing check time, not the send time', async () => {
+  it('stamps an incident-only failure with the failing cycle time even when sent after a later recovery cycle with a non-up result', async () => {
     const { service, sreAlertTriageQueueService } = createService();
-    await service.signalFailure('monitor-1', 'down');
+    const failingCycle = new Date('2026-06-22T00:00:00Z');
+    // A later recovery cycle contains a non-up result: nothing may be re-queried to find the time.
+    const dbService = (
+      service as unknown as {
+        dbService: {
+          db: { query: { monitorResults: { findFirst: jest.Mock } } };
+        };
+      }
+    ).dbService;
+    dbService.db.query.monitorResults.findFirst.mockResolvedValue({
+      checkedAt: new Date('2026-06-22T00:10:00Z'),
+    });
+    await service.signalFailure('monitor-1', 'down', failingCycle);
     expect(
       sreAlertTriageQueueService.enqueueSourceFailure,
     ).toHaveBeenCalledWith(
-      expect.objectContaining({ firedAt: '2026-06-22T00:00:00.000Z' }),
+      expect.objectContaining({ firedAt: failingCycle.toISOString() }),
+    );
+    expect(dbService.db.query.monitorResults.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('keeps the observation time on the no-provider path and on alert history rows', async () => {
+    const failingCycle = '2026-06-22T00:00:00.000Z';
+    const noProviders = createService();
+    (noProviders.db.select as jest.Mock).mockImplementation((fields) =>
+      Object.keys(fields).length === 1
+        ? {
+            from: jest.fn().mockReturnThis(),
+            innerJoin: jest.fn().mockReturnThis(),
+            where: jest.fn().mockReturnThis(),
+            limit: jest.fn().mockResolvedValue([]),
+          }
+        : {
+            from: () => ({
+              innerJoin: () => ({ where: jest.fn().mockResolvedValue([]) }),
+            }),
+          },
+    );
+    await noProviders.service.sendNotification('monitor-1', 'failure', 'down', {
+      observedAt: failingCycle,
+    });
+    expect(
+      noProviders.sreAlertTriageQueueService.enqueueSourceFailure,
+    ).toHaveBeenCalledWith(expect.objectContaining({ firedAt: failingCycle }));
+
+    const delivered = createService();
+    await delivered.service.sendNotification('monitor-1', 'failure', 'down', {
+      observedAt: failingCycle,
+    });
+    expect(delivered.valuesMock).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({ sentAt: new Date(failingCycle) }),
+      ]),
     );
   });
 

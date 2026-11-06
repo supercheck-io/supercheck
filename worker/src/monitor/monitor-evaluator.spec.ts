@@ -451,7 +451,7 @@ describe('incident-only monitors (alerts off or no channel)', () => {
     expect(tracksAlertState(null)).toBe(false);
   });
 
-  async function run(alertConfig: object) {
+  async function run(alertConfig: object, observedAt?: Date) {
     const latest = {
       id: 'r1',
       consecutiveFailureCount: 1,
@@ -483,6 +483,7 @@ describe('incident-only monitors (alerts off or no channel)', () => {
       currentStatus: 'down',
       reason: 'down',
       metadata: {},
+      observedAt,
     });
     return { res, alertService };
   }
@@ -492,9 +493,36 @@ describe('incident-only monitors (alerts off or no channel)', () => {
       enabled: false,
       incidentEnabled: true,
     });
-    expect(alertService.signalFailure).toHaveBeenCalledWith('m1', 'down');
+    expect(alertService.signalFailure).toHaveBeenCalledWith(
+      'm1',
+      'down',
+      undefined,
+    );
     expect(alertService.sendNotification).not.toHaveBeenCalled();
     expect(res).toMatchObject({ alertSent: true });
+  });
+
+  it('passes the failing cycle time to the incident signal and to notifications', async () => {
+    const observedAt = new Date('2026-06-22T00:00:00Z');
+    const incidentOnly = await run(
+      { enabled: false, incidentEnabled: true },
+      observedAt,
+    );
+    expect(incidentOnly.alertService.signalFailure).toHaveBeenCalledWith(
+      'm1',
+      'down',
+      observedAt,
+    );
+    const alerting = await run(
+      { enabled: true, alertOnFailure: true },
+      observedAt,
+    );
+    expect(alerting.alertService.sendNotification).toHaveBeenCalledWith(
+      'm1',
+      'failure',
+      'down',
+      expect.objectContaining({ observedAt: observedAt.toISOString() }),
+    );
   });
 
   it('still does nothing when alerts and incidents are both off', async () => {

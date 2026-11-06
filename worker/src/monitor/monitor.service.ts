@@ -576,6 +576,7 @@ export class MonitorService {
       currentStatus,
       reason,
       preparedAlertState: groupEvaluation?.alertState,
+      observedAt: checkedAt,
       metadata: {
         responseTime: avgResponseTime,
         locationResults: results.map((r) => ({

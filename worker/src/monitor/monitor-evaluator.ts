@@ -264,6 +264,8 @@ export class MonitorEvaluator {
     reason: string;
     metadata: Record<string, unknown>;
     preparedAlertState?: AggregatedAlertState;
+    /** When the failing cycle was observed. A delayed send keeps it, so a later recovery still reads as newer. */
+    observedAt?: Date;
   }): Promise<{
     alertSent: boolean;
     alertType?: string;
@@ -469,11 +471,18 @@ export class MonitorEvaluator {
         consecutiveSuccessCount,
         alertsSentForFailure,
         alertsSentForRecovery,
+        ...(options.observedAt
+          ? { observedAt: options.observedAt.toISOString() }
+          : {}),
       };
 
       // Without alerts there is nothing to deliver: the failure only reaches the incident queue.
       const notification = incidentOnly
-        ? await this.monitorAlertService.signalFailure(monitorId, reason)
+        ? await this.monitorAlertService.signalFailure(
+            monitorId,
+            reason,
+            options.observedAt,
+          )
         : await this.monitorAlertService.sendNotification(
             monitorId,
             alertType,

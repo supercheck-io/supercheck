@@ -69,69 +69,67 @@ jest.mock("@/lib/monitor-scheduler", () => ({
   scheduleMonitor: (...a: unknown[]) => (scheduleMonitor as jest.Mock)(...a),
 }));
 
-describe("schedule follows pause and resume", () => {
-  const setWhere = { set: jest.fn(() => ({ where: jest.fn() })) };
+describe("schedule is reconciled to the committed state", () => {
   beforeEach(() => {
     jest.mocked(hasPermissionForUser).mockResolvedValue(true);
-    (db.update as jest.Mock).mockReturnValue(setWhere);
+    (db.update as jest.Mock).mockReturnValue({ set: jest.fn(() => ({ where: jest.fn() })) });
   });
-  let before: object = {};
-  const tx = (updated: object, prior: object = {}) => {
-    before = prior;
-    (db.transaction as jest.Mock).mockImplementation(async (cb: (t: unknown) => unknown) =>
-      cb({
-        execute: jest.fn(),
-        select: () => ({ from: () => ({ where: () => ({ for: async (mode: string) => (mode === "share" ? [{ id: "p" }] : [before]) }) }) }),
-        update: () => ({ set: jest.fn(() => ({ where: () => Object.assign(Promise.resolve(), { returning: async () => [updated] }) })) }),
-      }),
-    );
+  const base = { id: "m", organizationId: "org", projectId: "p", frequencyMinutes: 5, type: "website", target: "https://e.com", config: {}, enabled: true };
+  // First transaction is the status write; a later one is the reconcile, which reads the committed row.
+  const useDb = (written: object, committed: object) => {
+    const tx = () => ({
+      execute: jest.fn(),
+      select: () => ({ from: () => ({ where: () => ({ for: async (mode: string) => (mode === "share" ? [{ id: "p" }] : [committed]) }) }) }),
+      update: () => ({ set: jest.fn(() => ({ where: () => Object.assign(Promise.resolve(), { returning: async () => [written] }) })) }),
+    });
+    (db.transaction as jest.Mock).mockImplementation(async (cb: (t: unknown) => unknown) => cb(tx()));
   };
+  const stored = (status: string, extra: object = {}) =>
+    jest.mocked(db.query.monitors.findFirst).mockResolvedValue({ ...base, status, scheduledJobId: "old", ...extra } as never);
 
-  it("unschedules the monitor when it is paused", async () => {
-    jest.mocked(db.query.monitors.findFirst).mockResolvedValue({ id: "m", organizationId: "org", projectId: "p", status: "up", scheduledJobId: "old" } as never);
-    tx({ id: "m", name: "M", organizationId: "org", projectId: "p", status: "paused", frequencyMinutes: 5 }, { status: "up", scheduledJobId: "old" });
+  it("removes the schedule after a pause commits", async () => {
+    stored("up");
+    useDb({ ...base, status: "paused" }, { ...base, status: "paused", enabled: false, scheduledJobId: "old" });
     expect((await patch("paused")).status).toBe(200);
     expect(deleteScheduledMonitor).toHaveBeenCalledWith("old");
     expect(scheduleMonitor).not.toHaveBeenCalled();
   });
 
-  it("serializes per monitor with an advisory lock and uses the status read under it", async () => {
-    // The request-time read says up, but a concurrent pause committed first: the locked read decides.
-    jest.mocked(db.query.monitors.findFirst).mockResolvedValue({ id: "m", organizationId: "org", projectId: "p", status: "up", scheduledJobId: "stale" } as never);
-    const execute = jest.fn();
-    (db.transaction as jest.Mock).mockImplementation(async (cb: (t: unknown) => unknown) =>
-      cb({
-        execute,
-        select: () => ({ from: () => ({ where: () => ({ for: async (mode: string) => (mode === "share" ? [{ id: "p" }] : [{ status: "paused", scheduledJobId: null }]) }) }) }),
-        update: () => ({ set: jest.fn(() => ({ where: () => Object.assign(Promise.resolve(), { returning: async () => [{ id: "m", organizationId: "org", projectId: "p", status: "pending", frequencyMinutes: 5, type: "website", target: "https://e.com", config: {} }] }) })) }),
-      }),
-    );
-    expect((await patch("pending")).status).toBe(200);
-    expect(execute).toHaveBeenCalled();
-    expect(scheduleMonitor).toHaveBeenCalledTimes(1);
-  });
-
-  it("restores the schedule when the pause transaction fails after unscheduling", async () => {
-    jest.mocked(db.query.monitors.findFirst).mockResolvedValue({ id: "m", organizationId: "org", projectId: "p", status: "up", scheduledJobId: "old", frequencyMinutes: 5, type: "website", target: "https://e.com", config: {} } as never);
-    (db.transaction as jest.Mock).mockImplementation(async (cb: (t: unknown) => unknown) => {
-      await cb({
-        execute: jest.fn(),
-        select: () => ({ from: () => ({ where: () => ({ for: async (mode: string) => (mode === "share" ? [{ id: "p" }] : [{ status: "up", scheduledJobId: "old" }]) }) }) }),
-        update: () => ({ set: jest.fn(() => ({ where: () => Object.assign(Promise.resolve(), { returning: async () => [{ id: "m", organizationId: "org", projectId: "p", status: "paused", frequencyMinutes: 5 }] }) })) }),
-      });
-      throw new Error("commit failed");
-    });
-    expect((await patch("paused")).status).toBe(500);
-    expect(deleteScheduledMonitor).toHaveBeenCalledWith("old");
-    expect(scheduleMonitor).toHaveBeenCalledTimes(1);
-  });
-
-  it("reschedules the monitor when it is resumed", async () => {
-    jest.mocked(db.query.monitors.findFirst).mockResolvedValue({ id: "m", organizationId: "org", projectId: "p", status: "paused" } as never);
-    tx({ id: "m", name: "M", organizationId: "org", projectId: "p", status: "pending", frequencyMinutes: 5, type: "website", target: "https://e.com", config: {} }, { status: "paused" });
+  it("schedules after a resume commits", async () => {
+    stored("paused");
+    useDb({ ...base, status: "pending" }, { ...base, status: "pending", scheduledJobId: null });
     expect((await patch("pending")).status).toBe(200);
     expect(scheduleMonitor).toHaveBeenCalledWith(expect.objectContaining({ monitorId: expect.any(String), frequencyMinutes: 5 }));
     expect(deleteScheduledMonitor).not.toHaveBeenCalled();
+  });
+
+  it("follows the committed row when a concurrent resume committed after this pause", async () => {
+    // This request paused, but a later resume already committed: the reconcile must schedule, not delete.
+    stored("up");
+    useDb({ ...base, status: "paused" }, { ...base, status: "up", scheduledJobId: null });
+    expect((await patch("paused")).status).toBe(200);
+    expect(scheduleMonitor).toHaveBeenCalledTimes(1);
+    expect(deleteScheduledMonitor).not.toHaveBeenCalled();
+  });
+
+  it("follows the committed row when a concurrent pause committed after this resume", async () => {
+    stored("paused");
+    useDb({ ...base, status: "pending" }, { ...base, status: "paused", enabled: false, scheduledJobId: "x" });
+    expect((await patch("pending")).status).toBe(200);
+    expect(deleteScheduledMonitor).toHaveBeenCalledWith("x");
+    expect(scheduleMonitor).not.toHaveBeenCalled();
+  });
+
+  it("reports a failed reconcile instead of swallowing it, and a retry converges", async () => {
+    stored("up");
+    useDb({ ...base, status: "paused" }, { ...base, status: "paused", enabled: false, scheduledJobId: "old" });
+    deleteScheduledMonitor.mockRejectedValueOnce(new Error("redis down"));
+    const failed = await patch("paused");
+    expect(failed.status).toBe(503);
+    expect((await failed.json()).error).toMatch(/Retry/);
+    const retry = await patch("paused");
+    expect(retry.status).toBe(200);
+    expect(deleteScheduledMonitor).toHaveBeenCalledTimes(2);
   });
 });
 

@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { and, desc, eq, lte, gt, ne } from 'drizzle-orm';
+import { and, eq, lte, gt, ne } from 'drizzle-orm';
 import { DbService } from '../../db/db.service';
 import * as schema from '../../db/schema';
 import {
@@ -96,7 +96,7 @@ export class MonitorAlertService {
    * Opens or updates the monitor's incident without notifying anyone: for a monitor with no channel or with
    * alerts off. Held back during scheduled maintenance like an alert, so the next failing check retries.
    */
-  async signalFailure(monitorId: string, reason: string) {
+  async signalFailure(monitorId: string, reason: string, observedAt?: Date) {
     if (await this.isUnderScheduledMaintenance(monitorId)) {
       return {
         delivered: false,
@@ -104,18 +104,8 @@ export class MonitorAlertService {
         reason: 'maintenance' as const,
       };
     }
-    // The failing check's time, not now: a failure signalled after a recovery must still read as older than it.
-    const failing = await this.dbService.db.query.monitorResults.findFirst({
-      where: and(
-        eq(schema.monitorResults.monitorId, monitorId),
-        ne(schema.monitorResults.status, 'up'),
-      ),
-      orderBy: [desc(schema.monitorResults.checkedAt)],
-      columns: { checkedAt: true },
-    });
-    const firedAt = failing?.checkedAt
-      ? new Date(failing.checkedAt)
-      : new Date();
+    // The failing cycle's own observation time, not the send time: a delayed send must not outrun a recovery.
+    const firedAt = observedAt ?? new Date();
     const queued = await this.sreAlertTriageQueueService.enqueueSourceFailure({
       sourceType: 'monitor',
       sourceId: monitorId,
@@ -138,6 +128,8 @@ export class MonitorAlertService {
     reason: string,
     metadata: Record<string, unknown> = {},
   ) {
+    const observed = new Date(String(metadata.observedAt));
+    const observedAt = Number.isNaN(observed.getTime()) ? undefined : observed;
     this.logger.log(
       `[NOTIFY] Manual notification trigger for monitor ${monitorId}, type: ${type}`,
     );
@@ -221,7 +213,7 @@ export class MonitorAlertService {
         providers.length === 0 &&
         monitor.alertConfig?.incidentEnabled !== false
       ) {
-        return this.signalFailure(monitorId, reason);
+        return this.signalFailure(monitorId, reason, observedAt);
       }
       // Nothing to deliver to: not a failure, so the cycle is receipted instead of retried 5 times.
       return {
@@ -335,7 +327,8 @@ export class MonitorAlertService {
     );
 
     if (deliveryResults.results.length > 0) {
-      const sentAt = new Date(); // one per failure: per-channel rows must share it
+      // One per failure: per-channel rows share it, and a failure keeps the cycle's observation time.
+      const sentAt = type === 'failure' && observedAt ? observedAt : new Date();
       const historyRecords = deliveryResults.results.map((result) => ({
         type: notificationType,
         message: notificationPayload.message,

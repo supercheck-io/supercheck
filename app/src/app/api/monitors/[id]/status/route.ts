@@ -20,6 +20,39 @@ const logger = createLogger({ module: "monitor-status-api" }) as {
   error: (data: unknown, msg?: string) => void;
 };
 
+/** Makes the monitor's repeatable job match its committed row: none while paused or disabled, one while active. */
+async function reconcileMonitorSchedule(id: string, projectId: string): Promise<void> {
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`monitor-status:${id}`}))`);
+    const [row] = await tx
+      .select()
+      .from(monitors)
+      .where(and(eq(monitors.id, id), eq(monitors.projectId, projectId)))
+      .for("update");
+    if (!row) return;
+    if (row.status === "paused" || !row.enabled || row.frequencyMinutes <= 0) {
+      const removed = row.scheduledJobId ? await deleteScheduledMonitor(row.scheduledJobId) : false;
+      if (!removed) await deleteScheduledMonitor(id);
+      await tx.update(monitors).set({ scheduledJobId: null }).where(eq(monitors.id, id));
+      return;
+    }
+    const schedulerId = await scheduleMonitor({
+      monitorId: id,
+      frequencyMinutes: row.frequencyMinutes,
+      jobData: {
+        monitorId: id,
+        projectId,
+        type: row.type as MonitorJobData["type"],
+        target: row.target,
+        config: row.config as Record<string, unknown>,
+        frequencyMinutes: row.frequencyMinutes,
+      },
+      retryLimit: 3,
+    });
+    await tx.update(monitors).set({ scheduledJobId: schedulerId }).where(eq(monitors.id, id));
+  });
+}
+
 export async function PATCH(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
@@ -94,8 +127,6 @@ export async function PATCH(
     // Update the monitor status in the database. Hold the live project row (FOR SHARE) so a
     // concurrent project delete cannot pause the monitor and then be overwritten by this write.
     const { organizationId: monitorOrgId, projectId: monitorProjectId } = currentMonitor;
-    // Scheduler effects run before commit; remember them so a failed transaction can undo them.
-    let effect: "unscheduled" | "scheduled" | null = null;
     const write = async (tx: Parameters<Parameters<typeof db.transaction>[0]>[0]) => {
       const [liveProject] = await tx
         .select({ id: projects.id })
@@ -103,13 +134,8 @@ export async function PATCH(
         .where(and(eq(projects.id, monitorProjectId), ne(projects.status, 'deleted')))
         .for('share');
       if (!liveProject) return undefined;
-      // One pause/resume at a time per monitor, so an older request's scheduler effect cannot land after a newer one's.
+      // One status write at a time per monitor.
       await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`monitor-status:${id}`}))`);
-      const [before] = await tx
-        .select({ status: monitors.status, scheduledJobId: monitors.scheduledJobId })
-        .from(monitors)
-        .where(and(eq(monitors.id, id), eq(monitors.projectId, monitorProjectId)))
-        .for('update');
       const [updated] = await tx
         .update(monitors)
         .set({
@@ -128,69 +154,17 @@ export async function PATCH(
         .returning();
       if (!updated) return undefined;
 
-      // Keep the schedule in step with pause and resume, as the monitor update paths do (same lock, same commit order).
-      const wasPaused = (before?.status ?? currentMonitor.status) === "paused";
-      const nowPaused = updated.status === "paused";
-      if (wasPaused !== nowPaused) {
-        if (nowPaused) {
-          const jobId = before?.scheduledJobId ?? currentMonitor.scheduledJobId;
-          const removed = jobId ? await deleteScheduledMonitor(jobId) : false;
-          if (!removed) await deleteScheduledMonitor(id);
-          effect = "unscheduled";
-          await tx.update(monitors).set({ scheduledJobId: null }).where(eq(monitors.id, id));
-        } else if (updated.frequencyMinutes > 0) {
-          const schedulerId = await scheduleMonitor({
-            monitorId: id,
-            frequencyMinutes: updated.frequencyMinutes,
-            jobData: {
-              monitorId: id,
-              projectId: monitorProjectId,
-              type: updated.type as MonitorJobData["type"],
-              target: updated.target,
-              config: updated.config as Record<string, unknown>,
-              frequencyMinutes: updated.frequencyMinutes,
-            },
-            retryLimit: 3,
-          });
-          effect = "scheduled";
-          await tx.update(monitors).set({ scheduledJobId: schedulerId }).where(eq(monitors.id, id));
-        }
-      }
       return updated;
     };
     // Turning a paused monitor back on takes a plan slot: count and write under the plan-limit lock.
     let updatedMonitor;
-    try {
-      if (currentMonitor.status === 'paused' && status !== 'paused') {
-        const resumed = await withResumeWithinPlan(monitorOrgId, 'monitor', id, write);
-        const refusal = resumeRefusalResponse(resumed);
-        if (refusal) {
-          if (effect === "scheduled") await deleteScheduledMonitor(id).catch(() => false);
-          return refusal;
-        }
-        updatedMonitor = resumed.ok ? resumed.value : undefined;
-      } else {
-        updatedMonitor = await db.transaction(write);
-      }
-    } catch (error) {
-      // The row rolled back, so put the scheduler back as the row says: undo what the failed write did.
-      if (effect === "scheduled") await deleteScheduledMonitor(id).catch(() => false);
-      if (effect === "unscheduled" && currentMonitor.status !== "paused" && currentMonitor.frequencyMinutes > 0) {
-        await scheduleMonitor({
-          monitorId: id,
-          frequencyMinutes: currentMonitor.frequencyMinutes,
-          jobData: {
-            monitorId: id,
-            projectId: monitorProjectId,
-            type: currentMonitor.type as MonitorJobData["type"],
-            target: currentMonitor.target,
-            config: currentMonitor.config as Record<string, unknown>,
-            frequencyMinutes: currentMonitor.frequencyMinutes,
-          },
-          retryLimit: 3,
-        }).then((schedulerId) => db.update(monitors).set({ scheduledJobId: schedulerId }).where(eq(monitors.id, id))).catch(() => undefined);
-      }
-      throw error;
+    if (currentMonitor.status === 'paused' && status !== 'paused') {
+      const resumed = await withResumeWithinPlan(monitorOrgId, 'monitor', id, write);
+      const refusal = resumeRefusalResponse(resumed);
+      if (refusal) return refusal;
+      updatedMonitor = resumed.ok ? resumed.value : undefined;
+    } else {
+      updatedMonitor = await db.transaction(write);
     }
 
     if (!updatedMonitor) {
@@ -198,6 +172,21 @@ export async function PATCH(
         { error: "Monitor not found" },
         { status: 404 }
       );
+    }
+
+    // Bring the scheduler to the committed state. Idempotent and serialized per monitor, so a stale request
+    // (or a retry) can never leave a schedule the row does not call for. If it fails the status is already saved;
+    // the app's startup scheduler sync (initializeMonitorSchedulers) and the worker's paused guard cover the gap.
+    if ((currentMonitor.status === "paused") !== (status === "paused")) {
+      try {
+        await reconcileMonitorSchedule(id, monitorProjectId);
+      } catch (error) {
+        logger.error({ err: error, monitorId: id }, "Monitor status saved but its schedule could not be updated");
+        return NextResponse.json(
+          { error: "Status saved, but updating the check schedule failed. Retry the request to reconcile it." },
+          { status: 503 },
+        );
+      }
     }
 
     // Log the audit event only for human actions (pause/unpause), not automated status changes

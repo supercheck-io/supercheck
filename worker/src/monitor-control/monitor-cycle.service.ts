@@ -337,6 +337,8 @@ export class MonitorCycleService {
       currentStatus: evaluation.currentStatus,
       reason: evaluation.reason,
       preparedAlertState: evaluation.alertState,
+      // The cycle's own latest result, not whatever a later cycle recorded.
+      observedAt: rows[0]?.checkedAt,
       metadata: {
         responseTime: evaluation.avgResponseTimeMs,
         // One entry per expected region, like the legacy path: the evaluator derives its
