@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { and, eq, lte, gt, ne } from 'drizzle-orm';
+import { and, desc, eq, inArray, lte, gt, ne } from 'drizzle-orm';
 import { DbService } from '../../db/db.service';
 import * as schema from '../../db/schema';
 import {
@@ -127,6 +127,34 @@ export class MonitorAlertService {
         `[NOTIFY] Suppressing monitor ${monitorId} alert during scheduled maintenance`,
       );
       return { delivered: false, suppressed: true };
+    }
+
+    // An outage whose down alert never went out (suppressed, undeliverable) gets no recovery alert.
+    if (type === 'recovery') {
+      const [lastOutageAlert] = await db
+        .select({
+          type: schema.alertHistory.type,
+          sentAt: schema.alertHistory.sentAt,
+        })
+        .from(schema.alertHistory)
+        .where(
+          and(
+            eq(schema.alertHistory.monitorId, monitorId),
+            eq(schema.alertHistory.status, 'sent'),
+            inArray(schema.alertHistory.type, [
+              'monitor_failure',
+              'monitor_recovery',
+            ]),
+          ),
+        )
+        .orderBy(desc(schema.alertHistory.sentAt))
+        .limit(1);
+      if (lastOutageAlert?.type !== 'monitor_failure') {
+        this.logger.log(
+          `[NOTIFY] No down alert was sent for monitor ${monitorId}; skipping recovery alert`,
+        );
+        return { delivered: false, suppressed: true };
+      }
     }
 
     // Get notification providers
@@ -287,16 +315,23 @@ export class MonitorAlertService {
         sentAt: new Date(),
       }));
 
-      const createdRows = await db
-        .insert(schema.alertHistory)
-        .values(historyRecords)
-        .returning({
-          id: schema.alertHistory.id,
-          status: schema.alertHistory.status,
-        });
-      await this.sreAlertTriageQueueService.enqueueAlertHistoryRows(
-        createdRows,
-      );
+      // Delivery already happened: a bookkeeping failure must not be reported as a failed delivery.
+      try {
+        const createdRows = await db
+          .insert(schema.alertHistory)
+          .values(historyRecords)
+          .returning({
+            id: schema.alertHistory.id,
+            status: schema.alertHistory.status,
+          });
+        await this.sreAlertTriageQueueService.enqueueAlertHistoryRows(
+          createdRows,
+        );
+      } catch (error) {
+        this.logger.error(
+          `[NOTIFY] Failed to record alert history for monitor ${monitorId}: ${getErrorMessage(error)}`,
+        );
+      }
     }
     // A provider that reached some recipients (partial email) counts as delivered: a retry would resend to them.
     return {
