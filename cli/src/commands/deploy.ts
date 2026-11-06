@@ -194,7 +194,7 @@ export async function preflightDeploy(
   if (!dryRun && writes.some((c) => c.type === 'statusPage')) {
     // Older servers have no PUT on this route (405). A current one rejects an empty body (400) before touching any row.
     try {
-      await client.put(`/api/status-pages/${STATUS_PAGE_PROBE_ID}`, {})
+      await client.put(`/api/status-pages/${encodeURIComponent(STATUS_PAGE_PROBE_ID)}`, {})
     } catch (error) {
       // A 404 with a JSON error body is the route's own "not found" (the route exists); Next's missing-route 404 has no JSON body.
       const routeMissing = error instanceof ApiRequestError && (error.statusCode === 405 || (error.statusCode === 404 && !(error.responseBody as { error?: unknown } | undefined)?.error))
@@ -350,7 +350,7 @@ export async function verifyDeployedTests(
     if (out.filter((o) => o.status !== 'skipped').length >= VERIFY_LIMIT) { out.push({ id: target.id, name: target.name, status: 'skipped', reason: `Verification is limited to ${VERIFY_LIMIT} tests per deploy.` }); continue }
     let runId: string | undefined
     try {
-      const { data } = await client.post<Record<string, unknown>>(`/api/tests/${target.id}/execute`, {}, { retries: 0 })
+      const { data } = await client.post<Record<string, unknown>>(`/api/tests/${encodeURIComponent(target.id)}/execute`, {}, { retries: 0 })
       runId = typeof data.runId === 'string' ? data.runId : undefined
       if (!runId) { out.push({ id: target.id, name: target.name, status: 'error', reason: 'Execution returned no run ID.' }); continue }
       const run = await waitForRun(client, runId, timeoutMs)

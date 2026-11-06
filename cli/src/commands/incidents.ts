@@ -46,13 +46,13 @@ incidentCommand.command('list')
 
 incidentCommand.command('get <id>').description('Get incident details by number or UUID').action(async (id: string) => {
   id = await resolveIncidentId(id)
-  const { data } = await withSpinner('Fetching incident', () => createAuthenticatedClient().get<{ incident: Record<string, unknown> }>(`/api/sre/incidents/${id}`))
+  const { data } = await withSpinner('Fetching incident', () => createAuthenticatedClient().get<{ incident: Record<string, unknown> }>(`/api/sre/incidents/${encodeURIComponent(id)}`))
   outputDetail(data.incident)
 })
 
 incidentCommand.command('timeline <id>').description('Show the incident timeline by number or UUID').action(async (id: string) => {
   id = await resolveIncidentId(id)
-  const { data } = await withSpinner('Fetching incident timeline', () => createAuthenticatedClient().get<{ events: Record<string, unknown>[] }>(`/api/sre/incidents/${id}/timeline`))
+  const { data } = await withSpinner('Fetching incident timeline', () => createAuthenticatedClient().get<{ events: Record<string, unknown>[] }>(`/api/sre/incidents/${encodeURIComponent(id)}/timeline`))
   output(data.events, { columns: [
     { key: 'createdAt', header: 'Time' }, { key: 'eventType', header: 'Event' },
     { key: 'actorType', header: 'Actor' }, { key: 'eventData', header: 'Details' },
@@ -75,7 +75,7 @@ incidentCommand.command('resolve <id>')
       }
       await confirmPrompt(`Resolve incident ${label}?`, { default: false })
     }
-    const { data } = await withSpinner('Resolving incident', () => createAuthenticatedClient().post<Record<string, unknown>>(`/api/sre/incidents/${id}/resolve`, { resolutionSummary: summary, comment: summary }, { retries: 0 }))
+    const { data } = await withSpinner('Resolving incident', () => createAuthenticatedClient().post<Record<string, unknown>>(`/api/sre/incidents/${encodeURIComponent(id)}/resolve`, { resolutionSummary: summary, comment: summary }, { retries: 0 }))
     if (data.alreadyResolved === true) logger.info(typeof data.message === 'string' ? data.message : 'Incident was already resolved')
     else logger.success('Incident resolved')
     outputDetail(data)
@@ -84,7 +84,7 @@ incidentCommand.command('resolve <id>')
 async function setAssignee(id: string, assigneeUserId: string | null, commander: boolean | undefined): Promise<void> {
   id = await resolveIncidentId(id)
   const role = commander ? 'commander' : 'assignee'
-  const { data } = await withSpinner('Updating incident', () => withRouteCheck(() => createAuthenticatedClient().post<Record<string, unknown>>(`/api/sre/incidents/${id}/assign`, { assigneeUserId, role }, { retries: 0 })))
+  const { data } = await withSpinner('Updating incident', () => withRouteCheck(() => createAuthenticatedClient().post<Record<string, unknown>>(`/api/sre/incidents/${encodeURIComponent(id)}/assign`, { assigneeUserId, role }, { retries: 0 })))
   logger.success(typeof data.message === 'string' ? data.message : 'Incident updated')
   outputDetail(data)
 }
@@ -115,7 +115,7 @@ incidentCommand.command('ack <id>')
   .description('Acknowledge an incident by number or UUID')
   .action(async (id: string) => {
     id = await resolveIncidentId(id)
-    const { data } = await withSpinner('Acknowledging incident', () => withRouteCheck(() => createAuthenticatedClient().post<Record<string, unknown>>(`/api/sre/incidents/${id}/acknowledge`, {}, { retries: 0 })))
+    const { data } = await withSpinner('Acknowledging incident', () => withRouteCheck(() => createAuthenticatedClient().post<Record<string, unknown>>(`/api/sre/incidents/${encodeURIComponent(id)}/acknowledge`, {}, { retries: 0 })))
     if (data.alreadyAcknowledged === true) logger.info(typeof data.message === 'string' ? data.message : 'Incident was already acknowledged')
     else logger.success('Incident acknowledged')
     outputDetail(data)

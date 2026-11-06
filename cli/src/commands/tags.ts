@@ -63,7 +63,7 @@ tagCommand
     const client = createAuthenticatedClient()
     await withSpinner(
       'Deleting tag',
-      () => client.delete(`/api/tags/${id}`),
+      () => client.delete(`/api/tags/${encodeURIComponent(id)}`),
     )
     logger.success(`Tag ${id} deleted`)
     outputMutation({ id, deleted: true })

@@ -221,7 +221,7 @@ testCommand
 
     const { data } = await withSpinner(
       'Fetching test details',
-      () => client.get<Record<string, unknown>>(`/api/tests/${id}`, params),
+      () => client.get<Record<string, unknown>>(`/api/tests/${encodeURIComponent(id)}`, params),
     )
     outputDetail(data)
     if (options.includeScript && getOutputFormat() === 'table' && typeof data.script === 'string') {
@@ -330,7 +330,7 @@ testCommand
       })()
 
       if (!effectiveType) {
-        const { data: existing } = await client.get<{ type?: string }>(`/api/tests/${id}`, {
+        const { data: existing } = await client.get<{ type?: string }>(`/api/tests/${encodeURIComponent(id)}`, {
           includeScript: 'false',
         })
         const existingType = typeof existing.type === 'string'
@@ -366,7 +366,7 @@ testCommand
 
     const { data } = await withSpinner(
       'Updating test',
-      () => client.patch<Record<string, unknown>>(`/api/tests/${id}`, body),
+      () => client.patch<Record<string, unknown>>(`/api/tests/${encodeURIComponent(id)}`, body),
     )
     logger.success(`Test ${id} updated`)
     outputDetail(data)
@@ -385,7 +385,7 @@ testCommand
     const client = createAuthenticatedClient()
     await withSpinner(
       'Deleting test',
-      () => client.delete(`/api/tests/${id}`),
+      () => client.delete(`/api/tests/${encodeURIComponent(id)}`),
     )
     logger.success(`Test ${id} deleted`)
     outputMutation({ id, deleted: true })
@@ -558,7 +558,7 @@ testCommand
   .description('Stream live status events for a test')
   .option('--idle-timeout <seconds>', 'Abort if no data received within this period', '60')
   .action(async (id: string, options: { idleTimeout: string }) => {
-    await getSse(`/api/test-status/events/${id}`, ({ data }) => {
+    await getSse(`/api/test-status/events/${encodeURIComponent(id)}`, ({ data }) => {
       const record = typeof data === 'object' && data !== null ? data as Record<string, unknown> : {}
       if (getOutputFormat() === 'json') logger.output(JSON.stringify(record))
       else outputDetail(record)
@@ -581,7 +581,7 @@ testCommand.command('execute <id>')
   .action(async (id: string, options: { location?: string; wait?: boolean; timeout: string }) => {
     const timeout = parseIntStrict(options.timeout, '--timeout', { min: 1 }) * 1000
     const client = createAuthenticatedClient()
-    const { data } = await client.post<Record<string, unknown>>(`/api/tests/${id}/execute`, { ...(options.location ? { location: options.location } : {}) }, { retries: 0 })
+    const { data } = await client.post<Record<string, unknown>>(`/api/tests/${encodeURIComponent(id)}/execute`, { ...(options.location ? { location: options.location } : {}) }, { retries: 0 })
     const runId = data.runId
     if (typeof runId !== 'string') throw new CLIError('Execution returned no run ID. Inspect runs before retrying.', ExitCode.ApiError)
     if (options.wait) {
