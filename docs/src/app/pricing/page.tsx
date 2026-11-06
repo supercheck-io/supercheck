@@ -1,5 +1,6 @@
 import catalog from "../../../../app/src/lib/billing/plan-catalog.json";
 import { trialFaqs, trialHighlights } from '../../../../app/src/lib/billing/trial-copy';
+import { SHARED_PRICING_FAQS } from '../../../../app/src/lib/billing/pricing-copy';
 import React from 'react';
 import Link from 'next/link';
 import { Check, ChevronDown } from 'lucide-react';
@@ -7,6 +8,7 @@ import { SiteHeader } from '../../lib/layout.shared';
 import { SiteFooter } from '../../components/site-footer';
 import { VendorComparison } from '../../components/pricing/vendor-comparison';
 import { CopyEmail } from '../../components/pricing/copy-email';
+import { planCrossoverMinutes } from '../../lib/pricing-estimate';
 
 type Feature = string | { text: string; hint: string };
 
@@ -42,11 +44,11 @@ function planFeatures(id: 'plus' | 'pro', support: string): Feature[] {
             hint: `About ${fmt(limits.playwrightMinutesIncluded * 12)} five-second Playwright runs`,
         },
         `${fmt(limits.k6VuMinutesIncluded)} k6 VU-minutes/month`,
-        `${fmt(limits.aiCreditsIncluded)} AI credits/month`,
+        `${fmt(limits.aiCreditsIncluded)} AI credits/month, fair use`,
         `${fmt(limits.sreInvestigationUnitsIncluded)} AI SRE investigations/month`,
         `${fmt(limits.runningCapacity)} concurrent runs`,
         `${fmt(limits.maxTeamMembers)} team members, ${fmt(limits.maxProjects)} projects`,
-        `${fmt(limits.maxStatusPages)} status pages with custom domains`,
+        `${fmt(limits.maxStatusPages)} status pages with custom domains, ${fmt(limits.maxStatusPageSubscribers)} subscribers each`,
         support,
     ];
 }
@@ -60,6 +62,7 @@ const plans: {
     cta: string;
     ctaLink: string;
     highlighted: boolean;
+    badge?: string;
 }[] = [
     {
         name: catalog.plus.name,
@@ -80,6 +83,7 @@ const plans: {
         cta: 'Join the Pro waitlist',
         ctaLink: waitlistHref('Pro'),
         highlighted: true,
+        badge: 'Recommended',
     },
     {
         name: 'Enterprise',
@@ -123,7 +127,7 @@ const comparisonFeatures: { category: string; items: ComparisonItem[] }[] = [
             { name: 'Monitors', plus: `${Number(catalog.plus.limits.maxMonitors).toLocaleString("en-US")}`, pro: `${Number(catalog.pro.limits.maxMonitors).toLocaleString("en-US")}`, enterprise: CUSTOM },
             { name: 'Playwright minutes/month', hint: 'Shared by Playwright tests and synthetic monitors', plus: `${Number(catalog.plus.limits.playwrightMinutesIncluded).toLocaleString("en-US")}`, pro: `${Number(catalog.pro.limits.playwrightMinutesIncluded).toLocaleString("en-US")}`, enterprise: CUSTOM },
             { name: 'k6 VU minutes/month', plus: `${Number(catalog.plus.limits.k6VuMinutesIncluded).toLocaleString("en-US")}`, pro: `${Number(catalog.pro.limits.k6VuMinutesIncluded).toLocaleString("en-US")}`, enterprise: CUSTOM },
-            { name: 'AI credits/month', plus: `${Number(catalog.plus.limits.aiCreditsIncluded).toLocaleString("en-US")}`, pro: `${Number(catalog.pro.limits.aiCreditsIncluded).toLocaleString("en-US")}`, enterprise: CUSTOM },
+            { name: 'AI credits/month', hint: 'Included, subject to fair use. No overage charges.', plus: `${Number(catalog.plus.limits.aiCreditsIncluded).toLocaleString("en-US")}`, pro: `${Number(catalog.pro.limits.aiCreditsIncluded).toLocaleString("en-US")}`, enterprise: CUSTOM },
             { name: 'AI SRE investigations/month', hint: 'Only completed investigation reports count', plus: `${Number(catalog.plus.limits.sreInvestigationUnitsIncluded).toLocaleString("en-US")}`, pro: `${Number(catalog.pro.limits.sreInvestigationUnitsIncluded).toLocaleString("en-US")}`, enterprise: CUSTOM },
             { name: 'Read-only evidence connectors', hint: 'AI SRE reads logs, metrics, traces and deploys from GitHub, Kubernetes, Prometheus, Grafana, Sentry, Datadog and more', plus: 'Included', pro: 'Included', enterprise: CUSTOM },
             { name: 'Private Agent support', hint: 'Run connectors inside your own network without opening inbound access', plus: 'Included', pro: 'Included', enterprise: CUSTOM },
@@ -207,51 +211,39 @@ const faqs = [
         question: 'Can I self-host Supercheck?',
         answer: 'Yes. Supercheck core is open source under AGPLv3. Self-host it on your own infrastructure with no Supercheck license cost; you pay for your own infrastructure and AI provider usage. The Cloud plans on this page are for teams that prefer a managed service. Self-hosted deployments have no trial and no usage limits.',
     },
-    {
-        question: 'Does one subscription cover all my projects?',
-        answer: 'Yes. Projects in an organization share one subscription, usage allowances, member limits, and spending controls, so creating another project does not require another plan. Only the organization owner manages billing.',
-    },
-    {
-        question: 'Where do Cloud checks run?',
-        answer: 'HTTP, SSL, ping, and port monitors can run from Europe, North America, and Asia Pacific. Browser synthetic monitors, Playwright tests, and k6 load tests run in Europe. Enterprise can use custom locations, and self-hosted deployments can run checks wherever you deploy.',
-    },
-    {
-        question: 'Why do browser checks and k6 tests run only in Europe?',
-        answer: 'At launch, browser and k6 execution is available in Europe only. They can still test any public URL worldwide, and each run currently uses your browser minutes or VU-minutes once. If browser execution is enabled in more locations later, each location counts separately. Enterprise and self-hosted deployments can use other locations.',
-    },
-    {
-        question: 'How are browser minutes measured?',
-        answer: 'Playwright tests and synthetic monitors share the browser-minute allowance. Execution time is measured in milliseconds and rounded to four decimal places in minutes per run, with no whole-minute minimum. A five-second run uses 0.0833 minutes. Browser checks currently run from one location (Europe). If they are enabled in more locations, each location adds usage, and each executed retry adds usage, including failed or canceled executions that used compute. HTTP, SSL, ping, and port checks from any location do not use browser minutes.',
-    },
-    {
-        question: 'How is k6 usage measured?',
-        answer: 'Each run uses peak virtual users multiplied by its duration in minutes, rounded up to a whole VU-minute. This measures peak capacity, so ramping tests can use more than their average active VU-time suggests. Review your load profile before running large tests.',
-    },
-    {
-        question: 'How do AI credits work?',
-        answer: 'AI credits cover test generation, fixes, and failure analysis, subject to fair use. Each accepted action uses one credit, even if generation or analysis later fails. Credits have no overage charges: upgrade or wait for the next billing cycle when they run out.',
-    },
-    {
-        question: 'What counts as an AI SRE investigation?',
-        answer: 'Each completed full investigation report uses one investigation unit. Failed or timed-out investigations and billing retries do not use units. AI SRE chat, triage, and evidence briefs do not use investigation units. A completed report does not guarantee a diagnosis or resolution.',
-    },
-    {
-        question: 'Can I limit overage spending?',
-        answer: 'Owners and admins can set monthly spending limits and alerts, with optional blocking of new billable executions and full investigations. Basic uptime checks continue. Spending limits cover overages, not the subscription fee. In-flight usage can exceed the limit, so it is not a guaranteed invoice cap. Monitor, member, project, and status-page limits require a plan upgrade.',
-    },
-    {
-        question: 'What happens if I exceed my limits?',
-        answer: 'Playwright minutes, k6 VU-minutes, and completed AI SRE investigations are billed at the overage rates above. AI credits are included with no overage charges. Monitor, member, project, and status-page limits require a plan upgrade rather than an overage payment.',
-    },
-    {
-        question: 'Do unused allowances roll over?',
-        answer: 'No. Execution minutes, AI credits, and investigation allowances reset monthly on your billing date.',
-    },
+    ...SHARED_PRICING_FAQS,
     {
         question: 'Can I change plans?',
         answer: 'You can change plans through the billing portal once Cloud subscriptions are available. Review the effective date and any prorated charge before confirming.',
     },
 ];
+
+const productJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'Product',
+    name: 'Supercheck Cloud',
+    description: 'Managed Playwright testing, k6 load testing, uptime monitoring, status pages and AI SRE investigations.',
+    brand: { '@type': 'Brand', name: 'Supercheck' },
+    offers: (['plus', 'pro'] as const).map((id) => ({
+        '@type': 'Offer',
+        name: catalog[id].name,
+        description: catalog[id].description,
+        price: (catalog[id].monthlyPriceCents / 100).toFixed(2),
+        priceCurrency: 'USD',
+        // Cloud signups are waitlist-only until launch.
+        availability: 'https://schema.org/PreOrder',
+        priceSpecification: {
+            '@type': 'UnitPriceSpecification',
+            price: (catalog[id].monthlyPriceCents / 100).toFixed(2),
+            priceCurrency: 'USD',
+            billingDuration: 'P1M',
+            unitText: 'organization per month',
+        },
+        url: 'https://supercheck.io/pricing',
+    })),
+};
+
+const CROSSOVER_MINUTES = planCrossoverMinutes();
 
 const faqJsonLd = {
     '@context': 'https://schema.org',
@@ -292,6 +284,10 @@ export default function PricingPage() {
                 type="application/ld+json"
                 dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd).replace(/</g, '\\u003c') }}
             />
+            <script
+                type="application/ld+json"
+                dangerouslySetInnerHTML={{ __html: JSON.stringify(productJsonLd).replace(/</g, '\\u003c') }}
+            />
             <SiteHeader />
 
             <main className="mx-auto w-full max-w-6xl px-4 pt-16 pb-24 sm:px-6 md:pt-20">
@@ -304,7 +300,7 @@ export default function PricingPage() {
                         Run the open-source core on your own servers at no cost, or preview the Cloud plans and join the waitlist. Cloud signups are not open yet.
                     </p>
                     <p className="mt-3 text-sm text-fd-muted-foreground">
-                        Prices in USD per month, before taxes. Playwright minutes, k6 VU-minutes, and completed AI SRE investigations beyond the included allowance are billed at the{' '}
+                        Priced per organization, not per seat. Prices in USD per month, before taxes. Playwright minutes, k6 VU-minutes, and completed AI SRE investigations beyond the included allowance are billed at the{' '}
                         <a href="#overage" className="underline underline-offset-4 hover:text-fd-foreground">overage rates</a>.
                     </p>
                     <nav aria-label="Pricing sections" className="mt-6 flex flex-wrap justify-center gap-x-6 gap-y-3 text-sm font-medium text-fd-primary">
@@ -339,12 +335,17 @@ export default function PricingPage() {
                     {plans.map((plan) => (
                         <div
                             key={plan.name}
-                            className={`flex flex-col rounded-xl border bg-fd-card p-6 sm:p-8 ${plan.highlighted
+                            className={`relative flex flex-col rounded-xl border bg-fd-card p-6 sm:p-8 ${plan.price ? '' : 'md:col-span-2 lg:col-span-1'} ${plan.highlighted
                                 ? 'border-fd-primary ring-1 ring-fd-primary'
                                 : 'border-fd-border'
                                 }`}
                         >
-                            <h2 className="text-lg font-semibold">{plan.name}</h2>
+                            <div className="flex items-center justify-between gap-3">
+                                <h2 className="text-lg font-semibold">{plan.name}</h2>
+                                {plan.badge && (
+                                    <span className="rounded-full bg-fd-primary px-2.5 py-0.5 text-xs font-semibold text-fd-primary-foreground">{plan.badge}</span>
+                                )}
+                            </div>
                             <p className="mt-1 min-h-10 text-sm text-fd-muted-foreground">{plan.description}</p>
                             <div className="mt-6 flex h-12 items-baseline gap-1">
                                 <span className="text-4xl font-semibold tracking-tight">{plan.price ?? 'Custom'}</span>
@@ -380,6 +381,19 @@ export default function PricingPage() {
 
                 <CopyEmail email={WAITLIST_EMAIL} />
 
+                <p className="mt-4 text-center text-sm text-fd-muted-foreground">
+                    Not sure which plan? {catalog.pro.name} costs less than {catalog.plus.name} above about {CROSSOVER_MINUTES.toLocaleString('en-US')} browser minutes a month. Choose {catalog.pro.name} if you need more than {fmt(catalog.plus.limits.maxMonitors)} monitors or {fmt(catalog.plus.limits.maxTeamMembers)} team members.
+                </p>
+
+                <ul aria-label="Plan basics" className="mt-6 flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm text-fd-muted-foreground">
+                    {['Open-source core (AGPLv3)', 'Priced per organization, not per seat', 'Spending limits and usage alerts', 'Cancel anytime'].map((item) => (
+                        <li key={item} className="flex items-center gap-2">
+                            <Check aria-hidden="true" className="size-4 text-fd-primary" />
+                            {item}
+                        </li>
+                    ))}
+                </ul>
+
                 <section aria-labelledby="trial-heading" className="mt-6 rounded-xl border border-fd-border p-6 sm:p-8">
                     <h2 id="trial-heading" className="text-lg font-semibold">{trial.durationDays}-day free trial, no card required</h2>
                     <p className="mt-1 text-sm text-fd-muted-foreground">
@@ -407,7 +421,7 @@ export default function PricingPage() {
                         <table className="w-full min-w-[640px] text-sm" aria-label="Full plan feature comparison">
                             <thead>
                                 <tr className="border-b border-fd-border">
-                                    <th className="w-2/5 px-6 py-4 text-left font-medium">Feature</th>
+                                    <th className="sticky left-0 z-10 w-2/5 bg-fd-background px-6 py-4 text-left font-medium">Feature</th>
                                     <th className="px-6 py-4 text-center font-medium">Plus</th>
                                     <th className="px-6 py-4 text-center font-medium">Pro</th>
                                     <th className="px-6 py-4 text-center font-medium">Enterprise</th>
@@ -423,7 +437,7 @@ export default function PricingPage() {
                                         </tr>
                                         {category.items.map((item) => (
                                             <tr key={item.name} className="border-b border-fd-border last:border-0">
-                                                <th scope="row" className="px-6 py-3 text-left font-normal">
+                                                <th scope="row" className="sticky left-0 z-10 bg-fd-background px-6 py-3 text-left font-normal">
                                                     {item.name}
                                                     {item.hint && <span className="block max-w-sm text-xs text-fd-muted-foreground">{item.hint}</span>}
                                                 </th>

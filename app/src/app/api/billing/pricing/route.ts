@@ -128,8 +128,8 @@ export async function GET() {
         features: [
           {
             name: "Monitors",
-            plus: plans.find((p) => p.plan === "plus")?.maxMonitors ?? "50",
-            pro: plans.find((p) => p.plan === "pro")?.maxMonitors ?? "200",
+            plus: plans.find((p) => p.plan === "plus")?.maxMonitors ?? PLAN_LIMIT_FALLBACKS.plus.maxMonitors,
+            pro: plans.find((p) => p.plan === "pro")?.maxMonitors ?? PLAN_LIMIT_FALLBACKS.pro.maxMonitors,
             enterprise: "Custom",
           },
           {
@@ -175,14 +175,14 @@ export async function GET() {
           },
           {
             name: "Concurrent Executions",
-            plus: plans.find((p) => p.plan === "plus")?.runningCapacity ?? "5",
-            pro: plans.find((p) => p.plan === "pro")?.runningCapacity ?? "10",
+            plus: plans.find((p) => p.plan === "plus")?.runningCapacity ?? PLAN_LIMIT_FALLBACKS.plus.runningCapacity,
+            pro: plans.find((p) => p.plan === "pro")?.runningCapacity ?? PLAN_LIMIT_FALLBACKS.pro.runningCapacity,
             enterprise: "Custom",
           },
           {
             name: "Queued Jobs",
-            plus: plans.find((p) => p.plan === "plus")?.queuedCapacity ?? "50",
-            pro: plans.find((p) => p.plan === "pro")?.queuedCapacity ?? "100",
+            plus: plans.find((p) => p.plan === "plus")?.queuedCapacity ?? PLAN_LIMIT_FALLBACKS.plus.queuedCapacity,
+            pro: plans.find((p) => p.plan === "pro")?.queuedCapacity ?? PLAN_LIMIT_FALLBACKS.pro.queuedCapacity,
             enterprise: "Custom",
           },
         ],
@@ -203,14 +203,14 @@ export async function GET() {
         features: [
           {
             name: "Team Members",
-            plus: plans.find((p) => p.plan === "plus")?.maxTeamMembers ?? "5",
-            pro: plans.find((p) => p.plan === "pro")?.maxTeamMembers ?? "25",
+            plus: plans.find((p) => p.plan === "plus")?.maxTeamMembers ?? PLAN_LIMIT_FALLBACKS.plus.maxTeamMembers,
+            pro: plans.find((p) => p.plan === "pro")?.maxTeamMembers ?? PLAN_LIMIT_FALLBACKS.pro.maxTeamMembers,
             enterprise: "Custom",
           },
           {
             name: "Projects",
-            plus: plans.find((p) => p.plan === "plus")?.maxProjects ?? "10",
-            pro: plans.find((p) => p.plan === "pro")?.maxProjects ?? "50",
+            plus: plans.find((p) => p.plan === "plus")?.maxProjects ?? PLAN_LIMIT_FALLBACKS.plus.maxProjects,
+            pro: plans.find((p) => p.plan === "pro")?.maxProjects ?? PLAN_LIMIT_FALLBACKS.pro.maxProjects,
             enterprise: "Custom",
           },
         ],
@@ -220,8 +220,8 @@ export async function GET() {
         features: [
           {
             name: "Public Status Pages",
-            plus: plans.find((p) => p.plan === "plus")?.maxStatusPages ?? "5",
-            pro: plans.find((p) => p.plan === "pro")?.maxStatusPages ?? "20",
+            plus: plans.find((p) => p.plan === "plus")?.maxStatusPages ?? PLAN_LIMIT_FALLBACKS.plus.maxStatusPages,
+            pro: plans.find((p) => p.plan === "pro")?.maxStatusPages ?? PLAN_LIMIT_FALLBACKS.pro.maxStatusPages,
             enterprise: "Custom",
           },
           {

@@ -341,7 +341,7 @@ describe("Polar webhook helpers", () => {
           data: { id: "sub_123", status, product_id: "prod_plus", customer_id: "cus_123" },
         });
         expect(subscriptionService.updateSubscription).toHaveBeenCalledWith(
-          "org_123", expect.objectContaining({ subscriptionStatus: "none" }), db,
+          "org_123", expect.objectContaining({ subscriptionStatus: "none", subscriptionPlan: null }), db,
         );
       },
     );

@@ -3,8 +3,10 @@ jest.mock("@/lib/auth-context", () => ({
   isAuthError: jest.fn(() => false),
 }));
 
+const mockImpersonationState = jest.fn(async (): Promise<string> => "none");
 jest.mock("@/lib/rbac/middleware", () => ({
   getUserOrgRole: jest.fn(),
+  getImpersonationState: () => mockImpersonationState(),
 }));
 
 jest.mock("@/lib/rbac/permissions", () => ({
@@ -69,6 +71,20 @@ describe("PATCH /api/billing/settings", () => {
       expect(billingSettingsService.updateSettings).not.toHaveBeenCalled();
     },
   );
+
+  it("refuses changes while a super admin impersonates the owner", async () => {
+    mockImpersonationState.mockResolvedValueOnce("impersonated");
+    const response = await PATCH(settingsRequest(JSON.stringify({ enableSpendingLimit: false })));
+    expect(response.status).toBe(403);
+    expect(billingSettingsService.updateSettings).not.toHaveBeenCalled();
+  });
+
+  it("returns a retryable 503, not an impersonation error, when the session lookup fails", async () => {
+    mockImpersonationState.mockResolvedValueOnce("unknown");
+    const response = await PATCH(settingsRequest(JSON.stringify({ enableSpendingLimit: false })));
+    expect(response.status).toBe(503);
+    expect(billingSettingsService.updateSettings).not.toHaveBeenCalled();
+  });
 
   it("normalizes and de-duplicates notification recipients", async () => {
     const response = await PATCH(settingsRequest(JSON.stringify({
