@@ -1,5 +1,5 @@
 import nodemailer from "nodemailer";
-import { EmailService } from "./email-service";
+import { EmailService, smtpSender } from "./email-service";
 
 jest.mock("nodemailer", () => ({
   __esModule: true,
@@ -155,5 +155,25 @@ describe("EmailService", () => {
       },
       skippedAddresses: [],
     });
+  });
+});
+
+describe("smtpSender", () => {
+  const env = (e: Record<string, string>) => e as unknown as NodeJS.ProcessEnv;
+
+  it("is the bare address with no Reply-To by default", () => {
+    expect(smtpSender(env({ SMTP_FROM_EMAIL: "a@x.io" }))).toEqual({ from: "a@x.io" });
+  });
+
+  it("adds a display name and Reply-To only when configured", () => {
+    expect(
+      smtpSender(env({ SMTP_FROM_EMAIL: "a@x.io", SMTP_FROM_NAME: " Acme ", SMTP_REPLY_TO: "s@x.io" })),
+    ).toEqual({ from: { name: "Acme", address: "a@x.io" }, replyTo: "s@x.io" });
+  });
+
+  it("keeps a From that already has a display name", () => {
+    expect(
+      smtpSender(env({ SMTP_FROM_EMAIL: "Acme <a@x.io>", SMTP_FROM_NAME: "Other" })).from,
+    ).toBe("Acme <a@x.io>");
   });
 });

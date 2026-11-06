@@ -34,7 +34,7 @@ describe("renderIncidentUpdateEmail", () => {
       incidentUrl: "https://app.io/incidents/12",
       actorName: "Dana",
     });
-    expect(r.subject).toBe("[SEV2] Incident resolved by Dana: #12 API errors");
+    expect(r.subject).toBe("[Supercheck] Incident resolved by Dana: #12 API errors (SEV2)");
     expect(r.html).toContain("Open incident #12");
     expect(r.text).toContain("API errors");
   });
@@ -48,10 +48,10 @@ describe("render* functions", () => {
     ["status page verification", () => renderStatusPageVerificationEmail({ verificationUrl: "https://s.io/verify/4", statusPageName: "Acme Status" }), /Acme Status$/, "https://s.io/verify/4"],
     ["status page welcome", () => renderStatusPageWelcomeEmail({ statusPageName: "Acme Status", statusPageUrl: "https://s.io", unsubscribeUrl: "https://s.io/unsub/5" }), /Acme Status$/, "https://s.io/unsub/5"],
     ["status page incident", () => renderIncidentNotificationEmail({ statusPageName: "Acme Status", statusPageUrl: "https://s.io", incidentName: "DB outage", incidentStatus: "investigating", incidentImpact: "major", incidentDescription: "Looking into it", affectedComponents: ["API"], updateTimestamp: "2026-01-01T00:00:00Z", unsubscribeUrl: "https://s.io/unsub/6" }), /^\[INVESTIGATING\] DB outage - Acme Status$/, "DB outage"],
-    ["monitor alert", () => renderMonitorAlertEmail({ title: "Monitor down: API", message: "API is failing", fields: [{ title: "Region", value: "eu" }], footer: "Supercheck", type: "failure", color: "#ff0000" }), "Monitor down: API", "API is failing"],
+    ["monitor alert", () => renderMonitorAlertEmail({ title: "Monitor down: API", message: "API is failing", fields: [{ title: "Region", value: "eu" }], footer: "Supercheck", type: "failure", color: "#ff0000" }), "[Supercheck] Monitor down: API", "API is failing"],
     ["test email", () => renderTestEmail({ testMessage: "hello world" }), "Test Email from Supercheck", "hello world"],
-    ["usage notification", () => renderUsageNotificationEmail({ organizationName: "Acme", notificationType: "usage_80_percent", resourceType: "playwright", usageAmount: 80, usageLimit: 100, usagePercentage: 80, billingPageUrl: "https://app.io/billing", periodEndDate: "2026-02-01" }), "[80% Warning] Acme - Supercheck", "Acme"],
-    ["trial notification", () => renderTrialNotificationEmail({ organizationName: "Acme", kind: "midway", daysRemaining: 7, subscribeUrl: "https://app.io/subscribe" }), /- Acme on Supercheck$/, "https://app.io/subscribe"],
+    ["usage notification", () => renderUsageNotificationEmail({ organizationName: "Acme", notificationType: "usage_80_percent", resourceType: "playwright", usageAmount: 80, usageLimit: 100, usagePercentage: 80, billingPageUrl: "https://app.io/billing", periodEndDate: "2026-02-01" }), "[Supercheck] 80% usage warning: Acme", "Acme"],
+    ["trial notification", () => renderTrialNotificationEmail({ organizationName: "Acme", kind: "midway", daysRemaining: 7, subscribeUrl: "https://app.io/subscribe" }), /^\[Supercheck\] .+: Acme$/, "https://app.io/subscribe"],
   ];
 
   it.each(cases)("%s returns subject, html and text wired to its props", async (_name, run, subject, marker) => {
@@ -75,6 +75,6 @@ describe("render* functions", () => {
       billingPageUrl: "https://app.io/billing",
       periodEndDate: "2026-02-01",
     });
-    expect(r.subject).toBe("Usage Alert - Acme");
+    expect(r.subject).toBe("[Supercheck] Usage alert: Acme");
   });
 });

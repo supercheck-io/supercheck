@@ -5,7 +5,7 @@ jest.mock("@/lib/rbac/middleware", () => ({ getUserOrgRole: jest.fn() }));
 jest.mock("@/lib/auth-context", () => ({ requireUserAuthContext: jest.fn(), isAuthError: jest.fn() }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 import { PUT, DELETE } from "./route";
-import { apikey, member } from "@/db/schema";
+import { apikey, invitation, member } from "@/db/schema";
 import { db } from "@/utils/db";
 import { getUserOrgRole } from "@/lib/rbac/middleware";
 import { requireUserAuthContext } from "@/lib/auth-context";
@@ -44,6 +44,15 @@ it("does not create assignments when the membership update affects no rows", asy
   returning.mockResolvedValue([]);
   expect((await post()).status).toBe(404);
   expect(tx.insert).not.toHaveBeenCalled();
+});
+
+it("cancels a demoted member's pending invitations in the same transaction", async () => {
+  lock.mockResolvedValue([{ role: "org_admin" }]);
+  returning.mockResolvedValue([{ id: "m1" }]);
+  tx.delete.mockReturnValue({ where: jest.fn() });
+  tx.insert.mockReturnValue({ values: jest.fn() });
+  await post();
+  expect(tx.update).toHaveBeenCalledWith(invitation);
 });
 
 describe("project list on PUT", () => {
@@ -85,6 +94,12 @@ describe("DELETE", () => {
     expect((await del()).status).toBe(200);
     expect(delTx.update).toHaveBeenCalledWith(apikey);
     expect(keyUpdateSet).toHaveBeenCalledWith(expect.objectContaining({ enabled: false }));
+  });
+
+  it("cancels the removed member's pending invitations in the same transaction", async () => {
+    expect((await del()).status).toBe(200);
+    expect(delTx.update).toHaveBeenCalledWith(invitation);
+    expect(keyUpdateSet).toHaveBeenCalledWith({ status: "cancelled" });
   });
 
   it("locks the membership row before deleting assignments, and 404s if it is already gone", async () => {

@@ -24,6 +24,7 @@ import {
 import { renderIncidentUpdateEmail } from "@/lib/email-renderer";
 import { EmailService } from "@/lib/email-service";
 import { getDisplayStatus } from "@/lib/sre/incident-status-display";
+import { safeText } from "@/lib/mcp/redact";
 import { decryptNotificationProviderConfig } from "@/lib/notification-providers/crypto";
 import { createLogger } from "@/lib/logger/index";
 import {
@@ -248,7 +249,7 @@ async function sendEmailBatch(unique: string[], message: Message): Promise<numbe
       .map((field) => `<tr><td style="padding:4px 12px 4px 0;color:#6b7280"><b>${escapeHtml(field.title)}</b></td><td>${escapeHtml(field.value)}</td></tr>`)
       .join("");
     rendered = {
-      subject: `[${message.incident.severity.toUpperCase()}] ${message.headline}: #${message.incident.number} ${message.email.title}`,
+      subject: `[Supercheck] ${message.headline}: #${message.incident.number} ${message.email.title} (${message.incident.severity.toUpperCase()})`,
       text: plainText(message),
       html: `<p><b>${escapeHtml(message.headline)}</b></p><p>${escapeHtml(message.text)}</p><table>${rows}</table><p><a href="${escapeHtml(message.url)}">Open incident #${message.incident.number}</a></p>`,
     };
@@ -562,8 +563,10 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<b
     const assigneeName = person(ownerId)?.name || undefined;
 
     const statusLabel = getDisplayStatus(incident.status, incident.acknowledgedAt).label;
+    // The title is user text sent to email and chat providers: redact credentials and bound its length.
+    const title = safeText(incident.title, 300) ?? "";
     const text =
-      `[${incident.severity.toUpperCase()}] Incident #${incident.number} ${EVENT_LABEL[input.event]}: ${incident.title}` +
+      `[${incident.severity.toUpperCase()}] Incident #${incident.number} ${EVENT_LABEL[input.event]}: ${title}` +
       (incident.serviceName ? ` (${incident.serviceName})` : "") +
       (detail ? `\n${detail}` : "");
     const message: Message = {
@@ -583,7 +586,7 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<b
         actorName,
       }),
       email: {
-        title: incident.title,
+        title,
         statusLabel,
         serviceName: incident.serviceName ?? undefined,
         detail,

@@ -49,22 +49,32 @@ export class StatusAggregationService {
       })),
       component.aggregationMethod as AggregationMethod,
       component.failureThreshold,
+      component.status as ComponentStatus,
     );
   }
 
-  /** Threshold counts failing monitors, independently of consecutive-check alert thresholds. */
+  /**
+   * Threshold counts failing monitors, independently of consecutive-check alert thresholds.
+   * Pending (no result yet) and paused monitors never count while another monitor reports; when none
+   * does, pending shows operational and paused keeps `previousStatus` (the last known status).
+   */
   calculateFromMonitors(
     monitors: Array<{ status: string; weight: number }>,
     method: AggregationMethod,
     failureThreshold: number,
+    previousStatus?: ComponentStatus,
   ): ComponentStatus {
-    // A newly linked (pending) or paused monitor has no result yet; it must not
-    // degrade a component whose other monitors have real results.
     const reporting = monitors.filter(
       (monitor) => !["pending", "paused"].includes(monitor.status),
     );
-    if (reporting.length > 0) monitors = reporting;
-    if (!monitors.length) return "operational";
+    if (!reporting.length) {
+      const paused = monitors.some((monitor) => monitor.status === "paused");
+      // A stored under_maintenance may be the old paused mapping, so it is not a last known status.
+      return paused && previousStatus && previousStatus !== "under_maintenance"
+        ? previousStatus
+        : "operational";
+    }
+    monitors = reporting;
     const failures = monitors.filter((monitor) =>
       ["down", "error", "timeout"].includes(monitor.status),
     ).length;

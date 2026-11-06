@@ -8,6 +8,7 @@ import { requireUserAuthContext, isAuthError, authErrorStatus } from '@/lib/auth
 import { Role } from '@/lib/rbac/permissions';
 import { logAuditEvent } from '@/lib/audit-logger';
 import { disableTriggerKeysForMember } from '@/lib/security/disable-trigger-keys';
+import { cancelPendingInvitesByInviter } from '@/lib/security/cancel-pending-invites';
 import { updateMemberSchema } from '@/lib/validations/member';
 
 export async function PUT(
@@ -199,6 +200,8 @@ export async function PUT(
           eq(member.organizationId, organizationId)
         )).returning({ id: member.id });
       if (!updatedMembers.length) throw new Error('MEMBER_NOT_FOUND');
+      // Only org admins can invite, so a demoted admin's pending invitations must not stay usable.
+      if (role !== 'org_admin') await cancelPendingInvitesByInviter(tx, resolvedParams.memberId, organizationId);
 
       // Always reset organization-scoped project assignments for this member first.
       // This keeps role/project state deterministic across all transitions.
@@ -471,6 +474,7 @@ export async function DELETE(
 
       // Their job trigger keys must not outlive the membership.
       await disableTriggerKeysForMember(tx, resolvedParams.memberId, delOrgId);
+      await cancelPendingInvitesByInviter(tx, resolvedParams.memberId, delOrgId);
       return 'removed' as const;
     });
 

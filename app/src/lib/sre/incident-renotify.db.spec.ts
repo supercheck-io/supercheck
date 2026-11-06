@@ -119,3 +119,16 @@ it("sends at most 50 reminders per tick, in batches", async () => {
   expect(notifyIncidentEvent).toHaveBeenCalledTimes(50);
   expect(await renotifyUnacknowledgedIncidents()).toBe(10);
 });
+
+it("counts a reopened incident's wait from its reopen, not from its creation", async () => {
+  await client`UPDATE sre_incidents SET renotified_at = now() WHERE project_id = ${policyProject}`;
+  const [reopenedLong, reopenedJustNow] = [randomUUID(), randomUUID()];
+  // Both were created 5 days ago (past the age cap) and reopened since.
+  await incident(300, reopenedLong, policyProject, 5 * 24 * 60);
+  await incident(301, reopenedJustNow, policyProject, 5 * 24 * 60);
+  await client`UPDATE sre_incidents SET reopened_at = ${minutesAgo(45)} WHERE id = ${reopenedLong}`;
+  await client`UPDATE sre_incidents SET reopened_at = ${minutesAgo(5)} WHERE id = ${reopenedJustNow}`;
+  notifyIncidentEvent.mockReset().mockResolvedValue(undefined);
+  expect(await renotifyUnacknowledgedIncidents()).toBe(1);
+  expect(notifyIncidentEvent).toHaveBeenCalledWith(expect.objectContaining({ incidentId: reopenedLong }));
+});

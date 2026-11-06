@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render as rtlRender, screen, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 const mockInvalidateQueries = jest.fn().mockResolvedValue(undefined);
 
@@ -10,11 +11,11 @@ jest.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: jest.fn() }),
 }));
 
-jest.mock("@tanstack/react-query", () => ({
-  useQueryClient: () => ({
-    invalidateQueries: mockInvalidateQueries,
-  }),
-}));
+// A real client (the run state lives in its mutation cache); only invalidation is observed.
+const testClient = new QueryClient();
+testClient.invalidateQueries = mockInvalidateQueries as unknown as QueryClient["invalidateQueries"];
+const render = (ui: React.ReactElement) =>
+  rtlRender(ui, { wrapper: ({ children }) => <QueryClientProvider client={testClient}>{children}</QueryClientProvider> });
 
 jest.mock("@/hooks/use-project-context", () => ({
   useProjectContext: () => ({ projectId: "project-1" }),
@@ -85,6 +86,31 @@ describe("SreInvestigationPanel", () => {
       "may still be running",
     );
     await waitFor(() => expect(mockInvalidateQueries).toHaveBeenCalledTimes(2));
+  });
+
+  it("sends one request for a double click", async () => {
+    render(<SreInvestigationPanel incidentId="incident-dbl" hasPrimaryService serviceMappingHref="/x" canInvestigate />);
+    const run = screen.getByRole("button", { name: "Run investigation" });
+    fireEvent.click(run);
+    fireEvent.click(run);
+    await screen.findByRole("button", { name: "Run investigation" });
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps Run disabled after a tab switch remounts the panel mid-run", async () => {
+    let finish!: (value: unknown) => void;
+    (global.fetch as jest.Mock).mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+    const props = { incidentId: "incident-remount", hasPrimaryService: true, serviceMappingHref: "/org-admin", canInvestigate: true };
+    const first = render(<SreInvestigationPanel {...props} />);
+    fireEvent.click(screen.getByRole("button", { name: "Run investigation" }));
+    await screen.findByRole("button", { name: "Investigating..." });
+    first.unmount();
+
+    render(<SreInvestigationPanel {...props} />);
+    expect(screen.getByRole("button", { name: "Investigating..." })).toBeDisabled();
+
+    finish({ ok: true, status: 200, json: async () => ({ summary: "done" }) });
+    await screen.findByRole("button", { name: "Run investigation" });
   });
 
   it("disables another run when the server reports an active investigation", () => {

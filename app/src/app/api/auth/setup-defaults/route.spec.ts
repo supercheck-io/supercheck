@@ -179,6 +179,31 @@ describe("POST /api/auth/setup-defaults", () => {
     expect(mockDb.transaction).not.toHaveBeenCalled();
   });
 
+  describe("pending invitation", () => {
+    const arrange = (role: string, invitations: unknown[]) => {
+      mockGetCurrentUser.mockResolvedValue({ id: "user-1", email: "owner@example.com", name: "Owner", role });
+      (auth.api.getSession as unknown as jest.Mock).mockResolvedValue({ session: { token: "t" }, user: { id: "user-1", banned: false } });
+      mockDb.select.mockReset()
+        .mockReturnValueOnce(selectResult([{ emailVerified: true }], true))
+        .mockReturnValueOnce(selectResult([]))
+        .mockReturnValueOnce({ from: jest.fn().mockReturnThis(), where: jest.fn().mockReturnThis(), orderBy: jest.fn().mockReturnThis(), limit: jest.fn().mockResolvedValue(invitations) });
+      mockDb.transaction.mockReset().mockRejectedValue(new Error("reached creation"));
+    };
+
+    it("still skips default organization setup for a normal user with a pending invitation", async () => {
+      arrange("project_viewer", [{ id: "inv-1" }]);
+      const body = await (await POST(request())).json();
+      expect(body.pendingInvitationId).toBe("inv-1");
+      expect(mockDb.transaction).not.toHaveBeenCalled();
+    });
+
+    it("ignores a pending invitation for a platform administrator and creates their default organization", async () => {
+      arrange("super_admin", [{ id: "inv-1" }]);
+      await POST(request());
+      expect(mockDb.transaction).toHaveBeenCalled();
+    });
+  });
+
   it("uses the oldest owner ID chosen under the user lock after a concurrent setup wins", async () => {
     mockDb.select.mockReset().mockReturnValueOnce(selectResult([{ emailVerified: true }], true))
       .mockReturnValueOnce(selectResult([]))

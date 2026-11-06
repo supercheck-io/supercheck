@@ -25,7 +25,7 @@ for (const type of ['playwright', 'k6'] as const) {
       if (value !== undefined && !isUuid(value.toLowerCase())) throw new CLIError(`${flag} must be a UUID.`, ExitCode.ConfigError)
     }
     const { data } = await withSpinner(`Fetching ${type} analytics`, () =>
-      createAuthenticatedClient().get<Record<string, unknown>>(`/api/analytics/${type}`, {
+      createAuthenticatedClient().get<Record<string, unknown>>(`/api/analytics/${encodeURIComponent(type)}`, {
         period: options.period,
         jobId: options.job,
         leftRunId: options.leftRun,

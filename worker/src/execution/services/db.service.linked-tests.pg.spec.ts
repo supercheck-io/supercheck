@@ -8,6 +8,7 @@ import {
   seedMonitor,
 } from '../../monitor-control/pg-test-database';
 import { DbService } from './db.service';
+import { RUN_CANCELLATION_MARKER } from '../../common/services/cancellation.service';
 
 jest.setTimeout(120_000);
 
@@ -124,6 +125,30 @@ suite('DbService.getLinkedTestsWithStatus (PostgreSQL)', () => {
       'org',
     );
     expect(result.map((r) => r.status)).toEqual(['failed', 'failed']);
+  });
+
+  it('ignores a cancelled run: the latest non-cancelled run decides coverage', async () => {
+    const ctx = await seed();
+    await testDb.db
+      .insert(schema.testRequirements)
+      .values([{ testId: ctx.a.id, requirementId: ctx.requirement.id }]);
+    await run(ctx, 'passed', '2026-01-01T00:00:00Z');
+    // A cancelled run is stored as 'error' with the cancellation marker and no per-test outcomes.
+    await testDb.db.insert(schema.runs).values({
+      jobId: ctx.job.id,
+      projectId: ctx.project.id,
+      status: 'error',
+      trigger: 'manual',
+      errorDetails: RUN_CANCELLATION_MARKER,
+      createdAt: new Date('2026-01-02T00:00:00Z'),
+      completedAt: new Date('2026-01-02T00:00:00Z'),
+    } as never);
+
+    const result = await service.getLinkedTestsWithStatus(
+      ctx.requirement.id,
+      'org',
+    );
+    expect(result.map((r) => r.status)).toEqual(['passed']);
   });
 
   it('merges run metadata without clobbering existing keys', async () => {

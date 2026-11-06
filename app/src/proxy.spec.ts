@@ -59,6 +59,29 @@ describe("proxy custom domain routing", () => {
     expect(proxy(request).headers.get("x-middleware-rewrite")).toBeNull();
   });
 
+  it("does not treat custom domains that merely start with localhost as the app", async () => {
+    process.env.STATUS_PAGE_DOMAIN = "supercheck.example.com";
+    const { proxy } = await import("./proxy");
+    const request = new NextRequest("https://localhost-status.example.com/", { headers: { host: "localhost-status.example.com" } });
+    expect(proxy(request).headers.get("x-middleware-rewrite")).toContain("/status/custom-domain/localhost-status.example.com");
+  });
+
+  it("uses the first entry of a comma-separated x-forwarded-host", async () => {
+    process.env.STATUS_PAGE_DOMAIN = "supercheck.example.com";
+    const { proxy } = await import("./proxy");
+    const request = new NextRequest("https://status.acme.com/", { headers: { host: "internal", "x-forwarded-host": "status.acme.com, proxy.internal" } });
+    expect(proxy(request).headers.get("x-middleware-rewrite")).toContain("/status/custom-domain/status.acme.com");
+  });
+
+  it("falls back to NEXT_PUBLIC_APP_URL for the main app hostname", async () => {
+    delete process.env.APP_URL;
+    process.env.NEXT_PUBLIC_APP_URL = "https://console.acme.com";
+    process.env.STATUS_PAGE_DOMAIN = "supercheck.example.com";
+    const { proxy } = await import("./proxy");
+    const request = new NextRequest("https://console.acme.com/", { headers: { host: "console.acme.com" } });
+    expect(proxy(request).headers.get("x-middleware-rewrite")).toBeNull();
+  });
+
   it("does not treat IPv4 hosts as custom domains", async () => {
     process.env.STATUS_PAGE_DOMAIN = "example.com";
 

@@ -16,7 +16,7 @@ serviceCommand.command('list').description('List services').action(async () => {
 })
 
 async function getService(id: string) {
-  return withSpinner('Fetching service', () => createAuthenticatedClient().get<Record<string, unknown>>(`/api/sre/services/${id}`))
+  return withSpinner('Fetching service', () => createAuthenticatedClient().get<Record<string, unknown>>(`/api/sre/services/${encodeURIComponent(id)}`))
 }
 
 serviceCommand.command('get <id>').description('Get service details, health, and dependencies').action(async (id: string) => {

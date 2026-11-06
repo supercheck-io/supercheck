@@ -11,7 +11,10 @@ type InitialStatusSnapshot = {
   errorDetails?: string | null;
 };
 
-const noReportTerminalStatuses = new Set(["blocked"]);
+// Runs that ended before the worker wrote a report row (capacity promotion
+// failure, cancel of a queued run, orphan sweep) emit no queue event, so the
+// run row is the only terminal signal.
+const noReportTerminalStatuses = new Set(["blocked", "failed", "error"]);
 
 function buildReportQuery(entityType: StatusReportEntityType, entityId: string) {
   return db.query.reports.findFirst({

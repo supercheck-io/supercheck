@@ -92,7 +92,9 @@ export async function POST(request: NextRequest) {
     // If they have pending invitations, they should not get a default organization
     // IMPORTANT: Use case-insensitive email comparison because Better Auth stores
     // emails lowercase but invitations may store the original case from admin input.
-    const [recentInvitation] = await db
+    // A platform administrator is never a team member (acceptance refuses them), so an invitation sent to
+    // their address must not block their own default organization.
+    const [recentInvitation] = currentUser.role === "super_admin" ? [] : await db
       .select()
       .from(invitation)
       .where(

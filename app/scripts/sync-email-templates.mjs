@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const source = path.join(root, "app/src/emails");
 const target = path.join(root, "worker/src/emails");
-const files = ["base-layout.tsx", "monitor-alert.tsx"];
+const files = ["base-layout.tsx", "monitor-alert.tsx", "palette.ts"];
 
 mkdirSync(target, { recursive: true });
 for (const name of files) {

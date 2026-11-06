@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals'
 import { ApiClient } from '../../api/client.js'
 import { waitForRun } from '../wait.js'
+import { assertSafeApiPath } from '../api-url.js'
 import { ApiRequestError, TimeoutError } from '../errors.js'
 
 const response = (status: string) => ({ data: { status }, status: 200, headers: new Headers() })
@@ -16,6 +17,15 @@ describe('bounded run waiting', () => {
     expect(request).toHaveBeenCalledTimes(2)
     expect(request.mock.calls.every(([method, path]) => method === 'GET' && path === '/api/runs/run-id')).toBe(true)
     expect(request.mock.calls[1][2]?.timeout).toBeLessThanOrEqual(2000)
+  })
+  it('encodes a run id so it cannot escape its path segment', async () => {
+    const client = new ApiClient()
+    const request = jest.spyOn(client, 'request').mockResolvedValue(response('passed'))
+    await waitForRun(client, '../admin?x=1', 1000)
+    expect(request.mock.calls[0][1]).toBe('/api/runs/..%2Fadmin%3Fx%3D1')
+    // The real client then refuses an encoded traversal outright, while `?`-style ids stay inside one segment.
+    expect(() => assertSafeApiPath(`/api/runs/${encodeURIComponent('../admin')}`)).toThrow(/Invalid resource path/)
+    expect(() => assertSafeApiPath(`/api/runs/${encodeURIComponent('a?b')}`)).not.toThrow()
   })
   it.each(['failed', 'error', 'blocked', 'cancelled', 'canceled', 'aborted'])('reports terminal %s with its run identity', async (status) => {
     const client = new ApiClient()

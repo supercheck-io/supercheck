@@ -101,7 +101,16 @@ it("emails the new assignee directly with a link, without raw evidence", async (
   expect(mail.text).toContain("Incident #7 assigned");
   expect(mail.text).toContain("Owner: Ada");
   expect(mail.text).toContain("Updated by: Grace");
-  expect(mail.subject).toBe("[SEV2] Incident assigned to Ada: #7 Checkout down");
+  expect(mail.subject).toBe("[Supercheck] Incident assigned to Ada: #7 Checkout down (SEV2)");
+});
+
+it("redacts credentials in the incident title before it reaches email", async () => {
+  selectQueue.push([{ ...incident, title: "Down https://user:hunter2@db.example.com sk_live_abcdefgh1234" }], people, []);
+  await notifyIncidentEvent(base);
+  const mail = sendEmailToMultiple.mock.calls[0][0];
+  expect(mail.subject).not.toContain("hunter2");
+  expect(mail.subject).not.toContain("sk_live_abcdefgh1234");
+  expect(mail.text).not.toContain("hunter2");
 });
 
 it("renders the incident email template for direct email", async () => {

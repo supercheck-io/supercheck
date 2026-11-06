@@ -7,6 +7,7 @@ import {
   resolveProjectPermissionContext,
   checkPermissionWithContext,
   withRateLimit,
+  isImpersonatedSession,
 } from "@/lib/rbac/middleware";
 import { requireUserAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { decryptValue } from "@/lib/encryption";
@@ -30,7 +31,8 @@ export async function POST(
     try {
       // Use requireUserAuthContext() instead of withRateLimit's built-in
       // requireAuth() so that CLI Bearer-token requests are supported.
-      ({ userId } = await requireUserAuthContext((await params).id));
+      let isCliAuth: boolean;
+      ({ userId, isCliAuth } = await requireUserAuthContext((await params).id));
 
       const resolvedParams = await params;
       projectId = resolvedParams.id;
@@ -46,6 +48,23 @@ export async function POST(
         );
       }
       organizationId = permCtx.organizationId;
+
+      // An admin acting as a user must not read that user's plaintext secrets (names and metadata still list).
+      // CLI tokens cannot be minted while impersonating, so only browser sessions are checked.
+      if (!isCliAuth && (await isImpersonatedSession())) {
+        await logAuditEvent({
+          userId,
+          action: "secret_decrypt_impersonation_blocked",
+          resource: "project_variable",
+          resourceId: variableId,
+          metadata: { projectId, organizationId, reason: "impersonated_session" },
+          success: false,
+        });
+        return NextResponse.json(
+          { error: "Secrets cannot be revealed while impersonating a user" },
+          { status: 403 }
+        );
+      }
 
       // Check if user has permission to view secret variables
       if (!checkPermissionWithContext("variable", "view_secrets", permCtx)) {

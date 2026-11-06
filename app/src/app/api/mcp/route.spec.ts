@@ -39,7 +39,7 @@ jest.mock("@/lib/mcp/call-limits", () => {
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 jest.mock("@/lib/mcp/tools", () => ({ registerMcpTools: jest.fn() }));
 
-import { DELETE, GET, PATCH, POST, PUT } from "./route";
+import { DELETE, GET, OPTIONS, PATCH, POST, PUT } from "./route";
 import { MCP_BODY_READ_TIMEOUT_MS } from "@/lib/mcp/call-limits";
 
 const init = {
@@ -144,6 +144,12 @@ describe("/api/mcp", () => {
     expect((await POST(rpc("initialize"))).status).toBe(404);
     expect((await GET()).status).toBe(404);
     expect(requireMcpAuth).not.toHaveBeenCalled();
+  });
+
+  it("advertises only POST in its preflight response", () => {
+    const res = OPTIONS();
+    expect(res.status).toBe(204);
+    expect(res.headers.get("allow")).toBe("POST, OPTIONS");
   });
 
   it.each([GET, DELETE, PUT, PATCH])("answers other methods with a JSON-RPC 405 and Allow: POST (%#)", async (method) => {

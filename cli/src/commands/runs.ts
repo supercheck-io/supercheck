@@ -64,7 +64,7 @@ runCommand
     const client = createAuthenticatedClient()
     const { data } = await withSpinner(
       'Fetching run details',
-      () => client.get<Record<string, unknown>>(`/api/runs/${id}`),
+      () => client.get<Record<string, unknown>>(`/api/runs/${encodeURIComponent(id)}`),
     )
     outputDetail(publicReportUrl(client, data))
   })
@@ -76,7 +76,7 @@ runCommand
     const client = createAuthenticatedClient()
     const { data } = await withSpinner(
       'Fetching run status',
-      () => client.get<Record<string, unknown>>(`/api/runs/${id}/status`),
+      () => client.get<Record<string, unknown>>(`/api/runs/${encodeURIComponent(id)}/status`),
     )
     outputDetail(publicReportUrl(client, data))
   })
@@ -88,7 +88,7 @@ runCommand
     const client = createAuthenticatedClient()
     const { data } = await withSpinner(
       'Fetching run permissions',
-      () => client.get<Record<string, unknown>>(`/api/runs/${id}/permissions`),
+      () => client.get<Record<string, unknown>>(`/api/runs/${encodeURIComponent(id)}/permissions`),
     )
     const payload = (data as { data?: Record<string, unknown> }).data ?? data
     outputDetail(payload)
@@ -131,7 +131,7 @@ runCommand
       }
     }
     try {
-    await getSse(`/api/runs/${id}/stream`, ({ event, data }) => {
+    await getSse(`/api/runs/${encodeURIComponent(id)}/stream`, ({ event, data }) => {
       const record = typeof data === 'object' && data !== null ? data as Record<string, unknown> : {}
       if (json) logger.output(JSON.stringify({ event, data }))
       else if (getOutputFormat() === 'table' && event === 'console' && typeof record.line === 'string') writeConsole(record.line)
@@ -170,7 +170,7 @@ runCommand
     const client = createAuthenticatedClient()
     const { data } = await withSpinner(
       'Cancelling run',
-      () => client.post<Record<string, unknown>>(`/api/runs/${id}/cancel`),
+      () => client.post<Record<string, unknown>>(`/api/runs/${encodeURIComponent(id)}/cancel`),
     )
     outputDetail(data)
   })
@@ -192,7 +192,7 @@ runCommand
       const { confirmPrompt } = await import('../utils/prompt.js')
       await confirmPrompt(`Delete run ${id}?`, { default: false })
     }
-    await withSpinner('Deleting run', () => createAuthenticatedClient().delete(`/api/runs/${id}`))
+    await withSpinner('Deleting run', () => createAuthenticatedClient().delete(`/api/runs/${encodeURIComponent(id)}`))
     logger.success(`Run ${id} deleted`)
     outputMutation({ id, deleted: true })
   })

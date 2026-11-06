@@ -87,6 +87,33 @@ it("returns an empty history without a message query when there are no chats", a
   expect(db.select).toHaveBeenCalledTimes(1);
 });
 
+it("adds the incident's newest chat when it fell outside the 30-chat limit", async () => {
+  const incidentId = "018f0000-0000-7000-8000-0000000000aa";
+  const recent = { id: conversationId, incidentId: null, title: "Recent", updatedAt: new Date("2026-10-09") };
+  const older = { id: "018f0000-0000-7000-8000-000000000002", incidentId, title: "Incident", updatedAt: new Date("2026-09-01") };
+  const incidentWhere = jest.fn((_query: SQL) => ({ orderBy: () => ({ limit: async () => [older] }) }));
+  db.select
+    .mockReturnValueOnce({ from: () => ({ where: () => ({ orderBy: () => ({ limit: async () => [recent] }) }) }) })
+    .mockReturnValueOnce({ from: () => ({ where: incidentWhere }) })
+    .mockReturnValueOnce({ from: () => ({ where: () => ({ as: () => ({ rank: "rank", createdAt: "createdAt" }) }) }) })
+    .mockReturnValueOnce({ from: () => ({ where: () => ({ orderBy: async () => [] }) }) });
+  const result = await getSreCopilotChatHistories(incidentId);
+  expect(result).toMatchObject({ success: true, histories: [{ conversationId }, { conversationId: older.id, incidentId }] });
+  const query = new PgDialect().sqlToQuery(incidentWhere.mock.calls[0][0]);
+  expect(query.params).toEqual(expect.arrayContaining([incidentId, context.userId, context.project.id]));
+});
+
+it("does not look the incident up again when its chat is already in the list", async () => {
+  const incidentId = "018f0000-0000-7000-8000-0000000000aa";
+  db.select.mockReturnValueOnce({
+    from: () => ({ where: () => ({ orderBy: () => ({ limit: async () => [{ id: conversationId, incidentId, title: "x", updatedAt: new Date() }] }) }) }),
+  });
+  db.select.mockReturnValueOnce({ from: () => ({ where: () => ({ as: () => ({ rank: "rank", createdAt: "createdAt" }) }) }) });
+  db.select.mockReturnValueOnce({ from: () => ({ where: () => ({ orderBy: async () => [] }) }) });
+  await getSreCopilotChatHistories(incidentId);
+  expect(db.select).toHaveBeenCalledTimes(3);
+});
+
 it("loads all chats' messages in one bounded query instead of one per chat", async () => {
   const conversations = [conversationId, "018f0000-0000-7000-8000-000000000002"].map((id, i) => ({
     id, incidentId: null, title: `Chat ${i}`, updatedAt: new Date("2026-10-09"),

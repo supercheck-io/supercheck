@@ -27,7 +27,7 @@ export function SreCopilotPageClient({
   const queryClient = useQueryClient();
   const { projectId, currentProject } = useProjectContext();
   const canInvestigate = canInvestigateWithSreCopilot(currentProject?.userRole);
-  const query = useSreCopilotHistories({ enabled: canInvestigate });
+  const query = useSreCopilotHistories({ enabled: canInvestigate, incidentId: initialIncidentId });
   // Copilot chat needs a paid plan (the server answers 402 to a trial); say so before the first send.
   // Self-hosted reports an active plan. A failed status read never blocks: the server still decides.
   const { data: subscription } = useQuery({
@@ -38,12 +38,12 @@ export function SreCopilotPageClient({
   const needsPaidPlan = canInvestigate && !!subscription && !subscription.isActive;
   const updateCachedHistories = useCallback(
     (histories: SreCopilotChatHistory[]) => {
-      queryClient.setQueryData(getSreCopilotHistoriesQueryKey(projectId), {
+      queryClient.setQueryData(getSreCopilotHistoriesQueryKey(projectId, initialIncidentId), {
         success: true,
         histories,
       });
     },
-    [projectId, queryClient],
+    [initialIncidentId, projectId, queryClient],
   );
   const refreshHistories = useCallback(() => {
     // Mark stale and refetch so a chat abandoned mid-stream (which never fired

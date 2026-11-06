@@ -11,10 +11,9 @@ describe('EmailTemplateService (local render)', () => {
       fields: [{ title: 'Monitor', value: 'API' }],
       footer: 'Supercheck Monitoring System',
       type: 'failure',
-      color: '#dc2626',
       appUrl: 'https://app.example.com/',
     });
-    expect(r.subject).toBe('Monitor Down - API');
+    expect(r.subject).toBe('[Supercheck] Monitor Down: API');
     expect(r.html).toContain('View incidents');
     expect(r.html).toContain('https://app.example.com/incidents');
     expect(r.text).toContain('API is down');
@@ -27,7 +26,6 @@ describe('EmailTemplateService (local render)', () => {
       fields: [],
       footer: 'x',
       type: 'recovery',
-      color: '#10b981',
       appUrl: 'https://app.example.com',
     });
     expect(r.html).toContain('Resolved');
@@ -35,31 +33,39 @@ describe('EmailTemplateService (local render)', () => {
   });
 
   it('omits the incidents button when no app url is known', async () => {
-    const r = await service.renderJobFailureEmail({
-      jobName: 'Nightly',
-      duration: 3,
-      errorMessage: 'boom',
-      runId: 'r1',
-      dashboardUrl: 'https://app.example.com/run/r1',
+    const r = await service.renderMonitorAlertEmail({
+      title: 'Job Failed - Nightly',
+      message: 'Job "Nightly" has failed.',
+      fields: [{ title: 'Error', value: 'boom' }],
+      footer: '',
+      type: 'failure',
     });
-    expect(r.subject).toBe('Job Failed - Nightly');
+    expect(r.subject).toBe('[Supercheck] Job Failed: Nightly');
     expect(r.html).toContain('boom');
     expect(r.html).not.toContain('View incidents');
   });
 
-  it('renders job success and timeout', async () => {
-    const ok = await service.renderJobSuccessEmail({
-      jobName: 'J',
-      duration: 1,
+  it('keeps multi-line error text (pre-wrap) in the details table', async () => {
+    const r = await service.renderMonitorAlertEmail({
+      title: 'Job Failed - J',
+      message: 'm',
+      fields: [{ title: 'Error', value: 'line1\nline2' }],
+      footer: '',
+      type: 'failure',
     });
-    expect(ok.subject).toBe('Job Completed - J');
-    const to = await service.renderJobTimeoutEmail({
-      jobName: 'J',
-      duration: 5,
-      appUrl: 'https://a.io',
+    expect(r.html).toContain('white-space:pre-wrap');
+  });
+
+  it('uses the info tone (blue), not the warning amber', async () => {
+    const r = await service.renderMonitorAlertEmail({
+      title: 'FYI - X',
+      message: 'm',
+      fields: [],
+      footer: '',
+      type: 'info',
     });
-    expect(to.subject).toBe('Job Timeout - J');
-    expect(to.html).toContain('https://a.io/incidents');
+    expect(r.html).toContain('#1d4ed8');
+    expect(r.html).not.toContain('#b45309');
   });
 
   it('falls back to escaped basic HTML when React rendering throws', async () => {
@@ -72,9 +78,8 @@ describe('EmailTemplateService (local render)', () => {
       fields: [{ title: 'k', value: '<script>' }],
       footer: 'f',
       type: 'failure',
-      color: '#dc2626',
     });
-    expect(r.subject).toBe('T <b>');
+    expect(r.subject).toBe('[Supercheck] T <b>');
     expect(r.html).toContain('&lt;script&gt;');
     expect(r.text).toContain('k: <script>');
     jest.restoreAllMocks();
@@ -83,15 +88,15 @@ describe('EmailTemplateService (local render)', () => {
 
 describe('EmailTemplateService job and recovery emails', () => {
   const service = new EmailTemplateService();
-  const base = {
-    jobName: 'Nightly',
-    duration: 65,
-    runId: 'run-1',
-    dashboardUrl: 'https://app.example.io/notification-run/run-1',
-  };
 
   it('labels a job pass "Passed", without the Resolved chip', async () => {
-    const email = await service.renderJobSuccessEmail(base);
+    const email = await service.renderMonitorAlertEmail({
+      title: 'Job Completed - Nightly',
+      message: 'ok',
+      fields: [{ title: 'Duration', value: '1m 05s' }],
+      footer: '',
+      type: 'success',
+    });
     expect(email.html).toContain('Passed');
     expect(email.html).not.toContain('Recovered');
     expect(email.html).not.toContain('Resolved');
@@ -104,16 +109,24 @@ describe('EmailTemplateService job and recovery emails', () => {
       fields: [{ title: 'Status', value: 'UP' }],
       footer: '',
       type: 'recovery',
-      color: '#22c55e',
     });
     expect(email.html).toContain('Recovered');
     expect(email.html).toContain('Resolved');
   });
 
   it('keeps detail labels and values apart in the plain-text part', async () => {
-    const email = await service.renderJobSuccessEmail(base);
-    expect(email.text).not.toMatch(/Job NameNightly/);
-    expect(email.text).toMatch(/Job Name\s+Nightly/);
+    const email = await service.renderMonitorAlertEmail({
+      title: 'Job Completed - Nightly',
+      message: 'ok',
+      fields: [
+        { title: 'Job', value: 'Nightly' },
+        { title: 'Duration', value: '1m 05s' },
+      ],
+      footer: '',
+      type: 'success',
+    });
+    expect(email.text).not.toMatch(/JobNightly/);
+    expect(email.text).toMatch(/Job\s+Nightly/);
     expect(email.text).toMatch(/Duration\s+1m 05s/);
   });
 
