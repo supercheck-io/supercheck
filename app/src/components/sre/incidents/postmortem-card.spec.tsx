@@ -93,6 +93,33 @@ describe("PostmortemCard", () => {
     expect(screen.getByLabelText("Summary")).toBeInTheDocument();
   });
 
+  it("shows stored follow-ups in full, not the editor's one-line list", () => {
+    const long = `Rotate the keys ${"and verify ".repeat(40)}done`;
+    render(<PostmortemCard {...base} postmortem={{ sections: { ...stored.sections, follow_ups: `1. ${long}` } }} canEdit />);
+    expect(screen.getByRole("region", { name: /Follow-ups/ })).toHaveTextContent(`1. ${long}`);
+  });
+
+  it("moves focus into the editor and back to the heading", () => {
+    render(<PostmortemCard {...base} postmortem={stored} canEdit />);
+    openEditor();
+    expect(screen.getByLabelText("Summary")).toHaveFocus();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.getByRole("heading", { name: "Post-mortem" })).toHaveFocus();
+  });
+
+  it("restores the stored text on Cancel after a failed save", async () => {
+    save.mockResolvedValue({ success: false, error: "nope" });
+    const { toast } = jest.requireMock("sonner");
+    render(<PostmortemCard {...base} postmortem={stored} canEdit />);
+    openEditor();
+    fireEvent.change(screen.getByLabelText("Summary"), { target: { value: "Unsaved" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save post-mortem" }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("nope"));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Cancel" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.getByRole("region", { name: "Summary" })).toHaveTextContent(/^SummaryS$/);
+  });
+
   it("discards unsaved edits on Cancel", () => {
     render(<PostmortemCard {...base} postmortem={stored} canEdit />);
     openEditor();

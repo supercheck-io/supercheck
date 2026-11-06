@@ -6,6 +6,7 @@ import {
   buildDeterministicPostmortem,
   buildPostmortemPrompt,
   generatePostmortemDraft,
+  formatPostmortemDate,
   formatPostmortemDuration,
   postmortemTimeline,
   postmortemToMarkdown,
@@ -58,6 +59,23 @@ describe("buildDeterministicPostmortem", () => {
   it("leaves unknown sections empty instead of inventing a cause or writing placeholders", () => {
     const sections = buildDeterministicPostmortem({ ...ctx, serviceName: null, rootCauseSummary: null, hypotheses: [], nextChecks: [], timeline: [] });
     expect(sections).toMatchObject({ impact: "", timeline: "", root_cause: "", contributing_factors: "", follow_ups: "" });
+  });
+});
+
+describe("formatPostmortemDate", () => {
+  it("uses fixed three-letter months in UTC, whatever the ICU build", () => {
+    expect(formatPostmortemDate(new Date("2026-09-06T00:05:00Z"))).toBe("6 Sep 2026, 00:05 UTC");
+    expect(formatPostmortemDate(null)).toBe("unknown");
+  });
+});
+
+describe("buildPostmortemPrompt timeline", () => {
+  it("keeps the start and the end of a long timeline", () => {
+    const timeline = Array.from({ length: 60 }, (_, i) => ({ at: new Date(Date.UTC(2026, 9, 1, 10, i)), label: `moment-${i}-end` }));
+    const prompt = buildPostmortemPrompt({ ...ctx, timeline });
+    expect(prompt).toContain("moment-0-end");
+    expect(prompt).toContain("moment-59-end");
+    expect(prompt).not.toContain("moment-20-end");
   });
 });
 

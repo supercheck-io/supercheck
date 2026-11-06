@@ -26,16 +26,13 @@ export type PostmortemContext = {
 };
 
 // The server has no viewer locale or time zone: dates read as "6 Oct 2026, 14:58 UTC".
-const DATE_FORMAT = new Intl.DateTimeFormat("en-GB", {
-  day: "numeric",
-  month: "short",
-  year: "numeric",
-  hour: "2-digit",
-  minute: "2-digit",
-  hourCycle: "h23",
-  timeZone: "UTC",
-});
-export const formatPostmortemDate = (date: Date | null) => (date ? `${DATE_FORMAT.format(date)} UTC` : "unknown");
+// A fixed month table, because ICU builds differ ("Sep" vs "Sept").
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const pad = (value: number) => String(value).padStart(2, "0");
+export const formatPostmortemDate = (date: Date | null) =>
+  date
+    ? `${date.getUTCDate()} ${MONTHS[date.getUTCMonth()]} ${date.getUTCFullYear()}, ${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())} UTC`
+    : "unknown";
 const bullet = (items: string[]) => items.map((item) => `- ${item}`).join("\n");
 
 /** Same steps as the incident sidebar: "45 min", "3 h 4 min", "31 d 6 h". */
@@ -112,7 +109,7 @@ const POSTMORTEM_SYSTEM = [
   "You write a blameless post-mortem draft for an incident from the facts supplied. Do not invent facts, people, teams, customers, numbers, times or causes.",
   "Where a section's facts are not supplied, leave that field as an empty string; responders fill it in. Never state a root cause the supplied data does not give.",
   "Respond with exactly one JSON object and nothing else, with string fields: summary, impact, timeline, root_cause, contributing_factors, follow_ups. Each at most 1500 characters.",
-  "Use plain sentences, no headings or bold. timeline: \"- \" bullets of the key moments, oldest first, each \"<time as given> UTC: <what happened>\" in one short line. follow_ups: \"- \" bullets, one action each.",
+  "Use plain sentences, no headings or bold. timeline: \"- \" bullets of the key moments, oldest first, each \"<time exactly as given>: <what happened>\" in one short line. follow_ups: \"- \" bullets, one action each.",
   SRE_UNTRUSTED_CONTENT_RULE,
 ].join("\n");
 
@@ -131,7 +128,8 @@ export function buildPostmortemPrompt(ctx: PostmortemContext): string {
     "Evidence titles:",
     fenceUntrustedBlock("evidence", ctx.evidence.slice(0, 15).map((item) => item.title), 160),
     "Timeline:",
-    fenceUntrustedBlock("timeline", ctx.timeline.slice(0, 40).map((event) => `${formatPostmortemDate(event.at)}: ${event.label}`), 220),
+    fenceUntrustedBlock("timeline", // The start and the resolution matter most; drop the middle of a long incident.
+      (ctx.timeline.length > 40 ? [...ctx.timeline.slice(0, 10), ...ctx.timeline.slice(-30)] : ctx.timeline).map((event) => `${formatPostmortemDate(event.at)}: ${event.label}`), 220),
   ].join("\n");
 }
 

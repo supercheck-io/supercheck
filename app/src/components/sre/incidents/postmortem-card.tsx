@@ -1,10 +1,9 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
-  CircleDashed,
   Clock,
   Download,
   FileText,
@@ -103,6 +102,19 @@ export function PostmortemCard({
   const [editing, setEditing] = useState(false);
   const [pending, startTransition] = useTransition();
   const [confirmReplace, setConfirmReplace] = useState(false);
+  // Entering or leaving the editor unmounts the focused button; move focus somewhere sensible.
+  const heading = useRef<HTMLHeadingElement>(null);
+  const switched = useRef(false);
+  useEffect(() => {
+    if (!switched.current) return;
+    switched.current = false;
+    if (editing) document.getElementById("postmortem-summary")?.focus();
+    else heading.current?.focus();
+  }, [editing]);
+  const switchMode = (next: boolean) => {
+    switched.current = true;
+    setEditing(next);
+  };
 
   const reset = (stored: SrePostmortem | null) => {
     setSections({ ...(stored?.sections ?? {}) });
@@ -120,7 +132,7 @@ export function PostmortemCard({
       }
       setSaved(result.postmortem);
       reset(result.postmortem);
-      setEditing(false);
+      switchMode(false);
       toast.success(
         result.source === "ai" ? "Draft generated. Review and edit before sharing." : "Draft created from the incident record. AI drafting was unavailable.",
       );
@@ -146,21 +158,21 @@ export function PostmortemCard({
       }
       setSaved(result.postmortem);
       reset(result.postmortem);
-      setEditing(false);
+      switchMode(false);
       toast.success("Post-mortem saved");
       await refresh();
     });
 
   const cancel = () => {
     reset(saved);
-    setEditing(false);
+    switchMode(false);
   };
 
-  // Export what is on screen, including unsaved edits.
+  // While editing, export what is on screen (unsaved edits included); otherwise the stored text as is.
   const exportMarkdown = () =>
     download(
       `postmortem-incident-${incidentNumber}.md`,
-      postmortemToMarkdown({ incidentNumber, title, sections: currentSections() }),
+      postmortemToMarkdown({ incidentNumber, title, sections: editing || !saved ? currentSections() : saved.sections }),
     );
 
   const meta = saved
@@ -184,7 +196,7 @@ export function PostmortemCard({
         </div>
         {canEdit && (
           <Button type="button" size="sm" onClick={generate} disabled={pending}>
-            {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" aria-hidden="true" />}
+            {pending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Sparkles className="h-4 w-4" aria-hidden="true" />}
             Generate post-mortem draft
           </Button>
         )}
@@ -196,7 +208,9 @@ export function PostmortemCard({
     <Card id="incident-postmortem" data-testid="postmortem-card" className="scroll-mt-4 gap-0 py-0 shadow-none">
       <div className="flex flex-col gap-3 border-b px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
-          <h2 className="text-sm font-semibold">{editing ? "Editing post-mortem" : "Post-mortem"}</h2>
+          <h2 ref={heading} tabIndex={-1} className="text-sm font-semibold focus-visible:outline-none">
+            {editing ? "Editing post-mortem" : "Post-mortem"}
+          </h2>
           <p className="text-xs text-muted-foreground" suppressHydrationWarning>
             {meta ? `${meta}. ` : ""}Blameless draft; review it before sharing.
           </p>
@@ -205,10 +219,10 @@ export function PostmortemCard({
           {canEdit && !editing && (
             <>
               <Button type="button" variant="outline" size="sm" className={toneButton("violet")} onClick={() => setConfirmReplace(true)} disabled={pending}>
-                {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" aria-hidden="true" />}
+                {pending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Sparkles className="h-4 w-4" aria-hidden="true" />}
                 Regenerate draft
               </Button>
-              <Button type="button" variant="outline" size="sm" onClick={() => setEditing(true)} disabled={pending}>
+              <Button type="button" variant="outline" size="sm" onClick={() => switchMode(true)} disabled={pending}>
                 <Pencil className="h-4 w-4" aria-hidden="true" />
                 Edit
               </Button>
@@ -220,7 +234,7 @@ export function PostmortemCard({
                 <Download className="h-4 w-4" aria-hidden="true" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Export Markdown</TooltipContent>
+            <TooltipContent>{editing ? "Export Markdown, including unsaved edits" : "Export Markdown"}</TooltipContent>
           </Tooltip>
         </div>
       </div>
@@ -259,9 +273,15 @@ export function PostmortemCard({
                 value={sections[key] ?? ""}
                 maxLength={4000}
                 placeholder={SECTION_VISUAL[key]!.hint}
+                aria-describedby={key === "timeline" ? "postmortem-timeline-help" : undefined}
                 className={key === "timeline" ? "min-h-32 max-h-[28rem] font-mono text-xs md:text-xs" : "min-h-20 max-h-80"}
                 onChange={(event) => setSections((current) => ({ ...current, [key]: event.target.value }))}
               />
+              {key === "timeline" && (
+                <p id="postmortem-timeline-help" className="text-xs text-muted-foreground">
+                  One line per moment, oldest first: &quot;- 6 Oct 2026, 14:58 UTC: What happened&quot;.
+                </p>
+              )}
             </div>
           ))}
           <fieldset className="space-y-2">
@@ -306,7 +326,7 @@ export function PostmortemCard({
               Cancel
             </Button>
             <Button type="submit" disabled={pending}>
-              {pending && <Loader2 className="h-4 w-4 animate-spin" />}
+              {pending && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
               Save post-mortem
             </Button>
           </div>
@@ -335,21 +355,17 @@ export function PostmortemCard({
               id="postmortem-follow_ups-title"
               icon={SECTION_VISUAL.follow_ups!.icon}
               tone={SECTION_VISUAL.follow_ups!.tone}
-              count={followUps.length || undefined}
+              count={parseFollowUps(saved.sections.follow_ups).length || undefined}
             >
               Follow-ups
             </SectionTitle>
-            {followUps.length === 0 ? (
-              <EmptySection />
+            {/* The stored text as written; the editor's one-line-per-item list is only for editing. */}
+            {saved.sections.follow_ups?.trim() ? (
+              <div className="break-words text-sm leading-relaxed">
+                <SreMessageContent content={saved.sections.follow_ups.trim()} />
+              </div>
             ) : (
-              <ul className="space-y-1.5 text-sm">
-                {followUps.map((item, index) => (
-                  <li key={index} className="flex gap-2 break-words">
-                    <CircleDashed className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
-                    <span className="min-w-0">{item}</span>
-                  </li>
-                ))}
-              </ul>
+              <EmptySection />
             )}
           </section>
         </div>

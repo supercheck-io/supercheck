@@ -103,9 +103,10 @@ export async function generateSrePostmortem(
         .from(sreIncidentTimelineEvents)
         .where(eq(sreIncidentTimelineEvents.incidentId, incident.id));
     const [tail, head, evidence, [run]] = await Promise.all([
-      // Newest 30 plus the first 10, so a long incident keeps both its start and its resolution.
-      timelineQuery().orderBy(desc(sreIncidentTimelineEvents.createdAt)).limit(30),
-      timelineQuery().orderBy(asc(sreIncidentTimelineEvents.createdAt)).limit(10),
+      // Newest 150 plus the first 50, so a long incident keeps both its start and its resolution.
+      // Generous because postmortemTimeline drops briefs, edits and repeat investigations afterwards.
+      timelineQuery().orderBy(desc(sreIncidentTimelineEvents.createdAt)).limit(150),
+      timelineQuery().orderBy(asc(sreIncidentTimelineEvents.createdAt)).limit(50),
       db
         .select({ id: sreEvidenceItems.id, title: sreEvidenceItems.title })
         .from(sreEvidenceItems)

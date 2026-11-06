@@ -99,7 +99,8 @@ describe("generateSrePostmortem timeline", () => {
     queue.push([resolved], tail, head, [], []);
     await generateSrePostmortem({ incidentId });
     const labels = (generate.mock.calls[0][0] as { timeline: { label: string }[] }).timeline.map((e) => e.label);
-    expect(labels).toEqual(["created", "ai finding: bad deploy", "state change: resolved - rolled back", "created: triggered - opening note"]);
+    // Deduplicated across the head and tail windows, oldest first, named as in the Activity feed.
+    expect(labels).toEqual(["created", "AI finding: bad deploy", "Resolved: rolled back", "created"]);
   });
 });
 
