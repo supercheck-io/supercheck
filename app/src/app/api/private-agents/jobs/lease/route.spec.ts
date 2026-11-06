@@ -174,3 +174,36 @@ describe("Private Agent job lease route", () => {
     expect(selectedWork).not.toHaveBeenCalled();
   });
 });
+
+describe("Private Agent job lease route MCP endpoint", () => {
+  it("restores the full MCP endpoint from the credential, leaving other connectors untouched", async () => {
+    const { decryptConnectorCredential } = jest.requireMock("@/lib/sre/connectors") as { decryptConnectorCredential: jest.Mock };
+    mockDb.query.externalConnectorCredentials.findFirst.mockResolvedValue({
+      credentialType: "api_key",
+      encryptedCredential: "enc",
+      expiresAt: null,
+    });
+    decryptConnectorCredential.mockReturnValue({ endpointUrl: "https://mcp.example/mcp?key=SECRET" });
+    const base = {
+      id: "j",
+      jobClass: "sre_connector_query",
+      connectorId: "c",
+      organizationId: "o",
+      projectId: "p",
+      jobSpecHash: "h".repeat(64),
+      policyDecisionHash: "x",
+      leaseExpiresAt: new Date(),
+    };
+    const lease = async (jobSpec: Record<string, unknown>) => {
+      mockDb.transaction.mockResolvedValueOnce({ ...base, jobSpec });
+      const res = await POST(new NextRequest("http://localhost/api/private-agents/jobs/lease", { method: "POST", body: "{}" }));
+      return (await res.json()).job.jobSpec;
+    };
+    expect(await lease({ connectorType: "mcp", endpointUrl: "https://mcp.example/mcp?…" })).toMatchObject({
+      endpointUrl: "https://mcp.example/mcp?key=SECRET",
+    });
+    expect(await lease({ connectorType: "datadog", endpointUrl: "https://api.datadoghq.com" })).toMatchObject({
+      endpointUrl: "https://api.datadoghq.com",
+    });
+  });
+});

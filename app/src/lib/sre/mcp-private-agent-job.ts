@@ -8,6 +8,7 @@ import {
   type ConnectorDefinition,
   type ConnectorOutputLimits,
 } from "@/lib/sre/connectors";
+import { redactEndpointQuery } from "@/lib/sre/connectors/endpoint-policy";
 import { resolveMcpEndpointUrl } from "@/lib/sre/connectors/mcp-endpoint-secret";
 import { db } from "@/utils/db";
 
@@ -80,7 +81,9 @@ export async function queueMcpPrivateAgentJob(input: {
   });
   if (!agent) throw new Error("Configured Private Agent was not found");
 
-  const endpointUrl = await resolveMcpEndpointUrl(connector);
+  // Resolved to confirm a usable endpoint exists; only the redacted form is persisted in job_spec.
+  // The lease route restores the full URL from the encrypted credential.
+  const endpointUrl = redactEndpointQuery(await resolveMcpEndpointUrl(connector));
   const now = new Date();
   const route = routeSreConnectorQuery({
     organizationId: input.organizationId,

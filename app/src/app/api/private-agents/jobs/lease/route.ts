@@ -216,13 +216,20 @@ export async function POST(request: NextRequest) {
         }
       : null;
 
+    // MCP jobs are stored with the query-redacted endpoint; the agent dials the full URL from the credential.
+    const fullEndpoint = credential?.value?.endpointUrl;
+    const jobSpec =
+      leasedJob.jobSpec?.connectorType === "mcp" && typeof fullEndpoint === "string"
+        ? { ...leasedJob.jobSpec, endpointUrl: fullEndpoint }
+        : leasedJob.jobSpec;
+
     return NextResponse.json({
       job: {
         id: leasedJob.id,
         jobClass: leasedJob.jobClass,
         connectorId: leasedJob.connectorId,
         projectId: leasedJob.projectId,
-        jobSpec: leasedJob.jobSpec,
+        jobSpec,
         jobSpecHash: leasedJob.jobSpecHash,
         policyDecisionHash: leasedJob.policyDecisionHash,
         leaseExpiresAt: leasedJob.leaseExpiresAt?.toISOString() ?? leaseExpiresAt.toISOString(),
