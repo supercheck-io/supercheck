@@ -5,7 +5,6 @@
     "pages": [
         "self-hosted",
         "multi-server",
-        "private-agent",
-        "environment-variables"
+        "private-agent"
     ]
 }

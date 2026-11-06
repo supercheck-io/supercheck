@@ -37,7 +37,7 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 
 ### Deprecated
 
-- `NEXT_PUBLIC_BASE_URL` (use `NEXT_PUBLIC_APP_URL`), `NEXTAUTH_SECRET` and `AUTH_SECRET` (use `BETTER_AUTH_SECRET`), `PRIVATE_AGENT_POLL_INTERVAL_MS` (use `PRIVATE_AGENT_RETRY_INTERVAL_MS`) and `STATUS_PAGE_CNAME_TARGET` (derived from `STATUS_PAGE_DOMAIN`) still work but log a warning once and will be removed in a future release. `NEXT_PUBLIC_APP_URL` now takes precedence over `NEXT_PUBLIC_BASE_URL` for the job trigger URL. The new [environment variable reference](https://supercheck.io/docs/app/deployment/environment-variables) lists every setting, including the deprecated and removed ones.
+- `NEXT_PUBLIC_BASE_URL` (use `NEXT_PUBLIC_APP_URL`), `NEXTAUTH_SECRET` and `AUTH_SECRET` (use `BETTER_AUTH_SECRET`), `PRIVATE_AGENT_POLL_INTERVAL_MS` (use `PRIVATE_AGENT_RETRY_INTERVAL_MS`) and `STATUS_PAGE_CNAME_TARGET` (derived from `STATUS_PAGE_DOMAIN`) still work but log a warning once and will be removed in a future release. `NEXT_PUBLIC_APP_URL` now takes precedence over `NEXT_PUBLIC_BASE_URL` for the job trigger URL. `app/.env.example` and `worker/.env.example` now list the advanced tunables.
 
 ### Fixed
 

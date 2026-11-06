@@ -39,7 +39,7 @@ Execution workers use the worker readiness endpoint (`/health/ready`) for health
 
 Use `./init-secrets.sh` to generate secure defaults, then configure:
 
-This section covers the variables the Compose files forward. For every supported variable (including advanced tunables you can add to the `app` or `worker` `environment:` block), see the [environment variable reference](https://supercheck.io/docs/app/deployment/environment-variables).
+This section covers the variables the Compose files forward. Advanced tunables you can add to the `app` or `worker` `environment:` block are listed, commented, in `app/.env.example` and `worker/.env.example`.
 
 ### Base (all deployments)
 
