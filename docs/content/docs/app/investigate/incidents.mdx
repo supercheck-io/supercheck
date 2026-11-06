@@ -58,15 +58,15 @@ Incidents opened by an alert are titled `<target>: <alert type>`, for example *C
 
 The header shows the incident number, title, status (Triggered, Acknowledged, Investigating, Fixing, Monitoring or Resolved) and severity. One primary button follows the incident: **Acknowledge**, then **Resolve incident**. The **...** menu holds **Edit incident**, **Add commander**, **Resolve incident** (before acknowledging), and **Ask Copilot**, which opens [Copilot](/docs/app/investigate/copilot) with this incident in scope.
 
-Below the header, the page has tabs. The **Properties** panel stays on the right on every tab.
+Below the header, the page has tabs. The right-hand column stays the same on every tab: **Properties**, **Alerts**, and **Similar incidents** when there are matches.
 
 | Tab | Contents |
 |---|---|
 | **Overview** | **Summary**: one paragraph from the AI, with confidence and the first next step for an investigation, **Right** / **Wrong** buttons, and **View investigation**. Before any AI analysis it shows **Run investigation**. **Activity**: a box to post updates above the event list. **Draft customer update with AI** fills the box with a customer-safe draft for you to edit. **Also post to status page** publishes the note as an update on the incident's linked status page incident and emails its subscribers (needs permission to update status pages). The feed shows old → new values for edits, severity and status changes, reassignments, the alert that was linked, and one line for each **AI triage**, **AI investigation** and **Evidence brief** |
-| **Investigation** | One report: run controls, **Conclusion** with recommended next steps, **Hypotheses**, **Evidence**, a collapsed **How it was investigated** step log, and **Similar incidents** when there are matches |
+| **Investigation** | One report: run controls, **Conclusion** with next steps, **Hypotheses** (green for validated, amber for inconclusive, grey for ruled out), **Evidence** with an icon for each type, and a collapsed **How it was investigated** step log |
 | **Post-mortem** | Shown once the incident is resolved. See [Post-mortem](#post-mortem) |
 
-The **Properties** panel lists the assignee (and an optional commander), service, start time, **Time to acknowledge** and **Time to resolve**, **Status page** state with **Post update**, a **Notifications** row with a **Watch** / **Unwatch** button, and linked **Alerts**.
+The **Properties** card shows **Time to acknowledge** and **Time to resolve** (or **Open for** while the incident is open), then the assignee (and an optional commander), service, start time, **Status page** state with **Post update**, and a **Notifications** row with a **Watch** / **Unwatch** button. The **Alerts** card lists the linked alerts. Each **Activity** row has an icon for its kind of event and shows how long ago it happened; hover the time for the exact date.
 
 The open tab is kept in the URL: `?tab=investigation` or `?tab=postmortem` (Overview has no parameter). The older links still work: `?tab=evidence` opens the Investigation tab at the evidence list, `?tab=brief` opens it at the conclusion, and a `#sre-evidence-<id>` link scrolls to that item.
 
@@ -101,7 +101,7 @@ Your notes are hints, not evidence. Recent notes on other incidents of the same 
 
 ### Similar incidents
 
-The **Similar incidents** section of the Investigation tab (shown only when there are matches) lists up to five **resolved incidents from the last 180 days** (the top three first, with **Show more** for the rest) in the same project that share the primary service, the alert source, or words in the title. It shows why each one matched and how it was resolved. A past root cause is context only: the investigation does not copy it without evidence from the current incident.
+The **Similar incidents** card in the right-hand column (shown only when there are matches) lists up to five **resolved incidents from the last 180 days** (the top three first, with **Show all** for the rest) in the same project that share the primary service, the alert source, or words in the title. It shows why each one matched and how it was resolved. A past root cause is context only: the investigation does not copy it without evidence from the current incident.
 
 ### Evidence
 

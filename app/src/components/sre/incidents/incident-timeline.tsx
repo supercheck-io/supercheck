@@ -2,14 +2,32 @@
 
 import { useId, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Loader2, Sparkles } from "lucide-react";
+import {
+  Activity,
+  ArrowRightLeft,
+  Bell,
+  CircleCheck,
+  CircleDot,
+  HeartPulse,
+  Loader2,
+  MessageSquare,
+  Pencil,
+  RotateCcw,
+  Siren,
+  Sparkles,
+  TriangleAlert,
+  UserCheck,
+  type LucideIcon,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { draftSreStatusUpdate } from "@/actions/sre-status-update-draft";
 import { addSreIncidentUpdate, type SreIncidentTimelineItem, type SreIncidentTimelineRefs } from "@/actions/sre-incident-lifecycle";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { formatAgo } from "@/components/sre/incidents/incident-age";
+import { IconTile, SectionTitle, type IconTone } from "@/components/sre/incidents/incident-ui";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { UserCell } from "@/components/ui/user-cell";
@@ -37,6 +55,37 @@ const STATE_LABELS: Record<string, string> = {
 
 function str(value: unknown, max = 600) {
   return typeof value === "string" ? value.slice(0, max) : null;
+}
+
+const STATE_VISUAL: Record<string, { icon: LucideIcon; tone: IconTone }> = {
+  acknowledged: { icon: UserCheck, tone: "sky" },
+  resolved: { icon: CircleCheck, tone: "emerald" },
+  recovered: { icon: HeartPulse, tone: "emerald" },
+  reopened: { icon: RotateCcw, tone: "rose" },
+  failure_returned: { icon: RotateCcw, tone: "rose" },
+  assigned: { icon: ArrowRightLeft, tone: "indigo" },
+  commander_changed: { icon: ArrowRightLeft, tone: "indigo" },
+  alert_correlated: { icon: Bell, tone: "amber" },
+  incident_updated: { icon: Pencil, tone: "slate" },
+  manual_incident_created: { icon: Siren, tone: "rose" },
+  created_from_alert_history: { icon: Siren, tone: "rose" },
+  created_from_background_alert_triage: { icon: Siren, tone: "rose" },
+  triage_failed: { icon: TriangleAlert, tone: "rose" },
+};
+
+/** Icon and colour for a timeline row, so the kind of event reads before its text. */
+export function timelineEventVisual(event: Pick<SreIncidentTimelineItem, "eventType" | "eventData">): { icon: LucideIcon; tone: IconTone } {
+  const data = event.eventData ?? {};
+  if (event.eventType === "comment") return { icon: MessageSquare, tone: "blue" };
+  if (event.eventType === "ai_finding") {
+    return typeof data.type === "string" && data.type.endsWith("_failed")
+      ? { icon: TriangleAlert, tone: "rose" }
+      : { icon: Sparkles, tone: "violet" };
+  }
+  if (event.eventType === "state_change" && typeof data.state === "string" && STATE_VISUAL[data.state]) {
+    return STATE_VISUAL[data.state]!;
+  }
+  return { icon: CircleDot, tone: "slate" };
 }
 
 // Each AI row names what produced it instead of a generic "AI finding".
@@ -176,11 +225,13 @@ export function IncidentTimeline({
   };
 
   return (
-    <Card data-testid="incident-timeline" className="flex flex-col gap-3 py-4">
+    <Card data-testid="incident-timeline" className="flex flex-col gap-4 py-4">
       <CardHeader className="shrink-0 px-4 py-0">
-        <CardTitle className="text-sm font-semibold">Activity</CardTitle>
+        <SectionTitle icon={Activity} tone="blue" count={events.length || undefined}>
+          Activity
+        </SectionTitle>
       </CardHeader>
-      <CardContent className="flex flex-col gap-3 px-4 pb-0">
+      <CardContent className="flex flex-col gap-4 px-4 pb-0">
         {canUpdate && (
           <div className="flex shrink-0 flex-col gap-2">
           <div className="flex items-end gap-2">
@@ -204,7 +255,7 @@ export function IncidentTimeline({
           </div>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-muted-foreground" onClick={draft} disabled={drafting || pending}>
-            {drafting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+            {drafting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4 text-violet-500" />}
             Draft customer update with AI
           </Button>
           {canPostToStatusPage && (
@@ -229,27 +280,37 @@ export function IncidentTimeline({
           ) : events.length === 0 ? (
             <p className="text-sm text-muted-foreground">No activity yet.</p>
           ) : (
-            <ol className="ml-1 space-y-3 border-l pl-4">
-              {(showAll ? events : events.slice(0, TIMELINE_COLLAPSED)).map((event) => {
+            <ol>
+              {(showAll ? events : events.slice(0, TIMELINE_COLLAPSED)).map((event, index, shown) => {
                 const { title, body } = describeTimelineEvent(event, refs);
+                const visual = timelineEventVisual(event);
+                const last = index === shown.length - 1;
                 return (
-                  <li key={event.id} className="relative">
-                    <span aria-hidden="true" className="absolute -left-[1.3rem] top-1.5 h-2 w-2 rounded-full bg-border" />
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm">
-                      <span className="font-medium">{title}</span>
-                      <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-                        {event.actorName ? (
-                          <UserCell name={event.actorName} image={event.actorImage} avatarClassName="h-4 w-4" className="text-xs" />
-                        ) : (
-                          event.actorType === "agent" ? "AI" : "System"
-                        )}
-                        {" · "}
-                        <time dateTime={new Date(event.createdAt).toISOString()} suppressHydrationWarning>
-                          {formatTime(event.createdAt)}
-                        </time>
-                      </span>
+                  <li key={event.id} className="relative flex gap-3 pb-4 last:pb-0">
+                    {/* The rail joins each icon to the next row. */}
+                    {!last && <span aria-hidden="true" className="absolute left-3 top-7 bottom-0 w-px -translate-x-1/2 bg-border" />}
+                    <IconTile icon={visual.icon} tone={visual.tone} className="relative z-10 rounded-full" />
+                    <div className="min-w-0 flex-1 pt-0.5">
+                      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+                        <span className="text-sm font-medium">{title}</span>
+                        <span className="inline-flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+                          {event.actorName ? (
+                            <UserCell name={event.actorName} image={event.actorImage} avatarClassName="h-4 w-4" className="text-xs" />
+                          ) : (
+                            event.actorType === "agent" ? "AI" : "System"
+                          )}
+                          <span aria-hidden="true">·</span>
+                          <time
+                            dateTime={new Date(event.createdAt).toISOString()}
+                            title={formatTime(event.createdAt)}
+                            suppressHydrationWarning
+                          >
+                            {formatAgo(event.createdAt)}
+                          </time>
+                        </span>
+                      </div>
+                      {body && <p className="mt-0.5 line-clamp-3 whitespace-pre-wrap break-words text-sm text-muted-foreground">{body}</p>}
                     </div>
-                    {body && <p className="mt-0.5 whitespace-pre-wrap break-words text-sm text-muted-foreground">{body}</p>}
                   </li>
                 );
               })}

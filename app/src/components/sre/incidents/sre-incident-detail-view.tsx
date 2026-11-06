@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Check, ChevronLeft, MoreHorizontal } from "lucide-react";
+import { Check, ChevronLeft, FileText, LayoutDashboard, Loader2, MoreHorizontal, Sparkles } from "lucide-react";
 
 import type { SreIncidentDetail } from "@/actions/sre-incidents";
 import type { SreServiceListItem } from "@/actions/sre-services";
@@ -15,6 +15,7 @@ import { InvestigationFeedback } from "@/components/sre/incidents/investigation-
 import { InvestigationReport, type ReportFocus } from "@/components/sre/incidents/investigation-report";
 import { PostmortemCard } from "@/components/sre/incidents/postmortem-card";
 import { OPEN_POSTMORTEM_EVENT, ResolveSreIncidentDialog } from "@/components/sre/incidents/resolve-sre-incident-dialog";
+import { SimilarIncidentsCard } from "@/components/sre/incidents/similar-incidents-card";
 import { SreInvestigationPanel } from "@/components/sre/incidents/sre-investigation-panel";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -46,6 +47,9 @@ const FOCUS_FOR_LINK: Partial<Record<IncidentTabParam, string>> = {
   evidence: "evidence",
   brief: "conclusion",
 };
+
+// Icons take the tab's text colour; the active tab's icon picks up the primary colour.
+const TAB_TRIGGER = "gap-2 [&_svg]:size-4 [&_svg]:text-muted-foreground data-[state=active]:[&_svg]:text-primary";
 
 /** Pre-fills the resolve dialog with one paragraph; the person still reads and confirms it. */
 export function defaultResolutionNote(recoveredAt: string | null | undefined, rootCause: string | null) {
@@ -206,93 +210,112 @@ export function SreIncidentDetailView({
         </div>
       </header>
 
-      <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start">
-        <Tabs value={activeTab} onValueChange={changeTab} className="flex min-w-0 flex-col gap-4">
-          <TabsList className="h-auto w-full shrink-0 flex-wrap justify-start self-start sm:w-auto">
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="investigation">Investigation</TabsTrigger>
-            {!open && <TabsTrigger value="postmortem">Post-mortem</TabsTrigger>}
-          </TabsList>
-
-          {/* Kept mounted while hidden so an unsent note or a draft survives a tab switch. */}
-          <TabsContent
-            value="overview"
-            forceMount
-            hidden={activeTab !== "overview"}
-            className="mt-0 flex min-w-0 flex-col gap-4 data-[state=inactive]:hidden"
-          >
-            {incident.resolutionSummary && (
-              <p className="line-clamp-2 rounded-md border bg-muted/40 px-3 py-2 text-sm" data-testid="resolution-summary">
-                <span className="font-medium">{open ? "Previous resolution: " : "Resolution: "}</span>
-                {incident.resolutionSummary}
-              </p>
+      {/* Tabs sit above both columns so the first card on each side starts on the same line. */}
+      <Tabs value={activeTab} onValueChange={changeTab} className="flex min-w-0 flex-col gap-4">
+        <TabsList className="h-auto w-full shrink-0 flex-wrap justify-start self-start sm:w-auto">
+          <TabsTrigger value="overview" className={TAB_TRIGGER}>
+            <LayoutDashboard aria-hidden="true" />
+            Overview
+          </TabsTrigger>
+          <TabsTrigger value="investigation" className={TAB_TRIGGER}>
+            <Sparkles aria-hidden="true" />
+            Investigation
+            {investigation?.status === "running" && (
+              <Loader2 className="animate-spin" aria-hidden="true" />
             )}
-            <IncidentAiSummaryCard
-              rootCauseSummary={incident.rootCauseSummary ?? detail.triageSummary ?? null}
-              confidenceScore={incident.confidenceScore}
-              investigationStatus={investigation?.status ?? null}
-              investigation={investigation}
-              onOpenInvestigation={() => changeTab("investigation")}
-              runControls={runControls}
-              source={summarySource}
-              feedback={
-                permissions.canUpdate && investigation?.status === "completed" ? (
-                  <InvestigationFeedback
-                    key={`feedback:${investigation.id}`}
-                    incidentId={incident.id}
-                    investigationRunId={investigation.id}
-                    initial={investigation.myFeedback.find((entry) => entry.hypothesisKey === null) ?? null}
-                    label="this investigation"
-                    compact
-                  />
-                ) : null
-              }
-            />
-            <IncidentTimeline
-              incidentId={incident.id}
-              canUpdate={permissions.canUpdate && open}
-              canPostToStatusPage={
-                Boolean(permissions.canPostToStatusPage) &&
-                ["investigating", "identified", "monitoring"].includes(detail.publicIncident?.status ?? "")
-              }
-            />
-          </TabsContent>
-
-          <TabsContent value="investigation" className="mt-0 min-w-0">
-            <Card className="py-4">
-              <CardContent className="px-4">
-                <InvestigationReport
-                  key={detail.latestBrief?.id ?? "no-brief"}
-                  detail={detail}
-                  focus={focus}
-                  serviceMappingHref={`/incidents/${incident.id}?edit=service`}
-                />
-              </CardContent>
-            </Card>
-          </TabsContent>
-
+          </TabsTrigger>
           {!open && (
-            <TabsContent value="postmortem" className="mt-0 min-w-0">
+            <TabsTrigger value="postmortem" className={TAB_TRIGGER}>
+              <FileText aria-hidden="true" />
+              Post-mortem
+            </TabsTrigger>
+          )}
+        </TabsList>
+
+        <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start">
+          <div className="flex min-w-0 flex-col">
+
+            {/* Kept mounted while hidden so an unsent note or a draft survives a tab switch. */}
+            <TabsContent
+              value="overview"
+              forceMount
+              hidden={activeTab !== "overview"}
+              className="mt-0 flex min-w-0 flex-col gap-4 data-[state=inactive]:hidden"
+            >
+              {incident.resolutionSummary && (
+                <p className="line-clamp-2 rounded-md border bg-muted/40 px-3 py-2 text-sm" data-testid="resolution-summary">
+                  <span className="font-medium">{open ? "Previous resolution: " : "Resolution: "}</span>
+                  {incident.resolutionSummary}
+                </p>
+              )}
+              <IncidentAiSummaryCard
+                rootCauseSummary={incident.rootCauseSummary ?? detail.triageSummary ?? null}
+                confidenceScore={incident.confidenceScore}
+                investigationStatus={investigation?.status ?? null}
+                investigation={investigation}
+                onOpenInvestigation={() => changeTab("investigation")}
+                runControls={runControls}
+                source={summarySource}
+                feedback={
+                  permissions.canUpdate && investigation?.status === "completed" ? (
+                    <InvestigationFeedback
+                      key={`feedback:${investigation.id}`}
+                      incidentId={incident.id}
+                      investigationRunId={investigation.id}
+                      initial={investigation.myFeedback.find((entry) => entry.hypothesisKey === null) ?? null}
+                      label="this investigation"
+                      compact
+                    />
+                  ) : null
+                }
+              />
+              <IncidentTimeline
+                incidentId={incident.id}
+                canUpdate={permissions.canUpdate && open}
+                canPostToStatusPage={
+                  Boolean(permissions.canPostToStatusPage) &&
+                  ["investigating", "identified", "monitoring"].includes(detail.publicIncident?.status ?? "")
+                }
+              />
+            </TabsContent>
+
+            <TabsContent value="investigation" className="mt-0 min-w-0">
               <Card className="py-4">
                 <CardContent className="px-4">
-                  <PostmortemCard
-                    key={incident.postmortem?.updatedAt ?? "none"}
-                    incidentId={incident.id}
-                    incidentNumber={incident.incidentNumber}
-                    title={incident.title}
-                    postmortem={incident.postmortem}
-                    canEdit={permissions.canUpdate}
+                  <InvestigationReport
+                    key={detail.latestBrief?.id ?? "no-brief"}
+                    detail={detail}
+                    focus={focus}
+                    serviceMappingHref={`/incidents/${incident.id}?edit=service`}
                   />
                 </CardContent>
               </Card>
             </TabsContent>
-          )}
-        </Tabs>
-        {/* Sticks below the app header while the tab content scrolls with the page. */}
-        <div className="min-w-0 lg:sticky lg:top-16">
-          <IncidentSidebar detail={detail} showCommander={showCommander} />
+
+            {!open && (
+              <TabsContent value="postmortem" className="mt-0 min-w-0">
+                <Card className="py-4">
+                  <CardContent className="px-4">
+                    <PostmortemCard
+                      key={incident.postmortem?.updatedAt ?? "none"}
+                      incidentId={incident.id}
+                      incidentNumber={incident.incidentNumber}
+                      title={incident.title}
+                      postmortem={incident.postmortem}
+                      canEdit={permissions.canUpdate}
+                    />
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            )}
+          </div>
+          {/* Not sticky: with alerts and similar incidents the column can be taller than the window. */}
+          <div className="flex min-w-0 flex-col gap-4">
+            <IncidentSidebar detail={detail} showCommander={showCommander} />
+            <SimilarIncidentsCard incidentId={incident.id} />
+          </div>
         </div>
-      </div>
+      </Tabs>
 
       <EditSreIncidentDialog
         incident={incident}

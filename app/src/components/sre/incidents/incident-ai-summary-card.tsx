@@ -12,6 +12,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { IconTile } from "@/components/sre/incidents/incident-ui";
 import { reportHeadline } from "@/lib/sre/evidence-brief-summary";
 import { stripEvidenceIdLists } from "@/sre/lib/investigation-output";
 
@@ -103,7 +104,7 @@ export function IncidentAiSummaryCard({
     <Card data-testid="incident-ai-summary" className="shrink-0 gap-3 py-4">
       <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0 px-4 py-0">
         <CardTitle id="incident-ai-summary-title" className="flex items-center gap-2 text-sm font-semibold">
-          <Sparkles className="h-4 w-4 text-primary" aria-hidden="true" />
+          <IconTile icon={Sparkles} tone="violet" />
           Summary
         </CardTitle>
         {headline && !running && source !== "investigation" && (
@@ -147,7 +148,7 @@ export function IncidentAiSummaryCard({
             {(failed || running) && (
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Previous conclusion</p>
             )}
-            <p data-testid="ai-summary-body" className="break-words text-sm leading-relaxed">
+            <p data-testid="ai-summary-body" className="break-words text-[15px] leading-relaxed">
               {headline}
             </p>
             {structured?.downgraded && (
@@ -165,9 +166,12 @@ export function IncidentAiSummaryCard({
           )
         )}
         {nextCheck && !running && (
-          <p className="line-clamp-2 break-words text-sm text-muted-foreground">
-            <span className="font-medium text-foreground">Next step: </span>
-            {nextCheck}
+          <p className="flex gap-2 rounded-md bg-violet-500/5 px-3 py-2 text-sm">
+            <ArrowRight className="mt-0.5 size-4 shrink-0 text-violet-500" aria-hidden="true" />
+            <span className="line-clamp-2 min-w-0 break-words">
+              <span className="font-medium">Next step: </span>
+              <span className="text-muted-foreground">{nextCheck}</span>
+            </span>
           </p>
         )}
         {(headline || running || failed) && (

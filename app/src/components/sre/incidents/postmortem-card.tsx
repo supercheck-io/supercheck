@@ -121,7 +121,7 @@ export function PostmortemCard({
     <div id="incident-postmortem" className="scroll-mt-4 space-y-4" data-testid="postmortem-card">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <p className="text-sm text-muted-foreground">
-          A blameless write-up built from the timeline, resolution and investigation. Review and edit before sharing.
+          Blameless draft from the timeline and investigation. Review it before sharing.
         </p>
         <div className="flex shrink-0 flex-wrap gap-2">
           {hasDraft && (

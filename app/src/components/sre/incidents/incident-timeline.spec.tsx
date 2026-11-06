@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { addSreIncidentUpdate } from "@/actions/sre-incident-lifecycle";
 import { draftSreStatusUpdate } from "@/actions/sre-status-update-draft";
 
-import { aiFindingHeadline, describeTimelineEvent, IncidentTimeline } from "./incident-timeline";
+import { aiFindingHeadline, describeTimelineEvent, IncidentTimeline, timelineEventVisual } from "./incident-timeline";
 
 const mockInvalidate = jest.fn().mockResolvedValue(undefined);
 let mockQuery: { isPending: boolean; isError?: boolean; data?: unknown; refetch?: () => void };
@@ -271,4 +271,19 @@ it("cuts long AI headlines at a word with an ellipsis", () => {
   const headline = aiFindingHeadline(long)!;
   expect(headline.endsWith("word…")).toBe(true);
   expect(headline.length).toBeLessThanOrEqual(401);
+});
+
+describe("timelineEventVisual", () => {
+  it.each([
+    [{ eventType: "comment", eventData: {} }, "blue"],
+    [{ eventType: "ai_finding", eventData: { type: "sre_investigation" } }, "violet"],
+    [{ eventType: "ai_finding", eventData: { type: "sre_investigation_failed" } }, "rose"],
+    [{ eventType: "state_change", eventData: { state: "resolved" } }, "emerald"],
+    [{ eventType: "state_change", eventData: { state: "acknowledged" } }, "sky"],
+    [{ eventType: "state_change", eventData: { state: "created_from_alert_history" } }, "rose"],
+    [{ eventType: "state_change", eventData: { state: "something_new" } }, "slate"],
+    [{ eventType: "tool_call", eventData: null }, "slate"],
+  ] as const)("colours %j as %s", (event, tone) => {
+    expect(timelineEventVisual(event as never).tone).toBe(tone);
+  });
 });

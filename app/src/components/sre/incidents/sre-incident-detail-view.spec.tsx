@@ -60,8 +60,7 @@ jest.mock("@/components/sre/incidents/investigation-feedback", () => ({
 }));
 
 jest.mock("@/components/sre/incidents/similar-incidents-card", () => ({
-  SimilarIncidentsList: () => <div data-testid="similar-incidents">Mock similar incidents</div>,
-  useSimilarIncidentCount: () => 2,
+  SimilarIncidentsCard: () => <div data-testid="similar-incidents">Mock similar incidents</div>,
 }));
 
 jest.mock("@/components/sre/incidents/postmortem-card", () => ({
@@ -357,7 +356,8 @@ describe("SreIncidentDetailView", () => {
     expect(screen.getAllByText("Investigating")).toHaveLength(1);
     expect(screen.getAllByText("sev2")).toHaveLength(1);
     expect(screen.getByText("Checkout monitor down")).toBeInTheDocument();
-    expect(screen.queryByTestId("similar-incidents")).not.toBeInTheDocument();
+    // Similar incidents sit in the right-hand column on every tab.
+    expect(screen.getByTestId("similar-incidents")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "View investigation" }));
     expect(screen.getByRole("tab", { name: "Investigation" })).toHaveAttribute("aria-selected", "true");
     expect(within(investigationTab()).getByText("Mock AI investigation panel")).toBeInTheDocument();
@@ -393,15 +393,12 @@ describe("SreIncidentDetailView", () => {
     window.location.hash = "";
   });
 
-  it("shows one report on the Investigation tab: conclusion, evidence and similar incidents", () => {
+  it("shows one report on the Investigation tab: conclusion and evidence, with similar incidents beside it", () => {
     render(<SreIncidentDetailView detail={detailFixture()} services={[]} />);
     openTab("Investigation");
     const sheet = investigationTab();
-    expect(within(sheet).getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual([
-      "Conclusion",
-      "Evidence (1)",
-      "Similar incidents (2)",
-    ]);
+    expect(within(sheet).getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual(["Conclusion", "Evidence1"]);
+    expect(sheet).not.toContainElement(screen.getByTestId("similar-incidents"));
     expect(sheet).toHaveTextContent("Mock AI investigation panel");
     expect(within(sheet).queryByRole("heading", { name: "Report snapshot" })).not.toBeInTheDocument();
   });
@@ -428,13 +425,12 @@ describe("SreIncidentDetailView", () => {
     expect(screen.getByTestId("hypothesis-h1")).toHaveTextContent("Validated");
     expect(screen.getByTestId("hypothesis-h2")).toHaveTextContent("Ruled out");
     expect(screen.getAllByRole("button", { name: "View evidence: Monitor timeout" }).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole("heading", { name: "Hypotheses" })).toHaveLength(1);
+    expect(screen.getAllByRole("heading", { name: "Hypotheses 2" })).toHaveLength(1);
     expect(screen.getByTestId("investigation-step-trace")).toHaveAttribute("data-state", "closed");
     expect(within(investigationTab()).getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual([
       "Conclusion",
-      "Hypotheses",
-      "Evidence (1)",
-      "Similar incidents (2)",
+      "Hypotheses2",
+      "Evidence1",
     ]);
     // Whole-investigation feedback lives once, on the Overview card (kept mounted, hidden on other tabs).
     expect(screen.getByText("Feedback: this investigation")).not.toBeVisible();

@@ -113,8 +113,27 @@ describe("IncidentSidebar", () => {
     detail.incident.status = "resolved";
     render(<IncidentSidebar detail={detail} />);
     // Who acknowledged is a hover detail, not a row.
-    expect(screen.getByText("10 min")).toHaveAttribute("title", expect.stringContaining("by Ada"));
+    expect(screen.getByText("10 min").closest("[title]")).toHaveAttribute("title", expect.stringContaining("by Ada"));
+    expect(screen.getByText("Time to acknowledge")).toBeInTheDocument();
+    expect(screen.queryByText("Open for")).not.toBeInTheDocument();
     expect(screen.getByText("2 h 5 min")).toBeInTheDocument();
+  });
+
+  it("shows how long an open incident has been open, and Not yet before acknowledgement", () => {
+    const detail = detailFixture();
+    detail.incident.createdAt = new Date(Date.now() - 90 * 60_000);
+    render(<IncidentSidebar detail={detail} />);
+    expect(screen.getByText("Open for")).toBeInTheDocument();
+    expect(screen.getByText("1 h 30 min")).toBeInTheDocument();
+    expect(screen.getByText("Not yet")).toBeInTheDocument();
+    expect(screen.queryByText("Time to resolve")).not.toBeInTheDocument();
+  });
+
+  it("colours the Alerts heading for firing alerts and shows the count", () => {
+    const detail = detailFixture();
+    detail.linkedAlerts = alerts(2) as never;
+    render(<IncidentSidebar detail={detail} />);
+    expect(screen.getByRole("heading", { name: "Alerts 2" })).toBeInTheDocument();
   });
 
   it("says Skipped for an incident resolved without acknowledgement", () => {

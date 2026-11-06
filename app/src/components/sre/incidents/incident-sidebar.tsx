@@ -2,12 +2,13 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { Bell, ListTree } from "lucide-react";
 
 import type { SreIncidentDetail } from "@/actions/sre-incidents";
 import { IncidentAssigneePicker } from "@/components/sre/incidents/incident-assignee-picker";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
+import { SectionTitle } from "@/components/sre/incidents/incident-ui";
 import { WatchSreIncidentButton } from "@/components/sre/incidents/watch-sre-incident-button";
 
 const ALERTS_COLLAPSED = 3;
@@ -41,14 +42,24 @@ export const SEVERITY_TONES: Record<SreIncidentDetail["incident"]["severity"], T
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="grid min-h-8 grid-cols-[8rem_minmax(0,1fr)] items-center gap-x-3 text-sm">
+    <div className="grid min-h-8 grid-cols-[6.5rem_minmax(0,1fr)] items-center gap-x-3 text-sm">
       <dt className="text-muted-foreground">{label}</dt>
       <dd className="min-w-0 break-words" suppressHydrationWarning>{children}</dd>
     </div>
   );
 }
 
-/** Plain label/value properties of the incident: people, service, timings, status page, alerts. Status and severity are in the page header. */
+/** One timing figure: small label above a prominent value. */
+function Metric({ label, children, title }: { label: string; children: React.ReactNode; title?: string }) {
+  return (
+    <div className="min-w-0 rounded-md bg-muted/50 px-2.5 py-2" title={title}>
+      <dt className="truncate text-xs text-muted-foreground">{label}</dt>
+      <dd className="mt-0.5 truncate text-sm font-semibold tabular-nums" suppressHydrationWarning>{children}</dd>
+    </div>
+  );
+}
+
+/** The right-hand column: timings, people, service, status page and watch, then linked alerts. Status and severity are in the page header. */
 export function IncidentSidebar({
   detail,
   showCommander = false,
@@ -63,14 +74,36 @@ export function IncidentSidebar({
   const editable = canUpdate && open;
   const [allAlerts, setAllAlerts] = useState(false);
   const alerts = allAlerts ? detail.linkedAlerts : detail.linkedAlerts.slice(0, ALERTS_COLLAPSED);
+  const firing = detail.linkedAlerts.filter((alert) => alert.status === "firing").length;
 
   return (
-    <aside aria-labelledby="incident-details-title">
+    <aside aria-labelledby="incident-details-title" className="flex flex-col gap-4">
       <Card className="gap-3 py-4">
         <CardHeader className="px-4 pt-0 pb-0">
-          <CardTitle id="incident-details-title" className="text-sm font-semibold">Properties</CardTitle>
+          <SectionTitle id="incident-details-title" as="h2" icon={ListTree} tone="slate">Properties</SectionTitle>
         </CardHeader>
         <CardContent className="space-y-3 px-4">
+          <dl className="grid grid-cols-2 gap-2">
+            <Metric
+              label="Time to acknowledge"
+              title={
+                incident.acknowledgedAt
+                  ? `Acknowledged ${formatDate(incident.acknowledgedAt)}${incident.acknowledgedByName ? ` by ${incident.acknowledgedByName}` : ""}`
+                  : "Time to acknowledge"
+              }
+            >
+              {incident.acknowledgedAt ? (
+                formatDuration(incident.createdAt, incident.acknowledgedAt)
+              ) : (
+                <span className="font-normal text-muted-foreground">{incident.resolvedAt ? "Skipped" : "Not yet"}</span>
+              )}
+            </Metric>
+            {incident.resolvedAt ? (
+              <Metric label="Time to resolve">{formatDuration(incident.createdAt, incident.resolvedAt)}</Metric>
+            ) : (
+              <Metric label="Open for">{formatDuration(incident.createdAt, new Date())}</Metric>
+            )}
+          </dl>
           <dl className="space-y-0.5">
             <Row label="Assignee">
               <IncidentAssigneePicker
@@ -109,18 +142,6 @@ export function IncidentSidebar({
               )}
             </Row>
             <Row label="Started">{formatDate(incident.createdAt)}</Row>
-            <Row label="Time to acknowledge">
-              {incident.acknowledgedAt ? (
-                <span title={`${formatDate(incident.acknowledgedAt)}${incident.acknowledgedByName ? ` by ${incident.acknowledgedByName}` : ""}`}>
-                  {formatDuration(incident.createdAt, incident.acknowledgedAt)}
-                </span>
-              ) : (
-                <span className="text-muted-foreground">{incident.resolvedAt ? "Skipped" : "Not yet"}</span>
-              )}
-            </Row>
-            {incident.resolvedAt && (
-              <Row label="Time to resolve">{formatDuration(incident.createdAt, incident.resolvedAt)}</Row>
-            )}
             <Row label="Status page">
               {detail.publicIncident ? (
                 <span className="flex flex-wrap items-center gap-x-2">
@@ -149,41 +170,48 @@ export function IncidentSidebar({
               <WatchSreIncidentButton incidentId={incident.id} watching={detail.watching ?? false} />
             </Row>
           </dl>
+        </CardContent>
+      </Card>
 
-          <Separator />
-
-          <section aria-labelledby="incident-alerts-title" className="space-y-1.5">
-            <h3 id="incident-alerts-title" className="flex items-center justify-between text-sm font-semibold">
-              Alerts
-              <span className="text-xs font-normal tabular-nums text-muted-foreground">{detail.linkedAlerts.length}</span>
-            </h3>
-            {detail.linkedAlerts.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No alerts linked.</p>
-            ) : (
-              <>
-                <ul className="space-y-1.5">
-                  {alerts.map((alert) => (
-                    <li key={alert.id} className="flex items-start justify-between gap-2 text-sm">
-                      <span className="min-w-0 break-words">{alert.title}</span>
-                      <TableBadge compact tone={alert.status === "firing" ? "danger" : alert.status === "resolved" ? "success" : "neutral"}>
-                        <span className="capitalize">{alert.status}</span>
-                      </TableBadge>
-                    </li>
-                  ))}
-                </ul>
-                {detail.linkedAlerts.length > ALERTS_COLLAPSED && (
-                  <button
-                    type="button"
-                    aria-expanded={allAlerts}
-                    onClick={() => setAllAlerts((value) => !value)}
-                    className="rounded-sm text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    {allAlerts ? "Show fewer" : `View all ${detail.linkedAlerts.length}`}
-                  </button>
-                )}
-              </>
-            )}
-          </section>
+      <Card className="gap-3 py-4">
+        <CardHeader className="px-4 pt-0 pb-0">
+          <SectionTitle
+            id="incident-alerts-title"
+            as="h2"
+            icon={Bell}
+            tone={firing > 0 ? "rose" : "slate"}
+            count={detail.linkedAlerts.length}
+          >
+            Alerts
+          </SectionTitle>
+        </CardHeader>
+        <CardContent className="px-4">
+          {detail.linkedAlerts.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No alerts linked.</p>
+          ) : (
+            <>
+              <ul className="space-y-2">
+                {alerts.map((alert) => (
+                  <li key={alert.id} className="flex items-start justify-between gap-2 text-sm">
+                    <span className="min-w-0 break-words">{alert.title}</span>
+                    <TableBadge compact tone={alert.status === "firing" ? "danger" : alert.status === "resolved" ? "success" : "neutral"}>
+                      <span className="capitalize">{alert.status}</span>
+                    </TableBadge>
+                  </li>
+                ))}
+              </ul>
+              {detail.linkedAlerts.length > ALERTS_COLLAPSED && (
+                <button
+                  type="button"
+                  aria-expanded={allAlerts}
+                  onClick={() => setAllAlerts((value) => !value)}
+                  className="mt-2 rounded-sm text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  {allAlerts ? "Show fewer" : `View all ${detail.linkedAlerts.length}`}
+                </button>
+              )}
+            </>
+          )}
         </CardContent>
       </Card>
     </aside>

@@ -1,16 +1,32 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { MoreHorizontal } from "lucide-react";
+import {
+  Activity,
+  ArrowRight,
+  Bell,
+  CircleCheck,
+  Clock,
+  Database,
+  FileText,
+  GitCommitHorizontal,
+  MoreHorizontal,
+  Network,
+  Paperclip,
+  ScrollText,
+  Sparkles,
+  Waypoints,
+  type LucideIcon,
+} from "lucide-react";
 
 import type { SreIncidentDetail } from "@/actions/sre-incidents";
 import { EvidenceDetailsDialog } from "@/components/sre/incidents/evidence-details-dialog";
 import { GenerateEvidenceBriefButton } from "@/components/sre/incidents/generate-evidence-brief-button";
 import { formatAgo } from "@/components/sre/incidents/incident-age";
 import { confidenceLabel, getInvestigationConclusion } from "@/components/sre/incidents/incident-ai-summary-card";
+import { IconTile, SectionTitle, type IconTone } from "@/components/sre/incidents/incident-ui";
 import { InvestigationHypotheses } from "@/components/sre/incidents/investigation-hypotheses";
 import { InvestigationStepTrace } from "@/components/sre/incidents/investigation-step-trace";
-import { SimilarIncidentsList, useSimilarIncidentCount } from "@/components/sre/incidents/similar-incidents-card";
 import { SreIncidentBriefReportActions } from "@/components/sre/incidents/sre-incident-brief-report";
 import { SreInvestigationPanel, SreReportSnapshotMenuItem } from "@/components/sre/incidents/sre-investigation-panel";
 import { SreMessageContent } from "@/components/sre/sre-message-content";
@@ -24,30 +40,44 @@ export type ReportFocus = { target: string; n: number };
 
 const SECTION_ID = "sre-report-";
 
-function Section({ id, title, action, children }: { id: string; title: string; action?: React.ReactNode; children: React.ReactNode }) {
+function Section({
+  id,
+  title,
+  icon,
+  tone,
+  count,
+  action,
+  children,
+}: {
+  id: string;
+  title: string;
+  icon: LucideIcon;
+  tone: IconTone;
+  count?: number;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}) {
   return (
     <section id={`${SECTION_ID}${id}`} aria-labelledby={`${SECTION_ID}${id}-title`} className="scroll-mt-4 space-y-3">
-      <div className="flex min-h-8 flex-wrap items-center justify-between gap-2">
-        <h3 id={`${SECTION_ID}${id}-title`} className="text-sm font-semibold">
-          {title}
-        </h3>
-        {action}
-      </div>
+      <SectionTitle id={`${SECTION_ID}${id}-title`} icon={icon} tone={tone} count={count} action={action}>
+        {title}
+      </SectionTitle>
       {children}
     </section>
   );
 }
 
-const EVIDENCE_TYPE_LABEL: Record<string, string> = {
-  metric: "Metric",
-  log: "Log",
-  trace: "Trace",
-  artifact: "Artifact",
-  deployment: "Deployment",
-  event: "Event",
-  document: "Document",
-  topology: "Topology",
+const EVIDENCE_TYPE: Record<string, { label: string; icon: LucideIcon; tone: IconTone }> = {
+  metric: { label: "Metric", icon: Activity, tone: "blue" },
+  log: { label: "Log", icon: ScrollText, tone: "slate" },
+  trace: { label: "Trace", icon: Waypoints, tone: "indigo" },
+  artifact: { label: "Artifact", icon: Paperclip, tone: "slate" },
+  deployment: { label: "Deployment", icon: GitCommitHorizontal, tone: "violet" },
+  event: { label: "Event", icon: Bell, tone: "amber" },
+  document: { label: "Document", icon: FileText, tone: "sky" },
+  topology: { label: "Topology", icon: Network, tone: "emerald" },
 };
+const OTHER_EVIDENCE = { label: "Evidence", icon: Database, tone: "slate" } as const;
 
 function formatTime(value: Date | string | null) {
   if (!value) return null;
@@ -60,29 +90,36 @@ function EvidenceList({ evidence }: { evidence: SreIncidentDetail["evidence"] })
   }
   return (
     <ul className="divide-y rounded-lg border">
-      {evidence.map((item) => (
-        <li key={item.id} id={`sre-evidence-${item.id}`} className="scroll-mt-4">
-          <EvidenceDetailsDialog item={item}>
-            <button
-              type="button"
-              aria-label={`View evidence: ${item.title}`}
-              className="flex w-full min-w-0 flex-col gap-0.5 px-4 py-2.5 text-left hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-            >
-              <span className="truncate text-sm font-medium">{item.title}</span>
-              <span className="truncate text-xs text-muted-foreground" suppressHydrationWarning>
-                {[EVIDENCE_TYPE_LABEL[item.evidenceType] ?? item.evidenceType, formatTime(item.observedAt)].filter(Boolean).join(" · ")}
-              </span>
-            </button>
-          </EvidenceDetailsDialog>
-        </li>
-      ))}
+      {evidence.map((item) => {
+        const type = EVIDENCE_TYPE[item.evidenceType] ?? OTHER_EVIDENCE;
+        return (
+          <li key={item.id} id={`sre-evidence-${item.id}`} className="scroll-mt-4">
+            <EvidenceDetailsDialog item={item}>
+              <button
+                type="button"
+                aria-label={`View evidence: ${item.title}`}
+                className="flex w-full min-w-0 items-center gap-3 px-3 py-2.5 text-left hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+              >
+                <IconTile icon={type.icon} tone={type.tone} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium">{item.title}</span>
+                  <span className="block truncate text-xs text-muted-foreground">{type.label}</span>
+                </span>
+                <span className="shrink-0 text-xs tabular-nums text-muted-foreground" suppressHydrationWarning>
+                  {formatTime(item.observedAt)}
+                </span>
+              </button>
+            </EvidenceDetailsDialog>
+          </li>
+        );
+      })}
     </ul>
   );
 }
 
 /**
  * The Investigation tab: one report. Conclusion first (the AI investigation, or the evidence brief until
- * one has run), then hypotheses, evidence and the step trace. Similar incidents appear only when there are any.
+ * one has run), then hypotheses, evidence and the step trace. Similar incidents are in the page's right-hand column.
  */
 export function InvestigationReport({
   detail,
@@ -94,7 +131,6 @@ export function InvestigationReport({
   serviceMappingHref: string;
 }) {
   const { incident, permissions, latestInvestigation: investigation } = detail;
-  const similarCount = useSimilarIncidentCount(incident.id);
 
   const savedSummary =
     typeof detail.latestBrief?.agentStateSnapshot?.summary === "string" ? detail.latestBrief.agentStateSnapshot.summary : "";
@@ -177,9 +213,17 @@ export function InvestigationReport({
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <p className="min-w-0 pt-1 text-sm text-muted-foreground">
-          {lastRun}
-          {snapshotSaved && " · Snapshot saved"}
+        <p className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 pt-1.5 text-xs text-muted-foreground">
+          <span className="inline-flex items-center gap-1.5">
+            <Clock className="size-3.5" aria-hidden="true" />
+            {lastRun}
+          </span>
+          {snapshotSaved && (
+            <span className="inline-flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+              <CircleCheck className="size-3.5" aria-hidden="true" />
+              Snapshot saved
+            </span>
+          )}
         </p>
         {permissions.canInvestigate && (
           <SreInvestigationPanel
@@ -212,6 +256,8 @@ export function InvestigationReport({
       <Section
         id="conclusion"
         title="Conclusion"
+        icon={Sparkles}
+        tone="violet"
         action={
           showConfidence &&
           (inconclusive || confidence.label === "Inconclusive" ? (
@@ -238,7 +284,7 @@ export function InvestigationReport({
             {triageConclusion && <p className="text-xs text-muted-foreground">From AI triage. Run an investigation for a full analysis.</p>}
             {(failed || running) && <p className="text-xs text-muted-foreground">Previous conclusion</p>}
             {inconclusive && <p className="text-xs text-muted-foreground">No root cause established.</p>}
-            <div className="break-words text-sm leading-relaxed">
+            <div className="break-words rounded-lg border-l-2 border-violet-500/60 bg-muted/30 px-4 py-3 text-sm leading-relaxed">
               <SreMessageContent content={conclusion} />
             </div>
             {structured?.downgraded && (
@@ -248,14 +294,15 @@ export function InvestigationReport({
             )}
             {nextChecks.length > 0 && !running && (
               <div className="space-y-1.5">
-                <p className="text-sm font-medium">Recommended next steps</p>
-                <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Next steps</p>
+                <ul className="space-y-1.5 text-sm">
                   {nextChecks.map((step, index) => (
-                    <li key={index} className="break-words">
-                      {step}
+                    <li key={index} className="flex gap-2 break-words">
+                      <ArrowRight className="mt-0.5 size-4 shrink-0 text-violet-500" aria-hidden="true" />
+                      <span className="min-w-0">{step}</span>
                     </li>
                   ))}
-                </ol>
+                </ul>
               </div>
             )}
             {!streaming && briefButton}
@@ -310,10 +357,7 @@ export function InvestigationReport({
         />
       )}
 
-      <Section
-        id="evidence"
-        title={detail.evidence.length > 0 ? `Evidence (${detail.evidence.length})` : "Evidence"}
-      >
+      <Section id="evidence" title="Evidence" icon={Database} tone="blue" count={detail.evidence.length || undefined}>
         <EvidenceList evidence={detail.evidence} />
       </Section>
 
@@ -321,11 +365,6 @@ export function InvestigationReport({
         <InvestigationStepTrace key={investigation.id} steps={investigation.steps} running={running} />
       )}
 
-      {Boolean(similarCount) && (
-        <Section id="similar" title={`Similar incidents (${similarCount})`}>
-          <SimilarIncidentsList incidentId={incident.id} />
-        </Section>
-      )}
     </div>
   );
 }

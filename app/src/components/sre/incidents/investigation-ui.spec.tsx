@@ -4,7 +4,7 @@ const mockSimilar = jest.fn();
 jest.mock("@/hooks/use-sre", () => ({ useSreSimilarIncidents: (...a: unknown[]) => mockSimilar(...a) }));
 
 import { InvestigationStepTrace } from "./investigation-step-trace";
-import { SimilarIncidentsList, useSimilarIncidentCount } from "./similar-incidents-card";
+import { SimilarIncidentsCard } from "./similar-incidents-card";
 
 describe("InvestigationStepTrace", () => {
   const steps = [
@@ -39,50 +39,39 @@ describe("InvestigationStepTrace", () => {
   });
 });
 
-describe("SimilarIncidentsList", () => {
+describe("SimilarIncidentsCard", () => {
   const ok = (incidents: unknown[]) =>
     mockSimilar.mockReturnValue({ isPending: false, data: { success: true, incidents } });
+  const incident = (n: number) => ({
+    id: `i-${n}`, incidentNumber: n, title: `Past ${n}`, severity: "sev2", serviceName: "checkout",
+    resolvedAt: new Date(), rootCauseSummary: "Bad deploy", resolutionSummary: n === 2 ? "Rolled back" : null, matchedOn: ["service", "title"],
+  });
 
-  it("says so when loading, unavailable or empty", () => {
+  it("renders nothing while loading, when unavailable or when there are no matches", () => {
     mockSimilar.mockReturnValue({ isPending: true, data: undefined });
-    const { rerender } = render(<SimilarIncidentsList incidentId="i-1" />);
+    const { container, rerender } = render(<SimilarIncidentsCard incidentId="i-1" />);
     expect(mockSimilar).toHaveBeenCalledWith("i-1");
-    expect(screen.getByText(/Looking for similar incidents/)).toBeInTheDocument();
+    expect(container).toBeEmptyDOMElement();
     mockSimilar.mockReturnValue({ isPending: false, data: { success: false, error: "x", incidents: [] } });
-    rerender(<SimilarIncidentsList incidentId="i-1" />);
-    expect(screen.getByText(/unavailable right now/)).toBeInTheDocument();
+    rerender(<SimilarIncidentsCard incidentId="i-1" />);
+    expect(container).toBeEmptyDOMElement();
     ok([]);
-    rerender(<SimilarIncidentsList incidentId="i-1" />);
-    expect(screen.getByText(/No similar resolved incidents/)).toBeInTheDocument();
+    rerender(<SimilarIncidentsCard incidentId="i-1" />);
+    expect(container).toBeEmptyDOMElement();
   });
 
-  it("links to past incidents with their service and match reasons", () => {
-    ok([
-      {
-        id: "i-2", incidentNumber: 7, title: "Checkout latency", severity: "sev2", serviceName: "checkout",
-        resolvedAt: new Date(), rootCauseSummary: "Bad deploy", resolutionSummary: "Rolled back", matchedOn: ["service", "title"],
-      },
-    ]);
-    render(<SimilarIncidentsList incidentId="i-1" />);
-    expect(screen.getByRole("link", { name: "#7 Checkout latency" })).toHaveAttribute("href", "/incidents/i-2");
-    expect(screen.getByText("checkout")).toBeInTheDocument();
-    expect(screen.getByText("Same service")).toBeInTheDocument();
+  it("links to past incidents with match reasons and how they were resolved, three at a time", () => {
+    ok([2, 3, 4, 5].map(incident));
+    render(<SimilarIncidentsCard incidentId="i-1" />);
+    expect(screen.getByRole("heading", { name: "Similar incidents 4" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /#2 Past 2/ })).toHaveAttribute("href", "/incidents/i-2");
+    expect(screen.getAllByText("Same service")).toHaveLength(3);
     expect(screen.getByText("Rolled back")).toBeInTheDocument();
-  });
-});
-
-describe("useSimilarIncidentCount", () => {
-  function Count() {
-    const count = useSimilarIncidentCount("i-1");
-    return <span>{count === null ? "none" : count}</span>;
-  }
-
-  it("is null until the list loads, then the number of matches", () => {
-    mockSimilar.mockReturnValue({ isPending: true, data: undefined });
-    const { rerender } = render(<Count />);
-    expect(screen.getByText("none")).toBeInTheDocument();
-    mockSimilar.mockReturnValue({ isPending: false, data: { success: true, incidents: [{}, {}] } });
-    rerender(<Count />);
-    expect(screen.getByText("2")).toBeInTheDocument();
+    expect(screen.getAllByText("Bad deploy")).toHaveLength(2);
+    expect(screen.queryByText("Past 5")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show all 4" }));
+    expect(screen.getByText("Past 5")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show fewer" }));
+    expect(screen.queryByText("Past 5")).not.toBeInTheDocument();
   });
 });
