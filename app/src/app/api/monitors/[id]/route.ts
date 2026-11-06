@@ -181,7 +181,12 @@ export async function PUT(
       );
     }
 
-    const rawData = await request.json();
+    let rawData;
+    try {
+      rawData = await request.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
     const validationResult = monitorWritableSchema.safeParse(rawData);
 
     if (!validationResult.success) {
@@ -754,7 +759,12 @@ export async function PATCH(
       );
     }
 
-    const rawData = await request.json();
+    let rawData;
+    try {
+      rawData = await request.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
 
     if (!isUuid(id)) return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
 

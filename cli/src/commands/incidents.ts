@@ -8,7 +8,7 @@ import { withSpinner } from '../utils/spinner.js'
 import { ApiRequestError, CLIError, ExitCode } from '../utils/errors.js'
 import { resolveIncidentId } from '../utils/incidents.js'
 
-type IncidentEnvelope = { incidents: Record<string, unknown>[] }
+type IncidentEnvelope = { incidents: Record<string, unknown>[]; truncated?: boolean }
 
 /** An older server has no such route: Next answers 404 without the JSON `error` body a real "not found" carries. */
 async function withRouteCheck<T>(run: () => Promise<T>): Promise<T> {
@@ -33,6 +33,7 @@ incidentCommand.command('list')
   .option('--assignee <assignee>', 'Filter by assignee: me, unassigned or a user UUID')
   .action(async (options: { status?: string; severity?: string; assignee?: string }) => {
     const { data } = await withSpinner('Fetching incidents', () => createAuthenticatedClient().get<IncidentEnvelope>('/api/sre/incidents', options))
+    if (data.truncated) logger.warn('Showing only the most recent incidents; narrow the list with --status, --severity or --assignee.')
     // Older servers have no statusLabel; fall back to the stored status.
     const incidents = data.incidents.map((incident) => ({ ...incident, statusLabel: incident.statusLabel ?? incident.status }))
     output(incidents, { columns: [

@@ -10,6 +10,7 @@ const DEFAULT_BASE_URL = 'https://app.supercheck.io'
 const DEFAULT_TIMEOUT_MS = 30_000
 const MAX_RETRIES = 3
 const RETRY_BACKOFF_MS = 1_000
+const MAX_RETRY_AFTER_SECONDS = 60
 
 export interface ApiClientOptions {
   baseUrl?: string
@@ -168,10 +169,11 @@ export class ApiClient {
         if (response.status === 429) {
           const retryAfter = response.headers.get('Retry-After')
           const parsedSeconds = retryAfter ? Number(retryAfter) : NaN
-          if (attempt >= maxRetries) {
+          // A longer wait would hang the command: fail now and let the hint tell the user when to retry.
+          if (attempt >= maxRetries || parsedSeconds > MAX_RETRY_AFTER_SECONDS) {
             const hint = Number.isFinite(parsedSeconds) && parsedSeconds > 0 ? ` Retry in ${Math.ceil(parsedSeconds)}s.` : ''
             throw new ApiRequestError(
-              `Rate limited after ${attemptLabel}: ${method} ${path}.${hint}`,
+              `Rate limited${attempt >= maxRetries ? ` after ${attemptLabel}` : ''}: ${method} ${path}.${hint}`,
               429,
             )
           }

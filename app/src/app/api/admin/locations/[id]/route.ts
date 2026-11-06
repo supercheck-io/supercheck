@@ -67,7 +67,12 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     await requireAdmin();
     const { id } = await params;
 
-    const body = await request.json();
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
     const parsed = updateLocationSchema.safeParse(body);
 
     if (!parsed.success) {

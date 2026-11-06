@@ -26,7 +26,12 @@ export async function PATCH(
 
   try {
     const { userId, projectId: tokenProjectId, isCliAuth } = await requireUserAuthContext();
-    const data = await request.json();
+    let data;
+    try {
+      data = await request.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
     const { status } = data;
 
     if (!status || !["up", "down", "paused", "pending", "maintenance", "error"].includes(status)) {

@@ -32,7 +32,16 @@ describe("incident number lookup", () => {
     expect(response.status).toBe(200);
     const query = new PgDialect().sqlToQuery(mockWhere.mock.calls[0][0]);
     expect(query.params).toEqual(["org-1", "project-1", 42]);
-    expect(await response.json()).toEqual({ success: true, incidents: [{ id: "incident-uuid", incidentNumber: 42, statusLabel: "Unknown" }] });
+    expect(await response.json()).toEqual({ success: true, truncated: false, incidents: [{ id: "incident-uuid", incidentNumber: 42, statusLabel: "Unknown" }] });
+  });
+
+  it("reports truncation and returns only the first 500 rows when more exist", async () => {
+    const limit = jest.fn().mockResolvedValue(Array.from({ length: 501 }, (_, i) => ({ id: `i${i}`, incidentNumber: i })));
+    mockSelect.mockReturnValue({ from: jest.fn().mockReturnThis(), leftJoin: jest.fn().mockReturnThis(), where: jest.fn().mockReturnThis(), groupBy: jest.fn().mockReturnThis(), orderBy: jest.fn().mockReturnThis(), limit });
+    const body = await (await GET(new NextRequest("https://example.com/api/sre/incidents"))).json();
+    expect(limit).toHaveBeenCalledWith(501);
+    expect(body.truncated).toBe(true);
+    expect(body.incidents).toHaveLength(500);
   });
 
   it.each(["0", "-1", "1.5", "abc", "2147483648", "9007199254740992"])("rejects invalid incident number %s before querying", async (number) => {

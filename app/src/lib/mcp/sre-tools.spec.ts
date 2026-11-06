@@ -14,8 +14,10 @@ jest.mock("next/server", () => ({ after: (fn: () => unknown) => afterCallbacks.p
 const requireSreSubscription = jest.fn();
 jest.mock("@/app/api/sre/_auth", () => ({ requireSreSubscription: (...a: unknown[]) => requireSreSubscription(...a) }));
 const assertCanStartSreInvestigation = jest.fn();
+const withSreTriageAdmission = jest.fn();
 jest.mock("@/lib/sre/investigation-billing", () => ({
   assertCanStartSreInvestigation: (...a: unknown[]) => assertCanStartSreInvestigation(...a),
+  withSreTriageAdmission: (...a: unknown[]) => withSreTriageAdmission(...a),
   SreInvestigationBillingError: class extends Error { constructor(readonly code: string) { super(code); } },
 }));
 jest.mock("@/lib/sre/billing-error-messages", () => ({ sreBillingErrorMessage: (c: string) => `billing:${c}` }));
@@ -81,6 +83,7 @@ beforeEach(() => {
   permission.mockReturnValue(true);
   requireSreSubscription.mockResolvedValue(null);
   assertCanStartSreInvestigation.mockResolvedValue(undefined);
+  withSreTriageAdmission.mockResolvedValue(null);
   checkSreDailyTokenLimit.mockResolvedValue(allow);
   for (const l of Object.values(limiters)) l.mockResolvedValue(allow);
 });
@@ -144,6 +147,7 @@ describe("AI SRE tools", () => {
     ["generate_incident_brief", () => limiters.brief.mockResolvedValue({ allowed: false, unavailable: true }), "rate_limited"],
     ["investigate_incident", () => checkSreDailyTokenLimit.mockResolvedValue({ allowed: false }), "daily_limit"],
     ["investigate_incident", () => assertCanStartSreInvestigation.mockRejectedValue(new (FakeBillingError as unknown as new (c: string) => Error)("no_credits")), "subscription_required"],
+    ["triage_incident", () => withSreTriageAdmission.mockRejectedValue(new (FakeBillingError as unknown as new (c: string) => Error)("trial_limit")), "subscription_required"],
     ["triage_incident", () => { sreEnabled = false; }, "feature_disabled"],
   ])("%s refuses before starting work (%#)", async (name, arrange, code) => {
     found();

@@ -58,7 +58,7 @@ export function BreadcrumbDisplay() {
                     className={cn(isHome ? "flex" : "min-w-0 truncate")}
                     title={isHome ? undefined : item.label}
                   >
-                    <Link href={item.href || "#"}>{label}</Link>
+                    <Link href={item.href || "#"} aria-label={isHome ? "Home" : undefined}>{label}</Link>
                   </BreadcrumbLink>
                 )}
               </BreadcrumbItem>

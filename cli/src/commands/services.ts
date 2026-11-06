@@ -1,12 +1,14 @@
 import { Command } from 'commander'
 import { createAuthenticatedClient } from '../api/authenticated-client.js'
 import { getOutputFormat, output, outputDetail } from '../output/formatter.js'
+import { logger } from '../utils/logger.js'
 import { withSpinner } from '../utils/spinner.js'
 
 export const serviceCommand = new Command('service').alias('services').description('Inspect the AI SRE service catalog')
 
 serviceCommand.command('list').description('List services').action(async () => {
-  const { data } = await withSpinner('Fetching services', () => createAuthenticatedClient().get<{ services: Record<string, unknown>[] }>('/api/sre/services'))
+  const { data } = await withSpinner('Fetching services', () => createAuthenticatedClient().get<{ services: Record<string, unknown>[]; truncated?: boolean }>('/api/sre/services'))
+  if (data.truncated) logger.warn('Showing only the first services returned by the server; the catalog is larger than one page.')
   output(data.services, { columns: [
     { key: 'id', header: 'ID' }, { key: 'name', header: 'Name' }, { key: 'tier', header: 'Tier' },
     { key: 'environment', header: 'Environment' }, { key: 'ownerTeam', header: 'Owner' }, { key: 'status', header: 'Status' },
