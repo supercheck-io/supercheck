@@ -1,4 +1,4 @@
-import { isTokenSafeUrl } from '../utils/api-url.js'
+import { assertSafeApiPath, isTokenSafeUrl } from '../utils/api-url.js'
 import { ApiRequestError, CLIError, ExitCode, TimeoutError, networkErrorMessage } from '../utils/errors.js'
 import { logger } from '../utils/logger.js'
 import { CLI_VERSION } from '../version.js'
@@ -83,11 +83,7 @@ export class ApiClient {
   }
 
   private buildUrl(path: string, params?: Record<string, string | number | boolean | undefined>): string {
-    // Paths interpolate user-supplied IDs; new URL() would resolve `..` and send the request to another resource.
-    const pathname = path.split(/[?#]/, 1)[0]
-    if (pathname.split('/').some((segment) => /^(\.|%2e){1,2}$/i.test(segment))) {
-      throw new CLIError(`Invalid resource path: ${pathname}`, ExitCode.ConfigError)
-    }
+    assertSafeApiPath(path)
     const url = new URL(`${this.baseUrl}${path}`)
     if (params) {
       for (const [key, value] of Object.entries(params)) {

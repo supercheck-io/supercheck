@@ -48,6 +48,12 @@ describe('postSse', () => {
     expect(error.responseBody).toBeUndefined()
   })
 
+  it.each(['/api/runs/..\\tests/stream', '/api/runs/.\t./x'])('rejects unsafe stream path %j before any request', async (path) => {
+    const fetchMock = jest.spyOn(globalThis, 'fetch')
+    await expect(postSse(path, {}, () => undefined)).rejects.toThrow('Invalid resource path')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it('rejects events over the safety limit', async () => {
     jest.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(`data: ${'x'.repeat(1024 * 1024 + 1)}`, { status: 200 }))
     await expect(postSse('/api/sre/chat', {}, () => undefined)).rejects.toThrow('1 MiB safety limit')

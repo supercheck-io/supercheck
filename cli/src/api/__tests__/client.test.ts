@@ -244,7 +244,7 @@ describe('ApiClient', () => {
       expect(url).toContain('limit=10')
     })
 
-    it.each(['/api/runs/../tests/abc', '/api/runs/%2e%2e/tests/abc', '/api/runs/./x'])('rejects dot segments in %s', async (path) => {
+    it.each(['/api/runs/../tests/abc', '/api/runs/%2e%2e/tests/abc', '/api/runs/./x', '/api/runs/..\\tests', '/api/runs/.\t./tests', '/api/runs/a\nb'])('rejects unsafe path %j', async (path) => {
       await expect(client.delete(path)).rejects.toThrow('Invalid resource path')
       expect(mockFetch).not.toHaveBeenCalled()
     })

@@ -2,7 +2,7 @@ import { requireAuth, getStoredBaseUrl } from '../auth/store.js'
 import { getResolvedConfigBaseUrl } from '../api/authenticated-client.js'
 import { CLI_VERSION } from '../version.js'
 import { ApiRequestError, CLIError, ExitCode, networkErrorMessage } from './errors.js'
-import { isTokenSafeUrl } from './api-url.js'
+import { assertSafeApiPath, isTokenSafeUrl } from './api-url.js'
 import { getProxyAgent, getProxyEnv } from './proxy.js'
 
 import { createSpinner } from './spinner.js'
@@ -27,6 +27,7 @@ async function streamSse(
   onEvent: (event: SseEvent) => void | false,
   { idleTimeoutMs = 60_000, isTerminal }: SseOptions = {},
 ): Promise<void> {
+  assertSafeApiPath(path)
   const token = requireAuth()
   const baseUrl = getStoredBaseUrl() ?? getResolvedConfigBaseUrl() ?? 'https://app.supercheck.io'
   const url = new URL(`${baseUrl.replace(/\/+$/, '')}${path}`)
