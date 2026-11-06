@@ -12,7 +12,6 @@ import { inviteMemberSchema } from "@/lib/validations/member";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { renderOrganizationInvitationEmail } from "@/lib/email-renderer";
 import { checkTeamMemberLimit } from "@/lib/middleware/plan-enforcement";
-import { seatReservingInvitations } from "@/lib/invitation-seats";
 import { insertWithinPlanLimit } from "@/lib/middleware/plan-limit-lock";
 import { getRedisConnection } from "@/lib/queue";
 import { withRedisDeadline } from "@/lib/security/redis-deadline";
@@ -311,10 +310,17 @@ export async function POST(request: NextRequest) {
           .select({ count: sql<number>`count(*)` })
           .from(member)
           .where(eq(member.organizationId, organizationId));
+        // On purpose: an invite to a platform-admin email still reserves a seat; hiding which addresses are platform admins matters more.
         const [pendingRow] = await tx
           .select({ count: sql<number>`count(*)` })
           .from(invitation)
-          .where(seatReservingInvitations(organizationId));
+          .where(
+            and(
+              eq(invitation.organizationId, organizationId),
+              eq(invitation.status, "pending"),
+              gte(invitation.expiresAt, new Date()),
+            ),
+          );
         return Number(memberRow?.count || 0) + Number(pendingRow?.count || 0);
       },
       insert: async (executor) => {

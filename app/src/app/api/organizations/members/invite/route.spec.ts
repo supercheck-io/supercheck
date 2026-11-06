@@ -144,23 +144,6 @@ describe("seat limit", () => {
     expect(mockInsert).not.toHaveBeenCalled();
   });
 
-  it("counts pending invites toward the limit except those addressed to a platform admin", async () => {
-    useTransaction();
-    (checkTeamMemberLimit as jest.Mock).mockResolvedValueOnce({ allowed: true, limit: 5 });
-    const memberRows = rows([{ count: 1 }]);
-    const pendingRows = rows([{ count: 1 }]);
-    mockSelect.mockReturnValueOnce(memberRows).mockReturnValueOnce(pendingRows);
-
-    const response = await POST(request());
-
-    // The response is a normal invite: nothing marks the address as an admin.
-    expect(response.status).toBe(200);
-    const { sql } = new PgDialect().sqlToQuery(pendingRows.where.mock.calls[0][0]);
-    expect(sql).toContain('"invitation"."status" = $2');
-    expect(sql).toContain(`"user"."role" = 'super_admin'`);
-    expect(sql).toContain("NOT EXISTS");
-  });
-
   it("creates the invitation on the transaction when under the limit", async () => {
     useTransaction();
     (checkTeamMemberLimit as jest.Mock).mockResolvedValueOnce({ allowed: true, limit: 5 });

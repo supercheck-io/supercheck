@@ -3,9 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { invitation, member, organization, projects, user as userTable } from "@/db/schema";
 import { buildInvitationProjectInfo } from "@/lib/invitation-project-info";
-import { eq, and, inArray, sql } from "drizzle-orm";
+import { eq, and, gte, inArray, sql } from "drizzle-orm";
 import { checkTeamMemberLimit } from "@/lib/middleware/plan-enforcement";
-import { seatReservingInvitations } from "@/lib/invitation-seats";
 import { insertWithinPlanLimit } from "@/lib/middleware/plan-limit-lock";
 import { getUserOrgRole } from "@/lib/rbac/middleware";
 import { requireUserAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
@@ -279,10 +278,17 @@ export async function POST(
             .select({ count: sql<number>`count(*)` })
             .from(member)
             .where(eq(member.organizationId, organizationId));
+          // On purpose: an invite to a platform-admin email still reserves a seat; hiding which addresses are platform admins matters more.
           const [pendingRow] = await tx
             .select({ count: sql<number>`count(*)` })
             .from(invitation)
-            .where(seatReservingInvitations(organizationId));
+            .where(
+              and(
+                eq(invitation.organizationId, organizationId),
+                eq(invitation.status, "pending"),
+                gte(invitation.expiresAt, new Date())
+              )
+            );
           return Number(memberRow?.count || 0) + Number(pendingRow?.count || 0);
         },
         insert: async (executor) => {
