@@ -20,11 +20,11 @@ The annotated templates are [`app/.env.example`](https://github.com/supercheck-i
 | Variable | Applies to | Default | Purpose |
 |----------|-----------|---------|---------|
 | `SELF_HOSTED` | Both | `true` in the bundled stack | Self-hosted mode: no plan limits. Leave `true` |
-| `BETTER_AUTH_SECRET` | Both | none, required | Session signing secret (`openssl rand -hex 32`) |
+| `BETTER_AUTH_SECRET` | App | none, required | Session signing secret (`openssl rand -hex 32`) |
 | `BETTER_AUTH_URL` | App | none, required | Public URL of the app. Must be the public HTTPS URL when MCP or device login is on |
-| `NEXT_PUBLIC_APP_URL` | App | `http://localhost:3000` | Browser-reachable URL, embedded at build time |
+| `NEXT_PUBLIC_APP_URL` | Both | `http://localhost:3000` | Browser-reachable URL, embedded at build time |
 | `APP_URL` | Both | `http://localhost:3000` | Runtime app URL for middleware, emails and worker callbacks |
-| `TRUSTED_ORIGINS` | App | empty | Extra trusted origins for CORS and CSRF, comma-separated |
+| `TRUSTED_ORIGINS` | App | empty | Extra origins trusted for sign-in and CSRF checks, comma-separated. Use `CORS_ALLOWED_ORIGINS` for API calls from browser integrations |
 | `CORS_ALLOWED_ORIGINS` | App | empty | Extra origins that browser integrations may call the API from. Supports `https://*.example.com` |
 | `SECRET_ENCRYPTION_KEY` | Both | none, required | Encrypts stored secrets (variables, connector credentials). Must be identical on the app and every worker. Changing it makes existing secrets unreadable |
 | `DEFAULT_PROJECT_NAME` | App | `Default Project` | Name of the project created for a new organization |
@@ -33,7 +33,7 @@ The annotated templates are [`app/.env.example`](https://github.com/supercheck-i
 | `SHOW_COMMUNITY_LINKS` | App | `false` | `true` shows the community link in the header |
 | `NEXT_PUBLIC_SOURCE_URL` | App | the upstream repository | Build-time link to the corresponding source. Forks and modified builds must point it at their own source |
 | `DEMO_MODE` | App | `false` | `true` flags the instance as a demo to the UI |
-| `LOG_LEVEL` | App | `info` in production, `debug` in development | `trace`, `debug`, `info`, `warn`, `error` or `fatal` |
+| `LOG_LEVEL` | Both | `info` in production, `debug` in development | `trace`, `debug`, `info`, `warn`, `error` or `fatal` |
 | `LOG_DB_QUERIES` | App | `false` | `true` logs SQL, in development only |
 
 ## Database
@@ -75,12 +75,12 @@ The annotated templates are [`app/.env.example`](https://github.com/supercheck-i
 | `S3_JOB_BUCKET_NAME` | Both | `playwright-job-artifacts` | Job artifacts |
 | `S3_MONITOR_BUCKET_NAME` | Both | `playwright-monitor-artifacts` | Synthetic monitor artifacts |
 | `S3_K6_TEST_BUCKET_NAME`, `S3_K6_JOB_BUCKET_NAME` | Both | `k6-test-artifacts`, `k6-job-artifacts` | k6 artifacts |
-| `S3_STATUS_BUCKET_NAME` | App | `status-page-artifacts` | Status page assets |
-| `S3_REQUIREMENTS_BUCKET_NAME` | App | `test-requirement-artifacts` | Requirement documents |
-| `S3_PROJECT_DATA_FILES_BUCKET_NAME` | App | `project-data-files` | Project data files |
+| `S3_STATUS_BUCKET_NAME` | Both | `status-page-artifacts` | Status page assets |
+| `S3_REQUIREMENTS_BUCKET_NAME` | Both | `test-requirement-artifacts` | Requirement documents |
+| `S3_PROJECT_DATA_FILES_BUCKET_NAME` | Both | `project-data-files` | Project data files |
 | `S3_SRE_ATTACHMENTS_BUCKET_NAME` | App | `sre-chat-attachments` | AI SRE attachment API (the Copilot UI does not upload files) |
-| `S3_OPERATION_TIMEOUT` | App | `10000` | Per-operation timeout in ms for cleanup jobs |
-| `S3_MAX_RETRIES` | App | `3` | Retries for cleanup operations |
+| `S3_OPERATION_TIMEOUT` | Both | `10000` app, `5000` worker | Per-operation timeout in ms |
+| `S3_MAX_RETRIES` | Both | `3` | Retries for storage operations |
 | `REPORT_ASSET_MAX_RETRIES` | App | `2` | Retries when a report asset is not stored yet |
 | `REPORT_ASSET_RETRY_DELAY_MS` | App | `250` | Delay between those retries |
 
@@ -116,7 +116,7 @@ The annotated templates are [`app/.env.example`](https://github.com/supercheck-i
 | `SMTP_PORT` | Both | `587` | SMTP port |
 | `SMTP_SECURE` | Both | `false` | `true` for implicit TLS (usually port 465) |
 | `SMTP_USER`, `SMTP_PASSWORD` | Both | none | Set both or neither |
-| `SMTP_FROM_EMAIL` | Both | none | Sender address |
+| `SMTP_FROM_EMAIL` | Both | none | Sender address. Required once `SMTP_HOST` is set |
 | `SMTP_FROM_NAME`, `SMTP_REPLY_TO` | Both | none | Display name and Reply-To |
 | `SMTP_BLOCKED_RECIPIENT_DOMAINS` | Both | empty | Extra domains never emailed (subdomains included) |
 
@@ -125,7 +125,7 @@ The annotated templates are [`app/.env.example`](https://github.com/supercheck-i
 | Variable | Applies to | Default | Purpose |
 |----------|-----------|---------|---------|
 | `AI_PROVIDER` | App | `openai` | `openai`, `azure`, `anthropic`, `gemini`, `google-vertex`, `bedrock`, `openrouter` or `deepseek` |
-| `AI_MODEL` | App | `gpt-6-luna` | Model ID for the selected provider |
+| `AI_MODEL` | App | per provider (`gpt-6-luna` for OpenAI) | Model ID for the selected provider |
 | `AI_TIMEOUT_MS` | App | `90000` | Request timeout (10000 to 120000) |
 | `AI_MAX_RETRIES` | App | `2` | Retries (1 to 5) |
 | `AI_TEMPERATURE` | App | `0.1` | Randomness (0 to 2) |
@@ -153,14 +153,14 @@ The annotated templates are [`app/.env.example`](https://github.com/supercheck-i
 
 | Variable | Applies to | Default | Purpose |
 |----------|-----------|---------|---------|
-| `RUNNING_CAPACITY` | App | `1` | Concurrent test runs (self-hosted). Match `WORKER_REPLICAS` |
-| `QUEUED_CAPACITY` | App | `10` | Queued runs before new submissions are rejected |
-| `TEST_EXECUTION_TIMEOUT_MS` | Both | `300000` app, `120000` worker example | Playwright test timeout. Keep the app and worker values equal |
-| `JOB_EXECUTION_TIMEOUT_MS` | Both | `3600000` app, `900000` worker example | Playwright job timeout |
+| `RUNNING_CAPACITY` | App | `1` in the bundled Compose files, `5` if unset | Concurrent test runs (self-hosted). Match `WORKER_REPLICAS` |
+| `QUEUED_CAPACITY` | App | `10` in the bundled Compose files, `50` if unset | Queued runs before new submissions are rejected |
+| `TEST_EXECUTION_TIMEOUT_MS` | Both | `300000` | Playwright test timeout. Keep the app and worker values equal |
+| `JOB_EXECUTION_TIMEOUT_MS` | Both | `3600000` | Playwright job timeout |
 | `K6_TEST_EXECUTION_TIMEOUT_MS`, `K6_JOB_EXECUTION_TIMEOUT_MS` | Both | `3600000` | k6 test and job timeouts |
 | `PLAYWRIGHT_WORKERS` | Worker | `1` | Parallel Playwright workers per run |
 | `PLAYWRIGHT_RETRIES` | Worker | `1` | Retries per failing test |
-| `PLAYWRIGHT_TRACE`, `PLAYWRIGHT_SCREENSHOT`, `PLAYWRIGHT_VIDEO` | Worker | `retain-on-failure`, `only-on-failure`, `retain-on-failure` | Artifact capture: `on`, `off`, `only-on-failure`, `retain-on-failure`, `on-first-retry` |
+| `PLAYWRIGHT_TRACE`, `PLAYWRIGHT_SCREENSHOT`, `PLAYWRIGHT_VIDEO` | Worker | `retain-on-failure-and-retries`, `on`, `retain-on-failure-and-retries` (the bundled Compose files set their own) | Artifact capture: `on`, `off`, `only-on-failure`, `retain-on-failure`, `on-first-retry` |
 | `WORKER_LOCATION` | Worker | `local` | `local` consumes every enabled location's queues; a location code consumes only that region |
 | `WORKER_QUEUES` | Worker | all | Comma list of `monitor`, `k6`, `global-playwright`, `global-k6`. Set as a real environment variable |
 | `WORKER_SHUTDOWN_DRAIN_MS` | Worker | `20000` | Wait for in-flight runs on shutdown (max `600000`). Keep below the stop grace period |
@@ -214,7 +214,7 @@ The annotated templates are [`app/.env.example`](https://github.com/supercheck-i
 | `STATUS_PAGE_DOMAIN` | App | none | Base domain for status pages |
 | `STATUS_PAGE_HIDE_BRANDING` | App | `false` | Hide the "Powered by Supercheck" footer |
 | `QUEUE_ALERTING_ENABLED` | Worker | `true` | Queue health alerts for operators |
-| `QUEUE_ALERT_WEBHOOK_URL`, `QUEUE_ALERT_SLACK_WEBHOOK_URL` | Worker | none | Where queue alerts are delivered. Without either, alerts are only logged |
+| `QUEUE_ALERT_WEBHOOK_URL`, `QUEUE_ALERT_SLACK_WEBHOOK_URL` | Worker | none | Where queue alerts are delivered. Without either, alerts are only logged. `QUEUE_ALERT_EMAILS` is not supported |
 | `QUEUE_ALERTING_CHECK_INTERVAL_MS` | Worker | `60000` | Check interval |
 | `QUEUE_DEPTH_WARNING_THRESHOLD`, `QUEUE_DEPTH_CRITICAL_THRESHOLD` | Worker | `70`, `90` | Depth, as a percentage of `MAX_QUEUE_DEPTH` |
 | `MAX_QUEUE_DEPTH` | Worker | `10000` | Queue size used for the depth percentages |
@@ -285,4 +285,4 @@ Set on machines running `supercheck` (see [CLI authentication](/docs/cli/authent
 
 ## Supercheck Cloud only
 
-Self-hosted installs ignore these. They are listed so operators of a hosted deployment know what exists: `SENTRY_DSN`, `SENTRY_ENVIRONMENT`, `SENTRY_RELEASE` (error reporting, never loaded when `SELF_HOSTED=true`), the `POLAR_*` billing variables, `USAGE_SYNC_*`, `TRIAL_*`, `CRON_SECRET`, and `CHATWOOT_*` (support chat).
+Self-hosted installs do not use these: `SENTRY_DSN`, `SENTRY_ENVIRONMENT`, `SENTRY_RELEASE` (error reporting, never loaded when `SELF_HOSTED=true`), `CHATWOOT_*` (support chat), `CRON_SECRET`, and the other variables of the hosted service. Do not set them.
