@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { addSreIncidentUpdate } from "@/actions/sre-incident-lifecycle";
 import { draftSreStatusUpdate } from "@/actions/sre-status-update-draft";
 
-import { aiFindingHeadline, describeTimelineEvent, IncidentTimeline } from "./incident-timeline";
+import { aiFindingHeadline, describeTimelineEvent, IncidentTimeline, timelineEventVisual } from "./incident-timeline";
 
 const mockInvalidate = jest.fn().mockResolvedValue(undefined);
 let mockQuery: { isPending: boolean; isError?: boolean; data?: unknown; refetch?: () => void };
@@ -89,6 +89,22 @@ describe("describeTimelineEvent", () => {
     expect(describeTimelineEvent({ eventType: "ai_finding", eventData: { type: "native_evidence_brief_failed", error: "Evidence brief generation failed" } }).body).toBe("Evidence brief generation failed");
     expect(describeTimelineEvent({ eventType: "some_event", eventData: null })).toEqual({ title: "some event", body: null });
   });
+
+  it.each([
+    ["sre_triage", "AI triage"],
+    ["sre_investigation", "AI investigation"],
+    ["sre_investigation_failed", "Investigation failed"],
+    ["native_evidence_brief", "Evidence brief"],
+    ["native_evidence_brief_failed", "Evidence brief failed"],
+    ["unknown_kind", "AI finding"],
+  ])("titles an AI row of type %s as %s", (type, title) => {
+    expect(describeTimelineEvent({ eventType: "ai_finding", eventData: { type, summary: "x" } }).title).toBe(title);
+  });
+
+  it("shows a report's summary paragraph, not its title, as the AI row body", () => {
+    const summary = "# Incident Investigation Report\n\n## Report Details\n- **Severity**: sev2\n\n## Executive Summary\nThe job failed twice.";
+    expect(describeTimelineEvent({ eventType: "ai_finding", eventData: { type: "sre_triage", summary } }).body).toBe("The job failed twice.");
+  });
 });
 
 describe("IncidentTimeline", () => {
@@ -96,6 +112,8 @@ describe("IncidentTimeline", () => {
     ready(Array.from({ length: 500 }, (_, i) => ev(`e${i}`, "comment", { text: `note ${i}` })));
     render(<IncidentTimeline incidentId="inc-1" canUpdate={false} />);
     expect(screen.getByRole("button", { name: "Show the 500 most recent events" })).toBeInTheDocument();
+    // A capped list shows no count, which would understate the total.
+    expect(screen.getByRole("heading", { level: 2, name: "Activity" })).toBeInTheDocument();
   });
 
   it("shows the latest 20 events and expands to all of them", () => {
@@ -255,4 +273,24 @@ it("cuts long AI headlines at a word with an ellipsis", () => {
   const headline = aiFindingHeadline(long)!;
   expect(headline.endsWith("word…")).toBe(true);
   expect(headline.length).toBeLessThanOrEqual(401);
+});
+
+describe("timelineEventVisual", () => {
+  it("keeps a long note whole", () => {
+    const text = "Line one.\n\nLine two.\n\nLine three.\n\nLine four.";
+    expect(describeTimelineEvent({ eventType: "comment", eventData: { text } }).body).toBe(text);
+  });
+
+  it.each([
+    [{ eventType: "comment", eventData: {} }, "blue"],
+    [{ eventType: "ai_finding", eventData: { type: "sre_investigation" } }, "violet"],
+    [{ eventType: "ai_finding", eventData: { type: "sre_investigation_failed" } }, "rose"],
+    [{ eventType: "state_change", eventData: { state: "resolved" } }, "emerald"],
+    [{ eventType: "state_change", eventData: { state: "acknowledged" } }, "sky"],
+    [{ eventType: "state_change", eventData: { state: "created_from_alert_history" } }, "rose"],
+    [{ eventType: "state_change", eventData: { state: "something_new" } }, "slate"],
+    [{ eventType: "tool_call", eventData: null }, "slate"],
+  ] as const)("colours %j as %s", (event, tone) => {
+    expect(timelineEventVisual(event as never).tone).toBe(tone);
+  });
 });

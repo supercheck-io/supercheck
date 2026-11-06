@@ -104,9 +104,9 @@ describe("SreInvestigationPanel", () => {
     );
 
     expect(screen.getByRole("button", { name: "Investigating..." })).toBeDisabled();
-    expect(screen.getAllByRole("status")[0]).toHaveTextContent(
-      "Investigation in progress",
-    );
+    // The Investigation tab's status line says it is running; the controls only mark themselves busy.
+    expect(screen.getByTestId("investigation-controls")).toHaveAttribute("aria-busy", "true");
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
     expect(global.fetch).not.toHaveBeenCalled();
   });
 

@@ -3,6 +3,7 @@ import { collectNativeEvidence } from "./native-evidence-collector";
 import { runSreEvidenceBriefGeneration } from "./evidence-brief-orchestrator";
 
 const mockWhere = jest.fn();
+const mockLock = jest.fn();
 const mockLimit = jest.fn();
 const mockUpdateWhere = jest.fn().mockResolvedValue(undefined);
 const mockSet = jest.fn((_values: unknown) => ({ where: mockUpdateWhere }));
@@ -17,6 +18,7 @@ jest.mock("@/utils/db", () => ({ db: {
   },
   insert: () => ({ values: mockValues }),
   transaction: async (callback: (tx: unknown) => unknown) => callback({
+    select: () => ({ from: () => ({ where: () => ({ for: (mode: string) => { mockLock(mode); return Promise.resolve([]); } }) }) }),
     update: () => ({ set: mockSet }),
     insert: () => ({ values: jest.fn().mockResolvedValue(undefined) }),
   }),
@@ -90,6 +92,22 @@ describe("evidence brief stored evidence", () => {
     expect(jobQuery.sql).toContain("->>'serviceId'");
     expect(jobQuery.params).toEqual(expect.arrayContaining(["service-a", "2026-09-08T08:00:00.000Z"]));
     expect(mockLimit).toHaveBeenCalledWith(25);
+  });
+
+  it("stores only the brief headline on the incident and never over a completed investigation", async () => {
+    mockLimit.mockResolvedValue([]);
+    const summary = "## Summary\nThe checkout job timed out.\n\n## Impact\nUnknown.";
+    const generateBrief = jest.fn().mockResolvedValue({ provider: "ai", summary, modelId: "test-model", confidenceScore: 0.6, suspectedFailureDomain: "job", citedEvidenceIds: [] });
+    await runSreEvidenceBriefGeneration({ userId: "user-a", organizationId: "org-a", projectId: "project-a", incidentId: "incident-a", generateBrief });
+    const incidentCall = mockSet.mock.calls.findIndex(([v]) => "rootCauseSummary" in (v as object));
+    expect(mockSet.mock.calls[incidentCall][0]).toMatchObject({ rootCauseSummary: "The checkout job timed out.", confidenceScore: null });
+    const q = new PgDialect().sqlToQuery(mockUpdateWhere.mock.calls[incidentCall][0]);
+    expect(q.sql).toMatch(/not exists \(select 1 from "sre_investigation_runs".*'investigation'.*'completed'\)/);
+    expect(q.params).toEqual(expect.arrayContaining(["incident-a", "org-a", "project-a"]));
+    // The incident row is locked before the guarded update reads the run status.
+    expect(mockLock).toHaveBeenCalledWith("update");
+    // The full brief stays on the run for the Investigation tab.
+    expect(mockSet.mock.calls.some(([v]) => (v as { agentStateSnapshot?: { summary?: string } }).agentStateSnapshot?.summary === summary)).toBe(true);
   });
 
   it("only moves a triggered incident to investigating, never over a resolved one", async () => {

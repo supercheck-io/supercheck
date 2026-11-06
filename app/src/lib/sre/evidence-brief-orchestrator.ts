@@ -9,7 +9,7 @@ import {
   sreInvestigationRuns,
 } from "@/db/schema";
 import { getActualModelName } from "@/lib/ai/ai-provider";
-import { describeEvidenceBrief } from "@/lib/sre/evidence-brief-summary";
+import { describeEvidenceBrief, reportHeadline } from "@/lib/sre/evidence-brief-summary";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { createLogger } from "@/lib/logger/index";
 import { normalizePrivateAgentEvidenceSummaries } from "@/lib/sre/connector-job-evidence";
@@ -448,11 +448,27 @@ export async function runSreEvidenceBriefGeneration(input: {
           ),
         );
 
+      // Lock the incident in its own statement first: the guarded update below then takes a fresh snapshot, so an
+      // investigation that committed while this waited is seen and its result is kept.
+      await tx
+        .select({ id: sreIncidents.id })
+        .from(sreIncidents)
+        .where(
+          and(
+            eq(sreIncidents.id, input.incidentId),
+            eq(sreIncidents.organizationId, input.organizationId),
+            eq(sreIncidents.projectId, input.projectId),
+          ),
+        )
+        .for("update");
+
+      // The incident keeps a one-paragraph headline (the full brief and its score stay on the run). Only an
+      // investigation rates the incident, and a brief never replaces a completed investigation's result.
       await tx
         .update(sreIncidents)
         .set({
-          rootCauseSummary: brief.summary,
-          confidenceScore: String(brief.confidenceScore),
+          rootCauseSummary: reportHeadline(brief.summary, 2000),
+          confidenceScore: null,
           updatedAt: new Date(),
         })
         .where(
@@ -460,6 +476,7 @@ export async function runSreEvidenceBriefGeneration(input: {
             eq(sreIncidents.id, input.incidentId),
             eq(sreIncidents.organizationId, input.organizationId),
             eq(sreIncidents.projectId, input.projectId),
+            sql`not exists (select 1 from ${sreInvestigationRuns} where ${sreInvestigationRuns.organizationId} = ${input.organizationId} and ${sreInvestigationRuns.projectId} = ${input.projectId} and ${sreInvestigationRuns.incidentId} = ${input.incidentId} and ${sreInvestigationRuns.agentType} = 'investigation' and ${sreInvestigationRuns.status} = 'completed')`,
           ),
         );
 

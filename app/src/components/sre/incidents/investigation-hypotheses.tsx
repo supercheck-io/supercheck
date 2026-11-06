@@ -1,13 +1,18 @@
 import type { SreIncidentDetail } from "@/actions/sre-incidents";
 import { EvidenceDetailsDialog } from "@/components/sre/incidents/evidence-details-dialog";
 import { InvestigationFeedback } from "@/components/sre/incidents/investigation-feedback";
+import { CircleCheck, CircleHelp, CircleX, Lightbulb, type LucideIcon } from "lucide-react";
+
+import { SectionTitle } from "@/components/sre/incidents/incident-ui";
 import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
+import { cn } from "@/lib/utils";
 import type { SreHypothesisState } from "@/sre/lib/investigation-output";
 
-const STATE: Record<SreHypothesisState, { label: string; tone: TableBadgeTone }> = {
-  validated: { label: "Validated", tone: "success" },
-  ruled_out: { label: "Ruled out", tone: "slate" },
-  inconclusive: { label: "Inconclusive", tone: "warning" },
+// The icon and badge carry the state at a glance; ruled-out hypotheses recede.
+const STATE: Record<SreHypothesisState, { label: string; tone: TableBadgeTone; icon: LucideIcon; iconClass: string }> = {
+  validated: { label: "Validated", tone: "success", icon: CircleCheck, iconClass: "text-emerald-600 dark:text-emerald-400" },
+  ruled_out: { label: "Ruled out", tone: "slate", icon: CircleX, iconClass: "text-muted-foreground" },
+  inconclusive: { label: "Inconclusive", tone: "warning", icon: CircleHelp, iconClass: "text-amber-600 dark:text-amber-400" },
 };
 
 type Investigation = NonNullable<SreIncidentDetail["latestInvestigation"]>;
@@ -31,9 +36,9 @@ export function InvestigationHypotheses({
 
   return (
     <section aria-labelledby="investigation-hypotheses-title" className="space-y-3">
-      <h3 id="investigation-hypotheses-title" className="text-sm font-semibold">
+      <SectionTitle id="investigation-hypotheses-title" icon={Lightbulb} tone="amber" count={hypotheses.length}>
         Hypotheses
-      </h3>
+      </SectionTitle>
       <ol className="divide-y rounded-lg border">
         {hypotheses.map((hypothesis, index) => {
           const state = STATE[hypothesis.state];
@@ -41,19 +46,31 @@ export function InvestigationHypotheses({
             .map((id) => evidence.find((item) => item.id === id))
             .filter((item): item is SreIncidentDetail["evidence"][number] => Boolean(item));
           return (
-            <li key={hypothesis.key} className="space-y-2 px-4 py-3" data-testid={`hypothesis-${hypothesis.key}`}>
+            <li
+              key={hypothesis.key}
+              className="space-y-1.5 px-4 py-3"
+              data-testid={`hypothesis-${hypothesis.key}`}
+            >
               <div className="flex flex-wrap items-start gap-2">
-                <span className="mt-0.5 text-xs tabular-nums text-muted-foreground">{index + 1}.</span>
-                <p className="min-w-0 flex-1 break-words text-sm font-medium">{hypothesis.title}</p>
+                <state.icon className={cn("mt-0.5 size-4 shrink-0", state.iconClass)} aria-hidden="true" />
+                <p
+                  className={cn(
+                    "min-w-0 flex-1 break-words text-sm font-medium",
+                    hypothesis.state === "ruled_out" && "text-muted-foreground",
+                  )}
+                >
+                  <span className="sr-only">{index + 1}. </span>
+                  {hypothesis.title}
+                </p>
                 <TableBadge tone={state.tone} compact>
                   {state.label}
                 </TableBadge>
               </div>
               {hypothesis.rationale && (
-                <p className="break-words text-sm text-muted-foreground">{hypothesis.rationale}</p>
+                <p className="break-words pl-6 text-sm text-muted-foreground">{hypothesis.rationale}</p>
               )}
               {(cited.length > 0 || canGiveFeedback) && (
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-2 pl-6">
                   {cited.length > 0 && (
                     <div className="flex min-w-0 flex-wrap gap-1.5" aria-label={`Evidence for ${hypothesis.title}`}>
                       {cited.map((item) => (

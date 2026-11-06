@@ -1,6 +1,6 @@
 "use client";
 
-import { SreIncidentDetailView } from "@/components/sre/incidents/sre-incident-detail-view";
+import { SreIncidentDetailView, type IncidentTabParam } from "@/components/sre/incidents/sre-incident-detail-view";
 import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useSreIncidentPageData } from "@/hooks/use-sre";
@@ -10,14 +10,14 @@ export function SreIncidentDetailPageClient({
   initialTab,
 }: {
   incidentId: string;
-  initialTab: "overview" | "investigation" | "evidence" | "brief";
+  initialTab: IncidentTabParam;
 }) {
   const query = useSreIncidentPageData(incidentId);
 
   if (!query.data) {
     if (query.isPending) {
       return (
-        <SupercheckLoading className="min-h-72" message="Loading incident..." />
+        <SupercheckLoading className="min-h-72 flex-1" message="Loading incident..." />
       );
     }
 
@@ -38,7 +38,7 @@ export function SreIncidentDetailPageClient({
   }
 
   return (
-    <>
+    <div className="flex min-h-0 flex-1 flex-col">
       {!servicesResult.success && (
         <Alert variant="destructive" className="mb-4">
           <AlertTitle>Services unavailable</AlertTitle>
@@ -48,12 +48,13 @@ export function SreIncidentDetailPageClient({
         </Alert>
       )}
       <SreIncidentDetailView
-        key={`${incidentId}:${initialTab}`}
+        // Keyed by incident only: a ?edit= or ?tab= change on the same incident keeps the open tab and drafts.
+        key={incidentId}
         detail={incidentResult.detail}
         services={servicesResult.success ? servicesResult.services : []}
         initialTab={initialTab}
       />
-    </>
+    </div>
   );
 }
 

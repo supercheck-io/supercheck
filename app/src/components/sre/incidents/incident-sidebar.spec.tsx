@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 
 import type { SreIncidentDetail } from "@/actions/sre-incidents";
 
@@ -100,7 +100,7 @@ describe("IncidentSidebar", () => {
     expect(screen.getByText("No alerts linked.")).toBeInTheDocument();
   });
 
-  it("has no Similar row; similar incidents live in the investigation sheet", () => {
+  it("has no Similar row; similar incidents have their own card in the right-hand column", () => {
     render(<IncidentSidebar detail={detailFixture()} />);
     expect(screen.queryByRole("button", { name: /Similar past incidents/ })).not.toBeInTheDocument();
   });
@@ -113,8 +113,41 @@ describe("IncidentSidebar", () => {
     detail.incident.status = "resolved";
     render(<IncidentSidebar detail={detail} />);
     // Who acknowledged is a hover detail, not a row.
-    expect(screen.getByText("10 min")).toHaveAttribute("title", expect.stringContaining("by Ada"));
+    expect(screen.getByText("10 min").closest("[title]")).toHaveAttribute("title", expect.stringContaining("by Ada"));
+    expect(screen.getByText("Time to acknowledge")).toBeInTheDocument();
+    expect(screen.queryByText("Open for")).not.toBeInTheDocument();
     expect(screen.getByText("2 h 5 min")).toBeInTheDocument();
+  });
+
+  it("shows how long an open incident has been open, and Not yet before acknowledgement", () => {
+    const detail = detailFixture();
+    detail.incident.createdAt = new Date(Date.now() - 90 * 60_000);
+    render(<IncidentSidebar detail={detail} />);
+    expect(screen.getByText("Open for")).toBeInTheDocument();
+    expect(screen.getByText("1 h 30 min")).toBeInTheDocument();
+    expect(screen.getByText("Not yet")).toBeInTheDocument();
+    expect(screen.queryByText("Time to resolve")).not.toBeInTheDocument();
+  });
+
+  it("updates Open for while the page stays open", () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date("2026-06-24T13:00:00Z"));
+    const detail = detailFixture();
+    detail.incident.createdAt = new Date("2026-06-24T12:00:00Z");
+    render(<IncidentSidebar detail={detail} />);
+    expect(screen.getByText("1 h 0 min")).toBeInTheDocument();
+    act(() => {
+      jest.advanceTimersByTime(5 * 60_000);
+    });
+    expect(screen.getByText("1 h 5 min")).toBeInTheDocument();
+    jest.useRealTimers();
+  });
+
+  it("colours the Alerts heading for firing alerts and shows the count", () => {
+    const detail = detailFixture();
+    detail.linkedAlerts = alerts(2) as never;
+    render(<IncidentSidebar detail={detail} />);
+    expect(screen.getByRole("heading", { name: "Alerts 2" })).toBeInTheDocument();
   });
 
   it("says Skipped for an incident resolved without acknowledgement", () => {
@@ -123,18 +156,19 @@ describe("IncidentSidebar", () => {
     detail.incident.status = "resolved";
     render(<IncidentSidebar detail={detail} />);
     expect(screen.getByText("Skipped")).toBeInTheDocument();
-    expect(screen.getByRole("complementary", { name: "Properties" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Properties" })).toBeInTheDocument();
   });
 
-  it("lists status, severity and the watch toggle as plain properties", () => {
+  it("lists the watch toggle as a plain property and leaves status and severity to the page header", () => {
     const detail = detailFixture();
     (detail.incident as { severity: string }).severity = "sev2";
     render(<IncidentSidebar detail={detail} />);
-    for (const label of ["Status", "Severity", "Assignee", "Service", "Started", "Status page", "Notifications"]) {
+    for (const label of ["Assignee", "Service", "Started", "Status page", "Notifications"]) {
       expect(screen.getByText(label)).toBeInTheDocument();
     }
-    expect(screen.getByText("Investigating")).toBeInTheDocument();
-    expect(screen.getByText("sev2")).toBeInTheDocument();
+    for (const label of ["Status", "Severity", "Investigating", "sev2"]) {
+      expect(screen.queryByText(label)).not.toBeInTheDocument();
+    }
     expect(screen.getByRole("button", { name: "Watch" })).toBeInTheDocument();
   });
 });

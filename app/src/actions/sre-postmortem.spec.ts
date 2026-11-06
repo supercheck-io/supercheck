@@ -103,6 +103,19 @@ describe("generateSrePostmortem timeline", () => {
   });
 });
 
+describe("generateSrePostmortem root cause", () => {
+  it("rates the root cause only when an investigation completed, and reduces a stored report to its summary", async () => {
+    const legacy = { ...resolved, rootCauseSummary: "# Incident Investigation Report\n\n## Report Details\n- **Severity**: sev2\n\n## Executive Summary\nThe job failed." };
+    queue.push([legacy], [], [], [], []);
+    await generateSrePostmortem({ incidentId });
+    expect(generate.mock.calls[0][0]).toMatchObject({ rootCauseSummary: "Unverified, from the evidence brief: The job failed.", confidenceLabel: null });
+
+    queue.push([resolved], [], [], [], [{ hypotheses: null, snapshot: null }]);
+    await generateSrePostmortem({ incidentId });
+    expect(generate.mock.calls[1][0]).toMatchObject({ rootCauseSummary: "cause", confidenceLabel: "High" });
+  });
+});
+
 describe("generateSrePostmortem usage gate", () => {
   it("skips the model call (template only) when the usage gate is closed", async () => {
     queue.push([resolved], [], [], []);

@@ -12,6 +12,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
+import { toneButton } from "@/components/sre/incidents/incident-ui";
 import {
   createSreInvestigationReportSnapshot,
 } from "@/actions/sre-investigation-reports";
@@ -129,17 +130,20 @@ export function SreInvestigationPanel({
   if (!canInvestigate) return null;
 
   return (
-    <div className="space-y-3" data-testid="investigation-controls">
+    <div className="space-y-3" data-testid="investigation-controls" aria-busy={investigationRunning}>
       <div className="flex items-center gap-2">
         <Button
           size="sm"
+          // A repeat run is a secondary AI action; the first run stays the primary button.
+          variant={latestInvestigation ? "outline" : "default"}
+          className={latestInvestigation ? toneButton("violet") : undefined}
           onClick={() => runInvestigation()}
           disabled={investigationRunning || !investigationEnabled}
         >
           {investigationRunning ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
-            <SearchCheck className="mr-2 h-4 w-4" />
+            <SearchCheck className="h-4 w-4" />
           )}
           {investigationRunning ? "Investigating..." : latestInvestigation ? "Run again" : "Run investigation"}
         </Button>
@@ -214,11 +218,6 @@ export function SreInvestigationPanel({
       {investigationError && (
         <p role="alert" className="rounded-md border border-destructive/40 p-3 text-sm text-destructive">
           {investigationError}
-        </p>
-      )}
-      {investigationRunning && (
-        <p role="status" className="text-sm text-muted-foreground">
-          Investigation in progress. Results will appear when the run finishes.
         </p>
       )}
       {!investigationEnabled && (

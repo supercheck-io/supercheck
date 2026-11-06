@@ -1,54 +1,86 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { MoreHorizontal } from "lucide-react";
+import {
+  Activity,
+  CircleAlert,
+  ArrowRight,
+  Bell,
+  CircleCheck,
+  Clock,
+  Database,
+  FileText,
+  GitCommitHorizontal,
+  MoreHorizontal,
+  Network,
+  Paperclip,
+  ScrollText,
+  Sparkles,
+  Waypoints,
+  type LucideIcon,
+} from "lucide-react";
 
 import type { SreIncidentDetail } from "@/actions/sre-incidents";
 import { EvidenceDetailsDialog } from "@/components/sre/incidents/evidence-details-dialog";
 import { GenerateEvidenceBriefButton } from "@/components/sre/incidents/generate-evidence-brief-button";
 import { formatAgo } from "@/components/sre/incidents/incident-age";
-import { confidenceLabel, getInvestigationConclusion } from "@/components/sre/incidents/incident-ai-summary-card";
+import { confidenceLabel, getInvestigationConclusion, rootCauseFromBrief } from "@/components/sre/incidents/incident-ai-summary-card";
+import { IconTile, SectionTitle, type IconTone } from "@/components/sre/incidents/incident-ui";
 import { InvestigationHypotheses } from "@/components/sre/incidents/investigation-hypotheses";
 import { InvestigationStepTrace } from "@/components/sre/incidents/investigation-step-trace";
-import { PostmortemCard } from "@/components/sre/incidents/postmortem-card";
-import { SimilarIncidentsList, useSimilarIncidentCount } from "@/components/sre/incidents/similar-incidents-card";
 import { SreIncidentBriefReportActions } from "@/components/sre/incidents/sre-incident-brief-report";
 import { SreInvestigationPanel, SreReportSnapshotMenuItem } from "@/components/sre/incidents/sre-investigation-panel";
 import { SreMessageContent } from "@/components/sre/sre-message-content";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { TableBadge } from "@/components/ui/table-badge";
 
-/** Where the sheet scrolls to when it opens. `n` makes a repeated request fire again. */
+/** Where the Investigation tab scrolls to when it opens. `n` makes a repeated request fire again. */
 export type ReportFocus = { target: string; n: number };
 
 const SECTION_ID = "sre-report-";
+const NEXT_STEPS_COLLAPSED = 3;
 
-function Section({ id, title, action, children }: { id: string; title: string; action?: React.ReactNode; children: React.ReactNode }) {
+function Section({
+  id,
+  title,
+  icon,
+  tone,
+  count,
+  action,
+  children,
+}: {
+  id: string;
+  title: string;
+  icon: LucideIcon;
+  tone: IconTone;
+  count?: number;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}) {
   return (
     <section id={`${SECTION_ID}${id}`} aria-labelledby={`${SECTION_ID}${id}-title`} className="scroll-mt-4 space-y-3">
-      <div className="flex min-h-8 flex-wrap items-center justify-between gap-2">
-        <h3 id={`${SECTION_ID}${id}-title`} className="text-sm font-semibold">
-          {title}
-        </h3>
-        {action}
-      </div>
+      <SectionTitle id={`${SECTION_ID}${id}-title`} icon={icon} tone={tone} count={count} action={action}>
+        {title}
+      </SectionTitle>
       {children}
     </section>
   );
 }
 
-const EVIDENCE_TYPE_LABEL: Record<string, string> = {
-  metric: "Metric",
-  log: "Log",
-  trace: "Trace",
-  artifact: "Artifact",
-  deployment: "Deployment",
-  event: "Event",
-  document: "Document",
-  topology: "Topology",
+const EVIDENCE_TYPE: Record<string, { label: string; icon: LucideIcon; tone: IconTone }> = {
+  metric: { label: "Metric", icon: Activity, tone: "blue" },
+  log: { label: "Log", icon: ScrollText, tone: "slate" },
+  trace: { label: "Trace", icon: Waypoints, tone: "indigo" },
+  artifact: { label: "Artifact", icon: Paperclip, tone: "slate" },
+  deployment: { label: "Deployment", icon: GitCommitHorizontal, tone: "violet" },
+  event: { label: "Event", icon: Bell, tone: "amber" },
+  document: { label: "Document", icon: FileText, tone: "sky" },
+  topology: { label: "Topology", icon: Network, tone: "emerald" },
 };
+const OTHER_EVIDENCE = { label: "Evidence", icon: Database, tone: "slate" } as const;
 
 function formatTime(value: Date | string | null) {
   if (!value) return null;
@@ -61,30 +93,36 @@ function EvidenceList({ evidence }: { evidence: SreIncidentDetail["evidence"] })
   }
   return (
     <ul className="divide-y rounded-lg border">
-      {evidence.map((item) => (
-        <li key={item.id} id={`sre-evidence-${item.id}`} className="scroll-mt-4">
-          <EvidenceDetailsDialog item={item}>
-            <button
-              type="button"
-              aria-label={`View evidence: ${item.title}`}
-              className="flex w-full min-w-0 flex-col gap-0.5 px-4 py-2.5 text-left hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-            >
-              <span className="truncate text-sm font-medium">{item.title}</span>
-              <span className="truncate text-xs text-muted-foreground" suppressHydrationWarning>
-                {[EVIDENCE_TYPE_LABEL[item.evidenceType] ?? item.evidenceType, formatTime(item.observedAt)].filter(Boolean).join(" · ")}
-              </span>
-            </button>
-          </EvidenceDetailsDialog>
-        </li>
-      ))}
+      {evidence.map((item) => {
+        const type = EVIDENCE_TYPE[item.evidenceType] ?? OTHER_EVIDENCE;
+        return (
+          <li key={item.id} id={`sre-evidence-${item.id}`} className="scroll-mt-4">
+            <EvidenceDetailsDialog item={item}>
+              <button
+                type="button"
+                aria-label={`View evidence: ${item.title}`}
+                className="flex w-full min-w-0 items-center gap-3 px-3 py-2.5 text-left hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+              >
+                <IconTile icon={type.icon} tone={type.tone} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium">{item.title}</span>
+                  <span className="block truncate text-xs text-muted-foreground">{type.label}</span>
+                </span>
+                <span className="shrink-0 text-xs tabular-nums text-muted-foreground" suppressHydrationWarning>
+                  {formatTime(item.observedAt)}
+                </span>
+              </button>
+            </EvidenceDetailsDialog>
+          </li>
+        );
+      })}
     </ul>
   );
 }
 
 /**
- * The investigation sheet body: one report. Conclusion first (the AI investigation, or the evidence brief
- * until one has run), then hypotheses, evidence and the step trace. Similar incidents and the post-mortem
- * appear only when they have content.
+ * The Investigation tab: one report. Conclusion first (the AI investigation, or the evidence brief until
+ * one has run), then hypotheses, evidence and the step trace. Similar incidents are in the page's right-hand column.
  */
 export function InvestigationReport({
   detail,
@@ -96,8 +134,6 @@ export function InvestigationReport({
   serviceMappingHref: string;
 }) {
   const { incident, permissions, latestInvestigation: investigation } = detail;
-  const resolved = incident.status === "resolved";
-  const similarCount = useSimilarIncidentCount(incident.id);
 
   const savedSummary =
     typeof detail.latestBrief?.agentStateSnapshot?.summary === "string" ? detail.latestBrief.agentStateSnapshot.summary : "";
@@ -106,45 +142,48 @@ export function InvestigationReport({
   const [briefIsAi, setBriefIsAi] = useState<boolean | null>(
     savedProvider === "ai" ? true : savedProvider === "fallback" ? false : null,
   );
-  const [briefConfidence, setBriefConfidence] = useState<string | null>(detail.latestBrief?.confidenceScore ?? null);
   const [streaming, setStreaming] = useState(false);
   // A failed regeneration puts the saved brief back instead of leaving the section blank or half-written.
   const restoreSavedBrief = () => {
     setBriefSummary(savedSummary);
     setBriefIsAi(savedProvider === "ai" ? true : savedProvider === "fallback" ? false : null);
-    setBriefConfidence(detail.latestBrief?.confidenceScore ?? null);
     setStreaming(false);
   };
 
   useEffect(() => {
     if (!focus) return;
-    // Wait out the sheet's open animation before scrolling.
-    const timer = setTimeout(() => {
-      const target = focus.target.startsWith("sre-evidence-") ? focus.target : `${SECTION_ID}${focus.target}`;
-      document.getElementById(target)?.scrollIntoView({ block: "start" });
-    }, 250);
-    return () => clearTimeout(timer);
+    const target = focus.target.startsWith("sre-evidence-") ? focus.target : `${SECTION_ID}${focus.target}`;
+    document.getElementById(target)?.scrollIntoView?.({ block: "start" });
   }, [focus]);
 
   const running = investigation?.status === "running";
   const failed = investigation?.status === "failed" || investigation?.status === "aborted" || investigation?.status === "timed_out";
   const structured = investigation?.structured ?? null;
-  const investigationConclusion = getInvestigationConclusion(investigation, incident.rootCauseSummary ?? detail.triageSummary ?? null);
+  // Before any investigation the stored root cause is only the brief's headline, so the brief itself is shown.
+  // A stored root cause that is only the brief's headline is not an investigation conclusion: show the full brief.
+  const investigationConclusion = getInvestigationConclusion(
+    investigation,
+    investigation && !rootCauseFromBrief(detail) ? incident.rootCauseSummary : null,
+  );
   // The brief stands in only until an investigation has produced something to read.
   const useBrief = !investigationConclusion && (Boolean(briefSummary) || streaming);
+  // With neither, the triage finding is the conclusion (same order as the Overview summary card).
+  const triageConclusion =
+    !investigation && !useBrief ? getInvestigationConclusion(null, detail.triageSummary ?? null) : null;
+  const conclusion = investigationConclusion ?? triageConclusion;
   const inconclusive = structured ? structured.outcome === "inconclusive" : false;
-  const confidence = confidenceLabel(
-    useBrief ? briefConfidence : structured ? String(structured.confidence) : incident.rootCauseSummary ? incident.confidenceScore : null,
-  );
+  const confidence = confidenceLabel(structured ? String(structured.confidence) : incident.confidenceScore);
   // Runs before structured output stored no score; show no rating rather than a misleading one.
-  const unrated = !useBrief && !structured && incident.confidenceScore === null;
-  const showConfidence =
-    (useBrief ? Boolean(briefSummary) && briefConfidence != null : Boolean(investigationConclusion) && !unrated) && !running;
+  const unrated = !structured && incident.confidenceScore === null;
+  // Only a completed investigation is rated; a brief, a triage summary or a failed run's earlier text is not.
+  const showConfidence = investigation?.status === "completed" && Boolean(investigationConclusion) && !unrated;
   const nextChecks = structured?.nextChecks ?? [];
   const staleBrief = detail.latestBrief?.agentStateSnapshot?.evidenceCount;
   const briefOutdated = typeof staleBrief === "number" && staleBrief < detail.evidence.length;
 
-  const briefButton = permissions.canInvestigate ? (
+  // The brief is the quick look before an investigation completes; after that the investigation is the report
+  // (the server also stops a brief from replacing a completed investigation's result).
+  const briefButton = permissions.canInvestigate && investigation?.status !== "completed" ? (
     <GenerateEvidenceBriefButton
       incidentId={incident.id}
       hasBrief={Boolean(detail.latestBrief) || Boolean(briefSummary)}
@@ -154,16 +193,14 @@ export function InvestigationReport({
         ? {
             onStreamStart: () => {
               setBriefSummary("");
-              setBriefConfidence(null);
               setBriefIsAi(null);
               setStreaming(true);
             },
             onStreamContent: (chunk: string) => setBriefSummary((current) => current + chunk),
-            onStreamDone: (result: { brief?: { summary: string; provider: "ai" | "fallback"; confidenceScore: number } }) => {
+            onStreamDone: (result: { brief?: { summary: string; provider: "ai" | "fallback" } }) => {
               if (result.brief) {
                 setBriefSummary(result.brief.summary);
                 setBriefIsAi(result.brief.provider === "ai");
-                setBriefConfidence(String(result.brief.confidenceScore));
               }
               setStreaming(false);
             },
@@ -173,6 +210,9 @@ export function InvestigationReport({
     />
   ) : null;
 
+  const stepsDone = investigation?.steps.length ?? 0;
+  const [allSteps, setAllSteps] = useState(false);
+  const shownChecks = allSteps ? nextChecks : nextChecks.slice(0, NEXT_STEPS_COLLAPSED);
   const lastRun = investigation
     ? running
       ? "Investigation in progress"
@@ -183,9 +223,27 @@ export function InvestigationReport({
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <p className="min-w-0 pt-1 text-sm text-muted-foreground">
-          {lastRun}
-          {snapshotSaved && " · Snapshot saved"}
+        <p className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 pt-1.5 text-xs text-muted-foreground">
+          {running ? (
+            <span role="status" className="inline-flex items-center gap-2 font-medium text-violet-600 dark:text-violet-400">
+              <span aria-hidden="true" className="relative flex size-2">
+                <span className="absolute inline-flex size-full animate-ping rounded-full bg-violet-500 opacity-60" />
+                <span className="relative inline-flex size-2 rounded-full bg-violet-500" />
+              </span>
+              {stepsDone > 0 ? `Investigating: ${stepsDone} ${stepsDone === 1 ? "check" : "checks"} done` : "Investigating"}
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1.5">
+              <Clock className="size-3.5" aria-hidden="true" />
+              {lastRun}
+            </span>
+          )}
+          {snapshotSaved && (
+            <span className="inline-flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+              <CircleCheck className="size-3.5" aria-hidden="true" />
+              Snapshot saved
+            </span>
+          )}
         </p>
         {permissions.canInvestigate && (
           <SreInvestigationPanel
@@ -218,6 +276,8 @@ export function InvestigationReport({
       <Section
         id="conclusion"
         title="Conclusion"
+        icon={Sparkles}
+        tone="violet"
         action={
           showConfidence &&
           (inconclusive || confidence.label === "Inconclusive" ? (
@@ -233,18 +293,19 @@ export function InvestigationReport({
       >
         {failed && (
           <Alert variant="destructive">
-            <AlertTitle>Investigation did not complete</AlertTitle>
-            <AlertDescription className="line-clamp-3">
+            <CircleAlert aria-hidden="true" />
+            <AlertTitle>Last investigation failed</AlertTitle>
+            <AlertDescription className="line-clamp-2">
               {investigation?.summary || "No completed report is available. Review the saved evidence before trying again."}
             </AlertDescription>
           </Alert>
         )}
-        {investigationConclusion ? (
+        {conclusion ? (
           <div className="space-y-3">
+            {triageConclusion && <p className="text-xs text-muted-foreground">From AI triage. Run an investigation for a full analysis.</p>}
             {(failed || running) && <p className="text-xs text-muted-foreground">Previous conclusion</p>}
-            {inconclusive && <p className="text-xs text-muted-foreground">No root cause established.</p>}
-            <div className="break-words text-sm leading-relaxed">
-              <SreMessageContent content={investigationConclusion} />
+            <div className="break-words rounded-lg border-l-2 border-violet-500/60 bg-muted/30 px-4 py-3 text-sm leading-relaxed">
+              <SreMessageContent content={conclusion} />
             </div>
             {structured?.downgraded && (
               <p className="text-xs text-muted-foreground">
@@ -253,16 +314,30 @@ export function InvestigationReport({
             )}
             {nextChecks.length > 0 && !running && (
               <div className="space-y-1.5">
-                <p className="text-sm font-medium">Recommended next steps</p>
-                <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
-                  {nextChecks.map((step, index) => (
-                    <li key={index} className="break-words">
-                      {step}
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Next steps</p>
+                <ul className="space-y-1.5 text-sm">
+                  {shownChecks.map((step, index) => (
+                    <li key={index} className="flex gap-2 break-words">
+                      <ArrowRight className="mt-0.5 size-4 shrink-0 text-violet-500" aria-hidden="true" />
+                      <span className="min-w-0">{step}</span>
                     </li>
                   ))}
-                </ol>
+                </ul>
+                {nextChecks.length > NEXT_STEPS_COLLAPSED && (
+                  <Button
+                    type="button"
+                    variant="link"
+                    size="sm"
+                    className="h-auto px-0 text-xs text-muted-foreground"
+                    aria-expanded={allSteps}
+                    onClick={() => setAllSteps((value) => !value)}
+                  >
+                    {allSteps ? "Show fewer" : `Show all ${nextChecks.length} steps`}
+                  </Button>
+                )}
               </div>
             )}
+            {!streaming && briefButton}
           </div>
         ) : useBrief ? (
           <div className="space-y-3">
@@ -292,7 +367,15 @@ export function InvestigationReport({
             {!streaming && briefButton}
           </div>
         ) : (
-          !running && (
+          running ? (
+            // Decorative: the status line at the top of the tab already announces progress.
+            <div aria-hidden="true" data-testid="conclusion-placeholder" className="space-y-2 rounded-lg bg-muted/30 px-4 py-3">
+              <Skeleton className="h-3.5 w-11/12" />
+              <Skeleton className="h-3.5 w-4/5" />
+              <Skeleton className="h-3.5 w-2/3" />
+              <p className="pt-1 text-xs text-muted-foreground">The conclusion appears here when the run finishes.</p>
+            </div>
+          ) : (
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-sm text-muted-foreground">
                 {permissions.canInvestigate
@@ -314,11 +397,7 @@ export function InvestigationReport({
         />
       )}
 
-      <Section
-        id="evidence"
-        title={detail.evidence.length > 0 ? `Evidence (${detail.evidence.length})` : "Evidence"}
-        action={investigationConclusion && !streaming ? briefButton : null}
-      >
+      <Section id="evidence" title="Evidence" icon={Database} tone="blue" count={detail.evidence.length || undefined}>
         <EvidenceList evidence={detail.evidence} />
       </Section>
 
@@ -326,24 +405,6 @@ export function InvestigationReport({
         <InvestigationStepTrace key={investigation.id} steps={investigation.steps} running={running} />
       )}
 
-      {Boolean(similarCount) && (
-        <Section id="similar" title={`Similar incidents (${similarCount})`}>
-          <SimilarIncidentsList incidentId={incident.id} />
-        </Section>
-      )}
-
-      {resolved && (
-        <Section id="postmortem" title="Post-mortem">
-          <PostmortemCard
-            key={incident.postmortem?.updatedAt ?? "none"}
-            incidentId={incident.id}
-            incidentNumber={incident.incidentNumber}
-            title={incident.title}
-            postmortem={incident.postmortem}
-            canEdit={permissions.canUpdate}
-          />
-        </Section>
-      )}
     </div>
   );
 }

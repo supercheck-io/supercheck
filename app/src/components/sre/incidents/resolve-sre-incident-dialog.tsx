@@ -24,7 +24,7 @@ import {
   getSreIncidentsQueryKey,
 } from "@/lib/sre/query-keys";
 
-/** The detail view listens for this to open the post-mortem section. */
+/** The detail view listens for this to open the Post-mortem tab. */
 export const OPEN_POSTMORTEM_EVENT = "incident:open-postmortem";
 
 export function ResolveSreIncidentDialog({
@@ -143,6 +143,8 @@ export function ResolveSreIncidentDialog({
             maxLength={2000}
             disabled={pending}
             placeholder="Describe the fix and the checks you used to verify recovery."
+            // Grows with the text up to a cap, then scrolls, so the dialog buttons stay on screen.
+            className="max-h-60 overflow-y-auto"
           />
           {error && (
             <p role="alert" className="text-sm text-destructive">

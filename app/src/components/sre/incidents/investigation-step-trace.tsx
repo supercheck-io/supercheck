@@ -1,4 +1,6 @@
-import { Check, CircleAlert, CircleDashed, Loader2, ChevronRight } from "lucide-react";
+import { Check, ChevronRight, CircleAlert, CircleDashed, ListChecks, Loader2 } from "lucide-react";
+
+import { IconTile } from "@/components/sre/incidents/incident-ui";
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { TableBadge } from "@/components/ui/table-badge";
@@ -28,13 +30,14 @@ export function InvestigationStepTrace({
 
   return (
     <Collapsible defaultOpen={running} className="rounded-lg border" data-testid="investigation-step-trace">
-      <CollapsibleTrigger className="group flex w-full cursor-pointer flex-wrap items-center gap-2 rounded-lg text-left px-4 py-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-        <ChevronRight className="h-4 w-4 shrink-0 transition-transform group-data-[state=open]:rotate-90" aria-hidden="true" />
+      <CollapsibleTrigger className="group flex w-full cursor-pointer flex-wrap items-center gap-2 rounded-lg text-left px-3 py-2.5 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <IconTile icon={ListChecks} tone="slate" />
         How it was investigated
         <span className="text-xs font-normal text-muted-foreground">
-          {steps.length} {steps.length === 1 ? "step" : "steps"}
+          {steps.length === 0 && running ? "Starting" : `${steps.length} ${steps.length === 1 ? "step" : "steps"}`}
           {failures > 0 ? `, ${failures} failed` : ""}
         </span>
+        <ChevronRight className="ml-auto h-4 w-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-90" aria-hidden="true" />
         {running && (
           <TableBadge tone="info" compact className="gap-1">
             <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
@@ -43,7 +46,7 @@ export function InvestigationStepTrace({
         )}
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <ol className="space-y-1 border-t px-4 py-3" aria-live={running ? "polite" : "off"}>
+        <ol className="space-y-1.5 border-t px-4 py-3" aria-live={running ? "polite" : "off"}>
           {steps.length === 0 && (
             <li className="text-sm text-muted-foreground">Starting. Steps appear here as they finish.</li>
           )}

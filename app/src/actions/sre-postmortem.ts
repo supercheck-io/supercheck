@@ -22,6 +22,7 @@ import {
   type PostmortemContext,
 } from "@/lib/sre/postmortem";
 import { checkSrePostmortemRateLimit } from "@/lib/sre/sre-rate-limiter";
+import { storedRootCause } from "@/lib/sre/evidence-brief-summary";
 import { readStoredHypotheses } from "@/sre/lib/investigation-output";
 import { db } from "@/utils/db";
 
@@ -145,7 +146,8 @@ export async function generateSrePostmortem(
     const structured = run?.snapshot && typeof run.snapshot === "object"
       ? (run.snapshot as { structured?: { nextChecks?: unknown; outcome?: string } | null }).structured
       : null;
-    const score = incident.confidenceScore === null ? NaN : Number(incident.confidenceScore);
+    // Only a completed investigation rates the root cause; older briefs also stored a score on the incident.
+    const score = !run || incident.confidenceScore === null ? NaN : Number(incident.confidenceScore);
     const context: PostmortemContext = {
       incidentNumber: incident.incidentNumber,
       title: incident.title,
@@ -154,7 +156,12 @@ export async function generateSrePostmortem(
       createdAt: incident.createdAt,
       resolvedAt: incident.resolvedAt,
       resolutionSummary: incident.resolutionSummary,
-      rootCauseSummary: incident.rootCauseSummary,
+      // Without a completed investigation the stored root cause is only the evidence brief's headline.
+      rootCauseSummary: run
+        ? storedRootCause(incident.rootCauseSummary)
+        : incident.rootCauseSummary
+          ? `Unverified, from the evidence brief: ${storedRootCause(incident.rootCauseSummary)}`
+          : null,
       confidenceLabel: !Number.isFinite(score) ? null : score >= 0.75 ? "High" : score >= 0.5 ? "Medium" : score > 0 ? "Low" : "Inconclusive",
       hypotheses: readStoredHypotheses(run?.hypotheses).map(({ title, state, rationale }) => ({ title, state, rationale })),
       nextChecks: Array.isArray(structured?.nextChecks)

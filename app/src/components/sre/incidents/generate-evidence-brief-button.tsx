@@ -7,6 +7,7 @@ import { toast } from "sonner";
 
 import { generateSreEvidenceBrief } from "@/actions/sre-evidence";
 import { Button } from "@/components/ui/button";
+import { toneButton } from "@/components/sre/incidents/incident-ui";
 import { useProjectContext } from "@/hooks/use-project-context";
 import {
   getSreIncidentDetailQueryKey,
@@ -176,7 +177,7 @@ export function GenerateEvidenceBriefButton({
     ]);
 
   return (
-    <Button size="sm" variant={variant} onClick={handleClick} disabled={isPending}>
+    <Button size="sm" variant={variant} className={variant === "outline" ? toneButton("violet") : undefined} onClick={handleClick} disabled={isPending}>
       {isPending ? (
         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
       ) : (
