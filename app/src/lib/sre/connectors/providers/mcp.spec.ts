@@ -94,6 +94,22 @@ describe("MCP allowlist building", () => {
   });
 });
 
+describe("MCP destructive tools", () => {
+  const destructive = { ...discovered[0], name: "wipe", destructiveHint: true };
+
+  it("refuses to allowlist a server-marked destructive tool", () => {
+    const built = buildAllowlist([...discovered, destructive], [{ name: "wipe" }]);
+    expect(built).toMatchObject({ ok: false, error: expect.stringMatching(/destructive/) });
+  });
+
+  it("refuses to call a destructive tool, including entries allowlisted before the hint was stored", () => {
+    const config = { mcp: { discovered: [destructive], allowlist: [{ ...entry, name: "wipe" }] } };
+    expect(resolveMcpToolCall(config, "wipe", { namespace: "a" })).toMatchObject({ ok: false });
+    const flagged = { mcp: { discovered: [], allowlist: [{ ...entry, name: "wipe", destructiveHint: true }] } };
+    expect(resolveMcpToolCall(flagged, "wipe", { namespace: "a" })).toMatchObject({ ok: false });
+  });
+});
+
 describe("MCP discovery parsing", () => {
   it("re-checks schemas locally and keeps annotations as display-only hints", () => {
     const tools = parseDiscoveredTools([
