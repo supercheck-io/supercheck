@@ -53,6 +53,7 @@ describe('StalledJobHandlerService', () => {
         { db: database } as never,
         { get: jest.fn() } as never,
         { hasActiveExecution } as never,
+        { handleJobNotifications: jest.fn() } as never,
       );
       const state = service as unknown as {
         redisClient: object;
@@ -76,6 +77,7 @@ describe('StalledJobHandlerService', () => {
       {} as any,
       { get: jest.fn() } as any,
       {} as any,
+      { handleJobNotifications: jest.fn() } as never,
     );
     const lifecycle: string[] = [];
     const queue = {
@@ -106,6 +108,7 @@ describe('StalledJobHandlerService', () => {
       {} as never,
       { get: jest.fn() } as never,
       {} as never,
+      { handleJobNotifications: jest.fn() } as never,
     );
     const state = service as unknown as {
       redisClient: object;
@@ -159,6 +162,7 @@ describe('StalledJobHandlerService', () => {
         { db: database } as never,
         { get: jest.fn() } as never,
         { hasActiveExecution: jest.fn().mockResolvedValue(false) } as never,
+        { handleJobNotifications: jest.fn() } as never,
       );
       const state = service as unknown as {
         redisClient: object;
@@ -184,6 +188,7 @@ describe('StalledJobHandlerService', () => {
       { db: { select } } as never,
       { get: jest.fn() } as never,
       {} as never,
+      { handleJobNotifications: jest.fn() } as never,
     );
     const state = service as unknown as {
       redisClient: object;
@@ -240,6 +245,7 @@ describe('StalledJobHandlerService', () => {
         { db: database, updateJobStatus } as never,
         { get: jest.fn() } as never,
         { hasActiveExecution: jest.fn().mockResolvedValue(false) } as never,
+        { handleJobNotifications: jest.fn() } as never,
       );
       const state = service as unknown as {
         redisClient: object;
@@ -250,6 +256,88 @@ describe('StalledJobHandlerService', () => {
       jest.spyOn(state, 'isBullMqJobActive').mockResolvedValue(false);
       await state.checkAndHandleStalledJobs();
       expect(updateJobStatus).toHaveBeenCalledWith('job-id', [expected]);
+    },
+  );
+
+  it.each([
+    ['a stalled run', 'Execution timed out', false],
+    ['a cancelled run', 'cancelled-marker', true],
+  ])(
+    'sends the job failure notification for %s',
+    async (_n, details, cancelled) => {
+      const { RUN_CANCELLATION_MARKER } = jest.requireActual(
+        '../../common/services/cancellation.service',
+      );
+      const database = {
+        select: () => ({
+          from: () => ({
+            leftJoin: () => ({
+              where: () => ({
+                limit: async () => [
+                  {
+                    id: 'run-id',
+                    jobId: 'job-id',
+                    status: 'running',
+                    startedAt: new Date(Date.now() - 90 * 60_000),
+                    createdAt: new Date(),
+                    location: null,
+                    callbackHeartbeatAt: new Date(Date.now() - 180_000),
+                    callbackFinishedAt: null,
+                    callbackRevokedAt: null,
+                  },
+                ],
+              }),
+            }),
+          }),
+        }),
+        transaction: jest.fn().mockResolvedValue([
+          {
+            id: 'run-id',
+            jobId: 'job-id',
+            projectId: 'project-id',
+            location: null,
+            errorDetails:
+              details === 'cancelled-marker'
+                ? RUN_CANCELLATION_MARKER
+                : details,
+          },
+        ]),
+        query: {
+          runs: {
+            findMany: jest
+              .fn()
+              .mockResolvedValue([
+                { id: 'run-id', jobId: 'job-id', status: 'error' },
+              ]),
+          },
+        },
+      };
+      const handleJobNotifications = jest
+        .fn()
+        .mockRejectedValue(new Error('notify down'));
+      const service = new StalledJobHandlerService(
+        { db: database, updateJobStatus: jest.fn() } as never,
+        { get: jest.fn() } as never,
+        { hasActiveExecution: jest.fn().mockResolvedValue(false) } as never,
+        { handleJobNotifications } as never,
+      );
+      const state = service as unknown as {
+        redisClient: object;
+        isBullMqJobActive: () => Promise<boolean>;
+        checkAndHandleStalledJobs: () => Promise<void>;
+      };
+      state.redisClient = {};
+      jest.spyOn(state, 'isBullMqJobActive').mockResolvedValue(false);
+      await expect(state.checkAndHandleStalledJobs()).resolves.toBeUndefined();
+      expect(handleJobNotifications).toHaveBeenCalledWith(
+        expect.objectContaining({
+          jobId: 'job-id',
+          runId: 'run-id',
+          projectId: 'project-id',
+          finalStatus: 'error',
+          cancelled,
+        }),
+      );
     },
   );
 });

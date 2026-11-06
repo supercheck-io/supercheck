@@ -8,6 +8,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 import { DbService } from './db.service';
+import { JobNotificationService } from './job-notification.service';
 import {
   and,
   or,
@@ -43,6 +44,9 @@ import { RUN_CANCELLATION_MARKER } from '../../common/services/cancellation.serv
  * 4. But the run status in the database was never updated to "error"
  * 5. So the job appears "stuck" in "running" state
  */
+const STALLED_ERROR_MESSAGE =
+  'Execution timed out - marked as stalled by automatic recovery';
+
 @Injectable()
 export class StalledJobHandlerService implements OnModuleInit, OnModuleDestroy {
   private static readonly REDIS_COMMAND_TIMEOUT_MS = 5_000;
@@ -58,6 +62,7 @@ export class StalledJobHandlerService implements OnModuleInit, OnModuleDestroy {
     private readonly dbService: DbService,
     private readonly configService: ConfigService,
     private readonly containerExecutorService: ContainerExecutorService,
+    private readonly jobNotificationService: JobNotificationService,
   ) {}
 
   onModuleInit() {
@@ -282,16 +287,16 @@ export class StalledJobHandlerService implements OnModuleInit, OnModuleDestroy {
       try {
         // Batch update all stalled runs at once
         const runIds = stalledRuns.map((r) => r.id);
-        await this.dbService.db.transaction(async (tx) => {
+        const erroredRuns = await this.dbService.db.transaction(async (tx) => {
           const recoverableIds = await lockRecoverableRunCallbacks(tx, runIds);
-          if (!recoverableIds.length) return;
-          await tx
+          if (!recoverableIds.length) return [];
+          const errored = await tx
             .update(schema.runs)
             .set({
               status: 'error',
               completedAt: now,
               // A cancelled run keeps its marker while callback recovery locks protect its artifacts.
-              errorDetails: sql`CASE WHEN ${schema.runs.errorDetails} = ${RUN_CANCELLATION_MARKER} THEN ${schema.runs.errorDetails} ELSE ${'Execution timed out - marked as stalled by automatic recovery'} END`,
+              errorDetails: sql`CASE WHEN ${schema.runs.errorDetails} = ${RUN_CANCELLATION_MARKER} THEN ${schema.runs.errorDetails} ELSE ${STALLED_ERROR_MESSAGE} END`,
             })
             .where(
               and(
@@ -322,7 +327,14 @@ export class StalledJobHandlerService implements OnModuleInit, OnModuleDestroy {
                   ),
                 ),
               ),
-            );
+            )
+            .returning({
+              id: schema.runs.id,
+              jobId: schema.runs.jobId,
+              projectId: schema.runs.projectId,
+              location: schema.runs.location,
+              errorDetails: schema.runs.errorDetails,
+            });
           await tx
             .update(schema.reports)
             .set({ status: 'error', updatedAt: now })
@@ -341,6 +353,7 @@ export class StalledJobHandlerService implements OnModuleInit, OnModuleDestroy {
                 ),
               ),
             );
+          return errored;
         });
 
         this.logger.log(`Successfully marked ${runIds.length} runs as error`);
@@ -403,6 +416,29 @@ export class StalledJobHandlerService implements OnModuleInit, OnModuleDestroy {
           }
 
           this.logger.log(`Updated status for ${uniqueJobIds.length} jobs`);
+        }
+
+        // A stalled sweep is a job failure too; the per-run alert claim dedupes repeats.
+        for (const run of erroredRuns ?? []) {
+          if (!run.jobId) continue;
+          const stalled = stalledRuns.find((r) => r.id === run.id);
+          try {
+            await this.jobNotificationService.handleJobNotifications({
+              jobId: run.jobId,
+              projectId: run.projectId ?? undefined,
+              runId: run.id,
+              finalStatus: 'error',
+              cancelled: run.errorDetails === RUN_CANCELLATION_MARKER,
+              durationSeconds: Math.floor((stalled?.ageMs ?? 0) / 1000),
+              results: [{ success: false }],
+              location: run.location,
+              errorMessage: STALLED_ERROR_MESSAGE,
+            });
+          } catch (notificationError) {
+            this.logger.error(
+              `[${run.id}] Failed to send stalled-run notification: ${(notificationError as Error).message}`,
+            );
+          }
         }
       } catch (error) {
         this.logger.error(
