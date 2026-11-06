@@ -176,7 +176,7 @@ describe("schedule is reconciled to the committed state", () => {
     try {
       let code: number | undefined;
       const pending = patch(status).then((r) => { code = r.status; });
-      await jest.advanceTimersByTimeAsync(1999);
+      await jest.advanceTimersByTimeAsync(2499);
       expect(code).toBeUndefined(); // still within the deadline
       await jest.advanceTimersByTimeAsync(2);
       await pending;
@@ -198,9 +198,30 @@ describe("schedule is reconciled to the committed state", () => {
     try {
       let code: number | undefined;
       const pending = patch("paused").then((r) => { code = r.status; });
-      await jest.advanceTimersByTimeAsync(2001);
+      await jest.advanceTimersByTimeAsync(2501);
       await pending;
       expect(code).toBe(503);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("the paused path's two scheduler calls share one budget", async () => {
+    stored("paused");
+    useDb({ ...base, status: "paused" }, { ...base, status: "paused", enabled: false, scheduledJobId: "old" });
+    // First call burns 2s and finds no job; the fallback then has only ~0.5s left and hangs.
+    deleteScheduledMonitor
+      .mockImplementationOnce(() => new Promise((r) => setTimeout(() => r(false), 2000)))
+      .mockImplementationOnce(() => new Promise(() => {}));
+    jest.useFakeTimers();
+    try {
+      let code: number | undefined;
+      const pending = patch("paused").then((r) => { code = r.status; });
+      await jest.advanceTimersByTimeAsync(2499);
+      expect(code).toBeUndefined();
+      await jest.advanceTimersByTimeAsync(2);
+      await pending;
+      expect(code).toBe(503); // 2.5s total, not 2s + 2s
     } finally {
       jest.useRealTimers();
     }

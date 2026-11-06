@@ -11,7 +11,7 @@ import { hasPermissionForUser } from '@/lib/rbac/middleware';
 import { logAuditEvent } from "@/lib/audit-logger";
 import { removeScheduledMonitor, scheduleMonitor } from "@/lib/monitor-scheduler";
 import type { MonitorJobData } from "@/lib/queue";
-import { withRedisDeadline } from "@/lib/security/redis-deadline";
+import { RedisUnavailableError, withRedisDeadline } from "@/lib/security/redis-deadline";
 import { createLogger } from "@/lib/logger/index";
 
 const logger = createLogger({ module: "monitor-status-api" }) as {
@@ -21,14 +21,17 @@ const logger = createLogger({ module: "monitor-status-api" }) as {
   error: (data: unknown, msg?: string) => void;
 };
 
-// Below the worker's 5s lock_timeout on the monitor row, which this transaction holds while it calls the scheduler.
-const SCHEDULER_DEADLINE_MS = 2000;
-// Bounds one scheduler call; the scheduler has no Redis handle here, so readiness is left to the call itself.
-// On timeout the signal aborts, so the abandoned call stops before it mutates the queue.
-async function withDeadline<T>(call: (signal: AbortSignal) => Promise<T>): Promise<T> {
+// One budget for everything done after the FOR UPDATE is taken (scheduler calls, then the update and commit). Kept well
+// under the worker's 5s lock_timeout on the same row.
+const RECONCILE_BUDGET_MS = 2500;
+// Bounds one scheduler call by what is left of the shared budget; the scheduler has no Redis handle here, so readiness is
+// left to the call itself. On timeout the signal aborts, so the abandoned call stops before it mutates the queue.
+async function withDeadline<T>(deadline: number, call: (signal: AbortSignal) => Promise<T>): Promise<T> {
+  const remaining = deadline - Date.now();
+  if (remaining <= 0) throw new RedisUnavailableError("Reconcile budget exhausted");
   const abort = new AbortController();
   try {
-    return await withRedisDeadline({}, () => call(abort.signal), SCHEDULER_DEADLINE_MS);
+    return await withRedisDeadline({}, () => call(abort.signal), remaining);
   } catch (error) {
     abort.abort();
     throw error;
@@ -41,7 +44,7 @@ async function withDeadline<T>(call: (signal: AbortSignal) => Promise<T>): Promi
  * delete or re-add a schedule a later reconcile owns. Only a command already in flight may still land; the throw rolls
  * back and keeps scheduledJobId, and the retry re-runs the idempotent calls (schedule replaces any existing repeatable;
  * remove also searches by monitor id when scheduledJobId is null), so the next reconcile repairs it.
- * The paused path can hold the row lock up to 2 x 2s, still under the worker's 5s.
+ * All calls share one budget started when the row lock is taken, so the paused path's two calls cannot add up past it.
  */
 async function reconcileMonitorSchedule(id: string, projectId: string): Promise<void> {
   await db.transaction(async (tx) => {
@@ -52,14 +55,15 @@ async function reconcileMonitorSchedule(id: string, projectId: string): Promise<
       .where(and(eq(monitors.id, id), eq(monitors.projectId, projectId)))
       .for("update");
     if (!row) return;
+    const deadline = Date.now() + RECONCILE_BUDGET_MS;
     if (row.status === "paused" || !row.enabled || row.frequencyMinutes <= 0) {
       // A scheduler failure throws (rolling back, so scheduledJobId stays and a retry converges); an absent job is fine.
-      const removed = row.scheduledJobId ? await withDeadline((signal) => removeScheduledMonitor(row.scheduledJobId!, signal)) : false;
-      if (!removed) await withDeadline((signal) => removeScheduledMonitor(id, signal));
+      const removed = row.scheduledJobId ? await withDeadline(deadline, (signal) => removeScheduledMonitor(row.scheduledJobId!, signal)) : false;
+      if (!removed) await withDeadline(deadline, (signal) => removeScheduledMonitor(id, signal));
       await tx.update(monitors).set({ scheduledJobId: null }).where(eq(monitors.id, id));
       return;
     }
-    const schedulerId = await withDeadline((signal) => scheduleMonitor({
+    const schedulerId = await withDeadline(deadline, (signal) => scheduleMonitor({
       monitorId: id,
       frequencyMinutes: row.frequencyMinutes,
       jobData: {
