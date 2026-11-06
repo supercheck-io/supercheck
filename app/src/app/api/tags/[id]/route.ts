@@ -188,7 +188,13 @@ export async function PUT(
     const resolvedParams = await params;
     const tagId = resolvedParams.id;
     if (!isUuid(tagId)) return NextResponse.json({ error: "Tag not found" }, { status: 404 });
-    const { name, color } = await request.json();
+    let rawBody: unknown;
+    try {
+      rawBody = await request.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+    const { name, color } = rawBody as Record<string, any>;
 
 
     if (!name || typeof name !== 'string') {

@@ -137,7 +137,13 @@ export async function POST(
       return await forbiddenOrNotFound(userId, monitor.organizationId, "Insufficient permissions to update monitor notifications", "Monitor not found");
     }
 
-    const { notificationProviderId } = await request.json();
+    let rawBody: unknown;
+    try {
+      rawBody = await request.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+    const { notificationProviderId } = rawBody as Record<string, any>;
 
     if (!notificationProviderId) {
       return NextResponse.json(
@@ -266,7 +272,13 @@ export async function DELETE(
       return await forbiddenOrNotFound(userId, monitor.organizationId, "Insufficient permissions to update monitor notifications", "Monitor not found");
     }
 
-    const { notificationProviderId } = await request.json();
+    let rawBody: unknown;
+    try {
+      rawBody = await request.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+    const { notificationProviderId } = rawBody as Record<string, any>;
 
     if (!notificationProviderId) {
       return NextResponse.json(

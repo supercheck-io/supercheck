@@ -6,6 +6,18 @@ import {
 } from "@/lib/notification-providers/validation";
 
 describe("notification provider validation", () => {
+  it("requires valid email addresses for email providers", () => {
+    expect(() => validateProviderConfig("email", { emails: "" })).toThrow("at least one");
+    expect(() => validateProviderConfig("email", { emails: "not-an-email" })).toThrow("valid email");
+    expect(() => validateProviderConfig("email", { emails: "a@b.co, bad" })).toThrow("valid email");
+    // Delivery of an already-stored provider is not blocked by the stricter write-time format check.
+    expect(() => validateProviderConfig("email", { emails: "a@b.co, bad" }, "send")).not.toThrow();
+    expect(() => validateProviderConfig("email", { emails: "" }, "send")).toThrow("at least one");
+    // The test endpoint, form and worker all read a comma-separated string.
+    expect(() => validateProviderConfig("email", { emails: ["a@b.co"] })).toThrow("comma-separated");
+    expect(() => validateProviderConfig("email", { emails: "a@b.co, c@d.io" })).not.toThrow();
+  });
+
   it("allows integration auth headers for generic webhooks", () => {
     expect(() =>
       validateProviderConfig("webhook", {

@@ -9,6 +9,7 @@ import {
   isValidTeamsWebhookDomain,
 } from "@/lib/notification-providers/constants";
 import { getWebhookPreset } from "@/lib/notification-providers/webhook-presets";
+import { VALIDATION_PATTERNS } from "@/lib/error-utils";
 
 const WEBHOOK_HEADER_NAME_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
 const WEBHOOK_MAX_HEADERS = 20;
@@ -108,7 +109,9 @@ export function validateProviderWebhookUrl(
 
 export function validateProviderConfig(
   type: NotificationProviderType,
-  config: Record<string, unknown>
+  config: Record<string, unknown>,
+  // "send" re-checks stored configs at delivery: address format is enforced only on write, so older providers keep delivering.
+  mode: "write" | "send" = "write"
 ) {
   const missing = (field: string) =>
     !config[field] ||
@@ -116,10 +119,23 @@ export function validateProviderConfig(
 
   switch (type) {
     case "email":
-      if (missing("emails")) {
-        throw new Error(
-          "Email notification providers require at least one email address."
-        );
+      {
+        const raw = config.emails;
+        // Stored, tested and delivered as one comma-separated string; an array would pass here and fail later.
+        if (raw !== undefined && raw !== null && typeof raw !== "string") {
+          throw new Error("Email notification providers require emails as a comma-separated string.");
+        }
+        const list = (raw ?? "").split(",")
+          .map((e) => (typeof e === "string" ? e.trim() : ""))
+          .filter(Boolean);
+        if (list.length === 0) {
+          throw new Error(
+            "Email notification providers require at least one email address."
+          );
+        }
+        if (mode === "write" && !list.every((e) => VALIDATION_PATTERNS.email.test(e))) {
+          throw new Error("Email notification providers require valid email addresses.");
+        }
       }
       break;
     case "slack":

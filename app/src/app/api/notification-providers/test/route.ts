@@ -32,7 +32,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { type, config } = await req.json();
+    let rawBody: unknown;
+    try {
+      rawBody = await req.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+    const { type, config } = rawBody as Record<string, any>;
 
     // Validate provider type
     const validTypes = ["email", "slack", "webhook", "telegram", "discord", "teams"];

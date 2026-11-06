@@ -98,7 +98,12 @@ export async function POST(
 
     const { id: testId } = await params;
     if (!isUuid(testId)) return NextResponse.json({ error: "Test not found" }, { status: 404 });
-    const body = await request.json();
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
     const tagIds = body?.tagIds;
 
     if (!Array.isArray(tagIds)) {
