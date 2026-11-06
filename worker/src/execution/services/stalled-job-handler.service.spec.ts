@@ -316,7 +316,12 @@ describe('StalledJobHandlerService', () => {
         .fn()
         .mockRejectedValue(new Error('notify down'));
       const service = new StalledJobHandlerService(
-        { db: database, updateJobStatus: jest.fn() } as never,
+        {
+          db: database,
+          updateJobStatus: jest
+            .fn()
+            .mockRejectedValue(new Error('status sync down')),
+        } as never,
         { get: jest.fn() } as never,
         { hasActiveExecution: jest.fn().mockResolvedValue(false) } as never,
         { handleJobNotifications } as never,

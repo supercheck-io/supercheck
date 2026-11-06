@@ -358,6 +358,30 @@ export class StalledJobHandlerService implements OnModuleInit, OnModuleDestroy {
 
         this.logger.log(`Successfully marked ${runIds.length} runs as error`);
 
+        // A stalled sweep is a job failure too; the per-run alert claim dedupes repeats. Sent before
+        // the job-status sync so a status failure cannot drop them.
+        for (const run of erroredRuns ?? []) {
+          if (!run.jobId) continue;
+          const stalled = stalledRuns.find((r) => r.id === run.id);
+          try {
+            await this.jobNotificationService.handleJobNotifications({
+              jobId: run.jobId,
+              projectId: run.projectId ?? undefined,
+              runId: run.id,
+              finalStatus: 'error',
+              cancelled: run.errorDetails === RUN_CANCELLATION_MARKER,
+              durationSeconds: Math.floor((stalled?.ageMs ?? 0) / 1000),
+              results: [{ success: false }],
+              location: run.location,
+              errorMessage: STALLED_ERROR_MESSAGE,
+            });
+          } catch (notificationError) {
+            this.logger.error(
+              `[${run.id}] Failed to send stalled-run notification: ${(notificationError as Error).message}`,
+            );
+          }
+        }
+
         // Get unique job IDs that need status updates
         const uniqueJobIds = [
           ...new Set(
@@ -416,29 +440,6 @@ export class StalledJobHandlerService implements OnModuleInit, OnModuleDestroy {
           }
 
           this.logger.log(`Updated status for ${uniqueJobIds.length} jobs`);
-        }
-
-        // A stalled sweep is a job failure too; the per-run alert claim dedupes repeats.
-        for (const run of erroredRuns ?? []) {
-          if (!run.jobId) continue;
-          const stalled = stalledRuns.find((r) => r.id === run.id);
-          try {
-            await this.jobNotificationService.handleJobNotifications({
-              jobId: run.jobId,
-              projectId: run.projectId ?? undefined,
-              runId: run.id,
-              finalStatus: 'error',
-              cancelled: run.errorDetails === RUN_CANCELLATION_MARKER,
-              durationSeconds: Math.floor((stalled?.ageMs ?? 0) / 1000),
-              results: [{ success: false }],
-              location: run.location,
-              errorMessage: STALLED_ERROR_MESSAGE,
-            });
-          } catch (notificationError) {
-            this.logger.error(
-              `[${run.id}] Failed to send stalled-run notification: ${(notificationError as Error).message}`,
-            );
-          }
         }
       } catch (error) {
         this.logger.error(

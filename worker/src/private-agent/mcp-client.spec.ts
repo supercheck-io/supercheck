@@ -397,6 +397,9 @@ describe('redactMcpText connection strings', () => {
 describe('redactMcpText parity with the app sanitizer', () => {
   it.each([
     ['DB_PASSWORD=hunter2', 'hunter2'],
+    ['dbPassword=hunter2', 'hunter2'],
+    ['githubToken: ghx12345678', 'ghx12345678'],
+    ['stripeApiKey=abc999', 'abc999'],
     ['AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI', 'wJalrXUtnFEMI'],
     ['client_secret: abcd1234xyz', 'abcd1234xyz'],
     ['{"clientSecret":"s3cr3t-value"}', 's3cr3t-value'],
@@ -422,6 +425,7 @@ describe('redactMcpText parity with the app sanitizer', () => {
 
   it('leaves look-alike words untouched', () => {
     expect(redactMcpText('tokenizer=fast')).toBe('tokenizer=fast');
+    expect(redactMcpText('monkey=banana')).toBe('monkey=banana');
     expect(redactMcpText('signature_algo=rsa')).toBe('signature_algo=rsa');
   });
 

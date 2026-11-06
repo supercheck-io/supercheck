@@ -467,9 +467,16 @@ export class MonitorDynamicWorkerService
       (await this.executeOrDefer(job, () =>
         this.monitorService.executeMonitorWithLocations(job.data),
       )) ?? [];
-    // Saved inside the job (not a fire-and-forget 'completed' listener) so a save failure retries.
+    // Saved inside the job (not a fire-and-forget 'completed' listener) so a failure is surfaced. The
+    // check already ran (a synthetic one is billed), so a failed save must not re-run it: fail for good.
     if (results.length > 0) {
-      await this.monitorService.saveMonitorResults(results);
+      try {
+        await this.monitorService.saveMonitorResults(results);
+      } catch (error) {
+        throw new ResultNotKeptError(
+          `Monitor ${job.data.monitorId} result could not be saved and will not be re-run: ${getErrorMessage(error)}`,
+        );
+      }
     }
     return results;
   }

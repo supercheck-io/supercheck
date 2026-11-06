@@ -120,10 +120,6 @@ async function pinRequestConfig(
       httpAgent,
       httpsAgent,
       maxRedirects: 0,
-      // Axios `timeout` is an idle timeout; this bounds a slow-drip response in wall-clock time.
-      ...(typeof input.timeout === 'number' && input.timeout > 0
-        ? { signal: AbortSignal.timeout(input.timeout) }
-        : {}),
       // A proxy would perform a separate DNS lookup and bypass address pinning.
       proxy: false,
     },
@@ -156,20 +152,35 @@ function buildRedirectConfig(
   );
   headers.delete('host');
 
-  const crossOrigin = currentUrl.origin !== nextUrl.origin;
-
-  if (crossOrigin) {
-    for (const name of Object.keys(headers.toJSON())) {
-      if (!CROSS_ORIGIN_SAFE_HEADERS.has(name.toLowerCase())) {
-        headers.delete(name);
-      }
-    }
-  }
+  // An http to https upgrade of the same host on default ports is not a change of destination.
+  const crossOrigin =
+    currentUrl.origin !== nextUrl.origin &&
+    !(
+      currentUrl.protocol === 'http:' &&
+      nextUrl.protocol === 'https:' &&
+      currentUrl.hostname === nextUrl.hostname &&
+      !currentUrl.port &&
+      !nextUrl.port
+    );
 
   const method = String(previous.method ?? 'GET').toUpperCase();
   const switchToGet =
     (status === 303 && method !== 'HEAD') ||
     ((status === 301 || status === 302) && method === 'POST');
+
+  if (crossOrigin) {
+    for (const name of Object.keys(headers.toJSON())) {
+      const lower = name.toLowerCase();
+      // 307/308 resend the body, which still needs its framing headers.
+      const bodyHeader = lower === 'content-type' || lower === 'content-length';
+      if (
+        !CROSS_ORIGIN_SAFE_HEADERS.has(lower) &&
+        !(bodyHeader && !switchToGet)
+      ) {
+        headers.delete(name);
+      }
+    }
+  }
   if (switchToGet) {
     headers.delete('content-length');
     headers.delete('content-type');
@@ -196,7 +207,12 @@ export async function requestPinnedMonitorTarget(
   options: PinnedMonitorRequestOptions,
   execute: RequestExecutor,
 ): Promise<AxiosResponse<unknown>> {
-  let requestConfig = initialConfig;
+  // Axios `timeout` is an idle timeout; one signal shared by every hop bounds the whole check in
+  // wall-clock time, so a slow-drip response or a long redirect chain cannot outlive it.
+  let requestConfig: AxiosRequestConfig<unknown> =
+    typeof initialConfig.timeout === 'number' && initialConfig.timeout > 0
+      ? { ...initialConfig, signal: AbortSignal.timeout(initialConfig.timeout) }
+      : initialConfig;
 
   for (let redirectCount = 0; ; redirectCount += 1) {
     const currentUrl = new URL(String(requestConfig.url));

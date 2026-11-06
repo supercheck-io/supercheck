@@ -99,6 +99,11 @@ const REDACTIONS: Array<[RegExp, string]> = [
     /\b((?:[A-Za-z0-9]{1,30}[_-]){0,4}(?:token|api[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|secret|password|passwd|pwd)(?:[_-][A-Za-z0-9]{1,30}){0,3})\s*[:=]\s*[^\s,;"']+/gi,
     '$1=[REDACTED]',
   ],
+  // camelCase names (dbPassword=..., githubToken=...); case-sensitive on purpose.
+  [
+    /\b([a-z][a-z0-9]{0,30}(?:Token|Secret|Password|Passwd|Pwd|Pass|ApiKey|Key))\s*[:=]\s*[^\s,;"']+/g,
+    '$1=[REDACTED]',
+  ],
   [/\b(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{20,}\b/g, '[REDACTED_GITHUB_TOKEN]'],
   [/\bAKIA[0-9A-Z]{16}\b/g, '[REDACTED_AWS_ACCESS_KEY]'],
   [/\bAIza[0-9A-Za-z_-]{35}\b/g, '[REDACTED_API_KEY]'],
