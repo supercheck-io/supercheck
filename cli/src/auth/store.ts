@@ -193,6 +193,11 @@ export function isAuthenticated(): boolean {
 export function requireAuth(): string {
   const token = getToken()
   if (!token) {
+    if (process.env.SUPERCHECK_TOKEN) {
+      throw new AuthenticationError(
+        'TOKEN_INVALID: SUPERCHECK_TOKEN is set but is not a CLI token (sck_live_* or sck_test_*). Replace or unset it.',
+      )
+    }
     throw new AuthenticationError(
       'Not authenticated. Run `supercheck login` or set SUPERCHECK_TOKEN environment variable.',
     )
