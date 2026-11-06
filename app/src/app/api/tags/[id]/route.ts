@@ -1,7 +1,7 @@
 import { isUuid } from "@/lib/uuid";
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/utils/db';
-import { tags, testTags, requirementTags } from '@/db/schema';
+import { tags, testTags, requirementTags, monitorTags } from '@/db/schema';
 import { eq, count, and } from 'drizzle-orm';
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-context';
@@ -69,9 +69,16 @@ export async function DELETE(
       .from(requirementTags)
       .where(eq(requirementTags.tagId, tagId));
 
+    // Check if the tag is being used in any monitors
+    const monitorUsageCount = await db
+      .select({ count: count() })
+      .from(monitorTags)
+      .where(eq(monitorTags.tagId, tagId));
+
     const testCount = testUsageCount[0]?.count ?? 0;
     const requirementCount = requirementUsageCount[0]?.count ?? 0;
-    const totalUsageCount = testCount + requirementCount;
+    const monitorCount = monitorUsageCount[0]?.count ?? 0;
+    const totalUsageCount = testCount + requirementCount + monitorCount;
 
     if (totalUsageCount > 0) {
       // Build a descriptive error message
@@ -82,12 +89,19 @@ export async function DELETE(
       if (requirementCount > 0) {
         usageDetails.push(`${requirementCount} requirement${requirementCount === 1 ? '' : 's'}`);
       }
-      
-      return NextResponse.json({ 
-        error: `Cannot delete tag "${existingTag[0].name}" because it is currently used in ${usageDetails.join(' and ')}. Please remove the tag from all resources before deleting it.`,
+      if (monitorCount > 0) {
+        usageDetails.push(`${monitorCount} monitor${monitorCount === 1 ? '' : 's'}`);
+      }
+      const usageText = usageDetails.length > 1
+        ? `${usageDetails.slice(0, -1).join(', ')} and ${usageDetails[usageDetails.length - 1]}`
+        : usageDetails[0];
+
+      return NextResponse.json({
+        error: `Cannot delete tag "${existingTag[0].name}" because it is currently used in ${usageText}. Please remove the tag from all resources before deleting it.`,
         usageCount: totalUsageCount,
         testCount,
         requirementCount,
+        monitorCount,
         tagName: existingTag[0].name
       }, { status: 409 });
     }
