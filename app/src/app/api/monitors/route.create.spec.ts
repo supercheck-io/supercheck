@@ -122,12 +122,14 @@ it("rejects an unknown incidentSeverity instead of dropping it", async () => {
 });
 
 it("lets an enabled alert have no channel while incidents are on, and rejects it when they are off", async () => {
+  insertWithinPlanLimit.mockClear();
   const off = await post({ enabled: true, notificationProviders: [], alertOnFailure: true, incidentEnabled: false });
   expect(off.status).toBe(400);
   expect((await off.json()).error).toMatch(/notification channel/);
   const on = await post({ enabled: true, notificationProviders: [], alertOnFailure: true });
-  // Past the channel rule: any later outcome (the insert is mocked) is fine, a 400 for the channel is not.
+  // It passed the channel rule and reached the insert (mocked), so incident-only creation is accepted.
   expect(on.status).not.toBe(400);
+  expect(insertWithinPlanLimit).toHaveBeenCalledTimes(1);
 });
 
 it("rejects a name over 255 characters with 400 before inserting", async () => {

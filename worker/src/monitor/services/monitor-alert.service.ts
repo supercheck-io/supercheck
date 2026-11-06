@@ -104,12 +104,20 @@ export class MonitorAlertService {
         reason: 'maintenance' as const,
       };
     }
+    // The failing check's time, not now: a failure signalled after a recovery must still read as older than it.
+    const monitorRow = await this.dbService.db.query.monitors.findFirst({
+      where: eq(schema.monitors.id, monitorId),
+      columns: { lastCheckAt: true },
+    });
+    const firedAt = monitorRow?.lastCheckAt
+      ? new Date(monitorRow.lastCheckAt)
+      : new Date();
     const queued = await this.sreAlertTriageQueueService.enqueueSourceFailure({
       sourceType: 'monitor',
       sourceId: monitorId,
       type: 'monitor_failure',
       message: (reason || 'Monitor is down').slice(0, 2000),
-      firedAt: new Date().toISOString(),
+      firedAt: firedAt.toISOString(),
     });
     // A rejected enqueue is a delivery failure: the evaluator retries within its bounded window.
     if (!queued) return { delivered: false };
