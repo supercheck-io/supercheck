@@ -45,7 +45,7 @@ import {
 import { summarizeJobSpec } from "@/lib/sre/connectors/endpoint-policy";
 import { isValidKubernetesLabelSelector } from "@/lib/sre/connectors/kubernetes-label-selector";
 import { normalizePrivateAgentEvidenceSummaries } from "@/lib/sre/connector-job-evidence";
-import { registerPrivateAgentJobWaiter, releasePrivateAgentJobWaiter, requeueAbandonedPrivateAgentJob } from "@/lib/sre/private-agent-job-cancel";
+import { joinPrivateAgentJob, releasePrivateAgentJobWaiter } from "@/lib/sre/private-agent-job-cancel";
 import { waitForPrivateAgentConnectorJob } from "@/lib/sre/private-agent-job-waiter";
 import { ConnectorQueryRejectedError } from "@/lib/sre/connectors/providers/provider-query-guards";
 import { flatCredentialFields } from "@/lib/sre/connectors/providers/provider-credentials";
@@ -828,9 +828,7 @@ export async function searchIncidentLiveConnectorEvidence(
       throw new Error("Failed to queue Private Agent connector job");
     }
     if (existingJob) {
-      const ref = { jobId, organizationId: scope.organizationId, projectId: scope.projectId };
-      await requeueAbandonedPrivateAgentJob(ref);
-      await registerPrivateAgentJobWaiter(ref);
+      await joinPrivateAgentJob({ jobId, organizationId: scope.organizationId, projectId: scope.projectId });
     }
 
     const waitResult = await waitForPrivateAgentConnectorJob({

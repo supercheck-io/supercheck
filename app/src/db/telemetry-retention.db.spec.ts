@@ -252,22 +252,6 @@ describe("telemetry retention purge", () => {
     expect([newestOldC1, onlyOldC2, oldQueued, recent].every(([x]) => left.has(x))).toBe(true);
   });
 
-  it("private agent jobs: the last waiter cancels an abandoned job, an earlier one leaves it queued", async () => {
-    const [org, proj, agent] = [id(), id(), id()];
-    const jid = id();
-    await seed([
-      `INSERT INTO private_agent_jobs (id, organization_id, project_id, private_agent_id, job_class, status, authorized_by, policy_decision_hash, job_spec_hash, idempotency_key, waiters) VALUES ('${jid}','${org}','${proj}','${agent}','sre_connector_query','queued','agent','h','h','${jid}',2)`,
-    ]);
-    const release = async () => {
-      const [row] = await sql.unsafe(
-        `UPDATE private_agent_jobs SET waiters = GREATEST(waiters - 1, 0), status = CASE WHEN waiters <= 1 AND status = 'queued' THEN 'cancelled' ELSE status END WHERE id = '${jid}' RETURNING status, waiters`,
-      );
-      return row;
-    };
-    expect(await release()).toMatchObject({ status: "queued", waiters: 1 });
-    expect(await release()).toMatchObject({ status: "cancelled", waiters: 0 });
-  });
-
   it("incident history cascades from its parent and is not covered by any rule", async () => {
     expect(TELEMETRY_RETENTION_RULES.map((r) => r.table)).not.toEqual(
       expect.arrayContaining(["sre_incident_timeline_events"]),

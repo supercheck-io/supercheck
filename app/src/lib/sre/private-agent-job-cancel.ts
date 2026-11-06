@@ -14,14 +14,6 @@ const scoped = (input: JobRef) =>
     eq(privateAgentJobs.projectId, input.projectId),
   );
 
-/** A caller that reuses an existing job through its idempotency key joins its waiters (the inserting caller starts at 1). */
-export async function registerPrivateAgentJobWaiter(input: JobRef) {
-  await db
-    .update(privateAgentJobs)
-    .set({ waiters: sql`${privateAgentJobs.waiters} + 1` })
-    .where(scoped(input));
-}
-
 /**
  * Called when a waiter's bounded wait ends without a result. In one statement it leaves the waiters and, when it
  * was the last one and the job is still queued, cancels it so it cannot run late. Returns whether the job was
@@ -43,27 +35,28 @@ export async function releasePrivateAgentJobWaiter(input: JobRef): Promise<boole
 }
 
 /**
- * The idempotency key is global and survives a cancel, so an identical later request lands on the cancelled
- * row. Put it back in the queue (fresh created_at so it is not aged out, no waiters) when we cancelled it as abandoned.
+ * A caller that reuses an existing job through its idempotency key joins it in one statement, so it cannot interleave
+ * with the last waiter's cancel. The idempotency key is global and survives a cancel, so a job cancelled as abandoned
+ * is put back in the queue (fresh created_at so it is not aged out) with this caller as its only waiter; any other job just gains a waiter.
  */
-export async function requeueAbandonedPrivateAgentJob(input: JobRef) {
+export async function joinPrivateAgentJob(input: JobRef) {
+  const revive = sql`${privateAgentJobs.status} = 'cancelled' AND ${privateAgentJobs.errorCode} = ${ABANDONED_CODE}`;
+  const cleared = <T>(column: T) => sql`CASE WHEN ${revive} THEN NULL ELSE ${column} END`;
   await db
     .update(privateAgentJobs)
     .set({
-      status: "queued",
-      waiters: 0,
-      leaseTokenHash: null,
-      leaseExpiresAt: null,
-      startedAt: null,
-      completedAt: null,
-      durationMs: null,
-      errorCode: null,
-      resultHash: null,
-      resultSummary: null,
-      cancelRequestedAt: null,
-      createdAt: new Date(),
+      status: sql`CASE WHEN ${revive} THEN 'queued' ELSE ${privateAgentJobs.status} END`,
+      waiters: sql`CASE WHEN ${revive} THEN 1 ELSE ${privateAgentJobs.waiters} + 1 END`,
+      leaseTokenHash: cleared(privateAgentJobs.leaseTokenHash),
+      leaseExpiresAt: cleared(privateAgentJobs.leaseExpiresAt),
+      startedAt: cleared(privateAgentJobs.startedAt),
+      completedAt: cleared(privateAgentJobs.completedAt),
+      durationMs: cleared(privateAgentJobs.durationMs),
+      errorCode: cleared(privateAgentJobs.errorCode),
+      resultHash: cleared(privateAgentJobs.resultHash),
+      resultSummary: cleared(privateAgentJobs.resultSummary),
+      cancelRequestedAt: cleared(privateAgentJobs.cancelRequestedAt),
+      createdAt: sql`CASE WHEN ${revive} THEN now() ELSE ${privateAgentJobs.createdAt} END`,
     })
-    .where(
-      and(scoped(input), eq(privateAgentJobs.status, "cancelled"), eq(privateAgentJobs.errorCode, ABANDONED_CODE)),
-    );
+    .where(scoped(input));
 }

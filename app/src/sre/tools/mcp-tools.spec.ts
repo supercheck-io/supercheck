@@ -11,7 +11,7 @@ jest.mock("@/lib/sre/mcp-private-agent-job", () => ({
   queueMcpPrivateAgentJob: jest.fn(),
   loadMcpJob: jest.fn(() => jest.fn()),
 }));
-jest.mock("@/lib/sre/private-agent-job-cancel", () => ({ releasePrivateAgentJobWaiter: jest.fn(), registerPrivateAgentJobWaiter: jest.fn(), requeueAbandonedPrivateAgentJob: jest.fn() }));
+jest.mock("@/lib/sre/private-agent-job-cancel", () => ({ releasePrivateAgentJobWaiter: jest.fn(), joinPrivateAgentJob: jest.fn() }));
 jest.mock("@/lib/sre/private-agent-job-waiter", () => ({ waitForPrivateAgentConnectorJob: jest.fn() }));
 
 import type { externalConnectors } from "@/db/schema";

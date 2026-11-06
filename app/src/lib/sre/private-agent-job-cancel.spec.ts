@@ -1,4 +1,5 @@
 /** @jest-environment node */
+// Real SQL semantics are proven in src/db/private-agent-job-waiters.db.spec.ts; this covers the helper's wiring.
 const mockSet = jest.fn();
 let mockReturning: unknown[] = [];
 jest.mock("@/utils/db", () => ({
@@ -12,17 +13,21 @@ jest.mock("@/utils/db", () => ({
   },
 }));
 
-import {
-  registerPrivateAgentJobWaiter,
-  releasePrivateAgentJobWaiter,
-  requeueAbandonedPrivateAgentJob,
-} from "./private-agent-job-cancel";
+import { joinPrivateAgentJob, releasePrivateAgentJobWaiter } from "./private-agent-job-cancel";
 
 const ref = { jobId: "j", organizationId: "o", projectId: "p" };
 
-it("a joining caller increments the waiter count", async () => {
-  await registerPrivateAgentJobWaiter(ref);
-  expect(mockSet).toHaveBeenCalledWith({ waiters: expect.anything() });
+it("joining updates waiters and the abandoned-job reset fields in one statement", async () => {
+  await joinPrivateAgentJob(ref);
+  expect(mockSet).toHaveBeenCalledTimes(1);
+  expect(mockSet).toHaveBeenCalledWith(
+    expect.objectContaining({
+      status: expect.anything(), waiters: expect.anything(), createdAt: expect.anything(),
+      leaseTokenHash: expect.anything(), leaseExpiresAt: expect.anything(), resultSummary: expect.anything(),
+      resultHash: expect.anything(), durationMs: expect.anything(), startedAt: expect.anything(),
+      completedAt: expect.anything(), errorCode: expect.anything(), cancelRequestedAt: expect.anything(),
+    }),
+  );
 });
 
 it("reports cancelled only when the row came back cancelled as abandoned", async () => {
@@ -34,15 +39,4 @@ it("reports cancelled only when the row came back cancelled as abandoned", async
   await expect(releasePrivateAgentJobWaiter(ref)).resolves.toBe(false);
   mockReturning = [];
   await expect(releasePrivateAgentJobWaiter(ref)).resolves.toBe(false);
-});
-
-it("requeues a job it cancelled as abandoned, so an identical retry runs", async () => {
-  mockSet.mockClear();
-  await requeueAbandonedPrivateAgentJob(ref);
-  expect(mockSet).toHaveBeenCalledWith(
-    expect.objectContaining({
-      status: "queued", waiters: 0, completedAt: null, errorCode: null, createdAt: expect.any(Date),
-      leaseTokenHash: null, leaseExpiresAt: null, resultSummary: null, resultHash: null, durationMs: null, startedAt: null,
-    }),
-  );
 });

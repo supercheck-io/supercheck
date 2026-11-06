@@ -27,7 +27,7 @@ jest.mock("@/lib/sre/connectors", () => ({
 jest.mock("@/lib/private-agents/job-router", () => ({
   routeSreConnectorQuery: jest.fn(),
 }));
-jest.mock("@/lib/sre/private-agent-job-cancel", () => ({ releasePrivateAgentJobWaiter: jest.fn().mockResolvedValue(true), registerPrivateAgentJobWaiter: jest.fn(), requeueAbandonedPrivateAgentJob: jest.fn() }));
+jest.mock("@/lib/sre/private-agent-job-cancel", () => ({ releasePrivateAgentJobWaiter: jest.fn().mockResolvedValue(true), joinPrivateAgentJob: jest.fn() }));
 jest.mock("@/lib/sre/private-agent-job-waiter", () => ({
   waitForPrivateAgentConnectorJob: jest.fn(),
 }));
@@ -557,7 +557,10 @@ describe("Copilot connector service scope", () => {
     expect(values).toHaveBeenCalledWith(expect.objectContaining({ status: "error", errorMessage: expected }));
   });
 
-  it("cancels a Private Agent job that is still queued after the bounded wait", async () => {
+  it.each([
+    [true, "was cancelled"],
+    [false, "not cancelled and may still run"],
+  ])("reports the real outcome when a queued Private Agent job outlives the bounded wait (cancelled=%s)", async (cancelled, message) => {
     db.query.sreServices.findFirst.mockResolvedValue({ id: serviceId });
     db.query.privateAgents.findFirst.mockResolvedValue({ id: "private-agent" });
     db.select
@@ -578,8 +581,8 @@ describe("Copilot connector service scope", () => {
     });
     const values = jest.fn(() => ({ onConflictDoNothing: () => ({ returning: async () => [{ id: "job-7" }] }) }));
     db.insert.mockReturnValue({ values });
-    jest.requireMock("@/lib/sre/private-agent-job-cancel").releasePrivateAgentJobWaiter.mockResolvedValue(true);
-    await expect(searchIncidentLiveConnectorEvidence(scope, search)).resolves.toMatchObject({ queued: true, message: expect.stringContaining("was cancelled") });
+    jest.requireMock("@/lib/sre/private-agent-job-cancel").releasePrivateAgentJobWaiter.mockResolvedValue(cancelled);
+    await expect(searchIncidentLiveConnectorEvidence(scope, search)).resolves.toMatchObject({ queued: true, message: expect.stringContaining(message) });
     expect(jest.requireMock("@/lib/sre/private-agent-job-cancel").releasePrivateAgentJobWaiter).toHaveBeenCalledWith(
       expect.objectContaining({ jobId: "job-7" }),
     );
