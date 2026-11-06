@@ -4,6 +4,7 @@ jest.mock("@/utils/db", () => ({ db: { transaction: jest.fn() } }));
 import { db } from "@/utils/db";
 import {
   getPolarWebhookDb,
+  getPolarWebhookOrganizationId,
   runOrderedPolarEvent,
 } from "./polar-event-transaction";
 
@@ -200,4 +201,37 @@ describe("Polar event transactions", () => {
       expect(db.transaction).not.toHaveBeenCalled();
     },
   );
+  describe("a cancel or revoke for a subscription the organization does not hold", () => {
+    const early = { ...input, canReplaceSubscription: false, subscriptionId: "sub-x", eventKey: "subscription.canceled:e2" };
+    const held = { subscriptionId: "sub-held", polarRetiredSubscriptionIds: ["sub-old"] };
+
+    it("fails retryably while the event is fresh, so the activation can land first", async () => {
+      const { set } = setup(held);
+      const apply = jest.fn();
+      await expect(runOrderedPolarEvent({ ...early, ignoreWhenReplaced: { retry: true } }, apply))
+        .rejects.toMatchObject({ name: "Error", message: "Waiting for replacement subscription.active event" });
+      expect(apply).not.toHaveBeenCalled();
+      expect(set).not.toHaveBeenCalled();
+    });
+
+    it("acknowledges an old one, retires the subscription and logs it", async () => {
+      const { set } = setup(held);
+      const warn = jest.spyOn(console, "warn").mockImplementation(() => undefined);
+      const apply = jest.fn();
+      await expect(runOrderedPolarEvent({ ...early, ignoreWhenReplaced: { retry: false } }, apply)).resolves.toBeUndefined();
+      expect(apply).not.toHaveBeenCalled();
+      expect(set).toHaveBeenCalledTimes(1);
+      expect(set).toHaveBeenCalledWith({ polarRetiredSubscriptionIds: ["sub-old", "sub-x"] });
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("retiring it"));
+      warn.mockRestore();
+    });
+  });
+
+  it("exposes the organization of the running event, and nothing outside one", async () => {
+    expect(getPolarWebhookOrganizationId()).toBeUndefined();
+    setup();
+    let seen: string | undefined;
+    await runOrderedPolarEvent(input, async () => { seen = getPolarWebhookOrganizationId(); });
+    expect(seen).toBe("org-1");
+  });
 });
