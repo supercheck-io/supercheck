@@ -209,6 +209,7 @@ const allowlistedToolSchema = z.object({
   description: z.string().max(300).default(""),
   inputSchema: z.record(z.string(), z.unknown()),
   fixedArguments: fixedArgumentsSchema,
+  destructiveHint: z.boolean().optional(),
 });
 
 const discoveredToolSchema = z.object({
@@ -320,6 +321,9 @@ export function buildAllowlist(
         error: `Tool ${tool.name} cannot be allowlisted: ${tool.unsupportedReason ?? "unsupported schema"}`,
       };
     }
+    if (tool.destructiveHint === true || discovered.some((d) => d.name === tool.name && d.destructiveHint === true)) {
+      return { ok: false, error: `Tool ${tool.name} is marked destructive by the server and cannot be allowlisted` };
+    }
     const fixedArguments = selection.fixedArguments ?? {};
     const properties = isRecord(tool.inputSchema?.properties) ? tool.inputSchema.properties : {};
     for (const [key, value] of Object.entries(fixedArguments)) {
@@ -335,9 +339,22 @@ export function buildAllowlist(
       description: tool.description,
       inputSchema: tool.inputSchema,
       fixedArguments,
+      ...(tool.destructiveHint === undefined ? {} : { destructiveHint: tool.destructiveHint }),
     });
   }
   return { ok: true, allowlist };
+}
+
+/** Persists a destructive flag from discovery onto allowlist entries, so the block survives a later discovery that omits the tool. */
+export function markDestructiveAllowlistEntries(
+  allowlist: McpAllowlistedTool[],
+  discovered: McpDiscoveredTool[],
+): McpAllowlistedTool[] {
+  return allowlist.map((entry) =>
+    entry.destructiveHint !== true && discovered.some((d) => d.name === entry.name && d.destructiveHint === true)
+      ? { ...entry, destructiveHint: true }
+      : entry,
+  );
 }
 
 export type McpToolCallResolution =
@@ -350,8 +367,13 @@ export function resolveMcpToolCall(
   toolName: string,
   args: Record<string, unknown>,
 ): McpToolCallResolution {
-  const tool = readMcpConfig(config).allowlist.find((entry) => entry.name === toolName);
+  const parsed = readMcpConfig(config);
+  const tool = parsed.allowlist.find((entry) => entry.name === toolName);
   if (!tool) return { ok: false, error: "Tool is not on the connector allowlist" };
+  // Entries allowlisted before the hint was stored are checked against the last discovery.
+  if (tool.destructiveHint === true || parsed.discovered.some((entry) => entry.name === toolName && entry.destructiveHint === true)) {
+    return { ok: false, error: "Tool is marked destructive by the server and cannot be called" };
+  }
 
   // Admin-fixed values always win over model-supplied ones.
   const merged = { ...args, ...tool.fixedArguments };

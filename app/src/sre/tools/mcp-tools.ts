@@ -18,6 +18,7 @@ import {
   mcpEndpointUrl,
   queueMcpPrivateAgentJob,
 } from "@/lib/sre/mcp-private-agent-job";
+import { cancelQueuedPrivateAgentJob } from "@/lib/sre/private-agent-job-cancel";
 import { waitForPrivateAgentConnectorJob } from "@/lib/sre/private-agent-job-waiter";
 import { checkSreConnectorSearchRateLimit } from "@/lib/sre/sre-rate-limiter";
 import { db } from "@/utils/db";
@@ -225,6 +226,14 @@ export async function executeMcpToolCall(input: {
   }
 
   if (waitResult.state === "pending") {
+    // Only a job this call inserted; a reused job may have another caller waiting on it.
+    if (queued.inserted) {
+      await cancelQueuedPrivateAgentJob({
+        jobId: queued.jobId,
+        organizationId: scope.organizationId,
+        projectId: scope.projectId,
+      });
+    }
     await audit("agent.mcp.call_tool.queue", {
       status: "success",
       outputSummary: `Queued MCP tool call job ${queued.jobId}`,
@@ -237,7 +246,7 @@ export async function executeMcpToolCall(input: {
       queued: true,
       evidence: [],
       message:
-        "MCP tool call is still queued after the bounded wait; do not treat it as evidence",
+        "MCP tool call was cancelled after the bounded wait because no agent picked it up; it can be retried. Do not treat it as evidence",
     };
   }
 
