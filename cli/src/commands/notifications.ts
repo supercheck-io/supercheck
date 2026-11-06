@@ -57,7 +57,7 @@ notificationCommand
     const client = createAuthenticatedClient()
     const { data } = await withSpinner(
       'Fetching provider details',
-      () => client.get<Record<string, unknown>>(`/api/notification-providers/${id}`),
+      () => client.get<Record<string, unknown>>(`/api/notification-providers/${encodeURIComponent(id)}`),
     )
     outputDetail(data)
   })
@@ -117,7 +117,7 @@ notificationCommand
     // as that would overwrite real credentials with masked placeholders.
     const { data: existing } = await withSpinner(
       'Fetching existing provider',
-      () => client.get<Record<string, unknown>>(`/api/notification-providers/${id}`),
+      () => client.get<Record<string, unknown>>(`/api/notification-providers/${encodeURIComponent(id)}`),
     )
 
     const maskedFields = (existing.maskedFields as string[] | undefined) ?? []
@@ -158,7 +158,7 @@ notificationCommand
 
     const { data } = await withSpinner(
       'Updating notification provider',
-      () => client.put<Record<string, unknown>>(`/api/notification-providers/${id}`, body),
+      () => client.put<Record<string, unknown>>(`/api/notification-providers/${encodeURIComponent(id)}`, body),
     )
     logger.success(`Notification provider ${id} updated`)
     outputDetail(data)
@@ -177,7 +177,7 @@ notificationCommand
     const client = createAuthenticatedClient()
     await withSpinner(
       'Deleting notification provider',
-      () => client.delete(`/api/notification-providers/${id}`),
+      () => client.delete(`/api/notification-providers/${encodeURIComponent(id)}`),
     )
     logger.success(`Notification provider ${id} deleted`)
     outputMutation({ id, deleted: true })

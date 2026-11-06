@@ -186,9 +186,13 @@ export async function withMergedConsentScopes<T>(
   const result = await approve();
   if (previous) {
     // Updated by the id read above, so a row created after a concurrent Disconnect is never overwritten with old scopes.
-    // shortcut: read-then-write, so two approvals racing for one project can still lose a scope; the user can re-approve.
+    // The union is taken in SQL against the row's current scopes.
+    // shortcut: approve() overwrites scopes before this runs, so racing approvals can still lose a scope; the user can re-approve.
+    const wanted = sql.join([...new Set([...previous.scopes, ...approved])].map((scope) => sql`${scope}`), sql`, `);
     try {
-      await db.update(oauthConsent).set({ scopes: [...new Set([...previous.scopes, ...approved])] }).where(eq(oauthConsent.id, previous.id));
+      await db.update(oauthConsent).set({
+        scopes: sql`ARRAY(SELECT s FROM unnest(${oauthConsent.scopes} || ARRAY[${wanted}]::text[]) WITH ORDINALITY AS t(s, n) GROUP BY s ORDER BY min(n))`,
+      }).where(eq(oauthConsent.id, previous.id));
     } catch {
       throw new McpConsentScopeRestoreError();
     }

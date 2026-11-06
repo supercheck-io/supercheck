@@ -4,7 +4,7 @@ import path from "node:path";
 
 // The worker renders alert emails itself from byte-identical copies of these templates.
 // Edit the app files, then run `node app/scripts/sync-email-templates.mjs`.
-const FILES = ["base-layout.tsx", "monitor-alert.tsx"];
+const FILES = ["base-layout.tsx", "monitor-alert.tsx", "palette.ts"];
 
 describe("worker email template copies", () => {
   it.each(FILES)("%s matches the worker copy", (name) => {

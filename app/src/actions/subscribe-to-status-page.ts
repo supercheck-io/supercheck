@@ -13,7 +13,7 @@ import {
   statusPageIncidentSubscriptions,
   incidents,
 } from "@/db/schema";
-import { eq, and, inArray, isNull, isNotNull, count, sql } from "drizzle-orm";
+import { eq, and, or, lt, inArray, isNull, isNotNull, count, sql } from "drizzle-orm";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { EmailService } from "@/lib/email-service";
@@ -57,6 +57,8 @@ const subscribeSchema = z.union([
     selectedIncidentIds: z.array(z.string().uuid()).max(100).optional(),
   }),
 ]);
+
+const VERIFICATION_RESEND_COOLDOWN_MS = 5 * 60 * 1000; // matches the owner-side resend limit
 
 type SubscribeInput = z.input<typeof subscribeSchema>;
 type SubscribeValidatedInput = z.output<typeof subscribeSchema>;
@@ -547,17 +549,33 @@ async function handleEmailSubscription(
         requiresVerification: true,
       };
     } else {
-      // If exists but not verified, update the verification token and resend
+      // Anyone can submit this address, so cap resends (a new token invalidates the previous email).
+      // The cooldown check and the token rotation are one UPDATE, so concurrent requests cannot each rotate and send.
       const newVerificationToken = generateHexToken();
-
-      await db
+      const claimed = await db
         .update(statusPageSubscribers)
         .set({
           verificationTokenHash: hashVerificationToken(newVerificationToken),
           verificationToken: null,
           updatedAt: new Date(),
         })
-        .where(eq(statusPageSubscribers.id, existingSubscriber.id));
+        .where(
+          and(
+            eq(statusPageSubscribers.id, existingSubscriber.id),
+            or(
+              isNull(statusPageSubscribers.updatedAt),
+              lt(statusPageSubscribers.updatedAt, new Date(Date.now() - VERIFICATION_RESEND_COOLDOWN_MS)),
+            ),
+          ),
+        )
+        .returning({ id: statusPageSubscribers.id });
+      if (claimed.length === 0) {
+        return {
+          success: true,
+          message: "A verification email was sent recently. Please check your inbox.",
+          requiresVerification: true,
+        };
+      }
 
       // Send verification email
       const emailResult = await sendVerificationEmail({
@@ -697,7 +715,8 @@ async function handleWebhookSubscription(
       where: (subscribers, { and, eq }) =>
         and(
           eq(subscribers.statusPageId, statusPage.id as string),
-          eq(subscribers.endpoint, data.endpoint as string)
+          eq(subscribers.endpoint, data.endpoint as string),
+          eq(subscribers.mode, "webhook")
         ),
     });
 
@@ -717,16 +736,35 @@ async function handleWebhookSubscription(
 
     // Retry verification for an existing pending, quarantined or unsubscribed webhook.
     if (existingSubscriber) {
-      await db
+      // Only a never-verified row has no legitimate owner yet (squatting); a quarantined or unsubscribed row
+      // keeps its stored secret, so an anonymous caller can neither learn a new one nor invalidate the owner's.
+      const neverVerified =
+        !existingSubscriber.verifiedAt && !existingSubscriber.purgeAt && !existingSubscriber.quarantinedAt;
+      const rotatedSecret = neverVerified ? generateWebhookSecret() : null;
+      // Anyone can submit this URL, so the cooldown check and the update are one atomic statement.
+      const claimed = await db
         .update(statusPageSubscribers)
         .set({
+          ...(rotatedSecret ? { webhookSecretEncrypted: encryptWebhookSecret(rotatedSecret) } : {}),
           verifiedAt: null, // always re-prove endpoint ownership via the challenge
           purgeAt: null,
           quarantinedAt: null,
           webhookFailures: 0,
           updatedAt: new Date(),
         })
-        .where(eq(statusPageSubscribers.id, existingSubscriber.id));
+        .where(
+          and(
+            eq(statusPageSubscribers.id, existingSubscriber.id),
+            or(
+              isNull(statusPageSubscribers.updatedAt),
+              lt(statusPageSubscribers.updatedAt, new Date(Date.now() - VERIFICATION_RESEND_COOLDOWN_MS)),
+            ),
+          ),
+        )
+        .returning({ id: statusPageSubscribers.id });
+      if (claimed.length === 0) {
+        return { success: false, message: "This endpoint was submitted recently. Please try again in a few minutes." };
+      }
 
       await syncComponentSubscriptions({
         subscriberId: existingSubscriber.id,
@@ -754,6 +792,7 @@ async function handleWebhookSubscription(
           ? "Webhook subscription verified and updated successfully"
           : `Webhook subscription saved, but endpoint verification failed: ${challenge.error}. Resend the challenge from Subscribers once the endpoint is ready.`,
         subscriberId: existingSubscriber.id,
+        ...(rotatedSecret ? { webhookSecret: rotatedSecret } : {}),
       };
     }
 
@@ -831,10 +870,10 @@ async function handleSlackSubscription(
     // Validate that endpoint is a Slack webhook URL
     try {
       const url = new URL(endpoint);
-      if (!url.hostname.endsWith(".slack.com")) {
+      if (url.protocol !== "https:" || url.hostname !== "hooks.slack.com") {
         return {
           success: false,
-          message: "Invalid Slack webhook URL. Must be from a slack.com domain (e.g., hooks.slack.com).",
+          message: "Invalid Slack webhook URL. Must be an https://hooks.slack.com URL.",
         };
       }
     } catch {

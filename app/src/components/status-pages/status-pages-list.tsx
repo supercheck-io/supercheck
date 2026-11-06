@@ -362,7 +362,14 @@ export default function StatusPagesList() {
                 Create Status Page
               </Button>
             </DialogTrigger>
-            <DialogContent className="w-[calc(100vw-2rem)] max-h-[90vh] overflow-y-auto sm:max-w-xl">
+            <DialogContent
+              className="w-[calc(100vw-2rem)] max-h-[90vh] overflow-y-auto sm:max-w-xl"
+              onOpenAutoFocus={(event) => {
+                // Start on the name field, not the first info button.
+                event.preventDefault();
+                document.getElementById("name")?.focus();
+              }}
+            >
               <DialogHeader>
                 <DialogTitle>Create Status Page</DialogTitle>
                 <DialogDescription>
@@ -439,7 +446,11 @@ export default function StatusPagesList() {
             {statusPages.map((page) => {
               const statusConfig = getStatusConfig(page.status);
               const StatusIcon = statusConfig.icon;
-              const publicUrl = getStatusPagePublicUrl(page);
+              // Drafts have no public page (it 404s); open the signed-in preview instead.
+              const viewUrl =
+                page.status === "published"
+                  ? getStatusPagePublicUrl(page)
+                  : `/status-pages/${page.id}/public`;
               const publicLabel = getStatusPagePublicLabel(page);
 
               return (
@@ -496,7 +507,7 @@ export default function StatusPagesList() {
                             </DropdownMenuItem>
                             <DropdownMenuItem asChild>
                               <a
-                                href={publicUrl}
+                                href={viewUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="cursor-pointer"
@@ -563,7 +574,7 @@ export default function StatusPagesList() {
                         className="flex-1 h-9"
                       >
                         <a
-                          href={publicUrl}
+                          href={viewUrl}
                           target="_blank"
                           rel="noopener noreferrer"
                         >

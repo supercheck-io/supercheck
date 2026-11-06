@@ -4,6 +4,7 @@ import {
   Text,
 } from "@react-email/components";
 import * as React from "react";
+import { PALETTE } from "./palette";
 import { BaseLayout, EmailButton } from "./base-layout";
 
 interface OrganizationInvitationEmailProps {
@@ -12,6 +13,24 @@ interface OrganizationInvitationEmailProps {
   role: string;
   projectInfo?: string;
 }
+
+const ROLE_LABELS: Record<string, string> = {
+  super_admin: "Super Admin",
+  org_owner: "Organization Owner",
+  org_admin: "Organization Admin",
+  project_admin: "Project Admin",
+  project_editor: "Project Editor",
+  project_viewer: "Project Viewer",
+};
+
+/** "PROJECT_EDITOR" / "project_editor" -> "Project Editor". */
+export const roleDisplayName = (role: string) => {
+  const key = role.toLowerCase();
+  return (
+    ROLE_LABELS[key] ??
+    key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+  );
+};
 
 export const OrganizationInvitationEmail = ({
   inviteUrl = "https://supercheck.io/invite/abc123",
@@ -23,7 +42,7 @@ export const OrganizationInvitationEmail = ({
     <BaseLayout
       preview={`You're invited to join ${organizationName} on Supercheck`}
       title="Team Invitation"
-      headerColor="#15803d"
+      headerColor={PALETTE.info}
     >
       <Section style={contentSection}>
         {/* Main Content */}
@@ -36,16 +55,13 @@ export const OrganizationInvitationEmail = ({
 
         <Section style={roleBox}>
           <Text style={roleLabel}>Your Role</Text>
-          <Text style={roleValue}>{role.toUpperCase()}</Text>
+          <Text style={roleValue}>{roleDisplayName(role)}</Text>
         </Section>
 
         {projectInfo && (
           <Section style={infoBox}>
             <Text style={infoTitle}>Project Access</Text>
-            <Text
-              style={infoText}
-              dangerouslySetInnerHTML={{ __html: projectInfo }}
-            />
+            <Text style={infoText}>{projectInfo}</Text>
           </Section>
         )}
 

@@ -138,6 +138,7 @@ export async function POST(
         status: invitation.status,
         expiresAt: invitation.expiresAt,
         selectedProjects: invitation.selectedProjects,
+        inviterId: invitation.inviterId,
         orgName: organization.name
       })
       .from(invitation)
@@ -229,9 +230,11 @@ export async function POST(
     await withPlanLimitLock(invite.organizationId, "members", async (tx) => {
       // Serialize acceptance with signup and other invitations for this user.
       // The user lock makes the membership check authoritative across requests.
-      const [acceptingUser] = await tx.select({ id: userTable.id }).from(userTable)
+      const [acceptingUser] = await tx.select({ id: userTable.id, role: userTable.role }).from(userTable)
         .where(eq(userTable.id, currentUser.id)).limit(1).for("update");
       if (!acceptingUser) throw new Error('INVITE_SESSION_CHANGED');
+      // Platform administrators are never team members; the invite flow cannot reveal them, so refuse here with the generic error.
+      if (acceptingUser.role === 'super_admin') throw new Error('INVITE_ALREADY_USED');
       // Plan limits only exist when Polar billing is active; cloud mode without
       // Polar (dev, staging, e2e) has no plans to enforce.
       if (isPolarEnabled()) {
@@ -259,6 +262,12 @@ export async function POST(
           if (Number(members?.count ?? 0) >= maxMembers) throw new Error("INVITE_MEMBER_LIMIT");
         }
       }
+      // The inviter must still be allowed to invite; removal/demotion also cancels their invitations,
+      // this covers one created before that. Locked so a concurrent demotion cannot slip past.
+      const [inviter] = await tx.select({ role: member.role }).from(member)
+        .where(and(eq(member.organizationId, invite.organizationId), eq(member.userId, invite.inviterId)))
+        .for("share");
+      if (inviter?.role !== 'org_owner' && inviter?.role !== 'org_admin') throw new Error('INVITE_ALREADY_USED');
       // Claim the pending invitation before any membership/session changes.
       // A concurrent acceptance/cancellation must not succeed twice.
       const [claimed] = await tx.update(invitation).set({ status: 'accepted' })

@@ -9,6 +9,7 @@ import { createAuthenticatedClient } from '../api/authenticated-client.js'
 import { tryLoadConfig } from '../config/loader.js'
 import { getStoredBaseUrl, getStoredOrganization, getStoredProject } from '../auth/store.js'
 import { logger } from '../utils/logger.js'
+import { ensureGitignoreEntries } from '../utils/gitignore.js'
 import { jobCronWarning } from '../utils/cron.js'
 import { UNEVALUATED_MONITOR_CONFIG_KEYS } from '../utils/monitor-config-keys.js'
 import { withSpinner } from '../utils/spinner.js'
@@ -1095,7 +1096,7 @@ export const pullCommand = new Command('pull')
             const { data } = await withSpinner(
               `Fetching script for "${t.title}"`,
               () => client.get<RemoteTest>(
-                `/api/tests/${t.id}`,
+                `/api/tests/${encodeURIComponent(t.id)}`,
                 { includeScript: 'true' },
               ),
             )
@@ -1249,6 +1250,9 @@ export const pullCommand = new Command('pull')
       }
     }
 
+    // Backups sit beside the overwritten files; keep them out of commits (an existing .gitignore only).
+    if (summary.backups.length > 0) ensureGitignoreEntries(cwd)
+
     // ── Summary ──
     logger.newline()
 
@@ -1280,6 +1284,7 @@ export const pullCommand = new Command('pull')
       }
     }
 
+    if (summary.backups.length > 0) logger.info(`${summary.backups.length} overwritten file(s) were backed up beside the originals (*.supercheck-backup.*); delete them when no longer needed.`)
     logger.newline()
     logger.info('Next steps:')
     logger.info('  1. Preview changes:       npx supercheck diff')

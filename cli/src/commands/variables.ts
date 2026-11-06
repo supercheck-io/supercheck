@@ -126,7 +126,7 @@ varCommand
 
       const { data } = await withSpinner(
         'Updating variable',
-        () => client.put<Record<string, unknown>>(`/api/variables/${existing.id}`, {
+        () => client.put<Record<string, unknown>>(`/api/variables/${encodeURIComponent(existing.id)}`, {
           key,
           value: resolvedValue,
           isSecret: options.secret ?? existing.isSecret,
@@ -174,7 +174,7 @@ varCommand
 
     await withSpinner(
       'Deleting variable',
-      () => client.delete(`/api/variables/${variable.id}`),
+      () => client.delete(`/api/variables/${encodeURIComponent(variable.id)}`),
     )
     logger.success(`Variable "${key}" deleted`)
     outputMutation({ id: variable.id, key, deleted: true })

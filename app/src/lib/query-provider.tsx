@@ -120,11 +120,15 @@ function initializePersistence(
   return Promise.resolve();
 }
 
-function getClient(identity: string | null) {
+// identity is undefined while the first session check is pending: nothing is cached yet, so the
+// client is kept and the first settled identity adopts it instead of clearing and replacing it.
+function getClient(identity: string | null | undefined) {
   if (isServer) return createClient();
 
-  if (browserIdentity !== identity) {
-    clearQueryCache();
+  if (identity !== undefined && browserIdentity !== identity) {
+    // First identity: keep the client (children already hold it) but drop anything cached while pending.
+    if (browserIdentity !== undefined) clearQueryCache();
+    else browserClient?.clear();
     browserIdentity = identity;
   }
 
@@ -163,9 +167,16 @@ export function clearQueryCache() {
 export function QueryProvider({ children }: { children: ReactNode }) {
   const session = useSession();
   const identity = session.data?.user.id ?? null;
+  // Remount only when a settled identity changes. Keying on the identity itself remounted the whole
+  // app shell (closing open dialogs) when the first session check resolved after hydration.
+  const [settled, setSettled] = useState<{ identity: string | null; generation: number } | null>(null);
+  if (!session.isPending) {
+    if (!settled) setSettled({ identity, generation: 0 });
+    else if (settled.identity !== identity) setSettled({ identity, generation: settled.generation + 1 });
+  }
   return (
     <IdentityQueryProvider
-      key={identity ?? "anonymous"}
+      key={settled?.generation ?? 0}
       identity={identity}
       pending={session.isPending}
     >
@@ -183,7 +194,7 @@ function IdentityQueryProvider({
   identity: string | null;
   pending: boolean;
 }) {
-  const client = getClient(identity);
+  const client = getClient(pending ? undefined : identity);
   const [isRestoring, setIsRestoring] = useState(true);
 
   useEffect(() => {

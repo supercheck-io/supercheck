@@ -1,6 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { createHash } from 'crypto';
-import * as nodemailer from 'nodemailer';
+import {
+  closeSmtpTransport,
+  sendMailToRecipients,
+  type SmtpDeliveryResult,
+} from '../common/utils/smtp-transport';
 import {
   AlertDeliveryMetadata,
   AlertType,
@@ -8,7 +12,10 @@ import {
   NotificationProviderType,
   PlainNotificationProviderConfig,
 } from '../db/schema';
-import { EmailTemplateService } from '../email-template/email-template.service';
+import {
+  EmailTemplateService,
+  formatDuration,
+} from '../email-template/email-template.service';
 import { fetchWithRetry, createRetryConfig } from '../common/utils/retry.util';
 import {
   isValidTeamsWebhookDomain,
@@ -144,12 +151,6 @@ interface NotificationSendResult {
   deliveryMetadata?: AlertDeliveryMetadata;
 }
 
-interface SmtpDeliveryResult {
-  sentCount: number;
-  failedRecipients: string[];
-  errors: Record<string, string>;
-}
-
 type ProviderDeliveryDetails = {
   attempts?: number;
   responseStatus?: number;
@@ -197,8 +198,50 @@ function clip(value: string, max: number): string {
   return value.length > max ? `${value.slice(0, max - 1)}…` : value;
 }
 
+const EMAIL_ERROR_MAX = 1000;
+
+const sentenceCase = (v: string) =>
+  v.charAt(0).toUpperCase() + v.slice(1).toLowerCase();
+
+/**
+ * Email detail rows for monitor and job alerts alike: the shared formatted
+ * fields (emoji link labels and SHOUTING status normalised), then duration,
+ * run id and a clipped error, then the links.
+ */
+export function buildEmailFields(
+  fields: FormattedNotification['fields'],
+  payload: NotificationPayload,
+): Array<{ title: string; value: string }> {
+  const rows = fields.map((f) => ({
+    title: f.title.replace(/^\p{Extended_Pictographic}\uFE0F?\s*/u, ''),
+    value: f.title === 'Status' ? sentenceCase(f.value) : f.value,
+    raw: f.raw,
+  }));
+  const extras: Array<{ title: string; value: string }> = [];
+  const md = payload.metadata;
+  if (typeof md?.duration === 'number') {
+    extras.push({ title: 'Duration', value: formatDuration(md.duration) });
+  }
+  if (md?.runId) extras.push({ title: 'Run ID', value: md.runId });
+  if (md?.errorMessage) {
+    extras.push({
+      title: 'Error',
+      value: clip(String(md.errorMessage), EMAIL_ERROR_MAX),
+    });
+  }
+  const strip = ({ title, value }: { title: string; value: string }) => ({
+    title,
+    value,
+  });
+  return [
+    ...rows.filter((r) => !r.raw).map(strip),
+    ...extras,
+    ...rows.filter((r) => r.raw).map(strip),
+  ];
+}
+
 @Injectable()
-export class NotificationService {
+export class NotificationService implements OnModuleDestroy {
   private readonly logger = new Logger(NotificationService.name);
 
   constructor(private readonly emailTemplateService: EmailTemplateService) {
@@ -772,54 +815,19 @@ export class NotificationService {
 
       // Render email using centralized template service (React Email templates)
       // Use appropriate template based on alert type
-      let rendered: { html: string; text: string; subject: string };
       // Same env the dashboard links use; omitted (no button) if unset rather than linking to localhost.
       const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL;
 
-      if (payload.type === 'job_failed') {
-        // Use job failure template (generic, no test stats)
-        rendered = await this.emailTemplateService.renderJobFailureEmail({
-          jobName: payload.targetName,
-          duration: payload.metadata?.duration || 0,
-          errorMessage: payload.metadata?.errorMessage,
-          runId: payload.metadata?.runId,
-          dashboardUrl: payload.metadata?.dashboardUrl,
-          appUrl,
-        });
-      } else if (payload.type === 'job_success') {
-        // Use job success template (generic, no test stats)
-        rendered = await this.emailTemplateService.renderJobSuccessEmail({
-          jobName: payload.targetName,
-          duration: payload.metadata?.duration || 0,
-          runId: payload.metadata?.runId,
-          dashboardUrl: payload.metadata?.dashboardUrl,
-          appUrl,
-        });
-      } else if (payload.type === 'job_timeout') {
-        // Use job timeout template
-        rendered = await this.emailTemplateService.renderJobTimeoutEmail({
-          jobName: payload.targetName,
-          duration: payload.metadata?.duration || 0,
-          runId: payload.metadata?.runId,
-          dashboardUrl: payload.metadata?.dashboardUrl,
-          appUrl,
-        });
-      } else {
-        // Use monitor alert template for all other types
-        rendered = await this.emailTemplateService.renderMonitorAlertEmail({
-          title: formatted.title,
-          message: formatted.message,
-          fields: formatted.fields,
-          footer: formatted.footer,
-          // Only a recovery is "Recovered"; a plain pass (job_success) has its own template.
-          type:
-            payload.type === 'monitor_recovery'
-              ? 'recovery'
-              : this.mapSeverityToType(payload.severity),
-          color: formatted.color,
-          appUrl,
-        });
-      }
+      // Monitors and jobs share one path: the payload's title/message (including a
+      // custom message) and the shared field builder.
+      const rendered = await this.emailTemplateService.renderMonitorAlertEmail({
+        title: formatted.title,
+        message: payload.message,
+        fields: buildEmailFields(formatted.fields, payload),
+        footer: formatted.footer,
+        type: this.emailAlertType(payload),
+        appUrl,
+      });
 
       const emailContent = {
         html: rendered.html,
@@ -867,19 +875,27 @@ export class NotificationService {
     }
   }
 
-  /**
-   * Map severity to email template type
-   */
-  private mapSeverityToType(
-    severity: 'info' | 'warning' | 'error' | 'success',
-  ): 'failure' | 'success' | 'warning' {
-    switch (severity) {
+  /** Email template tone: recovery and job outcomes are explicit, the rest follows severity. */
+  private emailAlertType(
+    payload: NotificationPayload,
+  ): 'failure' | 'success' | 'recovery' | 'warning' | 'info' {
+    switch (payload.type) {
+      case 'monitor_recovery':
+        return 'recovery';
+      case 'job_success':
+        return 'success';
+      case 'job_failed':
+        return 'failure';
+      case 'job_timeout':
+        return 'warning';
+    }
+    switch (payload.severity) {
       case 'error':
         return 'failure';
       case 'success':
         return 'success';
-      case 'warning':
-        return 'warning';
+      case 'info':
+        return 'info';
       default:
         return 'warning';
     }
@@ -909,123 +925,30 @@ export class NotificationService {
   }
 
   private async trySMTPDelivery(
-    config: any,
-    formatted: FormattedNotification,
+    _config: any,
+    _formatted: FormattedNotification,
     emailContent: { html: string; text: string; subject: string },
     emailAddresses: string[],
   ): Promise<SmtpDeliveryResult> {
-    const failureResult = (error: string): SmtpDeliveryResult => ({
-      sentCount: 0,
-      failedRecipients: [...emailAddresses],
-      errors: Object.fromEntries(emailAddresses.map((email) => [email, error])),
-    });
-
-    try {
-      // Use environment variables for SMTP configuration
-      const smtpHost = process.env.SMTP_HOST;
-      const smtpPort = parseInt(process.env.SMTP_PORT || '587');
-      const smtpSecure = process.env.SMTP_SECURE === 'true';
-      const smtpUser = process.env.SMTP_USER;
-      const smtpPassword = process.env.SMTP_PASSWORD;
-      const hasSmtpUser = Boolean(smtpUser);
-      const hasSmtpPassword = Boolean(smtpPassword);
-      const fromEmail = process.env.SMTP_FROM_EMAIL;
-
-      if (!smtpHost) {
-        const error =
-          'SMTP environment variable not configured (missing SMTP_HOST)';
-        this.logger.error(error);
-        return failureResult(error);
-      }
-
-      if (hasSmtpUser !== hasSmtpPassword) {
-        const error =
-          'SMTP authentication is partially configured (set both SMTP_USER and SMTP_PASSWORD, or leave both unset)';
-        this.logger.error(error);
-        return failureResult(error);
-      }
-
-      if (!fromEmail) {
-        const error = 'SMTP sender not configured (missing SMTP_FROM_EMAIL)';
-        this.logger.error(error);
-        return failureResult(error);
-      }
-
-      const smtpConfig = {
-        host: smtpHost,
-        port: smtpPort,
-        secure: smtpSecure,
-        ...(hasSmtpUser && hasSmtpPassword
-          ? {
-              auth: {
-                user: smtpUser,
-                pass: smtpPassword,
-              },
-            }
-          : {}),
-        tls: {
-          rejectUnauthorized: true, // Validate SSL certificates for security
-          minVersion: 'TLSv1.2' as const, // Required for ZeptoMail and security best practices
-        },
-        connectionTimeout: 10000, // 10 seconds
-        greetingTimeout: 5000, // 5 seconds
-      };
-
-      const transporter = nodemailer.createTransport(smtpConfig);
-
-      // Verify SMTP connection
-      try {
-        await transporter.verify();
-      } catch (error) {
-        const errorMessage = getErrorMessage(error);
-        this.logger.error(
-          `SMTP connection verification failed: ${errorMessage}`,
-        );
-        return failureResult(errorMessage);
-      }
-      this.logger.debug('SMTP connection verified successfully');
-
-      // Send to each email address sequentially to avoid SMTP rate-limiting
-      // and concurrent connection issues that cause only the first email to be delivered
-      let sentCount = 0;
-      const failedRecipients: string[] = [];
-      const errors: Record<string, string> = {};
-
-      for (const email of emailAddresses) {
-        try {
-          await transporter.sendMail({
-            from: fromEmail,
-            to: email,
-            subject: emailContent.subject,
-            html: emailContent.html,
-            text: emailContent.text,
-          });
-          sentCount++;
-        } catch (error) {
-          const msg = error instanceof Error ? error.message : String(error);
-          this.logger.warn(`SMTP delivery failed for ${email}: ${msg}`);
-          failedRecipients.push(email);
-          errors[email] = msg;
-        }
-      }
-
-      if (failedRecipients.length > 0) {
-        this.logger.warn(
-          `SMTP delivery: ${sentCount}/${emailAddresses.length} sent, failed for: ${failedRecipients.join(', ')}`,
-        );
-      }
-
-      return {
-        sentCount,
-        failedRecipients,
-        errors,
-      };
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-      this.logger.error(`SMTP delivery failed: ${errorMessage}`);
-      return failureResult(errorMessage);
+    const result = await sendMailToRecipients(
+      emailAddresses,
+      emailContent,
+      (msg) => this.logger.warn(msg),
+    );
+    if (result.sentCount === 0) {
+      this.logger.error(
+        `SMTP delivery failed: ${Object.values(result.errors)[0] ?? 'unknown error'}`,
+      );
+    } else if (result.failedRecipients.length > 0) {
+      this.logger.warn(
+        `SMTP delivery: ${result.sentCount}/${emailAddresses.length} sent, failed for: ${result.failedRecipients.join(', ')}`,
+      );
     }
+    return result;
+  }
+
+  onModuleDestroy(): void {
+    closeSmtpTransport();
   }
 
   private async sendSlackNotification(

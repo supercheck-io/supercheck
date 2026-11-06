@@ -202,3 +202,5 @@ export const GET = notAllowed;
 export const DELETE = notAllowed;
 export const PUT = notAllowed;
 export const PATCH = notAllowed;
+// Next's automatic OPTIONS would list every exported method above; only POST is served.
+export const OPTIONS = () => new Response(null, { status: 204, headers: { Allow: "POST, OPTIONS" } });

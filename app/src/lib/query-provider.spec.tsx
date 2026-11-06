@@ -204,6 +204,23 @@ describe("QueryProvider hydration", () => {
     expect(screen.getByText("Loading alerts...")).toBeInTheDocument();
   });
 
+  it("keeps the mounted tree when the first session check resolves after load", async () => {
+    mockSession = { data: null, isPending: true };
+    const mounts = jest.fn();
+    function MountProbe() {
+      useEffect(() => { mounts(); }, []);
+      return <div>Shell</div>;
+    }
+    const tree = () => <QueryProvider><MountProbe /></QueryProvider>;
+    const view = render(tree());
+    const shell = screen.getByText("Shell");
+    mockSession = { data: { user: { id: "user-a" } }, isPending: false };
+    view.rerender(tree());
+    await act(async () => {});
+    expect(screen.getByText("Shell")).toBe(shell);
+    expect(mounts).toHaveBeenCalledTimes(1);
+  });
+
   it("waits for restoration before prefetching layout data", () => {
     const client = new QueryClient();
     const prefetch = jest.spyOn(client, "prefetchQuery").mockResolvedValue(undefined);

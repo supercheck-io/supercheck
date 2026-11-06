@@ -208,6 +208,8 @@ export function createMcpAuthPlugins(options: McpAuthPluginOptions) {
       // application_type; infer "native" from it instead of rejecting them.
       clientRegistrationDefaultApplicationType: "infer",
       clientRegistrationAllowedScopes: [...MCP_SCOPES],
+      // A registration that names no scope is stored with read-only, not every scope; more must be asked for.
+      clientRegistrationDefaultScopes: [MCP_READ_SCOPE],
       postLogin: {
         // The project is chosen on the consent screen itself, so no extra
         // redirect happens between sign-in and consent.

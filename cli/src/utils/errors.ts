@@ -87,5 +87,9 @@ export function networkErrorMessage(error: unknown): string {
 export const AUTH_HINT = 'Run `supercheck login --reauth` to sign in again (or set a valid SUPERCHECK_TOKEN).'
 /** One recovery line for a rejected credential; JSON mode carries the same advice in nextActions. */
 export function authHint(error: unknown): string | null {
-  return error instanceof ApiRequestError && error.statusCode === 401 ? AUTH_HINT : null
+  if (!(error instanceof ApiRequestError) || error.statusCode !== 401) return null
+  // A set SUPERCHECK_TOKEN outranks any stored login, so re-running login would not help.
+  return process.env.SUPERCHECK_TOKEN
+    ? 'SUPERCHECK_TOKEN is set and was rejected; browser login cannot override it. Replace it with a valid CLI token or unset it.'
+    : AUTH_HINT
 }
