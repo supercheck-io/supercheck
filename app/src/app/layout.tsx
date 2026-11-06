@@ -36,7 +36,7 @@ export default function RootLayout({
         } as React.CSSProperties}
         suppressHydrationWarning
       >
-        {/* PERFORMANCE: Register service worker for static asset caching */}
+        {/* Removes the retired root service worker that broke the trace viewer */}
         <ServiceWorkerRegistration />
         {/* TEST SUPPORT: exposes a hydration flag for the E2E suite */}
         <HydrationReady />
