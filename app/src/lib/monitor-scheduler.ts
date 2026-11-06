@@ -15,7 +15,7 @@ interface ScheduleMonitorOptions {
 /**
  * Creates or updates a monitor scheduler using BullMQ
  */
-export async function scheduleMonitor(options: ScheduleMonitorOptions): Promise<string> {
+export async function scheduleMonitor(options: ScheduleMonitorOptions, signal?: AbortSignal): Promise<string> {
   try {
     const { monitorSchedulerQueue } = await getQueues();
     const schedulerJobName = `scheduled-monitor-${options.monitorId}`;
@@ -35,12 +35,15 @@ export async function scheduleMonitor(options: ScheduleMonitorOptions): Promise<
       job.name === schedulerJobName
     );
 
+    // An aborted (timed-out) caller must not mutate the queue after it gave up: a newer reconcile owns it now.
+    signal?.throwIfAborted();
     if (existingJobs.length > 0) {
       await Promise.all(
         existingJobs.map(job => monitorSchedulerQueue.removeRepeatableByKey(job.key))
       );
     }
 
+    signal?.throwIfAborted();
     // Create a repeatable job that follows the frequency schedule
     await monitorSchedulerQueue.add(
       schedulerJobName,
@@ -83,7 +86,7 @@ export async function deleteScheduledMonitor(schedulerId: string): Promise<boole
  * Like deleteScheduledMonitor, but a scheduler failure throws instead of reading as "nothing to delete".
  * Returns whether a job was found; an absent job is not an error.
  */
-export async function removeScheduledMonitor(schedulerId: string): Promise<boolean> {
+export async function removeScheduledMonitor(schedulerId: string, signal?: AbortSignal): Promise<boolean> {
   {
     const { monitorSchedulerQueue } = await getQueues();
     const repeatableJobs = await monitorSchedulerQueue.getRepeatableJobs();
@@ -99,6 +102,7 @@ export async function removeScheduledMonitor(schedulerId: string): Promise<boole
       job.key.includes(schedulerJobName)
     );
 
+    signal?.throwIfAborted(); // a timed-out caller must not delete a schedule a later resume re-created
     if (jobsToRemove.length > 0) {
       console.log(`[DELETE_MONITOR] Found ${jobsToRemove.length} jobs to remove for monitor ${schedulerId}:`, jobsToRemove.map(j => ({ key: j.key, name: j.name, id: j.id })));
 
