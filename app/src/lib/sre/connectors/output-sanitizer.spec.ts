@@ -146,11 +146,14 @@ describe("redactConnectorText secret shapes", () => {
     "dsn sntrys_hunter2xyz0123456789abcdef",
     "charge sk_live_hunter2xyz0123456789",
     "Authorization: Basic aHVudGVyMnh5ejpodW50ZXIyeHl6",
+    "clientSecret=hunter2xyz private_key=hunter2xyz DB_PASS=hunter2xyz",
+    "key AIzaSy0123456789abcdefghijklmnopqrstuv-",
   ])("redacts %s", (input) => {
-    expect(redactConnectorText(input)).not.toMatch(/hunter2xyz|AIzaSy|aHVudGVy/);
+    expect(redactConnectorText(input)).not.toMatch(/hunter2xyz|AIzaSy|aHVudGVy|wJalr/);
   });
 
   it("leaves names that only contain a secret word as a substring alone", () => {
-    expect(redactConnectorText("tokenizer=fast monkey=banana")).toBe("tokenizer=fast monkey=banana");
+    const text = "tokenizer=fast monkey=banana bypass=on token_count: 5 password_policy: strong secret_name: foo";
+    expect(redactConnectorText(text)).toBe(text);
   });
 });

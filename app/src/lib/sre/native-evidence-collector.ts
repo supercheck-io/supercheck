@@ -415,7 +415,8 @@ export async function collectNativeEvidence(input: {
 
       const results = monitorResultsByMonitorId.get(alert.sourceId) ?? [];
 
-      for (const result of results) {
+      for (const rawResult of results) {
+        const result = monitorResultForRead(rawResult);
         addEvidence(evidence, {
           sourceUri: `/monitors/${alert.sourceId}?result=${result.id}`,
           title: `Monitor result: ${result.status} at ${result.location}`,
@@ -424,11 +425,11 @@ export async function collectNativeEvidence(input: {
             status: result.status,
             isUp: result.isUp,
             responseTimeMs: result.responseTimeMs,
-            details: monitorResultForRead(result).details,
+            details: result.details,
             consecutiveFailureCount: result.consecutiveFailureCount,
             consecutiveSuccessCount: result.consecutiveSuccessCount,
             testExecutionId: result.testExecutionId,
-            testReportS3Url: monitorResultForRead(result).testReportS3Url,
+            testReportS3Url: result.testReportS3Url,
           }),
           evidenceType: result.testReportS3Url ? "artifact" : "metric",
           severity: result.isUp ? "sev4" : alert.severity,

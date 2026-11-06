@@ -9,7 +9,6 @@ import {
 } from "@/db/schema";
 import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
-import { runReportPath } from "@/lib/run-report-url";
 
 type Params = { runId: string };
 
@@ -92,7 +91,7 @@ export async function GET(
       reportS3Url: artifact(row.reportS3Url, "report/report.html"),
       summaryS3Url: artifact(row.summaryS3Url, "summary.json"),
       consoleS3Url: artifact(row.consoleS3Url, "console.log"),
-      runReportUrl: runReportPath(row.runId, row.runReportUrl),
+      runReportUrl: artifact(row.runReportUrl, "report/report.html"),
       runLogsUrl: artifact(row.runLogsUrl, "logs"),
     });
   } catch (error) {
