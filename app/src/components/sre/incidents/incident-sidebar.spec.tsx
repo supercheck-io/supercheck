@@ -71,6 +71,15 @@ describe("IncidentSidebar", () => {
     expect(screen.queryByRole("link", { name: "Post update" })).not.toBeInTheDocument();
   });
 
+  it("status page: no Post update on a resolved incident that was never published", () => {
+    const detail = detailFixture();
+    detail.incident.status = "resolved";
+    detail.incident.resolvedAt = new Date();
+    render(<IncidentSidebar detail={detail} />);
+    expect(screen.getByText("Not published")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Post update" })).not.toBeInTheDocument();
+  });
+
   it("status page: no Post update without canUpdate", () => {
     const detail = detailFixture();
     detail.permissions.canUpdate = false;

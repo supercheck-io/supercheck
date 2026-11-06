@@ -266,6 +266,7 @@ export function SreIncidentDetailView({
                 onOpenInvestigation={() => changeTab("investigation")}
                 runControls={runControls}
                 source={summarySource}
+                resolved={!open}
                 feedback={
                   permissions.canUpdate && investigation?.status === "completed" ? (
                     <InvestigationFeedback
@@ -313,13 +314,13 @@ export function SreIncidentDetailView({
                 className="mt-0 min-w-0 rounded-md focus-visible:ring-inset focus-visible:ring-offset-0 data-[state=inactive]:hidden"
               >
                 <PostmortemCard
-                      key={incident.postmortem?.updatedAt ?? "none"}
-                      incidentId={incident.id}
-                      incidentNumber={incident.incidentNumber}
-                      title={incident.title}
-                      postmortem={incident.postmortem}
-                      canEdit={permissions.canUpdate}
-                    />
+                  key={incident.postmortem?.updatedAt ?? "none"}
+                  incidentId={incident.id}
+                  incidentNumber={incident.incidentNumber}
+                  title={incident.title}
+                  postmortem={incident.postmortem}
+                  canEdit={permissions.canUpdate}
+                />
               </TabsContent>
             )}
           </div>

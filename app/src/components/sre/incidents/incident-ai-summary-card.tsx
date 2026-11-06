@@ -31,6 +31,8 @@ type IncidentAiSummaryCardProps = {
   runControls?: React.ReactNode;
   /** What produced the text: only an investigation carries a confidence rating. */
   source?: "investigation" | "brief" | "triage";
+  /** A resolved incident has no next step to take; the checks stay on the Investigation tab. */
+  resolved?: boolean;
 };
 
 const SOURCE_LABEL = { brief: "From the evidence brief", triage: "From AI triage" } as const;
@@ -98,6 +100,7 @@ export function IncidentAiSummaryCard({
   onOpenInvestigation,
   runControls,
   source = "investigation",
+  resolved = false,
 }: IncidentAiSummaryCardProps) {
   const running = investigationStatus === "running";
   const failed = investigationStatus === "failed" || investigationStatus === "aborted" || investigationStatus === "timed_out";
@@ -111,7 +114,7 @@ export function IncidentAiSummaryCard({
   const unrated = !structured && (!rootCauseSummary || confidenceScore === null);
   const rated = source === "investigation" && investigationStatus === "completed" && !unrated;
   const stepCount = investigation?.steps.length ?? 0;
-  const nextCheck = structured?.nextChecks[0] ?? null;
+  const nextCheck = resolved ? null : (structured?.nextChecks[0] ?? null);
 
   return (
     <Card data-testid="incident-ai-summary" className="shadow-none shrink-0 gap-3 py-4">
@@ -125,7 +128,7 @@ export function IncidentAiSummaryCard({
         )}
         {headline && rated && (
           inconclusive || confidence.label === "Inconclusive" ? (
-            <TableBadge tone="slate" compact aria-label="Confidence: Inconclusive">
+            <TableBadge tone="warning" compact aria-label="Confidence: Inconclusive">
               Inconclusive
             </TableBadge>
           ) : (

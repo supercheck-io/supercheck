@@ -6,6 +6,8 @@ import {
   buildDeterministicPostmortem,
   buildPostmortemPrompt,
   generatePostmortemDraft,
+  formatPostmortemDuration,
+  postmortemTimeline,
   postmortemToMarkdown,
   toStoredPostmortem,
   type PostmortemContext,
@@ -36,9 +38,9 @@ describe("buildDeterministicPostmortem", () => {
   it("fills every section from recorded facts only", () => {
     const sections = buildDeterministicPostmortem(ctx);
     expect(sections.summary).toContain("Incident #12");
-    expect(sections.summary).toContain("1 h 30 min");
+    expect(sections.summary).toContain("It started 1 Oct 2026, 10:00 UTC and was resolved 1 Oct 2026, 11:30 UTC, after 1 h 30 min.");
     expect(sections.summary).toContain("Rolled back deploy 42");
-    expect(sections.timeline).toContain("2026-10-01T10:05:00Z - acknowledged");
+    expect(sections.timeline).toBe("- 1 Oct 2026, 10:05 UTC: acknowledged");
     expect(sections.root_cause).toContain("Deploy 42 regression");
     expect(sections.root_cause).toContain("AI confidence: High");
     expect(sections.contributing_factors).toContain("Database");
@@ -53,11 +55,63 @@ describe("buildDeterministicPostmortem", () => {
     expect(timeline).toContain("event 39 ");
   });
 
-  it("uses placeholders instead of inventing a cause", () => {
-    const sections = buildDeterministicPostmortem({ ...ctx, rootCauseSummary: null, hypotheses: [], nextChecks: [], timeline: [] });
-    expect(sections.root_cause).toContain("No root cause was recorded");
-    expect(sections.timeline).toBe("No timeline events were recorded.");
-    expect(sections.follow_ups).toContain("Add follow-up actions");
+  it("leaves unknown sections empty instead of inventing a cause or writing placeholders", () => {
+    const sections = buildDeterministicPostmortem({ ...ctx, serviceName: null, rootCauseSummary: null, hypotheses: [], nextChecks: [], timeline: [] });
+    expect(sections).toMatchObject({ impact: "", timeline: "", root_cause: "", contributing_factors: "", follow_ups: "" });
+  });
+});
+
+describe("formatPostmortemDuration", () => {
+  it.each([
+    [45, "45 min"],
+    [184, "3 h 4 min"],
+    [(31 * 24 + 6) * 60 + 4, "31 d 6 h"],
+  ])("formats %i minutes as %s", (minutes, expected) => {
+    const from = new Date("2026-10-01T00:00:00Z");
+    expect(formatPostmortemDuration(from, new Date(from.getTime() + minutes * 60_000))).toBe(expected);
+  });
+
+  it("returns null while unresolved", () => {
+    expect(formatPostmortemDuration(new Date(), null)).toBeNull();
+  });
+});
+
+describe("postmortemTimeline", () => {
+  const report = (n: number) =>
+    `### Incident Investigation Report\n**Incident:** Job Failed **Severity:** sev2\n---\n#### What Changed\nRun ${n}: the job failed twice; ${"detail ".repeat(40)}`;
+  const at = (minute: number) => new Date(Date.UTC(2026, 9, 6, 14, minute));
+  // Shaped like a real incident: created, repeated briefs and investigations, ack, note, resolved.
+  const rows = [
+    { at: at(58), eventType: "state_change", eventData: { state: "created_from_alert_history" } },
+    { at: at(59), eventType: "ai_finding", eventData: { type: "sre_triage", summary: "Triage: job failed" } },
+    ...Array.from({ length: 6 }, (_, i) => [
+      { at: at(i * 3 + 1), eventType: "ai_finding", eventData: { type: "native_evidence_brief", summary: "5 evidence items reviewed" } },
+      { at: at(i * 3 + 2), eventType: "ai_finding", eventData: { type: "sre_investigation", summary: report(i) } },
+    ]).flat().map((row) => ({ ...row, at: new Date(row.at.getTime() + 3600_000) })),
+    { at: new Date(Date.UTC(2026, 9, 6, 16, 0)), eventType: "state_change", eventData: { state: "assigned", assigneeUserId: "u1" } },
+    { at: new Date(Date.UTC(2026, 9, 6, 16, 1)), eventType: "state_change", eventData: { state: "acknowledged" } },
+    { at: new Date(Date.UTC(2026, 9, 6, 16, 2)), eventType: "comment", eventData: { text: "We are   investigating.\nMore soon." } },
+    { at: new Date(Date.UTC(2026, 9, 6, 16, 3)), eventType: "ai_finding", eventData: { type: "sre_investigation", summary: "**Inconclusive.** Logs lack detail." } },
+    { at: new Date(Date.UTC(2026, 9, 6, 16, 4)), eventType: "state_change", eventData: { state: "resolved", comment: "Job passes again" } },
+  ];
+
+  it("keeps the key moments in order, named as in the Activity feed", () => {
+    const labels = postmortemTimeline([...rows].reverse()).map((event) => event.label);
+    expect(labels).toEqual([
+      "Incident created from alert",
+      "AI triage: Triage: job failed",
+      expect.stringMatching(/^AI investigation: Run 5: the job failed twice;/),
+      "Acknowledged",
+      "Note: We are investigating. More soon.",
+      expect.stringMatching(/^AI investigation: Inconclusive\. Logs lack detail\.$/),
+      "Resolved: Job passes again",
+    ]);
+  });
+
+  it("never leaks raw keys, markdown or unbounded report text", () => {
+    const text = postmortemTimeline(rows).map((event) => event.label).join("\n");
+    expect(text).not.toMatch(/native_evidence_brief|created_from_alert_history|state change|ai finding|\*\*|#{2,}|---/);
+    for (const { label } of postmortemTimeline(rows)) expect(label.length).toBeLessThanOrEqual(200);
   });
 });
 

@@ -18,6 +18,7 @@ import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import {
   generatePostmortemDraft,
   postmortemSectionsSchema,
+  postmortemTimeline,
   toStoredPostmortem,
   type PostmortemContext,
 } from "@/lib/sre/postmortem";
@@ -36,17 +37,6 @@ const saveSchema = z.object({ incidentId: z.string().uuid(), sections: postmorte
 export type SrePostmortemActionResult =
   | { success: true; postmortem: ReturnType<typeof toStoredPostmortem>; source?: "ai" | "template" }
   | { success: false; error: string };
-
-function timelineLabel(eventType: string, data: Record<string, unknown> | null) {
-  const pick = (...values: unknown[]) =>
-    values.find((value): value is string => typeof value === "string" && value.trim().length > 0);
-  const text = pick(data?.text, data?.summary, data?.note, data?.message, data?.type);
-  // Lifecycle events carry {state, comment}.
-  const state = pick(data?.state);
-  const body = state ? [state, pick(data?.comment, data?.summary)].filter(Boolean).join(" - ") : text ?? pick(data?.comment);
-  const clipped = body ? body.replace(/\s+/g, " ").trim().slice(0, 200) : "";
-  return clipped ? `${eventType.replace(/_/g, " ")}: ${clipped}` : eventType.replace(/_/g, " ");
-}
 
 async function guard() {
   const { userId, organizationId, project } = await requireProjectContext();
@@ -168,9 +158,13 @@ export async function generateSrePostmortem(
         ? structured.nextChecks.filter((check): check is string => typeof check === "string").slice(0, 5)
         : [],
       evidence,
-      timeline: [...new Map([...tail, ...head].map((event) => [event.id, event])).values()]
-        .sort((a, b) => a.at.getTime() - b.at.getTime())
-        .map((event) => ({ at: event.at, label: timelineLabel(event.eventType, event.data) })),
+      timeline: postmortemTimeline(
+        [...new Map([...tail, ...head].map((event) => [event.id, event])).values()].map((event) => ({
+          at: event.at,
+          eventType: event.eventType,
+          eventData: event.data,
+        })),
+      ),
     };
 
     // Same usage gate as chat; when it is closed the template still works, with no model call.
