@@ -32,9 +32,10 @@ async function acquireMigrationLock(
   log(`Waiting up to ${timeoutMs}ms for the ${lockName} advisory lock...`);
 
   try {
-    await lockClient`BEGIN`;
-
     while (Date.now() < deadline) {
+      // One short transaction per poll: CREATE INDEX CONCURRENTLY on the lock holder waits for the whole
+      // transaction of any poll it samples mid-query, so a transaction held across polls deadlocks it.
+      await lockClient`BEGIN`;
       // Simple query protocol on purpose: with a bound parameter the idle transaction keeps a snapshot
       // (backend_xmin), and a CREATE INDEX CONCURRENTLY on another connection waits for it, so a pod
       // polling here would deadlock with the pod that holds the lock. Only the lock name is
@@ -48,13 +49,14 @@ async function acquireMigrationLock(
         return lockClient;
       }
 
+      await lockClient`ROLLBACK`;
       await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
     }
 
     logError(
       `Timed out waiting for the database migration advisory lock after ${timeoutMs}ms`,
     );
-    await lockClient`ROLLBACK`.catch(() => undefined);
+    // Every failed poll already rolled back; a second ROLLBACK would only log a spurious warning.
     await lockClient.end().catch(() => undefined);
     return null;
   } catch (error) {

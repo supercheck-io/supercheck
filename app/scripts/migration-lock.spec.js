@@ -47,7 +47,7 @@ describe("migration advisory lock", () => {
     await expect(withMigrationTimeouts(client, async () => { throw failure; })).rejects.toBe(failure);
     expect(client).toHaveBeenCalledTimes(1);
   });
-  it("keeps the transaction open while waiting, then commits cleanly", async () => {
+  it("rolls back between polls, keeps the winning transaction open, then commits cleanly", async () => {
     const fake = createFakePostgres([false, true]);
     const postgres = jest.fn(() => fake.client);
     const logSuccess = jest.fn();
@@ -59,8 +59,8 @@ describe("migration advisory lock", () => {
     });
 
     expect(lock).toBe(fake.client);
-    expect(fake.queries[0]).toBe("BEGIN");
-    expect(fake.queries).toHaveLength(3);
+    // No transaction survives a failed poll, so a concurrent index build never waits on this poller.
+    expect(fake.queries.map((q) => q.split(" ")[0])).toEqual(["BEGIN", "SELECT", "ROLLBACK", "BEGIN", "SELECT"]);
     expect(logSuccess).toHaveBeenCalledWith(
       "Database migration advisory lock acquired",
     );
@@ -88,6 +88,7 @@ describe("migration advisory lock", () => {
     expect(lock).toBeNull();
     expect(fake.queries[0]).toBe("BEGIN");
     expect(fake.queries.at(-1)).toBe("ROLLBACK");
+    expect(fake.queries.join(",")).not.toContain("ROLLBACK,ROLLBACK");
     expect(fake.client.end).toHaveBeenCalledTimes(1);
     expect(logError).toHaveBeenCalledWith(
       "Timed out waiting for the database migration advisory lock after 1ms",
