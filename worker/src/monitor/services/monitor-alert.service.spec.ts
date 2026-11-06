@@ -34,6 +34,11 @@ describe('MonitorAlertService', () => {
     const db = {
       query: {
         monitors: { findFirst: jest.fn().mockResolvedValue(monitor) },
+        monitorResults: {
+          findFirst: jest
+            .fn()
+            .mockResolvedValue({ checkedAt: new Date('2026-06-22T00:00:00Z') }),
+        },
         projects: { findFirst: jest.fn().mockResolvedValue({ name: 'Prod' }) },
       },
       select: jest.fn(() => ({
@@ -246,6 +251,16 @@ describe('MonitorAlertService', () => {
       (held.sreAlertTriageQueueService as unknown as Record<string, jest.Mock>)
         .enqueueSourceFailure,
     ).not.toHaveBeenCalled();
+  });
+
+  it('stamps an incident-only failure with the failing check time, not the send time', async () => {
+    const { service, sreAlertTriageQueueService } = createService();
+    await service.signalFailure('monitor-1', 'down');
+    expect(
+      sreAlertTriageQueueService.enqueueSourceFailure,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({ firedAt: '2026-06-22T00:00:00.000Z' }),
+    );
   });
 
   it('reports a rejected incident enqueue as a delivery failure, not as sent', async () => {

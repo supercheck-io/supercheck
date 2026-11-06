@@ -94,6 +94,8 @@ export async function PATCH(
     // Update the monitor status in the database. Hold the live project row (FOR SHARE) so a
     // concurrent project delete cannot pause the monitor and then be overwritten by this write.
     const { organizationId: monitorOrgId, projectId: monitorProjectId } = currentMonitor;
+    // Scheduler effects run before commit; remember them so a failed transaction can undo them.
+    let effect: "unscheduled" | "scheduled" | null = null;
     const write = async (tx: Parameters<Parameters<typeof db.transaction>[0]>[0]) => {
       const [liveProject] = await tx
         .select({ id: projects.id })
@@ -134,6 +136,7 @@ export async function PATCH(
           const jobId = before?.scheduledJobId ?? currentMonitor.scheduledJobId;
           const removed = jobId ? await deleteScheduledMonitor(jobId) : false;
           if (!removed) await deleteScheduledMonitor(id);
+          effect = "unscheduled";
           await tx.update(monitors).set({ scheduledJobId: null }).where(eq(monitors.id, id));
         } else if (updated.frequencyMinutes > 0) {
           const schedulerId = await scheduleMonitor({
@@ -149,6 +152,7 @@ export async function PATCH(
             },
             retryLimit: 3,
           });
+          effect = "scheduled";
           await tx.update(monitors).set({ scheduledJobId: schedulerId }).where(eq(monitors.id, id));
         }
       }
@@ -156,13 +160,37 @@ export async function PATCH(
     };
     // Turning a paused monitor back on takes a plan slot: count and write under the plan-limit lock.
     let updatedMonitor;
-    if (currentMonitor.status === 'paused' && status !== 'paused') {
-      const resumed = await withResumeWithinPlan(monitorOrgId, 'monitor', id, write);
-      const refusal = resumeRefusalResponse(resumed);
-      if (refusal) return refusal;
-      updatedMonitor = resumed.ok ? resumed.value : undefined;
-    } else {
-      updatedMonitor = await db.transaction(write);
+    try {
+      if (currentMonitor.status === 'paused' && status !== 'paused') {
+        const resumed = await withResumeWithinPlan(monitorOrgId, 'monitor', id, write);
+        const refusal = resumeRefusalResponse(resumed);
+        if (refusal) {
+          if (effect === "scheduled") await deleteScheduledMonitor(id).catch(() => false);
+          return refusal;
+        }
+        updatedMonitor = resumed.ok ? resumed.value : undefined;
+      } else {
+        updatedMonitor = await db.transaction(write);
+      }
+    } catch (error) {
+      // The row rolled back, so put the scheduler back as the row says: undo what the failed write did.
+      if (effect === "scheduled") await deleteScheduledMonitor(id).catch(() => false);
+      if (effect === "unscheduled" && currentMonitor.status !== "paused" && currentMonitor.frequencyMinutes > 0) {
+        await scheduleMonitor({
+          monitorId: id,
+          frequencyMinutes: currentMonitor.frequencyMinutes,
+          jobData: {
+            monitorId: id,
+            projectId: monitorProjectId,
+            type: currentMonitor.type as MonitorJobData["type"],
+            target: currentMonitor.target,
+            config: currentMonitor.config as Record<string, unknown>,
+            frequencyMinutes: currentMonitor.frequencyMinutes,
+          },
+          retryLimit: 3,
+        }).then((schedulerId) => db.update(monitors).set({ scheduledJobId: schedulerId }).where(eq(monitors.id, id))).catch(() => undefined);
+      }
+      throw error;
     }
 
     if (!updatedMonitor) {

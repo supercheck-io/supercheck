@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { and, eq, lte, gt, ne } from 'drizzle-orm';
+import { and, desc, eq, lte, gt, ne } from 'drizzle-orm';
 import { DbService } from '../../db/db.service';
 import * as schema from '../../db/schema';
 import {
@@ -105,12 +105,16 @@ export class MonitorAlertService {
       };
     }
     // The failing check's time, not now: a failure signalled after a recovery must still read as older than it.
-    const monitorRow = await this.dbService.db.query.monitors.findFirst({
-      where: eq(schema.monitors.id, monitorId),
-      columns: { lastCheckAt: true },
+    const failing = await this.dbService.db.query.monitorResults.findFirst({
+      where: and(
+        eq(schema.monitorResults.monitorId, monitorId),
+        ne(schema.monitorResults.status, 'up'),
+      ),
+      orderBy: [desc(schema.monitorResults.checkedAt)],
+      columns: { checkedAt: true },
     });
-    const firedAt = monitorRow?.lastCheckAt
-      ? new Date(monitorRow.lastCheckAt)
+    const firedAt = failing?.checkedAt
+      ? new Date(failing.checkedAt)
       : new Date();
     const queued = await this.sreAlertTriageQueueService.enqueueSourceFailure({
       sourceType: 'monitor',

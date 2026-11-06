@@ -599,17 +599,19 @@ export async function applySourceRecovery(
   if (newerFailure) {
     return { resolved: [], recovered: [] };
   }
-  // A failure signalled without an alert row (no channel, or alerts off) only shows up as the incident's last alert.
+  // A failure signalled without an alert row (no channel, or alerts off) still refreshes this source's alert event.
   const [newerSignal] = await tx
-    .select({ id: sreIncidents.id })
-    .from(sreIncidentAlerts)
-    .innerJoin(sreIncidents, eq(sreIncidentAlerts.incidentId, sreIncidents.id))
-    .innerJoin(sreAlertEvents, eq(sreIncidentAlerts.alertEventId, sreAlertEvents.id))
+    .select({ id: sreAlertEvents.id })
+    .from(sreAlertEvents)
     .where(
       and(
-        triggerSourceMatch(source),
-        ne(sreIncidents.status, "resolved"),
-        gt(sreIncidents.lastAlertAt, source.recoveredAt),
+        eq(sreAlertEvents.organizationId, source.organizationId),
+        eq(sreAlertEvents.projectId, source.projectId),
+        eq(sreAlertEvents.sourceType, source.sourceType),
+        eq(sreAlertEvents.sourceId, source.sourceId),
+        eq(sreAlertEvents.status, "firing"),
+        recoverableTrigger(),
+        gt(sreAlertEvents.firedAt, source.recoveredAt),
       ),
     )
     .limit(1);

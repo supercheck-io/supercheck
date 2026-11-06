@@ -111,6 +111,21 @@ describe("schedule follows pause and resume", () => {
     expect(scheduleMonitor).toHaveBeenCalledTimes(1);
   });
 
+  it("restores the schedule when the pause transaction fails after unscheduling", async () => {
+    jest.mocked(db.query.monitors.findFirst).mockResolvedValue({ id: "m", organizationId: "org", projectId: "p", status: "up", scheduledJobId: "old", frequencyMinutes: 5, type: "website", target: "https://e.com", config: {} } as never);
+    (db.transaction as jest.Mock).mockImplementation(async (cb: (t: unknown) => unknown) => {
+      await cb({
+        execute: jest.fn(),
+        select: () => ({ from: () => ({ where: () => ({ for: async (mode: string) => (mode === "share" ? [{ id: "p" }] : [{ status: "up", scheduledJobId: "old" }]) }) }) }),
+        update: () => ({ set: jest.fn(() => ({ where: () => Object.assign(Promise.resolve(), { returning: async () => [{ id: "m", organizationId: "org", projectId: "p", status: "paused", frequencyMinutes: 5 }] }) })) }),
+      });
+      throw new Error("commit failed");
+    });
+    expect((await patch("paused")).status).toBe(500);
+    expect(deleteScheduledMonitor).toHaveBeenCalledWith("old");
+    expect(scheduleMonitor).toHaveBeenCalledTimes(1);
+  });
+
   it("reschedules the monitor when it is resumed", async () => {
     jest.mocked(db.query.monitors.findFirst).mockResolvedValue({ id: "m", organizationId: "org", projectId: "p", status: "paused" } as never);
     tx({ id: "m", name: "M", organizationId: "org", projectId: "p", status: "pending", frequencyMinutes: 5, type: "website", target: "https://e.com", config: {} }, { status: "paused" });
