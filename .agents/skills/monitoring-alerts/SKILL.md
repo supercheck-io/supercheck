@@ -29,6 +29,7 @@ flowchart LR
 
 - Monitor definitions are tenant-owned configuration; executions and regional results are immutable observations.
 - Preserve target, type, request/check config (method, headers/body, auth, timeouts, expected status/keywords, SSL checks), synthetic test reference, frequency, location selection, alert thresholds/flags, muted state, enabled state, and notification relationships across schema, APIs, UI, scheduler, queue, and worker. Monitor `retryStrategy` is deprecated and ignored.
+- `ALLOW_INTERNAL_TARGETS=true` alone lets monitors reach intranet hosts (webhook channels additionally need `SELF_HOSTED`, via `allowInternalWebhookTargets()`); metadata and link-local addresses are always blocked for monitors, in the worker (`resolvePublicAddresses`) and the app (`monitor-target-policy.ts`).
 - Monitor destinations are untrusted. Validate URL shape at configuration time; enforce SSRF-safe DNS-pinned resolution at execution time, re-applied on every redirect and against DNS changes.
 - Scheduling is safe across multiple app replicas via BullMQ repeatable monitor jobs keyed by a stable jobId, with a Redis NX lock guarding startup re-scheduling (`app/src/lib/monitor-scheduler.ts`). Restarts or overlapping ticks must not duplicate dispatch.
 - Location selection maps deterministically to worker queues and rejects unknown/unavailable locations deliberately.

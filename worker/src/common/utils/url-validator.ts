@@ -146,6 +146,7 @@ const NAT64_WELL_KNOWN = new Address6('64:ff9b::/96');
 const NAT64_LOCAL_USE = new Address6('64:ff9b:1::/48');
 const IPV4_COMPATIBLE = new Address6('::/96');
 const SIX_TO_FOUR = new Address6('2002::/16');
+const SIIT = new Address6('::ffff:0:0:0/96');
 
 /** IPv4 carried inside an IPv6 address by mapping, NAT64, 6to4 or the deprecated ::/96 form. */
 function embeddedIpv4(candidate: Address6): Address4 | null {
@@ -160,6 +161,7 @@ function embeddedIpv4(candidate: Address6): Address4 | null {
   if (
     candidate.isMapped4() ||
     candidate.isHostInSubnet(IPV4_COMPATIBLE) ||
+    candidate.isHostInSubnet(SIIT) ||
     candidate.isHostInSubnet(NAT64_WELL_KNOWN)
   )
     return at(12);
@@ -212,6 +214,14 @@ export function allowInternalWebhookTargets(): boolean {
     (process.env.SELF_HOSTED ?? '').trim().toLowerCase(),
   );
   return selfHosted && process.env.ALLOW_INTERNAL_TARGETS === 'true';
+}
+
+/**
+ * Monitors may probe intranet hosts when ALLOW_INTERNAL_TARGETS is exactly "true" (no SELF_HOSTED
+ * needed, as in the app's monitor-target-policy). Metadata and link-local stay blocked regardless.
+ */
+export function allowInternalMonitorTargets(): boolean {
+  return process.env.ALLOW_INTERNAL_TARGETS === 'true';
 }
 
 /**

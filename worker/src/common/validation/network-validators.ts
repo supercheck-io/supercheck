@@ -8,12 +8,12 @@ import { isIP } from 'node:net';
 
 import { SECURITY } from '../constants';
 import {
-  allowInternalWebhookTargets,
+  allowInternalMonitorTargets,
   isPrivateHost,
 } from '../utils/url-validator';
 
 // Only the exact string 'true' opts in, as in monitor.service.ts: 'false' or '0' must keep the SSRF guard on.
-const internalTargetsAllowed = allowInternalWebhookTargets;
+const internalTargetsAllowed = allowInternalMonitorTargets;
 
 export interface ValidationResult {
   valid: boolean;

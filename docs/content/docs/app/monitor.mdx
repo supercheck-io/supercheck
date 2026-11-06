@@ -58,7 +58,7 @@ Run full Playwright browser tests on a schedule to validate complete user journe
 </Cards>
 
 <Callout type="warn">
-Creating an HTTP, website, ping or port monitor returns `400` when the target is a private, loopback or reserved address, including a hostname that resolves to one. Changing the type or target of an existing monitor is checked the same way; updates that leave both unchanged are not. Self-hosted instances can allow these with `ALLOW_INTERNAL_TARGETS=true` (see [Optional configuration](/docs/app/deployment/self-hosted#optional-configuration)).
+Creating an HTTP, website, ping or port monitor returns `400` when the target is a private, loopback or reserved address, including a hostname that resolves to one. Changing the type or target of an existing monitor is checked the same way; updates that leave both unchanged are not. Instances can allow these with `ALLOW_INTERNAL_TARGETS=true` (see [Optional configuration](/docs/app/deployment/self-hosted#optional-configuration)); unlike webhook channels, monitors do not also need `SELF_HOSTED=true`. Cloud metadata and link-local addresses such as `169.254.169.254` stay blocked even then.
 </Callout>
 
 ## HTTP Monitor

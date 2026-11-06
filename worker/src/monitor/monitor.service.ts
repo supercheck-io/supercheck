@@ -68,7 +68,7 @@ import {
   resolvePublicAddress,
   vettedLookup,
 } from '../common/utils/pinned-monitor-request';
-import { allowInternalWebhookTargets } from '../common/utils/url-validator';
+import { allowInternalMonitorTargets } from '../common/utils/url-validator';
 import {
   MonitorEvaluator,
   type GroupAlertEvaluation,
@@ -964,7 +964,7 @@ export class MonitorService {
     try {
       // 🔴 CRITICAL: Enhanced validation with security config
       const securityConfig: SecurityConfig = {
-        allowInternalTargets: allowInternalWebhookTargets(),
+        allowInternalTargets: allowInternalMonitorTargets(),
         maxStringLength: 2048,
         allowedProtocols: ['http:', 'https:'],
       };
@@ -1220,7 +1220,7 @@ export class MonitorService {
       const response = await requestPinnedMonitorTarget(
         requestConfig,
         {
-          allowInternalTargets: allowInternalWebhookTargets(),
+          allowInternalTargets: allowInternalMonitorTargets(),
           maxRedirects: SECURITY.MAX_REDIRECTS,
         },
         (validatedConfig) =>
@@ -1421,7 +1421,7 @@ export class MonitorService {
           // Resolved per attempt so a lookup failure still reports the host as down.
           const lookup = await vettedLookup(
             target,
-            allowInternalWebhookTargets(),
+            allowInternalMonitorTargets(),
           );
           await new Promise<void>((resolve, reject) => {
             const socket = createConnection({
@@ -1554,7 +1554,7 @@ export class MonitorService {
     let responseTimeMs: number | undefined;
 
     try {
-      const allowInternal = allowInternalWebhookTargets();
+      const allowInternal = allowInternalMonitorTargets();
       if (protocol === 'tcp') {
         const lookup = await vettedLookup(target, allowInternal);
         // TCP port check using net module
@@ -1803,7 +1803,7 @@ export class MonitorService {
       // Dial only vetted addresses: a second lookup could rebind to a private host.
       const lookup = await vettedLookup(
         hostname.replace(/^\[|\]$/g, ''),
-        allowInternalWebhookTargets(),
+        allowInternalMonitorTargets(),
       );
 
       const certificateInfo = await new Promise<{
