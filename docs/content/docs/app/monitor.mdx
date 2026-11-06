@@ -58,7 +58,7 @@ Run full Playwright browser tests on a schedule to validate complete user journe
 </Cards>
 
 <Callout type="warn">
-Creating an HTTP, website, ping or port monitor returns `400` when the target is a private, loopback or reserved address, including a hostname that resolves to one. Changing the type or target of an existing monitor is checked the same way; updates that leave both unchanged are not. Self-hosted instances can allow these with `ALLOW_INTERNAL_TARGETS=true` (see [Optional configuration](/docs/app/deployment/self-hosted#optional-configuration)).
+Creating an HTTP, website, ping or port monitor returns `400` when the target is a private, loopback or reserved address, including a hostname that resolves to one. Changing the type or target of an existing monitor is checked the same way; updates that leave both unchanged are not. Instances can allow these with `ALLOW_INTERNAL_TARGETS=true` (see [Optional configuration](/docs/app/deployment/self-hosted#optional-configuration)); unlike webhook channels, monitors do not also need `SELF_HOSTED=true`. Cloud metadata and link-local addresses such as `169.254.169.254` stay blocked even then.
 </Callout>
 
 ## HTTP Monitor
@@ -153,11 +153,11 @@ Configure when and how you receive notifications about monitor status changes.
 | Setting | What it does | Recommended |
 |---------|-------------|-------------|
 | **Enable Alerts** | Turns notifications on or off for this monitor | On for production |
-| **Alert on Failure** | Alerts once the failure threshold is reached, then up to 3 times per outage at the reminder interval | On |
+| **Alert on Failure** | At most 3 failure alerts per failure streak: the first when the failure threshold is reached, then reminders | On |
 | **Alert on Recovery** | One alert per outage once the recovery threshold is reached | On for critical services |
 | **Failure Threshold** | Consecutive failures before the first alert (1–5) | 2–3 |
 | **Recovery Threshold** | Consecutive healthy checks before the recovery alert (1–5) | 2 |
-| **SSL Expiration Alerts** | Website monitors only. Warns when a certificate is within **SSL Expiration Warning Days**, at most once per 24 hours | On |
+| **Alert on SSL certificate expiration** | Shown only for website monitors with **SSL Check** on. Warns when a certificate is within the days set in the monitor's **Alert in _N_ days** field (1–365, default 30), at most once per 24 hours | On |
 | **Notification Channels** | Where alerts are sent | More than one for critical services |
 
 **Incidents** (in the same Alert Settings):
@@ -204,9 +204,12 @@ Health, performance and history for one monitor.
 
 | Section | Content |
 |---|---|
-| **Health Assessment** | Status summary from actual metrics |
+| **Report Details** | Monitor name, type, target, current status and analysis time |
+| **Executive Summary** | Short overview of monitor health |
 | **Performance Analysis** | Response time trends |
-| **Issue Diagnosis** | Suggested causes with error messages and timestamps |
+| **Availability Analysis** | Uptime and check results |
+| **Anomaly Detection** | Unusual patterns in the data |
+| **Recent Issues** | Errors with timestamps |
 | **Recommendations** | Next steps, only when problems exist |
 
 Self-hosted: an administrator must [configure an AI provider](/docs/app/deployment/self-hosted#optional-configuration) first.
@@ -221,12 +224,12 @@ Nine key metrics are displayed prominently below the header:
 | **Status** | Current monitor status (Up, Down, Paused, Pending, Maintenance, Error) |
 | **Interval** | How frequently checks run (e.g., 5m, 15m) |
 | **Resp Time** | Latest response time from the most recent check |
-| **Uptime (24h)** | Percentage of successful checks in the last 24 hours |
-| **Avg Resp (24h)** | Average response time over the last 24 hours |
-| **P95 Resp (24h)** | 95th percentile response time over the last 24 hours |
-| **Uptime (30d)** | Percentage of successful checks in the last 30 days |
-| **Avg Resp (30d)** | Average response time over the last 30 days |
-| **P95 Resp (30d)** | 95th percentile response time (30d) — long-term performance indicator |
+| **Uptime** (Last 24 hours) | Percentage of successful checks in the last 24 hours |
+| **Avg Resp** (Last 24 hours) | Average response time over the last 24 hours |
+| **P95 Resp** (Last 24 hours) | 95th percentile response time over the last 24 hours |
+| **Uptime** (Last 30 days) | Percentage of successful checks in the last 30 days |
+| **Avg Resp** (Last 30 days) | Average response time over the last 30 days |
+| **P95 Resp** (Last 30 days) | 95th percentile response time (30d) — long-term performance indicator |
 
 **P95** is the response time that 95% of checks complete within, which exposes tail latency that averages hide.
 

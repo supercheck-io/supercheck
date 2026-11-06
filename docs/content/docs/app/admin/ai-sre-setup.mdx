@@ -32,7 +32,7 @@ Use **Services** to define systems such as `checkout-service` or `payment-gatewa
 
 ![Add Service Dialog](/screenshots/sre-add-service-dialog.png)
 
-For each service, set its name, tier, **Status** (`active`, `deprecated` or `merged`), environment, owner team, **Owner** (one person who is a project editor or admin; they are emailed when a SEV1 or SEV2 opens if the project's incident policy has **Email service owners** on and the incident is opened by someone else, and an alert incident for the service is assigned to them), OpenTelemetry service name, **Slack channel**, repository URL, **Tags** and **Description**. The services list opens on **Active** services; archiving a service marks it deprecated, and you can show it again with the **Status** filter. The service detail page has three sections.
+For each service, set its name, tier, **Status** (**Active** or **Deprecated**), environment, owner team, **Owner** (one person who is a project editor or admin; they are emailed when a SEV1 or SEV2 opens if the project's incident policy has **Email the service owners for SEV1 and SEV2** on and the incident is opened by someone else, and an alert incident for the service is assigned to them), OpenTelemetry service name, **Slack channel**, repository URL, **Tags** and **Description**. The services list opens on **Active** services; archiving a service marks it deprecated, and you can show it again with the **Status** filter (which can also list merged services). The service detail page has three sections.
 
 | Section | Shows |
 |---|---|
@@ -149,7 +149,7 @@ Optionally save a query for bounded questions responders repeat, and validate ea
 
 Each organization has a daily AI usage limit shared by investigations, triage, evidence briefs, and Copilot chat. It counts tokens reported by the AI provider and resets at 00:00 UTC. When it is reached, new AI requests return a "daily AI usage limit" message and evidence briefs fall back to a plain summary.
 
-Self-hosted deployments set the limit with `SRE_DAILY_TOKEN_LIMIT_PER_ORG` (default `2000000`; `0` disables the limit).
+Self-hosted deployments set the limit with `SRE_DAILY_TOKEN_LIMIT_PER_ORG` (default `2000000`; `0` disables the limit). Set it in `.env` and recreate the app.
 
 If an investigation stops reporting, wait five minutes, then start a new run for that incident. Failed runs are not charged and do not use the free-trial allowance.
 

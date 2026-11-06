@@ -101,11 +101,11 @@ supercheck ci init --github`,
       },
       {
         title: "Give your coding agent the context",
-        body: "Install the Supercheck skill for your coding agent, and connect AI tools to the read-only MCP server so they can look at tests, runs, monitors and incidents.",
+        body: "Install the Supercheck skill for your coding agent, and connect AI tools to the MCP server so they can look at tests, runs, monitors and incidents. Connections are read-only unless you approve an optional scope.",
         bullets: [
           "supercheck agent install for Claude, Cursor, Codex and OpenCode",
           "MCP clients sign in with your Supercheck account",
-          "The MCP server is read-only and off by default when self-hosting",
+          "Read-only by default, and off by default when self-hosting",
         ],
         href: "/docs/mcp/connect",
         linkLabel: "Connect an MCP client",
@@ -116,7 +116,7 @@ supercheck ci init --github`,
           code: `# Install the Supercheck skill for your coding agent
 supercheck agent install --target claude
 
-# Connect Claude Code to the read-only MCP server
+# Connect Claude Code to the MCP server
 claude mcp add --transport http supercheck \\
   https://your-supercheck-host/api/mcp`,
         },
@@ -186,7 +186,7 @@ claude mcp add --transport http supercheck \\
         ],
         href: "/docs/app/investigate/incidents",
         linkLabel: "Incident investigation",
-        visual: shot("incident-workspace-overview", "Incident workspace for an API gateway incident with severity and status"),
+        visual: shot("incident-workspace-overview", "Incident workspace for a Checkout API incident with severity, status and summary"),
       },
       {
         title: "Keep users informed",
@@ -198,7 +198,7 @@ claude mcp add --transport http supercheck \\
         ],
         href: "/docs/app/communicate/status-pages",
         linkLabel: "Status pages",
-        visual: shot("status-page-public", "Public status page with an active status update and uptime bars"),
+        visual: shot("status-page-public", "Public status page with a partial outage banner and 90-day uptime bars"),
       },
     ],
     closing: {
@@ -237,11 +237,11 @@ claude mcp add --transport http supercheck \\
         bullets: [
           "Recorder extension for Chrome and Edge",
           "Browser, API, database and custom tests",
-          "Reports with traces, screenshots and video for every run",
+          "Browser test reports with traces, screenshots and video",
         ],
         href: "/docs/app/automate/playground",
         linkLabel: "Playground",
-        visual: shot("playground-editor", "Playground editor with a Playwright API test and test details panel"),
+        visual: shot("playground-editor", "Playground editor with a Playwright browser test and the test details panel"),
       },
       {
         title: "Load test with k6",
@@ -277,6 +277,7 @@ claude mcp add --transport http supercheck \\
         ],
         href: "/docs/app/automate/requirements",
         linkLabel: "Requirements",
+        visual: shot("requirements-list", "Requirements list with coverage status, priority and tags"),
       },
     ],
     closing: {
@@ -313,9 +314,9 @@ claude mcp add --transport http supercheck \\
         title: "One dashboard per project",
         body: "See test runs, job results, monitor status and uptime trends for a project at a glance.",
         bullets: [
-          "Playwright and k6 analytics",
-          "Monitor status and uptime trend",
-          "Recent runs and their results",
+          "Requirements coverage, test, job and monitor counts",
+          "Monitor status and a 30-day uptime trend",
+          "Failed runs and open incidents that need attention",
         ],
         href: "/docs/app/communicate/dashboard",
         linkLabel: "Dashboard",
@@ -331,6 +332,7 @@ claude mcp add --transport http supercheck \\
         ],
         href: "/docs/app/automate/requirements",
         linkLabel: "Requirements",
+        visual: shot("requirements-list", "Requirements list with coverage status, priority, tags and the Export button"),
       },
       {
         title: "Access that matches your org chart",
@@ -342,6 +344,10 @@ claude mcp add --transport http supercheck \\
         ],
         href: "/docs/app/admin/roles-and-permissions",
         linkLabel: "Roles and permissions",
+        visual: shot(
+          "org-admin-member-invite-dialog",
+          "Invite Member dialog with Viewer, Editor, Project Admin and Org Admin access levels and project permissions",
+        ),
       },
       {
         title: "Keep your data where you choose",
@@ -353,6 +359,16 @@ claude mcp add --transport http supercheck \\
         ],
         href: "/docs/app/deployment/self-hosted",
         linkLabel: "Self-hosting guide",
+        visual: {
+          kind: "code",
+          filename: "terminal",
+          lang: "bash",
+          code: `# Download the installer for a release
+curl -fsSL https://raw.githubusercontent.com/supercheck-io/supercheck/v1.6.0/deploy/docker/install.sh -o install.sh
+
+# Install on a Linux server with your domain and HTTPS
+sudo bash install.sh --version 1.6.0 --domain app.example.com --email you@example.com --yes`,
+        },
       },
     ],
     closing: {

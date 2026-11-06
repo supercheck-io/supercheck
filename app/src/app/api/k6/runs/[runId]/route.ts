@@ -82,7 +82,18 @@ export async function GET(
       return NextResponse.json({ error: "Run not found" }, { status: 404 });
     }
 
-    return NextResponse.json(result[0]);
+    // Return app routes, never the internal storage URLs the row stores.
+    const row = result[0];
+    const artifact = (stored: string | null, file: string) =>
+      stored ? `/api/test-results/${encodeURIComponent(row.runId)}/${file}` : null;
+    return NextResponse.json({
+      ...row,
+      reportS3Url: artifact(row.reportS3Url, "report/report.html"),
+      summaryS3Url: artifact(row.summaryS3Url, "summary.json"),
+      consoleS3Url: artifact(row.consoleS3Url, "console.log"),
+      runReportUrl: artifact(row.runReportUrl, "report/report.html"),
+      runLogsUrl: artifact(row.runLogsUrl, "console.log"),
+    });
   } catch (error) {
     if (isAuthError(error)) {
       return NextResponse.json(

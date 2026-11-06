@@ -97,8 +97,10 @@ fi
 
 ```
 HTTP/1.1 401 Unauthorized
-{"error": "Unauthorized"}
+{"error": "Invalid or expired CLI token"}
 ```
+
+The message varies (for example `Authentication required`, or `Invalid token type` for a trigger key used on a general endpoint).
 
 **Fix:** Verify your token is valid with `supercheck whoami`. Create a new token if needed.
 
@@ -131,8 +133,16 @@ HTTP/1.1 404 Not Found
 ```
 HTTP/1.1 429 Too Many Requests
 Retry-After: 60
-{"error": "Rate limit exceeded"}
+{
+  "error": "Rate limit exceeded",
+  "message": "API key rate limit exceeded. Retry after 60 seconds.",
+  "limit": 100,
+  "remaining": 0,
+  "resetAt": "2026-01-01T00:01:00.000Z"
+}
 ```
+
+This is the body from the job trigger endpoint. Other endpoints can return a shorter `{"error": "Too many requests"}`.
 
 **Fix:** The CLI handles this automatically. If hitting limits frequently, consider batching operations or using longer intervals between requests.
 

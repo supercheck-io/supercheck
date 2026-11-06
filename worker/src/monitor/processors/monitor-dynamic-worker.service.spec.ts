@@ -384,6 +384,39 @@ describe('MonitorDynamicWorkerService lifecycle', () => {
     expect(moveToDelayed).toHaveBeenCalledWith(expect.any(Number), 'token');
   });
 
+  it('saves legacy single-queue results inside the job and never re-runs a check whose save failed', async () => {
+    const { service } = setup();
+    const results = [{ monitorId: 'm1' }];
+    const saveMonitorResults = jest
+      .fn()
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error('db down'));
+    const executeMonitorWithLocations = jest.fn().mockResolvedValue(results);
+    Object.assign(service['monitorService'], {
+      executeMonitorWithLocations,
+      saveMonitorResults,
+    });
+    jest
+      .spyOn(service as any, 'assertBrowserCapability')
+      .mockResolvedValue(undefined);
+    const job = {
+      name: EXECUTE_MONITOR_JOB_NAME,
+      data: { type: 'http_request', monitorId: 'm1' },
+    };
+    await expect(service['processJob'](job as never)).resolves.toBe(results);
+    expect(saveMonitorResults).toHaveBeenCalledWith(results, {
+      rethrow: true,
+    });
+    executeMonitorWithLocations.mockClear();
+    const failure = service['processJob'](job as never);
+    await expect(failure).rejects.toBeInstanceOf(ResultNotKeptError);
+    await expect(failure).rejects.toBeInstanceOf(
+      jest.requireActual('bullmq').UnrecoverableError,
+    );
+    // Executed once; the unrecoverable error stops BullMQ from running the check again.
+    expect(executeMonitorWithLocations).toHaveBeenCalledTimes(1);
+  });
+
   function setup(location = 'local') {
     const execute = jest.fn().mockRejectedValue(new Error('DB unavailable'));
     const subscriber = Object.assign(new EventEmitter(), {

@@ -177,6 +177,12 @@ Validate with `supercheck config validate`, preview with `supercheck diff`, appl
 <Accordions>
 <Accordion title="project and api" id="project">
 
+**Root**
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `schemaVersion` | `string` | Yes | Must be `'1.0'` |
+
 **`project`**
 
 | Field | Type | Required | Description |
@@ -206,10 +212,11 @@ Validate with `supercheck config validate`, preview with `supercheck diff`, appl
 |---|---|---|
 | `id` | `string` | Database UUID (present for existing resources, omit for new) |
 | `name` | `string` | Job display name |
+| `description` | `string` | Optional job description |
 | `jobType` | `string` | Job runner type (`playwright`, `k6`) |
 | `cronSchedule` | `string` | Cron expression |
 | `tests` | `string[]` | Test file paths or IDs |
-| `alertConfig` | `object` | Alert config with `notificationProviders` (UUIDs), `alertOnFailure`, etc. Incident fields: `incidentEnabled`, `incidentSeverity`, `autoResolveIncident` (see below) |
+| `alertConfig` | `object` | Alert config with `notificationProviders` (UUIDs), `alertOnFailure`, `alertOnSuccess`, `alertOnTimeout`, `failureThreshold`, `recoveryThreshold` (positive integers), `customMessage`. Incident fields: `incidentEnabled`, `incidentSeverity`, `autoResolveIncident` (see below) |
 
 </Accordion>
 <Accordion title="monitors[]" id="monitors">
@@ -218,12 +225,13 @@ Validate with `supercheck config validate`, preview with `supercheck diff`, appl
 |---|---|---|
 | `id` | `string` | Database UUID (present for existing resources, omit for new) |
 | `name` | `string` | Monitor display name |
+| `description` | `string` | Optional monitor description |
 | `type` | `string` | `http_request`, `website`, `ping_host`, `port_check`, `synthetic_test` |
 | `target` | `string` | URL or host to monitor |
 | `frequencyMinutes` | `number` | Check interval in minutes |
 | `enabled` | `boolean` | Whether the monitor is active |
 | `config` | `object` | Monitor-specific config (`method`, `timeoutSeconds`, `expectedStatusCodes`, `locationConfig`) |
-| `alertConfig` | `object` | Alert config with `notificationProviders` (UUIDs), `alertOnFailure`, `alertOnRecovery`. Incident fields: `incidentEnabled`, `incidentSeverity`, `autoResolveIncident` (see below) |
+| `alertConfig` | `object` | Alert config with `notificationProviders` (UUIDs), `alertOnFailure`, `alertOnRecovery`, `alertOnTimeout`, `alertOnSslExpiration`, `failureThreshold`, `recoveryThreshold` (positive integers), `customMessage`. Incident fields: `incidentEnabled`, `incidentSeverity`, `autoResolveIncident` (see below) |
 | `tags` | `string[]` | Tag names assigned to the monitor. Omit to leave remote tags unchanged; names compare case-insensitively and must exist in the project or under `tags[]` |
 
 Jobs have no `tags` field; a config containing one fails validation.
@@ -292,7 +300,7 @@ When the page declares `components`, remote components missing from that list ar
 
 | Field | Type | Description |
 |---|---|---|
-| `key` | `string` | Variable name |
+| `key` | `string` | Variable name (4-20 characters) |
 | `value` | `string` | Variable value |
 | `isSecret` | `boolean` | Whether the value is encrypted |
 | `description` | `string` | Optional description |
@@ -302,7 +310,7 @@ When the page declares `components`, remote components missing from that list ar
 | Field | Type | Description |
 |---|---|---|
 | `id` | `string` | Database UUID |
-| `name` | `string` | Tag name |
+| `name` | `string` | Tag name (3-20 characters) |
 | `color` | `string` | Hex color code |
 
 </Accordion>

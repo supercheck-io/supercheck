@@ -1718,7 +1718,46 @@ async function executeMcp(job: LeasedJob): Promise<ConnectorExecutionResult> {
   };
 }
 
+/**
+ * Every connector's evidence is redacted and clipped to the app's result schema
+ * (title 500, sourceUri 1000, summary 2000), so one oversized or credential-echoing
+ * field can neither fail the whole result nor leak. Ids were hashed from the unclipped values.
+ */
 export async function executePrivateAgentConnectorJob(
+  job: LeasedJob,
+): Promise<ConnectorExecutionResult> {
+  const result = await runConnectorJob(job);
+  const secrets = credentialSecrets(job);
+  const fallbackUri = () => {
+    try {
+      return clip(normalizedEndpoint(job.jobSpec), 1000, secrets);
+    } catch {
+      return ''; // connector types that need an endpointUrl and have none
+    }
+  };
+  const evidence = result.evidence.map((item) => {
+    const sanitized = {
+      sourceUri:
+        clip(item.sourceUri, 1000, secrets).trim() ||
+        fallbackUri() ||
+        job.jobSpec.connectorType,
+      title: clip(item.title, 500, secrets).trim() || 'Untitled evidence',
+      summary: clip(item.summary, 2000, secrets),
+      evidenceType: item.evidenceType,
+      observedAt: item.observedAt,
+    };
+    // Hashed from the sanitized fields only: a hash of the raw payload would let a reader confirm a
+    // guess at a redacted secret.
+    return { ...item, ...sanitized, resultHash: hashPayload(sanitized) };
+  });
+  return {
+    evidence,
+    truncated: result.truncated,
+    resultHash: hashPayload({ evidence, truncated: result.truncated }),
+  };
+}
+
+async function runConnectorJob(
   job: LeasedJob,
 ): Promise<ConnectorExecutionResult> {
   switch (job.jobSpec.connectorType) {
