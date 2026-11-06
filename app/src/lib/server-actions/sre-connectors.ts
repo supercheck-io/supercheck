@@ -355,7 +355,10 @@ function normalizeEndpointUrl(value: string | null | undefined, connectorType?: 
 }
 
 function normalizePrivateAgentJobSummary(
-  row: typeof privateAgentJobs.$inferSelect | null,
+  row: Pick<
+    typeof privateAgentJobs.$inferSelect,
+    "id" | "status" | "createdAt" | "completedAt" | "errorCode" | "resultHash" | "resultSummary"
+  > | null,
 ): SreConnectorListItem["latestPrivateAgentJob"] {
   if (!row) return null;
 
@@ -624,15 +627,28 @@ export async function getSreConnectors(
         })
         .from(externalConnectorCredentials)
         .where(inArray(externalConnectorCredentials.connectorId, connectorIds)),
-      db.query.privateAgentJobs.findMany({
-        where: and(
-          eq(privateAgentJobs.organizationId, organizationId),
-          eq(privateAgentJobs.projectId, project.id),
-          eq(privateAgentJobs.jobClass, "sre_connector_query"),
-          inArray(privateAgentJobs.connectorId, connectorIds),
-        ),
-        orderBy: desc(privateAgentJobs.createdAt),
-      }),
+      // Latest job per connector only, without job_spec or other heavy columns.
+      db
+        .selectDistinctOn([privateAgentJobs.connectorId], {
+          connectorId: privateAgentJobs.connectorId,
+          id: privateAgentJobs.id,
+          status: privateAgentJobs.status,
+          createdAt: privateAgentJobs.createdAt,
+          completedAt: privateAgentJobs.completedAt,
+          errorCode: privateAgentJobs.errorCode,
+          resultHash: privateAgentJobs.resultHash,
+          resultSummary: privateAgentJobs.resultSummary,
+        })
+        .from(privateAgentJobs)
+        .where(
+          and(
+            eq(privateAgentJobs.organizationId, organizationId),
+            eq(privateAgentJobs.projectId, project.id),
+            eq(privateAgentJobs.jobClass, "sre_connector_query"),
+            inArray(privateAgentJobs.connectorId, connectorIds),
+          ),
+        )
+        .orderBy(privateAgentJobs.connectorId, desc(privateAgentJobs.createdAt), desc(privateAgentJobs.id)),
     ]);
 
     const servicesByConnectorId = new Map<string, string[]>();
@@ -645,10 +661,7 @@ export async function getSreConnectors(
     const credentialConnectorIds = new Set(
       credentialRows.map((row) => row.connectorId),
     );
-    const latestJobByConnectorId = new Map<
-      string,
-      typeof privateAgentJobs.$inferSelect
-    >();
+    const latestJobByConnectorId = new Map<string, (typeof jobRows)[number]>();
     for (const row of jobRows) {
       if (row.connectorId && !latestJobByConnectorId.has(row.connectorId)) {
         latestJobByConnectorId.set(row.connectorId, row);
