@@ -35,4 +35,10 @@ describe("AI report access", () => {
     jest.mocked(hasPermissionForUser).mockResolvedValue(false);
     expect(await AuthService.canAccessTestReport(session, "artifact-id", "browser")).toBe(false);
   });
+  it("checks update access when the caller asks for it (AI fix)", async () => {
+    jest.mocked(resolveAccessContext).mockResolvedValue({ organizationId: "org", projectId: "project" });
+    jest.mocked(hasPermissionForUser).mockResolvedValue(false);
+    expect(await AuthService.canAccessTestReport(session, "artifact-id", "browser", "update")).toBe(false);
+    expect(hasPermissionForUser).toHaveBeenCalledWith("user", "test", "update", { organizationId: "org", projectId: "project" });
+  });
 });

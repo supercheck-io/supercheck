@@ -272,3 +272,137 @@ describe('MonitorEvaluator recovery alert after a short blip', () => {
     ).toBeUndefined();
   });
 });
+
+describe('MonitorEvaluator recovery alert retries', () => {
+  /** Runs consecutive up-checks after an outage; returns the success counts that attempted a recovery alert. */
+  async function recoveryAttempts(
+    multiLocation: boolean,
+    recoveryThreshold: number,
+    outcome: { delivered: boolean; suppressed?: boolean; reason?: string },
+    upTo = 40,
+  ) {
+    let recoveriesRecorded = 0;
+    const latest = {
+      id: 'r1',
+      consecutiveSuccessCount: 0,
+      alertsSentForRecovery: 0,
+      details: { recoverySequence: true },
+    };
+    const set = jest.fn((values: { alertsSentForRecovery?: number }) => {
+      if (values.alertsSentForRecovery !== undefined) recoveriesRecorded++;
+      return { where: jest.fn() };
+    });
+    const dbService = {
+      db: {
+        query: { monitorResults: { findFirst: jest.fn(async () => latest) } },
+        update: jest.fn(() => ({ set })),
+      },
+    };
+    const attempted: number[] = [];
+    const alertService = {
+      sendNotification: jest.fn(async () => {
+        attempted.push(latest.consecutiveSuccessCount);
+        return outcome;
+      }),
+      signalRecovery: jest.fn(),
+    };
+    const evaluator = new MonitorEvaluator(
+      dbService as never,
+      alertService as never,
+    );
+    const persist = jest
+      .spyOn(evaluator as never, 'persistAggregatedAlertState')
+      .mockImplementation((async (
+        _id: string,
+        _config: unknown,
+        state: { alertsSentForRecovery: number },
+      ) => {
+        if (state.alertsSentForRecovery > 0) recoveriesRecorded++;
+      }) as never);
+
+    for (let count = 1; count <= upTo; count++) {
+      latest.consecutiveSuccessCount = count;
+      latest.alertsSentForRecovery = recoveriesRecorded;
+      await evaluator.evaluateAndSendAlert({
+        monitorId: 'm1',
+        monitor: {
+          alertConfig: {
+            enabled: true,
+            alertOnRecovery: true,
+            failureThreshold: 1,
+            recoveryThreshold,
+          },
+          config: {},
+        } as never,
+        previousStatus: 'up',
+        currentStatus: 'up',
+        reason: 'up',
+        metadata: multiLocation ? { locationResults: [{}, {}] } : {},
+        preparedAlertState: multiLocation
+          ? {
+              consecutiveFailureCount: 0,
+              consecutiveSuccessCount: count,
+              alertsSentForFailure: 0,
+              alertsSentForRecovery: recoveriesRecorded,
+              recoverySequence: true,
+            }
+          : undefined,
+      });
+    }
+    persist.mockRestore();
+    return { attempted, recoveriesRecorded };
+  }
+
+  it.each([
+    [false, 1, [1, 2, 3, 4, 5]],
+    [true, 1, [1, 2, 3, 4, 5]],
+    [false, 3, [3, 4, 5, 6, 7, 8]],
+    [true, 3, [3, 4, 5, 6, 7, 8]],
+  ])(
+    'stops retrying an undeliverable recovery (multi=%s, threshold %s)',
+    async (multi, threshold, expected) => {
+      const { attempted, recoveriesRecorded } = await recoveryAttempts(
+        multi,
+        threshold,
+        { delivered: false },
+      );
+      expect(attempted).toEqual(expected);
+      expect(recoveriesRecorded).toBe(0);
+    },
+  );
+
+  it.each([
+    [false, 1],
+    [true, 1],
+    [false, 3],
+    [true, 3],
+  ])(
+    'treats a suppressed recovery as consumed (multi=%s, threshold %s)',
+    async (multi, threshold) => {
+      const { attempted, recoveriesRecorded } = await recoveryAttempts(
+        multi,
+        threshold,
+        { delivered: false, suppressed: true, reason: 'maintenance' },
+      );
+      expect(attempted).toEqual([threshold]);
+      expect(recoveriesRecorded).toBeGreaterThan(0);
+    },
+  );
+
+  it.each([
+    [false, 1],
+    [true, 3],
+  ])(
+    'keeps retrying a recovery suppressed for lack of providers within the bound (multi=%s, threshold %s)',
+    async (multi, threshold) => {
+      const { attempted, recoveriesRecorded } = await recoveryAttempts(
+        multi,
+        threshold,
+        { delivered: false, suppressed: true, reason: 'no_providers' },
+      );
+      expect(attempted.length).toBeGreaterThan(1);
+      expect(attempted.length).toBeLessThanOrEqual(Math.max(5, threshold * 2));
+      expect(recoveriesRecorded).toBe(0);
+    },
+  );
+});

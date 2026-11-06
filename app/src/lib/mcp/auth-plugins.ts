@@ -100,6 +100,16 @@ export function mcpAuthorizeRequiresResource(resource: string): BetterAuthPlugin
                 error_description: `The scope parameter must include ${MCP_READ_SCOPE}`,
               });
             }
+            // An omitted scope would default to every scope the client registered (all of them for DCR clients).
+            // Narrow it to read-only; clients that need more must ask for it explicitly.
+            if (scope.length === 0) {
+              const post = (ctx as { method?: string }).method === "POST";
+              return {
+                context: post
+                  ? { body: { ...(ctx.body as object | undefined), scope: MCP_READ_SCOPE } }
+                  : { query: { ...(ctx.query as object | undefined), scope: MCP_READ_SCOPE } },
+              };
+            }
           }),
         },
       ],

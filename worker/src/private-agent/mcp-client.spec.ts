@@ -393,3 +393,55 @@ describe('redactMcpText connection strings', () => {
     expect(redactMcpText(input)).toBe(expected);
   });
 });
+
+describe('redactMcpText parity with the app sanitizer', () => {
+  it.each([
+    ['DB_PASSWORD=hunter2', 'hunter2'],
+    ['password: "abc def"', 'abc def'],
+    ["DB_PASSWORD='x y'", 'x y'],
+    ['{"db_password":"pw1"}', 'pw1'],
+    ['{"accessToken":"tk1"}', 'tk1'],
+    ['{"credentials":"cr1"}', 'cr1'],
+    ['{"authorization":"au1"}', 'au1'],
+    ['dbPassword=hunter2', 'hunter2'],
+    ['githubToken: ghx12345678', 'ghx12345678'],
+    ['stripeApiKey=abc999', 'abc999'],
+    ['AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI', 'wJalrXUtnFEMI'],
+    ['client_secret: abcd1234xyz', 'abcd1234xyz'],
+    ['{"clientSecret":"s3cr3t-value"}', 's3cr3t-value'],
+    ['{"dbPassword": "pa55word"}', 'pa55word'],
+    ['https://x.example/f?X-Amz-Signature=deadbeef01&a=1', 'deadbeef01'],
+    ['https://x.example/f?sig=abc123def', 'abc123def'],
+    ['key AIzaSyA1234567890abcdefghijklmnopqrstuv end', 'AIzaSyA1234567'],
+    [
+      'POST https://hooks.slack.com/services/T000/B000/XXXXsecretXXXX',
+      'XXXXsecretXXXX',
+    ],
+    ['github_pat_11ABCDEFG0abcdefghijklmnop', 'github_pat_11ABC'],
+    ['glpat-abcdefghijklmnopqrstuv', 'glpat-abcdefgh'],
+    ['sntrys_eyJhbGciOiJIUzI1NiIsInR5cCI6', 'sntrys_eyJhb'],
+    ['sk_live_abcdefghijklmnop1234', 'sk_live_abcdef'],
+    ['rk_live_abcdefghijklmnop1234', 'rk_live_abcdef'],
+    ['Authorization: Basic dXNlcjpwYXNzd29yZA==', 'dXNlcjpwYXNzd29yZA'],
+  ])('redacts %s', (input, secret) => {
+    const out = redactMcpText(input);
+    expect(out).not.toContain(secret);
+    expect(out).toContain('[REDACTED');
+  });
+
+  it('leaves look-alike words untouched', () => {
+    expect(redactMcpText('tokenizer=fast')).toBe('tokenizer=fast');
+    expect(redactMcpText('{"tokenizer":"gpt"}')).toBe('{"tokenizer":"gpt"}');
+    expect(redactMcpText('{"token_count":5}')).toBe('{"token_count":5}');
+    expect(redactMcpText('{"token_count":"5"}')).toBe('{"token_count":"5"}');
+    expect(redactMcpText('monkey=banana')).toBe('monkey=banana');
+    expect(redactMcpText('signature_algo=rsa')).toBe('signature_algo=rsa');
+  });
+
+  it('stays linear on long separator-heavy input', () => {
+    const start = Date.now();
+    redactMcpText(`${'a_'.repeat(20_000)}password`);
+    redactMcpText(`{"${'a'.repeat(50_000)}`);
+    expect(Date.now() - start).toBeLessThan(2000);
+  });
+});

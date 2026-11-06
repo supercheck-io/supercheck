@@ -440,6 +440,23 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleDestroy(): Promise<void> {
+    // This hook runs before the BullMQ workers close, so give in-flight runs a bounded
+    // window to finish before deleting the Jobs that are still alive. The window must stay
+    // below the orchestrator's grace period (Kubernetes terminationGracePeriodSeconds, default
+    // 30s; Compose stop_grace_period, 30s in the bundled files), or the process is SIGKILLed
+    // before the cleanup below runs. Raise that grace period before raising this value.
+    const raw = process.env.WORKER_SHUTDOWN_DRAIN_MS?.trim();
+    const configured = raw ? Number(raw) : NaN; // blank means the default
+    const drainMs =
+      Number.isFinite(configured) && configured >= 0
+        ? Math.min(configured, 600_000)
+        : 20_000;
+    // Monotonic clock: a wall-clock step must not stretch or cut the window.
+    const drainDeadline = performance.now() + drainMs;
+    while (this.runningJobs.size > 0 && performance.now() < drainDeadline) {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+
     // Clear all cancellation intervals
     for (const interval of this.activeCancellationIntervals) {
       clearInterval(interval);

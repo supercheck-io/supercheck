@@ -8,6 +8,8 @@ import { validateAIConfiguration } from "@/lib/ai/ai-provider";
 import { AIPromptBuilder } from "@/lib/ai/ai-prompts";
 import { getActiveOrganization } from "@/lib/session";
 import { reserveAICredit } from "@/lib/ai/ai-credit-reservation";
+import { requireAuthContext } from "@/lib/auth-context";
+import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { headers } from "next/headers";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { subscriptionService } from "@/lib/services/subscription-service";
@@ -111,12 +113,28 @@ export async function POST(request: NextRequest) {
     const { requireAuth } = await import("@/lib/rbac/middleware");
     const authResult = await requireAuth();
     const userId = authResult.user.id;
+    // Generated tests are for saving, so spending a credit needs create access in the active project.
+    const authContext = await requireAuthContext();
+    if (!checkPermissionWithContext("test", "create", authContext)) {
+      return NextResponse.json(
+        { success: false, reason: "forbidden", message: "You do not have permission to create tests." },
+        { status: 403 },
+      );
+    }
 
     const activeOrg = await getActiveOrganization();
     if (!activeOrg) {
       return NextResponse.json(
         { success: false, reason: "organization_required", message: "Select an organization before using AI features." },
         { status: 400 },
+      );
+    }
+    // Authorization, billing and the response must all be the same caller: a session plus someone else's
+    // CLI token would otherwise check one identity's role and charge the other's organization.
+    if (authContext.userId !== userId || authContext.organizationId !== activeOrg.id) {
+      return NextResponse.json(
+        { success: false, reason: "forbidden", message: "You do not have permission to create tests." },
+        { status: 403 },
       );
     }
     const orgId = activeOrg?.id;

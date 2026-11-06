@@ -126,7 +126,11 @@ export class MonitorAlertService {
       this.logger.log(
         `[NOTIFY] Suppressing monitor ${monitorId} alert during scheduled maintenance`,
       );
-      return { delivered: false, suppressed: true };
+      return {
+        delivered: false,
+        suppressed: true,
+        reason: 'maintenance' as const,
+      };
     }
 
     // Get notification providers
@@ -164,7 +168,11 @@ export class MonitorAlertService {
         `[NOTIFY] No notification providers configured for monitor ${monitorId}`,
       );
       // Nothing to deliver to: not a failure, so the cycle is receipted instead of retried 5 times.
-      return { delivered: false, suppressed: true };
+      return {
+        delivered: false,
+        suppressed: true,
+        reason: 'no_providers' as const,
+      };
     }
 
     // Determine notification details
@@ -287,16 +295,23 @@ export class MonitorAlertService {
         sentAt: new Date(),
       }));
 
-      const createdRows = await db
-        .insert(schema.alertHistory)
-        .values(historyRecords)
-        .returning({
-          id: schema.alertHistory.id,
-          status: schema.alertHistory.status,
-        });
-      await this.sreAlertTriageQueueService.enqueueAlertHistoryRows(
-        createdRows,
-      );
+      // Delivery already happened: a bookkeeping failure must not be reported as a failed delivery.
+      try {
+        const createdRows = await db
+          .insert(schema.alertHistory)
+          .values(historyRecords)
+          .returning({
+            id: schema.alertHistory.id,
+            status: schema.alertHistory.status,
+          });
+        await this.sreAlertTriageQueueService.enqueueAlertHistoryRows(
+          createdRows,
+        );
+      } catch (error) {
+        this.logger.error(
+          `[NOTIFY] Failed to record alert history for monitor ${monitorId}: ${getErrorMessage(error)}`,
+        );
+      }
     }
     // A provider that reached some recipients (partial email) counts as delivered: a retry would resend to them.
     return {

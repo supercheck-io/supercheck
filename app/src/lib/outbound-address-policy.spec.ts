@@ -20,6 +20,8 @@ describe("outbound address policy", () => {
     "::ffff:127.0.0.1",
     "::ffff:7f00:1",
     "[::ffff:ac12:5]",
+    "::ffff:0:127.0.0.1",
+    "::ffff:0:7f00:1",
   ])("rejects non-public address %s", (address) => {
     expect(isPrivateOrReservedAddress(address)).toBe(true);
   });

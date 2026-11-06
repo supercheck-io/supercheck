@@ -206,7 +206,6 @@ export async function GET(request: Request) {
           );
           if (report) {
             payload.reportPath = report.reportPath;
-            payload.s3Url = report.s3Url;
             payload.reportStatus = report.status;
             reportStatus = report.status;
           }
@@ -250,7 +249,6 @@ export async function GET(request: Request) {
               derivedStatus: deriveFinalStatus(status, status),
               testId,
               reportPath: report.reportPath,
-              s3Url: report.s3Url,
               errorDetails: report.errorDetails,
             });
           }
@@ -282,7 +280,6 @@ export async function GET(request: Request) {
           derivedStatus: deriveFinalStatus(initStatus, initStatus),
           testId,
           reportPath: initialReport.reportPath,
-          s3Url: initialReport.s3Url,
           errorDetails: initialReport.errorDetails,
         });
         if (isClosed) return;

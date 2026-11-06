@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { organization } from "@/db/schema";
 import { requireUserAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { getPolarConfig, isPolarEnabled } from "@/lib/feature-flags";
-import { getUserOrgRole, isImpersonatedSession } from "@/lib/rbac/middleware";
+import { getUserOrgRole, getImpersonationState } from "@/lib/rbac/middleware";
 import { Role } from "@/lib/rbac/permissions";
 import { requireSameOriginRequest } from "@/lib/security/same-origin";
 import { db } from "@/utils/db";
@@ -45,7 +45,14 @@ export async function POST(request: NextRequest) {
       );
     }
     // The portal can cancel the plan, change the card and show invoices.
-    if (await isImpersonatedSession()) {
+    const impersonation = await getImpersonationState();
+    if (impersonation === "unknown") {
+      return NextResponse.json(
+        { error: "Could not verify your session. Please try again." },
+        { status: 503 }
+      );
+    }
+    if (impersonation === "impersonated") {
       return NextResponse.json(
         { error: "Billing is unavailable while impersonating a user" },
         { status: 403 }

@@ -208,7 +208,9 @@ export async function validateScripts(
         warnings: data?.warnings,
       })
     } catch (err) {
-      if (err instanceof ApiRequestError) {
+      // A rejected script (400/413/422) is a validation result; any other API failure must surface as itself.
+      const status = err instanceof ApiRequestError ? err.statusCode : undefined
+      if (err instanceof ApiRequestError && status !== undefined && [400, 413, 422].includes(status)) {
         results.push({
           name: input.name,
           valid: false,

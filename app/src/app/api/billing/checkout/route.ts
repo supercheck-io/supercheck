@@ -8,7 +8,7 @@ import {
   getPolarProducts,
   isPolarEnabled,
 } from "@/lib/feature-flags";
-import { getUserOrgRole, isImpersonatedSession } from "@/lib/rbac/middleware";
+import { getUserOrgRole, getImpersonationState } from "@/lib/rbac/middleware";
 import { Role } from "@/lib/rbac/permissions";
 import { requireSameOriginRequest } from "@/lib/security/same-origin";
 import { BillingCustomerConflictError, ensurePolarCustomerAndLink } from "@/lib/services/organization-customer";
@@ -60,7 +60,14 @@ export async function POST(request: NextRequest) {
       );
     }
     // Support impersonation must never reach the owner's payment flows.
-    if (await isImpersonatedSession()) {
+    const impersonation = await getImpersonationState();
+    if (impersonation === "unknown") {
+      return NextResponse.json(
+        { error: "Could not verify your session. Please try again." },
+        { status: 503 }
+      );
+    }
+    if (impersonation === "impersonated") {
       return NextResponse.json(
         { error: "Billing is unavailable while impersonating a user" },
         { status: 403 }
@@ -140,7 +147,12 @@ export async function POST(request: NextRequest) {
     });
     // Webhooks can lag a completed payment; ask Polar so a second tab cannot open a duplicate subscription.
     const customerState = await polar.customers.getState(org.polarCustomerId);
-    if (customerState.active_subscriptions.length > 0) {
+    // Legacy orgs can share a customer: skip subscriptions tagged to another org, block untagged ones (fail closed).
+    const ownsActiveSubscription = customerState.active_subscriptions.some((subscription) => {
+      const referenceId = (subscription.metadata as Record<string, unknown> | undefined)?.referenceId;
+      return typeof referenceId !== "string" || referenceId === organizationId;
+    });
+    if (ownsActiveSubscription) {
       return NextResponse.json(
         {
           error:

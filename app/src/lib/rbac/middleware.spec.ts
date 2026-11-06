@@ -89,6 +89,7 @@ import { isSuperAdmin } from "./super-admin";
 
 import {
   isImpersonatedSession,
+  getImpersonationState,
   withRateLimit,
   canCancelRunInProject,
   requireAuth,
@@ -194,6 +195,7 @@ describe("RBAC Middleware", () => {
       const spy = jest.spyOn(console, "error").mockImplementation(() => undefined);
       rowFor(new Error("db down"));
       expect(await isImpersonatedSession()).toBe(true);
+      expect(await getImpersonationState()).toBe("unknown");
       expect(spy).toHaveBeenCalled();
       spy.mockRestore();
     });

@@ -113,6 +113,17 @@ describe("authoritative Polar subscription reconciliation", () => {
     await expect(reconcilePolarSubscription("org-1")).rejects.toThrow("Multiple");
     expect(subscriptionService.updateSubscription).not.toHaveBeenCalled();
   });
+  it("ignores a shared customer's subscription tagged to another organization", async () => {
+    const initial = { ...org, subscriptionId: null, subscriptionPlan: null };
+    jest.mocked(db.query.organization.findFirst).mockResolvedValue(initial as never);
+    locked = initial as unknown as typeof org;
+    global.fetch = jest.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ id: "cus-1", active_subscriptions: [
+      { id: "sub-other", product_id: "product-pro", metadata: { referenceId: "org-2" } },
+      { id: "sub-1", product_id: "product-plus", metadata: { referenceId: "org-1" } },
+    ] }) }).mockResolvedValueOnce({ ok: true, json: async () => snapshot });
+    await expect(reconcilePolarSubscription("org-1")).resolves.toBe(true);
+    expect(subscriptionService.updateSubscription).toHaveBeenCalledWith("org-1", expect.objectContaining({ subscriptionId: "sub-1" }), expect.anything());
+  });
   it("does nothing in self-hosted mode", async () => {
     jest.mocked(isPolarEnabled).mockReturnValueOnce(false);
     await expect(reconcilePolarSubscription("org-1")).resolves.toBe(false);

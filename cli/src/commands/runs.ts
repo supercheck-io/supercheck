@@ -3,14 +3,18 @@ import { parseIntStrict } from '../utils/number.js'
 import { Command } from 'commander'
 import { createAuthenticatedClient } from '../api/authenticated-client.js'
 import { logger } from '../utils/logger.js'
+import { redactText } from '../utils/redact.js'
 import { getOutputFormat, output, outputDetail, outputMutation, outputPagination } from '../output/formatter.js'
-import { CLIError, ExitCode } from '../utils/errors.js'
+import { ApiRequestError, CLIError, ExitCode } from '../utils/errors.js'
 import type { PaginatedResponse } from '../api/client.js'
 import { withSpinner } from '../utils/spinner.js'
 import { getSse } from '../utils/sse.js'
 import { publicReportUrl } from '../utils/report-url.js'
 
 export { publicReportUrl }
+
+const MAX_PENDING_CONSOLE = 64 * 1024
+const CONSOLE_TAIL = 1024
 
 export const runCommand = new Command('run')
   .description('Manage runs')
@@ -96,19 +100,67 @@ runCommand
   .option('--idle-timeout <seconds>', 'Abort if no data received within this period', '60')
   .action(async (id: string, options: { idleTimeout: string }) => {
     const json = getOutputFormat() === 'json'
+    let sawTerminal = false
+    // The worker forwards raw chunks, so a token can span events: redact only complete lines and hold the rest.
+    let pending = ''
+    // After an omitted chunk, the rest of that word may still arrive: drop it up to the next whitespace.
+    let skippingWord = false
+    const flushConsole = () => { if (pending) process.stdout.write(redactText(pending)); pending = '' }
+    const writeConsole = (chunk: string) => {
+      if (skippingWord) {
+        const next = chunk.search(/\s/)
+        if (next === -1) return
+        skippingWord = false
+        chunk = chunk.slice(next)
+      }
+      pending += chunk
+      const end = pending.lastIndexOf('\n') + 1
+      if (end > 0) { process.stdout.write(redactText(pending.slice(0, end))); pending = pending.slice(end) }
+      // A stream that never sends a newline must not grow without bound. Cut only at whitespace (tokens contain none),
+      // keeping a tail; with no whitespace to cut at, fail closed rather than emit a fragment that could be half a token.
+      if (pending.length > MAX_PENDING_CONSOLE) {
+        const cut = pending.slice(0, -CONSOLE_TAIL).search(/\s\S*$/)
+        if (cut > 0) {
+          process.stdout.write(redactText(pending.slice(0, cut + 1)))
+          pending = pending.slice(cut + 1)
+        } else {
+          process.stdout.write('[console output omitted: line too long]\n')
+          pending = ''
+          skippingWord = true
+        }
+      }
+    }
+    try {
     await getSse(`/api/runs/${id}/stream`, ({ event, data }) => {
       const record = typeof data === 'object' && data !== null ? data as Record<string, unknown> : {}
       if (json) logger.output(JSON.stringify({ event, data }))
-      else if (getOutputFormat() === 'table' && event === 'console' && typeof record.line === 'string') process.stdout.write(record.line)
+      else if (getOutputFormat() === 'table' && event === 'console' && typeof record.line === 'string') writeConsole(record.line)
       else if (event === 'status') logger.info(`Status: ${String(record.status ?? 'unknown')}`)
       if (event === 'complete') {
-        if (['failed', 'error', 'cancelled', 'canceled', 'blocked', 'not_found'].includes(String(record.status))) {
-          throw new CLIError(`Run ended with status: ${String(record.status)}`, ExitCode.GeneralError)
+        flushConsole()
+        const status = String(record.status)
+        // Servers before the queued fix report `complete` for a run that has not started: keep waiting for its outcome.
+        if (['queued', 'running'].includes(status)) return false
+        sawTerminal = true
+        if (!['passed', 'completed'].includes(status)) {
+          throw new CLIError(`Run ended with status: ${status}`, ExitCode.GeneralError)
         }
-        if (!json) logger.success(`Run complete: ${String(record.status ?? 'done')}`)
+        if (!json) logger.success(`Run complete: ${status}`)
         return false
       }
     }, { idleTimeoutMs: Math.max(Number(options.idleTimeout) || 60, 10) * 1000, isTerminal: ({ event }) => event === 'complete' })
+    } catch (error) {
+      // A dropped, truncated or timed-out stream says nothing about the run; resume by polling. Run failures (exit 1),
+      // Ctrl-C and HTTP errors (auth, not found) are not stream drops.
+      const dropped = error instanceof CLIError && !(error instanceof ApiRequestError) && [ExitCode.ApiError, ExitCode.Timeout].includes(error.exitCode)
+      if (!dropped) throw error
+    } finally {
+      flushConsole()
+    }
+    if (!sawTerminal) {
+      const run = await waitForRun(createAuthenticatedClient(), id, 30 * 60 * 1000)
+      if (!json) logger.success(`Run complete: ${String(run.status)}`)
+    }
   })
 
 runCommand
