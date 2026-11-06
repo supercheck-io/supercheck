@@ -12,6 +12,7 @@ import {
 } from "@react-email/components";
 import { plainTextSelectors } from "@react-email/render";
 import * as React from "react";
+import { PALETTE } from "./palette";
 
 interface BaseLayoutProps {
   preview: string;
@@ -22,20 +23,26 @@ interface BaseLayoutProps {
   showStandardFooter?: boolean;
   /** Header wordmark; false for status-page emails, which carry the customer's page name. */
   showBrand?: boolean;
+  /** Document language (status-page emails); RTL languages also set dir="rtl". */
+  lang?: string;
 }
+
+const RTL_LANGUAGES = new Set(["ar", "he", "fa", "ur"]);
 
 export const BaseLayout = ({
   preview,
   title,
   children,
   footer,
-  headerColor = "#15803d",
+  headerColor = PALETTE.neutral,
   showStandardFooter = true,
   showBrand = true,
+  lang = "en",
 }: BaseLayoutProps) => {
+  const dir = RTL_LANGUAGES.has(lang.toLowerCase().split("-")[0]) ? "rtl" : "ltr";
   const headerText = readableTextColor(headerColor);
   return (
-    <Html>
+    <Html lang={lang} dir={dir}>
       <Head>
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <meta httpEquiv="Content-Type" content="text/html; charset=UTF-8" />
@@ -120,7 +127,7 @@ const container = {
 const header = {
   padding: "32px 24px",
   textAlign: "center" as const,
-  background: "#52c41a",
+  background: PALETTE.neutral,
 };
 
 const brand = {
@@ -206,6 +213,22 @@ export const EmailButton = ({
     {children}
   </Button>
 );
+
+/** Footer line for owner-facing emails; only rendered when a settings URL exists. */
+export const ManageNotificationsLink = ({ href }: { href?: string }) =>
+  href ? (
+    <Text style={manageNotificationsText}>
+      <Link href={href} style={footerLink}>
+        Manage notifications
+      </Link>
+    </Text>
+  ) : null;
+
+const manageNotificationsText = {
+  color: "#6b7280",
+  fontSize: "12px",
+  margin: "0",
+};
 
 export interface DetailField {
   title: string;
@@ -309,6 +332,7 @@ const detailsValueCell = {
   textAlign: "left" as const,
   overflowWrap: "anywhere" as const,
   wordBreak: "break-word" as const,
+  whiteSpace: "pre-wrap" as const,
 };
 
 const detailsLink = {

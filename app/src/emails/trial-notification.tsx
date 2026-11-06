@@ -1,6 +1,7 @@
 import { Button, Section, Text } from "@react-email/components";
 import * as React from "react";
-import { BaseLayout } from "./base-layout";
+import { PALETTE } from "./palette";
+import { BaseLayout, ManageNotificationsLink } from "./base-layout";
 
 export type TrialNotificationKind = "midway" | "ending" | "ended";
 
@@ -9,6 +10,8 @@ interface TrialNotificationEmailProps {
   kind: TrialNotificationKind;
   daysRemaining: number;
   subscribeUrl: string;
+  /** Settings page for notification preferences; adds a footer link. */
+  manageNotificationsUrl?: string;
 }
 
 const COPY: Record<
@@ -46,7 +49,7 @@ export function trialNotificationSubject(
   daysRemaining: number,
 ): string {
   const { title } = COPY[kind](daysRemaining);
-  return `${title} - ${organizationName} on Supercheck`;
+  return `[Supercheck] ${title}: ${organizationName}`;
 }
 
 export const TrialNotificationEmail = ({
@@ -54,13 +57,15 @@ export const TrialNotificationEmail = ({
   kind = "midway",
   daysRemaining = 7,
   subscribeUrl = "https://app.supercheck.io/subscribe",
+  manageNotificationsUrl,
 }: TrialNotificationEmailProps) => {
   const copy = COPY[kind](daysRemaining);
   return (
     <BaseLayout
       preview={copy.heading}
       title="Free trial"
-      headerColor={kind === "midway" ? "#1d4ed8" : "#b45309"}
+      headerColor={kind === "midway" ? PALETTE.info : PALETTE.warning}
+      footer={<ManageNotificationsLink href={manageNotificationsUrl} />}
     >
       <Section style={contentSection}>
         <Text style={heading}>{copy.heading}</Text>

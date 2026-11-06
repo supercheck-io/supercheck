@@ -7,6 +7,7 @@ import {
   Text,
 } from "@react-email/components";
 import * as React from "react";
+import { PALETTE } from "./palette";
 import { BaseLayout } from "./base-layout";
 import {
   getTranslations,
@@ -48,51 +49,25 @@ const getIncidentColors = (
   badgeText: string;
   borderColor: string;
 } => {
+  const tone = (hex: string, text: string, bg: string) => ({
+    textColor: text,
+    headerBg: hex,
+    badgeBg: bg,
+    badgeText: text,
+    borderColor: hex,
+  });
   // Resolved incidents always show green, regardless of impact
   if (status.toLowerCase() === "resolved") {
-    return {
-      textColor: "#166534",
-      headerBg: "#15803d",
-      badgeBg: "#dcfce7",
-      badgeText: "#166534",
-      borderColor: "#16a34a",
-    };
+    return tone(PALETTE.success, "#166534", "#dcfce7");
   }
-
-  // For non-resolved incidents, use impact-based colors
   switch (impact.toLowerCase()) {
     case "critical":
-      return {
-        textColor: "#991b1b",
-        headerBg: "#b91c1c",
-        badgeBg: "#fee2e2",
-        badgeText: "#991b1b",
-        borderColor: "#dc2626",
-      };
+      return tone(PALETTE.failure, "#991b1b", "#fee2e2");
     case "major":
-      return {
-        textColor: "#9a3412",
-        headerBg: "#c2410c",
-        badgeBg: "#ffedd5",
-        badgeText: "#9a3412",
-        borderColor: "#ea580c",
-      };
     case "minor":
-      return {
-        textColor: "#854d0e",
-        headerBg: "#a16207",
-        badgeBg: "#fef9c3",
-        badgeText: "#854d0e",
-        borderColor: "#ca8a04",
-      };
+      return tone(PALETTE.warning, "#92400e", "#fef3c7");
     default:
-      return {
-        textColor: "#374151",
-        headerBg: "#4b5563",
-        badgeBg: "#f3f4f6",
-        badgeText: "#374151",
-        borderColor: "#6b7280",
-      };
+      return tone(PALETTE.neutral, "#374151", "#f3f4f6");
   }
 };
 
@@ -136,6 +111,7 @@ export const IncidentNotificationEmail = ({
       preview={isResolved ? `✓ ${statusLabel}` : `⚠ ${impactLabel}`}
       title={statusPageName}
       headerColor={colors.headerBg}
+      lang={language}
       showBrand={false}
       showStandardFooter={false}
       footer={

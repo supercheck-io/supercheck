@@ -205,6 +205,8 @@ x-common-env: &common-env # Database Configuration
   SMTP_PASSWORD: ${SMTP_PASSWORD:-}
   SMTP_SECURE: ${SMTP_SECURE:-false}
   SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-}
+  SMTP_FROM_NAME: ${SMTP_FROM_NAME:-}
+  SMTP_REPLY_TO: ${SMTP_REPLY_TO:-}
   SMTP_BLOCKED_RECIPIENT_DOMAINS: ${SMTP_BLOCKED_RECIPIENT_DOMAINS:-}
 
   # ==========================================================================

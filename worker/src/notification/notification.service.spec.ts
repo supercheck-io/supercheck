@@ -27,8 +27,10 @@ jest.mock('../common/utils/pinned-public-fetch', () => ({
 }));
 
 import { Test, TestingModule } from '@nestjs/testing';
+import * as nodemailer from 'nodemailer';
 import {
   NotificationService,
+  buildEmailFields,
   NotificationProvider,
   NotificationPayload,
 } from './notification.service';
@@ -56,21 +58,6 @@ describe('NotificationService', () => {
       html: '<html>Alert</html>',
       text: 'Alert',
       subject: 'Monitor Alert',
-    }),
-    renderJobFailureEmail: jest.fn().mockResolvedValue({
-      html: '<html>Job Failed</html>',
-      text: 'Job Failed',
-      subject: 'Job Failed',
-    }),
-    renderJobSuccessEmail: jest.fn().mockResolvedValue({
-      html: '<html>Job Success</html>',
-      text: 'Job Success',
-      subject: 'Job Success',
-    }),
-    renderJobTimeoutEmail: jest.fn().mockResolvedValue({
-      html: '<html>Job Timeout</html>',
-      text: 'Job Timeout',
-      subject: 'Job Timeout',
     }),
   };
 
@@ -1356,40 +1343,119 @@ describe('NotificationService', () => {
       ).toHaveBeenCalled();
     });
 
-    it('should use job failure template for job_failed', async () => {
-      const jobFailPayload: NotificationPayload = {
+    it('renders job emails from the payload title/message and the shared fields', async () => {
+      mockEmailTemplateService.renderMonitorAlertEmail.mockClear();
+      await service.sendNotification(emailProvider, {
         ...basePayload,
         type: 'job_failed',
-        title: 'Job Failed',
-      };
+        title: 'Job Error - Nightly',
+        message: 'custom message',
+        projectName: 'Acme',
+        severity: 'error',
+        metadata: {
+          status: 'FAILED',
+          duration: 65,
+          runId: 'run-1',
+          errorMessage: 'x'.repeat(5000),
+        },
+      });
 
-      await service.sendNotification(emailProvider, jobFailPayload);
-
-      expect(mockEmailTemplateService.renderJobFailureEmail).toHaveBeenCalled();
+      const arg =
+        mockEmailTemplateService.renderMonitorAlertEmail.mock.calls[0][0];
+      expect(arg.title).toBe('Job Error - Nightly');
+      expect(arg.message).toBe('custom message');
+      expect(arg.type).toBe('failure');
+      const byTitle = Object.fromEntries(
+        arg.fields.map((f: { title: string; value: string }) => [
+          f.title,
+          f.value,
+        ]),
+      );
+      expect(byTitle.Project).toBe('Acme');
+      expect(byTitle.Status).toBe('Failed');
+      expect(byTitle.Duration).toBe('1m 05s');
+      expect(byTitle['Run ID']).toBe('run-1');
+      expect(byTitle.Error.length).toBeLessThanOrEqual(1000);
+      expect(byTitle.Error.endsWith('…')).toBe(true);
     });
 
-    it('should use job success template for job_success', async () => {
-      const jobSuccessPayload: NotificationPayload = {
-        ...basePayload,
-        type: 'job_success',
-        title: 'Job Success',
-      };
+    it.each([
+      ['job_success', 'success', 'success'],
+      ['job_timeout', 'warning', 'warning'],
+      ['monitor_recovery', 'success', 'recovery'],
+      ['monitor_failure', 'info', 'info'],
+    ] as const)(
+      'maps %s (%s) to email tone %s',
+      async (type, severity, tone) => {
+        mockEmailTemplateService.renderMonitorAlertEmail.mockClear();
+        await service.sendNotification(emailProvider, {
+          ...basePayload,
+          type,
+          severity,
+        });
+        expect(
+          mockEmailTemplateService.renderMonitorAlertEmail.mock.calls[0][0]
+            .type,
+        ).toBe(tone);
+      },
+    );
 
-      await service.sendNotification(emailProvider, jobSuccessPayload);
-
-      expect(mockEmailTemplateService.renderJobSuccessEmail).toHaveBeenCalled();
+    it('strips emoji from link labels and puts links last', () => {
+      const fields = buildEmailFields(
+        [
+          { title: '🔗 Job Details', value: 'https://a.io/j', raw: true },
+          { title: 'Job', value: 'J' },
+        ],
+        { ...basePayload, metadata: { runId: 'r1' } },
+      );
+      expect(fields.map((f) => f.title)).toEqual([
+        'Job',
+        'Run ID',
+        'Job Details',
+      ]);
     });
 
-    it('should use job timeout template for job_timeout', async () => {
-      const jobTimeoutPayload: NotificationPayload = {
-        ...basePayload,
-        type: 'job_timeout',
-        title: 'Job Timeout',
-      };
+    it('reuses one pooled transporter and never calls verify()', async () => {
+      const verify = jest.fn();
+      const sendMail = jest.fn().mockResolvedValue({});
+      (nodemailer.createTransport as jest.Mock).mockClear();
+      (nodemailer.createTransport as jest.Mock).mockReturnValue({
+        verify,
+        sendMail,
+        close: jest.fn(),
+      });
+      await service.sendNotification(emailProvider, basePayload);
+      await service.sendNotification(emailProvider, basePayload);
+      expect(nodemailer.createTransport).toHaveBeenCalledTimes(1);
+      expect(nodemailer.createTransport).toHaveBeenCalledWith(
+        expect.objectContaining({ pool: true }),
+      );
+      expect(verify).not.toHaveBeenCalled();
+      expect(sendMail).toHaveBeenCalledTimes(4); // 2 recipients x 2 sends
+    });
 
-      await service.sendNotification(emailProvider, jobTimeoutPayload);
-
-      expect(mockEmailTemplateService.renderJobTimeoutEmail).toHaveBeenCalled();
+    it('adds the From display name and Reply-To only when configured', async () => {
+      const sendMail = jest.fn().mockResolvedValue({});
+      (nodemailer.createTransport as jest.Mock).mockReturnValue({
+        sendMail,
+        close: jest.fn(),
+      });
+      process.env.SMTP_FROM_NAME = 'Acme Alerts';
+      process.env.SMTP_REPLY_TO = 'support@acme.test';
+      await service.sendNotification(emailProvider, basePayload);
+      expect(sendMail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          from: { name: 'Acme Alerts', address: process.env.SMTP_FROM_EMAIL },
+          replyTo: 'support@acme.test',
+        }),
+      );
+      delete process.env.SMTP_FROM_NAME;
+      delete process.env.SMTP_REPLY_TO;
+      sendMail.mockClear();
+      await service.sendNotification(emailProvider, basePayload);
+      const sent = sendMail.mock.calls[0][0];
+      expect(sent.from).toBe(process.env.SMTP_FROM_EMAIL);
+      expect(sent).not.toHaveProperty('replyTo');
     });
 
     it('should fail when SMTP not configured', async () => {

@@ -5,7 +5,8 @@ import {
   Hr,
 } from "@react-email/components";
 import * as React from "react";
-import { BaseLayout } from "./base-layout";
+import { PALETTE } from "./palette";
+import { BaseLayout, ManageNotificationsLink } from "./base-layout";
 
 interface UsageNotificationEmailProps {
   organizationName: string;
@@ -23,6 +24,8 @@ interface UsageNotificationEmailProps {
   currentSpendingDollars?: number;
   spendingLimitDollars?: number;
   billingPageUrl: string;
+  /** Settings page for notification preferences; adds a footer link. */
+  manageNotificationsUrl?: string;
   periodEndDate: string;
 }
 
@@ -36,6 +39,7 @@ export const UsageNotificationEmail = ({
   currentSpendingDollars,
   spendingLimitDollars,
   billingPageUrl = "https://app.supercheck.io/billing",
+  manageNotificationsUrl,
   periodEndDate = "December 1, 2026",
 }: UsageNotificationEmailProps) => {
   const getTitle = () => {
@@ -64,18 +68,16 @@ export const UsageNotificationEmail = ({
   const getHeaderColor = () => {
     switch (notificationType) {
       case "usage_50_percent":
-        return "#1d4ed8"; // Blue
+        return PALETTE.info;
       case "usage_80_percent":
-        return "#b45309"; // Amber
+      case "spending_limit_warning":
+        return PALETTE.warning;
       case "usage_90_percent":
-        return "#c2410c"; // Orange
       case "usage_100_percent":
       case "spending_limit_reached":
-        return "#b91c1c"; // Red
-      case "spending_limit_warning":
-        return "#b45309"; // Amber
+        return PALETTE.failure;
       default:
-        return "#4b5563"; // Gray
+        return PALETTE.neutral;
     }
   };
 
@@ -120,6 +122,7 @@ export const UsageNotificationEmail = ({
       preview={`${getTitle()} for ${organizationName}`}
       title={getTitle()}
       headerColor={getHeaderColor()}
+      footer={<ManageNotificationsLink href={manageNotificationsUrl} />}
     >
       <Section style={contentSection}>
         <Text style={greeting}>
@@ -280,7 +283,7 @@ const progressBar = {
 const warningText = {
   fontSize: "14px",
   lineHeight: "1.6",
-  color: "#dc2626",
+  color: PALETTE.failure,
   backgroundColor: "#fef2f2",
   padding: "12px 16px",
   borderRadius: "6px",

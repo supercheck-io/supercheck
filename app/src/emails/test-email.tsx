@@ -1,5 +1,6 @@
 import { Section, Text } from "@react-email/components";
 import * as React from "react";
+import { PALETTE } from "./palette";
 import { BaseLayout } from "./base-layout";
 
 interface TestEmailProps {
@@ -13,7 +14,7 @@ export const TestEmail = ({
     <BaseLayout
       preview="Test Email from Supercheck"
       title="Email Configuration Test"
-      headerColor="#1d4ed8"
+      headerColor={PALETTE.info}
     >
       <Section style={contentSection}>
         <Text style={heading}>Email Test Successful</Text>

@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { createHash } from 'crypto';
 import * as nodemailer from 'nodemailer';
+import type { Transporter } from 'nodemailer';
+import type SMTPPool from 'nodemailer/lib/smtp-pool';
 import {
   AlertDeliveryMetadata,
   AlertType,
@@ -8,7 +10,10 @@ import {
   NotificationProviderType,
   PlainNotificationProviderConfig,
 } from '../db/schema';
-import { EmailTemplateService } from '../email-template/email-template.service';
+import {
+  EmailTemplateService,
+  formatDuration,
+} from '../email-template/email-template.service';
 import { fetchWithRetry, createRetryConfig } from '../common/utils/retry.util';
 import {
   isValidTeamsWebhookDomain,
@@ -195,6 +200,48 @@ function escapeDiscordDescription(value: string): string {
 
 function clip(value: string, max: number): string {
   return value.length > max ? `${value.slice(0, max - 1)}…` : value;
+}
+
+const EMAIL_ERROR_MAX = 1000;
+
+const sentenceCase = (v: string) =>
+  v.charAt(0).toUpperCase() + v.slice(1).toLowerCase();
+
+/**
+ * Email detail rows for monitor and job alerts alike: the shared formatted
+ * fields (emoji link labels and SHOUTING status normalised), then duration,
+ * run id and a clipped error, then the links.
+ */
+export function buildEmailFields(
+  fields: FormattedNotification['fields'],
+  payload: NotificationPayload,
+): Array<{ title: string; value: string }> {
+  const rows = fields.map((f) => ({
+    title: f.title.replace(/^\p{Extended_Pictographic}\uFE0F?\s*/u, ''),
+    value: f.title === 'Status' ? sentenceCase(f.value) : f.value,
+    raw: f.raw,
+  }));
+  const extras: Array<{ title: string; value: string }> = [];
+  const md = payload.metadata;
+  if (typeof md?.duration === 'number') {
+    extras.push({ title: 'Duration', value: formatDuration(md.duration) });
+  }
+  if (md?.runId) extras.push({ title: 'Run ID', value: md.runId });
+  if (md?.errorMessage) {
+    extras.push({
+      title: 'Error',
+      value: clip(String(md.errorMessage), EMAIL_ERROR_MAX),
+    });
+  }
+  const strip = ({ title, value }: { title: string; value: string }) => ({
+    title,
+    value,
+  });
+  return [
+    ...rows.filter((r) => !r.raw).map(strip),
+    ...extras,
+    ...rows.filter((r) => r.raw).map(strip),
+  ];
 }
 
 @Injectable()
@@ -772,54 +819,19 @@ export class NotificationService {
 
       // Render email using centralized template service (React Email templates)
       // Use appropriate template based on alert type
-      let rendered: { html: string; text: string; subject: string };
       // Same env the dashboard links use; omitted (no button) if unset rather than linking to localhost.
       const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL;
 
-      if (payload.type === 'job_failed') {
-        // Use job failure template (generic, no test stats)
-        rendered = await this.emailTemplateService.renderJobFailureEmail({
-          jobName: payload.targetName,
-          duration: payload.metadata?.duration || 0,
-          errorMessage: payload.metadata?.errorMessage,
-          runId: payload.metadata?.runId,
-          dashboardUrl: payload.metadata?.dashboardUrl,
-          appUrl,
-        });
-      } else if (payload.type === 'job_success') {
-        // Use job success template (generic, no test stats)
-        rendered = await this.emailTemplateService.renderJobSuccessEmail({
-          jobName: payload.targetName,
-          duration: payload.metadata?.duration || 0,
-          runId: payload.metadata?.runId,
-          dashboardUrl: payload.metadata?.dashboardUrl,
-          appUrl,
-        });
-      } else if (payload.type === 'job_timeout') {
-        // Use job timeout template
-        rendered = await this.emailTemplateService.renderJobTimeoutEmail({
-          jobName: payload.targetName,
-          duration: payload.metadata?.duration || 0,
-          runId: payload.metadata?.runId,
-          dashboardUrl: payload.metadata?.dashboardUrl,
-          appUrl,
-        });
-      } else {
-        // Use monitor alert template for all other types
-        rendered = await this.emailTemplateService.renderMonitorAlertEmail({
-          title: formatted.title,
-          message: formatted.message,
-          fields: formatted.fields,
-          footer: formatted.footer,
-          // Only a recovery is "Recovered"; a plain pass (job_success) has its own template.
-          type:
-            payload.type === 'monitor_recovery'
-              ? 'recovery'
-              : this.mapSeverityToType(payload.severity),
-          color: formatted.color,
-          appUrl,
-        });
-      }
+      // Monitors and jobs share one path: the payload's title/message (including a
+      // custom message) and the shared field builder.
+      const rendered = await this.emailTemplateService.renderMonitorAlertEmail({
+        title: formatted.title,
+        message: payload.message,
+        fields: buildEmailFields(formatted.fields, payload),
+        footer: formatted.footer,
+        type: this.emailAlertType(payload),
+        appUrl,
+      });
 
       const emailContent = {
         html: rendered.html,
@@ -867,19 +879,27 @@ export class NotificationService {
     }
   }
 
-  /**
-   * Map severity to email template type
-   */
-  private mapSeverityToType(
-    severity: 'info' | 'warning' | 'error' | 'success',
-  ): 'failure' | 'success' | 'warning' {
-    switch (severity) {
+  /** Email template tone: recovery and job outcomes are explicit, the rest follows severity. */
+  private emailAlertType(
+    payload: NotificationPayload,
+  ): 'failure' | 'success' | 'recovery' | 'warning' | 'info' {
+    switch (payload.type) {
+      case 'monitor_recovery':
+        return 'recovery';
+      case 'job_success':
+        return 'success';
+      case 'job_failed':
+        return 'failure';
+      case 'job_timeout':
+        return 'warning';
+    }
+    switch (payload.severity) {
       case 'error':
         return 'failure';
       case 'success':
         return 'success';
-      case 'warning':
-        return 'warning';
+      case 'info':
+        return 'info';
       default:
         return 'warning';
     }
@@ -908,6 +928,20 @@ export class NotificationService {
     return emailRegex.test(email);
   }
 
+  private transporter?: Transporter;
+  private transporterKey?: string;
+
+  /** Reuses the pooled transporter until the SMTP env changes; closes the stale pool. */
+  private getTransporter(config: SMTPPool.Options): Transporter {
+    const key = JSON.stringify(config);
+    if (!this.transporter || this.transporterKey !== key) {
+      this.transporter?.close();
+      this.transporter = nodemailer.createTransport(config);
+      this.transporterKey = key;
+    }
+    return this.transporter;
+  }
+
   private async trySMTPDelivery(
     config: any,
     formatted: FormattedNotification,
@@ -930,6 +964,8 @@ export class NotificationService {
       const hasSmtpUser = Boolean(smtpUser);
       const hasSmtpPassword = Boolean(smtpPassword);
       const fromEmail = process.env.SMTP_FROM_EMAIL;
+      const fromName = process.env.SMTP_FROM_NAME?.trim();
+      const replyTo = process.env.SMTP_REPLY_TO?.trim();
 
       if (!smtpHost) {
         const error =
@@ -951,7 +987,19 @@ export class NotificationService {
         return failureResult(error);
       }
 
-      const smtpConfig = {
+      const sender = {
+        // A display name is added only when SMTP_FROM_EMAIL is a bare address.
+        from:
+          fromName && !fromEmail.includes('<')
+            ? { name: fromName, address: fromEmail }
+            : fromEmail,
+        ...(replyTo ? { replyTo } : {}),
+      };
+
+      const smtpConfig: SMTPPool.Options = {
+        pool: true,
+        maxConnections: 3,
+        maxMessages: 100,
         host: smtpHost,
         port: smtpPort,
         secure: smtpSecure,
@@ -969,21 +1017,12 @@ export class NotificationService {
         },
         connectionTimeout: 10000, // 10 seconds
         greetingTimeout: 5000, // 5 seconds
+        socketTimeout: 30000,
       };
 
-      const transporter = nodemailer.createTransport(smtpConfig);
-
-      // Verify SMTP connection
-      try {
-        await transporter.verify();
-      } catch (error) {
-        const errorMessage = getErrorMessage(error);
-        this.logger.error(
-          `SMTP connection verification failed: ${errorMessage}`,
-        );
-        return failureResult(errorMessage);
-      }
-      this.logger.debug('SMTP connection verified successfully');
+      // A pooled transporter is reused across sends; sendMail connects (and fails per
+      // recipient) on its own, so there is no verify() round trip per notification.
+      const transporter = this.getTransporter(smtpConfig);
 
       // Send to each email address sequentially to avoid SMTP rate-limiting
       // and concurrent connection issues that cause only the first email to be delivered
@@ -994,7 +1033,7 @@ export class NotificationService {
       for (const email of emailAddresses) {
         try {
           await transporter.sendMail({
-            from: fromEmail,
+            ...sender,
             to: email,
             subject: emailContent.subject,
             html: emailContent.html,
