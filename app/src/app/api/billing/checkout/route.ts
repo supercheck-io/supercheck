@@ -11,7 +11,7 @@ import {
 import { getUserOrgRole, isImpersonatedSession } from "@/lib/rbac/middleware";
 import { Role } from "@/lib/rbac/permissions";
 import { requireSameOriginRequest } from "@/lib/security/same-origin";
-import { ensurePolarCustomerAndLink } from "@/lib/services/organization-customer";
+import { BillingCustomerConflictError, ensurePolarCustomerAndLink } from "@/lib/services/organization-customer";
 import { createPolarClient } from "@/lib/billing/polar-client";
 import { getCurrentUser } from "@/lib/session";
 import { db } from "@/utils/db";
@@ -172,6 +172,9 @@ export async function POST(request: NextRequest) {
         { error: error instanceof Error ? error.message : "Authentication required" },
         { status: authErrorStatus(error) }
       );
+    }
+    if (error instanceof BillingCustomerConflictError) {
+      return NextResponse.json({ error: error.message, code: "billing_customer_conflict" }, { status: 409 });
     }
     console.error("[Billing] Failed to create Polar checkout:", error);
     return NextResponse.json(

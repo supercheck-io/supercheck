@@ -59,6 +59,7 @@ const provision = (options?: { throwOnError?: boolean }) =>
 beforeEach(() => {
   jest.clearAllMocks();
   mockEnabled.mockReturnValue(true);
+  mockFindFirst.mockReset();
   mockFindFirst.mockResolvedValue({ polarCustomerId: null });
   mockReturning.mockResolvedValue([{ polarCustomerId: "cus_linked" }]);
   fetchMock = jest.fn();
@@ -137,6 +138,70 @@ describe("ensurePolarCustomerAndLink against the provider API", () => {
       .mockResolvedValueOnce(json({ id: "cus_linked" }));
     await expect(provision()).resolves.toBe("cus_linked");
     expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  describe("an email kept by the customer of a deleted organization", () => {
+    const FORMER = "0198a1b2-c3d4-7e5f-8a6b-000000000001";
+    const conflict = () => fetchMock
+      .mockResolvedValueOnce(json({ detail: "Not found" }, 404))
+      .mockResolvedValueOnce(json({ detail: [{ loc: ["body", "email"], msg: "exists" }] }, 422))
+      .mockResolvedValueOnce(json({ detail: "Not found" }, 404));
+    const customer = (externalId: string | null, userId = "user-1") => ({
+      id: "cus_former", email: "Owner@example.com", external_id: externalId, metadata: { referenceId: FORMER, userId, stale: "x" },
+    });
+    const list = (...items: unknown[]) => json({ items, pagination: { total_count: items.length, max_page: 1 } });
+
+    it("reuses it when the old organization is gone and nothing is active, moving its reference", async () => {
+      conflict()
+        .mockResolvedValueOnce(list(customer(`organization:${FORMER}`)))
+        .mockResolvedValueOnce(json({ id: "cus_former", active_subscriptions: [] }))
+        .mockResolvedValueOnce(json({ id: "cus_former" }));
+      mockFindFirst
+        .mockResolvedValueOnce({ polarCustomerId: null })
+        .mockResolvedValueOnce(undefined)
+        .mockResolvedValueOnce(undefined);
+      mockReturning.mockResolvedValue([{ polarCustomerId: "cus_former" }]);
+      jest.spyOn(console, "warn").mockImplementation(() => undefined);
+
+      await expect(provision({ throwOnError: true })).resolves.toBe("cus_former");
+      const lookup = await request(3);
+      expect(lookup.url.pathname).toBe("/v1/customers/");
+      expect(lookup.url.searchParams.get("email")).toBe("owner@example.com");
+      const update = await request(5);
+      expect(update.method).toBe("PATCH");
+      expect(update.body.metadata).toEqual({ referenceId: ORG, userId: "user-1", source: "supercheck-reused-after-organization-deletion" });
+    });
+
+    it.each([
+      ["the old organization still exists", `organization:${FORMER}`, "user-1", { id: FORMER }, undefined, []],
+      ["another organization already holds it", `organization:${FORMER}`, "user-1", undefined, { id: "org-other" }, []],
+      ["it still has an active subscription", `organization:${FORMER}`, "user-1", undefined, undefined, [{ id: "sub_1" }]],
+      ["it was created for a different user", `organization:${FORMER}`, "user-2", undefined, undefined, []],
+      ["it is not an organization customer", "legacy-user-id", "user-1", undefined, undefined, []],
+      ["its organization id is not a UUID", "organization:not-a-uuid", "user-1", undefined, undefined, []],
+    ])("refuses with a clear conflict when %s", async (_case, externalId, owner, former, holder, active) => {
+      conflict()
+        .mockResolvedValueOnce(list(customer(externalId, owner)))
+        .mockResolvedValueOnce(json({ id: "cus_former", active_subscriptions: active }));
+      mockFindFirst
+        .mockResolvedValueOnce({ polarCustomerId: null })
+        .mockResolvedValueOnce(former)
+        .mockResolvedValueOnce(holder);
+
+      await expect(provision({ throwOnError: true })).rejects.toMatchObject({ name: "BillingCustomerConflictError" });
+      for (let i = 0; i < fetchMock.mock.calls.length; i++) {
+        expect((await request(i)).method).not.toBe("PATCH");
+      }
+    });
+  });
+
+  it("surfaces a rejected create unchanged when no customer has the email", async () => {
+    fetchMock
+      .mockResolvedValueOnce(json({ detail: "Not found" }, 404))
+      .mockResolvedValueOnce(json({ detail: [{ loc: ["body", "name"], msg: "too long" }] }, 422))
+      .mockResolvedValueOnce(json({ detail: "Not found" }, 404))
+      .mockResolvedValueOnce(json({ items: [], pagination: { total_count: 0, max_page: 1 } }));
+    await expect(provision({ throwOnError: true })).rejects.toMatchObject({ statusCode: 422 });
   });
 
   it("surfaces the creation error when neither create nor the follow-up lookup works", async () => {

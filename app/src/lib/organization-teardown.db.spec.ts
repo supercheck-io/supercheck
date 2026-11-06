@@ -100,6 +100,55 @@ it("deletes the organization and everything it owns, keeping audit history", asy
   expect((audit.find((row) => row.action === TEARDOWN_ACTION)?.details as { subscriptionId?: string }).subscriptionId).toBe(organization.subscriptionId);
 });
 
+function usageEvent(organizationId: string, billingPeriodEnd: Date) {
+  return {
+    organizationId, eventType: "playwright_execution" as const, eventName: "playwright_minutes", units: "1.5000",
+    unitType: "minutes", billingPeriodStart: new Date(billingPeriodEnd.getTime() - 30 * 86_400_000), billingPeriodEnd,
+  };
+}
+
+describe("final usage before the immediate cancellation", () => {
+  const ingest = jest.fn();
+  beforeAll(() => { global.fetch = ingest as unknown as typeof fetch; });
+  afterEach(() => ingest.mockReset());
+
+  it("sends unsynced usage to Polar before revoking, and skips a parked closed period", async () => {
+    const { organization } = await seed({ subscriptionId: `sub-${randomUUID()}`, subscriptionStatus: "active" });
+    await mockDatabase.update(schema.organization).set({ polarCustomerId: `cus-${randomUUID()}` }).where(eq(schema.organization.id, organization.id));
+    await mockDatabase.insert(schema.usageEvents).values([
+      usageEvent(organization.id, new Date(Date.now() + 86_400_000)),
+      usageEvent(organization.id, new Date(Date.now() - 86_400_000)),
+    ]);
+    ingest.mockResolvedValue(new Response(JSON.stringify({ inserted: 1, duplicates: 0 })));
+    revoke.mockImplementationOnce(async () => expect(ingest).toHaveBeenCalledTimes(1));
+
+    await expect(deleteOrganizationCompletely(organization.id, { noMembers: true }, adminId)).resolves.toMatchObject({ subscriptionCancelled: true });
+    expect(revoke).toHaveBeenCalledTimes(1);
+    expect(String(ingest.mock.calls[0][0])).toContain("/v1/events/ingest");
+  });
+
+  it("neither revokes nor deletes when usage cannot be sent", async () => {
+    const { organization } = await seed({ subscriptionId: `sub-${randomUUID()}`, subscriptionStatus: "active" });
+    await mockDatabase.update(schema.organization).set({ polarCustomerId: `cus-${randomUUID()}` }).where(eq(schema.organization.id, organization.id));
+    await mockDatabase.insert(schema.usageEvents).values(usageEvent(organization.id, new Date(Date.now() + 86_400_000)));
+    ingest.mockResolvedValue(new Response("unavailable", { status: 503 }));
+
+    await expect(deleteOrganizationCompletely(organization.id, { noMembers: true }, adminId)).rejects.toBeInstanceOf(BillingCancellationError);
+    expect(revoke).not.toHaveBeenCalled();
+    // The flush runs before the file sweep, so a billing outage leaves stored files in place too.
+    expect(deletePrefix).not.toHaveBeenCalled();
+    expect(await mockDatabase.select().from(schema.organization).where(eq(schema.organization.id, organization.id))).toHaveLength(1);
+  });
+
+  it("does not block deletion on usage that has no billing customer to go to", async () => {
+    const { organization } = await seed({ subscriptionId: `sub-${randomUUID()}`, subscriptionStatus: "active" });
+    await mockDatabase.insert(schema.usageEvents).values(usageEvent(organization.id, new Date(Date.now() + 86_400_000)));
+
+    await expect(deleteOrganizationCompletely(organization.id, { noMembers: true }, adminId)).resolves.toMatchObject({ subscriptionCancelled: true });
+    expect(ingest).not.toHaveBeenCalled();
+  });
+});
+
 it("changes nothing when the subscription cannot be cancelled", async () => {
   const { organization } = await seed({ subscriptionId: `sub-${randomUUID()}`, subscriptionStatus: "active" });
   revoke.mockRejectedValueOnce(Object.assign(new Error("Polar down"), { statusCode: 500 }));

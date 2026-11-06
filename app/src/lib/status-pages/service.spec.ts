@@ -54,9 +54,11 @@ jest.mock("@/lib/middleware/plan-limit-lock", () => ({
   insertWithinPlanLimit: (...a: unknown[]) => insertWithinPlanLimit(...a),
 }));
 const checkFeatureAvailability = jest.fn();
+const checkResumeWithinPlan = jest.fn(async (): Promise<{ allowed: boolean; error?: string }> => ({ allowed: true }));
 jest.mock("@/lib/middleware/plan-enforcement", () => ({
   checkStatusPageLimit: jest.fn(),
   checkFeatureAvailability: (...a: unknown[]) => checkFeatureAvailability(...a),
+  checkResumeWithinPlan: (...a: unknown[]) => checkResumeWithinPlan(...(a as [])),
 }));
 const updateComponentStatus = jest.fn();
 jest.mock("@/lib/status-aggregation.service", () => ({
@@ -306,6 +308,22 @@ describe("status page service", () => {
       pageFindFirst.mockResolvedValue({ id: pageId });
       componentFindFirst.mockResolvedValue({ id: compId });
       expect(await checkPublishPreconditions(ctx, pageId)).toMatchObject({ ok: true });
+    });
+
+    it("keeps an archived page offline while the plan's published pages are used up", async () => {
+      pageFindFirst.mockResolvedValue({ id: pageId, status: "archived" });
+      componentFindFirst.mockResolvedValue({ id: compId });
+      checkResumeWithinPlan.mockResolvedValueOnce({ allowed: false, error: "Your plus plan allows 5 published status pages." });
+      expect(await checkPublishPreconditions(ctx, pageId)).toEqual({ ok: false, code: "forbidden", message: "Your plus plan allows 5 published status pages." });
+      expect(checkResumeWithinPlan).toHaveBeenCalledWith("org-1", "status_page");
+    });
+
+    it("does not count a page against the cap when it is already published", async () => {
+      pageFindFirst.mockResolvedValue({ id: pageId, status: "published" });
+      componentFindFirst.mockResolvedValue({ id: compId });
+      checkResumeWithinPlan.mockClear();
+      expect(await checkPublishPreconditions(ctx, pageId)).toMatchObject({ ok: true });
+      expect(checkResumeWithinPlan).not.toHaveBeenCalled();
     });
 
     it("blocks without subscription access", async () => {

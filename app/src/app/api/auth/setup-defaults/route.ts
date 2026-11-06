@@ -12,13 +12,13 @@ import {
   executionEntitlements,
 } from "@/db/schema";
 import { getCurrentUser } from "@/lib/session";
-import { eq, and, gte, desc, asc, sql } from "drizzle-orm";
+import { eq, and, gte, desc, asc, sql, ne, isNotNull } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import {
   isCloudHosted,
 } from "@/lib/feature-flags";
 import { ensurePolarCustomerAndLink } from "@/lib/services/organization-customer";
-import { buildTrialEntitlement, isTrialEnabled } from "@/lib/execution/trial-limits";
+import { buildTrialEntitlement, gmailTrialKey, isTrialEnabled } from "@/lib/execution/trial-limits";
 import { requireSameOriginRequest } from "@/lib/security/same-origin";
 
 
@@ -166,7 +166,20 @@ export async function POST(request: NextRequest) {
         .returning();
 
       // Keep the grant on the locked user so deleting an organization cannot reset it.
-      if (!isSelfHosted && isTrialEnabled() && !lockedUser.trialGrantedAt) {
+      let trialUsed = Boolean(lockedUser.trialGrantedAt);
+      const gmailKey = gmailTrialKey(currentUser.email);
+      if (!isSelfHosted && isTrialEnabled() && !trialUsed && gmailKey) {
+        // Serialize alias signups so two variants of one inbox cannot both pass the check.
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`trial:gmail:${gmailKey}`}))`);
+        const [alias] = await tx.select({ id: userTable.id }).from(userTable).where(and(
+          ne(userTable.id, currentUser.id),
+          isNotNull(userTable.trialGrantedAt),
+          sql`split_part(lower(${userTable.email}), '@', 2) IN ('gmail.com', 'googlemail.com')`,
+          sql`replace(split_part(split_part(lower(${userTable.email}), '@', 1), '+', 1), '.', '') = ${gmailKey}`,
+        )).limit(1);
+        trialUsed = Boolean(alias);
+      }
+      if (!isSelfHosted && isTrialEnabled() && !trialUsed) {
         const trial = buildTrialEntitlement(newOrg.id);
         await tx.insert(executionEntitlements).values(trial);
         await tx.update(userTable).set({ trialGrantedAt: trial.trialStartedAt })

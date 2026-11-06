@@ -1,8 +1,65 @@
 import { db } from "@/utils/db";
 import { organization as orgTable } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
+import { isUuid } from "@/lib/uuid";
 import { isPolarEnabled, getPolarConfig } from "@/lib/feature-flags";
-import { createPolarClient } from "@/lib/billing/polar-client";
+import { createPolarClient, type PolarClient } from "@/lib/billing/polar-client";
+
+const ORGANIZATION_EXTERNAL_ID = /^organization:(.+)$/;
+
+/** The owner's email already belongs to a billing customer that cannot be reused safely. */
+export class BillingCustomerConflictError extends Error {
+  constructor() {
+    super("This email is already linked to another billing account. Contact support to continue.");
+    this.name = "BillingCustomerConflictError";
+  }
+}
+
+function statusCodeOf(error: unknown): number | undefined {
+  return error && typeof error === "object" && "statusCode" in error && typeof error.statusCode === "number"
+    ? error.statusCode
+    : undefined;
+}
+
+/**
+ * Polar keeps a customer after its organization is deleted, and customer emails are unique, so the
+ * owner cannot get a new customer with the same email. Reuse that customer only when it was created
+ * for this same user, its organization no longer exists here, no other organization holds it, and it
+ * has no active subscription. external_id is immutable, so the new organization is recorded in
+ * metadata, which customer events resolve from. The caller has already verified the email.
+ * Returns null when no customer has this email (the create failed for another reason).
+ */
+async function reuseDeletedOrganizationCustomer(
+  polarClient: PolarClient,
+  userId: string,
+  userEmail: string,
+  organizationId: string,
+): Promise<string | null> {
+  const { items } = await polarClient.customers.list({ email: userEmail, limit: 2 });
+  const matches = items.filter((customer) => customer.email?.toLowerCase() === userEmail.toLowerCase());
+  if (matches.length === 0) return null;
+  const customer = matches[0];
+  const formerOrganizationId = matches.length === 1
+    ? ORGANIZATION_EXTERNAL_ID.exec(customer.external_id ?? "")?.[1]
+    : undefined;
+  // The same person, not just the same address: an address can be reassigned to someone else.
+  if (!isUuid(formerOrganizationId) || formerOrganizationId === organizationId || customer.metadata?.userId !== userId) {
+    throw new BillingCustomerConflictError();
+  }
+  const [formerOrganization, holder] = await Promise.all([
+    db.query.organization.findFirst({ where: eq(orgTable.id, formerOrganizationId), columns: { id: true } }),
+    db.query.organization.findFirst({ where: eq(orgTable.polarCustomerId, customer.id), columns: { id: true } }),
+  ]);
+  if (formerOrganization || holder) throw new BillingCustomerConflictError();
+  if ((await polarClient.customers.getState(customer.id)).active_subscriptions.length > 0) {
+    throw new BillingCustomerConflictError();
+  }
+  await polarClient.customers.update(customer.id, {
+    metadata: { userId, referenceId: organizationId, source: "supercheck-reused-after-organization-deletion" },
+  });
+  console.warn(`[Polar] Reused the billing customer of deleted organization ${formerOrganizationId} for ${organizationId}`);
+  return customer.id;
+}
 
 /**
  * Provision one Polar customer per organization. Preserve existing customer IDs:
@@ -63,11 +120,14 @@ export async function ensurePolarCustomerAndLink(
         ).id;
       } catch (createError) {
         // A concurrent setup may have created the same external ID first.
-        // Resolve only this organization's identity; never fall back to email.
+        // Resolve this organization's identity; email is consulted only for a rejected create.
         try {
           customerId = (await polarClient.customers.getExternal(externalId)).id;
-        } catch {
-          throw createError;
+        } catch (lookupError) {
+          if (statusCodeOf(createError) !== 422 || statusCodeOf(lookupError) !== 404) throw createError;
+          const reused = await reuseDeletedOrganizationCustomer(polarClient, userId, userEmail, organizationId);
+          if (!reused) throw createError;
+          customerId = reused;
         }
       }
     }

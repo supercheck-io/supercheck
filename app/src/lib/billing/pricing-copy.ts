@@ -58,7 +58,7 @@ export const PRICING_FAQS = [
   {
     question: "Can I change plans?",
     answer:
-      "The organization owner can change plans in Manage subscription. Review the effective date and any prorated charges in the Polar portal before confirming.",
+      "The organization owner can change plans in Manage subscription. Review the effective date and any prorated charges in the Polar portal before confirming. If the new plan has lower limits, the newest monitors and published status pages above them are paused or archived; nothing is deleted, and you can choose which ones run by pausing others first.",
   },
   ...trialFaqs(),
   {

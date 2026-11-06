@@ -92,6 +92,22 @@ it("serializes concurrent signup and preserves the grant after organization dele
   expect(after.trialGrantedAt).toEqual(owner.trialGrantedAt);
 });
 
+it("gives one Gmail inbox a single trial across dot and plus variants", async () => {
+  const local = `trial${randomUUID().replaceAll("-", "").slice(0, 12)}`;
+  await mockDatabase.insert(schema.user).values({
+    id: randomUUID(), name: "Earlier", email: `${local.slice(0, 4)}.${local.slice(4)}+first@gmail.com`,
+    emailVerified: true, trialGrantedAt: new Date(),
+  });
+  await mockDatabase.update(schema.user).set({ email: `${local}@googlemail.com` }).where(eq(schema.user.id, mockUser.id));
+  mockUser.email = `${local}@googlemail.com`;
+
+  expect((await POST(request())).status).toBe(200);
+  const [membership] = await mockDatabase.select().from(schema.member).where(eq(schema.member.userId, mockUser.id));
+  expect(await mockDatabase.select().from(schema.executionEntitlements).where(eq(schema.executionEntitlements.organizationId, membership.organizationId))).toEqual([]);
+  const [owner] = await mockDatabase.select().from(schema.user).where(eq(schema.user.id, mockUser.id));
+  expect(owner.trialGrantedAt).toBeNull();
+});
+
 it("rolls the grant back if the browser session disappears during signup", async () => {
   await mockDatabase.delete(schema.session).where(eq(schema.session.token, mockToken));
   expect((await POST(request())).status).toBe(401);

@@ -4,6 +4,7 @@ import {
   subscriptionService,
 } from "@/lib/services/subscription-service";
 import { trialCheckIntervalViolation } from "./trial-limits";
+import { checkResumeWithinPlan } from "@/lib/middleware/plan-enforcement";
 
 /** The 400 every monitor write route answers when a trial org asks for a faster check than it may have. */
 export async function trialIntervalErrorResponse(
@@ -39,7 +40,6 @@ export async function monitorResumeBlockedResponse(
   if (!organizationId || currentStatus !== "paused" || !resuming) return null;
   try {
     await subscriptionService.blockUntilSubscribed(organizationId);
-    return null;
   } catch (error) {
     if (!(error instanceof SubscriptionAccessDeniedError)) throw error;
     return NextResponse.json(
@@ -47,4 +47,10 @@ export async function monitorResumeBlockedResponse(
       { status: 402 },
     );
   }
+  const cap = await checkResumeWithinPlan(organizationId, "monitor");
+  if (cap.allowed) return null;
+  return NextResponse.json(
+    { error: cap.error, code: "plan_limit", limit: cap.limit, upgrade: cap.upgrade },
+    { status: 403 },
+  );
 }
