@@ -14,6 +14,7 @@ import { publicReportUrl } from '../utils/report-url.js'
 export { publicReportUrl }
 
 const MAX_PENDING_CONSOLE = 64 * 1024
+const CONSOLE_TAIL = 1024
 
 export const runCommand = new Command('run')
   .description('Manage runs')
@@ -107,7 +108,11 @@ runCommand
       pending += chunk
       const end = pending.lastIndexOf('\n') + 1
       if (end > 0) { process.stdout.write(redactText(pending.slice(0, end))); pending = pending.slice(end) }
-      if (pending.length > MAX_PENDING_CONSOLE) flushConsole() // a stream that never sends a newline must not grow without bound
+      // A stream that never sends a newline must not grow without bound. Keep a tail longer than any token so none is cut at the overflow.
+      if (pending.length > MAX_PENDING_CONSOLE) {
+        process.stdout.write(redactText(pending.slice(0, -CONSOLE_TAIL)))
+        pending = pending.slice(-CONSOLE_TAIL)
+      }
     }
     try {
     await getSse(`/api/runs/${id}/stream`, ({ event, data }) => {

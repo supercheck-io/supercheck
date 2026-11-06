@@ -532,16 +532,34 @@ describe('AI SRE CLI Commands', () => {
       expect(out).not.toContain(token)
       expect(out).toContain('partial')
     })
-    it('run stream flushes a remainder that grows past the cap without a newline', async () => {
+    it('run stream redacts a token straddling the overflow boundary of a newline-less stream', async () => {
       const write = jest.spyOn(process.stdout, 'write').mockImplementation(() => true)
+      const token = `sck_live_${'c'.repeat(32)}`
       mockGetSse.mockImplementationOnce(async (_path: unknown, callback: unknown) => {
         const onEvent = callback as (event: { event: string; data: unknown }) => void
-        onEvent({ event: 'console', data: { line: 'x'.repeat(64 * 1024 + 1) } })
-        expect(write).toHaveBeenCalledTimes(1)
+        // The token starts just before the cap, so a cut at the cap would split it.
+        onEvent({ event: 'console', data: { line: `${'x'.repeat(64 * 1024 - 10)}${token.slice(0, 20)}` } })
+        onEvent({ event: 'console', data: { line: `${token.slice(20)} end` } })
         onEvent({ event: 'complete', data: { status: 'passed' } })
       })
       await runCommand.parseAsync(['node', 'run', 'stream', 'run-1'])
+      const out = write.mock.calls.map((call) => call[0]).join('')
       write.mockRestore()
+      expect(out).not.toContain('sck_live_')
+      expect(out).toContain('[REDACTED] end')
+    })
+    it('run stream redacts a token still in the remainder when the stream ends', async () => {
+      const write = jest.spyOn(process.stdout, 'write').mockImplementation(() => true)
+      mockGetSse.mockImplementationOnce(async (_path: unknown, callback: unknown) => {
+        const onEvent = callback as (event: { event: string; data: unknown }) => void
+        onEvent({ event: 'console', data: { line: `${'y'.repeat(64 * 1024 + 5)}sck_live_${'d'.repeat(32)}` } })
+      })
+      mockRequest.mockResolvedValueOnce({ data: { status: 'passed' } })
+      await runCommand.parseAsync(['node', 'run', 'stream', 'run-1'])
+      const out = write.mock.calls.map((call) => call[0]).join('')
+      write.mockRestore()
+      expect(out).not.toContain('sck_live_')
+      expect(out.endsWith('[REDACTED]')).toBe(true)
     })
     it('run stream polls past a queued complete event and succeeds when the run passes', async () => {
       mockGetSse.mockImplementationOnce(async (_path: unknown, callback: unknown) => {
