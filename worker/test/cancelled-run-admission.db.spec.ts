@@ -60,6 +60,7 @@ function recovery(enabled: boolean, active = false) {
     service,
     new ConfigService({ CANCELLED_QUEUED_RECOVERY_ENABLED: String(enabled) }),
     { hasActiveExecution: async () => active } as never,
+    { handleJobNotifications: async () => undefined } as never,
   );
   const state = handler as unknown as {
     redisClient: object;

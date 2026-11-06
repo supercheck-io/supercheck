@@ -427,6 +427,9 @@ services:
   # Self-hosted production uses the Kubernetes execution backend so Docker
   # Compose and cloud deployments share the same per-run gVisor Job model.
   worker:
+    # Compose sends SIGKILL after 10s by default; the worker drains in-flight runs for up to
+    # WORKER_SHUTDOWN_DRAIN_MS (default 20s) first. Keep this above that value.
+    stop_grace_period: 30s
     image: ghcr.io/supercheck-io/supercheck/worker:${SUPERCHECK_VERSION:-1.6.0}
     pull_policy: always
     # init: Use tini as PID 1 to avoid zombie processes (Playwright recommendation)
@@ -435,6 +438,7 @@ services:
     user: "pwuser:pwuser"
     environment:
       <<: *common-env
+      WORKER_SHUTDOWN_DRAIN_MS: ${WORKER_SHUTDOWN_DRAIN_MS:-20000}
       # Worker-specific configuration (inherits all common env vars)
       # Note: MAX_CONCURRENT_EXECUTIONS=1 is hardcoded in worker code (scale via replicas)
       WORKER_IMAGE: ghcr.io/supercheck-io/supercheck/worker:${SUPERCHECK_VERSION:-1.6.0}

@@ -1,6 +1,7 @@
 /** @jest-environment node */
 const mockLookup = jest.fn();
 jest.mock("@/lib/sre/connectors/endpoint-policy", () => ({
+  ...jest.requireActual("@/lib/sre/connectors/endpoint-policy"),
   lookupBounded: (...a: unknown[]) => mockLookup(...a),
 }));
 
@@ -57,6 +58,10 @@ describe("validateMonitorTargetAddress", () => {
     expect(await check("http_request", "http://127.0.0.1")).toEqual({ success: true });
     expect(await check("ping_host", "10.0.0.5")).toEqual({ success: true });
     expect(mockLookup).not.toHaveBeenCalled();
+    for (const target of ["http://169.254.169.254/latest", "http://[fe80::1]/", "http://metadata.google.internal/"]) {
+      expect(await check("http_request", target)).toMatchObject({ success: false });
+    }
+    expect(await check("ping_host", "100.100.100.200")).toMatchObject({ success: false });
     for (const value of ["1", "false", "TRUE"]) {
       process.env.ALLOW_INTERNAL_TARGETS = value;
       expect(await check("http_request", "http://127.0.0.1")).toMatchObject({ success: false });

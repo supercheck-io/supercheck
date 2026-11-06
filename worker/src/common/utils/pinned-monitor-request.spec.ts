@@ -212,6 +212,186 @@ describe('pinned HTTP monitor requests', () => {
     ).toBeUndefined();
   });
 
+  it('drops user-configured headers on cross-origin redirects but keeps safe ones', async () => {
+    (mockLookup as jest.Mock)
+      .mockResolvedValueOnce([{ address: '203.0.114.10', family: 4 }])
+      .mockResolvedValueOnce([{ address: '203.0.114.11', family: 4 }]);
+    const execute = jest
+      .fn()
+      .mockResolvedValueOnce(
+        response(302, { location: 'https://other.example/' }),
+      )
+      .mockResolvedValueOnce(response());
+
+    await requestPinnedMonitorTarget(
+      {
+        url: 'https://monitor.example/start',
+        headers: {
+          'X-Api-Key': 'secret',
+          'User-Agent': 'Supercheck-Monitor/1.0',
+          Accept: 'text/plain',
+        },
+      },
+      { allowInternalTargets: false, maxRedirects: 5 },
+      execute,
+    );
+
+    const headers = AxiosHeaders.from(
+      execute.mock.calls[1][0].headers as AxiosHeaders,
+    );
+    expect(headers.get('x-api-key')).toBeUndefined();
+    expect(headers.get('user-agent')).toBe('Supercheck-Monitor/1.0');
+    expect(headers.get('accept')).toBe('text/plain');
+  });
+
+  it('treats an http to https upgrade on default ports as same-origin', async () => {
+    (mockLookup as jest.Mock).mockResolvedValue([
+      { address: '203.0.114.10', family: 4 },
+    ]);
+    const execute = jest
+      .fn()
+      .mockResolvedValueOnce(
+        response(301, { location: 'https://monitor.example/' }),
+      )
+      .mockResolvedValueOnce(response());
+
+    await requestPinnedMonitorTarget(
+      { url: 'http://monitor.example/', headers: { 'X-Api-Key': 'secret' } },
+      { allowInternalTargets: false, maxRedirects: 5 },
+      execute,
+    );
+
+    expect(
+      AxiosHeaders.from(execute.mock.calls[1][0].headers as AxiosHeaders).get(
+        'x-api-key',
+      ),
+    ).toBe('secret');
+  });
+
+  it('keeps Content-Type on a cross-origin 307 that resends the body', async () => {
+    (mockLookup as jest.Mock).mockResolvedValue([
+      { address: '203.0.114.10', family: 4 },
+    ]);
+    const execute = jest
+      .fn()
+      .mockResolvedValueOnce(
+        response(307, { location: 'https://other.example/' }),
+      )
+      .mockResolvedValueOnce(response());
+
+    await requestPinnedMonitorTarget(
+      {
+        url: 'https://monitor.example/',
+        method: 'POST',
+        data: '{"a":1}',
+        headers: { 'Content-Type': 'application/json', 'X-Api-Key': 'secret' },
+      },
+      { allowInternalTargets: false, maxRedirects: 5 },
+      execute,
+    );
+
+    const sent = execute.mock.calls[1][0];
+    const headers = AxiosHeaders.from(sent.headers as AxiosHeaders);
+    expect(sent.data).toBe('{"a":1}');
+    expect(headers.get('content-type')).toBe('application/json');
+    expect(headers.get('x-api-key')).toBeUndefined();
+  });
+
+  it('shares one wall-clock signal across every redirect hop', async () => {
+    (mockLookup as jest.Mock).mockResolvedValue([
+      { address: '203.0.114.10', family: 4 },
+    ]);
+    const execute = jest
+      .fn()
+      .mockResolvedValueOnce(response(302, { location: '/b' }))
+      .mockResolvedValueOnce(response(302, { location: '/c' }))
+      .mockResolvedValueOnce(response());
+
+    await requestPinnedMonitorTarget(
+      { url: 'https://monitor.example/a', timeout: 5000 },
+      { allowInternalTargets: false, maxRedirects: 5 },
+      execute,
+    );
+
+    const signals = execute.mock.calls.map(
+      ([config]) => (config as AxiosRequestConfig).signal,
+    );
+    expect(signals[0]).toBeInstanceOf(AbortSignal);
+    expect(signals[1]).toBe(signals[0]);
+    expect(signals[2]).toBe(signals[0]);
+  });
+
+  it('keeps user headers on same-origin redirects', async () => {
+    (mockLookup as jest.Mock).mockResolvedValue([
+      { address: '203.0.114.10', family: 4 },
+    ]);
+    const execute = jest
+      .fn()
+      .mockResolvedValueOnce(response(302, { location: '/next' }))
+      .mockResolvedValueOnce(response());
+
+    await requestPinnedMonitorTarget(
+      { url: 'https://monitor.example/', headers: { 'X-Api-Key': 'secret' } },
+      { allowInternalTargets: false, maxRedirects: 5 },
+      execute,
+    );
+
+    expect(
+      AxiosHeaders.from(execute.mock.calls[1][0].headers as AxiosHeaders).get(
+        'x-api-key',
+      ),
+    ).toBe('secret');
+  });
+
+  it('refuses metadata addresses even when internal targets are allowed', async () => {
+    const execute = jest.fn();
+    await expect(
+      requestPinnedMonitorTarget(
+        { url: 'http://169.254.169.254/latest/meta-data' },
+        { allowInternalTargets: true, maxRedirects: 5 },
+        execute,
+      ),
+    ).rejects.toThrow('private or reserved');
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it('aborts a DNS lookup that outlives the check deadline', async () => {
+    (mockLookup as jest.Mock).mockImplementationOnce(
+      () => new Promise(() => undefined),
+    );
+    const execute = jest.fn();
+    await expect(
+      requestPinnedMonitorTarget(
+        { url: 'https://slow-dns.example/', timeout: 20 },
+        { allowInternalTargets: false, maxRedirects: 5 },
+        execute,
+      ),
+    ).rejects.toMatchObject({ code: 'ERR_CANCELED' });
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it('bounds a slow-drip response with a wall-clock abort signal', async () => {
+    (mockLookup as jest.Mock).mockResolvedValueOnce([
+      { address: '203.0.114.10', family: 4 },
+    ]);
+    const execute = jest.fn(
+      (config: AxiosRequestConfig) =>
+        new Promise<AxiosResponse>((_resolve, reject) => {
+          (config.signal as AbortSignal).addEventListener('abort', () =>
+            reject(new Error('aborted')),
+          );
+        }),
+    );
+
+    await expect(
+      requestPinnedMonitorTarget(
+        { url: 'https://monitor.example/', timeout: 20 },
+        { allowInternalTargets: false, maxRedirects: 5 },
+        execute,
+      ),
+    ).rejects.toThrow('aborted');
+  });
+
   it('retains the explicit internal-target opt-in', async () => {
     (mockLookup as jest.Mock).mockResolvedValueOnce([
       { address: '10.0.0.5', family: 4 },

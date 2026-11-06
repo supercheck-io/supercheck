@@ -6,6 +6,12 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 
 ## [Unreleased]
 
+### Fixed
+
+- HTTP monitors now enforce a total wall-clock timeout per check, so a slowly dripping response can no longer hold a check open past its timeout.
+- Runs marked as errors by the stalled-run sweep now send job failure alerts.
+- A recovery alert suppressed by scheduled maintenance is now treated as consumed instead of being retried on every later check, and undeliverable recovery alerts stop retrying after a bounded number of checks.
+
 ## [1.6.0] - 2026-11-05
 
 This release adds incident watchers, a per-project notification policy, an AI-assisted incident workflow and MCP tools that act on incidents. It also includes a database hardening pass that must be applied before you upgrade.

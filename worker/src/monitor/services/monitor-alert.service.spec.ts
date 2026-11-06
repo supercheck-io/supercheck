@@ -182,6 +182,16 @@ describe('MonitorAlertService', () => {
     ).toMatchObject({ suppressed: true });
   });
 
+  it('does not report a delivered alert as failed when the history insert fails', async () => {
+    const { service, valuesMock } = createService();
+    valuesMock.mockImplementation(() => ({
+      returning: jest.fn().mockRejectedValue(new Error('db down')),
+    }));
+    expect(
+      await service.sendNotification('monitor-1', 'failure', 'Down'),
+    ).toEqual({ delivered: true });
+  });
+
   it('suppresses monitor notifications during a scheduled maintenance window', async () => {
     const { service, valuesMock, sreAlertTriageQueueService } =
       createService(true);
