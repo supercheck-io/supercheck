@@ -108,7 +108,7 @@ export class MonitorAlertService {
       sourceType: 'monitor',
       sourceId: monitorId,
       type: 'monitor_failure',
-      message: reason || 'Monitor is down',
+      message: (reason || 'Monitor is down').slice(0, 2000),
       firedAt: new Date().toISOString(),
     });
     return {
@@ -321,6 +321,7 @@ export class MonitorAlertService {
     );
 
     if (deliveryResults.results.length > 0) {
+      const sentAt = new Date(); // one per failure: per-channel rows must share it
       const historyRecords = deliveryResults.results.map((result) => ({
         type: notificationType,
         message: notificationPayload.message,
@@ -334,7 +335,7 @@ export class MonitorAlertService {
             : ('failed' as const),
         errorMessage: result.error,
         deliveryMetadata: result.deliveryMetadata,
-        sentAt: new Date(),
+        sentAt,
       }));
 
       // Delivery already happened: a bookkeeping failure must not be reported as a failed delivery.
@@ -512,6 +513,7 @@ export class MonitorAlertService {
     );
 
     if (deliveryResults.results.length > 0) {
+      const sentAt = new Date(); // one per alert: per-channel rows must share it
       const historyRecords = deliveryResults.results.map<
         typeof schema.alertHistory.$inferInsert
       >((result) => ({
@@ -527,7 +529,7 @@ export class MonitorAlertService {
             : ('failed' as const),
         errorMessage: result.error,
         deliveryMetadata: result.deliveryMetadata,
-        sentAt: new Date(),
+        sentAt,
       }));
 
       const createdRows = await db

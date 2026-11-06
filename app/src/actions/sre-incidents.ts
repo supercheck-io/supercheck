@@ -65,6 +65,7 @@ import {
   getDefaultAssigneeId,
   getSourceRecoveredAt,
   noteFailureReturned,
+  recordRepeatAlert,
   INCIDENT_REOPEN_WINDOW_MS,
   RECOVERABLE_ALERT_TYPES,
   reopenRecentlyAutoResolved,
@@ -1278,6 +1279,7 @@ export async function createManualSreIncident(
           title,
           severity: parsed.data.severity,
           status: "triggered",
+          alertCount: 0, // no alert yet: a hand-created incident counts only alerts that join it
           createdByUserId: userId,
           // A hand-created incident belongs to its creator until someone reassigns it.
           assigneeUserId: userId,
@@ -1813,6 +1815,7 @@ export async function createSreIncidentFromAlert(
               })
               .onConflictDoNothing();
           }
+          await recordRepeatAlert(tx, joined.id, firedAt);
           if (!reopened) await noteFailureReturned(tx, joined.id, firedAt);
           return {
             incident: { id: joined.id, incidentNumber: joined.incidentNumber, title: joined.title },
@@ -1931,6 +1934,7 @@ export async function createSreIncidentFromAlert(
                 createdAt: new Date(),
               })
               .onConflictDoNothing();
+            await recordRepeatAlert(correlationTx, correlation.candidate.incidentId, firedAt);
 
             await correlationTx.insert(sreIncidentTimelineEvents).values({
               incidentId: correlation.candidate.incidentId,
@@ -1991,6 +1995,8 @@ export async function createSreIncidentFromAlert(
           title,
           severity,
           status: alertStatus === "resolved" ? "resolved" : "triggered",
+          alertCount: 1,
+          lastAlertAt: firedAt,
           primaryServiceId: mappedService?.id ?? null,
           assigneeUserId: await getDefaultAssigneeId(tx, {
             organizationId,

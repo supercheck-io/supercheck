@@ -35,6 +35,7 @@ import { McpToolFailure, registerSreTools, type ToolRegistrar } from "./sre-tool
 import { getDisplayStatus } from "@/lib/sre/incident-status-display";
 import { storedRootCause } from "@/lib/sre/evidence-brief-summary";
 import { safeTarget, safeText } from "./redact";
+import { incidentsEnabled } from "@/lib/incident-settings";
 
 const MAX_LIMIT = 50;
 const ANNOTATIONS = {
@@ -414,6 +415,8 @@ export function registerMcpTools(server: McpServer, ctx: McpCallContext): void {
           alertOnFailure: m.alertConfig?.alertOnFailure === true,
           alertOnRecovery: m.alertConfig?.alertOnRecovery === true,
           ...incidentSettings(m.alertConfig),
+          // A monitor with alerts off opens incidents only when opted in.
+          incidentEnabled: incidentsEnabled(m.alertConfig),
         },
       },
     };

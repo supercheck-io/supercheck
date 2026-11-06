@@ -157,6 +157,7 @@ const isPlainObject = (v: unknown): v is Record<string, unknown> =>
 export function mergePatch<T extends Record<string, unknown>>(target: T, patch: Record<string, unknown>): T {
   const out: Record<string, unknown> = { ...target };
   for (const [key, value] of Object.entries(patch)) {
+    if (key === "__proto__" || key === "constructor" || key === "prototype") continue;
     if (value === null) delete out[key];
     else if (isPlainObject(value)) out[key] = mergePatch(isPlainObject(out[key]) ? out[key] : {}, value);
     else out[key] = value;

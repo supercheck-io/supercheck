@@ -420,6 +420,8 @@ export class MonitorEvaluator {
           recoveryThreshold + Math.max(5, recoveryThreshold * 2) &&
         alertsSentForRecovery === 0 &&
         outageReachedThreshold &&
+        // Nothing to notify without alerts: the recovery signal above already resolves the incident.
+        !incidentOnly &&
         ((monitorAlertConfig?.alertOnRecovery as boolean) || false);
 
       if (!shouldSendAlert) {

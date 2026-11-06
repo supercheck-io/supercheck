@@ -508,4 +508,46 @@ describe('incident-only monitors (alerts off or no channel)', () => {
     expect(alertService.sendNotification).toHaveBeenCalled();
     expect(alertService.signalFailure).not.toHaveBeenCalled();
   });
+
+  it('sends no failure signal on recovery for an incident-only monitor', async () => {
+    const latest = {
+      id: 'r1',
+      consecutiveSuccessCount: 1,
+      alertsSentForRecovery: 0,
+      details: { recoverySequence: true },
+    };
+    const alertService = {
+      sendNotification: jest.fn(),
+      signalFailure: jest.fn(),
+      signalRecovery: jest.fn(),
+    };
+    const evaluator = new MonitorEvaluator(
+      {
+        db: {
+          query: { monitorResults: { findFirst: jest.fn(async () => latest) } },
+          update: jest.fn(),
+        },
+      } as never,
+      alertService as never,
+    );
+    const res = await evaluator.evaluateAndSendAlert({
+      monitorId: 'm1',
+      monitor: {
+        alertConfig: {
+          enabled: false,
+          incidentEnabled: true,
+          alertOnRecovery: true,
+        },
+        config: {},
+      } as never,
+      previousStatus: 'down',
+      currentStatus: 'up',
+      reason: 'up',
+      metadata: {},
+    });
+    expect(res).toEqual({ alertSent: false });
+    expect(alertService.signalFailure).not.toHaveBeenCalled();
+    expect(alertService.sendNotification).not.toHaveBeenCalled();
+    expect(alertService.signalRecovery).toHaveBeenCalled();
+  });
 });

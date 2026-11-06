@@ -733,12 +733,18 @@ export async function findOpenIncidentForSource(tx: Executor, source: SourceRef)
 /**
  * Counts one more alert on an open incident. A single atomic statement (no read-then-write), so concurrent
  * repeats each add exactly one. The same alert arriving again (a queue retry, or one row per channel) carries
- * the same firedAt and is not counted twice. Returns whether the count moved.
+ * the same firedAt and is not counted twice (a retry interleaved with newer alerts can still double count:
+ * shortcut, the alert time is the only identity; add an alert id column if that matters). Returns whether
+ * the count moved.
  */
 export async function recordRepeatAlert(tx: Executor, incidentId: string, firedAt: Date) {
   const rows = await tx
     .update(sreIncidents)
-    .set({ alertCount: sql`${sreIncidents.alertCount} + 1`, lastAlertAt: firedAt })
+    // GREATEST keeps last_alert_at monotonic when alerts are processed out of order.
+    .set({
+      alertCount: sql`${sreIncidents.alertCount} + 1`,
+      lastAlertAt: sql`greatest(coalesce(${sreIncidents.lastAlertAt}, ${firedAt}), ${firedAt})`,
+    })
     .where(
       and(
         eq(sreIncidents.id, incidentId),

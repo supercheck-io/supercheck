@@ -896,7 +896,12 @@ export async function PATCH(
         return NextResponse.json({ error: alertError }, { status: 400 });
       }
       updatePayload.alertConfig = normalized.value;
-      if (normalized.value.enabled && Array.isArray(rawData.alertConfig.notificationProviders)) {
+      // null clears the list (merge-patch delete), so it must clear the delivery rows too.
+      if (
+        normalized.value.enabled &&
+        (Array.isArray(rawData.alertConfig.notificationProviders) ||
+          rawData.alertConfig.notificationProviders === null)
+      ) {
         providerIdsToSync = normalized.value.notificationProviders;
       }
     }
