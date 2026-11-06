@@ -1,8 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { createHash } from 'crypto';
-import * as nodemailer from 'nodemailer';
-import type { Transporter } from 'nodemailer';
-import type SMTPPool from 'nodemailer/lib/smtp-pool';
+import {
+  closeSmtpTransport,
+  sendMailToRecipients,
+  type SmtpDeliveryResult,
+} from '../common/utils/smtp-transport';
 import {
   AlertDeliveryMetadata,
   AlertType,
@@ -149,12 +151,6 @@ interface NotificationSendResult {
   deliveryMetadata?: AlertDeliveryMetadata;
 }
 
-interface SmtpDeliveryResult {
-  sentCount: number;
-  failedRecipients: string[];
-  errors: Record<string, string>;
-}
-
 type ProviderDeliveryDetails = {
   attempts?: number;
   responseStatus?: number;
@@ -245,7 +241,7 @@ export function buildEmailFields(
 }
 
 @Injectable()
-export class NotificationService {
+export class NotificationService implements OnModuleDestroy {
   private readonly logger = new Logger(NotificationService.name);
 
   constructor(private readonly emailTemplateService: EmailTemplateService) {
@@ -928,143 +924,31 @@ export class NotificationService {
     return emailRegex.test(email);
   }
 
-  private transporter?: Transporter;
-  private transporterKey?: string;
-
-  /** Reuses the pooled transporter until the SMTP env changes; closes the stale pool. */
-  private getTransporter(config: SMTPPool.Options): Transporter {
-    const key = JSON.stringify(config);
-    if (!this.transporter || this.transporterKey !== key) {
-      this.transporter?.close();
-      this.transporter = nodemailer.createTransport(config);
-      this.transporterKey = key;
-    }
-    return this.transporter;
-  }
-
   private async trySMTPDelivery(
-    config: any,
-    formatted: FormattedNotification,
+    _config: any,
+    _formatted: FormattedNotification,
     emailContent: { html: string; text: string; subject: string },
     emailAddresses: string[],
   ): Promise<SmtpDeliveryResult> {
-    const failureResult = (error: string): SmtpDeliveryResult => ({
-      sentCount: 0,
-      failedRecipients: [...emailAddresses],
-      errors: Object.fromEntries(emailAddresses.map((email) => [email, error])),
-    });
-
-    try {
-      // Use environment variables for SMTP configuration
-      const smtpHost = process.env.SMTP_HOST;
-      const smtpPort = parseInt(process.env.SMTP_PORT || '587');
-      const smtpSecure = process.env.SMTP_SECURE === 'true';
-      const smtpUser = process.env.SMTP_USER;
-      const smtpPassword = process.env.SMTP_PASSWORD;
-      const hasSmtpUser = Boolean(smtpUser);
-      const hasSmtpPassword = Boolean(smtpPassword);
-      const fromEmail = process.env.SMTP_FROM_EMAIL;
-      const fromName = process.env.SMTP_FROM_NAME?.trim();
-      const replyTo = process.env.SMTP_REPLY_TO?.trim();
-
-      if (!smtpHost) {
-        const error =
-          'SMTP environment variable not configured (missing SMTP_HOST)';
-        this.logger.error(error);
-        return failureResult(error);
-      }
-
-      if (hasSmtpUser !== hasSmtpPassword) {
-        const error =
-          'SMTP authentication is partially configured (set both SMTP_USER and SMTP_PASSWORD, or leave both unset)';
-        this.logger.error(error);
-        return failureResult(error);
-      }
-
-      if (!fromEmail) {
-        const error = 'SMTP sender not configured (missing SMTP_FROM_EMAIL)';
-        this.logger.error(error);
-        return failureResult(error);
-      }
-
-      const sender = {
-        // A display name is added only when SMTP_FROM_EMAIL is a bare address.
-        from:
-          fromName && !fromEmail.includes('<')
-            ? { name: fromName, address: fromEmail }
-            : fromEmail,
-        ...(replyTo ? { replyTo } : {}),
-      };
-
-      const smtpConfig: SMTPPool.Options = {
-        pool: true,
-        maxConnections: 3,
-        maxMessages: 100,
-        host: smtpHost,
-        port: smtpPort,
-        secure: smtpSecure,
-        ...(hasSmtpUser && hasSmtpPassword
-          ? {
-              auth: {
-                user: smtpUser,
-                pass: smtpPassword,
-              },
-            }
-          : {}),
-        tls: {
-          rejectUnauthorized: true, // Validate SSL certificates for security
-          minVersion: 'TLSv1.2' as const, // Required for ZeptoMail and security best practices
-        },
-        connectionTimeout: 10000, // 10 seconds
-        greetingTimeout: 5000, // 5 seconds
-        socketTimeout: 30000,
-      };
-
-      // A pooled transporter is reused across sends; sendMail connects (and fails per
-      // recipient) on its own, so there is no verify() round trip per notification.
-      const transporter = this.getTransporter(smtpConfig);
-
-      // Send to each email address sequentially to avoid SMTP rate-limiting
-      // and concurrent connection issues that cause only the first email to be delivered
-      let sentCount = 0;
-      const failedRecipients: string[] = [];
-      const errors: Record<string, string> = {};
-
-      for (const email of emailAddresses) {
-        try {
-          await transporter.sendMail({
-            ...sender,
-            to: email,
-            subject: emailContent.subject,
-            html: emailContent.html,
-            text: emailContent.text,
-          });
-          sentCount++;
-        } catch (error) {
-          const msg = error instanceof Error ? error.message : String(error);
-          this.logger.warn(`SMTP delivery failed for ${email}: ${msg}`);
-          failedRecipients.push(email);
-          errors[email] = msg;
-        }
-      }
-
-      if (failedRecipients.length > 0) {
-        this.logger.warn(
-          `SMTP delivery: ${sentCount}/${emailAddresses.length} sent, failed for: ${failedRecipients.join(', ')}`,
-        );
-      }
-
-      return {
-        sentCount,
-        failedRecipients,
-        errors,
-      };
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-      this.logger.error(`SMTP delivery failed: ${errorMessage}`);
-      return failureResult(errorMessage);
+    const result = await sendMailToRecipients(
+      emailAddresses,
+      emailContent,
+      (msg) => this.logger.warn(msg),
+    );
+    if (result.sentCount === 0) {
+      this.logger.error(
+        `SMTP delivery failed: ${Object.values(result.errors)[0] ?? 'unknown error'}`,
+      );
+    } else if (result.failedRecipients.length > 0) {
+      this.logger.warn(
+        `SMTP delivery: ${result.sentCount}/${emailAddresses.length} sent, failed for: ${result.failedRecipients.join(', ')}`,
+      );
     }
+    return result;
+  }
+
+  onModuleDestroy(): void {
+    closeSmtpTransport();
   }
 
   private async sendSlackNotification(

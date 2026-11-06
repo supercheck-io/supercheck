@@ -23,7 +23,7 @@ export const deliverTrialReminder: DeliverTrialReminder = async (delivery) => {
     kind: delivery.kind,
     daysRemaining: delivery.daysRemaining,
     subscribeUrl: trialSubscribeUrl(),
-    manageNotificationsUrl: `${trialAppUrl(process.env)}/org-admin?tab=subscription`,
+    manageBillingUrl: `${trialAppUrl(process.env)}/org-admin?tab=subscription`,
   });
   const result = await EmailService.getInstance().sendEmailToMultiple({
     recipients: delivery.recipients,

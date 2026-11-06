@@ -11,7 +11,6 @@ import {
   MonitorAlertEmail,
   IncidentUpdateEmail,
   TestEmail,
-  UsageNotificationEmail,
   TrialNotificationEmail,
   alertEmailSubject,
 } from "./index";
@@ -132,10 +131,11 @@ describe("email consistency", () => {
     expect(html).not.toContain("ZZPage</strong>.");
   });
 
-  it("manage-notifications link only appears when a settings URL is given", () => {
-    const usage = { organizationName: "Acme", notificationType: "usage_80_percent" as const, resourceType: "playwright" as const, usageAmount: 1, usageLimit: 2, usagePercentage: 50, billingPageUrl: "https://app.io/b", periodEndDate: "x" };
-    expect(render(<UsageNotificationEmail {...usage} />)).not.toContain("Manage notifications");
-    expect(render(<UsageNotificationEmail {...usage} manageNotificationsUrl="https://app.io/s" />)).toContain("Manage notifications");
-    expect(render(<TrialNotificationEmail organizationName="A" kind="midway" daysRemaining={7} subscribeUrl="https://app.io/subscribe" manageNotificationsUrl="https://app.io/s" />)).toContain('href="https://app.io/s"');
+  it("trial email shows a Manage billing link only when a billing URL is given", () => {
+    const t = { organizationName: "A", kind: "midway" as const, daysRemaining: 7, subscribeUrl: "https://app.io/subscribe" };
+    expect(render(<TrialNotificationEmail {...t} />)).not.toContain("Manage billing");
+    const html = render(<TrialNotificationEmail {...t} manageBillingUrl="https://app.io/b" />);
+    expect(html).toContain("Manage billing");
+    expect(html).toContain('href="https://app.io/b"');
   });
 });

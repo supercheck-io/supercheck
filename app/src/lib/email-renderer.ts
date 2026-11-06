@@ -210,7 +210,6 @@ export async function renderUsageNotificationEmail(params: {
   currentSpendingDollars?: number;
   spendingLimitDollars?: number;
   billingPageUrl: string;
-  manageNotificationsUrl?: string;
   periodEndDate: string;
 }): Promise<RenderedEmail> {
   const component = UsageNotificationEmail(params);
@@ -241,7 +240,7 @@ export async function renderTrialNotificationEmail(params: {
   kind: TrialNotificationKind;
   daysRemaining: number;
   subscribeUrl: string;
-  manageNotificationsUrl?: string;
+  manageBillingUrl?: string;
 }): Promise<RenderedEmail> {
   const component = TrialNotificationEmail(params);
 

@@ -1415,6 +1415,17 @@ describe('NotificationService', () => {
       ]);
     });
 
+    it('closes the pooled transporter on module destroy', async () => {
+      const close = jest.fn();
+      (nodemailer.createTransport as jest.Mock).mockReturnValue({
+        sendMail: jest.fn().mockResolvedValue({}),
+        close,
+      });
+      await service.sendNotification(emailProvider, basePayload);
+      service.onModuleDestroy();
+      expect(close).toHaveBeenCalledTimes(1);
+    });
+
     it('reuses one pooled transporter and never calls verify()', async () => {
       const verify = jest.fn();
       const sendMail = jest.fn().mockResolvedValue({});

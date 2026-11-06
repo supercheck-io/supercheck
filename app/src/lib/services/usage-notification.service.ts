@@ -335,7 +335,6 @@ class UsageNotificationService {
         currentSpendingDollars,
         spendingLimitDollars,
         billingPageUrl,
-        manageNotificationsUrl: billingPageUrl,
         periodEndDate,
       });
 

@@ -6,7 +6,7 @@ import {
 } from "@react-email/components";
 import * as React from "react";
 import { PALETTE } from "./palette";
-import { BaseLayout, ManageNotificationsLink } from "./base-layout";
+import { BaseLayout } from "./base-layout";
 
 interface UsageNotificationEmailProps {
   organizationName: string;
@@ -24,8 +24,6 @@ interface UsageNotificationEmailProps {
   currentSpendingDollars?: number;
   spendingLimitDollars?: number;
   billingPageUrl: string;
-  /** Settings page for notification preferences; adds a footer link. */
-  manageNotificationsUrl?: string;
   periodEndDate: string;
 }
 
@@ -39,7 +37,6 @@ export const UsageNotificationEmail = ({
   currentSpendingDollars,
   spendingLimitDollars,
   billingPageUrl = "https://app.supercheck.io/billing",
-  manageNotificationsUrl,
   periodEndDate = "December 1, 2026",
 }: UsageNotificationEmailProps) => {
   const getTitle = () => {
@@ -122,7 +119,6 @@ export const UsageNotificationEmail = ({
       preview={`${getTitle()} for ${organizationName}`}
       title={getTitle()}
       headerColor={getHeaderColor()}
-      footer={<ManageNotificationsLink href={manageNotificationsUrl} />}
     >
       <Section style={contentSection}>
         <Text style={greeting}>

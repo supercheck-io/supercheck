@@ -214,17 +214,17 @@ export const EmailButton = ({
   </Button>
 );
 
-/** Footer line for owner-facing emails; only rendered when a settings URL exists. */
-export const ManageNotificationsLink = ({ href }: { href?: string }) =>
+/** Footer line for owner-facing billing emails; only rendered when a billing URL exists. */
+export const ManageBillingLink = ({ href }: { href?: string }) =>
   href ? (
-    <Text style={manageNotificationsText}>
+    <Text style={manageBillingText}>
       <Link href={href} style={footerLink}>
-        Manage notifications
+        Manage billing
       </Link>
     </Text>
   ) : null;
 
-const manageNotificationsText = {
+const manageBillingText = {
   color: "#6b7280",
   fontSize: "12px",
   margin: "0",

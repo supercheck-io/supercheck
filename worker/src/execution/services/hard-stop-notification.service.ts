@@ -1,7 +1,10 @@
-import { Injectable, Logger, Inject } from '@nestjs/common';
+import { Injectable, Logger, Inject, OnModuleDestroy } from '@nestjs/common';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { eq, and, inArray } from 'drizzle-orm';
-import * as nodemailer from 'nodemailer';
+import {
+  closeSmtpTransport,
+  sendMailToRecipients,
+} from '../../common/utils/smtp-transport';
 import * as schema from '../../db/schema';
 import { DB_PROVIDER_TOKEN } from './db.service';
 import { RedisService } from './redis.service';
@@ -14,7 +17,7 @@ import { RedisService } from './redis.service';
  * notification spam (max 1 email per hour per organization).
  */
 @Injectable()
-export class HardStopNotificationService {
+export class HardStopNotificationService implements OnModuleDestroy {
   private readonly logger = new Logger(HardStopNotificationService.name);
   private readonly RATE_LIMIT_KEY_PREFIX = 'hard_stop_notification:';
   private readonly RATE_LIMIT_TTL_SECONDS = 3600; // 1 hour
@@ -24,6 +27,10 @@ export class HardStopNotificationService {
     private readonly db: PostgresJsDatabase<typeof schema>,
     private readonly redisService: RedisService,
   ) {}
+
+  onModuleDestroy(): void {
+    closeSmtpTransport();
+  }
 
   /**
    * Send a hard stop notification if not rate limited
@@ -144,64 +151,13 @@ export class HardStopNotificationService {
     runId: string,
   ): Promise<boolean> {
     try {
-      const smtpHost = process.env.SMTP_HOST;
-      const smtpPort = parseInt(process.env.SMTP_PORT || '587');
-      const smtpUser = process.env.SMTP_USER;
-      const smtpPassword = process.env.SMTP_PASSWORD;
-      const smtpSecure = process.env.SMTP_SECURE === 'true';
-      const hasSmtpUser = Boolean(smtpUser);
-      const hasSmtpPassword = Boolean(smtpPassword);
-      const fromEmail = process.env.SMTP_FROM_EMAIL;
-
-      if (!smtpHost) {
-        this.logger.warn('[HardStop] SMTP not configured, skipping email');
-        return false;
-      }
-
-      if (hasSmtpUser !== hasSmtpPassword) {
-        this.logger.warn(
-          '[HardStop] SMTP authentication is partially configured, skipping email',
-        );
-        return false;
-      }
-
-      if (!fromEmail) {
-        this.logger.warn(
-          '[HardStop] SMTP sender not configured (missing SMTP_FROM_EMAIL), skipping email',
-        );
-        return false;
-      }
-
-      const transporter = nodemailer.createTransport({
-        host: smtpHost,
-        port: smtpPort,
-        secure: smtpSecure,
-        ...(hasSmtpUser && hasSmtpPassword
-          ? {
-              auth: {
-                user: smtpUser,
-                pass: smtpPassword,
-              },
-            }
-          : {}),
-        tls: {
-          rejectUnauthorized: true,
-          minVersion: 'TLSv1.2' as const, // Required for ZeptoMail and security best practices
-        },
-        connectionTimeout: 10000,
-        greetingTimeout: 5000,
-      });
-
-      // Verify connection
-      await transporter.verify();
-
       const baseUrl =
         process.env.NEXT_PUBLIC_APP_URL ||
         process.env.APP_URL ||
         'https://supercheck.io';
       const billingUrl = `${baseUrl}/org-admin?tab=subscription`;
 
-      const subject = `Execution Blocked - Spending Limit Reached - ${organizationName}`;
+      const subject = `[Supercheck] Execution blocked: spending limit reached (${organizationName})`;
 
       const html = this.renderHardStopEmailHtml(
         organizationName,
@@ -217,19 +173,17 @@ export class HardStopNotificationService {
         billingUrl,
       );
 
-      // Send to all recipients
-      const sendPromises = recipients.map((email) =>
-        transporter.sendMail({
-          from: fromEmail,
-          to: email,
-          subject,
-          html,
-          text,
-        }),
-      );
-
-      await Promise.all(sendPromises);
-      return true;
+      const result = await sendMailToRecipients(recipients, {
+        subject,
+        html,
+        text,
+      });
+      if (result.failedRecipients.length > 0) {
+        this.logger.warn(
+          `[HardStop] SMTP delivery failed for ${result.failedRecipients.length}/${recipients.length} recipient(s): ${Object.values(result.errors)[0]}`,
+        );
+      }
+      return result.sentCount > 0;
     } catch (error) {
       this.logger.error(
         `[HardStop] SMTP delivery failed: ${error instanceof Error ? error.message : String(error)}`,
