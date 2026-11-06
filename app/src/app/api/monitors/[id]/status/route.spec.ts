@@ -94,7 +94,7 @@ describe("schedule is reconciled to the committed state", () => {
     stored("up");
     useDb({ ...base, status: "paused" }, { ...base, status: "paused", enabled: false, scheduledJobId: "old" });
     expect((await patch("paused")).status).toBe(200);
-    expect(deleteScheduledMonitor).toHaveBeenCalledWith("old");
+    expect(deleteScheduledMonitor).toHaveBeenCalledWith("old", expect.any(AbortSignal));
     expect(scheduleMonitor).not.toHaveBeenCalled();
   });
 
@@ -102,7 +102,7 @@ describe("schedule is reconciled to the committed state", () => {
     stored("paused");
     useDb({ ...base, status: "pending" }, { ...base, status: "pending", scheduledJobId: null });
     expect((await patch("pending")).status).toBe(200);
-    expect(scheduleMonitor).toHaveBeenCalledWith(expect.objectContaining({ monitorId: expect.any(String), frequencyMinutes: 5 }));
+    expect(scheduleMonitor).toHaveBeenCalledWith(expect.objectContaining({ monitorId: expect.any(String), frequencyMinutes: 5 }), expect.any(AbortSignal));
     expect(deleteScheduledMonitor).not.toHaveBeenCalled();
   });
 
@@ -119,7 +119,7 @@ describe("schedule is reconciled to the committed state", () => {
     stored("paused");
     useDb({ ...base, status: "pending" }, { ...base, status: "paused", enabled: false, scheduledJobId: "x" });
     expect((await patch("pending")).status).toBe(200);
-    expect(deleteScheduledMonitor).toHaveBeenCalledWith("x");
+    expect(deleteScheduledMonitor).toHaveBeenCalledWith("x", expect.any(AbortSignal));
     expect(scheduleMonitor).not.toHaveBeenCalled();
   });
 
@@ -146,8 +146,113 @@ describe("schedule is reconciled to the committed state", () => {
     stored("paused");
     const retry = await patch("paused");
     expect(retry.status).toBe(200);
-    expect(deleteScheduledMonitor).toHaveBeenLastCalledWith("old"); // job removed
+    expect(deleteScheduledMonitor).toHaveBeenLastCalledWith("old", expect.any(AbortSignal)); // job removed
     expect(clears).toHaveLength(1); // scheduledJobId cleared
+  });
+
+  it.each([
+    ["delete", "paused", { status: "paused", enabled: false, scheduledJobId: "old" }, deleteScheduledMonitor],
+    ["schedule", "up", { status: "up", scheduledJobId: null }, scheduleMonitor],
+  ] as const)("a hung scheduler %s gives 503 within the deadline, keeps scheduledJobId, and a retry converges", async (_n, status, committedExtra, fn) => {
+    stored(status);
+    const clears: unknown[] = [];
+    const committed = { ...base, ...committedExtra };
+    (db.transaction as jest.Mock).mockImplementation(async (cb: (t: unknown) => unknown) => {
+      const pending: unknown[] = [];
+      const result = await cb({
+        execute: jest.fn(),
+        select: () => ({ from: () => ({ where: () => ({ for: async (mode: string) => (mode === "share" ? [{ id: "p" }] : [committed]) }) }) }),
+        update: () => ({ set: jest.fn((v: unknown) => ({ where: () => { pending.push(v); return Object.assign(Promise.resolve(), { returning: async () => [{ ...base, status }] }); } })) }),
+      });
+      clears.push(...pending.filter((v) => "scheduledJobId" in (v as object)));
+      return result;
+    });
+    let signal: AbortSignal | undefined;
+    (fn as jest.Mock).mockImplementationOnce((...a: unknown[]) => {
+      signal = a.find((x) => x instanceof AbortSignal) as AbortSignal;
+      return new Promise(() => {}); // never settles
+    });
+    jest.useFakeTimers();
+    try {
+      let code: number | undefined;
+      const pending = patch(status).then((r) => { code = r.status; });
+      await jest.advanceTimersByTimeAsync(2499);
+      expect(code).toBeUndefined(); // still within the deadline
+      await jest.advanceTimersByTimeAsync(2);
+      await pending;
+      expect(code).toBe(503);
+      expect(signal?.aborted).toBe(true); // the abandoned call is fenced from mutating the queue
+    } finally {
+      jest.useRealTimers();
+    }
+    expect(clears).toHaveLength(0); // scheduledJobId untouched
+    expect((await patch(status)).status).toBe(200); // retry converges
+    expect(clears).toHaveLength(1);
+  });
+
+  it("a hung fallback delete by monitor id (no job under scheduledJobId) also gives 503", async () => {
+    stored("paused");
+    useDb({ ...base, status: "paused" }, { ...base, status: "paused", enabled: false, scheduledJobId: "old" });
+    deleteScheduledMonitor.mockResolvedValueOnce(false).mockImplementationOnce(() => new Promise(() => {}));
+    jest.useFakeTimers();
+    try {
+      let code: number | undefined;
+      const pending = patch("paused").then((r) => { code = r.status; });
+      await jest.advanceTimersByTimeAsync(2501);
+      await pending;
+      expect(code).toBe(503);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("a DB statement timeout while clearing scheduledJobId gives 503, and the timeouts are set first", async () => {
+    stored("paused");
+    const executed: string[] = [];
+    const committed = { ...base, status: "paused", enabled: false, scheduledJobId: "old" };
+    let n = 0;
+    (db.transaction as jest.Mock).mockImplementation(async (cb: (t: unknown) => unknown) =>
+      cb({
+        execute: jest.fn(async (q: { queryChunks: unknown[] }) => { executed.push(JSON.stringify(q.queryChunks)); }),
+        select: () => ({ from: () => ({ where: () => ({ for: async (mode: string) => (mode === "share" ? [{ id: "p" }] : [committed]) }) }) }),
+        update: () => ({
+          set: () => ({
+            where: () => {
+              // First update is the status write; the second is the reconcile's scheduledJobId clear.
+              if (++n === 2) return Promise.reject(Object.assign(new Error("canceling statement due to statement timeout"), { code: "57014" }));
+              return Object.assign(Promise.resolve(), { returning: async () => [{ ...base, status: "paused" }] });
+            },
+          }),
+        }),
+      }),
+    );
+    const response = await patch("paused");
+    expect(response.status).toBe(503);
+    const reconcileStart = executed.findIndex((q) => q.includes("lock_timeout"));
+    expect(executed[reconcileStart]).toContain("2s");
+    expect(executed[reconcileStart + 1]).toContain("statement_timeout");
+    expect(executed[reconcileStart + 2]).toContain("pg_advisory_xact_lock");
+  });
+
+  it("the paused path's two scheduler calls share one budget", async () => {
+    stored("paused");
+    useDb({ ...base, status: "paused" }, { ...base, status: "paused", enabled: false, scheduledJobId: "old" });
+    // First call burns 2s and finds no job; the fallback then has only ~0.5s left and hangs.
+    deleteScheduledMonitor
+      .mockImplementationOnce(() => new Promise((r) => setTimeout(() => r(false), 2000)))
+      .mockImplementationOnce(() => new Promise(() => {}));
+    jest.useFakeTimers();
+    try {
+      let code: number | undefined;
+      const pending = patch("paused").then((r) => { code = r.status; });
+      await jest.advanceTimersByTimeAsync(2499);
+      expect(code).toBeUndefined();
+      await jest.advanceTimersByTimeAsync(2);
+      await pending;
+      expect(code).toBe(503); // 2.5s total, not 2s + 2s
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it("reconciles even when the pre-write read says the status did not change", async () => {
