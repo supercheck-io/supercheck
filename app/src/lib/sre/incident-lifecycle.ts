@@ -828,6 +828,7 @@ export async function reopenRecentlyAutoResolved(
       // A returning failure needs a fresh acknowledgement (and stays auto-resolvable).
       acknowledgedAt: null,
       acknowledgedByUserId: null,
+      renotifiedAt: null,
       updatedAt: now,
     })
     .where(and(eq(sreIncidents.id, latest.id), eq(sreIncidents.status, "resolved")))

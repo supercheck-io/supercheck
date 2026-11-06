@@ -78,4 +78,16 @@ describe("incident triage admission", () => {
     );
     expect(JSON.stringify(values.mock.calls)).not.toContain("secret provider text");
   });
+
+  it("writes no finding when the run was already closed before completion", async () => {
+    const values = jest.fn(() => ({ returning: async () => [{ id: "run-1" }] }));
+    (db.insert as jest.Mock).mockReturnValue({ values });
+    (runSreAgent as jest.Mock).mockResolvedValue({ text: "done", modelId: "m", finishReason: "stop" });
+    const txInsert = jest.fn();
+    const txUpdate = jest.fn().mockReturnValue({ set: () => ({ where: () => ({ returning: async () => [] }) }) });
+    (db as unknown as { transaction: unknown }).transaction = async (cb: (tx: unknown) => unknown) => cb({ update: txUpdate, insert: txInsert });
+    await expect(runSreIncidentTriage(input)).resolves.toMatchObject({ success: false, status: 409, investigationRunId: "run-1" });
+    expect(txUpdate).toHaveBeenCalledTimes(1);
+    expect(txInsert).not.toHaveBeenCalled();
+  });
 });

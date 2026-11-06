@@ -133,12 +133,12 @@ function mockFailedRunUpdate() {
 function mockSuccessTransaction() {
   const updates: Array<Record<string, unknown>> = [];
   const inserts: Array<Record<string, unknown>> = [];
-  mockDb.transaction.mockImplementation(async (callback: (tx: unknown) => Promise<void>) => {
+  mockDb.transaction.mockImplementation(async (callback: (tx: unknown) => Promise<unknown>) => {
     const tx = {
       update: jest.fn(() => ({
         set: jest.fn((values: Record<string, unknown>) => {
           updates.push(values);
-          return { where: jest.fn().mockResolvedValue([]) };
+          return { where: jest.fn(() => Object.assign(Promise.resolve([]), { returning: async () => [{ id: "run" }] })) };
         }),
       })),
       insert: jest.fn(() => ({
@@ -148,7 +148,7 @@ function mockSuccessTransaction() {
         }),
       })),
     };
-    await callback(tx);
+    return callback(tx);
   });
   return { updates, inserts };
 }

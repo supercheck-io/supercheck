@@ -1,13 +1,13 @@
-import { generateText } from "ai";
+import { generateText, streamText } from "ai";
 
-import { checkSreDailyTokenLimit } from "@/lib/sre/sre-daily-token-limit";
-import { generateEvidenceBrief } from "./evidence-brief-generator";
+import { checkSreDailyTokenLimit, recordSreTokenUsage } from "@/lib/sre/sre-daily-token-limit";
+import { generateEvidenceBrief, streamEvidenceBrief } from "./evidence-brief-generator";
 
 jest.mock("@/lib/sre/sre-daily-token-limit", () => ({
   checkSreDailyTokenLimit: jest.fn().mockResolvedValue({ allowed: true, resetTime: 0 }),
   recordSreTokenUsage: jest.fn(),
 }));
-jest.mock("ai", () => ({ ...jest.requireActual("ai"), generateText: jest.fn() }));
+jest.mock("ai", () => ({ ...jest.requireActual("ai"), generateText: jest.fn(), streamText: jest.fn() }));
 
 describe("generateEvidenceBrief", () => {
   const originalProvider = process.env.AI_PROVIDER;
@@ -89,5 +89,44 @@ describe("generateEvidenceBrief", () => {
     expect(brief.provider).toBe("fallback");
     expect(checkSreDailyTokenLimit).toHaveBeenCalledWith("org-a");
     expect(generateText).not.toHaveBeenCalled();
+  });
+});
+
+describe("streamEvidenceBrief", () => {
+  const input = {
+    incidentTitle: "Checkout", incidentSeverity: "sev2", userId: "u", organizationId: "org-a",
+    evidence: [{ id: "e1", title: "t", summary: "s", evidenceType: "metric", severity: null, confidence: "0.8", sourceUri: "x", rawContentExcerpt: null, observedAt: new Date() }],
+  };
+  beforeEach(() => { process.env.AI_PROVIDER = "openai"; process.env.OPENAI_API_KEY = "test-key"; jest.mocked(recordSreTokenUsage).mockClear(); });
+
+  const mockStream = (opts: { chunks: string[]; error?: unknown }) =>
+    jest.mocked(streamText).mockImplementation(((args: { onError: (e: { error: unknown }) => void; onFinish: (e: unknown) => void }) => ({
+      textStream: (async function* () {
+        yield* opts.chunks;
+        if (opts.error) args.onError({ error: opts.error });
+      })(),
+    })) as never);
+
+  it("fails instead of appending the fallback when the stream errors after output started", async () => {
+    mockStream({ chunks: ["partial"], error: new Error("boom") });
+    const sent: string[] = [];
+    await expect(streamEvidenceBrief(input as never, (c) => { sent.push(c); })).rejects.toThrow("boom");
+    expect(sent).toEqual(["partial"]);
+  });
+
+  it("falls back when the stream errors before any output", async () => {
+    mockStream({ chunks: [], error: new Error("boom") });
+    const brief = await streamEvidenceBrief(input as never, () => undefined);
+    expect(brief.provider).toBe("fallback");
+  });
+
+  it("records usage from the SDK finish and abort callbacks", async () => {
+    mockStream({ chunks: ["ok"] });
+    await streamEvidenceBrief(input as never, () => undefined);
+    const args = jest.mocked(streamText).mock.calls[0][0] as unknown as { onFinish: (e: unknown) => void; onAbort: (e: unknown) => void };
+    args.onFinish({ totalUsage: { totalTokens: 10 } });
+    args.onAbort({ steps: [{ usage: { totalTokens: 4 } }, { usage: { totalTokens: 3 } }] });
+    expect(recordSreTokenUsage).toHaveBeenCalledWith("org-a", { totalTokens: 10 });
+    expect(recordSreTokenUsage).toHaveBeenCalledWith("org-a", { totalTokens: 7 });
   });
 });

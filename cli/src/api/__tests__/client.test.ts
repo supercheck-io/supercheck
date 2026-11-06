@@ -59,6 +59,12 @@ describe('ApiClient', () => {
     await expect(client.delete('/api/jobs/1')).rejects.toMatchObject({ statusCode: 404 })
   })
 
+  it('fails at once with a retry hint when Retry-After exceeds the cap', async () => {
+    mockFetch.mockResolvedValueOnce(new Response('{}', { status: 429, headers: { 'Retry-After': '3600' } }))
+    await expect(client.get('/api/jobs')).rejects.toMatchObject({ statusCode: 429, message: expect.stringContaining('Retry in 3600s') })
+    expect(mockFetch).toHaveBeenCalledTimes(1)
+  })
+
   it('does not retain an HTML error document in API diagnostics', async () => {
     mockFetch.mockResolvedValueOnce(new Response('<html>' + 'secret'.repeat(3000) + '</html>', { status: 404 }))
     await expect(client.get('/api/jobs/missing')).rejects.toMatchObject({ statusCode: 404, responseBody: undefined })

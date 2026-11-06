@@ -5,6 +5,8 @@ import { sreServices } from "@/db/schema";
 import { db } from "@/utils/db";
 import { requireSreApiPermissions } from "../_auth";
 
+const SERVICE_LIST_LIMIT = 500;
+
 export async function GET() {
   const auth = await requireSreApiPermissions([
     { resource: "sre_service", action: "view" },
@@ -32,7 +34,7 @@ export async function GET() {
     eq(sreServices.organizationId, auth.context.organizationId),
     eq(sreServices.projectId, auth.context.project.id),
     ne(sreServices.status, "merged"),
-  )).orderBy(desc(sreServices.updatedAt)).limit(500);
+  )).orderBy(desc(sreServices.updatedAt)).limit(SERVICE_LIST_LIMIT + 1);
 
-  return NextResponse.json({ success: true, services });
+  return NextResponse.json({ success: true, services: services.slice(0, SERVICE_LIST_LIMIT), truncated: services.length > SERVICE_LIST_LIMIT });
 }

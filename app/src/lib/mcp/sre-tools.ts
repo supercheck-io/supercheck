@@ -2,7 +2,7 @@ import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { z } from "zod";
 import { requireSreSubscription } from "@/app/api/sre/_auth";
-import { assertCanStartSreInvestigation, SreInvestigationBillingError } from "@/lib/sre/investigation-billing";
+import { assertCanStartSreInvestigation, SreInvestigationBillingError, withSreTriageAdmission } from "@/lib/sre/investigation-billing";
 import { sreBillingErrorMessage } from "@/lib/sre/billing-error-messages";
 import { checkSreDailyTokenLimit } from "@/lib/sre/sre-daily-token-limit";
 import { checkSreEvidenceBriefRateLimit, checkSreIncidentUpdateRateLimit, checkSreInvestigationRateLimit, checkSreTriageRateLimit } from "@/lib/sre/sre-rate-limiter";
@@ -77,9 +77,11 @@ async function startGate(ctx: McpCallContext, kind: "triage" | "investigate" | "
   if (!limit.allowed) throw new McpToolFailure("rate_limited", retryMessage(limit, kind));
   const daily = await checkSreDailyTokenLimit(ctx.organizationId);
   if (!daily.allowed) throw new McpToolFailure(daily.unavailable ? "unavailable" : "daily_limit", "The daily AI limit for this organization is reached or unavailable");
-  if (kind === "investigate") {
+  if (kind !== "brief") {
     try {
-      await assertCanStartSreInvestigation(ctx.organizationId);
+      // Triage refuses an exhausted trial allowance inside the detached runner; run the same admission check now (no row is created).
+      if (kind === "triage") await withSreTriageAdmission(ctx.organizationId, async () => null);
+      else await assertCanStartSreInvestigation(ctx.organizationId);
     } catch (error) {
       if (error instanceof SreInvestigationBillingError) throw new McpToolFailure("subscription_required", sreBillingErrorMessage(error.code));
       throw error;

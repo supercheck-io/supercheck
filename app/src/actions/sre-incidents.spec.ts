@@ -139,7 +139,7 @@ describe("getSreIncidentDetails investigation summary", () => {
       id: incidentId, title: "Checkout down", severity: "sev2", status: "investigating", primaryServiceId: null,
     });
     expect(result).toMatchObject({ success: true });
-    expect(sets[0]).toMatchObject({ acknowledgedAt: null, acknowledgedByUserId: null, resolvedAt: null });
+    expect(sets[0]).toMatchObject({ acknowledgedAt: null, acknowledgedByUserId: null, renotifiedAt: null, resolvedAt: null });
     // The previous resolution stays on the incident.
     expect(sets[0]).not.toHaveProperty("resolutionSummary");
     expect(inserted.map((row) => (row.eventData as { state: string }).state)).toEqual(["incident_updated", "reopened"]);
