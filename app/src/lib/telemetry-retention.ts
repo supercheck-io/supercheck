@@ -25,6 +25,16 @@ export const TELEMETRY_RETENTION_RULES: readonly TelemetryRetentionRule[] = [
     protect: `EXISTS (SELECT 1 FROM private_agent_heartbeats n WHERE n.private_agent_id = {a}.private_agent_id AND (n.created_at, n.id) > ({a}.created_at, {a}.id))`,
   },
   {
+    // Finished connector jobs only; queued/leased/running are never touched. Artifacts cascade.
+    // shortcut: created_at has no index (needs a migration), so the purge scans; add one if the table grows large.
+    table: "private_agent_jobs",
+    timeColumn: "created_at",
+    envVar: "PRIVATE_AGENT_JOB_RETENTION_DAYS",
+    defaultDays: 30,
+    // Keep each connector's newest job: the connector list reads it as "latest run".
+    protect: `{a}.status IN ('completed', 'failed', 'cancelled', 'timed_out') AND ({a}.connector_id IS NULL OR NOT EXISTS (SELECT 1 FROM private_agent_jobs n WHERE n.connector_id = {a}.connector_id AND (n.created_at, n.id) > ({a}.created_at, {a}.id)))`,
+  },
+  {
     table: "sre_service_health_snapshots",
     timeColumn: "window_end",
     envVar: "SRE_HEALTH_SNAPSHOT_RETENTION_DAYS",

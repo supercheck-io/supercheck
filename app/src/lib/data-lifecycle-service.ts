@@ -3258,7 +3258,7 @@ export function createDataLifecycleService(): DataLifecycleService {
     // Telemetry retention: heartbeats, SRE snapshots/observations/alert events, notification outbox events.
     // Per-table days: PRIVATE_AGENT_HEARTBEAT_RETENTION_DAYS (7), SRE_HEALTH_SNAPSHOT_RETENTION_DAYS (90),
     // SRE_DEPENDENCY_OBSERVATION_RETENTION_DAYS (90), SRE_ALERT_EVENT_RETENTION_DAYS (90),
-    // STATUS_PAGE_DELIVERY_RETENTION_DAYS (30, shared with delivery rows).
+    // STATUS_PAGE_DELIVERY_RETENTION_DAYS (30, shared with delivery rows), PRIVATE_AGENT_JOB_RETENTION_DAYS (30, finished jobs).
     {
       entityType: "telemetry_retention",
       enabled: parseBooleanEnv(process.env.TELEMETRY_RETENTION_ENABLED, true),
