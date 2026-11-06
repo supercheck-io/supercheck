@@ -103,7 +103,7 @@ it.each(["sev1", "sev2"])("starts a full investigation for %s through the billin
 it.each(["sev3", "sev4"])("runs only a triage for %s", async (severity) => {
   incidentRows = [{ severity, status: "triggered" }];
   expect(await maybeAutoInvestigateOnOpen(input)).toEqual({ handled: true });
-  expect(triage).toHaveBeenCalledWith(input);
+  expect(triage).toHaveBeenCalledWith({ ...input, origin: "auto" });
   expect(start).not.toHaveBeenCalled();
 });
 
@@ -179,12 +179,12 @@ it("re-checks just before starting, so a run another trigger completed meanwhile
 });
 
 it("retries after failed runs, but stops after three failed automatic attempts", async () => {
-  runRows = [{ status: "failed" }, { status: "timed_out" }];
+  runRows = [{ status: "failed", origin: "auto" }, { status: "timed_out", origin: "auto" }];
   await maybeAutoInvestigateOnOpen(input);
   expect(start).toHaveBeenCalledTimes(1);
 
   jest.clearAllMocks();
-  runRows = [{ status: "failed" }, { status: "aborted" }, { status: "failed" }];
+  runRows = [{ status: "failed", origin: "auto" }, { status: "aborted", origin: "auto" }, { status: "failed", origin: "auto" }];
   expect(await maybeAutoInvestigateOnOpen(input)).toEqual({ handled: false, reason: "retry_limit" });
   expect(start).not.toHaveBeenCalled();
 });

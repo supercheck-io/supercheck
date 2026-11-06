@@ -208,7 +208,7 @@ keysCommand
     const { data } = await withSpinner(
       'Fetching trigger keys',
       () => client.get<{ success: boolean; apiKeys: Array<Record<string, unknown>> }>(
-        `/api/jobs/${jobId}/api-keys`,
+        `/api/jobs/${encodeURIComponent(jobId)}/api-keys`,
       ),
     )
 
@@ -244,7 +244,7 @@ keysCommand
     const { data } = await withSpinner(
       'Creating trigger key',
       () => client.post<{ success: boolean; apiKey: Record<string, unknown> }>(
-        `/api/jobs/${jobId}/api-keys`,
+        `/api/jobs/${encodeURIComponent(jobId)}/api-keys`,
         body,
       ),
     )
@@ -263,7 +263,7 @@ keysCommand
     const client = createAuthenticatedClient()
     await withSpinner(
       'Revoking trigger key',
-      () => client.delete(`/api/jobs/${jobId}/api-keys/${keyId}`),
+      () => client.delete(`/api/jobs/${encodeURIComponent(jobId)}/api-keys/${encodeURIComponent(keyId)}`),
     )
     logger.success(`Trigger key ${keyId} revoked`)
   })
@@ -275,7 +275,7 @@ jobCommand
     const client = createAuthenticatedClient()
     const { data } = await withSpinner(
       'Fetching job details',
-      () => client.get<Record<string, unknown>>(`/api/jobs/${id}`),
+      () => client.get<Record<string, unknown>>(`/api/jobs/${encodeURIComponent(id)}`),
     )
     outputDetail(data)
   })
@@ -370,7 +370,7 @@ jobCommand
 
     const { data } = await withSpinner(
       'Updating job',
-      () => client.patch<Record<string, unknown>>(`/api/jobs/${id}`, body),
+      () => client.patch<Record<string, unknown>>(`/api/jobs/${encodeURIComponent(id)}`, body),
     )
     logger.success(`Job ${id} updated`)
     outputDetail(data)
@@ -389,7 +389,7 @@ jobCommand
     const client = createAuthenticatedClient()
     await withSpinner(
       'Deleting job',
-      () => client.delete(`/api/jobs/${id}`),
+      () => client.delete(`/api/jobs/${encodeURIComponent(id)}`),
     )
     logger.success(`Job ${id} deleted`)
     outputMutation({ id, deleted: true })
@@ -450,7 +450,7 @@ jobCommand
     const { data: jobData } = await withSpinner(
       'Fetching job details',
       () => client.get<{ tests?: Array<{ id: string; name?: string; title?: string }> }>(
-        `/api/jobs/${options.id}`,
+        `/api/jobs/${encodeURIComponent(options.id)}`,
       ),
     )
 
@@ -487,7 +487,7 @@ jobCommand
   .action(async (id: string, options: { wait?: boolean; timeout: string }) => {
     const timeoutMs = parseIntStrict(options.timeout, '--timeout', { min: 1 }) * 1000
     const statusClient = options.wait ? createAuthenticatedClient() : null
-    if (statusClient) await statusClient.get(`/api/jobs/${id}`)
+    if (statusClient) await statusClient.get(`/api/jobs/${encodeURIComponent(id)}`)
     const triggerClient = new ApiClient({
       token: requireTriggerKey(),
       baseUrl: getStoredBaseUrl() ?? getResolvedConfigBaseUrl() ?? undefined,
@@ -496,7 +496,7 @@ jobCommand
     const { data } = await withSpinner(
       'Triggering job',
       () => triggerClient.post<{ runId: string; message: string }>(
-        `/api/jobs/${id}/trigger`,
+        `/api/jobs/${encodeURIComponent(id)}/trigger`,
       ),
     )
 

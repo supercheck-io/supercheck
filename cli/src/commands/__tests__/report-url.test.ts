@@ -16,4 +16,9 @@ describe('publicReportUrl', () => {
     const run = { id: 'r1', reportUrl: null }
     expect(publicReportUrl(client, run)).toEqual(run)
   })
+  it('omits the meaningless testCount 0 of a run without a job', () => {
+    expect(publicReportUrl(client, { id: 'r1', jobId: null, testCount: 0 })).toEqual({ id: 'r1', jobId: null })
+    expect(publicReportUrl(client, { id: 'r1', jobId: 'j', testCount: 0 }).testCount).toBe(0)
+    expect(publicReportUrl(client, { id: 'r1', jobId: null, testCount: 3 }).testCount).toBe(3)
+  })
 })

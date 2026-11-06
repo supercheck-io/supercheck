@@ -13,6 +13,9 @@ import {
   createSreConversation,
   appendSreMessage,
   getSreConversation,
+  isSreMessageSuperseded,
+  listSreMessages,
+  SRE_MESSAGE_INTERRUPTED,
 } from "@/sre/lib/session-store";
 import {
   createSseResponse,
@@ -59,6 +62,10 @@ const chatRequestSchema = z.object({
     .optional()
     .default([]),
 });
+
+const CHAT_HISTORY_MESSAGES = 10;
+const CHAT_HISTORY_FETCH = 40;
+const CHAT_HISTORY_CHARS = 1500;
 
 const SRE_ATTACHMENTS_BUCKET =
   process.env.S3_SRE_ATTACHMENTS_BUCKET_NAME || "sre-chat-attachments";
@@ -144,6 +151,7 @@ function buildChatPrompt(input: {
   projectName: string;
   liveConnectorToolsEnabled: boolean;
   attachments: Array<ReturnType<typeof sanitizeAttachmentForPrompt>>;
+  history: Array<{ role: string; text: string }>;
 }) {
   return [
     `Project: ${input.projectName}`,
@@ -156,6 +164,9 @@ function buildChatPrompt(input: {
       : "Live connector tools are not available for this chat; use conversation text and any available stored incident evidence only.",
     input.attachments.length > 0
       ? `User-provided context attachments (server-validated metadata/text only):\n${JSON.stringify(input.attachments, null, 2)}`
+      : null,
+    input.history.length > 0
+      ? `Earlier in this conversation (context only):\n${input.history.map((turn) => `${turn.role}: ${turn.text}`).join("\n")}`
       : null,
     "User request:",
     input.message,
@@ -436,6 +447,29 @@ export async function POST(request: NextRequest) {
       projectId: context.project.id,
     });
 
+    // Earlier turns of a continued conversation, read before this message is stored so it is not repeated.
+    const history = parsed.data.conversationId
+      ? (
+          await listSreMessages({
+            organizationId: context.organizationId,
+            projectId: context.project.id,
+            userId: context.userId,
+            conversationId: conversation.id,
+            limit: CHAT_HISTORY_FETCH,
+          })
+        )
+          .filter(
+            (row) =>
+              (row.role === "user" || row.role === "assistant") &&
+              row.content?.trim() &&
+              !row.attachments?.some((item) => item.type === SRE_MESSAGE_INTERRUPTED) &&
+              !isSreMessageSuperseded(row),
+          )
+          // Filter first, then keep the newest turns, so interrupted rows cannot crowd earlier ones out.
+          .slice(-CHAT_HISTORY_MESSAGES)
+          .map((row) => ({ role: row.role, text: safeSummaryText(row.content, "", CHAT_HISTORY_CHARS) }))
+      : [];
+
     const userMessage = await appendSreMessage({
       organizationId: context.organizationId,
       projectId: context.project.id,
@@ -468,6 +502,7 @@ export async function POST(request: NextRequest) {
           projectName: context.project.name,
           liveConnectorToolsEnabled,
           attachments: sanitizedAttachments,
+          history,
         }),
         tools: {
           ...(conversation.incidentId

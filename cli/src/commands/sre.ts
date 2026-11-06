@@ -104,6 +104,6 @@ sreCommand.command('status <runId>')
   .description('Get the status of a triage or investigation run')
   .action(async (runId: string) => {
     if (!z.string().uuid().safeParse(runId).success) throw new CLIError('Investigation run ID must be a UUID.', ExitCode.ConfigError)
-    const { data } = await withSpinner('Fetching investigation status', () => createAuthenticatedClient().get<{ run: Record<string, unknown> }>(`/api/sre/runs/${runId}`))
+    const { data } = await withSpinner('Fetching investigation status', () => createAuthenticatedClient().get<{ run: Record<string, unknown> }>(`/api/sre/runs/${encodeURIComponent(runId)}`))
     outputDetail(data.run)
   })

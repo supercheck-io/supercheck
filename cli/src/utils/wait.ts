@@ -22,7 +22,7 @@ export async function waitForRun(client: ApiClient, runId: string, timeoutMs: nu
   let lastError: unknown
   for (;;) {
     try {
-      const { data } = await client.request<Record<string, unknown>>('GET', `/api/runs/${runId}`, { timeout: pollTimeout(deadline - Date.now()), retries: 0 })
+      const { data } = await client.request<Record<string, unknown>>('GET', `/api/runs/${encodeURIComponent(runId)}`, { timeout: pollTimeout(deadline - Date.now()), retries: 0 })
       lastError = undefined
       const status = String(data.status ?? '').toLowerCase()
       if (terminalSuccess.includes(status)) return publicReportUrl(client, data)

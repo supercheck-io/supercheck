@@ -4,14 +4,14 @@ All transactional emails are React Email components in this folder. Every templa
 renders inside `BaseLayout` (Supercheck wordmark, header, `EmailButton`, `DetailsTable`,
 footer, preheader), so changes to the look happen in one place.
 
-House style: dark header colours with white text (red `#b91c1c` problem, amber
+House style (colours live only in `palette.ts`): dark header colours with white text (red `#b91c1c` problem, amber
 `#b45309` warning, blue `#1d4ed8` info, green `#15803d` resolved, gray `#1f2937`
 neutral) and `#111827` primary buttons. Status-page subscriber emails pass
 `showBrand={false}`; they carry the customer's page name and a "Powered by" footer.
 
 ```
 app (Next.js)                         worker (NestJS)
-  src/emails/*.tsx  --sync script-->    src/emails/{base-layout,monitor-alert}.tsx
+  src/emails/*.tsx  --sync script-->    src/emails/{base-layout,monitor-alert,palette}
   src/lib/email-renderer.ts             src/email-template/email-template.service.ts
     render() -> {subject,html,text}       render() locally, basic-HTML fallback on error
     used by auth, billing, status           used by notification.service.ts for
@@ -30,6 +30,8 @@ dependency on the app being up.
 | `status-page-verification`, `status-page-welcome`, `incident-notification` | public status-page subscribers | app |
 | `incident-update` | team (incident created/assigned/acknowledged/AI finding/resolved/recovered/reopened) | app (`renderIncidentUpdateEmail`) |
 | `monitor-alert` (also used for job failure/success/timeout) | alert recipients | worker (and app) |
+
+Alert subjects are `[Supercheck] <Event>: <name>` (`alertEmailSubject`); status-page emails keep `[STATUS] ...`. Job and monitor alerts share one field builder in the worker (`buildEmailFields`).
 
 `monitor-alert` takes an optional `incidentsUrl`; failure/warning emails then show a
 "View incidents" button, recovery emails show a "Resolved" chip.

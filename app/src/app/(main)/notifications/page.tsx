@@ -319,7 +319,7 @@ function NotificationsPage() {
             >
               <DialogContent className="flex max-h-[90vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl">
                 <DialogHeader className="shrink-0 border-b px-6 py-4 pr-14">
-                  <DialogTitle>Create Notification Channel</DialogTitle>
+                  <DialogTitle>Create channel</DialogTitle>
                   <DialogDescription>
                     Add a new way to receive alert notifications
                   </DialogDescription>
