@@ -3,6 +3,7 @@ import { collectNativeEvidence } from "./native-evidence-collector";
 import { runSreEvidenceBriefGeneration } from "./evidence-brief-orchestrator";
 
 const mockWhere = jest.fn();
+const mockLock = jest.fn();
 const mockLimit = jest.fn();
 const mockUpdateWhere = jest.fn().mockResolvedValue(undefined);
 const mockSet = jest.fn((_values: unknown) => ({ where: mockUpdateWhere }));
@@ -17,6 +18,7 @@ jest.mock("@/utils/db", () => ({ db: {
   },
   insert: () => ({ values: mockValues }),
   transaction: async (callback: (tx: unknown) => unknown) => callback({
+    select: () => ({ from: () => ({ where: () => ({ for: (mode: string) => { mockLock(mode); return Promise.resolve([]); } }) }) }),
     update: () => ({ set: mockSet }),
     insert: () => ({ values: jest.fn().mockResolvedValue(undefined) }),
   }),
@@ -102,6 +104,8 @@ describe("evidence brief stored evidence", () => {
     const q = new PgDialect().sqlToQuery(mockUpdateWhere.mock.calls[incidentCall][0]);
     expect(q.sql).toMatch(/not exists \(select 1 from "sre_investigation_runs".*'investigation'.*'completed'\)/);
     expect(q.params).toEqual(expect.arrayContaining(["incident-a", "org-a", "project-a"]));
+    // The incident row is locked before the guarded update reads the run status.
+    expect(mockLock).toHaveBeenCalledWith("update");
     // The full brief stays on the run for the Investigation tab.
     expect(mockSet.mock.calls.some(([v]) => (v as { agentStateSnapshot?: { summary?: string } }).agentStateSnapshot?.summary === summary)).toBe(true);
   });

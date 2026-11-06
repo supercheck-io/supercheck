@@ -77,6 +77,18 @@ export function getInvestigationConclusion(
   return stripped ? stripReportBoilerplate(stripped) || stripped : stripped;
 }
 
+/**
+ * True when the incident's stored root cause is the evidence brief's headline, not an investigation's conclusion.
+ * Before any investigation everything stored came from a brief; after one, only an exact match with the brief counts.
+ */
+export function rootCauseFromBrief(detail: Pick<SreIncidentDetail, "incident" | "latestBrief" | "latestInvestigation">) {
+  const stored = detail.incident.rootCauseSummary;
+  if (!stored) return false;
+  const brief = detail.latestBrief?.agentStateSnapshot?.summary;
+  if (typeof brief === "string" && (stored === brief || stored === reportHeadline(brief, 2000))) return true;
+  return !detail.latestInvestigation;
+}
+
 export function IncidentAiSummaryCard({
   rootCauseSummary,
   confidenceScore,
@@ -93,9 +105,10 @@ export function IncidentAiSummaryCard({
   // The card shows one paragraph; the full report is on the Investigation tab.
   const headline = reportHeadline(getInvestigationConclusion(investigation, rootCauseSummary));
   const inconclusive = structured ? structured.outcome === "inconclusive" : false;
-  const confidence = confidenceLabel(rootCauseSummary ? confidenceScore : null);
+  // The run's own score first: the incident row can lag behind a run that just completed.
+  const confidence = confidenceLabel(structured ? String(structured.confidence) : rootCauseSummary ? confidenceScore : null);
   // Runs before structured output stored no score; show no rating rather than a misleading one.
-  const unrated = Boolean(rootCauseSummary) && confidenceScore === null && !structured;
+  const unrated = !structured && (!rootCauseSummary || confidenceScore === null);
   const rated = source === "investigation" && investigationStatus === "completed" && !unrated;
   const stepCount = investigation?.steps.length ?? 0;
   const nextCheck = structured?.nextChecks[0] ?? null;
@@ -107,7 +120,7 @@ export function IncidentAiSummaryCard({
           <IconTile icon={Sparkles} tone="violet" />
           Summary
         </CardTitle>
-        {headline && !running && source !== "investigation" && (
+        {headline && source !== "investigation" && (
           <span className="text-xs text-muted-foreground">{SOURCE_LABEL[source]}</span>
         )}
         {headline && rated && (
@@ -146,7 +159,7 @@ export function IncidentAiSummaryCard({
                 No root cause established
               </p>
             )}
-            {(failed || running) && (
+            {(failed || running) && source === "investigation" && (
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Previous conclusion</p>
             )}
             <p data-testid="ai-summary-body" className="break-words text-[15px] leading-relaxed">

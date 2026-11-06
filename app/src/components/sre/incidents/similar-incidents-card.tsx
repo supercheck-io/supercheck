@@ -18,8 +18,21 @@ const COLLAPSED = 3;
  * Shown only when there are matches. History only; a match may be unrelated.
  */
 export function SimilarIncidentsCard({ incidentId }: { incidentId: string }) {
-  const { data } = useSreSimilarIncidents(incidentId);
+  const { data, isError } = useSreSimilarIncidents(incidentId);
   const [showAll, setShowAll] = useState(false);
+  // A failed lookup says so; only a successful lookup with no matches hides the card.
+  if (isError || (data && !data.success)) {
+    return (
+      <Card className="gap-3 py-4 shadow-none" data-testid="similar-incidents">
+        <CardHeader className="px-4 pt-0 pb-0">
+          <SectionTitle as="h2" icon={History} tone="indigo">Similar incidents</SectionTitle>
+        </CardHeader>
+        <CardContent className="px-4">
+          <p role="alert" className="text-sm text-muted-foreground">Similar incidents could not be loaded.</p>
+        </CardContent>
+      </Card>
+    );
+  }
   if (!data?.success || data.incidents.length === 0) return null;
   const shown = showAll ? data.incidents : data.incidents.slice(0, COLLAPSED);
   return (

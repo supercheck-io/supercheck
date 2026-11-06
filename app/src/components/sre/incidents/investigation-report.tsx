@@ -24,7 +24,7 @@ import type { SreIncidentDetail } from "@/actions/sre-incidents";
 import { EvidenceDetailsDialog } from "@/components/sre/incidents/evidence-details-dialog";
 import { GenerateEvidenceBriefButton } from "@/components/sre/incidents/generate-evidence-brief-button";
 import { formatAgo } from "@/components/sre/incidents/incident-age";
-import { confidenceLabel, getInvestigationConclusion } from "@/components/sre/incidents/incident-ai-summary-card";
+import { confidenceLabel, getInvestigationConclusion, rootCauseFromBrief } from "@/components/sre/incidents/incident-ai-summary-card";
 import { IconTile, SectionTitle, type IconTone } from "@/components/sre/incidents/incident-ui";
 import { InvestigationHypotheses } from "@/components/sre/incidents/investigation-hypotheses";
 import { InvestigationStepTrace } from "@/components/sre/incidents/investigation-step-trace";
@@ -160,7 +160,11 @@ export function InvestigationReport({
   const failed = investigation?.status === "failed" || investigation?.status === "aborted" || investigation?.status === "timed_out";
   const structured = investigation?.structured ?? null;
   // Before any investigation the stored root cause is only the brief's headline, so the brief itself is shown.
-  const investigationConclusion = getInvestigationConclusion(investigation, investigation ? incident.rootCauseSummary : null);
+  // A stored root cause that is only the brief's headline is not an investigation conclusion: show the full brief.
+  const investigationConclusion = getInvestigationConclusion(
+    investigation,
+    investigation && !rootCauseFromBrief(detail) ? incident.rootCauseSummary : null,
+  );
   // The brief stands in only until an investigation has produced something to read.
   const useBrief = !investigationConclusion && (Boolean(briefSummary) || streaming);
   // With neither, the triage finding is the conclusion (same order as the Overview summary card).

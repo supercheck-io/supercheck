@@ -24,6 +24,9 @@ describe("storedRootCause", () => {
     expect(storedRootCause("Deploy 42 caused it.\n\nRollback restored checks.")).toBe("Deploy 42 caused it.\n\nRollback restored checks.");
     expect(storedRootCause("Pool exhausted [01a111b9-8fa5-7c48-875e-f9be4ff9ba9c].")).toBe("Pool exhausted.");
     expect(storedRootCause(null)).toBeNull();
+    // An investigation conclusion that uses its own headings is not a legacy report.
+    const conclusion = "## Cause\nDeploy 42.\n\n## Evidence\nError rate rose at 10:02.";
+    expect(storedRootCause(conclusion)).toBe(conclusion);
   });
 });
 
@@ -47,6 +50,11 @@ describe("reportHeadline", () => {
   it("keeps plain text, and uses field values when nothing else is prose", () => {
     expect(reportHeadline("Latency correlates with monitor failures.")).toBe("Latency correlates with monitor failures.");
     expect(reportHeadline("**Likely cause**: DNS change")).toBe("Likely cause: DNS change");
+  });
+
+  it("keeps a bold conclusion and skips only bold report titles", () => {
+    expect(reportHeadline("**Database pool exhausted**\n\nConnections hit the limit at 10:02.")).toBe("Database pool exhausted");
+    expect(reportHeadline("**Incident Analysis Report**\n\nThe pool is exhausted.")).toBe("The pool is exhausted.");
   });
 
   it("keeps labelled findings that model output often starts with", () => {

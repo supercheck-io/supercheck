@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 
 import type { SreIncidentDetail } from "@/actions/sre-incidents";
 
@@ -127,6 +127,20 @@ describe("IncidentSidebar", () => {
     expect(screen.getByText("1 h 30 min")).toBeInTheDocument();
     expect(screen.getByText("Not yet")).toBeInTheDocument();
     expect(screen.queryByText("Time to resolve")).not.toBeInTheDocument();
+  });
+
+  it("updates Open for while the page stays open", () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date("2026-06-24T13:00:00Z"));
+    const detail = detailFixture();
+    detail.incident.createdAt = new Date("2026-06-24T12:00:00Z");
+    render(<IncidentSidebar detail={detail} />);
+    expect(screen.getByText("1 h 0 min")).toBeInTheDocument();
+    act(() => {
+      jest.advanceTimersByTime(5 * 60_000);
+    });
+    expect(screen.getByText("1 h 5 min")).toBeInTheDocument();
+    jest.useRealTimers();
   });
 
   it("colours the Alerts heading for firing alerts and shows the count", () => {

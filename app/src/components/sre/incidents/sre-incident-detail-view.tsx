@@ -8,7 +8,7 @@ import type { SreIncidentDetail } from "@/actions/sre-incidents";
 import type { SreServiceListItem } from "@/actions/sre-services";
 import { AcknowledgeSreIncidentButton } from "@/components/sre/incidents/acknowledge-sre-incident-button";
 import { EditSreIncidentDialog } from "@/components/sre/incidents/edit-sre-incident-dialog";
-import { IncidentAiSummaryCard } from "@/components/sre/incidents/incident-ai-summary-card";
+import { IncidentAiSummaryCard, rootCauseFromBrief } from "@/components/sre/incidents/incident-ai-summary-card";
 import { IncidentSidebar, SEVERITY_TONES } from "@/components/sre/incidents/incident-sidebar";
 import { IncidentTimeline } from "@/components/sre/incidents/incident-timeline";
 import { InvestigationFeedback } from "@/components/sre/incidents/investigation-feedback";
@@ -109,6 +109,18 @@ export function SreIncidentDetailView({
   };
 
   useEffect(() => {
+    // Back and Forward change ?tab= without remounting the view (it is keyed by incident), so follow the URL.
+    const onPopState = () => {
+      const param = new URL(window.location.href).searchParams.get("tab") as IncidentTabParam | null;
+      setTab(param === "investigation" || param === "evidence" || param === "brief" ? "investigation" : param === "postmortem" ? "postmortem" : "overview");
+      const target = param ? FOCUS_FOR_LINK[param] : undefined;
+      setFocus((current) => (target ? { target, n: (current?.n ?? 0) + 1 } : null));
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
+  useEffect(() => {
     // The resolve toast's Post-mortem action; the detail refetch after resolving makes the tab appear.
     const onOpenPostmortem = () => {
       setTab("postmortem");
@@ -121,8 +133,8 @@ export function SreIncidentDetailView({
   const needsAck = permissions.canUpdate && open && !incident.acknowledgedAt;
   const needsResolve = permissions.canUpdate && open && Boolean(incident.acknowledgedAt);
   const canAddCommander = permissions.canUpdate && open && !incident.commanderUserId && !showCommander;
-  // Before any investigation, the stored root cause comes from the evidence brief.
-  const summarySource = investigation ? "investigation" : incident.rootCauseSummary ? "brief" : "triage";
+  const fromBrief = rootCauseFromBrief(detail);
+  const summarySource = fromBrief ? "brief" : investigation ? "investigation" : "triage";
 
   const runControls = permissions.canInvestigate ? (
     <SreInvestigationPanel
@@ -295,7 +307,13 @@ export function SreIncidentDetailView({
             </TabsContent>
 
             {!open && (
-              <TabsContent value="postmortem" className="mt-0 min-w-0 rounded-md focus-visible:ring-inset focus-visible:ring-offset-0">
+              // Kept mounted while hidden so unsaved post-mortem edits survive a tab switch.
+              <TabsContent
+                value="postmortem"
+                forceMount
+                hidden={activeTab !== "postmortem"}
+                className="mt-0 min-w-0 rounded-md focus-visible:ring-inset focus-visible:ring-offset-0 data-[state=inactive]:hidden"
+              >
                 <PostmortemCard
                       key={incident.postmortem?.updatedAt ?? "none"}
                       incidentId={incident.id}

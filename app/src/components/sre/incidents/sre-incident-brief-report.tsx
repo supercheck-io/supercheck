@@ -25,7 +25,9 @@ function ensureReportFooter(content: string) {
 /** Adds the title an exported brief needs; the brief itself starts at its first section. */
 export function normalizeReportMarkdown(input: string, title: string) {
   const content = ensureReportFooter(input);
-  return /^#\s/m.test(content) ? content : `# ${title}\n\n${content}`;
+  // A "# comment" inside a code fence is not a title.
+  const outsideCode = content.replace(/^(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\1[^\n]*$/gm, "");
+  return /^#\s/m.test(outsideCode) ? content : `# ${title}\n\n${content}`;
 }
 
 function safeFilePart(value: string) {

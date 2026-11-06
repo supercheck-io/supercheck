@@ -26,7 +26,7 @@ import { addSreIncidentUpdate, type SreIncidentTimelineItem, type SreIncidentTim
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { formatAgo } from "@/components/sre/incidents/incident-age";
+import { formatAgo, useNow } from "@/components/sre/incidents/incident-age";
 import { IconTile, SectionTitle, type IconTone } from "@/components/sre/incidents/incident-ui";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -184,6 +184,7 @@ export function IncidentTimeline({
   const { projectId } = useProjectContext();
   const queryClient = useQueryClient();
   const query = useSreIncidentTimeline(incidentId);
+  const now = useNow();
   const [text, setText] = useState("");
   const [pending, setPending] = useState(false);
   const [postToStatusPage, setPostToStatusPage] = useState(false);
@@ -306,7 +307,7 @@ export function IncidentTimeline({
                             title={formatTime(event.createdAt)}
                             suppressHydrationWarning
                           >
-                            {formatAgo(event.createdAt)}
+                            {formatAgo(event.createdAt, now)}
                           </time>
                         </span>
                       </div>

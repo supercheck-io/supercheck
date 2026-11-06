@@ -7,7 +7,9 @@ const INLINE_SUMMARY = /^\s*\*\*(?:executive summary|summary|conclusion):?\*\*:?
 // Header fields that repeat the page ("- **Severity**: sev2"), a bold-only title line, or a horizontal rule.
 // Other "**Label:** text" lines carry findings and are kept.
 const META_LINE =
-  /^\s*(?:[-*]\s+)?\*\*(?:incident(?: title)?|title|severity|status|(?:primary )?service|evidence source|evidence items|primary signal)(?:\*\*\s*:|:\*\*)|^\s*\*\*[^*\n]+\*\*:?\s*$|^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/i;
+  /^\s*(?:[-*]\s+)?\*\*(?:incident(?: title)?|title|severity|status|(?:primary )?service|evidence source|evidence items|primary signal)(?:\*\*\s*:|:\*\*)|^\s*\*\*[^*\n]*\b(?:report|overview|classification|details|analysis|hypotheses)\b[^*\n]*\*\*:?\s*$|^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/i;
+// Only the old evidence-brief report format; an investigation conclusion with its own headings is kept whole.
+const LEGACY_REPORT = /^\s*#{1,6}\s*(?:incident (?:investigation )?report|report details|executive summary)\b/im;
 
 function plain(text: string) {
   return text
@@ -61,7 +63,7 @@ export function reportHeadline(text: string | null | undefined, max = 600): stri
 /** A stored root cause for readers: a whole report (older briefs) becomes its headline; a conclusion stays as is. */
 export function storedRootCause(text: string | null | undefined, max = 2000): string | null {
   if (!text?.trim()) return null;
-  return /^\s*#{1,6}\s/m.test(text)
+  return LEGACY_REPORT.test(text)
     ? reportHeadline(text, max)
     : stripEvidenceIdLists(text);
 }

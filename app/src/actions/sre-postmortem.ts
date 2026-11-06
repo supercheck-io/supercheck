@@ -156,7 +156,12 @@ export async function generateSrePostmortem(
       createdAt: incident.createdAt,
       resolvedAt: incident.resolvedAt,
       resolutionSummary: incident.resolutionSummary,
-      rootCauseSummary: storedRootCause(incident.rootCauseSummary),
+      // Without a completed investigation the stored root cause is only the evidence brief's headline.
+      rootCauseSummary: run
+        ? storedRootCause(incident.rootCauseSummary)
+        : incident.rootCauseSummary
+          ? `Unverified, from the evidence brief: ${storedRootCause(incident.rootCauseSummary)}`
+          : null,
       confidenceLabel: !Number.isFinite(score) ? null : score >= 0.75 ? "High" : score >= 0.5 ? "Medium" : score > 0 ? "Low" : "Inconclusive",
       hypotheses: readStoredHypotheses(run?.hypotheses).map(({ title, state, rationale }) => ({ title, state, rationale })),
       nextChecks: Array.isArray(structured?.nextChecks)

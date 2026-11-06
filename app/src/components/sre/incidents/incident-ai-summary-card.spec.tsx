@@ -7,7 +7,7 @@ jest.mock("@/hooks/use-sre", () => ({ useSreIncidentTimeline: jest.fn() }));
 
 import type { SreIncidentDetail } from "@/actions/sre-incidents";
 
-import { IncidentAiSummaryCard, confidenceLabel, stripReportBoilerplate } from "./incident-ai-summary-card";
+import { IncidentAiSummaryCard, confidenceLabel, rootCauseFromBrief, stripReportBoilerplate } from "./incident-ai-summary-card";
 import { describeTimelineEvent } from "./incident-timeline";
 
 describe("confidenceLabel", () => {
@@ -173,6 +173,34 @@ describe("IncidentAiSummaryCard structured states", () => {
     );
     expect(screen.getByRole("alert")).toHaveTextContent("Investigation timed out.");
     expect(screen.getByText("Previous conclusion")).toBeInTheDocument();
+  });
+});
+
+describe("rootCauseFromBrief", () => {
+  const base = { incident: { rootCauseSummary: "The job failed." }, latestBrief: null, latestInvestigation: null } as never;
+  it("is the brief before any investigation, and after one only when the stored text matches the brief", () => {
+    expect(rootCauseFromBrief(base)).toBe(true);
+    const withRun = { ...(base as object), latestInvestigation: { status: "failed" } } as never;
+    expect(rootCauseFromBrief(withRun)).toBe(false);
+    const matching = { ...(withRun as object), latestBrief: { agentStateSnapshot: { summary: "## Summary\nThe job failed.\n\n## Impact\nUnknown." } } } as never;
+    expect(rootCauseFromBrief(matching)).toBe(true);
+    expect(rootCauseFromBrief({ ...(base as object), incident: { rootCauseSummary: null } } as never)).toBe(false);
+  });
+});
+
+describe("IncidentAiSummaryCard confidence", () => {
+  it("rates from the run's own score when the incident row has none yet", () => {
+    render(
+      <IncidentAiSummaryCard
+        rootCauseSummary="Deploy 42."
+        confidenceScore={null}
+        investigationStatus="completed"
+        investigation={investigation({
+          structured: { outcome: "identified", confidence: 0.8, conclusion: "Deploy 42.", nextChecks: [], topEvidenceIds: [], downgraded: false },
+        })}
+      />,
+    );
+    expect(screen.getByText("Confidence: High")).toBeInTheDocument();
   });
 });
 

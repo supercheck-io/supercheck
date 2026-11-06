@@ -8,6 +8,7 @@ import type { SreIncidentDetail } from "@/actions/sre-incidents";
 import { IncidentAssigneePicker } from "@/components/sre/incidents/incident-assignee-picker";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
+import { useNow } from "@/components/sre/incidents/incident-age";
 import { SectionTitle } from "@/components/sre/incidents/incident-ui";
 import { WatchSreIncidentButton } from "@/components/sre/incidents/watch-sre-incident-button";
 
@@ -74,6 +75,7 @@ export function IncidentSidebar({
   const editable = canUpdate && open;
   const [allAlerts, setAllAlerts] = useState(false);
   const alerts = allAlerts ? detail.linkedAlerts : detail.linkedAlerts.slice(0, ALERTS_COLLAPSED);
+  const now = useNow();
   const firing = detail.linkedAlerts.filter((alert) => alert.status === "firing").length;
 
   return (
@@ -101,7 +103,7 @@ export function IncidentSidebar({
             {incident.resolvedAt ? (
               <Metric label="Time to resolve">{formatDuration(incident.createdAt, incident.resolvedAt)}</Metric>
             ) : (
-              <Metric label="Open for">{formatDuration(incident.createdAt, new Date())}</Metric>
+              <Metric label="Open for">{formatDuration(incident.createdAt, new Date(now))}</Metric>
             )}
           </dl>
           <dl className="space-y-0.5">

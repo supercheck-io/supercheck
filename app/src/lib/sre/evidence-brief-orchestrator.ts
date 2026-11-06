@@ -448,6 +448,20 @@ export async function runSreEvidenceBriefGeneration(input: {
           ),
         );
 
+      // Lock the incident in its own statement first: the guarded update below then takes a fresh snapshot, so an
+      // investigation that committed while this waited is seen and its result is kept.
+      await tx
+        .select({ id: sreIncidents.id })
+        .from(sreIncidents)
+        .where(
+          and(
+            eq(sreIncidents.id, input.incidentId),
+            eq(sreIncidents.organizationId, input.organizationId),
+            eq(sreIncidents.projectId, input.projectId),
+          ),
+        )
+        .for("update");
+
       // The incident keeps a one-paragraph headline (the full brief and its score stay on the run). Only an
       // investigation rates the incident, and a brief never replaces a completed investigation's result.
       await tx

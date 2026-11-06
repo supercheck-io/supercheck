@@ -359,6 +359,47 @@ describe("SreIncidentDetailView", () => {
     expect(within(sheet).queryByText("Step four")).not.toBeInTheDocument();
   });
 
+  it("shows the full brief, not its headline as a previous conclusion, after a first run fails", () => {
+    const detail = detailFixture();
+    detail.incident.rootCauseSummary = "Brief summary";
+    detail.latestInvestigation = { ...detail.latestInvestigation!, status: "failed", summary: "Timed out." };
+    render(<SreIncidentDetailView detail={detail} services={[]} initialTab="investigation" />);
+    const sheet = investigationTab();
+    expect(within(sheet).getByText("Brief summary")).toBeInTheDocument();
+    expect(within(sheet).queryByText("Previous conclusion")).not.toBeInTheDocument();
+    openTab("Overview");
+    const card = screen.getByTestId("incident-ai-summary");
+    expect(card).toHaveTextContent("From the evidence brief");
+    expect(card).not.toHaveTextContent("Previous conclusion");
+  });
+
+  it("keeps unsaved post-mortem edits across tab switches", () => {
+    const detail = detailFixture();
+    detail.incident.status = "resolved";
+    render(<SreIncidentDetailView detail={detail} services={[]} initialTab="postmortem" />);
+    const card = screen.getByText("Mock post-mortem");
+    openTab("Investigation");
+    expect(card).toBeInTheDocument();
+    expect(card).not.toBeVisible();
+    openTab("Post-mortem");
+    expect(screen.getByText("Mock post-mortem")).toBe(card);
+  });
+
+  it("follows Back and Forward to the tab in the URL", () => {
+    render(<SreIncidentDetailView detail={detailFixture()} services={[]} />);
+    act(() => {
+      window.history.pushState(null, "", "/incidents/42?tab=evidence");
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+    expect(screen.getByRole("tab", { name: "Investigation" })).toHaveAttribute("aria-selected", "true");
+    act(() => {
+      window.history.pushState(null, "", "/incidents/42");
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+    expect(screen.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
+    window.history.replaceState(null, "", "/");
+  });
+
   it("does not rate a failed run's earlier conclusion and still offers a brief", () => {
     const detail = detailFixture();
     detail.latestInvestigation = { ...detail.latestInvestigation!, status: "failed", summary: "Timed out." };

@@ -49,17 +49,23 @@ describe("SimilarIncidentsCard", () => {
     resolvedAt: new Date(), rootCauseSummary: "Bad deploy", resolutionSummary: n === 2 ? "Rolled back" : null, matchedOn: ["service", "title"],
   });
 
-  it("renders nothing while loading, when unavailable or when there are no matches", () => {
+  it("renders nothing while loading or when there are no matches, and an error when the lookup fails", () => {
     mockSimilar.mockReturnValue({ isPending: true, data: undefined });
     const { container, rerender } = render(<SimilarIncidentsCard incidentId="i-1" />);
     expect(mockSimilar).toHaveBeenCalledWith("i-1");
     expect(container).toBeEmptyDOMElement();
     mockSimilar.mockReturnValue({ isPending: false, data: { success: false, error: "x", incidents: [] } });
     rerender(<SimilarIncidentsCard incidentId="i-1" />);
-    expect(container).toBeEmptyDOMElement();
+    expect(screen.getByRole("alert")).toHaveTextContent("could not be loaded");
     ok([]);
     rerender(<SimilarIncidentsCard incidentId="i-1" />);
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it("says so when the lookup fails instead of hiding the card", () => {
+    mockSimilar.mockReturnValue({ isPending: false, isError: true, data: undefined });
+    render(<SimilarIncidentsCard incidentId="i-1" />);
+    expect(screen.getByRole("alert")).toHaveTextContent("Similar incidents could not be loaded.");
   });
 
   it("links to past incidents with match reasons and how they were resolved, three at a time", () => {

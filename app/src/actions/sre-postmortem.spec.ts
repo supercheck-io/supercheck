@@ -108,7 +108,7 @@ describe("generateSrePostmortem root cause", () => {
     const legacy = { ...resolved, rootCauseSummary: "# Incident Investigation Report\n\n## Report Details\n- **Severity**: sev2\n\n## Executive Summary\nThe job failed." };
     queue.push([legacy], [], [], [], []);
     await generateSrePostmortem({ incidentId });
-    expect(generate.mock.calls[0][0]).toMatchObject({ rootCauseSummary: "The job failed.", confidenceLabel: null });
+    expect(generate.mock.calls[0][0]).toMatchObject({ rootCauseSummary: "Unverified, from the evidence brief: The job failed.", confidenceLabel: null });
 
     queue.push([resolved], [], [], [], [{ hypotheses: null, snapshot: null }]);
     await generateSrePostmortem({ incidentId });
