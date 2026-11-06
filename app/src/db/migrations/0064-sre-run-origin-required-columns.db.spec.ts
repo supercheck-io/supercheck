@@ -23,6 +23,13 @@ const baseTables = `
   );
 `;
 
+// 0061 has CONCURRENTLY statements, so run statement by statement like scripts/db-migrate.js does.
+const run = async (sql: string) => {
+  for (const s of sql.split("--> statement-breakpoint")) {
+    if (s.replace(/--[^\n]*/g, "").trim()) await client.unsafe(s.trim());
+  }
+};
+
 const columns = async () =>
   (
     await client`SELECT column_name FROM information_schema.columns
@@ -53,8 +60,8 @@ it("adds the columns and CHECK when the deferred 0061 never ran, and is idempote
   await client.unsafe(baseTables);
   expect(await columns()).toEqual([]);
 
-  await client.unsafe(m0064);
-  await client.unsafe(m0064);
+  await run(m0064);
+  await run(m0064);
   expect(await columns()).toEqual(["origin", "reopened_at"]);
 
   const [{ id }] = await client`INSERT INTO sre_investigation_runs DEFAULT VALUES RETURNING id`;
@@ -62,20 +69,24 @@ it("adds the columns and CHECK when the deferred 0061 never ran, and is idempote
   expect(row.origin).toBe("manual");
   await expect(client`UPDATE sre_investigation_runs SET origin = 'bogus'`).rejects.toThrow(/origin_check/);
   const [con] = await client`SELECT convalidated FROM pg_constraint WHERE conname = 'sre_investigation_runs_origin_check'`;
-  expect(con.convalidated).toBe(true);
+  expect(con.convalidated).toBe(false);
+
+  await run(m0061);
+  const [after] = await client`SELECT convalidated FROM pg_constraint WHERE conname = 'sre_investigation_runs_origin_check'`;
+  expect(after.convalidated).toBe(true);
 });
 
 it("is a no-op after 0061 succeeded, and 0061 still applies after 0064", async () => {
   await client.unsafe(baseTables);
-  await client.unsafe(m0061);
-  await client.unsafe(m0064);
+  await run(m0061);
+  await run(m0064);
   expect(await columns()).toEqual(["origin", "reopened_at"]);
   const [{ n }] = await client`SELECT count(*)::int AS n FROM pg_constraint WHERE conname = 'sre_investigation_runs_origin_check'`;
   expect(n).toBe(1);
 
   await client.unsafe(baseTables);
-  await client.unsafe(m0064);
-  await client.unsafe(m0061);
+  await run(m0064);
+  await run(m0061);
   const [idx] = await client`SELECT 1 AS ok FROM pg_indexes WHERE indexname = 'sre_investigation_runs_auto_incident_unique'`;
   expect(idx.ok).toBe(1);
 });
