@@ -105,9 +105,21 @@ it("lets a build finish while another pod polls for the migration lock", async (
   const holder = await acquireMigrationLock(postgres, databaseUrl, { lockName: "waiter-test", timeoutMs: 5_000 });
   expect(holder).not.toBeNull();
   // The second pod polls (BEGIN + try-lock) while the first runs its deferred build.
-  const waiter = acquireMigrationLock(postgres, databaseUrl, { lockName: "waiter-test", timeoutMs: 20_000, retryDelayMs: 100 });
+  const waiter = acquireMigrationLock(postgres, databaseUrl, { lockName: "waiter-test", timeoutMs: 20_000, retryDelayMs: 1_000 });
   try {
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    // A build that samples a poller mid-query waits for the poller's whole transaction, so the poller
+    // must not sit idle in a transaction through its retry delay (the sub-ms gap between its own
+    // BEGIN and try-lock is fine). Only the holder may.
+    const [{ pid: holderPid }] = await holder.unsafe("SELECT pg_backend_pid() AS pid");
+    for (let sample = 0; sample < 5; sample++) {
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      const idle = await client`
+        SELECT pid FROM pg_stat_activity
+        WHERE datname = current_database() AND state = 'idle in transaction' AND pid <> ${holderPid}
+          AND state_change < clock_timestamp() - interval '50 milliseconds'
+      `;
+      expect(idle).toHaveLength(0);
+    }
 
     const builder = postgres(databaseUrl, { max: 1, onnotice: () => {}, connection: { statement_timeout: 15_000 } });
     try {
