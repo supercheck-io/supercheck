@@ -294,7 +294,6 @@ describe('StalledJobHandlerService', () => {
           {
             id: 'run-id',
             jobId: 'job-id',
-            projectId: 'project-id',
             location: null,
             errorDetails:
               details === 'cancelled-marker'
@@ -338,7 +337,6 @@ describe('StalledJobHandlerService', () => {
         expect.objectContaining({
           jobId: 'job-id',
           runId: 'run-id',
-          projectId: 'project-id',
           finalStatus: 'error',
           cancelled,
         }),

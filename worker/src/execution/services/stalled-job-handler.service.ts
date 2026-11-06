@@ -331,7 +331,6 @@ export class StalledJobHandlerService implements OnModuleInit, OnModuleDestroy {
             .returning({
               id: schema.runs.id,
               jobId: schema.runs.jobId,
-              projectId: schema.runs.projectId,
               location: schema.runs.location,
               errorDetails: schema.runs.errorDetails,
             });
@@ -366,7 +365,6 @@ export class StalledJobHandlerService implements OnModuleInit, OnModuleDestroy {
           try {
             await this.jobNotificationService.handleJobNotifications({
               jobId: run.jobId,
-              projectId: run.projectId ?? undefined,
               runId: run.id,
               finalStatus: 'error',
               cancelled: run.errorDetails === RUN_CANCELLATION_MARKER,
