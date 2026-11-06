@@ -84,6 +84,24 @@ describe('ContainerExecutorService', () => {
       }
     });
 
+    it('clamps WORKER_SHUTDOWN_DRAIN_MS to 25s', async () => {
+      jest.useFakeTimers();
+      process.env.WORKER_SHUTDOWN_DRAIN_MS = '600000';
+      try {
+        const deleteJob = jest
+          .spyOn(service as any, 'deleteExecutionJob')
+          .mockResolvedValue(undefined);
+        (service as any).runningJobs.set('run-3', 'job-3');
+        const destroyed = service.onModuleDestroy();
+        await jest.advanceTimersByTimeAsync(26_000);
+        await destroyed;
+        expect(deleteJob).toHaveBeenCalledWith('job-3');
+      } finally {
+        delete process.env.WORKER_SHUTDOWN_DRAIN_MS;
+        jest.useRealTimers();
+      }
+    });
+
     it('deletes jobs still alive once the drain window passes', async () => {
       jest.useFakeTimers();
       try {
@@ -92,7 +110,7 @@ describe('ContainerExecutorService', () => {
           .mockResolvedValue(undefined);
         (service as any).runningJobs.set('run-2', 'job-2');
         const destroyed = service.onModuleDestroy();
-        await jest.advanceTimersByTimeAsync(151_000);
+        await jest.advanceTimersByTimeAsync(21_000);
         await destroyed;
         expect(deleteJob).toHaveBeenCalledWith('job-2');
       } finally {
