@@ -98,6 +98,17 @@ describe("mcpAuthorizeRequiresResource scope", () => {
     const error = await refusal(run(plugin, { query: { resource: RESOURCE, scope: "mcp:read" }, body: { scope: "mcp:sre" } }));
     expect(error?.body?.error).toBe("invalid_scope");
   });
+  it("narrows an omitted scope to mcp:read, in the part of the request the provider reads", async () => {
+    await expect(run(plugin, { method: "GET", query: { resource: RESOURCE, state: "s" } })).resolves.toEqual({
+      context: { query: { resource: RESOURCE, state: "s", scope: "mcp:read" } },
+    });
+    await expect(run(plugin, { method: "POST", body: { resource: RESOURCE } })).resolves.toEqual({
+      context: { body: { resource: RESOURCE, scope: "mcp:read" } },
+    });
+  });
+  it("leaves an explicit scope untouched", async () => {
+    await expect(run(plugin, { query: { resource: RESOURCE, scope: "mcp:read mcp:sre" } })).resolves.toBeUndefined();
+  });
   it.each([["mcp:read"], ["mcp:read mcp:sre"], [undefined]])("accepts scope %p", async (scope) => {
     await expect(run(plugin, { query: { resource: RESOURCE, scope } })).resolves.not.toThrow();
   });
