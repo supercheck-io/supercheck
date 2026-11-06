@@ -50,11 +50,12 @@ export async function renotifyUnacknowledgedIncidents(now = new Date()) {
       .update(sreIncidents)
       .set({ renotifiedAt: now })
       .where(inArray(sreIncidents.id, due))
-      .returning({ id: sreIncidents.id, organizationId: sreIncidents.organizationId, projectId: sreIncidents.projectId, createdAt: sreIncidents.createdAt });
+      .returning({ id: sreIncidents.id, organizationId: sreIncidents.organizationId, projectId: sreIncidents.projectId, createdAt: sreIncidents.createdAt, reopenedAt: sreIncidents.reopenedAt });
     if (!claimed.length) break;
     total += claimed.length;
     // RETURNING has no order guarantee; send oldest first.
-    claimed.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+    const waitingSince = (i: (typeof claimed)[number]) => (i.reopenedAt ?? i.createdAt).getTime();
+    claimed.sort((a, b) => waitingSince(a) - waitingSince(b));
 
     for (const incident of claimed) {
       let delivered = false;
@@ -64,7 +65,8 @@ export async function renotifyUnacknowledgedIncidents(now = new Date()) {
           projectId: incident.projectId,
           incidentId: incident.id,
           event: "unacknowledged",
-          dedupeDiscriminator: "renotify",
+          // Per reopen cycle, so a reminder after a quick reopen is not swallowed by the previous one's dedupe key.
+          dedupeDiscriminator: `renotify:${incident.reopenedAt?.getTime() ?? 0}`,
         });
       } catch (error) {
         queueLogger.error({ err: error, incidentId: incident.id }, "Incident re-notify send failed");

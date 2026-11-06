@@ -64,6 +64,7 @@ const chatRequestSchema = z.object({
 });
 
 const CHAT_HISTORY_MESSAGES = 10;
+const CHAT_HISTORY_FETCH = 40;
 const CHAT_HISTORY_CHARS = 1500;
 
 const SRE_ATTACHMENTS_BUCKET =
@@ -454,7 +455,7 @@ export async function POST(request: NextRequest) {
             projectId: context.project.id,
             userId: context.userId,
             conversationId: conversation.id,
-            limit: CHAT_HISTORY_MESSAGES,
+            limit: CHAT_HISTORY_FETCH,
           })
         )
           .filter(
@@ -464,6 +465,8 @@ export async function POST(request: NextRequest) {
               !row.attachments?.some((item) => item.type === SRE_MESSAGE_INTERRUPTED) &&
               !isSreMessageSuperseded(row),
           )
+          // Filter first, then keep the newest turns, so interrupted rows cannot crowd earlier ones out.
+          .slice(-CHAT_HISTORY_MESSAGES)
           .map((row) => ({ role: row.role, text: safeSummaryText(row.content, "", CHAT_HISTORY_CHARS) }))
       : [];
 
