@@ -3917,15 +3917,27 @@ paths:
     delete:
       operationId: deleteOrganization
       summary: Delete organization
-      description: Owner only. Only empty organizations without protected dependencies
-        can be deleted. Selected browser session references are cleared
-        atomically. Organizations containing projects or protected dependencies
-        return 409; contact an administrator or support for safe removal.
-        Browser mutations require a same-origin request; CLI tokens retain their
-        existing authorization. Requires an interactive browser session.
-        Project-scoped CLI tokens receive 403.
+      description: Owner only. Permanently deletes the organization, its projects,
+        data and stored files, and cancels the subscription on record. Audit log
+        entries are kept. The body must repeat the organization id in
+        confirmOrganizationId. Not allowed while impersonating. Requires an
+        interactive, same-origin browser session; project-scoped CLI tokens
+        receive 403.
       tags:
         - Organizations
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - confirmOrganizationId
+              properties:
+                confirmOrganizationId:
+                  type: string
+                  format: uuid
+                  description: Must equal the id in the path.
       responses:
         "200":
           description: Organization deleted
@@ -3938,6 +3950,9 @@ paths:
                     type: boolean
                   message:
                     type: string
+        "400":
+          description: confirmOrganizationId is missing or does not match the organization
+            id.
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -3945,10 +3960,16 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
-          description: Organization contains projects or protected dependencies; removal
-            requires administrator or support assistance.
+          description: The organization is busy (retry shortly), or related records block
+            deletion (contact your administrator or support).
+        "429":
+          description: Too many deletion attempts. Try again later.
         "500":
           description: Internal server error
+        "502":
+          description: Billing cancellation or storage cleanup failed. The organization
+            remains, but schedules may be stopped and some files already
+            removed; retry to finish the deletion.
       security:
         - sessionCookie: []
   /api/organizations/members:

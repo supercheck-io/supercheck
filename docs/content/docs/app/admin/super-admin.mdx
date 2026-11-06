@@ -89,7 +89,7 @@ Navigate to **Super Admin → Locations** tab
 Click **Add Location**
 </Step>
 <Step>
-Fill in the fields described below and click **Save**
+Fill in the fields described below and click **Create Location**
 </Step>
 </Steps>
 
@@ -99,8 +99,9 @@ Fill in the fields described below and click **Save**
 | **Name** | Yes | Human-readable display name (e.g. "Worker Pool"). |
 | **Region** | No | Optional descriptive label for administrators. |
 | **Flag** | No | Emoji flag for the UI (e.g. 🇺🇸). |
-| **Coordinates** | No | Latitude/longitude for map visualization. |
-| **Default** | No | Set as the default K6 job execution location. |
+| **Latitude**, **Longitude** | No | Coordinates for map visualization. |
+| **Default location** | No | Switch to set it as the default K6 job execution location. |
+| **Sort Order** | No | Position in location lists. |
 | **Browser execution (Playwright)** | No | Allow synthetic (Playwright) monitors to run in this location. New locations created in the dashboard start with this off. |
 | **Performance tests (k6)** | No | Allow k6 tests pinned to this location. New locations created in the dashboard start with this off. |
 | **Enabled** | No | Make the location available for new checks and runs. On by default; turn it off to stage a region (its name, coordinates and capabilities) before anyone can select it. A disabled location cannot be the default. |
@@ -145,9 +146,9 @@ Organization admins can restrict which locations a project is allowed to use.
 
 Manage all users across the platform:
 
-- **View Details** — See user profile, email, and organization memberships
-- **Ban/Unban** — Suspend accounts with a reason (banned users cannot log in)
 - **Impersonate** — Log in as any user for troubleshooting
+- **Ban User / Unban User** — Suspend accounts with a reason (banned users cannot log in)
+- **Delete User** — Permanently remove an account. The dialog lists the organizations that will be deleted with it (those where the user is the only member); type the user's email to confirm
 
 <Tabs items={['Impersonation', 'Banning Users']}>
 <Tab value="Impersonation">
@@ -209,10 +210,10 @@ Enter a reason (minimum 20 characters), then select **Ban User** to confirm.
 ![Ban User Dialog](/screenshots/super-admin-ban-user.png)
 
 <Callout type="warn">
-**Reversible Action**: Banning is reversible. The user will be unable to sign in until unbanned, but all their data is preserved. To unban, click **Unban** from the same menu.
+**Reversible Action**: Banning is reversible. The user will be unable to sign in until unbanned, but all their data is preserved. To unban, select **Unban User** from the same menu.
 </Callout>
 
-Banned users see a "User is banned" message when attempting to log in.
+Banned users are refused when they try to sign in.
 
 </Tab>
 </Tabs>
