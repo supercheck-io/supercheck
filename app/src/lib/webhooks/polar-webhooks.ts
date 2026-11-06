@@ -15,6 +15,7 @@ import {
   getPolarWebhookDb,
   runOrderedPolarEvent,
   UnrecoverableWebhookError,
+  getPolarWebhookOrganizationId,
 } from "./polar-event-transaction";
 
 export { UnrecoverableWebhookError };
@@ -181,6 +182,34 @@ const OUT_OF_ORDER_RETRY_WINDOW_MS = 15 * 60 * 1000;
 function withinOutOfOrderRetryWindow(payload: PolarWebhookPayload): boolean {
   const sentAt = new Date(payload.timestamp ?? NaN).getTime();
   return Number.isFinite(sentAt) && Date.now() - sentAt < OUT_OF_ORDER_RETRY_WINDOW_MS;
+}
+
+/**
+ * A cancel or revoke for a subscription no organization holds yet. Fresh: fail retryably so the activation can
+ * land first. After the window: acknowledge it and retire the subscription id on the organization, so a late
+ * activation cannot bind a subscription that was already cancelled or revoked.
+ */
+async function rejectUnboundCancel(
+  payload: PolarWebhookPayload,
+  webhookEventKey: string,
+  eventType: string,
+  subscriptionId: string,
+): Promise<void> {
+  if (withinOutOfOrderRetryWindow(payload)) {
+    await updateWebhookResult(webhookEventKey, eventType, "error", "Organization not found", true);
+    return;
+  }
+  const organizationId = getPolarWebhookOrganizationId();
+  if (organizationId) {
+    await getPolarWebhookDb(organizationId)
+      .update(organization)
+      .set({ polarRetiredSubscriptionIds: sql`${organization.polarRetiredSubscriptionIds} || to_jsonb(${subscriptionId}::text)` })
+      .where(and(
+        eq(organization.id, organizationId),
+        sql`NOT (${organization.polarRetiredSubscriptionIds} @> to_jsonb(${subscriptionId}::text))`,
+      ));
+  }
+  await updateWebhookResult(webhookEventKey, eventType, "skipped", "Cancelled before activation; subscription retired");
 }
 
 /**
@@ -1198,13 +1227,7 @@ async function processSubscriptionCanceled(payload: PolarWebhookPayload) {
   });
 
   if (!org) {
-    await updateWebhookResult(
-      webhookEventKey,
-      "subscription.canceled",
-      "error",
-      "Organization not found",
-      withinOutOfOrderRetryWindow(payload),
-    );
+    await rejectUnboundCancel(payload, webhookEventKey, "subscription.canceled", subscriptionId);
     return;
   }
 
@@ -1397,13 +1420,7 @@ async function processSubscriptionRevoked(payload: PolarWebhookPayload) {
     console.log(
       `[Polar] subscription.revoked: No org found for subscription ${truncateId(subscriptionId)}`,
     );
-    await updateWebhookResult(
-      webhookEventKey,
-      "subscription.revoked",
-      "error",
-      "Organization not found",
-      withinOutOfOrderRetryWindow(payload),
-    );
+    await rejectUnboundCancel(payload, webhookEventKey, "subscription.revoked", subscriptionId);
     return;
   }
 
@@ -1929,7 +1946,8 @@ function orderedHandler(
         eventKey: eventType + ":" + getWebhookEventKey(payload, eventType),
         subscriptionId,
         canReplaceSubscription: eventType === "subscription.active",
-        ignoreWhenReplaced: eventType === "subscription.canceled" || eventType === "subscription.revoked",
+        ignoreWhenReplaced: eventType === "subscription.canceled" || eventType === "subscription.revoked"
+          ? { retry: withinOutOfOrderRetryWindow(payload) } : undefined,
         // The organization can be deleted by an admin while this event waits for its row lock.
         organizationDeleted: subscriptionId ? () => belongsToDeletedOrganization(subscriptionId) : undefined,
         periodStart: getSubscriptionDatesFromPayload(payload).startsAt,

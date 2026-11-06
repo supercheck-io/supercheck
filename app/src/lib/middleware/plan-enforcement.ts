@@ -196,6 +196,8 @@ export async function withResumeWithinPlan<T>(
   resource: "monitor" | "status_page",
   targetId: string,
   write: (tx: PlanLimitTransaction) => Promise<T>,
+  /** Runs under the lock when the target is paused (a pre-lock read may have missed a concurrent pause); a throw aborts the resume. */
+  whenPaused?: () => Promise<void>,
 ): Promise<ResumeOutcome<T>> {
   // Resolve the plan before taking the lock: it needs its own pool connection.
   const plan = isPolarEnabled() ? await subscriptionService.getOrganizationPlan(organizationId) : undefined;
@@ -205,6 +207,7 @@ export async function withResumeWithinPlan<T>(
         ? await tx.select({ status: monitors.status }).from(monitors).where(eq(monitors.id, targetId))
         : await tx.select({ status: statusPages.status }).from(statusPages).where(eq(statusPages.id, targetId));
       const alreadyOn = resource === "monitor" ? current?.status !== "paused" : current?.status === "published";
+      if (resource === "monitor" && current?.status === "paused") await whenPaused?.();
       if (current && !alreadyOn) {
         const cap = await checkResumeWithinPlan(organizationId, resource, { executor: tx, plan });
         if (!cap.allowed) return { ok: false as const, denied: cap };
