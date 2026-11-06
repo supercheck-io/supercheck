@@ -142,9 +142,12 @@ describe("schedule is reconciled to the committed state", () => {
     expect(failed.status).toBe(503);
     expect((await failed.json()).error).toMatch(/Retry/);
     expect(clears).toHaveLength(0); // scheduledJobId was not cleared
+    // The first write committed, so the stored row now reads paused (still holding its job id).
+    stored("paused");
     const retry = await patch("paused");
     expect(retry.status).toBe(200);
-    expect(clears).toHaveLength(1);
+    expect(deleteScheduledMonitor).toHaveBeenLastCalledWith("old"); // job removed
+    expect(clears).toHaveLength(1); // scheduledJobId cleared
   });
 
   it("reconciles even when the pre-write read says the status did not change", async () => {
