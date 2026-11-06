@@ -36,10 +36,10 @@ jest.mock("@/lib/feature-flags", () => ({
   })),
 }));
 
-const mockIsImpersonated = jest.fn(async () => false);
+const mockImpersonationState = jest.fn(async (): Promise<string> => "none");
 jest.mock("@/lib/rbac/middleware", () => ({
   getUserOrgRole: jest.fn(),
-  isImpersonatedSession: () => mockIsImpersonated(),
+  getImpersonationState: () => mockImpersonationState(),
 }));
 
 jest.mock("@/utils/db", () => ({
@@ -84,7 +84,7 @@ describe("Polar billing routes", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockIsImpersonated.mockResolvedValue(false);
+    mockImpersonationState.mockResolvedValue("none");
     mockGetCustomerState.mockResolvedValue({ active_subscriptions: [] });
     process.env = {
       ...originalEnv,
@@ -220,6 +220,47 @@ describe("Polar billing routes", () => {
     expect(mockCheckoutCreate).not.toHaveBeenCalled();
   });
 
+  it("allows checkout when the shared customer's only active subscription belongs to another organization", async () => {
+    mockGetCustomerState.mockResolvedValue({
+      active_subscriptions: [{ id: "sub_other", product_id: "product_plus", metadata: { referenceId: "org_other" } }],
+    });
+
+    const response = await checkoutPost(request("/api/billing/checkout", { plan: "pro" }));
+
+    expect(response.status).toBe(200);
+    expect(mockCheckoutCreate).toHaveBeenCalled();
+  });
+
+  it.each([
+    ["tagged to this organization", { referenceId: "org_1" }],
+    ["untagged", undefined],
+    ["with a non-string tag", { referenceId: 42 }],
+  ])("still blocks checkout when an active subscription is %s", async (_label, metadata) => {
+    mockGetCustomerState.mockResolvedValue({
+      active_subscriptions: [
+        { id: "sub_other", product_id: "product_plus", metadata: { referenceId: "org_other" } },
+        { id: "sub_1", product_id: "product_plus", metadata },
+      ],
+    });
+
+    const response = await checkoutPost(request("/api/billing/checkout", { plan: "pro" }));
+
+    expect(response.status).toBe(409);
+    expect(mockCheckoutCreate).not.toHaveBeenCalled();
+  });
+
+  it("returns a retryable 503 from checkout and portal when the session lookup fails", async () => {
+    mockImpersonationState.mockResolvedValue("unknown");
+
+    const checkout = await checkoutPost(request("/api/billing/checkout", { plan: "pro" }));
+    const portal = await portalPost(request("/api/billing/portal"));
+
+    expect(checkout.status).toBe(503);
+    expect(portal.status).toBe(503);
+    expect(mockCheckoutCreate).not.toHaveBeenCalled();
+    expect(mockCustomerSessionCreate).not.toHaveBeenCalled();
+  });
+
   it("fails closed without creating a checkout when Polar customer state is unavailable", async () => {
     const log = jest.spyOn(console, "error").mockImplementation(() => undefined);
     mockGetCustomerState.mockRejectedValue(new Error("Polar unavailable"));
@@ -232,7 +273,7 @@ describe("Polar billing routes", () => {
   });
 
   it("refuses checkout and portal while a super admin impersonates the owner", async () => {
-    mockIsImpersonated.mockResolvedValue(true);
+    mockImpersonationState.mockResolvedValue("impersonated");
 
     const checkout = await checkoutPost(request("/api/billing/checkout", { plan: "pro" }));
     const portal = await portalPost(request("/api/billing/portal"));

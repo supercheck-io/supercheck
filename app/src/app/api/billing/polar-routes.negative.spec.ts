@@ -48,10 +48,10 @@ jest.mock("@/lib/feature-flags", () => ({
   })),
 }));
 
-const mockIsImpersonated = jest.fn(async () => false);
+const mockImpersonationState = jest.fn(async (): Promise<string> => "none");
 jest.mock("@/lib/rbac/middleware", () => ({
   getUserOrgRole: jest.fn(),
-  isImpersonatedSession: () => mockIsImpersonated(),
+  getImpersonationState: () => mockImpersonationState(),
 }));
 
 jest.mock("@/utils/db", () => ({

@@ -37,10 +37,12 @@ export async function reconcilePolarSubscription(organizationId: string): Promis
     return response.json();
   };
   const currentSubscriptionId = async () => {
-    const state = z.object({ id: z.string(), active_subscriptions: z.array(z.object({ id: z.string(), product_id: z.string() })) })
+    const state = z.object({ id: z.string(), active_subscriptions: z.array(z.object({ id: z.string(), product_id: z.string(), metadata: z.record(z.string(), z.unknown()).nullish() })) })
       .parse(await get(`/v1/customers/${encodeURIComponent(customerId)}/state`));
     if (state.id !== customerId) throw new Error("Polar customer state binding mismatch");
-    const candidates = state.active_subscriptions.filter((sub) => getPlanFromProductId(sub.product_id));
+    // Legacy orgs can share a customer: never bind a subscription tagged to another org.
+    const candidates = state.active_subscriptions.filter((sub) => getPlanFromProductId(sub.product_id) &&
+      (typeof sub.metadata?.referenceId !== "string" || sub.metadata.referenceId === organizationId));
     if (candidates.length > 1) throw new Error("Multiple Polar subscriptions require manual reconciliation");
     return candidates[0]?.id ?? null;
   };

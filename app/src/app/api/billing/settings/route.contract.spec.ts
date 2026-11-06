@@ -8,7 +8,7 @@ jest.mock("@/lib/auth-context", () => ({
 const mockRole = jest.fn();
 jest.mock("@/lib/rbac/middleware", () => ({
   getUserOrgRole: (...a: unknown[]) => mockRole(...a),
-  isImpersonatedSession: async () => false,
+  getImpersonationState: async () => "none",
 }));
 jest.mock("@/lib/rbac/permissions", () => ({
   Role: { ORG_ADMIN: "org_admin", ORG_OWNER: "org_owner" },

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUserAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
-import { getUserOrgRole, isImpersonatedSession } from "@/lib/rbac/middleware";
+import { getUserOrgRole, getImpersonationState } from "@/lib/rbac/middleware";
 import { Role } from "@/lib/rbac/permissions";
 import { billingSettingsService } from "@/lib/services/billing-settings.service";
 import { auditBillingSettingsChange } from "@/lib/audit-log";
@@ -116,7 +116,14 @@ export async function PATCH(request: NextRequest) {
         { status: 403 },
       );
     }
-    if (await isImpersonatedSession()) {
+    const impersonation = await getImpersonationState();
+    if (impersonation === "unknown") {
+      return NextResponse.json(
+        { error: "Could not verify your session. Please try again." },
+        { status: 503 },
+      );
+    }
+    if (impersonation === "impersonated") {
       return NextResponse.json(
         { error: "Billing settings cannot be changed while impersonating a user" },
         { status: 403 },
