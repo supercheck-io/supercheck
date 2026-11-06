@@ -92,7 +92,8 @@ Both actions ask for confirmation.
 |---|---|
 | **Status banner** | Overall health, such as All Systems Operational or Partial Outage |
 | **Components** | Current status and check-based 90-day uptime for each public component |
-| **Incident history** | Active incidents and up to 500 incidents from the last 90 days, grouped by date |
+| **Scheduled maintenance** | Maintenance whose window has not started yet, in its own section apart from active incidents |
+| **Incident history** | Active incidents and up to 500 incidents from the last 90 days, grouped by date, and never earlier than the day the page was created |
 | **Subscribe** | Sign-up for incident notifications |
 
 Clicking an incident opens its full timeline.
@@ -169,6 +170,8 @@ Linked components refresh every 10 seconds. **Failing monitors required** is the
 | **Partial Outage** | Orange | Some features unavailable |
 | **Major Outage** | Red | Service down |
 | **Under Maintenance** | Blue | Scheduled maintenance in progress |
+
+A component ignores linked monitors that are paused or still waiting for their first result while any other linked monitor reports. If none reports, a component with only waiting monitors shows Operational, and one with paused monitors keeps its last known status (Operational if it has none).
 
 **Uptime** is successful checks divided by total checks over the last 90 UTC days. Days without checks show no data. It is check-based, not a time-weighted SLA. The banner and badge use showcased components, including components hidden while healthy.
 
@@ -291,7 +294,7 @@ sequenceDiagram
 
 ![Email Subscription](/screenshots/status-page-subscribe-email.png)
 
-Choose **Subscribe**, enter an email, select **Subscribe via Email**, then open the verification link. Unsubscribe links are signed.
+Choose **Subscribe**, enter an email, select **Subscribe via Email**, then open the verification link. Unsubscribe links are signed. Submitting the same unverified address again within 5 minutes does not send another verification email.
 
 </Tab>
 <Tab value="Slack">
@@ -303,7 +306,7 @@ Choose **Subscribe**, enter an email, select **Subscribe via Email**, then open 
 Create a Slack app at [api.slack.com/apps](https://api.slack.com/apps) and enable **Incoming Webhooks**.
 </Step>
 <Step>
-Add the webhook to a channel and copy its URL.
+Add the webhook to a channel and copy its URL. Only `https://hooks.slack.com` URLs are accepted.
 </Step>
 <Step>
 Paste the URL in the subscription dialog.
@@ -316,6 +319,8 @@ Messages are color-coded by impact and link back to the status page.
 <Tab value="Webhook">
 
 New webhook subscriptions stay **Pending** until the endpoint proves it owns the URL.
+
+Submitting the same URL again within 5 minutes is refused. Resubmitting a URL that was never verified issues a new signing secret and returns it, so use the latest one.
 
 <Accordions>
 <Accordion title="Verification and signature details" id="webhook-details">

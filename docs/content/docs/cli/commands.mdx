@@ -768,7 +768,7 @@ supercheck destroy --force        # Confirm and delete resources
 
 Config pulls include monitors (with tags), jobs, requirements, notification providers, variables, tags, and status pages (settings, branding, notifications and components); test pulls also write test scripts under `_supercheck_/` with `@title`, `@priority` and `@tags` annotations. Pull preserves managed test paths and existing browser and `testMatch` settings. Runner-type changes migrate files with backups; new tests must match configured custom globs or pull stops before writing.
 
-When overwriting changed files, pull saves a mode-`0600` backup at `<path>.supercheck-backup.<uuid>`. This includes matching test scripts and config files; if a test file is renamed during pull, the old file is backed up before removal. Backups are retained and must be removed manually when no longer needed.
+When overwriting changed files, pull saves a mode-`0600` backup at `<path>.supercheck-backup.<uuid>`. This includes matching test scripts and config files; if a test file is renamed during pull, the old file is backed up before removal. Backups are retained and must be removed manually when no longer needed. When a pull creates backups it also adds the backup pattern to an existing `.gitignore` (it never creates one) and prints a one-line note.
 
 In JSON mode, the completed pull summary includes `files` and `backups` arrays with the paths written and preserved. `--dry-run` does not write files or create backups.
 

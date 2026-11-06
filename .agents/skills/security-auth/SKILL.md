@@ -30,7 +30,7 @@ flowchart LR
 - Better Auth owns browser sessions, users, organizations, and membership. Do not add NextAuth patterns.
 - Browser routes may use session cookies. CLI and API-key routes require bearer-compatible auth context.
 - Never use a cookie-only permission helper in an API route that supports CLI bearer tokens: `hasPermission` and `requireProjectContext` read session state; use `requireAuthContext` with `hasPermissionForUser`.
-- Permission checks use the effective (impersonated) user, not the admin who started impersonation. Credential-minting and similar sensitive actions must refuse under impersonation (`isImpersonatedSession` in `rbac/middleware.ts`).
+- Permission checks use the effective (impersonated) user, not the admin who started impersonation. Credential-minting and similar sensitive actions must refuse under impersonation (`isImpersonatedSession` in `rbac/middleware.ts`), including revealing a secret value (403, audited as `secret_decrypt_impersonation_blocked`).
 - Credentials whose owning user is suspended or gone must be rejected (`isCredentialOwnerActive`).
 - Return `401` when identity is absent/invalid and `403` when an authenticated identity lacks permission.
 - Permission failures from `AuthError` return `403`, never a hard-coded `401`. Status page unsubscribe links are signed tokens only (the legacy `unsubscribe_token` column was dropped in 0056) and subscriber webhook secrets exist only encrypted (`webhook_secret_encrypted`).
@@ -43,7 +43,7 @@ flowchart LR
 - Resolve tenant context before data access. IDs supplied by clients are selectors, not proof of ownership.
 - Organization resources scope to the authenticated organization. Project resources additionally verify project ownership/membership.
 - Project admins/editors require the applicable project membership relationship. Organization-wide privileges apply only through central RBAC rules.
-- Invitations validate organization/project, role eligibility, normalized email, expiry, reuse/acceptance state, and inviter authority.
+- Invitations validate organization/project, role eligibility, normalized email, expiry, reuse/acceptance state, and inviter authority. Acceptance re-checks under a share lock that the inviter is still `org_owner` or `org_admin`, and refuses a `super_admin` with the generic `INVITE_ALREADY_USED` error; removing, demoting or leaving cancels the inviter's pending invitations (`cancel-pending-invites.ts`). The invite route must not reveal whether an address belongs to a platform administrator.
 - Super-admin routes require explicit global-admin authorization and must not reuse ordinary tenant authorization as a shortcut.
 - Security, membership, secret, administration, and billing mutations produce redacted audit events.
 
@@ -52,7 +52,7 @@ flowchart LR
 - CLI/session API tokens (`sck_live_`/`sck_test_`) and job trigger keys (`sck_trigger_`, plus legacy `job_` formats) are different credential classes. Validate type, prefix/current format, expiry, enabled state, scope, and allowed operation.
 - Store credential material according to the current one-time-display/hash design; never make plaintext recoverable through list/get APIs.
 - Token lists expose safe metadata only. Creation returns a plaintext token only at the intended one-time boundary.
-- Rate-limit authentication and credential-sensitive endpoints and return useful retry metadata where supported.
+- Rate-limit authentication and credential-sensitive endpoints and return useful retry metadata where supported. The invite and API-key verification limiters fail closed: Redis down or slow (`withRedisDeadline`) returns `503` with `Retry-After`, never allows the request. AI analysis routes (job, k6, monitor) need `update` permission like AI fix, because they spend credits.
 - Do not put tokens in repository config, URLs, logs, analytics, error messages, queue payloads, or client persistence beyond the intended secure store.
 
 ## Project variables and encryption

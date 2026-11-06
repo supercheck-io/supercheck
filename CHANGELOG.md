@@ -6,13 +6,40 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 
 ## [Unreleased]
 
+### Upgrade notes
+
+- **Database migrations.** Apply migrations `0059` to `0063` before you update the app and the worker. They add an index and a waiter count on private agent jobs, an origin on investigation runs, an index for trial key lookups and incident alert counts.
+- **New optional settings.** `PRIVATE_AGENT_JOB_RETENTION_DAYS` (default 30) sets how long finished private agent jobs are kept; each connector's newest job always stays. `SMTP_FROM_NAME` and `SMTP_REPLY_TO` set a display name and a Reply-To address on every email. `SENTRY_DSN`, `SENTRY_ENVIRONMENT` and `SENTRY_RELEASE` are documented in `app/.env.example`.
+- **Rate limiters fail closed.** Invitations and API key verification now return `503` with a `Retry-After` header when Redis is unavailable, instead of letting requests through unthrottled.
+- **MCP clients.** A client that registers itself now gets `mcp:read` only; it must request `mcp:incidents:write` or `mcp:sre` explicitly.
+
+### Added
+
+- `GET /api/audit` accepts a `cursor` for stable paging, and the audit log table loads the newest 100 events with **Load older events**.
+- Monitors can open incidents without any notification channel, so incident-only monitoring works.
+- Incidents report `alertCount` (the opening alert plus repeats while the incident stayed open) and `lastAlertAt` in the API and in the MCP `get_incident` tool.
+- Single-test runs (CLI `test execute`, playground) report their `testId` and test count, and their report is found by `GET /api/runs/{runId}`.
+
 ### Changed
+
+- `PATCH /api/monitors/{id}` merges `config` and `alertConfig` as a JSON merge patch: objects merge, arrays replace and `null` deletes a key. `PUT` still replaces `config` as a whole. Invalid notification providers, a blank name or a non-object `alertConfig` return `400`.
+- `PATCH /api/monitors/{id}/status` accepts only `up`, `down`, `paused` and `pending`, and pausing now also disables the monitor. Resuming a monitor re-checks the plan limit and, on Supercheck Cloud, the subscription, and can return `403` (`plan_limit`), `402` or `503` with `Retry-After`.
+- AI analysis of jobs, k6 runs and monitors needs edit permission, as AI Fix does, because it spends AI credits.
+- Notification providers need a name of 1 to 255 characters, and job alert messages are limited to 1,000 characters.
+- Invitations stop working when the person who sent them is removed, demoted or leaves, and platform administrator accounts cannot accept an invitation.
+- Revealing a secret value is refused (and audited) while a super admin impersonates a user.
+- Status pages: re-subscribing the same unverified email or webhook within 5 minutes is refused, Slack subscriptions must use `https://hooks.slack.com`, a component ignores paused or never-checked monitors while others report, upcoming maintenance has its own section, and a draft page's **View** opens the signed-in preview.
+- Emails share one template and palette, and the worker pools its SMTP connections.
+- Reminders for unacknowledged incidents count from the latest reopening, and the three-attempt cap on automatic investigations counts only automatic runs.
 
 - The incident page now uses **Overview**, **Investigation** and **Post-mortem** tabs instead of side sheets, with the open tab kept in the URL. Unsent notes, drafts and a brief that is still generating survive a tab switch. **Ask Copilot** opens the Copilot page scoped to the incident.
 - The incident summary card shows a short AI summary and says when it comes from the evidence brief or triage. Only a completed investigation shows a confidence rating. Summaries end on a whole sentence, the Overview tab no longer repeats the resolution above the summary, and AI actions on the incident page use subtly coloured buttons.
 
 ### Fixed
 
+- SSL expiry alerts are suppressed during scheduled maintenance, like other monitor alerts.
+- The Playwright trace viewer works again: the retired root service worker no longer controls report pages (one reload clears the old worker in a tab opened before the update).
+- A playground run that fails or is cancelled before its report exists now ends the status stream instead of leaving the spinner running.
 - HTTP monitors now enforce a total wall-clock timeout per check, so a slowly dripping response can no longer hold a check open past its timeout.
 - Runs marked as errors by the stalled-run sweep now send job failure alerts.
 - A recovery alert suppressed by scheduled maintenance is now treated as consumed instead of being retried on every later check, and undeliverable recovery alerts stop retrying after a bounded number of checks.

@@ -82,6 +82,7 @@ When you are running the app locally on `http://localhost:3000`, Supercheck keep
 | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | Optional GitHub social sign-in | - |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Optional Google social sign-in | - |
 | `SMTP_HOST`, `SMTP_FROM_EMAIL` (+ optional `SMTP_USER`/`SMTP_PASSWORD`) | Email notifications (disabled if SMTP_HOST not set) | - |
+| `SMTP_FROM_NAME`, `SMTP_REPLY_TO` | Optional display name for the From address and a Reply-To address on every email | - |
 | `AI_PROVIDER` | AI provider (`openai`, `azure`, `anthropic`, `gemini`, `google-vertex`, `bedrock`, `openrouter`, `deepseek`) | `openai` |
 | `AI_MODEL` | AI model name | `gpt-6-luna` |
 | `OPENAI_API_KEY` | AI features (for default OpenAI provider) | - |

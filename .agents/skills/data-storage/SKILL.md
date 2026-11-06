@@ -57,7 +57,7 @@ flowchart TD
 - Audit records combine userId/organizationId columns with action, createdAt, and a details JSON carrying resource, outcome, IP, user-agent, and safe metadata; there is no first-class project scope.
 - Log sensitive mutations and denials according to policy without recording secrets, tokens, full request payloads, provider credentials, or decrypted variables.
 - Audit writes are best-effort today (logging failures never fail the request); decide deliberately when new critical actions must fail closed on missing audit evidence.
-- Audit views require elevated (org admin+) permission, pagination, tenant scope, and appropriate retention.
+- Audit views require elevated (org admin+) permission, pagination, tenant scope, and appropriate retention. `GET /api/audit` supports a keyset `cursor` (microsecond `to_char` timestamp plus id, fetch `limit + 1`) next to `page`; in cursor mode only `totalCount`, `limit`, `hasNext` and `nextCursor` are returned.
 
 ## Verify
 

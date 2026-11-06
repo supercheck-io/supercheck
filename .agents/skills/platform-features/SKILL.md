@@ -46,6 +46,7 @@ flowchart TD
 - Emit typed, bounded events and heartbeats; preserve event ordering/identity expected by clients.
 - Close subscriptions, timers, listeners, and Redis resources on abort, completion, timeout, navigation, and errors.
 - Reconnection/resubscription must not leak other resources or create duplicate UI state.
+- `/api/test-status/events/[testId]` reconciles from persisted state: a run that ends `blocked`, `failed` or `error` with no report row closes the stream as failed (cancel, capacity rejection, orphan sweep emit no queue event); `queued` or `running` without a report keeps waiting. The event no longer carries `reportPath`.
 
 ## Requirements
 
@@ -69,6 +70,7 @@ flowchart TD
 - Support public/private status, service associations, incidents/maintenance, branding policy, and verified custom domains according to current schema.
 - Custom-domain verification and any outbound DNS/HTTP checks use hardened resolution and SSRF controls.
 - Preserve cloud and self-hosted routing, CNAME guidance, TLS behavior, and branding configuration.
+- Public subscribe (`app/src/actions/subscribe-to-status-page.ts`) is anonymous, so it is hardened: a 5-minute cooldown (one atomic UPDATE) on re-sending verification and on webhook re-subscribe, a never-verified webhook row gets a rotated secret while a verified or quarantined one keeps its own, and Slack endpoints must be `https://hooks.slack.com`. Component status ignores `pending` and `paused` monitors while others report (`calculateFromMonitors`); with none reporting, paused keeps the last known status.
 - REST writes: `POST /api/status-pages`, `PUT /api/status-pages/[id]`, and `[id]/components` (+ `[componentId]`). Shared logic lives in `app/src/lib/status-pages/service.ts`, called by both dashboard actions and REST. Monitor tags: `app/src/app/api/monitors/[id]/tags/route.ts`. Public/CLI contract changes also need `docs/openapi.json` and the CLI updated.
 
 ## AI test repair and providers
