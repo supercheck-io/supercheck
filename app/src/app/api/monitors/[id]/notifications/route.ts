@@ -145,7 +145,7 @@ export async function POST(
     }
     const { notificationProviderId } = rawBody as Record<string, any>;
 
-    if (!notificationProviderId) {
+    if (typeof notificationProviderId !== "string" || !isUuid(notificationProviderId)) {
       return NextResponse.json(
         { error: "Notification provider ID is required" },
         { status: 400 }
@@ -280,7 +280,7 @@ export async function DELETE(
     }
     const { notificationProviderId } = rawBody as Record<string, any>;
 
-    if (!notificationProviderId) {
+    if (typeof notificationProviderId !== "string" || !isUuid(notificationProviderId)) {
       return NextResponse.json(
         { error: "Notification provider ID is required" },
         { status: 400 }

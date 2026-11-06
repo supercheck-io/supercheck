@@ -10,6 +10,7 @@ import {
 import { subDays } from "date-fns";
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-context';
+import { runReportPath } from '@/lib/run-report-url';
 
 /**
  * K6 Analytics API
@@ -229,7 +230,7 @@ export async function GET(request: NextRequest) {
             durationMs: left.durationMs,
             thresholdsPassed: left.thresholdsPassed,
             requestRate: left.requestRate ? left.requestRate / 100 : null,
-            reportS3Url: left.reportS3Url,
+            reportS3Url: runReportPath(left.runId, left.reportS3Url),
             metrics: {
               totalRequests: left.totalRequests,
               failedRequests: left.failedRequests,
@@ -251,7 +252,7 @@ export async function GET(request: NextRequest) {
             durationMs: right.durationMs,
             thresholdsPassed: right.thresholdsPassed,
             requestRate: right.requestRate ? right.requestRate / 100 : null,
-            reportS3Url: right.reportS3Url,
+            reportS3Url: runReportPath(right.runId, right.reportS3Url),
             metrics: {
               totalRequests: right.totalRequests,
               failedRequests: right.failedRequests,

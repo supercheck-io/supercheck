@@ -14,7 +14,7 @@ import {
   sreIncidents,
 } from "@/db/schema";
 import { db } from "@/utils/db";
-import { monitorConfigForRead, monitorResultDetailsForRead, monitorTargetForRead } from "@/lib/monitor-read-config";
+import { monitorConfigForRead, monitorResultForRead, monitorTargetForRead } from "@/lib/monitor-read-config";
 import { linkedAlertFields } from "@/lib/sre/incident-alert-snapshot";
 
 const DEFAULT_LOOKBACK_MINUTES = 120;
@@ -415,7 +415,8 @@ export async function collectNativeEvidence(input: {
 
       const results = monitorResultsByMonitorId.get(alert.sourceId) ?? [];
 
-      for (const result of results) {
+      for (const rawResult of results) {
+        const result = monitorResultForRead(rawResult);
         addEvidence(evidence, {
           sourceUri: `/monitors/${alert.sourceId}?result=${result.id}`,
           title: `Monitor result: ${result.status} at ${result.location}`,
@@ -424,7 +425,7 @@ export async function collectNativeEvidence(input: {
             status: result.status,
             isUp: result.isUp,
             responseTimeMs: result.responseTimeMs,
-            details: monitorResultDetailsForRead(result.details),
+            details: result.details,
             consecutiveFailureCount: result.consecutiveFailureCount,
             consecutiveSuccessCount: result.consecutiveSuccessCount,
             testExecutionId: result.testExecutionId,

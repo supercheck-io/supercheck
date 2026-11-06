@@ -477,6 +477,7 @@ export class AuthService {
     session: UserSession,
     entityId: string,
     testType: string,
+    action: "view" | "update" = "view",
   ): Promise<boolean> {
     const { resolveAccessContext } = await import("@/lib/test-results-access");
     const { hasPermissionForUser } = await import("@/lib/rbac/middleware");
@@ -488,7 +489,7 @@ export class AuthService {
     // Organization membership and project access are enforced by
     // hasPermissionForUser for the report's own org, so users who belong to
     // several organizations can reach reports outside their active one.
-    return hasPermissionForUser(session.user.id, "test", "view", {
+    return hasPermissionForUser(session.user.id, "test", action, {
       organizationId: context.organizationId,
       projectId: context.projectId,
     });

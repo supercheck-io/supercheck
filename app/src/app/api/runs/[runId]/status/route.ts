@@ -92,9 +92,8 @@ export async function GET(
       );
     }
     console.error(`Error fetching status for run ${runId}:`, error);
-    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred";
     return NextResponse.json(
-      { error: `Failed to fetch run status: ${errorMessage}` },
+      { error: "Failed to fetch run status" },
       { status: 500 }
     );
   }
