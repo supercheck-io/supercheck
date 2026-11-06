@@ -109,7 +109,7 @@ To wait for the result with `job trigger --wait`, also supply a CLI token with a
 `SUPERCHECK_ORG` and `SUPERCHECK_PROJECT` override the matching fields in `supercheck.config.ts` for config resolution. The CLI token itself is project-scoped and determines your actual API access.
 
 <Callout type="warn">
-`SUPERCHECK_TOKEN`, `SUPERCHECK_URL`, `SUPERCHECK_TRIGGER_KEY`, every proxy setting (`HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY`, in either case) and the TLS settings `NODE_TLS_REJECT_UNAUTHORIZED`, `NODE_EXTRA_CA_CERTS`, `NODE_OPTIONS`, `SSL_CERT_FILE` and `SSL_CERT_DIR` are **not** read from a project's `.env` file. A repository can be committed by anyone, so letting it choose the credential, the server it is sent to, or a proxy or TLS setting would let a hostile repository intercept your token. Export these in your shell, use your CI secret store, or run `supercheck login`. Other variables in `.env` (for example `SUPERCHECK_ORG` and `SUPERCHECK_PROJECT`) are still loaded.
+`SUPERCHECK_TOKEN`, `SUPERCHECK_URL`, `SUPERCHECK_TRIGGER_KEY`, every proxy setting (`HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY`, in either case) and the TLS settings `NODE_TLS_REJECT_UNAUTHORIZED`, `NODE_EXTRA_CA_CERTS`, `NODE_OPTIONS`, `NODE_USE_ENV_PROXY`, `SSL_CERT_FILE`, `SSL_CERT_DIR` and any `DOTENV_*` variable are **not** read from a project's `.env` file. A repository can be committed by anyone, so letting it choose the credential, the server it is sent to, or a proxy or TLS setting would let a hostile repository intercept your token. Export these in your shell, use your CI secret store, or run `supercheck login`. Other variables in `.env` (for example `SUPERCHECK_ORG` and `SUPERCHECK_PROJECT`) are still loaded.
 </Callout>
 
 ## Security

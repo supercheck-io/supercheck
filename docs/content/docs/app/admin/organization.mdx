@@ -18,7 +18,7 @@ Use **Organization** in the sidebar to manage projects, members, CLI tokens, AI 
 
 ## Default organization and projects
 
-Sign-up creates one default organization and one default project. There is no menu to create or switch organizations. Use the project selector and the **Projects** tab to create and switch projects.
+Sign-up creates one default organization and one default project. There is no menu to create or switch organizations. Owners and admins can rename the organization with the pencil button (**Rename organization**) next to its name on the **Organization** page. Use the project selector and the **Projects** tab to create and switch projects.
 
 You can accept invitations to projects in other organizations and keep your default one. Those projects appear in the project selector under the team name. You can see every active project in a joined team read-only. Project Editor and Project Admin assignments add permissions only in the selected projects. Owning your default organization gives no administrative access to another team. Users who sign up through an invitation join the inviting team without a separate organization.
 
@@ -36,7 +36,7 @@ Open **Organization** in the sidebar, then the **Projects** tab.
 </Step>
 <Step>
 
-Select **Create Project** and fill in both required fields, then **Save**.
+Select **Create Project**, fill in both required fields in the **Create New Project** dialog, then select **Create Project** again to submit.
 
 | Field | Limit |
 |---|---|
@@ -107,14 +107,16 @@ Sign up or sign in with the invited email address, then accept the invitation to
 <Accordions>
 <Accordion title="Leave an organization" id="leave-an-organization">
 
-Select a project in the team you want to leave, open your profile menu, choose **Account**, and select **Leave** next to the organization. Confirm the organization name. This removes your membership and project assignments in that team. Other memberships remain in the project selector. If you have none left, the normal setup flow creates your personal organization and project.
+Select a project in the team you want to leave, open your profile menu, choose **Account**, and select **Leave** next to the organization. Confirm with **Leave organization**. This removes your membership and project assignments in that team. Other memberships remain in the project selector. If you have none left, the normal setup flow creates your personal organization and project.
 
 Organization owners cannot leave; transfer ownership or delete the organization first. An administrator must invite you again to rejoin.
 
 </Accordion>
 <Accordion title="Delete the organization" id="delete-organization">
 
-Only the organization owner can request deletion. An organization with projects or protected dependencies cannot be deleted through the organization API. Contact your administrator or support to review and remove the related data safely.
+Only the organization owner can delete it. Select the trash button (**Delete organization**) next to the organization name on the **Organization** page, type the organization name to confirm, and delete.
+
+Deletion cannot be undone. It removes every project and its data and stored files, removes every member's access, and cancels the subscription Supercheck has on record, without a refund. Audit log entries are kept.
 
 </Accordion>
 </Accordions>
