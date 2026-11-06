@@ -65,6 +65,7 @@ function incidentFixture(
     assigneeImage: null,
     acknowledgedAt: null,
     alertCount: index,
+    lastAlertAt: null,
     evidenceCount: index + 1,
     investigationCount: index % 2 === 0 ? 1 : 0,
     latestInvestigationStatus: index % 2 === 0 ? "completed" : null,

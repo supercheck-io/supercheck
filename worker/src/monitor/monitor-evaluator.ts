@@ -34,14 +34,16 @@ export type AggregatedAlertState = {
  * Keep in sync with incidentsEnabled in app/src/lib/incident-settings.ts.
  */
 export function isIncidentOnly(
-  alertConfig: { enabled?: boolean; incidentEnabled?: boolean } | null | undefined,
+  alertConfig:
+    { enabled?: boolean; incidentEnabled?: boolean } | null | undefined,
 ): boolean {
   return !alertConfig?.enabled && alertConfig?.incidentEnabled === true;
 }
 
 /** Counters and incidents run for monitors that alert or are incident-only. */
 export function tracksAlertState(
-  alertConfig: { enabled?: boolean; incidentEnabled?: boolean } | null | undefined,
+  alertConfig:
+    { enabled?: boolean; incidentEnabled?: boolean } | null | undefined,
 ): boolean {
   return Boolean(alertConfig?.enabled) || isIncidentOnly(alertConfig);
 }
@@ -351,7 +353,9 @@ export class MonitorEvaluator {
       ) {
         // First alert: threshold reached (>= so a skipped pending observation cannot miss it)
         shouldSendAlert =
-          incidentOnly || (monitorAlertConfig?.alertOnFailure as boolean) || false;
+          incidentOnly ||
+          (monitorAlertConfig?.alertOnFailure as boolean) ||
+          false;
       } else if (
         consecutiveFailureCount > failureThreshold &&
         alertsSentForFailure < 3
@@ -488,7 +492,11 @@ export class MonitorEvaluator {
         (notification as { reason?: string }).reason === 'incident_only';
       if (!suppressed && !incidentSignalled && notification?.suppressed)
         return { alertSent: false };
-      if (!suppressed && !incidentSignalled && notification?.delivered === false)
+      if (
+        !suppressed &&
+        !incidentSignalled &&
+        notification?.delivered === false
+      )
         return { alertSent: false, deliveryFailed: true };
       delivered = true;
 

@@ -121,6 +121,14 @@ it("rejects an unknown incidentSeverity instead of dropping it", async () => {
   expect(insertWithinPlanLimit).not.toHaveBeenCalled();
 });
 
+it("lets an enabled alert have no channel while incidents are on, and rejects it when they are off", async () => {
+  const off = await post({ enabled: true, notificationProviders: [], alertOnFailure: true, incidentEnabled: false });
+  expect(off.status).toBe(400);
+  expect((await off.json()).error).toMatch(/notification channel/);
+  const on = await post({ enabled: true, notificationProviders: [], alertOnFailure: true });
+  expect(JSON.stringify(await on.json())).not.toMatch(/notification channel/);
+});
+
 it("rejects a name over 255 characters with 400 before inserting", async () => {
   const res = await POST(
     new NextRequest("http://localhost/api/monitors", {

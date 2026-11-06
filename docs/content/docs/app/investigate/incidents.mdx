@@ -140,6 +140,10 @@ Review the draft before sharing it. The **Activity** feed and resolution summary
 
 When a monitor or job alert fires (alerts enabled, a channel attached, outside a maintenance window), Supercheck opens an incident for it. This needs only `SRE_ENABLED` (on by default), not an AI provider, and happens even if the alert delivery fails.
 
+**Monitors need no channel for incidents.** With **Open an incident when this alerts** on, a monitor opens, updates and resolves incidents even when it has no notification channel, and a monitor with alerts turned off can still open incidents if you switch that option on (it is off by default when alerts are off). Nothing is sent in those cases; the incident is the only record. Jobs still open incidents from their delivered alerts.
+
+**Alert count.** Each incident shows how many alerts it has absorbed: 1 when it opens, plus one for every repeat alert while it stays open, with the time of the latest. It appears in the incident list (**Alerts** column), the incident sidebar, the API (`alertCount`, `lastAlertAt`) and the MCP `get_incident` tool.
+
 | Rule | Behavior |
 |---|---|
 | **One incident per source** | While an incident for a monitor or job is open, further failures join it as linked alerts. If the check fails again after a *recovered* note, the **Activity** feed shows **Failure returned** and the next recovery is noted again |

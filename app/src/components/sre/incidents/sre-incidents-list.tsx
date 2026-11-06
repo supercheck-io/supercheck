@@ -179,6 +179,19 @@ const columns: ColumnDef<SreIncidentListItem>[] = [
     ),
   },
   {
+    id: "alertCount",
+    accessorFn: (incident) => incident.alertCount,
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Alerts" />,
+    cell: ({ row }) => (
+      <span
+        className="text-sm tabular-nums"
+        title={row.original.lastAlertAt ? `Last alert ${formatDate(row.original.lastAlertAt)}` : undefined}
+      >
+        {row.original.alertCount}
+      </span>
+    ),
+  },
+  {
     id: "createdAt",
     accessorFn: (incident) => new Date(incident.createdAt).getTime(),
     header: ({ column }) => <DataTableColumnHeader column={column} title="Age" />,

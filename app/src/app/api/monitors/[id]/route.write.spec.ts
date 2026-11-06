@@ -270,8 +270,13 @@ describe("monitor PATCH alertConfig (c12)", () => {
   });
 
   it("refuses an enabled alert config with no channel", async () => {
-    const res = await call(PATCH, "PATCH", { alertConfig: { enabled: true, notificationProviders: [] } });
+    const res = await call(PATCH, "PATCH", { alertConfig: { enabled: true, notificationProviders: [], incidentEnabled: false } });
     expect(res.status).toBe(400);
+  });
+
+  it("allows an enabled alert config with no channel while incidents are on", async () => {
+    const res = await call(PATCH, "PATCH", { alertConfig: { enabled: true, notificationProviders: [], incidentEnabled: true } });
+    expect(res.status).toBe(200);
   });
 });
 

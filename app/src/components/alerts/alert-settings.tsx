@@ -192,11 +192,12 @@ export function AlertSettings({
   useEffect(() => {
     const errors: { notificationProviders?: string; alertTypes?: string } = {};
 
+    const incidentOnlyOk = context === "monitor" && incidentsEnabled({ enabled: config.enabled, incidentEnabled: config.incidentEnabled });
     if (config.enabled) {
       if (
         (!config.notificationProviders ||
           config.notificationProviders.length === 0) &&
-        !(context === "monitor" && incidentsEnabled(config))
+        !incidentOnlyOk
       ) {
         errors.notificationProviders =
           "At least one notification channel must be selected when alerts are enabled";
@@ -261,7 +262,8 @@ export function AlertSettings({
     context === "monitor"
       ? incidentsEnabled(config)
       : config.incidentEnabled !== false;
-  const autoResolveNeedsRecoveryAlert = context !== "monitor";
+  // With alerts off the incident resolves from the check itself; with alerts on it follows the recovery alert.
+  const autoResolveNeedsRecoveryAlert = context !== "monitor" || config.enabled;
 
   return (
     <Card>

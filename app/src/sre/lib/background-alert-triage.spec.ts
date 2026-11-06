@@ -16,6 +16,7 @@ jest.mock("@/lib/sre/incident-lifecycle", () => ({
   applySourceRecovery: jest.fn(),
   reopenRecentlyAutoResolved: jest.fn(),
   findOpenIncidentForSource: jest.fn().mockResolvedValue(null),
+ recordRepeatAlert: jest.fn().mockResolvedValue(true),
   announceSystemTransition: jest.fn().mockResolvedValue(undefined),
   getDefaultAssigneeId: jest.fn().mockResolvedValue(null),
 }));
@@ -137,6 +138,30 @@ describe("processSreBackgroundAlertTriageJob", () => {
       expect(insertedIncident()).toMatchObject({ incidentNumber: 4, severity: "sev2", status: "triggered" });
       expect(notifyIncidentEvent).toHaveBeenCalledWith(expect.objectContaining({ event: "created", incidentId: "new-id" }));
       expect(runSreIncidentTriage).not.toHaveBeenCalled();
+    });
+
+    const FAILURE_JOB = {
+      sourceFailure: {
+        sourceType: "monitor",
+        sourceId: "018f0000-0000-7000-8000-0000000000aa",
+        type: "monitor_failure",
+        message: "down",
+        firedAt: "2026-01-01T00:00:00.000Z",
+      },
+    };
+    const monitorRow = (alertConfig: unknown) => ({ name: "Checkout", organizationId: "org-1", projectId: "proj-1", alertConfig });
+
+    it("opens an incident for a monitor with alerts off and incidents opted in, with one alert counted", async () => {
+      selectQueue.push([monitorRow({ enabled: false, incidentEnabled: true })]);
+      freshIncidentQueue();
+      expect(await processSreBackgroundAlertTriageJob(FAILURE_JOB)).toEqual({ success: true, skipped: true, reason: "ai_disabled" });
+      expect(insertedIncident()).toMatchObject({ incidentNumber: 4, status: "triggered", alertCount: 1 });
+    });
+
+    it("ignores a failure signal for a monitor that did not opt in to incidents", async () => {
+      selectQueue.push([monitorRow({ enabled: false })]);
+      expect(await processSreBackgroundAlertTriageJob(FAILURE_JOB)).toEqual({ success: true, skipped: true, reason: "alert_not_found" });
+      expect(insertedIncident()).toBeUndefined();
     });
 
     it("opens the incident but skips triage when no AI provider is configured", async () => {
