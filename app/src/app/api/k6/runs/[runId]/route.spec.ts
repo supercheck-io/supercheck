@@ -1,13 +1,19 @@
 /** @jest-environment node */
 const mockLimit = jest.fn();
+const mockWhereCalls: unknown[] = [];
 jest.mock("@/utils/db", () => {
-  const chain = { from: () => chain, leftJoin: () => chain, where: () => chain, limit: (...args: unknown[]) => mockLimit(...args) };
+  const chain = { from: () => chain, leftJoin: () => chain, where: (c: unknown) => { mockWhereCalls.push(c); return chain; }, limit: (...args: unknown[]) => mockLimit(...args) };
   return { db: { select: () => chain } };
 });
 jest.mock("@/lib/auth-context", () => ({
   requireAuthContext: jest.fn(async () => ({ userId: "u1", organizationId: "org-1", project: { id: "p1" } })),
   isAuthError: () => false,
   authErrorStatus: () => 401,
+}));
+jest.mock("drizzle-orm", () => ({
+  ...jest.requireActual("drizzle-orm"),
+  eq: (_column: unknown, value: unknown) => ({ eq: value }),
+  and: (...conditions: unknown[]) => ({ and: conditions }),
 }));
 jest.mock("@/lib/rbac/middleware", () => ({ checkPermissionWithContext: jest.fn(() => true) }));
 
@@ -23,7 +29,7 @@ it("returns app routes instead of the stored storage URLs", async () => {
     summaryS3Url: "http://rustfs:9000/b/summary.json",
     consoleS3Url: null,
     runReportUrl: "http://rustfs:9000/b/index.html",
-    runLogsUrl: null,
+    runLogsUrl: "http://rustfs:9000/b/console.log",
   }]);
   const body = await (await get()).json();
   expect(JSON.stringify(body)).not.toContain("rustfs");
@@ -32,11 +38,15 @@ it("returns app routes instead of the stored storage URLs", async () => {
     summaryS3Url: `/api/test-results/${runId}/summary.json`,
     consoleS3Url: null,
     runReportUrl: `/api/test-results/${runId}/report/report.html`,
-    runLogsUrl: null,
+    runLogsUrl: `/api/test-results/${runId}/console.log`,
   });
 });
 
-it("is 404 when the run is not in the caller's project", async () => {
+it("is 404 when the run is not in the caller's project, and scopes the lookup to project and organization", async () => {
   mockLimit.mockResolvedValue([]);
   expect((await get()).status).toBe(404);
+  const values = JSON.stringify(mockWhereCalls.at(-1));
+  expect(values).toContain('"p1"');
+  expect(values).toContain('"org-1"');
+  expect(values).toContain(runId);
 });

@@ -129,6 +129,14 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       );
     }
+    // Authorization, billing and the response must all be the same caller: a session plus someone else's
+    // CLI token would otherwise check one identity's role and charge the other's organization.
+    if (authContext.userId !== userId || authContext.organizationId !== activeOrg.id) {
+      return NextResponse.json(
+        { success: false, reason: "forbidden", message: "You do not have permission to create tests." },
+        { status: 403 },
+      );
+    }
     const orgId = activeOrg?.id;
     const tier = (activeOrg as unknown as Record<string, unknown> | undefined)
       ?.tier as string | undefined;

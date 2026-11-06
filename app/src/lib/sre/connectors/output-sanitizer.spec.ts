@@ -153,6 +153,15 @@ describe("redactConnectorText secret shapes", () => {
     expect(redactConnectorText(input)).not.toMatch(/hunter2xyz|AIzaSy|aHVudGVy|wJalr/);
   });
 
+  it.each([
+    ["AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMIbPxRfiCYEXAMPLEKEY done", "AWS_SECRET_ACCESS_KEY=[REDACTED] done"],
+    ['DB_PASSWORD="hunter2 xyz" done', "DB_PASSWORD=[REDACTED] done"],
+    ["password: 'p@ss;w,rd' done", "password=[REDACTED] done"],
+    ["clientSecret=hunter2xyz done", "clientSecret=[REDACTED] done"],
+  ])("redacts the whole value: %s", (input, expected) => {
+    expect(redactConnectorText(input)).toBe(expected);
+  });
+
   it("keeps JSON fields whose names only contain a secret word", () => {
     const json = '{"tokenizer":"gpt","token_count":"5","secret_name":"db"}';
     expect(redactConnectorText(json)).toBe(json);

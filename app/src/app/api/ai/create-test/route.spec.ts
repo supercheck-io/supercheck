@@ -13,7 +13,7 @@ jest.mock("@/lib/rbac/middleware", () => ({
   requireAuth: jest.fn(async () => ({ user: { id: "user-1" } })),
   checkPermissionWithContext: jest.fn(() => true),
 }));
-jest.mock("@/lib/auth-context", () => ({ ...jest.requireActual("@/lib/auth-context"), requireAuthContext: jest.fn(async () => ({ userId: "user-1" })) }));
+jest.mock("@/lib/auth-context", () => ({ ...jest.requireActual("@/lib/auth-context"), requireAuthContext: jest.fn(async () => ({ userId: "user-1", organizationId: "org-1" })) }));
 jest.mock("@/lib/services/usage-tracker", () => ({ usageTracker: { consumeAICredit: jest.fn(), refundAICredit: jest.fn() } }));
 jest.mock("@/lib/services/subscription-service", () => ({ subscriptionService: {
   blockUntilSubscribed: jest.fn(), requireValidPolarCustomer: jest.fn(),
@@ -66,7 +66,16 @@ describe("AI create-test input bounds", () => {
     checkPermissionWithContext.mockReturnValueOnce(false);
     const response = await post({ userRequest: "write a login test", testType: "playwright" });
     expect(response.status).toBe(403);
-    expect(checkPermissionWithContext).toHaveBeenCalledWith("test", "create", { userId: "user-1" });
+    expect(checkPermissionWithContext).toHaveBeenCalledWith("test", "create", { userId: "user-1", organizationId: "org-1" });
+    expect(AIStreamingService.generateStreamingResponse).not.toHaveBeenCalled();
+    expect(usageTracker.consumeAICredit).not.toHaveBeenCalled();
+  });
+
+  it("refuses when the permission identity differs from the session that would be billed", async () => {
+    const { requireAuthContext } = jest.requireMock("@/lib/auth-context") as { requireAuthContext: jest.Mock };
+    requireAuthContext.mockResolvedValueOnce({ userId: "user-2", organizationId: "org-2" });
+    const response = await post({ userRequest: "write a login test", testType: "playwright" });
+    expect(response.status).toBe(403);
     expect(AIStreamingService.generateStreamingResponse).not.toHaveBeenCalled();
     expect(usageTracker.consumeAICredit).not.toHaveBeenCalled();
   });

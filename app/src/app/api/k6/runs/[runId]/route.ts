@@ -92,7 +92,7 @@ export async function GET(
       summaryS3Url: artifact(row.summaryS3Url, "summary.json"),
       consoleS3Url: artifact(row.consoleS3Url, "console.log"),
       runReportUrl: artifact(row.runReportUrl, "report/report.html"),
-      runLogsUrl: artifact(row.runLogsUrl, "logs"),
+      runLogsUrl: artifact(row.runLogsUrl, "console.log"),
     });
   } catch (error) {
     if (isAuthError(error)) {

@@ -1,12 +1,13 @@
 /** @jest-environment node */
 jest.mock("@/lib/admin", () => ({ requireAdmin: jest.fn() }));
 jest.mock("@/lib/session", () => ({ getCurrentUser: jest.fn() }));
-jest.mock("@/utils/auth", () => ({ auth: {} }));
+jest.mock("@/utils/auth", () => ({ auth: { api: { getSession: jest.fn() } } }));
+jest.mock("next/headers", () => ({ headers: jest.fn(async () => new Headers()) }));
 jest.mock("@/lib/audit-logger", () => ({ logAdminEvent: jest.fn(), logImpersonationEvent: jest.fn() }));
 jest.mock("@/lib/session-security", () => ({ checkAdminRateLimit: jest.fn(async () => ({ allowed: true })) }));
 jest.mock("@/lib/rbac/middleware", () => ({ isImpersonatedSession: jest.fn(async () => false) }));
 import { isImpersonatedSession } from "@/lib/rbac/middleware";
-jest.mock("@/utils/db", () => ({ db: { select: jest.fn(), transaction: jest.fn() } }));
+jest.mock("@/utils/db", () => ({ db: { select: jest.fn(), transaction: jest.fn(), update: jest.fn() } }));
 jest.mock("@/lib/user-avatar", () => ({ pruneAvatars: jest.fn() }));
 jest.mock("@/lib/organization-teardown", () => {
   class BillingCancellationError extends Error {}
@@ -66,6 +67,20 @@ it("refuses to impersonate from an already impersonated session", async () => {
   expect(response.status).toBe(400);
   expect((await response.json()).error).toBe("Stop the current impersonation first");
   expect(db.select).not.toHaveBeenCalled();
+});
+
+it("refuses when a concurrent request already turned the session into an impersonation", async () => {
+  const { auth } = jest.requireMock("@/utils/auth") as { auth: { api: { getSession: jest.Mock } } };
+  auth.api.getSession.mockResolvedValueOnce({ session: { id: "s1", token: "t1" }, user: { id: "admin" } });
+  const update = { set: () => update, where: () => update, returning: async () => [] };
+  (db.update as jest.Mock).mockReturnValueOnce(update);
+  const request = new NextRequest("http://localhost/api/admin/users/target", {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "impersonate" }),
+  });
+  const response = await POST(request, { params: Promise.resolve({ id: "0c11ab1e-7460-5139-b3b8-920f69f95082" }) });
+  expect(response.status).toBe(400);
+  const { logImpersonationEvent } = jest.requireMock("@/lib/audit-logger") as { logImpersonationEvent: jest.Mock };
+  expect(logImpersonationEvent).not.toHaveBeenCalled();
 });
 
 describe("organizations where the user is the only member", () => {
