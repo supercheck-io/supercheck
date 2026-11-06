@@ -1,4 +1,4 @@
-import Conf from 'conf'
+import { openConf } from './open-conf.js'
 import { AuthenticationError } from '../utils/errors.js'
 import { logger } from '../utils/logger.js'
 
@@ -29,7 +29,7 @@ interface AuthData {
  * The `conf` library requires the parameter name `encryptionKey` — it is
  * NOT true encryption in this usage because the key is static and public.
  */
-const store = new Conf<AuthData>({
+const store = openConf<AuthData>({
   projectName: 'supercheck-cli',
   schema: {
     token: { type: 'string' },
