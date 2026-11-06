@@ -65,7 +65,7 @@ Sign in if you are not already.
 </Step>
 <Step>
 
-Check the app name. An app that proves its identity with a Client ID Metadata Document shows the host that controls it.
+Check the app name. An app that proves its identity with a Client ID Metadata Document shows the host that controls it. An app that registered itself shows an amber **Unverified app** warning, because anyone could have chosen its name: continue only if you just started the connection yourself.
 
 </Step>
 <Step>
@@ -99,7 +99,7 @@ Tool calls are recorded in the audit log with the user, app, project and duratio
 <Accordions>
 <Accordion title="Request requirements" id="request-requirements">
 
-MCP clients must use Streamable HTTP and send `Accept: application/json, text/event-stream` on POST requests. The configured public host must match `BETTER_AUTH_URL`, including when Supercheck is behind a proxy. When a request carries an `Origin` header (browsers always send one), it must match the canonical resource origin or an origin allowed by the server's existing CORS policy, otherwise the server answers `403 invalid_request_origin`. Command-line and desktop clients usually send no `Origin` and are not affected.
+MCP clients must use Streamable HTTP and send `Accept: application/json, text/event-stream` on POST requests. The configured public host must match `BETTER_AUTH_URL`, including when Supercheck is behind a proxy. When a request carries an `Origin` header (browsers always send one), it must match the canonical resource origin or an exact origin listed in the server's `MCP_ALLOWED_ORIGINS` setting (comma-separated exact origins such as `https://app.example.com` or `http://localhost:3000`; omit default ports, no wildcards or paths; separate from the general CORS policy), otherwise the server answers `403 invalid_request_origin`. Command-line and desktop clients usually send no `Origin` and are not affected.
 
 </Accordion>
 </Accordions>

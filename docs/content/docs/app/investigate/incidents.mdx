@@ -13,7 +13,7 @@ Incidents are the responder queue for issues that need investigation, evidence r
 | **An alert** | Incidents open automatically when a monitor or job alert fires, with no setup beyond enabling alerts. Repeated alerts for the same target join the same incident. You can also select **Open incident** next to a failure in **Communicate → Notifications → Delivery history**. Neither path starts a full AI investigation unless the project turned on **Investigate new incidents automatically** (see [Default policy](#default-policy)) |
 | **Scratch** | In **Respond → Incidents**, select **New incident** for issues that did not come from a Supercheck alert. You become the assignee |
 
-Both paths open the incident workspace. If AI triage fails, the timeline records a *triage failed* event with the error code, so the failure is visible on the incident.
+Both paths open the incident workspace. If AI triage fails, the **Activity** feed records a *triage failed* event with the error code, so the failure is visible on the incident.
 
 ![Create Incident Dialog](/screenshots/create-incident-dialog.png)
 
@@ -31,6 +31,7 @@ The queue opens on **Active** incidents. Use the quick filters **Active**, **Ass
 | **Assignee** | The person responsible, or *Unassigned* |
 | **Age** | Time since detection (detection to resolution once resolved) |
 | **AI** | State of the latest AI investigation |
+| **Updated** | When the incident last changed. The queue sorts by it, newest first |
 
 ![Incident Queue](/screenshots/sre-incidents-queue.png)
 
@@ -63,7 +64,7 @@ The header shows the incident number, title, status (Triggered, Acknowledged, In
 | **Activity** | A box to post updates above the event list. **Draft customer update with AI** fills the box with a customer-safe draft for you to edit. **Also post to status page** publishes the note as an update on the incident's linked status page incident and emails its subscribers (needs permission to update status pages). The feed shows old → new values for edits, severity and status changes, reassignments, and the alert that was linked |
 | **Investigation** sheet | One report: **Conclusion** with recommended next steps, **Hypotheses**, **Evidence**, a collapsed **How it was investigated** step log, **Similar incidents** when there are matches, and **Post-mortem** once resolved |
 
-The **Properties** panel lists status, severity, assignee (and an optional commander), service, start time, **Time to acknowledge** and **Time to resolve**, **Status page** state with **Post update**, a **Watch** toggle, and linked **Alerts**. Open the sheet directly with `?tab=investigation`, `?tab=evidence` or `?tab=brief`; `?tab=evidence` scrolls to the evidence list, and a `#sre-evidence-<id>` link scrolls to that item.
+The **Properties** panel lists status, severity, assignee (and an optional commander), service, start time, **Time to acknowledge** and **Time to resolve**, **Status page** state with **Post update**, a **Notifications** row with a **Watch** / **Unwatch** button, and linked **Alerts**. Open the sheet directly with `?tab=investigation`, `?tab=evidence` or `?tab=brief`; `?tab=evidence` scrolls to the evidence list, and a `#sre-evidence-<id>` link scrolls to that item.
 
 ![Incident Workspace Overview](/screenshots/incident-workspace-overview.png)
 
@@ -116,7 +117,7 @@ Stored evidence stays available when a connector is disabled. Disabling a connec
 
 ## Post-mortem
 
-When an incident is resolved, the **Post-mortem** section of the sheet offers **Generate post-mortem draft**. The draft is built from the timeline, the resolution summary, the hypotheses, and the evidence titles, in these sections: **Summary**, **Impact**, **Timeline**, **Root cause**, **Contributing factors**, and **Follow-ups**.
+When an incident is resolved, the **Post-mortem** section of the sheet offers **Generate post-mortem draft**. The draft is built from the activity feed, the resolution summary, the hypotheses, and the evidence titles, in these sections: **Summary**, **Impact**, **Timeline**, **Root cause**, **Contributing factors**, and **Follow-ups**.
 
 | Behavior | Detail |
 |---|---|
@@ -125,7 +126,7 @@ When an incident is resolved, the **Post-mortem** section of the sheet offers **
 | **Regenerate / Export** | **Regenerate draft** replaces the text after you confirm. **Export Markdown** downloads a `.md` file |
 | **Limits** | Five drafts per person per incident per hour. Drafting needs permission to update incidents; people with view access can read and export |
 
-Review the draft before sharing it. The incident timeline and resolution summary remain the record of what happened.
+Review the draft before sharing it. The **Activity** feed and resolution summary remain the record of what happened.
 
 ## Reference
 
@@ -137,7 +138,7 @@ When a monitor or job alert fires (alerts enabled, a channel attached, outside a
 
 | Rule | Behavior |
 |---|---|
-| **One incident per source** | While an incident for a monitor or job is open, further failures join it as linked alerts. If the check fails again after a *recovered* note, the timeline shows **Failure returned** and the next recovery is noted again |
+| **One incident per source** | While an incident for a monitor or job is open, further failures join it as linked alerts. If the check fails again after a *recovered* note, the **Activity** feed shows **Failure returned** and the next recovery is noted again |
 | **Severity** | *Auto* derives SEV1 to SEV4 from the alert; a fixed level in the check's settings overrides it |
 | **Auto-resolve** | On recovery, an unacknowledged incident resolves itself with a note, even if recovery alerts are off. An acknowledged one stays open, gets a *recovered* note, and its participants are emailed. Applies to monitor-down and job failed or timed-out alerts; SSL-expiry incidents stay open until someone resolves them |
 | **Reopen** | A new failure within 30 minutes of an automatic resolution reopens the same incident. Reopening keeps the previous resolution summary. For monitor-down and job failed or timed-out alerts only, **Open incident** from delivery history follows the same rules: it joins the source's open incident or reopens a recently auto-resolved one instead of creating a duplicate. An alert older than 30 minutes only joins an open incident and never reopens one. Changing a resolved incident's status in **Edit** also reopens it and clears its acknowledgement |
@@ -157,9 +158,9 @@ AI triage is separate and optional. Triage that starts by itself from an alert r
 | **Default assignee** | An incident opened from an alert is assigned to the linked service's owner, when one is set and can still act on incidents. Set it in **Services → Edit → Owner** (a project editor or admin). Without an owner, alert incidents open unassigned until someone acknowledges or assigns them |
 | **Assign** | Choose any organization owner or admin, or a project admin or editor of this project. Viewers and people outside the project are rejected. |
 | **Acknowledge** | Stamps who acknowledged and when. If the incident is unassigned, the acknowledger becomes the assignee. A resolved incident can't be acknowledged. |
-| **Commander** | Optional single incident commander, set from the sidebar |
+| **Commander** | Optional single incident commander, set from the **Properties** panel or **Add commander** |
 
-Assignments, acknowledgements, status changes, and resolution all appear on the timeline and in the audit log.
+Assignments, acknowledgements, status changes, and resolution all appear in the **Activity** feed and in the audit log.
 
 </Accordion>
 
@@ -182,7 +183,7 @@ Each project has one **Default policy**, edited from **Organization → Projects
 | Setting | Effect |
 |---|---|
 | **Channels** | Up to 10. Notified about incidents created by hand or by a connector, and about reminders for every incident. Monitors and jobs keep the channels chosen on them |
-| **Email service owners for SEV1 and SEV2** | Also emails the incident's service owners when a SEV1 or SEV2 opens |
+| **Email the service owners for SEV1 and SEV2** | Also emails the incident's service owners when a SEV1 or SEV2 opens |
 | **Remind once if nobody acknowledges** | After the chosen minutes (5 to 1,440), re-sends once to the policy channels and the assignee and commander. Off by default. Incidents more than two days old are not reminded |
 | **Investigate new incidents automatically** | Off by default because it uses AI credits. SEV1 and SEV2 get a full investigation, SEV3 and SEV4 a quick triage, through the same plan and usage limits as starting one by hand. Only incidents opened after you turn it on are covered, and automatic runs use stored evidence, not live sources. A manual run of another type doesn't block the automatic one. A failed automatic run is tried again on a later trigger, up to three attempts. It doesn't start while three runs are already in progress in the organization |
 
@@ -201,7 +202,7 @@ Email, Slack, Teams, Discord, Telegram and plain webhook channels are supported;
 | **Acknowledge** | Responder | Select **Acknowledge** to take ownership; the incident is assigned to you if nobody else holds it |
 | **Resolve** | Responder | Select **Resolve incident**. A resolution summary is required (up to 2,000 characters) and is pre-filled from the recovery (when the checks that raised the incident are passing again) and the AI root cause. Edit it to state the fix and the checks that confirmed recovery |
 
-Resolving records your decision and the summary on the incident and its timeline. It does not run checks or apply remediation. Closing an incident through the edit dialog is not available; use **Resolve incident**.
+Resolving records your decision and the summary on the incident and its **Activity** feed. It does not run checks or apply remediation. Closing an incident through the edit dialog is not available; use **Resolve incident**.
 
 </Accordion>
 

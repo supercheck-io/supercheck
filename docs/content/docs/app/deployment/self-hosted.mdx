@@ -176,7 +176,7 @@ Test runs can reach public addresses but not private networks (RFC1918, link-loc
 
 ## Optional configuration
 
-Edit `.env` in `deploy/docker`, then run `sudo docker compose up -d --force-recreate app worker`.
+Edit `.env` in `deploy/docker`, then run `sudo docker compose up -d --force-recreate app worker` (add `monitor-control` if you enabled it).
 
 <Accordions>
 <Accordion title="Common settings" id="common-settings">
@@ -189,11 +189,12 @@ Edit `.env` in `deploy/docker`, then run `sudo docker compose up -d --force-recr
 | `SMTP_BLOCKED_RECIPIENT_DOMAINS` | unset | Extra recipient domains never emailed (reserved domains such as `example.com` are always skipped) |
 | `AI_PROVIDER`, `AI_MODEL`, `OPENAI_API_KEY` | `openai`, `gpt-6-luna`, unset | AI features and AI SRE. Other providers: [Docker environment reference](https://github.com/supercheck-io/supercheck/blob/v1.6.0/deploy/docker/README.md#environment-variables) |
 | `SRE_AUTOMATION_ENABLED` | `false` | AI triage of alert incidents; can incur provider charges. Incidents open from alerts without it. Set in the app (the worker only needs `SRE_ENABLED`) |
-| `SRE_DAILY_TOKEN_LIMIT_PER_ORG` | `2000000` | Daily AI token limit per organization for AI SRE (UTC day). `0` disables. App only |
+| `SRE_DAILY_TOKEN_LIMIT_PER_ORG` | `2000000` | Daily AI token limit per organization for AI SRE (UTC day). `0` disables |
 | `ALLOW_INTERNAL_TARGETS` | `false` | `true` lets monitors target private, loopback and reserved addresses |
 | `DEVICE_AUTH_ENABLED` | `false` | Browser sign-in for `supercheck login`. Needs HTTPS (or localhost) |
 | `TRUSTED_PROXY_HOPS` | `0` | Extra trusted proxies in front of Traefik, such as a CDN |
 | `TRUST_CF_CONNECTING_IP` | `false` | `true` only if the server is reachable exclusively through Cloudflare |
+
 
 </Accordion>
 <Accordion title="Super Admin access" id="super-admin-access">
