@@ -122,7 +122,7 @@ export const createNotificationProviderSchema = (
             }
           },
           {
-            message: "Please enter a valid HTTP or HTTPS URL",
+            message: "Enter a valid URL. HTTPS is required unless internal webhook targets are enabled",
           }
         ),
       method: z.enum(["GET", "POST", "PUT"]).optional(),
@@ -369,6 +369,16 @@ function getHeadersError(text: string): string | null {
   } catch (error) {
     return error instanceof Error ? error.message : "Invalid headers.";
   }
+}
+
+const MASKED_PLACEHOLDER = "Unchanged — leave blank to keep";
+const SAVE_ERROR_TOAST_ID = "notification-provider-save-error";
+
+/** The API's 400 messages are specific and safe to show; only network failures need the generic text. */
+export function getSaveErrorMessage(error: unknown, type: string): string {
+  return error instanceof Error && !(error instanceof TypeError || error instanceof SyntaxError) && error.message
+    ? error.message
+    : getUserFriendlyError(error, type);
 }
 
 export function NotificationProviderForm({
@@ -641,8 +651,7 @@ export function NotificationProviderForm({
       }
     } catch (error) {
       console.error("Error saving notification provider:", error);
-      const friendlyError = getUserFriendlyError(error, data.type);
-      toast.error(friendlyError);
+      toast.error(getSaveErrorMessage(error, data.type), { id: SAVE_ERROR_TOAST_ID });
     } finally {
       setIsSubmitting(false);
     }
@@ -780,7 +789,7 @@ export function NotificationProviderForm({
                     <FormLabel>Webhook URL</FormLabel>
                     <FormControl>
                       <Input
-                        placeholder="https://hooks.slack.com/services/..."
+                        placeholder={maskedFieldSet.has("webhookUrl") ? MASKED_PLACEHOLDER : "https://hooks.slack.com/services/..."}
                         {...field}
                         disabled={isSubmitting || isTesting}
                       />
@@ -856,7 +865,7 @@ export function NotificationProviderForm({
                           <FormLabel>URL</FormLabel>
                           <FormControl>
                             <Input
-                              placeholder="https://api.yourservice.com/alerts"
+                              placeholder={maskedFieldSet.has("url") ? MASKED_PLACEHOLDER : "https://api.yourservice.com/alerts"}
                               {...field}
                               onChange={(event) => {
                                 field.onChange(event);
@@ -1123,7 +1132,7 @@ export function NotificationProviderForm({
                         <Input
                           type="password"
                           autoComplete="new-password"
-                          placeholder="123456789:ABCdefGHIjklMNOpqrsTUVwxyz"
+                          placeholder={maskedFieldSet.has("botToken") ? MASKED_PLACEHOLDER : "123456789:ABCdefGHIjklMNOpqrsTUVwxyz"}
                           {...field}
                           disabled={isSubmitting || isTesting}
                         />
@@ -1165,7 +1174,7 @@ export function NotificationProviderForm({
                     <FormLabel>Webhook URL</FormLabel>
                     <FormControl>
                       <Input
-                        placeholder="https://discord.com/api/webhooks/..."
+                        placeholder={maskedFieldSet.has("discordWebhookUrl") ? MASKED_PLACEHOLDER : "https://discord.com/api/webhooks/..."}
                         {...field}
                         disabled={isSubmitting || isTesting}
                       />
@@ -1191,7 +1200,7 @@ export function NotificationProviderForm({
                     <FormLabel>Incoming Webhook URL</FormLabel>
                     <FormControl>
                       <Input
-                        placeholder="https://xxx.environment.api.powerplatform.com:443/powerautomate/..."
+                        placeholder={maskedFieldSet.has("teamsWebhookUrl") ? MASKED_PLACEHOLDER : "https://xxx.environment.api.powerplatform.com:443/powerautomate/..."}
                         {...field}
                         disabled={isSubmitting || isTesting}
                       />
@@ -1235,7 +1244,7 @@ export function NotificationProviderForm({
                   : "Creating..."
                 : initialData
                   ? "Update Provider"
-                  : "Create Provider"}
+                  : "Create channel"}
             </Button>
           </div>
         </div>

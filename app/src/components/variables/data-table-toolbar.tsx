@@ -118,7 +118,7 @@ export function DataTableToolbar<TData>({
   ];
 
   return (
-    <div className="flex items-center justify-between mb-4 -mt-2">
+    <div className="flex flex-wrap items-center justify-between gap-2 mb-4 -mt-2">
       <div className="flex items-center justify-between space-y-2">
         <div className="flex flex-col">
           <div className="flex items-center gap-2">
@@ -129,7 +129,7 @@ export function DataTableToolbar<TData>({
                   <Info className="h-4 w-4 text-muted-foreground" />
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-[480px]" side="bottom" align="start">
+              <PopoverContent className="w-[min(480px,calc(100vw-2rem))]" side="bottom" align="start">
                 <div className="space-y-3">
                   <div>
                     <h3 className="font-medium text-sm">
@@ -246,7 +246,7 @@ const k6CsvContent = open(getFile('USERS_CSV'));`}</pre>
         </div>
       </div>
 
-      <div className="flex items-center space-x-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Input
           placeholder="Filter by all available fields..."
           value={(table.getState().globalFilter as string) ?? ""}

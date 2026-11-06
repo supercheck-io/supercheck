@@ -139,7 +139,7 @@ describe("getSreIncidentDetails investigation summary", () => {
       id: incidentId, title: "Checkout down", severity: "sev2", status: "investigating", primaryServiceId: null,
     });
     expect(result).toMatchObject({ success: true });
-    expect(sets[0]).toMatchObject({ acknowledgedAt: null, acknowledgedByUserId: null, resolvedAt: null });
+    expect(sets[0]).toMatchObject({ acknowledgedAt: null, acknowledgedByUserId: null, renotifiedAt: null, resolvedAt: null });
     // The previous resolution stays on the incident.
     expect(sets[0]).not.toHaveProperty("resolutionSummary");
     expect(inserted.map((row) => (row.eventData as { state: string }).state)).toEqual(["incident_updated", "reopened"]);
@@ -182,6 +182,44 @@ describe("getSreIncidentDetails investigation summary", () => {
     expect(result).toMatchObject({ success: true });
     expect(db.transaction).toHaveBeenCalledTimes(1);
     expect(sets[0]).toMatchObject({ primaryServiceId: serviceId });
+  });
+
+  it("keeps the stored status when an edit omits it", async () => {
+    const incidentId = "00000000-0000-4000-8000-000000000001";
+    (db.query.sreIncidents.findFirst as jest.Mock).mockResolvedValue({
+      id: incidentId, incidentNumber: 4, title: "t", status: "triggered", severity: "sev2", primaryServiceId: null,
+    });
+    const sets: Array<Record<string, unknown>> = [];
+    (db.transaction as jest.Mock).mockClear().mockImplementation(async (callback) => callback({
+      update: () => ({ set: (values: Record<string, unknown>) => {
+        sets.push(values);
+        return { where: () => ({ returning: async () => [{ id: incidentId, incidentNumber: 4, title: "t" }] }) };
+      } }),
+      insert: () => ({ values: async () => undefined }),
+    }));
+    const result = await updateSreIncident({ id: incidentId, title: "New title", severity: "sev2", primaryServiceId: null });
+    expect(result).toMatchObject({ success: true });
+    expect(sets[0]).toMatchObject({ title: "New title", status: "triggered", resolvedAt: null });
+    expect(sets[0]).not.toHaveProperty("acknowledgedAt");
+  });
+
+  it("does not reopen a resolved incident when an edit omits the status", async () => {
+    const incidentId = "00000000-0000-4000-8000-000000000001";
+    const resolvedAt = new Date("2026-01-01T00:00:00Z");
+    (db.query.sreIncidents.findFirst as jest.Mock).mockResolvedValue({
+      id: incidentId, incidentNumber: 4, title: "t", status: "resolved", severity: "sev2", primaryServiceId: null, resolvedAt,
+    });
+    const sets: Array<Record<string, unknown>> = [];
+    (db.transaction as jest.Mock).mockClear().mockImplementation(async (callback) => callback({
+      update: () => ({ set: (values: Record<string, unknown>) => {
+        sets.push(values);
+        return { where: () => ({ returning: async () => [{ id: incidentId, incidentNumber: 4, title: "t" }] }) };
+      } }),
+      insert: () => ({ values: async () => undefined }),
+    }));
+    await updateSreIncident({ id: incidentId, title: "New title", severity: "sev2", primaryServiceId: null });
+    expect(sets[0]).toMatchObject({ status: "resolved", resolvedAt });
+    expect(sets[0]).not.toHaveProperty("acknowledgedAt");
   });
 
   it("refuses a rate-limited incident edit before reading or writing anything", async () => {

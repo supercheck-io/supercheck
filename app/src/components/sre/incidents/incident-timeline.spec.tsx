@@ -78,6 +78,15 @@ describe("describeTimelineEvent", () => {
     expect(describeTimelineEvent({ eventType: "state_change", eventData: { state: "resolved", summary: "Auto-resolved" } }).body).toBe("Auto-resolved");
     expect(describeTimelineEvent({ eventType: "comment", eventData: { text: "x".repeat(700) } }).body).toHaveLength(600);
     expect(describeTimelineEvent({ eventType: "ai_finding", eventData: { error: "boom" } })).toEqual({ title: "AI finding", body: "boom" });
+    // A brief row stored without a summary still gets a body.
+    expect(
+      describeTimelineEvent({
+        eventType: "ai_finding",
+        eventData: { type: "native_evidence_brief", suspectedFailureDomain: "network_dns", evidenceCount: 3, confidenceScore: 0.62 },
+      }).body,
+    ).toBe("3 evidence items reviewed; suspected failure domain: network dns; confidence 62%.");
+    expect(describeTimelineEvent({ eventType: "ai_finding", eventData: { type: "native_evidence_brief" } }).body).toBe("Evidence brief generated.");
+    expect(describeTimelineEvent({ eventType: "ai_finding", eventData: { type: "native_evidence_brief_failed", error: "Evidence brief generation failed" } }).body).toBe("Evidence brief generation failed");
     expect(describeTimelineEvent({ eventType: "some_event", eventData: null })).toEqual({ title: "some event", body: null });
   });
 });

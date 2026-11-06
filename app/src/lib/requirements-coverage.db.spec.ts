@@ -6,6 +6,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 
 jest.mock("@/utils/db", () => ({ db: {} }));
 import { updateCoverageSnapshot } from "./requirements-internal";
+import { RUN_CANCELLATION_MARKER } from "./run-cancellation-marker";
 
 const databaseName = `requirements_coverage_${randomUUID().replaceAll("-", "")}`;
 let maintenance: ReturnType<typeof postgres>;
@@ -23,7 +24,7 @@ beforeAll(async () => {
     CREATE TABLE test_requirements (test_id uuid, requirement_id uuid);
     CREATE TABLE job_tests (job_id uuid, test_case_id uuid);
     CREATE TABLE runs (id uuid PRIMARY KEY DEFAULT uuidv7(), job_id uuid, status text, completed_at timestamptz,
-      metadata jsonb DEFAULT '{}');
+      metadata jsonb DEFAULT '{}', error_details text);
     CREATE TABLE requirement_coverage_snapshots (requirement_id uuid PRIMARY KEY, status text,
       linked_test_count integer, passed_test_count integer, failed_test_count integer,
       last_evaluated_at timestamptz, updated_at timestamptz);
@@ -37,7 +38,7 @@ afterAll(async () => {
   }
 });
 
-async function scenario(runs: { status: string; at: string; testStatuses?: Record<string, string> }[]) {
+async function scenario(runs: { status: string; at: string; cancelled?: boolean; testStatuses?: Record<string, string> }[]) {
   const [requirement, job, a, b] = [randomUUID(), randomUUID(), randomUUID(), randomUUID()];
   await client`INSERT INTO requirement_coverage_snapshots (requirement_id, status) VALUES (${requirement}, 'missing')`;
   for (const test of [a, b]) {
@@ -48,8 +49,9 @@ async function scenario(runs: { status: string; at: string; testStatuses?: Recor
     const statuses = run.testStatuses
       ? Object.fromEntries(Object.entries(run.testStatuses).map(([key, value]) => [key === "a" ? a : b, value]))
       : null;
-    await client`INSERT INTO runs (job_id, status, completed_at, metadata)
-      VALUES (${job}, ${run.status}, ${run.at}, ${JSON.stringify(statuses ? { testStatuses: statuses } : {})}::text::jsonb)`;
+    await client`INSERT INTO runs (job_id, status, completed_at, metadata, error_details)
+      VALUES (${job}, ${run.status}, ${run.at}, ${JSON.stringify(statuses ? { testStatuses: statuses } : {})}::text::jsonb,
+        ${run.cancelled ? RUN_CANCELLATION_MARKER : null})`;
   }
   await updateCoverageSnapshot(requirement, drizzle(client) as never);
   const [snapshot] = await client`SELECT status, linked_test_count AS linked, passed_test_count AS passed,
@@ -78,4 +80,20 @@ it("does not count skipped tests as passed: coverage stays missing", async () =>
     { status: "passed", at: "2026-01-02", testStatuses: { a: "skipped", b: "skipped" } },
   ]);
   expect(snapshot).toMatchObject({ status: "missing", linked: 2, passed: 0, failed: 0 });
+});
+
+it("ignores a cancelled run: the latest non-cancelled run decides coverage", async () => {
+  const snapshot = await scenario([
+    { status: "passed", at: "2026-01-01" },
+    { status: "error", at: "2026-01-02", cancelled: true },
+  ]);
+  expect(snapshot).toMatchObject({ status: "covered", linked: 2, passed: 2, failed: 0 });
+});
+
+it("still counts an error run that was not cancelled as failing", async () => {
+  const snapshot = await scenario([
+    { status: "passed", at: "2026-01-01" },
+    { status: "error", at: "2026-01-02" },
+  ]);
+  expect(snapshot).toMatchObject({ status: "failing", passed: 0, failed: 2 });
 });

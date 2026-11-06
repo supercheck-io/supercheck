@@ -91,6 +91,19 @@ export function getMcpResourceUrl(
 }
 
 /**
+ * Where token verification loads the signing keys. The keys are served by this same process, so the
+ * default is loopback: fetching the public URL from inside a cluster can be blocked by the CDN or
+ * ingress (production saw 403 here, which failed every MCP call). `localhost`, not 127.0.0.1, because
+ * the proxy routes unknown hosts to custom-domain status pages. MCP_JWKS_URL overrides it.
+ */
+export function getMcpJwksUrl(env: Record<string, string | undefined> = process.env): string {
+  const override = env.MCP_JWKS_URL?.trim();
+  if (override) return override;
+  const port = Number.parseInt(env.PORT ?? "", 10);
+  return `http://localhost:${Number.isInteger(port) && port > 0 && port < 65536 ? port : 3000}/api/auth/jwks`;
+}
+
+/**
  * Extra browser origins allowed to call the MCP endpoint, from the comma-separated `MCP_ALLOWED_ORIGINS`.
  * The endpoint always accepts its own origin; this list is for browser-based MCP clients and is deliberately
  * separate from the general CORS allow-list, which names sibling sites that must not reach MCP. Entries must be

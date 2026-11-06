@@ -665,7 +665,7 @@ export async function notifyIncidentEvent(input: IncidentNotifyInput): Promise<b
         try {
           // Provider configs are stored as encrypted envelopes bound to their project.
           const config = decryptNotificationProviderConfig(provider.config, provider.projectId ?? undefined);
-          validateProviderConfig(provider.type, config);
+          validateProviderConfig(provider.type, config, "send");
           return await sendToProvider({ type: provider.type, config }, message);
         } catch (error) {
           logger.warn({ providerId: provider.id, type: provider.type, error: error instanceof Error ? error.message : "send failed" }, "Incident notification delivery failed");

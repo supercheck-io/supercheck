@@ -1,13 +1,14 @@
 "use client";
 
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Loader2, SearchCheck, TriangleAlert, ChevronRight } from "lucide-react";
+import { Loader2, SearchCheck, SlidersHorizontal, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
@@ -24,16 +25,6 @@ type SreInvestigationPanelProps = {
   incidentId: string;
   hasPrimaryService: boolean;
   serviceMappingHref: string;
-  evidenceReferences?: Array<{
-    id: string;
-    title: string;
-    evidenceType: string;
-  }>;
-  toolMetrics?: {
-    total: number;
-    errors: number;
-    averageDurationMs: number;
-  };
   latestInvestigation?: {
     id: string;
     status: "running" | "completed" | "failed" | "aborted" | "timed_out";
@@ -44,22 +35,20 @@ type SreInvestigationPanelProps = {
   canMapService?: boolean;
   canUseLiveConnectors?: boolean;
   investigationEnabled?: boolean;
-  /** Opens the evidence brief in place; the ?tab link does nothing while the sheet is open. */
-  onCollectEvidence: () => void;
+  /** Extra toolbar controls after the run options, such as the sheet's overflow menu. */
+  children?: React.ReactNode;
 };
 
 export function SreInvestigationPanel({
   incidentId,
   hasPrimaryService,
   serviceMappingHref,
-  evidenceReferences = [],
-  toolMetrics = { total: 0, errors: 0, averageDurationMs: 0 },
   latestInvestigation = null,
   canInvestigate = false,
   canMapService = false,
   canUseLiveConnectors = false,
   investigationEnabled = true,
-  onCollectEvidence,
+  children,
 }: SreInvestigationPanelProps) {
   const queryClient = useQueryClient();
   const { projectId } = useProjectContext();
@@ -140,11 +129,8 @@ export function SreInvestigationPanel({
   if (!canInvestigate) return null;
 
   return (
-    <div className="space-y-4" data-testid="investigation-controls">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="min-w-0 text-sm text-muted-foreground">
-          AI reads your evidence and connected sources. It never changes your systems.
-        </p>
+    <div className="space-y-3" data-testid="investigation-controls">
+      <div className="flex items-center gap-2">
         <Button
           size="sm"
           onClick={() => runInvestigation()}
@@ -157,226 +143,130 @@ export function SreInvestigationPanel({
           )}
           {investigationRunning ? "Investigating..." : latestInvestigation ? "Run again" : "Run investigation"}
         </Button>
-      </div>
-        {investigationError && (
-          <p
-            role="alert"
-            className="rounded-lg border border-destructive/40 p-4 text-sm text-destructive"
-          >
-            {investigationError}
-          </p>
-        )}
-        {investigationRunning && (
-          <p role="status" className="text-sm text-muted-foreground">
-            Investigation in progress. Results will appear when the run
-            finishes.
-          </p>
-        )}
-        {!investigationEnabled && (
-          <div
-            role="status"
-            className="flex items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/5 p-4"
-          >
-            <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
-            <div>
-              <p className="text-sm font-medium">
-                Investigation is unavailable
-              </p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                An administrator must enable the investigation service before a
-                new run can start. Existing results and evidence remain
-                available.
-              </p>
-            </div>
-          </div>
-        )}
-        {canInvestigate && canUseLiveConnectors && (
-          <div className="flex items-start gap-3 rounded-lg border bg-muted/10 p-4">
-            <Switch
-              id="live-connectors"
-              checked={liveConnectorsEnabled}
-              disabled={
-                !hasPrimaryService ||
-                investigationRunning ||
-                !investigationEnabled
-              }
-              onCheckedChange={setUseLiveConnectors}
-            />
-            <div className="space-y-1">
-              <Label htmlFor="live-connectors">Include live sources</Label>
-              <p className="text-sm text-muted-foreground">
-                Query connected tools for this service. Off by default;
-                read-only and bounded.
-              </p>
-              {!hasPrimaryService && (
-                <p className="text-sm text-muted-foreground">
-                  Link a service to use live sources.
-                  {canMapService && (
-                    <Link
-                      href={serviceMappingHref}
-                      className="ml-1 underline underline-offset-4"
-                    >
-                      Link service
-                    </Link>
-                  )}
-                </p>
-              )}
-            </div>
-          </div>
-        )}
-        {canInvestigate && !canUseLiveConnectors && (
-          <p className="text-sm text-muted-foreground">
-            Uses saved evidence. Your role does not permit live connector
-            queries.
-          </p>
-        )}
-
-        {canInvestigate && investigationEnabled && latestInvestigation && latestInvestigation.status !== "running" && (
-          <form
-            className="space-y-2 rounded-lg border bg-muted/10 p-4"
-            onSubmit={(event) => {
-              event.preventDefault();
-              if (guidance.trim()) runInvestigation(guidance.trim());
-            }}
-          >
-            <Label htmlFor="rerun-guidance">Re-run with my note</Label>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button type="button" variant="outline" size="icon" className="h-8 w-8" aria-label="Run options">
+              <SlidersHorizontal className="h-4 w-4" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-80 space-y-4">
             <p className="text-sm text-muted-foreground">
-              Tell the investigation what to look at or what it got wrong. The
-              note is treated as a hint, not as evidence.
+              AI reads your evidence and connected sources. It never changes your systems.
             </p>
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <Input
-                id="rerun-guidance"
-                value={guidance}
-                maxLength={500}
-                onChange={(event) => setGuidance(event.target.value)}
-                placeholder="For example: check the CDN and DNS changes"
-              />
-              <Button
-                type="submit"
-                variant="outline"
-                disabled={investigationRunning || !guidance.trim()}
-              >
-                Re-run with my note
-              </Button>
-            </div>
-          </form>
-        )}
-
-        {!latestInvestigation && (
-          <div className="rounded-lg border border-dashed p-6">
-            <p className="font-medium">Start with the evidence</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {evidenceReferences.length > 0
-                ? `${evidenceReferences.length} saved evidence ${evidenceReferences.length === 1 ? "item is" : "items are"} available. Run an investigation to review likely causes and next checks.`
-                : "No evidence is saved yet. Generate an evidence brief to collect available Supercheck context before investigating."}
-            </p>
-            {evidenceReferences.length === 0 && canInvestigate && (
-              <Button type="button" variant="link" className="mt-2 h-auto p-0" onClick={onCollectEvidence}>
-                Collect evidence
-              </Button>
-            )}
-          </div>
-        )}
-
-        {toolMetrics.total > 0 && (
-          <Collapsible className="rounded-lg border p-4">
-            <CollapsibleTrigger className="group flex w-full items-center gap-1.5 text-left cursor-pointer rounded-sm text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-<ChevronRight className="h-4 w-4 shrink-0 transition-transform group-data-[state=open]:rotate-90" aria-hidden="true" />
-              Investigation diagnostics
-            </CollapsibleTrigger>
-<CollapsibleContent>
-            <div className="mt-3">
-              <div className="grid overflow-hidden rounded-lg border sm:grid-cols-3">
-                <div className="border-b px-4 py-3 sm:border-b-0 sm:border-r">
-                  <p className="text-xs font-medium uppercase text-muted-foreground">
-                    Tool calls
+            {canUseLiveConnectors ? (
+              <div className="flex items-start gap-3">
+                <Switch
+                  id="live-connectors"
+                  checked={liveConnectorsEnabled}
+                  disabled={!hasPrimaryService || investigationRunning || !investigationEnabled}
+                  onCheckedChange={setUseLiveConnectors}
+                />
+                <div className="space-y-1">
+                  <Label htmlFor="live-connectors">Include live sources</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Query connected tools for this service. Off by default; read-only and bounded.
                   </p>
-                  <p className="mt-1 text-sm font-semibold tabular-nums">
-                    {toolMetrics.total}
-                  </p>
-                </div>
-                <div className="border-b px-4 py-3 sm:border-b-0 sm:border-r">
-                  <p className="text-xs font-medium uppercase text-muted-foreground">
-                    Failures
-                  </p>
-                  <p className="mt-1 text-sm font-semibold tabular-nums">
-                    {toolMetrics.errors}
-                  </p>
-                </div>
-                <div className="px-4 py-3">
-                  <p className="text-xs font-medium uppercase text-muted-foreground">
-                    Avg latency
-                  </p>
-                  <p className="mt-1 text-sm font-semibold tabular-nums">
-                    {toolMetrics.total > 0
-                      ? `${toolMetrics.averageDurationMs} ms`
-                      : "-"}
-                  </p>
+                  {!hasPrimaryService && (
+                    <p className="text-xs text-muted-foreground">
+                      Link a service to use live sources.
+                      {canMapService && (
+                        <Link href={serviceMappingHref} className="ml-1 underline underline-offset-4">
+                          Link service
+                        </Link>
+                      )}
+                    </p>
+                  )}
                 </div>
               </div>
-            </div>
-          </CollapsibleContent>
-</Collapsible>
-        )}
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Uses saved evidence. Your role does not permit live connector queries.
+              </p>
+            )}
+            {investigationEnabled && latestInvestigation && latestInvestigation.status !== "running" && (
+              <form
+                className="space-y-2"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  if (guidance.trim()) runInvestigation(guidance.trim());
+                }}
+              >
+                <Label htmlFor="rerun-guidance">Re-run with my note</Label>
+                <p className="text-xs text-muted-foreground">
+                  Say what to look at or what it got wrong. The note is a hint, not evidence.
+                </p>
+                <Input
+                  id="rerun-guidance"
+                  value={guidance}
+                  maxLength={500}
+                  onChange={(event) => setGuidance(event.target.value)}
+                  placeholder="For example: check the CDN and DNS changes"
+                />
+                <Button type="submit" variant="outline" size="sm" disabled={investigationRunning || !guidance.trim()}>
+                  Re-run with my note
+                </Button>
+              </form>
+            )}
+          </PopoverContent>
+        </Popover>
+        {children}
+      </div>
+      {investigationError && (
+        <p role="alert" className="rounded-md border border-destructive/40 p-3 text-sm text-destructive">
+          {investigationError}
+        </p>
+      )}
+      {investigationRunning && (
+        <p role="status" className="text-sm text-muted-foreground">
+          Investigation in progress. Results will appear when the run finishes.
+        </p>
+      )}
+      {!investigationEnabled && (
+        <div role="status" className="flex items-start gap-3 rounded-md border border-amber-500/40 bg-amber-500/5 p-3">
+          <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+          <div>
+            <p className="text-sm font-medium">Investigation is unavailable</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              An administrator must enable the investigation service before a new run can start. Existing results and
+              evidence remain available.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-/** Saves a point-in-time copy of the latest completed report. Feedback lives on the AI summary card. */
-export function SreReportSnapshotControl({
+/** Overflow action: saves a point-in-time copy of the latest completed report. The saved state shows in the sheet's status line. */
+export function SreReportSnapshotMenuItem({
   incidentId,
   latestInvestigation,
-  latestReportSnapshot = null,
-  canInvestigate = false,
 }: {
   incidentId: string;
   latestInvestigation: { id: string; status: string } | null;
-  latestReportSnapshot?: { id: string; title: string | null; createdAt: Date | string } | null;
-  canInvestigate?: boolean;
 }) {
   const queryClient = useQueryClient();
   const { projectId } = useProjectContext();
-  const [isSaving, startTransition] = useTransition();
-  const [snapshotId, setSnapshotId] = useState(latestReportSnapshot?.id ?? null);
 
-  if (latestInvestigation?.status !== "completed") {
-    return <p className="text-sm text-muted-foreground">A snapshot is available after an investigation completes.</p>;
-  }
+  if (latestInvestigation?.status !== "completed") return null;
 
-  const save = () =>
-    startTransition(async () => {
-      try {
-        const result = await createSreInvestigationReportSnapshot({
-          investigationRunId: latestInvestigation.id,
-        });
-        if (!result.success) {
-          toast.error(result.error);
-          return;
-        }
-        setSnapshotId(result.snapshotId);
-        toast.success(result.reused ? "Already saved for this report content" : "Snapshot saved");
-        await queryClient.invalidateQueries({
-          queryKey: getSreIncidentDetailQueryKey(projectId, incidentId),
-        });
-      } catch {
-        toast.error("Could not confirm the saved snapshot. Refresh the incident and try again.");
+  const save = async () => {
+    try {
+      const result = await createSreInvestigationReportSnapshot({
+        investigationRunId: latestInvestigation.id,
+      });
+      if (!result.success) {
+        toast.error(result.error);
+        return;
       }
-    });
+      toast.success(result.reused ? "Already saved for this report content" : "Snapshot saved");
+      await queryClient.invalidateQueries({
+        queryKey: getSreIncidentDetailQueryKey(projectId, incidentId),
+      });
+    } catch {
+      toast.error("Could not confirm the saved snapshot. Refresh the incident and try again.");
+    }
+  };
 
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-3">
-      <p className="text-sm text-muted-foreground">
-        {snapshotId
-          ? `Snapshot saved${latestReportSnapshot?.title ? `: ${latestReportSnapshot.title}` : ""}.`
-          : "Save the sanitized report to lock it for audit and review."}
-      </p>
-      {canInvestigate && (
-        <Button type="button" variant="outline" size="sm" onClick={save} disabled={isSaving}>
-          {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          Save report snapshot
-        </Button>
-      )}
-    </div>
-  );
+  return <DropdownMenuItem onSelect={() => void save()}>Save report snapshot</DropdownMenuItem>;
 }

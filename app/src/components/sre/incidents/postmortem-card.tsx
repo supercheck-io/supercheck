@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Download, FileText, Loader2, Plus, Sparkles, X } from "lucide-react";
+import { Download, Loader2, Plus, Sparkles, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { generateSrePostmortem, saveSrePostmortem } from "@/actions/sre-postmortem";
@@ -17,7 +17,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -119,18 +118,12 @@ export function PostmortemCard({
     );
 
   return (
-    <Card id="incident-postmortem" className="scroll-mt-4" data-testid="postmortem-card">
-      <CardHeader className="flex flex-col gap-3 space-y-0 sm:flex-row sm:items-start sm:justify-between">
-        <div className="space-y-1">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <FileText className="h-4 w-4" aria-hidden="true" />
-            Post-mortem
-          </CardTitle>
-          <CardDescription>
-            A blameless write-up built from the timeline, resolution and investigation. Review and edit before sharing.
-          </CardDescription>
-        </div>
-        <div className="flex flex-wrap gap-2">
+    <div id="incident-postmortem" className="scroll-mt-4 space-y-4" data-testid="postmortem-card">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <p className="text-sm text-muted-foreground">
+          A blameless write-up built from the timeline, resolution and investigation. Review and edit before sharing.
+        </p>
+        <div className="flex shrink-0 flex-wrap gap-2">
           {hasDraft && (
             <Button type="button" variant="outline" size="sm" onClick={exportMarkdown}>
               <Download className="h-4 w-4" aria-hidden="true" />
@@ -158,8 +151,8 @@ export function PostmortemCard({
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
-      </CardHeader>
-      <CardContent>
+      </div>
+      <div>
         {!hasDraft ? (
           <p className="text-sm text-muted-foreground">
             {canEdit
@@ -231,7 +224,7 @@ export function PostmortemCard({
             )}
           </form>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }

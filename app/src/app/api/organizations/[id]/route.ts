@@ -143,7 +143,12 @@ export async function PUT(
       );
     }
     
-    const body = await request.json();
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
     const { name } = body;
     
     if (!name) {

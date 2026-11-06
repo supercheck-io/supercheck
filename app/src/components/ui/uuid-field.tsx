@@ -28,7 +28,7 @@ export function UUIDField({
       <code className="font-mono text-xs bg-muted/60 dark:bg-muted px-2 py-1 rounded-sm">
         {displayValue}
       </code>
-      <CopyButton value={value} onCopy={onCopy} className="ml-1.5" />
+      <CopyButton value={value} onCopy={onCopy} className="ml-1.5" aria-label="Copy ID" />
     </div>
   );
 }

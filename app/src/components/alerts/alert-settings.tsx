@@ -274,7 +274,7 @@ export function AlertSettings({
               <Label htmlFor="alerts-enabled"> Enable Alerts</Label>
             </div>
             <p className="text-sm text-muted-foreground">
-              Turn on notifications for this check
+              {`Turn on notifications for this ${context === "job" ? "job" : "check"}`}
             </p>
           </div>
           <Switch

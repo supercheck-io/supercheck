@@ -1,4 +1,5 @@
-import { createNotificationProviderSchema } from "./notification-provider-form";
+import { getUserFriendlyError } from "@/lib/error-utils";
+import { createNotificationProviderSchema, getSaveErrorMessage } from "./notification-provider-form";
 
 const webhookConfig = {
   name: "Production webhook",
@@ -54,5 +55,18 @@ describe("notification provider form validation", () => {
         ]),
       );
     }
+  });
+});
+
+describe("getSaveErrorMessage", () => {
+  it("surfaces the API validation message", () => {
+    expect(getSaveErrorMessage(new Error("Target URL: Webhook URL must use HTTPS"), "webhook")).toBe(
+      "Target URL: Webhook URL must use HTTPS",
+    );
+  });
+
+  it("falls back to the generic text for network failures", () => {
+    expect(getSaveErrorMessage(new TypeError("Failed to fetch"), "webhook")).toBe(getUserFriendlyError(new TypeError("Failed to fetch"), "webhook"));
+    expect(getSaveErrorMessage(new TypeError("Failed to fetch"), "webhook")).not.toContain("Failed to fetch");
   });
 });

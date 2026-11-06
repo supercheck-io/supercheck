@@ -9,7 +9,11 @@ jest.mock("next/cache", () => ({ revalidatePath: jest.fn() }));
 const afterCallbacks: (() => unknown)[] = [];
 jest.mock("next/server", () => ({ after: (fn: () => unknown) => afterCallbacks.push(fn) }));
 jest.mock("@/app/api/sre/_auth", () => ({ requireSreSubscription: async () => null }));
-jest.mock("@/lib/sre/investigation-billing", () => ({ assertCanStartSreInvestigation: jest.fn(), SreInvestigationBillingError: class extends Error {} }));
+jest.mock("@/lib/sre/investigation-billing", () => ({
+  assertCanStartSreInvestigation: jest.fn(),
+  withSreTriageAdmission: jest.fn((_org: string, createRun: (db: unknown, tier: string) => unknown) => createRun({}, "paid")),
+  SreInvestigationBillingError: class extends Error {},
+}));
 jest.mock("@/lib/sre/billing-error-messages", () => ({ sreBillingErrorMessage: String }));
 jest.mock("@/lib/sre/sre-daily-token-limit", () => ({ checkSreDailyTokenLimit: async () => ({ allowed: true }) }));
 jest.mock("@/lib/sre/sre-rate-limiter", () => ({

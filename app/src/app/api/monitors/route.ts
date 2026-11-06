@@ -243,7 +243,12 @@ export async function POST(req: NextRequest) {
     await subscriptionService.blockUntilSubscribed(organizationId);
     await subscriptionService.requireValidPolarCustomer(organizationId);
 
-    const rawData = await req.json();
+    let rawData;
+    try {
+      rawData = await req.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
     logger.debug(
       { type: rawData.type, name: rawData.name },
       "[MONITOR_CREATE] Raw data received",
@@ -710,7 +715,12 @@ export async function PUT(req: NextRequest) {
     const putCtx = await requireAuthContext();
     const { userId, project, organizationId } = putCtx;
 
-    const rawData = await req.json();
+    let rawData;
+    try {
+      rawData = await req.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
     const { id, ...updateData } = rawData;
 
     if (!id) {

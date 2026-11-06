@@ -27,7 +27,7 @@ export function DataTableToolbar<TData>({
   const userCanCreateMonitors = currentProject?.userRole ? canCreateMonitors(normalizeRole(currentProject.userRole)) : false;
 
   return (
-    <div className="flex items-center justify-between mb-4 -mt-2">
+    <div className="flex flex-wrap items-center justify-between gap-2 mb-4 -mt-2">
       <div className="flex items-center justify-between space-y-2">
         <div className="flex flex-col">
           <h2 className="text-2xl font-semibold">Monitors</h2>
@@ -37,7 +37,7 @@ export function DataTableToolbar<TData>({
         </div>
       </div>
 
-      <div className="flex items-center space-x-2">
+      <div className="flex flex-wrap items-center gap-2">
         <div className="relative">
           <Search className="absolute left-2 top-2 h-4 w-4 text-muted-foreground" />
           <Input

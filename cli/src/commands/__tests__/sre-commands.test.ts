@@ -9,6 +9,7 @@ let outputFormat = 'table'
 const mockOutputDetail = jest.fn<(...args: unknown[]) => void>()
 const mockSuccess = jest.fn<(...args: unknown[]) => void>()
 const mockInfo = jest.fn<(...args: unknown[]) => void>()
+const mockWarn = jest.fn<(...args: unknown[]) => void>()
 const mockError = jest.fn<(...args: unknown[]) => void>()
 const mockPostSse = jest.fn<(...args: unknown[]) => Promise<void>>()
 const mockGetSse = jest.fn<(...args: unknown[]) => Promise<void>>()
@@ -36,7 +37,7 @@ jest.unstable_mockModule('../../utils/logger.js', () => ({
     info: mockInfo,
     success: mockSuccess,
     error: mockError,
-    warn: jest.fn(),
+    warn: mockWarn,
     newline: jest.fn(),
     header: jest.fn(),
   },
@@ -85,6 +86,12 @@ describe('AI SRE CLI Commands', () => {
       expect(mockGet).toHaveBeenCalledWith('/api/sre/incidents', expect.objectContaining({ status: 'investigating' }))
       // Older servers send no statusLabel; the CLI falls back to the stored status.
       expect(mockOutput).toHaveBeenCalledWith(mockIncidents.map((incident) => ({ ...incident, statusLabel: incident.status })), expect.any(Object))
+    })
+
+    it('incident list warns on stderr when the server truncated the list', async () => {
+      mockGet.mockResolvedValueOnce({ data: { incidents: [], truncated: true } })
+      await incidentCommand.parseAsync(['node', 'incident', 'list'])
+      expect(mockWarn).toHaveBeenCalledWith(expect.stringContaining('only the most recent'))
     })
 
     it('incident get fetches details by id', async () => {
@@ -247,6 +254,12 @@ describe('AI SRE CLI Commands', () => {
 
       expect(mockGet).toHaveBeenCalledWith('/api/sre/services')
       expect(mockOutput).toHaveBeenCalledWith(mockServices, expect.any(Object))
+    })
+
+    it('service list warns when the server truncated the list', async () => {
+      mockGet.mockResolvedValueOnce({ data: { services: [], truncated: true } })
+      await serviceCommand.parseAsync(['node', 'service', 'list'])
+      expect(mockWarn).toHaveBeenCalledWith(expect.stringContaining('first services'))
     })
 
     it('service get fetches service details', async () => {

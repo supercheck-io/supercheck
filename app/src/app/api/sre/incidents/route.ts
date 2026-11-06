@@ -7,6 +7,9 @@ import { requireSreApiPermissions } from "../_auth";
 import { db } from "@/utils/db";
 import { getDisplayStatus } from "@/lib/sre/incident-status-display";
 
+// One more row is fetched to tell the caller the list was cut.
+const INCIDENT_LIST_LIMIT = 500;
+
 const querySchema = z.object({
   incidentNumber: z.coerce.number().int().positive().max(2147483647).optional(),
   status: z.enum(["open", "triggered", "investigating", "identified", "recommendations_ready", "user_applying_fix", "verifying", "resolved"]).optional(),
@@ -63,12 +66,13 @@ export async function GET(request: NextRequest) {
     .where(and(...filters))
     .groupBy(sreIncidents.id, sreServices.name)
     .orderBy(desc(sreIncidents.updatedAt))
-    .limit(500);
+    .limit(INCIDENT_LIST_LIMIT + 1);
 
   return NextResponse.json({
     success: true,
     // statusLabel is the user-facing status (six values); status stays the stored value.
-    incidents: incidents.map((incident) => ({
+    truncated: incidents.length > INCIDENT_LIST_LIMIT,
+    incidents: incidents.slice(0, INCIDENT_LIST_LIMIT).map((incident) => ({
       ...incident,
       statusLabel: getDisplayStatus(incident.status, incident.acknowledgedAt).label,
     })),

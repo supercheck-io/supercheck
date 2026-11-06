@@ -4,14 +4,14 @@ import type { SreIncidentDetail } from "@/actions/sre-incidents";
 
 import { IncidentSidebar } from "./incident-sidebar";
 
-let mockSimilar: unknown[] = [];
-jest.mock("@/hooks/use-sre", () => ({
-  useSreSimilarIncidents: () => ({ data: { success: true, incidents: mockSimilar } }),
-}));
 jest.mock("@/components/sre/incidents/incident-assignee-picker", () => ({
   IncidentAssigneePicker: ({ label, assigneeName }: { label: string; assigneeName: string | null }) => (
     <div data-testid={`picker-${label}`}>{label}: {assigneeName ?? "Unassigned"}</div>
   ),
+}));
+
+jest.mock("@/components/sre/incidents/watch-sre-incident-button", () => ({
+  WatchSreIncidentButton: ({ watching }: { watching: boolean }) => <button type="button">{watching ? "Unwatch" : "Watch"}</button>,
 }));
 
 const now = new Date("2026-06-24T12:00:00Z");
@@ -31,7 +31,6 @@ function detailFixture(): SreIncidentDetail {
 const alerts = (n: number) =>
   Array.from({ length: n }, (_, i) => ({ id: `a${i}`, title: `Alert ${i}`, status: "firing", severity: "sev2", role: "trigger", firedAt: now }));
 
-beforeEach(() => { mockSimilar = []; });
 
 describe("IncidentSidebar", () => {
   it("shows the commander picker only when one is set or the page asks for it", () => {
@@ -101,29 +100,20 @@ describe("IncidentSidebar", () => {
     expect(screen.getByText("No alerts linked.")).toBeInTheDocument();
   });
 
-  it("shows one Similar past incidents row that opens the list, only when there are matches", () => {
-    const onOpenSimilar = jest.fn();
-    const view = render(<IncidentSidebar detail={detailFixture()} onOpenSimilar={onOpenSimilar} />);
+  it("has no Similar row; similar incidents live in the investigation sheet", () => {
+    render(<IncidentSidebar detail={detailFixture()} />);
     expect(screen.queryByRole("button", { name: /Similar past incidents/ })).not.toBeInTheDocument();
-    view.unmount();
-    mockSimilar = [{ id: "s1" }, { id: "s2" }];
-    render(<IncidentSidebar detail={detailFixture()} onOpenSimilar={onOpenSimilar} />);
-    const row = screen.getByRole("button", { name: /Similar past incidents/ });
-    expect(row).toHaveTextContent("2");
-    fireEvent.click(row);
-    expect(onOpenSimilar).toHaveBeenCalled();
   });
 
-
-  it("shows who acknowledged, time to acknowledge, and time to resolve once resolved", () => {
+  it("shows time to acknowledge (acknowledger on hover), and time to resolve once resolved", () => {
     const detail = detailFixture();
     detail.incident.acknowledgedAt = new Date("2026-06-24T12:10:00Z");
     detail.incident.acknowledgedByName = "Ada";
     detail.incident.resolvedAt = new Date("2026-06-24T14:05:00Z");
     detail.incident.status = "resolved";
     render(<IncidentSidebar detail={detail} />);
-    expect(screen.getByText(/by Ada/)).toBeInTheDocument();
-    expect(screen.getByText("10 min")).toBeInTheDocument();
+    // Who acknowledged is a hover detail, not a row.
+    expect(screen.getByText("10 min")).toHaveAttribute("title", expect.stringContaining("by Ada"));
     expect(screen.getByText("2 h 5 min")).toBeInTheDocument();
   });
 
@@ -133,7 +123,18 @@ describe("IncidentSidebar", () => {
     detail.incident.status = "resolved";
     render(<IncidentSidebar detail={detail} />);
     expect(screen.getByText("Skipped")).toBeInTheDocument();
-    expect(screen.queryByText("Time to acknowledge")).not.toBeInTheDocument();
-    expect(screen.getByRole("complementary", { name: "Details" })).toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "Properties" })).toBeInTheDocument();
+  });
+
+  it("lists status, severity and the watch toggle as plain properties", () => {
+    const detail = detailFixture();
+    (detail.incident as { severity: string }).severity = "sev2";
+    render(<IncidentSidebar detail={detail} />);
+    for (const label of ["Status", "Severity", "Assignee", "Service", "Started", "Status page", "Notifications"]) {
+      expect(screen.getByText(label)).toBeInTheDocument();
+    }
+    expect(screen.getByText("Investigating")).toBeInTheDocument();
+    expect(screen.getByText("sev2")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Watch" })).toBeInTheDocument();
   });
 });
