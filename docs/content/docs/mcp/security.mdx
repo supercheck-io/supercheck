@@ -9,7 +9,7 @@ icon: ShieldCheck
 - **You approve each connection** and choose the single project it can read.
 - **Read-only by default.** Tools that change incidents (`mcp:incidents:write`) or start AI SRE work (`mcp:sre`) exist only when the app asked for that scope and you approved it. Nothing creates, edits or deletes tests, monitors, jobs or variables, and nothing triggers runs.
 - **Disconnect works immediately.** Remove an app under **Account**, **Connected apps**. `/oauth2/revoke` revokes refresh tokens only; an access token keeps its signature for up to 15 minutes, but every call re-checks your approval, so Disconnect refuses it at once.
-- **Approvals add up.** Approving again for the same app and project keeps every scope you approved before; a narrower request never removes a broader grant. Only Disconnect removes scopes. `mcp:read` is always required: a request without it is refused.
+- **Approvals add up.** Approving again for the same app and project keeps every scope you approved before; a narrower request never removes a broader grant. Only Disconnect removes scopes. `mcp:read` is always required: a request without it is refused, and a request that names no scope at all is treated as `mcp:read` only.
 - **Your role applies on every call.** Access is re-checked for each request, not only when you connect, so these take effect at once:
   - you disconnect the app
   - you are removed from the organization (if you are removed only from the project, you keep read-only access as a viewer while you remain in the organization)

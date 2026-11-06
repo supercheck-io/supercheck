@@ -6,6 +6,7 @@ import { db } from '@/utils/db';
 import { member, projects, projectMembers, user } from '@/db/schema';
 import { eq, and, ne } from 'drizzle-orm';
 import { projectRoleExceedsOrgRole } from '@/lib/rbac/effective-project-role';
+import { logAuditEvent } from '@/lib/audit-logger';
 
 const ROLE_ABOVE_ORG_ROLE_MESSAGE = "This role is higher than the member's organization role. Change their organization role first.";
 
@@ -138,7 +139,7 @@ export async function POST(
     }
     const { userId: targetUserId, role = 'project_viewer' } = body;
     
-    if (!targetUserId) {
+    if (typeof targetUserId !== 'string' || !isUuid(targetUserId)) {
       return NextResponse.json(
         { error: 'User ID is required' },
         { status: 400 }
@@ -183,6 +184,11 @@ export async function POST(
         projectId, userId: targetUserId, role, createdAt: new Date(),
       }).returning();
       return created;
+    });
+
+    await logAuditEvent({
+      userId, organizationId, action: 'project_member_added', resource: 'project', resourceId: projectId,
+      metadata: { targetUserId, role }, success: true,
     });
 
     return NextResponse.json({
@@ -267,7 +273,7 @@ export async function PUT(
     }
     const { userId: targetUserId, role } = body;
     
-    if (!targetUserId || !role) {
+    if (typeof targetUserId !== 'string' || !isUuid(targetUserId) || !role) {
       return NextResponse.json(
         { error: 'User ID and role are required' },
         { status: 400 }
@@ -312,6 +318,11 @@ export async function PUT(
       );
     }
     
+    await logAuditEvent({
+      userId, organizationId, action: 'project_member_role_updated', resource: 'project', resourceId: projectId,
+      metadata: { targetUserId, role }, success: true,
+    });
+
     return NextResponse.json({
       success: true,
       member: updatedMember
@@ -374,7 +385,7 @@ export async function DELETE(
     const { searchParams } = new URL(request.url);
     const targetUserId = searchParams.get('userId');
     
-    if (!targetUserId) {
+    if (!targetUserId || !isUuid(targetUserId)) {
       return NextResponse.json(
         { error: 'User ID is required' },
         { status: 400 }
@@ -385,12 +396,19 @@ export async function DELETE(
     // Organization owners manage all projects, so no last-owner check needed
     
     // Remove member
-    await db
+    const removed = await db
       .delete(projectMembers)
       .where(and(
         eq(projectMembers.projectId, projectId),
         eq(projectMembers.userId, targetUserId)
-      ));
+      ))
+      .returning({ id: projectMembers.id });
+    if (removed.length) {
+      await logAuditEvent({
+        userId, organizationId, action: 'project_member_removed', resource: 'project', resourceId: projectId,
+        metadata: { targetUserId }, success: true,
+      });
+    }
     
     return NextResponse.json({
       success: true,

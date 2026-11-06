@@ -1,4 +1,5 @@
 import {
+  allowInternalMonitorTargets,
   allowInternalWebhookTargets,
   isMetadataOrLinkLocalAddress,
   isPrivateOrReservedAddress,
@@ -31,6 +32,7 @@ describe('worker outbound address policy', () => {
     '64:ff9b:1::a00:1',
     '64:ff9b:1:ffff::a00:1', // beyond the first /96 of the local-use /48
     '::ffff:127.0.0.1',
+    '::ffff:0:127.0.0.1', // SIIT ::ffff:0:0:0/96
     '::ffff:ac12:5',
     '[::ffff:ac12:5]',
   ])('rejects non-public address %s', (address) => {
@@ -61,6 +63,7 @@ describe('metadata and link-local policy', () => {
     '::a9fe:a9fe',
     '[::a9fe:a9fe]',
     '64:ff9b::6464:64c8',
+    '::ffff:0:a9fe:a9fe', // SIIT-embedded metadata address
   ])('blocks %s', (address) => {
     expect(isMetadataOrLinkLocalAddress(address)).toBe(true);
   });
@@ -124,4 +127,28 @@ describe('internal webhook targets (self-hosted opt-in)', () => {
     // Also refused in the default mode, where 168.63.129.16 is not in the private ranges.
     expect(isUrlSafeForOutbound('https://168.63.129.16/x').safe).toBe(false);
   });
+});
+
+describe('allowInternalMonitorTargets', () => {
+  const saved = { ...process.env };
+  afterEach(() => {
+    process.env = { ...saved };
+  });
+
+  it.each([
+    [undefined, 'true', true],
+    ['true', 'true', true],
+    [undefined, 'false', false],
+    [undefined, '1', false],
+    ['true', undefined, false],
+  ])(
+    'SELF_HOSTED=%s ALLOW_INTERNAL_TARGETS=%s -> %s',
+    (sh, allow, expected) => {
+      if (sh === undefined) delete process.env.SELF_HOSTED;
+      else process.env.SELF_HOSTED = sh;
+      if (allow === undefined) delete process.env.ALLOW_INTERNAL_TARGETS;
+      else process.env.ALLOW_INTERNAL_TARGETS = allow;
+      expect(allowInternalMonitorTargets()).toBe(expected);
+    },
+  );
 });

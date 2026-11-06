@@ -3,7 +3,7 @@ import { isInvalidUuidError, isUuid } from "@/lib/uuid";
 import { isDeepStrictEqual } from "node:util";
 import { executionConfig, updateMonitorHandler } from "@/lib/monitor-service";
 import { monitorResumeBlockedResponse, trialIntervalErrorResponse } from "@/lib/execution/trial-interval-response";
-import { monitorConfigForRead, monitorTargetForRead, monitorResultDetailsForRead } from "@/lib/monitor-read-config";
+import { monitorConfigForRead, monitorTargetForRead, monitorResultForRead } from "@/lib/monitor-read-config";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import {
@@ -108,7 +108,7 @@ export async function GET(
       ...monitor,
       config: monitorConfigForRead(monitor.config, canUpdateMonitor),
       target: monitorTargetForRead(monitor.target, canUpdateMonitor),
-      recentResults: recentResults.map((result) => ({ ...result, details: monitorResultDetailsForRead(result.details) })),
+      recentResults: recentResults.map(monitorResultForRead),
       alertConfig: monitor.alertConfig || {
         enabled: false,
         notificationProviders: [],

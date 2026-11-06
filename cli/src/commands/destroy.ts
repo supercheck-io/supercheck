@@ -1,4 +1,4 @@
-import { verifyContext, describeTarget, managedState } from '../utils/managed.js'
+import { verifyContext, describeTarget, managedState, deploymentLock } from '../utils/managed.js'
 import { buildLocalResources } from '../utils/resources.js'
 import { getOutputFormat } from '../output/formatter.js'
 import { Command } from 'commander'
@@ -194,78 +194,82 @@ export const destroyCommand = new Command('destroy')
     const client = createAuthenticatedClient(config.api?.baseUrl)
     const context = await verifyContext(client, config, false, declaredBaseUrl)
     logger.info(`Target: ${describeTarget(context)}`)
-    const state = managedState(client, context, configPath)
+    // Held from before the state is read through the deletes; a dry run or unconfirmed run only reads.
+    const release = options.force && !options.dryRun ? deploymentLock(configPath) : () => undefined
+    try {
+      const state = managedState(client, context, configPath)
 
-    logger.newline()
+      logger.newline()
 
-    const managed = await withSpinner(
-      'Scanning for managed resources...',
-      () => fetchManagedResources(client, config, state.apply(buildLocalResources(config, cwd))),
-      { successText: 'Scan complete' },
-    )
-
-    if (managed.length === 0) {
-      if (getOutputFormat() === 'json') logger.output(JSON.stringify({ status: 'no_change', context, results: [] }))
-      logger.success('No managed resources found on the remote project.')
-      return
-    }
-
-    logger.header('Resources to destroy:')
-    logger.newline()
-    for (const r of managed) {
-      logger.info(pc.red(`  - ${r.type}/${r.name} [${r.id}]`))
-    }
-    logger.newline()
-    logger.warn(`This will permanently delete ${pc.bold(String(managed.length))} resource(s).`)
-    logger.newline()
-
-    if (options.dryRun) {
-      if (getOutputFormat() === 'json') logger.output(JSON.stringify({ status: 'preview', context, resources: managed }))
-      logger.info(pc.yellow('Dry run — no resources destroyed.'))
-      return
-    }
-
-    if (!options.force) {
-      throw new CLIError(
-        'CONFIRMATION_REQUIRED: Use --force to confirm destruction, or --dry-run to preview.',
-        ExitCode.ConfigError,
-        { status: 'confirmation_required', context, changes: managed, confirmArgs: [...process.argv.slice(2), '--force'] },
+      const managed = await withSpinner(
+        'Scanning for managed resources...',
+        () => fetchManagedResources(client, config, state.apply(buildLocalResources(config, cwd))),
+        { successText: 'Scan complete' },
       )
-    }
 
-    logger.info('Destroying resources...')
-    logger.newline()
-
-    const results: Record<string, unknown>[] = []
-    let succeeded = 0
-    let failed = 0
-
-    const sorted = [...managed].sort((a, b) => DELETE_ORDER.indexOf(a.type) - DELETE_ORDER.indexOf(b.type))
-
-    for (const resource of sorted) {
-      try {
-        const endpoint = getApiEndpoint(resource.type)
-        await client.delete(`${endpoint}/${resource.id}`)
-        logger.info(pc.red(`  - ${resource.type}/${resource.name} ✓`))
-        results.push({ ...resource, deleted: true })
-        succeeded++
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        logger.error(`  - ${resource.type}/${resource.name} ✗ ${msg}`)
-        results.push({ ...resource, deleted: false, error: msg })
-        failed++
+      if (managed.length === 0) {
+        if (getOutputFormat() === 'json') logger.output(JSON.stringify({ status: 'no_change', context, results: [] }))
+        logger.success('No managed resources found on the remote project.')
+        return
       }
-    }
 
-    logger.newline()
+      logger.header('Resources to destroy:')
+      logger.newline()
+      for (const r of managed) {
+        logger.info(pc.red(`  - ${r.type}/${r.name} [${r.id}]`))
+      }
+      logger.newline()
+      logger.warn(`This will permanently delete ${pc.bold(String(managed.length))} resource(s).`)
+      logger.newline()
 
-    if (getOutputFormat() === 'json') logger.output(JSON.stringify({ status: failed ? 'partial' : 'success', context, results, succeeded, failed }))
-    if (failed > 0) {
-      throw new CLIError(
-        `Destroy completed with errors: ${succeeded} destroyed, ${failed} failed`,
-        ExitCode.GeneralError,
-      )
-    } else {
-      logger.success(`Destroy complete: ${succeeded} resource(s) removed`)
-    }
+      if (options.dryRun) {
+        if (getOutputFormat() === 'json') logger.output(JSON.stringify({ status: 'preview', context, resources: managed }))
+        logger.info(pc.yellow('Dry run — no resources destroyed.'))
+        return
+      }
+
+      if (!options.force) {
+        throw new CLIError(
+          'CONFIRMATION_REQUIRED: Use --force to confirm destruction, or --dry-run to preview.',
+          ExitCode.ConfigError,
+          { status: 'confirmation_required', context, changes: managed, confirmArgs: [...process.argv.slice(2), '--force'] },
+        )
+      }
+
+      logger.info('Destroying resources...')
+      logger.newline()
+
+      const results: Record<string, unknown>[] = []
+      let succeeded = 0
+      let failed = 0
+
+      const sorted = [...managed].sort((a, b) => DELETE_ORDER.indexOf(a.type) - DELETE_ORDER.indexOf(b.type))
+
+      for (const resource of sorted) {
+        try {
+          const endpoint = getApiEndpoint(resource.type)
+          await client.delete(`${endpoint}/${resource.id}`)
+          logger.info(pc.red(`  - ${resource.type}/${resource.name} ✓`))
+          results.push({ ...resource, deleted: true })
+          succeeded++
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          logger.error(`  - ${resource.type}/${resource.name} ✗ ${msg}`)
+          results.push({ ...resource, deleted: false, error: msg })
+          failed++
+        }
+      }
+
+      logger.newline()
+
+      if (getOutputFormat() === 'json') logger.output(JSON.stringify({ status: failed ? 'partial' : 'success', context, results, succeeded, failed }))
+      if (failed > 0) {
+        throw new CLIError(
+          `Destroy completed with errors: ${succeeded} destroyed, ${failed} failed`,
+          ExitCode.GeneralError,
+        )
+      } else {
+        logger.success(`Destroy complete: ${succeeded} resource(s) removed`)
+      }
+    } finally { release() }
   })

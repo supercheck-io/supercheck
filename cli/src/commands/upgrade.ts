@@ -1,5 +1,6 @@
 import { Command } from 'commander'
 import { spawn } from 'node:child_process'
+import { realpathSync } from 'node:fs'
 import { logger } from '../utils/logger.js'
 import { CLIError, ExitCode } from '../utils/errors.js'
 import { confirmPrompt } from '../utils/prompt.js'
@@ -21,11 +22,21 @@ function getDefaultTag(): string {
   return 'latest'
 }
 
-function detectPackageManager(): 'npm' | 'yarn' | 'pnpm' | 'bun' {
-  const userAgent = process.env.npm_config_user_agent ?? ''
-  if (userAgent.includes('pnpm')) return 'pnpm'
-  if (userAgent.includes('yarn')) return 'yarn'
-  if (userAgent.includes('bun')) return 'bun'
+function entryRealPath(): string {
+  const entry = process.argv[1] ?? ''
+  try { return realpathSync(entry) } catch { return entry }
+}
+
+/** The user agent is only set when launched through a package manager; otherwise infer it from where the CLI is installed. */
+export function detectPackageManager(
+  userAgent: string = process.env.npm_config_user_agent ?? '',
+  installPath: string = entryRealPath(),
+): 'npm' | 'yarn' | 'pnpm' | 'bun' {
+  // The user agent starts with the manager name ("pnpm/9.0 npm/? node/..."); a path is matched by whole segments, never substrings.
+  const segments = userAgent ? [userAgent.split('/')[0].toLowerCase()] : installPath.replace(/\\/g, '/').toLowerCase().split('/')
+  if (segments.some((segment) => segment === 'pnpm' || segment === '.pnpm')) return 'pnpm'
+  if (segments.some((segment) => segment === 'yarn' || segment === '.yarn')) return 'yarn'
+  if (segments.some((segment) => segment === 'bun' || segment === '.bun')) return 'bun'
   return 'npm'
 }
 
@@ -54,9 +65,20 @@ function buildInstallCommand(
   }
 }
 
+/**
+ * Windows resolves npm/pnpm/yarn/bun (.cmd/.exe shims) only through a shell. Node deprecates an args array together with
+ * `shell: true` (DEP0190), so there it gets one command string; the manager is allowlisted and the tag regex-validated.
+ */
+export function spawnArgs(command: string, args: string[], platform: NodeJS.Platform = process.platform): [string, string[], { stdio: 'inherit'; shell: boolean }] {
+  return platform === 'win32'
+    ? [[command, ...args].join(' '), [], { stdio: 'inherit', shell: true }]
+    : [command, args, { stdio: 'inherit', shell: false }]
+}
+
 function runInstallCommand(command: string, args: string[]): Promise<number> {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { stdio: 'inherit' })
+    const [file, fileArgs, options] = spawnArgs(command, args)
+    const child = spawn(file, fileArgs, options)
     child.on('error', (err) => reject(err))
     child.on('close', (code) => resolve(code ?? 0))
   })

@@ -295,6 +295,11 @@ describe('Auth Store', () => {
       expect(() => requireAuth()).toThrow(AuthenticationError)
     })
 
+    it('names SUPERCHECK_TOKEN when it is set but malformed', () => {
+      process.env.SUPERCHECK_TOKEN = 'garbage'
+      expect(() => requireAuth()).toThrow(/TOKEN_INVALID: SUPERCHECK_TOKEN/)
+    })
+
     it('should throw with helpful login message', () => {
       expect(() => requireAuth()).toThrow(/Run `supercheck login`/)
     })

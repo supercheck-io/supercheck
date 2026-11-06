@@ -1,4 +1,4 @@
-import Conf from 'conf'
+import { openConf } from './open-conf.js'
 import { randomBytes } from 'node:crypto'
 import { readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { CLIError, ExitCode } from '../utils/errors.js'
@@ -34,7 +34,7 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
  * Conf writes atomically (temp file + rename). A lock file serialises concurrent logins.
  */
 export function createPendingStore(options: { cwd?: string } = {}): PendingStore {
-  const conf = new Conf<{ pending?: PendingDevice }>({
+  const conf = openConf<{ pending?: PendingDevice }>({
     projectName: 'supercheck-cli',
     configName: 'device-login',
     configFileMode: 0o600,

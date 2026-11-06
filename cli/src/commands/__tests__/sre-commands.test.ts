@@ -12,6 +12,7 @@ const mockInfo = jest.fn<(...args: unknown[]) => void>()
 const mockWarn = jest.fn<(...args: unknown[]) => void>()
 const mockError = jest.fn<(...args: unknown[]) => void>()
 const mockPostSse = jest.fn<(...args: unknown[]) => Promise<void>>()
+const mockRequest = jest.fn<(...args: unknown[]) => Promise<{ data: unknown }>>()
 const mockGetSse = jest.fn<(...args: unknown[]) => Promise<void>>()
 
 jest.unstable_mockModule('../../api/authenticated-client.js', () => ({
@@ -19,6 +20,8 @@ jest.unstable_mockModule('../../api/authenticated-client.js', () => ({
     get: mockGet,
     post: mockPost,
     patch: mockPatch,
+    request: mockRequest,
+    getBaseUrl: () => 'https://app.example.com',
   }),
 }))
 
@@ -58,6 +61,7 @@ const { sreCommand } = await import('../sre.js')
 const { monitorCommand } = await import('../monitors.js')
 const { runCommand } = await import('../runs.js')
 const { testCommand } = await import('../tests.js')
+const { setRevealSecrets } = await import('../../utils/redact.js')
 
 describe('AI SRE CLI Commands', () => {
   beforeEach(() => {
@@ -483,6 +487,7 @@ describe('AI SRE CLI Commands', () => {
         const onEvent = callback as (event: { event: string; data: unknown }) => void
         onEvent({ event: 'console', data: { line: 'hel' } })
         onEvent({ event: 'console', data: { line: 'lo\n' } })
+        onEvent({ event: 'complete', data: { status: 'passed' } })
       })
       await runCommand.parseAsync(['node', 'run', 'stream', 'run-1'])
       expect(write.mock.calls.map((call) => call[0]).join('')).toBe('hello\n')
@@ -493,12 +498,194 @@ describe('AI SRE CLI Commands', () => {
       await expect(runCommand.parseAsync(['node', 'run', 'stream', 'run-1'])).rejects.toMatchObject({ exitCode: 1 })
       expect(mockSuccess).not.toHaveBeenCalled()
     })
+    it('run stream redacts a token split across two console events', async () => {
+      const write = jest.spyOn(process.stdout, 'write').mockImplementation(() => true)
+      mockGetSse.mockImplementationOnce(async (_path: unknown, callback: unknown) => {
+        const onEvent = callback as (event: { event: string; data: unknown }) => void
+        onEvent({ event: 'console', data: { line: 'token sck_live_aaaaaa' } })
+        onEvent({ event: 'console', data: { line: `${'a'.repeat(30)} done\n` } })
+        onEvent({ event: 'complete', data: { status: 'passed' } })
+      })
+      await runCommand.parseAsync(['node', 'run', 'stream', 'run-1'])
+      const out = write.mock.calls.map((call) => call[0]).join('')
+      write.mockRestore()
+      expect(out).not.toContain('sck_live_')
+      expect(out).toContain('done\n')
+    })
+    it('run stream flushes an unterminated console remainder, redacted, at the terminal event and on errors', async () => {
+      const write = jest.spyOn(process.stdout, 'write').mockImplementation(() => true)
+      const token = `sck_live_${'b'.repeat(32)}`
+      mockGetSse.mockImplementationOnce(async (_path: unknown, callback: unknown) => {
+        const onEvent = callback as (event: { event: string; data: unknown }) => void
+        onEvent({ event: 'console', data: { line: `tail ${token}` } })
+        onEvent({ event: 'complete', data: { status: 'passed' } })
+      })
+      await runCommand.parseAsync(['node', 'run', 'stream', 'run-1'])
+      mockGetSse.mockImplementationOnce(async (_path: unknown, callback: unknown) => {
+        (callback as (event: { event: string; data: unknown }) => void)({ event: 'console', data: { line: 'partial' } })
+        throw new Error('boom')
+      })
+      await expect(runCommand.parseAsync(['node', 'run', 'stream', 'run-1'])).rejects.toThrow('boom')
+      const out = write.mock.calls.map((call) => call[0]).join('')
+      write.mockRestore()
+      expect(out).toContain('tail [REDACTED]')
+      expect(out).not.toContain(token)
+      expect(out).toContain('partial')
+    })
+    it('run stream redacts a token straddling the overflow boundary of a newline-less stream', async () => {
+      const write = jest.spyOn(process.stdout, 'write').mockImplementation(() => true)
+      const token = `sck_live_${'c'.repeat(32)}`
+      mockGetSse.mockImplementationOnce(async (_path: unknown, callback: unknown) => {
+        const onEvent = callback as (event: { event: string; data: unknown }) => void
+        // The token starts just before the cap, so a cut at the cap would split it.
+        onEvent({ event: 'console', data: { line: `${'x'.repeat(64 * 1024 - 10)}${token.slice(0, 20)}` } })
+        onEvent({ event: 'console', data: { line: `${token.slice(20)} end` } })
+        onEvent({ event: 'complete', data: { status: 'passed' } })
+      })
+      await runCommand.parseAsync(['node', 'run', 'stream', 'run-1'])
+      const out = write.mock.calls.map((call) => call[0]).join('')
+      write.mockRestore()
+      // No whitespace before the token to cut at: the chunk is omitted and so is the token's continuation.
+      expect(out).not.toContain('sck_live_')
+      expect(out).not.toContain('c'.repeat(12))
+      expect(out).toContain('[console output omitted: line too long]')
+      expect(out).toContain(' end')
+    })
+    it('run stream never splits a token at the overflow cut point itself', async () => {
+      const write = jest.spyOn(process.stdout, 'write').mockImplementation(() => true)
+      const token = `sck_live_${'e'.repeat(32)}`
+      mockGetSse.mockImplementationOnce(async (_path: unknown, callback: unknown) => {
+        const onEvent = callback as (event: { event: string; data: unknown }) => void
+        // Words up to just under the cap, then the token positioned to straddle (cap - 1024): the old fixed cut.
+        const head = 'word '.repeat(Math.floor((64 * 1024 - 1024 - 6) / 5))
+        onEvent({ event: 'console', data: { line: `${head}${token}` } })
+        // Exceeds the cap by one, so the old fixed cut (length - 1024) lands inside the token.
+        onEvent({ event: 'console', data: { line: ' '.repeat(991) } })
+        onEvent({ event: 'complete', data: { status: 'passed' } })
+      })
+      await runCommand.parseAsync(['node', 'run', 'stream', 'run-1'])
+      const out = write.mock.calls.map((call) => call[0]).join('')
+      write.mockRestore()
+      expect(out).not.toContain('sck_live_')
+      expect(out).not.toContain('e'.repeat(32))
+      expect(out).toContain('[REDACTED]')
+    })
+    it('run stream flushes a token still buffered without a newline when the stream completes', async () => {
+      const write = jest.spyOn(process.stdout, 'write').mockImplementation(() => true)
+      const token = `sck_live_${'g'.repeat(32)}`
+      mockGetSse.mockImplementationOnce(async (_path: unknown, callback: unknown) => {
+        const onEvent = callback as (event: { event: string; data: unknown }) => void
+        onEvent({ event: 'console', data: { line: `done ${token.slice(0, 15)}` } })
+        onEvent({ event: 'console', data: { line: token.slice(15) } })
+        onEvent({ event: 'complete', data: { status: 'passed' } })
+      })
+      await runCommand.parseAsync(['node', 'run', 'stream', 'run-1'])
+      const out = write.mock.calls.map((call) => call[0]).join('')
+      write.mockRestore()
+      expect(out).toContain('done [REDACTED]')
+      expect(out).not.toContain('g'.repeat(10))
+    })
+    it('run stream omits an overflowing chunk with no whitespace to cut at', async () => {
+      const write = jest.spyOn(process.stdout, 'write').mockImplementation(() => true)
+      mockGetSse.mockImplementationOnce(async (_path: unknown, callback: unknown) => {
+        const onEvent = callback as (event: { event: string; data: unknown }) => void
+        onEvent({ event: 'console', data: { line: `sck_live_${'f'.repeat(64 * 1024)}` } })
+        onEvent({ event: 'complete', data: { status: 'passed' } })
+      })
+      await runCommand.parseAsync(['node', 'run', 'stream', 'run-1'])
+      const out = write.mock.calls.map((call) => call[0]).join('')
+      write.mockRestore()
+      expect(out).toContain('[console output omitted: line too long]')
+      expect(out).not.toContain('f'.repeat(100))
+    })
+    it('run stream redacts a token still in the remainder when the stream ends', async () => {
+      const write = jest.spyOn(process.stdout, 'write').mockImplementation(() => true)
+      mockGetSse.mockImplementationOnce(async (_path: unknown, callback: unknown) => {
+        const onEvent = callback as (event: { event: string; data: unknown }) => void
+        onEvent({ event: 'console', data: { line: `${'y'.repeat(64 * 1024 + 5)}sck_live_${'d'.repeat(32)}` } })
+      })
+      mockRequest.mockResolvedValueOnce({ data: { status: 'passed' } })
+      await runCommand.parseAsync(['node', 'run', 'stream', 'run-1'])
+      const out = write.mock.calls.map((call) => call[0]).join('')
+      write.mockRestore()
+      expect(out).not.toContain('sck_live_')
+      expect(out).toContain('[console output omitted: line too long]')
+    })
+    it('run stream polls past a queued complete event and succeeds when the run passes', async () => {
+      mockGetSse.mockImplementationOnce(async (_path: unknown, callback: unknown) => {
+        (callback as (event: { event: string; data: unknown }) => void)({ event: 'complete', data: { status: 'queued' } })
+      })
+      mockRequest.mockResolvedValueOnce({ data: { status: 'passed' } })
+      await runCommand.parseAsync(['node', 'run', 'stream', 'run-1'])
+      expect(mockRequest).toHaveBeenCalledWith('GET', '/api/runs/run-1', expect.anything())
+    })
+    it('run stream polls when the stream ends cleanly without a terminal event', async () => {
+      mockRequest.mockClear()
+      mockGetSse.mockResolvedValueOnce(undefined)
+      mockRequest.mockResolvedValueOnce({ data: { status: 'passed' } })
+      await runCommand.parseAsync(['node', 'run', 'stream', 'run-1'])
+      expect(mockRequest).toHaveBeenCalledTimes(1)
+    })
+    it('run stream falls back to polling when the stream drops before a terminal event', async () => {
+      const { CLIError, ExitCode } = await import('../../utils/errors.js')
+      mockGetSse.mockRejectedValueOnce(new CLIError('Stream ended before the server reported completion.', ExitCode.ApiError))
+      mockRequest.mockResolvedValueOnce({ data: { status: 'passed' } })
+      await runCommand.parseAsync(['node', 'run', 'stream', 'run-1'])
+      expect(mockRequest).toHaveBeenCalledWith('GET', '/api/runs/run-1', expect.anything())
+    })
+    it('run stream does not poll after Ctrl-C', async () => {
+      const { CLIError, ExitCode } = await import('../../utils/errors.js')
+      mockRequest.mockClear()
+      mockGetSse.mockRejectedValueOnce(new CLIError('Cancelled', ExitCode.Interrupted))
+      await expect(runCommand.parseAsync(['node', 'run', 'stream', 'run-1'])).rejects.toMatchObject({ exitCode: ExitCode.Interrupted })
+      expect(mockRequest).not.toHaveBeenCalled()
+    })
+    it('run stream fails on an unknown complete status', async () => {
+      mockGetSse.mockImplementationOnce(async (_path: unknown, callback: unknown) => {
+        (callback as (event: { event: string; data: unknown }) => void)({ event: 'complete', data: { status: 'weird' } })
+      })
+      await expect(runCommand.parseAsync(['node', 'run', 'stream', 'run-1'])).rejects.toMatchObject({ exitCode: 1 })
+    })
+    it('run stream redacts CLI tokens in console lines', async () => {
+      const write = jest.spyOn(process.stdout, 'write').mockImplementation(() => true)
+      const token = `sck_live_${'a'.repeat(32)}`
+      mockGetSse.mockImplementationOnce(async (_path: unknown, callback: unknown) => {
+        (callback as (event: { event: string; data: unknown }) => void)({ event: 'console', data: { line: `token ${token}\n` } })
+        ;(callback as (event: { event: string; data: unknown }) => void)({ event: 'complete', data: { status: 'passed' } })
+      })
+      await runCommand.parseAsync(['node', 'run', 'stream', 'run-1'])
+      expect(write.mock.calls.map((call) => call[0]).join('')).not.toContain(token)
+      write.mockRestore()
+    })
+    it('test status requires a terminal event before the stream may end', async () => {
+      mockGetSse.mockResolvedValueOnce(undefined)
+      await testCommand.parseAsync(['node', 'test', 'status', 'test-1'])
+      const options = mockGetSse.mock.calls.at(-1)?.[2] as { isTerminal: (event: { data: unknown }) => boolean }
+      expect(options.isTerminal({ data: { derivedStatus: 'passed' } })).toBe(true)
+      expect(options.isTerminal({ data: { status: 'error' } })).toBe(true)
+      expect(options.isTerminal({ data: { derivedStatus: 'running' } })).toBe(false)
+    })
     it('test status uses derived report status when queue status says completed', async () => {
       mockGetSse.mockImplementationOnce(async (_path, callback) => {
         (callback as (event: { data: unknown }) => void)({ data: { status: 'completed', derivedStatus: 'failed' } })
       })
       await expect(testCommand.parseAsync(['node', 'test', 'status', 'test-1'])).rejects.toMatchObject({ exitCode: 1 })
     })
+  })
+
+  it('test get --include-script redacts the script and says so unless --show-secrets is set', async () => {
+    mockGet.mockResolvedValue({ data: { id: 't1', script: Buffer.from('const k = "x"').toString('base64') } })
+    await testCommand.parseAsync(['node', 'test', 'get', 't1', '--include-script'])
+    expect(mockOutput).toHaveBeenCalledWith('const k = "x"\n', { redact: true })
+    expect(mockWarn).toHaveBeenCalledWith(expect.stringContaining('--show-secrets'))
+    mockOutput.mockClear(); mockWarn.mockClear()
+    setRevealSecrets(true)
+    try {
+      await testCommand.parseAsync(['node', 'test', 'get', 't1', '--include-script'])
+    } finally { setRevealSecrets(false) }
+    expect(mockOutput).toHaveBeenCalledWith('const k = "x"\n', { redact: false })
+    expect(mockWarn).not.toHaveBeenCalled()
+    mockGet.mockReset()
   })
 
   describe('test tag commands', () => {

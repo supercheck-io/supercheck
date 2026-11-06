@@ -2,7 +2,7 @@ import { isUuid } from "@/lib/uuid";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { monitors, monitorResults } from "@/db/schema";
-import { monitorResultDetailsForRead } from "@/lib/monitor-read-config";
+import { monitorResultForRead } from "@/lib/monitor-read-config";
 import { eq, desc, and, gte, lt, sql } from "drizzle-orm";
 import { requireAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-context';
 import { createLogger } from "@/lib/logger/index";
@@ -162,7 +162,7 @@ export async function GET(
     const hasPrevPage = page > 1;
 
     return NextResponse.json({
-      data: results.map((result) => ({ ...result, details: monitorResultDetailsForRead(result.details) })),
+      data: results.map(monitorResultForRead),
       pagination: {
         page,
         limit,

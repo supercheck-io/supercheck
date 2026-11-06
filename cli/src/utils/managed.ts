@@ -51,7 +51,9 @@ export function deploymentLock(configPath?: string | null): () => void {
   let acquired = false
   try {
   for (let attempt = 0; !acquired; attempt++) {
-    try { linkSync(temporaryPath, path); acquired = true } catch {
+    try { linkSync(temporaryPath, path); acquired = true } catch (linkError) {
+      // Only an existing lock is contention; EACCES, ENOSPC, EPERM etc. are real failures the operator must see.
+      if ((linkError as NodeJS.ErrnoException).code !== 'EEXIST') throw linkError
       // Recover only from a lock whose owning process is verifiably gone (crash or kill); anything uncertain stays locked.
       let owner = NaN, ownerHost = ''
       try { [owner, ownerHost] = parseLock(readFileSync(path, 'utf8')) } catch { /* unreadable lock stays locked */ }
