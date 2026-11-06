@@ -27,7 +27,7 @@ jest.mock("@/lib/sre/connectors", () => ({
 jest.mock("@/lib/private-agents/job-router", () => ({
   routeSreConnectorQuery: jest.fn(),
 }));
-jest.mock("@/lib/sre/private-agent-job-cancel", () => ({ cancelQueuedPrivateAgentJob: jest.fn() }));
+jest.mock("@/lib/sre/private-agent-job-cancel", () => ({ cancelQueuedPrivateAgentJob: jest.fn(), requeueAbandonedPrivateAgentJob: jest.fn() }));
 jest.mock("@/lib/sre/private-agent-job-waiter", () => ({
   waitForPrivateAgentConnectorJob: jest.fn(),
 }));

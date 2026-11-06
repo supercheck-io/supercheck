@@ -31,8 +31,8 @@ export const TELEMETRY_RETENTION_RULES: readonly TelemetryRetentionRule[] = [
     timeColumn: "created_at",
     envVar: "PRIVATE_AGENT_JOB_RETENTION_DAYS",
     defaultDays: 30,
-    // Keep each connector's newest job: the connector list reads it as "latest run".
-    protect: `{a}.status IN ('completed', 'failed', 'cancelled', 'timed_out') AND ({a}.connector_id IS NULL OR NOT EXISTS (SELECT 1 FROM private_agent_jobs n WHERE n.connector_id = {a}.connector_id AND (n.created_at, n.id) > ({a}.created_at, {a}.id)))`,
+    // Only finished jobs that have a newer job for the same connector (the newest is what the connector list reads).
+    protect: `{a}.status IN ('completed', 'failed', 'cancelled', 'timed_out') AND ({a}.connector_id IS NULL OR EXISTS (SELECT 1 FROM private_agent_jobs n WHERE n.connector_id = {a}.connector_id AND (n.created_at, n.id) > ({a}.created_at, {a}.id)))`,
   },
   {
     table: "sre_service_health_snapshots",

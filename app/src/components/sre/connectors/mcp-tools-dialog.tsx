@@ -51,9 +51,19 @@ export function McpToolsDialog({ connector, open, onOpenChange }: McpToolsDialog
 
   const apply = (next: SreMcpToolState) => {
     setState(next);
+    // Server-marked destructive tools can no longer be allowlisted or called: leave them unchecked so the next
+    // save removes any that were allowlisted before, instead of failing the whole save.
+    const isDestructive = (name: string) =>
+      next.discovered.some((tool) => tool.name === name && tool.destructiveHint);
+    const dropped = next.allowlist.filter((tool) => isDestructive(tool.name));
+    if (dropped.length > 0) {
+      toast.warning(
+        `Destructive tools are no longer allowed and will be removed when you save: ${dropped.map((tool) => tool.name).join(", ")}`,
+      );
+    }
     setSelected(
       Object.fromEntries(
-        next.allowlist.map((tool) => [
+        next.allowlist.filter((tool) => !isDestructive(tool.name)).map((tool) => [
           tool.name,
           Object.keys(tool.fixedArguments).length > 0
             ? JSON.stringify(tool.fixedArguments)
@@ -169,7 +179,7 @@ export function McpToolsDialog({ connector, open, onOpenChange }: McpToolsDialog
                   <label className="flex items-start gap-3">
                     <Checkbox
                       checked={checked}
-                      disabled={blocked && !checked}
+                      disabled={(blocked || Boolean(tool.destructiveHint)) && !checked}
                       onCheckedChange={() => toggle(tool.name)}
                       aria-label={`Allow ${tool.name}`}
                     />
@@ -198,6 +208,11 @@ export function McpToolsDialog({ connector, open, onOpenChange }: McpToolsDialog
                       {blocked && (
                         <span className="block text-xs text-amber-700 dark:text-amber-300">
                           {tool.unsupportedReason}
+                        </span>
+                      )}
+                      {!blocked && tool.destructiveHint && (
+                        <span className="block text-xs text-amber-700 dark:text-amber-300">
+                          Tools the server marks destructive cannot be allowlisted.
                         </span>
                       )}
                     </span>

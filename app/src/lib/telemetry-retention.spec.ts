@@ -58,6 +58,8 @@ describe("private_agent_jobs retention", () => {
     const sql = buildPurgeBatchSql(jobs, resolveRetentionDays(jobs, {}), 100);
     expect(sql).toContain("status IN ('completed', 'failed', 'cancelled', 'timed_out')");
     expect(sql).not.toMatch(/'(queued|leased|running)'/);
-    expect(sql).toContain("n.connector_id =");
+    // The predicate selects deletable rows: a newer job must exist, so the newest per connector survives.
+    expect(sql).toContain("OR EXISTS (SELECT 1 FROM private_agent_jobs n WHERE n.connector_id =");
+    expect(sql).not.toMatch(/NOT EXISTS \(SELECT 1 FROM private_agent_jobs/);
   });
 });

@@ -45,7 +45,7 @@ import {
 import { summarizeJobSpec } from "@/lib/sre/connectors/endpoint-policy";
 import { isValidKubernetesLabelSelector } from "@/lib/sre/connectors/kubernetes-label-selector";
 import { normalizePrivateAgentEvidenceSummaries } from "@/lib/sre/connector-job-evidence";
-import { cancelQueuedPrivateAgentJob } from "@/lib/sre/private-agent-job-cancel";
+import { cancelQueuedPrivateAgentJob, requeueAbandonedPrivateAgentJob } from "@/lib/sre/private-agent-job-cancel";
 import { waitForPrivateAgentConnectorJob } from "@/lib/sre/private-agent-job-waiter";
 import { ConnectorQueryRejectedError } from "@/lib/sre/connectors/providers/provider-query-guards";
 import { flatCredentialFields } from "@/lib/sre/connectors/providers/provider-credentials";
@@ -826,6 +826,9 @@ export async function searchIncidentLiveConnectorEvidence(
     if (!jobId) {
       throw new Error("Failed to queue Private Agent connector job");
     }
+    if (existingJob) {
+      await requeueAbandonedPrivateAgentJob({ jobId, organizationId: scope.organizationId, projectId: scope.projectId });
+    }
 
     const waitResult = await waitForPrivateAgentConnectorJob({
       timeoutMs: Math.min(input.maxSeconds * 1000, 15_000),
@@ -910,7 +913,10 @@ export async function searchIncidentLiveConnectorEvidence(
     }
 
     // Nobody waits for it any more; cancel so it cannot run late (no-op if it was already leased).
-    await cancelQueuedPrivateAgentJob({ jobId, organizationId: scope.organizationId, projectId: scope.projectId });
+    // Only a job this call inserted: a reused job may have another caller waiting on it.
+    if (insertedJob) {
+      await cancelQueuedPrivateAgentJob({ jobId, organizationId: scope.organizationId, projectId: scope.projectId });
+    }
 
     await db.insert(sreInvestigationToolCalls).values({
       investigationRunId: scope.investigationRunId ?? null,
@@ -933,7 +939,7 @@ export async function searchIncidentLiveConnectorEvidence(
       queued: true,
       evidence: [],
       message: insertedJob
-        ? "Private Agent connector search is still queued after the bounded wait"
+        ? "Private Agent connector search was cancelled after the bounded wait because no agent picked it up; it can be retried"
         : "Existing Private Agent connector search is still queued after the bounded wait",
     };
   }
