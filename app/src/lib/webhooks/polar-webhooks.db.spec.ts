@@ -358,7 +358,7 @@ describe("2026-10 webhook payloads through the real handlers", () => {
     ).catch((error) => error);
     expect(failure).toMatchObject({
       name: "UnrecoverableWebhookError",
-      context: { eventType: "subscription.active", eventId: SUB, organizationId: orgId, customerId: CUS, subscriptionId: SUB },
+      context: { eventType: "subscription.active", resourceId: SUB, organizationId: orgId, customerId: CUS, subscriptionId: SUB },
     });
   });
 
@@ -394,6 +394,29 @@ describe("2026-10 webhook payloads through the real handlers", () => {
     await expect(
       deliver(handleSubscriptionRevoked, "subscription.revoked", subscription({ status: "canceled" }), fresh),
     ).rejects.toMatchObject({ name: "Error" });
+  });
+
+  it("acknowledges, without retry or state change, a fresh cancel/revoke for a subscription the organization replaced", async () => {
+    await deliver(handleSubscriptionActive, "subscription.active", subscription({ id: "sub_new" }), "2026-10-01T00:00:01Z");
+    const before = await org();
+    const fresh = new Date().toISOString();
+    for (const [handler, type] of [[handleSubscriptionCanceled, "subscription.canceled"], [handleSubscriptionRevoked, "subscription.revoked"]] as const) {
+      await expect(deliver(handler, type, subscription({ id: "sub_old", status: "canceled" }), fresh)).resolves.toBeUndefined();
+    }
+    expect(await org()).toMatchObject({ subscriptionId: "sub_new", subscriptionStatus: "active", subscriptionPlan: before.subscriptionPlan });
+  });
+
+  it("acknowledges a customer.deleted for a customer shared by several organizations", async () => {
+    await client`DROP INDEX organization_polar_customer_id_idx`;
+    try {
+      await mockDatabase.update(schema.organization).set({ polarCustomerId: CUS }).where(eq(schema.organization.id, otherOrgId));
+      await expect(
+        deliver(handleCustomerDeleted, "customer.deleted", { id: CUS }, "2026-10-01T00:00:01Z"),
+      ).rejects.toMatchObject({ name: "UnrecoverableWebhookError" });
+    } finally {
+      await mockDatabase.update(schema.organization).set({ polarCustomerId: "cus_other" }).where(eq(schema.organization.id, otherOrgId));
+      await client`CREATE UNIQUE INDEX organization_polar_customer_id_idx ON organization (polar_customer_id) WHERE polar_customer_id IS NOT NULL`;
+    }
   });
 
   it("does not trust a spoofed camelCase alias inside metadata to choose the organization", async () => {

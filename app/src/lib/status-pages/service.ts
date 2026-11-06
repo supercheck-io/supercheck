@@ -622,11 +622,9 @@ export async function setStatusPagePublished(
       return fail("validation", "Invalid status page ID");
     }
 
-    let preconditionPage: StatusPageRow | undefined;
     if (publishing) {
       const preconditions = await checkPublishPreconditions(ctx, statusPageId);
       if (!preconditions.ok) return preconditions;
-      preconditionPage = preconditions.data.statusPage;
     } else {
       // SECURITY: Verify ownership
       const statusPage = await findOwnedStatusPage(ctx, statusPageId);
@@ -647,7 +645,7 @@ export async function setStatusPagePublished(
       return row;
     };
     let updatedStatusPage;
-    if (publishing && preconditionPage?.status !== "published") {
+    if (publishing) {
       // A page coming back online takes a plan slot: count and write under the plan-limit lock.
       const published = await withResumeWithinPlan(organizationId, "status_page", statusPageId, write);
       if ("busy" in published) return fail("busy", "Too many concurrent requests. Please retry shortly.");
