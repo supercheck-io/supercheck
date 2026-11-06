@@ -125,6 +125,36 @@ describe("test-status event filtering", () => {
     expect(mockRunsFindFirst).toHaveBeenCalledTimes(1);
   });
 
+  it.each(["failed", "error"])(
+    "returns a %s run snapshot when the run ended before any report row",
+    async (status) => {
+      mockReportsFindFirst
+        .mockResolvedValueOnce(undefined)
+        .mockResolvedValueOnce(undefined);
+      mockRunsFindFirst.mockResolvedValue({
+        id: "run-4",
+        status,
+        errorDetails: "Cancellation requested by user",
+      });
+
+      await expect(
+        fetchInitialStatusReport("test-1", "project-1")
+      ).resolves.toEqual({ status, errorDetails: "Cancellation requested by user" });
+    }
+  );
+
+  it.each(["queued", "running"])(
+    "keeps waiting for a %s run without a report",
+    async (status) => {
+      mockReportsFindFirst
+        .mockResolvedValueOnce(undefined)
+        .mockResolvedValueOnce(undefined);
+      mockRunsFindFirst.mockResolvedValue({ id: "run-5", status, errorDetails: null });
+
+      await expect(fetchInitialStatusReport("test-1", "project-1")).resolves.toBeNull();
+    }
+  );
+
   it("returns a blocked run snapshot when no report will be generated", async () => {
     mockReportsFindFirst
       .mockResolvedValueOnce(undefined)
