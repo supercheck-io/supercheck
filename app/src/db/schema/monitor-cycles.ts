@@ -30,6 +30,8 @@ export type MonitorCycleEvaluation = {
   };
   reason: string;
   avgResponseTimeMs: number;
+  /** ISO time the cycle was observed when it closed. Notification uses this, never a later result. Absent on older rows. */
+  observedAt?: string;
 };
 
 export type MonitorCycleStatus = "open" | "closed" | "aborted";

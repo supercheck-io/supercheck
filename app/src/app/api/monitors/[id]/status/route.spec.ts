@@ -65,10 +65,10 @@ it("refuses to resume a paused monitor without a plan (c9)", async () => {
   expect(db.update).not.toHaveBeenCalled();
 });
 
-const deleteScheduledMonitor = jest.fn(async () => true);
+const deleteScheduledMonitor = jest.fn(async (..._a: unknown[]) => true);
 const scheduleMonitor = jest.fn(async () => "sched-new");
 jest.mock("@/lib/monitor-scheduler", () => ({
-  deleteScheduledMonitor: (...a: unknown[]) => (deleteScheduledMonitor as jest.Mock)(...a),
+  removeScheduledMonitor: (...a: unknown[]) => (deleteScheduledMonitor as jest.Mock)(...a),
   scheduleMonitor: (...a: unknown[]) => (scheduleMonitor as jest.Mock)(...a),
 }));
 
@@ -123,16 +123,36 @@ describe("schedule is reconciled to the committed state", () => {
     expect(scheduleMonitor).not.toHaveBeenCalled();
   });
 
-  it("reports a failed reconcile instead of swallowing it, and a retry converges", async () => {
+  it("a failed scheduler delete gives 503, keeps scheduledJobId, and a retry converges", async () => {
     stored("up");
-    useDb({ ...base, status: "paused" }, { ...base, status: "paused", enabled: false, scheduledJobId: "old" });
+    const clears: unknown[] = [];
+    const committed = { ...base, status: "paused", enabled: false, scheduledJobId: "old" };
+    (db.transaction as jest.Mock).mockImplementation(async (cb: (t: unknown) => unknown) => {
+      const pending: unknown[] = [];
+      const result = await cb({
+        execute: jest.fn(),
+        select: () => ({ from: () => ({ where: () => ({ for: async (mode: string) => (mode === "share" ? [{ id: "p" }] : [committed]) }) }) }),
+        update: () => ({ set: jest.fn((v: unknown) => ({ where: () => { pending.push(v); return Object.assign(Promise.resolve(), { returning: async () => [{ ...base, status: "paused" }] }); } })) }),
+      });
+      clears.push(...pending.filter((v) => (v as { scheduledJobId?: unknown }).scheduledJobId === null));
+      return result;
+    });
     deleteScheduledMonitor.mockRejectedValueOnce(new Error("redis down"));
     const failed = await patch("paused");
     expect(failed.status).toBe(503);
     expect((await failed.json()).error).toMatch(/Retry/);
+    expect(clears).toHaveLength(0); // scheduledJobId was not cleared
     const retry = await patch("paused");
     expect(retry.status).toBe(200);
-    expect(deleteScheduledMonitor).toHaveBeenCalledTimes(2);
+    expect(clears).toHaveLength(1);
+  });
+
+  it("reconciles even when the pre-write read says the status did not change", async () => {
+    // The request read "paused" and asks for "paused" while a concurrent resume committed: the row decides.
+    stored("paused");
+    useDb({ ...base, status: "paused" }, { ...base, status: "up", scheduledJobId: null });
+    expect((await patch("paused")).status).toBe(200);
+    expect(scheduleMonitor).toHaveBeenCalledTimes(1);
   });
 });
 

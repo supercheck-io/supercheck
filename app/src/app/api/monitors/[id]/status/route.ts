@@ -9,7 +9,7 @@ import { resumeRefusalResponse, withResumeWithinPlan } from "@/lib/middleware/pl
 import { ensureSubscribedForResume, monitorResumeBlockedResponse, subscriptionDeniedResponse } from "@/lib/execution/trial-interval-response";
 import { hasPermissionForUser } from '@/lib/rbac/middleware';
 import { logAuditEvent } from "@/lib/audit-logger";
-import { deleteScheduledMonitor, scheduleMonitor } from "@/lib/monitor-scheduler";
+import { removeScheduledMonitor, scheduleMonitor } from "@/lib/monitor-scheduler";
 import type { MonitorJobData } from "@/lib/queue";
 import { createLogger } from "@/lib/logger/index";
 
@@ -31,8 +31,9 @@ async function reconcileMonitorSchedule(id: string, projectId: string): Promise<
       .for("update");
     if (!row) return;
     if (row.status === "paused" || !row.enabled || row.frequencyMinutes <= 0) {
-      const removed = row.scheduledJobId ? await deleteScheduledMonitor(row.scheduledJobId) : false;
-      if (!removed) await deleteScheduledMonitor(id);
+      // A scheduler failure throws (rolling back, so scheduledJobId stays and a retry converges); an absent job is fine.
+      const removed = row.scheduledJobId ? await removeScheduledMonitor(row.scheduledJobId) : false;
+      if (!removed) await removeScheduledMonitor(id);
       await tx.update(monitors).set({ scheduledJobId: null }).where(eq(monitors.id, id));
       return;
     }
@@ -182,19 +183,18 @@ export async function PATCH(
       );
     }
 
-    // Bring the scheduler to the committed state. Idempotent and serialized per monitor, so a stale request
-    // (or a retry) can never leave a schedule the row does not call for. If it fails the status is already saved;
-    // the app's startup scheduler sync (initializeMonitorSchedulers) and the worker's paused guard cover the gap.
-    if ((currentMonitor.status === "paused") !== (status === "paused")) {
-      try {
-        await reconcileMonitorSchedule(id, monitorProjectId);
-      } catch (error) {
-        logger.error({ err: error, monitorId: id }, "Monitor status saved but its schedule could not be updated");
-        return NextResponse.json(
-          { error: "Status saved, but updating the check schedule failed. Retry the request to reconcile it." },
-          { status: 503 },
-        );
-      }
+    // Always bring the scheduler to the committed state (never decided from the pre-write read). Idempotent and
+    // serialized per monitor, so a stale request or a retry cannot leave a schedule the row does not call for.
+    // If it fails the status is already saved; a retry converges, and the app's startup scheduler sync and the
+    // worker's paused guard cover the gap meanwhile.
+    try {
+      await reconcileMonitorSchedule(id, monitorProjectId);
+    } catch (error) {
+      logger.error({ err: error, monitorId: id }, "Monitor status saved but its schedule could not be updated");
+      return NextResponse.json(
+        { error: "Status saved, but updating the check schedule failed. Retry the request to reconcile it." },
+        { status: 503 },
+      );
     }
 
     // Log the audit event only for human actions (pause/unpause), not automated status changes

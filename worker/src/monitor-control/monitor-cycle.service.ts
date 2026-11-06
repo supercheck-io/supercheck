@@ -244,6 +244,7 @@ export class MonitorCycleService {
           decision.observed.filter((location) => statuses[location]).length,
         ),
         avgResponseTimeMs: this.averageResponse(observedRows),
+        observedAt: checkedAt.toISOString(),
       };
       if (
         this.evaluator.isMultiLocationEvaluation(
@@ -337,8 +338,10 @@ export class MonitorCycleService {
       currentStatus: evaluation.currentStatus,
       reason: evaluation.reason,
       preparedAlertState: evaluation.alertState,
-      // The cycle's own latest result, not whatever a later cycle recorded.
-      observedAt: rows[0]?.checkedAt,
+      // Stored when the cycle closed; a late result or a newer cycle cannot move it. Older rows fall back to the latest result.
+      observedAt: evaluation.observedAt
+        ? new Date(evaluation.observedAt)
+        : rows[0]?.checkedAt,
       metadata: {
         responseTime: evaluation.avgResponseTimeMs,
         // One entry per expected region, like the legacy path: the evaluator derives its

@@ -388,6 +388,36 @@ suite('MonitorCycleService (PostgreSQL)', () => {
     expect(sendNotification).toHaveBeenCalledTimes(1);
   });
 
+  it("notifies a delayed failure with the failing cycle's close-time observation, not a late result", async () => {
+    await openCycle('fail', { strategy: 'all', locations: ['eu', 'us'] });
+    await report('fail', 'eu', false, new Date(t0.getTime() + 1000));
+    await report('fail', 'us', false, new Date(t0.getTime() + 2000));
+    await service.closeCycle('fail', afterDeadline);
+    const observedAt = new Date(t0.getTime() + 2000).toISOString();
+    expect((await cycleRow('fail')).evaluation).toMatchObject({ observedAt });
+
+    // A newer recovery cycle closes, then a late result from the failing cycle arrives.
+    const later = new Date(t0.getTime() + 10 * 60_000);
+    await openCycle('recover', {
+      strategy: 'all',
+      locations: ['eu', 'us'],
+      scheduledFor: later,
+      deadlineAt: new Date(later.getTime() + 300_000),
+    });
+    await report('recover', 'eu', true, new Date(later.getTime() + 1000));
+    await report('recover', 'us', true, new Date(later.getTime() + 2000));
+    await service.closeCycle('recover', new Date(later.getTime() + 400_000));
+    await report('fail', 'eu', false, new Date(later.getTime() + 20_000));
+
+    expect(await service.notifyCycle('fail')).toBe(true);
+    expect(sendNotification).toHaveBeenCalledWith(
+      monitorId,
+      'failure',
+      expect.any(String),
+      expect.objectContaining({ observedAt }),
+    );
+  });
+
   describe('review hardening', () => {
     it('keeps the cycle without a receipt when delivery fails, backs off and gives up after bounded attempts', async () => {
       await openCycle('r1', { strategy: 'all' });
