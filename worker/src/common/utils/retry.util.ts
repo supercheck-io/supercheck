@@ -290,19 +290,26 @@ export async function executeWithRetry<T>(
     try {
       // Execute with timeout if specified
       if (config.timeoutMs > 0) {
-        const result = await Promise.race([
-          fn(),
-          new Promise<never>((_, reject) => {
-            setTimeout(
-              () =>
-                reject(
-                  new Error(`Operation timed out after ${config.timeoutMs}ms`),
-                ),
-              config.timeoutMs,
-            );
-          }),
-        ]);
-        return result;
+        let timer: NodeJS.Timeout | undefined;
+        try {
+          return await Promise.race([
+            fn(),
+            new Promise<never>((_, reject) => {
+              timer = setTimeout(
+                () =>
+                  reject(
+                    new Error(
+                      `Operation timed out after ${config.timeoutMs}ms`,
+                    ),
+                  ),
+                config.timeoutMs,
+              );
+            }),
+          ]);
+        } finally {
+          // A won race must not leave the timer pending: it keeps the process (and Jest workers) alive.
+          clearTimeout(timer);
+        }
       }
 
       return await fn();

@@ -106,22 +106,29 @@ it("lets a build finish while another pod polls for the migration lock", async (
   expect(holder).not.toBeNull();
   // The second pod polls (BEGIN + try-lock) while the first runs its deferred build.
   const waiter = acquireMigrationLock(postgres, databaseUrl, { lockName: "waiter-test", timeoutMs: 20_000, retryDelayMs: 100 });
-  await new Promise((resolve) => setTimeout(resolve, 500));
-
-  const builder = postgres(databaseUrl, { max: 1, onnotice: () => {}, connection: { statement_timeout: 15_000 } });
   try {
-    await builder.unsafe(`CREATE INDEX CONCURRENTLY IF NOT EXISTS waiter_probe_idx ON runs ((metadata->>'probe'))`);
-  } finally {
-    await builder.end({ timeout: 5 });
-  }
-  expect(await client`SELECT 1 FROM pg_indexes WHERE indexname = 'waiter_probe_idx'`).toHaveLength(1);
+    await new Promise((resolve) => setTimeout(resolve, 500));
 
-  await holder.unsafe("ROLLBACK");
-  await holder.end();
-  const acquired = await waiter;
-  expect(acquired).not.toBeNull();
-  await acquired.unsafe("ROLLBACK");
-  await acquired.end();
+    const builder = postgres(databaseUrl, { max: 1, onnotice: () => {}, connection: { statement_timeout: 15_000 } });
+    try {
+      await builder.unsafe(`CREATE INDEX CONCURRENTLY IF NOT EXISTS waiter_probe_idx ON runs ((metadata->>'probe'))`);
+    } finally {
+      await builder.end({ timeout: 5 });
+    }
+    expect(await client`SELECT 1 FROM pg_indexes WHERE indexname = 'waiter_probe_idx'`).toHaveLength(1);
+
+    await holder.unsafe("ROLLBACK");
+    await holder.end();
+    expect(await waiter).not.toBeNull();
+  } finally {
+    // A failure above must not leave the poller running: it would outlive this spec's database and
+    // reject (database does not exist) inside whichever spec runs next in the same process.
+    await holder.unsafe("ROLLBACK").catch(() => undefined);
+    await holder.end().catch(() => undefined);
+    const acquired = await waiter.catch(() => null);
+    await acquired?.unsafe("ROLLBACK").catch(() => undefined);
+    await acquired?.end().catch(() => undefined);
+  }
 }, 60_000);
 
 it("treats a build that exceeds the statement timeout as failed: warns, exits 0 and stays unrecorded", async () => {

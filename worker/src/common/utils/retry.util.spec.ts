@@ -241,6 +241,30 @@ describe('retry.util', () => {
       expect(fn).toHaveBeenCalledTimes(1);
     });
 
+    it('clears the timeout timer once the call settles', async () => {
+      jest.useFakeTimers();
+      try {
+        await expect(
+          executeWithRetry(jest.fn().mockResolvedValue('ok'), {
+            ...FAST_RETRY,
+            timeoutMs: 60_000,
+          }),
+        ).resolves.toBe('ok');
+        await expect(
+          executeWithRetry(
+            jest.fn().mockRejectedValue(new Error('bad request')),
+            {
+              ...FAST_RETRY,
+              timeoutMs: 60_000,
+            },
+          ),
+        ).rejects.toThrow('bad request');
+        expect(jest.getTimerCount()).toBe(0);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
     it('skips the timeout race when timeoutMs is zero', async () => {
       const fn = jest.fn().mockResolvedValue('ok');
 
