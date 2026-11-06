@@ -4,6 +4,16 @@ Notable changes to `@supercheck/cli`. The format follows [Keep a Changelog](http
 
 ## [Unreleased]
 
+### Changed
+
+- `ci init --github` caches `supercheck.state.json` in the workflow, and `SUPERCHECK_URL` is only needed for self-hosted instances.
+- Resource IDs are URL-encoded in API paths, `test execute` and `run get` show the right test count for single-test runs, and `pull` adds its backup pattern to an existing `.gitignore`.
+
+### Fixed
+
+- `npx` works on Windows, and a blank `SUPERCHECK_URL` is ignored instead of breaking the CLI.
+- A rejected `SUPERCHECK_TOKEN` no longer suggests browser login.
+
 ## [0.5.0] - 2026-11-05
 
 This release adds project, analytics, variable, token and run commands, and makes `deploy` safer and quieter.

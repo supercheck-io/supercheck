@@ -37,7 +37,7 @@ Returned text (test titles, error excerpts, incident summaries, investigation fi
 | `get_service` | services | `id` | One service plus its dependencies in both directions, owning teams, repository host and latest health |
 | `list_variables` | variables | `limit`, `cursor` | `key`, `type`, `isSecret`, `description`, `updatedAt`. Never values |
 | `list_incidents` | incidents | `limit`, `cursor`, `status`, `severity`, `assignee` | `number`, `title`, `severity`, `status`, `statusLabel`, `createdAt`, `resolvedAt`, `assigneeUserId`, `commanderUserId`, `acknowledgedAt`, `acknowledgedByUserId`, `mitigatedAt` |
-| `get_incident` | incidents | `id` | One incident with `statusLabel`, its root-cause summary, resolution summary, assignment and acknowledgement, and `alertCount` (linked alerts) |
+| `get_incident` | incidents | `id` | One incident with `statusLabel`, its root-cause summary, resolution summary, assignment and acknowledgement, and `alertCount` (the opening alert plus repeats while the incident stayed open) and `lastAlertAt` |
 | `list_investigations` | investigations | `limit`, `cursor`, `incidentId` | AI SRE investigation runs: `agentType`, `status`, start and end, `durationMs`, `confidenceScore` |
 | `get_investigation` | investigations | `id` | One investigation with its root-cause hypothesis and recommendations |
 | `prepare_local_authoring` | project | none | CLI commands for creating or editing tests, requirements and status pages (this server does not author tests) |

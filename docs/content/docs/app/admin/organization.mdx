@@ -80,6 +80,8 @@ Select **Invite Member**, enter the email address, choose a role, and send.
 
 ![Invite Member Dialog](/screenshots/org-admin-member-invite-dialog.png)
 
+Invitations are limited per user per hour, and if the limiter is unavailable they are refused with a retry message rather than sent. A pending invitation stops working when the person who sent it is removed, demoted from administrator or leaves, and platform administrator accounts cannot accept invitations.
+
 </Tab>
 <Tab value="Email Invitation">
 
@@ -152,6 +154,8 @@ Administrators configure AI SRE from the **Integrations** and **Private Agents**
 ## Audit log
 
 The **Audit** tab records who did what and when, for compliance and security review. Search entries, or filter by action and user.
+
+The table shows the newest 100 events first; select **Load older events** to fetch the next page. API clients page the same way with the `cursor` parameter of `GET /api/audit`.
 
 ![Audit Log](/screenshots/org-admin-audit-list.png)
 

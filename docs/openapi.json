@@ -167,7 +167,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Tenant-scoped incident list including statusLabel (the user-facing status: Triggered, Acknowledged, Investigating, Fixing, Monitoring or Resolved; status stays the stored value), assigneeUserId, acknowledgedAt, acknowledgedByUserId, commanderUserId, mitigatedAt and resolutionSummary"
+            "description": "Tenant-scoped incident list including statusLabel (the user-facing status: Triggered, Acknowledged, Investigating, Fixing, Monitoring or Resolved; status stays the stored value), assigneeUserId, acknowledgedAt, acknowledgedByUserId, commanderUserId, mitigatedAt resolutionSummary, alertCount (the opening alert plus repeats while the incident stayed open) and lastAlertAt (when the latest alert fired)"
           },
           "400": {
             "description": "Invalid filters"
@@ -201,7 +201,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Incident details including statusLabel (the user-facing status: Triggered, Acknowledged, Investigating, Fixing, Monitoring or Resolved; status stays the stored value), assigneeUserId, acknowledgedAt, acknowledgedByUserId, commanderUserId, mitigatedAt and resolutionSummary"
+            "description": "Incident details including statusLabel (the user-facing status: Triggered, Acknowledged, Investigating, Fixing, Monitoring or Resolved; status stays the stored value), assigneeUserId, acknowledgedAt, acknowledgedByUserId, commanderUserId, mitigatedAt resolutionSummary, alertCount (the opening alert plus repeats while the incident stayed open) and lastAlertAt (when the latest alert fired)"
           },
           "404": {
             "description": "Incident not found in the active project"
@@ -2485,7 +2485,7 @@
             "$ref": "#/components/responses/Unauthorized"
           },
           "400": {
-            "description": "Missing title or invalid priority",
+            "description": "Missing title, invalid priority, or a body that is not a JSON object",
             "content": {
               "application/json": {
                 "schema": {
@@ -3153,7 +3153,7 @@
             }
           },
           "400": {
-            "description": "Invalid monitor payload"
+            "description": "Invalid monitor payload, including notification providers that are not in this project. An enabled alert needs at least one notification channel unless it opens incidents (`incidentEnabled`) and either alerts are off or failure alerts are on."
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -3274,16 +3274,30 @@
             }
           },
           "400": {
-            "description": "Invalid monitor update payload"
+            "description": "Invalid monitor payload: name must be 1-255 characters, `alertConfig` must be an object, a notification provider is not in this project, or an enabled alert has no channel and does not open incidents"
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
           "403": {
-            "$ref": "#/components/responses/Forbidden"
+            "description": "Insufficient permission, or resuming the monitor would exceed the plan's monitor limit (`code: plan_limit`, with `limit` and `upgrade`)."
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "402": {
+            "description": "Resuming needs an active subscription (Supercheck Cloud only), for example after a trial has ended. Body: `{ error, code }`."
+          },
+          "503": {
+            "description": "Too many concurrent resume requests (retry after the `Retry-After` interval), or the check schedule could not be updated.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
           }
         }
       },
@@ -3357,16 +3371,30 @@
             }
           },
           "400": {
-            "description": "Invalid monitor update payload"
+            "description": "Invalid monitor payload: name must be 1-255 characters, `alertConfig` must be an object, a notification provider is not in this project, or an enabled alert has no channel and does not open incidents"
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
           "403": {
-            "$ref": "#/components/responses/Forbidden"
+            "description": "Insufficient permission, or resuming the monitor would exceed the plan's monitor limit (`code: plan_limit`, with `limit` and `upgrade`)."
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "402": {
+            "description": "Resuming needs an active subscription (Supercheck Cloud only), for example after a trial has ended. Body: `{ error, code }`."
+          },
+          "503": {
+            "description": "Too many concurrent resume requests (retry after the `Retry-After` interval), or the check schedule could not be updated.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
           }
         }
       }
@@ -3954,7 +3982,7 @@
       "post": {
         "operationId": "createNotificationProvider",
         "summary": "Create a notification provider",
-        "description": "Create a new notification provider (email, Slack, webhook, Telegram, Discord, or Teams).",
+        "description": "Create a new notification provider (email, Slack, webhook, Telegram, Discord, or Teams). The name is trimmed and must be 1-255 characters; `config` is limited to 20,000 characters when serialized.",
         "tags": [
           "Notifications"
         ],
@@ -4004,6 +4032,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Invalid JSON body, missing or too long name, oversized config, or invalid provider configuration"
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -4393,6 +4424,14 @@
               "type": "string"
             },
             "description": "Filter by action type"
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "Keyset cursor from `pagination.nextCursor` of the previous response. Stable while new entries arrive; when present, `page` is ignored and the response carries `totalCount`, `limit`, `hasNext` and `nextCursor` only. An invalid cursor returns 400.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -4405,6 +4444,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Invalid cursor"
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -5071,9 +5113,7 @@
                         "up",
                         "down",
                         "paused",
-                        "pending",
-                        "maintenance",
-                        "error"
+                        "pending"
                       ]
                     },
                     "updatedAt": {
@@ -5086,19 +5126,33 @@
             }
           },
           "400": {
-            "description": "Invalid status value"
+            "description": "Invalid status value or request body"
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
           "403": {
-            "$ref": "#/components/responses/Forbidden"
+            "description": "Insufficient permission, or resuming the monitor would exceed the plan's monitor limit (`code: plan_limit`, with `limit` and `upgrade`)."
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
           },
           "500": {
             "description": "Internal server error"
+          },
+          "402": {
+            "description": "Resuming needs an active subscription (Supercheck Cloud only), for example after a trial has ended. Body: `{ error, code }`."
+          },
+          "503": {
+            "description": "Too many concurrent resume requests (retry after the `Retry-After` interval), or the status was saved but the check schedule could not be updated (repeat the request to reconcile).",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
           }
         }
       }
@@ -6116,10 +6170,21 @@
             "$ref": "#/components/responses/Forbidden"
           },
           "429": {
-            "description": "Rate limit exceeded"
+            "description": "Rate limit exceeded; see the `Retry-After` header"
           },
           "500": {
             "description": "Internal server error"
+          },
+          "503": {
+            "description": "The invitation limiter is unavailable (Redis down), so invitations are refused rather than sent unthrottled. Retry after the `Retry-After` interval.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -8821,6 +8886,11 @@
                   },
                   "hasPrev": {
                     "type": "boolean"
+                  },
+                  "nextCursor": {
+                    "type": "string",
+                    "nullable": true,
+                    "description": "Pass as `cursor` to fetch the next page; null on the last page."
                   }
                 }
               },
@@ -8834,6 +8904,10 @@
                     }
                   }
                 }
+              },
+              "organizationId": {
+                "type": "string",
+                "description": "Organization the page belongs to; lets a client that loads several pages detect an organization switch."
               }
             }
           }

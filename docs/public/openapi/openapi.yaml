@@ -111,7 +111,9 @@ paths:
             status: Triggered, Acknowledged, Investigating, Fixing, Monitoring
             or Resolved; status stays the stored value), assigneeUserId,
             acknowledgedAt, acknowledgedByUserId, commanderUserId, mitigatedAt
-            and resolutionSummary"
+            resolutionSummary, alertCount (the opening alert plus repeats while
+            the incident stayed open) and lastAlertAt (when the latest alert
+            fired)"
         "400":
           description: Invalid filters
         "401":
@@ -137,7 +139,9 @@ paths:
             Triggered, Acknowledged, Investigating, Fixing, Monitoring or
             Resolved; status stays the stored value), assigneeUserId,
             acknowledgedAt, acknowledgedByUserId, commanderUserId, mitigatedAt
-            and resolutionSummary"
+            resolutionSummary, alertCount (the opening alert plus repeats while
+            the incident stayed open) and lastAlertAt (when the latest alert
+            fired)"
         "404":
           description: Incident not found in the active project
   /api/sre/incidents/{id}/timeline:
@@ -1685,7 +1689,7 @@ paths:
                   test:
                     $ref: "#/components/schemas/Test"
         "400":
-          description: Missing title or invalid priority
+          description: Missing title, invalid priority, or a body that is not a JSON object
           content:
             application/json:
               schema:
@@ -2143,7 +2147,10 @@ paths:
               schema:
                 $ref: "#/components/schemas/Monitor"
         "400":
-          description: Invalid monitor payload
+          description: Invalid monitor payload, including notification providers that are
+            not in this project. An enabled alert needs at least one
+            notification channel unless it opens incidents (`incidentEnabled`)
+            and either alerts are off or failure alerts are on.
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -2209,7 +2216,10 @@ paths:
     patch:
       operationId: updateMonitor
       summary: Update a monitor
-      description: "Partially update a monitor. Send only the fields to change. `config` and `alertConfig` are merged as a JSON merge patch: objects merge recursively, arrays replace, and an explicit `null` deletes a key. Resource IDs must be canonical UUIDs; malformed IDs return 404."
+      description: "Partially update a monitor. Send only the fields to change.
+        `config` and `alertConfig` are merged as a JSON merge patch: objects
+        merge recursively, arrays replace, and an explicit `null` deletes a key.
+        Resource IDs must be canonical UUIDs; malformed IDs return 404."
       tags:
         - Monitors
       requestBody:
@@ -2226,13 +2236,29 @@ paths:
               schema:
                 $ref: "#/components/schemas/Monitor"
         "400":
-          description: Invalid monitor update payload
+          description: "Invalid monitor payload: name must be 1-255 characters,
+            `alertConfig` must be an object, a notification provider is not in
+            this project, or an enabled alert has no channel and does not open
+            incidents"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "402":
+          description: "Resuming needs an active subscription (Supercheck Cloud only), for
+            example after a trial has ended. Body: `{ error, code }`."
         "403":
-          $ref: "#/components/responses/Forbidden"
+          description: "Insufficient permission, or resuming the monitor would exceed the
+            plan's monitor limit (`code: plan_limit`, with `limit` and
+            `upgrade`)."
         "404":
           $ref: "#/components/responses/NotFound"
+        "503":
+          description: Too many concurrent resume requests (retry after the `Retry-After`
+            interval), or the check schedule could not be updated.
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying.
+              schema:
+                type: integer
     delete:
       operationId: deleteMonitor
       summary: Delete a monitor
@@ -2264,7 +2290,11 @@ paths:
     put:
       operationId: replaceMonitorConfiguration
       summary: Update a monitor configuration
-      description: "Replace a monitor configuration. Omitted top-level fields are kept, but `config` is replaced as a whole, so send the complete object (use PATCH to change single keys). PUT is retained for CLI deploy and backward compatibility. Resource IDs must be canonical UUIDs; malformed IDs return 404."
+      description: Replace a monitor configuration. Omitted top-level fields are kept,
+        but `config` is replaced as a whole, so send the complete object (use
+        PATCH to change single keys). PUT is retained for CLI deploy and
+        backward compatibility. Resource IDs must be canonical UUIDs; malformed
+        IDs return 404.
       tags:
         - Monitors
       requestBody:
@@ -2281,13 +2311,29 @@ paths:
               schema:
                 $ref: "#/components/schemas/Monitor"
         "400":
-          description: Invalid monitor update payload
+          description: "Invalid monitor payload: name must be 1-255 characters,
+            `alertConfig` must be an object, a notification provider is not in
+            this project, or an enabled alert has no channel and does not open
+            incidents"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "402":
+          description: "Resuming needs an active subscription (Supercheck Cloud only), for
+            example after a trial has ended. Body: `{ error, code }`."
         "403":
-          $ref: "#/components/responses/Forbidden"
+          description: "Insufficient permission, or resuming the monitor would exceed the
+            plan's monitor limit (`code: plan_limit`, with `limit` and
+            `upgrade`)."
         "404":
           $ref: "#/components/responses/NotFound"
+        "503":
+          description: Too many concurrent resume requests (retry after the `Retry-After`
+            interval), or the check schedule could not be updated.
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying.
+              schema:
+                type: integer
   /api/monitors/{id}/results:
     parameters:
       - name: id
@@ -2683,7 +2729,8 @@ paths:
       operationId: createNotificationProvider
       summary: Create a notification provider
       description: Create a new notification provider (email, Slack, webhook,
-        Telegram, Discord, or Teams).
+        Telegram, Discord, or Teams). The name is trimmed and must be 1-255
+        characters; `config` is limited to 20,000 characters when serialized.
       tags:
         - Notifications
       requestBody:
@@ -2719,6 +2766,9 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/NotificationProvider"
+        "400":
+          description: Invalid JSON body, missing or too long name, oversized config, or
+            invalid provider configuration
         "401":
           $ref: "#/components/responses/Unauthorized"
   /api/notification-providers/{id}:
@@ -2976,6 +3026,14 @@ paths:
           schema:
             type: string
           description: Filter by action type
+        - name: cursor
+          in: query
+          description: Keyset cursor from `pagination.nextCursor` of the previous
+            response. Stable while new entries arrive; when present, `page` is
+            ignored and the response carries `totalCount`, `limit`, `hasNext`
+            and `nextCursor` only. An invalid cursor returns 400.
+          schema:
+            type: string
       responses:
         "200":
           description: Audit log entries
@@ -2983,6 +3041,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AuditResponse"
+        "400":
+          description: Invalid cursor
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -3452,21 +3512,33 @@ paths:
                       - down
                       - paused
                       - pending
-                      - maintenance
-                      - error
                   updatedAt:
                     type: string
                     format: date-time
         "400":
-          description: Invalid status value
+          description: Invalid status value or request body
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "402":
+          description: "Resuming needs an active subscription (Supercheck Cloud only), for
+            example after a trial has ended. Body: `{ error, code }`."
         "403":
-          $ref: "#/components/responses/Forbidden"
+          description: "Insufficient permission, or resuming the monitor would exceed the
+            plan's monitor limit (`code: plan_limit`, with `limit` and
+            `upgrade`)."
         "404":
           $ref: "#/components/responses/NotFound"
         "500":
           description: Internal server error
+        "503":
+          description: Too many concurrent resume requests (retry after the `Retry-After`
+            interval), or the status was saved but the check schedule could not
+            be updated (repeat the request to reconcile).
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying.
+              schema:
+                type: integer
   /api/monitors/{id}/notifications:
     parameters:
       - name: id
@@ -4158,9 +4230,18 @@ paths:
         "403":
           $ref: "#/components/responses/Forbidden"
         "429":
-          description: Rate limit exceeded
+          description: Rate limit exceeded; see the `Retry-After` header
         "500":
           description: Internal server error
+        "503":
+          description: The invitation limiter is unavailable (Redis down), so invitations
+            are refused rather than sent unthrottled. Retry after the
+            `Retry-After` interval.
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying.
+              schema:
+                type: integer
       security:
         - sessionCookie: []
   /api/organizations/members/invite/{invitationId}:
@@ -5789,7 +5870,8 @@ components:
         testId:
           type: string
           nullable: true
-          description: Test ID of a single-test run (`test execute`, playground); null for job runs
+          description: Test ID of a single-test run (`test execute`, playground); null for
+            job runs
         location:
           type: string
           nullable: true
@@ -6030,6 +6112,10 @@ components:
                   type: boolean
                 hasPrev:
                   type: boolean
+                nextCursor:
+                  type: string
+                  nullable: true
+                  description: Pass as `cursor` to fetch the next page; null on the last page.
             filters:
               type: object
               properties:
@@ -6037,6 +6123,10 @@ components:
                   type: array
                   items:
                     type: string
+            organizationId:
+              type: string
+              description: Organization the page belongs to; lets a client that loads several
+                pages detect an organization switch.
     Test:
       type: object
       properties:
@@ -7109,8 +7199,8 @@ components:
           allOf:
             - $ref: "#/components/schemas/MonitorAlertConfig"
           description: Merged into the stored alert settings. A field sent as null is
-            reset to its default (it is not left unset), and notificationProviders
-            null clears the channel list.
+            reset to its default (it is not left unset), and
+            notificationProviders null clears the channel list.
     ValidationScriptRequest:
       type: object
       properties:
