@@ -69,7 +69,7 @@ function defaultPeriodEnd(now: Date) {
  */
 export async function withSreTriageAdmission<T>(
   organizationId: string,
-  createRun: (database: Pick<typeof db, "insert">, billingTier: "paid" | "trial") => Promise<T>,
+  createRun: (database: Pick<typeof db, "insert" | "transaction">, billingTier: "paid" | "trial") => Promise<T>,
 ): Promise<T> {
   if (!isPolarEnabled()) return createRun(db, "paid");
   if (await subscriptionService.hasActiveSubscription(organizationId)) return createRun(db, "paid");
@@ -231,7 +231,7 @@ export async function consumeSreInvestigationCredit(input: {
  * Reservations carry across renewal and settle in the ledger-write billing period.
  */
 export async function withSreInvestigationAdmission<T>(organizationId: string,
-  createRun: (database: Pick<typeof db, "insert">, billingTier: "paid" | "trial") => Promise<T>): Promise<T> {
+  createRun: (database: Pick<typeof db, "insert" | "transaction">, billingTier: "paid" | "trial") => Promise<T>): Promise<T> {
   if (!isPolarEnabled()) return createRun(db, "paid");
   await assertCanStartSreInvestigation(organizationId);
   return db.transaction(async (tx) => {

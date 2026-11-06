@@ -1,0 +1,7 @@
+-- Forward-only. Apply before deploying the app; older app versions ignore the new columns and the index.
+-- Existing runs are all "manual", so the partial unique index cannot conflict with them.
+ALTER TABLE "sre_incidents" ADD COLUMN IF NOT EXISTS "reopened_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "sre_investigation_runs" ADD COLUMN IF NOT EXISTS "origin" varchar(8) DEFAULT 'manual' NOT NULL;--> statement-breakpoint
+ALTER TABLE "sre_investigation_runs" DROP CONSTRAINT IF EXISTS "sre_investigation_runs_origin_check";--> statement-breakpoint
+ALTER TABLE "sre_investigation_runs" ADD CONSTRAINT "sre_investigation_runs_origin_check" CHECK ("sre_investigation_runs"."origin" IN ('auto', 'manual'));--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "sre_investigation_runs_auto_incident_unique" ON "sre_investigation_runs" USING btree ("organization_id","project_id","incident_id","agent_type") WHERE "sre_investigation_runs"."origin" = 'auto' AND "sre_investigation_runs"."status" IN ('running', 'completed') AND "sre_investigation_runs"."incident_id" IS NOT NULL;

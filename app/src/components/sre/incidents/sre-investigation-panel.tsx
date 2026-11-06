@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useTransition } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { useIsMutating, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2, SearchCheck, SlidersHorizontal, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 
@@ -55,7 +55,13 @@ export function SreInvestigationPanel({
   const { projectId } = useProjectContext();
   const [useLiveConnectors, setUseLiveConnectors] = useState(false);
   const liveConnectorsEnabled = useLiveConnectors && hasPrimaryService && canUseLiveConnectors;
-  const [isInvestigating, startInvestigationTransition] = useTransition();
+  // In the query client, not component state: a tab switch remounts this panel while the run is still going.
+  const investigationMutationKey = ["sre-investigate", projectId, incidentId] as const;
+  const isInvestigating = useIsMutating({ mutationKey: investigationMutationKey }) > 0;
+  const { mutate: startInvestigation } = useMutation({
+    mutationKey: investigationMutationKey,
+    mutationFn: async (job: () => Promise<void>) => job(),
+  });
   const investigationRunning =
     isInvestigating || latestInvestigation?.status === "running";
   const [investigationError, setInvestigationError] = useState<string | null>(
@@ -66,7 +72,7 @@ export function SreInvestigationPanel({
     if (!canInvestigate || !investigationEnabled || investigationRunning)
       return;
     setInvestigationError(null);
-    startInvestigationTransition(async () => {
+    startInvestigation(async () => {
       try {
         const response = await fetch("/api/sre/investigate", {
           method: "POST",

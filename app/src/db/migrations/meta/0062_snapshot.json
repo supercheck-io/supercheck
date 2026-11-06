@@ -1,6 +1,6 @@
 {
-  "id": "dc9a1f25-8f83-4600-bc89-a4edd499323f",
-  "prevId": "b3239586-2bd8-4bd4-a144-18d10e83d8e3",
+  "id": "6ccf08c7-0e90-41a1-9bfd-38311a4390ba",
+  "prevId": "9e213843-1c6a-4298-9a78-293020facac2",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -14047,6 +14047,13 @@
           "primaryKey": false,
           "notNull": false
         },
+        "waiters": {
+          "name": "waiters",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
         "started_at": {
           "name": "started_at",
           "type": "timestamp with time zone",
@@ -14191,6 +14198,27 @@
           "columns": [
             {
               "expression": "connector_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "private_agent_jobs_created_at_idx": {
+          "name": "private_agent_jobs_created_at_idx",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -17888,6 +17916,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "reopened_at": {
+          "name": "reopened_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -19861,6 +19895,13 @@
           "notNull": true,
           "default": "'paid'"
         },
+        "origin": {
+          "name": "origin",
+          "type": "varchar(8)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'manual'"
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -19957,6 +19998,40 @@
           ],
           "isUnique": true,
           "where": "\"sre_investigation_runs\".\"status\" = 'running' AND \"sre_investigation_runs\".\"incident_id\" IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "sre_investigation_runs_auto_incident_unique": {
+          "name": "sre_investigation_runs_auto_incident_unique",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "incident_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "agent_type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"sre_investigation_runs\".\"origin\" = 'auto' AND \"sre_investigation_runs\".\"status\" IN ('running', 'completed') AND \"sre_investigation_runs\".\"incident_id\" IS NOT NULL",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -20124,6 +20199,10 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
+        "sre_investigation_runs_origin_check": {
+          "name": "sre_investigation_runs_origin_check",
+          "value": "\"sre_investigation_runs\".\"origin\" IN ('auto', 'manual')"
+        },
         "sre_investigation_runs_billing_tier_check": {
           "name": "sre_investigation_runs_billing_tier_check",
           "value": "\"sre_investigation_runs\".\"billing_tier\" IN ('paid', 'trial')"

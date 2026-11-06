@@ -19,7 +19,7 @@ export function BreadcrumbDisplay() {
 
   if (!breadcrumbs || breadcrumbs.length === 0) {
     return (
-      <div className="text-sm text-muted-foreground">
+      <div className="text-sm text-muted-foreground" role="img" aria-label="Home">
         <Home className="h-4 w-4" />
       </div>
     );
@@ -49,6 +49,7 @@ export function BreadcrumbDisplay() {
                   <BreadcrumbPage
                     className={cn(isHome ? "flex" : "min-w-0 truncate")}
                     title={isHome ? undefined : item.label}
+                    aria-label={isHome ? "Home" : undefined}
                   >
                     {label}
                   </BreadcrumbPage>

@@ -120,11 +120,12 @@ export function useSreServiceDetail(serviceId: string) {
   });
 }
 
-export function useSreCopilotHistories(options?: { enabled?: boolean }) {
+export function useSreCopilotHistories(options?: { enabled?: boolean; incidentId?: string | null }) {
   const { projectId } = useProjectContext();
+  const incidentId = options?.incidentId ?? null;
   return useQuery({
-    queryKey: getSreCopilotHistoriesQueryKey(projectId),
-    queryFn: getSreCopilotChatHistories,
+    queryKey: getSreCopilotHistoriesQueryKey(projectId, incidentId),
+    queryFn: () => getSreCopilotChatHistories(incidentId),
     enabled: Boolean(projectId) && options?.enabled !== false,
     staleTime: 30_000,
     meta: MEMORY_ONLY_QUERY,

@@ -66,7 +66,7 @@ it("drops an INVALID index left by an interrupted build and rebuilds it", async 
   await migrate(); // self-contained: do not rely on an earlier test having migrated this database
   // Simulate the leftover of a failed CONCURRENTLY build and an unrecorded migration.
   await client.unsafe(`UPDATE pg_index SET indisvalid = false WHERE indexrelid = '${INDEX}'::regclass`);
-  // The 0054 record itself, not the newest one: later deferred migrations are recorded after it.
+  // By hash, not max(id): later no-transaction migrations are recorded after 0054.
   const hash0054 = createHash("md5")
     .update(readFileSync(path.join(APP_ROOT, "src/db/migrations/0054_runs_test_id_index.sql"), "utf8"))
     .digest("hex");
