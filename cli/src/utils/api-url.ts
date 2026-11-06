@@ -23,9 +23,12 @@ export function sanitizeApiUrl(raw: string): string | null {
  * tabs/newlines, any of which would send the request to another resource. Reject them before parsing.
  */
 export function assertSafeApiPath(path: string): void {
-  const pathname = path.split(/[?#]/, 1)[0]
-  const unsafeChar = [...path].some((char) => char === '\\' || char.charCodeAt(0) < 0x20 || char.charCodeAt(0) === 0x7f)
-  if (unsafeChar || pathname.split('/').some((segment) => /^(\.|%2e){1,2}$/i.test(segment))) {
+  // A `?` only starts the query; a `#` never belongs in an API path (callers pass query values through `params`).
+  const pathname = path.split('?', 1)[0]
+  const unsafeChar = [...path].some((char) => char === '\\' || char === '#' || char.charCodeAt(0) < 0x20 || char.charCodeAt(0) === 0x7f)
+  // Encoded separators and dots are decoded by some servers/proxies, so `..%2ftests` would escape just like `../tests`.
+  const encodedTraversal = /%(?:2f|5c|2e)/i.test(pathname)
+  if (unsafeChar || encodedTraversal || pathname.split('/').some((segment) => /^\.{1,2}$/.test(segment))) {
     throw new CLIError(`Invalid resource path: ${JSON.stringify(pathname)}`, ExitCode.ConfigError)
   }
 }

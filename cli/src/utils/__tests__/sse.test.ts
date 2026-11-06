@@ -48,7 +48,7 @@ describe('postSse', () => {
     expect(error.responseBody).toBeUndefined()
   })
 
-  it.each(['/api/runs/..\\tests/stream', '/api/runs/.\t./x'])('rejects unsafe stream path %j before any request', async (path) => {
+  it.each(['/api/runs/..\\tests/stream', '/api/runs/.\t./x', '/api/runs/x#frag', '/api/runs/..%2ftests/x', '/api/runs/%2e%2e/stream'])('rejects unsafe stream path %j before any request', async (path) => {
     const fetchMock = jest.spyOn(globalThis, 'fetch')
     await expect(postSse(path, {}, () => undefined)).rejects.toThrow('Invalid resource path')
     expect(fetchMock).not.toHaveBeenCalled()
