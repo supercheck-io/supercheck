@@ -24,9 +24,10 @@ export type { UpdateIncidentStatusData } from "@/lib/validations/incident-status
 
 export async function updateIncidentStatus(
   data: UpdateIncidentStatusData,
-  // Set by callers that decided from a possibly stale read (e.g. SRE "post to status page"):
-  // a public incident resolved in the meantime must not be reopened by a late post.
-  options?: { skipIfResolved?: boolean },
+  // Set by callers that decided from a possibly stale read (e.g. SRE "post to status page"): the update only
+  // applies while the incident still has this status, so a late post cannot reopen a resolved incident or
+  // overwrite a newer status.
+  options?: { expectedStatus?: string },
 ) {
   try {
     // Get current project context (includes auth verification)
@@ -91,13 +92,13 @@ export async function updateIncidentStatus(
     }
 
     const result = await db.transaction(async (tx) => {
-      if (options?.skipIfResolved === true) {
+      if (options?.expectedStatus) {
         const [current] = await tx
           .select({ status: incidents.status })
           .from(incidents)
           .where(eq(incidents.id, validatedData.incidentId))
           .for("update");
-        if (current?.status === "resolved") return null;
+        if (current?.status !== options.expectedStatus) return null;
       }
       // Lock the component before the incident, matching reconciliation order.
       // A manual resolve of an automatically detected incident must not be
@@ -206,7 +207,7 @@ export async function updateIncidentStatus(
     });
 
     if (!result) {
-      return { success: false, message: "The public incident was already resolved" };
+      return { success: false, message: "The public incident changed since it was read; refresh and try again" };
     }
 
     // Log the audit event

@@ -108,7 +108,7 @@ describe("subscribeToStatusPage", () => {
   ])("resubscribing an existing %s endpoint", (mode, endpoint) => {
     let set: jest.Mock;
     beforeEach(() => {
-      set = jest.fn().mockReturnValue({ where: jest.fn().mockResolvedValue(undefined) });
+      set = jest.fn().mockReturnValue({ where: jest.fn().mockReturnValue(Object.assign(Promise.resolve(undefined), { returning: async () => [{ id: "x" }] })) });
       (mockDb.update as jest.Mock).mockReturnValue({ set });
     });
     const subscribe = () =>
@@ -170,13 +170,15 @@ describe("public subscribe hardening", () => {
       id: "00000000-0000-4000-8000-000000000777", verifiedAt: null, purgeAt: null, quarantinedAt: null, ...o,
     });
   let set: jest.Mock;
+  let claimedRows: unknown[];
   beforeEach(() => {
     jest.clearAllMocks();
     (mockDb.query.statusPages.findFirst as unknown as jest.Mock).mockResolvedValue({
       id: pageId, status: "published", allowPageSubscribers: true, allowIncidentSubscribers: false,
       allowEmailSubscribers: true, allowWebhookSubscribers: true, allowSlackSubscribers: true, name: "P", subdomain: "p",
     });
-    set = jest.fn().mockReturnValue({ where: jest.fn().mockResolvedValue(undefined) });
+    claimedRows = [{ id: "x" }];
+    set = jest.fn().mockReturnValue({ where: jest.fn().mockReturnValue(Object.assign(Promise.resolve(undefined), { returning: async () => claimedRows })) });
     (mockDb.update as jest.Mock).mockReturnValue({ set });
   });
 
@@ -185,9 +187,10 @@ describe("public subscribe hardening", () => {
 
   it("does not rotate the token of a pending email subscriber again within the cooldown", async () => {
     row({ mode: "email", email: "a@example.com", updatedAt: new Date() });
+    claimedRows = []; // the atomic UPDATE ... WHERE updated_at < cutoff matched nothing
     const result = await email();
     expect(result).toMatchObject({ success: true, requiresVerification: true });
-    expect(set).not.toHaveBeenCalled();
+    expect(result.message).toMatch(/sent recently/);
   });
 
   it("resends the verification email once the cooldown has passed", async () => {
@@ -208,12 +211,42 @@ describe("public subscribe hardening", () => {
 
   it("does not rotate the secret of a webhook row submitted within the cooldown", async () => {
     row({ mode: "webhook", endpoint: "https://example.com/webhooks/status", updatedAt: new Date() });
+    claimedRows = [];
     const result = await subscribeToStatusPage({
       statusPageId: pageId, subscriptionMode: "webhook", endpoint: "https://example.com/webhooks/status",
       subscribeToAllComponents: true, subscribeToAllIncidents: false,
     });
     expect(result.success).toBe(false);
-    expect(set).not.toHaveBeenCalled();
+    expect(result.webhookSecret).toBeUndefined();
+  });
+
+  it.each([
+    ["quarantined", { quarantinedAt: new Date(), verifiedAt: new Date() }],
+    ["unsubscribed (grace period)", { purgeAt: new Date(Date.now() + 86400000), verifiedAt: new Date() }],
+  ])("keeps the stored secret and returns none for a %s webhook row", async (_n, over) => {
+    row({ mode: "webhook", endpoint: "https://example.com/webhooks/status", ...over });
+    const result = await subscribeToStatusPage({
+      statusPageId: pageId, subscriptionMode: "webhook", endpoint: "https://example.com/webhooks/status",
+      subscribeToAllComponents: true, subscribeToAllIncidents: false,
+    });
+    expect(result.success).toBe(true);
+    expect(result.webhookSecret).toBeUndefined();
+    const written = set.mock.calls[0][0];
+    expect(written).not.toHaveProperty("webhookSecretEncrypted");
+    expect(written).toMatchObject({ verifiedAt: null, purgeAt: null, quarantinedAt: null });
+  });
+
+  it("looks webhook rows up by mode, so a Slack row with the same URL is never touched", async () => {
+    row({ mode: "slack", endpoint: "https://hooks.slack.com/services/T/B/x" });
+    await subscribeToStatusPage({
+      statusPageId: pageId, subscriptionMode: "webhook", endpoint: "https://hooks.slack.com/services/T/B/x",
+      subscribeToAllComponents: true, subscribeToAllIncidents: false,
+    });
+    const lookup = (mockDb.query.statusPageSubscribers.findFirst as unknown as jest.Mock).mock.calls[0][0];
+    const seen: unknown[] = [];
+    const eqFn = (col: unknown, val: unknown) => (seen.push(val), {});
+    lookup.where({ statusPageId: 1, endpoint: 2, mode: 3 }, { and: () => ({}), eq: eqFn });
+    expect(seen).toContain("webhook");
   });
 
   it.each(["https://evil.slack.com/services/T/B/x", "https://hooks.slack.com.evil.com/x", "http://hooks.slack.com/services/T/B/x"])(

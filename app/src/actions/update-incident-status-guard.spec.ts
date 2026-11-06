@@ -52,14 +52,20 @@ beforeEach(() => {
 
 it("does not reopen an incident that resolved since the caller read it", async () => {
   lockedStatus = "resolved";
-  const result = await updateIncidentStatus(base, { skipIfResolved: true });
+  const result = await updateIncidentStatus(base, { expectedStatus: "investigating" });
   expect(result).toMatchObject({ success: false });
+  expect(sets).toHaveLength(0);
+});
+
+it("does not overwrite a newer non-resolved status with a stale one", async () => {
+  lockedStatus = "monitoring";
+  expect(await updateIncidentStatus(base, { expectedStatus: "investigating" })).toMatchObject({ success: false });
   expect(sets).toHaveLength(0);
 });
 
 it("posts normally when the incident is still open", async () => {
   lockedStatus = "investigating";
-  expect((await updateIncidentStatus(base, { skipIfResolved: true })).success).toBe(true);
+  expect((await updateIncidentStatus(base, { expectedStatus: "investigating" })).success).toBe(true);
 });
 
 it("keeps manual reopening available when the guard is not requested", async () => {
