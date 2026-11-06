@@ -738,18 +738,20 @@ export async function findOpenIncidentForSource(tx: Executor, source: SourceRef)
  * the count moved.
  */
 export async function recordRepeatAlert(tx: Executor, incidentId: string, firedAt: Date) {
+  // Raw sql fragments are not type-mapped: pass an explicit timestamptz, never a Date.
+  const fired = sql`${firedAt.toISOString()}::timestamptz`;
   const rows = await tx
     .update(sreIncidents)
     // GREATEST keeps last_alert_at monotonic when alerts are processed out of order.
     .set({
       alertCount: sql`${sreIncidents.alertCount} + 1`,
-      lastAlertAt: sql`greatest(coalesce(${sreIncidents.lastAlertAt}, ${firedAt}), ${firedAt})`,
+      lastAlertAt: sql`greatest(coalesce(${sreIncidents.lastAlertAt}, ${fired}), ${fired})`,
     })
     .where(
       and(
         eq(sreIncidents.id, incidentId),
         ne(sreIncidents.status, "resolved"),
-        sql`${sreIncidents.lastAlertAt} is distinct from ${firedAt}`,
+        sql`${sreIncidents.lastAlertAt} is distinct from ${fired}`,
       ),
     )
     .returning({ id: sreIncidents.id });
