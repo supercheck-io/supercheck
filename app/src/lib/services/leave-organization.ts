@@ -5,6 +5,7 @@ import { requireUserAuthContext } from "@/lib/auth-context";
 import { clearRequestCache } from "@/lib/session-cache";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { disableTriggerKeysForMember } from "@/lib/security/disable-trigger-keys";
+import { cancelPendingInvitesByInviter } from "@/lib/security/cancel-pending-invites";
 
 export class LeaveOrganizationError extends Error {
   constructor(message: string, readonly status: 400 | 403 | 404 | 409) {
@@ -49,6 +50,7 @@ export async function leaveOrganization(expectedOrganizationId: string) {
         ...(projectIds.length ? [inArray(session.activeProjectId, projectIds)] : []),
       )));
     await disableTriggerKeysForMember(tx, userId, organizationId);
+    await cancelPendingInvitesByInviter(tx, userId, organizationId);
     await logAuditEvent({
       userId, organizationId, action: "member_left", resource: "member", resourceId: userId, success: true,
     }, tx, { strict: true });

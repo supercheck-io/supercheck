@@ -9,6 +9,7 @@ jest.mock("@/lib/ai/ai-streaming-service", () => ({ AIStreamingService: {
   generateStreamingResponse: jest.fn(),
 } }));
 jest.mock("@/lib/ai/ai-prompts", () => ({ AIPromptBuilder: { buildJobAnalyzePrompt: jest.fn() } }));
+jest.mock("@/lib/rbac/middleware", () => ({ checkPermissionWithContext: jest.fn(() => true) }));
 jest.mock("@/lib/session", () => ({ getActiveOrganization: jest.fn() }));
 jest.mock("@/lib/auth-context", () => ({
   requireAuthContext: jest.fn(),
@@ -84,6 +85,22 @@ describe("job AI analysis tenant boundary", () => {
     }));
     expect(response.status).toBe(status);
     expect((await response.json()).reason).toBe(reason);
+  });
+});
+
+describe("job AI analysis permission", () => {
+  it("needs job update permission, not just view, before spending credits", async () => {
+    const { checkPermissionWithContext } = jest.requireMock("@/lib/rbac/middleware") as { checkPermissionWithContext: jest.Mock };
+    AuthService.validateUserAccess.mockResolvedValue({ user: { id: "user-1", organizationId: "org-1" }, tier: "free" });
+    requireAuthContext.mockResolvedValue({ organizationId: "org-1", project: { id: "project-1" } });
+    checkPermissionWithContext.mockReturnValueOnce(false);
+    const response = await POST(new NextRequest("http://localhost/api/ai/analyze-job", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ runId: "00000000-0000-4000-8000-000000000001" }),
+    }));
+    expect(response.status).toBe(403);
+    expect(checkPermissionWithContext).toHaveBeenCalledWith("job", "update", expect.anything());
+    expect(AuthService.checkRateLimit).not.toHaveBeenCalled();
   });
 });
 

@@ -9,6 +9,7 @@ jest.mock("@/lib/ai/ai-streaming-service", () => ({ AIStreamingService: {
   generateStreamingResponse: jest.fn(),
 } }));
 jest.mock("@/lib/ai/ai-prompts", () => ({ AIPromptBuilder: { buildK6AnalyzePrompt: jest.fn() } }));
+jest.mock("@/lib/rbac/middleware", () => ({ checkPermissionWithContext: jest.fn(() => true) }));
 jest.mock("@/lib/session", () => ({ getActiveOrganization: jest.fn() }));
 jest.mock("@/lib/auth-context", () => ({
   requireAuthContext: jest.fn(),
@@ -63,6 +64,23 @@ describe("k6 AI analysis tenant boundary", () => {
     expect(response.status).toBe(404);
     expect(getS3FileContent).not.toHaveBeenCalled();
     expect(AIStreamingService.generateStreamingResponse).not.toHaveBeenCalled();
+  });
+});
+
+describe("k6 AI analysis permission", () => {
+  it("needs test update permission, not just view, before spending credits", async () => {
+    const { checkPermissionWithContext } = jest.requireMock("@/lib/rbac/middleware") as { checkPermissionWithContext: jest.Mock };
+    AuthService.validateUserAccess.mockResolvedValue({ user: { id: "user-1", organizationId: "org-1" }, tier: "free" });
+    requireAuthContext.mockResolvedValue({ organizationId: "org-1", project: { id: "project-1" } });
+    checkPermissionWithContext.mockReturnValueOnce(false);
+    const id = "00000000-0000-4000-8000-000000000001";
+    const response = await POST(new NextRequest("http://localhost/api/ai/analyze-k6", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ baselineRun: { runId: id, metrics: {} }, compareRun: { runId: id, metrics: {} } }),
+    }));
+    expect(response.status).toBe(403);
+    expect(checkPermissionWithContext).toHaveBeenCalledWith("test", "update", expect.anything());
+    expect(AuthService.checkRateLimit).not.toHaveBeenCalled();
   });
 });
 

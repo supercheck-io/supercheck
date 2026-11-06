@@ -248,7 +248,7 @@ export const destroyCommand = new Command('destroy')
       for (const resource of sorted) {
         try {
           const endpoint = getApiEndpoint(resource.type)
-          await client.delete(`${endpoint}/${resource.id}`)
+          await client.delete(`${endpoint}/${encodeURIComponent(resource.id)}`)
           logger.info(pc.red(`  - ${resource.type}/${resource.name} ✓`))
           results.push({ ...resource, deleted: true })
           succeeded++

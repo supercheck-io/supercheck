@@ -125,6 +125,36 @@ describe("test-status event filtering", () => {
     expect(mockRunsFindFirst).toHaveBeenCalledTimes(1);
   });
 
+  it.each(["failed", "error"])(
+    "returns a %s run snapshot when the run ended before any report row",
+    async (status) => {
+      mockReportsFindFirst
+        .mockResolvedValueOnce(undefined)
+        .mockResolvedValueOnce(undefined);
+      mockRunsFindFirst.mockResolvedValue({
+        id: "run-4",
+        status,
+        errorDetails: "Cancellation requested by user",
+      });
+
+      await expect(
+        fetchInitialStatusReport("test-1", "project-1")
+      ).resolves.toEqual({ status, errorDetails: "Cancellation requested by user" });
+    }
+  );
+
+  it.each(["queued", "running"])(
+    "keeps waiting for a %s run without a report",
+    async (status) => {
+      mockReportsFindFirst
+        .mockResolvedValueOnce(undefined)
+        .mockResolvedValueOnce(undefined);
+      mockRunsFindFirst.mockResolvedValue({ id: "run-5", status, errorDetails: null });
+
+      await expect(fetchInitialStatusReport("test-1", "project-1")).resolves.toBeNull();
+    }
+  );
+
   it("returns a blocked run snapshot when no report will be generated", async () => {
     mockReportsFindFirst
       .mockResolvedValueOnce(undefined)
@@ -233,7 +263,9 @@ describe("test-status stream lifecycle", () => {
       mockReportsFindFirst.mockResolvedValue({ status: "passed", reportPath: "p" });
       const { reader, unsubscribe } = await open();
       await reader.read(); // connected
-      expect(decoder.decode((await reader.read()).value)).toContain('"derivedStatus":"passed"');
+      const terminal = decoder.decode((await reader.read()).value);
+      expect(terminal).toContain('"derivedStatus":"passed"');
+      expect(terminal).not.toContain("reportPath"); // the storage key is not part of the stream
       expect((await reader.read()).done).toBe(true);
       expect(unsubscribe).toHaveBeenCalledTimes(1);
 

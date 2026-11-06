@@ -196,6 +196,8 @@ x-common-env: &common-env # Database Configuration - External PostgreSQL
   SMTP_PASSWORD: ${SMTP_PASSWORD}
   SMTP_SECURE: ${SMTP_SECURE:-false}
   SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL}
+  SMTP_FROM_NAME: ${SMTP_FROM_NAME:-}
+  SMTP_REPLY_TO: ${SMTP_REPLY_TO:-}
   SMTP_BLOCKED_RECIPIENT_DOMAINS: ${SMTP_BLOCKED_RECIPIENT_DOMAINS:-}
 
   # ==========================================================================
@@ -518,6 +520,8 @@ services:
       SMTP_PASSWORD: ${SMTP_PASSWORD}
       SMTP_SECURE: ${SMTP_SECURE:-false}
       SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-}
+      SMTP_REPLY_TO: ${SMTP_REPLY_TO:-}
       SMTP_BLOCKED_RECIPIENT_DOMAINS: ${SMTP_BLOCKED_RECIPIENT_DOMAINS:-}
       SELF_HOSTED: ${SELF_HOSTED:-true}
       NODE_ENV: ${NODE_ENV:-production}

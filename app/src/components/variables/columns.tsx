@@ -1,6 +1,6 @@
 "use client";
 
-import { type ColumnDef } from "@tanstack/react-table";
+import { type ColumnDef, type Row, type Table } from "@tanstack/react-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { 
@@ -18,7 +18,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { 
   MoreHorizontal, 
@@ -31,7 +30,7 @@ import {
 } from "lucide-react";
 import { Variable } from "./schema";
 import { DataTableColumnHeader } from "@/components/ui/data-table-column-header";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { VariableDialog } from "./variable-dialog";
 import { CopyButton } from "@/components/ui/copy-button";
@@ -114,6 +113,176 @@ function DescriptionWithPopover({ description }: { description: string | null })
         </p>
       </PopoverContent>
     </Popover>
+  );
+}
+
+function VariableActionsCell({ row, table }: { row: Row<Variable>; table: Table<Variable> }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const variable = row.original;
+  const meta = table.options.meta as {
+    canManage?: boolean;
+    canCreateEdit?: boolean;
+    canDelete?: boolean;
+    canViewSecrets?: boolean;
+    onDeleteVariable?: (id: string) => void;
+    onEditVariable?: (variable: Variable) => void;
+    secretVisibility?: { [key: string]: boolean };
+    decryptedValues?: { [key: string]: string };
+    onToggleSecretVisibility?: (id: string) => void;
+    projectId?: string;
+    onSuccess?: () => void;
+    editDialogState?: { [key: string]: boolean };
+    setEditDialogState?: (id: string, open: boolean) => void;
+  };
+  const canManage = meta?.canManage || false;
+  const canCreateEdit = meta?.canCreateEdit || false;
+  const canDelete = meta?.canDelete || false;
+  const canViewSecrets = meta?.canViewSecrets || false;
+  const variableType = (variable.type as string) || "variable";
+  const isSecretBool = variableType === "secret";
+  const isFileType = variableType === "file";
+  const editDialogOpen = meta?.editDialogState?.[variable.id] || false;
+  const decryptedValue = canViewSecrets
+    ? meta?.decryptedValues?.[variable.id]
+    : undefined;
+
+  // Always show actions dropdown, but disable items based on permissions
+
+  const handleDelete = async () => {
+    try {
+      // Use project ID from meta (passed from parent component)
+      const projectId = meta?.projectId;
+
+      if (!projectId) {
+        toast.error("Project context not available. Please refresh the page.");
+        return;
+      }
+
+      const response = await fetch(`/api/projects/${projectId}/variables/${variable.id}`, {
+        method: 'DELETE',
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        toast.success("Variable deleted successfully");
+        setDeleteOpen(false);
+        meta?.onDeleteVariable?.(variable.id);
+      } else {
+        toast.error(data.error || "Failed to delete variable");
+      }
+    } catch (error) {
+      console.error("Error deleting variable:", error);
+      toast.error("Failed to delete variable. Please try again.");
+    }
+  };
+
+  return (
+    <>
+      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+        <DropdownMenuTrigger asChild>
+          <Button ref={triggerRef} variant="ghost" className="h-8 w-8 p-0">
+            <span className="sr-only">Open menu</span>
+            <MoreHorizontal className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          {isSecretBool && (
+            <DropdownMenuItem
+              onClick={canViewSecrets ? () => meta?.onToggleSecretVisibility?.(variable.id) : undefined}
+              disabled={!canViewSecrets}
+              className={!canViewSecrets ? "opacity-50 cursor-not-allowed" : ""}
+            >
+              {meta?.secretVisibility?.[variable.id] ? (
+                <>
+                  <EyeOff className="mr-2 h-4 w-4" />
+                  Hide Value
+                </>
+              ) : (
+                <>
+                  <Eye className="mr-2 h-4 w-4" />
+                  Show Value
+                </>
+              )}
+            </DropdownMenuItem>
+          )}
+          {isFileType && meta?.projectId && (
+            <DropdownMenuItem
+              onClick={() => {
+                window.open(`/api/projects/${meta.projectId}/variables/${variable.id}/download`, '_blank');
+              }}
+            >
+              <Download className="mr-2 h-4 w-4" />
+              Download File
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuItem
+            onClick={(canManage || canCreateEdit) ? () => meta?.setEditDialogState?.(variable.id, true) : undefined}
+            disabled={!(canManage || canCreateEdit)}
+            className={!(canManage || canCreateEdit) ? "opacity-50 cursor-not-allowed" : ""}
+          >
+            <Edit className="mr-2 h-4 w-4" />
+            Edit
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onSelect={(e) => {
+              e.preventDefault();
+              if (!(canManage || canDelete)) return;
+              setMenuOpen(false);
+              setDeleteOpen(true);
+            }}
+            disabled={!(canManage || canDelete)}
+            className={`text-destructive ${!(canManage || canDelete) ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+          >
+            <Trash2 className="mr-2 h-4 w-4" />
+            Delete
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      {(canManage || canDelete) && (
+        <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+          <AlertDialogContent onCloseAutoFocus={(e) => {
+                // After a successful delete the row (and trigger) is gone; leave Radix's default then.
+                if (!triggerRef.current?.isConnected) return;
+                e.preventDefault();
+                triggerRef.current.focus();
+              }}>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete Variable</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to delete the variable <strong>{variable.key}</strong>?
+                This action cannot be undone and may affect any tests or jobs that use this variable.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDelete}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                Delete Variable
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
+      {meta?.projectId && (
+        <VariableDialog
+          open={editDialogOpen}
+          onOpenChange={(open) => meta?.setEditDialogState?.(variable.id, open)}
+          projectId={meta.projectId}
+          variable={variable}
+          canViewSecrets={canViewSecrets}
+          initialSecretValue={decryptedValue}
+          onSuccess={() => {
+            meta.onSuccess?.();
+            meta?.setEditDialogState?.(variable.id, false);
+          }}
+        />
+      )}
+    </>
   );
 }
 
@@ -249,162 +418,6 @@ export const columns: ColumnDef<Variable>[] = [
   },
   {
     id: "actions",
-    cell: ({ row, table }) => {
-      const variable = row.original;
-      const meta = table.options.meta as {
-        canManage?: boolean;
-        canCreateEdit?: boolean;
-        canDelete?: boolean;
-        canViewSecrets?: boolean;
-        onDeleteVariable?: (id: string) => void;
-        onEditVariable?: (variable: Variable) => void;
-        secretVisibility?: { [key: string]: boolean };
-        decryptedValues?: { [key: string]: string };
-        onToggleSecretVisibility?: (id: string) => void;
-        projectId?: string;
-        onSuccess?: () => void;
-        editDialogState?: { [key: string]: boolean };
-        setEditDialogState?: (id: string, open: boolean) => void;
-      };
-      const canManage = meta?.canManage || false;
-      const canCreateEdit = meta?.canCreateEdit || false;
-      const canDelete = meta?.canDelete || false;
-      const canViewSecrets = meta?.canViewSecrets || false;
-      const variableType = (variable.type as string) || "variable";
-      const isSecretBool = variableType === "secret";
-      const isFileType = variableType === "file";
-      const editDialogOpen = meta?.editDialogState?.[variable.id] || false;
-      const decryptedValue = canViewSecrets
-        ? meta?.decryptedValues?.[variable.id]
-        : undefined;
-
-      // Always show actions dropdown, but disable items based on permissions
-
-      const handleDelete = async () => {
-        try {
-          // Use project ID from meta (passed from parent component)
-          const projectId = meta?.projectId;
-
-          if (!projectId) {
-            toast.error("Project context not available. Please refresh the page.");
-            return;
-          }
-
-          const response = await fetch(`/api/projects/${projectId}/variables/${variable.id}`, {
-            method: 'DELETE',
-          });
-
-          const data = await response.json();
-
-          if (response.ok && data.success) {
-            toast.success("Variable deleted successfully");
-            meta?.onDeleteVariable?.(variable.id);
-          } else {
-            toast.error(data.error || "Failed to delete variable");
-          }
-        } catch (error) {
-          console.error("Error deleting variable:", error);
-          toast.error("Failed to delete variable. Please try again.");
-        }
-      };
-
-      return (
-        <>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="h-8 w-8 p-0">
-                <span className="sr-only">Open menu</span>
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {isSecretBool && (
-                <DropdownMenuItem
-                  onClick={canViewSecrets ? () => meta?.onToggleSecretVisibility?.(variable.id) : undefined}
-                  disabled={!canViewSecrets}
-                  className={!canViewSecrets ? "opacity-50 cursor-not-allowed" : ""}
-                >
-                  {meta?.secretVisibility?.[variable.id] ? (
-                    <>
-                      <EyeOff className="mr-2 h-4 w-4" />
-                      Hide Value
-                    </>
-                  ) : (
-                    <>
-                      <Eye className="mr-2 h-4 w-4" />
-                      Show Value
-                    </>
-                  )}
-                </DropdownMenuItem>
-              )}
-              {isFileType && meta?.projectId && (
-                <DropdownMenuItem
-                  onClick={() => {
-                    window.open(`/api/projects/${meta.projectId}/variables/${variable.id}/download`, '_blank');
-                  }}
-                >
-                  <Download className="mr-2 h-4 w-4" />
-                  Download File
-                </DropdownMenuItem>
-              )}
-              <DropdownMenuItem
-                onClick={(canManage || canCreateEdit) ? () => meta?.setEditDialogState?.(variable.id, true) : undefined}
-                disabled={!(canManage || canCreateEdit)}
-                className={!(canManage || canCreateEdit) ? "opacity-50 cursor-not-allowed" : ""}
-              >
-                <Edit className="mr-2 h-4 w-4" />
-                Edit
-              </DropdownMenuItem>
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <DropdownMenuItem
-                    onSelect={(e) => !(canManage || canDelete) ? e.preventDefault() : e.preventDefault()}
-                    disabled={!(canManage || canDelete)}
-                    className={`text-destructive ${!(canManage || canDelete) ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
-                  >
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    Delete
-                  </DropdownMenuItem>
-                </AlertDialogTrigger>
-                {(canManage || canDelete) && (
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Delete Variable</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        Are you sure you want to delete the variable <strong>{variable.key}</strong>? 
-                        This action cannot be undone and may affect any tests or jobs that use this variable.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction
-                        onClick={handleDelete}
-                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                      >
-                        Delete Variable
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                )}
-              </AlertDialog>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          {meta?.projectId && (
-            <VariableDialog
-              open={editDialogOpen}
-              onOpenChange={(open) => meta?.setEditDialogState?.(variable.id, open)}
-              projectId={meta.projectId}
-              variable={variable}
-              canViewSecrets={canViewSecrets}
-              initialSecretValue={decryptedValue}
-              onSuccess={() => {
-                meta.onSuccess?.();
-                meta?.setEditDialogState?.(variable.id, false);
-              }}
-            />
-          )}
-        </>
-      );
-    },
+    cell: ({ row, table }) => <VariableActionsCell row={row} table={table} />,
   },
 ];

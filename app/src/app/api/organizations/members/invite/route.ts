@@ -14,6 +14,7 @@ import { renderOrganizationInvitationEmail } from "@/lib/email-renderer";
 import { checkTeamMemberLimit } from "@/lib/middleware/plan-enforcement";
 import { insertWithinPlanLimit } from "@/lib/middleware/plan-limit-lock";
 import { getRedisConnection } from "@/lib/queue";
+import { withRedisDeadline } from "@/lib/security/redis-deadline";
 
 // Redis-based rate limiting for distributed/serverless environments
 const INVITE_RATE_LIMIT_KEY_PREFIX = "supercheck:invite:ratelimit";
@@ -28,6 +29,8 @@ const INVITE_RATE_LIMIT_MAX =
     : 10;
 const INVITE_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 
+const INVITE_RATE_LIMIT_UNAVAILABLE_RETRY_SECONDS = 30;
+
 type InviteReservation = { key: string; token: string };
 
 async function checkInviteRateLimit(
@@ -36,19 +39,16 @@ async function checkInviteRateLimit(
   allowed: boolean;
   retryAfter?: number;
   reservation?: InviteReservation;
+  unavailable?: boolean;
 }> {
+  const reservation = {
+    key: `${INVITE_RATE_LIMIT_KEY_PREFIX}:${userId}`,
+    token: randomUUID(),
+  };
   try {
     const redis = await getRedisConnection();
-    if (!redis) {
-      console.warn("[INVITE_RATE_LIMIT] Redis unavailable, allowing request");
-      return { allowed: true };
-    }
-    const reservation = {
-      key: `${INVITE_RATE_LIMIT_KEY_PREFIX}:${userId}`,
-      token: randomUUID(),
-    };
     const retryMs = Number(
-      await redis.eval(
+      await withRedisDeadline(redis, () => redis!.eval(
         `
       local now = tonumber(ARGV[1])
       local window = tonumber(ARGV[2])
@@ -67,22 +67,39 @@ async function checkInviteRateLimit(
         INVITE_RATE_LIMIT_WINDOW_MS,
         INVITE_RATE_LIMIT_MAX,
         reservation.token,
-      ),
+      )),
     );
     return retryMs > 0
       ? { allowed: false, retryAfter: Math.ceil(retryMs / 1000) }
       : { allowed: true, reservation };
   } catch (error) {
     console.error("[INVITE_RATE_LIMIT] Error checking rate limit:", error);
-    // Preserve existing fail-open behavior when Redis is unavailable.
-    return { allowed: true };
+    // Fail closed: without the limiter an org admin could send unlimited invitation emails.
+    // The call may still run later; the caller releases this token.
+    return { allowed: false, unavailable: true, retryAfter: INVITE_RATE_LIMIT_UNAVAILABLE_RETRY_SECONDS, reservation };
   }
+}
+
+function limiterResponse(result: Awaited<ReturnType<typeof checkInviteRateLimit>>): NextResponse | null {
+  if (result.unavailable) {
+    return NextResponse.json(
+      { error: "Invitations are temporarily unavailable. Please try again shortly." },
+      { status: 503, headers: { "Retry-After": String(result.retryAfter) } },
+    );
+  }
+  if (!result.allowed) {
+    return NextResponse.json(
+      { error: `Rate limit exceeded. Maximum ${INVITE_RATE_LIMIT_MAX} invitations per hour.` },
+      { status: 429, headers: result.retryAfter ? { "Retry-After": String(result.retryAfter) } : undefined },
+    );
+  }
+  return null;
 }
 
 async function releaseInviteReservation(reservation: InviteReservation) {
   try {
     const redis = await getRedisConnection();
-    await redis?.zrem(reservation.key, reservation.token);
+    await withRedisDeadline(redis, () => redis!.zrem(reservation.key, reservation.token));
   } catch (error) {
     console.error(
       "[INVITE_RATE_LIMIT] Error releasing rejected invitation quota:",
@@ -200,12 +217,7 @@ export async function POST(request: NextRequest) {
 
       // Owning an account organization does not prevent joining another team's
       // projects. The invitation grants only its explicit role in the target team.
-      if (user.role === "super_admin") {
-        return NextResponse.json(
-          { error: "System administrators cannot be invited as team members" },
-          { status: 400 },
-        );
-      }
+      // A platform administrator is treated like any address here (no oracle); acceptance refuses it.
 
       // Check if already a member of current organization
       const existingMember = await db
@@ -279,19 +291,8 @@ export async function POST(request: NextRequest) {
     // Reserve quota only after authorization, request, duplicate, and project validation.
     const rateLimitResult = await checkInviteRateLimit(userId);
     reservation = rateLimitResult.reservation;
-    if (!rateLimitResult.allowed) {
-      return NextResponse.json(
-        {
-          error: `Rate limit exceeded. Maximum ${INVITE_RATE_LIMIT_MAX} invitations per hour.`,
-        },
-        {
-          status: 429,
-          headers: rateLimitResult.retryAfter
-            ? { "Retry-After": String(rateLimitResult.retryAfter) }
-            : undefined,
-        },
-      );
-    }
+    const limited = limiterResponse(rateLimitResult);
+    if (limited) return limited;
 
     // Create invitation
     const expiresAt = new Date();

@@ -74,6 +74,8 @@ interface JobData {
   createdByUserId?: string;
 }
 
+const MAX_ALERT_MESSAGE_LENGTH = 1000;
+
 function hasDuplicateTestIds(tests: Test[]): boolean {
   const testIds = tests.map((test) => test.id);
   return new Set(testIds).size !== testIds.length;
@@ -352,6 +354,14 @@ export async function POST(request: NextRequest) {
     const thresholdError = alertThresholdError(jobData.alertConfig);
     if (cronError || thresholdError) {
       return NextResponse.json({ success: false, error: cronError ?? thresholdError }, { status: 400 });
+    }
+    // Stored and posted to every notification channel, so it must be bounded like the other free-text fields.
+    const customMessage = jobData.alertConfig?.customMessage;
+    if (typeof customMessage === "string" && customMessage.length > MAX_ALERT_MESSAGE_LENGTH) {
+      return NextResponse.json(
+        { success: false, error: `Alert message must be at most ${MAX_ALERT_MESSAGE_LENGTH} characters.` },
+        { status: 400 },
+      );
     }
 
     if (!Array.isArray(jobData.tests) || jobData.tests.length === 0) {
