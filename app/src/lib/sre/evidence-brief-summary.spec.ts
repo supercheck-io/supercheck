@@ -46,7 +46,20 @@ describe("reportHeadline", () => {
 
   it("keeps plain text, and uses field values when nothing else is prose", () => {
     expect(reportHeadline("Latency correlates with monitor failures.")).toBe("Latency correlates with monitor failures.");
-    expect(reportHeadline("**Likely cause**: DNS change")).toBe("DNS change");
+    expect(reportHeadline("**Likely cause**: DNS change")).toBe("Likely cause: DNS change");
+  });
+
+  it("keeps labelled findings that model output often starts with", () => {
+    expect(reportHeadline("**Initial classification:** Likely DB connectivity failure.\n\n**Likely failure domains:**\n- Database")).toBe(
+      "Initial classification: Likely DB connectivity failure.",
+    );
+    expect(reportHeadline("**Root cause:** DB pool is exhausted after deploy.\n\nCheck pool metrics next.")).toBe(
+      "Root cause: DB pool is exhausted after deploy.",
+    );
+    expect(reportHeadline("**Summary:** DB failed over.\n\nMore")).toBe("DB failed over.");
+    expect(reportHeadline("1. **Initial classification**: Network timeout.\n2. **Domains**: DNS")).toBe(
+      "Initial classification: Network timeout. Domains: DNS",
+    );
   });
 
   it("returns null for empty input and clips long text on a word boundary", () => {

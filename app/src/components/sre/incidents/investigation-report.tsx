@@ -120,25 +120,27 @@ export function InvestigationReport({
   const running = investigation?.status === "running";
   const failed = investigation?.status === "failed" || investigation?.status === "aborted" || investigation?.status === "timed_out";
   const structured = investigation?.structured ?? null;
-  // Before any investigation the stored root cause is the brief's headline, so the brief itself is shown instead.
-  const investigationConclusion = getInvestigationConclusion(
-    investigation,
-    investigation ? incident.rootCauseSummary : (detail.triageSummary ?? null),
-  );
+  // Before any investigation the stored root cause is only the brief's headline, so the brief itself is shown.
+  const investigationConclusion = getInvestigationConclusion(investigation, investigation ? incident.rootCauseSummary : null);
   // The brief stands in only until an investigation has produced something to read.
   const useBrief = !investigationConclusion && (Boolean(briefSummary) || streaming);
+  // With neither, the triage finding is the conclusion (same order as the Overview summary card).
+  const triageConclusion =
+    !investigation && !useBrief ? getInvestigationConclusion(null, detail.triageSummary ?? null) : null;
+  const conclusion = investigationConclusion ?? triageConclusion;
   const inconclusive = structured ? structured.outcome === "inconclusive" : false;
   const confidence = confidenceLabel(structured ? String(structured.confidence) : incident.confidenceScore);
   // Runs before structured output stored no score; show no rating rather than a misleading one.
   const unrated = !structured && incident.confidenceScore === null;
-  // Only an investigation is rated; a brief or triage summary is not.
-  const showConfidence = Boolean(investigation) && Boolean(investigationConclusion) && !unrated && !running;
+  // Only a completed investigation is rated; a brief, a triage summary or a failed run's earlier text is not.
+  const showConfidence = investigation?.status === "completed" && Boolean(investigationConclusion) && !unrated;
   const nextChecks = structured?.nextChecks ?? [];
   const staleBrief = detail.latestBrief?.agentStateSnapshot?.evidenceCount;
   const briefOutdated = typeof staleBrief === "number" && staleBrief < detail.evidence.length;
 
-  // The brief is the quick look before an investigation; once one has run, the investigation is the report.
-  const briefButton = permissions.canInvestigate && !investigation ? (
+  // The brief is the quick look before an investigation completes; after that the investigation is the report
+  // (the server also stops a brief from replacing a completed investigation's result).
+  const briefButton = permissions.canInvestigate && investigation?.status !== "completed" ? (
     <GenerateEvidenceBriefButton
       incidentId={incident.id}
       hasBrief={Boolean(detail.latestBrief) || Boolean(briefSummary)}
@@ -231,12 +233,13 @@ export function InvestigationReport({
             </AlertDescription>
           </Alert>
         )}
-        {investigationConclusion ? (
+        {conclusion ? (
           <div className="space-y-3">
+            {triageConclusion && <p className="text-xs text-muted-foreground">From AI triage. Run an investigation for a full analysis.</p>}
             {(failed || running) && <p className="text-xs text-muted-foreground">Previous conclusion</p>}
             {inconclusive && <p className="text-xs text-muted-foreground">No root cause established.</p>}
             <div className="break-words text-sm leading-relaxed">
-              <SreMessageContent content={investigationConclusion} />
+              <SreMessageContent content={conclusion} />
             </div>
             {structured?.downgraded && (
               <p className="text-xs text-muted-foreground">
@@ -255,6 +258,7 @@ export function InvestigationReport({
                 </ol>
               </div>
             )}
+            {!streaming && briefButton}
           </div>
         ) : useBrief ? (
           <div className="space-y-3">

@@ -48,7 +48,8 @@ export function SreIncidentDetailPageClient({
         </Alert>
       )}
       <SreIncidentDetailView
-        key={`${incidentId}:${initialTab}`}
+        // Keyed by incident only: a ?edit= or ?tab= change on the same incident keeps the open tab and drafts.
+        key={incidentId}
         detail={incidentResult.detail}
         services={servicesResult.success ? servicesResult.services : []}
         initialTab={initialTab}

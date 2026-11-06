@@ -293,6 +293,43 @@ describe("SreIncidentDetailView", () => {
     expect(within(sheet).queryByText("Partial")).not.toBeInTheDocument();
   });
 
+  it("keeps an unsent Activity draft across tab switches", () => {
+    render(<SreIncidentDetailView detail={detailFixture()} services={[]} />);
+    const timeline = screen.getByText("Mock timeline");
+    openTab("Investigation");
+    expect(timeline).toBeInTheDocument();
+    expect(timeline).not.toBeVisible();
+    openTab("Overview");
+    expect(screen.getByText("Mock timeline")).toBe(timeline);
+  });
+
+  it("prefers the brief over triage before an investigation, and offers a brief beside a triage conclusion", () => {
+    const detail = detailFixture();
+    detail.latestInvestigation = null;
+    detail.incident.rootCauseSummary = "Brief headline";
+    detail.triageSummary = "Triage: connection pool exhausted";
+    const withBrief = render(<SreIncidentDetailView detail={detail} services={[]} initialTab="investigation" />);
+    expect(within(investigationTab()).getByText("Brief summary")).toBeInTheDocument();
+    expect(within(investigationTab()).queryByText("Triage: connection pool exhausted")).not.toBeInTheDocument();
+    withBrief.unmount();
+    detail.latestBrief = null;
+    detail.incident.rootCauseSummary = null;
+    render(<SreIncidentDetailView detail={detail} services={[]} initialTab="investigation" />);
+    expect(within(investigationTab()).getByText("Triage: connection pool exhausted")).toBeInTheDocument();
+    expect(within(investigationTab()).getByText(/From AI triage/)).toBeInTheDocument();
+    expect(within(investigationTab()).getByRole("button", { name: "Generate brief" })).toBeInTheDocument();
+  });
+
+  it("does not rate a failed run's earlier conclusion and still offers a brief", () => {
+    const detail = detailFixture();
+    detail.latestInvestigation = { ...detail.latestInvestigation!, status: "failed", summary: "Timed out." };
+    render(<SreIncidentDetailView detail={detail} services={[]} initialTab="investigation" />);
+    const sheet = investigationTab();
+    expect(within(sheet).getByText("Previous conclusion")).toBeInTheDocument();
+    expect(within(sheet).queryByText(/^Confidence:/)).not.toBeInTheDocument();
+    expect(within(sheet).getByRole("button", { name: "Generate brief" })).toBeInTheDocument();
+  });
+
   it("shows the triage finding as the Investigation conclusion when no investigation or root cause exists", () => {
     const detail = detailFixture();
     detail.latestInvestigation = null;
@@ -399,10 +436,11 @@ describe("SreIncidentDetailView", () => {
       "Evidence (1)",
       "Similar incidents (2)",
     ]);
-    // Whole-investigation feedback lives once, on the Overview card.
-    expect(screen.queryByText("Feedback: this investigation")).not.toBeInTheDocument();
+    // Whole-investigation feedback lives once, on the Overview card (kept mounted, hidden on other tabs).
+    expect(screen.getByText("Feedback: this investigation")).not.toBeVisible();
     openTab("Overview");
     expect(screen.getAllByText("Feedback: this investigation")).toHaveLength(1);
+    expect(screen.getByText("Feedback: this investigation")).toBeVisible();
   });
 
   it("offers the Post-mortem tab only once the incident is resolved", () => {

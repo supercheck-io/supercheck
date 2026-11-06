@@ -2,8 +2,12 @@ import { stripEvidenceIdLists } from "@/sre/lib/investigation-output";
 
 const HEADING = /^\s*#{1,6}\s/;
 const SUMMARY_HEADING = /^\s*(?:#{1,6}\s*)?(?:\*\*)?(?:executive summary|summary|conclusion)(?:\*\*)?:?\s*$/i;
-// "**Severity**: sev2", "- **Incident:** ...", a bold-only title line, or a horizontal rule.
-const META_LINE = /^\s*(?:[-*]\s+)?\*\*[^*\n]{1,60}(?:\*\*\s*:|:\*\*)|^\s*\*\*[^*\n]+\*\*:?\s*$|^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/;
+// "**Summary:** text" on one line.
+const INLINE_SUMMARY = /^\s*\*\*(?:executive summary|summary|conclusion):?\*\*:?\s*(\S.*)$/i;
+// Header fields that repeat the page ("- **Severity**: sev2"), a bold-only title line, or a horizontal rule.
+// Other "**Label:** text" lines carry findings and are kept.
+const META_LINE =
+  /^\s*(?:[-*]\s+)?\*\*(?:incident(?: title)?|title|severity|status|(?:primary )?service|evidence source|evidence items|primary signal)(?:\*\*\s*:|:\*\*)|^\s*\*\*[^*\n]+\*\*:?\s*$|^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/i;
 
 function plain(text: string) {
   return text
@@ -28,6 +32,8 @@ function clip(text: string, max: number) {
 export function reportHeadline(text: string | null | undefined, max = 600): string | null {
   if (!text?.trim()) return null;
   const lines = stripEvidenceIdLists(text).split("\n");
+  const inline = lines.map((line) => INLINE_SUMMARY.exec(line)?.[1]).find(Boolean);
+  if (inline) return clip(plain(inline), max);
   const summaryAt = lines.findIndex((line) => SUMMARY_HEADING.test(line));
   if (summaryAt >= 0) {
     const section: string[] = [];
@@ -39,16 +45,16 @@ export function reportHeadline(text: string | null | undefined, max = 600): stri
       }
       section.push(line);
     }
-    const body = plain(section.join(" "));
+    const body = plain(section.join("\n"));
     if (body) return clip(body, max);
   }
   const paragraphs = lines.join("\n").split(/\n\s*\n/);
   for (const paragraph of paragraphs) {
     const prose = paragraph.split("\n").filter((line) => line.trim() && !HEADING.test(line) && !META_LINE.test(line));
-    const body = plain(prose.join(" "));
+    const body = plain(prose.join("\n"));
     if (body) return clip(body, max);
   }
-  const fallback = plain(lines.filter((line) => !HEADING.test(line)).join(" ").replace(/\*\*[^*\n]{1,60}\*\*\s*:?/g, ""));
+  const fallback = plain(lines.filter((line) => !HEADING.test(line)).join("\n").replace(/\*\*[^*\n]{1,60}\*\*\s*:?/g, ""));
   return fallback ? clip(fallback, max) : null;
 }
 

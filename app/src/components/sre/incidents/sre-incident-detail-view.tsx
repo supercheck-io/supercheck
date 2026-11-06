@@ -214,7 +214,13 @@ export function SreIncidentDetailView({
             {!open && <TabsTrigger value="postmortem">Post-mortem</TabsTrigger>}
           </TabsList>
 
-          <TabsContent value="overview" className="mt-0 flex min-w-0 flex-col gap-4">
+          {/* Kept mounted while hidden so an unsent note or a draft survives a tab switch. */}
+          <TabsContent
+            value="overview"
+            forceMount
+            hidden={activeTab !== "overview"}
+            className="mt-0 flex min-w-0 flex-col gap-4 data-[state=inactive]:hidden"
+          >
             {incident.resolutionSummary && (
               <p className="line-clamp-2 rounded-md border bg-muted/40 px-3 py-2 text-sm" data-testid="resolution-summary">
                 <span className="font-medium">{open ? "Previous resolution: " : "Resolution: "}</span>
