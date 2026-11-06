@@ -387,6 +387,9 @@ export class MonitorEvaluator {
 
       shouldSendAlert =
         consecutiveSuccessCount >= recoveryThreshold &&
+        // Bounded like the failure path, so an undeliverable recovery is not retried forever.
+        consecutiveSuccessCount <
+          recoveryThreshold + Math.max(5, recoveryThreshold * 2) &&
         alertsSentForRecovery === 0 &&
         outageReachedThreshold &&
         ((monitorAlertConfig?.alertOnRecovery as boolean) || false);
@@ -445,8 +448,14 @@ export class MonitorEvaluator {
         alertMetadata,
       );
 
-      if (notification?.suppressed) return { alertSent: false };
-      if (notification?.delivered === false)
+      // Only a maintenance-suppressed recovery is consumed; anything else (no providers) retries within
+      // the bounded window, as a suppressed failure does.
+      const suppressed =
+        notification?.suppressed === true &&
+        alertType === 'recovery' &&
+        (notification as { reason?: string }).reason === 'maintenance';
+      if (!suppressed && notification?.suppressed) return { alertSent: false };
+      if (!suppressed && notification?.delivered === false)
         return { alertSent: false, deliveryFailed: true };
       delivered = true;
 
@@ -488,7 +497,7 @@ export class MonitorEvaluator {
         }
       }
 
-      return { alertSent: true, alertType };
+      return suppressed ? { alertSent: false } : { alertSent: true, alertType };
     } catch (error) {
       if (isMultiLocationEvaluation && aggregatedAlertState) {
         await this.persistAggregatedAlertState(

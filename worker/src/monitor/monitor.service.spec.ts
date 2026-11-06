@@ -1,3 +1,5 @@
+import { AxiosError } from 'axios';
+import { throwError } from 'rxjs';
 /**
  * Monitor Service Tests
  *
@@ -769,6 +771,19 @@ describe('MonitorService', () => {
       const error = new Error('Timeout');
       (error as any).code = 'ETIMEDOUT';
       expect((error as any).code).toBe('ETIMEDOUT');
+    });
+
+    it('reports the wall-clock abort of a slow response as a timeout', async () => {
+      const abort = new AxiosError('canceled', 'ERR_CANCELED');
+      (service['httpService'].request as jest.Mock).mockImplementationOnce(() =>
+        throwError(() => abort),
+      );
+      const result = await service['executeHttpRequest'](
+        'https://example.com',
+        { timeoutSeconds: 1 },
+      );
+      expect(result.status).toBe('timeout');
+      expect(result.isUp).toBe(false);
     });
 
     it('should recognize DNS error code', () => {
@@ -1549,6 +1564,29 @@ describe('MonitorService', () => {
       await expect(
         service['saveMonitorResultToDb'](row),
       ).resolves.toBeUndefined();
+    });
+    it('saveMonitorResults rethrows an insert failure only when asked, and swallows it by default', async () => {
+      const failing = () => ({
+        then: (_resolve: unknown, reject: (e: Error) => void) =>
+          reject(new Error('statement timeout')),
+        onConflictDoNothing: () =>
+          Promise.reject(new Error('statement timeout')),
+      });
+      mockDbService.db.insert.mockReturnValue({ values: jest.fn(failing) });
+      jest
+        .spyOn(service as any, 'getMonitorById')
+        .mockResolvedValue(mockMonitor);
+      const row = {
+        monitorId: mockMonitor.id,
+        location: 'eu',
+        checkedAt: new Date(),
+        status: 'up',
+        isUp: true,
+      } as MonitorExecutionResult;
+      await expect(
+        service.saveMonitorResults([row], { rethrow: true }),
+      ).rejects.toThrow('statement timeout');
+      await expect(service.saveMonitorResults([row])).resolves.not.toThrow();
     });
     it('retries an insert whose response was lost under one row id, ignoring a conflict', async () => {
       const onConflictDoNothing = jest

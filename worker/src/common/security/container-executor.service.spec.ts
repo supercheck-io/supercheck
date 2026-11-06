@@ -63,6 +63,73 @@ describe('ContainerExecutorService', () => {
     await service.onModuleDestroy();
   });
 
+  describe('shutdown', () => {
+    it('waits for in-flight runs to finish before deleting remaining jobs', async () => {
+      jest.useFakeTimers();
+      try {
+        const deleteJob = jest
+          .spyOn(service as any, 'deleteExecutionJob')
+          .mockResolvedValue(undefined);
+        (service as any).runningJobs.set('run-1', 'job-1');
+        const destroyed = service.onModuleDestroy();
+        await jest.advanceTimersByTimeAsync(5000);
+        expect(deleteJob).not.toHaveBeenCalled();
+
+        (service as any).runningJobs.delete('run-1');
+        await jest.advanceTimersByTimeAsync(1000);
+        await destroyed;
+        expect(deleteJob).not.toHaveBeenCalled();
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it.each([
+      ['600000000', 601_000, 600_000],
+      ['abc', 21_000, 20_000],
+      ['-5', 21_000, 20_000],
+      ['', 21_000, 20_000],
+      ['   ', 21_000, 20_000],
+    ])(
+      'WORKER_SHUTDOWN_DRAIN_MS=%s drains for the expected bound',
+      async (value, advanceMs, boundMs) => {
+        jest.useFakeTimers();
+        process.env.WORKER_SHUTDOWN_DRAIN_MS = value;
+        try {
+          const deleteJob = jest
+            .spyOn(service as any, 'deleteExecutionJob')
+            .mockResolvedValue(undefined);
+          (service as any).runningJobs.set('run-3', 'job-3');
+          const destroyed = service.onModuleDestroy();
+          await jest.advanceTimersByTimeAsync(boundMs - 2000);
+          expect(deleteJob).not.toHaveBeenCalled();
+          await jest.advanceTimersByTimeAsync(advanceMs - boundMs + 2000);
+          await destroyed;
+          expect(deleteJob).toHaveBeenCalledWith('job-3');
+        } finally {
+          delete process.env.WORKER_SHUTDOWN_DRAIN_MS;
+          jest.useRealTimers();
+        }
+      },
+    );
+
+    it('deletes jobs still alive once the drain window passes', async () => {
+      jest.useFakeTimers();
+      try {
+        const deleteJob = jest
+          .spyOn(service as any, 'deleteExecutionJob')
+          .mockResolvedValue(undefined);
+        (service as any).runningJobs.set('run-2', 'job-2');
+        const destroyed = service.onModuleDestroy();
+        await jest.advanceTimersByTimeAsync(21_000);
+        await destroyed;
+        expect(deleteJob).toHaveBeenCalledWith('job-2');
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+  });
+
   describe('isolation canary admission', () => {
     beforeEach(() => {
       (service as any).k8sModule = {

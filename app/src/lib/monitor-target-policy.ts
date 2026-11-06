@@ -1,7 +1,7 @@
 import { isIP } from "node:net";
 import { isPrivateHost } from "@/lib/url-validator";
 import { isPrivateOrReservedAddress } from "@/lib/outbound-address-policy";
-import { lookupBounded } from "@/lib/sre/connectors/endpoint-policy";
+import { isMetadataOrLinkLocalAddress, lookupBounded } from "@/lib/sre/connectors/endpoint-policy";
 import type { MonitorValidationResult } from "@/lib/monitor-validation";
 
 const HOST_TYPES = new Set(["http_request", "website", "ping_host", "port_check"]);
@@ -32,8 +32,6 @@ export async function validateMonitorTargetAddress(input: {
   if (typeof type !== "string" || !HOST_TYPES.has(type) || typeof target !== "string") {
     return { success: true };
   }
-  if (process.env.ALLOW_INTERNAL_TARGETS === "true") return { success: true };
-
   const hostname = targetHostname(type, target)?.toLowerCase().replace(/\.$/, "").replace(/^\[|\]$/g, "");
   if (!hostname) return { success: true };
 
@@ -42,6 +40,12 @@ export async function validateMonitorTargetAddress(input: {
     error: "Invalid monitor target",
     details: "target must not point to a private, loopback or reserved network address",
   };
+  if (process.env.ALLOW_INTERNAL_TARGETS === "true") {
+    // Intranet targets are allowed, but cloud metadata and link-local addresses never are.
+    return isMetadataOrLinkLocalAddress(hostname) || /^metadata\.(google|azure)\.internal$/.test(hostname)
+      ? blocked
+      : { success: true };
+  }
   if (isPrivateHost(hostname)) return blocked;
   if (isIP(hostname)) return { success: true };
 

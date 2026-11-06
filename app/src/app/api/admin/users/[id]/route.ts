@@ -14,7 +14,7 @@ import { adminDeniedResponse } from '@/lib/admin-errors';
 import { getCurrentUser } from '@/lib/session';
 import { auth } from '@/utils/auth';
 import { headers } from 'next/headers';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { logAdminEvent, logImpersonationEvent } from '@/lib/audit-logger';
 import { checkAdminRateLimit } from '@/lib/session-security';
@@ -342,6 +342,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const { action, organizationId } = body;
     
     if (action === 'impersonate') {
+      // Nested impersonation would record the impersonated admin, not the real one, as the actor.
+      if (await isImpersonatedSession()) {
+        return NextResponse.json(
+          { success: false, error: 'Stop the current impersonation first' },
+          { status: 400 }
+        );
+      }
+
       // Get current admin session
       const sessionData = await auth.api.getSession({
         headers: await headers(),
@@ -395,7 +403,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
       // Update session to impersonate the target user
       // Store the original user ID in impersonatedBy field and optionally set organization context
-      await db
+      const impersonated = await db
         .update(session)
         .set({
           userId: targetUser.id,
@@ -404,7 +412,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           activeProjectId: null, // Clear project context to force default project selection
           updatedAt: new Date()
         })
-        .where(eq(session.token, sessionData.session.token));
+        // Only from a session that is not already impersonating: atomic with the check above.
+        .where(and(eq(session.token, sessionData.session.token), isNull(session.impersonatedBy)))
+        .returning({ id: session.id });
+      if (!impersonated.length) {
+        return NextResponse.json(
+          { success: false, error: 'Stop the current impersonation first' },
+          { status: 400 }
+        );
+      }
       
       // Log the impersonation event for audit trail
       await logImpersonationEvent(

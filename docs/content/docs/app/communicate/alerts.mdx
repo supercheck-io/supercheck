@@ -72,7 +72,7 @@ sequenceDiagram
 | Alert | Trigger | Severity |
 |-------|---------|----------|
 | **Failure** | One or more tests in the job failed | Error |
-| **Success** | All tests passed (optional) | Success |
+| **Success** | All tests passed and consecutive successes reach the recovery threshold (optional) | Success |
 | **Timeout** | Job exceeded maximum execution time | Warning |
 
 </Tab>

@@ -180,18 +180,6 @@ export class MonitorDynamicWorkerService
       },
     );
 
-    worker.on('completed', (job: Job<MonitorJobDataDto>, result: unknown) => {
-      const results = result as MonitorExecutionResult[] | undefined;
-      if (job.data?.executionLocation) return; // Distributed mode saves individually
-      if (results && results.length > 0) {
-        this.monitorService.saveMonitorResults(results).catch((error) => {
-          this.logger.error(
-            `Failed to save monitor results: ${error instanceof Error ? error.message : String(error)}`,
-          );
-        });
-      }
-    });
-
     worker.on('failed', (job: Job | undefined, error: Error) => {
       this.logger.error(
         `[${queueName}] monitor job ${job?.id || 'unknown'} failed: ${error.message}`,
@@ -475,11 +463,24 @@ export class MonitorDynamicWorkerService
 
     // Legacy/single queue mode: the job runs from this worker's own location.
     await this.assertBrowserCapability(job.data, this.workerLocation);
-    return (
+    const results =
       (await this.executeOrDefer(job, () =>
         this.monitorService.executeMonitorWithLocations(job.data),
-      )) ?? []
-    );
+      )) ?? [];
+    // Saved inside the job (not a fire-and-forget 'completed' listener) so a failure is surfaced. The
+    // check already ran (a synthetic one is billed), so a failed save must not re-run it: fail for good.
+    if (results.length > 0) {
+      try {
+        await this.monitorService.saveMonitorResults(results, {
+          rethrow: true,
+        });
+      } catch (error) {
+        throw new ResultNotKeptError(
+          `Monitor ${job.data.monitorId} result could not be saved and will not be re-run: ${getErrorMessage(error)}`,
+        );
+      }
+    }
+    return results;
   }
 
   /**

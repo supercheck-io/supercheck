@@ -4,13 +4,17 @@ import { Agent as HttpsAgent } from 'node:https';
 import type { LookupAddress } from 'node:dns';
 import { isIP, type LookupFunction } from 'node:net';
 import {
+  AxiosError,
   AxiosHeaders,
   type AxiosRequestConfig,
   type AxiosResponse,
 } from 'axios';
 
 import { createPinnedLookup } from './pinned-lookup';
-import { isPrivateOrReservedAddress } from './url-validator';
+import {
+  isMetadataOrLinkLocalAddress,
+  isPrivateOrReservedAddress,
+} from './url-validator';
 
 type RequestExecutor = (
   config: AxiosRequestConfig<unknown>,
@@ -27,11 +31,13 @@ interface PinnedConfig {
 }
 
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
-const SENSITIVE_REDIRECT_HEADERS = [
-  'authorization',
-  'cookie',
-  'proxy-authorization',
-];
+// User-configured headers (API keys, custom auth) must not follow a redirect to another origin.
+const CROSS_ORIGIN_SAFE_HEADERS = new Set([
+  'user-agent',
+  'accept',
+  'accept-language',
+  'accept-encoding',
+]);
 
 /**
  * Resolve a monitor host once and refuse private or reserved destinations. Callers connect only to
@@ -49,6 +55,10 @@ export async function resolvePublicAddresses(
 
   if (addresses.length === 0) {
     throw new Error('Monitor target did not resolve to an address');
+  }
+  // Cloud metadata and link-local addresses stay blocked even when internal targets are allowed.
+  if (addresses.some(({ address }) => isMetadataOrLinkLocalAddress(address))) {
+    throw new Error('Access to private or reserved networks is not allowed');
   }
   if (
     !allowInternalTargets &&
@@ -95,10 +105,23 @@ async function pinRequestConfig(
     throw new Error('Monitor URLs cannot include credentials');
   }
 
-  const selected = await resolvePublicAddress(
+  // dns.lookup cannot take a signal, so race it: a slow resolver must not outlive the check deadline.
+  const signal = input.signal as AbortSignal | undefined;
+  const resolving = resolvePublicAddress(
     url.hostname.replace(/^\[|\]$/g, ''),
     allowInternalTargets,
   );
+  const selected = await (signal
+    ? Promise.race([
+        resolving,
+        new Promise<never>((_resolve, reject) => {
+          const abort = () =>
+            reject(new AxiosError('canceled', AxiosError.ERR_CANCELED));
+          if (signal.aborted) abort();
+          else signal.addEventListener('abort', abort, { once: true });
+        }),
+      ])
+    : resolving);
   const pinnedLookup = createPinnedLookup(selected);
 
   const httpAgent = new HttpAgent({ lookup: pinnedLookup });
@@ -143,16 +166,35 @@ function buildRedirectConfig(
   );
   headers.delete('host');
 
-  const crossOrigin = currentUrl.origin !== nextUrl.origin;
-
-  if (crossOrigin) {
-    for (const header of SENSITIVE_REDIRECT_HEADERS) headers.delete(header);
-  }
+  // An http to https upgrade of the same host on default ports is not a change of destination.
+  const crossOrigin =
+    currentUrl.origin !== nextUrl.origin &&
+    !(
+      currentUrl.protocol === 'http:' &&
+      nextUrl.protocol === 'https:' &&
+      currentUrl.hostname === nextUrl.hostname &&
+      !currentUrl.port &&
+      !nextUrl.port
+    );
 
   const method = String(previous.method ?? 'GET').toUpperCase();
   const switchToGet =
     (status === 303 && method !== 'HEAD') ||
     ((status === 301 || status === 302) && method === 'POST');
+
+  if (crossOrigin) {
+    for (const name of Object.keys(headers.toJSON())) {
+      const lower = name.toLowerCase();
+      // 307/308 resend the body, which still needs its framing headers.
+      const bodyHeader = lower === 'content-type' || lower === 'content-length';
+      if (
+        !CROSS_ORIGIN_SAFE_HEADERS.has(lower) &&
+        !(bodyHeader && !switchToGet)
+      ) {
+        headers.delete(name);
+      }
+    }
+  }
   if (switchToGet) {
     headers.delete('content-length');
     headers.delete('content-type');
@@ -179,7 +221,12 @@ export async function requestPinnedMonitorTarget(
   options: PinnedMonitorRequestOptions,
   execute: RequestExecutor,
 ): Promise<AxiosResponse<unknown>> {
-  let requestConfig = initialConfig;
+  // Axios `timeout` is an idle timeout; one signal shared by every hop bounds the whole check in
+  // wall-clock time, so a slow-drip response or a long redirect chain cannot outlive it.
+  let requestConfig: AxiosRequestConfig<unknown> =
+    typeof initialConfig.timeout === 'number' && initialConfig.timeout > 0
+      ? { ...initialConfig, signal: AbortSignal.timeout(initialConfig.timeout) }
+      : initialConfig;
 
   for (let redirectCount = 0; ; redirectCount += 1) {
     const currentUrl = new URL(String(requestConfig.url));

@@ -64,13 +64,7 @@ The Playwright HTML report will display tests in their execution order, making i
 
 ### Step 3: Configure Schedule
 
-Choose when and how the job runs:
-
-| Schedule Type | Description | Best For |
-|---------------|-------------|----------|
-| **Schedule** | Pick an hourly, daily, weekly, monthly or yearly time with the schedule builder | Regular runs (hourly checks, nightly suites) |
-| **Manual** | Run only when triggered manually | On-demand testing |
-| **API Trigger** | Run via HTTP API call | CI/CD integration |
+Choose when the job runs with the schedule builder: an hourly, daily, weekly, monthly or yearly time. Leave the schedule empty for manual execution. To trigger it from CI, save the job, then open its **Edit** action and go to **CI/CD Settings**.
 
 The builder offers hourly and longer periods. Schedules are stored as five-field cron expressions (minute, hour, day of month, month, day of week), so the CLI and API can set any cron down to one minute. Schedules run in UTC.
 

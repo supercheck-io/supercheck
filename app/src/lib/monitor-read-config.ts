@@ -1,4 +1,5 @@
 import type { MonitorConfig } from "@/db/schema";
+import { runReportPath } from "@/lib/run-report-url";
 
 /** Declared MonitorConfig keys, without its `[key: string]: unknown` index signature. */
 type DeclaredConfigKey = keyof {
@@ -98,4 +99,21 @@ export function monitorResultDetailsForRead<T extends object | null | undefined>
     redacted[name] = SENSITIVE_RESPONSE_HEADER.test(name) ? "[REDACTED]" : value;
   }
   return { ...details, responseHeaders: redacted };
+}
+
+/**
+ * A monitor result as API and page readers see it: redacted details, and the
+ * stored report location (an internal storage URL) replaced by the app report route.
+ */
+export function monitorResultForRead<
+  T extends { details: object | null; testExecutionId: string | null; testReportS3Url: string | null },
+>(result: T): T {
+  const reportPath = (stored: unknown) =>
+    result.testExecutionId && typeof stored === "string" ? runReportPath(result.testExecutionId, stored) : null;
+  const details = monitorResultDetailsForRead(result.details);
+  return {
+    ...result,
+    details: details && "reportUrl" in details ? { ...details, reportUrl: reportPath(details.reportUrl) } : details,
+    testReportS3Url: reportPath(result.testReportS3Url),
+  };
 }

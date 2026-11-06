@@ -32,7 +32,7 @@ const products = [
     shot: { src: "/screenshots/site/monitors-list.webp", alt: "Monitors list with HTTP, website, ping, port and synthetic monitors" },
     items: [
       "HTTP, website, ping and port checks",
-      "Checks from several regions, including Europe, North America and Asia Pacific on Cloud",
+      "Uptime checks from several regions, including Europe, North America and Asia Pacific on Cloud",
       "Synthetic monitors that replay Playwright journeys",
       "Failure and recovery thresholds to cut noisy alerts",
     ],
@@ -54,7 +54,7 @@ const products = [
     title: "Communicate",
     summary: "Tell your team first, then tell your users.",
     href: "/docs/app/communicate",
-    shot: { src: "/screenshots/site/status-page-public.webp", alt: "Public status page with an active status update and 90 days of uptime per component" },
+    shot: { src: "/screenshots/site/status-page-public.webp", alt: "Public status page with a partial outage banner and 90 days of uptime per component" },
     items: [
       "Notifications by email, Slack, Teams, Discord, Telegram and webhooks",
       "Public status pages on your own domain",
@@ -101,8 +101,8 @@ export default defineConfig({
 const runOptions = [
   {
     title: "Isolated by default",
-    body: "Tests run in isolated Kubernetes workloads sandboxed with gVisor. Private and cluster networks are blocked, so a test script cannot reach your infrastructure.",
-    link: { href: "/docs/app/automate", label: "How execution works" },
+    body: "Tests run in isolated Kubernetes workloads sandboxed with gVisor. Private networks, mail ports and cluster control ports are blocked; public addresses stay reachable.",
+    link: { href: "/docs/app/deployment/self-hosted", label: "How execution is isolated" },
   },
   {
     title: "Self-host for free",
@@ -282,7 +282,7 @@ export default async function HomePage() {
               <div className="mt-8 rounded-lg border border-fd-border p-4">
                 <p className="text-sm font-medium">Ask your AI tools about it</p>
                 <p className="mt-1 text-sm text-fd-muted-foreground">
-                  A read-only MCP server lets Claude, Cursor, VS Code and other MCP clients look at
+                  An MCP server, read-only by default, lets Claude, Cursor, VS Code and other MCP clients look at
                   a project&apos;s tests, runs, monitors and incidents. Off by default when self-hosting.
                 </p>
               </div>
