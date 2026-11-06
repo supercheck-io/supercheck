@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 
 import { BreadcrumbProvider, Breadcrumbs } from "@/components/breadcrumb-context";
 import { BreadcrumbDisplay } from "./breadcrumb-display";
@@ -56,5 +56,14 @@ describe("BreadcrumbDisplay narrow-viewport contract", () => {
 
     expect(homeItem).toHaveClass("shrink-0");
     expect(homeItem).not.toHaveClass("flex-1");
+  });
+
+  it("names the Home link and the Home current page for assistive tech", async () => {
+    renderBreadcrumbs([{ label: "Home", href: "/" }, { label: "Status Pages", href: "/status-pages" }]);
+    expect(await screen.findByRole("link", { name: "Home" })).toHaveAttribute("href", "/");
+
+    cleanup();
+    renderBreadcrumbs([{ label: "Home", isCurrentPage: true }]);
+    expect(await screen.findByLabelText("Home")).toBeInTheDocument();
   });
 });

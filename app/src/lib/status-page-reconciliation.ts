@@ -116,6 +116,37 @@ export async function linkStatusPageIncidentsToSreIncident(
   return ids;
 }
 
+/**
+ * When a public incident resolves, the SRE incident's single status_page_incident_id slot must not keep
+ * pointing at it while another still-open public incident is linked to the same SRE incident.
+ */
+export async function repointSreStatusPageSlot(tx: Tx, resolvedIncidentId: string) {
+  const [owner] = await tx
+    .select({ id: sreIncidents.id })
+    .from(sreIncidents)
+    .where(eq(sreIncidents.statusPageIncidentId, resolvedIncidentId))
+    .limit(1);
+  if (!owner) return;
+  const [next] = await tx
+    .select({ id: incidents.id })
+    .from(incidents)
+    .where(
+      and(
+        eq(incidents.sreIncidentId, owner.id),
+        ne(incidents.id, resolvedIncidentId),
+        ne(incidents.status, "resolved"),
+        ne(incidents.status, "scheduled"),
+      ),
+    )
+    .orderBy(desc(incidents.createdAt))
+    .limit(1);
+  // No successor: clear the slot so the next linked public incident can claim it.
+  await tx
+    .update(sreIncidents)
+    .set({ statusPageIncidentId: next?.id ?? null })
+    .where(eq(sreIncidents.id, owner.id));
+}
+
 export async function reconcileStatusPages() {
   // A transaction lock makes the singleton tick safe across app replicas and retries.
   await db.transaction(async (tx) => {
@@ -253,6 +284,7 @@ export async function reconcileStatusPages() {
         })),
         component.aggregationMethod as AggregationMethod,
         component.failureThreshold,
+        component.status as ComponentStatus,
       );
       const status =
         manualStatus ??
@@ -346,6 +378,7 @@ export async function reconcileStatusPages() {
             updatedAt: new Date(),
           })
           .where(eq(incidents.id, automatic.id));
+        await repointSreStatusPageSlot(tx, automatic.id);
         const [update] = await tx
           .insert(incidentUpdates)
           .values({

@@ -290,7 +290,9 @@ export function IncidentFormDialog({
         <DialogHeader className="border-b px-6 py-4">
           <DialogTitle>New status update</DialogTitle>
           <DialogDescription>
-            Report a service disruption to your users.
+            {status === "scheduled"
+              ? "Announce planned maintenance to your users."
+              : "Report a service disruption to your users."}
           </DialogDescription>
         </DialogHeader>
 
@@ -340,7 +342,12 @@ export function IncidentFormDialog({
                   render={({ field }) => (
                     <Select
                       value={field.value}
-                      onValueChange={field.onChange}
+                      onValueChange={(value) => {
+                        field.onChange(value);
+                        // Planned maintenance is not an outage: don't carry over the default "minor" impact.
+                        if (value === "scheduled" && watch("impact") === "minor")
+                          setValue("impact", "none");
+                      }}
                       disabled={isSubmitting}
                     >
                       <SelectTrigger id="incident-status">

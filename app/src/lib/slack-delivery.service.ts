@@ -238,10 +238,10 @@ export async function deliverSlackMessage(
   // Validate webhook URL
   try {
     const url = new URL(webhookUrl);
-    if (!url.hostname.endsWith(".slack.com")) {
+    if (url.protocol !== "https:" || url.hostname !== "hooks.slack.com") {
       return {
         success: false,
-        error: "Invalid Slack webhook URL (must be a slack.com domain)",
+        error: "Invalid Slack webhook URL (must be https://hooks.slack.com)",
         retriesAttempted: 0,
       };
     }
