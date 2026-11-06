@@ -3,6 +3,7 @@ import {
   MCP_FENCE_CLOSE,
   MCP_FENCE_OPEN,
   buildAllowlist,
+  markDestructiveAllowlistEntries,
   describeMcpToolsForModel,
   ensureMcpFence,
   mcpHeaderNameError,
@@ -91,6 +92,38 @@ describe("MCP allowlist building", () => {
   it("caps the allowlist size", () => {
     const many = Array.from({ length: MAX_MCP_ALLOWLIST_TOOLS + 1 }, (_, i) => ({ name: `t${i}` }));
     expect(buildAllowlist(discovered, many).ok).toBe(false);
+  });
+});
+
+describe("MCP destructive tools", () => {
+  const destructive = { ...discovered[0], name: "wipe", destructiveHint: true };
+
+  it("refuses to allowlist a server-marked destructive tool", () => {
+    const built = buildAllowlist([...discovered, destructive], [{ name: "wipe" }]);
+    expect(built).toMatchObject({ ok: false, error: expect.stringMatching(/destructive/) });
+  });
+
+  it("refuses to call a destructive tool, including entries allowlisted before the hint was stored", () => {
+    const config = { mcp: { discovered: [destructive], allowlist: [{ ...entry, name: "wipe" }] } };
+    expect(resolveMcpToolCall(config, "wipe", { namespace: "a" })).toMatchObject({ ok: false });
+    const flagged = { mcp: { discovered: [], allowlist: [{ ...entry, name: "wipe", destructiveHint: true }] } };
+    expect(resolveMcpToolCall(flagged, "wipe", { namespace: "a" })).toMatchObject({ ok: false });
+  });
+});
+
+describe("MCP destructive flag on existing entries", () => {
+  const old = { ...entry, name: "wipe" }; // allowlisted before hints were stored
+  const flagged = [{ ...discovered[0], name: "wipe", destructiveHint: true }];
+
+  it("refuses to re-save an existing entry that discovery now marks destructive", () => {
+    expect(buildAllowlist(flagged, [{ name: "wipe" }], [old])).toMatchObject({ ok: false });
+  });
+
+  it("keeps the block after a later discovery omits the tool", () => {
+    const persisted = markDestructiveAllowlistEntries([old], flagged);
+    expect(persisted[0].destructiveHint).toBe(true);
+    const config = { mcp: { discovered: [], allowlist: persisted } };
+    expect(resolveMcpToolCall(config, "wipe", { namespace: "a" })).toMatchObject({ ok: false });
   });
 });
 

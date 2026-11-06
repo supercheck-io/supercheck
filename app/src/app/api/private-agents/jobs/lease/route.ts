@@ -3,10 +3,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { and, asc, desc, eq, inArray, isNull, lt, lte, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 
-import { externalConnectorCredentials, privateAgentCredentials, privateAgentJobs, privateAgents } from "@/db/schema";
+import { externalConnectorCredentials, externalConnectors, privateAgentCredentials, privateAgentJobs, privateAgents } from "@/db/schema";
 import { hashApiKey } from "@/lib/security/api-key-hash";
 import { createLogger } from "@/lib/logger/index";
 import { decryptConnectorCredential } from "@/lib/sre/connectors";
+import { resolveMcpToolCall } from "@/lib/sre/connectors/providers/mcp";
+import { redactEndpointQuery } from "@/lib/sre/connectors/endpoint-policy";
 import { db } from "@/utils/db";
 import { authenticatePrivateAgent, unauthorized } from "../auth";
 
@@ -216,13 +218,47 @@ export async function POST(request: NextRequest) {
         }
       : null;
 
+    // MCP jobs are stored with the query-redacted endpoint; the agent dials the full URL from the credential.
+    const fullEndpoint = credential?.value?.endpointUrl;
+    const isMcp = leasedJob.jobSpec?.connectorType === "mcp";
+    const storedEndpoint = leasedJob.jobSpec?.endpointUrl;
+    const failLeased = async (errorCode: string) => {
+      await db
+        .update(privateAgentJobs)
+        .set({ status: "failed", completedAt: new Date(), errorCode })
+        .where(and(eq(privateAgentJobs.id, leasedJob.id), eq(privateAgentJobs.privateAgentId, auth.agent.id)));
+      return NextResponse.json({ job: null });
+    };
+    // Only the redacted form is unrecoverable; a job queued before redaction still holds its full URL and leases as is.
+    const storedIsRedacted =
+      typeof storedEndpoint === "string" && storedEndpoint.includes("?") && redactEndpointQuery(storedEndpoint) === storedEndpoint;
+    if (isMcp && storedIsRedacted && typeof fullEndpoint !== "string") {
+      // The stored URL is query-redacted and the key is gone: the agent could only dial a broken endpoint.
+      return failLeased("mcp_endpoint_missing");
+    }
+    const mcpOperation = (leasedJob.jobSpec?.filters as { mcp?: { kind?: string; tool?: string; arguments?: Record<string, unknown> } } | undefined)?.mcp;
+    if (isMcp && mcpOperation?.kind === "call_tool" && leasedJob.connectorId) {
+      // Re-check against the connector as it is now: the tool may have been removed or flagged destructive since queueing.
+      const connector = await db.query.externalConnectors.findFirst({
+        where: eq(externalConnectors.id, leasedJob.connectorId),
+        columns: { config: true },
+      });
+      if (!connector || !resolveMcpToolCall(connector.config, mcpOperation.tool ?? "", mcpOperation.arguments ?? {}).ok) {
+        return failLeased("mcp_tool_not_allowed");
+      }
+    }
+    const jobSpec =
+      isMcp && typeof fullEndpoint === "string"
+        ? { ...leasedJob.jobSpec, endpointUrl: fullEndpoint }
+        : leasedJob.jobSpec;
+
     return NextResponse.json({
       job: {
         id: leasedJob.id,
         jobClass: leasedJob.jobClass,
         connectorId: leasedJob.connectorId,
         projectId: leasedJob.projectId,
-        jobSpec: leasedJob.jobSpec,
+        jobSpec,
         jobSpecHash: leasedJob.jobSpecHash,
         policyDecisionHash: leasedJob.policyDecisionHash,
         leaseExpiresAt: leasedJob.leaseExpiresAt?.toISOString() ?? leaseExpiresAt.toISOString(),
