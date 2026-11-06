@@ -450,7 +450,12 @@ export class MonitorService {
    */
   async saveMonitorResults(
     results: MonitorExecutionResult[],
-    options?: { persisted?: boolean; executionGroupId?: string },
+    options?: {
+      persisted?: boolean;
+      executionGroupId?: string;
+      /** Surface insert errors instead of logging them (the caller must not re-run the check). */
+      rethrow?: boolean;
+    },
   ): Promise<void> {
     if (results.length === 0) {
       this.logger.warn('No results to save');
@@ -468,7 +473,9 @@ export class MonitorService {
     // Save all location results in parallel
     if (!options?.persisted) {
       await Promise.all(
-        results.map((result) => this.saveMonitorResultToDb(result)),
+        results.map((result) =>
+          this.saveMonitorResultToDb(result, options?.rethrow ?? false),
+        ),
       );
     }
 

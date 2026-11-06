@@ -448,10 +448,13 @@ export class MonitorEvaluator {
         alertMetadata,
       );
 
-      // A suppressed failure is retried while the window lasts; a suppressed recovery is consumed.
-      if (notification?.suppressed && alertType === 'failure')
-        return { alertSent: false };
-      const suppressed = Boolean(notification?.suppressed);
+      // Only a maintenance-suppressed recovery is consumed; anything else (no providers) retries within
+      // the bounded window, as a suppressed failure does.
+      const suppressed =
+        notification?.suppressed === true &&
+        alertType === 'recovery' &&
+        (notification as { reason?: string }).reason === 'maintenance';
+      if (!suppressed && notification?.suppressed) return { alertSent: false };
       if (!suppressed && notification?.delivered === false)
         return { alertSent: false, deliveryFailed: true };
       delivered = true;

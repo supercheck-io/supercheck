@@ -1565,6 +1565,29 @@ describe('MonitorService', () => {
         service['saveMonitorResultToDb'](row),
       ).resolves.toBeUndefined();
     });
+    it('saveMonitorResults rethrows an insert failure only when asked, and swallows it by default', async () => {
+      const failing = () => ({
+        then: (_resolve: unknown, reject: (e: Error) => void) =>
+          reject(new Error('statement timeout')),
+        onConflictDoNothing: () =>
+          Promise.reject(new Error('statement timeout')),
+      });
+      mockDbService.db.insert.mockReturnValue({ values: jest.fn(failing) });
+      jest
+        .spyOn(service as any, 'getMonitorById')
+        .mockResolvedValue(mockMonitor);
+      const row = {
+        monitorId: mockMonitor.id,
+        location: 'eu',
+        checkedAt: new Date(),
+        status: 'up',
+        isUp: true,
+      } as MonitorExecutionResult;
+      await expect(
+        service.saveMonitorResults([row], { rethrow: true }),
+      ).rejects.toThrow('statement timeout');
+      await expect(service.saveMonitorResults([row])).resolves.not.toThrow();
+    });
     it('retries an insert whose response was lost under one row id, ignoring a conflict', async () => {
       const onConflictDoNothing = jest
         .fn()

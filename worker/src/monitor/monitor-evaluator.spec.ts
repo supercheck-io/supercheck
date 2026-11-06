@@ -278,7 +278,7 @@ describe('MonitorEvaluator recovery alert retries', () => {
   async function recoveryAttempts(
     multiLocation: boolean,
     recoveryThreshold: number,
-    outcome: { delivered: boolean; suppressed?: boolean },
+    outcome: { delivered: boolean; suppressed?: boolean; reason?: string },
     upTo = 40,
   ) {
     let recoveriesRecorded = 0;
@@ -382,10 +382,27 @@ describe('MonitorEvaluator recovery alert retries', () => {
       const { attempted, recoveriesRecorded } = await recoveryAttempts(
         multi,
         threshold,
-        { delivered: false, suppressed: true },
+        { delivered: false, suppressed: true, reason: 'maintenance' },
       );
       expect(attempted).toEqual([threshold]);
       expect(recoveriesRecorded).toBeGreaterThan(0);
+    },
+  );
+
+  it.each([
+    [false, 1],
+    [true, 3],
+  ])(
+    'keeps retrying a recovery suppressed for lack of providers within the bound (multi=%s, threshold %s)',
+    async (multi, threshold) => {
+      const { attempted, recoveriesRecorded } = await recoveryAttempts(
+        multi,
+        threshold,
+        { delivered: false, suppressed: true, reason: 'no_providers' },
+      );
+      expect(attempted.length).toBeGreaterThan(1);
+      expect(attempted.length).toBeLessThanOrEqual(Math.max(5, threshold * 2));
+      expect(recoveriesRecorded).toBe(0);
     },
   );
 });

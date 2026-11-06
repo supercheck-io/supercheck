@@ -126,7 +126,11 @@ export class MonitorAlertService {
       this.logger.log(
         `[NOTIFY] Suppressing monitor ${monitorId} alert during scheduled maintenance`,
       );
-      return { delivered: false, suppressed: true };
+      return {
+        delivered: false,
+        suppressed: true,
+        reason: 'maintenance' as const,
+      };
     }
 
     // Get notification providers
@@ -164,7 +168,11 @@ export class MonitorAlertService {
         `[NOTIFY] No notification providers configured for monitor ${monitorId}`,
       );
       // Nothing to deliver to: not a failure, so the cycle is receipted instead of retried 5 times.
-      return { delivered: false, suppressed: true };
+      return {
+        delivered: false,
+        suppressed: true,
+        reason: 'no_providers' as const,
+      };
     }
 
     // Determine notification details

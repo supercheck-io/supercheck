@@ -404,7 +404,9 @@ describe('MonitorDynamicWorkerService lifecycle', () => {
       data: { type: 'http_request', monitorId: 'm1' },
     };
     await expect(service['processJob'](job as never)).resolves.toBe(results);
-    expect(saveMonitorResults).toHaveBeenCalledWith(results);
+    expect(saveMonitorResults).toHaveBeenCalledWith(results, {
+      rethrow: true,
+    });
     executeMonitorWithLocations.mockClear();
     const failure = service['processJob'](job as never);
     await expect(failure).rejects.toBeInstanceOf(ResultNotKeptError);

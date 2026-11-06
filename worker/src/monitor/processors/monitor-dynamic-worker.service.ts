@@ -471,7 +471,9 @@ export class MonitorDynamicWorkerService
     // check already ran (a synthetic one is billed), so a failed save must not re-run it: fail for good.
     if (results.length > 0) {
       try {
-        await this.monitorService.saveMonitorResults(results);
+        await this.monitorService.saveMonitorResults(results, {
+          rethrow: true,
+        });
       } catch (error) {
         throw new ResultNotKeptError(
           `Monitor ${job.data.monitorId} result could not be saved and will not be re-run: ${getErrorMessage(error)}`,
