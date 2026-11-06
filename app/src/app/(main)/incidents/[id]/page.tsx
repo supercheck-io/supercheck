@@ -33,7 +33,7 @@ export default async function SreIncidentDetailPage({
     <div data-fit-viewport className="flex min-h-0 flex-1 flex-col lg:min-h-[560px] lg:overflow-hidden">
       <PageBreadcrumbs items={breadcrumbs} />
       <Card className="m-4 flex min-h-0 min-w-0 flex-1 flex-col shadow-sm">
-        <CardContent className="flex min-h-0 flex-1 flex-col p-6">
+        <CardContent className="flex min-h-0 flex-1 flex-col p-4 lg:p-6">
           <SreIncidentDetailPageClient incidentId={id} initialTab={initialTab} />
         </CardContent>
       </Card>

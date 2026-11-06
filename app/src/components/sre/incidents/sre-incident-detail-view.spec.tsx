@@ -332,7 +332,9 @@ describe("SreIncidentDetailView", () => {
     render(<SreIncidentDetailView detail={detail} services={[]} initialTab="investigation" />);
     const sheet = investigationTab();
     expect(within(sheet).getByText("Investigating: 1 check done")).toBeInTheDocument();
-    expect(within(sheet).getByRole("status", { name: "Investigation in progress" })).toBeInTheDocument();
+    expect(within(sheet).getByTestId("conclusion-placeholder")).toHaveAttribute("aria-hidden", "true");
+    // One live status line for the run, not one per block.
+    expect(within(sheet).getAllByRole("status")).toHaveLength(1);
     expect(within(sheet).queryByText(/Last run/)).not.toBeInTheDocument();
     expect(within(sheet).queryByText(/^Confidence:/)).not.toBeInTheDocument();
   });
@@ -399,6 +401,14 @@ describe("SreIncidentDetailView", () => {
     fireEvent.click(screen.getByRole("button", { name: "View investigation" }));
     expect(screen.getByRole("tab", { name: "Investigation" })).toHaveAttribute("aria-selected", "true");
     expect(within(investigationTab()).getByText("Mock AI investigation panel")).toBeInTheDocument();
+  });
+
+  it("starts each tab at the top of the column", () => {
+    render(<SreIncidentDetailView detail={detailFixture()} services={[]} />);
+    const column = screen.getByRole("tabpanel", { name: "Overview" }).parentElement!;
+    column.scrollTop = 400;
+    openTab("Investigation");
+    expect(column.scrollTop).toBe(0);
   });
 
   it("writes the open tab to the URL and drops it again for Overview", () => {

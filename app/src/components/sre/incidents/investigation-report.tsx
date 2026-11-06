@@ -364,7 +364,8 @@ export function InvestigationReport({
           </div>
         ) : (
           running ? (
-            <div role="status" aria-label="Investigation in progress" className="space-y-2 rounded-lg bg-muted/30 px-4 py-3">
+            // Decorative: the status line at the top of the tab already announces progress.
+            <div aria-hidden="true" data-testid="conclusion-placeholder" className="space-y-2 rounded-lg bg-muted/30 px-4 py-3">
               <Skeleton className="h-3.5 w-11/12" />
               <Skeleton className="h-3.5 w-4/5" />
               <Skeleton className="h-3.5 w-2/3" />

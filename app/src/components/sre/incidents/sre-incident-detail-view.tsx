@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Check, ChevronLeft, FileText, LayoutDashboard, Loader2, MoreHorizontal, Sparkles } from "lucide-react";
 
@@ -97,10 +97,14 @@ export function SreIncidentDetailView({
   // The post-mortem tab exists once the incident is resolved; asking for it earlier shows the overview.
   const activeTab: IncidentTab = tab === "postmortem" && open ? "overview" : tab;
 
+  const mainColumn = useRef<HTMLDivElement>(null);
+
   const changeTab = (value: string) => {
     const next = value as IncidentTab;
     setTab(next);
     setFocus(null);
+    // Each tab starts at its top; the column would otherwise keep the previous tab's scroll position.
+    if (mainColumn.current) mainColumn.current.scrollTop = 0;
     writeTabToUrl(next);
   };
 
@@ -235,14 +239,14 @@ export function SreIncidentDetailView({
         </TabsList>
 
         <div className="grid min-h-0 min-w-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_22rem] lg:grid-rows-[minmax(0,1fr)]">
-          <div className={`flex min-w-0 flex-col ${COLUMN_SCROLL}`}>
+          <div ref={mainColumn} className={`flex min-w-0 flex-col ${COLUMN_SCROLL}`}>
 
             {/* Kept mounted while hidden so an unsent note or a draft survives a tab switch. */}
             <TabsContent
               value="overview"
               forceMount
               hidden={activeTab !== "overview"}
-              className="mt-0 flex min-w-0 flex-col gap-4 data-[state=inactive]:hidden"
+              className="mt-0 flex min-w-0 flex-col gap-4 focus-visible:ring-inset focus-visible:ring-offset-0 data-[state=inactive]:hidden"
             >
               {incident.resolutionSummary && (
                 <p className="line-clamp-2 rounded-md border bg-muted/40 px-3 py-2 text-sm" data-testid="resolution-summary">
@@ -281,7 +285,7 @@ export function SreIncidentDetailView({
               />
             </TabsContent>
 
-            <TabsContent value="investigation" className="mt-0 min-w-0">
+            <TabsContent value="investigation" className="mt-0 min-w-0 rounded-md focus-visible:ring-inset focus-visible:ring-offset-0">
               <InvestigationReport
                     key={detail.latestBrief?.id ?? "no-brief"}
                     detail={detail}
@@ -291,7 +295,7 @@ export function SreIncidentDetailView({
             </TabsContent>
 
             {!open && (
-              <TabsContent value="postmortem" className="mt-0 min-w-0">
+              <TabsContent value="postmortem" className="mt-0 min-w-0 rounded-md focus-visible:ring-inset focus-visible:ring-offset-0">
                 <PostmortemCard
                       key={incident.postmortem?.updatedAt ?? "none"}
                       incidentId={incident.id}
