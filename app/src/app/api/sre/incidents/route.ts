@@ -6,6 +6,7 @@ import { sreIncidentAlerts, sreIncidents, sreServices } from "@/db/schema";
 import { requireSreApiPermissions } from "../_auth";
 import { db } from "@/utils/db";
 import { getDisplayStatus } from "@/lib/sre/incident-status-display";
+import { storedRootCause } from "@/lib/sre/evidence-brief-summary";
 
 // One more row is fetched to tell the caller the list was cut.
 const INCIDENT_LIST_LIMIT = 500;
@@ -74,6 +75,7 @@ export async function GET(request: NextRequest) {
     truncated: incidents.length > INCIDENT_LIST_LIMIT,
     incidents: incidents.slice(0, INCIDENT_LIST_LIMIT).map((incident) => ({
       ...incident,
+      rootCauseSummary: storedRootCause(incident.rootCauseSummary),
       statusLabel: getDisplayStatus(incident.status, incident.acknowledgedAt).label,
     })),
   });

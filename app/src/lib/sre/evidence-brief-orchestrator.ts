@@ -9,7 +9,7 @@ import {
   sreInvestigationRuns,
 } from "@/db/schema";
 import { getActualModelName } from "@/lib/ai/ai-provider";
-import { describeEvidenceBrief } from "@/lib/sre/evidence-brief-summary";
+import { describeEvidenceBrief, reportHeadline } from "@/lib/sre/evidence-brief-summary";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { createLogger } from "@/lib/logger/index";
 import { normalizePrivateAgentEvidenceSummaries } from "@/lib/sre/connector-job-evidence";
@@ -448,10 +448,12 @@ export async function runSreEvidenceBriefGeneration(input: {
           ),
         );
 
+      // The incident keeps a one-paragraph headline (the full brief stays on the run), and a brief never
+      // replaces the conclusion or confidence of a completed investigation.
       await tx
         .update(sreIncidents)
         .set({
-          rootCauseSummary: brief.summary,
+          rootCauseSummary: reportHeadline(brief.summary, 2000),
           confidenceScore: String(brief.confidenceScore),
           updatedAt: new Date(),
         })
@@ -460,6 +462,7 @@ export async function runSreEvidenceBriefGeneration(input: {
             eq(sreIncidents.id, input.incidentId),
             eq(sreIncidents.organizationId, input.organizationId),
             eq(sreIncidents.projectId, input.projectId),
+            sql`not exists (select 1 from ${sreInvestigationRuns} where ${sreInvestigationRuns.organizationId} = ${input.organizationId} and ${sreInvestigationRuns.projectId} = ${input.projectId} and ${sreInvestigationRuns.incidentId} = ${input.incidentId} and ${sreInvestigationRuns.agentType} = 'investigation' and ${sreInvestigationRuns.status} = 'completed')`,
           ),
         );
 

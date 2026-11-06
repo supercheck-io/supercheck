@@ -74,7 +74,8 @@ describe("findSimilarIncidents", () => {
         primaryServiceId: SERVICE,
         serviceName: "checkout",
         resolvedAt: new Date("2026-09-01"),
-        rootCauseSummary: "x".repeat(500),
+        // An older evidence brief stored whole: readers get its summary paragraph, clipped.
+        rootCauseSummary: `# Incident Investigation Report\n\n## Report Details\n- **Severity**: sev2\n\n## Executive Summary\n${"x".repeat(500)}`,
         resolutionSummary: "rolled back",
       },
       {
@@ -95,6 +96,7 @@ describe("findSimilarIncidents", () => {
     expect(result).toHaveLength(1);
     expect(result[0].matchedOn).toEqual(["service", "alert", "title"]);
     expect(result[0].rootCauseSummary?.length).toBeLessThanOrEqual(300);
+    expect(result[0].rootCauseSummary).toMatch(/^x+/);
     // where[0]=current incident, [1]=alerts, [2]=signature matches, [3]=candidates
     for (const clause of whereClauses.slice(0, 4)) {
       expect(render(clause).params).toEqual(expect.arrayContaining([ORG, PROJECT]));

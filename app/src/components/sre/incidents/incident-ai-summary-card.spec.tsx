@@ -188,44 +188,23 @@ describe("describeTimelineEvent", () => {
 });
 
 describe("IncidentAiSummaryCard compact layout", () => {
-  it("clamps a long conclusion until Show more is pressed and exposes the details button", () => {
+  it("shows one plain paragraph of a stored report, with no Show more, and links to the Investigation tab", () => {
     const onOpenInvestigation = jest.fn();
-    jest.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValueOnce(400);
+    const report = "# Incident Investigation Report\n\n## Report Details\n- **Severity**: sev2\n\n## Executive Summary\nThe **job** failed twice.\n\n## What Changed\n- Evidence ID: 01a111b9-8fa5-7c48-875e-f9be4ff9ba9c";
     render(
       <IncidentAiSummaryCard
-        rootCauseSummary={"Long conclusion. ".repeat(40)}
+        rootCauseSummary={report}
         confidenceScore="0.6"
         investigationStatus="completed"
         onOpenInvestigation={onOpenInvestigation}
         feedback={<span>Was this right?</span>}
       />,
     );
-    const more = screen.getByRole("button", { name: "Show more" });
-    expect(more).toHaveAttribute("aria-expanded", "false");
-    fireEvent.click(more);
-    expect(screen.getByRole("button", { name: "Show less" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByTestId("ai-summary-body")).toHaveTextContent(/^The job failed twice\.$/);
+    expect(screen.queryByRole("button", { name: "Show more" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "View investigation" }));
     expect(onOpenInvestigation).toHaveBeenCalled();
     expect(screen.getByText("Was this right?")).toBeInTheDocument();
-  });
-
-  it("clamps a long markdown report by height and expands it inline without an inner scroller", () => {
-    const height = jest.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(400);
-    const long = `**What Changed**\n${"- The job failed again.\n".repeat(20)}`;
-    render(<IncidentAiSummaryCard rootCauseSummary={long} confidenceScore="0.8" investigationStatus="completed" />);
-    const body = screen.getByTestId("ai-summary-body");
-    expect(body.className).toContain("max-h-28");
-    fireEvent.click(screen.getByRole("button", { name: "Show more" }));
-    expect(body.className).not.toContain("max-h");
-    expect(body.className).not.toContain("overflow-y-auto");
-    fireEvent.click(screen.getByRole("button", { name: "Show less" }));
-    expect(body.className).toContain("max-h-28");
-    height.mockRestore();
-  });
-
-  it("offers no Show more when the text fits", () => {
-    render(<IncidentAiSummaryCard rootCauseSummary={"x ".repeat(200)} confidenceScore="0.8" investigationStatus="completed" />);
-    expect(screen.queryByRole("button", { name: "Show more" })).toBeNull();
   });
 
   it("keeps a summary that is nothing but header lines rather than showing it as empty", () => {
@@ -234,18 +213,26 @@ describe("IncidentAiSummaryCard compact layout", () => {
     expect(screen.getByText(/Investigating/)).toBeInTheDocument();
   });
 
-  it("collapses again when the conclusion changes while expanded", () => {
-    const height = jest.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(400);
-    const { rerender } = render(
-      <IncidentAiSummaryCard rootCauseSummary={"First conclusion. ".repeat(40)} confidenceScore="0.8" investigationStatus="completed" />,
+  it.each([
+    ["brief", "From the evidence brief"],
+    ["triage", "From AI triage"],
+  ] as const)("names a %s summary and gives it no confidence rating", (source, label) => {
+    render(<IncidentAiSummaryCard rootCauseSummary="Pool exhausted" confidenceScore="0.9" investigationStatus={null} source={source} />);
+    expect(screen.getByText(label)).toBeInTheDocument();
+    expect(screen.queryByText(/Confidence/)).not.toBeInTheDocument();
+  });
+
+  it("does not rate a failed run's previous conclusion", () => {
+    render(<IncidentAiSummaryCard rootCauseSummary="Earlier" confidenceScore="0.9" investigationStatus="failed" />);
+    expect(screen.queryByText(/Confidence/)).not.toBeInTheDocument();
+  });
+
+  it("puts the run controls in the empty state", () => {
+    render(
+      <IncidentAiSummaryCard rootCauseSummary={null} confidenceScore={null} investigationStatus={null} runControls={<button type="button">Run investigation</button>} />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Show more" }));
-    expect(screen.getByRole("button", { name: "Show less" })).toBeInTheDocument();
-    rerender(
-      <IncidentAiSummaryCard rootCauseSummary={"Second conclusion. ".repeat(40)} confidenceScore="0.8" investigationStatus="completed" />,
-    );
-    expect(screen.getByRole("button", { name: "Show more" })).toHaveAttribute("aria-expanded", "false");
-    expect(screen.getByTestId("ai-summary-body").className).toContain("max-h-28");
-    height.mockRestore();
+    expect(screen.getByText("No AI analysis yet.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Run investigation" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "View investigation" })).toBeNull();
   });
 });

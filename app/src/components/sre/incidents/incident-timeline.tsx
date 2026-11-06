@@ -17,8 +17,7 @@ import { useSreIncidentTimeline } from "@/hooks/use-sre";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { getSreIncidentDetailQueryKey, getSreIncidentTimelineQueryKey } from "@/lib/sre/query-keys";
 import { getDisplayStatus } from "@/lib/sre/incident-status-display";
-import { describeEvidenceBrief } from "@/lib/sre/evidence-brief-summary";
-import { stripEvidenceIdLists } from "@/sre/lib/investigation-output";
+import { describeEvidenceBrief, reportHeadline } from "@/lib/sre/evidence-brief-summary";
 
 const STATE_LABELS: Record<string, string> = {
   assigned: "Assignment changed",
@@ -40,20 +39,18 @@ function str(value: unknown, max = 600) {
   return typeof value === "string" ? value.slice(0, max) : null;
 }
 
-/** First paragraph of an AI report as plain text; the full report lives in the Investigation sheet. */
+// Each AI row names what produced it instead of a generic "AI finding".
+const AI_FINDING_TITLES: Record<string, string> = {
+  sre_triage: "AI triage",
+  sre_investigation: "AI investigation",
+  sre_investigation_failed: "Investigation failed",
+  native_evidence_brief: "Evidence brief",
+  native_evidence_brief_failed: "Evidence brief failed",
+};
+
+/** One plain-text paragraph of an AI report; the full report lives in the Investigation tab. */
 export function aiFindingHeadline(value: unknown) {
-  if (typeof value !== "string") return null;
-  const firstParagraph = stripEvidenceIdLists(value.trim().split(/\n\s*\n/)[0] ?? "");
-  const plain = firstParagraph
-    .replace(/\*\*|__|`/g, "")
-    .replace(/^#+\s*/gm, "")
-    .replace(/^\s*[-*]\s+/gm, "")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (!plain) return null;
-  if (plain.length <= 400) return plain;
-  const cut = plain.slice(0, 400);
-  return `${cut.slice(0, cut.lastIndexOf(" ") > 300 ? cut.lastIndexOf(" ") : 400)}…`;
+  return typeof value === "string" ? reportHeadline(value, 400) : null;
 }
 
 /** "A -> B" lines for the fields an edit changed; empty for events recorded before values were stored. */
@@ -88,7 +85,7 @@ export function describeTimelineEvent(
   if (event.eventType === "comment") return { title: "Note", body: str(data.text) };
   if (event.eventType === "ai_finding") {
     return {
-      title: "AI finding",
+      title: (typeof data.type === "string" && AI_FINDING_TITLES[data.type]) || "AI finding",
       body:
         aiFindingHeadline(data.summary) ??
         str(data.error) ??

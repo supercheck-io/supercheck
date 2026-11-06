@@ -1,6 +1,6 @@
 "use client";
 
-import { SreIncidentDetailView } from "@/components/sre/incidents/sre-incident-detail-view";
+import { SreIncidentDetailView, type IncidentTabParam } from "@/components/sre/incidents/sre-incident-detail-view";
 import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useSreIncidentPageData } from "@/hooks/use-sre";
@@ -10,7 +10,7 @@ export function SreIncidentDetailPageClient({
   initialTab,
 }: {
   incidentId: string;
-  initialTab: "overview" | "investigation" | "evidence" | "brief";
+  initialTab: IncidentTabParam;
 }) {
   const query = useSreIncidentPageData(incidentId);
 

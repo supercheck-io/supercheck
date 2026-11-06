@@ -92,6 +92,20 @@ describe("evidence brief stored evidence", () => {
     expect(mockLimit).toHaveBeenCalledWith(25);
   });
 
+  it("stores only the brief headline on the incident and never over a completed investigation", async () => {
+    mockLimit.mockResolvedValue([]);
+    const summary = "## Summary\nThe checkout job timed out.\n\n## Impact\nUnknown.";
+    const generateBrief = jest.fn().mockResolvedValue({ provider: "ai", summary, modelId: "test-model", confidenceScore: 0.6, suspectedFailureDomain: "job", citedEvidenceIds: [] });
+    await runSreEvidenceBriefGeneration({ userId: "user-a", organizationId: "org-a", projectId: "project-a", incidentId: "incident-a", generateBrief });
+    const incidentCall = mockSet.mock.calls.findIndex(([v]) => "rootCauseSummary" in (v as object));
+    expect(mockSet.mock.calls[incidentCall][0]).toMatchObject({ rootCauseSummary: "The checkout job timed out." });
+    const q = new PgDialect().sqlToQuery(mockUpdateWhere.mock.calls[incidentCall][0]);
+    expect(q.sql).toMatch(/not exists \(select 1 from "sre_investigation_runs".*'investigation'.*'completed'\)/);
+    expect(q.params).toEqual(expect.arrayContaining(["incident-a", "org-a", "project-a"]));
+    // The full brief stays on the run for the Investigation tab.
+    expect(mockSet.mock.calls.some(([v]) => (v as { agentStateSnapshot?: { summary?: string } }).agentStateSnapshot?.summary === summary)).toBe(true);
+  });
+
   it("only moves a triggered incident to investigating, never over a resolved one", async () => {
     mockLimit.mockResolvedValue([]);
     const generateBrief = jest.fn().mockResolvedValue({ provider: "fallback", summary: "Brief", modelId: "test-model", confidenceScore: 0.5, suspectedFailureDomain: "Unknown", citedEvidenceIds: [] });

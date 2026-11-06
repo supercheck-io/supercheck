@@ -89,6 +89,22 @@ describe("describeTimelineEvent", () => {
     expect(describeTimelineEvent({ eventType: "ai_finding", eventData: { type: "native_evidence_brief_failed", error: "Evidence brief generation failed" } }).body).toBe("Evidence brief generation failed");
     expect(describeTimelineEvent({ eventType: "some_event", eventData: null })).toEqual({ title: "some event", body: null });
   });
+
+  it.each([
+    ["sre_triage", "AI triage"],
+    ["sre_investigation", "AI investigation"],
+    ["sre_investigation_failed", "Investigation failed"],
+    ["native_evidence_brief", "Evidence brief"],
+    ["native_evidence_brief_failed", "Evidence brief failed"],
+    ["unknown_kind", "AI finding"],
+  ])("titles an AI row of type %s as %s", (type, title) => {
+    expect(describeTimelineEvent({ eventType: "ai_finding", eventData: { type, summary: "x" } }).title).toBe(title);
+  });
+
+  it("shows a report's summary paragraph, not its title, as the AI row body", () => {
+    const summary = "# Incident Investigation Report\n\n## Report Details\n- **Severity**: sev2\n\n## Executive Summary\nThe job failed twice.";
+    expect(describeTimelineEvent({ eventType: "ai_finding", eventData: { type: "sre_triage", summary } }).body).toBe("The job failed twice.");
+  });
 });
 
 describe("IncidentTimeline", () => {

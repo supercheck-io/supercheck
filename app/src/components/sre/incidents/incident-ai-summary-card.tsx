@@ -1,11 +1,9 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState } from "react";
-import { PanelRightOpen, Sparkles } from "lucide-react";
+import { ArrowRight, Sparkles } from "lucide-react";
 
 import type { SreIncidentDetail } from "@/actions/sre-incidents";
 import { Button } from "@/components/ui/button";
-import { SreMessageContent } from "@/components/sre/sre-message-content";
 import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
 import {
   Card,
@@ -14,7 +12,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { cn } from "@/lib/utils";
+import { reportHeadline } from "@/lib/sre/evidence-brief-summary";
 import { stripEvidenceIdLists } from "@/sre/lib/investigation-output";
 
 type IncidentAiSummaryCardProps = {
@@ -26,11 +24,15 @@ type IncidentAiSummaryCardProps = {
   investigation?: SreIncidentDetail["latestInvestigation"];
   /** Whole-investigation feedback control, shown at the right of the footer. */
   feedback?: React.ReactNode;
-  /** Opens the investigation sheet. */
+  /** Switches to the Investigation tab. */
   onOpenInvestigation?: () => void;
-  /** Labels the empty-state action "Run investigation" instead of "View investigation". */
-  canInvestigate?: boolean;
+  /** Run controls shown when nothing has been analysed yet, so the first run starts from the card. */
+  runControls?: React.ReactNode;
+  /** What produced the text: only an investigation carries a confidence rating. */
+  source?: "investigation" | "brief" | "triage";
 };
+
+const SOURCE_LABEL = { brief: "From the evidence brief", triage: "From AI triage" } as const;
 
 export function confidenceLabel(score: string | null): {
   label: "High" | "Medium" | "Low" | "Inconclusive";
@@ -81,38 +83,21 @@ export function IncidentAiSummaryCard({
   investigation = null,
   feedback,
   onOpenInvestigation,
-  canInvestigate = false,
+  runControls,
+  source = "investigation",
 }: IncidentAiSummaryCardProps) {
-  const [expanded, setExpanded] = useState(false);
   const running = investigationStatus === "running";
   const failed = investigationStatus === "failed" || investigationStatus === "aborted" || investigationStatus === "timed_out";
   const structured = investigation?.structured ?? null;
-  const conclusion = getInvestigationConclusion(investigation, rootCauseSummary);
+  // The card shows one paragraph; the full report is on the Investigation tab.
+  const headline = reportHeadline(getInvestigationConclusion(investigation, rootCauseSummary));
   const inconclusive = structured ? structured.outcome === "inconclusive" : false;
   const confidence = confidenceLabel(rootCauseSummary ? confidenceScore : null);
   // Runs before structured output stored no score; show no rating rather than a misleading one.
   const unrated = Boolean(rootCauseSummary) && confidenceScore === null && !structured;
+  const rated = source === "investigation" && investigationStatus === "completed" && !unrated;
   const stepCount = investigation?.steps.length ?? 0;
   const nextCheck = structured?.nextChecks[0] ?? null;
-  const bodyRef = useRef<HTMLDivElement>(null);
-  const [clampable, setClampable] = useState(false);
-  // New content (the detail query polls) starts collapsed again.
-  const [shownConclusion, setShownConclusion] = useState(conclusion);
-  if (shownConclusion !== conclusion) {
-    setShownConclusion(conclusion);
-    setExpanded(false);
-  }
-  // Offer "Show more" only when the collapsed body actually hides content, re-checked when the card resizes.
-  useLayoutEffect(() => {
-    const el = bodyRef.current;
-    if (!el || expanded) return;
-    const measure = () => setClampable(el.scrollHeight > el.clientHeight + 1);
-    measure();
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(measure);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [conclusion, expanded]);
 
   return (
     <Card data-testid="incident-ai-summary" className="shrink-0 gap-3 py-4">
@@ -121,7 +106,10 @@ export function IncidentAiSummaryCard({
           <Sparkles className="h-4 w-4 text-primary" aria-hidden="true" />
           Summary
         </CardTitle>
-        {conclusion && !running && !unrated && (
+        {headline && !running && source !== "investigation" && (
+          <span className="text-xs text-muted-foreground">{SOURCE_LABEL[source]}</span>
+        )}
+        {headline && rated && (
           inconclusive || confidence.label === "Inconclusive" ? (
             <TableBadge tone="slate" compact aria-label="Confidence: Inconclusive">
               Inconclusive
@@ -149,7 +137,7 @@ export function IncidentAiSummaryCard({
             </AlertDescription>
           </Alert>
         )}
-        {conclusion ? (
+        {headline ? (
           <div className="space-y-1.5">
             {inconclusive && (
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -159,28 +147,9 @@ export function IncidentAiSummaryCard({
             {(failed || running) && (
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Previous conclusion</p>
             )}
-            {/* Collapsed height clamps block markdown too (line-clamp only clamps plain text); expanding grows the page, no inner scroller. */}
-            <div
-              ref={bodyRef}
-              data-testid="ai-summary-body"
-              className={cn(
-                "break-words text-sm leading-relaxed",
-                !expanded && "max-h-28 overflow-hidden",
-                clampable && !expanded && "relative after:absolute after:inset-x-0 after:bottom-0 after:h-8 after:bg-gradient-to-t after:from-card after:to-transparent",
-              )}
-            >
-              <SreMessageContent content={conclusion} />
-            </div>
-            {clampable && (
-              <button
-                type="button"
-                aria-expanded={expanded}
-                onClick={() => setExpanded((value) => !value)}
-                className="rounded-sm text-xs font-medium text-muted-foreground underline underline-offset-4 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                {expanded ? "Show less" : "Show more"}
-              </button>
-            )}
+            <p data-testid="ai-summary-body" className="break-words text-sm leading-relaxed">
+              {headline}
+            </p>
             {structured?.downgraded && (
               <p className="text-xs text-muted-foreground">
                 The model suggested a cause, but the cited evidence did not support it, so this is reported as inconclusive.
@@ -189,20 +158,9 @@ export function IncidentAiSummaryCard({
           </div>
         ) : (
           !running && !failed && (
-            <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="text-sm text-muted-foreground">No AI analysis yet.</p>
-              {onOpenInvestigation && (
-                <Button
-                  type="button"
-                  variant={canInvestigate ? "outline" : "ghost"}
-                  size="sm"
-                  className="h-8"
-                  onClick={onOpenInvestigation}
-                >
-                  {canInvestigate ? <Sparkles className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
-                  {canInvestigate ? "Run investigation" : "View investigation"}
-                </Button>
-              )}
+              {runControls}
             </div>
           )
         )}
@@ -212,16 +170,16 @@ export function IncidentAiSummaryCard({
             {nextCheck}
           </p>
         )}
-        {(conclusion || running || failed) && (
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3">
-          {onOpenInvestigation && (
-            <Button type="button" variant="ghost" size="sm" className="-ml-2 h-7 text-muted-foreground" onClick={onOpenInvestigation}>
-              <PanelRightOpen className="h-4 w-4" />
-              View investigation
-            </Button>
-          )}
-          {feedback}
-        </div>
+        {(headline || running || failed) && (
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3">
+            {onOpenInvestigation && (
+              <Button type="button" variant="ghost" size="sm" className="-ml-2 h-7 text-muted-foreground" onClick={onOpenInvestigation}>
+                View investigation
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            )}
+            {feedback}
+          </div>
         )}
       </CardContent>
     </Card>

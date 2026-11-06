@@ -126,15 +126,16 @@ describe("IncidentSidebar", () => {
     expect(screen.getByRole("complementary", { name: "Properties" })).toBeInTheDocument();
   });
 
-  it("lists status, severity and the watch toggle as plain properties", () => {
+  it("lists the watch toggle as a plain property and leaves status and severity to the page header", () => {
     const detail = detailFixture();
     (detail.incident as { severity: string }).severity = "sev2";
     render(<IncidentSidebar detail={detail} />);
-    for (const label of ["Status", "Severity", "Assignee", "Service", "Started", "Status page", "Notifications"]) {
+    for (const label of ["Assignee", "Service", "Started", "Status page", "Notifications"]) {
       expect(screen.getByText(label)).toBeInTheDocument();
     }
-    expect(screen.getByText("Investigating")).toBeInTheDocument();
-    expect(screen.getByText("sev2")).toBeInTheDocument();
+    for (const label of ["Status", "Severity", "Investigating", "sev2"]) {
+      expect(screen.queryByText(label)).not.toBeInTheDocument();
+    }
     expect(screen.getByRole("button", { name: "Watch" })).toBeInTheDocument();
   });
 });

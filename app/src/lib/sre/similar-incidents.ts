@@ -6,6 +6,7 @@ import {
   sreIncidents,
   sreServices,
 } from "@/db/schema";
+import { storedRootCause } from "@/lib/sre/evidence-brief-summary";
 import { db } from "@/utils/db";
 
 export const SIMILAR_INCIDENT_WINDOW_DAYS = 180;
@@ -192,7 +193,7 @@ export async function findSimilarIncidents(
         severity: row.severity,
         serviceName: row.serviceName,
         resolvedAt: row.resolvedAt,
-        rootCauseSummary: clip(row.rootCauseSummary),
+        rootCauseSummary: clip(storedRootCause(row.rootCauseSummary)),
         resolutionSummary: clip(row.resolutionSummary),
         matchedOn,
         score,

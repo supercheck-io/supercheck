@@ -22,6 +22,7 @@ import {
   type PostmortemContext,
 } from "@/lib/sre/postmortem";
 import { checkSrePostmortemRateLimit } from "@/lib/sre/sre-rate-limiter";
+import { storedRootCause } from "@/lib/sre/evidence-brief-summary";
 import { readStoredHypotheses } from "@/sre/lib/investigation-output";
 import { db } from "@/utils/db";
 
@@ -154,7 +155,7 @@ export async function generateSrePostmortem(
       createdAt: incident.createdAt,
       resolvedAt: incident.resolvedAt,
       resolutionSummary: incident.resolutionSummary,
-      rootCauseSummary: incident.rootCauseSummary,
+      rootCauseSummary: storedRootCause(incident.rootCauseSummary),
       confidenceLabel: !Number.isFinite(score) ? null : score >= 0.75 ? "High" : score >= 0.5 ? "Medium" : score > 0 ? "Low" : "Inconclusive",
       hypotheses: readStoredHypotheses(run?.hypotheses).map(({ title, state, rationale }) => ({ title, state, rationale })),
       nextChecks: Array.isArray(structured?.nextChecks)

@@ -9,7 +9,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
 import { WatchSreIncidentButton } from "@/components/sre/incidents/watch-sre-incident-button";
-import { getDisplayStatus } from "@/lib/sre/incident-status-display";
 
 const ALERTS_COLLAPSED = 3;
 
@@ -49,7 +48,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   );
 }
 
-/** Plain label/value properties of the incident: state, people, service, timings, status page, alerts. */
+/** Plain label/value properties of the incident: people, service, timings, status page, alerts. Status and severity are in the page header. */
 export function IncidentSidebar({
   detail,
   showCommander = false,
@@ -62,7 +61,6 @@ export function IncidentSidebar({
   const canUpdate = detail.permissions.canUpdate;
   const open = incident.status !== "resolved";
   const editable = canUpdate && open;
-  const display = getDisplayStatus(incident.status, incident.acknowledgedAt);
   const [allAlerts, setAllAlerts] = useState(false);
   const alerts = allAlerts ? detail.linkedAlerts : detail.linkedAlerts.slice(0, ALERTS_COLLAPSED);
 
@@ -74,12 +72,6 @@ export function IncidentSidebar({
         </CardHeader>
         <CardContent className="space-y-3 px-4">
           <dl className="space-y-0.5">
-            <Row label="Status">
-              <TableBadge tone={display.tone} compact>{display.label}</TableBadge>
-            </Row>
-            <Row label="Severity">
-              <TableBadge tone={SEVERITY_TONES[incident.severity]} compact className="uppercase">{incident.severity}</TableBadge>
-            </Row>
             <Row label="Assignee">
               <IncidentAssigneePicker
                 incidentId={incident.id}

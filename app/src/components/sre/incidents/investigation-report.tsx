@@ -10,7 +10,6 @@ import { formatAgo } from "@/components/sre/incidents/incident-age";
 import { confidenceLabel, getInvestigationConclusion } from "@/components/sre/incidents/incident-ai-summary-card";
 import { InvestigationHypotheses } from "@/components/sre/incidents/investigation-hypotheses";
 import { InvestigationStepTrace } from "@/components/sre/incidents/investigation-step-trace";
-import { PostmortemCard } from "@/components/sre/incidents/postmortem-card";
 import { SimilarIncidentsList, useSimilarIncidentCount } from "@/components/sre/incidents/similar-incidents-card";
 import { SreIncidentBriefReportActions } from "@/components/sre/incidents/sre-incident-brief-report";
 import { SreInvestigationPanel, SreReportSnapshotMenuItem } from "@/components/sre/incidents/sre-investigation-panel";
@@ -20,7 +19,7 @@ import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { TableBadge } from "@/components/ui/table-badge";
 
-/** Where the sheet scrolls to when it opens. `n` makes a repeated request fire again. */
+/** Where the Investigation tab scrolls to when it opens. `n` makes a repeated request fire again. */
 export type ReportFocus = { target: string; n: number };
 
 const SECTION_ID = "sre-report-";
@@ -82,9 +81,8 @@ function EvidenceList({ evidence }: { evidence: SreIncidentDetail["evidence"] })
 }
 
 /**
- * The investigation sheet body: one report. Conclusion first (the AI investigation, or the evidence brief
- * until one has run), then hypotheses, evidence and the step trace. Similar incidents and the post-mortem
- * appear only when they have content.
+ * The Investigation tab: one report. Conclusion first (the AI investigation, or the evidence brief until
+ * one has run), then hypotheses, evidence and the step trace. Similar incidents appear only when there are any.
  */
 export function InvestigationReport({
   detail,
@@ -96,7 +94,6 @@ export function InvestigationReport({
   serviceMappingHref: string;
 }) {
   const { incident, permissions, latestInvestigation: investigation } = detail;
-  const resolved = incident.status === "resolved";
   const similarCount = useSimilarIncidentCount(incident.id);
 
   const savedSummary =
@@ -106,45 +103,42 @@ export function InvestigationReport({
   const [briefIsAi, setBriefIsAi] = useState<boolean | null>(
     savedProvider === "ai" ? true : savedProvider === "fallback" ? false : null,
   );
-  const [briefConfidence, setBriefConfidence] = useState<string | null>(detail.latestBrief?.confidenceScore ?? null);
   const [streaming, setStreaming] = useState(false);
   // A failed regeneration puts the saved brief back instead of leaving the section blank or half-written.
   const restoreSavedBrief = () => {
     setBriefSummary(savedSummary);
     setBriefIsAi(savedProvider === "ai" ? true : savedProvider === "fallback" ? false : null);
-    setBriefConfidence(detail.latestBrief?.confidenceScore ?? null);
     setStreaming(false);
   };
 
   useEffect(() => {
     if (!focus) return;
-    // Wait out the sheet's open animation before scrolling.
-    const timer = setTimeout(() => {
-      const target = focus.target.startsWith("sre-evidence-") ? focus.target : `${SECTION_ID}${focus.target}`;
-      document.getElementById(target)?.scrollIntoView({ block: "start" });
-    }, 250);
-    return () => clearTimeout(timer);
+    const target = focus.target.startsWith("sre-evidence-") ? focus.target : `${SECTION_ID}${focus.target}`;
+    document.getElementById(target)?.scrollIntoView?.({ block: "start" });
   }, [focus]);
 
   const running = investigation?.status === "running";
   const failed = investigation?.status === "failed" || investigation?.status === "aborted" || investigation?.status === "timed_out";
   const structured = investigation?.structured ?? null;
-  const investigationConclusion = getInvestigationConclusion(investigation, incident.rootCauseSummary ?? detail.triageSummary ?? null);
+  // Before any investigation the stored root cause is the brief's headline, so the brief itself is shown instead.
+  const investigationConclusion = getInvestigationConclusion(
+    investigation,
+    investigation ? incident.rootCauseSummary : (detail.triageSummary ?? null),
+  );
   // The brief stands in only until an investigation has produced something to read.
   const useBrief = !investigationConclusion && (Boolean(briefSummary) || streaming);
   const inconclusive = structured ? structured.outcome === "inconclusive" : false;
-  const confidence = confidenceLabel(
-    useBrief ? briefConfidence : structured ? String(structured.confidence) : incident.rootCauseSummary ? incident.confidenceScore : null,
-  );
+  const confidence = confidenceLabel(structured ? String(structured.confidence) : incident.confidenceScore);
   // Runs before structured output stored no score; show no rating rather than a misleading one.
-  const unrated = !useBrief && !structured && incident.confidenceScore === null;
-  const showConfidence =
-    (useBrief ? Boolean(briefSummary) && briefConfidence != null : Boolean(investigationConclusion) && !unrated) && !running;
+  const unrated = !structured && incident.confidenceScore === null;
+  // Only an investigation is rated; a brief or triage summary is not.
+  const showConfidence = Boolean(investigation) && Boolean(investigationConclusion) && !unrated && !running;
   const nextChecks = structured?.nextChecks ?? [];
   const staleBrief = detail.latestBrief?.agentStateSnapshot?.evidenceCount;
   const briefOutdated = typeof staleBrief === "number" && staleBrief < detail.evidence.length;
 
-  const briefButton = permissions.canInvestigate ? (
+  // The brief is the quick look before an investigation; once one has run, the investigation is the report.
+  const briefButton = permissions.canInvestigate && !investigation ? (
     <GenerateEvidenceBriefButton
       incidentId={incident.id}
       hasBrief={Boolean(detail.latestBrief) || Boolean(briefSummary)}
@@ -154,16 +148,14 @@ export function InvestigationReport({
         ? {
             onStreamStart: () => {
               setBriefSummary("");
-              setBriefConfidence(null);
               setBriefIsAi(null);
               setStreaming(true);
             },
             onStreamContent: (chunk: string) => setBriefSummary((current) => current + chunk),
-            onStreamDone: (result: { brief?: { summary: string; provider: "ai" | "fallback"; confidenceScore: number } }) => {
+            onStreamDone: (result: { brief?: { summary: string; provider: "ai" | "fallback" } }) => {
               if (result.brief) {
                 setBriefSummary(result.brief.summary);
                 setBriefIsAi(result.brief.provider === "ai");
-                setBriefConfidence(String(result.brief.confidenceScore));
               }
               setStreaming(false);
             },
@@ -317,7 +309,6 @@ export function InvestigationReport({
       <Section
         id="evidence"
         title={detail.evidence.length > 0 ? `Evidence (${detail.evidence.length})` : "Evidence"}
-        action={investigationConclusion && !streaming ? briefButton : null}
       >
         <EvidenceList evidence={detail.evidence} />
       </Section>
@@ -329,19 +320,6 @@ export function InvestigationReport({
       {Boolean(similarCount) && (
         <Section id="similar" title={`Similar incidents (${similarCount})`}>
           <SimilarIncidentsList incidentId={incident.id} />
-        </Section>
-      )}
-
-      {resolved && (
-        <Section id="postmortem" title="Post-mortem">
-          <PostmortemCard
-            key={incident.postmortem?.updatedAt ?? "none"}
-            incidentId={incident.id}
-            incidentNumber={incident.incidentNumber}
-            title={incident.title}
-            postmortem={incident.postmortem}
-            canEdit={permissions.canUpdate}
-          />
         </Section>
       )}
     </div>

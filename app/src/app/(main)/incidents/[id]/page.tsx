@@ -1,14 +1,17 @@
 import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
 import { SreIncidentDetailPageClient } from "@/components/sre/incidents/sre-incident-detail-page-client";
+import type { IncidentTabParam } from "@/components/sre/incidents/sre-incident-detail-view";
 
 type Params = {
   params: Promise<{ id: string }>;
   searchParams?: Promise<{ tab?: string | string[] }>;
 };
 
-function parseIncidentTab(value: string | string[] | undefined) {
+const TABS: readonly IncidentTabParam[] = ["overview", "investigation", "postmortem", "evidence", "brief"];
+
+function parseIncidentTab(value: string | string[] | undefined): IncidentTabParam {
   const tab = Array.isArray(value) ? value[0] : value;
-  return tab === "investigation" || tab === "evidence" || tab === "brief" ? tab : "overview";
+  return TABS.find((known) => known === tab) ?? "overview";
 }
 
 export default async function SreIncidentDetailPage({

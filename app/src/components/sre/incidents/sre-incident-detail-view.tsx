@@ -7,16 +7,17 @@ import { Check, ChevronLeft, MoreHorizontal } from "lucide-react";
 import type { SreIncidentDetail } from "@/actions/sre-incidents";
 import type { SreServiceListItem } from "@/actions/sre-services";
 import { AcknowledgeSreIncidentButton } from "@/components/sre/incidents/acknowledge-sre-incident-button";
-import { IncidentCopilotSheet } from "@/components/sre/incidents/incident-copilot-sheet";
 import { EditSreIncidentDialog } from "@/components/sre/incidents/edit-sre-incident-dialog";
 import { IncidentAiSummaryCard } from "@/components/sre/incidents/incident-ai-summary-card";
-import { IncidentInvestigationSheet } from "@/components/sre/incidents/incident-investigation-sheet";
 import { IncidentSidebar, SEVERITY_TONES } from "@/components/sre/incidents/incident-sidebar";
 import { IncidentTimeline } from "@/components/sre/incidents/incident-timeline";
 import { InvestigationFeedback } from "@/components/sre/incidents/investigation-feedback";
 import { InvestigationReport, type ReportFocus } from "@/components/sre/incidents/investigation-report";
+import { PostmortemCard } from "@/components/sre/incidents/postmortem-card";
 import { OPEN_POSTMORTEM_EVENT, ResolveSreIncidentDialog } from "@/components/sre/incidents/resolve-sre-incident-dialog";
+import { SreInvestigationPanel } from "@/components/sre/incidents/sre-investigation-panel";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,30 +25,43 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { TableBadge } from "@/components/ui/table-badge";
+import { reportHeadline } from "@/lib/sre/evidence-brief-summary";
 import { getDisplayStatus } from "@/lib/sre/incident-status-display";
+
+type IncidentTab = "overview" | "investigation" | "postmortem";
+/** The `?tab=` values the page accepts: the three tabs plus the legacy `evidence` and `brief` links. */
+export type IncidentTabParam = IncidentTab | "evidence" | "brief";
 
 type SreIncidentDetailViewProps = {
   detail: SreIncidentDetail;
   services: SreServiceListItem[];
-  /** Legacy ?tab= deep link. Anything but "overview" opens the investigation sheet on that section. */
-  initialTab?: "overview" | "investigation" | "evidence" | "brief";
+  initialTab?: IncidentTabParam;
 };
 
-// Legacy ?tab= deep links land on the matching section of the one-page report.
-const FOCUS_FOR_LINK: Record<string, string> = {
-  investigation: "conclusion",
+// Legacy ?tab= links open the Investigation tab on the matching section.
+const FOCUS_FOR_LINK: Partial<Record<IncidentTabParam, string>> = {
   evidence: "evidence",
   brief: "conclusion",
 };
 
-/** Pre-fills the resolve dialog; the person still reads and confirms it. */
+/** Pre-fills the resolve dialog with one paragraph; the person still reads and confirms it. */
 export function defaultResolutionNote(recoveredAt: string | null | undefined, rootCause: string | null) {
   const recovery = recoveredAt
     ? `The checks that raised this incident recovered on ${new Date(recoveredAt).toUTCString()} and are passing again.`
     : "";
-  return [recovery, rootCause ?? ""].filter(Boolean).join("\n\n");
+  return [recovery, reportHeadline(rootCause) ?? ""].filter(Boolean).join("\n\n");
+}
+
+/** Keeps the open tab in the URL so it survives a reload and can be shared. */
+function writeTabToUrl(tab: IncidentTab) {
+  const url = new URL(window.location.href);
+  if (tab === "overview") url.searchParams.delete("tab");
+  else url.searchParams.set("tab", tab);
+  url.hash = "";
+  window.history.replaceState(window.history.state, "", url);
 }
 
 export function SreIncidentDetailView({
@@ -60,30 +74,36 @@ export function SreIncidentDetailView({
   const investigation = detail.latestInvestigation;
   const display = getDisplayStatus(incident.status, incident.acknowledgedAt);
 
-  // #sre-evidence-<id> links open the sheet on that evidence item. The view mounts client-side only, after the query resolves.
+  // #sre-evidence-<id> links open the Investigation tab on that evidence item. The view mounts client-side only.
   const [hashTarget] = useState(() =>
     typeof window !== "undefined" && window.location.hash.startsWith("#sre-evidence-") ? window.location.hash.slice(1) : null,
   );
-  const [sheetOpen, setSheetOpen] = useState(initialTab !== "overview" || hashTarget !== null);
+  const [tab, setTab] = useState<IncidentTab>(
+    hashTarget || initialTab === "evidence" || initialTab === "brief" ? "investigation" : initialTab,
+  );
   const [focus, setFocus] = useState<ReportFocus | null>(
-    hashTarget
-      ? { target: hashTarget, n: 0 }
-      : initialTab !== "overview"
-        ? { target: FOCUS_FOR_LINK[initialTab] ?? "conclusion", n: 0 }
-        : null,
+    hashTarget ? { target: hashTarget, n: 0 } : FOCUS_FOR_LINK[initialTab] ? { target: FOCUS_FOR_LINK[initialTab]!, n: 0 } : null,
   );
   const [editOpen, setEditOpen] = useState(false);
   const [resolveOpen, setResolveOpen] = useState(false);
   const [showCommander, setShowCommander] = useState(false);
-  const [copilotOpen, setCopilotOpen] = useState(false);
 
-  const openSheet = (target = "conclusion") => {
-    setFocus((current) => ({ target, n: (current?.n ?? 0) + 1 }));
-    setSheetOpen(true);
+  // The post-mortem tab exists once the incident is resolved; asking for it earlier shows the overview.
+  const activeTab: IncidentTab = tab === "postmortem" && open ? "overview" : tab;
+
+  const changeTab = (value: string) => {
+    const next = value as IncidentTab;
+    setTab(next);
+    setFocus(null);
+    writeTabToUrl(next);
   };
 
   useEffect(() => {
-    const onOpenPostmortem = () => openSheet("postmortem");
+    // The resolve toast's Post-mortem action; the detail refetch after resolving makes the tab appear.
+    const onOpenPostmortem = () => {
+      setTab("postmortem");
+      writeTabToUrl("postmortem");
+    };
     window.addEventListener(OPEN_POSTMORTEM_EVENT, onOpenPostmortem);
     return () => window.removeEventListener(OPEN_POSTMORTEM_EVENT, onOpenPostmortem);
   }, []);
@@ -91,6 +111,22 @@ export function SreIncidentDetailView({
   const needsAck = permissions.canUpdate && open && !incident.acknowledgedAt;
   const needsResolve = permissions.canUpdate && open && Boolean(incident.acknowledgedAt);
   const canAddCommander = permissions.canUpdate && open && !incident.commanderUserId && !showCommander;
+  // Before any investigation, the stored root cause comes from the evidence brief.
+  const summarySource = investigation ? "investigation" : incident.rootCauseSummary ? "brief" : "triage";
+
+  const runControls = permissions.canInvestigate ? (
+    <SreInvestigationPanel
+      key={investigation?.id ?? "no-investigation"}
+      incidentId={incident.id}
+      hasPrimaryService={Boolean(incident.primaryServiceId)}
+      serviceMappingHref={`/incidents/${incident.id}?edit=service`}
+      canMapService={permissions.canUpdate}
+      latestInvestigation={investigation}
+      canInvestigate={permissions.canInvestigate}
+      canUseLiveConnectors={permissions.canUseLiveConnectors}
+      investigationEnabled={detail.capabilities.investigationEnabled}
+    />
+  ) : null;
 
   return (
     <div className="flex min-w-0 flex-col gap-4">
@@ -158,7 +194,9 @@ export function SreIncidentDetailView({
                   {permissions.canInvestigate && (
                     <>
                       {permissions.canUpdate && <DropdownMenuSeparator />}
-                      <DropdownMenuItem onSelect={() => setCopilotOpen(true)}>Ask Copilot</DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link href={`/copilot?incident=${incident.id}`}>Ask Copilot</Link>
+                      </DropdownMenuItem>
                     </>
                   )}
                 </DropdownMenuContent>
@@ -169,54 +207,87 @@ export function SreIncidentDetailView({
       </header>
 
       <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start">
-        <div className="flex min-w-0 flex-col gap-4">
-          {incident.resolutionSummary && (
-            <p className="line-clamp-2 rounded-md border bg-muted/40 px-3 py-2 text-sm" data-testid="resolution-summary">
-              <span className="font-medium">{incident.status === "resolved" ? "Resolution: " : "Previous resolution: "}</span>
-              {incident.resolutionSummary}
-            </p>
-          )}
-          <IncidentAiSummaryCard
-            rootCauseSummary={incident.rootCauseSummary ?? detail.triageSummary ?? null}
-            confidenceScore={incident.confidenceScore}
-            investigationStatus={investigation?.status ?? null}
-            investigation={investigation}
-            onOpenInvestigation={() => openSheet()}
-            canInvestigate={permissions.canInvestigate}
-            feedback={
-              permissions.canUpdate && investigation?.status === "completed" ? (
-                <InvestigationFeedback
-                  key={`feedback:${investigation.id}`}
-                  incidentId={incident.id}
-                  investigationRunId={investigation.id}
-                  initial={investigation.myFeedback.find((entry) => entry.hypothesisKey === null) ?? null}
-                  label="this investigation"
-                  compact
+        <Tabs value={activeTab} onValueChange={changeTab} className="flex min-w-0 flex-col gap-4">
+          <TabsList className="h-auto w-full shrink-0 flex-wrap justify-start self-start sm:w-auto">
+            <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="investigation">Investigation</TabsTrigger>
+            {!open && <TabsTrigger value="postmortem">Post-mortem</TabsTrigger>}
+          </TabsList>
+
+          <TabsContent value="overview" className="mt-0 flex min-w-0 flex-col gap-4">
+            {incident.resolutionSummary && (
+              <p className="line-clamp-2 rounded-md border bg-muted/40 px-3 py-2 text-sm" data-testid="resolution-summary">
+                <span className="font-medium">{open ? "Previous resolution: " : "Resolution: "}</span>
+                {incident.resolutionSummary}
+              </p>
+            )}
+            <IncidentAiSummaryCard
+              rootCauseSummary={incident.rootCauseSummary ?? detail.triageSummary ?? null}
+              confidenceScore={incident.confidenceScore}
+              investigationStatus={investigation?.status ?? null}
+              investigation={investigation}
+              onOpenInvestigation={() => changeTab("investigation")}
+              runControls={runControls}
+              source={summarySource}
+              feedback={
+                permissions.canUpdate && investigation?.status === "completed" ? (
+                  <InvestigationFeedback
+                    key={`feedback:${investigation.id}`}
+                    incidentId={incident.id}
+                    investigationRunId={investigation.id}
+                    initial={investigation.myFeedback.find((entry) => entry.hypothesisKey === null) ?? null}
+                    label="this investigation"
+                    compact
+                  />
+                ) : null
+              }
+            />
+            <IncidentTimeline
+              incidentId={incident.id}
+              canUpdate={permissions.canUpdate && open}
+              canPostToStatusPage={
+                Boolean(permissions.canPostToStatusPage) &&
+                ["investigating", "identified", "monitoring"].includes(detail.publicIncident?.status ?? "")
+              }
+            />
+          </TabsContent>
+
+          <TabsContent value="investigation" className="mt-0 min-w-0">
+            <Card className="py-4">
+              <CardContent className="px-4">
+                <InvestigationReport
+                  key={detail.latestBrief?.id ?? "no-brief"}
+                  detail={detail}
+                  focus={focus}
+                  serviceMappingHref={`/incidents/${incident.id}?edit=service`}
                 />
-              ) : null
-            }
-          />
-          <IncidentTimeline
-            incidentId={incident.id}
-            canUpdate={permissions.canUpdate && open}
-            canPostToStatusPage={
-              Boolean(permissions.canPostToStatusPage) &&
-              ["investigating", "identified", "monitoring"].includes(detail.publicIncident?.status ?? "")
-            }
-          />
-        </div>
-        {/* Sticks below the app header while the activity feed scrolls with the page. */}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {!open && (
+            <TabsContent value="postmortem" className="mt-0 min-w-0">
+              <Card className="py-4">
+                <CardContent className="px-4">
+                  <PostmortemCard
+                    key={incident.postmortem?.updatedAt ?? "none"}
+                    incidentId={incident.id}
+                    incidentNumber={incident.incidentNumber}
+                    title={incident.title}
+                    postmortem={incident.postmortem}
+                    canEdit={permissions.canUpdate}
+                  />
+                </CardContent>
+              </Card>
+            </TabsContent>
+          )}
+        </Tabs>
+        {/* Sticks below the app header while the tab content scrolls with the page. */}
         <div className="min-w-0 lg:sticky lg:top-16">
           <IncidentSidebar detail={detail} showCommander={showCommander} />
         </div>
       </div>
 
-      <IncidentInvestigationSheet open={sheetOpen} onOpenChange={setSheetOpen}>
-        <InvestigationReport key={detail.latestBrief?.id ?? "no-brief"} detail={detail} focus={focus} serviceMappingHref={`/incidents/${incident.id}?edit=service`} />
-      </IncidentInvestigationSheet>
-      {permissions.canInvestigate && (
-        <IncidentCopilotSheet open={copilotOpen} onOpenChange={setCopilotOpen} incidentId={incident.id} />
-      )}
       <EditSreIncidentDialog
         incident={incident}
         services={services}
@@ -224,7 +295,7 @@ export function SreIncidentDetailView({
         open={editOpen}
         onOpenChange={setEditOpen}
       />
-      {/* One dialog for both entry points: the the header button once acknowledged, the menu before. */}
+      {/* One dialog for both entry points: the header button once acknowledged, the menu before. */}
       {(needsAck || needsResolve) && (
         <ResolveSreIncidentDialog
           incidentId={incident.id}
