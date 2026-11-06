@@ -12,7 +12,7 @@ import {
   ChevronRight,
   Bell,
 } from "lucide-react";
-import { format, subDays, startOfDay, isSameDay } from "date-fns";
+import { format, subDays, startOfDay, isSameDay, differenceInCalendarDays } from "date-fns";
 import { SubscribeDialog } from "./subscribe-dialog";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
@@ -162,7 +162,10 @@ export function PublicStatusPage({
 
   // Calculate overall system status from components
   // Every unresolved incident, of any age, is "active"; maintenance never degrades the banner.
-  const activeIncidents = incidents.filter((i) => i.status !== "resolved");
+  const isUpcomingMaintenance = (i: Incident) =>
+    i.status === "scheduled" && !!i.scheduledFor && new Date(i.scheduledFor) > new Date();
+  const activeIncidents = incidents.filter((i) => i.status !== "resolved" && !isUpcomingMaintenance(i));
+  const upcomingMaintenance = incidents.filter(isUpcomingMaintenance);
   const openIssueStatuses = activeIncidents
     .filter((i) => i.status !== "scheduled" && !(i.scheduledFor && i.scheduledUntil))
     .flatMap((i) => IMPACT_BANNER_STATUS[i.impact] ?? []);
@@ -592,6 +595,15 @@ export function PublicStatusPage({
           </div>
         )}
 
+        {upcomingMaintenance.length > 0 && (
+          <div className="space-y-3" data-testid="upcoming-maintenance">
+            <h2 className="text-base sm:text-lg font-semibold sp-fg text-gray-900 dark:text-gray-100">
+              {t.scheduledMaintenance}
+            </h2>
+            <div className="space-y-2">{upcomingMaintenance.map(renderIncident)}</div>
+          </div>
+        )}
+
         {/* Components Section */}
         <div className="space-y-4">
           <div className="flex items-center justify-between gap-2">
@@ -704,9 +716,12 @@ export function PublicStatusPage({
               }
             });
 
-            // Generate all 90 days
+            // Up to 90 days, but never earlier than the page itself: a new page has no empty history.
+            const pageAgeDays = statusPage.createdAt
+              ? differenceInCalendarDays(new Date(), new Date(statusPage.createdAt)) + 1
+              : 90;
             const allDays = [];
-            for (let i = 0; i < 90; i++) {
+            for (let i = 0; i < Math.min(90, Math.max(1, pageAgeDays)); i++) {
               const date = subDays(new Date(), i);
               const dateKey = format(date, "yyyy-MM-dd");
               const dayIncidents = incidentsByDate.get(dateKey) || [];
@@ -735,7 +750,8 @@ export function PublicStatusPage({
                       </h3>
 
                       {dayIncidents.length === 0 ? (
-                        <p className="sp-muted text-gray-500 dark:text-gray-400 text-sm">
+                        // Today is not "incident free" while an unresolved incident is listed above.
+                        isSameDay(date, new Date()) && activeIncidents.length > 0 ? null : <p className="sp-muted text-gray-500 dark:text-gray-400 text-sm">
                           {t.noIncidentsReported}
                           {isSameDay(date, new Date()) ? ` ${t.today}` : ""}.
                         </p>

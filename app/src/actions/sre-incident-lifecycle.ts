@@ -249,7 +249,7 @@ export async function addSreIncidentUpdate(
         body: parsed.data.text,
         deliverNotifications: true,
         restoreComponentStatus: false,
-      }).catch(() => null);
+      }, { skipIfResolved: true }).catch(() => null);
       if (!posted?.success) {
         return { success: true, message: "Update added", warning: `The status page post failed: ${posted?.message ?? "try again from the status page"}` };
       }

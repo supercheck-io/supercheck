@@ -55,6 +55,7 @@ it("posts the note through the status page path, keeping the page incident's sta
   expect(await addSreIncidentUpdate(input)).toEqual({ success: true, message: "Update added and posted to the status page" });
   expect(updateIncidentStatus).toHaveBeenCalledWith(
     expect.objectContaining({ incidentId: ids.pageIncident, statusPageId: ids.page, status: "investigating", body: input.text, deliverNotifications: true }),
+    { skipIfResolved: true },
   );
 });
 

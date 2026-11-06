@@ -58,6 +58,8 @@ const subscribeSchema = z.union([
   }),
 ]);
 
+const VERIFICATION_RESEND_COOLDOWN_MS = 5 * 60 * 1000; // matches the owner-side resend limit
+
 type SubscribeInput = z.input<typeof subscribeSchema>;
 type SubscribeValidatedInput = z.output<typeof subscribeSchema>;
 
@@ -547,7 +549,15 @@ async function handleEmailSubscription(
         requiresVerification: true,
       };
     } else {
-      // If exists but not verified, update the verification token and resend
+      // Anyone can submit this address, so cap resends (a new token invalidates the previous email).
+      const lastSent = existingSubscriber.updatedAt ?? existingSubscriber.createdAt;
+      if (lastSent && Date.now() - new Date(lastSent).getTime() < VERIFICATION_RESEND_COOLDOWN_MS) {
+        return {
+          success: true,
+          message: "A verification email was sent recently. Please check your inbox.",
+          requiresVerification: true,
+        };
+      }
       const newVerificationToken = generateHexToken();
 
       await db
@@ -717,9 +727,17 @@ async function handleWebhookSubscription(
 
     // Retry verification for an existing pending, quarantined or unsubscribed webhook.
     if (existingSubscriber) {
+      // Anyone can submit this URL, so cap re-subscribes (each one rotates the secret and sends a challenge).
+      const lastTouched = existingSubscriber.updatedAt ?? existingSubscriber.createdAt;
+      if (lastTouched && Date.now() - new Date(lastTouched).getTime() < VERIFICATION_RESEND_COOLDOWN_MS) {
+        return { success: false, message: "This endpoint was submitted recently. Please try again in a few minutes." };
+      }
+      // Rotate the signing secret: whoever pre-registered this URL (squatting) already knows the old one.
+      const rotatedSecret = generateWebhookSecret();
       await db
         .update(statusPageSubscribers)
         .set({
+          webhookSecretEncrypted: encryptWebhookSecret(rotatedSecret),
           verifiedAt: null, // always re-prove endpoint ownership via the challenge
           purgeAt: null,
           quarantinedAt: null,
@@ -754,6 +772,7 @@ async function handleWebhookSubscription(
           ? "Webhook subscription verified and updated successfully"
           : `Webhook subscription saved, but endpoint verification failed: ${challenge.error}. Resend the challenge from Subscribers once the endpoint is ready.`,
         subscriberId: existingSubscriber.id,
+        webhookSecret: rotatedSecret,
       };
     }
 
@@ -831,10 +850,10 @@ async function handleSlackSubscription(
     // Validate that endpoint is a Slack webhook URL
     try {
       const url = new URL(endpoint);
-      if (!url.hostname.endsWith(".slack.com")) {
+      if (url.protocol !== "https:" || url.hostname !== "hooks.slack.com") {
         return {
           success: false,
-          message: "Invalid Slack webhook URL. Must be from a slack.com domain (e.g., hooks.slack.com).",
+          message: "Invalid Slack webhook URL. Must be an https://hooks.slack.com URL.",
         };
       }
     } catch {
