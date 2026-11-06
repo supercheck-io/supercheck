@@ -24,6 +24,14 @@ jest.mock("@/lib/auth-context", () => ({
 jest.mock("@/lib/rbac/middleware", () => ({ checkPermissionWithContext: jest.fn().mockReturnValue(true) }));
 jest.mock("@/lib/monitor-scheduler", () => ({ scheduleMonitor: jest.fn().mockResolvedValue("s"), deleteScheduledMonitor: jest.fn() }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
+// A resume writes under the plan-limit lock; here the write just runs on the mocked transaction.
+jest.mock("@/lib/middleware/plan-enforcement", () => ({
+  ...jest.requireActual("@/lib/middleware/plan-enforcement"),
+  withResumeWithinPlan: async (_o: string, _r: string, _id: string, write: (tx: unknown) => Promise<unknown>) => {
+    const { db } = jest.requireMock("@/utils/db");
+    return { ok: true, value: await db.transaction(write) };
+  },
+}));
 jest.mock("@/lib/execution/trial-interval-response", () => ({
   trialIntervalErrorResponse: jest.fn().mockResolvedValue(null),
   monitorResumeBlockedResponse: jest.fn().mockResolvedValue(null),

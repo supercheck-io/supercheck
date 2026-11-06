@@ -15,6 +15,7 @@ import {
   getPolarWebhookDb,
   runOrderedPolarEvent,
   UnrecoverableWebhookError,
+  getPolarWebhookOrganizationId,
 } from "./polar-event-transaction";
 
 export { UnrecoverableWebhookError };
@@ -168,6 +169,47 @@ async function updateWebhookResult(
     const reason = message ?? `Failed to process Polar ${eventType} webhook`;
     throw retryable ? new Error(reason) : new UnrecoverableWebhookError(reason);
   }
+}
+
+/**
+ * A cancel or revoke can arrive before the activation that binds its subscription (the organization
+ * exists but holds no subscription yet). Retry such an event for a short window after it was sent (the
+ * activation normally lands within seconds); after that it is acknowledged, so a permanent mismatch
+ * cannot retry forever and get the endpoint disabled. A cancel/revoke for a subscription the
+ * organization already replaced is stale and never reaches here (runOrderedPolarEvent acknowledges it).
+ */
+const OUT_OF_ORDER_RETRY_WINDOW_MS = 15 * 60 * 1000;
+function withinOutOfOrderRetryWindow(payload: PolarWebhookPayload): boolean {
+  const sentAt = new Date(payload.timestamp ?? NaN).getTime();
+  return Number.isFinite(sentAt) && Date.now() - sentAt < OUT_OF_ORDER_RETRY_WINDOW_MS;
+}
+
+/**
+ * A cancel or revoke for a subscription no organization holds yet. Fresh: fail retryably so the activation can
+ * land first. After the window: acknowledge it and retire the subscription id on the organization, so a late
+ * activation cannot bind a subscription that was already cancelled or revoked.
+ */
+async function rejectUnboundCancel(
+  payload: PolarWebhookPayload,
+  webhookEventKey: string,
+  eventType: string,
+  subscriptionId: string,
+): Promise<void> {
+  if (withinOutOfOrderRetryWindow(payload)) {
+    await updateWebhookResult(webhookEventKey, eventType, "error", "Organization not found", true);
+    return;
+  }
+  const organizationId = getPolarWebhookOrganizationId();
+  if (organizationId) {
+    await getPolarWebhookDb(organizationId)
+      .update(organization)
+      .set({ polarRetiredSubscriptionIds: sql`${organization.polarRetiredSubscriptionIds} || to_jsonb(${subscriptionId}::text)` })
+      .where(and(
+        eq(organization.id, organizationId),
+        sql`NOT (${organization.polarRetiredSubscriptionIds} @> to_jsonb(${subscriptionId}::text))`,
+      ));
+  }
+  await updateWebhookResult(webhookEventKey, eventType, "skipped", "Cancelled before activation; subscription retired");
 }
 
 /**
@@ -598,9 +640,18 @@ function getOrganizationIdFromPayload(
  * Find organization by Polar customer ID
  */
 async function findOrganizationByCustomerId(customerId: string) {
-  const org = await getPolarWebhookDb().query.organization.findFirst({
+  const matches = await getPolarWebhookDb().query.organization.findMany({
     where: eq(organization.polarCustomerId, customerId),
+    limit: 2,
   });
+  // A legacy customer shared by several organizations cannot say which one an event is for.
+  if (matches.length > 1) {
+    console.error(
+      `[Polar] Customer ${truncateId(customerId)} is shared by several organizations; refusing to guess one`,
+    );
+    throw new UnrecoverableWebhookError("Polar customer is shared by several organizations");
+  }
+  const org = matches[0];
 
   if (!org) {
     console.log(
@@ -1176,13 +1227,7 @@ async function processSubscriptionCanceled(payload: PolarWebhookPayload) {
   });
 
   if (!org) {
-    await updateWebhookResult(
-      webhookEventKey,
-      "subscription.canceled",
-      "error",
-      "Organization not found",
-      false,
-    );
+    await rejectUnboundCancel(payload, webhookEventKey, "subscription.canceled", subscriptionId);
     return;
   }
 
@@ -1375,13 +1420,7 @@ async function processSubscriptionRevoked(payload: PolarWebhookPayload) {
     console.log(
       `[Polar] subscription.revoked: No org found for subscription ${truncateId(subscriptionId)}`,
     );
-    await updateWebhookResult(
-      webhookEventKey,
-      "subscription.revoked",
-      "error",
-      "Organization not found",
-      false,
-    );
+    await rejectUnboundCancel(payload, webhookEventKey, "subscription.revoked", subscriptionId);
     return;
   }
 
@@ -1812,9 +1851,18 @@ async function processCustomerDeleted(payload: PolarWebhookPayload) {
   );
 
   // Find organization by Polar customer ID
-  const org = await getPolarWebhookDb().query.organization.findFirst({
+  const matches = await getPolarWebhookDb().query.organization.findMany({
     where: eq(organization.polarCustomerId, customerId),
+    limit: 2,
   });
+  // A legacy customer shared by several organizations cannot say which one an event is for.
+  if (matches.length > 1) {
+    console.error(
+      `[Polar] Customer ${truncateId(customerId)} is shared by several organizations; refusing to guess one`,
+    );
+    throw new UnrecoverableWebhookError("Polar customer is shared by several organizations");
+  }
+  const org = matches[0];
 
   if (!org) {
     console.log(
@@ -1850,7 +1898,7 @@ function orderedHandler(
   eventType: string,
   handler: (payload: PolarWebhookPayload) => Promise<void>,
 ) {
-  return async (payload: PolarWebhookPayload) => {
+  const run = async (payload: PolarWebhookPayload) => {
     const data = payload.data;
     const subscription = asRecord(data.subscription);
     const subscriptionId = eventType.startsWith("subscription.")
@@ -1898,6 +1946,8 @@ function orderedHandler(
         eventKey: eventType + ":" + getWebhookEventKey(payload, eventType),
         subscriptionId,
         canReplaceSubscription: eventType === "subscription.active",
+        ignoreWhenReplaced: eventType === "subscription.canceled" || eventType === "subscription.revoked"
+          ? { retry: withinOutOfOrderRetryWindow(payload) } : undefined,
         // The organization can be deleted by an admin while this event waits for its row lock.
         organizationDeleted: subscriptionId ? () => belongsToDeletedOrganization(subscriptionId) : undefined,
         periodStart: getSubscriptionDatesFromPayload(payload).startsAt,
@@ -1912,6 +1962,25 @@ function orderedHandler(
       },
       () => handler(payload),
     );
+  };
+  return async (payload: PolarWebhookPayload) => {
+    try {
+      await run(payload);
+    } catch (error) {
+      // The plugin persists this after the transaction rolled back, so the acknowledged event stays traceable.
+      if (error instanceof UnrecoverableWebhookError && !error.context) {
+        error.context = {
+          eventType,
+          // The webhook's own id (what Polar redelivers under), not the resource id below.
+          eventId: typeof payload.id === "string" && payload.id ? payload.id : undefined,
+          resourceId: typeof payload.data?.id === "string" ? payload.data.id : undefined,
+          organizationId: getOrganizationIdFromPayload(payload) ?? undefined,
+          customerId: getCustomerIdFromPayload(payload) ?? undefined,
+          subscriptionId: getSubscriptionIdFromPayload(payload) || undefined,
+        };
+      }
+      throw error;
+    }
   };
 }
 

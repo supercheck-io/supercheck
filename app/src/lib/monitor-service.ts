@@ -14,6 +14,7 @@ import {
   deleteScheduledMonitor,
 } from "@/lib/monitor-scheduler";
 import { eq } from "drizzle-orm";
+import { ResumeRefusedError, withResumeWithinPlan } from "@/lib/middleware/plan-enforcement";
 import { preserveWorkerConfigKeys, WORKER_OWNED_CONFIG_KEYS } from "@/lib/monitor-write";
 
 // This is a conceptual service layer, actual Next.js API routes would call these functions.
@@ -194,11 +195,24 @@ export async function updateMonitorHandler(
 
   if (data.status !== undefined) updateData.status = data.status;
 
-  const [updatedMonitor] = await db
-    .update(monitorTable)
-    .set(updateData) // Use the filtered updateData
-    .where(eq(monitorTable.id, monitorId))
-    .returning();
+  const writeUpdate = (executor: Pick<typeof db, "update">) =>
+    executor
+      .update(monitorTable)
+      .set(updateData) // Use the filtered updateData
+      .where(eq(monitorTable.id, monitorId))
+      .returning();
+  // Turning a paused monitor back on takes a plan slot: count and write under the plan-limit lock.
+  // Any non-paused status write goes through the lock: the status read above may be stale, and the helper takes no slot for a monitor already on.
+  const resuming = updateData.status !== undefined && updateData.status !== "paused";
+  let updatedRows;
+  if (resuming && existingMonitor.organizationId) {
+    const outcome = await withResumeWithinPlan(existingMonitor.organizationId, "monitor", monitorId, writeUpdate);
+    if (!outcome.ok) throw new ResumeRefusedError(outcome);
+    updatedRows = outcome.value;
+  } else {
+    updatedRows = await writeUpdate(db);
+  }
+  const [updatedMonitor] = updatedRows;
 
   if (!updatedMonitor) {
     throw {

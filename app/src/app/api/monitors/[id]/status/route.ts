@@ -5,7 +5,8 @@ import { db } from "@/utils/db";
 import { monitors, projects } from "@/db/schema";
 import { and, eq, ne } from "drizzle-orm";
 import { isAuthError, requireUserAuthContext, authErrorStatus } from "@/lib/auth-context";
-import { monitorResumeBlockedResponse } from "@/lib/execution/trial-interval-response";
+import { resumeRefusalResponse, withResumeWithinPlan } from "@/lib/middleware/plan-enforcement";
+import { ensureSubscribedForResume, monitorResumeBlockedResponse, subscriptionDeniedResponse } from "@/lib/execution/trial-interval-response";
 import { hasPermissionForUser } from '@/lib/rbac/middleware';
 import { logAuditEvent } from "@/lib/audit-logger";
 import { createLogger } from "@/lib/logger/index";
@@ -91,7 +92,7 @@ export async function PATCH(
     // Update the monitor status in the database. Hold the live project row (FOR SHARE) so a
     // concurrent project delete cannot pause the monitor and then be overwritten by this write.
     const { organizationId: monitorOrgId, projectId: monitorProjectId } = currentMonitor;
-    const updatedMonitor = await db.transaction(async (tx) => {
+    const write = async (tx: Parameters<Parameters<typeof db.transaction>[0]>[0]) => {
       const [liveProject] = await tx
         .select({ id: projects.id })
         .from(projects)
@@ -113,7 +114,25 @@ export async function PATCH(
         )
         .returning();
       return updated;
-    });
+    };
+    // Turning a paused monitor back on takes a plan slot: count and write under the plan-limit lock.
+    let updatedMonitor;
+    if (status !== 'paused') {
+      let resumed;
+      try {
+        // A concurrent trial-end pause can make the pre-lock status stale: re-check subscription access under the lock.
+        resumed = await withResumeWithinPlan(monitorOrgId, 'monitor', id, write, () => ensureSubscribedForResume(monitorOrgId));
+      } catch (error) {
+        const denied = subscriptionDeniedResponse(error);
+        if (denied) return denied;
+        throw error;
+      }
+      const refusal = resumeRefusalResponse(resumed);
+      if (refusal) return refusal;
+      updatedMonitor = resumed.ok ? resumed.value : undefined;
+    } else {
+      updatedMonitor = await db.transaction(write);
+    }
 
     if (!updatedMonitor) {
       return NextResponse.json(

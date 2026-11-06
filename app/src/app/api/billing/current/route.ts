@@ -13,7 +13,8 @@ import {
   member,
   invitation,
 } from "@/db/schema";
-import { and, eq, gte, sql } from "drizzle-orm";
+import { and, eq, gte, ne, sql } from "drizzle-orm";
+import { notInDeletedProject } from "@/lib/middleware/plan-limit-lock";
 import { getPlanPricing, isCloudHosted } from "@/lib/feature-flags";
 
 /**
@@ -67,7 +68,8 @@ export async function GET() {
         db
           .select({ count: sql<number>`count(*)` })
           .from(monitors)
-          .where(eq(monitors.organizationId, organizationId)),
+          // Same count as create, resume and the plan-cap sweep.
+          .where(and(eq(monitors.organizationId, organizationId), ne(monitors.status, "paused"), notInDeletedProject(monitors.projectId))),
         db
           .select({ count: sql<number>`count(*)` })
           .from(statusPages)

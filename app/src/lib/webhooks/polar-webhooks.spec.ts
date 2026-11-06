@@ -20,7 +20,14 @@ jest.mock("@/utils/db", () => ({
     select: jest.fn(),
     query: {
       webhookIdempotency: { findFirst: jest.fn() },
-      organization: { findFirst: jest.fn() },
+      organization: {
+        findFirst: jest.fn(),
+        // Customer lookups ask for up to two matches; these tests stub the single match through findFirst.
+        findMany: jest.fn(async (...args: unknown[]) => {
+          const row = await (jest.requireMock("@/utils/db").db.query.organization.findFirst as (...a: unknown[]) => Promise<unknown>)(...args);
+          return row ? [row] : [];
+        }),
+      },
       member: { findFirst: jest.fn(), findMany: jest.fn() },
     },
   },
@@ -31,6 +38,7 @@ jest.mock("@/utils/db", () => ({
 jest.mock("./polar-event-transaction", () => ({
   getPolarWebhookDb: () => jest.requireMock("@/utils/db").db,
   runOrderedPolarEvent: jest.fn((_input, apply) => apply()),
+  getPolarWebhookOrganizationId: () => "org_123",
   UnrecoverableWebhookError: jest.requireActual("./polar-event-transaction").UnrecoverableWebhookError,
 }));
 
@@ -631,6 +639,30 @@ describe("Polar webhook helpers", () => {
         }),
         db,
       );
+    });
+
+    describe("a cancel for a subscription no organization holds yet", () => {
+      const orgFound = { id: "org_123", subscriptionId: null, polarCustomerId: "cus_123" };
+      const cancel = (timestamp: string) => handleSubscriptionCanceled({ id: "evt_early", type: "subscription.canceled", timestamp,
+        data: { id: "sub_early", status: "canceled", customer_id: "cus_123", metadata: { referenceId: "org_123" } },
+      } as never);
+      beforeEach(() => {
+        // First lookup: the dispatcher resolves the organization; second: the handler's lookup by subscription id.
+        (db.query.organization.findFirst as jest.Mock).mockReset().mockResolvedValueOnce(orgFound).mockResolvedValue(undefined);
+      });
+
+      it("records a retryable error while the event is fresh", async () => {
+        const { set } = mockWebhookClaim();
+        await expect(cancel(new Date().toISOString())).rejects.toMatchObject({ name: "Error", message: "Organization not found" });
+        expect(set).toHaveBeenCalledWith(expect.objectContaining({ resultStatus: "error" }));
+      });
+
+      it("once old, retires the subscription and marks the event skipped", async () => {
+        const { set } = mockWebhookClaim();
+        await expect(cancel("2026-01-01T00:00:00Z")).resolves.toBeUndefined();
+        expect(set).toHaveBeenCalledWith(expect.objectContaining({ polarRetiredSubscriptionIds: expect.anything() }));
+        expect(set).toHaveBeenCalledWith(expect.objectContaining({ resultStatus: "skipped", resultMessage: expect.stringContaining("retired") }));
+      });
     });
 
     it.each([

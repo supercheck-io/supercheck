@@ -16,6 +16,14 @@ jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 const monitorResumeBlockedResponse = jest.fn();
 jest.mock("@/lib/execution/trial-interval-response", () => ({
   monitorResumeBlockedResponse: (...a: unknown[]) => monitorResumeBlockedResponse(...a),
+  ensureSubscribedForResume: (...a: unknown[]) => ensureSubscribedForResume(...a),
+  subscriptionDeniedResponse: (e: { denied?: boolean }) => (e?.denied ? Response.json({ error: "Trial ended" }, { status: 402 }) : null),
+}));
+const ensureSubscribedForResume = jest.fn();
+const withResumeWithinPlan = jest.fn();
+jest.mock("@/lib/middleware/plan-enforcement", () => ({
+  ...jest.requireActual("@/lib/middleware/plan-enforcement"),
+  withResumeWithinPlan: (...a: unknown[]) => withResumeWithinPlan(...a),
 }));
 import { NextRequest } from "next/server";
 import { PgDialect } from "drizzle-orm/pg-core";
@@ -33,6 +41,11 @@ const patch = (status: string) =>
 beforeEach(() => {
   jest.clearAllMocks();
   monitorResumeBlockedResponse.mockResolvedValue(null);
+  // A resume runs its write on the plan-limit transaction; the stub hands it the mocked db transaction.
+  withResumeWithinPlan.mockImplementation(async (_org: string, _resource: string, _id: string, write: (tx: unknown) => Promise<unknown>) => ({
+    ok: true,
+    value: await (db.transaction as jest.Mock)(write),
+  }));
 });
 
 it.each([{ organizationId: null, projectId: "project" }, { organizationId: "org", projectId: null }])("does not mutate a monitor with missing scope", async (scope) => {
@@ -103,5 +116,51 @@ describe("locked status write", () => {
     const response = await patch("up");
     expect(update).toHaveBeenCalled();
     expect(response.status).toBe(200);
+  });
+});
+
+describe("resuming under the plan limit", () => {
+  beforeEach(() => {
+    jest.mocked(db.query.monitors.findFirst).mockResolvedValue({ id: "m", organizationId: "org", projectId: "p", status: "paused" } as never);
+    jest.mocked(hasPermissionForUser).mockResolvedValue(true);
+  });
+
+  it("answers 403 and does not write when the plan has no free slot", async () => {
+    withResumeWithinPlan.mockResolvedValue({ ok: false, denied: { allowed: false, error: "Your plus plan allows 5 active monitors.", limit: 5, upgrade: "pro" } });
+    const response = await patch("up");
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ code: "plan_limit", limit: 5, upgrade: "pro" });
+    expect(db.transaction).not.toHaveBeenCalled();
+  });
+
+  it("answers 402 when a concurrent trial end made the monitor paused after the pre-lock read", async () => {
+    withResumeWithinPlan.mockRejectedValue(Object.assign(new Error("Trial ended"), { denied: true }));
+    const response = await patch("up");
+    expect(response.status).toBe(402);
+    const guard = withResumeWithinPlan.mock.calls[0][4] as () => Promise<void>;
+    await guard();
+    expect(ensureSubscribedForResume).toHaveBeenCalledWith("org");
+  });
+
+  it("answers 503 when the plan-limit lock is busy", async () => {
+    withResumeWithinPlan.mockResolvedValue({ ok: false, busy: true });
+    const response = await patch("up");
+    expect(response.status).toBe(503);
+    expect(response.headers.get("Retry-After")).toBe("2");
+  });
+
+  it("uses the lock even when the monitor was read as active (a concurrent pause makes that read stale)", async () => {
+    jest.mocked(db.query.monitors.findFirst).mockResolvedValue({ id: "m", organizationId: "org", projectId: "p", status: "up" } as never);
+    lockedTx([{ id: "p" }], [{ id: "m", name: "M", organizationId: "org", projectId: "p", status: "up" }]);
+    const response = await patch("up");
+    expect(response.status).toBe(200);
+    expect(withResumeWithinPlan).toHaveBeenCalledWith("org", "monitor", "00000000-0000-4000-8000-000000000002", expect.any(Function), expect.any(Function));
+  });
+
+  it("does not take a plan slot to pause", async () => {
+    lockedTx([{ id: "p" }], [{ id: "m", name: "M", organizationId: "org", projectId: "p", status: "paused" }]);
+    const response = await patch("paused");
+    expect(response.status).toBe(200);
+    expect(withResumeWithinPlan).not.toHaveBeenCalled();
   });
 });

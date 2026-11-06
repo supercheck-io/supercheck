@@ -8,7 +8,7 @@ import { Role } from "@/lib/rbac/permissions";
 import { requireSameOriginRequest } from "@/lib/security/same-origin";
 import { db } from "@/utils/db";
 import { createPolarClient } from "@/lib/billing/polar-client";
-import { eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import { z } from "zod";
 
 export async function POST(request: NextRequest) {
@@ -74,6 +74,18 @@ export async function POST(request: NextRequest) {
     if (!org?.polarCustomerId || !config) {
       return NextResponse.json(
         { error: "Billing customer setup is incomplete" },
+        { status: 409 }
+      );
+    }
+
+    // A legacy customer shared by several organizations would show this owner another organization's plan and invoices.
+    const sharing = await db.query.organization.findFirst({
+      where: and(eq(organization.polarCustomerId, org.polarCustomerId), ne(organization.id, organizationId)),
+      columns: { id: true },
+    });
+    if (sharing) {
+      return NextResponse.json(
+        { error: "This billing customer is shared with another organization. Contact support to manage billing." },
         { status: 409 }
       );
     }

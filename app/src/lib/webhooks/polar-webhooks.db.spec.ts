@@ -349,6 +349,87 @@ describe("2026-10 webhook payloads through the real handlers", () => {
     expect(await org()).toMatchObject({ subscriptionPlan: null, polarWebhookEventKey: null });
   });
 
+  it("attaches event and tenant references to an unrecoverable failure for the plugin to persist", async () => {
+    const failure = await deliver(
+      handleSubscriptionActive,
+      "subscription.active",
+      subscription({ product_id: "prod_unknown", product: { id: "prod_unknown" } }),
+      "2026-10-01T00:00:01Z",
+    ).catch((error) => error);
+    expect(failure).toMatchObject({
+      name: "UnrecoverableWebhookError",
+      context: { eventType: "subscription.active", resourceId: SUB, organizationId: orgId, customerId: CUS, subscriptionId: SUB },
+    });
+  });
+
+  it("refuses to pick an organization when a legacy customer is shared by several", async () => {
+    // Deployments whose duplicates predate the unique index keep a plain one: model that.
+    await client`DROP INDEX organization_polar_customer_id_idx`;
+    try {
+      await mockDatabase.update(schema.organization).set({ polarCustomerId: CUS }).where(eq(schema.organization.id, otherOrgId));
+      await expect(
+        deliver(
+          handleSubscriptionActive,
+          "subscription.active",
+          subscription({ metadata: {}, customer: { id: CUS, external_id: "x", metadata: {} } }),
+          "2026-10-01T00:00:01Z",
+        ),
+      ).rejects.toMatchObject({ name: "UnrecoverableWebhookError" });
+      expect((await org()).subscriptionStatus).toBe("none");
+      expect((await org(otherOrgId)).subscriptionStatus).toBe("none");
+    } finally {
+      await mockDatabase.update(schema.organization).set({ polarCustomerId: "cus_other" }).where(eq(schema.organization.id, otherOrgId));
+      await client`CREATE UNIQUE INDEX organization_polar_customer_id_idx ON organization (polar_customer_id) WHERE polar_customer_id IS NOT NULL`;
+    }
+  });
+
+  it("retries a cancel that arrives before its activation while fresh; once old, acknowledges it and refuses a late activation", async () => {
+    const fresh = new Date().toISOString();
+    await expect(
+      deliver(handleSubscriptionCanceled, "subscription.canceled", subscription({ status: "canceled" }), fresh),
+    ).rejects.toMatchObject({ name: "Error", message: "Organization not found" });
+    await expect(
+      deliver(handleSubscriptionRevoked, "subscription.revoked", subscription({ status: "canceled" }), fresh),
+    ).rejects.toMatchObject({ name: "Error" });
+    // Past the retry window: acknowledged (no retry loop) and the subscription is remembered as ended.
+    await expect(
+      deliver(handleSubscriptionRevoked, "subscription.revoked", subscription({ status: "canceled" }), "2026-10-01T00:00:01Z"),
+    ).resolves.toBeUndefined();
+    expect((await org()).polarRetiredSubscriptionIds).toContain(SUB);
+    await deliver(handleSubscriptionActive, "subscription.active", subscription(), "2026-10-01T00:00:05Z");
+    expect(await org()).toMatchObject({ subscriptionId: null, subscriptionStatus: "none" });
+  });
+
+  it("for a subscription the organization does not hold: retries a fresh cancel/revoke, then acknowledges and retires it once old", async () => {
+    await deliver(handleSubscriptionActive, "subscription.active", subscription({ id: "sub_new" }), "2026-10-01T00:00:01Z");
+    const fresh = new Date().toISOString();
+    for (const [handler, type] of [[handleSubscriptionCanceled, "subscription.canceled"], [handleSubscriptionRevoked, "subscription.revoked"]] as const) {
+      await expect(deliver(handler, type, subscription({ id: "sub_x", status: "canceled" }), fresh))
+        .rejects.toMatchObject({ message: "Waiting for replacement subscription.active event" });
+    }
+    await expect(
+      deliver(handleSubscriptionRevoked, "subscription.revoked", subscription({ id: "sub_x", status: "canceled" }), "2026-10-01T00:00:02Z"),
+    ).resolves.toBeUndefined();
+    expect(await org()).toMatchObject({ subscriptionId: "sub_new", subscriptionStatus: "active" });
+    expect((await org()).polarRetiredSubscriptionIds).toContain("sub_x");
+    // The late activation of the revoked subscription must not bind it.
+    await deliver(handleSubscriptionActive, "subscription.active", subscription({ id: "sub_x" }), "2026-10-01T00:00:03Z");
+    expect(await org()).toMatchObject({ subscriptionId: "sub_new" });
+  });
+
+  it("acknowledges a customer.deleted for a customer shared by several organizations", async () => {
+    await client`DROP INDEX organization_polar_customer_id_idx`;
+    try {
+      await mockDatabase.update(schema.organization).set({ polarCustomerId: CUS }).where(eq(schema.organization.id, otherOrgId));
+      await expect(
+        deliver(handleCustomerDeleted, "customer.deleted", { id: CUS }, "2026-10-01T00:00:01Z"),
+      ).rejects.toMatchObject({ name: "UnrecoverableWebhookError" });
+    } finally {
+      await mockDatabase.update(schema.organization).set({ polarCustomerId: "cus_other" }).where(eq(schema.organization.id, otherOrgId));
+      await client`CREATE UNIQUE INDEX organization_polar_customer_id_idx ON organization (polar_customer_id) WHERE polar_customer_id IS NOT NULL`;
+    }
+  });
+
   it("does not trust a spoofed camelCase alias inside metadata to choose the organization", async () => {
     await deliver(
       handleSubscriptionActive,

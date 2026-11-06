@@ -69,6 +69,8 @@ jest.mock("@/db/schema", () => ({
 
 jest.mock("drizzle-orm", () => ({
   eq: jest.fn((left, right) => ({ left, right })),
+  ne: jest.fn((left, right) => ({ left, right })),
+  and: jest.fn((...conditions) => conditions),
 }));
 
 import { db } from "@/utils/db";
@@ -355,7 +357,15 @@ describe("Polar billing routes: hostile and failing inputs", () => {
       expect(mockCustomerSessionCreate).not.toHaveBeenCalled();
     });
 
+    it("refuses the portal when another organization shares the stored customer", async () => {
+      // The default stub answers every lookup with an organization, so the sharing check finds one.
+      const response = await portalPost(request("/api/billing/portal"));
+      expect(response.status).toBe(409);
+      expect(mockCustomerSessionCreate).not.toHaveBeenCalled();
+    });
+
     it("opens the portal for the stored customer only, returning to a fixed same-origin path", async () => {
+      mockFindOrganization.mockResolvedValueOnce({ polarCustomerId: "customer_1" }).mockResolvedValueOnce(null);
       const response = await portalPost(request("/api/billing/portal"));
       expect(response.status).toBe(200);
       expect(await response.json()).toEqual({
@@ -368,6 +378,7 @@ describe("Polar billing routes: hostile and failing inputs", () => {
     });
 
     it("hides provider error details and maps authentication failures", async () => {
+      mockFindOrganization.mockResolvedValueOnce({ polarCustomerId: "customer_1" }).mockResolvedValueOnce(null);
       mockCustomerSessionCreate.mockRejectedValue(
         new Error("token polar_oat_SECRET rejected"),
       );
