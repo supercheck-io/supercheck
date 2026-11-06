@@ -1,1 +1,1 @@
-ALTER TABLE "private_agent_jobs" ADD COLUMN "waiters" integer DEFAULT 0 NOT NULL;
+ALTER TABLE "private_agent_jobs" ADD COLUMN IF NOT EXISTS "waiters" integer DEFAULT 0 NOT NULL;
