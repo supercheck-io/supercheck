@@ -213,6 +213,24 @@ describe("verify-key route", () => {
       expect(response.headers.get("Retry-After")).toBe("30");
     });
 
+    it("fails closed when a Redis command never resolves, and when Redis is not ready", async () => {
+      jest.useFakeTimers();
+      try {
+        const redis = createRedisMock();
+        redis.multi().exec.mockReturnValue(new Promise(() => {}));
+        mockGetRedisConnection.mockResolvedValue({ ...redis, status: "ready" });
+        const pending = call();
+        await jest.advanceTimersByTimeAsync(2000);
+        expect((await pending).status).toBe(503);
+      } finally {
+        jest.useRealTimers();
+      }
+      const redis = createRedisMock();
+      mockGetRedisConnection.mockResolvedValue({ ...redis, status: "connecting" });
+      expect((await call()).status).toBe(503);
+      expect(redis.multi).not.toHaveBeenCalled();
+    });
+
     it("limits and allows normally while Redis is up", async () => {
       const redis = createRedisMock();
       mockGetRedisConnection.mockResolvedValue(redis);

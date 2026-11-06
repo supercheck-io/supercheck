@@ -74,12 +74,45 @@ it("rejects a malformed project id with 400 before any database access", async (
   expect(mockInsert).not.toHaveBeenCalled();
 });
 
-it("refuses to invite a platform administrator with a generic error that does not name the reason", async () => {
+it("answers a platform administrator email like a success but creates and sends nothing", async () => {
   mockSelect.mockReset().mockReturnValueOnce(rows([{ id: "admin", role: "super_admin", email: "owner@example.com" }]));
   const response = await POST(request());
-  expect(response.status).toBe(400);
-  expect((await response.json()).error).toBe("This email address cannot be invited");
+  expect(response.status).toBe(200);
+  const body = await response.json();
+  expect(body.success).toBe(true);
+  expect(body.data.status).toBe("pending");
   expect(mockInsert).not.toHaveBeenCalled();
+  expect(renderOrganizationInvitationEmail).not.toHaveBeenCalled();
+});
+
+it("spends invite quota on a platform administrator email, so it cannot be probed without limit", async () => {
+  const evalMock = jest.fn(async () => 5);
+  (getRedisConnection as jest.Mock).mockResolvedValue({ eval: evalMock, zrem: jest.fn() });
+  mockSelect.mockReset().mockReturnValueOnce(rows([{ id: "admin", role: "super_admin", email: "owner@example.com" }]));
+  const response = await POST(request());
+  expect(evalMock).toHaveBeenCalled();
+  expect(response.status).toBe(429);
+});
+
+it("fails closed with 503 when Redis never answers, and when it is not ready", async () => {
+  jest.useFakeTimers();
+  try {
+    (getRedisConnection as jest.Mock).mockResolvedValue({ status: "ready", eval: jest.fn(() => new Promise(() => {})), zrem: jest.fn() });
+    const pending = POST(request());
+    await jest.advanceTimersByTimeAsync(2000);
+    const hung = await pending;
+    expect(hung.status).toBe(503);
+    expect(hung.headers.get("Retry-After")).toBe("30");
+  } finally {
+    jest.useRealTimers();
+  }
+  const evalMock = jest.fn();
+  mockSelect.mockReset()
+    .mockReturnValueOnce(rows([{ id: "own-org-owner", role: "user", email: "owner@example.com" }]))
+    .mockReturnValueOnce(rows([])).mockReturnValueOnce(rows([])).mockReturnValueOnce(rows([{ id: HOST_PROJECT, name: "Project" }]));
+  (getRedisConnection as jest.Mock).mockResolvedValue({ status: "reconnecting", eval: evalMock, zrem: jest.fn() });
+  expect((await POST(request())).status).toBe(503);
+  expect(evalMock).not.toHaveBeenCalled();
 });
 
 it("rejects a foreign or archived project before creating the invitation", async () => {

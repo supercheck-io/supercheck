@@ -6,6 +6,7 @@ import { db } from "@/utils/db";
 import { apikey, user } from "@/db/schema";
 import { eq, and, or } from "drizzle-orm";
 import { getRedisConnection } from "@/lib/queue";
+import { withRedisDeadline } from "@/lib/security/redis-deadline";
 import { createLogger } from "@/lib/logger/index";
 // hashApiKey imported dynamically in handler for indexed lookup
 
@@ -40,7 +41,8 @@ async function checkRateLimit(
   const maxRequests = ip === "unknown" ? UNKNOWN_IP_MAX_REQUESTS : RATE_LIMIT_MAX_REQUESTS;
   try {
     const redis = await getRedisConnection();
-    if (!redis) {
+    // Not ready (down, reconnecting): refuse at once rather than queue behind a client that retries forever.
+    if (!redis || (redis.status && redis.status !== "ready")) {
       logger.error({ ip }, "Redis unavailable for rate limiting, refusing request");
       return unavailable(maxRequests);
     }
@@ -61,7 +63,7 @@ async function checkRateLimit(
     // Get the oldest entry timestamp for retryAfter calculation
     multi.zrange(key, 0, 0, "WITHSCORES");
     
-    const results = await multi.exec();
+    const results = await withRedisDeadline(redis, () => multi.exec());
     
     if (!results) {
       logger.error({ ip }, "Redis transaction failed, refusing request");
@@ -89,10 +91,10 @@ async function checkRateLimit(
     }
 
     // Add this request to the window
-    await redis.zadd(key, now, `${now}:${Math.random().toString(36).slice(2)}`);
+    await withRedisDeadline(redis, () => redis.zadd(key, now, `${now}:${Math.random().toString(36).slice(2)}`));
     
     // Set expiry on the key (slightly longer than window to handle edge cases)
-    await redis.expire(key, RATE_LIMIT_WINDOW_SECONDS + 10);
+    await withRedisDeadline(redis, () => redis.expire(key, RATE_LIMIT_WINDOW_SECONDS + 10));
     
     return {
       allowed: true,
