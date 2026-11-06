@@ -35,7 +35,7 @@ export function detectPackageManager(
   // The user agent starts with the manager name ("pnpm/9.0 npm/? node/..."); a path is matched by whole segments, never substrings.
   const segments = userAgent ? [userAgent.split('/')[0].toLowerCase()] : installPath.replace(/\\/g, '/').toLowerCase().split('/')
   if (segments.some((segment) => segment === 'pnpm' || segment === '.pnpm')) return 'pnpm'
-  if (segments.includes('yarn')) return 'yarn'
+  if (segments.some((segment) => segment === 'yarn' || segment === '.yarn')) return 'yarn'
   if (segments.some((segment) => segment === 'bun' || segment === '.bun')) return 'bun'
   return 'npm'
 }
@@ -65,11 +65,20 @@ function buildInstallCommand(
   }
 }
 
+/**
+ * Windows resolves npm/pnpm/yarn/bun (.cmd/.exe shims) only through a shell. Node deprecates an args array together with
+ * `shell: true` (DEP0190), so there it gets one command string; the manager is allowlisted and the tag regex-validated.
+ */
+export function spawnArgs(command: string, args: string[], platform: NodeJS.Platform = process.platform): [string, string[], { stdio: 'inherit'; shell: boolean }] {
+  return platform === 'win32'
+    ? [[command, ...args].join(' '), [], { stdio: 'inherit', shell: true }]
+    : [command, args, { stdio: 'inherit', shell: false }]
+}
+
 function runInstallCommand(command: string, args: string[]): Promise<number> {
   return new Promise((resolve, reject) => {
-    // Node >= 18.20.2 refuses to spawn a .cmd shim without a shell (EINVAL). Safe here: the
-    // command is a fixed package manager and the only variable argument is the validated --tag.
-    const child = spawn(command, args, { stdio: 'inherit', shell: process.platform === 'win32' })
+    const [file, fileArgs, options] = spawnArgs(command, args)
+    const child = spawn(file, fileArgs, options)
     child.on('error', (err) => reject(err))
     child.on('close', (code) => resolve(code ?? 0))
   })
