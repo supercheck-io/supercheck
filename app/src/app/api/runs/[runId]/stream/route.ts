@@ -274,7 +274,8 @@ export async function GET(request: NextRequest, context: RunStreamContext) {
               return;
             }
 
-            if (currentRun.status !== 'running') {
+            // A queued run has not started: it is not terminal, so keep waiting for its real outcome.
+            if (currentRun.status !== 'running' && currentRun.status !== 'queued') {
               sendJsonEvent('complete', { status: currentRun.status });
               await shutdown('completed');
               return;
