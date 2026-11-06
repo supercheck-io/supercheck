@@ -157,6 +157,8 @@ export async function loadConfig(options: LoadConfigOptions = {}): Promise<LoadC
 
   // Load .env file if present (quiet: true suppresses injection logs)
   loadProjectEnv(resolve(cwd, '.env'))
+  // CI passes an unset variable as an empty string; treat blank as unset (also before a `?? default` config reads it).
+  if (process.env.SUPERCHECK_URL !== undefined && process.env.SUPERCHECK_URL.trim() === '') delete process.env.SUPERCHECK_URL
 
   const configPath = resolveConfigPath(cwd, options.configPath)
   if (!configPath) {

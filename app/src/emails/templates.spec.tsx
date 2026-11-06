@@ -11,6 +11,8 @@ import {
   MonitorAlertEmail,
   IncidentUpdateEmail,
   TestEmail,
+  TrialNotificationEmail,
+  alertEmailSubject,
 } from "./index";
 
 // @react-email/render needs a dynamic import Jest cannot run here; static markup is
@@ -78,5 +80,62 @@ describe("email templates", () => {
       <BaseLayout preview="p" title="T" headerColor="#fde68a">x</BaseLayout>,
     );
     expect(html).toContain("color:#111827");
+  });
+});
+
+describe("email consistency", () => {
+  const render = (el: React.ReactElement) => renderToStaticMarkup(el);
+
+  it("alertEmailSubject follows [Supercheck] <Event>: <name>", () => {
+    expect(alertEmailSubject("Job Failed - Nightly")).toBe("[Supercheck] Job Failed: Nightly");
+    expect(alertEmailSubject("Test alert")).toBe("[Supercheck] Test alert");
+  });
+
+  it("monitor alert: info uses blue, not the warning amber", () => {
+    const html = render(<MonitorAlertEmail title="t" message="m" fields={[]} footer="x" type="info" />);
+    expect(html).toContain("#1d4ed8");
+    expect(html).not.toContain("#b45309");
+  });
+
+  it("details values keep line breaks (pre-wrap)", () => {
+    const html = render(<MonitorAlertEmail title="t" message="m" footer="x" type="failure" fields={[{ title: "Error", value: "a\nb" }]} />);
+    expect(html).toContain("white-space:pre-wrap");
+  });
+
+  it("auth emails use the neutral header and do not repeat it as a heading", () => {
+    const reset = render(<PasswordResetEmail resetUrl="https://x.io/r" userEmail="u@x.io" />);
+    expect(reset).toContain("#1f2937");
+    expect(reset).not.toContain("Reset Your Password");
+    const verify = render(<EmailVerificationEmail verificationUrl="https://x.io/v" userEmail="u@x.io" />);
+    expect(verify).not.toContain("#15803d");
+    expect(verify).not.toContain("Verify Your Email<");
+  });
+
+  it("invitation shows a human role label and renders project info as escaped text", () => {
+    const html = render(
+      <OrganizationInvitationEmail inviteUrl="https://x.io/i" organizationName="Acme" role="PROJECT_EDITOR" projectInfo={"Access to <img src=x onerror=1>"} />,
+    );
+    expect(html).toContain("Project Editor");
+    expect(html).not.toContain("PROJECT_EDITOR");
+    expect(html).toContain("&lt;img src=x onerror=1&gt;");
+    expect(html).not.toContain("<img src=x");
+  });
+
+  it("BaseLayout sets lang and dir from the language (RTL for Arabic)", () => {
+    expect(render(<BaseLayout preview="p" title="T" lang="ar">x</BaseLayout>)).toContain('dir="rtl" lang="ar"');
+    expect(render(<BaseLayout preview="p" title="T">x</BaseLayout>)).toContain('dir="ltr" lang="en"');
+  });
+
+  it("status-page welcome does not append the page name after a full sentence", () => {
+    const html = render(<StatusPageWelcomeEmail statusPageName="ZZPage" statusPageUrl="https://s.io" unsubscribeUrl="https://s.io/u" />);
+    expect(html).not.toContain("ZZPage</strong>.");
+  });
+
+  it("trial email shows a Manage billing link only when a billing URL is given", () => {
+    const t = { organizationName: "A", kind: "midway" as const, daysRemaining: 7, subscribeUrl: "https://app.io/subscribe" };
+    expect(render(<TrialNotificationEmail {...t} />)).not.toContain("Manage billing");
+    const html = render(<TrialNotificationEmail {...t} manageBillingUrl="https://app.io/b" />);
+    expect(html).toContain("Manage billing");
+    expect(html).toContain('href="https://app.io/b"');
   });
 });

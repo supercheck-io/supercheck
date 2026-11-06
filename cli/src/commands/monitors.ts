@@ -91,7 +91,7 @@ monitorCommand
     const client = createAuthenticatedClient()
     const { data } = await withSpinner(
       'Fetching monitor details',
-      () => client.get<Record<string, unknown>>(`/api/monitors/${id}`),
+      () => client.get<Record<string, unknown>>(`/api/monitors/${encodeURIComponent(id)}`),
     )
     if (getOutputFormat() === 'table') {
       const detail = { ...data }
@@ -110,7 +110,7 @@ monitorCommand
     const { data } = await withSpinner(
       'Fetching monitor results',
       () => client.get<{ data: Record<string, unknown>[]; pagination?: { page: number; totalPages: number; total: number } }>(
-        `/api/monitors/${id}/results`,
+        `/api/monitors/${encodeURIComponent(id)}/results`,
         { limit: options.limit, page: options.page },
       ),
     )
@@ -134,7 +134,7 @@ monitorCommand
     const client = createAuthenticatedClient()
     const { data } = await withSpinner(
       'Fetching monitor statistics',
-      () => client.get<Record<string, unknown>>(`/api/monitors/${id}/stats`),
+      () => client.get<Record<string, unknown>>(`/api/monitors/${encodeURIComponent(id)}/stats`),
     )
 
     if (getOutputFormat() === 'json') {
@@ -174,7 +174,7 @@ monitorCommand
     const client = createAuthenticatedClient()
     const { data } = await withSpinner(
       'Fetching monitor status',
-      () => client.get<Record<string, unknown>>(`/api/monitors/${id}`),
+      () => client.get<Record<string, unknown>>(`/api/monitors/${encodeURIComponent(id)}`),
     )
     const statusInfo: Record<string, unknown> = {
       id: data.id,
@@ -277,7 +277,7 @@ monitorCommand
     const body: Record<string, unknown> = {}
     if (options.name !== undefined) body.name = options.name
     if (options.url !== undefined) {
-      const { data: existing } = await client.get<{ type?: string }>(`/api/monitors/${id}`)
+      const { data: existing } = await client.get<{ type?: string }>(`/api/monitors/${encodeURIComponent(id)}`)
       validateMonitorTarget(options.url, existing.type)
       body.target = options.url
     }
@@ -314,7 +314,7 @@ monitorCommand
 
     const { data } = await withSpinner(
       'Updating monitor',
-      () => client.patch<Record<string, unknown>>(`/api/monitors/${id}`, body),
+      () => client.patch<Record<string, unknown>>(`/api/monitors/${encodeURIComponent(id)}`, body),
     )
     logger.success(`Monitor ${id} updated`)
     outputDetail(data)
@@ -333,7 +333,7 @@ monitorCommand
     const client = createAuthenticatedClient()
     await withSpinner(
       'Deleting monitor',
-      () => client.delete(`/api/monitors/${id}`),
+      () => client.delete(`/api/monitors/${encodeURIComponent(id)}`),
     )
     logger.success(`Monitor ${id} deleted`)
     outputMutation({ id, deleted: true })

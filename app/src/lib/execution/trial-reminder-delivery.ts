@@ -2,16 +2,15 @@ import { EmailService } from "@/lib/email-service";
 import { renderTrialNotificationEmail } from "@/lib/email-renderer";
 import type { DeliverTrialReminder } from "./trial-lifecycle";
 
+/** Public app origin; trial emails go to inboxes, so a relative link is never acceptable. */
+const trialAppUrl = (env: NodeJS.ProcessEnv) =>
+  (env.NEXT_PUBLIC_APP_URL || env.BETTER_AUTH_URL || "https://app.supercheck.io").replace(/\/+$/, "");
+
 /** Where the reminder sends people to choose a plan. */
 export function trialSubscribeUrl(
   env: NodeJS.ProcessEnv = process.env,
 ): string {
-  const baseUrl = (
-    env.NEXT_PUBLIC_APP_URL ||
-    env.BETTER_AUTH_URL ||
-    ""
-  ).replace(/\/+$/, "");
-  return `${baseUrl}/subscribe`;
+  return `${trialAppUrl(env)}/subscribe`;
 }
 
 /**
@@ -24,6 +23,7 @@ export const deliverTrialReminder: DeliverTrialReminder = async (delivery) => {
     kind: delivery.kind,
     daysRemaining: delivery.daysRemaining,
     subscribeUrl: trialSubscribeUrl(),
+    manageBillingUrl: `${trialAppUrl(process.env)}/org-admin?tab=subscription`,
   });
   const result = await EmailService.getInstance().sendEmailToMultiple({
     recipients: delivery.recipients,

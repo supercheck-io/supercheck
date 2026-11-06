@@ -60,10 +60,23 @@ describe("active incidents", () => {
     expect(screen.getByTestId("active-incidents")).toBeInTheDocument();
   });
 
-  it("shows maintenance in the block without degrading the banner", () => {
+  it("lists future maintenance under Scheduled Maintenance, not Active Incidents, without degrading the banner", () => {
     render(<PublicStatusPage statusPage={page} components={[component]} incidents={[incident({ name: "DB upgrade", status: "scheduled", impact: "none", scheduledFor: new Date("2030-01-05T02:00:00Z"), scheduledUntil: new Date("2030-01-05T04:00:00Z") })]} idOrSubdomain="page" />);
-    expect(screen.getByTestId("active-incidents")).toHaveTextContent("DB upgrade");
+    expect(screen.queryByTestId("active-incidents")).not.toBeInTheDocument();
+    expect(screen.getByTestId("upcoming-maintenance")).toHaveTextContent("DB upgrade");
     expect(screen.getByText(t.allSystemsOperational)).toBeInTheDocument();
+  });
+
+  it("does not claim no incidents today while one is active", () => {
+    render(<PublicStatusPage statusPage={page} components={[component]} incidents={[incident({})]} idOrSubdomain="page" />);
+    expect(screen.queryByText(new RegExp(t.noIncidentsReported))).not.toBeInTheDocument();
+  });
+});
+
+describe("past incidents history", () => {
+  it("only spans the days since the page was created", () => {
+    render(<PublicStatusPage statusPage={{ ...page, createdAt: daysAgo(2) }} components={[component]} incidents={[]} idOrSubdomain="page" />);
+    expect(screen.getAllByText(new RegExp(t.noIncidentsReported))).toHaveLength(3);
   });
 });
 

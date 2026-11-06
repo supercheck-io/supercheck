@@ -1,5 +1,5 @@
 jest.mock("@/utils/db", () => ({ db: {} }));
-import { StatusAggregationService } from "./status-aggregation.service";
+import { StatusAggregationService, type ComponentStatus } from "./status-aggregation.service";
 const service = new StatusAggregationService();
 it("honors minimum failing monitor count", () => {
   expect(
@@ -52,7 +52,7 @@ it("uses monitor weights and chooses the worse status on a tied vote", () => {
     ),
   ).toBe("major_outage");
 });
-it("supports best case and maps pending checks to degraded rather than claiming uptime", () => {
+it("supports best case", () => {
   expect(
     service.calculateFromMonitors(
       [
@@ -63,13 +63,6 @@ it("supports best case and maps pending checks to degraded rather than claiming 
       1,
     ),
   ).toBe("operational");
-  expect(
-    service.calculateFromMonitors(
-      [{ status: "pending", weight: 1 }],
-      "worst_case",
-      1,
-    ),
-  ).toBe("degraded_performance");
 });
 it("ignores pending and paused monitors while another monitor has a real result", () => {
   const calc = (statuses: string[]) =>
@@ -77,5 +70,25 @@ it("ignores pending and paused monitors while another monitor has a real result"
   expect(calc(["up", "pending"])).toBe("operational");
   expect(calc(["up", "paused"])).toBe("operational");
   expect(calc(["down", "pending"])).toBe("major_outage");
-  expect(calc(["paused"])).toBe("under_maintenance");
+});
+describe("components without a reporting monitor", () => {
+  const calc = (statuses: string[], previous?: ComponentStatus) =>
+    service.calculateFromMonitors(statuses.map((status) => ({ status, weight: 1 })), "worst_case", 1, previous);
+  it("shows a sole pending monitor as operational, whatever the previous status", () => {
+    expect(calc(["pending"])).toBe("operational");
+    expect(calc(["pending"], "major_outage")).toBe("operational");
+  });
+  it("keeps the last known status for paused monitors, operational when none", () => {
+    expect(calc(["paused"])).toBe("operational");
+    expect(calc(["paused"], "degraded_performance")).toBe("degraded_performance");
+    expect(calc(["paused", "paused"], "partial_outage")).toBe("partial_outage");
+    expect(calc(["paused", "pending"], "operational")).toBe("operational");
+  });
+  it("does not treat a stored under_maintenance as a last known status", () => {
+    expect(calc(["paused"], "under_maintenance")).toBe("operational");
+  });
+  it("still uses real statuses of a mixed component", () => {
+    expect(calc(["paused", "pending", "down"], "operational")).toBe("major_outage");
+    expect(calc(["paused", "up"], "major_outage")).toBe("operational");
+  });
 });

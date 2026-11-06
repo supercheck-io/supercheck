@@ -5,7 +5,7 @@ import { projectVariables } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { resolveProjectPermissionContext, checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireUserAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
-import { createVariableSchema, createFileVariableSchema, MAX_FILE_SIZE, resolveFileMimeType, type VariableType } from "@/lib/validations/variable";
+import { createVariableSchema, createFileVariableSchema, MAX_FILE_SIZE, resolveFileMimeType, variableValidationDetails, type VariableType } from "@/lib/validations/variable";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { encryptValue } from "@/lib/encryption";
 import { getS3Client } from "@/lib/s3-proxy";
@@ -232,7 +232,10 @@ export async function POST(
     } catch (error) {
       if (error instanceof z.ZodError) {
         return NextResponse.json(
-          { error: "Invalid input. Please check the variable name, value, and type." },
+          {
+            error: error.issues[0]?.message ?? "Invalid input. Please check the variable name, value, and type.",
+            details: variableValidationDetails(error),
+          },
           { status: 400 }
         );
       }
@@ -316,7 +319,10 @@ async function handleFileVariableCreate(
 
   if (!validated.success) {
     return NextResponse.json(
-      { error: "Invalid input. Please check the file name, key, and file type." },
+      {
+        error: validated.error.issues[0]?.message ?? "Invalid input. Please check the file name, key, and file type.",
+        details: variableValidationDetails(validated.error),
+      },
       { status: 400 }
     );
   }

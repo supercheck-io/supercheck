@@ -52,8 +52,11 @@ export async function failStaleSreInvestigationRunsForIncident(input: {
   }
 }
 
-const ACTIVE_INCIDENT_RUN_CONSTRAINT =
-  "sre_investigation_runs_active_incident_unique";
+// The active-run index, and the automatic-run index (a second automatic run for the same incident).
+const ACTIVE_INCIDENT_RUN_CONSTRAINTS = [
+  "sre_investigation_runs_active_incident_unique",
+  "sre_investigation_runs_auto_incident_unique",
+];
 
 export function isActiveIncidentRunConflict(error: unknown): boolean {
   let current = error;
@@ -67,8 +70,8 @@ export function isActiveIncidentRunConflict(error: unknown): boolean {
     };
     if (
       dbError.code === "23505" &&
-      (dbError.constraint === ACTIVE_INCIDENT_RUN_CONSTRAINT ||
-        dbError.constraint_name === ACTIVE_INCIDENT_RUN_CONSTRAINT)
+      (ACTIVE_INCIDENT_RUN_CONSTRAINTS.includes(dbError.constraint ?? "") ||
+        ACTIVE_INCIDENT_RUN_CONSTRAINTS.includes(dbError.constraint_name ?? ""))
     ) {
       return true;
     }

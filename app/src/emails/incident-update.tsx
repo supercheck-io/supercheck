@@ -1,5 +1,6 @@
 import { Section, Text } from "@react-email/components";
 import * as React from "react";
+import { PALETTE } from "./palette";
 import { BaseLayout, DetailsTable, EmailButton, type DetailField } from "./base-layout";
 
 export type IncidentUpdateEvent =
@@ -38,24 +39,24 @@ const SEVERITY: Record<
   IncidentUpdateSeverity,
   { label: string; bg: string; fg: string }
 > = {
-  sev1: { label: "SEV1 Critical", bg: "#b91c1c", fg: "#ffffff" },
-  sev2: { label: "SEV2 High", bg: "#c2410c", fg: "#ffffff" },
+  sev1: { label: "SEV1 Critical", bg: PALETTE.failure, fg: "#ffffff" },
+  sev2: { label: "SEV2 High", bg: PALETTE.warning, fg: "#ffffff" },
   sev3: { label: "SEV3 Medium", bg: "#fde68a", fg: "#78350f" },
   sev4: { label: "SEV4 Low", bg: "#e5e7eb", fg: "#374151" },
 };
 
 /** Same palette as the monitor alert email: red open, amber/blue in progress, green closed. */
 export const INCIDENT_EVENT_COLOR: Record<IncidentUpdateEvent, string> = {
-  created: "#b91c1c",
-  reopened: "#b91c1c",
-  assigned: "#1d4ed8",
-  acknowledged: "#1d4ed8",
-  ai_finding: "#6d28d9",
-  resolved: "#15803d",
-  recovered: "#15803d",
-  commented: "#1d4ed8",
-  severity_changed: "#c2410c",
-  unacknowledged: "#b91c1c",
+  created: PALETTE.failure,
+  reopened: PALETTE.failure,
+  assigned: PALETTE.info,
+  acknowledged: PALETTE.info,
+  ai_finding: PALETTE.info,
+  resolved: PALETTE.success,
+  recovered: PALETTE.success,
+  commented: PALETTE.info,
+  severity_changed: PALETTE.warning,
+  unacknowledged: PALETTE.failure,
 };
 
 export function incidentSeverityLabel(severity: string): string {
@@ -141,7 +142,7 @@ export const IncidentUpdateEmail = ({
 }: IncidentUpdateEmailProps) => {
   const sev = SEVERITY[severity] ?? SEVERITY.sev3;
   const headline = incidentUpdateHeadline(event, actorName, assigneeName);
-  const accent = INCIDENT_EVENT_COLOR[event] ?? "#1f2937";
+  const accent = INCIDENT_EVENT_COLOR[event] ?? PALETTE.neutral;
 
   return (
     <BaseLayout

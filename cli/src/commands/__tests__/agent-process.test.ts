@@ -520,8 +520,10 @@ describe('CLI agent workflows through the real entrypoint', () => {
     const state = read(); state.resources['/api/tests'][0].type = 'performance'
     state.resources['/api/tests'][0].script = Buffer.from("import {check} from 'k6'; export default function(){check(1,{ok:v=>v===1});}").toString('base64')
     writeFileSync(resolve(cwd, 'fixture.json'), JSON.stringify(state))
+    writeFileSync(resolve(cwd, '.gitignore'), 'node_modules\n')
     const pulled = run('pull', '--force'); expect(pulled.status).toBe(0)
     expect(existsSync(resolve(cwd, path))).toBe(false)
+    expect(readFileSync(resolve(cwd, '.gitignore'), 'utf8')).toContain('*.supercheck-backup.*')
     const summary = JSON.parse(pulled.stdout)
     expect(summary.files.some((file: string) => file.endsWith('.k6.ts'))).toBe(true)
     expect(summary.backups.some((file: string) => file.includes('homepage.pw.ts.supercheck-backup.'))).toBe(true)

@@ -7,6 +7,7 @@ import {
   Text,
 } from "@react-email/components";
 import * as React from "react";
+import { PALETTE } from "./palette";
 import { BaseLayout } from "./base-layout";
 import { getTranslations } from "../lib/status-page-translations";
 
@@ -28,7 +29,8 @@ export const StatusPageWelcomeEmail = ({
     <BaseLayout
       preview={`${t.emailNowSubscribed} ${statusPageName}`}
       title={t.emailSubscriptionConfirmed}
-      headerColor="#15803d"
+      headerColor={PALETTE.success}
+      lang={language}
       showBrand={false}
       showStandardFooter={false}
       footer={
@@ -69,8 +71,14 @@ export const StatusPageWelcomeEmail = ({
             </Heading>
 
             <Text style={paragraph}>
-              {t.emailWelcomeMessage}{" "}
-              <strong style={highlight}>{statusPageName}</strong>.
+              {t.emailWelcomeMessage}
+              {/* Some translations end mid-sentence and expect the page name; others are complete. */}
+              {!/[.!?。।]$/.test(t.emailWelcomeMessage.trim()) && (
+                <>
+                  {" "}
+                  <strong style={highlight}>{statusPageName}</strong>.
+                </>
+              )}
             </Text>
           </Section>
 
@@ -170,7 +178,7 @@ const iconCircle = {
 };
 
 const iconText = {
-  color: "#16a34a",
+  color: PALETTE.success,
   fontSize: "32px",
   fontWeight: "700" as const,
 };
@@ -211,7 +219,7 @@ const successBox = {
 };
 
 const successTitle = {
-  color: "#166534",
+  color: PALETTE.success,
   fontSize: "15px",
   fontWeight: "600" as const,
   margin: "0 0 8px",
@@ -219,7 +227,7 @@ const successTitle = {
 };
 
 const successText = {
-  color: "#15803d",
+  color: PALETTE.success,
   fontSize: "14px",
   lineHeight: "1.5",
   margin: "0",
