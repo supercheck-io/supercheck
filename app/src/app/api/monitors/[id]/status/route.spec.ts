@@ -150,6 +150,57 @@ describe("schedule is reconciled to the committed state", () => {
     expect(clears).toHaveLength(1); // scheduledJobId cleared
   });
 
+  it.each([
+    ["delete", "paused", { status: "paused", enabled: false, scheduledJobId: "old" }, deleteScheduledMonitor],
+    ["schedule", "up", { status: "up", scheduledJobId: null }, scheduleMonitor],
+  ] as const)("a hung scheduler %s gives 503 within the deadline, keeps scheduledJobId, and a retry converges", async (_n, status, committedExtra, fn) => {
+    stored(status);
+    const clears: unknown[] = [];
+    const committed = { ...base, ...committedExtra };
+    (db.transaction as jest.Mock).mockImplementation(async (cb: (t: unknown) => unknown) => {
+      const pending: unknown[] = [];
+      const result = await cb({
+        execute: jest.fn(),
+        select: () => ({ from: () => ({ where: () => ({ for: async (mode: string) => (mode === "share" ? [{ id: "p" }] : [committed]) }) }) }),
+        update: () => ({ set: jest.fn((v: unknown) => ({ where: () => { pending.push(v); return Object.assign(Promise.resolve(), { returning: async () => [{ ...base, status }] }); } })) }),
+      });
+      clears.push(...pending.filter((v) => "scheduledJobId" in (v as object)));
+      return result;
+    });
+    (fn as jest.Mock).mockImplementationOnce(() => new Promise(() => {})); // never settles
+    jest.useFakeTimers();
+    try {
+      let code: number | undefined;
+      const pending = patch(status).then((r) => { code = r.status; });
+      await jest.advanceTimersByTimeAsync(1999);
+      expect(code).toBeUndefined(); // still within the deadline
+      await jest.advanceTimersByTimeAsync(2);
+      await pending;
+      expect(code).toBe(503);
+    } finally {
+      jest.useRealTimers();
+    }
+    expect(clears).toHaveLength(0); // scheduledJobId untouched
+    expect((await patch(status)).status).toBe(200); // retry converges
+    expect(clears).toHaveLength(1);
+  });
+
+  it("a hung fallback delete by monitor id (no job under scheduledJobId) also gives 503", async () => {
+    stored("paused");
+    useDb({ ...base, status: "paused" }, { ...base, status: "paused", enabled: false, scheduledJobId: "old" });
+    deleteScheduledMonitor.mockResolvedValueOnce(false).mockImplementationOnce(() => new Promise(() => {}));
+    jest.useFakeTimers();
+    try {
+      let code: number | undefined;
+      const pending = patch("paused").then((r) => { code = r.status; });
+      await jest.advanceTimersByTimeAsync(2001);
+      await pending;
+      expect(code).toBe(503);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it("reconciles even when the pre-write read says the status did not change", async () => {
     // The request read "paused" and asks for "paused" while a concurrent resume committed: the row decides.
     stored("paused");

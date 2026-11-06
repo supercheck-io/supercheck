@@ -11,6 +11,7 @@ import { hasPermissionForUser } from '@/lib/rbac/middleware';
 import { logAuditEvent } from "@/lib/audit-logger";
 import { removeScheduledMonitor, scheduleMonitor } from "@/lib/monitor-scheduler";
 import type { MonitorJobData } from "@/lib/queue";
+import { withRedisDeadline } from "@/lib/security/redis-deadline";
 import { createLogger } from "@/lib/logger/index";
 
 const logger = createLogger({ module: "monitor-status-api" }) as {
@@ -20,7 +21,19 @@ const logger = createLogger({ module: "monitor-status-api" }) as {
   error: (data: unknown, msg?: string) => void;
 };
 
-/** Makes the monitor's repeatable job match its committed row: none while paused or disabled, one while active. */
+// Below the worker's 5s lock_timeout on the monitor row, which this transaction holds while it calls the scheduler.
+const SCHEDULER_DEADLINE_MS = 2000;
+// Bounds one scheduler call; the scheduler has no Redis handle here, so readiness is left to the call itself.
+const withDeadline = <T>(call: () => Promise<T>) => withRedisDeadline({}, call, SCHEDULER_DEADLINE_MS);
+
+/**
+ * Makes the monitor's repeatable job match its committed row: none while paused or disabled, one while active.
+ * A timed-out BullMQ call is abandoned, not cancelled, so it may still land later. The throw rolls back and keeps
+ * scheduledJobId, and the retry re-runs the same idempotent calls (schedule replaces any existing repeatable; remove
+ * also searches by monitor id when scheduledJobId is null), so a late schedule is repaired by the next reconcile.
+ * Known narrow gap: a late remove that lands after a later resume re-added the job can delete it; the next
+ * reconcile or the startup scheduler sync restores it. The paused path can hold the row lock up to 2 x 2s, still under 5s.
+ */
 async function reconcileMonitorSchedule(id: string, projectId: string): Promise<void> {
   await db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`monitor-status:${id}`}))`);
@@ -32,12 +45,12 @@ async function reconcileMonitorSchedule(id: string, projectId: string): Promise<
     if (!row) return;
     if (row.status === "paused" || !row.enabled || row.frequencyMinutes <= 0) {
       // A scheduler failure throws (rolling back, so scheduledJobId stays and a retry converges); an absent job is fine.
-      const removed = row.scheduledJobId ? await removeScheduledMonitor(row.scheduledJobId) : false;
-      if (!removed) await removeScheduledMonitor(id);
+      const removed = row.scheduledJobId ? await withDeadline(() => removeScheduledMonitor(row.scheduledJobId!)) : false;
+      if (!removed) await withDeadline(() => removeScheduledMonitor(id));
       await tx.update(monitors).set({ scheduledJobId: null }).where(eq(monitors.id, id));
       return;
     }
-    const schedulerId = await scheduleMonitor({
+    const schedulerId = await withDeadline(() => scheduleMonitor({
       monitorId: id,
       frequencyMinutes: row.frequencyMinutes,
       jobData: {
@@ -49,7 +62,7 @@ async function reconcileMonitorSchedule(id: string, projectId: string): Promise<
         frequencyMinutes: row.frequencyMinutes,
       },
       retryLimit: 3,
-    });
+    }));
     await tx.update(monitors).set({ scheduledJobId: schedulerId }).where(eq(monitors.id, id));
   });
 }
