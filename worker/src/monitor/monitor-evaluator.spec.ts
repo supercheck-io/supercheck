@@ -1,4 +1,10 @@
-import { MonitorEvaluator } from './monitor-evaluator';
+import { PgDialect } from 'drizzle-orm/pg-core';
+import type { SQL } from 'drizzle-orm';
+import {
+  MonitorEvaluator,
+  isIncidentOnly,
+  tracksAlertState,
+} from './monitor-evaluator';
 
 /** Drives evaluateAndSendAlert through consecutive failures and returns the counts that alerted. */
 async function alertCounts(
@@ -405,4 +411,171 @@ describe('MonitorEvaluator recovery alert retries', () => {
       expect(recoveriesRecorded).toBe(0);
     },
   );
+});
+
+describe('MonitorEvaluator.updateMonitorStatus paused guard', () => {
+  it('guards the write so a paused monitor is never overwritten', async () => {
+    const where = jest.fn();
+    const dbService = {
+      db: {
+        query: {
+          monitors: { findFirst: jest.fn(async () => ({ status: 'up' })) },
+        },
+        update: jest.fn(() => ({ set: jest.fn(() => ({ where })) })),
+      },
+    };
+    const evaluator = new MonitorEvaluator(dbService as never, {} as never);
+    await evaluator.updateMonitorStatus('m1', 'down', new Date());
+    expect(where).toHaveBeenCalledTimes(1);
+    const { sql, params } = new PgDialect().sqlToQuery(
+      where.mock.calls[0][0] as SQL,
+    );
+    expect(sql).toContain("<> 'paused'");
+    expect(params).toEqual(['m1']);
+  });
+});
+
+describe('incident-only monitors (alerts off or no channel)', () => {
+  it('classifies alert settings', () => {
+    expect(isIncidentOnly({ enabled: false, incidentEnabled: true })).toBe(
+      true,
+    );
+    expect(isIncidentOnly({ enabled: false })).toBe(false);
+    expect(isIncidentOnly({ enabled: true, incidentEnabled: true })).toBe(
+      false,
+    );
+    expect(tracksAlertState({ enabled: false, incidentEnabled: true })).toBe(
+      true,
+    );
+    expect(tracksAlertState({ enabled: false })).toBe(false);
+    expect(tracksAlertState(null)).toBe(false);
+  });
+
+  async function run(alertConfig: object, observedAt?: Date) {
+    const latest = {
+      id: 'r1',
+      consecutiveFailureCount: 1,
+      alertsSentForFailure: 0,
+    };
+    const dbService = {
+      db: {
+        query: { monitorResults: { findFirst: jest.fn(async () => latest) } },
+        update: jest.fn(() => ({ set: jest.fn(() => ({ where: jest.fn() })) })),
+      },
+    };
+    const alertService = {
+      sendNotification: jest.fn(async () => ({ delivered: true })),
+      signalFailure: jest.fn(async () => ({
+        delivered: false,
+        suppressed: true,
+        reason: 'incident_only',
+      })),
+      signalRecovery: jest.fn(),
+    };
+    const evaluator = new MonitorEvaluator(
+      dbService as never,
+      alertService as never,
+    );
+    const res = await evaluator.evaluateAndSendAlert({
+      monitorId: 'm1',
+      monitor: { alertConfig, config: {} } as never,
+      previousStatus: 'down',
+      currentStatus: 'down',
+      reason: 'down',
+      metadata: {},
+      observedAt,
+    });
+    return { res, alertService };
+  }
+
+  it('signals the incident without notifying when alerts are off', async () => {
+    const { res, alertService } = await run({
+      enabled: false,
+      incidentEnabled: true,
+    });
+    expect(alertService.signalFailure).toHaveBeenCalledWith(
+      'm1',
+      'down',
+      undefined,
+    );
+    expect(alertService.sendNotification).not.toHaveBeenCalled();
+    expect(res).toMatchObject({ alertSent: true });
+  });
+
+  it('passes the failing cycle time to the incident signal and to notifications', async () => {
+    const observedAt = new Date('2026-06-22T00:00:00Z');
+    const incidentOnly = await run(
+      { enabled: false, incidentEnabled: true },
+      observedAt,
+    );
+    expect(incidentOnly.alertService.signalFailure).toHaveBeenCalledWith(
+      'm1',
+      'down',
+      observedAt,
+    );
+    const alerting = await run(
+      { enabled: true, alertOnFailure: true },
+      observedAt,
+    );
+    expect(alerting.alertService.sendNotification).toHaveBeenCalledWith(
+      'm1',
+      'failure',
+      'down',
+      expect.objectContaining({ observedAt: observedAt.toISOString() }),
+    );
+  });
+
+  it('still does nothing when alerts and incidents are both off', async () => {
+    const { res, alertService } = await run({ enabled: false });
+    expect(alertService.signalFailure).not.toHaveBeenCalled();
+    expect(res).toEqual({ alertSent: false });
+  });
+
+  it('notifies as before when alerts are on', async () => {
+    const { alertService } = await run({ enabled: true, alertOnFailure: true });
+    expect(alertService.sendNotification).toHaveBeenCalled();
+    expect(alertService.signalFailure).not.toHaveBeenCalled();
+  });
+
+  it('sends no failure signal on recovery for an incident-only monitor', async () => {
+    const latest = {
+      id: 'r1',
+      consecutiveSuccessCount: 1,
+      alertsSentForRecovery: 0,
+      details: { recoverySequence: true },
+    };
+    const alertService = {
+      sendNotification: jest.fn(),
+      signalFailure: jest.fn(),
+      signalRecovery: jest.fn(),
+    };
+    const evaluator = new MonitorEvaluator(
+      {
+        db: {
+          query: { monitorResults: { findFirst: jest.fn(async () => latest) } },
+          update: jest.fn(),
+        },
+      } as never,
+      alertService as never,
+    );
+    const res = await evaluator.evaluateAndSendAlert({
+      monitorId: 'm1',
+      monitor: {
+        alertConfig: {
+          enabled: false,
+          incidentEnabled: true,
+          alertOnRecovery: true,
+        },
+        config: {},
+      } as never,
+      previousStatus: 'down',
+      currentStatus: 'up',
+      reason: 'up',
+      metadata: {},
+    });
+    expect(res).toEqual({ alertSent: false });
+    expect(alertService.signalFailure).not.toHaveBeenCalled();
+    expect(alertService.sendNotification).not.toHaveBeenCalled();
+    expect(alertService.signalRecovery).toHaveBeenCalled();
+  });
 });

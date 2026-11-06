@@ -13,8 +13,20 @@ export type SreSourceRecovery = {
   recoveredAt: string;
 };
 
+/** A failure to track as an incident when no alert row exists (no channels, or alerts off). */
+export type SreSourceFailure = {
+  sourceType: 'monitor';
+  sourceId: string;
+  type: 'monitor_failure';
+  message: string;
+  /** ISO timestamp of the failing check. */
+  firedAt: string;
+};
+
 export type SreAlertTriageQueueJob =
-  { alertHistoryId: string } | { sourceRecovery: SreSourceRecovery };
+  | { alertHistoryId: string }
+  | { sourceRecovery: SreSourceRecovery }
+  | { sourceFailure: SreSourceFailure };
 
 export type AlertHistoryTriageCandidate = {
   id: string;
@@ -56,6 +68,29 @@ export class SreAlertTriageQueueService implements OnModuleDestroy {
       );
     } catch (error) {
       this.logger.error('Failed to enqueue SRE alert triage jobs', error);
+    }
+  }
+
+  /**
+   * Tell the app a monitor failed so it opens or updates its incident without any delivered alert.
+   * The incident is deduplicated app-side by source and type, like one opened from an alert row.
+   */
+  async enqueueSourceFailure(failure: SreSourceFailure): Promise<boolean> {
+    if (!this.isEnabled()) {
+      return true; // incidents are off: nothing to retry
+    }
+    try {
+      await this.getQueue().add(
+        'source-failure',
+        { sourceFailure: failure },
+        {
+          jobId: `sre-failure-${failure.sourceType}-${failure.sourceId}-${Date.parse(failure.firedAt)}`,
+        },
+      );
+      return true;
+    } catch (error) {
+      this.logger.error('Failed to enqueue SRE source failure job', error);
+      return false;
     }
   }
 

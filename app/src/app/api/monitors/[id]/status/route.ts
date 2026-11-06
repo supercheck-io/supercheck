@@ -3,12 +3,14 @@ import { notInDeletedProject } from "@/lib/middleware/plan-limit-lock";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { monitors, projects } from "@/db/schema";
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq, ne, sql } from "drizzle-orm";
 import { isAuthError, requireUserAuthContext, authErrorStatus } from "@/lib/auth-context";
 import { resumeRefusalResponse, withResumeWithinPlan } from "@/lib/middleware/plan-enforcement";
 import { ensureSubscribedForResume, monitorResumeBlockedResponse, subscriptionDeniedResponse } from "@/lib/execution/trial-interval-response";
 import { hasPermissionForUser } from '@/lib/rbac/middleware';
 import { logAuditEvent } from "@/lib/audit-logger";
+import { removeScheduledMonitor, scheduleMonitor } from "@/lib/monitor-scheduler";
+import type { MonitorJobData } from "@/lib/queue";
 import { createLogger } from "@/lib/logger/index";
 
 const logger = createLogger({ module: "monitor-status-api" }) as {
@@ -17,6 +19,40 @@ const logger = createLogger({ module: "monitor-status-api" }) as {
   warn: (data: unknown, msg?: string) => void;
   error: (data: unknown, msg?: string) => void;
 };
+
+/** Makes the monitor's repeatable job match its committed row: none while paused or disabled, one while active. */
+async function reconcileMonitorSchedule(id: string, projectId: string): Promise<void> {
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`monitor-status:${id}`}))`);
+    const [row] = await tx
+      .select()
+      .from(monitors)
+      .where(and(eq(monitors.id, id), eq(monitors.projectId, projectId)))
+      .for("update");
+    if (!row) return;
+    if (row.status === "paused" || !row.enabled || row.frequencyMinutes <= 0) {
+      // A scheduler failure throws (rolling back, so scheduledJobId stays and a retry converges); an absent job is fine.
+      const removed = row.scheduledJobId ? await removeScheduledMonitor(row.scheduledJobId) : false;
+      if (!removed) await removeScheduledMonitor(id);
+      await tx.update(monitors).set({ scheduledJobId: null }).where(eq(monitors.id, id));
+      return;
+    }
+    const schedulerId = await scheduleMonitor({
+      monitorId: id,
+      frequencyMinutes: row.frequencyMinutes,
+      jobData: {
+        monitorId: id,
+        projectId,
+        type: row.type as MonitorJobData["type"],
+        target: row.target,
+        config: row.config as Record<string, unknown>,
+        frequencyMinutes: row.frequencyMinutes,
+      },
+      retryLimit: 3,
+    });
+    await tx.update(monitors).set({ scheduledJobId: schedulerId }).where(eq(monitors.id, id));
+  });
+}
 
 export async function PATCH(
   request: NextRequest,
@@ -35,9 +71,9 @@ export async function PATCH(
     }
     const { status } = data;
 
-    if (!status || !["up", "down", "paused", "pending", "maintenance", "error"].includes(status)) {
+    if (!status || !["up", "down", "paused", "pending"].includes(status)) {
       return NextResponse.json(
-        { error: "Invalid status value. Must be 'up', 'down', 'paused', 'pending', 'maintenance', or 'error'." },
+        { error: "Invalid status value. Must be 'up', 'down', 'paused' or 'pending'." },
         { status: 400 }
       );
     }
@@ -99,10 +135,14 @@ export async function PATCH(
         .where(and(eq(projects.id, monitorProjectId), ne(projects.status, 'deleted')))
         .for('share');
       if (!liveProject) return undefined;
+      // One status write at a time per monitor.
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`monitor-status:${id}`}))`);
       const [updated] = await tx
         .update(monitors)
         .set({
           status: status,
+          // The scheduler skips a monitor with enabled=false, so the two move together (as in PATCH /api/monitors/{id}).
+          enabled: status !== "paused",
           updatedAt: new Date(),
         })
         .where(
@@ -113,6 +153,8 @@ export async function PATCH(
           ),
         )
         .returning();
+      if (!updated) return undefined;
+
       return updated;
     };
     // Turning a paused monitor back on takes a plan slot: count and write under the plan-limit lock.
@@ -141,10 +183,24 @@ export async function PATCH(
       );
     }
 
+    // Always bring the scheduler to the committed state (never decided from the pre-write read). Idempotent and
+    // serialized per monitor, so a stale request or a retry cannot leave a schedule the row does not call for.
+    // If it fails the status is already saved; a retry converges, and the app's startup scheduler sync and the
+    // worker's paused guard cover the gap meanwhile.
+    try {
+      await reconcileMonitorSchedule(id, monitorProjectId);
+    } catch (error) {
+      logger.error({ err: error, monitorId: id }, "Monitor status saved but its schedule could not be updated");
+      return NextResponse.json(
+        { error: "Status saved, but updating the check schedule failed. Retry the request to reconcile it." },
+        { status: 503 },
+      );
+    }
+
     // Log the audit event only for human actions (pause/unpause), not automated status changes
-    const humanActions = ['paused', 'maintenance'];
+    const humanActions = ['paused'];
     const isHumanAction = humanActions.includes(status) || 
-                         (currentMonitor.status === 'paused' && ['up', 'down'].includes(status));
+                         (currentMonitor.status === 'paused' && ['up', 'down', 'pending'].includes(status));
     
     if (isHumanAction) {
       await logAuditEvent({

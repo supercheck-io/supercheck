@@ -144,6 +144,10 @@ export function IncidentSidebar({
               )}
             </Row>
             <Row label="Started">{formatDate(incident.createdAt)}</Row>
+            <Row label="Alerts">
+              {incident.alertCount}
+              {incident.lastAlertAt ? ` (last ${formatDate(incident.lastAlertAt)})` : ""}
+            </Row>
             <Row label="Status page">
               {detail.publicIncident ? (
                 <span className="flex flex-wrap items-center gap-x-2">

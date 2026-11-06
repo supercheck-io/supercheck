@@ -3,6 +3,7 @@
 import { monitorTypes } from "@/components/monitors/data";
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { MonitorForm } from "./monitor-form";
+import { channelsOptional } from "@/lib/incident-settings";
 import { AlertSettings } from "@/components/alerts/alert-settings";
 import { LocationConfigSection } from "./location-config-section";
 import {
@@ -305,9 +306,11 @@ export function MonitorCreationWizard() {
     // Validate alert configuration before proceeding
     if (alertConfig.enabled) {
       // Check if at least one notification provider is selected
+      // Incidents need no channel, so incident-only monitors may have none.
       if (
-        !alertConfig.notificationProviders ||
-        alertConfig.notificationProviders.length === 0
+        (!alertConfig.notificationProviders ||
+          alertConfig.notificationProviders.length === 0) &&
+        !channelsOptional(alertConfig)
       ) {
         toast.error("Validation Error", {
           description:
@@ -320,7 +323,7 @@ export function MonitorCreationWizard() {
 
       // Check notification channel limit
       if (
-        alertConfig.notificationProviders.length >
+        (alertConfig.notificationProviders?.length ?? 0) >
         maxMonitorNotificationChannels
       ) {
         toast.error("Validation Error", {

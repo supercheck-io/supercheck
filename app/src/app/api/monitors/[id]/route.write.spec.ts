@@ -102,6 +102,18 @@ describe("monitor PUT write boundary", () => {
     for (const k of ["projectId", "organizationId", "createdByUserId", "scheduledJobId", "id"]) expect(p).not.toHaveProperty(k);
   });
 
+  it.each(["", "   ", "x".repeat(256)])("rejects a blank or over-long name %j without writing", async (name) => {
+    const res = await call(PUT, "PUT", { name });
+    expect(res.status).toBe(400);
+    expect(set).not.toHaveBeenCalled();
+  });
+
+  it("rejects an invalid method or status-code list on update", async () => {
+    expect((await call(PUT, "PUT", { config: { method: "FOO" } })).status).toBe(400);
+    expect((await call(PUT, "PUT", { config: { expectedStatusCodes: "abc" } })).status).toBe(400);
+    expect(set).not.toHaveBeenCalled();
+  });
+
   it("keeps worker-owned config keys when config is replaced (c2)", async () => {
     await call(PUT, "PUT", { config: { timeoutSeconds: 10 } });
     expect((payload().config as Record<string, unknown>)).toMatchObject({ timeoutSeconds: 10, aggregatedAlertState: { n: 4 }, sslLastCheckedAt: "t" });
@@ -192,6 +204,56 @@ it("a stored legacy assertion key does not block an unrelated edit", async () =>
   expect((await call(PATCH, "PATCH", { enabled: false })).status).toBe(200);
 });
 
+describe("monitor PATCH config merge patch", () => {
+  const withConfig = (config: object) => findFirst.mockResolvedValue({ ...stored, config: { ...stored.config, ...config } });
+
+  it("merges objects recursively and keeps untouched keys", async () => {
+    withConfig({ method: "GET", auth: { type: "basic", username: "u", password: "p" } });
+    expect((await call(PATCH, "PATCH", { config: { auth: { username: "v" } } })).status).toBe(200);
+    expect(payload().config).toMatchObject({
+      timeoutSeconds: 30,
+      method: "GET",
+      auth: { type: "basic", username: "v", password: "p" },
+      aggregatedAlertState: { n: 4 },
+    });
+  });
+
+  it("replaces arrays instead of merging them", async () => {
+    withConfig({ regions: ["a", "b", "c"] });
+    await call(PATCH, "PATCH", { config: { regions: ["d"] } });
+    expect((payload().config as { regions: string[] }).regions).toEqual(["d"]);
+  });
+
+  it("deletes a key sent as null, nested or top level", async () => {
+    withConfig({ method: "POST", auth: { type: "bearer", token: "t" } });
+    await call(PATCH, "PATCH", { config: { method: null, auth: { token: null } } });
+    const config = payload().config as Record<string, unknown>;
+    expect(config).not.toHaveProperty("method");
+    expect(config.auth).toEqual({ type: "bearer" });
+    expect(config.timeoutSeconds).toBe(30);
+  });
+
+  it("cannot forge worker-owned keys through a patch", async () => {
+    await call(PATCH, "PATCH", { config: { aggregatedAlertState: { n: 999 } } });
+    expect((payload().config as Record<string, unknown>).aggregatedAlertState).toEqual({ n: 4 });
+  });
+
+  it("validates the merged result and rejects a null or non-object config", async () => {
+    expect((await call(PATCH, "PATCH", { config: { method: "FOO" } })).status).toBe(400);
+    expect((await call(PATCH, "PATCH", { config: null })).status).toBe(400);
+    expect((await call(PATCH, "PATCH", { config: "x" })).status).toBe(400);
+    expect(set).not.toHaveBeenCalled();
+  });
+
+  it("PUT still replaces the whole config", async () => {
+    withConfig({ method: "POST", regions: ["a"] });
+    await call(PUT, "PUT", { config: { timeoutSeconds: 10 } });
+    const config = payload().config as Record<string, unknown>;
+    expect(config).not.toHaveProperty("method");
+    expect(config).not.toHaveProperty("regions");
+  });
+});
+
 describe("monitor PATCH alertConfig (c12)", () => {
   it("replaces the delivery rows when providers change", async () => {
     providerRows = [{ id: "00000000-0000-4000-8000-0000000000c1" }];
@@ -208,8 +270,19 @@ describe("monitor PATCH alertConfig (c12)", () => {
   });
 
   it("refuses an enabled alert config with no channel", async () => {
-    const res = await call(PATCH, "PATCH", { alertConfig: { enabled: true, notificationProviders: [] } });
+    const res = await call(PATCH, "PATCH", { alertConfig: { enabled: true, notificationProviders: [], incidentEnabled: false } });
     expect(res.status).toBe(400);
+  });
+
+  it.each([null, false, 0, ""])("rejects a non-object alertConfig %p instead of ignoring it", async (alertConfig) => {
+    const res = await call(PATCH, "PATCH", { alertConfig } as never);
+    expect(res.status).toBe(400);
+    expect(set).not.toHaveBeenCalled();
+  });
+
+  it("allows an enabled alert config with no channel while incidents are on", async () => {
+    const res = await call(PATCH, "PATCH", { alertConfig: { enabled: true, notificationProviders: [], incidentEnabled: true } });
+    expect(res.status).toBe(200);
   });
 });
 

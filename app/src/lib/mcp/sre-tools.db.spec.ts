@@ -49,7 +49,7 @@ beforeAll(async () => {
   client = postgres(url.toString(), { max: 1 });
   mockDatabase = drizzle(client, { schema });
   // Only the columns the start gate reads.
-  await client.unsafe(`CREATE TABLE sre_incidents (id uuid PRIMARY KEY, organization_id uuid NOT NULL, project_id uuid NOT NULL)`);
+  await client.unsafe(`CREATE TABLE sre_incidents (id uuid PRIMARY KEY, organization_id uuid NOT NULL, project_id uuid NOT NULL, alert_count integer NOT NULL DEFAULT 1, last_alert_at timestamptz)`);
   await client.unsafe(`CREATE TABLE sre_investigation_runs (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), organization_id uuid NOT NULL, project_id uuid NOT NULL, incident_id uuid, agent_type text NOT NULL, status text NOT NULL, started_at timestamptz NOT NULL)`);
   await client`INSERT INTO sre_incidents VALUES (${own}, ${org}, ${project}), (${foreignOrg}, ${otherOrg}, ${project}), (${foreignProject}, ${org}, ${otherProject})`;
 });

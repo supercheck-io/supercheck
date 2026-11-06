@@ -53,7 +53,9 @@ jest.mock('../common/utils/pinned-monitor-request', () => ({
 jest.mock('net', () => {
   const actual = jest.requireActual('net');
   const { EventEmitter } = jest.requireActual('events');
-  const state = { behavior: 'error' as 'connect' | 'error' };
+  const state = {
+    behavior: 'error' as 'connect' | 'error' | 'aggregate' | 'mixed' | 'empty',
+  };
 
   class FakeSocket extends EventEmitter {
     destroy = jest.fn();
@@ -63,6 +65,22 @@ jest.mock('net', () => {
         (() => void) | undefined;
       process.nextTick(() => {
         if (state.behavior === 'connect') callback?.();
+        else if (state.behavior === 'aggregate')
+          this.emit(
+            'error',
+            new AggregateError([
+              Object.assign(new Error('refused'), { code: 'ECONNREFUSED' }),
+            ]),
+          );
+        else if (state.behavior === 'mixed')
+          this.emit(
+            'error',
+            new AggregateError([
+              Object.assign(new Error('refused'), { code: 'ECONNREFUSED' }),
+              Object.assign(new Error('unreachable'), { code: 'EHOSTUNREACH' }),
+            ]),
+          );
+        else if (state.behavior === 'empty') this.emit('error', new Error(''));
         else
           this.emit(
             'error',
@@ -871,6 +889,46 @@ describe('MonitorService', () => {
       expect(result?.details?.errorMessage).toBe(
         'Port is open but was expected to be closed',
       );
+    });
+
+    it('treats a multi-address refusal as closed when the port is expected to be closed', async () => {
+      netState.behavior = 'aggregate';
+
+      const result = await service.executeMonitor({
+        ...mockJobData,
+        type: 'port_check' as const,
+        target: 'db.example.com',
+        config: { ...mockJobData.config, port: 5432, expectClosed: true },
+      });
+
+      expect(result).toMatchObject({ status: 'up', isUp: true });
+    });
+
+    it('does not call a mixed refused and unreachable failure a closed port', async () => {
+      netState.behavior = 'mixed';
+
+      const result = await service.executeMonitor({
+        ...mockJobData,
+        type: 'port_check' as const,
+        target: 'db.example.com',
+        config: { ...mockJobData.config, port: 5432, expectClosed: true },
+      });
+
+      expect(result).toMatchObject({ isUp: false });
+    });
+
+    it('never reports an error result with an empty message', async () => {
+      netState.behavior = 'empty';
+
+      const result = await service.executeMonitor({
+        ...mockJobData,
+        type: 'port_check' as const,
+        target: 'db.example.com',
+        config: { ...mockJobData.config, port: 5432, expectClosed: true },
+      });
+
+      expect(result).toMatchObject({ status: 'error', isUp: false });
+      expect(result?.details?.errorMessage).toBe('Port check failed');
     });
 
     it('resolves port check hosts through the private-address guard', async () => {

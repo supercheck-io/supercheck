@@ -136,7 +136,12 @@ export function sanitizeUrl(url: string | null | undefined): string {
       return '';
     }
 
-    return parsed.toString();
+    // URL#toString adds a "/" to a bare origin; keep the target as typed so CLI diff and pull stay stable.
+    const href = parsed.toString();
+    // A backslash separates the path in an http URL, so it is not part of a bare origin.
+    return /^https?:\/\/[^/\\?#]*([?#]|$)/i.test(sanitized)
+      ? href.replace(/^(https?:\/\/[^/?#]*)\//i, '$1')
+      : href;
   } catch {
     return '';
   }

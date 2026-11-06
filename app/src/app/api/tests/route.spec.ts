@@ -91,6 +91,17 @@ describe("test priority validation", () => {
     expect(response.status).toBe(400);
   });
 
+  it.each(["{not json", "null", "[]", '"x"'])("POST answers 400, not 500, for the body %s", async (raw) => {
+    const response = await POST(
+      new NextRequest("http://localhost/api/tests", {
+        method: "POST",
+        body: raw,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    expect(response.status).toBe(400);
+  });
+
   it("POST rejects an unknown priority before writing", async () => {
     const response = await POST(
       new NextRequest("http://localhost/api/tests", {

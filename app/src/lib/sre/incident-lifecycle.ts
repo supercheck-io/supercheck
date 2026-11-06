@@ -599,6 +599,25 @@ export async function applySourceRecovery(
   if (newerFailure) {
     return { resolved: [], recovered: [] };
   }
+  // A failure signalled without an alert row (no channel, or alerts off) still refreshes this source's alert event.
+  const [newerSignal] = await tx
+    .select({ id: sreAlertEvents.id })
+    .from(sreAlertEvents)
+    .where(
+      and(
+        eq(sreAlertEvents.organizationId, source.organizationId),
+        eq(sreAlertEvents.projectId, source.projectId),
+        eq(sreAlertEvents.sourceType, source.sourceType),
+        eq(sreAlertEvents.sourceId, source.sourceId),
+        eq(sreAlertEvents.status, "firing"),
+        recoverableTrigger(),
+        gt(sreAlertEvents.firedAt, source.recoveredAt),
+      ),
+    )
+    .limit(1);
+  if (newerSignal) {
+    return { resolved: [], recovered: [] };
+  }
 
   // The failure alerts themselves end with the recovery, so the service "firing" count falls.
   // Only alerts that fired before the recovery, and only types a passing check really ends.
@@ -728,6 +747,34 @@ export async function findOpenIncidentForSource(tx: Executor, source: SourceRef)
     .orderBy(desc(sreIncidents.createdAt))
     .limit(1);
   return open ?? null;
+}
+
+/**
+ * Counts one more alert on an open incident. A single atomic statement (no read-then-write), so concurrent
+ * repeats each add exactly one. The same alert arriving again (a queue retry, or one row per channel) carries
+ * the same firedAt and is not counted twice (a retry interleaved with newer alerts can still double count:
+ * shortcut, the alert time is the only identity; add an alert id column if that matters). Returns whether
+ * the count moved.
+ */
+export async function recordRepeatAlert(tx: Executor, incidentId: string, firedAt: Date) {
+  // Raw sql fragments are not type-mapped: pass an explicit timestamptz, never a Date.
+  const fired = sql`${firedAt.toISOString()}::timestamptz`;
+  const rows = await tx
+    .update(sreIncidents)
+    // GREATEST keeps last_alert_at monotonic when alerts are processed out of order.
+    .set({
+      alertCount: sql`${sreIncidents.alertCount} + 1`,
+      lastAlertAt: sql`greatest(coalesce(${sreIncidents.lastAlertAt}, ${fired}), ${fired})`,
+    })
+    .where(
+      and(
+        eq(sreIncidents.id, incidentId),
+        ne(sreIncidents.status, "resolved"),
+        sql`${sreIncidents.lastAlertAt} is distinct from ${fired}`,
+      ),
+    )
+    .returning({ id: sreIncidents.id });
+  return rows.length > 0;
 }
 
 /**

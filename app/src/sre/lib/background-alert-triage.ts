@@ -32,9 +32,11 @@ import {
   applySourceRecovery,
   findOpenIncidentForSource,
   noteFailureReturned,
+  recordRepeatAlert,
   getDefaultAssigneeId,
   reopenRecentlyAutoResolved,
 } from "@/lib/sre/incident-lifecycle";
+import { incidentsEnabled } from "@/lib/incident-settings";
 import { isAttemptedAlertStatus } from "@/lib/alert-escalation";
 import { alertIncidentTitle } from "@/lib/sre/alert-labels";
 import { linkStatusPageIncidentsToSreIncident } from "@/lib/status-page-reconciliation";
@@ -51,6 +53,16 @@ const logger = createLogger({ module: "sre-background-alert-triage" }) as {
 // Keep in sync with SreAlertTriageQueueJob in worker/src/monitor/services/sre-alert-triage-queue.service.ts.
 const backgroundTriageJobSchema = z.union([
   z.object({ alertHistoryId: z.string().uuid() }),
+  z.object({
+    // A failure with no alert row: the monitor has no channel, or alerts are off.
+    sourceFailure: z.object({
+      sourceType: z.literal("monitor"),
+      sourceId: z.string().uuid(),
+      type: z.literal("monitor_failure"),
+      message: z.string().max(2000),
+      firedAt: z.string().datetime(),
+    }),
+  }),
   z.object({
     sourceRecovery: z.object({
       sourceType: z.enum(["monitor", "job"]),
@@ -238,8 +250,52 @@ async function sourceRecoveredSince(
   return latest?.status === "passed" ? latest.at : null;
 }
 
-async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
-  const [alert] = await db
+type SourceFailureInput = { sourceId: string; type: string; message: string; firedAt: string };
+
+/** Shapes a source failure like the alert_history row the incident logic reads (id is null: there is none). */
+async function syntheticFailureAlert(failure: SourceFailureInput) {
+  const [monitor] = await db
+    .select({
+      name: monitors.name,
+      organizationId: monitors.organizationId,
+      projectId: monitors.projectId,
+      alertConfig: monitors.alertConfig,
+      status: monitors.status,
+      enabled: monitors.enabled,
+    })
+    .from(monitors)
+    .where(eq(monitors.id, failure.sourceId))
+    .limit(1);
+  // A failure queued before the monitor was paused or disabled must not open or update an incident.
+  if (monitor && (monitor.status === "paused" || !monitor.enabled)) return undefined;
+  // Only a monitor that opted in to incidents without alerts, or one that alerts with incidents on, opens one here.
+  if (!monitor || !incidentsEnabled(monitor.alertConfig)) return undefined;
+  return {
+    id: null as string | null,
+    targetType: "monitor" as string | null,
+    target: monitor.name,
+    monitorId: failure.sourceId as string | null,
+    jobId: null as string | null,
+    type: failure.type,
+    message: failure.message,
+    status: "sent" as string,
+    provider: null as string | null,
+    sentAt: new Date(failure.firedAt) as Date | null,
+    monitorName: monitor.name as string | null,
+    monitorOrganizationId: monitor.organizationId as string | null,
+    monitorProjectId: monitor.projectId as string | null,
+    monitorAlertConfig: monitor.alertConfig,
+    jobName: null as string | null,
+    jobAlertConfig: null,
+    jobOrganizationId: null as string | null,
+    jobProjectId: null as string | null,
+  };
+}
+
+async function createOrGetIncidentForAlertHistory(alertHistoryId: string, failure?: SourceFailureInput) {
+  const [loaded] = failure
+    ? [undefined]
+    : await db
     .select({
       id: alertHistory.id,
       targetType: alertHistory.targetType,
@@ -266,6 +322,7 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
     .where(eq(alertHistory.id, alertHistoryId))
     .limit(1);
 
+  const alert = failure ? await syntheticFailureAlert(failure) : loaded;
   if (!alert) {
     return { skipped: true as const, reason: "alert_not_found" as const };
   }
@@ -295,6 +352,7 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
     ? alert.monitorAlertConfig
     : alert.jobAlertConfig;
   const firedAt = alert.sentAt ?? new Date();
+  const alertKey = alert.id ?? `failure:${sourceId}:${firedAt.toISOString()}`;
 
   if (alertStatus !== "firing") {
     // Recovery: resolve (or flag) open incidents of the same source, regardless of alert type.
@@ -306,7 +364,7 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
       targetName,
       autoResolve: alertConfig?.autoResolveIncident !== false,
       recoveredAt: firedAt,
-      discriminator: alert.id,
+      discriminator: alertKey,
     });
     return { skipped: true as const, reason: "recovery_handled" as const };
   }
@@ -431,6 +489,7 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
       .limit(1);
 
     if (existingIncident) {
+      if (existingIncident.status !== "resolved") await recordRepeatAlert(tx, existingIncident.id, firedAt);
       if (existingIncident.status !== "resolved" && RECOVERABLE_FAILURE_TYPES.has(alert.type)) {
         await noteFailureReturned(tx, existingIncident.id, firedAt);
       }
@@ -468,6 +527,7 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
           createdAt: new Date(),
         })
         .onConflictDoNothing();
+      await recordRepeatAlert(tx, reopened.incidentId, firedAt);
       return {
         skipped: false as const,
         organizationId,
@@ -478,6 +538,7 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
       };
     }
     if (reopened) {
+      await recordRepeatAlert(tx, reopened.incidentId, firedAt);
       return {
         skipped: false as const,
         organizationId,
@@ -506,6 +567,7 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
             createdAt: new Date(),
           })
           .onConflictDoNothing();
+        await recordRepeatAlert(tx, openForSource.id, firedAt);
         await noteFailureReturned(tx, openForSource.id, firedAt);
         return {
           skipped: false as const,
@@ -623,6 +685,7 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
               createdAt: new Date(),
             })
             .onConflictDoNothing();
+          await recordRepeatAlert(correlationTx, correlation.candidate.incidentId, firedAt);
 
           await correlationTx.insert(sreIncidentTimelineEvents).values({
             incidentId: correlation.candidate.incidentId,
@@ -686,6 +749,8 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
         title,
         severity,
         status: "triggered",
+        alertCount: 1,
+        lastAlertAt: firedAt,
         primaryServiceId: mappedService?.id ?? null,
         assigneeUserId: await getDefaultAssigneeId(tx, {
           organizationId,
@@ -761,7 +826,7 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
   if (!result.skipped && "reopenedAssigneeUserId" in result) {
     await announceSystemTransition(organizationId, projectId, result.incidentId, "reopened", {
       assigneeUserId: result.reopenedAssigneeUserId,
-      discriminator: alert.id,
+      discriminator: alertKey,
     });
   }
 
@@ -796,7 +861,7 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
         targetName,
         autoResolve: alertConfig?.autoResolveIncident !== false,
         recoveredAt,
-        discriminator: `${alert.id}:late-recovery`,
+        discriminator: `${alertKey}:late-recovery`,
       });
       return { skipped: true as const, reason: "recovered_before_triage" as const };
     }
@@ -822,9 +887,10 @@ export async function processSreBackgroundAlertTriageJob(
     return { success: true, skipped: true, reason: recovery.reason };
   }
 
-  const incident = await createOrGetIncidentForAlertHistory(
-    parsed.data.alertHistoryId,
-  );
+  const incident =
+    "sourceFailure" in parsed.data
+      ? await createOrGetIncidentForAlertHistory("", parsed.data.sourceFailure)
+      : await createOrGetIncidentForAlertHistory(parsed.data.alertHistoryId);
   if (incident.skipped) {
     return { success: true, skipped: true, reason: incident.reason };
   }

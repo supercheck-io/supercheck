@@ -279,6 +279,37 @@ it("ignores a worker recovery signal older than the latest failure", async () =>
   expect(row.status).toBe("triggered");
 });
 
+const sourceFailure = (at: Date) =>
+  processSreBackgroundAlertTriageJob({
+    sourceFailure: { sourceType: "monitor", sourceId: monitorId, type: "monitor_failure", message: "down", firedAt: at.toISOString() },
+  });
+const makeIncidentOnly = () =>
+  mockDatabase
+    .update(schema.monitors)
+    .set({ alertConfig: { enabled: false, incidentEnabled: true } as never })
+    .where(eq(schema.monitors.id, monitorId));
+
+it("a newer incident-only failure blocks an older recovery", async () => {
+  await makeIncidentOnly();
+  await sourceFailure(minutes(0));
+  await sourceFailure(minutes(12)); // no alert_history row for either
+  await sourceRecovery(minutes(10));
+  const [row] = await incidents();
+  expect(row.status).toBe("triggered");
+  // A recovery after the latest failure still resolves it.
+  await sourceRecovery(minutes(14));
+  expect((await incidents())[0].status).toBe("resolved");
+});
+
+it("another source's newer failure does not block this source's recovery", async () => {
+  await makeIncidentOnly();
+  await sourceFailure(minutes(0));
+  await alert("job_failed", minutes(12), { job: true }); // a different source fires after the recovery time
+  await sourceRecovery(minutes(10));
+  const rows = await incidents();
+  expect(rows[0].status).toBe("resolved");
+});
+
 it("records and resolves a failure processed after the monitor already recovered", async () => {
   // A retry or a queue backlog: the monitor was back up at 5 before the failure from 0 is processed.
   await mockDatabase.update(schema.monitors).set({ status: "up", lastStatusChangeAt: minutes(5) }).where(eq(schema.monitors.id, monitorId));

@@ -12,7 +12,6 @@ import {
   requirementTags,
   requirements,
   runs,
-  sreIncidentAlerts,
   sreIncidents,
   sreInvestigationRecommendations,
   sreInvestigationRuns,
@@ -36,6 +35,7 @@ import { McpToolFailure, registerSreTools, type ToolRegistrar } from "./sre-tool
 import { getDisplayStatus } from "@/lib/sre/incident-status-display";
 import { storedRootCause } from "@/lib/sre/evidence-brief-summary";
 import { safeTarget, safeText } from "./redact";
+import { incidentsEnabled } from "@/lib/incident-settings";
 
 const MAX_LIMIT = 50;
 const ANNOTATIONS = {
@@ -318,15 +318,14 @@ export function registerMcpTools(server: McpServer, ctx: McpCallContext): void {
     return { incidents: items.map((i) => ({ ...i, ...lifecycleDto(i), title: safeText(i.title, 500), createdAt: iso(i.createdAt), resolvedAt: iso(i.resolvedAt) })), nextCursor };
   });
 
-  tool("get_incident", "Get one incident with its root-cause summary, assignment, acknowledgement, resolution summary and number of linked alerts." + UNTRUSTED, "sre_incident", { id: idArg }, async ({ id }) => {
+  tool("get_incident", "Get one incident with its root-cause summary, assignment, acknowledgement, resolution summary and number of alerts (the opening alert plus repeats while it stayed open) and when the latest one fired." + UNTRUSTED, "sre_incident", { id: idArg }, async ({ id }) => {
     const [i] = await db
-      .select({ id: sreIncidents.id, number: sreIncidents.incidentNumber, title: sreIncidents.title, severity: sreIncidents.severity, status: sreIncidents.status, rootCauseSummary: sreIncidents.rootCauseSummary, resolutionSummary: sreIncidents.resolutionSummary, createdAt: sreIncidents.createdAt, resolvedAt: sreIncidents.resolvedAt, ...incidentLifecycle })
+      .select({ id: sreIncidents.id, number: sreIncidents.incidentNumber, title: sreIncidents.title, severity: sreIncidents.severity, status: sreIncidents.status, rootCauseSummary: sreIncidents.rootCauseSummary, resolutionSummary: sreIncidents.resolutionSummary, createdAt: sreIncidents.createdAt, resolvedAt: sreIncidents.resolvedAt, alertCount: sreIncidents.alertCount, lastAlertAt: sreIncidents.lastAlertAt, ...incidentLifecycle })
       .from(sreIncidents)
       .where(scope(sreIncidents, [eq(sreIncidents.id, id)]))
       .limit(1);
     if (!i) throw new NotFoundError("Incident not found");
-    const [alerts] = await db.select({ count: sql<number>`count(*)::int` }).from(sreIncidentAlerts).where(eq(sreIncidentAlerts.incidentId, i.id));
-    return { incident: { ...i, ...lifecycleDto(i), alertCount: alerts?.count ?? 0, title: safeText(i.title, 500), rootCauseSummary: safeText(storedRootCause(i.rootCauseSummary)), // A reopened incident keeps its previous resolution in the database; only a resolved one reports it.
+    return { incident: { ...i, ...lifecycleDto(i), lastAlertAt: iso(i.lastAlertAt), title: safeText(i.title, 500), rootCauseSummary: safeText(storedRootCause(i.rootCauseSummary)), // A reopened incident keeps its previous resolution in the database; only a resolved one reports it.
       resolutionSummary: i.status === "resolved" ? safeText(i.resolutionSummary) : null, createdAt: iso(i.createdAt), resolvedAt: iso(i.resolvedAt) } };
   });
 
@@ -416,6 +415,8 @@ export function registerMcpTools(server: McpServer, ctx: McpCallContext): void {
           alertOnFailure: m.alertConfig?.alertOnFailure === true,
           alertOnRecovery: m.alertConfig?.alertOnRecovery === true,
           ...incidentSettings(m.alertConfig),
+          // A monitor with alerts off opens incidents only when opted in.
+          incidentEnabled: incidentsEnabled(m.alertConfig),
         },
       },
     };

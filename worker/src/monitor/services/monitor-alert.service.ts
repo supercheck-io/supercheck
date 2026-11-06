@@ -61,12 +61,75 @@ export class MonitorAlertService {
     });
   }
 
+  /** An unresolved scheduled-maintenance incident covers the monitor right now. */
+  private async isUnderScheduledMaintenance(
+    monitorId: string,
+  ): Promise<boolean> {
+    const now = new Date();
+    const rows = await this.dbService.db
+      .select({ id: schema.incidents.id })
+      .from(schema.statusPageComponentMonitors)
+      .innerJoin(
+        schema.incidentComponents,
+        eq(
+          schema.incidentComponents.componentId,
+          schema.statusPageComponentMonitors.componentId,
+        ),
+      )
+      .innerJoin(
+        schema.incidents,
+        eq(schema.incidents.id, schema.incidentComponents.incidentId),
+      )
+      .where(
+        and(
+          eq(schema.statusPageComponentMonitors.monitorId, monitorId),
+          ne(schema.incidents.status, 'resolved'),
+          lte(schema.incidents.scheduledFor, now),
+          gt(schema.incidents.scheduledUntil, now),
+        ),
+      )
+      .limit(1);
+    return rows.length > 0;
+  }
+
+  /**
+   * Opens or updates the monitor's incident without notifying anyone: for a monitor with no channel or with
+   * alerts off. Held back during scheduled maintenance like an alert, so the next failing check retries.
+   */
+  async signalFailure(monitorId: string, reason: string, observedAt?: Date) {
+    if (await this.isUnderScheduledMaintenance(monitorId)) {
+      return {
+        delivered: false,
+        suppressed: true,
+        reason: 'maintenance' as const,
+      };
+    }
+    // The failing cycle's own observation time, not the send time: a delayed send must not outrun a recovery.
+    const firedAt = observedAt ?? new Date();
+    const queued = await this.sreAlertTriageQueueService.enqueueSourceFailure({
+      sourceType: 'monitor',
+      sourceId: monitorId,
+      type: 'monitor_failure',
+      message: (reason || 'Monitor is down').slice(0, 2000),
+      firedAt: firedAt.toISOString(),
+    });
+    // A rejected enqueue is a delivery failure: the evaluator retries within its bounded window.
+    if (!queued) return { delivered: false };
+    return {
+      delivered: false,
+      suppressed: true,
+      reason: 'incident_only' as const,
+    };
+  }
+
   async sendNotification(
     monitorId: string,
     type: 'recovery' | 'failure',
     reason: string,
     metadata: Record<string, unknown> = {},
   ) {
+    const observed = new Date(String(metadata.observedAt));
+    const observedAt = Number.isNaN(observed.getTime()) ? undefined : observed;
     this.logger.log(
       `[NOTIFY] Manual notification trigger for monitor ${monitorId}, type: ${type}`,
     );
@@ -99,30 +162,7 @@ export class MonitorAlertService {
       return { delivered: false };
     }
 
-    const maintenance = await db
-      .select({ id: schema.incidents.id })
-      .from(schema.statusPageComponentMonitors)
-      .innerJoin(
-        schema.incidentComponents,
-        eq(
-          schema.incidentComponents.componentId,
-          schema.statusPageComponentMonitors.componentId,
-        ),
-      )
-      .innerJoin(
-        schema.incidents,
-        eq(schema.incidents.id, schema.incidentComponents.incidentId),
-      )
-      .where(
-        and(
-          eq(schema.statusPageComponentMonitors.monitorId, monitorId),
-          ne(schema.incidents.status, 'resolved'),
-          lte(schema.incidents.scheduledFor, new Date()),
-          gt(schema.incidents.scheduledUntil, new Date()),
-        ),
-      )
-      .limit(1);
-    if (maintenance.length) {
+    if (await this.isUnderScheduledMaintenance(monitorId)) {
       this.logger.log(
         `[NOTIFY] Suppressing monitor ${monitorId} alert during scheduled maintenance`,
       );
@@ -167,6 +207,14 @@ export class MonitorAlertService {
       this.logger.log(
         `[NOTIFY] No notification providers configured for monitor ${monitorId}`,
       );
+      // No channel still tracks the failure: incidents do not depend on a delivered alert.
+      if (
+        type === 'failure' &&
+        providers.length === 0 &&
+        monitor.alertConfig?.incidentEnabled !== false
+      ) {
+        return this.signalFailure(monitorId, reason, observedAt);
+      }
       // Nothing to deliver to: not a failure, so the cycle is receipted instead of retried 5 times.
       return {
         delivered: false,
@@ -279,6 +327,8 @@ export class MonitorAlertService {
     );
 
     if (deliveryResults.results.length > 0) {
+      // One per failure: per-channel rows share it, and a failure keeps the cycle's observation time.
+      const sentAt = type === 'failure' && observedAt ? observedAt : new Date();
       const historyRecords = deliveryResults.results.map((result) => ({
         type: notificationType,
         message: notificationPayload.message,
@@ -292,7 +342,7 @@ export class MonitorAlertService {
             : ('failed' as const),
         errorMessage: result.error,
         deliveryMetadata: result.deliveryMetadata,
-        sentAt: new Date(),
+        sentAt,
       }));
 
       // Delivery already happened: a bookkeeping failure must not be reported as a failed delivery.
@@ -358,6 +408,14 @@ export class MonitorAlertService {
     ) {
       this.logger.log(
         `[SSL-NOTIFY] SSL alerts not enabled for monitor ${monitorId}`,
+      );
+      return false;
+    }
+
+    // Same rule as status alerts. Nothing is recorded as sent, so the next check after the window alerts again.
+    if (await this.isUnderScheduledMaintenance(monitorId)) {
+      this.logger.log(
+        `[SSL-NOTIFY] Suppressing monitor ${monitorId} SSL alert during scheduled maintenance`,
       );
       return false;
     }
@@ -462,6 +520,7 @@ export class MonitorAlertService {
     );
 
     if (deliveryResults.results.length > 0) {
+      const sentAt = new Date(); // one per alert: per-channel rows must share it
       const historyRecords = deliveryResults.results.map<
         typeof schema.alertHistory.$inferInsert
       >((result) => ({
@@ -477,7 +536,7 @@ export class MonitorAlertService {
             : ('failed' as const),
         errorMessage: result.error,
         deliveryMetadata: result.deliveryMetadata,
-        sentAt: new Date(),
+        sentAt,
       }));
 
       const createdRows = await db

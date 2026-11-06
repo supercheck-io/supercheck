@@ -2209,8 +2209,7 @@ paths:
     patch:
       operationId: updateMonitor
       summary: Update a monitor
-      description: Update monitor configuration. Only provided fields are changed.
-        Resource IDs must be canonical UUIDs; malformed IDs return 404.
+      description: "Partially update a monitor. Send only the fields to change. `config` and `alertConfig` are merged as a JSON merge patch: objects merge recursively, arrays replace, and an explicit `null` deletes a key. Resource IDs must be canonical UUIDs; malformed IDs return 404."
       tags:
         - Monitors
       requestBody:
@@ -2218,7 +2217,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/MonitorUpdateRequest"
+              $ref: "#/components/schemas/MonitorPatchRequest"
       responses:
         "200":
           description: Monitor updated
@@ -2265,10 +2264,7 @@ paths:
     put:
       operationId: replaceMonitorConfiguration
       summary: Update a monitor configuration
-      description: Update monitor configuration. Only provided fields are changed. PUT
-        is retained for CLI deploy and backward compatibility; interactive
-        partial updates should prefer PATCH. Resource IDs must be canonical
-        UUIDs; malformed IDs return 404.
+      description: "Replace a monitor configuration. Omitted top-level fields are kept, but `config` is replaced as a whole, so send the complete object (use PATCH to change single keys). PUT is retained for CLI deploy and backward compatibility. Resource IDs must be canonical UUIDs; malformed IDs return 404."
       tags:
         - Monitors
       requestBody:
@@ -3413,11 +3409,11 @@ paths:
     patch:
       operationId: updateMonitorStatus
       summary: Update monitor status
-      description: Pause, resume, or otherwise set a monitor's status (for example
-        `paused` or `maintenance`). Requires monitor manage or update
-        permission. Automated status changes from checks are handled separately.
-        Read current monitor status with `GET /api/monitors/{id}`; this route
-        does not support GET.
+      description: Pause, resume, or otherwise set a monitor's status (`up`, `down`,
+        `paused` or `pending`; `maintenance` and `error` are not accepted).
+        Requires monitor manage or update permission. Automated status changes
+        from checks are handled separately. Read current monitor status with
+        `GET /api/monitors/{id}`; this route does not support GET.
       tags:
         - Monitors
       requestBody:
@@ -3436,8 +3432,6 @@ paths:
                     - down
                     - paused
                     - pending
-                    - maintenance
-                    - error
       responses:
         "200":
           description: Monitor status updated
@@ -5792,6 +5786,10 @@ components:
         testCount:
           type: integer
           nullable: true
+        testId:
+          type: string
+          nullable: true
+          description: Test ID of a single-test run (`test execute`, playground); null for job runs
         location:
           type: string
           nullable: true
@@ -7075,6 +7073,44 @@ components:
           $ref: "#/components/schemas/MonitorConfig"
         alertConfig:
           $ref: "#/components/schemas/MonitorAlertConfig"
+    MonitorPatchRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        type:
+          type: string
+          enum:
+            - http_request
+            - website
+            - ping_host
+            - port_check
+            - synthetic_test
+        target:
+          type: string
+        frequencyMinutes:
+          type: integer
+          minimum: 1
+          maximum: 1440
+        enabled:
+          type: boolean
+        status:
+          type: string
+          enum:
+            - up
+            - down
+            - paused
+            - pending
+        config:
+          $ref: "#/components/schemas/MonitorConfig"
+        alertConfig:
+          allOf:
+            - $ref: "#/components/schemas/MonitorAlertConfig"
+          description: Merged into the stored alert settings. A field sent as null is
+            reset to its default (it is not left unset), and notificationProviders
+            null clears the channel list.
     ValidationScriptRequest:
       type: object
       properties:

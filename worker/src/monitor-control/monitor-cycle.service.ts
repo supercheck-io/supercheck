@@ -4,7 +4,10 @@ import { DbService } from '../db/db.service';
 import * as schema from '../db/schema';
 import type { MonitorCycleEvaluation } from '../db/schema';
 import { MonitorAlertService } from '../monitor/services/monitor-alert.service';
-import { MonitorEvaluator } from '../monitor/monitor-evaluator';
+import {
+  MonitorEvaluator,
+  tracksAlertState,
+} from '../monitor/monitor-evaluator';
 import type { MonitorExecutionResult } from '../monitor/types/monitor-result.type';
 import { BillingHoldService } from './billing-hold.service';
 import { decideMonitorCycle } from './cycle-policy';
@@ -241,6 +244,7 @@ export class MonitorCycleService {
           decision.observed.filter((location) => statuses[location]).length,
         ),
         avgResponseTimeMs: this.averageResponse(observedRows),
+        observedAt: checkedAt.toISOString(),
       };
       if (
         this.evaluator.isMultiLocationEvaluation(
@@ -250,7 +254,7 @@ export class MonitorCycleService {
       ) {
         evaluation.alertState = {
           ...this.evaluator.advanceAggregatedAlertState(
-            monitor.alertConfig?.enabled,
+            tracksAlertState(monitor.alertConfig),
             monitor.config,
             previousStatus,
             decision.status,
@@ -334,6 +338,10 @@ export class MonitorCycleService {
       currentStatus: evaluation.currentStatus,
       reason: evaluation.reason,
       preparedAlertState: evaluation.alertState,
+      // Stored when the cycle closed; a late result or a newer cycle cannot move it. Older rows fall back to the latest result.
+      observedAt: evaluation.observedAt
+        ? new Date(evaluation.observedAt)
+        : rows[0]?.checkedAt,
       metadata: {
         responseTime: evaluation.avgResponseTimeMs,
         // One entry per expected region, like the legacy path: the evaluator derives its

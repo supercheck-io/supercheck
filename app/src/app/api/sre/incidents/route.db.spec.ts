@@ -32,7 +32,8 @@ beforeAll(async () => {
       root_cause_summary text, confidence_score numeric, resolved_at timestamptz,
       assignee_user_id text, acknowledged_at timestamptz, acknowledged_by_user_id text,
       commander_user_id text, mitigated_at timestamptz, resolution_summary text,
-      created_at timestamptz, updated_at timestamptz
+      created_at timestamptz, updated_at timestamptz,
+      alert_count integer NOT NULL DEFAULT 1, last_alert_at timestamptz
     );
     CREATE TABLE sre_services (id text PRIMARY KEY, name text);
     CREATE TABLE sre_incident_alerts (id text PRIMARY KEY, incident_id text);

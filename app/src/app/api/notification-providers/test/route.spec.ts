@@ -54,11 +54,30 @@ describe("email test connection", () => {
     expect(send).not.toHaveBeenCalled();
   });
 
-  it("rejects a non-string emails value with a clear message", async () => {
-    const response = await post(["me@example.com"]);
+  it("accepts an array of emails", async () => {
+    allowed(["me@example.com", "you@example.com"]);
+    const response = await post(["me@example.com", "you@example.com"]);
+    expect(response.status).toBe(200);
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ recipients: ["me@example.com", "you@example.com"] }));
+  });
+
+  it.each([[[]], [[1]], [{ a: 1 }], [42]])("rejects emails %j with a clear message, never a TypeError", async (emails) => {
+    const response = await post(emails);
     expect(response.status).toBe(400);
-    expect((await response.json()).error).toContain("At least one email address is required");
+    const { error } = await response.json();
+    expect(error).toContain("At least one email address is required");
+    expect(error).not.toMatch(/is not a function|undefined/);
     expect(send).not.toHaveBeenCalled();
+  });
+
+  it.each([null, "x", [1]])("rejects a non-object config %j with 400", async (config) => {
+    const response = await POST(new NextRequest("http://localhost/api/notification-providers/test", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "email", config }),
+    }));
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toBe("config must be an object");
   });
 
   it("is rate limited per user", async () => {

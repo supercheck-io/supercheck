@@ -38,9 +38,10 @@ import {
 } from "@/lib/monitor-location-routing";
 import type { LocationConfig } from "@/db/schema";
 import { createLogger } from "@/lib/logger/index";
+import { channelsOptional } from "@/lib/incident-settings";
 import { validateMonitorConfiguration } from "@/lib/monitor-validation";
 import { validateMonitorTargetAddress } from "@/lib/monitor-target-policy";
-import { normalizeMonitorAlertConfig, providerIdsOutsideProject, syntheticFrequencyError } from "@/lib/monitor-write";
+import { monitorNameError, normalizeMonitorAlertConfig, providerIdsOutsideProject, syntheticFrequencyError } from "@/lib/monitor-write";
 import { loadCreators } from "@/lib/creators";
 
 const logger = createLogger({ module: "monitors-api" }) as {
@@ -259,7 +260,9 @@ export async function POST(req: NextRequest) {
     if (rawData.target) {
       // Sanitize target based on type
       if (rawData.type === "http_request" || rawData.type === "website") {
-        rawData.target = sanitizeUrl(rawData.target);
+        // An unusable URL (ftp://, javascript:) is kept as sent so validation names the http(s) rule
+        // instead of reporting the target as missing.
+        rawData.target = sanitizeUrl(rawData.target) || rawData.target;
       } else if (
         rawData.type === "ping_host" ||
         rawData.type === "port_check"
@@ -503,9 +506,11 @@ export async function POST(req: NextRequest) {
     // Validate alert configuration if enabled
     if (alertConfig?.enabled) {
       // Check if at least one notification provider is selected
+      // Incidents need no channel: with them on, an enabled alert may have none.
       if (
-        !alertConfig.notificationProviders ||
-        alertConfig.notificationProviders.length === 0
+        (!alertConfig.notificationProviders ||
+          alertConfig.notificationProviders.length === 0) &&
+        !channelsOptional(alertConfig)
       ) {
         return NextResponse.json(
           {
@@ -521,7 +526,7 @@ export async function POST(req: NextRequest) {
         process.env.MAX_MONITOR_NOTIFICATION_CHANNELS || "10",
         10,
       );
-      if (alertConfig.notificationProviders.length > maxMonitorChannels) {
+      if ((alertConfig.notificationProviders?.length ?? 0) > maxMonitorChannels) {
         return NextResponse.json(
           {
             error: `You can only select up to ${maxMonitorChannels} notification channels`,
@@ -766,6 +771,9 @@ export async function PUT(req: NextRequest) {
       );
     }
 
+    const nameError = monitorNameError(updateData.name);
+    if (nameError) return NextResponse.json({ error: nameError }, { status: 400 });
+
     // Validate frequency bounds (1 minute minimum, 1440 minutes = 24 hours maximum)
     const MIN_FREQUENCY_MINUTES = 1;
     const MAX_FREQUENCY_MINUTES = 1440; // 24 hours
@@ -929,9 +937,11 @@ export async function PUT(req: NextRequest) {
     // Validate alert configuration if enabled
     if (alertConfig?.enabled) {
       // Check if at least one notification provider is selected
+      // Incidents need no channel: with them on, an enabled alert may have none.
       if (
-        !alertConfig.notificationProviders ||
-        alertConfig.notificationProviders.length === 0
+        (!alertConfig.notificationProviders ||
+          alertConfig.notificationProviders.length === 0) &&
+        !channelsOptional(alertConfig)
       ) {
         return NextResponse.json(
           {
@@ -947,7 +957,7 @@ export async function PUT(req: NextRequest) {
         process.env.MAX_MONITOR_NOTIFICATION_CHANNELS || "10",
         10,
       );
-      if (alertConfig.notificationProviders.length > maxMonitorChannels) {
+      if ((alertConfig.notificationProviders?.length ?? 0) > maxMonitorChannels) {
         return NextResponse.json(
           {
             error: `You can only select up to ${maxMonitorChannels} notification channels`,

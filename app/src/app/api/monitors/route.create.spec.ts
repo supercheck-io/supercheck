@@ -87,6 +87,51 @@ it("rejects a private monitor target with 400 before inserting", async () => {
   expect(insertWithinPlanLimit).not.toHaveBeenCalled();
 });
 
+it("names the http(s) rule for an ftp:// website target instead of reporting it missing", async () => {
+  const res = await POST(
+    new NextRequest("http://localhost/api/monitors", {
+      method: "POST",
+      body: JSON.stringify({ name: "m", type: "website", target: "ftp://example.com" }),
+      headers: { "content-type": "application/json" },
+    }),
+  );
+  expect(res.status).toBe(400);
+  expect(await res.json()).toMatchObject({ error: "Invalid monitor target", details: "target must be a valid HTTP or HTTPS URL" });
+});
+
+it.each([
+  [{ method: "FOO" }],
+  [{ expectedStatusCodes: "abc" }],
+])("rejects invalid http config %j before inserting", async (config) => {
+  const res = await POST(
+    new NextRequest("http://localhost/api/monitors", {
+      method: "POST",
+      body: JSON.stringify({ name: "m", type: "http_request", target: "https://example.com", config }),
+      headers: { "content-type": "application/json" },
+    }),
+  );
+  expect(res.status).toBe(400);
+  expect((await res.json()).error).toBe("Invalid monitor configuration");
+  expect(insertWithinPlanLimit).not.toHaveBeenCalled();
+});
+
+it("rejects an unknown incidentSeverity instead of dropping it", async () => {
+  const res = await post({ enabled: false, notificationProviders: [], incidentSeverity: "sev9" });
+  expect(res.status).toBe(400);
+  expect(insertWithinPlanLimit).not.toHaveBeenCalled();
+});
+
+it("lets an enabled alert have no channel while incidents are on, and rejects it when they are off", async () => {
+  insertWithinPlanLimit.mockClear();
+  const off = await post({ enabled: true, notificationProviders: [], alertOnFailure: true, incidentEnabled: false });
+  expect(off.status).toBe(400);
+  expect((await off.json()).error).toMatch(/notification channel/);
+  const on = await post({ enabled: true, notificationProviders: [], alertOnFailure: true });
+  // It passed the channel rule and reached the insert (mocked), so incident-only creation is accepted.
+  expect(on.status).not.toBe(400);
+  expect(insertWithinPlanLimit).toHaveBeenCalledTimes(1);
+});
+
 it("rejects a name over 255 characters with 400 before inserting", async () => {
   const res = await POST(
     new NextRequest("http://localhost/api/monitors", {

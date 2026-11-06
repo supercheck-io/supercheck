@@ -3,7 +3,7 @@
   "info": {
     "title": "Supercheck API",
     "version": "1.0.0",
-    "description": "API for test automation, monitoring, and CI/CD integration. Supercheck provides Playwright browser testing, k6 performance testing, uptime monitoring, and alerting \u2014 all managed via API or CLI.",
+    "description": "API for test automation, monitoring, and CI/CD integration. Supercheck provides Playwright browser testing, k6 performance testing, uptime monitoring, and alerting — all managed via API or CLI.",
     "contact": {
       "name": "Supercheck",
       "url": "https://supercheck.io"
@@ -1025,7 +1025,7 @@
       "post": {
         "operationId": "createCliToken",
         "summary": "Create a CLI token",
-        "description": "Create a new CLI token for API access. The plain token value is returned only once in the response \u2014 store it securely.",
+        "description": "Create a new CLI token for API access. The plain token value is returned only once in the response — store it securely.",
         "tags": [
           "Authentication"
         ],
@@ -1058,7 +1058,7 @@
         },
         "responses": {
           "201": {
-            "description": "Token created. The `key` field contains the plain token \u2014 store it securely, it cannot be retrieved again.",
+            "description": "Token created. The `key` field contains the plain token — store it securely, it cannot be retrieved again.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1544,7 +1544,7 @@
             "$ref": "#/components/responses/NotFound"
           },
           "429": {
-            "description": "Rate limited \u2014 too many trigger requests",
+            "description": "Rate limited — too many trigger requests",
             "content": {
               "application/json": {
                 "schema": {
@@ -1776,7 +1776,7 @@
       "post": {
         "operationId": "createJobApiKey",
         "summary": "Create a trigger key",
-        "description": "Create a new API trigger key for a job. The plain key is returned only once \u2014 store it securely.",
+        "description": "Create a new API trigger key for a job. The plain key is returned only once — store it securely.",
         "tags": [
           "Trigger Keys"
         ],
@@ -1807,7 +1807,7 @@
         },
         "responses": {
           "201": {
-            "description": "Trigger key created. Store the `key` value securely \u2014 it cannot be retrieved again.",
+            "description": "Trigger key created. Store the `key` value securely — it cannot be retrieved again.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2350,7 +2350,7 @@
                 "custom"
               ]
             },
-            "description": "Filter by test type. Aliases: `playwright` \u2192 `browser`, `k6` \u2192 `performance`"
+            "description": "Filter by test type. Aliases: `playwright` → `browser`, `k6` → `performance`"
           },
           {
             "name": "priority",
@@ -2439,7 +2439,7 @@
                       "custom"
                     ],
                     "default": "browser",
-                    "description": "Test type. Aliases accepted: `playwright` \u2192 `browser`, `k6` \u2192 `performance`"
+                    "description": "Test type. Aliases accepted: `playwright` → `browser`, `k6` → `performance`"
                   },
                   "description": {
                     "type": "string"
@@ -3248,7 +3248,7 @@
       "patch": {
         "operationId": "updateMonitor",
         "summary": "Update a monitor",
-        "description": "Update monitor configuration. Only provided fields are changed. Resource IDs must be canonical UUIDs; malformed IDs return 404.",
+        "description": "Partially update a monitor. Send only the fields to change. `config` and `alertConfig` are merged as a JSON merge patch: objects merge recursively, arrays replace, and an explicit `null` deletes a key. Resource IDs must be canonical UUIDs; malformed IDs return 404.",
         "tags": [
           "Monitors"
         ],
@@ -3257,7 +3257,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/MonitorUpdateRequest"
+                "$ref": "#/components/schemas/MonitorPatchRequest"
               }
             }
           }
@@ -3331,7 +3331,7 @@
       "put": {
         "operationId": "replaceMonitorConfiguration",
         "summary": "Update a monitor configuration",
-        "description": "Update monitor configuration. Only provided fields are changed. PUT is retained for CLI deploy and backward compatibility; interactive partial updates should prefer PATCH. Resource IDs must be canonical UUIDs; malformed IDs return 404.",
+        "description": "Replace a monitor configuration. Omitted top-level fields are kept, but `config` is replaced as a whole, so send the complete object (use PATCH to change single keys). PUT is retained for CLI deploy and backward compatibility. Resource IDs must be canonical UUIDs; malformed IDs return 404.",
         "tags": [
           "Monitors"
         ],
@@ -5022,7 +5022,7 @@
       "patch": {
         "operationId": "updateMonitorStatus",
         "summary": "Update monitor status",
-        "description": "Pause, resume, or otherwise set a monitor's status (for example `paused` or `maintenance`). Requires monitor manage or update permission. Automated status changes from checks are handled separately. Read current monitor status with `GET /api/monitors/{id}`; this route does not support GET.",
+        "description": "Pause, resume, or otherwise set a monitor's status (`up`, `down`, `paused` or `pending`; `maintenance` and `error` are not accepted). Requires monitor manage or update permission. Automated status changes from checks are handled separately. Read current monitor status with `GET /api/monitors/{id}`; this route does not support GET.",
         "tags": [
           "Monitors"
         ],
@@ -5042,9 +5042,7 @@
                       "up",
                       "down",
                       "paused",
-                      "pending",
-                      "maintenance",
-                      "error"
+                      "pending"
                     ]
                   }
                 }
@@ -5706,7 +5704,7 @@
       "put": {
         "operationId": "updateOrganization",
         "summary": "Update organization",
-        "description": "Update the organization name (2\u201350 characters after trim). Optional slug, logo, and metadata. Requires org_admin or org_owner. Browser updates require a same-origin request. Requires an interactive browser session. Project-scoped CLI tokens receive 403.",
+        "description": "Update the organization name (2–50 characters after trim). Optional slug, logo, and metadata. Requires org_admin or org_owner. Browser updates require a same-origin request. Requires an interactive browser session. Project-scoped CLI tokens receive 403.",
         "tags": [
           "Organizations"
         ],
@@ -6592,7 +6590,7 @@
             }
           },
           "400": {
-            "description": "OAuth 2.0 device-authorization error (RFC 8628 \u00a73.5)",
+            "description": "OAuth 2.0 device-authorization error (RFC 8628 §3.5)",
             "content": {
               "application/json": {
                 "schema": {
@@ -6627,7 +6625,7 @@
             }
           },
           "401": {
-            "description": "OAuth 2.0 device-authorization error (RFC 8628 \u00a73.5)",
+            "description": "OAuth 2.0 device-authorization error (RFC 8628 §3.5)",
             "content": {
               "application/json": {
                 "schema": {
@@ -6662,7 +6660,7 @@
             }
           },
           "409": {
-            "description": "OAuth 2.0 device-authorization error (RFC 8628 \u00a73.5)",
+            "description": "OAuth 2.0 device-authorization error (RFC 8628 §3.5)",
             "content": {
               "application/json": {
                 "schema": {
@@ -8475,6 +8473,11 @@
             "type": "integer",
             "nullable": true
           },
+          "testId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Test ID of a single-test run (`test execute`, playground); null for job runs"
+          },
           "location": {
             "type": "string",
             "nullable": true
@@ -10270,6 +10273,58 @@
           },
           "alertConfig": {
             "$ref": "#/components/schemas/MonitorAlertConfig"
+          }
+        }
+      },
+      "MonitorPatchRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "http_request",
+              "website",
+              "ping_host",
+              "port_check",
+              "synthetic_test"
+            ]
+          },
+          "target": {
+            "type": "string"
+          },
+          "frequencyMinutes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1440
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "up",
+              "down",
+              "paused",
+              "pending"
+            ]
+          },
+          "config": {
+            "$ref": "#/components/schemas/MonitorConfig"
+          },
+          "alertConfig": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MonitorAlertConfig"
+              }
+            ],
+            "description": "Merged into the stored alert settings. A field sent as null is reset to its default (it is not left unset), and notificationProviders null clears the channel list."
           }
         }
       },

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import { channelsOptional, incidentsEnabled } from "@/lib/incident-settings";
 import {
   Card,
   CardContent,
@@ -191,10 +192,18 @@ export function AlertSettings({
   useEffect(() => {
     const errors: { notificationProviders?: string; alertTypes?: string } = {};
 
+    const incidentOnlyOk =
+      context === "monitor" &&
+      channelsOptional({
+        enabled: config.enabled,
+        incidentEnabled: config.incidentEnabled,
+        alertOnFailure: config.alertOnFailure,
+      });
     if (config.enabled) {
       if (
-        !config.notificationProviders ||
-        config.notificationProviders.length === 0
+        (!config.notificationProviders ||
+          config.notificationProviders.length === 0) &&
+        !incidentOnlyOk
       ) {
         errors.notificationProviders =
           "At least one notification channel must be selected when alerts are enabled";
@@ -223,6 +232,8 @@ export function AlertSettings({
     config.alertOnSuccess,
     config.alertOnTimeout,
     config.alertOnSslExpiration,
+    config.incidentEnabled,
+    context,
   ]);
 
   const toggleProvider = (providerId: string) => {
@@ -252,7 +263,13 @@ export function AlertSettings({
 
   const recoveryAlertsOn =
     context === "job" ? !!config.alertOnSuccess : !!config.alertOnRecovery;
-  const incidentsOn = config.incidentEnabled !== false;
+  // Monitors follow the shared rule (opt-in with alerts off); jobs keep their own default.
+  const incidentsOn =
+    context === "monitor"
+      ? incidentsEnabled(config)
+      : config.incidentEnabled !== false;
+  // With alerts off the incident resolves from the check itself; with alerts on it follows the recovery alert.
+  const autoResolveNeedsRecoveryAlert = context !== "monitor" || config.enabled;
 
   return (
     <Card>
@@ -664,90 +681,95 @@ export function AlertSettings({
                 </div>
               )}
             </div>
+          </>
+        )}
 
-            {/* Incidents */}
-            <div className="space-y-4" data-testid="alert-incident-settings">
-              <Label className="text-sm font-medium">Incidents</Label>
+        {/* Incidents. A monitor opens them without alerts or channels, so this shows even with alerts off. */}
+        {(config.enabled || context === "monitor") && (
+        <div className="space-y-4" data-testid="alert-incident-settings">
+          <Label className="text-sm font-medium">Incidents</Label>
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <Label htmlFor="incident-enabled" className="text-sm">
+                Open an incident when this alerts
+              </Label>
+              <InfoTip label="About incidents">
+                Track the problem in Incidents so it can be assigned, acknowledged and resolved.
+              </InfoTip>
+            </div>
+            <Switch
+              id="incident-enabled"
+              checked={incidentsOn}
+              onCheckedChange={(incidentEnabled) =>
+                updateConfig({ incidentEnabled })
+              }
+            />
+          </div>
+          {incidentsOn && (
+            <>
               <div className="flex items-center justify-between gap-4">
                 <div className="flex items-center gap-2">
-                  <Label htmlFor="incident-enabled" className="text-sm">
-                    Open an incident when this alerts
+                  <Label htmlFor="incident-severity" className="text-sm">
+                    Severity
                   </Label>
-                  <InfoTip label="About incidents">
-                    Track the problem in Incidents so it can be assigned, acknowledged and resolved.
+                  <InfoTip label="About incident severity">
+                    Auto picks SEV1 to SEV4 from the alert; choose a level to always use it.
                   </InfoTip>
                 </div>
-                <Switch
-                  id="incident-enabled"
-                  checked={incidentsOn}
-                  onCheckedChange={(incidentEnabled) =>
-                    updateConfig({ incidentEnabled })
+                <Select
+                  value={config.incidentSeverity ?? "auto"}
+                  onValueChange={(value) =>
+                    updateConfig({
+                      incidentSeverity:
+                        value === "auto"
+                          ? undefined
+                          : (value as AlertConfig["incidentSeverity"]),
+                    })
                   }
-                />
+                >
+                  <SelectTrigger id="incident-severity" className="w-32">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="auto">Auto</SelectItem>
+                    <SelectItem value="sev1">SEV1</SelectItem>
+                    <SelectItem value="sev2">SEV2</SelectItem>
+                    <SelectItem value="sev3">SEV3</SelectItem>
+                    <SelectItem value="sev4">SEV4</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-              {incidentsOn && (
-                <>
-                  <div className="flex items-center justify-between gap-4">
-                    <div className="flex items-center gap-2">
-                      <Label htmlFor="incident-severity" className="text-sm">
-                        Severity
-                      </Label>
-                      <InfoTip label="About incident severity">
-                        Auto picks SEV1 to SEV4 from the alert; choose a level to always use it.
-                      </InfoTip>
-                    </div>
-                    <Select
-                      value={config.incidentSeverity ?? "auto"}
-                      onValueChange={(value) =>
-                        updateConfig({
-                          incidentSeverity:
-                            value === "auto"
-                              ? undefined
-                              : (value as AlertConfig["incidentSeverity"]),
-                        })
-                      }
-                    >
-                      <SelectTrigger id="incident-severity" className="w-32">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="auto">Auto</SelectItem>
-                        <SelectItem value="sev1">SEV1</SelectItem>
-                        <SelectItem value="sev2">SEV2</SelectItem>
-                        <SelectItem value="sev3">SEV3</SelectItem>
-                        <SelectItem value="sev4">SEV4</SelectItem>
-                      </SelectContent>
-                    </Select>
+              <div className="space-y-1">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="incident-auto-resolve" className="text-sm">
+                      Resolve automatically on recovery if nobody acknowledged it
+                    </Label>
+                    <InfoTip label="About automatic resolution">
+                      When the check recovers and nobody acknowledged the incident, it resolves itself; acknowledged incidents wait for you.
+                    </InfoTip>
                   </div>
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="flex items-center gap-2">
-                        <Label htmlFor="incident-auto-resolve" className="text-sm">
-                          Resolve automatically on recovery if nobody acknowledged it
-                        </Label>
-                        <InfoTip label="About automatic resolution">
-                          When the check recovers and nobody acknowledged the incident, it resolves itself; acknowledged incidents wait for you.
-                        </InfoTip>
-                      </div>
-                      <Switch
-                        id="incident-auto-resolve"
-                        checked={config.autoResolveIncident !== false && recoveryAlertsOn}
-                        disabled={!recoveryAlertsOn}
-                        onCheckedChange={(autoResolveIncident) =>
-                          updateConfig({ autoResolveIncident })
-                        }
-                      />
-                    </div>
-                    {!recoveryAlertsOn && (
-                      <p className="text-xs text-muted-foreground">
-                        Turn on recovery alerts to auto-resolve
-                      </p>
-                    )}
-                  </div>
-                </>
-              )}
-            </div>
-          </>
+                  <Switch
+                    id="incident-auto-resolve"
+                    checked={
+                      config.autoResolveIncident !== false &&
+                      (recoveryAlertsOn || !autoResolveNeedsRecoveryAlert)
+                    }
+                    disabled={autoResolveNeedsRecoveryAlert && !recoveryAlertsOn}
+                    onCheckedChange={(autoResolveIncident) =>
+                      updateConfig({ autoResolveIncident })
+                    }
+                  />
+                </div>
+                {autoResolveNeedsRecoveryAlert && !recoveryAlertsOn && (
+                  <p className="text-xs text-muted-foreground">
+                    Turn on recovery alerts to auto-resolve
+                  </p>
+                )}
+              </div>
+            </>
+          )}
+        </div>
         )}
       </CardContent>
     </Card>

@@ -72,6 +72,46 @@ describe('MonitorEvaluator.prepareGroupEvaluation multi-location counters', () =
   });
 });
 
+describe('MonitorEvaluator.prepareGroupEvaluation paused monitor', () => {
+  it('keeps a monitor paused mid-cycle paused and does not stamp a status change', async () => {
+    const monitor = {
+      id: 'm1',
+      status: 'paused',
+      config: { locationConfig: { enabled: true, locations: ['a', 'b'] } },
+      alertConfig: { enabled: true },
+    };
+    const sets: Array<Record<string, unknown>> = [];
+    const select = jest.fn().mockImplementation(() => {
+      const chain: Record<string, unknown> = {};
+      chain.from = () => chain;
+      chain.where = () => chain;
+      chain.limit = () => chain;
+      chain.for = () => [monitor];
+      chain.then = (res: (v: unknown) => void) =>
+        res([{ id: 'r1', details: null }]);
+      return chain;
+    });
+    const tx = {
+      select,
+      update: () => ({
+        set: (v: Record<string, unknown>) => ({
+          where: () => {
+            sets.push(v);
+          },
+        }),
+      }),
+    };
+    const evaluator = new MonitorEvaluator(
+      { db: { transaction: (fn: (t: unknown) => unknown) => fn(tx) } } as never,
+      {} as never,
+    );
+    await evaluator.prepareGroupEvaluation('m1', 'g1', 'up', new Date(), 2);
+    const monitorWrite = sets.find((v) => 'status' in v)!;
+    expect(monitorWrite.status).toBe('paused');
+    expect(monitorWrite.lastStatusChangeAt).toBeUndefined();
+  });
+});
+
 describe('MonitorEvaluator.advanceAggregatedAlertState', () => {
   const evaluator = new MonitorEvaluator({} as never, {} as never);
   const stale = {

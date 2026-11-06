@@ -1,8 +1,8 @@
-import { and, desc, eq, isNull, ne, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, ne } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
-import { sreIncidentAlerts, sreIncidents, sreServices } from "@/db/schema";
+import { sreIncidents, sreServices } from "@/db/schema";
 import { requireSreApiPermissions } from "../_auth";
 import { db } from "@/utils/db";
 import { getDisplayStatus } from "@/lib/sre/incident-status-display";
@@ -48,7 +48,8 @@ export async function GET(request: NextRequest) {
       status: sreIncidents.status,
       primaryServiceId: sreIncidents.primaryServiceId,
       primaryServiceName: sreServices.name,
-      alertCount: sql<number>`count(${sreIncidentAlerts.id})::int`,
+      alertCount: sreIncidents.alertCount,
+      lastAlertAt: sreIncidents.lastAlertAt,
       assigneeUserId: sreIncidents.assigneeUserId,
       acknowledgedAt: sreIncidents.acknowledgedAt,
       acknowledgedByUserId: sreIncidents.acknowledgedByUserId,
@@ -63,9 +64,7 @@ export async function GET(request: NextRequest) {
     })
     .from(sreIncidents)
     .leftJoin(sreServices, eq(sreIncidents.primaryServiceId, sreServices.id))
-    .leftJoin(sreIncidentAlerts, eq(sreIncidentAlerts.incidentId, sreIncidents.id))
     .where(and(...filters))
-    .groupBy(sreIncidents.id, sreServices.name)
     .orderBy(desc(sreIncidents.updatedAt))
     .limit(INCIDENT_LIST_LIMIT + 1);
 

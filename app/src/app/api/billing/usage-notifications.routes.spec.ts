@@ -166,7 +166,7 @@ describe("GET /api/billing/notifications", () => {
       mockRole.mockResolvedValue(role);
       mockHistory.mockResolvedValue([{ id: 1 }]);
       const body = await (await call()).json();
-      expect(mockHistory).toHaveBeenCalledWith("o1", { limit: 50, offset: 0 });
+      expect(mockHistory).toHaveBeenCalledWith("o1", { limit: 51, offset: 0 });
       expect(body.pagination).toEqual({ limit: 50, offset: 0, hasMore: false });
     },
   );
@@ -181,14 +181,18 @@ describe("GET /api/billing/notifications", () => {
     mockRole.mockResolvedValue("org_owner");
     mockHistory.mockResolvedValue([]);
     await call(query);
-    expect(mockHistory).toHaveBeenCalledWith("o1", { limit, offset });
+    expect(mockHistory).toHaveBeenCalledWith("o1", { limit: limit + 1, offset });
   });
-  it("reports hasMore when a full page is returned", async () => {
+  it("reports hasMore only when a row exists beyond the page", async () => {
     mockRole.mockResolvedValue("org_owner");
-    mockHistory.mockResolvedValue([{}, {}]);
-    expect((await (await call("?limit=2")).json()).pagination.hasMore).toBe(
-      true,
-    );
+    mockHistory.mockResolvedValue([{ id: 1 }, { id: 2 }, { id: 3 }]);
+    const more = await (await call("?limit=2")).json();
+    expect(more.pagination.hasMore).toBe(true);
+    expect(more.notifications).toHaveLength(2);
+    mockHistory.mockResolvedValue([{ id: 1 }, { id: 2 }]);
+    const exact = await (await call("?limit=2")).json();
+    expect(exact.pagination.hasMore).toBe(false);
+    expect(exact.notifications).toHaveLength(2);
   });
   it("returns 500 on service failure", async () => {
     mockRole.mockResolvedValue("org_owner");

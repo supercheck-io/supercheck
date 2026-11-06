@@ -34,6 +34,11 @@ describe('MonitorAlertService', () => {
     const db = {
       query: {
         monitors: { findFirst: jest.fn().mockResolvedValue(monitor) },
+        monitorResults: {
+          findFirst: jest
+            .fn()
+            .mockResolvedValue({ checkedAt: new Date('2026-06-22T00:00:00Z') }),
+        },
         projects: { findFirst: jest.fn().mockResolvedValue({ name: 'Prod' }) },
       },
       select: jest.fn(() => ({
@@ -103,6 +108,7 @@ describe('MonitorAlertService', () => {
     };
     const sreAlertTriageQueueService = {
       enqueueAlertHistoryRows: jest.fn().mockResolvedValue(undefined),
+      enqueueSourceFailure: jest.fn().mockResolvedValue(true),
     } as unknown as SreAlertTriageQueueService;
 
     const service = new MonitorAlertService(
@@ -200,6 +206,119 @@ describe('MonitorAlertService', () => {
     expect(
       sreAlertTriageQueueService.enqueueAlertHistoryRows,
     ).not.toHaveBeenCalled();
+  });
+
+  it('suppresses SSL expiry notifications during a scheduled maintenance window', async () => {
+    const { service, valuesMock, notificationService } = createService(true);
+    await expect(
+      service.sendSslExpirationNotification('monitor-1', 'expires soon'),
+    ).resolves.toBe(false);
+    expect(
+      notificationService.sendNotificationToMultipleProviders,
+    ).not.toHaveBeenCalled();
+    expect(valuesMock).not.toHaveBeenCalled();
+  });
+
+  it('signals an incident without any provider, and holds it back during maintenance', async () => {
+    const { service, sreAlertTriageQueueService } = createService();
+    (
+      sreAlertTriageQueueService as unknown as Record<string, jest.Mock>
+    ).enqueueSourceFailure = jest.fn().mockResolvedValue(true);
+    await expect(
+      service.signalFailure('monitor-1', 'down'),
+    ).resolves.toMatchObject({
+      suppressed: true,
+      reason: 'incident_only',
+    });
+    expect(
+      (sreAlertTriageQueueService as unknown as Record<string, jest.Mock>)
+        .enqueueSourceFailure,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sourceId: 'monitor-1',
+        type: 'monitor_failure',
+      }),
+    );
+
+    const held = createService(true);
+    (
+      held.sreAlertTriageQueueService as unknown as Record<string, jest.Mock>
+    ).enqueueSourceFailure = jest.fn().mockResolvedValue(true);
+    await expect(
+      held.service.signalFailure('monitor-1', 'down'),
+    ).resolves.toMatchObject({ reason: 'maintenance' });
+    expect(
+      (held.sreAlertTriageQueueService as unknown as Record<string, jest.Mock>)
+        .enqueueSourceFailure,
+    ).not.toHaveBeenCalled();
+  });
+
+  it('stamps an incident-only failure with the failing cycle time even when sent after a later recovery cycle with a non-up result', async () => {
+    const { service, sreAlertTriageQueueService } = createService();
+    const failingCycle = new Date('2026-06-22T00:00:00Z');
+    // A later recovery cycle contains a non-up result: nothing may be re-queried to find the time.
+    const dbService = (
+      service as unknown as {
+        dbService: {
+          db: { query: { monitorResults: { findFirst: jest.Mock } } };
+        };
+      }
+    ).dbService;
+    dbService.db.query.monitorResults.findFirst.mockResolvedValue({
+      checkedAt: new Date('2026-06-22T00:10:00Z'),
+    });
+    await service.signalFailure('monitor-1', 'down', failingCycle);
+    expect(
+      sreAlertTriageQueueService.enqueueSourceFailure,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({ firedAt: failingCycle.toISOString() }),
+    );
+    expect(dbService.db.query.monitorResults.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('keeps the observation time on the no-provider path and on alert history rows', async () => {
+    const failingCycle = '2026-06-22T00:00:00.000Z';
+    const noProviders = createService();
+    (noProviders.db.select as jest.Mock).mockImplementation((fields) =>
+      Object.keys(fields).length === 1
+        ? {
+            from: jest.fn().mockReturnThis(),
+            innerJoin: jest.fn().mockReturnThis(),
+            where: jest.fn().mockReturnThis(),
+            limit: jest.fn().mockResolvedValue([]),
+          }
+        : {
+            from: () => ({
+              innerJoin: () => ({ where: jest.fn().mockResolvedValue([]) }),
+            }),
+          },
+    );
+    await noProviders.service.sendNotification('monitor-1', 'failure', 'down', {
+      observedAt: failingCycle,
+    });
+    expect(
+      noProviders.sreAlertTriageQueueService.enqueueSourceFailure,
+    ).toHaveBeenCalledWith(expect.objectContaining({ firedAt: failingCycle }));
+
+    const delivered = createService();
+    await delivered.service.sendNotification('monitor-1', 'failure', 'down', {
+      observedAt: failingCycle,
+    });
+    expect(delivered.valuesMock).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({ sentAt: new Date(failingCycle) }),
+      ]),
+    );
+  });
+
+  it('reports a rejected incident enqueue as a delivery failure, not as sent', async () => {
+    const { service, sreAlertTriageQueueService } = createService();
+    (
+      sreAlertTriageQueueService.enqueueSourceFailure as jest.Mock
+    ).mockResolvedValueOnce(false);
+    await expect(service.signalFailure('monitor-1', 'down')).resolves.toEqual({
+      delivered: false,
+    });
   });
 
   it('enqueues created alert-history rows after monitor notifications', async () => {

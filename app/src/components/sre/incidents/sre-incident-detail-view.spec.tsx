@@ -101,6 +101,7 @@ function detailFixture(): SreIncidentDetail {
       mitigatedAt: null,
       resolutionSummary: null,
       alertCount: 2,
+      lastAlertAt: null,
       evidenceCount: 1,
       investigationCount: 1,
       latestInvestigationStatus: "completed",

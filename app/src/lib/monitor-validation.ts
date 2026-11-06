@@ -61,6 +61,21 @@ const UNEVALUATED_CONFIG_KEYS = [
   "sslCheckOnStatusChange",
 ] as const;
 
+const HTTP_METHODS: string[] = ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"];
+
+/** Same grammar the worker evaluates: "200", "200-299" or "2xx", comma-separated. Empty means the 2xx default. */
+function isValidStatusCodes(value: unknown): boolean {
+  if (typeof value !== "string") return false;
+  if (value.trim() === "") return true;
+  return value.split(",").every((raw) => {
+    const part = raw.trim();
+    const range = /^([1-5]\d\d)\s*-\s*([1-5]\d\d)$/.exec(part);
+    return range
+      ? Number(range[1]) <= Number(range[2])
+      : /^[1-5]\d\d$/.test(part) || /^[1-5]xx$/.test(part);
+  });
+}
+
 function validateLocationPolicy(config: Record<string, unknown>): MonitorValidationResult {
   const location = config.locationConfig;
   if (!isRecord(location)) return { success: true };
@@ -166,6 +181,29 @@ export function validateMonitorConfiguration({
       return invalid(
         "Invalid monitor configuration",
         'config.protocol must be either "tcp" or "udp"',
+      );
+    }
+  }
+
+  if (monitorType === "http_request" || monitorType === "website") {
+    // Only keys the client sent, so a stored legacy value never blocks an unrelated edit.
+    const sent = isRecord(incomingConfig) ? incomingConfig : {};
+    const { method, expectedStatusCodes } = sent;
+    // The worker upper-cases the method and treats a blank one as GET, so both stay valid here.
+    if (
+      method != null &&
+      method !== "" &&
+      (typeof method !== "string" || !HTTP_METHODS.includes(method.toUpperCase()))
+    ) {
+      return invalid(
+        "Invalid monitor configuration",
+        `config.method must be one of ${HTTP_METHODS.join(", ")}`,
+      );
+    }
+    if (expectedStatusCodes != null && !isValidStatusCodes(expectedStatusCodes)) {
+      return invalid(
+        "Invalid monitor configuration",
+        'config.expectedStatusCodes must be a comma-separated list of codes, ranges or wildcards, e.g. "200-299,301,4xx"',
       );
     }
   }

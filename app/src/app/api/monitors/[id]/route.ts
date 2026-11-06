@@ -33,6 +33,8 @@ import { validateMonitorConfiguration } from "@/lib/monitor-validation";
 import { validateMonitorTargetAddress } from "@/lib/monitor-target-policy";
 import {
   enabledAlertConfigError,
+  mergePatch,
+  monitorNameError,
   normalizeMonitorAlertConfig,
   preserveWorkerConfigKeys,
   replaceMonitorProviders,
@@ -198,6 +200,8 @@ export async function PUT(
     }
 
     const updateData = validationResult.data;
+    const nameError = monitorNameError(updateData.name);
+    if (nameError) return NextResponse.json({ error: nameError }, { status: 400 });
 
     if (!isUuid(id)) return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
 
@@ -717,32 +721,6 @@ function isObject(item: unknown): item is Record<string, unknown> {
   return Boolean(item && typeof item === "object" && !Array.isArray(item));
 }
 
-function deepMerge<
-  T extends Record<string, unknown>,
-  U extends Record<string, unknown>,
->(target: T, source: U): T & U {
-  const output = { ...target } as T & U;
-
-  if (isObject(target) && isObject(source)) {
-    Object.keys(source).forEach((key) => {
-      if (isObject(source[key])) {
-        if (!(key in target)) {
-          Object.assign(output, { [key]: source[key] });
-        } else {
-          (output as Record<string, unknown>)[key] = deepMerge(
-            target[key] as Record<string, unknown>,
-            source[key] as Record<string, unknown>,
-          );
-        }
-      } else {
-        Object.assign(output, { [key]: source[key] });
-      }
-    });
-  }
-
-  return output;
-}
-
 export async function PATCH(
   request: NextRequest,
   routeContext: { params: Promise<{ id: string }> },
@@ -833,7 +811,15 @@ export async function PATCH(
       updatePayload.enabled = rawData.status !== "paused";
       updatePayload.status = rawData.status;
     }
-    if (rawData.config) updatePayload.config = deepMerge(currentMonitor.config ?? {}, rawData.config);
+    if (rawData.config === null) {
+      return NextResponse.json({ error: "config cannot be null" }, { status: 400 });
+    }
+    // Merge patch: objects merge, arrays replace, null deletes a key. PUT stays a full replace.
+    if (rawData.config !== undefined) {
+      updatePayload.config = isObject(rawData.config)
+        ? mergePatch(currentMonitor.config ?? {}, rawData.config)
+        : rawData.config;
+    }
 
     const configurationValidation = validateMonitorConfiguration({
       type: updatePayload.type ?? currentMonitor.type,
@@ -897,17 +883,26 @@ export async function PATCH(
 
     // Handle partial update for 'alertConfig'
     let providerIdsToSync: string[] | null = null;
+    // null, false, 0 or "" would be silently ignored below, leaving alerts on: refuse them instead.
+    if (rawData.alertConfig !== undefined && !isObject(rawData.alertConfig)) {
+      return NextResponse.json({ error: "alertConfig must be an object" }, { status: 400 });
+    }
     if (rawData.alertConfig) {
       // Same normaliser and rules as PUT, applied to the merged result.
       const normalized = normalizeMonitorAlertConfig(
-        deepMerge(currentMonitor.alertConfig ?? {}, rawData.alertConfig),
+        mergePatch(currentMonitor.alertConfig ?? {}, rawData.alertConfig),
       );
       const alertError = normalized.ok ? enabledAlertConfigError(normalized.value) : normalized.error;
       if (!normalized.ok || alertError) {
         return NextResponse.json({ error: alertError }, { status: 400 });
       }
       updatePayload.alertConfig = normalized.value;
-      if (normalized.value.enabled && Array.isArray(rawData.alertConfig.notificationProviders)) {
+      // null clears the list (merge-patch delete), so it must clear the delivery rows too.
+      const listSent =
+        Array.isArray(rawData.alertConfig.notificationProviders) ||
+        rawData.alertConfig.notificationProviders === null;
+      // Clearing the list must clear the delivery rows even while alerts are being disabled.
+      if (listSent && (normalized.value.enabled || normalized.value.notificationProviders.length === 0)) {
         providerIdsToSync = normalized.value.notificationProviders;
       }
     }

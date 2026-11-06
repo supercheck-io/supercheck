@@ -44,6 +44,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { channelsOptional } from "@/lib/incident-settings";
 import { AlertSettings } from "@/components/alerts/alert-settings";
 import { MonitorTypesPopover } from "./monitor-types-popover";
 import { LocationConfigSection } from "./location-config-section";
@@ -215,11 +216,12 @@ const formSchema = z
         if (data.type === "http_request" || data.type === "website") {
           // URL validation
           try {
-            new URL(target);
+            const { protocol } = new URL(target);
+            if (protocol !== "http:" && protocol !== "https:") throw new Error();
           } catch {
             ctx.addIssue({
               code: z.ZodIssueCode.custom,
-              message: "Target must be a valid URL (e.g., https://example.com)",
+              message: "Target must be a valid http:// or https:// URL (e.g., https://example.com)",
               path: ["target"],
             });
           }
@@ -1009,9 +1011,11 @@ export function MonitorForm({
     // Validate alert configuration before proceeding
     if (alertConfig.enabled) {
       // Check if at least one notification provider is selected
+      // Incidents need no channel, so incident-only monitors may have none.
       if (
-        !alertConfig.notificationProviders ||
-        alertConfig.notificationProviders.length === 0
+        (!alertConfig.notificationProviders ||
+          alertConfig.notificationProviders.length === 0) &&
+        !channelsOptional(alertConfig)
       ) {
         toast.error("Validation Error", {
           description:
@@ -1022,7 +1026,7 @@ export function MonitorForm({
 
       // Check notification channel limit
       if (
-        alertConfig.notificationProviders.length >
+        (alertConfig.notificationProviders?.length ?? 0) >
         maxMonitorNotificationChannels
       ) {
         toast.error("Validation Error", {

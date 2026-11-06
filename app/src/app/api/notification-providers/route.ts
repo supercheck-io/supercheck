@@ -22,6 +22,9 @@ import {
 import type { NotificationProviderType } from "@/db/schema";
 import { loadCreators } from "@/lib/creators";
 
+const MAX_PROVIDER_NAME_LENGTH = 255;
+const MAX_PROVIDER_CONFIG_LENGTH = 20_000;
+
 export async function GET() {
   try {
     const context = await requireAuthContext();
@@ -150,8 +153,31 @@ export async function POST(req: NextRequest) {
 
     // Transform the data to match the database schema
     // The frontend sends { type, config } but the database expects { name, type, config, organizationId, projectId, createdByUserId }
+    if (!rawData || typeof rawData !== "object" || Array.isArray(rawData)) {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+    // The top-level name is the documented one; config.name is the web form's fallback.
+    const providedName = [rawData.name, rawData.config?.name].find(
+      (n) => typeof n === "string" && n.trim()
+    ) ?? rawData.name ?? rawData.config?.name;
+    if (typeof providedName !== "string" || !providedName.trim()) {
+      return NextResponse.json({ error: "Provider name is required" }, { status: 400 });
+    }
+    if ([...providedName].length > MAX_PROVIDER_NAME_LENGTH) {
+      return NextResponse.json(
+        { error: `Provider name must be at most ${MAX_PROVIDER_NAME_LENGTH} characters` },
+        { status: 400 }
+      );
+    }
+    if (JSON.stringify(rawData.config ?? {}).length > MAX_PROVIDER_CONFIG_LENGTH) {
+      return NextResponse.json(
+        { error: `Provider config must be at most ${MAX_PROVIDER_CONFIG_LENGTH} characters` },
+        { status: 400 }
+      );
+    }
+
     const transformedData = {
-      name: rawData.config?.name || rawData.name || "Unnamed Provider",
+      name: providedName.trim(),
       type: rawData.type,
       config: rawData.config,
       isEnabled: rawData.isEnabled,

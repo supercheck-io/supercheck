@@ -46,6 +46,7 @@ export async function GET(
         errorDetails: runs.errorDetails,
         reportUrl: reports.s3Url,
         trigger: runs.trigger,
+        testId: sql<string | null>`${runs.metadata}->>'testId'`,
         projectId: runs.projectId,
         organizationId: projects.organizationId,
       })
@@ -56,7 +57,8 @@ export async function GET(
         reports,
         and(
           sql`${reports.entityId} = ${runs.id}::text`,
-          inArray(reports.entityType, ["job", "k6_job"])
+          // "test" covers single-test runs (`test execute`, playground), whose report is keyed by the run id.
+          inArray(reports.entityType, ["job", "k6_job", "test", "k6_test"])
         )
       )
       .where(
@@ -83,6 +85,8 @@ export async function GET(
         .where(eq(jobTests.jobId, run.jobId));
 
       testCount = testCountResult[0]?.count || 0;
+    } else if (run.testId) {
+      testCount = 1; // a single-test run has no job to count tests through
     }
 
     const response = {

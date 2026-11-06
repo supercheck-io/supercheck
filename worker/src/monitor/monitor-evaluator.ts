@@ -29,6 +29,25 @@ export type AggregatedAlertState = {
   executionGroupId?: string;
 };
 
+/**
+ * A monitor with alerts off still tracks its checks for incidents when `incidentEnabled: true` (opt-in).
+ * Keep in sync with incidentsEnabled in app/src/lib/incident-settings.ts.
+ */
+export function isIncidentOnly(
+  alertConfig:
+    { enabled?: boolean; incidentEnabled?: boolean } | null | undefined,
+): boolean {
+  return !alertConfig?.enabled && alertConfig?.incidentEnabled === true;
+}
+
+/** Counters and incidents run for monitors that alert or are incident-only. */
+export function tracksAlertState(
+  alertConfig:
+    { enabled?: boolean; incidentEnabled?: boolean } | null | undefined,
+): boolean {
+  return Boolean(alertConfig?.enabled) || isIncidentOnly(alertConfig);
+}
+
 export type GroupAlertEvaluation = {
   previousStatus: string;
   currentStatus: 'up' | 'down';
@@ -68,7 +87,13 @@ export class MonitorEvaluator {
           lastCheckAt: checkedAt,
           lastStatusChangeAt: isStatusChange ? checkedAt : undefined,
         })
-        .where(eq(schema.monitors.id, monitorId));
+        // An in-flight check must not un-pause a monitor paused after it started.
+        .where(
+          and(
+            eq(schema.monitors.id, monitorId),
+            sql`${schema.monitors.status} <> 'paused'`,
+          ),
+        );
 
       this.logger.log(
         `Updated monitor ${monitorId} status: ${previousStatus || 'unknown'} -> ${status}`,
@@ -239,6 +264,8 @@ export class MonitorEvaluator {
     reason: string;
     metadata: Record<string, unknown>;
     preparedAlertState?: AggregatedAlertState;
+    /** When the failing cycle was observed. A delayed send keeps it, so a later recovery still reads as newer. */
+    observedAt?: Date;
   }): Promise<{
     alertSent: boolean;
     alertType?: string;
@@ -250,10 +277,11 @@ export class MonitorEvaluator {
 
     const monitor = options.monitor;
 
-    // Don't send alerts if alerts are disabled
+    // Don't send alerts if alerts are disabled, unless the monitor only opens incidents.
     const monitorAlertConfig = (monitor as Record<string, unknown> | null)
       ?.alertConfig as Record<string, unknown> | undefined;
-    if (!monitorAlertConfig?.enabled) {
+    const incidentOnly = isIncidentOnly(monitorAlertConfig);
+    if (!monitorAlertConfig?.enabled && !incidentOnly) {
       return { alertSent: false };
     }
 
@@ -327,7 +355,9 @@ export class MonitorEvaluator {
       ) {
         // First alert: threshold reached (>= so a skipped pending observation cannot miss it)
         shouldSendAlert =
-          (monitorAlertConfig?.alertOnFailure as boolean) || false;
+          incidentOnly ||
+          (monitorAlertConfig?.alertOnFailure as boolean) ||
+          false;
       } else if (
         consecutiveFailureCount > failureThreshold &&
         alertsSentForFailure < 3
@@ -340,7 +370,7 @@ export class MonitorEvaluator {
           failuresAfterThreshold / subsequentInterval,
         );
         shouldSendAlert =
-          (monitorAlertConfig?.alertOnFailure as boolean) &&
+          (incidentOnly || (monitorAlertConfig?.alertOnFailure as boolean)) &&
           expectedAlerts >= alertsSentForFailure &&
           failuresAfterThreshold % subsequentInterval === 0;
       }
@@ -392,6 +422,8 @@ export class MonitorEvaluator {
           recoveryThreshold + Math.max(5, recoveryThreshold * 2) &&
         alertsSentForRecovery === 0 &&
         outageReachedThreshold &&
+        // Nothing to notify without alerts: the recovery signal above already resolves the incident.
+        !incidentOnly &&
         ((monitorAlertConfig?.alertOnRecovery as boolean) || false);
 
       if (!shouldSendAlert) {
@@ -439,14 +471,24 @@ export class MonitorEvaluator {
         consecutiveSuccessCount,
         alertsSentForFailure,
         alertsSentForRecovery,
+        ...(options.observedAt
+          ? { observedAt: options.observedAt.toISOString() }
+          : {}),
       };
 
-      const notification = await this.monitorAlertService.sendNotification(
-        monitorId,
-        alertType,
-        reason,
-        alertMetadata,
-      );
+      // Without alerts there is nothing to deliver: the failure only reaches the incident queue.
+      const notification = incidentOnly
+        ? await this.monitorAlertService.signalFailure(
+            monitorId,
+            reason,
+            options.observedAt,
+          )
+        : await this.monitorAlertService.sendNotification(
+            monitorId,
+            alertType,
+            reason,
+            alertMetadata,
+          );
 
       // Only a maintenance-suppressed recovery is consumed; anything else (no providers) retries within
       // the bounded window, as a suppressed failure does.
@@ -454,8 +496,18 @@ export class MonitorEvaluator {
         notification?.suppressed === true &&
         alertType === 'recovery' &&
         (notification as { reason?: string }).reason === 'maintenance';
-      if (!suppressed && notification?.suppressed) return { alertSent: false };
-      if (!suppressed && notification?.delivered === false)
+      // The incident was opened or updated and no channel exists: count it as sent so reminders keep their cadence.
+      const incidentSignalled =
+        notification?.suppressed === true &&
+        alertType === 'failure' &&
+        (notification as { reason?: string }).reason === 'incident_only';
+      if (!suppressed && !incidentSignalled && notification?.suppressed)
+        return { alertSent: false };
+      if (
+        !suppressed &&
+        !incidentSignalled &&
+        notification?.delivered === false
+      )
         return { alertSent: false, deliveryFailed: true };
       delivered = true;
 
@@ -575,7 +627,7 @@ export class MonitorEvaluator {
       if (this.isMultiLocationEvaluation(monitor.config, resultCount)) {
         evaluation.alertState = {
           ...this.advanceAggregatedAlertState(
-            monitor.alertConfig?.enabled,
+            tracksAlertState(monitor.alertConfig),
             monitor.config,
             previousStatus,
             currentStatus,
@@ -587,10 +639,13 @@ export class MonitorEvaluator {
       await tx
         .update(schema.monitors)
         .set({
-          status: currentStatus,
+          // A monitor paused mid-cycle stays paused.
+          status: previousStatus === 'paused' ? 'paused' : currentStatus,
           lastCheckAt: checkedAt,
           lastStatusChangeAt:
-            previousStatus !== currentStatus ? checkedAt : undefined,
+            previousStatus !== 'paused' && previousStatus !== currentStatus
+              ? checkedAt
+              : undefined,
           ...(evaluation.alertState
             ? {
                 config: {

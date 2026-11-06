@@ -72,6 +72,19 @@ export async function scheduleMonitor(options: ScheduleMonitorOptions): Promise<
  */
 export async function deleteScheduledMonitor(schedulerId: string): Promise<boolean> {
   try {
+    return await removeScheduledMonitor(schedulerId);
+  } catch (error) {
+    console.error("Failed to delete scheduled monitor %s:", schedulerId, error);
+    return false;
+  }
+}
+
+/**
+ * Like deleteScheduledMonitor, but a scheduler failure throws instead of reading as "nothing to delete".
+ * Returns whether a job was found; an absent job is not an error.
+ */
+export async function removeScheduledMonitor(schedulerId: string): Promise<boolean> {
+  {
     const { monitorSchedulerQueue } = await getQueues();
     const repeatableJobs = await monitorSchedulerQueue.getRepeatableJobs();
     const schedulerJobName = `scheduled-monitor-${schedulerId}`;
@@ -101,9 +114,6 @@ export async function deleteScheduledMonitor(schedulerId: string): Promise<boole
       console.warn(`[DELETE_MONITOR] No scheduled jobs found for monitor ${schedulerId} (searched for ID: ${schedulerId}, name: ${schedulerJobName})`);
       return false;
     }
-  } catch (error) {
-    console.error(`Failed to delete scheduled monitor ${schedulerId}:`, error);
-    return false;
   }
 }
 

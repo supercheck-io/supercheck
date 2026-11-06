@@ -576,6 +576,7 @@ export class MonitorService {
       currentStatus,
       reason,
       preparedAlertState: groupEvaluation?.alertState,
+      observedAt: checkedAt,
       metadata: {
         responseTime: avgResponseTime,
         locationResults: results.map((r) => ({
@@ -1711,11 +1712,19 @@ export class MonitorService {
         `Port Check to ${target}:${port} (${protocol}) failed: ${getErrorMessage(error)}`,
       );
 
+      // A multi-address connect failure is an AggregateError with an empty message; the code may sit on an inner error.
+      // Every address must agree: one refusing and another unreachable is not a closed port.
+      const inner = (error as { errors?: NodeJS.ErrnoException[] }).errors;
+      const innerCodes = new Set((inner ?? []).map((e) => e.code));
+      const errorCode: string | undefined =
+        (error as NodeJS.ErrnoException).code ??
+        (innerCodes.size === 1 ? [...innerCodes][0] : undefined);
+
       if (getErrorMessage(error).includes('timeout')) {
         status = 'timeout';
         details.errorMessage = `Connection timeout after ${timeout}ms`;
         isUp = false; // Timeout is failure regardless of expectClosed
-      } else if ((error as NodeJS.ErrnoException).code === 'ECONNREFUSED') {
+      } else if (errorCode === 'ECONNREFUSED') {
         if (expectClosed) {
           // Port is closed as expected - this is SUCCESS!
           status = 'up';
@@ -1731,17 +1740,19 @@ export class MonitorService {
           details.errorMessage =
             'Connection refused - port is closed or service not running';
         }
-      } else if ((error as NodeJS.ErrnoException).code === 'EHOSTUNREACH') {
+      } else if (errorCode === 'EHOSTUNREACH') {
         status = 'down';
         details.errorMessage = 'Host unreachable';
         isUp = false;
-      } else if ((error as NodeJS.ErrnoException).code === 'ENETUNREACH') {
+      } else if (errorCode === 'ENETUNREACH') {
         status = 'down';
         details.errorMessage = 'Network unreachable';
         isUp = false;
       } else {
         status = 'error';
-        details.errorMessage = getErrorMessage(error);
+        // Never leave the message empty: an error result with no text is undiagnosable.
+        details.errorMessage =
+          getErrorMessage(error) || errorCode || 'Port check failed';
         isUp = false;
       }
 
