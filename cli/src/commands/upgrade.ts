@@ -71,7 +71,9 @@ function buildInstallCommand(
 
 function runInstallCommand(command: string, args: string[]): Promise<number> {
   return new Promise((resolve, reject) => {
-    const child = spawn(executableFor(command), args, { stdio: 'inherit' })
+    // Node >= 18.20.2 refuses to spawn a .cmd shim without a shell (EINVAL). Safe here: the
+    // command is a fixed package manager and the only variable argument is the validated --tag.
+    const child = spawn(executableFor(command), args, { stdio: 'inherit', shell: process.platform === 'win32' })
     child.on('error', (err) => reject(err))
     child.on('close', (code) => resolve(code ?? 0))
   })
