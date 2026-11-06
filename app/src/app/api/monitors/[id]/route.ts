@@ -32,6 +32,7 @@ import { validateMonitorConfiguration } from "@/lib/monitor-validation";
 import { validateMonitorTargetAddress } from "@/lib/monitor-target-policy";
 import {
   enabledAlertConfigError,
+  monitorNameError,
   normalizeMonitorAlertConfig,
   preserveWorkerConfigKeys,
   replaceMonitorProviders,
@@ -197,6 +198,8 @@ export async function PUT(
     }
 
     const updateData = validationResult.data;
+    const nameError = monitorNameError(updateData.name);
+    if (nameError) return NextResponse.json({ error: nameError }, { status: 400 });
 
     if (!isUuid(id)) return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
 

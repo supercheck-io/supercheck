@@ -202,6 +202,17 @@ describe('MonitorAlertService', () => {
     ).not.toHaveBeenCalled();
   });
 
+  it('suppresses SSL expiry notifications during a scheduled maintenance window', async () => {
+    const { service, valuesMock, notificationService } = createService(true);
+    await expect(
+      service.sendSslExpirationNotification('monitor-1', 'expires soon'),
+    ).resolves.toBe(false);
+    expect(
+      notificationService.sendNotificationToMultipleProviders,
+    ).not.toHaveBeenCalled();
+    expect(valuesMock).not.toHaveBeenCalled();
+  });
+
   it('enqueues created alert-history rows after monitor notifications', async () => {
     const { service, valuesMock, sreAlertTriageQueueService } = createService();
 

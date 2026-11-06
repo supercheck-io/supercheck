@@ -84,6 +84,32 @@ describe("location policy and unsupported assertions", () => {
       validateMonitorConfiguration({ type: "website", target: "https://example.com", config: { checkExpiration: true }, incomingConfig: undefined }),
     ).toEqual({ success: true });
   });
+  it.each(["FOO", 5])("rejects http method %p", (method) => {
+    expect(site({ method }).success).toBe(false);
+  });
+  it.each(["get", "", "PATCH"])("accepts http method %p (the worker upper-cases, blank is GET)", (method) => {
+    expect(site({ method }).success).toBe(true);
+  });
+  it("accepts a spaced range the worker evaluates", () => {
+    expect(site({ expectedStatusCodes: "200 - 299" }).success).toBe(true);
+  });
+  it.each(["abc", "99", "600", "299-200", "2xx,abc", "20x", "2XX"])("rejects expectedStatusCodes %p", (expectedStatusCodes) => {
+    expect(site({ expectedStatusCodes }).success).toBe(false);
+  });
+  it.each(["200", "200-299", "2xx", "200-299, 301,4xx", ""])("accepts expectedStatusCodes %p", (expectedStatusCodes) => {
+    expect(site({ method: "POST", expectedStatusCodes }).success).toBe(true);
+  });
+  it("does not reject a stored legacy method when the client sent no config", () => {
+    expect(
+      validateMonitorConfiguration({ type: "website", target: "https://example.com", config: { method: "FOO" }, incomingConfig: undefined }),
+    ).toEqual({ success: true });
+  });
+  it("says http(s) for an ftp:// website target", () => {
+    expect(validateMonitorConfiguration({ type: "website", target: "ftp://example.com", config: {} })).toMatchObject({
+      success: false,
+      details: "target must be a valid HTTP or HTTPS URL",
+    });
+  });
   it("lets a client clear an unsupported key with null", () => {
     expect(site({ responseBodyJsonPath: null })).toEqual({ success: true });
   });

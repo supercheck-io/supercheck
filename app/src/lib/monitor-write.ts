@@ -42,6 +42,10 @@ export function normalizeMonitorAlertConfig(raw: Raw, existing?: Partial<AlertCo
     ? raw.notificationProviders
     : Array.isArray(prior.notificationProviders) ? prior.notificationProviders : [];
   const num = (key: string) => (raw[key] as number | undefined | null) ?? (prior[key] as number | undefined) ?? 1;
+  const severity = raw.incidentSeverity;
+  if (severity != null && severity !== "" && !["sev1", "sev2", "sev3", "sev4"].includes(severity as string)) {
+    return { ok: false, error: "incidentSeverity must be one of sev1, sev2, sev3, sev4" };
+  }
   if (providers.some((id) => typeof id !== "string" || !isUuid(id))) {
     return { ok: false, error: "Notification provider IDs must be valid UUIDs" };
   }
@@ -139,6 +143,12 @@ export async function testInProject(testId: unknown, organizationId: string, pro
     columns: { id: true },
   });
   return Boolean(test);
+}
+
+/** An update may omit the name, but never blank it (create already rejects an empty name). */
+export function monitorNameError(name: unknown): string | null {
+  if (name === undefined) return null;
+  return typeof name === "string" && name.trim() && [...name].length <= 255 ? null : "name must be 1-255 characters";
 }
 
 /** Synthetic checks run a full browser test, so plans and the form advertise a 5-minute floor. */

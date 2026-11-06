@@ -68,7 +68,13 @@ export class MonitorEvaluator {
           lastCheckAt: checkedAt,
           lastStatusChangeAt: isStatusChange ? checkedAt : undefined,
         })
-        .where(eq(schema.monitors.id, monitorId));
+        // An in-flight check must not un-pause a monitor paused after it started.
+        .where(
+          and(
+            eq(schema.monitors.id, monitorId),
+            sql`${schema.monitors.status} <> 'paused'`,
+          ),
+        );
 
       this.logger.log(
         `Updated monitor ${monitorId} status: ${previousStatus || 'unknown'} -> ${status}`,
@@ -587,10 +593,13 @@ export class MonitorEvaluator {
       await tx
         .update(schema.monitors)
         .set({
-          status: currentStatus,
+          // A monitor paused mid-cycle stays paused.
+          status: previousStatus === 'paused' ? 'paused' : currentStatus,
           lastCheckAt: checkedAt,
           lastStatusChangeAt:
-            previousStatus !== currentStatus ? checkedAt : undefined,
+            previousStatus !== 'paused' && previousStatus !== currentStatus
+              ? checkedAt
+              : undefined,
           ...(evaluation.alertState
             ? {
                 config: {

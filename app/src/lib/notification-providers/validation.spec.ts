@@ -13,8 +13,13 @@ describe("notification provider validation", () => {
     // Delivery of an already-stored provider is not blocked by the stricter write-time format check.
     expect(() => validateProviderConfig("email", { emails: "a@b.co, bad" }, "send")).not.toThrow();
     expect(() => validateProviderConfig("email", { emails: "" }, "send")).toThrow("at least one");
-    // The test endpoint, form and worker all read a comma-separated string.
-    expect(() => validateProviderConfig("email", { emails: ["a@b.co"] })).toThrow("comma-separated");
+    // The API accepts an array and stores the comma-separated string the test endpoint, form and worker read.
+    expect(() => validateProviderConfig("email", { emails: ["a@b.co", "c@d.io"] })).not.toThrow();
+    expect(() => validateProviderConfig("email", { emails: [] })).toThrow("at least one");
+    expect(() => validateProviderConfig("email", { emails: ["notanemail"] })).toThrow("valid email");
+    expect(() => validateProviderConfig("email", { emails: [1] })).toThrow("comma-separated");
+    expect(() => validateProviderConfig("email", { emails: { a: 1 } })).toThrow("comma-separated");
+    expect(normalizeProviderConfig("email", { emails: ["a@b.co", "c@d.io"] })).toEqual({ emails: "a@b.co,c@d.io" });
     expect(() => validateProviderConfig("email", { emails: "a@b.co, c@d.io" })).not.toThrow();
   });
 

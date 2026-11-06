@@ -94,6 +94,18 @@ describe("monitor PUT write boundary", () => {
     for (const k of ["projectId", "organizationId", "createdByUserId", "scheduledJobId", "id"]) expect(p).not.toHaveProperty(k);
   });
 
+  it.each(["", "   ", "x".repeat(256)])("rejects a blank or over-long name %j without writing", async (name) => {
+    const res = await call(PUT, "PUT", { name });
+    expect(res.status).toBe(400);
+    expect(set).not.toHaveBeenCalled();
+  });
+
+  it("rejects an invalid method or status-code list on update", async () => {
+    expect((await call(PUT, "PUT", { config: { method: "FOO" } })).status).toBe(400);
+    expect((await call(PUT, "PUT", { config: { expectedStatusCodes: "abc" } })).status).toBe(400);
+    expect(set).not.toHaveBeenCalled();
+  });
+
   it("keeps worker-owned config keys when config is replaced (c2)", async () => {
     await call(PUT, "PUT", { config: { timeoutSeconds: 10 } });
     expect((payload().config as Record<string, unknown>)).toMatchObject({ timeoutSeconds: 10, aggregatedAlertState: { n: 4 }, sslLastCheckedAt: "t" });

@@ -1,3 +1,5 @@
+import { PgDialect } from 'drizzle-orm/pg-core';
+import type { SQL } from 'drizzle-orm';
 import { MonitorEvaluator } from './monitor-evaluator';
 
 /** Drives evaluateAndSendAlert through consecutive failures and returns the counts that alerted. */
@@ -405,4 +407,26 @@ describe('MonitorEvaluator recovery alert retries', () => {
       expect(recoveriesRecorded).toBe(0);
     },
   );
+});
+
+describe('MonitorEvaluator.updateMonitorStatus paused guard', () => {
+  it('guards the write so a paused monitor is never overwritten', async () => {
+    const where = jest.fn();
+    const dbService = {
+      db: {
+        query: {
+          monitors: { findFirst: jest.fn(async () => ({ status: 'up' })) },
+        },
+        update: jest.fn(() => ({ set: jest.fn(() => ({ where })) })),
+      },
+    };
+    const evaluator = new MonitorEvaluator(dbService as never, {} as never);
+    await evaluator.updateMonitorStatus('m1', 'down', new Date());
+    expect(where).toHaveBeenCalledTimes(1);
+    const { sql, params } = new PgDialect().sqlToQuery(
+      where.mock.calls[0][0] as SQL,
+    );
+    expect(sql).toContain("<> 'paused'");
+    expect(params).toEqual(['m1']);
+  });
 });

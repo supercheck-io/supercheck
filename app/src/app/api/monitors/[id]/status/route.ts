@@ -34,9 +34,9 @@ export async function PATCH(
     }
     const { status } = data;
 
-    if (!status || !["up", "down", "paused", "pending", "maintenance", "error"].includes(status)) {
+    if (!status || !["up", "down", "paused", "pending"].includes(status)) {
       return NextResponse.json(
-        { error: "Invalid status value. Must be 'up', 'down', 'paused', 'pending', 'maintenance', or 'error'." },
+        { error: "Invalid status value. Must be 'up', 'down', 'paused' or 'pending'." },
         { status: 400 }
       );
     }

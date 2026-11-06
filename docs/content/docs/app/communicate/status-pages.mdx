@@ -252,7 +252,7 @@ flowchart LR
 </Tab>
 <Tab value="Scheduled maintenance">
 
-Create the incident with **Scheduled** status, set its window, and enable automatic status transitions. It becomes active at the start time and resolves at the end. Monitor alerts are suppressed during the window, while checks still run and count toward uptime.
+Create the incident with **Scheduled** status, set its window, and enable automatic status transitions. It becomes active at the start time and resolves at the end. Monitor alerts, including SSL expiry warnings, are suppressed during the window, while checks still run and count toward uptime. An SSL warning that was suppressed is sent on the first check after the window if the certificate is still near expiry.
 
 </Tab>
 </Tabs>

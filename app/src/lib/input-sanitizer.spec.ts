@@ -258,6 +258,14 @@ describe('InputSanitizer', () => {
       const result = sanitizeUrl('https://example.com');
       expect(result).toMatch(/^https:\/\/example\.com\/?$/);
     });
+
+    it('should not add a trailing slash to a bare origin, so a pulled target round-trips', () => {
+      expect(sanitizeUrl('https://example.com')).toBe('https://example.com');
+      expect(sanitizeUrl('https://example.com:8443')).toBe('https://example.com:8443');
+      expect(sanitizeUrl('https://example.com?a=1')).toBe('https://example.com?a=1');
+      expect(sanitizeUrl('https://example.com/')).toBe('https://example.com/');
+      expect(sanitizeUrl('https://example.com/a')).toBe('https://example.com/a');
+    });
   });
 
   describe('sanitizeHostname', () => {

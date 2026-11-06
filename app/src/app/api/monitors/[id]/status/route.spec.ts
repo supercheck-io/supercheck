@@ -52,6 +52,12 @@ it("refuses to resume a paused monitor without a plan (c9)", async () => {
   expect(db.update).not.toHaveBeenCalled();
 });
 
+it.each(["error", "maintenance", "bogus", ""])("rejects status %p before any lookup", async (status) => {
+  const response = await patch(status);
+  expect(response.status).toBe(400);
+  expect(db.query.monitors.findFirst).not.toHaveBeenCalled();
+});
+
 it("keeps a 403 AuthError as 403", async () => {
   const { AuthError } = jest.requireMock("@/lib/auth-context");
   jest.mocked(requireUserAuthContext).mockRejectedValueOnce(Object.assign(new AuthError("no access"), { status: 403 }));

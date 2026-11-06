@@ -3413,11 +3413,11 @@ paths:
     patch:
       operationId: updateMonitorStatus
       summary: Update monitor status
-      description: Pause, resume, or otherwise set a monitor's status (for example
-        `paused` or `maintenance`). Requires monitor manage or update
-        permission. Automated status changes from checks are handled separately.
-        Read current monitor status with `GET /api/monitors/{id}`; this route
-        does not support GET.
+      description: Pause, resume, or otherwise set a monitor's status (`up`, `down`,
+        `paused` or `pending`; `maintenance` and `error` are not accepted).
+        Requires monitor manage or update permission. Automated status changes
+        from checks are handled separately. Read current monitor status with
+        `GET /api/monitors/{id}`; this route does not support GET.
       tags:
         - Monitors
       requestBody:
@@ -3436,8 +3436,6 @@ paths:
                     - down
                     - paused
                     - pending
-                    - maintenance
-                    - error
       responses:
         "200":
           description: Monitor status updated

@@ -7,7 +7,7 @@ import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { normalizeWebhookMethod } from "@/lib/notification-providers/webhook-template";
 import { buildWebhookTestBody } from "@/lib/notification-providers/webhook-preview";
-import { normalizeWebhookHeaders } from "@/lib/notification-providers/validation";
+import { emailsAsString, normalizeWebhookHeaders } from "@/lib/notification-providers/validation";
 import { db } from "@/utils/db";
 import { user, member } from "@/db/schema";
 import { and, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
@@ -38,7 +38,14 @@ export async function POST(req: NextRequest) {
     } catch {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
-    const { type, config } = rawBody as Record<string, any>;
+    const { type, config } = (rawBody ?? {}) as Record<string, any>;
+    // A missing or non-object config would otherwise surface as a raw TypeError from a provider tester.
+    if (!config || typeof config !== "object" || Array.isArray(config)) {
+      return NextResponse.json(
+        { success: false, error: "config must be an object" },
+        { status: 400 }
+      );
+    }
 
     // Validate provider type
     const validTypes = ["email", "slack", "webhook", "telegram", "discord", "teams"];
@@ -106,14 +113,15 @@ async function testEmailConnection(
   try {
     // Validate emails field (new format)
     const typedConfig = config as Record<string, unknown>;
-    if (typeof typedConfig.emails !== "string" || !typedConfig.emails.trim()) {
+    const emails = emailsAsString(typedConfig.emails);
+    if (!emails?.trim()) {
       throw new Error("At least one email address is required");
     }
 
     // Validate email format with length limit to prevent ReDoS
     // Deduplicated so a repeated address cannot multiply deliveries.
     const emailList = [...new Set(
-      (typedConfig.emails as string)
+      emails
         .split(",")
         .map((email) => email.trim().toLowerCase())
         .filter((email) => email),

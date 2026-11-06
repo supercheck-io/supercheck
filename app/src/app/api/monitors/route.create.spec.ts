@@ -87,6 +87,40 @@ it("rejects a private monitor target with 400 before inserting", async () => {
   expect(insertWithinPlanLimit).not.toHaveBeenCalled();
 });
 
+it("names the http(s) rule for an ftp:// website target instead of reporting it missing", async () => {
+  const res = await POST(
+    new NextRequest("http://localhost/api/monitors", {
+      method: "POST",
+      body: JSON.stringify({ name: "m", type: "website", target: "ftp://example.com" }),
+      headers: { "content-type": "application/json" },
+    }),
+  );
+  expect(res.status).toBe(400);
+  expect(await res.json()).toMatchObject({ error: "Invalid monitor target", details: "target must be a valid HTTP or HTTPS URL" });
+});
+
+it.each([
+  [{ method: "FOO" }],
+  [{ expectedStatusCodes: "abc" }],
+])("rejects invalid http config %j before inserting", async (config) => {
+  const res = await POST(
+    new NextRequest("http://localhost/api/monitors", {
+      method: "POST",
+      body: JSON.stringify({ name: "m", type: "http_request", target: "https://example.com", config }),
+      headers: { "content-type": "application/json" },
+    }),
+  );
+  expect(res.status).toBe(400);
+  expect((await res.json()).error).toBe("Invalid monitor configuration");
+  expect(insertWithinPlanLimit).not.toHaveBeenCalled();
+});
+
+it("rejects an unknown incidentSeverity instead of dropping it", async () => {
+  const res = await post({ enabled: false, notificationProviders: [], incidentSeverity: "sev9" });
+  expect(res.status).toBe(400);
+  expect(insertWithinPlanLimit).not.toHaveBeenCalled();
+});
+
 it("rejects a name over 255 characters with 400 before inserting", async () => {
   const res = await POST(
     new NextRequest("http://localhost/api/monitors", {

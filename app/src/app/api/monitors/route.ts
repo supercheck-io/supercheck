@@ -40,7 +40,7 @@ import type { LocationConfig } from "@/db/schema";
 import { createLogger } from "@/lib/logger/index";
 import { validateMonitorConfiguration } from "@/lib/monitor-validation";
 import { validateMonitorTargetAddress } from "@/lib/monitor-target-policy";
-import { normalizeMonitorAlertConfig, providerIdsOutsideProject, syntheticFrequencyError } from "@/lib/monitor-write";
+import { monitorNameError, normalizeMonitorAlertConfig, providerIdsOutsideProject, syntheticFrequencyError } from "@/lib/monitor-write";
 import { loadCreators } from "@/lib/creators";
 
 const logger = createLogger({ module: "monitors-api" }) as {
@@ -259,7 +259,9 @@ export async function POST(req: NextRequest) {
     if (rawData.target) {
       // Sanitize target based on type
       if (rawData.type === "http_request" || rawData.type === "website") {
-        rawData.target = sanitizeUrl(rawData.target);
+        // An unusable URL (ftp://, javascript:) is kept as sent so validation names the http(s) rule
+        // instead of reporting the target as missing.
+        rawData.target = sanitizeUrl(rawData.target) || rawData.target;
       } else if (
         rawData.type === "ping_host" ||
         rawData.type === "port_check"
@@ -771,6 +773,9 @@ export async function PUT(req: NextRequest) {
         { status: 403 },
       );
     }
+
+    const nameError = monitorNameError(updateData.name);
+    if (nameError) return NextResponse.json({ error: nameError }, { status: 400 });
 
     // Validate frequency bounds (1 minute minimum, 1440 minutes = 24 hours maximum)
     const MIN_FREQUENCY_MINUTES = 1;

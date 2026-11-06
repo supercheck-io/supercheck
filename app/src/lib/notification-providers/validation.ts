@@ -107,6 +107,16 @@ export function validateProviderWebhookUrl(
   }
 }
 
+/**
+ * Recipients are stored, tested and delivered as one comma-separated string. Arrays of strings are accepted
+ * at the API and joined; null means the value is neither (or an array holds a non-string).
+ */
+export function emailsAsString(raw: unknown): string | null {
+  if (raw === undefined || raw === null) return "";
+  if (typeof raw === "string") return raw;
+  return Array.isArray(raw) && raw.every((e) => typeof e === "string") ? raw.join(",") : null;
+}
+
 export function validateProviderConfig(
   type: NotificationProviderType,
   config: Record<string, unknown>,
@@ -120,13 +130,12 @@ export function validateProviderConfig(
   switch (type) {
     case "email":
       {
-        const raw = config.emails;
-        // Stored, tested and delivered as one comma-separated string; an array would pass here and fail later.
-        if (raw !== undefined && raw !== null && typeof raw !== "string") {
-          throw new Error("Email notification providers require emails as a comma-separated string.");
+        const raw = emailsAsString(config.emails);
+        if (raw === null) {
+          throw new Error("Email notification providers require emails as a comma-separated string or an array of strings.");
         }
-        const list = (raw ?? "").split(",")
-          .map((e) => (typeof e === "string" ? e.trim() : ""))
+        const list = raw.split(",")
+          .map((e) => e.trim())
           .filter(Boolean);
         if (list.length === 0) {
           throw new Error(
@@ -271,6 +280,10 @@ export function normalizeProviderConfig(
   type: NotificationProviderType,
   config: Record<string, unknown>
 ): Record<string, unknown> {
+  if (type === "email") {
+    const emails = emailsAsString(config.emails);
+    return emails === null ? { ...config } : { ...config, emails };
+  }
   if (type !== "webhook") {
     return { ...config };
   }

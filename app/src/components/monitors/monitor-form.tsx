@@ -215,11 +215,12 @@ const formSchema = z
         if (data.type === "http_request" || data.type === "website") {
           // URL validation
           try {
-            new URL(target);
+            const { protocol } = new URL(target);
+            if (protocol !== "http:" && protocol !== "https:") throw new Error();
           } catch {
             ctx.addIssue({
               code: z.ZodIssueCode.custom,
-              message: "Target must be a valid URL (e.g., https://example.com)",
+              message: "Target must be a valid http:// or https:// URL (e.g., https://example.com)",
               path: ["target"],
             });
           }

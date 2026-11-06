@@ -40,17 +40,18 @@ export async function GET(request: Request) {
       ? Math.max(0, requestedOffset)
       : 0;
 
-    const notifications = await usageNotificationService.getNotificationHistory(
+    // One extra row tells a full last page from a further page.
+    const rows = await usageNotificationService.getNotificationHistory(
       organizationId,
-      { limit, offset }
+      { limit: limit + 1, offset }
     );
 
     return NextResponse.json({
-      notifications,
+      notifications: rows.slice(0, limit),
       pagination: {
         limit,
         offset,
-        hasMore: notifications.length === limit,
+        hasMore: rows.length > limit,
       },
     });
   } catch (error) {

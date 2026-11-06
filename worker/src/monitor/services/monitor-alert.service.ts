@@ -61,6 +61,37 @@ export class MonitorAlertService {
     });
   }
 
+  /** An unresolved scheduled-maintenance incident covers the monitor right now. */
+  private async isUnderScheduledMaintenance(
+    monitorId: string,
+  ): Promise<boolean> {
+    const now = new Date();
+    const rows = await this.dbService.db
+      .select({ id: schema.incidents.id })
+      .from(schema.statusPageComponentMonitors)
+      .innerJoin(
+        schema.incidentComponents,
+        eq(
+          schema.incidentComponents.componentId,
+          schema.statusPageComponentMonitors.componentId,
+        ),
+      )
+      .innerJoin(
+        schema.incidents,
+        eq(schema.incidents.id, schema.incidentComponents.incidentId),
+      )
+      .where(
+        and(
+          eq(schema.statusPageComponentMonitors.monitorId, monitorId),
+          ne(schema.incidents.status, 'resolved'),
+          lte(schema.incidents.scheduledFor, now),
+          gt(schema.incidents.scheduledUntil, now),
+        ),
+      )
+      .limit(1);
+    return rows.length > 0;
+  }
+
   async sendNotification(
     monitorId: string,
     type: 'recovery' | 'failure',
@@ -99,30 +130,7 @@ export class MonitorAlertService {
       return { delivered: false };
     }
 
-    const maintenance = await db
-      .select({ id: schema.incidents.id })
-      .from(schema.statusPageComponentMonitors)
-      .innerJoin(
-        schema.incidentComponents,
-        eq(
-          schema.incidentComponents.componentId,
-          schema.statusPageComponentMonitors.componentId,
-        ),
-      )
-      .innerJoin(
-        schema.incidents,
-        eq(schema.incidents.id, schema.incidentComponents.incidentId),
-      )
-      .where(
-        and(
-          eq(schema.statusPageComponentMonitors.monitorId, monitorId),
-          ne(schema.incidents.status, 'resolved'),
-          lte(schema.incidents.scheduledFor, new Date()),
-          gt(schema.incidents.scheduledUntil, new Date()),
-        ),
-      )
-      .limit(1);
-    if (maintenance.length) {
+    if (await this.isUnderScheduledMaintenance(monitorId)) {
       this.logger.log(
         `[NOTIFY] Suppressing monitor ${monitorId} alert during scheduled maintenance`,
       );
@@ -358,6 +366,14 @@ export class MonitorAlertService {
     ) {
       this.logger.log(
         `[SSL-NOTIFY] SSL alerts not enabled for monitor ${monitorId}`,
+      );
+      return false;
+    }
+
+    // Same rule as status alerts. Nothing is recorded as sent, so the next check after the window alerts again.
+    if (await this.isUnderScheduledMaintenance(monitorId)) {
+      this.logger.log(
+        `[SSL-NOTIFY] Suppressing monitor ${monitorId} SSL alert during scheduled maintenance`,
       );
       return false;
     }
