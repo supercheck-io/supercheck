@@ -377,6 +377,7 @@ function RunButton({ job }: { job: Job }) {
                   isCancelling && "cursor-not-allowed"
                 )}
                 title={isCancelling ? "Cancelling..." : "Cancel run"}
+                aria-label={isCancelling ? "Cancelling run" : "Cancel run"}
               >
                 {isCancelling ? (
                   <Loader2 className="h-3 w-3 animate-spin text-white" />

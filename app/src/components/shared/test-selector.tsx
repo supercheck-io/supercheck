@@ -926,7 +926,11 @@ export default function TestSelector({
                   >
                     Cancel
                   </Button>
-                  <Button onClick={handleSelectTests}>
+                  <Button
+                    onClick={handleSelectTests}
+                    // Nothing to add; with existing tests, confirming an empty set still clears them.
+                    disabled={tests.length === 0 && !availableTests.some((test) => testSelections[test.id] > 0)}
+                  >
                     {useSingleSelection ? "Select Test" : "Add Selected Tests"}
                   </Button>
                 </DialogFooter>

@@ -27,11 +27,11 @@ export function DataTablePagination<TData>({
   const currentPage = Math.min(table.getState().pagination.pageIndex + 1, pageCount);
 
   return (
-    <div className="flex items-center justify-between px-2">
+    <div className="flex flex-wrap items-center justify-between gap-2 px-2">
        <div className="flex-1 text-sm text-muted-foreground">
          Total {table.getRowCount()} variables
        </div>
-      <div className="flex items-center space-x-6 lg:space-x-8">
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 lg:gap-x-8">
         <div className="flex items-center space-x-2">
           <p className="text-sm">Rows per page</p>
           <Select

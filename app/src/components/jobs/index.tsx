@@ -369,7 +369,10 @@ export default function Jobs() {
           handleJobSelect(row.original);
         }}
         meta={{
-          onDeleteJob: handleDeleteJob,
+          // The row action has already deleted the job; deleting again would 404 and toast a failure.
+          onDeleteJob: (jobId: string) => {
+            if (selectedJob && selectedJob.id === jobId) handleJobSheetClose();
+          },
         }}
       />
 

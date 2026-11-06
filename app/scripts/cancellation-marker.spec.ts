@@ -10,7 +10,7 @@ const read = (file: string) => fs.readFileSync(path.join(root, file), "utf8");
 const declaration = /export const RUN_CANCELLATION_MARKER = (["'])(.+?)\1;/;
 
 describe("run cancellation marker", () => {
-  const appSource = read("app/src/lib/cancellation-service.ts");
+  const appSource = read("app/src/lib/run-cancellation-marker.ts");
   const workerSource = read("worker/src/common/services/cancellation.service.ts");
 
   it("is declared with the same value in the app and the worker", () => {

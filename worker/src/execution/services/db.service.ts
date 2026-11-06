@@ -924,6 +924,8 @@ export class DbService implements OnModuleInit {
                 sql`, `,
               )})`,
               sql`${schema.runs.status} IN ('passed', 'failed', 'error')`,
+              // A cancelled run is stored as 'error' with no test outcomes; it must not decide coverage.
+              sql`${schema.runs.errorDetails} IS DISTINCT FROM ${RUN_CANCELLATION_MARKER}`,
             ),
           )
           .orderBy(

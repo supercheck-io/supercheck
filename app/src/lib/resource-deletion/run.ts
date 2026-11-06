@@ -1,4 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
+import { updateCoverageSnapshotsForJob } from "@/lib/requirements-internal";
 import { db } from "@/utils/db";
 import { runs, reports } from "@/db/schema";
 import { eq, and, inArray, or } from "drizzle-orm";
@@ -295,6 +296,14 @@ export async function deleteRunWithContext(runId: string, context: ProjectAuthCo
       console.log(
         "[DELETE_RUN] Transaction successful, starting cleanup tasks..."
       );
+
+      // Requirement coverage follows the job's remaining runs. It is derived and recomputed on the next run,
+      // so a failure here must not fail a deletion that has already committed.
+      if (transactionResult.runData.jobId) {
+        await updateCoverageSnapshotsForJob(transactionResult.runData.jobId).catch((coverageError) => {
+          console.error("[DELETE_RUN] Error refreshing requirement coverage (run still deleted):", coverageError);
+        });
+      }
 
       // Log audit event (don't fail the whole operation if this fails)
       await logRunDeletionAudit(
