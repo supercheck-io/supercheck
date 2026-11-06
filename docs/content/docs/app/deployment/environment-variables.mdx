@@ -30,9 +30,7 @@ The annotated templates are [`app/.env.example`](https://github.com/supercheck-i
 | `DEFAULT_PROJECT_NAME` | App | `Default Project` | Name of the project created for a new organization |
 | `SUPER_ADMIN_EMAIL` | App | none | Used by `scripts/bootstrap-admin.js` when no email argument is given |
 | `SUPERCHECK_VERSION` | Compose, Worker | the release in the checkout | Image tag Compose pulls. The worker reports it as its version |
-| `SHOW_COMMUNITY_LINKS` | App | `false` | `true` shows the community link in the header |
 | `NEXT_PUBLIC_SOURCE_URL` | App | the upstream repository | Build-time link to the corresponding source. Forks and modified builds must point it at their own source |
-| `DEMO_MODE` | App | `false` | `true` flags the instance as a demo to the UI |
 | `LOG_LEVEL` | Both | `info` in production, `debug` in development | `trace`, `debug`, `info`, `warn`, `error` or `fatal` |
 | `LOG_DB_QUERIES` | App | `false` | `true` logs SQL, in development only |
 
@@ -201,7 +199,6 @@ The annotated templates are [`app/.env.example`](https://github.com/supercheck-i
 |----------|-----------|---------|---------|
 | `ALLOW_INTERNAL_TARGETS` | Both | `false` | `true` lets monitors target private and loopback addresses. Must match on app and worker |
 | `MAX_JOB_NOTIFICATION_CHANNELS`, `MAX_MONITOR_NOTIFICATION_CHANNELS` | App | `10` | Notification channels per job or monitor |
-| `RECENT_MONITOR_RESULTS_LIMIT` | App | built-in | Recent results shown per monitor |
 | `NOTIFICATION_MAX_RETRIES` | Worker | `3` | Notification delivery retries |
 | `NOTIFICATION_INITIAL_DELAY_MS` | Worker | `1000` | First retry delay (doubles each retry, up to 30 s) |
 | `NOTIFICATION_TIMEOUT_MS` | Worker | `10000` | Per-attempt delivery timeout |
@@ -214,7 +211,7 @@ The annotated templates are [`app/.env.example`](https://github.com/supercheck-i
 | `STATUS_PAGE_DOMAIN` | App | none | Base domain for status pages |
 | `STATUS_PAGE_HIDE_BRANDING` | App | `false` | Hide the "Powered by Supercheck" footer |
 | `QUEUE_ALERTING_ENABLED` | Worker | `true` | Queue health alerts for operators |
-| `QUEUE_ALERT_WEBHOOK_URL`, `QUEUE_ALERT_SLACK_WEBHOOK_URL` | Worker | none | Where queue alerts are delivered. Without either, alerts are only logged. `QUEUE_ALERT_EMAILS` is not supported |
+| `QUEUE_ALERT_WEBHOOK_URL`, `QUEUE_ALERT_SLACK_WEBHOOK_URL` | Worker | none | Where queue alerts are delivered. Without either, alerts are only logged |
 | `QUEUE_ALERTING_CHECK_INTERVAL_MS` | Worker | `60000` | Check interval |
 | `QUEUE_DEPTH_WARNING_THRESHOLD`, `QUEUE_DEPTH_CRITICAL_THRESHOLD` | Worker | `70`, `90` | Depth, as a percentage of `MAX_QUEUE_DEPTH` |
 | `MAX_QUEUE_DEPTH` | Worker | `10000` | Queue size used for the depth percentages |
@@ -265,7 +262,7 @@ Set on the standalone agent ([Private Agent](/docs/app/deployment/private-agent)
 | `PRIVATE_AGENT_TOKEN` | none | Registration token. Required unless a credential file already holds one |
 | `PRIVATE_AGENT_CREDENTIAL_FILE` | none | File where the agent stores its credential between restarts |
 | `PRIVATE_AGENT_VERSION` | the worker version | Version the agent reports |
-| `PRIVATE_AGENT_RETRY_INTERVAL_MS` | built-in | Delay between reconnect attempts. `PRIVATE_AGENT_POLL_INTERVAL_MS` is the older name for the same setting |
+| `PRIVATE_AGENT_RETRY_INTERVAL_MS` | built-in | Delay between reconnect attempts |
 | `PRIVATE_AGENT_LEASE_WAIT_MS` | built-in | How long a lease request waits for work |
 | `PRIVATE_AGENT_HEARTBEAT_INTERVAL_MS` | built-in | Heartbeat interval |
 
@@ -283,6 +280,34 @@ Set on machines running `supercheck` (see [CLI authentication](/docs/cli/authent
 | `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY` | none | Corporate proxy |
 | `NO_COLOR` | none | Any value disables colored output |
 
+## Advanced UI flags
+
+Optional display settings. Most installations leave them unset.
+
+| Variable | Applies to | Default | Purpose |
+|----------|-----------|---------|---------|
+| `SHOW_COMMUNITY_LINKS` | App | `false` | `true` shows the community link in the header |
+| `DEMO_MODE` | App | `false` | `true` flags the instance as a demo to the UI |
+| `RECENT_MONITOR_RESULTS_LIMIT` | App | built-in | Recent results shown per monitor |
+
 ## Supercheck Cloud only
 
 Self-hosted installs do not use these: `SENTRY_DSN`, `SENTRY_ENVIRONMENT`, `SENTRY_RELEASE` (error reporting, never loaded when `SELF_HOSTED=true`), `CHATWOOT_*` (support chat), `CRON_SECRET`, and the other variables of the hosted service. Do not set them.
+
+## Deprecated and removed settings
+
+Deprecated settings still work for now. The app or worker logs a warning once per start when one is used, and each will be removed in a future release. Move to the replacement.
+
+| Setting | Replacement | Behavior today |
+|---------|-------------|----------------|
+| `NEXT_PUBLIC_BASE_URL` | `NEXT_PUBLIC_APP_URL` | Used for the job trigger URL only when `NEXT_PUBLIC_APP_URL` is unset |
+| `NEXTAUTH_SECRET`, `AUTH_SECRET` | `BETTER_AUTH_SECRET` | Aliases for the key that hashes CLI project-config snapshots, used only when `BETTER_AUTH_SECRET` is unset, so existing hashes stay valid |
+| `PRIVATE_AGENT_POLL_INTERVAL_MS` | `PRIVATE_AGENT_RETRY_INTERVAL_MS` | Used when the new name is unset |
+| `STATUS_PAGE_CNAME_TARGET` | `STATUS_PAGE_DOMAIN` | Still overrides the CNAME target shown for custom status page domains. The target is derived from `STATUS_PAGE_DOMAIN` |
+
+Removed settings are ignored:
+
+| Setting | What to do |
+|---------|-----------|
+| `QUEUE_ALERT_EMAILS` | Not supported. The worker logs a warning if it is set. Use `QUEUE_ALERT_WEBHOOK_URL` or `QUEUE_ALERT_SLACK_WEBHOOK_URL` |
+| `REPORTS_ORIGIN` | Removed. Report HTML is served from the app origin |

@@ -1,3 +1,4 @@
+import { warnDeprecatedEnvOnce } from '../common/deprecated-env';
 import * as crypto from 'node:crypto';
 import {
   accessSync,
@@ -1834,6 +1835,26 @@ export function assertSecureApiUrl(apiUrl: string): void {
   }
 }
 
+/** PRIVATE_AGENT_POLL_INTERVAL_MS is a deprecated alias of PRIVATE_AGENT_RETRY_INTERVAL_MS. */
+export function resolveRetryIntervalMs(
+  env: Record<string, string | undefined> = process.env,
+): number {
+  if (
+    env.PRIVATE_AGENT_RETRY_INTERVAL_MS === undefined &&
+    env.PRIVATE_AGENT_POLL_INTERVAL_MS !== undefined
+  ) {
+    warnDeprecatedEnvOnce(
+      'PRIVATE_AGENT_POLL_INTERVAL_MS',
+      'PRIVATE_AGENT_RETRY_INTERVAL_MS',
+    );
+  }
+  return Number(
+    env.PRIVATE_AGENT_RETRY_INTERVAL_MS ??
+      env.PRIVATE_AGENT_POLL_INTERVAL_MS ??
+      DEFAULT_RETRY_INTERVAL_MS,
+  );
+}
+
 function readConfig(): PrivateAgentConfig {
   const apiUrl = process.env.SUPERCHECK_API_URL?.replace(/\/$/, '');
   const agentId = process.env.PRIVATE_AGENT_ID;
@@ -1863,11 +1884,7 @@ function readConfig(): PrivateAgentConfig {
     credentialFile,
     agentVersion:
       process.env.PRIVATE_AGENT_VERSION?.trim() || getServiceVersion(),
-    retryIntervalMs: Number(
-      process.env.PRIVATE_AGENT_RETRY_INTERVAL_MS ??
-        process.env.PRIVATE_AGENT_POLL_INTERVAL_MS ??
-        DEFAULT_RETRY_INTERVAL_MS,
-    ),
+    retryIntervalMs: resolveRetryIntervalMs(),
     leaseWaitMs: Number(
       process.env.PRIVATE_AGENT_LEASE_WAIT_MS ?? DEFAULT_LEASE_WAIT_MS,
     ),

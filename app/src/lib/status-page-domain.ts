@@ -1,4 +1,5 @@
 import { isCloudHosted } from "@/lib/feature-flags";
+import { warnDeprecatedEnvOnce } from "@/lib/deprecated-env";
 
 export const CLOUD_STATUS_PAGE_DOMAIN = "supercheck.io";
 
@@ -74,7 +75,7 @@ export function getEffectiveStatusPageDomain(): string {
  * main app hostname. This keeps the supported env surface small while matching
  * the DNS layout used by the HTTPS Compose/K8s examples.
  *
- * STATUS_PAGE_CNAME_TARGET remains as an undocumented compatibility fallback
+ * STATUS_PAGE_CNAME_TARGET remains as a deprecated compatibility fallback (warns once)
  * for deployments that already started using it before this was simplified.
  */
 export function getEffectiveStatusPageCnameTarget(): string {
@@ -83,6 +84,7 @@ export function getEffectiveStatusPageCnameTarget(): string {
   );
 
   if (compatibilityTarget) {
+    warnDeprecatedEnvOnce("STATUS_PAGE_CNAME_TARGET", "STATUS_PAGE_DOMAIN");
     return compatibilityTarget;
   }
 

@@ -1,3 +1,4 @@
+import { getCliSnapshotHashKey } from "@/lib/deprecated-env";
 import { NextResponse } from "next/server";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import {
@@ -212,14 +213,4 @@ async function getServiceIdsByBindingId(input: {
     acc.set(row.bindingId, serviceIds);
     return acc;
   }, new Map<string, string[]>());
-}
-
-function getCliSnapshotHashKey(): string {
-  return (
-    process.env.NOTIFICATION_CONFIG_FINGERPRINT_SECRET ||
-    process.env.BETTER_AUTH_SECRET ||
-    process.env.NEXTAUTH_SECRET ||
-    process.env.AUTH_SECRET ||
-    "supercheck-cli-config-redaction-development"
-  );
 }

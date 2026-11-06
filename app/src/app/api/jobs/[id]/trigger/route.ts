@@ -1,3 +1,4 @@
+import { getJobTriggerBaseUrl } from "@/lib/deprecated-env";
 import { getExecutionPolicy, ExecutionWorkloadError, type ExecutionPolicy } from "@/lib/execution/execution-policy";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
@@ -696,7 +697,7 @@ export async function GET(
     }
 
     const job = jobResult[0];
-    const triggerUrl = `${process.env.NEXT_PUBLIC_BASE_URL || request.nextUrl.origin}/api/jobs/${jobId}/trigger`;
+    const triggerUrl = `${getJobTriggerBaseUrl(request.nextUrl.origin)}/api/jobs/${jobId}/trigger`;
 
     return NextResponse.json({
       success: true,
