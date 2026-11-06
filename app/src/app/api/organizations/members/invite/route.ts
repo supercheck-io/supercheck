@@ -12,6 +12,7 @@ import { inviteMemberSchema } from "@/lib/validations/member";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { renderOrganizationInvitationEmail } from "@/lib/email-renderer";
 import { checkTeamMemberLimit } from "@/lib/middleware/plan-enforcement";
+import { seatReservingInvitations } from "@/lib/invitation-seats";
 import { insertWithinPlanLimit } from "@/lib/middleware/plan-limit-lock";
 import { getRedisConnection } from "@/lib/queue";
 import { withRedisDeadline } from "@/lib/security/redis-deadline";
@@ -313,13 +314,7 @@ export async function POST(request: NextRequest) {
         const [pendingRow] = await tx
           .select({ count: sql<number>`count(*)` })
           .from(invitation)
-          .where(
-            and(
-              eq(invitation.organizationId, organizationId),
-              eq(invitation.status, "pending"),
-              gte(invitation.expiresAt, new Date()),
-            ),
-          );
+          .where(seatReservingInvitations(organizationId));
         return Number(memberRow?.count || 0) + Number(pendingRow?.count || 0);
       },
       insert: async (executor) => {
