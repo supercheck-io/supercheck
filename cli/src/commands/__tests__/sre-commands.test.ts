@@ -61,6 +61,7 @@ const { sreCommand } = await import('../sre.js')
 const { monitorCommand } = await import('../monitors.js')
 const { runCommand } = await import('../runs.js')
 const { testCommand } = await import('../tests.js')
+const { setRevealSecrets } = await import('../../utils/redact.js')
 
 describe('AI SRE CLI Commands', () => {
   beforeEach(() => {
@@ -537,10 +538,19 @@ describe('AI SRE CLI Commands', () => {
     })
   })
 
-  it('test get --include-script prints the script unredacted so redirected files stay intact', async () => {
-    mockGet.mockResolvedValueOnce({ data: { id: 't1', script: Buffer.from('const k = "x"').toString('base64') } })
+  it('test get --include-script redacts the script and says so unless --show-secrets is set', async () => {
+    mockGet.mockResolvedValue({ data: { id: 't1', script: Buffer.from('const k = "x"').toString('base64') } })
     await testCommand.parseAsync(['node', 'test', 'get', 't1', '--include-script'])
+    expect(mockOutput).toHaveBeenCalledWith('const k = "x"\n', { redact: true })
+    expect(mockWarn).toHaveBeenCalledWith(expect.stringContaining('--show-secrets'))
+    mockOutput.mockClear(); mockWarn.mockClear()
+    setRevealSecrets(true)
+    try {
+      await testCommand.parseAsync(['node', 'test', 'get', 't1', '--include-script'])
+    } finally { setRevealSecrets(false) }
     expect(mockOutput).toHaveBeenCalledWith('const k = "x"\n', { redact: false })
+    expect(mockWarn).not.toHaveBeenCalled()
+    mockGet.mockReset()
   })
 
   describe('test tag commands', () => {

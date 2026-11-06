@@ -26,8 +26,9 @@ const mockConfirmPrompt = jest.fn<(...args: unknown[]) => Promise<void>>()
 let outputFormat = 'table'
 let authenticated = true
 
+let noCredentials = false
 jest.unstable_mockModule('../../api/authenticated-client.js', () => ({
-  createAuthenticatedClient: () => ({ get: mockGet, patch: mockPatch, post: mockPost, delete: mockDelete }),
+  createAuthenticatedClient: () => { if (noCredentials) throw new Error('requireAuth called'); return { get: mockGet, patch: mockPatch, post: mockPost, delete: mockDelete } },
   getResolvedConfigBaseUrl: () => 'https://config.test',
 }))
 
@@ -640,7 +641,10 @@ describe('read-only and operational commands', () => {
       mockLoadConfig.mockResolvedValueOnce({ config, configPath: '/repo/supercheck.config.ts' })
       mockBuildLocalResources.mockReturnValueOnce([])
 
-      await expect(validateCommand.parseAsync(['node', 'validate'])).rejects.toMatchObject({ exitCode: ExitCode.ConfigError })
+      noCredentials = true
+      try {
+        await expect(validateCommand.parseAsync(['node', 'validate'])).rejects.toMatchObject({ exitCode: ExitCode.ConfigError })
+      } finally { noCredentials = false }
       expect(mockValidateScripts).not.toHaveBeenCalled()
     })
 

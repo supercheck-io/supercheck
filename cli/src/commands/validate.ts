@@ -18,7 +18,6 @@ export const validateCommand = new Command('validate')
   .action(async (options: { config?: string }) => {
     const cwd = process.cwd()
     const { config } = await loadConfig({ cwd, configPath: options.config })
-    const client = createAuthenticatedClient()
 
     const localResources = buildLocalResources(config, cwd)
     const tests = localResources.filter((r) => r.type === 'test')
@@ -49,6 +48,9 @@ export const validateCommand = new Command('validate')
       logger.warn('No local tests found to validate.')
       return
     }
+
+    // Only now are credentials needed: an empty project is a config error whether or not you are logged in.
+    const client = createAuthenticatedClient()
 
     // Pre-flight: fast client-side script-type mismatch detection
     let preflightFailed = false

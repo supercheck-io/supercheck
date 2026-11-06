@@ -7,6 +7,7 @@ import { createAuthenticatedClient } from '../api/authenticated-client.js'
 import { loadConfig } from '../config/loader.js'
 import { discoverFiles } from '../utils/discovery.js'
 import { logger } from '../utils/logger.js'
+import { canRevealSecrets } from '../utils/redact.js'
 import { getOutputFormat, output, outputDetail, outputMutation, outputPagination } from '../output/formatter.js'
 import { requirePriority } from '../utils/priority.js'
 import { CLIError, ExitCode } from '../utils/errors.js'
@@ -223,7 +224,12 @@ testCommand
       () => client.get<Record<string, unknown>>(`/api/tests/${id}`, params),
     )
     outputDetail(data)
-    if (options.includeScript && getOutputFormat() === 'table' && typeof data.script === 'string') logger.output(decodeStoredTestScript(data.script) ?? '', { redact: false })
+    if (options.includeScript && getOutputFormat() === 'table' && typeof data.script === 'string') {
+      // Redaction can alter a script that is redirected to a file, so the exact source needs the same opt-in as other secrets.
+      const exact = canRevealSecrets()
+      if (!exact) logger.warn('Script output is redacted. Use --show-secrets to print the exact script.')
+      logger.output(decodeStoredTestScript(data.script) ?? '', { redact: !exact })
+    }
   })
 
 testCommand

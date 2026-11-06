@@ -79,7 +79,7 @@ Delete commands (`job`, `test`, `monitor`, `run`, `requirement`, `var`, `tag` an
 
 Use `--wide` for unrestricted table values or `--json` for complete structured payloads. `--no-color` and `NO_COLOR` disable colors. Pipes have no colors or spinners, and closing a pipe early (`supercheck ... | head`) ends the command quietly. Ctrl+C exits 130; stream idle timeouts exit 5.
 
-`config print` uses indented JSON in human mode, with secret variable values masked. Test create/update summaries omit the script blob; use `test get <id> --include-script` to read decoded source.
+`config print` uses indented JSON in human mode, with secret variable values masked. Test create/update summaries omit the script blob; use `test get <id> --include-script` to read decoded source (redacted; add `--show-secrets` for the exact script).
 
 Structured SRE output follows the same Field/Value detail-table format as monitors, tests, and jobs. Triage separates run metadata from the complete narrative summary. Copilot answers and evidence briefs have report headings; quiet mode suppresses their content. `--json` takes precedence when combined with `--quiet`.
 
@@ -393,7 +393,7 @@ supercheck test list --search "checkout" --type browser
 supercheck test list --priority high
 supercheck test tag add <test-id> smoke checkout
 supercheck test tag remove <test-id> checkout
-supercheck test get <test-id> --include-script
+supercheck test get <test-id> --include-script --show-secrets
 supercheck test create --title "Homepage Check" --file ./_supercheck_/playwright/homepage-check.<id>.pw.ts --type browser
 supercheck test update <test-id> --title "Updated Title" --file ./updated-script.pw.ts
 supercheck test update <test-id> --type api --dry-run
