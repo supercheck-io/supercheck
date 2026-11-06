@@ -23,6 +23,16 @@ function plain(text: string) {
 function clip(text: string, max: number) {
   if (text.length <= max) return text;
   const cut = text.slice(0, max);
+  // End on a whole sentence when one ends past the halfway point, so a summary never stops mid-thought.
+  // A sentence end is ". ", "? " or "! " before a capital or digit, so "e.g. the" and "etc. and" are not.
+  let sentence = -1;
+  for (const match of text.matchAll(/[.?!](?= [A-Z0-9])/g)) {
+    if (match.index >= max) break;
+    sentence = match.index;
+  }
+  if (sentence > max * 0.5 && !/\b(?:e\.g|i\.e|etc|vs|approx|cf)$/i.test(text.slice(0, sentence))) {
+    return text.slice(0, sentence + 1);
+  }
   const space = cut.lastIndexOf(" ");
   return `${cut.slice(0, space > max * 0.75 ? space : max)}…`;
 }

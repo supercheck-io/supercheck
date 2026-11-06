@@ -137,7 +137,8 @@ describe("IncidentAiSummaryCard structured states", () => {
       />,
     );
     expect(screen.getByText("Inconclusive")).toBeInTheDocument();
-    expect(screen.getByText("No root cause established")).toBeInTheDocument();
+    // The badge says it once; no second "No root cause established" label.
+    expect(screen.queryByText("No root cause established")).not.toBeInTheDocument();
     expect(screen.getByText(/did not support it/)).toBeInTheDocument();
     expect(screen.queryByText(/^Confidence:/)).not.toBeInTheDocument();
   });

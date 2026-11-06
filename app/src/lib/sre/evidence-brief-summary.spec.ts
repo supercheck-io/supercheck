@@ -81,6 +81,29 @@ describe("reportHeadline", () => {
   });
 });
 
+describe("reportHeadline sentence clipping", () => {
+  it("ends on a whole sentence when one ends past the halfway point", () => {
+    const text = `${"First sentence is fairly long here. ".repeat(3)}Second part keeps going without an end`;
+    const clipped = reportHeadline(text, 120)!;
+    expect(clipped.endsWith("here.")).toBe(true);
+    expect(clipped).not.toContain("…");
+  });
+
+  it("does not end on an abbreviation or a semicolon, which would read finished but change the meaning", () => {
+    const eg = reportHeadline(`${"Pool exhausted in the handler path ".repeat(2)}e.g. the retry loop never releases clients back`, 100)!;
+    expect(eg.endsWith("e.g.")).toBe(false);
+    expect(eg.endsWith("…")).toBe(true);
+    const semi = reportHeadline(`${"a".repeat(70)} fixed it; however the deploy was not the cause at all`, 100)!;
+    expect(semi.endsWith("…")).toBe(true);
+  });
+
+  it("keeps a sentence that ends exactly at the limit, and treats ? and ! as ends", () => {
+    const text = `${"x".repeat(60)} is the cause. Next part`;
+    expect(reportHeadline(text, text.indexOf(".") + 1)).toBe(`${"x".repeat(60)} is the cause.`);
+    expect(reportHeadline(`${"y".repeat(70)} really? More text follows here and on`, 90)).toBe(`${"y".repeat(70)} really?`);
+  });
+});
+
 describe("describeEvidenceBrief", () => {
   it("summarises the brief fields", () => {
     expect(describeEvidenceBrief({ suspectedFailureDomain: "deploy", evidenceCount: 1, confidenceScore: 0.5 })).toBe(

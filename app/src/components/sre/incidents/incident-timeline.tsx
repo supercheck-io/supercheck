@@ -27,7 +27,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { formatAgo, useNow } from "@/components/sre/incidents/incident-age";
-import { IconTile, SectionTitle, type IconTone } from "@/components/sre/incidents/incident-ui";
+import { IconTile, SectionTitle, toneButton, type IconTone } from "@/components/sre/incidents/incident-ui";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { UserCell } from "@/components/ui/user-cell";
@@ -99,7 +99,8 @@ const AI_FINDING_TITLES: Record<string, string> = {
 
 /** One plain-text paragraph of an AI report; the full report lives in the Investigation tab. */
 export function aiFindingHeadline(value: unknown) {
-  return typeof value === "string" ? reportHeadline(value, 400) : null;
+  // Short: the Summary card above already shows the full paragraph.
+  return typeof value === "string" ? reportHeadline(value, 220) : null;
 }
 
 /** "A -> B" lines for the fields an edit changed; empty for events recorded before values were stored. */
@@ -256,8 +257,8 @@ export function IncidentTimeline({
             </Button>
           </div>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-          <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-muted-foreground" onClick={draft} disabled={drafting || pending}>
-            {drafting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4 text-violet-500" />}
+          <Button type="button" variant="outline" size="sm" className={`h-7 px-2 ${toneButton("violet")}`} onClick={draft} disabled={drafting || pending}>
+            {drafting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
             Draft customer update with AI
           </Button>
           {canPostToStatusPage && (

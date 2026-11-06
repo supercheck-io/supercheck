@@ -411,6 +411,18 @@ describe("SreIncidentDetailView", () => {
     window.history.replaceState(null, "", "/");
   });
 
+  it("starts a tab reached by Back or Forward at its top", () => {
+    render(<SreIncidentDetailView detail={detailFixture()} services={[]} />);
+    const column = screen.getByRole("tabpanel", { name: "Overview" }).parentElement!;
+    column.scrollTop = 300;
+    act(() => {
+      window.history.pushState(null, "", "/incidents/42?tab=investigation");
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+    expect(column.scrollTop).toBe(0);
+    window.history.replaceState(null, "", "/");
+  });
+
   it("does not rate a failed run's earlier conclusion and still offers a brief", () => {
     const detail = detailFixture();
     detail.latestInvestigation = { ...detail.latestInvestigation!, status: "failed", summary: "Timed out." };
@@ -599,15 +611,13 @@ describe("SreIncidentDetailView", () => {
     expect(screen.queryByText(/No AI analysis yet/)).not.toBeInTheDocument();
   });
 
-  it("hides ownership actions for read-only users and shows the resolution summary when resolved", () => {
+  it("hides ownership actions for read-only users", () => {
     const detail = detailFixture();
     detail.permissions.canUpdate = false;
     detail.incident.status = "resolved";
-    detail.incident.resolutionSummary = "Rolled back the deploy.";
     render(<SreIncidentDetailView detail={detail} services={[]} />);
     expect(screen.queryByRole("button", { name: "Acknowledge" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Post update" })).not.toBeInTheDocument();
-    expect(screen.getByTestId("resolution-summary")).toHaveTextContent("Rolled back the deploy.");
   });
 });
 
@@ -697,15 +707,13 @@ describe("SreIncidentDetailView actions menu and primary button", () => {
     expect(screen.queryByRole("button", { name: "Post-mortem" })).not.toBeInTheDocument();
   });
 
-  it("omits the resolution summary on open incidents and shows it once resolved", () => {
-    const open = render(<SreIncidentDetailView detail={detailFixture()} services={[]} />);
-    expect(screen.queryByTestId("resolution-summary")).not.toBeInTheDocument();
-    open.unmount();
+  it("shows no separate resolution box on Overview; the Summary card is the one paragraph", () => {
     const detail = detailFixture();
     detail.incident.status = "resolved";
     detail.incident.resolutionSummary = "Scaled the pool.";
     render(<SreIncidentDetailView detail={detail} services={[]} />);
-    expect(screen.getByTestId("resolution-summary")).toHaveTextContent("Resolution: Scaled the pool.");
+    expect(screen.queryByText(/Scaled the pool/)).not.toBeInTheDocument();
+    expect(screen.getByTestId("incident-ai-summary")).toBeInTheDocument();
   });
 });
 

@@ -12,6 +12,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
+import { toneButton } from "@/components/sre/incidents/incident-ui";
 import {
   createSreInvestigationReportSnapshot,
 } from "@/actions/sre-investigation-reports";
@@ -133,6 +134,9 @@ export function SreInvestigationPanel({
       <div className="flex items-center gap-2">
         <Button
           size="sm"
+          // A repeat run is a secondary AI action; the first run stays the primary button.
+          variant={latestInvestigation ? "outline" : "default"}
+          className={latestInvestigation ? toneButton("violet") : undefined}
           onClick={() => runInvestigation()}
           disabled={investigationRunning || !investigationEnabled}
         >

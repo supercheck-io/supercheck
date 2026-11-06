@@ -154,7 +154,8 @@ export function IncidentAiSummaryCard({
         )}
         {headline ? (
           <div className="space-y-1.5">
-            {inconclusive && (
+            {/* The Inconclusive badge says the same when the run is rated. */}
+            {inconclusive && !rated && (
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 No root cause established
               </p>

@@ -115,6 +115,8 @@ export function SreIncidentDetailView({
       setTab(param === "investigation" || param === "evidence" || param === "brief" ? "investigation" : param === "postmortem" ? "postmortem" : "overview");
       const target = param ? FOCUS_FOR_LINK[param] : undefined;
       setFocus((current) => (target ? { target, n: (current?.n ?? 0) + 1 } : null));
+      // Same as changeTab: the tab starts at its top.
+      if (mainColumn.current) mainColumn.current.scrollTop = 0;
     };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
@@ -260,12 +262,7 @@ export function SreIncidentDetailView({
               hidden={activeTab !== "overview"}
               className="mt-0 flex min-w-0 flex-col gap-4 focus-visible:ring-inset focus-visible:ring-offset-0 data-[state=inactive]:hidden"
             >
-              {incident.resolutionSummary && (
-                <p className="line-clamp-2 rounded-md border bg-muted/40 px-3 py-2 text-sm" data-testid="resolution-summary">
-                  <span className="font-medium">{open ? "Previous resolution: " : "Resolution: "}</span>
-                  {incident.resolutionSummary}
-                </p>
-              )}
+              {/* The resolution is in the Resolved activity row and the post-mortem; the Summary card is the one paragraph here. */}
               <IncidentAiSummaryCard
                 rootCauseSummary={incident.rootCauseSummary ?? detail.triageSummary ?? null}
                 confidenceScore={incident.confidenceScore}

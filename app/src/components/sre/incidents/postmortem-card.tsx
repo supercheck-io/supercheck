@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Download, Loader2, Plus, Sparkles, X } from "lucide-react";
+import { Activity, Clock, Download, FileText, GitBranch, ListChecks, Loader2, Plus, Search, Sparkles, X, type LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { generateSrePostmortem, saveSrePostmortem } from "@/actions/sre-postmortem";
@@ -20,12 +20,24 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { getSreIncidentDetailQueryKey } from "@/lib/sre/query-keys";
 import { POSTMORTEM_SECTIONS, postmortemToMarkdown } from "@/lib/sre/postmortem-format";
 import type { SrePostmortem } from "@/db/schema";
+import { IconTile, toneButton, type IconTone } from "@/components/sre/incidents/incident-ui";
 
 const TEXT_SECTIONS = POSTMORTEM_SECTIONS.filter(({ key }) => key !== "follow_ups");
+
+// Same section icons and tones as the rest of the incident page.
+const SECTION_VISUAL: Record<string, { icon: LucideIcon; tone: IconTone }> = {
+  summary: { icon: FileText, tone: "violet" },
+  impact: { icon: Activity, tone: "rose" },
+  timeline: { icon: Clock, tone: "blue" },
+  root_cause: { icon: Search, tone: "amber" },
+  contributing_factors: { icon: GitBranch, tone: "indigo" },
+  follow_ups: { icon: ListChecks, tone: "emerald" },
+};
 
 function parseFollowUps(value: string | undefined): string[] {
   return (value ?? "")
@@ -124,17 +136,21 @@ export function PostmortemCard({
           Blameless draft from the timeline and investigation. Review it before sharing.
         </p>
         <div className="flex shrink-0 flex-wrap gap-2">
-          {hasDraft && (
-            <Button type="button" variant="outline" size="sm" onClick={exportMarkdown}>
-              <Download className="h-4 w-4" aria-hidden="true" />
-              Export Markdown
-            </Button>
-          )}
           {canEdit && (
-            <Button type="button" variant={hasDraft ? "outline" : "default"} size="sm" onClick={hasDraft ? () => setConfirmReplace(true) : generate} disabled={pending}>
+            <Button type="button" variant={hasDraft ? "outline" : "default"} size="sm" className={hasDraft ? toneButton("violet") : undefined} onClick={hasDraft ? () => setConfirmReplace(true) : generate} disabled={pending}>
               {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" aria-hidden="true" />}
               {hasDraft ? "Regenerate draft" : "Generate post-mortem draft"}
             </Button>
+          )}
+          {hasDraft && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button type="button" variant="outline" size="icon" className={`h-8 w-8 ${toneButton("sky")}`} aria-label="Export Markdown" onClick={exportMarkdown}>
+                  <Download className="h-4 w-4" aria-hidden="true" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Export Markdown</TooltipContent>
+            </Tooltip>
           )}
         </div>
         <AlertDialog open={confirmReplace} onOpenChange={setConfirmReplace}>
@@ -169,7 +185,10 @@ export function PostmortemCard({
           >
             {TEXT_SECTIONS.map(({ key, label }) => (
               <div key={key} className="space-y-1.5">
-                <Label htmlFor={`postmortem-${key}`}>{label}</Label>
+                <Label htmlFor={`postmortem-${key}`} className="flex items-center gap-2">
+                  {SECTION_VISUAL[key] && <IconTile icon={SECTION_VISUAL[key].icon} tone={SECTION_VISUAL[key].tone} />}
+                  {label}
+                </Label>
                 <Textarea
                   id={`postmortem-${key}`}
                   value={sections[key] ?? ""}
@@ -181,7 +200,10 @@ export function PostmortemCard({
               </div>
             ))}
             <fieldset className="space-y-2">
-              <legend className="text-sm font-medium">Follow-ups</legend>
+              <legend className="flex items-center gap-2 text-sm font-medium">
+                <IconTile icon={SECTION_VISUAL.follow_ups!.icon} tone={SECTION_VISUAL.follow_ups!.tone} />
+                Follow-ups
+              </legend>
               {followUps.length === 0 && <p className="text-sm text-muted-foreground">No follow-ups yet.</p>}
               <ul className="space-y-2">
                 {followUps.map((item, index) => (
@@ -209,18 +231,23 @@ export function PostmortemCard({
                   </li>
                 ))}
               </ul>
-              {canEdit && followUps.length < 20 && (
-                <Button type="button" variant="outline" size="sm" onClick={() => setFollowUps((current) => [...current, ""])}>
-                  <Plus className="h-4 w-4" aria-hidden="true" />
-                  Add follow-up
-                </Button>
-              )}
             </fieldset>
             {canEdit && (
-              <Button type="submit" disabled={pending}>
-                {pending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Save post-mortem
-              </Button>
+              // Add follow-up on the left, Save on the right, on one line.
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                {followUps.length < 20 ? (
+                  <Button type="button" variant="outline" size="sm" className={toneButton("sky")} onClick={() => setFollowUps((current) => [...current, ""])}>
+                    <Plus className="h-4 w-4" aria-hidden="true" />
+                    Add follow-up
+                  </Button>
+                ) : (
+                  <span />
+                )}
+                <Button type="submit" disabled={pending}>
+                  {pending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Save post-mortem
+                </Button>
+              </div>
             )}
           </form>
         )}

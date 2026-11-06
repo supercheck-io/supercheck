@@ -9,7 +9,7 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 ### Changed
 
 - The incident page now uses **Overview**, **Investigation** and **Post-mortem** tabs instead of side sheets, with the open tab kept in the URL. Unsent notes, drafts and a brief that is still generating survive a tab switch. **Ask Copilot** opens the Copilot page scoped to the incident.
-- The incident summary card shows a short AI summary and says when it comes from the evidence brief or triage. Only a completed investigation shows a confidence rating.
+- The incident summary card shows a short AI summary and says when it comes from the evidence brief or triage. Only a completed investigation shows a confidence rating. Summaries end on a whole sentence, the Overview tab no longer repeats the resolution above the summary, and AI actions on the incident page use subtly coloured buttons.
 
 ### Fixed
 
