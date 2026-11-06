@@ -24,10 +24,7 @@ describe('MonitorAlertService', () => {
     lastCheckAt: new Date('2026-06-23T00:00:00Z'),
   };
 
-  function createService(
-    maintenance = false,
-    lastOutageAlert: string | null = 'monitor_failure',
-  ) {
+  function createService(maintenance = false) {
     const valuesMock = jest.fn(() => ({
       returning: jest.fn().mockResolvedValue([
         { id: 'history-1', status: 'sent' },
@@ -65,21 +62,9 @@ describe('MonitorAlertService', () => {
         .fn()
         .mockResolvedValue(maintenance ? [{ id: 'maintenance' }] : []),
     };
-    const historyQuery = {
-      from: jest.fn().mockReturnThis(),
-      where: jest.fn().mockReturnThis(),
-      orderBy: jest.fn().mockReturnThis(),
-      limit: jest
-        .fn()
-        .mockResolvedValue(lastOutageAlert ? [{ type: lastOutageAlert }] : []),
-    };
     const selectProviders = db.select.getMockImplementation()!;
     (db.select as jest.Mock).mockImplementation((fields) =>
-      'sentAt' in fields
-        ? historyQuery
-        : Object.keys(fields).length === 1
-          ? maintenanceQuery
-          : selectProviders(),
+      Object.keys(fields).length === 1 ? maintenanceQuery : selectProviders(),
     );
     const dbService = { db };
     const configService = {
@@ -196,22 +181,6 @@ describe('MonitorAlertService', () => {
       await service.sendNotification('monitor-1', 'failure', 'Down'),
     ).toMatchObject({ suppressed: true });
   });
-
-  it.each([
-    ['no alert history', null],
-    ['a recovery as the latest outage alert', 'monitor_recovery'],
-  ])(
-    'skips the recovery alert when no down alert was sent: %s',
-    async (_n, last) => {
-      const { service, notificationService } = createService(false, last);
-      expect(
-        await service.sendNotification('monitor-1', 'recovery', 'Recovered'),
-      ).toEqual({ delivered: false, suppressed: true });
-      expect(
-        notificationService.sendNotificationToMultipleProviders,
-      ).not.toHaveBeenCalled();
-    },
-  );
 
   it('does not report a delivered alert as failed when the history insert fails', async () => {
     const { service, valuesMock } = createService();

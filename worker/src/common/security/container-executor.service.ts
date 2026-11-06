@@ -446,9 +446,10 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     // SIGKILLed before the cleanup below runs. Ops must raise the grace period before raising
     // WORKER_SHUTDOWN_DRAIN_MS.
     const configured = Number(process.env.WORKER_SHUTDOWN_DRAIN_MS);
-    const drainMs = Number.isFinite(configured) && configured >= 0
-      ? Math.min(configured, 25_000)
-      : 20_000;
+    const drainMs =
+      Number.isFinite(configured) && configured >= 0
+        ? Math.min(configured, 25_000)
+        : 20_000;
     const drainDeadline = Date.now() + drainMs;
     while (this.runningJobs.size > 0 && Date.now() < drainDeadline) {
       await new Promise((resolve) => setTimeout(resolve, 1000));
