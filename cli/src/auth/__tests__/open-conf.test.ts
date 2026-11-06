@@ -1,20 +1,47 @@
-import { describe, it, expect } from '@jest/globals'
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
+import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals'
+import { mkdtempSync, writeFileSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { openConf } from '../open-conf.js'
+
+const warn = jest.fn<(message: string) => void>()
+jest.unstable_mockModule('../../utils/logger.js', () => ({ logger: { warn, debug: jest.fn(), info: jest.fn(), error: jest.fn() } }))
+const { openConf } = await import('../open-conf.js')
+const { authConfOptions } = await import('../store-options.js')
+const { createPendingStore } = await import('../pending-device.js')
+
+let cwd: string
+beforeEach(() => { cwd = mkdtempSync(join(tmpdir(), 'supercheck-conf-')); warn.mockClear() })
+afterEach(() => rmSync(cwd, { recursive: true, force: true }))
 
 describe('openConf', () => {
-  it('recovers from a corrupt config file instead of throwing', () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'supercheck-conf-'))
-    try {
-      writeFileSync(join(cwd, 'config.json'), '{not json')
-      const conf = openConf<{ token?: string }>({ projectName: 'supercheck-cli', cwd })
-      expect(conf.get('token')).toBeUndefined()
-      conf.set('token', 'x')
-      expect(conf.get('token')).toBe('x')
-    } finally {
-      rmSync(cwd, { recursive: true, force: true })
-    }
+  it('leaves a valid file written with the real auth store options untouched', () => {
+    const options = { ...authConfOptions, cwd }
+    openConf(options).set({ token: 'sck_live_' + 'a'.repeat(32), baseUrl: 'https://app.example.com' })
+    const before = readFileSync(join(cwd, 'config.json'))
+    const reopened = openConf(options)
+    expect(reopened.get('baseUrl')).toBe('https://app.example.com')
+    expect(readFileSync(join(cwd, 'config.json')).equals(before)).toBe(true)
+    expect(readdirSync(cwd)).toEqual(['config.json'])
+    expect(warn).not.toHaveBeenCalled()
+  })
+
+  it('moves a corrupt file aside, starts fresh and names the backup in the warning', () => {
+    writeFileSync(join(cwd, 'config.json'), '{not json')
+    const conf = openConf<{ token?: string }>({ ...authConfOptions, cwd })
+    expect(conf.get('token')).toBeUndefined()
+    const backup = readdirSync(cwd).find((name) => name.startsWith('config.json.corrupt-'))
+    expect(backup).toBeDefined()
+    expect(readFileSync(join(cwd, backup!), 'utf8')).toBe('{not json')
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(warn.mock.calls[0][0]).toContain(join(cwd, backup!))
+    expect(warn.mock.calls[0][0]).toContain('supercheck login')
+  })
+
+  it('also covers the pending device-login store', () => {
+    writeFileSync(join(cwd, 'device-login.json'), '\u0000garbage')
+    const store = createPendingStore({ cwd })
+    expect(store.load()).toBeNull()
+    expect(readdirSync(cwd).some((name) => name.startsWith('device-login.json.corrupt-'))).toBe(true)
+    expect(warn).toHaveBeenCalledTimes(1)
   })
 })
