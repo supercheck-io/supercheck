@@ -21,9 +21,11 @@ const logger = createLogger({ module: "monitor-status-api" }) as {
   error: (data: unknown, msg?: string) => void;
 };
 
-// One budget for everything done after the FOR UPDATE is taken (scheduler calls, then the update and commit). Kept well
-// under the worker's 5s lock_timeout on the same row.
+// The row lock is held by the worker-visible FOR UPDATE; the worker gives up after 5s. After it is taken, the scheduler
+// calls share one 2.5s budget, and each DB statement (the update, then the commit) is capped at 2s by the SET LOCAL
+// timeouts below, so the hold stays under 5s. The caps are per statement, not one shared budget.
 const RECONCILE_BUDGET_MS = 2500;
+const RECONCILE_DB_TIMEOUT = sql.raw("'2s'");
 // Bounds one scheduler call by what is left of the shared budget; the scheduler has no Redis handle here, so readiness is
 // left to the call itself. On timeout the signal aborts, so the abandoned call stops before it mutates the queue.
 async function withDeadline<T>(deadline: number, call: (signal: AbortSignal) => Promise<T>): Promise<T> {
@@ -48,6 +50,9 @@ async function withDeadline<T>(deadline: number, call: (signal: AbortSignal) => 
  */
 async function reconcileMonitorSchedule(id: string, projectId: string): Promise<void> {
   await db.transaction(async (tx) => {
+    // A slow DB must not hold the row lock past the worker's wait: a timeout rolls back and the route answers 503.
+    await tx.execute(sql`SET LOCAL lock_timeout = ${RECONCILE_DB_TIMEOUT}`);
+    await tx.execute(sql`SET LOCAL statement_timeout = ${RECONCILE_DB_TIMEOUT}`);
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`monitor-status:${id}`}))`);
     const [row] = await tx
       .select()

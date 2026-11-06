@@ -206,6 +206,34 @@ describe("schedule is reconciled to the committed state", () => {
     }
   });
 
+  it("a DB statement timeout while clearing scheduledJobId gives 503, and the timeouts are set first", async () => {
+    stored("paused");
+    const executed: string[] = [];
+    const committed = { ...base, status: "paused", enabled: false, scheduledJobId: "old" };
+    let n = 0;
+    (db.transaction as jest.Mock).mockImplementation(async (cb: (t: unknown) => unknown) =>
+      cb({
+        execute: jest.fn(async (q: { queryChunks: unknown[] }) => { executed.push(JSON.stringify(q.queryChunks)); }),
+        select: () => ({ from: () => ({ where: () => ({ for: async (mode: string) => (mode === "share" ? [{ id: "p" }] : [committed]) }) }) }),
+        update: () => ({
+          set: () => ({
+            where: () => {
+              // First update is the status write; the second is the reconcile's scheduledJobId clear.
+              if (++n === 2) return Promise.reject(Object.assign(new Error("canceling statement due to statement timeout"), { code: "57014" }));
+              return Object.assign(Promise.resolve(), { returning: async () => [{ ...base, status: "paused" }] });
+            },
+          }),
+        }),
+      }),
+    );
+    const response = await patch("paused");
+    expect(response.status).toBe(503);
+    const reconcileStart = executed.findIndex((q) => q.includes("lock_timeout"));
+    expect(executed[reconcileStart]).toContain("2s");
+    expect(executed[reconcileStart + 1]).toContain("statement_timeout");
+    expect(executed[reconcileStart + 2]).toContain("pg_advisory_xact_lock");
+  });
+
   it("the paused path's two scheduler calls share one budget", async () => {
     stored("paused");
     useDb({ ...base, status: "paused" }, { ...base, status: "paused", enabled: false, scheduledJobId: "old" });
