@@ -3,6 +3,7 @@ import { parseIntStrict } from '../utils/number.js'
 import { Command } from 'commander'
 import { createAuthenticatedClient } from '../api/authenticated-client.js'
 import { logger } from '../utils/logger.js'
+import { redactText } from '../utils/redact.js'
 import { getOutputFormat, output, outputDetail, outputMutation, outputPagination } from '../output/formatter.js'
 import { CLIError, ExitCode } from '../utils/errors.js'
 import type { PaginatedResponse } from '../api/client.js'
@@ -99,13 +100,13 @@ runCommand
     await getSse(`/api/runs/${id}/stream`, ({ event, data }) => {
       const record = typeof data === 'object' && data !== null ? data as Record<string, unknown> : {}
       if (json) logger.output(JSON.stringify({ event, data }))
-      else if (getOutputFormat() === 'table' && event === 'console' && typeof record.line === 'string') process.stdout.write(record.line)
+      else if (getOutputFormat() === 'table' && event === 'console' && typeof record.line === 'string') process.stdout.write(redactText(record.line))
       else if (event === 'status') logger.info(`Status: ${String(record.status ?? 'unknown')}`)
       if (event === 'complete') {
-        if (['failed', 'error', 'cancelled', 'canceled', 'blocked', 'not_found'].includes(String(record.status))) {
+        if (!['passed', 'completed'].includes(String(record.status))) {
           throw new CLIError(`Run ended with status: ${String(record.status)}`, ExitCode.GeneralError)
         }
-        if (!json) logger.success(`Run complete: ${String(record.status ?? 'done')}`)
+        if (!json) logger.success(`Run complete: ${String(record.status)}`)
         return false
       }
     }, { idleTimeoutMs: Math.max(Number(options.idleTimeout) || 60, 10) * 1000, isTerminal: ({ event }) => event === 'complete' })

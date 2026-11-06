@@ -636,13 +636,11 @@ describe('read-only and operational commands', () => {
       expect(mockValidateScripts).not.toHaveBeenCalled()
     })
 
-    it('warns instead of failing when the project has no local tests', async () => {
+    it('fails with a config error when the project has nothing to validate', async () => {
       mockLoadConfig.mockResolvedValueOnce({ config, configPath: '/repo/supercheck.config.ts' })
       mockBuildLocalResources.mockReturnValueOnce([])
 
-      await validateCommand.parseAsync(['node', 'validate'])
-
-      expect(mockWarn).toHaveBeenCalledWith('No local tests found to validate.')
+      await expect(validateCommand.parseAsync(['node', 'validate'])).rejects.toMatchObject({ exitCode: ExitCode.ConfigError })
       expect(mockValidateScripts).not.toHaveBeenCalled()
     })
 

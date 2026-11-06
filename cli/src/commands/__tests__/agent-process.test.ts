@@ -376,6 +376,9 @@ describe('CLI agent workflows through the real entrypoint', () => {
     expect(result.status).toBe(3)
     expect(JSON.parse(result.stderr).error).toContain('Cannot read local test')
     expect(read().requests).toEqual([])
+    const none = run('test', 'run', '--offline', '--all')
+    expect(none.status).toBe(3)
+    expect(JSON.parse(none.stderr).error).toContain('No local tests found')
   })
 
   it('ignores credentials in a repository .env and still never executes broken project config for diagnostics', () => {

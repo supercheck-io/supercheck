@@ -44,6 +44,8 @@ export const validateCommand = new Command('validate')
     }
 
     if (tests.length === 0) {
+      // Jobs/status pages alone were still checked structurally above; an empty project validated nothing.
+      if (localResources.length === 0) throw new CLIError('No local tests or resources found to validate. Check tests.*.testMatch in supercheck.config.ts.', ExitCode.ConfigError)
       logger.warn('No local tests found to validate.')
       return
     }

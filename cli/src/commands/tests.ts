@@ -223,7 +223,7 @@ testCommand
       () => client.get<Record<string, unknown>>(`/api/tests/${id}`, params),
     )
     outputDetail(data)
-    if (options.includeScript && getOutputFormat() === 'table' && typeof data.script === 'string') logger.output(decodeStoredTestScript(data.script) ?? '')
+    if (options.includeScript && getOutputFormat() === 'table' && typeof data.script === 'string') logger.output(decodeStoredTestScript(data.script) ?? '', { redact: false })
   })
 
 testCommand
@@ -414,8 +414,7 @@ testCommand
     })
 
     if (localTests.length === 0) {
-      logger.warn('No local tests found to run.')
-      return
+      throw new CLIError('No local tests found to run. Check --file/--all and tests.*.testMatch in supercheck.config.ts.', ExitCode.ConfigError)
     }
 
     if (!options.offline) await validateLocalTests(createAuthenticatedClient(), localTests)
@@ -543,6 +542,11 @@ testCommand
     throw new CLIError(`Script validation failed: ${result?.error ?? 'Unknown error'}`, ExitCode.ConfigError)
   })
 
+export const isTerminalTestStatus = ({ data }: { data: unknown }): boolean => {
+  const record = typeof data === 'object' && data !== null ? data as Record<string, unknown> : {}
+  return ['passed', 'failed', 'blocked', 'error'].includes(String(record.derivedStatus ?? record.status))
+}
+
 testCommand
   .command('status <id>')
   .description('Stream live status events for a test')
@@ -556,7 +560,11 @@ testCommand
       if (['failed', 'error', 'blocked'].includes(status)) {
         throw new CLIError(String(record.errorDetails ?? `Test ended with status: ${status}`), ExitCode.GeneralError)
       }
-    }, Math.max(Number(options.idleTimeout) || 60, 10) * 1000)
+      if (status === 'passed') return false
+    }, {
+      idleTimeoutMs: Math.max(Number(options.idleTimeout) || 60, 10) * 1000,
+      isTerminal: isTerminalTestStatus,
+    })
   })
 
 testCommand.command('execute <id>')

@@ -493,12 +493,44 @@ describe('AI SRE CLI Commands', () => {
       await expect(runCommand.parseAsync(['node', 'run', 'stream', 'run-1'])).rejects.toMatchObject({ exitCode: 1 })
       expect(mockSuccess).not.toHaveBeenCalled()
     })
+    it('run stream does not treat a queued complete event as success', async () => {
+      mockGetSse.mockImplementationOnce(async (_path: unknown, callback: unknown) => {
+        (callback as (event: { event: string; data: unknown }) => void)({ event: 'complete', data: { status: 'queued' } })
+      })
+      await expect(runCommand.parseAsync(['node', 'run', 'stream', 'run-1'])).rejects.toMatchObject({ exitCode: 1 })
+      expect(mockSuccess).not.toHaveBeenCalled()
+    })
+    it('run stream redacts CLI tokens in console lines', async () => {
+      const write = jest.spyOn(process.stdout, 'write').mockImplementation(() => true)
+      const token = `sck_live_${'a'.repeat(32)}`
+      mockGetSse.mockImplementationOnce(async (_path: unknown, callback: unknown) => {
+        (callback as (event: { event: string; data: unknown }) => void)({ event: 'console', data: { line: `token ${token}\n` } })
+        ;(callback as (event: { event: string; data: unknown }) => void)({ event: 'complete', data: { status: 'passed' } })
+      })
+      await runCommand.parseAsync(['node', 'run', 'stream', 'run-1'])
+      expect(write.mock.calls.map((call) => call[0]).join('')).not.toContain(token)
+      write.mockRestore()
+    })
+    it('test status requires a terminal event before the stream may end', async () => {
+      mockGetSse.mockResolvedValueOnce(undefined)
+      await testCommand.parseAsync(['node', 'test', 'status', 'test-1'])
+      const options = mockGetSse.mock.calls.at(-1)?.[2] as { isTerminal: (event: { data: unknown }) => boolean }
+      expect(options.isTerminal({ data: { derivedStatus: 'passed' } })).toBe(true)
+      expect(options.isTerminal({ data: { status: 'error' } })).toBe(true)
+      expect(options.isTerminal({ data: { derivedStatus: 'running' } })).toBe(false)
+    })
     it('test status uses derived report status when queue status says completed', async () => {
       mockGetSse.mockImplementationOnce(async (_path, callback) => {
         (callback as (event: { data: unknown }) => void)({ data: { status: 'completed', derivedStatus: 'failed' } })
       })
       await expect(testCommand.parseAsync(['node', 'test', 'status', 'test-1'])).rejects.toMatchObject({ exitCode: 1 })
     })
+  })
+
+  it('test get --include-script prints the script unredacted so redirected files stay intact', async () => {
+    mockGet.mockResolvedValueOnce({ data: { id: 't1', script: Buffer.from('const k = "x"').toString('base64') } })
+    await testCommand.parseAsync(['node', 'test', 'get', 't1', '--include-script'])
+    expect(mockOutput).toHaveBeenCalledWith('const k = "x"', { redact: false })
   })
 
   describe('test tag commands', () => {
