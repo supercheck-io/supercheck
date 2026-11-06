@@ -11,6 +11,8 @@ jest.mock("@/lib/rbac/middleware", () => ({
 }));
 jest.mock("@/lib/auth-context", () => ({ requireUserAuthContext: jest.fn(), isAuthError: jest.fn() }));
 jest.mock("@/utils/db", () => ({ db: { select: jest.fn(), transaction: jest.fn() } }));
+jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
+import { logAuditEvent } from "@/lib/audit-logger";
 import { DELETE, GET, POST, PUT } from "./route";
 import { db } from "@/utils/db";
 import { hasPermissionForUser } from "@/lib/rbac/middleware";
@@ -19,13 +21,13 @@ const lock = jest.fn();
 const insert = jest.fn();
 const tx = { select: jest.fn(), insert };
 const rows = (data: unknown[]) => ({ from: () => ({ where: () => ({ limit: async () => data, for: lock }) }) });
-const post = () => POST(new NextRequest("http://localhost/api/projects/93ce4a2e-7846-5b60-b753-1ab3563f0fce/members", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ userId: "target-user", role: "project_admin" }) }), { params: Promise.resolve({ id: "93ce4a2e-7846-5b60-b753-1ab3563f0fce" }) });
+const post = () => POST(new NextRequest("http://localhost/api/projects/93ce4a2e-7846-5b60-b753-1ab3563f0fce/members", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ userId: "6f0c2b1e-1b7d-4c3a-9d2e-5a4b3c2d1e0f", role: "project_admin" }) }), { params: Promise.resolve({ id: "93ce4a2e-7846-5b60-b753-1ab3563f0fce" }) });
 beforeEach(() => {
   jest.clearAllMocks();
   mockStanding.value = true;
   (requireUserAuthContext as jest.Mock).mockResolvedValue({ userId: "admin-1" });
   (hasPermissionForUser as jest.Mock).mockResolvedValue(true);
-  (db.select as jest.Mock).mockReturnValueOnce(rows([{ organizationId: "org-1" }])).mockReturnValueOnce(rows([{ id: "target-user" }]));
+  (db.select as jest.Mock).mockReturnValueOnce(rows([{ organizationId: "org-1" }])).mockReturnValueOnce(rows([{ id: "6f0c2b1e-1b7d-4c3a-9d2e-5a4b3c2d1e0f" }]));
   (db.transaction as jest.Mock).mockImplementation(async fn => fn(tx));
   tx.select.mockReturnValue(rows([]));
   lock.mockResolvedValue([]);
@@ -59,11 +61,22 @@ it("inserts only while holding a valid organization membership lock", async () =
   insert.mockReturnValue({ values: () => ({ returning: async () => [{ id: "assignment-1" }] }) });
   expect((await post()).status).toBe(201);
   expect(insert).toHaveBeenCalledTimes(1);
+  expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({
+    userId: "admin-1", organizationId: "org-1", action: "project_member_added",
+    metadata: { targetUserId: "6f0c2b1e-1b7d-4c3a-9d2e-5a4b3c2d1e0f", role: "project_admin" },
+  }));
+});
+
+it("rejects a malformed user id before any user lookup", async () => {
+  const res = await POST(new NextRequest("http://localhost/api/projects/93ce4a2e-7846-5b60-b753-1ab3563f0fce/members", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ userId: "not-a-uuid" }) }), { params: Promise.resolve({ id: "93ce4a2e-7846-5b60-b753-1ab3563f0fce" }) });
+  expect(res.status).toBe(400);
+  expect(db.select).toHaveBeenCalledTimes(1); // the project lookup only
+  expect(db.transaction).not.toHaveBeenCalled();
 });
 
 it.each([["POST", POST], ["PUT", PUT], ["DELETE", DELETE]] as const)("%s is refused for project-scoped CLI auth", async (method, handler) => {
   (requireUserAuthContext as jest.Mock).mockResolvedValue({ userId: "admin-1", isCliAuth: true });
-  const res = await handler(new NextRequest("http://localhost/api/projects/93ce4a2e-7846-5b60-b753-1ab3563f0fce/members?userId=target-user", { method, headers: { "content-type": "application/json" }, body: method === "DELETE" ? undefined : JSON.stringify({ userId: "target-user", role: "project_admin" }) }), { params: Promise.resolve({ id: "93ce4a2e-7846-5b60-b753-1ab3563f0fce" }) });
+  const res = await handler(new NextRequest("http://localhost/api/projects/93ce4a2e-7846-5b60-b753-1ab3563f0fce/members?userId=6f0c2b1e-1b7d-4c3a-9d2e-5a4b3c2d1e0f", { method, headers: { "content-type": "application/json" }, body: method === "DELETE" ? undefined : JSON.stringify({ userId: "6f0c2b1e-1b7d-4c3a-9d2e-5a4b3c2d1e0f", role: "project_admin" }) }), { params: Promise.resolve({ id: "93ce4a2e-7846-5b60-b753-1ab3563f0fce" }) });
   expect(res.status).toBe(403);
   expect(db.transaction).not.toHaveBeenCalled();
 });
@@ -77,13 +90,13 @@ it("refuses a project role above the member's organization role instead of silen
 });
 
 describe("denied callers", () => {
-  const url = "http://localhost/api/projects/93ce4a2e-7846-5b60-b753-1ab3563f0fce/members?userId=target-user";
+  const url = "http://localhost/api/projects/93ce4a2e-7846-5b60-b753-1ab3563f0fce/members?userId=6f0c2b1e-1b7d-4c3a-9d2e-5a4b3c2d1e0f";
   const ctx = { params: Promise.resolve({ id: "93ce4a2e-7846-5b60-b753-1ab3563f0fce" }) };
   const json = { "content-type": "application/json" };
   const calls = {
     GET: () => GET(new NextRequest(url), ctx),
     POST: () => post(),
-    PUT: () => PUT(new NextRequest(url, { method: "PUT", headers: json, body: JSON.stringify({ userId: "target-user", role: "project_viewer" }) }), ctx),
+    PUT: () => PUT(new NextRequest(url, { method: "PUT", headers: json, body: JSON.stringify({ userId: "6f0c2b1e-1b7d-4c3a-9d2e-5a4b3c2d1e0f", role: "project_viewer" }) }), ctx),
     DELETE: () => DELETE(new NextRequest(url, { method: "DELETE" }), ctx),
   } as const;
   beforeEach(() => (db.select as jest.Mock).mockReset().mockReturnValueOnce(rows([{ organizationId: "org-1" }])));

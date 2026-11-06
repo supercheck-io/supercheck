@@ -1,3 +1,4 @@
+import { isUuid } from '@/lib/uuid';
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { jobs, runs } from "@/db/schema";
@@ -37,6 +38,9 @@ export async function GET(request: NextRequest) {
 
     const searchParams = request.nextUrl.searchParams;
     const jobId = searchParams.get('jobId');
+    if (jobId && !isUuid(jobId)) {
+      return NextResponse.json({ error: 'Invalid jobId' }, { status: 400 });
+    }
     const period = parseInt(searchParams.get('period') || '30', 10);
 
     // Validate period

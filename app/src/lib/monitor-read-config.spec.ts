@@ -1,4 +1,4 @@
-import { monitorConfigForRead, monitorTargetForRead, monitorResultDetailsForRead } from './monitor-read-config';
+import { monitorConfigForRead, monitorTargetForRead, monitorResultDetailsForRead, monitorResultForRead } from './monitor-read-config';
 import type { MonitorConfig } from '@/db/schema';
 
 const config: MonitorConfig = {
@@ -135,5 +135,22 @@ describe('monitor result detail reads', () => {
     expect(monitorResultDetailsForRead(plain)).toBe(plain);
     expect(monitorResultDetailsForRead(null)).toBeNull();
     expect(monitorResultDetailsForRead(undefined)).toBeUndefined();
+  });
+});
+
+describe('monitorResultForRead', () => {
+  const stored = 'http://rustfs:9000/test-results/run-1/report/index.html';
+
+  it('replaces stored report URLs with the app report route', () => {
+    const result = monitorResultForRead({ details: { reportUrl: stored, errorMessage: 'x' }, testExecutionId: 'run-1', testReportS3Url: stored });
+    expect(result.testReportS3Url).toBe('/api/test-results/run-1/report/index.html');
+    expect(result.details).toEqual({ reportUrl: '/api/test-results/run-1/report/index.html', errorMessage: 'x' });
+  });
+
+  it('drops report URLs it cannot route and leaves details without one alone', () => {
+    const result = monitorResultForRead({ details: { reportUrl: stored }, testExecutionId: null, testReportS3Url: stored });
+    expect(JSON.stringify(result)).not.toContain('rustfs');
+    const plain = { details: { statusCode: 200 }, testExecutionId: null, testReportS3Url: null };
+    expect(monitorResultForRead(plain).details).toBe(plain.details);
   });
 });

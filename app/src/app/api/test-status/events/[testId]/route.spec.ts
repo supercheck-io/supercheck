@@ -194,6 +194,7 @@ describe("test-status event filtering", () => {
       const reconciled = decoder.decode((await reader!.read()).value);
       expect(reconciled).toContain('"derivedStatus":"passed"');
       expect(reconciled).toContain('"reportStatus":"passed"');
+      expect(reconciled).not.toContain("example.com");
 
       abortController.abort();
       await jest.runOnlyPendingTimersAsync();

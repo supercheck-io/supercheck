@@ -129,3 +129,46 @@ describe("redactConnectorText connection strings", () => {
     }
   });
 });
+
+describe("redactConnectorText secret shapes", () => {
+  it.each([
+    "DB_PASSWORD=hunter2xyz",
+    "AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMIbPxRfiCYEXAMPLEKEY",
+    "SECRET_KEY=hunter2xyz",
+    "client_secret=hunter2xyz",
+    '{"clientSecret":"hunter2xyz","db_password":"hunter2xyz","accessToken":"hunter2xyz"}',
+    '{"credentials":"hunter2xyz","Authorization":"hunter2xyz"}',
+    "GET http://rustfs:9000/b/trace.zip?X-Amz-Credential=hunter2xyz&X-Amz-Signature=hunter2xyz",
+    "https://x.example.com/f?sig=hunter2xyz",
+    "key AIzaSyA-hunter2xyz0123456789abcdefghijk",
+    "https://hooks.slack.com/services/T000/B000/hunter2xyz",
+    "push with github_pat_hunter2xyz0123456789abcdef",
+    "token glpat-hunter2xyz0123456789ab",
+    "dsn sntrys_hunter2xyz0123456789abcdef",
+    "charge sk_live_hunter2xyz0123456789",
+    "Authorization: Basic aHVudGVyMnh5ejpodW50ZXIyeHl6",
+    "clientSecret=hunter2xyz private_key=hunter2xyz DB_PASS=hunter2xyz",
+    "key AIzaSy0123456789abcdefghijklmnopqrstuv-",
+  ])("redacts %s", (input) => {
+    expect(redactConnectorText(input)).not.toMatch(/hunter2xyz|AIzaSy|aHVudGVy|wJalr/);
+  });
+
+  it.each([
+    ["AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMIbPxRfiCYEXAMPLEKEY done", "AWS_SECRET_ACCESS_KEY=[REDACTED] done"],
+    ['DB_PASSWORD="hunter2 xyz" done', "DB_PASSWORD=[REDACTED] done"],
+    ["password: 'p@ss;w,rd' done", "password=[REDACTED] done"],
+    ["clientSecret=hunter2xyz done", "clientSecret=[REDACTED] done"],
+  ])("redacts the whole value: %s", (input, expected) => {
+    expect(redactConnectorText(input)).toBe(expected);
+  });
+
+  it("keeps JSON fields whose names only contain a secret word", () => {
+    const json = '{"tokenizer":"gpt","token_count":"5","secret_name":"db"}';
+    expect(redactConnectorText(json)).toBe(json);
+  });
+
+  it("leaves names that only contain a secret word as a substring alone", () => {
+    const text = "tokenizer=fast monkey=banana bypass=on token_count: 5 password_policy: strong secret_name: foo";
+    expect(redactConnectorText(text)).toBe(text);
+  });
+});
