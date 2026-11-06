@@ -76,7 +76,8 @@ async function streamSse(
     if (!response) throw new CLIError('Stream connection failed', ExitCode.ApiError)
     phase = 'Subscribed — waiting for output'
     if (!response.ok) {
-      const details = (await response.text()).slice(0, 4096)
+      // Parse the whole (bounded) body: cutting JSON at an arbitrary length would make a valid error body look like non-JSON.
+      const details = (await response.text()).slice(0, 64 * 1024)
       let parsed: unknown
       try { parsed = JSON.parse(details) } catch { /* A non-JSON body (e.g. a proxy's HTML page) is not echoed. */ }
       throw new ApiRequestError(`Stream request failed (${response.status})`, response.status, parsed)

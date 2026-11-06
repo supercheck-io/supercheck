@@ -48,6 +48,13 @@ describe('postSse', () => {
     expect(error.responseBody).toBeUndefined()
   })
 
+  it('keeps a JSON error body larger than 4 KiB as the response body', async () => {
+    const body = { error: 'denied', detail: 'x'.repeat(6000) }
+    jest.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify(body), { status: 403 }))
+    const error = await postSse('/api/sre/chat', {}, () => undefined).catch((e) => e)
+    expect(error.responseBody).toEqual(body)
+  })
+
   it.each(['/api/runs/..\\tests/stream', '/api/runs/.\t./x', '/api/runs/x#frag', '/api/runs/..%2ftests/x', '/api/runs/%2e%2e/stream'])('rejects unsafe stream path %j before any request', async (path) => {
     const fetchMock = jest.spyOn(globalThis, 'fetch')
     await expect(postSse(path, {}, () => undefined)).rejects.toThrow('Invalid resource path')
