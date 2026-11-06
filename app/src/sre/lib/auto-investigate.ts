@@ -9,13 +9,12 @@ import { sreDailyTokenLimitResponse } from "@/lib/sre/sre-daily-token-limit";
 import { isSreEnabled } from "@/sre/lib/feature-gates";
 import { completeSreIncidentInvestigation, startSreIncidentInvestigation } from "@/sre/lib/investigation-runner";
 import { STALE_RUN_AFTER_MS, failStaleSreInvestigationRunsForIncident } from "@/sre/lib/stale-run-recovery";
+import { MAX_AUTO_RUNNING_PER_ORG } from "@/sre/lib/run-insert";
 import { runSreIncidentTriage } from "@/sre/lib/triage-runner";
 import { db } from "@/utils/db";
 
-// Failed automatic attempts per incident before it stops retrying; a person can still start one.
+// Failed automatic attempts (manual runs do not count) per incident before it stops retrying; a person can still start one.
 const MAX_AUTO_ATTEMPTS = 3;
-// An outage opening many incidents must not start that many LLM runs at once and overshoot the daily token limit.
-const MAX_RUNNING_PER_ORG = 3;
 
 const logger = createLogger({ module: "sre-auto-investigate" }) as {
   error: (data: unknown, message?: string) => void;
@@ -90,7 +89,7 @@ function autoAgentType(severity: string) {
 
 async function blockingRunReason(executor: Executor, input: AutoInvestigateInput, agentType: "triage" | "investigation") {
   const runs = await executor
-    .select({ status: sreInvestigationRuns.status })
+    .select({ status: sreInvestigationRuns.status, origin: sreInvestigationRuns.origin })
     .from(sreInvestigationRuns)
     .where(
       and(
@@ -101,7 +100,7 @@ async function blockingRunReason(executor: Executor, input: AutoInvestigateInput
       ),
     );
   if (runs.some((run) => run.status === "running" || run.status === "completed")) return "already_investigated" as const;
-  if (runs.length >= MAX_AUTO_ATTEMPTS) return "retry_limit" as const;
+  if (runs.filter((run) => run.origin === "auto").length >= MAX_AUTO_ATTEMPTS) return "retry_limit" as const;
   // Runs past the stale age are dead, not in flight, so they do not hold a slot.
   const [{ running }] = await executor
     .select({ running: count() })
@@ -113,7 +112,7 @@ async function blockingRunReason(executor: Executor, input: AutoInvestigateInput
         gt(sreInvestigationRuns.startedAt, new Date(Date.now() - STALE_RUN_AFTER_MS)),
       ),
     );
-  if (running >= MAX_RUNNING_PER_ORG) {
+  if (running >= MAX_AUTO_RUNNING_PER_ORG) {
     logger.error({ organizationId: input.organizationId, incidentId: input.incidentId }, "Automatic investigation skipped: organization concurrency limit (start it by hand once a run finishes)");
     return "org_concurrency_limit" as const;
   }
@@ -134,13 +133,14 @@ async function startOnce(
     if (await sreDailyTokenLimitResponse(input.organizationId)) return { handled: false, reason: "daily_limit" };
 
     // The lock is gone by now: re-check just before starting so a run another trigger finished meanwhile
-    // is not repeated. Narrows the race (a start between this read and the runner's insert remains).
+    // is not repeated. The runner's insert is the final guard: a unique index stops a second automatic run of the
+    // incident, and the per-organization cap is counted under a lock there.
     const blocked = await blockingRunReason(db, input, autoAgentType(severity));
     if (blocked) return { handled: false, reason: blocked };
 
     if (severity === "sev3" || severity === "sev4") {
-      const triage = await runSreIncidentTriage(input);
-      if (!triage.success && triage.status === 409) return { handled: false, reason: "already_running" };
+      const triage = await runSreIncidentTriage({ ...input, origin: "auto" });
+      if (!triage.success && triage.status === 409) return { handled: false, reason: triage.reason ?? "already_running" };
       return { handled: triage.success, reason: triage.success ? undefined : "triage_refused" };
     }
 
@@ -149,8 +149,8 @@ async function startOnce(
     } catch {
       return { handled: false, reason: "billing" };
     }
-    const started = await startSreIncidentInvestigation({ ...input, enableLiveConnectors: false });
-    if (!started.success) return { handled: false, reason: started.status === 409 ? "already_running" : "not_started" };
+    const started = await startSreIncidentInvestigation({ ...input, enableLiveConnectors: false, origin: "auto" });
+    if (!started.success) return { handled: false, reason: started.status === 409 ? (started.reason ?? "already_running") : "not_started" };
     // Settles in the background, like the investigate API; billing is taken only on completion.
     void completeSreIncidentInvestigation(started.investigationRunId, started.incident, {
       ...input,

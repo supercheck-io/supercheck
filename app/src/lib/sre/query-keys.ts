@@ -45,8 +45,10 @@ export function getSreServiceDetailQueryKey(
   return [...SRE_QUERY_KEYS.serviceDetails, projectId, serviceId] as const;
 }
 
-export function getSreCopilotHistoriesQueryKey(projectId: string | null) {
-  return [...SRE_QUERY_KEYS.copilotHistories, projectId] as const;
+export function getSreCopilotHistoriesQueryKey(projectId: string | null, incidentId?: string | null) {
+  return incidentId
+    ? ([...SRE_QUERY_KEYS.copilotHistories, projectId, incidentId] as const)
+    : ([...SRE_QUERY_KEYS.copilotHistories, projectId] as const);
 }
 
 export function getSreAdminQueryKey(
