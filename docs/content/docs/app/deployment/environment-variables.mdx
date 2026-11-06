@@ -1,0 +1,288 @@
+---
+title: Environment Variables
+description: Every supported Supercheck environment variable, grouped by purpose, with its default
+icon: Settings
+---
+
+Reference for the settings an operator can change. The common ones are on [Self-Hosted](/docs/app/deployment/self-hosted#optional-configuration); this page lists them all.
+
+How to apply a change:
+
+- **Docker Compose:** edit `.env` in `deploy/docker`, then run `sudo docker compose up -d --force-recreate app worker`. The bundled Compose files forward the common settings; to set any other variable, add it to the `environment:` block of the `app` or `worker` service.
+- **Where it applies:** **App** is the web app, **Worker** is the execution worker, **Both** means set the same value on each. Values that must match are called out.
+- Defaults are used when a variable is unset or empty. Invalid numbers fall back to the default unless noted.
+- Variables not listed here are internal (set by the installer, the worker or CI) and not supported as settings.
+
+The annotated templates are [`app/.env.example`](https://github.com/supercheck-io/supercheck/blob/main/app/.env.example) and [`worker/.env.example`](https://github.com/supercheck-io/supercheck/blob/main/worker/.env.example). Compose-only variables (ports, bind addresses, `COMPOSE_PROFILES`, `WORKER_REPLICAS`) are in the [Docker environment reference](https://github.com/supercheck-io/supercheck/blob/main/deploy/docker/README.md#environment-variables).
+
+## Core
+
+| Variable | Applies to | Default | Purpose |
+|----------|-----------|---------|---------|
+| `SELF_HOSTED` | Both | `true` in the bundled stack | Self-hosted mode: no plan limits. Leave `true` |
+| `BETTER_AUTH_SECRET` | Both | none, required | Session signing secret (`openssl rand -hex 32`) |
+| `BETTER_AUTH_URL` | App | none, required | Public URL of the app. Must be the public HTTPS URL when MCP or device login is on |
+| `NEXT_PUBLIC_APP_URL` | App | `http://localhost:3000` | Browser-reachable URL, embedded at build time |
+| `APP_URL` | Both | `http://localhost:3000` | Runtime app URL for middleware, emails and worker callbacks |
+| `TRUSTED_ORIGINS` | App | empty | Extra trusted origins for CORS and CSRF, comma-separated |
+| `CORS_ALLOWED_ORIGINS` | App | empty | Extra origins that browser integrations may call the API from. Supports `https://*.example.com` |
+| `SECRET_ENCRYPTION_KEY` | Both | none, required | Encrypts stored secrets (variables, connector credentials). Must be identical on the app and every worker. Changing it makes existing secrets unreadable |
+| `DEFAULT_PROJECT_NAME` | App | `Default Project` | Name of the project created for a new organization |
+| `SUPER_ADMIN_EMAIL` | App | none | Used by `scripts/bootstrap-admin.js` when no email argument is given |
+| `SUPERCHECK_VERSION` | Compose, Worker | the release in the checkout | Image tag Compose pulls. The worker reports it as its version |
+| `SHOW_COMMUNITY_LINKS` | App | `false` | `true` shows the community link in the header |
+| `NEXT_PUBLIC_SOURCE_URL` | App | the upstream repository | Build-time link to the corresponding source. Forks and modified builds must point it at their own source |
+| `DEMO_MODE` | App | `false` | `true` flags the instance as a demo to the UI |
+| `LOG_LEVEL` | App | `info` in production, `debug` in development | `trace`, `debug`, `info`, `warn`, `error` or `fatal` |
+| `LOG_DB_QUERIES` | App | `false` | `true` logs SQL, in development only |
+
+## Database
+
+| Variable | Applies to | Default | Purpose |
+|----------|-----------|---------|---------|
+| `DATABASE_URL` | Both | none, required | PostgreSQL connection string. Add `sslmode=require` (or `verify-full`) for TLS |
+| `DB_POOL_MAX` | Both | `30` app, `10` worker | Maximum pooled connections. The app needs at least `2` |
+| `DB_IDLE_TIMEOUT` | Both | `30` | Seconds before an idle connection closes |
+| `DB_CONNECT_TIMEOUT` | Both | `10` | Seconds to wait for a connection |
+| `DB_MAX_LIFETIME` | Both | `1800` | Seconds before a connection is recycled |
+| `DB_PREPARE` | Worker | `true` in production, otherwise `false` | `false` disables prepared statements, needed behind transaction-mode poolers such as PgBouncer |
+| `DATABASE_SSL` | App scripts | `false` | `true` requires TLS in `bootstrap-admin.js` and `revoke-admin.js` |
+| `DB_MIGRATION_LOCK_TIMEOUT_MS` | App | `300000` | How long the migration runner waits for the migration lock |
+| `DB_DEFERRED_MIGRATION_TIMEOUT_MS` | App | `1800000` | Statement timeout for deferred (long-running) migration steps |
+| `DB_SKIP_ADMIN_OPERATIONS` | App | `false` when self-hosted, otherwise `true` | `true` skips migration steps that need a privileged database role (managed databases) |
+
+## Redis
+
+| Variable | Applies to | Default | Purpose |
+|----------|-----------|---------|---------|
+| `REDIS_HOST`, `REDIS_PORT` | Both | `localhost`, `6379` | Redis endpoint |
+| `REDIS_PASSWORD` | Both | none | Redis password |
+| `REDIS_USERNAME` | Worker | none | Redis ACL username |
+| `REDIS_TLS_ENABLED` | Both | `false` | `true` for managed Redis over TLS |
+| `REDIS_TLS_REJECT_UNAUTHORIZED` | Both | `true` | `false` accepts self-signed certificates. Not recommended |
+| `REDIS_SENTINELS` | Both | none | Comma-separated `host:port` Sentinel list. Setting it switches to Sentinel |
+| `REDIS_SENTINEL_MASTER` | Both | `mymaster` | Sentinel master name |
+| `REDIS_SENTINEL_PASSWORD` | Both | none | Sentinel password |
+
+## Object storage
+
+| Variable | Applies to | Default | Purpose |
+|----------|-----------|---------|---------|
+| `S3_ENDPOINT` | Both | none | S3-compatible endpoint (RustFS in the bundled stack) |
+| `AWS_REGION` | Both | `us-east-1` | Storage region |
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | Both | none | Storage credentials |
+| `S3_TEST_BUCKET_NAME` | Both | `playwright-test-artifacts` | Single test artifacts |
+| `S3_JOB_BUCKET_NAME` | Both | `playwright-job-artifacts` | Job artifacts |
+| `S3_MONITOR_BUCKET_NAME` | Both | `playwright-monitor-artifacts` | Synthetic monitor artifacts |
+| `S3_K6_TEST_BUCKET_NAME`, `S3_K6_JOB_BUCKET_NAME` | Both | `k6-test-artifacts`, `k6-job-artifacts` | k6 artifacts |
+| `S3_STATUS_BUCKET_NAME` | App | `status-page-artifacts` | Status page assets |
+| `S3_REQUIREMENTS_BUCKET_NAME` | App | `test-requirement-artifacts` | Requirement documents |
+| `S3_PROJECT_DATA_FILES_BUCKET_NAME` | App | `project-data-files` | Project data files |
+| `S3_SRE_ATTACHMENTS_BUCKET_NAME` | App | `sre-chat-attachments` | AI SRE attachment API (the Copilot UI does not upload files) |
+| `S3_OPERATION_TIMEOUT` | App | `10000` | Per-operation timeout in ms for cleanup jobs |
+| `S3_MAX_RETRIES` | App | `3` | Retries for cleanup operations |
+| `REPORT_ASSET_MAX_RETRIES` | App | `2` | Retries when a report asset is not stored yet |
+| `REPORT_ASSET_RETRY_DELAY_MS` | App | `250` | Delay between those retries |
+
+## Sign-in and access
+
+| Variable | Applies to | Default | Purpose |
+|----------|-----------|---------|---------|
+| `SIGNUP_ENABLED` | App | `true` | `false` disables open registration (invitations still work) |
+| `ALLOWED_EMAIL_DOMAINS` | App | empty | Comma-separated signup allowlist |
+| `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | App | none | Enables GitHub sign-in when both are set |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | App | none | Enables Google sign-in when both are set |
+| `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY` | App | none | Cloudflare Turnstile CAPTCHA on sign-in, sign-up and password reset. On when both are set |
+| `INVITE_RATE_LIMIT_MAX` | App | `10` | Invitations an administrator may create per hour |
+| `EXECUTION_RATE_LIMIT_PER_USER` | App | `30` | Manual runs per user per 60 seconds |
+| `EXECUTION_RATE_LIMIT_PER_ORGANIZATION` | App | `120` | Manual runs per organization per 60 seconds |
+| `TRUSTED_PROXY_HOPS` | App | `0` | Extra trusted reverse proxies in front of the app |
+| `TRUST_CF_CONNECTING_IP` | App | `false` | `true` only when the server is reachable solely through Cloudflare |
+| `REQUIRE_CLIENT_IP_FOR_SIGNIN` | App | `false` self-hosted, `true` cloud | Reject sign-in when no trustworthy client IP is available |
+| `DEVICE_AUTH_ENABLED` | App | `false` | Browser sign-in for `supercheck login`. Needs Redis and HTTPS (or localhost) |
+| `DEVICE_AUTH_CODE_SECRET` | App | `BETTER_AUTH_SECRET` | Separate secret for hashing device user codes |
+| `MCP_SERVER_ENABLED` | App | `false` | Remote [MCP](/docs/mcp) server and its OAuth sign-in |
+| `MCP_DYNAMIC_CLIENT_REGISTRATION` | App | `true` | `false` accepts only clients using a Client ID Metadata Document |
+| `MCP_ALLOWED_ORIGINS` | App | empty | Extra browser origins allowed to call `/api/mcp` (exact origins) |
+| `MCP_JWKS_URL` | App | `http://localhost:$PORT/api/auth/jwks` | Where the MCP server loads its token-signing keys. Override only if the app cannot reach itself |
+| `PORT` | App | `3000` | Port the app listens on. Also used to derive the default `MCP_JWKS_URL` |
+| `NOTIFICATION_CONFIG_FINGERPRINT_SECRET` | App | `BETTER_AUTH_SECRET` | Key that hashes secrets in CLI project config snapshots. Set it to rotate that hash independently |
+
+## Email
+
+| Variable | Applies to | Default | Purpose |
+|----------|-----------|---------|---------|
+| `SMTP_HOST` | Both | none | SMTP server. Email is disabled without it |
+| `SMTP_PORT` | Both | `587` | SMTP port |
+| `SMTP_SECURE` | Both | `false` | `true` for implicit TLS (usually port 465) |
+| `SMTP_USER`, `SMTP_PASSWORD` | Both | none | Set both or neither |
+| `SMTP_FROM_EMAIL` | Both | none | Sender address |
+| `SMTP_FROM_NAME`, `SMTP_REPLY_TO` | Both | none | Display name and Reply-To |
+| `SMTP_BLOCKED_RECIPIENT_DOMAINS` | Both | empty | Extra domains never emailed (subdomains included) |
+
+## AI and AI SRE
+
+| Variable | Applies to | Default | Purpose |
+|----------|-----------|---------|---------|
+| `AI_PROVIDER` | App | `openai` | `openai`, `azure`, `anthropic`, `gemini`, `google-vertex`, `bedrock`, `openrouter` or `deepseek` |
+| `AI_MODEL` | App | `gpt-6-luna` | Model ID for the selected provider |
+| `AI_TIMEOUT_MS` | App | `90000` | Request timeout (10000 to 120000) |
+| `AI_MAX_RETRIES` | App | `2` | Retries (1 to 5) |
+| `AI_TEMPERATURE` | App | `0.1` | Randomness (0 to 2) |
+| `OPENAI_API_KEY` | App | none | OpenAI |
+| `DEEPSEEK_API_KEY` | App | none | DeepSeek |
+| `ANTHROPIC_API_KEY` | App | none | Anthropic |
+| `GOOGLE_GENERATIVE_AI_API_KEY` | App | none | Google Gemini |
+| `GOOGLE_VERTEX_PROJECT`, `GOOGLE_VERTEX_LOCATION` | App | none | Google Vertex AI project, and region (read by the Vertex SDK) |
+| `OPENROUTER_API_KEY` | App | none | OpenRouter |
+| `AZURE_RESOURCE_NAME`, `AZURE_API_KEY`, `AZURE_OPENAI_DEPLOYMENT` | App | none | Azure OpenAI resource, key and deployment name |
+| `AZURE_USE_MANAGED_IDENTITY` | App | `false` | `true` uses Managed Identity instead of an API key |
+| `AZURE_INCLUDE_TEMPERATURE` | App | `false` | `true` sends the temperature to Azure (some deployments reject it) |
+| `BEDROCK_AWS_REGION`, `BEDROCK_AWS_ACCESS_KEY_ID`, `BEDROCK_AWS_SECRET_ACCESS_KEY`, `BEDROCK_AWS_SESSION_TOKEN` | App | none | AWS Bedrock. Leave credentials empty to use an IAM role. Separate from the storage credentials |
+| `AI_EXTRACTION_MAX_DOC_SIZE` | App | `30000` | Characters of a document sent to AI requirement extraction |
+| `RATE_LIMIT_FAIL_CLOSED` | App | `true` | `false` lets AI requests through when Redis is down. Not recommended |
+| `MAX_DOCUMENT_SIZE_MB` | App | `10` | Largest requirement document upload |
+| `MAX_DOCUMENTS_PER_PROJECT` | App | `100` | Requirement documents per project |
+| `SRE_ENABLED` | Both | `true` | `false` disables AI SRE entirely |
+| `SRE_AUTOMATION_ENABLED` | App | `false` | Automatic incident triage. Can incur provider charges |
+| `SRE_DAILY_TOKEN_LIMIT_PER_ORG` | App | `2000000` | Daily AI SRE token limit per organization (UTC day). `0` disables |
+| `SRE_AGENT_SANDBOX_ENABLED` | App | `false` | Internal sandbox for AI SRE agents. Leave off unless instructed |
+| `SRE_AGENT_SANDBOX_NAMESPACE`, `SRE_AGENT_SANDBOX_IMAGE`, `SRE_AGENT_SANDBOX_RUNTIME_CLASS_NAME` | App | built-in, none, `EXECUTION_RUNTIME_CLASS_NAME` or `gvisor` | Sandbox namespace, image and runtime class |
+
+## Execution and capacity
+
+| Variable | Applies to | Default | Purpose |
+|----------|-----------|---------|---------|
+| `RUNNING_CAPACITY` | App | `1` | Concurrent test runs (self-hosted). Match `WORKER_REPLICAS` |
+| `QUEUED_CAPACITY` | App | `10` | Queued runs before new submissions are rejected |
+| `TEST_EXECUTION_TIMEOUT_MS` | Both | `300000` app, `120000` worker example | Playwright test timeout. Keep the app and worker values equal |
+| `JOB_EXECUTION_TIMEOUT_MS` | Both | `3600000` app, `900000` worker example | Playwright job timeout |
+| `K6_TEST_EXECUTION_TIMEOUT_MS`, `K6_JOB_EXECUTION_TIMEOUT_MS` | Both | `3600000` | k6 test and job timeouts |
+| `PLAYWRIGHT_WORKERS` | Worker | `1` | Parallel Playwright workers per run |
+| `PLAYWRIGHT_RETRIES` | Worker | `1` | Retries per failing test |
+| `PLAYWRIGHT_TRACE`, `PLAYWRIGHT_SCREENSHOT`, `PLAYWRIGHT_VIDEO` | Worker | `retain-on-failure`, `only-on-failure`, `retain-on-failure` | Artifact capture: `on`, `off`, `only-on-failure`, `retain-on-failure`, `on-first-retry` |
+| `WORKER_LOCATION` | Worker | `local` | `local` consumes every enabled location's queues; a location code consumes only that region |
+| `WORKER_QUEUES` | Worker | all | Comma list of `monitor`, `k6`, `global-playwright`, `global-k6`. Set as a real environment variable |
+| `WORKER_SHUTDOWN_DRAIN_MS` | Worker | `20000` | Wait for in-flight runs on shutdown (max `600000`). Keep below the stop grace period |
+| `K6_BIN_PATH` | Worker | auto-detected | Custom k6 binary location |
+| `K6_WEB_DASHBOARD_ADDR` | Worker | `127.0.0.1` | k6 web dashboard bind address |
+| `K6_WEB_DASHBOARD_START_PORT`, `K6_WEB_DASHBOARD_PORT_RANGE` | Worker | `6000`, `0` | First dashboard port and pool size (`0` disables the pool) |
+| `K6_WEB_DASHBOARD_MAX_ATTEMPTS` | Worker | `5` | Port attempts per k6 run |
+| `CONTAINER_CPU_LIMIT` | Worker | `1.5` | CPU limit of an execution container |
+| `CONTAINER_MEMORY_LIMIT_MB` | Worker | `2048` | Memory limit of an execution container |
+| `WORKER_IMAGE` | Worker | `ghcr.io/supercheck-io/supercheck/worker:latest` | Image execution Jobs run. Pin it to a release tag |
+| `EXECUTION_NAMESPACE` | Worker | `supercheck-execution` | Kubernetes namespace for execution Jobs |
+| `EXECUTION_RUNTIME_CLASS_NAME` | Worker | `gvisor` | RuntimeClass for execution pods. `none` opts out where gVisor is unavailable |
+| `EXECUTION_IMAGE_PULL_POLICY` | Worker | automatic | `Always`, `IfNotPresent` or `Never` |
+| `EXECUTION_NODE_SELECTOR` | Worker | none | Pin execution pods to nodes, for example `region=eu-central` |
+| `EXECUTION_TOLERATIONS_JSON` | Worker | none | JSON array of tolerations for execution pods |
+| `EXECUTION_DNS_NAMESERVERS` | Worker | cluster DNS | Comma-separated IPv4 nameservers for execution pods. Needs a matching NetworkPolicy DNS rule |
+| `EXECUTION_EPHEMERAL_STORAGE_REQUEST`, `EXECUTION_EPHEMERAL_STORAGE_LIMIT` | Worker | `1Gi`, `8Gi` | Ephemeral storage per execution pod |
+| `EXECUTION_TMP_EMPTYDIR_SIZE_LIMIT` | Worker | the storage limit | Size of `/tmp`. Keep it at or below the storage limit |
+| `EXECUTION_MAX_CPU_LIMIT` | Worker | `2` | Ceiling for the CPU limit |
+| `EXECUTION_MAX_MEMORY_LIMIT_MB` | Worker | `3434` | Ceiling for the memory limit (excludes 662 MiB gVisor overhead) |
+| `EXECUTION_MAX_EPHEMERAL_STORAGE_LIMIT` | Worker | `10Gi` | Ceiling for the storage limit |
+| `EXECUTION_ARTIFACT_SOCKET_TIMEOUT_MS` | Worker | `300000` | Timeout for streaming artifacts out of a pod |
+| `ISOLATION_CANARY_GATE_ENABLED` | Worker | `false` | Hold admission when isolation canaries fail. Enable only after canaries run per pool |
+| `CANCELLED_QUEUED_RECOVERY_ENABLED` | Worker | `false` | Finalize runs cancelled while still queued. Enable after every worker runs this version |
+| `MAX_CONCURRENT_CONNECTIONS` | Worker | `100` | Resource manager: concurrent connections |
+| `MAX_MEMORY_USAGE_MB` | Worker | `512` | Resource manager: memory ceiling |
+| `MAX_CPU_USAGE_PERCENT` | Worker | `80` | Resource manager: CPU ceiling |
+| `MAX_EXECUTION_TIME_MS` | Worker | `300000` | Resource manager: execution time ceiling |
+| `MAX_RESPONSE_SIZE_MB` | Worker | `10` | Resource manager: response size ceiling |
+| `CONNECTION_TIMEOUT_MS`, `IDLE_TIMEOUT_MS` | Worker | `30000`, `60000` | Resource manager: connection and idle timeouts |
+| `SSE_HEARTBEAT_INTERVAL_MS` | App | `15000` | Heartbeat on live run streams |
+| `SSE_STATUS_POLL_INTERVAL_MS` | App | `3000` | How often a live run stream checks status |
+| `SSE_RETRY_MS` | App | `4000` | Reconnect delay advertised to browsers |
+
+## Monitoring and alerts
+
+| Variable | Applies to | Default | Purpose |
+|----------|-----------|---------|---------|
+| `ALLOW_INTERNAL_TARGETS` | Both | `false` | `true` lets monitors target private and loopback addresses. Must match on app and worker |
+| `MAX_JOB_NOTIFICATION_CHANNELS`, `MAX_MONITOR_NOTIFICATION_CHANNELS` | App | `10` | Notification channels per job or monitor |
+| `RECENT_MONITOR_RESULTS_LIMIT` | App | built-in | Recent results shown per monitor |
+| `NOTIFICATION_MAX_RETRIES` | Worker | `3` | Notification delivery retries |
+| `NOTIFICATION_INITIAL_DELAY_MS` | Worker | `1000` | First retry delay (doubles each retry, up to 30 s) |
+| `NOTIFICATION_TIMEOUT_MS` | Worker | `10000` | Per-attempt delivery timeout |
+| `MISSING_CYCLE_CLOSURE_ENABLED` | App | `false` | Missing-region detection for multi-region monitors. Needs the `monitor-control` process |
+| `MISSING_CYCLE_DEADLINE_SECONDS` | App | `300` | Grace period before silent regions count as down (60 to 1800). Two check timeouts are added |
+| `MISSING_CYCLE_POLL_MS` | Worker | `2000` | Control-plane poll interval (500 to 30000) |
+| `MISSING_CYCLE_NOTIFY_BUDGET_MS` | Worker | `45000` | Time budget for sending closure notifications (500 to 120000) |
+| `MISSING_CYCLE_RETENTION_DAYS` | Worker | `14` | Days closed cycles are kept |
+| `MONITOR_CONTROL_PORT` | Worker | `PORT`, else `8000` | Health port of the `monitor-control` process |
+| `STATUS_PAGE_DOMAIN` | App | none | Base domain for status pages |
+| `STATUS_PAGE_HIDE_BRANDING` | App | `false` | Hide the "Powered by Supercheck" footer |
+| `QUEUE_ALERTING_ENABLED` | Worker | `true` | Queue health alerts for operators |
+| `QUEUE_ALERT_WEBHOOK_URL`, `QUEUE_ALERT_SLACK_WEBHOOK_URL` | Worker | none | Where queue alerts are delivered. Without either, alerts are only logged |
+| `QUEUE_ALERTING_CHECK_INTERVAL_MS` | Worker | `60000` | Check interval |
+| `QUEUE_DEPTH_WARNING_THRESHOLD`, `QUEUE_DEPTH_CRITICAL_THRESHOLD` | Worker | `70`, `90` | Depth, as a percentage of `MAX_QUEUE_DEPTH` |
+| `MAX_QUEUE_DEPTH` | Worker | `10000` | Queue size used for the depth percentages |
+| `QUEUE_WAIT_TIME_WARNING_MS`, `QUEUE_WAIT_TIME_CRITICAL_MS` | Worker | `900000`, `2700000` | Wait-time thresholds |
+| `QUEUE_PROCESSING_TIME_WARNING_MS`, `QUEUE_PROCESSING_TIME_CRITICAL_MS` | Worker | `900000`, `1800000` | Average processing-time thresholds |
+| `QUEUE_FAILURE_RATE_WARNING`, `QUEUE_FAILURE_RATE_CRITICAL` | Worker | `5`, `15` | Failure-rate thresholds in percent |
+| `QUEUE_FAILURE_RATE_WINDOW_MS` | Worker | `900000` | Window for the failure rate |
+| `QUEUE_MIN_SAMPLES_FOR_FAILURE_RATE` | Worker | `10` | Runs needed before the failure rate is evaluated |
+| `QUEUE_ALERT_COOLDOWN_MS` | Worker | `900000` | Minimum time between repeats of the same alert |
+
+## Data retention and cleanup
+
+Retention for monitor results, aggregates and job runs comes from the plan limits stored in the database. These variables control the schedule and batch sizes. Each cleanup has `*_ENABLED`, `*_CRON`, `*_BATCH_SIZE` and `*_SAFETY_LIMIT` (maximum rows per run).
+
+| Variable prefix | Default cron | Default batch / safety limit | Notes |
+|-----------------|--------------|------------------------------|-------|
+| `MONITOR_CLEANUP_` | `0 2 * * *` | `1000` / `1000000` | Monitor results |
+| `MONITOR_AGGREGATES_CLEANUP_` | `30 2 * * *` | `1000` / `500000` | Monitor aggregates |
+| `JOB_RUNS_CLEANUP_` | `0 3 * * *` | `100` / `10000` | Job runs and artifacts |
+| `WEBHOOK_CLEANUP_` | `0 4 * * *` | `1000` / `100000` | Webhook idempotency records |
+| `ALERT_HISTORY_CLEANUP_` | `30 4 * * *` | `1000` / `100000` | Also `ALERT_HISTORY_RETENTION_DAYS` (`90`) |
+| `AUDIT_LOGS_CLEANUP_` | `0 1 * * *` | `1000` / `100000` | Also `AUDIT_LOGS_RETENTION_DAYS` (`90`) |
+| `TELEMETRY_RETENTION_` | `45 * * * *` | `1000` (1 to 10000) / `200000` | Operational telemetry tables |
+
+All cleanups default to enabled. Additional variables:
+
+| Variable | Applies to | Default | Purpose |
+|----------|-----------|---------|---------|
+| `PLAYGROUND_CLEANUP_ENABLED` | App | `true` | Playground artifact cleanup |
+| `PLAYGROUND_CLEANUP_CRON` | App | `0 5 * * *` | Schedule |
+| `PLAYGROUND_CLEANUP_MAX_AGE_HOURS` | App | `24` | Age after which artifacts are deleted |
+| `MONITOR_AGGREGATION_HOURLY_ENABLED`, `MONITOR_AGGREGATION_HOURLY_CRON` | App | `true`, `5 * * * *` | Hourly monitor roll-up |
+| `MONITOR_AGGREGATION_DAILY_ENABLED`, `MONITOR_AGGREGATION_DAILY_CRON` | App | `true`, `15 0 * * *` | Daily monitor roll-up |
+| `CREDENTIAL_REVOCATION_RETRY_ENABLED`, `CREDENTIAL_REVOCATION_RETRY_CRON` | App | `true`, `20 * * * *` | Finishes revoking API keys after a password reset. Leave enabled |
+| `STATUS_PAGE_DELIVERY_RETENTION_DAYS` | App | `30` | Days notification delivery rows are kept (1 to 3650) |
+| `PRIVATE_AGENT_HEARTBEAT_RETENTION_DAYS`, `PRIVATE_AGENT_JOB_RETENTION_DAYS` | App | `7`, `30` | Private agent telemetry |
+| `SRE_HEALTH_SNAPSHOT_RETENTION_DAYS`, `SRE_DEPENDENCY_OBSERVATION_RETENTION_DAYS`, `SRE_ALERT_EVENT_RETENTION_DAYS` | App | `90` each | AI SRE telemetry |
+
+## Private agent
+
+Set on the standalone agent ([Private Agent](/docs/app/deployment/private-agent)), not on the app.
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `SUPERCHECK_RUNTIME_MODE` | none | `private-agent` starts the worker as a private agent |
+| `SUPERCHECK_API_URL` | none, required | URL of the Supercheck app (HTTPS) |
+| `PRIVATE_AGENT_ID` | none, required | Agent ID from the app |
+| `PRIVATE_AGENT_TOKEN` | none | Registration token. Required unless a credential file already holds one |
+| `PRIVATE_AGENT_CREDENTIAL_FILE` | none | File where the agent stores its credential between restarts |
+| `PRIVATE_AGENT_VERSION` | the worker version | Version the agent reports |
+| `PRIVATE_AGENT_RETRY_INTERVAL_MS` | built-in | Delay between reconnect attempts. `PRIVATE_AGENT_POLL_INTERVAL_MS` is the older name for the same setting |
+| `PRIVATE_AGENT_LEASE_WAIT_MS` | built-in | How long a lease request waits for work |
+| `PRIVATE_AGENT_HEARTBEAT_INTERVAL_MS` | built-in | Heartbeat interval |
+
+## CLI
+
+Set on machines running `supercheck` (see [CLI authentication](/docs/cli/authentication)).
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `SUPERCHECK_URL` | stored login, else `https://app.supercheck.io` | Your instance URL |
+| `SUPERCHECK_TOKEN` | none | CLI token |
+| `SUPERCHECK_TRIGGER_KEY` | none | Job trigger key, an alternative to a full token |
+| `SUPERCHECK_ORG`, `SUPERCHECK_PROJECT` | none | Default organization and project slugs |
+| `SUPERCHECK_REQUEST_TIMEOUT_MS` | `30000` | Timeout for browser sign-in requests (5000 to 120000) |
+| `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY` | none | Corporate proxy |
+| `NO_COLOR` | none | Any value disables colored output |
+
+## Supercheck Cloud only
+
+Self-hosted installs ignore these. They are listed so operators of a hosted deployment know what exists: `SENTRY_DSN`, `SENTRY_ENVIRONMENT`, `SENTRY_RELEASE` (error reporting, never loaded when `SELF_HOSTED=true`), the `POLAR_*` billing variables, `USAGE_SYNC_*`, `TRIAL_*`, `CRON_SECRET`, and `CHATWOOT_*` (support chat).

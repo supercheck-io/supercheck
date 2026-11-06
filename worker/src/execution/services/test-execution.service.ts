@@ -103,6 +103,7 @@ const path = require('path');
     const page = await context.newPage();
     
     // Set up screenshot directory
+    // Internal: REPORT_DIR is a local scratch path; not an operator setting.
     const reportDir = process.env.REPORT_DIR || './playwright-results';
     if (!fs.existsSync(reportDir)) {
         fs.mkdirSync(reportDir, { recursive: true });

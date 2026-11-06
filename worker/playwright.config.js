@@ -10,6 +10,8 @@ const path = require('path');
 const serviceRoot = path.resolve(__dirname);
 
 // Use environment variables or default values - no local test directory since tests are dynamically created
+// Internal: PLAYWRIGHT_TEST_DIR, PLAYWRIGHT_OUTPUT_DIR, PLAYWRIGHT_HTML_REPORT, PLAYWRIGHT_JSON_OUTPUT and
+// PLAYWRIGHT_GLOBAL_TIMEOUT_MS are set by the worker for each run; not operator settings.
 const testDir = process.env.PLAYWRIGHT_TEST_DIR || '/tmp/playwright-tests';
 const defaultOutputDir = path.resolve(serviceRoot, 'playwright-report');
 const artifactOutputDir = process.env.PLAYWRIGHT_OUTPUT_DIR || defaultOutputDir;

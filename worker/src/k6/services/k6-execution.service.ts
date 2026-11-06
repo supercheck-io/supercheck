@@ -1256,6 +1256,7 @@ export class K6ExecutionService {
   private decodeSecretsFromRuntimeEnv(
     env: Record<string, string>,
   ): Record<string, string> {
+    // Internal: SUPERCHECK_SECRETS_B64 is injected by the worker into the run environment; not an operator setting.
     const encodedSecrets = env.SUPERCHECK_SECRETS_B64;
     if (!encodedSecrets) {
       return {};
