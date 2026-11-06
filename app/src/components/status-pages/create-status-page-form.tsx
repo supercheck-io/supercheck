@@ -89,6 +89,7 @@ export function CreateStatusPageForm({ onSuccess, onCancel }: CreateStatusPageFo
         </div>
         <Input
           id="name"
+          autoFocus
           placeholder="My Service Status"
           {...register("name")}
           disabled={isCreating}

@@ -9,7 +9,7 @@ const mockLocations = { locations: [], hasRestrictions: false, isLoading: false 
 const mockSession = { data: { user: { id: "u" } } };
 
 jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
-jest.mock("next/navigation", () => ({ useSearchParams: () => mockSearchParams }));
+jest.mock("next/navigation", () => ({ useSearchParams: () => mockSearchParams, useRouter: () => ({ push: jest.fn() }) }));
 jest.mock("./code-editor", () => ({
   CodeEditor: ({ value, onChange }: { value: string; onChange: (v: string) => void }) => (
     <textarea aria-label="editor" value={value} onChange={(e) => onChange(e.target.value)} />

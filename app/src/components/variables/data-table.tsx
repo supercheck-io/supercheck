@@ -266,7 +266,9 @@ export function DataTable<TData, TValue>({
                   colSpan={columns.length}
                   className="h-24 text-center"
                 >
-                  No results.
+                  {columnFilters.length > 0 || globalFilter
+                    ? "No variables match your filters. Clear the search or filters to see all variables."
+                    : "No variables yet. Use Add Variable to create one."}
                 </TableCell>
               </TableRow>
             )}

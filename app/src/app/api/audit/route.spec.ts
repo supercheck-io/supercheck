@@ -135,7 +135,7 @@ describe("Audit API Route", () => {
     expect(body.data.logs[0].createdAt).toBe("2026-01-01T00:00:00.000Z");
     expect(body.data.logs[0].user).toEqual({ id: "user-1", name: "Alice", email: "alice@example.com", image: "/api/users/user-1/avatar?v=abc" });
     expect(body.data.filters.actions).toEqual(["login"]);
-    expect(logsQuery.limit).toHaveBeenCalledWith(100);
+    expect(logsQuery.limit).toHaveBeenCalledWith(101);
     expect(logsQuery.offset).toHaveBeenCalledWith(0);
   });
 
@@ -181,5 +181,78 @@ describe("Audit API Route", () => {
     const { params } = new PgDialect().sqlToQuery(countQuery.where.mock.calls[0][0]);
     expect(params).toContain("%50\\%\\_a\\\\b%");
     expect(logsQuery.orderBy.mock.calls[0]).toHaveLength(2);
+  });
+
+  describe("keyset cursor", () => {
+    const cursorOf = (createdAt: string, id: string) => Buffer.from(`${createdAt}|${id}`).toString("base64url");
+    const ID1 = "0196a1b2-0000-7000-8000-000000000001";
+    const ID2 = "0196a1b2-0000-7000-8000-000000000002";
+    const ID3 = "0196a1b2-0000-7000-8000-000000000003";
+
+    function setup(rows: unknown[]) {
+      const countQuery = { from: jest.fn().mockReturnThis(), where: jest.fn().mockResolvedValue([{ count: 3 }]) };
+      const logsQuery = {
+        from: jest.fn().mockReturnThis(),
+        leftJoin: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        offset: jest.fn().mockResolvedValue(rows),
+      };
+      mockDb.select.mockReturnValueOnce(countQuery).mockReturnValueOnce(logsQuery);
+      mockDb.selectDistinct.mockReturnValue({ from: jest.fn().mockReturnThis(), where: jest.fn().mockReturnThis(), orderBy: jest.fn().mockResolvedValue([]) });
+      return { countQuery, logsQuery };
+    }
+    const row = (id: string, createdAtCursor: string) => ({
+      id, action: "login", details: null, createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      userId: null, userName: null, userEmail: null, userImage: null, createdAtCursor,
+    });
+
+    it("returns nextCursor from the last row only when another row follows", async () => {
+      setup([row(ID3, "2026-01-01 00:00:00.000003+00"), row(ID2, "2026-01-01 00:00:00.000002+00"), row(ID1, "2026-01-01 00:00:00.000001+00")]);
+      const body = await (await GET(new NextRequest("http://localhost/api/audit?limit=2"))).json();
+
+      expect(body.data.logs.map((l: { id: string }) => l.id)).toEqual([ID3, ID2]);
+      expect(body.data.organizationId).toBe("org-1");
+      expect(body.data.pagination.nextCursor).toBe(cursorOf("2026-01-01 00:00:00.000002+00", ID2));
+    });
+
+    it("has no nextCursor on the last page", async () => {
+      setup([row(ID1, "2026-01-01 00:00:00.000001+00")]);
+      const body = await (await GET(new NextRequest("http://localhost/api/audit?limit=2"))).json();
+
+      expect(body.data.pagination.nextCursor).toBeNull();
+    });
+
+    it("applies the cursor to the log query only, not the count, and ignores page offsets", async () => {
+      const { countQuery, logsQuery } = setup([]);
+      const cursor = cursorOf("2026-01-01 00:00:00.000002+00", ID2);
+      await GET(new NextRequest(`http://localhost/api/audit?page=5&limit=2&cursor=${cursor}`));
+
+      const logSql = new PgDialect().sqlToQuery(logsQuery.where.mock.calls[0][0]);
+      expect(logSql.params).toEqual(expect.arrayContaining(["2026-01-01 00:00:00.000002+00", ID2]));
+      expect(logSql.sql).toContain("<");
+      const countSql = new PgDialect().sqlToQuery(countQuery.where.mock.calls[0][0]);
+      expect(countSql.params).not.toContain(ID2);
+      expect(logsQuery.offset).toHaveBeenCalledWith(0);
+    });
+
+    it("uses > for ascending order", async () => {
+      const { logsQuery } = setup([]);
+      const cursor = cursorOf("2026-01-01 00:00:00.000002+00", ID2);
+      await GET(new NextRequest(`http://localhost/api/audit?sortOrder=asc&cursor=${cursor}`));
+
+      expect(new PgDialect().sqlToQuery(logsQuery.where.mock.calls[0][0]).sql).toContain(">");
+    });
+
+    it.each(["not-a-cursor", cursorOf("2026-01-01", ID2), cursorOf("2026-01-01 00:00:00+00", "x"), cursorOf("2026-01-01 00:00:00+00", `${ID2}|extra`)])(
+      "rejects the malformed cursor %s with 400",
+      async (cursor) => {
+        const response = await GET(new NextRequest(`http://localhost/api/audit?cursor=${cursor}`));
+
+        expect(response.status).toBe(400);
+        expect(mockDb.select).not.toHaveBeenCalled();
+      },
+    );
   });
 });
