@@ -208,9 +208,9 @@ export async function validateScripts(
         warnings: data?.warnings,
       })
     } catch (err) {
-      // A rejected script (4xx such as 400/413/422) is a validation result; auth, rate-limit and server failures must surface as themselves.
+      // A rejected script (400/413/422) is a validation result; auth, rate-limit and server failures must surface as themselves.
       const status = err instanceof ApiRequestError ? err.statusCode : undefined
-      if (err instanceof ApiRequestError && status !== undefined && ![401, 403, 429].includes(status) && status < 500) {
+      if (err instanceof ApiRequestError && status !== undefined && ![401, 403, 404, 408, 429].includes(status) && status < 500) {
         results.push({
           name: input.name,
           valid: false,
