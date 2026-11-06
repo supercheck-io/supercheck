@@ -545,8 +545,42 @@ describe('AI SRE CLI Commands', () => {
       await runCommand.parseAsync(['node', 'run', 'stream', 'run-1'])
       const out = write.mock.calls.map((call) => call[0]).join('')
       write.mockRestore()
+      // No whitespace before the token to cut at: the chunk is omitted and so is the token's continuation.
       expect(out).not.toContain('sck_live_')
-      expect(out).toContain('[REDACTED] end')
+      expect(out).not.toContain('c'.repeat(12))
+      expect(out).toContain('[console output omitted: line too long]')
+      expect(out).toContain(' end')
+    })
+    it('run stream never splits a token at the overflow cut point itself', async () => {
+      const write = jest.spyOn(process.stdout, 'write').mockImplementation(() => true)
+      const token = `sck_live_${'e'.repeat(32)}`
+      mockGetSse.mockImplementationOnce(async (_path: unknown, callback: unknown) => {
+        const onEvent = callback as (event: { event: string; data: unknown }) => void
+        // Words up to just under the cap, then the token positioned to straddle (cap - 1024): the old fixed cut.
+        const head = 'word '.repeat(Math.floor((64 * 1024 - 1024 - 6) / 5))
+        onEvent({ event: 'console', data: { line: `${head}${token}` } })
+        onEvent({ event: 'console', data: { line: ` ${'z'.repeat(1100)}` } })
+        onEvent({ event: 'complete', data: { status: 'passed' } })
+      })
+      await runCommand.parseAsync(['node', 'run', 'stream', 'run-1'])
+      const out = write.mock.calls.map((call) => call[0]).join('')
+      write.mockRestore()
+      expect(out).not.toContain('sck_live_')
+      expect(out).not.toContain('e'.repeat(32))
+      expect(out).toContain('[REDACTED]')
+    })
+    it('run stream omits an overflowing chunk with no whitespace to cut at', async () => {
+      const write = jest.spyOn(process.stdout, 'write').mockImplementation(() => true)
+      mockGetSse.mockImplementationOnce(async (_path: unknown, callback: unknown) => {
+        const onEvent = callback as (event: { event: string; data: unknown }) => void
+        onEvent({ event: 'console', data: { line: `sck_live_${'f'.repeat(64 * 1024)}` } })
+        onEvent({ event: 'complete', data: { status: 'passed' } })
+      })
+      await runCommand.parseAsync(['node', 'run', 'stream', 'run-1'])
+      const out = write.mock.calls.map((call) => call[0]).join('')
+      write.mockRestore()
+      expect(out).toContain('[console output omitted: line too long]')
+      expect(out).not.toContain('f'.repeat(100))
     })
     it('run stream redacts a token still in the remainder when the stream ends', async () => {
       const write = jest.spyOn(process.stdout, 'write').mockImplementation(() => true)
@@ -559,7 +593,7 @@ describe('AI SRE CLI Commands', () => {
       const out = write.mock.calls.map((call) => call[0]).join('')
       write.mockRestore()
       expect(out).not.toContain('sck_live_')
-      expect(out.endsWith('[REDACTED]')).toBe(true)
+      expect(out).toContain('[console output omitted: line too long]')
     })
     it('run stream polls past a queued complete event and succeeds when the run passes', async () => {
       mockGetSse.mockImplementationOnce(async (_path: unknown, callback: unknown) => {

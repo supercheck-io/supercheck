@@ -103,15 +103,31 @@ runCommand
     let sawTerminal = false
     // The worker forwards raw chunks, so a token can span events: redact only complete lines and hold the rest.
     let pending = ''
+    // After an omitted chunk, the rest of that word may still arrive: drop it up to the next whitespace.
+    let skippingWord = false
     const flushConsole = () => { if (pending) process.stdout.write(redactText(pending)); pending = '' }
     const writeConsole = (chunk: string) => {
+      if (skippingWord) {
+        const next = chunk.search(/\s/)
+        if (next === -1) return
+        skippingWord = false
+        chunk = chunk.slice(next)
+      }
       pending += chunk
       const end = pending.lastIndexOf('\n') + 1
       if (end > 0) { process.stdout.write(redactText(pending.slice(0, end))); pending = pending.slice(end) }
-      // A stream that never sends a newline must not grow without bound. Keep a tail longer than any token so none is cut at the overflow.
+      // A stream that never sends a newline must not grow without bound. Cut only at whitespace (tokens contain none),
+      // keeping a tail; with no whitespace to cut at, fail closed rather than emit a fragment that could be half a token.
       if (pending.length > MAX_PENDING_CONSOLE) {
-        process.stdout.write(redactText(pending.slice(0, -CONSOLE_TAIL)))
-        pending = pending.slice(-CONSOLE_TAIL)
+        const cut = pending.slice(0, -CONSOLE_TAIL).search(/\s\S*$/)
+        if (cut > 0) {
+          process.stdout.write(redactText(pending.slice(0, cut + 1)))
+          pending = pending.slice(cut + 1)
+        } else {
+          process.stdout.write('[console output omitted: line too long]\n')
+          pending = ''
+          skippingWord = true
+        }
       }
     }
     try {
