@@ -1728,15 +1728,28 @@ export async function executePrivateAgentConnectorJob(
 ): Promise<ConnectorExecutionResult> {
   const result = await runConnectorJob(job);
   const secrets = credentialSecrets(job);
-  const evidence = result.evidence.map((item) => ({
-    ...item,
-    sourceUri:
-      clip(item.sourceUri, 1000, secrets).trim() ||
-      clip(job.jobSpec.endpointUrl ?? undefined, 1000, secrets) ||
-      job.jobSpec.connectorType,
-    title: clip(item.title, 500, secrets).trim() || 'Untitled evidence',
-    summary: clip(item.summary, 2000, secrets),
-  }));
+  const fallbackUri = () => {
+    try {
+      return clip(normalizedEndpoint(job.jobSpec), 1000, secrets);
+    } catch {
+      return ''; // connector types that need an endpointUrl and have none
+    }
+  };
+  const evidence = result.evidence.map((item) => {
+    const sanitized = {
+      sourceUri:
+        clip(item.sourceUri, 1000, secrets).trim() ||
+        fallbackUri() ||
+        job.jobSpec.connectorType,
+      title: clip(item.title, 500, secrets).trim() || 'Untitled evidence',
+      summary: clip(item.summary, 2000, secrets),
+      evidenceType: item.evidenceType,
+      observedAt: item.observedAt,
+    };
+    // Hashed from the sanitized fields only: a hash of the raw payload would let a reader confirm a
+    // guess at a redacted secret.
+    return { ...item, ...sanitized, resultHash: hashPayload(sanitized) };
+  });
   return {
     evidence,
     truncated: result.truncated,

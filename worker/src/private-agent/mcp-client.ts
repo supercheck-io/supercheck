@@ -86,7 +86,7 @@ const REDACTIONS: Array<[RegExp, string]> = [
     '$1[REDACTED]$2',
   ],
   [
-    /("[A-Za-z0-9_-]{0,40}(?:token|api[_-]?key|secret|password|passwd|pwd)[A-Za-z0-9_-]{0,20}"\s*:\s*)"(?:\\.|[^"\\])*"/gi,
+    /("[A-Za-z0-9_-]{0,40}(?:token|api[_-]?key|secret|password|passwd|pwd|credentials?|authorization)"\s*:\s*)"(?:\\.|[^"\\])*"/gi,
     '$1"[REDACTED]"',
   ],
   // Credential-bearing query parameters.
@@ -95,6 +95,11 @@ const REDACTIONS: Array<[RegExp, string]> = [
     '$1[REDACTED]',
   ],
   [/\b(Bearer\s+)[A-Za-z0-9._~+/-]+=*/gi, '$1[REDACTED]'],
+  // Quoted values may contain spaces: password: "abc def", DB_PASSWORD='x y'.
+  [
+    /\b((?:[A-Za-z0-9]{1,30}[_-]){0,4}(?:token|api[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|secret|password|passwd|pwd)(?:[_-][A-Za-z0-9]{1,30}){0,3})\s*[:=]\s*(?:"[^"\n]{0,500}"|'[^'\n]{0,500}')/gi,
+    '$1=[REDACTED]',
+  ],
   [
     /\b((?:[A-Za-z0-9]{1,30}[_-]){0,4}(?:token|api[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|secret|password|passwd|pwd)(?:[_-][A-Za-z0-9]{1,30}){0,3})\s*[:=]\s*[^\s,;"']+/gi,
     '$1=[REDACTED]',

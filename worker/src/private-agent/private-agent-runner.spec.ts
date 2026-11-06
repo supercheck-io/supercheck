@@ -223,6 +223,37 @@ describe('private agent connector execution', () => {
     },
   );
 
+  it('hashes evidence from sanitized fields, so items differing only in a redacted secret match', async () => {
+    const run = async (secret: string) => {
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          items: [
+            {
+              sha: 'abc',
+              html_url: 'https://github.com/o/r/commit/abc',
+              commit: { message: `deploy with ${secret}` },
+            },
+          ],
+        }),
+      });
+      const result = await executePrivateAgentConnectorJob({
+        ...baseJob,
+        jobSpec: {
+          ...baseJob.jobSpec,
+          connectorType: 'github',
+          endpointUrl: 'https://api.github.com',
+        },
+      });
+      return result.evidence[0];
+    };
+    const a = await run('sk-aaaaaaaaaaaaaaaaaaaaaaaa');
+    const b = await run('sk-bbbbbbbbbbbbbbbbbbbbbbbb');
+    expect(a.title).toBe(b.title);
+    expect(a.resultHash).toBe(b.resultHash);
+  });
+
   it('executes Datadog jobs with API and application key headers', async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,

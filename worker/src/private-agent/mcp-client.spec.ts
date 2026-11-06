@@ -397,6 +397,12 @@ describe('redactMcpText connection strings', () => {
 describe('redactMcpText parity with the app sanitizer', () => {
   it.each([
     ['DB_PASSWORD=hunter2', 'hunter2'],
+    ['password: "abc def"', 'abc def'],
+    ["DB_PASSWORD='x y'", 'x y'],
+    ['{"db_password":"pw1"}', 'pw1'],
+    ['{"accessToken":"tk1"}', 'tk1'],
+    ['{"credentials":"cr1"}', 'cr1'],
+    ['{"authorization":"au1"}', 'au1'],
     ['dbPassword=hunter2', 'hunter2'],
     ['githubToken: ghx12345678', 'ghx12345678'],
     ['stripeApiKey=abc999', 'abc999'],
@@ -425,6 +431,9 @@ describe('redactMcpText parity with the app sanitizer', () => {
 
   it('leaves look-alike words untouched', () => {
     expect(redactMcpText('tokenizer=fast')).toBe('tokenizer=fast');
+    expect(redactMcpText('{"tokenizer":"gpt"}')).toBe('{"tokenizer":"gpt"}');
+    expect(redactMcpText('{"token_count":5}')).toBe('{"token_count":5}');
+    expect(redactMcpText('{"token_count":"5"}')).toBe('{"token_count":"5"}');
     expect(redactMcpText('monkey=banana')).toBe('monkey=banana');
     expect(redactMcpText('signature_algo=rsa')).toBe('signature_algo=rsa');
   });
