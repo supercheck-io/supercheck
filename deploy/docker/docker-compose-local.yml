@@ -78,6 +78,7 @@ x-common-env: &common-env # Database Configuration
   # Set SRE_AUTOMATION_ENABLED=true to opt in to alert-triggered AI work.
   SRE_ENABLED: ${SRE_ENABLED:-true}
   SRE_AUTOMATION_ENABLED: ${SRE_AUTOMATION_ENABLED:-false}
+  SRE_DAILY_TOKEN_LIMIT_PER_ORG: ${SRE_DAILY_TOKEN_LIMIT_PER_ORG:-2000000}
   # Browser login for the CLI (device authorization). Off by default; when off the CLI
   # tells users to create a token in the dashboard instead.
   DEVICE_AUTH_ENABLED: ${DEVICE_AUTH_ENABLED:-false}
@@ -204,6 +205,7 @@ x-common-env: &common-env # Database Configuration
   SMTP_PASSWORD: ${SMTP_PASSWORD:-}
   SMTP_SECURE: ${SMTP_SECURE:-false}
   SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-}
+  SMTP_BLOCKED_RECIPIENT_DOMAINS: ${SMTP_BLOCKED_RECIPIENT_DOMAINS:-}
 
   # ==========================================================================
   # AI Features Configuration (AI Fix, AI Create, AI Analyze)

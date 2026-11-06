@@ -36,6 +36,7 @@ const pool = new Pool({
   database: getVariable('DB_NAME'),
   user: getVariable('DB_USER'),
   password: getSecret('DB_PASSWORD'),
+  ssl: true, // verify the server certificate
 });
 
 test.afterAll(async () => {
@@ -55,7 +56,7 @@ test.describe('database read health check', () => {
 ```
 
 <Callout type="warn">
-For databases reachable over a public network, enable TLS with certificate verification. Add `ssl: true` to the `Pool` options (node-postgres 8 verifies the certificate by default), or `ssl: { ca: getSecret('DB_CA_CERT') }` for a private CA. Never set `rejectUnauthorized: false`.
+For databases reachable over a public network, keep `ssl: true` so the connection is encrypted and the certificate is verified. For a private CA use `ssl: { ca: getSecret('DB_CA_CERT') }`. Never set `rejectUnauthorized: false`.
 </Callout>
 
 <Accordions>

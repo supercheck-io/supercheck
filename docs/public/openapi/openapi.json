@@ -5764,7 +5764,7 @@
       "delete": {
         "operationId": "deleteOrganization",
         "summary": "Delete organization",
-        "description": "Owner only. Permanently deletes the organization, its projects, data and stored files, and cancels an active subscription. The body must repeat the organization id in confirmOrganizationId. Not allowed while impersonating. Requires an interactive, same-origin browser session; project-scoped CLI tokens receive 403.",
+        "description": "Owner only. Permanently deletes the organization, its projects, data and stored files, and cancels the subscription on record. Audit log entries are kept. The body must repeat the organization id in confirmOrganizationId. Not allowed while impersonating. Requires an interactive, same-origin browser session; project-scoped CLI tokens receive 403.",
         "tags": [
           "Organizations"
         ],
@@ -5820,7 +5820,7 @@
             "$ref": "#/components/responses/NotFound"
           },
           "409": {
-            "description": "The organization is busy with another change. Try again in a moment."
+            "description": "The organization is busy (retry shortly), or related records block deletion (contact your administrator or support)."
           },
           "429": {
             "description": "Too many deletion attempts. Try again later."
@@ -5829,7 +5829,7 @@
             "description": "Internal server error"
           },
           "502": {
-            "description": "Billing cancellation or storage cleanup failed; the organization was not deleted."
+            "description": "Billing cancellation or storage cleanup failed. The organization remains, but schedules may be stopped and some files already removed; retry to finish the deletion."
           }
         },
         "security": [

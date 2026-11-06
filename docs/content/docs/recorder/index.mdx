@@ -153,7 +153,7 @@ Pin the extension. Unpacked installs do not auto-update, so repeat this after ea
 | The Record button shows **Install Supercheck Recorder** although the extension is installed | Confirm the page origin is one of the [hosted sites](#connect-supercheck), or save the instance URL in **Options** and reload the tab |
 | Extension is not detected on a self-hosted instance | Open **Options**, save the exact HTTPS origin shown in the Record dialog, reload the tab, then sign in |
 | **Too many connection checks** | Connection checks are rate limited. Wait for the shown number of seconds, then reopen Options |
-| Connection fails | Confirm the instance URL uses HTTPS, then sign in and open an authenticated dashboard page in the same browser profile |
+| Connection fails | Confirm the instance URL uses HTTPS (or `http://localhost`), then sign in and open an authenticated dashboard page in the same browser profile |
 | Extension stays **Not connected** (or "Not connected yet. Open Supercheck in this browser…") after sign-in | Use **Disconnect** to revoke the key, then reconnect from an authenticated page. If the extension was reinstalled or its storage cleared, the app keeps the old key and won't issue a new one; ask support (cloud) or your administrator (self-hosted) to revoke it. |
 | Self-hosted instance is unreachable | Open the instance directly and verify its certificate and network access |
 | Recording does not start | Confirm the tab uses HTTP or HTTPS and no other debugger is attached |
