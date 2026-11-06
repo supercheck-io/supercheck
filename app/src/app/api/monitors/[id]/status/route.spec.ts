@@ -94,7 +94,7 @@ describe("schedule is reconciled to the committed state", () => {
     stored("up");
     useDb({ ...base, status: "paused" }, { ...base, status: "paused", enabled: false, scheduledJobId: "old" });
     expect((await patch("paused")).status).toBe(200);
-    expect(deleteScheduledMonitor).toHaveBeenCalledWith("old");
+    expect(deleteScheduledMonitor).toHaveBeenCalledWith("old", expect.any(AbortSignal));
     expect(scheduleMonitor).not.toHaveBeenCalled();
   });
 
@@ -102,7 +102,7 @@ describe("schedule is reconciled to the committed state", () => {
     stored("paused");
     useDb({ ...base, status: "pending" }, { ...base, status: "pending", scheduledJobId: null });
     expect((await patch("pending")).status).toBe(200);
-    expect(scheduleMonitor).toHaveBeenCalledWith(expect.objectContaining({ monitorId: expect.any(String), frequencyMinutes: 5 }));
+    expect(scheduleMonitor).toHaveBeenCalledWith(expect.objectContaining({ monitorId: expect.any(String), frequencyMinutes: 5 }), expect.any(AbortSignal));
     expect(deleteScheduledMonitor).not.toHaveBeenCalled();
   });
 
@@ -119,7 +119,7 @@ describe("schedule is reconciled to the committed state", () => {
     stored("paused");
     useDb({ ...base, status: "pending" }, { ...base, status: "paused", enabled: false, scheduledJobId: "x" });
     expect((await patch("pending")).status).toBe(200);
-    expect(deleteScheduledMonitor).toHaveBeenCalledWith("x");
+    expect(deleteScheduledMonitor).toHaveBeenCalledWith("x", expect.any(AbortSignal));
     expect(scheduleMonitor).not.toHaveBeenCalled();
   });
 
@@ -146,7 +146,7 @@ describe("schedule is reconciled to the committed state", () => {
     stored("paused");
     const retry = await patch("paused");
     expect(retry.status).toBe(200);
-    expect(deleteScheduledMonitor).toHaveBeenLastCalledWith("old"); // job removed
+    expect(deleteScheduledMonitor).toHaveBeenLastCalledWith("old", expect.any(AbortSignal)); // job removed
     expect(clears).toHaveLength(1); // scheduledJobId cleared
   });
 
@@ -167,7 +167,11 @@ describe("schedule is reconciled to the committed state", () => {
       clears.push(...pending.filter((v) => "scheduledJobId" in (v as object)));
       return result;
     });
-    (fn as jest.Mock).mockImplementationOnce(() => new Promise(() => {})); // never settles
+    let signal: AbortSignal | undefined;
+    (fn as jest.Mock).mockImplementationOnce((...a: unknown[]) => {
+      signal = a.find((x) => x instanceof AbortSignal) as AbortSignal;
+      return new Promise(() => {}); // never settles
+    });
     jest.useFakeTimers();
     try {
       let code: number | undefined;
@@ -177,6 +181,7 @@ describe("schedule is reconciled to the committed state", () => {
       await jest.advanceTimersByTimeAsync(2);
       await pending;
       expect(code).toBe(503);
+      expect(signal?.aborted).toBe(true); // the abandoned call is fenced from mutating the queue
     } finally {
       jest.useRealTimers();
     }
