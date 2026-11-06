@@ -212,6 +212,94 @@ describe('pinned HTTP monitor requests', () => {
     ).toBeUndefined();
   });
 
+  it('drops user-configured headers on cross-origin redirects but keeps safe ones', async () => {
+    (mockLookup as jest.Mock)
+      .mockResolvedValueOnce([{ address: '203.0.114.10', family: 4 }])
+      .mockResolvedValueOnce([{ address: '203.0.114.11', family: 4 }]);
+    const execute = jest
+      .fn()
+      .mockResolvedValueOnce(
+        response(302, { location: 'https://other.example/' }),
+      )
+      .mockResolvedValueOnce(response());
+
+    await requestPinnedMonitorTarget(
+      {
+        url: 'https://monitor.example/start',
+        headers: {
+          'X-Api-Key': 'secret',
+          'User-Agent': 'Supercheck-Monitor/1.0',
+          Accept: 'text/plain',
+        },
+      },
+      { allowInternalTargets: false, maxRedirects: 5 },
+      execute,
+    );
+
+    const headers = AxiosHeaders.from(
+      execute.mock.calls[1][0].headers as AxiosHeaders,
+    );
+    expect(headers.get('x-api-key')).toBeUndefined();
+    expect(headers.get('user-agent')).toBe('Supercheck-Monitor/1.0');
+    expect(headers.get('accept')).toBe('text/plain');
+  });
+
+  it('keeps user headers on same-origin redirects', async () => {
+    (mockLookup as jest.Mock).mockResolvedValue([
+      { address: '203.0.114.10', family: 4 },
+    ]);
+    const execute = jest
+      .fn()
+      .mockResolvedValueOnce(response(302, { location: '/next' }))
+      .mockResolvedValueOnce(response());
+
+    await requestPinnedMonitorTarget(
+      { url: 'https://monitor.example/', headers: { 'X-Api-Key': 'secret' } },
+      { allowInternalTargets: false, maxRedirects: 5 },
+      execute,
+    );
+
+    expect(
+      AxiosHeaders.from(execute.mock.calls[1][0].headers as AxiosHeaders).get(
+        'x-api-key',
+      ),
+    ).toBe('secret');
+  });
+
+  it('refuses metadata addresses even when internal targets are allowed', async () => {
+    const execute = jest.fn();
+    await expect(
+      requestPinnedMonitorTarget(
+        { url: 'http://169.254.169.254/latest/meta-data' },
+        { allowInternalTargets: true, maxRedirects: 5 },
+        execute,
+      ),
+    ).rejects.toThrow('private or reserved');
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it('bounds a slow-drip response with a wall-clock abort signal', async () => {
+    (mockLookup as jest.Mock).mockResolvedValueOnce([
+      { address: '203.0.114.10', family: 4 },
+    ]);
+    const execute = jest.fn(
+      (config: AxiosRequestConfig) =>
+        new Promise<AxiosResponse>((_resolve, reject) => {
+          (config.signal as AbortSignal).addEventListener('abort', () =>
+            reject(new Error('aborted')),
+          );
+        }),
+    );
+
+    await expect(
+      requestPinnedMonitorTarget(
+        { url: 'https://monitor.example/', timeout: 20 },
+        { allowInternalTargets: false, maxRedirects: 5 },
+        execute,
+      ),
+    ).rejects.toThrow('aborted');
+  });
+
   it('retains the explicit internal-target opt-in', async () => {
     (mockLookup as jest.Mock).mockResolvedValueOnce([
       { address: '10.0.0.5', family: 4 },

@@ -15,6 +15,7 @@ describe('network-validators', () => {
   });
 
   afterEach(() => {
+    delete process.env.SELF_HOSTED;
     if (originalAllowInternal === undefined) {
       delete process.env.ALLOW_INTERNAL_TARGETS;
     } else {
@@ -79,6 +80,7 @@ describe('network-validators', () => {
     });
 
     it('allows internal targets when ALLOW_INTERNAL_TARGETS is set', () => {
+      process.env.SELF_HOSTED = 'true';
       process.env.ALLOW_INTERNAL_TARGETS = 'true';
 
       expect(validateTargetUrl('http://192.168.1.10')).toEqual({ valid: true });
@@ -181,6 +183,7 @@ describe('network-validators', () => {
     );
 
     it('allows private IPv4 when ALLOW_INTERNAL_TARGETS is set', () => {
+      process.env.SELF_HOSTED = 'true';
       process.env.ALLOW_INTERNAL_TARGETS = 'true';
 
       expect(validatePingTarget('10.0.0.1')).toEqual({ valid: true });
@@ -229,6 +232,7 @@ describe('network-validators', () => {
     });
 
     it('allows internal IPv6 targets when ALLOW_INTERNAL_TARGETS is set', () => {
+      process.env.SELF_HOSTED = 'true';
       process.env.ALLOW_INTERNAL_TARGETS = 'true';
 
       expect(validatePingTarget('::1')).toEqual({ valid: true });
@@ -311,7 +315,10 @@ describe('network-validators', () => {
 
 describe('ALLOW_INTERNAL_TARGETS', () => {
   const original = process.env.ALLOW_INTERNAL_TARGETS;
+  const originalSelfHosted = process.env.SELF_HOSTED;
   afterEach(() => {
+    if (originalSelfHosted === undefined) delete process.env.SELF_HOSTED;
+    else process.env.SELF_HOSTED = originalSelfHosted;
     if (original === undefined) delete process.env.ALLOW_INTERNAL_TARGETS;
     else process.env.ALLOW_INTERNAL_TARGETS = original;
   });
@@ -330,7 +337,14 @@ describe('ALLOW_INTERNAL_TARGETS', () => {
     },
   );
 
+  it('ignores the opt-in unless SELF_HOSTED', () => {
+    delete process.env.SELF_HOSTED;
+    process.env.ALLOW_INTERNAL_TARGETS = 'true';
+    expect(validatePingTarget('10.0.0.5').valid).toBe(false);
+  });
+
   it("opts in only on 'true'", () => {
+    process.env.SELF_HOSTED = 'true';
     process.env.ALLOW_INTERNAL_TARGETS = 'true';
     expect(validatePingTarget('10.0.0.5').valid).toBe(true);
     expect(validateTargetUrl('http://169.254.169.254/').valid).toBe(true);

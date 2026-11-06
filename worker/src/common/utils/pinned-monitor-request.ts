@@ -10,7 +10,10 @@ import {
 } from 'axios';
 
 import { createPinnedLookup } from './pinned-lookup';
-import { isPrivateOrReservedAddress } from './url-validator';
+import {
+  isMetadataOrLinkLocalAddress,
+  isPrivateOrReservedAddress,
+} from './url-validator';
 
 type RequestExecutor = (
   config: AxiosRequestConfig<unknown>,
@@ -27,11 +30,13 @@ interface PinnedConfig {
 }
 
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
-const SENSITIVE_REDIRECT_HEADERS = [
-  'authorization',
-  'cookie',
-  'proxy-authorization',
-];
+// User-configured headers (API keys, custom auth) must not follow a redirect to another origin.
+const CROSS_ORIGIN_SAFE_HEADERS = new Set([
+  'user-agent',
+  'accept',
+  'accept-language',
+  'accept-encoding',
+]);
 
 /**
  * Resolve a monitor host once and refuse private or reserved destinations. Callers connect only to
@@ -49,6 +54,10 @@ export async function resolvePublicAddresses(
 
   if (addresses.length === 0) {
     throw new Error('Monitor target did not resolve to an address');
+  }
+  // Cloud metadata and link-local addresses stay blocked even when internal targets are allowed.
+  if (addresses.some(({ address }) => isMetadataOrLinkLocalAddress(address))) {
+    throw new Error('Access to private or reserved networks is not allowed');
   }
   if (
     !allowInternalTargets &&
@@ -111,6 +120,10 @@ async function pinRequestConfig(
       httpAgent,
       httpsAgent,
       maxRedirects: 0,
+      // Axios `timeout` is an idle timeout; this bounds a slow-drip response in wall-clock time.
+      ...(typeof input.timeout === 'number' && input.timeout > 0
+        ? { signal: AbortSignal.timeout(input.timeout) }
+        : {}),
       // A proxy would perform a separate DNS lookup and bypass address pinning.
       proxy: false,
     },
@@ -146,7 +159,11 @@ function buildRedirectConfig(
   const crossOrigin = currentUrl.origin !== nextUrl.origin;
 
   if (crossOrigin) {
-    for (const header of SENSITIVE_REDIRECT_HEADERS) headers.delete(header);
+    for (const name of Object.keys(headers.toJSON())) {
+      if (!CROSS_ORIGIN_SAFE_HEADERS.has(name.toLowerCase())) {
+        headers.delete(name);
+      }
+    }
   }
 
   const method = String(previous.method ?? 'GET').toUpperCase();

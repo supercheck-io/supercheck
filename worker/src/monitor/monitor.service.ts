@@ -68,6 +68,7 @@ import {
   resolvePublicAddress,
   vettedLookup,
 } from '../common/utils/pinned-monitor-request';
+import { allowInternalWebhookTargets } from '../common/utils/url-validator';
 import {
   MonitorEvaluator,
   type GroupAlertEvaluation,
@@ -963,7 +964,7 @@ export class MonitorService {
     try {
       // 🔴 CRITICAL: Enhanced validation with security config
       const securityConfig: SecurityConfig = {
-        allowInternalTargets: process.env.ALLOW_INTERNAL_TARGETS === 'true',
+        allowInternalTargets: allowInternalWebhookTargets(),
         maxStringLength: 2048,
         allowedProtocols: ['http:', 'https:'],
       };
@@ -1219,7 +1220,7 @@ export class MonitorService {
       const response = await requestPinnedMonitorTarget(
         requestConfig,
         {
-          allowInternalTargets: process.env.ALLOW_INTERNAL_TARGETS === 'true',
+          allowInternalTargets: allowInternalWebhookTargets(),
           maxRedirects: SECURITY.MAX_REDIRECTS,
         },
         (validatedConfig) =>
@@ -1322,6 +1323,8 @@ export class MonitorService {
 
         if (
           error.code === 'ECONNABORTED' ||
+          // The wall-clock AbortSignal.timeout set by requestPinnedMonitorTarget.
+          error.code === 'ERR_CANCELED' ||
           getErrorMessage(error).toLowerCase().includes('timeout')
         ) {
           status = 'timeout';
@@ -1418,7 +1421,7 @@ export class MonitorService {
           // Resolved per attempt so a lookup failure still reports the host as down.
           const lookup = await vettedLookup(
             target,
-            process.env.ALLOW_INTERNAL_TARGETS === 'true',
+            allowInternalWebhookTargets(),
           );
           await new Promise<void>((resolve, reject) => {
             const socket = createConnection({
@@ -1551,7 +1554,7 @@ export class MonitorService {
     let responseTimeMs: number | undefined;
 
     try {
-      const allowInternal = process.env.ALLOW_INTERNAL_TARGETS === 'true';
+      const allowInternal = allowInternalWebhookTargets();
       if (protocol === 'tcp') {
         const lookup = await vettedLookup(target, allowInternal);
         // TCP port check using net module
@@ -1800,7 +1803,7 @@ export class MonitorService {
       // Dial only vetted addresses: a second lookup could rebind to a private host.
       const lookup = await vettedLookup(
         hostname.replace(/^\[|\]$/g, ''),
-        process.env.ALLOW_INTERNAL_TARGETS === 'true',
+        allowInternalWebhookTargets(),
       );
 
       const certificateInfo = await new Promise<{
