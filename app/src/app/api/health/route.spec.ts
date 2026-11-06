@@ -8,7 +8,8 @@ jest.mock('@aws-sdk/client-s3', () => ({
   S3Client: jest.fn().mockImplementation(() => ({ send: mockSend, destroy: mockDestroy })),
   HeadBucketCommand: jest.fn().mockImplementation((input) => ({ input })),
 }));
-jest.mock('@/utils/db', () => ({ db: { execute: jest.fn().mockResolvedValue([]) } }));
+const mockExecute = jest.fn();
+jest.mock('@/utils/db', () => ({ db: { execute: (...args: unknown[]) => mockExecute(...args) } }));
 jest.mock('drizzle-orm', () => ({ sql: jest.fn() }));
 
 
@@ -33,6 +34,7 @@ describe('GET /api/health S3 check', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockExecute.mockResolvedValue([]);
     process.env = { ...env, S3_ENDPOINT: 'http://s3:9000' };
     unsetEnv('REDIS_HOST');
   });
@@ -65,6 +67,15 @@ describe('GET /api/health S3 check', () => {
     mockSend.mockRejectedValue({ name: 'NotFound', $metadata: { httpStatusCode: 404 } });
     const body = await call();
     expect(body.checks.s3.status).toBe('error');
+  });
+
+  it('never returns database driver errors to anonymous callers', async () => {
+    mockSend.mockResolvedValue({});
+    mockExecute.mockRejectedValue(new Error('connect ECONNREFUSED 10.0.0.5:5432'));
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    const body = await call();
+    expect(body.checks.database.error).toBe('Database connection failed');
+    expect(JSON.stringify(body)).not.toContain('10.0.0.5');
   });
 
   it('degrades on 501 and reports name and status only', async () => {

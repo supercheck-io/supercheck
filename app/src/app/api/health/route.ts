@@ -101,10 +101,9 @@ export async function GET() {
     await db.execute(sql`SELECT 1`);
     checks.database = { status: 'ok', latencyMs: Date.now() - dbStart };
   } catch (error) {
-    checks.database = { 
-      status: 'error', 
-      error: error instanceof Error ? error.message : 'Database connection failed' 
-    };
+    // Public endpoint: driver errors can name hosts and ports, so log them and return a fixed message.
+    console.error('Health check: database connection failed', error);
+    checks.database = { status: 'error', error: 'Database connection failed' };
     overallStatus = 'unhealthy';
   }
 
@@ -126,10 +125,8 @@ export async function GET() {
       // Don't quit - reuse the connection pool
       checks.redis = { status: 'ok', latencyMs: Date.now() - redisStart };
     } catch (error) {
-      checks.redis = { 
-        status: 'error', 
-        error: error instanceof Error ? error.message : 'Redis connection failed' 
-      };
+      console.error('Health check: Redis connection failed', error);
+      checks.redis = { status: 'error', error: 'Redis connection failed' };
       // Redis failure degrades but doesn't make unhealthy (queues can recover)
       if (overallStatus === 'ok') overallStatus = 'degraded';
     }

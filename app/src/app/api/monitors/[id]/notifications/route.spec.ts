@@ -50,7 +50,7 @@ const call = () =>
   POST(
     new NextRequest("http://localhost/api/monitors/x/notifications", {
       method: "POST",
-      body: JSON.stringify({ notificationProviderId: "prov-1" }),
+      body: JSON.stringify({ notificationProviderId: "4b8e7c62-2f1d-4e5a-9c3b-8a7d6e5f4c3b" }),
     }),
     { params: Promise.resolve({ id: MONITOR_ID }) },
   );
@@ -90,7 +90,7 @@ describe("POST /api/monitors/[id]/notifications channel cap", () => {
 
 describe("/api/monitors/[id]/notifications access control", () => {
   const ctx = { params: Promise.resolve({ id: MONITOR_ID }) };
-  const body = JSON.stringify({ notificationProviderId: "prov-1" });
+  const body = JSON.stringify({ notificationProviderId: "4b8e7c62-2f1d-4e5a-9c3b-8a7d6e5f4c3b" });
   const calls = {
     GET: () => GET(new NextRequest("http://localhost/api/monitors/x/notifications"), ctx),
     POST: () => POST(new NextRequest("http://localhost/api/monitors/x/notifications", { method: "POST", body }), ctx),
@@ -119,4 +119,15 @@ describe("/api/monitors/[id]/notifications access control", () => {
     expect((await calls[method]()).status).toBe(404);
     (hasPermissionForUser as jest.Mock).mockResolvedValue(true);
   });
+});
+
+it("rejects a malformed notification provider id with 400", async () => {
+  const { POST } = jest.requireActual("./route") as typeof import("./route");
+  const res = await POST(
+    new NextRequest("http://localhost/api/monitors/93ce4a2e-7846-5b60-b753-1ab3563f0fce/notifications", {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ notificationProviderId: "prov-1" }),
+    }),
+    { params: Promise.resolve({ id: "93ce4a2e-7846-5b60-b753-1ab3563f0fce" }) },
+  );
+  expect(res.status).toBe(400);
 });

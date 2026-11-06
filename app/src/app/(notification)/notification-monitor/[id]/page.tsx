@@ -1,4 +1,4 @@
-import { monitorConfigForRead, monitorResultDetailsForRead, monitorTargetForRead } from "@/lib/monitor-read-config";
+import { monitorConfigForRead, monitorResultForRead, monitorTargetForRead } from "@/lib/monitor-read-config";
 import { Metadata } from "next";
 import { AlertCircle } from "lucide-react";
 import {
@@ -88,11 +88,11 @@ async function getMonitorDetailsDirectly(
           : new Date().toISOString(),
         status: r.status as DBMonitorResultStatusType,
         responseTimeMs: r.responseTimeMs,
-        details: monitorResultDetailsForRead(r.details),
+        details: monitorResultForRead(r).details,
         isUp: r.isUp,
         isStatusChange: r.isStatusChange,
         testExecutionId: r.testExecutionId ?? undefined,
-        testReportS3Url: r.testReportS3Url ?? undefined,
+        testReportS3Url: monitorResultForRead(r).testReportS3Url ?? undefined,
         location: r.location ?? null,
       })
     );

@@ -17,7 +17,7 @@ import { apiKeyRateLimiter } from "@/lib/api-key-rate-limiter";
 import { EmailService } from "@/lib/email-service";
 
 const send = jest.fn();
-const post = (emails: string) =>
+const post = (emails: unknown) =>
   POST(new NextRequest("http://localhost/api/notification-providers/test", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -51,6 +51,13 @@ describe("email test connection", () => {
   it("refuses arbitrary outside recipients without sending", async () => {
     allowed(["me@example.com"]);
     expect((await post("me@example.com, victim@elsewhere.com")).status).toBe(400);
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("rejects a non-string emails value with a clear message", async () => {
+    const response = await post(["me@example.com"]);
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toContain("At least one email address is required");
     expect(send).not.toHaveBeenCalled();
   });
 

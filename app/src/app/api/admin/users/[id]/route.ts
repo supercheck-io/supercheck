@@ -342,6 +342,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const { action, organizationId } = body;
     
     if (action === 'impersonate') {
+      // Nested impersonation would record the impersonated admin, not the real one, as the actor.
+      if (await isImpersonatedSession()) {
+        return NextResponse.json(
+          { success: false, error: 'Stop the current impersonation first' },
+          { status: 400 }
+        );
+      }
+
       // Get current admin session
       const sessionData = await auth.api.getSession({
         headers: await headers(),

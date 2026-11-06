@@ -14,7 +14,7 @@ import {
   sreIncidents,
 } from "@/db/schema";
 import { db } from "@/utils/db";
-import { monitorConfigForRead, monitorResultDetailsForRead, monitorTargetForRead } from "@/lib/monitor-read-config";
+import { monitorConfigForRead, monitorResultForRead, monitorTargetForRead } from "@/lib/monitor-read-config";
 import { linkedAlertFields } from "@/lib/sre/incident-alert-snapshot";
 
 const DEFAULT_LOOKBACK_MINUTES = 120;
@@ -424,11 +424,11 @@ export async function collectNativeEvidence(input: {
             status: result.status,
             isUp: result.isUp,
             responseTimeMs: result.responseTimeMs,
-            details: monitorResultDetailsForRead(result.details),
+            details: monitorResultForRead(result).details,
             consecutiveFailureCount: result.consecutiveFailureCount,
             consecutiveSuccessCount: result.consecutiveSuccessCount,
             testExecutionId: result.testExecutionId,
-            testReportS3Url: result.testReportS3Url,
+            testReportS3Url: monitorResultForRead(result).testReportS3Url,
           }),
           evidenceType: result.testReportS3Url ? "artifact" : "metric",
           severity: result.isUp ? "sev4" : alert.severity,

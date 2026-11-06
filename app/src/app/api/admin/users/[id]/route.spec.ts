@@ -20,7 +20,7 @@ import { db } from "@/utils/db";
 import { getCurrentUser } from "@/lib/session";
 import { logAdminEvent } from "@/lib/audit-logger";
 import { pruneAvatars } from "@/lib/user-avatar";
-import { DELETE, PUT } from "./route";
+import { DELETE, POST, PUT } from "./route";
 beforeEach(() => {
   jest.clearAllMocks();
   (getCurrentUser as jest.Mock).mockResolvedValue({ id: "admin" });
@@ -55,6 +55,17 @@ it("blocks deleting a user who is the only owner of an organization that has oth
   const response = await DELETE(new NextRequest("http://localhost/api/admin/users/target"), { params: Promise.resolve({ id: "0c11ab1e-7460-5139-b3b8-920f69f95082" }) });
   expect(response.status).toBe(409);
   expect(db.transaction).not.toHaveBeenCalled();
+});
+
+it("refuses to impersonate from an already impersonated session", async () => {
+  jest.mocked(isImpersonatedSession).mockResolvedValueOnce(true);
+  const request = new NextRequest("http://localhost/api/admin/users/target", {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "impersonate" }),
+  });
+  const response = await POST(request, { params: Promise.resolve({ id: "0c11ab1e-7460-5139-b3b8-920f69f95082" }) });
+  expect(response.status).toBe(400);
+  expect((await response.json()).error).toBe("Stop the current impersonation first");
+  expect(db.select).not.toHaveBeenCalled();
 });
 
 describe("organizations where the user is the only member", () => {

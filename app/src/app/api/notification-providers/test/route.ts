@@ -106,7 +106,7 @@ async function testEmailConnection(
   try {
     // Validate emails field (new format)
     const typedConfig = config as Record<string, unknown>;
-    if (!typedConfig.emails || !(typedConfig.emails as string).trim()) {
+    if (typeof typedConfig.emails !== "string" || !typedConfig.emails.trim()) {
       throw new Error("At least one email address is required");
     }
 

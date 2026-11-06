@@ -8,6 +8,8 @@ import { validateAIConfiguration } from "@/lib/ai/ai-provider";
 import { AIPromptBuilder } from "@/lib/ai/ai-prompts";
 import { getActiveOrganization } from "@/lib/session";
 import { reserveAICredit } from "@/lib/ai/ai-credit-reservation";
+import { requireAuthContext } from "@/lib/auth-context";
+import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { headers } from "next/headers";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { subscriptionService } from "@/lib/services/subscription-service";
@@ -111,6 +113,14 @@ export async function POST(request: NextRequest) {
     const { requireAuth } = await import("@/lib/rbac/middleware");
     const authResult = await requireAuth();
     const userId = authResult.user.id;
+    // Generated tests are for saving, so spending a credit needs create access in the active project.
+    const authContext = await requireAuthContext();
+    if (!checkPermissionWithContext("test", "create", authContext)) {
+      return NextResponse.json(
+        { success: false, reason: "forbidden", message: "You do not have permission to create tests." },
+        { status: 403 },
+      );
+    }
 
     const activeOrg = await getActiveOrganization();
     if (!activeOrg) {
