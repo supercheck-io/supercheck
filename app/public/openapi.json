@@ -3248,7 +3248,7 @@
       "patch": {
         "operationId": "updateMonitor",
         "summary": "Update a monitor",
-        "description": "Update monitor configuration. Only provided fields are changed. Resource IDs must be canonical UUIDs; malformed IDs return 404.",
+        "description": "Partially update a monitor. Send only the fields to change. `config` and `alertConfig` are merged as a JSON merge patch: objects merge recursively, arrays replace, and an explicit `null` deletes a key. Resource IDs must be canonical UUIDs; malformed IDs return 404.",
         "tags": [
           "Monitors"
         ],
@@ -3331,7 +3331,7 @@
       "put": {
         "operationId": "replaceMonitorConfiguration",
         "summary": "Update a monitor configuration",
-        "description": "Update monitor configuration. Only provided fields are changed. PUT is retained for CLI deploy and backward compatibility; interactive partial updates should prefer PATCH. Resource IDs must be canonical UUIDs; malformed IDs return 404.",
+        "description": "Replace a monitor configuration. Omitted top-level fields are kept, but `config` is replaced as a whole, so send the complete object (use PATCH to change single keys). PUT is retained for CLI deploy and backward compatibility. Resource IDs must be canonical UUIDs; malformed IDs return 404.",
         "tags": [
           "Monitors"
         ],

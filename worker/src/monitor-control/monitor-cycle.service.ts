@@ -4,7 +4,10 @@ import { DbService } from '../db/db.service';
 import * as schema from '../db/schema';
 import type { MonitorCycleEvaluation } from '../db/schema';
 import { MonitorAlertService } from '../monitor/services/monitor-alert.service';
-import { MonitorEvaluator } from '../monitor/monitor-evaluator';
+import {
+  MonitorEvaluator,
+  tracksAlertState,
+} from '../monitor/monitor-evaluator';
 import type { MonitorExecutionResult } from '../monitor/types/monitor-result.type';
 import { BillingHoldService } from './billing-hold.service';
 import { decideMonitorCycle } from './cycle-policy';
@@ -250,7 +253,7 @@ export class MonitorCycleService {
       ) {
         evaluation.alertState = {
           ...this.evaluator.advanceAggregatedAlertState(
-            monitor.alertConfig?.enabled,
+            tracksAlertState(monitor.alertConfig),
             monitor.config,
             previousStatus,
             decision.status,

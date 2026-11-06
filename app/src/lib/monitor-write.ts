@@ -3,6 +3,7 @@ import { db } from "@/utils/db";
 import { monitorNotificationSettings, notificationProviders, tests } from "@/db/schema";
 import type { AlertConfig, MonitorConfig } from "@/db/schema";
 import { isUuid } from "@/lib/uuid";
+import { incidentsEnabled } from "@/lib/incident-settings";
 import { alertThresholdError } from "@/lib/alert-thresholds";
 
 /** Config keys the worker writes. A client replacing `config` must not wipe or forge them. */
@@ -71,10 +72,11 @@ export function normalizeMonitorAlertConfig(raw: Raw, existing?: Partial<AlertCo
   };
 }
 
-/** Rules for an enabled alertConfig: a channel, within the cap, and at least one alert type. */
+/** Rules for an enabled alertConfig: a channel (unless incidents are on), within the cap, and at least one alert type. */
 export function enabledAlertConfigError(config: AlertConfig): string | null {
   if (!config.enabled) return null;
-  if (config.notificationProviders.length === 0) {
+  // Incidents need no channel, so an incident-only monitor may have none.
+  if (config.notificationProviders.length === 0 && !incidentsEnabled(config)) {
     return "At least one notification channel must be selected when alerts are enabled";
   }
   const max = parseInt(process.env.MAX_MONITOR_NOTIFICATION_CHANNELS || "10", 10);
@@ -143,6 +145,23 @@ export async function testInProject(testId: unknown, organizationId: string, pro
     columns: { id: true },
   });
   return Boolean(test);
+}
+
+const isPlainObject = (v: unknown): v is Record<string, unknown> =>
+  v !== null && typeof v === "object" && !Array.isArray(v);
+
+/**
+ * PATCH merge semantics (RFC 7396): objects merge recursively, arrays and scalars replace, and an
+ * explicit null deletes the key. Inputs are not mutated.
+ */
+export function mergePatch<T extends Record<string, unknown>>(target: T, patch: Record<string, unknown>): T {
+  const out: Record<string, unknown> = { ...target };
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === null) delete out[key];
+    else if (isPlainObject(value)) out[key] = mergePatch(isPlainObject(out[key]) ? out[key] : {}, value);
+    else out[key] = value;
+  }
+  return out as T;
 }
 
 /** An update may omit the name, but never blank it (create already rejects an empty name). */

@@ -434,6 +434,10 @@ export const sreIncidents = pgTable(
     postmortem: jsonb("postmortem").$type<SrePostmortem>(),
     /** Set once when the unacknowledged re-notify step fires, so it never repeats. */
     renotifiedAt: timestamp("renotified_at", { withTimezone: true }),
+    /** Alerts folded into this incident: 1 at open, +1 for each repeat alert while it stays open. */
+    alertCount: integer("alert_count").notNull().default(1),
+    /** When the latest alert (the opening one or a repeat) fired. */
+    lastAlertAt: timestamp("last_alert_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },

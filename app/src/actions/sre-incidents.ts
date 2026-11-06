@@ -194,6 +194,7 @@ export type SreIncidentListItem = {
   assigneeImage: string | null;
   acknowledgedAt: Date | null;
   alertCount: number;
+  lastAlertAt: Date | null;
   evidenceCount: number;
   investigationCount: number;
   latestInvestigationStatus: SreInvestigationStatus | null;
@@ -641,15 +642,12 @@ export async function getSreIncidents(
         createdAt: sreIncidents.createdAt,
         updatedAt: sreIncidents.updatedAt,
         resolvedAt: sreIncidents.resolvedAt,
-        alertCount: sql<number>`count(${sreIncidentAlerts.alertEventId})::int`,
+        alertCount: sreIncidents.alertCount,
+        lastAlertAt: sreIncidents.lastAlertAt,
       })
       .from(sreIncidents)
       .leftJoin(sreServices, eq(sreIncidents.primaryServiceId, sreServices.id))
       .leftJoin(assignee, eq(assignee.id, sreIncidents.assigneeUserId))
-      .leftJoin(
-        sreIncidentAlerts,
-        eq(sreIncidentAlerts.incidentId, sreIncidents.id),
-      )
       .where(
         and(
           eq(sreIncidents.organizationId, organizationId),
@@ -894,17 +892,14 @@ export async function getSreIncidentDetails(
         rootCauseSummary: sreIncidents.rootCauseSummary,
         confidenceScore: sreIncidents.confidenceScore,
         postmortem: sreIncidents.postmortem,
-        alertCount: sql<number>`count(${sreIncidentAlerts.alertEventId})::int`,
+        alertCount: sreIncidents.alertCount,
+        lastAlertAt: sreIncidents.lastAlertAt,
       })
       .from(sreIncidents)
       .leftJoin(sreServices, eq(sreIncidents.primaryServiceId, sreServices.id))
       .leftJoin(assignee, eq(assignee.id, sreIncidents.assigneeUserId))
       .leftJoin(acker, eq(acker.id, sreIncidents.acknowledgedByUserId))
       .leftJoin(commander, eq(commander.id, sreIncidents.commanderUserId))
-      .leftJoin(
-        sreIncidentAlerts,
-        eq(sreIncidentAlerts.incidentId, sreIncidents.id),
-      )
       .where(
         and(
           eq(sreIncidents.id, incidentId),

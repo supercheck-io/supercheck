@@ -38,6 +38,7 @@ import {
 } from "@/lib/monitor-location-routing";
 import type { LocationConfig } from "@/db/schema";
 import { createLogger } from "@/lib/logger/index";
+import { incidentsEnabled } from "@/lib/incident-settings";
 import { validateMonitorConfiguration } from "@/lib/monitor-validation";
 import { validateMonitorTargetAddress } from "@/lib/monitor-target-policy";
 import { monitorNameError, normalizeMonitorAlertConfig, providerIdsOutsideProject, syntheticFrequencyError } from "@/lib/monitor-write";
@@ -505,9 +506,11 @@ export async function POST(req: NextRequest) {
     // Validate alert configuration if enabled
     if (alertConfig?.enabled) {
       // Check if at least one notification provider is selected
+      // Incidents need no channel: with them on, an enabled alert may have none.
       if (
-        !alertConfig.notificationProviders ||
-        alertConfig.notificationProviders.length === 0
+        (!alertConfig.notificationProviders ||
+          alertConfig.notificationProviders.length === 0) &&
+        !incidentsEnabled(alertConfig)
       ) {
         return NextResponse.json(
           {
@@ -523,7 +526,7 @@ export async function POST(req: NextRequest) {
         process.env.MAX_MONITOR_NOTIFICATION_CHANNELS || "10",
         10,
       );
-      if (alertConfig.notificationProviders.length > maxMonitorChannels) {
+      if ((alertConfig.notificationProviders?.length ?? 0) > maxMonitorChannels) {
         return NextResponse.json(
           {
             error: `You can only select up to ${maxMonitorChannels} notification channels`,
@@ -940,9 +943,11 @@ export async function PUT(req: NextRequest) {
     // Validate alert configuration if enabled
     if (alertConfig?.enabled) {
       // Check if at least one notification provider is selected
+      // Incidents need no channel: with them on, an enabled alert may have none.
       if (
-        !alertConfig.notificationProviders ||
-        alertConfig.notificationProviders.length === 0
+        (!alertConfig.notificationProviders ||
+          alertConfig.notificationProviders.length === 0) &&
+        !incidentsEnabled(alertConfig)
       ) {
         return NextResponse.json(
           {
@@ -958,7 +963,7 @@ export async function PUT(req: NextRequest) {
         process.env.MAX_MONITOR_NOTIFICATION_CHANNELS || "10",
         10,
       );
-      if (alertConfig.notificationProviders.length > maxMonitorChannels) {
+      if ((alertConfig.notificationProviders?.length ?? 0) > maxMonitorChannels) {
         return NextResponse.json(
           {
             error: `You can only select up to ${maxMonitorChannels} notification channels`,

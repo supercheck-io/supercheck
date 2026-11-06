@@ -92,6 +92,32 @@ export class MonitorAlertService {
     return rows.length > 0;
   }
 
+  /**
+   * Opens or updates the monitor's incident without notifying anyone: for a monitor with no channel or with
+   * alerts off. Held back during scheduled maintenance like an alert, so the next failing check retries.
+   */
+  async signalFailure(monitorId: string, reason: string) {
+    if (await this.isUnderScheduledMaintenance(monitorId)) {
+      return {
+        delivered: false,
+        suppressed: true,
+        reason: 'maintenance' as const,
+      };
+    }
+    await this.sreAlertTriageQueueService.enqueueSourceFailure({
+      sourceType: 'monitor',
+      sourceId: monitorId,
+      type: 'monitor_failure',
+      message: reason || 'Monitor is down',
+      firedAt: new Date().toISOString(),
+    });
+    return {
+      delivered: false,
+      suppressed: true,
+      reason: 'incident_only' as const,
+    };
+  }
+
   async sendNotification(
     monitorId: string,
     type: 'recovery' | 'failure',
@@ -175,6 +201,14 @@ export class MonitorAlertService {
       this.logger.log(
         `[NOTIFY] No notification providers configured for monitor ${monitorId}`,
       );
+      // No channel still tracks the failure: incidents do not depend on a delivered alert.
+      if (
+        type === 'failure' &&
+        providers.length === 0 &&
+        monitor.alertConfig?.incidentEnabled !== false
+      ) {
+        return this.signalFailure(monitorId, reason);
+      }
       // Nothing to deliver to: not a failure, so the cycle is receipted instead of retried 5 times.
       return {
         delivered: false,

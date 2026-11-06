@@ -32,6 +32,7 @@ import {
   applySourceRecovery,
   findOpenIncidentForSource,
   noteFailureReturned,
+  recordRepeatAlert,
   getDefaultAssigneeId,
   reopenRecentlyAutoResolved,
 } from "@/lib/sre/incident-lifecycle";
@@ -431,6 +432,7 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
       .limit(1);
 
     if (existingIncident) {
+      if (existingIncident.status !== "resolved") await recordRepeatAlert(tx, existingIncident.id, firedAt);
       if (existingIncident.status !== "resolved" && RECOVERABLE_FAILURE_TYPES.has(alert.type)) {
         await noteFailureReturned(tx, existingIncident.id, firedAt);
       }
@@ -468,6 +470,7 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
           createdAt: new Date(),
         })
         .onConflictDoNothing();
+      await recordRepeatAlert(tx, reopened.incidentId, firedAt);
       return {
         skipped: false as const,
         organizationId,
@@ -478,6 +481,7 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
       };
     }
     if (reopened) {
+      await recordRepeatAlert(tx, reopened.incidentId, firedAt);
       return {
         skipped: false as const,
         organizationId,
@@ -506,6 +510,7 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
             createdAt: new Date(),
           })
           .onConflictDoNothing();
+        await recordRepeatAlert(tx, openForSource.id, firedAt);
         await noteFailureReturned(tx, openForSource.id, firedAt);
         return {
           skipped: false as const,
@@ -623,6 +628,7 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
               createdAt: new Date(),
             })
             .onConflictDoNothing();
+          await recordRepeatAlert(correlationTx, correlation.candidate.incidentId, firedAt);
 
           await correlationTx.insert(sreIncidentTimelineEvents).values({
             incidentId: correlation.candidate.incidentId,
@@ -686,6 +692,8 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string) {
         title,
         severity,
         status: "triggered",
+        alertCount: 1,
+        lastAlertAt: firedAt,
         primaryServiceId: mappedService?.id ?? null,
         assigneeUserId: await getDefaultAssigneeId(tx, {
           organizationId,

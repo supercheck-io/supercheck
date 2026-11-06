@@ -44,6 +44,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { incidentsEnabled } from "@/lib/incident-settings";
 import { AlertSettings } from "@/components/alerts/alert-settings";
 import { MonitorTypesPopover } from "./monitor-types-popover";
 import { LocationConfigSection } from "./location-config-section";
@@ -1010,9 +1011,11 @@ export function MonitorForm({
     // Validate alert configuration before proceeding
     if (alertConfig.enabled) {
       // Check if at least one notification provider is selected
+      // Incidents need no channel, so incident-only monitors may have none.
       if (
-        !alertConfig.notificationProviders ||
-        alertConfig.notificationProviders.length === 0
+        (!alertConfig.notificationProviders ||
+          alertConfig.notificationProviders.length === 0) &&
+        !incidentsEnabled(alertConfig)
       ) {
         toast.error("Validation Error", {
           description:
@@ -1023,7 +1026,7 @@ export function MonitorForm({
 
       // Check notification channel limit
       if (
-        alertConfig.notificationProviders.length >
+        (alertConfig.notificationProviders?.length ?? 0) >
         maxMonitorNotificationChannels
       ) {
         toast.error("Validation Error", {

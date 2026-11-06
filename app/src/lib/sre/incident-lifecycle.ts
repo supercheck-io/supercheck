@@ -731,6 +731,26 @@ export async function findOpenIncidentForSource(tx: Executor, source: SourceRef)
 }
 
 /**
+ * Counts one more alert on an open incident. A single atomic statement (no read-then-write), so concurrent
+ * repeats each add exactly one. The same alert arriving again (a queue retry, or one row per channel) carries
+ * the same firedAt and is not counted twice. Returns whether the count moved.
+ */
+export async function recordRepeatAlert(tx: Executor, incidentId: string, firedAt: Date) {
+  const rows = await tx
+    .update(sreIncidents)
+    .set({ alertCount: sql`${sreIncidents.alertCount} + 1`, lastAlertAt: firedAt })
+    .where(
+      and(
+        eq(sreIncidents.id, incidentId),
+        ne(sreIncidents.status, "resolved"),
+        sql`${sreIncidents.lastAlertAt} is distinct from ${firedAt}`,
+      ),
+    )
+    .returning({ id: sreIncidents.id });
+  return rows.length > 0;
+}
+
+/**
  * Record a failure that came back on an open incident after its recovery note, so the
  * timeline shows it and the next recovery is noted again.
  */
