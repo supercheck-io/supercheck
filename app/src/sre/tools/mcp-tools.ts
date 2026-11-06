@@ -18,6 +18,7 @@ import {
   mcpEndpointUrl,
   queueMcpPrivateAgentJob,
 } from "@/lib/sre/mcp-private-agent-job";
+import { cancelQueuedPrivateAgentJob } from "@/lib/sre/private-agent-job-cancel";
 import { waitForPrivateAgentConnectorJob } from "@/lib/sre/private-agent-job-waiter";
 import { checkSreConnectorSearchRateLimit } from "@/lib/sre/sre-rate-limiter";
 import { db } from "@/utils/db";
@@ -225,6 +226,11 @@ export async function executeMcpToolCall(input: {
   }
 
   if (waitResult.state === "pending") {
+    await cancelQueuedPrivateAgentJob({
+      jobId: queued.jobId,
+      organizationId: scope.organizationId,
+      projectId: scope.projectId,
+    });
     await audit("agent.mcp.call_tool.queue", {
       status: "success",
       outputSummary: `Queued MCP tool call job ${queued.jobId}`,

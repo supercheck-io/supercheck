@@ -45,6 +45,7 @@ import {
 import { summarizeJobSpec } from "@/lib/sre/connectors/endpoint-policy";
 import { isValidKubernetesLabelSelector } from "@/lib/sre/connectors/kubernetes-label-selector";
 import { normalizePrivateAgentEvidenceSummaries } from "@/lib/sre/connector-job-evidence";
+import { cancelQueuedPrivateAgentJob } from "@/lib/sre/private-agent-job-cancel";
 import { waitForPrivateAgentConnectorJob } from "@/lib/sre/private-agent-job-waiter";
 import { ConnectorQueryRejectedError } from "@/lib/sre/connectors/providers/provider-query-guards";
 import { flatCredentialFields } from "@/lib/sre/connectors/providers/provider-credentials";
@@ -907,6 +908,9 @@ export async function searchIncidentLiveConnectorEvidence(
         message: `${scope.incidentId ? "Persisted" : "Returned"} ${persistedEvidence.length} connector evidence item(s)`,
       };
     }
+
+    // Nobody waits for it any more; cancel so it cannot run late (no-op if it was already leased).
+    await cancelQueuedPrivateAgentJob({ jobId, organizationId: scope.organizationId, projectId: scope.projectId });
 
     await db.insert(sreInvestigationToolCalls).values({
       investigationRunId: scope.investigationRunId ?? null,
