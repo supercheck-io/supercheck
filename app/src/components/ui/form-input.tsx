@@ -14,7 +14,7 @@ interface FormInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
 
 export const FormInput = React.forwardRef<HTMLInputElement, FormInputProps>(
   ({ label, error, maxLength, showCharacterCount = false, className, labelClassName, ...props }, ref) => {
-    const [charCount, setCharCount] = React.useState(props.value?.toString().length || 0)
+    const [charCount, setCharCount] = React.useState((props.value ?? props.defaultValue)?.toString().length || 0)
     // Controlled inputs report their own length; uncontrolled ones are tracked on change.
     const shownCount = props.value !== undefined ? String(props.value).length : charCount
 

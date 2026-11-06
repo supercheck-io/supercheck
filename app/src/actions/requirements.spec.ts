@@ -98,7 +98,7 @@ describe("Requirements Server Actions", () => {
         from: () => ({
           where: () => {
             const p = Promise.resolve(rows);
-            return Object.assign(p, { limit: () => Promise.resolve(rows) });
+            return Object.assign(p, { limit: () => Promise.resolve(rows), for: () => Promise.resolve(rows) });
           },
         }),
       }));
@@ -125,6 +125,8 @@ describe("Requirements Server Actions", () => {
     mockRequireProjectContext.mockResolvedValue(mockProjectContext);
     mockCheckPermissionWithContext.mockReturnValue(true);
     (mockDb.transaction as jest.Mock).mockImplementation(async (run: (tx: unknown) => unknown) => run(mockDb));
+    // The snapshot row lock updateCoverageSnapshot takes; scope-check selects queue their own results.
+    (mockDb.select as jest.Mock).mockImplementation(() => ({ from: () => ({ where: () => ({ for: () => Promise.resolve([]) }) }) }));
   });
 
   it("rejects an unavailable or foreign source document before creating a requirement", async () => {
@@ -261,6 +263,7 @@ describe("Requirements Server Actions", () => {
         from: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
         limit: jest.fn().mockResolvedValue([{ id: testRequirementId, title: "Test" }]),
+        for: jest.fn().mockResolvedValue([]),
       };
       (mockDb.select as jest.Mock).mockReturnValue(mockSelectChain);
     });
@@ -572,7 +575,7 @@ describe("Requirements Server Actions", () => {
         });
       const tx = {
         insert: jest.fn(() => ({ values: () => chain(rows) })),
-        select: jest.fn(() => ({ from: () => ({ where: () => ({ orderBy: () => Promise.resolve([]) }) }) })),
+        select: jest.fn(() => ({ from: () => ({ where: () => ({ orderBy: () => Promise.resolve([]), for: () => Promise.resolve([]) }) }) })),
         delete: jest.fn(() => ({ where: () => Promise.resolve() })),
       };
       (mockDb.transaction as jest.Mock).mockImplementation(async (run: (t: typeof tx) => unknown) => run(tx));

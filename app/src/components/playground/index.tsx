@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
+import { useUnsavedNavigationGuard } from "@/hooks/use-unsaved-navigation-guard";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ExternalLink } from "lucide-react";
@@ -197,6 +198,9 @@ const Playground: React.FC<PlaygroundProps> = ({
 
   const [reportUrl, setReportUrl] = useState<string | null>(null);
   const [performanceRunId, setPerformanceRunId] = useState<string | null>(null);
+  const k6ToastRunRef = useRef<string | null>(null);
+  // Run the user asked to cancel: the report may report it as an error before the cancel call returns.
+  const cancelRequestedRunRef = useRef<string | null>(null);
   const [performanceLocation, setPerformanceLocation] =
     useState<PerformanceLocation>(initialPerformanceLocation ?? "global");
   const [locationDialogOpen, setLocationDialogOpen] = useState(false);
@@ -230,6 +234,7 @@ const Playground: React.FC<PlaygroundProps> = ({
     editorStateRef.current = { current: editorContent, initial: initialEditorContent };
   }, [editorContent, initialEditorContent]);
   const [pendingRecordedCode, setPendingRecordedCode] = useState<string | null>(null);
+  const navigationGuard = useUnsavedNavigationGuard(hasUnsavedChanges);
   useEffect(() => {
     if (!hasUnsavedChanges) return;
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
@@ -1206,6 +1211,7 @@ const Playground: React.FC<PlaygroundProps> = ({
 
     setIsCancelling(true);
     setShowCancelConfirm(false);
+    cancelRequestedRunRef.current = performanceRunId;
 
     try {
       const response = await fetch(`/api/runs/${currentRunId}/cancel`, {
@@ -1561,6 +1567,24 @@ const Playground: React.FC<PlaygroundProps> = ({
                       </AlertDialogContent>
                     </AlertDialog>
 
+                    <AlertDialog
+                      open={navigationGuard.pending}
+                      onOpenChange={(open) => !open && navigationGuard.stay()}
+                    >
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Leave without saving?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Your editor has unsaved changes that will be lost if you leave this page.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Stay on page</AlertDialogCancel>
+                          <AlertDialogAction onClick={navigationGuard.leave}>Leave page</AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+
                     {/* Cancel Confirmation Dialog */}
                     <AlertDialog
                       open={showCancelConfirm}
@@ -1694,6 +1718,29 @@ const Playground: React.FC<PlaygroundProps> = ({
                           runId={performanceRunId}
                           onStatusChange={(status) => {
                             if (status !== "running") {
+                              // Announce a run that finished while this page watched it, once.
+                              // (Reopening a finished run, or a cancel the user confirmed, is silent.)
+                              if (isRunning && k6ToastRunRef.current !== performanceRunId && cancelRequestedRunRef.current !== performanceRunId) {
+                                k6ToastRunRef.current = performanceRunId;
+                                if (status === "passed") {
+                                  toast.success("Performance test passed", {
+                                    description: "All thresholds and checks passed.",
+                                    duration: 10000,
+                                  });
+                                } else if (status === "failed") {
+                                  toast.error("Performance test finished with failures", {
+                                    description: "Thresholds or checks failed. Review the report before saving.",
+                                    duration: 10000,
+                                  });
+                                } else if (status === "blocked") {
+                                  toast.error("Performance test blocked", { duration: 10000 });
+                                } else {
+                                  toast.error("Performance test failed to run", {
+                                    description: "The script could not complete. Review the report for details.",
+                                    duration: 10000,
+                                  });
+                                }
+                              }
                               setIsRunning(false);
                               // For K6 performance tests:
                               // - "passed" = script ran && thresholds passed && checks passed

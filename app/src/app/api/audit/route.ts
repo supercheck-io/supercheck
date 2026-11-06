@@ -9,6 +9,28 @@ import { createLogger } from '@/lib/logger/pino-config';
 
 const logger = createLogger({ module: 'audit-api' });
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// Postgres timestamptz text, microsecond precision, so a keyset cursor never skips or repeats a row.
+const TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d{1,6})?[+-]\d{2}(:\d{2})?$/;
+
+function encodeCursor(createdAt: string, id: string) {
+  return Buffer.from(`${createdAt}|${id}`).toString('base64url');
+}
+
+// Rejects dates the regex allows but Postgres would not (2026-02-31, hour 24), so a bad cursor is a 400, not a 500.
+function isRealTimestamp(createdAt: string) {
+  const [, y, mo, d, h, mi, sec] = createdAt.match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})/) ?? [];
+  if (!y) return false;
+  const date = new Date(Date.UTC(+y, +mo - 1, +d, +h, +mi, +sec));
+  return date.getUTCMonth() === +mo - 1 && date.getUTCDate() === +d && +h < 24 && +mi < 60 && +sec < 60;
+}
+
+function decodeCursor(raw: string): { createdAt: string; id: string } | null {
+  const [createdAt, id, extra] = Buffer.from(raw, 'base64url').toString().split('|');
+  if (extra !== undefined || !createdAt || !id || !TIMESTAMP_RE.test(createdAt) || !isRealTimestamp(createdAt) || !UUID_RE.test(id)) return null;
+  return { createdAt, id };
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { userId, organizationId, projectId, isCliAuth } = await requireUserAuthContext();
@@ -47,8 +69,15 @@ export async function GET(request: NextRequest) {
     const search = (searchParams.get('search') || '').trim().slice(0, 200);
     const action = (searchParams.get('action') || '').trim().slice(0, 100);
 
+    // Keyset cursor: stable under inserts, unlike page offsets. When present it replaces `page`.
+    const rawCursor = searchParams.get('cursor');
+    const cursor = rawCursor ? decodeCursor(rawCursor) : null;
+    if (rawCursor && !cursor) {
+      return NextResponse.json({ success: false, error: "Invalid cursor" }, { status: 400 });
+    }
+
     // Calculate offset
-    const offset = (page - 1) * limit;
+    const offset = cursor ? 0 : (page - 1) * limit;
 
     // Build where clause
     let whereClause: SQL<unknown> = eq(auditLogs.organizationId, organizationId);
@@ -83,8 +112,17 @@ export async function GET(request: NextRequest) {
       ? [desc(auditLogs.createdAt), desc(auditLogs.id)]
       : [auditLogs.createdAt, auditLogs.id];
 
-    // Fetch audit logs with user information
-    const auditData = await db
+    const logsWhere = cursor
+      ? and(
+          whereClause,
+          sortOrder === 'desc'
+            ? sql`(${auditLogs.createdAt}, ${auditLogs.id}) < (${cursor.createdAt}::timestamptz, ${cursor.id}::uuid)`
+            : sql`(${auditLogs.createdAt}, ${auditLogs.id}) > (${cursor.createdAt}::timestamptz, ${cursor.id}::uuid)`
+        )
+      : whereClause;
+
+    // Fetch one extra row to know whether another page follows.
+    const fetched = await db
       .select({
         id: auditLogs.id,
         action: auditLogs.action,
@@ -94,13 +132,19 @@ export async function GET(request: NextRequest) {
         userName: user.name,
         userEmail: user.email,
         userImage: user.image,
+        // to_char, not ::text: the text form follows the session DateStyle, which the cursor parser must not depend on.
+        createdAtCursor: sql<string>`to_char(${auditLogs.createdAt} at time zone 'UTC', 'YYYY-MM-DD HH24:MI:SS.US') || '+00'`,
       })
       .from(auditLogs)
       .leftJoin(user, eq(auditLogs.userId, user.id))
-      .where(whereClause)
+      .where(logsWhere)
       .orderBy(...orderBy)
-      .limit(limit)
+      .limit(limit + 1)
       .offset(offset);
+    const auditData = fetched.slice(0, limit);
+    const last = auditData.at(-1);
+    const nextCursor =
+      fetched.length > limit && last?.createdAtCursor ? encodeCursor(last.createdAtCursor, last.id) : null;
 
     // Get unique actions for filter dropdown
     const uniqueActions = await db
@@ -114,6 +158,8 @@ export async function GET(request: NextRequest) {
     const response = {
       success: true,
       data: {
+        // Lets a client that is loading pages detect an organization switch between requests.
+        organizationId,
         logs: auditData.map(log => ({
           id: log.id,
           action: log.action,
@@ -126,14 +172,18 @@ export async function GET(request: NextRequest) {
             image: log.userImage
           }
         })),
-        pagination: {
-          currentPage: page,
-          totalPages,
-          totalCount,
-          limit,
-          hasNext: page < totalPages,
-          hasPrev: page > 1
-        },
+        // Offset fields (page, totalPages, hasPrev) describe nothing in cursor mode, so they are left out.
+        pagination: cursor
+          ? { totalCount, limit, hasNext: nextCursor !== null, nextCursor }
+          : {
+              currentPage: page,
+              totalPages,
+              totalCount,
+              limit,
+              hasNext: page < totalPages,
+              hasPrev: page > 1,
+              nextCursor
+            },
         filters: {
           actions: uniqueActions.map(a => a.action).filter(Boolean)
         }

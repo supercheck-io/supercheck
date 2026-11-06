@@ -8,6 +8,7 @@ import { runSreAgent } from "@/sre/lib/agent-runner";
 import { createSreEvidenceTools } from "@/sre/tools/evidence-tools";
 import { db } from "@/utils/db";
 import { failStaleSreInvestigationRunsForIncident } from "@/sre/lib/stale-run-recovery";
+import { insertSreRun, SreOrgConcurrencyError } from "@/sre/lib/run-insert";
 import { sreBillingErrorMessage } from "@/lib/sre/billing-error-messages";
 import { withSreTriageAdmission, SreInvestigationBillingError } from "@/lib/sre/investigation-billing";
 import { notifyIncidentEvent } from "@/lib/sre/incident-notifier";
@@ -22,6 +23,8 @@ export type RunSreIncidentTriageInput = {
   projectId: string;
   userId: string | null;
   incidentId: string;
+  /** Set by the auto-investigate-on-open path; such a run is capped per organization. */
+  origin?: "auto";
 };
 
 export type RunSreIncidentTriageResult =
@@ -37,6 +40,7 @@ export type RunSreIncidentTriageResult =
       status: 402 | 404 | 409 | 502;
       error: string;
       investigationRunId?: string;
+      reason?: "org_concurrency_limit";
     };
 
 export async function runSreIncidentTriage(input: RunSreIncidentTriageInput): Promise<RunSreIncidentTriageResult> {
@@ -81,9 +85,8 @@ export async function runSreIncidentTriage(input: RunSreIncidentTriageInput): Pr
   const initialModelId = getActualModelName();
   let run: typeof sreInvestigationRuns.$inferSelect;
   try {
-    [run] = await withSreTriageAdmission(input.organizationId, async (database, billingTier) => database
-      .insert(sreInvestigationRuns)
-      .values({
+    [run] = await withSreTriageAdmission(input.organizationId, async (database, billingTier) => insertSreRun(database, {
+        origin: input.origin ?? "manual",
         organizationId: input.organizationId,
         projectId: input.projectId,
         incidentId: incident.id,
@@ -100,11 +103,13 @@ export async function runSreIncidentTriage(input: RunSreIncidentTriageInput): Pr
         createdByUserId: input.userId,
         startedAt: new Date(startedAt),
         createdAt: new Date(),
-      })
-      .returning());
+      }));
   } catch (error) {
     if (error instanceof SreInvestigationBillingError) {
       return { success: false, status: 402, error: sreBillingErrorMessage(error.code) };
+    }
+    if (error instanceof SreOrgConcurrencyError) {
+      return { success: false, status: 409, error: error.message, reason: "org_concurrency_limit" };
     }
     if (isActiveIncidentRunConflict(error)) {
       return { success: false, status: 409, error: "An investigation is already running for this incident" };
