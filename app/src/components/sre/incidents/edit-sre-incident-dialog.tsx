@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { toDisplayStatus } from "@/lib/sre/incident-status-display";
 import { useProjectContext } from "@/hooks/use-project-context";
 import {
   getSreIncidentAnalyticsQueryKey,
@@ -61,6 +62,9 @@ const FIXING_STATUSES = new Set<SreIncidentListItem["status"]>([
   "recommendations_ready",
   "user_applying_fix",
 ]);
+// Select items use stored values where a display status groups several.
+const SELECT_VALUE: Record<string, string> = { fixing: "identified", monitoring: "verifying" };
+
 export function EditSreIncidentDialog({
   incident,
   services,
@@ -82,9 +86,14 @@ export function EditSreIncidentDialog({
   const [severity, setSeverity] = useState<SreIncidentListItem["severity"]>(
     incident.severity,
   );
-  const [status, setStatus] = useState<SreIncidentListItem["status"]>(
-    incident.status,
+  // Null until the person picks a status, so saving other fields never posts one.
+  const [status, setStatus] = useState<SreIncidentListItem["status"] | null>(null);
+  // An acknowledged incident is stored as triggered + acknowledgedAt; show what the page header shows.
+  const shownStatus = toDisplayStatus(
+    status ?? incident.status,
+    status ? null : incident.acknowledgedAt,
   );
+  const stored = status ?? incident.status;
   const [primaryServiceId, setPrimaryServiceId] = useState(
     incident.primaryServiceId ?? noServiceValue,
   );
@@ -98,7 +107,7 @@ export function EditSreIncidentDialog({
     if (isDialogOpen) {
       setTitle(incident.title);
       setSeverity(incident.severity);
-      setStatus(incident.status);
+      setStatus(null);
       setPrimaryServiceId(incident.primaryServiceId ?? noServiceValue);
     }
   }
@@ -128,7 +137,7 @@ export function EditSreIncidentDialog({
         id: incident.id,
         title: trimmedTitle,
         severity,
-        status,
+        ...(status ? { status } : {}),
         primaryServiceId:
           primaryServiceId === noServiceValue ? null : primaryServiceId,
       });
@@ -166,7 +175,7 @@ export function EditSreIncidentDialog({
     setFieldErrors(undefined);
     setTitle(incident.title);
     setSeverity(incident.severity);
-    setStatus(incident.status);
+    setStatus(null);
     setPrimaryServiceId(incident.primaryServiceId ?? noServiceValue);
   };
 
@@ -230,14 +239,17 @@ export function EditSreIncidentDialog({
             <div className="space-y-2">
               <Label htmlFor="incident-status">Status</Label>
               <Select
-                value={FIXING_STATUSES.has(status) ? "identified" : status}
+                value={SELECT_VALUE[shownStatus] ?? shownStatus}
                 onValueChange={(value) =>
                   // Keep the stored fixing sub-state when "Fixing" is picked again.
-                  setStatus(
-                    value === "identified" && FIXING_STATUSES.has(incident.status)
-                      ? incident.status
-                      : (value as SreIncidentListItem["status"]),
-                  )
+                  setStatus(() => {
+                    const next =
+                      value === "identified" && FIXING_STATUSES.has(incident.status)
+                        ? incident.status
+                        : (value as SreIncidentListItem["status"]);
+                    // Picking the stored status again is no change.
+                    return next === incident.status ? null : next;
+                  })
                 }
               >
                 <SelectTrigger id="incident-status">
@@ -245,6 +257,9 @@ export function EditSreIncidentDialog({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="triggered">Triggered</SelectItem>
+                  <SelectItem value="acknowledged" disabled>
+                    Acknowledged (use Acknowledge)
+                  </SelectItem>
                   <SelectItem value="investigating">Investigating</SelectItem>
                   <SelectItem value="identified">Fixing</SelectItem>
                   <SelectItem value="verifying">Monitoring</SelectItem>
@@ -254,7 +269,7 @@ export function EditSreIncidentDialog({
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                {incident.status === "resolved" && status !== "resolved"
+                {incident.status === "resolved" && stored !== "resolved"
                   ? "Saving reopens the incident. It will need a new acknowledgement."
                   : "Use the Resolve incident action to close an incident with a recovery note."}
               </p>

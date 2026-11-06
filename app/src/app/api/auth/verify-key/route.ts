@@ -126,7 +126,13 @@ export async function POST(request: NextRequest) {
   }
   
   try {
-    const { apiKey, jobId } = await request.json();
+    let rawBody: unknown;
+    try {
+      rawBody = await request.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+    const { apiKey, jobId } = rawBody as Record<string, any>;
 
     if (!apiKey) {
       return NextResponse.json(

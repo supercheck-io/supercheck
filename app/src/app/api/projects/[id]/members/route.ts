@@ -130,7 +130,12 @@ export async function POST(
       return await forbiddenOrNotFound(userId, organizationId, 'Insufficient permissions to add members', 'Project not found');
     }
     
-    const body = await request.json();
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
     const { userId: targetUserId, role = 'project_viewer' } = body;
     
     if (!targetUserId) {
@@ -254,7 +259,12 @@ export async function PUT(
       return await forbiddenOrNotFound(userId, organizationId, 'Insufficient permissions to manage members', 'Project not found');
     }
     
-    const body = await request.json();
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
     const { userId: targetUserId, role } = body;
     
     if (!targetUserId || !role) {

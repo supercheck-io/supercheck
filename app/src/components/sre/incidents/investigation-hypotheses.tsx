@@ -31,8 +31,7 @@ export function InvestigationHypotheses({
 
   return (
     <section aria-labelledby="investigation-hypotheses-title" className="space-y-3">
-      {/* The sheet section already shows "Hypotheses"; keep the label for screen readers only. */}
-      <h3 id="investigation-hypotheses-title" className="sr-only">
+      <h3 id="investigation-hypotheses-title" className="text-sm font-semibold">
         Hypotheses
       </h3>
       <ol className="divide-y rounded-lg border">

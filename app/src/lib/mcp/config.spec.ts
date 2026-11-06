@@ -1,6 +1,7 @@
 import {
   MCP_SCOPES,
   getMcpAllowedOrigins,
+  getMcpJwksUrl,
   getMcpResourceUrl,
   isMcpDynamicRegistrationEnabled,
   isMcpServerEnabled,
@@ -87,5 +88,19 @@ describe("getMcpAllowedOrigins", () => {
         MCP_ALLOWED_ORIGINS: "https://*.example.com,https://a.example.com/path,https://b.example.com/,not a url",
       }),
     ).toEqual([]);
+  });
+});
+
+describe("getMcpJwksUrl", () => {
+  it("loads keys over loopback on the app port, not the public URL", () => {
+    expect(getMcpJwksUrl({ BETTER_AUTH_URL: "https://app.supercheck.io" })).toBe("http://localhost:3000/api/auth/jwks");
+    expect(getMcpJwksUrl({ PORT: "8080" })).toBe("http://localhost:8080/api/auth/jwks");
+  });
+
+  it("falls back to 3000 for an invalid PORT and honours MCP_JWKS_URL", () => {
+    expect(getMcpJwksUrl({ PORT: "abc" })).toBe("http://localhost:3000/api/auth/jwks");
+    expect(getMcpJwksUrl({ PORT: "70000" })).toBe("http://localhost:3000/api/auth/jwks");
+    expect(getMcpJwksUrl({ MCP_JWKS_URL: " http://app:3000/api/auth/jwks " })).toBe("http://app:3000/api/auth/jwks");
+    expect(getMcpJwksUrl({ MCP_JWKS_URL: "   " })).toBe("http://localhost:3000/api/auth/jwks");
   });
 });

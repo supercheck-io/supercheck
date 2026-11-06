@@ -11,8 +11,9 @@ jest.mock("@/lib/auth-context", () => ({
   requireAuthContext: async () => ({ userId: id, organizationId: id, project: { id } }), isAuthError: () => false,
 }));
 jest.mock("@/lib/rbac/middleware", () => ({ checkPermissionWithContext: () => true }));
+const mockDecrypt = jest.fn((config: unknown) => config);
 jest.mock("@/lib/notification-providers/crypto", () => ({
-  decryptNotificationProviderConfig: (config: unknown) => config,
+  decryptNotificationProviderConfig: (config: unknown) => mockDecrypt(config),
   encryptNotificationProviderConfig: jest.fn((config: unknown) => config),
   mergeNotificationProviderConfig: jest.fn(),
   sanitizeConfigForClient: (configType: unknown, config: unknown) => ({ sanitizedConfig: config, maskedFields: [] }),
@@ -26,4 +27,16 @@ it("synchronizes config.name on a name-only update without replacing credentials
   expect(response.status).toBe(200);
   expect(encryptNotificationProviderConfig).toHaveBeenCalledWith({ ...config, name: "New name" }, id);
   expect(mockSet.mock.calls[0][0].name).toBe("New name");
+});
+
+it("disables a provider whose stored config no longer decrypts", async () => {
+  mockDecrypt.mockImplementation(() => { throw new Error("bad key"); });
+  mockSet.mockClear();
+  mockSelect.mockReturnValue({ from: jest.fn().mockReturnThis(), where: jest.fn().mockResolvedValue([{ id, name: "Ops", type: "discord", createdByUserId: id, config: "garbled" }]) });
+  mockUpdate.mockReturnValue({ set: mockSet.mockReturnThis(), where: jest.fn().mockReturnThis(), returning: jest.fn(async () => [{ id, name: "Ops", type: "discord", isEnabled: false, config: "garbled" }]) });
+  const response = await PUT(new NextRequest(`https://example.com/api/notification-providers/${id}`, { method: "PUT", body: JSON.stringify({ name: "Ops", isEnabled: false }) }), { params: Promise.resolve({ id }) });
+  expect(response.status).toBe(200);
+  expect(mockSet.mock.calls[0][0]).toMatchObject({ isEnabled: false });
+  expect(mockSet.mock.calls[0][0]).not.toHaveProperty("config");
+  mockDecrypt.mockImplementation((config: unknown) => config);
 });

@@ -23,9 +23,6 @@ export function SimilarIncidentsList({ incidentId }: { incidentId: string }) {
   }
   return (
     <div data-testid="similar-incidents" className="space-y-3">
-      <p className="text-xs text-muted-foreground">
-        Resolved incidents from the last 180 days that share a service, alert source or title. They may be unrelated.
-      </p>
       <ul className="divide-y rounded-lg border">
         {data.incidents.map((incident) => (
           <li key={incident.id} className="space-y-1.5 p-3 text-sm">

@@ -9,6 +9,7 @@ import {
   sreInvestigationRuns,
 } from "@/db/schema";
 import { getActualModelName } from "@/lib/ai/ai-provider";
+import { describeEvidenceBrief } from "@/lib/sre/evidence-brief-summary";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { createLogger } from "@/lib/logger/index";
 import { normalizePrivateAgentEvidenceSummaries } from "@/lib/sre/connector-job-evidence";
@@ -480,6 +481,11 @@ export async function runSreEvidenceBriefGeneration(input: {
         eventType: "ai_finding",
         eventData: {
           type: "native_evidence_brief",
+          summary: describeEvidenceBrief({
+            suspectedFailureDomain: brief.suspectedFailureDomain,
+            evidenceCount: allEvidenceRows.length,
+            confidenceScore: brief.confidenceScore,
+          }),
           provider: brief.provider,
           suspectedFailureDomain: brief.suspectedFailureDomain,
           confidenceScore: brief.confidenceScore,

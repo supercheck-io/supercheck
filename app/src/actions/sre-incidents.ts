@@ -120,7 +120,7 @@ const updateIncidentSchema = z.object({
     "user_applying_fix",
     "verifying",
     "resolved",
-  ]),
+  ]).optional(),
   primaryServiceId: z.string().uuid().nullable(),
 });
 
@@ -1396,7 +1396,10 @@ export async function updateSreIncident(
       return { success: false, error: "Incident not found or access denied" };
     }
 
-    if (parsed.data.status === "resolved" && current.status !== "resolved") {
+    // Omitted when the caller did not change it, so an edit never overwrites a concurrent status change.
+    const nextStatus = parsed.data.status ?? current.status;
+
+    if (nextStatus === "resolved" && current.status !== "resolved") {
       return {
         success: false,
         error: "Use Resolve to close an incident with a resolution summary",
@@ -1426,7 +1429,7 @@ export async function updateSreIncident(
     if (
       truncate(parsed.data.title, 500) === current.title &&
       parsed.data.severity === current.severity &&
-      parsed.data.status === current.status &&
+      nextStatus === current.status &&
       parsed.data.primaryServiceId === current.primaryServiceId
     ) {
       return {
@@ -1438,17 +1441,17 @@ export async function updateSreIncident(
     }
 
     const now = new Date();
-    const reopening = current.status === "resolved" && parsed.data.status !== "resolved";
+    const reopening = current.status === "resolved" && nextStatus !== "resolved";
     const incident = await db.transaction(async (tx) => {
       const [updatedIncident] = await tx
         .update(sreIncidents)
         .set({
           title: truncate(parsed.data.title, 500),
           severity: parsed.data.severity,
-          status: parsed.data.status,
+          status: nextStatus,
           primaryServiceId: parsed.data.primaryServiceId,
           resolvedAt:
-            parsed.data.status === "resolved"
+            nextStatus === "resolved"
               ? (current.resolvedAt ?? now)
               : null,
           // A reopened incident is no longer verified, and needs a fresh acknowledgement.
@@ -1458,10 +1461,12 @@ export async function updateSreIncident(
                 mitigatedAt: null,
                 acknowledgedAt: null,
                 acknowledgedByUserId: null,
+                // Lets the unacknowledged reminder fire again for the reopened incident.
+                renotifiedAt: null,
               }
             : {}),
           // After the reopen reset, so reopening straight to Monitoring still records mitigation.
-          ...(parsed.data.status === "verifying" && (reopening || !current.mitigatedAt)
+          ...(nextStatus === "verifying" && (reopening || !current.mitigatedAt)
             ? { mitigatedAt: now }
             : {}),
           updatedAt: now,
@@ -1501,7 +1506,7 @@ export async function updateSreIncident(
           current: {
             title: parsed.data.title,
             severity: parsed.data.severity,
-            status: parsed.data.status,
+            status: nextStatus,
             primaryServiceId: parsed.data.primaryServiceId,
           },
         },
@@ -1537,7 +1542,7 @@ export async function updateSreIncident(
         projectId: project.id,
         incidentNumber: incident.incidentNumber,
         severity: parsed.data.severity,
-        status: parsed.data.status,
+        status: nextStatus,
         primaryServiceId: parsed.data.primaryServiceId,
       },
       success: true,

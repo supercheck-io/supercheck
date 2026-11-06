@@ -46,7 +46,13 @@ export async function POST(request: NextRequest) {
   try {
     const context = await requireAuthContext();
 
-    const { name, color } = await request.json();
+    let rawBody: unknown;
+    try {
+      rawBody = await request.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+    const { name, color } = rawBody as Record<string, any>;
     
     // PERFORMANCE: Use checkPermissionWithContext to avoid 5-8 duplicate DB queries
     const canCreate = checkPermissionWithContext('tag', 'create', context);

@@ -55,59 +55,57 @@ Incidents opened by an alert are titled `<target>: <alert type>`, for example *C
 
 ## Incident Workspace
 
-The header shows the incident number, title, severity, status, service, and when it opened. One primary button follows the incident: **Acknowledge**, then **Resolve incident**, then **Post-mortem** once resolved. The **Watch** button follows the incident by email (**Unwatch** to stop). The **...** menu holds **Edit incident**, **Add commander**, **Run investigation** (**Re-run investigation** after a run), and **Ask Copilot**, which opens Copilot for this incident in a side drawer. Hover the info icons for a one-sentence explanation of each term.
-
-A progress line shows the six statuses: Triggered, Acknowledged, Investigating, Fixing, Monitoring, Resolved.
+The header shows the incident number, title, status (Triggered, Acknowledged, Investigating, Fixing, Monitoring or Resolved) and severity. One primary button follows the incident: **Acknowledge**, then **Resolve incident**. The **...** menu holds **Edit incident**, **Add commander**, **Resolve incident** (before acknowledging), and **Ask Copilot**, which opens Copilot for this incident in a side drawer. Run or re-run an investigation from the investigation sheet.
 
 | Area | Contents |
 |---|---|
-| **AI summary** | The conclusion (select **Show more** to expand), confidence, the top evidence, the next step, and **Right** / **Wrong** buttons. **Investigate** or **Investigation details** opens the side panel |
-| **Timeline** | A box to post updates above the event list. **Draft customer update with AI** fills the box with a customer-safe draft for you to edit. **Also post to status page** publishes the note as an update on the incident's linked status page incident and emails its subscribers (needs permission to update status pages). The timeline shows old → new values for edits, severity and status changes, reassignments, and the alert that was linked |
-| **Investigation details** panel | Tabs: **Analysis** (run controls, hypotheses, step log, report snapshot), **Evidence**, **Brief**, **Similar**, and **Post-mortem** once resolved |
+| **Summary** | The conclusion (select **Show more** to expand), confidence, the next step, and **Right** / **Wrong** buttons. **Run investigation** or **View investigation** opens the investigation sheet |
+| **Activity** | A box to post updates above the event list. **Draft customer update with AI** fills the box with a customer-safe draft for you to edit. **Also post to status page** publishes the note as an update on the incident's linked status page incident and emails its subscribers (needs permission to update status pages). The feed shows old → new values for edits, severity and status changes, reassignments, and the alert that was linked |
+| **Investigation** sheet | One report: **Conclusion** with recommended next steps, **Hypotheses**, **Evidence**, a collapsed **How it was investigated** step log, **Similar incidents** when there are matches, and **Post-mortem** once resolved |
 
-The **Details** sidebar shows the assignee (and an optional commander), service, **Status page** state with **Post update**, start and acknowledgement times, **Time to acknowledge** and **Time to resolve**, linked **Alerts**, and **Similar past incidents** (only when there are matches). Open the panel directly with `?tab=investigation`, `?tab=evidence`, or `?tab=brief`.
+The **Properties** panel lists status, severity, assignee (and an optional commander), service, start time, **Time to acknowledge** and **Time to resolve**, **Status page** state with **Post update**, a **Watch** toggle, and linked **Alerts**. Open the sheet directly with `?tab=investigation`, `?tab=evidence` or `?tab=brief`; `?tab=evidence` scrolls to the evidence list, and a `#sre-evidence-<id>` link scrolls to that item.
 
 ![Incident Workspace Overview](/screenshots/incident-workspace-overview.png)
 
 ### AI summary
 
-The summary card answers four questions in order.
+The summary card and the sheet answer these questions in order.
 
 | Part | What it tells you |
 |---|---|
 | **Conclusion** | One paragraph: what changed, the blast radius, the strongest signals, and the likely cause |
 | **Confidence** | **High**, **Medium**, **Low**, or **Inconclusive** |
-| **Cited evidence** | Up to three evidence items the conclusion rests on. Select one to read it |
+| **Recommended next steps** | Safe checks to run next. The card shows the first one |
 | **Hypotheses** | Ranked explanations, each marked **Validated**, **Ruled out**, or **Inconclusive**, with a short rationale and its evidence |
 
 **Inconclusive** is a normal result, not a failure. When the evidence does not establish a cause, the agent says what is missing and lists safe next checks instead of guessing. A hypothesis is only **Validated** when it cites real evidence from this incident. Runs whose output could not be validated show a plain summary without hypotheses or a confidence rating.
 
-In the **Investigation details** panel, **How I investigated** lists each check the agent ran: the tool, a short summary of its arguments (secrets are never shown), how many results came back, and how long it took. It updates live while a run is in progress.
+In the sheet, **How it was investigated** lists each check the agent ran, a short summary of its arguments (secrets are never shown) and how many results came back. It is collapsed once the run is done and updates live while a run is in progress.
 
 ### Run, re-run, and give feedback
 
 | Control | What it does |
 |---|---|
 | **Run investigation** / **Run again** | Starts a bounded, read-only AI pass over stored evidence and optional live connectors. Only one run can be active per incident; starting another returns `409` until it finishes |
-| **Include live sources** | Off by default. Needs a linked service and connector investigation permission |
+| **Run options** | Opens **Include live sources** (off by default; needs a linked service and connector investigation permission) and **Re-run with my note** |
 | **Right** / **Wrong** | On the whole investigation or on any single hypothesis, with an optional one-line note (up to 500 characters). Needs permission to update incidents |
-| **Re-run with my note** | Starts a new investigation that also sees your note as guidance, plus the notes you left on earlier runs |
-| **Save report snapshot** | Locks the sanitized report for audit and review (**Analysis** tab) |
+| **Re-run with my note** | In **Run options**. Starts a new investigation that also sees your note as guidance, plus the notes you left on earlier runs |
+| **Save report snapshot** | In the sheet's **More** menu once a run completes. Locks the sanitized report for audit and review |
 
 Your notes are hints, not evidence. Recent notes on other incidents of the same service are also passed to future investigations as hints. If a run fails or times out, review the error and available evidence before retrying.
 
 ### Similar incidents
 
-The **Similar** tab (opened from **Similar past incidents** in the sidebar) lists up to five **resolved incidents from the last 180 days** (the top three first, with **Show more** for the rest) in the same project that share the primary service, the alert source, or words in the title. It shows why each one matched and how it was resolved. A past root cause is context only: the investigation does not copy it without evidence from the current incident.
+The **Similar incidents** section of the sheet (shown only when there are matches) lists up to five **resolved incidents from the last 180 days** (the top three first, with **Show more** for the rest) in the same project that share the primary service, the alert source, or words in the title. It shows why each one matched and how it was resolved. A past root cause is context only: the investigation does not copy it without evidence from the current incident.
 
 ### Evidence
 
-The **Evidence** section of the panel organizes observations from Supercheck checks and connected systems.
+The **Evidence** section of the sheet lists observations from Supercheck checks and connected systems.
 
 | Item | Contents |
 |---|---|
 | **Evidence items** | Observations such as HTTP response codes, latency spikes, test assertions, and traces |
-| **Evidence brief** | A shareable AI summary of findings, hypotheses, and gaps. Regenerate it or download it as Markdown |
+| **Evidence brief** | A quick AI summary of the saved evidence. It is the **Conclusion** until an investigation has run; **Regenerate brief** stays available, and the brief can be copied or downloaded as Markdown |
 
 ![Investigation details](/screenshots/incident-evidence-brief.png)
 
@@ -118,7 +116,7 @@ Stored evidence stays available when a connector is disabled. Disabling a connec
 
 ## Post-mortem
 
-When an incident is resolved, the **Post-mortem** card offers **Generate post-mortem draft**. The draft is built from the timeline, the resolution summary, the hypotheses, and the evidence titles, in these sections: **Summary**, **Impact**, **Timeline**, **Root cause**, **Contributing factors**, and **Follow-ups**.
+When an incident is resolved, the **Post-mortem** section of the sheet offers **Generate post-mortem draft**. The draft is built from the timeline, the resolution summary, the hypotheses, and the evidence titles, in these sections: **Summary**, **Impact**, **Timeline**, **Root cause**, **Contributing factors**, and **Follow-ups**.
 
 | Behavior | Detail |
 |---|---|
