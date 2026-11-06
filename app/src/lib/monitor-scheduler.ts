@@ -74,7 +74,7 @@ export async function deleteScheduledMonitor(schedulerId: string): Promise<boole
   try {
     return await removeScheduledMonitor(schedulerId);
   } catch (error) {
-    console.error(`Failed to delete scheduled monitor ${schedulerId}:`, error);
+    console.error("Failed to delete scheduled monitor %s:", schedulerId, error);
     return false;
   }
 }
