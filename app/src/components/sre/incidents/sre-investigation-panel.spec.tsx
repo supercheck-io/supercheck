@@ -88,6 +88,15 @@ describe("SreInvestigationPanel", () => {
     await waitFor(() => expect(mockInvalidateQueries).toHaveBeenCalledTimes(2));
   });
 
+  it("sends one request for a double click", async () => {
+    render(<SreInvestigationPanel incidentId="incident-dbl" hasPrimaryService serviceMappingHref="/x" canInvestigate />);
+    const run = screen.getByRole("button", { name: "Run investigation" });
+    fireEvent.click(run);
+    fireEvent.click(run);
+    await screen.findByRole("button", { name: "Run investigation" });
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps Run disabled after a tab switch remounts the panel mid-run", async () => {
     let finish!: (value: unknown) => void;
     (global.fetch as jest.Mock).mockReturnValue(new Promise((resolve) => { finish = resolve; }));

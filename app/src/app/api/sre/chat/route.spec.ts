@@ -39,7 +39,7 @@ jest.mock("@/sre/lib/session-store", () => ({
   appendSreMessage: jest.fn(),
   getSreConversation: jest.fn(),
   listSreMessages: jest.fn(),
-  isSreMessageSuperseded: () => false,
+  isSreMessageSuperseded: (row: { attachments?: Array<{ type: string }> | null }) => Boolean(row.attachments?.some((a) => a.type === "superseded")),
   SRE_MESSAGE_INTERRUPTED: "interrupted",
 }));
 
@@ -153,6 +153,7 @@ describe("SRE chat API", () => {
       { role: "user", content: "Is checkout slow?", attachments: [] },
       { role: "assistant", content: "Latency doubled at 10:00.", attachments: [] },
       { role: "assistant", content: "half a reply", attachments: [{ type: "interrupted" }] },
+      { role: "assistant", content: "replaced reply", attachments: [{ type: "superseded" }] },
     ]);
     const response = await POST(new NextRequest("http://localhost/api/sre/chat", {
       method: "POST",
@@ -163,7 +164,27 @@ describe("SRE chat API", () => {
     expect(prompt).toContain("user: Is checkout slow?");
     expect(prompt).toContain("assistant: Latency doubled at 10:00.");
     expect(prompt).not.toContain("half a reply");
+    expect(prompt).not.toContain("replaced reply");
     expect(mockListSreMessages).toHaveBeenCalledWith(expect.objectContaining({ conversationId }));
+  });
+
+  it("keeps the newest eligible turns when ineligible rows are among the fetched ones", async () => {
+    const conversationId = "018f0000-0000-7000-8000-000000000004";
+    mockGetSreConversation.mockResolvedValue({ id: conversationId, incidentId: null, status: "active" });
+    mockListSreMessages.mockResolvedValue([
+      ...Array.from({ length: 12 }, (_, i) => ({ role: "user", content: `turn-${i}`, attachments: [] })),
+      ...Array.from({ length: 5 }, () => ({ role: "assistant", content: "junk", attachments: [{ type: "interrupted" }] })),
+    ]);
+    const response = await POST(new NextRequest("http://localhost/api/sre/chat", {
+      method: "POST",
+      body: JSON.stringify({ conversationId, message: "next" }),
+    }));
+    await responseText(response);
+    const { prompt } = mockRunSreAgent.mock.calls[0][0];
+    expect(prompt).not.toContain("turn-1\n");
+    expect(prompt).toContain("turn-2");
+    expect(prompt).toContain("turn-11");
+    expect(prompt).not.toContain("junk");
   });
 
   it("rejects unauthorized users before creating conversations", async () => {

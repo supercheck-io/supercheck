@@ -19,8 +19,9 @@ export function BreadcrumbDisplay() {
 
   if (!breadcrumbs || breadcrumbs.length === 0) {
     return (
-      <div className="text-sm text-muted-foreground" role="img" aria-label="Home">
-        <Home className="h-4 w-4" />
+      <div className="text-sm text-muted-foreground">
+        {/* Not yet loaded, so decorative: it must not announce "Home" in place of the real page. */}
+        <Home className="h-4 w-4" aria-hidden="true" />
       </div>
     );
   }
