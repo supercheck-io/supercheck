@@ -255,24 +255,11 @@ describe('validation diagnostics', () => {
     expect(result.error).toBe('API request failed → 413: Script cannot exceed 1000000 characters')
   })
 
-  it('retains HTTP status and non-JSON error details', async () => {
+  it.each([401, 403, 404, 405, 408, 409, 429, 503, undefined])('rethrows a %s failure instead of reporting an invalid script', async (status) => {
     const { ApiClient } = await import('../../api/client.js')
     const client = new ApiClient()
-    jest
-      .spyOn(client, 'post')
-      .mockRejectedValue(
-        new ApiRequestError(
-          'API request failed → 503',
-          503,
-          'upstream unavailable',
-        ),
-      )
-    const [result] = await validateScripts(client, [
-      { name: 'test', script: 'test()' },
-    ])
-    expect(result.valid).toBe(false)
-    expect(result.error).toContain('503')
-    expect(result.error).toContain('upstream unavailable')
+    jest.spyOn(client, 'post').mockRejectedValue(new ApiRequestError('failed', status, 'upstream unavailable'))
+    await expect(validateScripts(client, [{ name: 'test', script: 'test()' }])).rejects.toBeInstanceOf(ApiRequestError)
   })
 })
 
