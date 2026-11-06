@@ -14,6 +14,7 @@ import {
 } from '../../notification/notification.service';
 import { decryptNotificationProviderConfig } from '../../common/notification-provider-crypto';
 import { SreAlertTriageQueueService } from './sre-alert-triage-queue.service';
+import { getErrorMessage } from '../../common/validation';
 
 type ProviderRow = {
   id: string;
@@ -32,6 +33,24 @@ export class MonitorAlertService {
     private readonly notificationService: NotificationService,
     private readonly sreAlertTriageQueueService: SreAlertTriageQueueService,
   ) {}
+
+  /** One channel whose config cannot be decrypted must not block delivery to the others. */
+  private decryptProviders(providers: ProviderRow[]): NotificationProvider[] {
+    return providers.flatMap((provider): NotificationProvider[] => {
+      try {
+        const config = decryptNotificationProviderConfig(
+          provider.config,
+          provider.projectId ?? undefined,
+        );
+        return [{ id: provider.id, type: provider.type, config }];
+      } catch (error) {
+        this.logger.error(
+          `[NOTIFY] Skipping notification provider ${provider.id}: config could not be decrypted (${getErrorMessage(error)})`,
+        );
+        return [];
+      }
+    });
+  }
 
   /** Lets an open incident for this monitor auto-resolve, whether or not a recovery alert goes out. */
   async signalRecovery(monitorId: string, recoveredAt: Date): Promise<void> {
@@ -133,20 +152,12 @@ export class MonitorAlertService {
         ),
       )) as ProviderRow[];
 
-    const decryptedProviders = providers.map(
-      (provider): NotificationProvider => {
-        const decryptedConfig = decryptNotificationProviderConfig(
-          provider.config,
-          provider.projectId ?? undefined,
-        );
+    const decryptedProviders = this.decryptProviders(providers);
 
-        return {
-          id: provider.id,
-          type: provider.type,
-          config: decryptedConfig,
-        };
-      },
-    );
+    // Channels exist but none could be decrypted: a delivery failure, not an empty channel list.
+    if (providers.length > 0 && decryptedProviders.length === 0) {
+      return { delivered: false };
+    }
 
     if (decryptedProviders.length === 0) {
       this.logger.log(
@@ -298,7 +309,7 @@ export class MonitorAlertService {
     monitorId: string,
     reason: string,
     metadata: Record<string, unknown> = {},
-  ) {
+  ): Promise<boolean> {
     this.logger.log(
       `[SSL-NOTIFY] SSL expiration notification for monitor ${monitorId}`,
     );
@@ -312,7 +323,7 @@ export class MonitorAlertService {
 
     if (!monitor) {
       this.logger.error(`[SSL-NOTIFY] Monitor not found: ${monitorId}`);
-      return;
+      return false;
     }
 
     // Get project information
@@ -333,7 +344,7 @@ export class MonitorAlertService {
       this.logger.log(
         `[SSL-NOTIFY] SSL alerts not enabled for monitor ${monitorId}`,
       );
-      return;
+      return false;
     }
 
     // Get notification providers
@@ -359,26 +370,15 @@ export class MonitorAlertService {
         ),
       )) as ProviderRow[];
 
-    const decryptedProviders = providers.map(
-      (provider): NotificationProvider => {
-        const decryptedConfig = decryptNotificationProviderConfig(
-          provider.config,
-          provider.projectId ?? undefined,
-        );
-
-        return {
-          id: provider.id,
-          type: provider.type,
-          config: decryptedConfig,
-        };
-      },
-    );
+    const decryptedProviders = this.decryptProviders(providers);
 
     if (decryptedProviders.length === 0) {
       this.logger.log(
-        `[SSL-NOTIFY] No notification providers configured for monitor ${monitorId}`,
+        providers.length > 0
+          ? `[SSL-NOTIFY] Not delivered for monitor ${monitorId}: no provider config could be decrypted`
+          : `[SSL-NOTIFY] No notification providers configured for monitor ${monitorId}`,
       );
-      return;
+      return false;
     }
 
     const baseUrl =
@@ -476,5 +476,7 @@ export class MonitorAlertService {
         createdRows,
       );
     }
+    // A partial email delivery reached recipients, as in sendNotification.
+    return successCount > 0 || deliveryResults.results.some((r) => r.partial);
   }
 }

@@ -164,7 +164,7 @@ varCommand
     const variable = variables.find((v) => v.key === key)
 
     if (!variable) {
-      throw new CLIError(`Variable "${key}" not found`, ExitCode.GeneralError)
+      throw new ApiRequestError(`Variable "${key}" not found`, 404)
     }
 
     if (!options.force) {

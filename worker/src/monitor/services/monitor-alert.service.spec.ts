@@ -219,10 +219,12 @@ describe('MonitorAlertService', () => {
   it('enqueues created alert-history rows after SSL notifications', async () => {
     const { service, sreAlertTriageQueueService } = createService();
 
-    await service.sendSslExpirationNotification(
-      'monitor-1',
-      'Certificate expires soon',
-    );
+    await expect(
+      service.sendSslExpirationNotification(
+        'monitor-1',
+        'Certificate expires soon',
+      ),
+    ).resolves.toBe(true);
 
     expect(
       sreAlertTriageQueueService.enqueueAlertHistoryRows,
@@ -230,5 +232,54 @@ describe('MonitorAlertService', () => {
       { id: 'history-1', status: 'sent' },
       { id: 'history-2', status: 'failed' },
     ]);
+  });
+
+  it('skips a provider whose config cannot be decrypted and keeps the rest', () => {
+    const { service } = createService();
+    const crypto = jest.requireMock(
+      '../../common/notification-provider-crypto',
+    );
+    crypto.decryptNotificationProviderConfig.mockImplementationOnce(() => {
+      throw new Error('bad auth tag');
+    });
+    const providers = service['decryptProviders']([
+      { id: 'broken', type: 'webhook', config: {}, projectId: 'project-1' },
+      {
+        id: 'ok',
+        type: 'webhook',
+        config: { url: 'u' },
+        projectId: 'project-1',
+      },
+    ] as never);
+    expect(providers.map((p: { id: string }) => p.id)).toEqual(['ok']);
+  });
+
+  it('reports a delivery failure when no provider config can be decrypted', async () => {
+    const { service, notificationService } = createService();
+    const crypto = jest.requireMock(
+      '../../common/notification-provider-crypto',
+    );
+    crypto.decryptNotificationProviderConfig.mockImplementationOnce(() => {
+      throw new Error('bad auth tag');
+    });
+    await expect(
+      service.sendNotification('monitor-1', 'failure', 'down'),
+    ).resolves.toEqual({ delivered: false });
+    expect(
+      notificationService.sendNotificationToMultipleProviders,
+    ).not.toHaveBeenCalled();
+  });
+
+  it('reports an SSL alert as not sent when no provider config can be decrypted', async () => {
+    const { service } = createService();
+    const crypto = jest.requireMock(
+      '../../common/notification-provider-crypto',
+    );
+    crypto.decryptNotificationProviderConfig.mockImplementationOnce(() => {
+      throw new Error('bad auth tag');
+    });
+    await expect(
+      service.sendSslExpirationNotification('monitor-1', 'expiring'),
+    ).resolves.toBe(false);
   });
 });

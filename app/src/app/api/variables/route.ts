@@ -159,6 +159,11 @@ export async function POST(request: NextRequest) {
         { status: authErrorStatus(error) }
       );
     }
+    // A concurrent create of the same key loses the race at the unique index.
+    const cause = (error as { cause?: { code?: unknown } } | null)?.cause;
+    if ((error as { code?: unknown } | null)?.code === "23505" || cause?.code === "23505") {
+      return NextResponse.json({ error: "Variable with this key already exists" }, { status: 409 });
+    }
     console.error("Error creating variable:", error);
     return NextResponse.json(
       { error: "Internal server error" },

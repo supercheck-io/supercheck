@@ -1126,21 +1126,26 @@ export class NotificationService {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
 
-      const response = await fetchPublicEndpoint(
-        webhookUrl,
-        {
-          method,
-          headers,
-          body: method === 'GET' ? undefined : body,
-          signal: controller.signal,
-        },
-        { allowInternal: allowInternalWebhookTargets() },
-      );
-
-      clearTimeout(timeoutId);
-      const responseText = await response
-        .text()
-        .catch(() => 'Unable to read response');
+      // The timer stays armed through the body read, so a trickling response cannot stall delivery.
+      let response: Awaited<ReturnType<typeof fetchPublicEndpoint>>;
+      let responseText: string;
+      try {
+        response = await fetchPublicEndpoint(
+          webhookUrl,
+          {
+            method,
+            headers,
+            body: method === 'GET' ? undefined : body,
+            signal: controller.signal,
+          },
+          { allowInternal: allowInternalWebhookTargets() },
+        );
+        responseText = await response
+          .text()
+          .catch(() => 'Unable to read response');
+      } finally {
+        clearTimeout(timeoutId);
+      }
       const responseDetails: ProviderDeliveryDetails = {
         ...deliveryDetails,
         attempts: 1,

@@ -190,7 +190,7 @@ describe('MonitorService', () => {
     processMonitorResult: jest.fn().mockResolvedValue(undefined),
     sendNotification: jest.fn().mockResolvedValue(undefined),
     signalRecovery: jest.fn().mockResolvedValue(undefined),
-    sendSslExpirationNotification: jest.fn().mockResolvedValue(undefined),
+    sendSslExpirationNotification: jest.fn().mockResolvedValue(true),
   };
 
   const mockExecutionService = {
@@ -1448,6 +1448,50 @@ describe('MonitorService', () => {
         });
         expect(lastResult.details).toMatchObject({ recoverySequence: isUp });
       }
+      mockDbService.db.query.monitorResults.findFirst.mockReset();
+    });
+
+    it('records the outage length on the up streak that follows it', async () => {
+      let lastResult: Record<string, unknown> | undefined;
+      const values = jest
+        .fn()
+        .mockImplementation(async (value: Record<string, unknown>) => {
+          lastResult = value;
+        });
+      mockDbService.db.insert.mockReturnValue({ values });
+      mockDbService.db.query.monitorResults.findFirst.mockImplementation(
+        async () => lastResult,
+      );
+      const seen: unknown[] = [];
+      for (const isUp of [false, false, true, true, false]) {
+        await service['saveMonitorResultToDb']({
+          monitorId: mockMonitor.id,
+          location: 'eu',
+          checkedAt: new Date(),
+          status: isUp ? 'up' : 'down',
+          isUp,
+        });
+        seen.push(
+          (lastResult?.details as { priorFailureCount?: number })
+            .priorFailureCount,
+        );
+      }
+      expect(seen).toEqual([undefined, undefined, 2, 2, undefined]);
+
+      // An outage that already alerted records nothing, so its recovery always goes out.
+      lastResult = {
+        isUp: false,
+        consecutiveFailureCount: 2,
+        alertsSentForFailure: 1,
+      };
+      await service['saveMonitorResultToDb']({
+        monitorId: mockMonitor.id,
+        location: 'eu',
+        checkedAt: new Date(),
+        status: 'up',
+        isUp: true,
+      });
+      expect(lastResult?.details).not.toHaveProperty('priorFailureCount');
       mockDbService.db.query.monitorResults.findFirst.mockReset();
     });
     it('continues failure counters per location, ignoring other regions', async () => {

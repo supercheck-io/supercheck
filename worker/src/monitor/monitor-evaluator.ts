@@ -22,6 +22,10 @@ export type AggregatedAlertState = {
   alertsSentForFailure: number;
   alertsSentForRecovery: number;
   recoverySequence?: boolean;
+  /** Failure count of the outage this recovery follows, when that outage sent no failure alert. */
+  priorFailureCount?: number;
+  /** Some cycles of the current failure sequence were not counted (alerts off or paused). */
+  failureCountUnknown?: boolean;
   executionGroupId?: string;
 };
 
@@ -101,6 +105,12 @@ export class MonitorEvaluator {
         rawAlertState?.alertsSentForRecovery,
       ),
       recoverySequence: rawAlertState?.recoverySequence === true,
+      ...(typeof rawAlertState?.priorFailureCount === 'number'
+        ? { priorFailureCount: toSafeCounter(rawAlertState.priorFailureCount) }
+        : {}),
+      ...(rawAlertState?.failureCountUnknown === true
+        ? { failureCountUnknown: true }
+        : {}),
     };
   }
 
@@ -122,6 +132,9 @@ export class MonitorEvaluator {
           : 0,
         alertsSentForRecovery: 0,
         recoverySequence: false,
+        ...(continuingFailureSequence && previousState.failureCountUnknown
+          ? { failureCountUnknown: true }
+          : {}),
       };
     }
 
@@ -139,6 +152,16 @@ export class MonitorEvaluator {
       recoverySequence:
         previousStatus === 'down' ||
         (continuingRecoverySequence && previousState.recoverySequence === true),
+      // Recorded only when the outage sent no failure alert: an alerted outage always gets its recovery.
+      ...(previousStatus === 'down'
+        ? previousState.alertsSentForFailure === 0 &&
+          !previousState.failureCountUnknown
+          ? { priorFailureCount: previousState.consecutiveFailureCount }
+          : {}
+        : continuingRecoverySequence &&
+            previousState.priorFailureCount !== undefined
+          ? { priorFailureCount: previousState.priorFailureCount }
+          : {}),
     };
   }
 
@@ -157,7 +180,8 @@ export class MonitorEvaluator {
           previousStatus,
           currentStatus,
         )
-      : previousState;
+      : // Uncounted cycles leave the outage length unknown, so a later recovery is not gated on it.
+        { ...previousState, failureCountUnknown: true };
   }
 
   async persistAggregatedAlertState(
@@ -348,9 +372,23 @@ export class MonitorEvaluator {
         await this.monitorAlertService.signalRecovery(monitorId, new Date());
       }
 
+      // A blip shorter than the failure threshold was never an outage, so it gets no recovery alert.
+      // Unknown or uncounted (0: older state, or alerts were off during the outage) still alerts.
+      const priorFailureCount = isMultiLocationEvaluation
+        ? aggregatedAlertState?.priorFailureCount
+        : (latestResult?.details as { priorFailureCount?: unknown } | null)
+            ?.priorFailureCount;
+      const outageReachedThreshold = !(
+        typeof priorFailureCount === 'number' &&
+        priorFailureCount > 0 &&
+        priorFailureCount <
+          ((monitorAlertConfig?.failureThreshold as number) || 1)
+      );
+
       shouldSendAlert =
         consecutiveSuccessCount >= recoveryThreshold &&
         alertsSentForRecovery === 0 &&
+        outageReachedThreshold &&
         ((monitorAlertConfig?.alertOnRecovery as boolean) || false);
 
       if (!shouldSendAlert) {
@@ -636,20 +674,22 @@ export class MonitorEvaluator {
 
         // Only send SSL alerts once per day to avoid spam
         if (hoursSinceLastAlert >= 24) {
-          await this.monitorAlertService.sendSslExpirationNotification(
-            resultData.monitorId,
-            alertReason,
-            {
-              sslCertificate,
-              daysRemaining: sslCertificate?.daysRemaining,
-              responseTime: resultData.responseTimeMs,
-            },
-          );
+          const sent =
+            await this.monitorAlertService.sendSslExpirationNotification(
+              resultData.monitorId,
+              alertReason,
+              {
+                sslCertificate,
+                daysRemaining: sslCertificate?.daysRemaining,
+                responseTime: resultData.responseTimeMs,
+              },
+            );
 
           // Only log important SSL alerts
-          this.logger.log(
-            `Sent SSL expiration alert for monitor ${resultData.monitorId}: ${alertReason}`,
-          );
+          if (sent)
+            this.logger.log(
+              `Sent SSL expiration alert for monitor ${resultData.monitorId}: ${alertReason}`,
+            );
         }
         // Removed debug log for skipped alerts
       }

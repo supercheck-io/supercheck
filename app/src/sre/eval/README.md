@@ -6,7 +6,7 @@ The SRE eval suite is a production safety gate for Supercheck's read-only AI SRE
 
 The `.github/workflows/sre-eval.yml` workflow is not required for local development or runtime behavior. It exists to prevent agent regressions from merging unnoticed. SRE agent changes can affect incident root-cause analysis, connector usage, citations, and read-only guarantees; those should be checked automatically on pull requests.
 
-The workflow runs only the deterministic offline gate with `npm run test:sre-eval`. It does not call LLM providers, does not need a database, does not need connector credentials, and does not run a live app.
+The workflow runs `npm run test:sre-eval:release` with offline defaults, so only the deterministic gate runs. It does not call LLM providers, does not need a database, does not need connector credentials, and does not run a live app.
 
 ## Eval Tiers
 

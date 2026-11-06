@@ -2223,6 +2223,18 @@ export class MonitorService {
             resultData.isUp &&
             (lastResult?.isUp === false ||
               lastResult?.details?.recoverySequence === true),
+          // Length of an outage that sent no failure alert; gates the recovery alert on the failure threshold.
+          ...(resultData.isUp && lastResult
+            ? lastResult.isUp
+              ? typeof lastResult.details?.priorFailureCount === 'number'
+                ? { priorFailureCount: lastResult.details.priorFailureCount }
+                : {}
+              : (lastResult.alertsSentForFailure ?? 0) === 0
+                ? {
+                    priorFailureCount: lastResult.consecutiveFailureCount || 0,
+                  }
+                : {}
+            : {}),
         },
         isUp: resultData.isUp,
         isStatusChange: isStatusChange,

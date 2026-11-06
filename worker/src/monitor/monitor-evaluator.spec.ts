@@ -99,3 +99,176 @@ describe('MonitorEvaluator failure alert cadence', () => {
     },
   );
 });
+
+describe('MonitorEvaluator recovery alert after a short blip', () => {
+  async function recoverySent(
+    multiLocation: boolean,
+    priorFailureCount: number | undefined,
+    alertOnFailure = true,
+    alertsSentForFailure = 0,
+  ) {
+    const details =
+      priorFailureCount === undefined || alertsSentForFailure > 0
+        ? { recoverySequence: true }
+        : { recoverySequence: true, priorFailureCount };
+    const dbService = {
+      db: {
+        query: {
+          monitorResults: {
+            findFirst: jest.fn(async () => ({
+              id: 'r1',
+              consecutiveSuccessCount: 1,
+              alertsSentForRecovery: 0,
+              details,
+            })),
+          },
+        },
+        update: jest.fn(() => ({ set: jest.fn(() => ({ where: jest.fn() })) })),
+      },
+    };
+    const alertService = {
+      sendNotification: jest.fn(async () => ({ delivered: true })),
+      signalRecovery: jest.fn(),
+    };
+    const evaluator = new MonitorEvaluator(
+      dbService as never,
+      alertService as never,
+    );
+    jest
+      .spyOn(evaluator as never, 'persistAggregatedAlertState')
+      .mockResolvedValue(undefined as never);
+    const res = await evaluator.evaluateAndSendAlert({
+      monitorId: 'm1',
+      monitor: {
+        alertConfig: {
+          enabled: true,
+          alertOnFailure,
+          alertOnRecovery: true,
+          failureThreshold: 3,
+          recoveryThreshold: 1,
+        },
+        config: {},
+      } as never,
+      previousStatus: 'down',
+      currentStatus: 'up',
+      reason: 'up',
+      metadata: multiLocation ? { locationResults: [{}, {}] } : {},
+      preparedAlertState: multiLocation
+        ? evaluator.getNextAggregatedAlertState(
+            {
+              consecutiveFailureCount: priorFailureCount ?? 0,
+              consecutiveSuccessCount: 0,
+              alertsSentForFailure,
+              alertsSentForRecovery: 0,
+            },
+            'down',
+            'up',
+          )
+        : undefined,
+    });
+    return res.alertSent;
+  }
+
+  it.each([false, true])(
+    'skips recovery when the outage stayed below the failure threshold (multi=%s)',
+    async (multi) => {
+      expect(await recoverySent(multi, 1)).toBe(false);
+      expect(await recoverySent(multi, 2)).toBe(false);
+    },
+  );
+
+  it.each([false, true])(
+    'sends recovery once the outage reached the threshold, even with failure alerts off (multi=%s)',
+    async (multi) => {
+      expect(await recoverySent(multi, 3)).toBe(true);
+      expect(await recoverySent(multi, 3, false)).toBe(true);
+    },
+  );
+
+  it.each([false, true])(
+    'sends recovery after an alerted outage even if the threshold was raised since (multi=%s)',
+    async (multi) => {
+      expect(await recoverySent(multi, 2, true, 1)).toBe(true);
+    },
+  );
+
+  it('reads the outage length back from persisted state', () => {
+    const evaluator = new MonitorEvaluator({} as never, {} as never);
+    expect(
+      evaluator.readAggregatedAlertState({
+        aggregatedAlertState: { priorFailureCount: 2 },
+      }).priorFailureCount,
+    ).toBe(2);
+    expect(
+      evaluator.readAggregatedAlertState({}).priorFailureCount,
+    ).toBeUndefined();
+  });
+
+  it.each([false, true])(
+    'sends recovery when the outage length is unknown (multi=%s)',
+    async (multi) => {
+      expect(await recoverySent(multi, undefined)).toBe(true);
+    },
+  );
+
+  it('carries the outage length through the up streak', () => {
+    const evaluator = new MonitorEvaluator({} as never, {} as never);
+    const first = evaluator.getNextAggregatedAlertState(
+      {
+        consecutiveFailureCount: 2,
+        consecutiveSuccessCount: 0,
+        alertsSentForFailure: 0,
+        alertsSentForRecovery: 0,
+      },
+      'down',
+      'up',
+    );
+    expect(first.priorFailureCount).toBe(2);
+    expect(
+      evaluator.getNextAggregatedAlertState(first, 'up', 'up')
+        .priorFailureCount,
+    ).toBe(2);
+    expect(
+      evaluator.getNextAggregatedAlertState(first, 'up', 'down')
+        .priorFailureCount,
+    ).toBeUndefined();
+  });
+
+  it('does not gate recovery on a failure count frozen while alerts were off', () => {
+    const evaluator = new MonitorEvaluator({} as never, {} as never);
+    const frozen = evaluator.advanceAggregatedAlertState(
+      false,
+      {
+        aggregatedAlertState: {
+          consecutiveFailureCount: 1,
+          consecutiveSuccessCount: 0,
+          alertsSentForFailure: 0,
+          alertsSentForRecovery: 0,
+        },
+      },
+      'down',
+      'down',
+    );
+    const recovered = evaluator.getNextAggregatedAlertState(
+      frozen,
+      'down',
+      'up',
+    );
+    expect(frozen.consecutiveFailureCount).toBe(1);
+    // Counting resumes but the outage length stays unknown, so recovery is not suppressed.
+    const resumed = evaluator.getNextAggregatedAlertState(
+      frozen,
+      'down',
+      'down',
+    );
+    expect(
+      evaluator.getNextAggregatedAlertState(recovered, 'up', 'up')
+        .priorFailureCount,
+    ).toBeUndefined();
+    expect(recovered.priorFailureCount).toBeUndefined();
+    expect(
+      evaluator.getNextAggregatedAlertState(resumed, 'down', 'up')
+        .priorFailureCount,
+    ).toBeUndefined();
+  });
+});

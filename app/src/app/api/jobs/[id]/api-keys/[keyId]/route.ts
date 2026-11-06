@@ -78,7 +78,14 @@ export async function PATCH(
       .set(updateData)
       // A restricted caller must not overwrite a revocation that landed after the pre-read.
       .where(restrictedReenable ? and(eq(apikey.id, keyId), eq(apikey.enabled, true)) : eq(apikey.id, keyId))
-      .returning();
+      // Never return the stored key hash or owner id.
+      .returning({
+        id: apikey.id,
+        name: apikey.name,
+        enabled: apikey.enabled,
+        expiresAt: apikey.expiresAt,
+        jobId: apikey.jobId,
+      });
     if (!updatedKey.length) {
       return NextResponse.json({ error: "API key state changed" }, { status: 409 });
     }
