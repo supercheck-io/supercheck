@@ -42,6 +42,7 @@ interface DataTableProps<TData, TValue> {
     onEditVariable?: (variable: TData) => void;
     onCreateVariable?: () => void;
     canManage?: boolean;
+    canCreateEdit?: boolean;
     [key: string]: unknown;
   };
 }
@@ -266,7 +267,11 @@ export function DataTable<TData, TValue>({
                   colSpan={columns.length}
                   className="h-24 text-center"
                 >
-                  No results.
+                  {columnFilters.length > 0 || globalFilter
+                    ? "No variables match your filters. Clear the search or filters to see all variables."
+                    : meta?.canManage || meta?.canCreateEdit
+                      ? "No variables yet. Use Add Variable to create one."
+                      : "No variables yet."}
                 </TableCell>
               </TableRow>
             )}

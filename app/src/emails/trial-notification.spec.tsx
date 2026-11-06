@@ -49,9 +49,9 @@ describe("TrialNotificationEmail", () => {
   });
 
   it.each([
-    ["midway", "Your trial is halfway through - Acme on Supercheck"],
-    ["ending", "Your trial ends tomorrow - Acme on Supercheck"],
-    ["ended", "Your trial has ended - Acme on Supercheck"],
+    ["midway", "[Supercheck] Your trial is halfway through: Acme"],
+    ["ending", "[Supercheck] Your trial ends tomorrow: Acme"],
+    ["ended", "[Supercheck] Your trial has ended: Acme"],
   ] as const)("uses a clear %s subject", (kind, subject) => {
     expect(trialNotificationSubject(kind, "Acme", 5)).toBe(subject);
   });

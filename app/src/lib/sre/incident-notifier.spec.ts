@@ -101,7 +101,7 @@ it("emails the new assignee directly with a link, without raw evidence", async (
   expect(mail.text).toContain("Incident #7 assigned");
   expect(mail.text).toContain("Owner: Ada");
   expect(mail.text).toContain("Updated by: Grace");
-  expect(mail.subject).toBe("[SEV2] Incident assigned to Ada: #7 Checkout down");
+  expect(mail.subject).toBe("[Supercheck] Incident assigned to Ada: #7 Checkout down (SEV2)");
 });
 
 it("redacts credentials in the incident title before it reaches email", async () => {

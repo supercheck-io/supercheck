@@ -249,7 +249,7 @@ async function sendEmailBatch(unique: string[], message: Message): Promise<numbe
       .map((field) => `<tr><td style="padding:4px 12px 4px 0;color:#6b7280"><b>${escapeHtml(field.title)}</b></td><td>${escapeHtml(field.value)}</td></tr>`)
       .join("");
     rendered = {
-      subject: `[${message.incident.severity.toUpperCase()}] ${message.headline}: #${message.incident.number} ${message.email.title}`,
+      subject: `[Supercheck] ${message.headline}: #${message.incident.number} ${message.email.title} (${message.incident.severity.toUpperCase()})`,
       text: plainText(message),
       html: `<p><b>${escapeHtml(message.headline)}</b></p><p>${escapeHtml(message.text)}</p><table>${rows}</table><p><a href="${escapeHtml(message.url)}">Open incident #${message.incident.number}</a></p>`,
     };

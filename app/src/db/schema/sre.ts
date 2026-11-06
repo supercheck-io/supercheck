@@ -434,6 +434,8 @@ export const sreIncidents = pgTable(
     postmortem: jsonb("postmortem").$type<SrePostmortem>(),
     /** Set once when the unacknowledged re-notify step fires, so it never repeats. */
     renotifiedAt: timestamp("renotified_at", { withTimezone: true }),
+    /** Last automatic reopen; the un-acknowledged reminder counts from here instead of from creation. */
+    reopenedAt: timestamp("reopened_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
@@ -812,6 +814,8 @@ export const privateAgentJobs = pgTable(
     leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
     idempotencyKey: varchar("idempotency_key", { length: 128 }).notNull(),
     cancelRequestedAt: timestamp("cancel_requested_at", { withTimezone: true }),
+    // Callers waiting on this (possibly shared) job; an abandoned job is cancelled only by the last one.
+    waiters: integer("waiters").notNull().default(0),
     startedAt: timestamp("started_at", { withTimezone: true }),
     completedAt: timestamp("completed_at", { withTimezone: true }),
     durationMs: integer("duration_ms"),
@@ -827,6 +831,7 @@ export const privateAgentJobs = pgTable(
     leaseExpiresAtIdx: index("private_agent_jobs_lease_expires_at_idx").on(table.leaseExpiresAt).where(sql`status IN ('leased', 'running')`),
     privateAgentJobsAuthorizedByUserIdIdx: index("private_agent_jobs_authorized_by_user_id_idx").on(table.authorizedByUserId),
     privateAgentJobsConnectorIdIdx: index("private_agent_jobs_connector_id_idx").on(table.connectorId),
+    privateAgentJobsCreatedAtIdx: index("private_agent_jobs_created_at_idx").on(table.createdAt, table.id),
     privateAgentJobsOrganizationIdIdx: index("private_agent_jobs_organization_id_idx").on(table.organizationId),
     privateAgentJobsStatusCheck: check("private_agent_jobs_status_check", sql`${table.status} IN ('queued', 'leased', 'running', 'completed', 'failed', 'cancelled', 'timed_out')`),
     privateAgentJobsJobClassCheck: check("private_agent_jobs_job_class_check", sql`${table.jobClass} IN ('sre_connector_query', 'http_monitor_check', 'playwright_run', 'k6_run', 'network_check')`),
@@ -921,6 +926,8 @@ export const sreInvestigationRuns = pgTable(
     createdByUserId: uuid("created_by_user_id").references(() => user.id, { onDelete: "set null" }),
     /** The tier the run was admitted under; a trial run is never billed, even after the organization subscribes. */
     billingTier: varchar("billing_tier", { length: 8 }).$type<"paid" | "trial">().notNull().default("paid"),
+    /** "auto" for a run started by the auto-investigate-on-open policy; everything else is "manual". */
+    origin: varchar("origin", { length: 8 }).$type<"auto" | "manual">().notNull().default("manual"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => ({
@@ -930,6 +937,11 @@ export const sreInvestigationRuns = pgTable(
     activeIncidentRunUnique: uniqueIndex("sre_investigation_runs_active_incident_unique")
       .on(table.organizationId, table.projectId, table.incidentId, table.agentType)
       .where(sql`${table.status} = 'running' AND ${table.incidentId} IS NOT NULL`),
+    // At most one live-or-finished automatic run per incident and agent type, so two racing triggers cannot both bill.
+    autoIncidentRunUnique: uniqueIndex("sre_investigation_runs_auto_incident_unique")
+      .on(table.organizationId, table.projectId, table.incidentId, table.agentType)
+      .where(sql`${table.origin} = 'auto' AND ${table.status} IN ('running', 'completed') AND ${table.incidentId} IS NOT NULL`),
+    originCheck: check("sre_investigation_runs_origin_check", sql`${table.origin} IN ('auto', 'manual')`),
     modelIdIdx: index("sre_investigation_runs_model_id_idx").on(table.modelId),
     lowConfidenceIdx: index("sre_investigation_runs_low_confidence_idx").on(table.confidenceScore).where(sql`confidence_score < 0.5`),
     createdAtIdx: index("sre_investigation_runs_created_at_idx").on(table.createdAt),

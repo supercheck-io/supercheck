@@ -1,7 +1,7 @@
 /** @jest-environment node */
 jest.mock("@/utils/db", () => ({ db: {} }));
 
-import { linkOpenSreIncident } from "./status-page-reconciliation";
+import { linkOpenSreIncident, repointSreStatusPageSlot } from "./status-page-reconciliation";
 
 function makeTx(match: { id: string } | undefined) {
   const set = jest.fn(() => ({ where: jest.fn(async () => undefined) }));
@@ -45,5 +45,31 @@ describe("linkOpenSreIncident", () => {
     expect(update).toHaveBeenCalledTimes(2);
     expect(set).toHaveBeenNthCalledWith(1, { sreIncidentId: "sre-1" });
     expect(set).toHaveBeenNthCalledWith(2, { statusPageIncidentId: "sp-1" });
+  });
+});
+
+describe("repointSreStatusPageSlot", () => {
+  function makeRepointTx(results: unknown[][]) {
+    const set = jest.fn(() => ({ where: jest.fn(async () => undefined) }));
+    const queue = [...results];
+    const chain: Record<string, unknown> = {};
+    for (const m of ["from", "where", "orderBy"]) chain[m] = () => chain;
+    chain.limit = async () => queue.shift() ?? [];
+    return { tx: { select: () => chain, update: () => ({ set }) } as never, set };
+  }
+
+  it("moves the slot to another open public incident of the same SRE incident", async () => {
+    const { tx, set } = makeRepointTx([[{ id: "sre-1" }], [{ id: "sp-2" }]]);
+    await repointSreStatusPageSlot(tx, "sp-1");
+    expect(set).toHaveBeenCalledWith({ statusPageIncidentId: "sp-2" });
+  });
+
+  it("clears the slot when no other public incident is open, and does nothing when the incident owns no slot", async () => {
+    const none = makeRepointTx([[{ id: "sre-1" }], []]);
+    await repointSreStatusPageSlot(none.tx, "sp-1");
+    expect(none.set).toHaveBeenCalledWith({ statusPageIncidentId: null });
+    const unowned = makeRepointTx([[]]);
+    await repointSreStatusPageSlot(unowned.tx, "sp-1");
+    expect(unowned.set).not.toHaveBeenCalled();
   });
 });

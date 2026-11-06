@@ -132,10 +132,12 @@ let cachedStatusPageDomain: string | null | undefined = undefined;
  * Handles X-Forwarded-Host, Host header, and port stripping
  */
 function getCleanHostname(request: NextRequest): string {
-  const rawHostname =
-    request.headers.get("x-forwarded-host") ||
+  // x-forwarded-host can be a comma-separated chain; the first entry is the client-facing host.
+  const rawHostname = (
+    request.headers.get("x-forwarded-host")?.split(",")[0].trim() ||
     request.headers.get("host") ||
-    "";
+    ""
+  );
 
   // Check cache first
   if (hostnameCache.has(rawHostname)) {
@@ -191,6 +193,11 @@ function extractSubdomain(cleanHostname: string): string | null {
   return VALID_SUBDOMAIN_PATTERN.test(subdomain) ? subdomain : null;
 }
 
+// Exact match only: a prefix check would treat "localhost.evil.com" as the main app.
+function isLocalHostname(hostname: string): boolean {
+  return hostname === "localhost" || hostname === "127.0.0.1";
+}
+
 // Check if hostname is a custom domain (not the main app domain)
 function isCustomDomain(cleanHostname: string, appHostname: string): boolean {
   if (!cleanHostname || !appHostname) {
@@ -198,11 +205,7 @@ function isCustomDomain(cleanHostname: string, appHostname: string): boolean {
   }
 
   // Not custom if it matches main app or is localhost
-  if (
-    cleanHostname === appHostname ||
-    cleanHostname.startsWith("localhost") ||
-    cleanHostname === "127.0.0.1"
-  ) {
+  if (cleanHostname === appHostname || isLocalHostname(cleanHostname)) {
     return false;
   }
 
@@ -242,10 +245,14 @@ function getMainAppHostname(): string | null {
     return cachedMainAppHostname;
   }
 
-  const appUrl = process.env.APP_URL || "http://localhost:3000";
+  const appUrl =
+    process.env.APP_URL ||
+    process.env.NEXT_PUBLIC_APP_URL ||
+    process.env.BETTER_AUTH_URL ||
+    "http://localhost:3000";
   try {
     const url = new URL(appUrl);
-    cachedMainAppHostname = url.hostname;
+    cachedMainAppHostname = url.hostname.toLowerCase();
   } catch {
     cachedMainAppHostname = null;
   }
@@ -277,7 +284,7 @@ export function proxy(request: NextRequest) {
   // Check if this is the main app domain
   const isMainApp =
     mainAppHostname &&
-    (hostname === mainAppHostname || hostname.startsWith("localhost"));
+    (hostname === mainAppHostname || isLocalHostname(hostname));
 
   if (isMainApp) {
     // Main app domain, pass through to normal app routing

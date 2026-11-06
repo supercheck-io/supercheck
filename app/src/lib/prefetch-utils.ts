@@ -299,7 +299,7 @@ function getRouteConfigs(projectId: string): Record<string, RouteConfig> {
     },
     "/copilot": {
       queryKey: getSreCopilotHistoriesQueryKey(projectId),
-      queryFn: getSreCopilotChatHistories,
+      queryFn: () => getSreCopilotChatHistories(),
       staleTime: 30_000,
       persist: false,
     },

@@ -7,6 +7,7 @@ import {
   Text,
 } from "@react-email/components";
 import * as React from "react";
+import { PALETTE } from "./palette";
 import { BaseLayout } from "./base-layout";
 import { getTranslations } from "../lib/status-page-translations";
 
@@ -27,7 +28,8 @@ export const StatusPageVerificationEmail = ({
     <BaseLayout
       preview={`${t.emailSubjectVerify} ${statusPageName}`}
       title={t.emailVerifySubscription}
-      headerColor="#1d4ed8"
+      headerColor={PALETTE.info}
+      lang={language}
       showBrand={false}
       showStandardFooter={false}
       footer={
@@ -202,7 +204,7 @@ const urlBox = {
 };
 
 const urlLink = {
-  color: "#3b82f6",
+  color: PALETTE.info,
   textDecoration: "none",
   wordBreak: "break-all" as const,
   fontSize: "13px",

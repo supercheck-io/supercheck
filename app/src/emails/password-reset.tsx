@@ -5,6 +5,7 @@ import {
   Text,
 } from "@react-email/components";
 import * as React from "react";
+import { PALETTE } from "./palette";
 import { BaseLayout, EmailButton } from "./base-layout";
 
 interface PasswordResetEmailProps {
@@ -20,12 +21,10 @@ export const PasswordResetEmail = ({
     <BaseLayout
       preview="Reset your Supercheck password"
       title="Password Reset Request"
-      headerColor="#1f2937" // Gray-800
+      headerColor={PALETTE.neutral}
     >
       <Section style={contentSection}>
         {/* Main Content */}
-        <Text style={heading}>Reset Your Password</Text>
-
         <Text style={paragraph}>
           You requested a password reset for your Supercheck account:
         </Text>
@@ -74,17 +73,7 @@ export const PasswordResetEmail = ({
 // ============================================================================
 
 const contentSection = {
-  padding: "32px 32px 0",
-};
-
-const heading = {
-  color: "#111827",
-  fontSize: "24px",
-  fontWeight: "700" as const,
-  lineHeight: "1.3",
-  margin: "0 0 24px",
-  textAlign: "center" as const,
-  letterSpacing: "-0.025em",
+  padding: "32px",
 };
 
 const paragraph = {

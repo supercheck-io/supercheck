@@ -3,6 +3,7 @@ import {
   canToggleMonitors,
   formatUptime,
   getResumeStatus,
+  invalidateDeletedMonitorCaches,
   invalidateMonitorCaches,
   mergeEditConfig,
   withCurrentInterval,
@@ -98,5 +99,37 @@ describe("invalidateMonitorCaches", () => {
     invalidateMonitorCaches(client, "m1");
     const keys = spy.mock.calls.map((c) => (c[0] as { queryKey: unknown[] }).queryKey);
     expect(keys).toEqual(expect.arrayContaining([["monitor", "m1"], ["monitor-stats", "m1"], ["monitor-results", "m1"], ["dashboard"]]));
+  });
+});
+
+describe("invalidateDeletedMonitorCaches", () => {
+  it("refreshes the list but drops, not refetches, the deleted monitor's own queries", () => {
+    const client = new QueryClient();
+    const invalidate = jest.spyOn(client, "invalidateQueries");
+    const cancel = jest.spyOn(client, "cancelQueries");
+    const remove = jest.spyOn(client, "removeQueries");
+
+    invalidateDeletedMonitorCaches(client, "m1");
+
+    const invalidated = invalidate.mock.calls.map(([filters]) => JSON.stringify(filters?.queryKey));
+    expect(invalidated.some((key) => key?.includes("m1"))).toBe(false);
+    expect(cancel).toHaveBeenCalledTimes(3);
+    expect(remove).toHaveBeenCalledTimes(3);
+    for (const [filters] of remove.mock.calls) expect(filters?.queryKey).toContain("m1");
+    for (const [filters] of cancel.mock.calls) expect(filters?.queryKey).toContain("m1");
+  });
+
+  it("removes cached data for the deleted monitor only", () => {
+    const client = new QueryClient();
+    const calls: string[] = [];
+    jest.spyOn(client, "removeQueries").mockImplementation((filters) => {
+      calls.push(JSON.stringify(filters?.queryKey));
+    });
+
+    invalidateDeletedMonitorCaches(client, "m1");
+    invalidateDeletedMonitorCaches(client, "m2");
+
+    expect(calls.filter((key) => key.includes("m1"))).toHaveLength(3);
+    expect(calls.filter((key) => key.includes("m2"))).toHaveLength(3);
   });
 });
