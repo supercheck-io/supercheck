@@ -5764,7 +5764,7 @@
       "delete": {
         "operationId": "deleteOrganization",
         "summary": "Delete organization",
-        "description": "Owner only. Deletes the organization and everything in it: every project, its data and stored files, and member access. An active subscription is cancelled. This cannot be undone. The request body must name the organization in confirmOrganizationId. Not allowed from an impersonated session. Rate limited to 5 attempts per 10 minutes. Selected browser session references are cleared atomically. Browser mutations require a same-origin request; CLI tokens retain their existing authorization. Requires an interactive browser session. Project-scoped CLI tokens receive 403.",
+        "description": "Owner only. Permanently deletes the organization, its projects, data and stored files, and cancels an active subscription. The body must repeat the organization id in confirmOrganizationId. Not allowed while impersonating. Requires an interactive, same-origin browser session; project-scoped CLI tokens receive 403.",
         "tags": [
           "Organizations"
         ],

@@ -196,7 +196,7 @@ Edit `.env` in `deploy/docker`, then run `sudo docker compose up -d --force-recr
 | `TRUST_CF_CONNECTING_IP` | `false` | `true` only if the server is reachable exclusively through Cloudflare |
 
 <Callout type="warn">
-`SMTP_BLOCKED_RECIPIENT_DOMAINS` and `SRE_DAILY_TOKEN_LIMIT_PER_ORG` are not passed through by `docker-compose.yml`, so a value in `.env` never reaches the app. Add the key under the `app` service `environment:` (for example `SRE_DAILY_TOKEN_LIMIT_PER_ORG: ${SRE_DAILY_TOKEN_LIMIT_PER_ORG:-2000000}`), then run `sudo docker compose up -d --force-recreate app`.
+`SMTP_BLOCKED_RECIPIENT_DOMAINS` and `SRE_DAILY_TOKEN_LIMIT_PER_ORG` are not read from `.env`. Add the key under the `app` service `environment:` (for example `SRE_DAILY_TOKEN_LIMIT_PER_ORG: ${SRE_DAILY_TOKEN_LIMIT_PER_ORG:-2000000}`), then run `sudo docker compose up -d --force-recreate app`.
 </Callout>
 
 </Accordion>

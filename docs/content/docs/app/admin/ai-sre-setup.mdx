@@ -149,7 +149,7 @@ Optionally save a query for bounded questions responders repeat, and validate ea
 
 Each organization has a daily AI usage limit shared by investigations, triage, evidence briefs, and Copilot chat. It counts tokens reported by the AI provider and resets at 00:00 UTC. When it is reached, new AI requests return a "daily AI usage limit" message and evidence briefs fall back to a plain summary.
 
-Self-hosted deployments set the limit with `SRE_DAILY_TOKEN_LIMIT_PER_ORG` (default `2000000`; `0` disables the limit). The compose file does not pass it through: add `SRE_DAILY_TOKEN_LIMIT_PER_ORG: ${SRE_DAILY_TOKEN_LIMIT_PER_ORG:-2000000}` under the `app` service `environment:`, then recreate the app.
+Self-hosted deployments set the limit with `SRE_DAILY_TOKEN_LIMIT_PER_ORG` (default `2000000`; `0` disables the limit). Add it under the `app` service `environment:` in the compose file, not `.env` ([details](/docs/app/deployment/self-hosted#optional-configuration)).
 
 If an investigation stops reporting, wait five minutes, then start a new run for that incident. Failed runs are not charged and do not use the free-trial allowance.
 
