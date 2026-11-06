@@ -2090,6 +2090,10 @@ export class ExecutionService implements OnModuleDestroy {
         let resolved = false;
         let timeoutHandle: NodeJS.Timeout | undefined;
 
+        // `.killed` only means a signal was sent, not that the child exited.
+        const isRunning = () =>
+          childProcess.exitCode === null && childProcess.signalCode === null;
+
         // Set up timeout if specified
         if (options.timeout && options.timeout > 0) {
           timeoutHandle = setTimeout(() => {
@@ -2100,7 +2104,7 @@ export class ExecutionService implements OnModuleDestroy {
               );
 
               // Force kill the process and process tree to handle infinite loops
-              if (childProcess && !childProcess.killed) {
+              if (childProcess && isRunning()) {
                 try {
                   // Kill the process tree forcefully to handle infinite loops
                   this.killProcessTree(childProcess.pid);
@@ -2134,15 +2138,19 @@ export class ExecutionService implements OnModuleDestroy {
             clearTimeout(timeoutHandle);
           }
           // Ensure process is terminated if still running - use SIGKILL for infinite loops
-          if (childProcess && !childProcess.killed) {
+          if (childProcess && isRunning()) {
             try {
               // Try SIGTERM first, then SIGKILL
               childProcess.kill('SIGTERM');
-              setTimeout(() => {
-                if (childProcess && !childProcess.killed) {
+              const killTimer = setTimeout(() => {
+                if (isRunning()) {
                   childProcess.kill('SIGKILL');
                 }
-              }, 2000).unref(); // 2 second grace period; must not hold the process (or a Jest worker) open
+              }, 2000); // 2 second grace period
+              killTimer.unref(); // must not hold the process (or a Jest worker) open
+              const clearKillTimer = () => clearTimeout(killTimer);
+              childProcess.once('exit', clearKillTimer);
+              childProcess.once('close', clearKillTimer);
             } catch {
               // If SIGTERM fails, try SIGKILL immediately
               try {

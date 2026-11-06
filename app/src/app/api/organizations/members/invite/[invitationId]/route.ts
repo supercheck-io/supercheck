@@ -278,6 +278,7 @@ export async function POST(
             .select({ count: sql<number>`count(*)` })
             .from(member)
             .where(eq(member.organizationId, organizationId));
+          // On purpose: an invite to a platform-admin email still reserves a seat; hiding which addresses are platform admins matters more.
           const [pendingRow] = await tx
             .select({ count: sql<number>`count(*)` })
             .from(invitation)
