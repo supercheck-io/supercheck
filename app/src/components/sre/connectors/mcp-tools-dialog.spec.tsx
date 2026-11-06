@@ -129,7 +129,10 @@ describe("McpToolsDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: /Discover tools/ }));
     await waitFor(() => expect(screen.getByLabelText("Allow get_errors")).not.toBeChecked());
     expect(jest.requireMock("sonner").toast.warning).toHaveBeenCalledWith(expect.stringContaining("get_errors"));
-    fireEvent.click(screen.getByRole("button", { name: "Save allowlist" }));
+    // Save stays disabled while the discovery transition is pending; a click before that is dropped under load.
+    const saveButton = screen.getByRole("button", { name: "Save allowlist" });
+    await waitFor(() => expect(saveButton).toBeEnabled());
+    fireEvent.click(saveButton);
     await waitFor(() => expect(mockSave).toHaveBeenCalledWith({ id: "c1", tools: [] }));
   });
 });

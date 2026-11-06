@@ -32,11 +32,16 @@ export type SreCopilotChatHistory = {
   }>;
 };
 
-export async function getSreCopilotChatHistories(): Promise<
+/**
+ * The newest 30 chats of the project, plus the newest chat of `incidentId` when it fell outside that
+ * limit, so an incident's thread is never lost behind newer chats.
+ */
+export async function getSreCopilotChatHistories(incidentId?: string | null): Promise<
   | { success: true; histories: SreCopilotChatHistory[] }
   | { success: false; error: string; histories: [] }
 > {
   try {
+    const parsedIncidentId = z.string().uuid().safeParse(incidentId);
     const { userId, organizationId, project } = await requireProjectContext();
     const canInvestigate = checkPermissionWithContext(
       "sre_investigation",
@@ -56,19 +61,27 @@ export async function getSreCopilotChatHistories(): Promise<
       };
     }
 
+    const scopeWhere = and(
+      eq(sreChatConversations.organizationId, organizationId),
+      eq(sreChatConversations.projectId, project.id),
+      eq(sreChatConversations.userId, userId),
+      eq(sreChatConversations.status, "active"),
+    );
     const conversations = await db
       .select()
       .from(sreChatConversations)
-      .where(
-        and(
-          eq(sreChatConversations.organizationId, organizationId),
-          eq(sreChatConversations.projectId, project.id),
-          eq(sreChatConversations.userId, userId),
-          eq(sreChatConversations.status, "active"),
-        ),
-      )
+      .where(scopeWhere)
       .orderBy(desc(sreChatConversations.updatedAt))
       .limit(30);
+    if (parsedIncidentId.success && !conversations.some((conversation) => conversation.incidentId === parsedIncidentId.data)) {
+      const [incidentChat] = await db
+        .select()
+        .from(sreChatConversations)
+        .where(and(scopeWhere, eq(sreChatConversations.incidentId, parsedIncidentId.data)))
+        .orderBy(desc(sreChatConversations.updatedAt))
+        .limit(1);
+      if (incidentChat) conversations.push(incidentChat);
+    }
 
     // One query for every conversation's newest messages (not one query per chat); superseded replies are skipped.
     const rows = conversations.length
