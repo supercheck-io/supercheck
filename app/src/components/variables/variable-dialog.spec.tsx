@@ -94,6 +94,41 @@ describe('VariableDialog', () => {
     );
   });
 
+  it('does not PUT a revealed secret back unless it was edited, and shows the reserved-name message', async () => {
+    const fetchMock = global.fetch as unknown as jest.Mock;
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ success: true, data: { id: 'var-secret', key: 'API_KEY', value: '[ENCRYPTED]', isSecret: true } }),
+      })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ success: true, data: { value: 'plain' } }) })
+      .mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({
+          success: false,
+          error: 'Cannot use system reserved variable names',
+          details: [{ path: ['key'], message: 'Cannot use system reserved variable names' }],
+        }),
+      });
+
+    render(
+      <VariableDialog open onOpenChange={jest.fn()} projectId="project-1" variable={secretVariable} onSuccess={jest.fn()} canViewSecrets />
+    );
+    await waitFor(() => {
+      expect((screen.getByLabelText(/Variable Name \*/i) as HTMLInputElement).value).toBe('API_KEY');
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Reveal current value/i }));
+    await waitFor(() => {
+      expect((screen.getByLabelText(/Value \*/i) as HTMLInputElement).value).toBe('plain');
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^(Update|Save)/i }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    const body = JSON.parse(fetchMock.mock.calls[2][1].body);
+    expect(body).not.toHaveProperty('value');
+    expect(await screen.findByText('Cannot use system reserved variable names')).toBeInTheDocument();
+  });
+
   it('does not fetch decrypted secret value when user cannot view secrets', async () => {
     const fetchMock = global.fetch as unknown as jest.Mock;
     fetchMock.mockResolvedValueOnce({
