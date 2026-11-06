@@ -1,6 +1,5 @@
 import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
 import { SreIncidentDetailPageClient } from "@/components/sre/incidents/sre-incident-detail-page-client";
-import { Card, CardContent } from "@/components/ui/card";
 
 type Params = {
   params: Promise<{ id: string }>;
@@ -29,14 +28,9 @@ export default async function SreIncidentDetailPage({
     <div>
       <PageBreadcrumbs items={breadcrumbs} />
       {/* No fixed height or overflow clipping: the page has one scrollbar and the sidebar can stick. */}
-      <Card className="m-4 min-w-0 shadow-sm">
-        <CardContent className="min-w-0 p-4 md:p-6">
-          <SreIncidentDetailPageClient
-            incidentId={id}
-            initialTab={initialTab}
-          />
-        </CardContent>
-      </Card>
+      <div className="m-4 min-w-0">
+        <SreIncidentDetailPageClient incidentId={id} initialTab={initialTab} />
+      </div>
     </div>
   );
 }

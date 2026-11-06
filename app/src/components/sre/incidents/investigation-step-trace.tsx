@@ -4,10 +4,6 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { TableBadge } from "@/components/ui/table-badge";
 import type { SreInvestigationStep } from "@/sre/lib/investigation-trace";
 
-function formatDuration(ms: number) {
-  return ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`;
-}
-
 const statusIcon = {
   ok: <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />,
   empty: <CircleDashed className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />,
@@ -17,7 +13,7 @@ const statusIcon = {
 const statusLabel = { ok: "OK", empty: "No results", error: "Failed" } as const;
 
 /**
- * "How I investigated": the sanitized tool trace. Open while the run is live,
+ * "How it was investigated": the sanitized step trace. Open while the run is live,
  * collapsed once it is done.
  */
 export function InvestigationStepTrace({
@@ -31,10 +27,10 @@ export function InvestigationStepTrace({
   const failures = steps.filter((step) => step.status === "error").length;
 
   return (
-    <Collapsible defaultOpen className="rounded-lg border" data-testid="investigation-step-trace">
+    <Collapsible defaultOpen={running} className="rounded-lg border" data-testid="investigation-step-trace">
       <CollapsibleTrigger className="group flex w-full cursor-pointer flex-wrap items-center gap-2 rounded-lg text-left px-4 py-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <ChevronRight className="h-4 w-4 shrink-0 transition-transform group-data-[state=open]:rotate-90" aria-hidden="true" />
-        How I investigated
+        How it was investigated
         <span className="text-xs font-normal text-muted-foreground">
           {steps.length} {steps.length === 1 ? "step" : "steps"}
           {failures > 0 ? `, ${failures} failed` : ""}
@@ -53,17 +49,16 @@ export function InvestigationStepTrace({
           )}
           {steps.map((step) => (
             <li key={step.index} className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm">
-              <span className="inline-flex items-center gap-1.5 font-mono text-xs">
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium">
                 {statusIcon[step.status]}
                 <span className="sr-only">{statusLabel[step.status]}: </span>
-                {step.tool}
+                {step.tool.replace(/_/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase()}
               </span>
               {step.args && (
                 <span className="min-w-0 break-all text-xs text-muted-foreground">{step.args}</span>
               )}
               <span className="ml-auto whitespace-nowrap text-xs text-muted-foreground tabular-nums">
-                {step.resultCount !== null ? `${step.resultCount} ${step.resultCount === 1 ? "result" : "results"} · ` : ""}
-                {formatDuration(step.durationMs)}
+                {step.resultCount !== null ? `${step.resultCount} ${step.resultCount === 1 ? "result" : "results"}` : ""}
               </span>
             </li>
           ))}

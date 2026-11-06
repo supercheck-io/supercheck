@@ -1,6 +1,8 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 
 jest.mock("@/actions/sre-incident-lifecycle", () => ({ addSreIncidentUpdate: jest.fn() }));
+// The timeline import would otherwise load the auth stack, which needs structuredClone.
+jest.mock("@/actions/sre-status-update-draft", () => ({ draftSreStatusUpdate: jest.fn() }));
 jest.mock("@/hooks/use-sre", () => ({ useSreIncidentTimeline: jest.fn() }));
 
 import type { SreIncidentDetail } from "@/actions/sre-incidents";
@@ -103,13 +105,12 @@ function investigation(overrides: Partial<NonNullable<SreIncidentDetail["latestI
 }
 
 describe("IncidentAiSummaryCard structured states", () => {
-  it("leads with the conclusion and at most three evidence citations", () => {
+  it("leads with the conclusion and the first next step", () => {
     render(
       <IncidentAiSummaryCard
         rootCauseSummary="Deploy 42 caused it."
         confidenceScore="0.8200"
         investigationStatus="completed"
-        evidence={evidence}
         investigation={investigation({
           structured: {
             outcome: "identified", confidence: 0.82, conclusion: "Deploy 42 caused it.", nextChecks: ["Compare p95 before and after"],
@@ -121,16 +122,15 @@ describe("IncidentAiSummaryCard structured states", () => {
     expect(screen.getByText("Confidence: High")).toBeInTheDocument();
     expect(screen.getByText("Compare p95 before and after")).toBeInTheDocument();
     expect(screen.getByText(/Next step/)).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: /^View evidence:/ })).toHaveLength(3);
+    expect(screen.queryByRole("button", { name: /^View evidence:/ })).not.toBeInTheDocument();
   });
 
-  it("shows Inconclusive as a first-class outcome without citations", () => {
+  it("shows Inconclusive as a first-class outcome ", () => {
     render(
       <IncidentAiSummaryCard
         rootCauseSummary="The evidence does not establish a cause."
         confidenceScore="0.0000"
         investigationStatus="completed"
-        evidence={evidence}
         investigation={investigation({
           structured: { outcome: "inconclusive", confidence: 0, conclusion: "The evidence does not establish a cause.", nextChecks: [], topEvidenceIds: [], downgraded: true },
         })}
@@ -140,10 +140,9 @@ describe("IncidentAiSummaryCard structured states", () => {
     expect(screen.getByText("No root cause established")).toBeInTheDocument();
     expect(screen.getByText(/did not support it/)).toBeInTheDocument();
     expect(screen.queryByText(/^Confidence:/)).not.toBeInTheDocument();
-    expect(screen.queryAllByRole("button", { name: /^View evidence:/ })).toHaveLength(0);
   });
 
-  it("degrades to a summary-only card with no rating when structured output is missing", () => {
+  it("degrades to the plain report with no rating when structured output is missing", () => {
     render(
       <IncidentAiSummaryCard
         rootCauseSummary="Plain report"
@@ -154,7 +153,6 @@ describe("IncidentAiSummaryCard structured states", () => {
     );
     expect(screen.getAllByText("Plain report").length).toBeGreaterThan(0);
     expect(screen.queryByText(/Inconclusive|Confidence/)).not.toBeInTheDocument();
-    expect(screen.getByText(/Summary only/)).toBeInTheDocument();
   });
 
   it("shows live progress while running and the failure reason when a run fails", () => {
@@ -191,14 +189,14 @@ describe("describeTimelineEvent", () => {
 
 describe("IncidentAiSummaryCard compact layout", () => {
   it("clamps a long conclusion until Show more is pressed and exposes the details button", () => {
-    const onOpenDetails = jest.fn();
+    const onOpenInvestigation = jest.fn();
     jest.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValueOnce(400);
     render(
       <IncidentAiSummaryCard
         rootCauseSummary={"Long conclusion. ".repeat(40)}
         confidenceScore="0.6"
         investigationStatus="completed"
-        onOpenDetails={onOpenDetails}
+        onOpenInvestigation={onOpenInvestigation}
         feedback={<span>Was this right?</span>}
       />,
     );
@@ -206,8 +204,8 @@ describe("IncidentAiSummaryCard compact layout", () => {
     expect(more).toHaveAttribute("aria-expanded", "false");
     fireEvent.click(more);
     expect(screen.getByRole("button", { name: "Show less" })).toHaveAttribute("aria-expanded", "true");
-    fireEvent.click(screen.getByRole("button", { name: "Investigation details" }));
-    expect(onOpenDetails).toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "View investigation" }));
+    expect(onOpenInvestigation).toHaveBeenCalled();
     expect(screen.getByText("Was this right?")).toBeInTheDocument();
   });
 

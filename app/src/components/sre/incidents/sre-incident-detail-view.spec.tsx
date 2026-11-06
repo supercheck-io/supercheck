@@ -58,7 +58,7 @@ jest.mock("@/components/sre/incidents/postmortem-card", () => ({
 
 jest.mock("@/components/sre/incidents/sre-investigation-panel", () => ({
   SreInvestigationPanel: ({ hasPrimaryService }: { hasPrimaryService: boolean }) => <div data-has-service={hasPrimaryService}>Mock AI investigation panel</div>,
-  SreReportSnapshotControl: () => <div>Mock snapshot control</div>,
+  SreReportSnapshotMenuItem: () => null,
 }));
 
 function detailFixture(): SreIncidentDetail {
@@ -185,7 +185,8 @@ describe("SreIncidentDetailView", () => {
       screen.getByRole("button", { name: "View evidence: Monitor timeout" }),
     );
     expect(screen.getByRole("dialog")).toBeInTheDocument();
-    expect(screen.getByText("80%")).toBeInTheDocument();
+    // Internal ids and raw confidence are not shown.
+    expect(screen.queryByText("Evidence ID")).not.toBeInTheDocument();
     expect(screen.getByText("monitor_results.id = 1")).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "Open original source" }),
@@ -215,8 +216,10 @@ describe("SreIncidentDetailView", () => {
     expect(screen.getByRole("dialog").querySelector("img")).toBeNull();
   });
 
-  it("shows a readable brief and hides generation from viewers", () => {
+  it("shows the brief as the conclusion until an investigation exists, and hides generation from viewers", () => {
     const detail = detailFixture();
+    detail.latestInvestigation = null;
+    detail.incident.rootCauseSummary = null;
     detail.permissions.canInvestigate = false;
     detail.permissions.canUpdate = false;
     render(
@@ -226,68 +229,87 @@ describe("SreIncidentDetailView", () => {
         initialTab="brief"
       />,
     );
-    expect(screen.getByText("Brief summary")).toBeInTheDocument();
+    const sheet = screen.getByTestId("investigation-sheet");
+    expect(within(sheet).getByRole("heading", { name: "Conclusion" })).toBeInTheDocument();
+    expect(within(sheet).getByText("Brief summary")).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Resolve incident" }),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Generate brief" }),
     ).not.toBeInTheDocument();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Expand evidence brief" }),
-    );
-    expect(
-      screen.getByRole("dialog", { name: "Evidence Brief" }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Download" })).toBeEnabled();
+    expect(within(sheet).getByRole("button", { name: "Download" })).toBeEnabled();
   });
-  it("has no tabs, shows the stepper, and keeps the investigation sheet closed by default", () => {
+
+  it("shows the triage finding as the sheet conclusion when no investigation or root cause exists", () => {
+    const detail = detailFixture();
+    detail.latestInvestigation = null;
+    detail.latestBrief = null;
+    detail.incident.rootCauseSummary = null;
+    detail.triageSummary = "Triage: connection pool exhausted";
+    render(<SreIncidentDetailView detail={detail} services={[]} initialTab="investigation" />);
+    expect(within(screen.getByTestId("investigation-sheet")).getByText("Triage: connection pool exhausted")).toBeInTheDocument();
+  });
+
+  it("keeps the brief out of the way once an investigation has a conclusion", () => {
+    render(<SreIncidentDetailView detail={detailFixture()} services={[]} initialTab="brief" />);
+    const sheet = screen.getByTestId("investigation-sheet");
+    expect(within(sheet).queryByText("Brief summary")).not.toBeInTheDocument();
+    expect(within(sheet).getByText("Latency correlates with monitor failures.")).toBeInTheDocument();
+  });
+
+  it("has no tabs, shows status and severity pills, and keeps the investigation sheet closed by default", () => {
     render(<SreIncidentDetailView detail={detailFixture()} services={[]} />);
     expect(screen.queryByRole("tab")).not.toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "Incident progress" })).not.toBeInTheDocument();
     expect(screen.queryByTestId("investigation-sheet")).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("#42");
-    expect(screen.getByRole("navigation", { name: "Incident progress" }).querySelector("[aria-current=step]")).toHaveTextContent("Investigating");
+    // Header pills plus the Properties rows.
+    expect(screen.getAllByText("Investigating")).toHaveLength(2);
+    expect(screen.getAllByText("sev2")).toHaveLength(2);
     expect(screen.getByText("Checkout monitor down")).toBeInTheDocument();
-    // Similar incidents sit behind one sidebar row that opens the details sheet on that list.
     expect(screen.queryByTestId("similar-incidents")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /Similar past incidents/ }));
-    expect(screen.getByTestId("similar-incidents")).toHaveTextContent("Mock similar incidents");
     expect(screen.queryByText("Mock AI investigation panel")).not.toBeInTheDocument();
-    // Closing and reopening Investigation details restores the default sections.
-    fireEvent.keyDown(screen.getByTestId("investigation-sheet"), { key: "Escape" });
-    fireEvent.click(screen.getByRole("button", { name: /Investigation details/ }));
+    fireEvent.click(screen.getByRole("button", { name: "View investigation" }));
     expect(screen.getByText("Mock AI investigation panel")).toBeInTheDocument();
   });
 
   it.each([
     ["investigation", "Mock AI investigation panel"],
     ["evidence", "Monitor timeout"],
-    ["brief", "Brief summary"],
+    ["brief", "Conclusion"],
   ] as const)("opens the sheet on load for the legacy ?tab=%s link", (tab, text) => {
     render(<SreIncidentDetailView detail={detailFixture()} services={[]} initialTab={tab} />);
     const sheet = screen.getByTestId("investigation-sheet");
     expect(sheet).toHaveTextContent(text);
   });
 
-  it("opens the sheet from Investigation details and the actions menu holds the secondary links", async () => {
+  it("opens the sheet on #sre-evidence-<id> anchors", () => {
+    window.location.hash = "#sre-evidence-ev-monitor-timeout";
     render(<SreIncidentDetailView detail={detailFixture()} services={[]} />);
-    fireEvent.click(screen.getByRole("button", { name: "Investigation details" }));
+    const row = document.getElementById("sre-evidence-ev-monitor-timeout");
+    expect(screen.getByTestId("investigation-sheet")).toContainElement(row);
+    window.location.hash = "";
+  });
+
+  it("opens one report from the summary card: conclusion, evidence and similar incidents, no tabs", () => {
+    render(<SreIncidentDetailView detail={detailFixture()} services={[]} />);
+    fireEvent.click(screen.getByRole("button", { name: "View investigation" }));
     const sheet = screen.getByTestId("investigation-sheet");
-    // One tab per topic, opening on Analysis; the post-mortem tab only exists once resolved.
-    expect(within(sheet).getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
-      "Analysis",
+    expect(screen.getByRole("dialog", { name: "Investigation" })).toBe(sheet);
+    expect(within(sheet).queryAllByRole("tab")).toHaveLength(0);
+    expect(within(sheet).getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual([
+      "Conclusion",
       "Evidence (1)",
-      "Brief",
-      "Similar",
+      "Similar incidents (2)",
     ]);
-    expect(within(sheet).getByRole("tab", { name: "Analysis" })).toHaveAttribute("aria-selected", "true");
     expect(sheet).toHaveTextContent("Mock AI investigation panel");
-    fireEvent.mouseDown(within(sheet).getByRole("tab", { name: "Brief" }));
-    expect(within(sheet).getByRole("tab", { name: "Brief" })).toHaveAttribute("aria-selected", "true");
+    // The snapshot export is no longer a section.
+    expect(within(sheet).queryByRole("heading", { name: "Report snapshot" })).not.toBeInTheDocument();
     fireEvent.keyDown(sheet, { key: "Escape" });
   });
 
-  it("shows hypotheses, the step trace and one feedback control in the sheet", () => {
+  it("shows hypotheses and the step trace in the sheet, with one feedback control on the card", () => {
     const detail = detailFixture();
     detail.latestInvestigation = {
       ...detail.latestInvestigation!,
@@ -310,17 +332,26 @@ describe("SreIncidentDetailView", () => {
     expect(screen.getByTestId("hypothesis-h2")).toHaveTextContent("Ruled out");
     expect(screen.getAllByRole("button", { name: "View evidence: Monitor timeout" }).length).toBeGreaterThan(0);
     expect(screen.getAllByText("Feedback: this investigation")).toHaveLength(1);
-    expect(screen.getByTestId("investigation-step-trace")).toHaveAttribute("data-state", "open");
+    expect(screen.getAllByRole("heading", { name: "Hypotheses" })).toHaveLength(1);
+    expect(screen.getByTestId("investigation-step-trace")).toHaveAttribute("data-state", "closed");
+    expect(screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual([
+      "Conclusion",
+      "Hypotheses",
+      "Evidence (1)",
+      "Similar incidents (2)",
+    ]);
   });
 
-  it("offers the post-mortem only once the incident is resolved", () => {
+  it("offers the post-mortem section only once the incident is resolved", () => {
     const open = render(<SreIncidentDetailView detail={detailFixture()} services={[]} />);
-    expect(screen.queryByRole("button", { name: "Post-mortem" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "View investigation" }));
+    expect(screen.queryByText("Mock post-mortem")).not.toBeInTheDocument();
     open.unmount();
     const detail = detailFixture();
     detail.incident.status = "resolved";
     render(<SreIncidentDetailView detail={detail} services={[]} />);
-    fireEvent.click(screen.getByRole("button", { name: "Post-mortem" }));
+    fireEvent.click(screen.getByRole("button", { name: "View investigation" }));
+    expect(within(screen.getByTestId("investigation-sheet")).getByRole("heading", { name: "Post-mortem" })).toBeInTheDocument();
     expect(screen.getByText("Mock post-mortem")).toHaveAttribute("data-can-edit", "true");
   });
 
@@ -333,9 +364,6 @@ describe("SreIncidentDetailView", () => {
       summary.compareDocumentPosition(screen.getByText("Mock timeline")) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(screen.getByText("Assignee: Ada Lovelace")).toBeInTheDocument();
-    // Status is shown once, by the stepper; the header keeps only severity.
-    expect(screen.getAllByText("Triggered")).toHaveLength(1);
-    expect(screen.queryByRole("button", { name: "About status" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Acknowledge" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Post update" })).toBeInTheDocument();
     // Back control matches the monitor and job detail pages.
@@ -382,12 +410,12 @@ describe("SreIncidentDetailView actions menu and primary button", () => {
     fireEvent.keyDown(trigger, { key: "Enter" });
   };
 
-  it("gives editors Edit, Ask Copilot and Re-run investigation", () => {
+  it("gives editors Edit and Ask Copilot, with investigation reached from the card", () => {
     render(<SreIncidentDetailView detail={detailFixture()} services={[]} />);
     openMenu();
     expect(screen.getByRole("menuitem", { name: "Edit incident" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Ask Copilot" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Re-run investigation" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /investigation/i })).not.toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Resolve incident" })).toBeInTheDocument();
   });
 
@@ -408,12 +436,17 @@ describe("SreIncidentDetailView actions menu and primary button", () => {
     expect(screen.getByText(/^Commander:/)).toBeInTheDocument();
   });
 
-  it("offers Run investigation when nothing has run yet", () => {
+  it("offers Run investigation on the AI summary card when nothing has run yet", () => {
     const detail = detailFixture();
     detail.latestInvestigation = null;
+    detail.incident.rootCauseSummary = null;
+    detail.triageSummary = null;
     render(<SreIncidentDetailView detail={detail} services={[]} />);
     openMenu();
-    expect(screen.getByRole("menuitem", { name: "Run investigation" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /investigation/i })).not.toBeInTheDocument();
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+    fireEvent.click(screen.getByRole("button", { name: "Run investigation" }));
+    expect(screen.getByTestId("investigation-sheet")).toBeInTheDocument();
   });
 
   it("shows viewers no actions menu, since every item needs update or investigate access", () => {
@@ -424,7 +457,7 @@ describe("SreIncidentDetailView actions menu and primary button", () => {
     expect(screen.queryByRole("button", { name: "More actions" })).not.toBeInTheDocument();
   });
 
-  it("shows Acknowledge, then Resolve, then Post-mortem as the incident progresses", () => {
+  it("shows Acknowledge, then Resolve as the incident progresses", () => {
     const fresh = render(<SreIncidentDetailView detail={detailFixture()} services={[]} />);
     expect(screen.getByRole("button", { name: "Acknowledge" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Resolve incident" })).not.toBeInTheDocument();
@@ -446,7 +479,7 @@ describe("SreIncidentDetailView actions menu and primary button", () => {
     render(<SreIncidentDetailView detail={resolved} services={[]} />);
     expect(screen.queryByRole("button", { name: "Acknowledge" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Resolve incident" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Post-mortem" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Post-mortem" })).not.toBeInTheDocument();
   });
 
   it("shows no primary action to a viewer of an open incident", () => {

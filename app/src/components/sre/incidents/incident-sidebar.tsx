@@ -2,15 +2,14 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ChevronRight } from "lucide-react";
 
 import type { SreIncidentDetail } from "@/actions/sre-incidents";
-import { useSimilarIncidentCount } from "@/components/sre/incidents/similar-incidents-card";
 import { IncidentAssigneePicker } from "@/components/sre/incidents/incident-assignee-picker";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { InfoTip } from "@/components/ui/info-tip";
 import { Separator } from "@/components/ui/separator";
-import { TableBadge } from "@/components/ui/table-badge";
+import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
+import { WatchSreIncidentButton } from "@/components/sre/incidents/watch-sre-incident-button";
+import { getDisplayStatus } from "@/lib/sre/incident-status-display";
 
 const ALERTS_COLLAPSED = 3;
 
@@ -34,63 +33,78 @@ export function formatDuration(from: Date | string | null, to: Date | string | n
 // One link style for every in-panel link.
 export const PANEL_LINK = "font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm";
 
-function Row({ label, tip, children }: { label: string; tip?: React.ReactNode; children: React.ReactNode }) {
+export const SEVERITY_TONES: Record<SreIncidentDetail["incident"]["severity"], TableBadgeTone> = {
+  sev1: "danger",
+  sev2: "warning",
+  sev3: "warning",
+  sev4: "slate",
+};
+
+function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex min-h-7 items-start justify-between gap-3 py-1 text-sm">
-      <dt className="flex shrink-0 items-center gap-1 text-muted-foreground">{label}{tip}</dt>
-      <dd className="min-w-0 break-words text-right" suppressHydrationWarning>{children}</dd>
+    <div className="grid min-h-8 grid-cols-[8rem_minmax(0,1fr)] items-center gap-x-3 text-sm">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="min-w-0 break-words" suppressHydrationWarning>{children}</dd>
     </div>
   );
 }
 
-/** The incident's properties in one compact card: people, links, alerts and timings. */
+/** Plain label/value properties of the incident: state, people, service, timings, status page, alerts. */
 export function IncidentSidebar({
   detail,
   showCommander = false,
-  onOpenSimilar,
 }: {
   detail: SreIncidentDetail;
   /** The page's "Add commander" action reveals the commander picker. */
   showCommander?: boolean;
-  /** Opens the similar-incidents list in the investigation sheet. */
-  onOpenSimilar?: () => void;
 }) {
   const { incident } = detail;
   const canUpdate = detail.permissions.canUpdate;
   const open = incident.status !== "resolved";
   const editable = canUpdate && open;
+  const display = getDisplayStatus(incident.status, incident.acknowledgedAt);
   const [allAlerts, setAllAlerts] = useState(false);
   const alerts = allAlerts ? detail.linkedAlerts : detail.linkedAlerts.slice(0, ALERTS_COLLAPSED);
-  const similarCount = useSimilarIncidentCount(incident.id);
 
   return (
     <aside aria-labelledby="incident-details-title">
-      <Card className="gap-4 py-4">
-        <CardHeader className="px-4 pt-0 pb-1">
-          <CardTitle id="incident-details-title" className="text-sm">Details</CardTitle>
+      <Card className="gap-3 py-4">
+        <CardHeader className="px-4 pt-0 pb-0">
+          <CardTitle id="incident-details-title" className="text-sm font-semibold">Properties</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 px-4">
-          <IncidentAssigneePicker
-            incidentId={incident.id}
-            assigneeUserId={incident.assigneeUserId}
-            assigneeName={incident.assigneeName}
-            assigneeImage={incident.assigneeImage}
-            label="Assignee"
-            canUpdate={editable}
-          />
-          {(incident.commanderUserId || showCommander) && (
-            <IncidentAssigneePicker
-              incidentId={incident.id}
-              assigneeUserId={incident.commanderUserId}
-              assigneeName={incident.commanderName}
-              assigneeImage={incident.commanderImage}
-              role="commander"
-              label="Commander"
-              canUpdate={editable}
-            />
-          )}
-
           <dl className="space-y-0.5">
+            <Row label="Status">
+              <TableBadge tone={display.tone} compact>{display.label}</TableBadge>
+            </Row>
+            <Row label="Severity">
+              <TableBadge tone={SEVERITY_TONES[incident.severity]} compact className="uppercase">{incident.severity}</TableBadge>
+            </Row>
+            <Row label="Assignee">
+              <IncidentAssigneePicker
+                incidentId={incident.id}
+                assigneeUserId={incident.assigneeUserId}
+                assigneeName={incident.assigneeName}
+                assigneeImage={incident.assigneeImage}
+                label="Assignee"
+                hideLabel
+                canUpdate={editable}
+              />
+            </Row>
+            {(incident.commanderUserId || showCommander) && (
+              <Row label="Commander">
+                <IncidentAssigneePicker
+                  incidentId={incident.id}
+                  assigneeUserId={incident.commanderUserId}
+                  assigneeName={incident.commanderName}
+                  assigneeImage={incident.commanderImage}
+                  role="commander"
+                  label="Commander"
+                  hideLabel
+                  canUpdate={editable}
+                />
+              </Row>
+            )}
             <Row label="Service">
               {incident.primaryServiceId ? (
                 <Link className={PANEL_LINK} href={`/services/${incident.primaryServiceId}`}>
@@ -99,12 +113,25 @@ export function IncidentSidebar({
               ) : canUpdate ? (
                 <Link className={PANEL_LINK} href={`/incidents/${incident.id}?edit=service`}>Link service</Link>
               ) : (
-                <span className="text-muted-foreground">—</span>
+                <span className="text-muted-foreground">None</span>
               )}
             </Row>
+            <Row label="Started">{formatDate(incident.createdAt)}</Row>
+            <Row label="Time to acknowledge">
+              {incident.acknowledgedAt ? (
+                <span title={`${formatDate(incident.acknowledgedAt)}${incident.acknowledgedByName ? ` by ${incident.acknowledgedByName}` : ""}`}>
+                  {formatDuration(incident.createdAt, incident.acknowledgedAt)}
+                </span>
+              ) : (
+                <span className="text-muted-foreground">{incident.resolvedAt ? "Skipped" : "Not yet"}</span>
+              )}
+            </Row>
+            {incident.resolvedAt && (
+              <Row label="Time to resolve">{formatDuration(incident.createdAt, incident.resolvedAt)}</Row>
+            )}
             <Row label="Status page">
               {detail.publicIncident ? (
-                <span className="flex items-center justify-end gap-2">
+                <span className="flex flex-wrap items-center gap-x-2">
                   <Link
                     className={PANEL_LINK}
                     href={`/status-pages/${detail.publicIncident.statusPageId}/public/incidents/${detail.publicIncident.id}`}
@@ -126,33 +153,15 @@ export function IncidentSidebar({
                 <span className="text-muted-foreground">Not published</span>
               )}
             </Row>
-            <Row label="Started">{formatDate(incident.createdAt)}</Row>
-            <Row label="Acknowledged">
-              {incident.acknowledgedAt ? (
-                <span title={incident.acknowledgedByName ? `by ${incident.acknowledgedByName}` : undefined}>
-                  {formatDate(incident.acknowledgedAt)}
-                  {incident.acknowledgedByName && <span className="text-muted-foreground"> by {incident.acknowledgedByName}</span>}
-                </span>
-              ) : (
-                <span className="text-muted-foreground">{incident.resolvedAt ? "Skipped" : "Not yet"}</span>
-              )}
+            <Row label="Notifications">
+              <WatchSreIncidentButton incidentId={incident.id} watching={detail.watching ?? false} />
             </Row>
-            {incident.acknowledgedAt && (
-              <Row label="Time to acknowledge" tip={<InfoTip label="About time to acknowledge">From opened to first acknowledgement.</InfoTip>}>
-                {formatDuration(incident.createdAt, incident.acknowledgedAt)}
-              </Row>
-            )}
-            {incident.resolvedAt && (
-              <Row label="Time to resolve" tip={<InfoTip label="About time to resolve">From opened to resolved.</InfoTip>}>
-                {formatDuration(incident.createdAt, incident.resolvedAt)}
-              </Row>
-            )}
           </dl>
 
           <Separator />
 
           <section aria-labelledby="incident-alerts-title" className="space-y-1.5">
-            <h3 id="incident-alerts-title" className="flex items-center justify-between text-sm font-medium">
+            <h3 id="incident-alerts-title" className="flex items-center justify-between text-sm font-semibold">
               Alerts
               <span className="text-xs font-normal tabular-nums text-muted-foreground">{detail.linkedAlerts.length}</span>
             </h3>
@@ -183,23 +192,6 @@ export function IncidentSidebar({
               </>
             )}
           </section>
-
-          {similarCount !== null && similarCount > 0 && onOpenSimilar && (
-            <>
-              <Separator />
-              <button
-                type="button"
-                onClick={onOpenSimilar}
-                className="flex w-full items-center justify-between rounded-sm text-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <span>Similar past incidents</span>
-                <span className="flex items-center gap-1 tabular-nums">
-                  {similarCount}
-                  <ChevronRight className="h-4 w-4" aria-hidden="true" />
-                </span>
-              </button>
-            </>
-          )}
         </CardContent>
       </Card>
     </aside>

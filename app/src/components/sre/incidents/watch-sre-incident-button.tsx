@@ -29,7 +29,7 @@ export function WatchSreIncidentButton({ incidentId, watching }: { incidentId: s
   };
 
   return (
-    <Button size="sm" variant="outline" onClick={toggle} disabled={pending} aria-pressed={watching}>
+    <Button size="sm" variant="outline" className="h-7" onClick={toggle} disabled={pending} aria-pressed={watching}>
       {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : watching ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
       {watching ? "Unwatch" : "Watch"}
     </Button>
