@@ -42,6 +42,12 @@ describe("trialSubscribeUrl", () => {
     ).toBe("https://app.supercheck.io/subscribe");
   });
 
+  it("never returns a relative link when no app URL is configured", () => {
+    expect(trialSubscribeUrl({} as unknown as NodeJS.ProcessEnv)).toBe(
+      "https://app.supercheck.io/subscribe",
+    );
+  });
+
   it("falls back to the auth URL", () => {
     expect(
       trialSubscribeUrl({

@@ -1,5 +1,6 @@
 import { Section, Text } from "@react-email/components";
 import * as React from "react";
+import { PALETTE } from "./palette";
 import { BaseLayout, DetailsTable, EmailButton, type DetailField } from "./base-layout";
 
 interface MonitorAlertEmailProps {
@@ -8,42 +9,33 @@ interface MonitorAlertEmailProps {
   fields: DetailField[];
   footer: string;
   /** success = a plain pass (e.g. a job run); recovery = back to healthy after a failure. */
-  type: "failure" | "success" | "recovery" | "warning";
+  type: "failure" | "success" | "recovery" | "warning" | "info";
+  /** @deprecated Ignored: colours come from the shared email palette. */
   color?: string;
   /** Absolute link to the incidents page; when set, failure/warning emails get a "View incidents" button. */
   incidentsUrl?: string;
 }
 
-/** Header colours: dark enough for white text, shared with the incident emails. */
 const HEADER_TITLE = {
   failure: "Alert",
   success: "Passed",
   recovery: "Recovered",
   warning: "Warning",
+  info: "Notice",
 } as const;
 
-const HEADER_COLOR = {
-  failure: "#b91c1c",
-  success: "#15803d",
-  recovery: "#15803d",
-  warning: "#b45309",
+const TONE = {
+  failure: "failure",
+  success: "success",
+  recovery: "success",
+  warning: "warning",
+  info: "info",
 } as const;
 
-/**
- * Accent colour for the message border (the channels' alert palette)
- */
-const getStatusColor = (type: string): string => {
-  switch (type) {
-    case "failure":
-      return "#ef4444"; // Red-500
-    case "success":
-    case "recovery":
-      return "#22c55e"; // Green-500
-    case "warning":
-      return "#f59e0b"; // Amber-500
-    default:
-      return "#3b82f6"; // Blue-500
-  }
+/** `Job Failed - Nightly` -> `[Supercheck] Job Failed: Nightly`. */
+export const alertEmailSubject = (title: string): string => {
+  const i = title.indexOf(" - ");
+  return `[Supercheck] ${i > 0 ? `${title.slice(0, i)}: ${title.slice(i + 3)}` : title}`;
 };
 
 export const MonitorAlertEmail = ({
@@ -56,22 +48,15 @@ export const MonitorAlertEmail = ({
   ],
   footer = "Supercheck Monitoring System",
   type = "failure",
-  color,
   incidentsUrl,
 }: MonitorAlertEmailProps) => {
-  const statusColor = color ?? getStatusColor(type);
-  const headerColor = HEADER_COLOR[type] ?? "#1f2937";
+  const headerColor = PALETTE[TONE[type] ?? "neutral"];
 
   return (
     <BaseLayout
       preview={title}
       title={HEADER_TITLE[type] ?? "Alert"}
       headerColor={headerColor}
-      // We use the standard footer from BaseLayout, but append the custom footer text if needed
-      // or just rely on the standard one. The prompt asked for a proper footer consistent across all templates.
-      // The BaseLayout now has a standard footer. We can pass this custom footer as null to use the default,
-      // or pass it if it contains specific info.
-      // Let's pass the custom footer text as a simple text block above the standard footer links if it's unique.
       footer={
         footer && 
         footer !== "Supercheck Monitoring System" && 
@@ -87,7 +72,7 @@ export const MonitorAlertEmail = ({
       </Section>
 
       {/* Alert Message */}
-      <Section style={{ ...messageBox, borderLeftColor: statusColor }}>
+      <Section style={{ ...messageBox, borderLeftColor: headerColor }}>
         <Text style={messageText}>{message}</Text>
       </Section>
 
@@ -113,7 +98,7 @@ const resolvedChip = {
   padding: "2px 10px",
   borderRadius: "999px",
   backgroundColor: "#dcfce7",
-  color: "#166534",
+  color: PALETTE.success,
   fontSize: "12px",
   fontWeight: "700" as const,
   letterSpacing: "0.04em",

@@ -3,9 +3,10 @@
 import { randomUUID } from "node:crypto";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
+import { sql } from "drizzle-orm";
 
 jest.mock("@/utils/db", () => ({ db: {} }));
-import { updateCoverageSnapshot } from "./requirements-internal";
+import { updateCoverageSnapshot, updateCoverageSnapshotsForJob } from "./requirements-internal";
 import { RUN_CANCELLATION_MARKER } from "./run-cancellation-marker";
 
 const databaseName = `requirements_coverage_${randomUUID().replaceAll("-", "")}`;
@@ -96,4 +97,70 @@ it("still counts an error run that was not cancelled as failing", async () => {
     { status: "error", at: "2026-01-02" },
   ]);
   expect(snapshot).toMatchObject({ status: "failing", passed: 0, failed: 2 });
+});
+
+it("serializes concurrent recomputes: the second waits for the first and reads its committed changes", async () => {
+  const target = new URL(process.env.TEST_DATABASE_URL!);
+  target.pathname = `/${databaseName}`;
+  const pool = postgres(target.toString(), { max: 4 });
+  try {
+    const poolDb = drizzle(pool);
+    const [requirement, job, a, b] = [randomUUID(), randomUUID(), randomUUID(), randomUUID()];
+    await pool`INSERT INTO requirement_coverage_snapshots (requirement_id, status) VALUES (${requirement}, 'missing')`;
+    for (const test of [a, b]) {
+      await pool`INSERT INTO test_requirements VALUES (${test}, ${requirement})`;
+      await pool`INSERT INTO job_tests VALUES (${job}, ${test})`;
+    }
+    await pool`INSERT INTO runs (job_id, status, completed_at) VALUES (${job}, 'passed', '2026-01-01')`;
+
+    let releaseFirst!: () => void;
+    const firstMayCommit = new Promise<void>((resolve) => (releaseFirst = resolve));
+    let firstHoldsLock!: () => void;
+    const firstLocked = new Promise<void>((resolve) => (firstHoldsLock = resolve));
+    const first = poolDb.transaction(async (tx) => {
+      await updateCoverageSnapshot(requirement, tx as never);
+      firstHoldsLock();
+      await firstMayCommit;
+      // A change committed together with the first recompute, e.g. a concurrent deletion's effect.
+      await tx.execute(sql`INSERT INTO runs (job_id, status, completed_at) VALUES (${job}, 'failed', '2026-01-02')`);
+    });
+    await firstLocked;
+
+    let secondDone = false;
+    const second = poolDb
+      .transaction((tx) => updateCoverageSnapshot(requirement, tx as never))
+      .then(() => { secondDone = true; });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(secondDone).toBe(false);
+
+    releaseFirst();
+    await Promise.all([first, second]);
+    const [snapshot] = await pool`SELECT status, failed_test_count AS failed FROM requirement_coverage_snapshots
+      WHERE requirement_id = ${requirement}`;
+    expect(snapshot).toMatchObject({ status: "failing", failed: 2 });
+  } finally {
+    await pool.end({ timeout: 5 });
+  }
+});
+
+it("recomputes every requirement of the job after a run is deleted, in a fixed order, under the snapshot lock", async () => {
+  const [job, a, b] = [randomUUID(), randomUUID(), randomUUID()];
+  const requirements = [randomUUID(), randomUUID()];
+  for (const requirement of requirements) {
+    await client`INSERT INTO requirement_coverage_snapshots (requirement_id, status) VALUES (${requirement}, 'missing')`;
+  }
+  await client`INSERT INTO test_requirements VALUES (${a}, ${requirements[0]}), (${b}, ${requirements[1]})`;
+  await client`INSERT INTO job_tests VALUES (${job}, ${a}), (${job}, ${b})`;
+  await client`INSERT INTO runs (job_id, status, completed_at) VALUES (${job}, 'passed', '2026-01-01')`;
+  const [failing] = await client`INSERT INTO runs (job_id, status, completed_at) VALUES (${job}, 'failed', '2026-01-02') RETURNING id`;
+  await updateCoverageSnapshotsForJob(job, drizzle(client) as never);
+  expect(await client`SELECT status FROM requirement_coverage_snapshots WHERE requirement_id = ANY(${requirements})`)
+    .toEqual([{ status: "failing" }, { status: "failing" }]);
+
+  await client`DELETE FROM runs WHERE id = ${failing.id}`;
+  await drizzle(client).transaction((tx) => updateCoverageSnapshotsForJob(job, tx as never));
+
+  expect(await client`SELECT status, passed_test_count AS passed, failed_test_count AS failed
+    FROM requirement_coverage_snapshots WHERE requirement_id = ANY(${requirements})`)
+    .toEqual([{ status: "covered", passed: 1, failed: 0 }, { status: "covered", passed: 1, failed: 0 }]);
 });

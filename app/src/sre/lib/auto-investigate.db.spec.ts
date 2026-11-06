@@ -26,6 +26,7 @@ jest.mock("@/sre/lib/investigation-runner", () => ({
 jest.mock("@/sre/lib/triage-runner", () => ({ runSreIncidentTriage: jest.fn() }));
 
 import { maybeAutoInvestigateOnOpen } from "./auto-investigate";
+import { insertSreRun, MAX_AUTO_RUNNING_PER_ORG, SreOrgConcurrencyError } from "./run-insert";
 
 const execFileAsync = promisify(execFile);
 const name = `auto_investigate_${randomUUID().replaceAll("-", "")}`;
@@ -70,13 +71,18 @@ beforeEach(async () => {
   input = { organizationId: org.id, projectId: project.id, incidentId: incident.id, userId: null };
 });
 
-async function run(status: "running" | "completed" | "failed" | "aborted" | "timed_out", agentType: "triage" | "investigation" = "investigation") {
+async function run(
+  status: "running" | "completed" | "failed" | "aborted" | "timed_out",
+  agentType: "triage" | "investigation" = "investigation",
+  origin: "auto" | "manual" = "auto",
+) {
   await mockDatabase.insert(schema.sreInvestigationRuns).values({
     organizationId: input.organizationId,
     projectId: input.projectId,
     incidentId: input.incidentId,
     agentType,
     status,
+    origin,
     modelId: "m",
   } as never);
 }
@@ -132,8 +138,52 @@ it("does not hold a pooled connection while the run starts", async () => {
 });
 
 it("rejects a second running run for the same incident and agent type", async () => {
-  await run("running");
-  await expect(run("running")).rejects.toMatchObject({
+  await run("running", "investigation", "manual");
+  await expect(run("running", "investigation", "manual")).rejects.toMatchObject({
     cause: { code: "23505", constraint_name: "sre_investigation_runs_active_incident_unique" },
   });
+});
+
+it("rejects a second automatic run once the first completed, but not a manual re-run or a retry after a failure", async () => {
+  await run("completed");
+  await expect(run("completed")).rejects.toMatchObject({
+    cause: { code: "23505", constraint_name: "sre_investigation_runs_auto_incident_unique" },
+  });
+  await run("completed", "investigation", "manual");
+  await run("failed");
+  await run("failed", "triage");
+});
+
+it("counts only automatic runs toward the three-attempt cap", async () => {
+  for (const status of ["failed", "aborted", "timed_out"] as const) await run(status, "investigation", "manual");
+  await maybeAutoInvestigateOnOpen(input);
+  expect(start).toHaveBeenCalledTimes(1);
+  expect(start).toHaveBeenCalledWith(expect.objectContaining({ origin: "auto" }));
+});
+
+it("admits at most the per-organization cap of simultaneous automatic runs across incidents", async () => {
+  const incidents = await Promise.all(
+    Array.from({ length: 6 }, (_, i) =>
+      mockDatabase
+        .insert(schema.sreIncidents)
+        .values({ organizationId: input.organizationId, projectId: input.projectId, incidentNumber: 50 + i, title: "Burst", severity: "sev1" })
+        .returning()
+        .then(([row]) => row),
+    ),
+  );
+  const results = await Promise.allSettled(
+    incidents.map((incident) =>
+      insertSreRun(mockDatabase, {
+        organizationId: input.organizationId,
+        projectId: input.projectId,
+        incidentId: incident.id,
+        agentType: "investigation",
+        status: "running",
+        origin: "auto",
+        modelId: "m",
+      }),
+    ),
+  );
+  expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(MAX_AUTO_RUNNING_PER_ORG);
+  expect(results.filter((r) => r.status === "rejected" && r.reason instanceof SreOrgConcurrencyError)).toHaveLength(6 - MAX_AUTO_RUNNING_PER_ORG);
 });

@@ -178,3 +178,33 @@ describe('CronUtils', () => {
     });
   });
 });
+
+describe('formatNextRunDate in a non-UTC viewer timezone', () => {
+  const original = process.env.TZ;
+  afterEach(() => {
+    if (original === undefined) delete process.env.TZ;
+    else process.env.TZ = original;
+  });
+
+  it.each(['America/Los_Angeles', 'Asia/Kolkata', 'Pacific/Auckland'])(
+    'shows the UTC wall time the scheduler uses when the browser is in %s',
+    (tz) => {
+      process.env.TZ = tz;
+      const out = formatNextRunDate(new Date('2024-01-15T09:00:00Z'));
+      expect(out).toContain('Jan 15, 2024');
+      expect(out).toContain('09:00');
+      expect(out).toContain('UTC');
+    },
+  );
+
+  it('computes the next run from UTC wall time, not the local zone', () => {
+    process.env.TZ = 'Pacific/Auckland';
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2024-01-15T10:30:00Z'));
+    try {
+      expect(getNextRunDate('0 9 * * *')?.toISOString()).toBe('2024-01-16T09:00:00.000Z');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+});

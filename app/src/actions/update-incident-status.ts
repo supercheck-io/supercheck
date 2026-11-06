@@ -15,13 +15,20 @@ import { z } from "zod";
 import { requireProjectContext } from "@/lib/project-context";
 import { requirePermissions } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
+import { repointSreStatusPageSlot } from "@/lib/status-page-reconciliation";
 import { incidentScheduleFields } from "@/lib/incident-schedule";
 
 import { updateIncidentStatusSchema, type UpdateIncidentStatusData } from "@/lib/validations/incident-status";
 
 export type { UpdateIncidentStatusData } from "@/lib/validations/incident-status";
 
-export async function updateIncidentStatus(data: UpdateIncidentStatusData) {
+export async function updateIncidentStatus(
+  data: UpdateIncidentStatusData,
+  // Set by callers that decided from a possibly stale read (e.g. SRE "post to status page"): the update only
+  // applies while the incident still has this status, so a late post cannot reopen a resolved incident or
+  // overwrite a newer status.
+  options?: { expectedStatus?: string },
+) {
   try {
     // Get current project context (includes auth verification)
     const { userId, project, organizationId } = await requireProjectContext();
@@ -85,6 +92,14 @@ export async function updateIncidentStatus(data: UpdateIncidentStatusData) {
     }
 
     const result = await db.transaction(async (tx) => {
+      if (options?.expectedStatus) {
+        const [current] = await tx
+          .select({ status: incidents.status })
+          .from(incidents)
+          .where(eq(incidents.id, validatedData.incidentId))
+          .for("update");
+        if (current?.status !== options.expectedStatus) return null;
+      }
       // Lock the component before the incident, matching reconciliation order.
       // A manual resolve of an automatically detected incident must not be
       // undone by the next reconciliation tick while the monitor is still down.
@@ -186,8 +201,14 @@ export async function updateIncidentStatus(data: UpdateIncidentStatusData) {
         }
       }
 
+      if (validatedData.status === "resolved") await repointSreStatusPageSlot(tx, incident.id);
+
       return { incident, update };
     });
+
+    if (!result) {
+      return { success: false, message: "The public incident changed since it was read; refresh and try again" };
+    }
 
     // Log the audit event
     await logAuditEvent({

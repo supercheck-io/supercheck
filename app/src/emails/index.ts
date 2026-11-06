@@ -13,7 +13,7 @@ export { OrganizationInvitationEmail } from "./organization-invitation";
 export { StatusPageVerificationEmail } from "./status-page-verification";
 export { StatusPageWelcomeEmail } from "./status-page-welcome";
 export { IncidentNotificationEmail } from "./incident-notification";
-export { MonitorAlertEmail } from "./monitor-alert";
+export { MonitorAlertEmail, alertEmailSubject } from "./monitor-alert";
 export {
   IncidentUpdateEmail,
   incidentUpdateHeadline,

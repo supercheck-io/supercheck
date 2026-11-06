@@ -35,6 +35,7 @@ jest.mock("@/lib/rbac/middleware", () => ({ requirePermissions: jest.fn(async ()
 jest.mock("next/cache", () => ({ revalidatePath: jest.fn() }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 
+jest.mock("@/lib/status-page-reconciliation", () => ({ repointSreStatusPageSlot: jest.fn() }));
 import { updateIncidentStatus } from "./update-incident-status";
 
 const base = {

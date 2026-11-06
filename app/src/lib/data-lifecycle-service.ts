@@ -82,7 +82,7 @@ import { deliverTrialReminder } from "@/lib/execution/trial-reminder-delivery";
  * - "credential_revocation_retry": Finishes credential revocations that failed after a password reset
  * - "alert_history": Alert notification history records
  * - "audit_logs": User/system/security audit records
- * - "telemetry_retention": Agent heartbeats, SRE health snapshots/observations/alert events, notification outbox events
+ * - "telemetry_retention": Agent heartbeats, finished private agent jobs, SRE health snapshots/observations/alert events, notification outbox events
  * - "trial_lifecycle": Ends expired trials (pauses monitors, archives status pages)
  * 
  * DATA PROCESSING (Aggregation Operations):
@@ -3262,8 +3262,8 @@ export function createDataLifecycleService(): DataLifecycleService {
       ),
     },
 
-    // Telemetry retention: heartbeats, SRE snapshots/observations/alert events, notification outbox events.
-    // Per-table days: PRIVATE_AGENT_HEARTBEAT_RETENTION_DAYS (7), SRE_HEALTH_SNAPSHOT_RETENTION_DAYS (90),
+    // Telemetry retention: heartbeats, finished private agent jobs, SRE snapshots/observations/alert events, notification outbox events.
+    // Per-table days: PRIVATE_AGENT_HEARTBEAT_RETENTION_DAYS (7), PRIVATE_AGENT_JOB_RETENTION_DAYS (30), SRE_HEALTH_SNAPSHOT_RETENTION_DAYS (90),
     // SRE_DEPENDENCY_OBSERVATION_RETENTION_DAYS (90), SRE_ALERT_EVENT_RETENTION_DAYS (90),
     // STATUS_PAGE_DELIVERY_RETENTION_DAYS (30, shared with delivery rows).
     {

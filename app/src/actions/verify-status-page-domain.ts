@@ -88,8 +88,10 @@ export async function verifyStatusPageDomain(statusPageId: string) {
     }
 
     // Verify DNS
+    let cnameLookupDone = false;
     try {
       const cnames = await resolveCname(statusPage.customDomain);
+      cnameLookupDone = true;
       const validTargets = getStatusPageDomainVerificationTargets();
 
       // SECURITY: Use exact canonical hostname matching (case-insensitive, trailing-dot normalized)
@@ -186,6 +188,8 @@ export async function verifyStatusPageDomain(statusPageId: string) {
         };
       }
     } catch (cnameError) {
+      // Only a failed CNAME lookup is a DNS problem; a later DB or audit failure is an unexpected error.
+      if (cnameLookupDone) throw cnameError;
       // CNAME resolution failed — this commonly happens when a CDN or DNS
       // provider (e.g. Cloudflare with proxy enabled) flattens the CNAME
       // into A/AAAA records. Detect this case and give the user a specific,

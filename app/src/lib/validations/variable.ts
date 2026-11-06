@@ -97,3 +97,7 @@ export const updateVariableSchema = z.object({
 export type CreateVariableFormData = z.infer<typeof createVariableSchema>;
 export type CreateFileVariableFormData = z.infer<typeof createFileVariableSchema>;
 export type UpdateVariableFormData = z.infer<typeof updateVariableSchema>;
+/** Field-level messages for a failed validation, in the shape the variable dialog renders. */
+export function variableValidationDetails(error: z.ZodError) {
+  return error.issues.map((issue) => ({ path: issue.path.map(String), message: issue.message }));
+}

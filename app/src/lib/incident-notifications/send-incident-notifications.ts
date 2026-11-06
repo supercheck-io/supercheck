@@ -143,7 +143,7 @@ export async function sendIncidentNotifications(
       return date
         ? new Intl.DateTimeFormat(getLocaleForLanguage(language), {
             dateStyle: "long",
-            timeStyle: "short",
+            timeStyle: "long", // "long" includes the time zone name; timeZoneName cannot be combined with timeStyle
             timeZone: statusPage.timezone || "UTC",
           }).format(date)
         : t.emailJustNow;

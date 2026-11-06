@@ -98,12 +98,14 @@ describe("updateCoverageSnapshot", () => {
     q.leftJoin = () => q;
     q.where = () => q;
     q.orderBy = (...o: unknown[]) => { orders.push(o); return Promise.resolve(rows); };
+    const locks: unknown[] = [];
     const executor = {
+      select: () => ({ from: () => ({ where: () => ({ for: (mode: string) => { locks.push(mode); return Promise.resolve([]); } }) }) }),
       selectDistinctOn: () => q,
       update: () => ({ set: (v: Record<string, unknown>) => { sets.push(v); return { where: () => Promise.resolve() }; } }),
     };
     await updateCoverageSnapshot(R, executor as never);
-    return { sets, orders };
+    return { sets, orders, locks };
   };
 
   it("derives the link count and pass/fail counts from one latest-run-per-test result", async () => {
@@ -115,6 +117,11 @@ describe("updateCoverageSnapshot", () => {
     expect(sets[0]).toMatchObject({ status: "failing", linkedTestCount: 3, passedTestCount: 1, failedTestCount: 1 });
     // runs.id is the final ordering key, so equal completedAt values resolve deterministically.
     expect(orders[0]).toHaveLength(3);
+  });
+
+  it("locks the snapshot row before reading coverage inputs", async () => {
+    const { locks } = await run([]);
+    expect(locks).toEqual(["update"]);
   });
 
   it("marks coverage missing when nothing is linked", async () => {

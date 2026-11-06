@@ -65,6 +65,22 @@ function buildSmtpTransporter(): Transporter | SmtpConfigError {
   });
 }
 
+/**
+ * From/Reply-To for every message. SMTP_FROM_NAME adds a display name unless
+ * SMTP_FROM_EMAIL already carries one ("Name <a@b.c>"); SMTP_REPLY_TO is optional.
+ */
+export function smtpSender(env: NodeJS.ProcessEnv = process.env): {
+  from: string | { name: string; address: string };
+  replyTo?: string;
+} {
+  const address = env.SMTP_FROM_EMAIL!;
+  const name = env.SMTP_FROM_NAME?.trim();
+  return {
+    from: name && !address.includes("<") ? { name, address } : address,
+    ...(env.SMTP_REPLY_TO?.trim() ? { replyTo: env.SMTP_REPLY_TO.trim() } : {}),
+  };
+}
+
 function isSmtpConfigError(value: Transporter | SmtpConfigError): value is SmtpConfigError {
   return "error" in value;
 }
@@ -97,11 +113,11 @@ export class EmailService {
 
     const transporter = transporterOrError;
     this.transporter = transporter;
-    const fromEmail = process.env.SMTP_FROM_EMAIL!;
+    const sender = smtpSender();
 
     try {
       await transporter.sendMail({
-        from: fromEmail,
+        ...sender,
         to: options.to,
         subject: options.subject,
         text: options.text,
@@ -146,7 +162,7 @@ export class EmailService {
 
     const transporter = transporterOrError;
     this.transporter = transporter;
-    const fromEmail = process.env.SMTP_FROM_EMAIL!;
+    const sender = smtpSender();
 
     try {
       await transporter.verify();
@@ -167,7 +183,7 @@ export class EmailService {
     for (const recipient of deliverable) {
       try {
         await transporter.sendMail({
-          from: fromEmail,
+          ...sender,
           to: recipient,
           subject: options.subject,
           text: options.text,

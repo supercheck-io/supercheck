@@ -626,30 +626,9 @@ export function ReportViewer({
                   }
                 }
 
-                // Wait for the Playwright report's Service Worker to activate before
-                // showing the report. The SW serves trace viewer files (trace/index.html)
-                // and trace data (data/<hash>.zip) from inline data embedded in the report.
-                // Without this wait, clicking a trace link before SW activation causes
-                // "Object not found" because the files don't exist in S3.
-                const waitForServiceWorker = async () => {
-                  try {
-                    const sw = iframe.contentWindow?.navigator?.serviceWorker;
-                    if (sw) {
-                      // Wait for SW to be ready, bounded by 3s timeout so non-SW reports
-                      // (like K6) aren't blocked indefinitely
-                      await Promise.race([
-                        sw.ready,
-                        new Promise((resolve) => setTimeout(resolve, 3000)),
-                      ]);
-                    }
-                  } catch {
-                    // SW not available (e.g., K6 reports) — continue normally
-                  }
-                };
-
-                waitForServiceWorker().then(() => {
-                  setIsReportLoading(false);
-                });
+                // The HTML report registers no service worker; the trace viewer
+                // registers its own when a trace is opened.
+                setIsReportLoading(false);
               } catch (loadError) {
                 console.error(
                   "ReportViewer: Error in onLoad event:",
