@@ -120,6 +120,45 @@ describe("PostmortemCard", () => {
     expect(screen.getByRole("region", { name: "Summary" })).toHaveTextContent(/^SummaryS$/);
   });
 
+  it("follows a newer stored version, but not while editing", () => {
+    const v1 = { ...stored, updatedAt: "2026-11-01T10:00:00.000Z" };
+    const v2 = { sections: { ...stored.sections, summary: "From elsewhere" }, updatedAt: "2026-11-01T11:00:00.000Z" };
+    const view = render(<PostmortemCard {...base} postmortem={v1} canEdit />);
+    view.rerender(<PostmortemCard {...base} postmortem={v2} canEdit />);
+    expect(screen.getByRole("region", { name: "Summary" })).toHaveTextContent("From elsewhere");
+    openEditor();
+    fireEvent.change(screen.getByLabelText("Summary"), { target: { value: "Mine" } });
+    view.rerender(<PostmortemCard {...base} postmortem={{ ...v2, updatedAt: "2026-11-01T12:00:00.000Z" }} canEdit />);
+    expect(screen.getByLabelText("Summary")).toHaveValue("Mine");
+  });
+
+  it("keeps a long stored follow-up whole when another section is saved", async () => {
+    const long = `Rotate ${"keys ".repeat(80)}now`;
+    render(<PostmortemCard {...base} postmortem={{ sections: { ...stored.sections, follow_ups: `- ${long}` } }} canEdit />);
+    openEditor();
+    fireEvent.change(screen.getByLabelText("Summary"), { target: { value: "New" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save post-mortem" }));
+    await waitFor(() => expect(save).toHaveBeenCalled());
+    expect(save.mock.calls[0][0].sections.follow_ups).toBe(`- ${long}`);
+  });
+
+  it("locks the fields while a save is in flight", async () => {
+    let finish: (value: unknown) => void = () => undefined;
+    save.mockReturnValue(new Promise((resolve) => (finish = resolve)));
+    render(<PostmortemCard {...base} postmortem={stored} canEdit />);
+    openEditor();
+    fireEvent.click(screen.getByRole("button", { name: "Save post-mortem" }));
+    await waitFor(() => expect(screen.getByLabelText("Summary")).toBeDisabled());
+    finish({ success: false, error: "x" });
+    await waitFor(() => expect(screen.getByLabelText("Summary")).toBeEnabled());
+  });
+
+  it("moves focus to the document heading after the first draft", async () => {
+    render(<PostmortemCard {...base} postmortem={null} canEdit />);
+    fireEvent.click(screen.getByRole("button", { name: "Generate post-mortem draft" }));
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Post-mortem" })).toHaveFocus());
+  });
+
   it("discards unsaved edits on Cancel", () => {
     render(<PostmortemCard {...base} postmortem={stored} canEdit />);
     openEditor();

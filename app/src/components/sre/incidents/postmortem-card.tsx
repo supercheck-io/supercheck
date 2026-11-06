@@ -59,7 +59,8 @@ const SECTION_VISUAL: Record<string, { icon: LucideIcon; tone: IconTone; hint: s
 function parseFollowUps(value: string | undefined): string[] {
   return (value ?? "")
     .split("\n")
-    .map((line) => line.replace(/^\s*[-*]\s*/, "").trim().slice(0, 300))
+    // No length cap here: saving an edit elsewhere must not cut a long stored follow-up.
+    .map((line) => line.replace(/^\s*[-*]\s*/, "").trim())
     .filter(Boolean);
 }
 const serializeFollowUps = (items: string[]) =>
@@ -105,12 +106,25 @@ export function PostmortemCard({
   // Entering or leaving the editor unmounts the focused button; move focus somewhere sensible.
   const heading = useRef<HTMLHeadingElement>(null);
   const switched = useRef(false);
+  // `saved` too: the first draft replaces the empty state (and its button) without leaving edit mode.
   useEffect(() => {
     if (!switched.current) return;
     switched.current = false;
     if (editing) document.getElementById("postmortem-summary")?.focus();
     else heading.current?.focus();
-  }, [editing]);
+  }, [editing, saved]);
+
+  // Follow a newer stored version (another tab or person) without remounting, so focus stays put;
+  // while editing, keep the person's text: their Save or Cancel decides.
+  const [seenAt, setSeenAt] = useState(postmortem?.updatedAt);
+  if (postmortem && postmortem.updatedAt !== seenAt) {
+    setSeenAt(postmortem.updatedAt);
+    if (!editing && postmortem.updatedAt !== saved?.updatedAt) {
+      setSaved(postmortem);
+      setSections({ ...postmortem.sections });
+      setFollowUps(parseFollowUps(postmortem.sections.follow_ups));
+    }
+  }
   const switchMode = (next: boolean) => {
     switched.current = true;
     setEditing(next);
@@ -132,7 +146,8 @@ export function PostmortemCard({
       }
       setSaved(result.postmortem);
       reset(result.postmortem);
-      switchMode(false);
+      switched.current = true;
+      setEditing(false);
       toast.success(
         result.source === "ai" ? "Draft generated. Review and edit before sharing." : "Draft created from the incident record. AI drafting was unavailable.",
       );
@@ -262,6 +277,8 @@ export function PostmortemCard({
             save();
           }}
         >
+          {/* Locked while saving: the saved response replaces the form, so later keystrokes would be lost. */}
+          <fieldset disabled={pending} className="min-w-0 space-y-5">
           {TEXT_SECTIONS.map(({ key, label }) => (
             <div key={key} className="space-y-2">
               <Label htmlFor={`postmortem-${key}`} className="flex items-center gap-2">
@@ -320,6 +337,7 @@ export function PostmortemCard({
                 Add follow-up
               </Button>
             )}
+          </fieldset>
           </fieldset>
           <div className="flex justify-end gap-2 border-t pt-4">
             <Button type="button" variant="outline" onClick={cancel} disabled={pending}>

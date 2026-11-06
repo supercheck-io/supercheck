@@ -313,8 +313,8 @@ export function SreIncidentDetailView({
                 hidden={activeTab !== "postmortem"}
                 className="mt-0 min-w-0 rounded-md focus-visible:ring-inset focus-visible:ring-offset-0 data-[state=inactive]:hidden"
               >
+                {/* Not keyed by version: the card follows newer saves itself, so focus and an open edit survive a refetch. */}
                 <PostmortemCard
-                  key={incident.postmortem?.updatedAt ?? "none"}
                   incidentId={incident.id}
                   incidentNumber={incident.incidentNumber}
                   title={incident.title}
