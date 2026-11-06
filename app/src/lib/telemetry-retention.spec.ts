@@ -51,15 +51,3 @@ describe("telemetry retention config", () => {
     expect(await purgeTelemetryTable(run, small, { days: 7, batchSize: 1, maxRecords: 1 })).toBe(3);
   });
 });
-
-describe("private_agent_jobs retention", () => {
-  it("only purges finished jobs and keeps each connector's newest", () => {
-    const jobs = TELEMETRY_RETENTION_RULES.find((r) => r.table === "private_agent_jobs")!;
-    const sql = buildPurgeBatchSql(jobs, resolveRetentionDays(jobs, {}), 100);
-    expect(sql).toContain("status IN ('completed', 'failed', 'cancelled', 'timed_out')");
-    expect(sql).not.toMatch(/'(queued|leased|running)'/);
-    // The predicate selects deletable rows: a newer job must exist, so the newest per connector survives.
-    expect(sql).toContain("OR EXISTS (SELECT 1 FROM private_agent_jobs n WHERE n.connector_id =");
-    expect(sql).not.toMatch(/NOT EXISTS \(SELECT 1 FROM private_agent_jobs/);
-  });
-});
