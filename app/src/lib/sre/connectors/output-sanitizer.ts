@@ -13,8 +13,9 @@ const REDACTION_PATTERNS: Array<[RegExp, string]> = [
   // scheme://<token>@host: the whole user part is a credential (ghp_, glpat-, sk-, xox*, or a long opaque string).
   [/\b([a-z][a-z0-9+.-]{0,30}:\/\/)(?:(?:(?:ghp|gho|ghu|ghs|ghr)_|glpat-|sk-|xox[a-z]-)[A-Za-z0-9_-]+|[A-Za-z0-9_-]{21,200})(@)/gi, "$1[REDACTED]$2"],
   // Provider payloads commonly serialize secrets as quoted JSON fields.
-  // Field names that contain a secret word, any case or prefix ("clientSecret", "db_password"); bounded so the scan stays linear.
-  [/("[A-Za-z0-9_-]{0,40}(?:token|api[_-]?key|secret|password|passwd|pwd)[A-Za-z0-9_-]{0,20}"\s*:\s*)"(?:\\.|[^"\\])*"/gi, '$1"[REDACTED]"'],
+  // Field names ending in a secret word, any case or prefix ("clientSecret", "db_password"), so "tokenizer" or
+  // "token_count" stay readable; bounded so the scan stays linear.
+  [/("[A-Za-z0-9_-]{0,40}(?:token|api[_-]?key|secret|password|passwd|pwd|credentials?|authorization)"\s*:\s*)"(?:\\.|[^"\\])*"/gi, '$1"[REDACTED]"'],
   // Query parameters, including presigned storage URL signatures.
   [/([?&](?:token|api[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|secret|password|x-amz-(?:signature|credential|security-token)|signature|sig)=)[^&#\s]+/gi, "$1[REDACTED]"],
   [/\b(Authorization:\s*Bearer\s+)[A-Za-z0-9._~+/-]+=*/gi, "$1[REDACTED]"],

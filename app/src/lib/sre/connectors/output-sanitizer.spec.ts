@@ -136,7 +136,8 @@ describe("redactConnectorText secret shapes", () => {
     "AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMIbPxRfiCYEXAMPLEKEY",
     "SECRET_KEY=hunter2xyz",
     "client_secret=hunter2xyz",
-    '{"clientSecret":"hunter2xyz","db_password":"hunter2xyz"}',
+    '{"clientSecret":"hunter2xyz","db_password":"hunter2xyz","accessToken":"hunter2xyz"}',
+    '{"credentials":"hunter2xyz","Authorization":"hunter2xyz"}',
     "GET http://rustfs:9000/b/trace.zip?X-Amz-Credential=hunter2xyz&X-Amz-Signature=hunter2xyz",
     "https://x.example.com/f?sig=hunter2xyz",
     "key AIzaSyA-hunter2xyz0123456789abcdefghijk",
@@ -150,6 +151,11 @@ describe("redactConnectorText secret shapes", () => {
     "key AIzaSy0123456789abcdefghijklmnopqrstuv-",
   ])("redacts %s", (input) => {
     expect(redactConnectorText(input)).not.toMatch(/hunter2xyz|AIzaSy|aHVudGVy|wJalr/);
+  });
+
+  it("keeps JSON fields whose names only contain a secret word", () => {
+    const json = '{"tokenizer":"gpt","token_count":"5","secret_name":"db"}';
+    expect(redactConnectorText(json)).toBe(json);
   });
 
   it("leaves names that only contain a secret word as a substring alone", () => {
