@@ -228,6 +228,7 @@ export function SettingsTab({
     handleSubmit,
     control,
     watch,
+    setValue,
     resetField,
     reset,
     formState: { isSubmitting, isDirty, errors },
@@ -1163,7 +1164,14 @@ export function SettingsTab({
                     <Input
                       id={color.name}
                       type="color"
-                      {...register(color.name)}
+                      value={
+                        /^#[0-9a-f]{6}$/i.test(watch(color.name) ?? "")
+                          ? (watch(color.name) as string)
+                          : color.placeholder
+                      }
+                      onChange={(event) =>
+                        setValue(color.name, event.target.value, { shouldDirty: true, shouldValidate: true })
+                      }
                       className="h-9 w-10 cursor-pointer p-1"
                       disabled={!canUpdate}
                     />
