@@ -88,6 +88,7 @@
   "overrides": {
     "esbuild": "^0.28.2",
     "handlebars": ">=4.7.10",
-    "glob": "14.0.2"
+    "glob": "14.0.2",
+    "minimatch": "^11.0.1"
   }
 }
