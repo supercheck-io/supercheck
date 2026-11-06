@@ -2,14 +2,16 @@
 import { NextRequest } from "next/server";
 
 const mockResolve = jest.fn();
+const mockImpersonated = jest.fn();
 jest.mock("@/lib/rbac/middleware", () => ({
+  isImpersonatedSession: () => mockImpersonated(),
   resolveProjectPermissionContext: (...a: unknown[]) => mockResolve(...a),
   checkPermissionWithContext: jest.fn(() => true),
   // Pass-through rate limiter.
   withRateLimit: () => (req: NextRequest, handler: (r: NextRequest, c: unknown) => unknown) => handler(req, {}),
 }));
 jest.mock("@/lib/auth-context", () => ({
-  requireUserAuthContext: jest.fn().mockResolvedValue({ userId: "sa-1" }),
+  requireUserAuthContext: jest.fn().mockResolvedValue({ userId: "sa-1", isCliAuth: false }),
   isAuthError: () => false,
   authErrorStatus: () => 401,
 }));
@@ -21,6 +23,8 @@ jest.mock("@/db/schema", () => ({ projectVariables: { id: "id", projectId: "proj
 jest.mock("drizzle-orm", () => ({ eq: jest.fn(), and: jest.fn() }));
 
 import { POST } from "./route";
+import { logAuditEvent } from "@/lib/audit-logger";
+import { requireUserAuthContext } from "@/lib/auth-context";
 
 const PROJECT = "93ce4a2e-7846-5b60-b753-1ab3563f0fce";
 const VARIABLE = "0c11ab1e-7460-5139-b3b8-920f69f95082";
@@ -31,6 +35,7 @@ const call = () =>
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockImpersonated.mockResolvedValue(false);
   mockRows.mockResolvedValue([{ isSecret: true, encryptedValue: "enc", key: "K", description: null }]);
 });
 
@@ -48,5 +53,22 @@ describe("POST /api/projects/[id]/variables/[variableId]/decrypt", () => {
     const res = await call();
     expect(res.status).toBe(200);
     expect((await res.json()).data.value).toBe("plaintext");
+  });
+
+  it("refuses to reveal while impersonating, audits the attempt and reads no variable", async () => {
+    mockResolve.mockResolvedValue({ userId: "sa-1", organizationId: "org-1", project: { id: PROJECT, userRole: "org_owner" } });
+    mockImpersonated.mockResolvedValue(true);
+    const res = await call();
+    expect(res.status).toBe(403);
+    expect(JSON.stringify(await res.json())).not.toContain("plaintext");
+    expect(mockRows).not.toHaveBeenCalled();
+    expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ action: "secret_decrypt_impersonation_blocked", success: false }));
+  });
+
+  it("does not apply the browser impersonation check to CLI tokens", async () => {
+    mockResolve.mockResolvedValue({ userId: "sa-1", organizationId: "org-1", project: { id: PROJECT, userRole: "org_owner" } });
+    mockImpersonated.mockResolvedValue(true);
+    (requireUserAuthContext as jest.Mock).mockResolvedValueOnce({ userId: "sa-1", isCliAuth: true });
+    expect((await call()).status).toBe(200);
   });
 });

@@ -104,6 +104,15 @@ it("emails the new assignee directly with a link, without raw evidence", async (
   expect(mail.subject).toBe("[SEV2] Incident assigned to Ada: #7 Checkout down");
 });
 
+it("redacts credentials in the incident title before it reaches email", async () => {
+  selectQueue.push([{ ...incident, title: "Down https://user:hunter2@db.example.com sk_live_abcdefgh1234" }], people, []);
+  await notifyIncidentEvent(base);
+  const mail = sendEmailToMultiple.mock.calls[0][0];
+  expect(mail.subject).not.toContain("hunter2");
+  expect(mail.subject).not.toContain("sk_live_abcdefgh1234");
+  expect(mail.text).not.toContain("hunter2");
+});
+
 it("renders the incident email template for direct email", async () => {
   renderIncidentUpdateEmail.mockResolvedValueOnce({ subject: "[SEV2] Incident assigned: #7 x", html: "<html>tpl</html>", text: "tpl" });
   selectQueue.push([incident], people, []);

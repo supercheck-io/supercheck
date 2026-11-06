@@ -23,22 +23,26 @@ const RATE_LIMIT_MAX_REQUESTS = 10; // 10 requests per minute per IP
 const UNKNOWN_IP_MAX_REQUESTS = 300; // shared ceiling when no trusted client IP is available
 const RATE_LIMIT_KEY_PREFIX = "supercheck:verify-key:ratelimit";
 
+const UNAVAILABLE_RETRY_SECONDS = 30;
+const unavailable = (limit: number) => ({
+  allowed: false, remaining: 0, limit, retryAfter: UNAVAILABLE_RETRY_SECONDS, unavailable: true,
+});
+
 /**
  * Check rate limit for the given IP address using Redis sliding window.
- * Returns true if request is allowed, false if rate limited.
+ * Fails closed (unavailable) when Redis is down.
  */
 async function checkRateLimit(
   ip: string
-): Promise<{ allowed: boolean; remaining: number; limit: number; retryAfter?: number }> {
+): Promise<{ allowed: boolean; remaining: number; limit: number; retryAfter?: number; unavailable?: boolean }> {
   // No trustworthy client IP: share one bucket with a much higher ceiling, so DB load stays
   // bounded while a single noisy caller is far less likely to lock everyone out.
   const maxRequests = ip === "unknown" ? UNKNOWN_IP_MAX_REQUESTS : RATE_LIMIT_MAX_REQUESTS;
   try {
     const redis = await getRedisConnection();
     if (!redis) {
-      // Fail open if Redis is unavailable
-      logger.warn({ ip }, "Redis unavailable for rate limiting, allowing request");
-      return { allowed: true, remaining: maxRequests, limit: maxRequests };
+      logger.error({ ip }, "Redis unavailable for rate limiting, refusing request");
+      return unavailable(maxRequests);
     }
 
     const key = `${RATE_LIMIT_KEY_PREFIX}:${ip}`;
@@ -60,8 +64,8 @@ async function checkRateLimit(
     const results = await multi.exec();
     
     if (!results) {
-      logger.warn({ ip }, "Redis transaction failed, allowing request");
-      return { allowed: true, remaining: maxRequests, limit: maxRequests };
+      logger.error({ ip }, "Redis transaction failed, refusing request");
+      return unavailable(maxRequests);
     }
 
     const currentCount = (results[1]?.[1] as number) ?? 0;
@@ -96,9 +100,9 @@ async function checkRateLimit(
       limit: maxRequests,
     };
   } catch (error) {
-    // Fail open on Redis errors
-    logger.error({ error, ip }, "Rate limiting error, allowing request");
-    return { allowed: true, remaining: maxRequests, limit: maxRequests };
+    // Fail closed: without the limiter this endpoint would allow unbounded key guessing.
+    logger.error({ error, ip }, "Rate limiting error, refusing request");
+    return unavailable(maxRequests);
   }
 }
 
@@ -108,6 +112,12 @@ export async function POST(request: NextRequest) {
   
   // Check rate limit first
   const rateLimitResult = await checkRateLimit(clientIp);
+  if (rateLimitResult.unavailable) {
+    return NextResponse.json(
+      { error: "Service unavailable", message: "Key verification is temporarily unavailable. Please try again shortly." },
+      { status: 503, headers: { "Retry-After": String(rateLimitResult.retryAfter) } }
+    );
+  }
   if (!rateLimitResult.allowed) {
     return NextResponse.json(
       {

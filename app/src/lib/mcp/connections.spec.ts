@@ -29,6 +29,7 @@ jest.mock("@/utils/db", () => ({
 }));
 jest.mock("./connect-project", () => ({ listConnectableProjects: (...a: unknown[]) => mockListProjects(...a) }));
 
+import { PgDialect } from "drizzle-orm/pg-core";
 import { McpConnectionNotFoundError, McpConsentScopeRestoreError, listMcpConnections, projectsKeepingBroaderGrant, revokeMcpConnection, verifiedHostForClientId, withMergedConsentScopes } from "./connections";
 
 const row = (over: Record<string, unknown> = {}) => ({
@@ -143,7 +144,11 @@ describe("withMergedConsentScopes", () => {
     mockRows = [{ id: "consent-1", scopes: ["mcp:read", "mcp:sre"] }];
     const approve = jest.fn().mockResolvedValue({ url: "x" });
     await expect(withMergedConsentScopes(key, ["mcp:read", "mcp:incidents:write"], approve)).resolves.toEqual({ url: "x" });
-    expect(mockUpdateSet).toHaveBeenCalledWith({ scopes: ["mcp:read", "mcp:sre", "mcp:incidents:write"] });
+    // The union is computed in SQL against the live row; the statement carries the earlier and approved scopes.
+    const { scopes } = mockUpdateSet.mock.calls[0][0] as { scopes: never };
+    const query = new PgDialect().sqlToQuery(scopes);
+    expect(query.sql).toContain("unnest");
+    expect(query.params).toEqual(["mcp:read", "mcp:sre", "mcp:incidents:write"]);
     expect(mockUpdateWhere).toHaveBeenCalledTimes(1);
   });
 

@@ -44,6 +44,7 @@ function request(role = "project_editor", selectedProjects = [HOST_PROJECT]) {
 beforeEach(() => {
   jest.clearAllMocks(); mockSelect.mockReset();
   (getUserOrgRole as jest.Mock).mockResolvedValue("org_owner");
+  (getRedisConnection as jest.Mock).mockResolvedValue({ eval: jest.fn(async () => 0), zrem: jest.fn(async () => 1) });
   mockSelect.mockReturnValueOnce(rows([{ id: "own-org-owner", role: "user", email: "owner@example.com" }]))
     .mockReturnValueOnce(rows([])).mockReturnValueOnce(rows([])).mockReturnValueOnce(rows([{ id: HOST_PROJECT, name: "Project" }]));
   values.mockReturnValue({ returning: jest.fn(async () => [{ id: "invite", email: "owner@example.com", role: "project_editor", expiresAt: new Date() }]) });
@@ -70,6 +71,14 @@ it("rejects a malformed project id with 400 before any database access", async (
   expect(response.status).toBe(400);
   expect((await response.json()).error).toBe("Invalid project id");
   expect(mockSelect).not.toHaveBeenCalled();
+  expect(mockInsert).not.toHaveBeenCalled();
+});
+
+it("refuses to invite a platform administrator with a generic error that does not name the reason", async () => {
+  mockSelect.mockReset().mockReturnValueOnce(rows([{ id: "admin", role: "super_admin", email: "owner@example.com" }]));
+  const response = await POST(request());
+  expect(response.status).toBe(400);
+  expect((await response.json()).error).toBe("This email address cannot be invited");
   expect(mockInsert).not.toHaveBeenCalled();
 });
 
@@ -230,6 +239,17 @@ describe("accepted invitation quota", () => {
       .mockResolvedValue({ allowed: true });
     validCandidate();
     jest.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  it.each([
+    ["Redis is not configured", () => (getRedisConnection as jest.Mock).mockResolvedValue(null)],
+    ["Redis errors", () => (getRedisConnection as jest.Mock).mockResolvedValue({ eval: jest.fn().mockRejectedValue(new Error("down")), zrem: jest.fn() })],
+  ])("fails closed with 503 and Retry-After when %s", async (_label, breakRedis) => {
+    breakRedis();
+    const response = await POST(request());
+    expect(response.status).toBe(503);
+    expect(response.headers.get("Retry-After")).toBe("30");
+    expect(mockInsert).not.toHaveBeenCalled();
   });
 
   it("returns the schema validation message for an invalid role", async () => {

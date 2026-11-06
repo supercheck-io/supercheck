@@ -233,7 +233,9 @@ describe("test-status stream lifecycle", () => {
       mockReportsFindFirst.mockResolvedValue({ status: "passed", reportPath: "p" });
       const { reader, unsubscribe } = await open();
       await reader.read(); // connected
-      expect(decoder.decode((await reader.read()).value)).toContain('"derivedStatus":"passed"');
+      const terminal = decoder.decode((await reader.read()).value);
+      expect(terminal).toContain('"derivedStatus":"passed"');
+      expect(terminal).not.toContain("reportPath"); // the storage key is not part of the stream
       expect((await reader.read()).done).toBe(true);
       expect(unsubscribe).toHaveBeenCalledTimes(1);
 

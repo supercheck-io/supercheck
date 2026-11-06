@@ -138,6 +138,7 @@ export async function POST(
         status: invitation.status,
         expiresAt: invitation.expiresAt,
         selectedProjects: invitation.selectedProjects,
+        inviterId: invitation.inviterId,
         orgName: organization.name
       })
       .from(invitation)
@@ -259,6 +260,12 @@ export async function POST(
           if (Number(members?.count ?? 0) >= maxMembers) throw new Error("INVITE_MEMBER_LIMIT");
         }
       }
+      // The inviter must still be allowed to invite; removal/demotion also cancels their invitations,
+      // this covers one created before that. Locked so a concurrent demotion cannot slip past.
+      const [inviter] = await tx.select({ role: member.role }).from(member)
+        .where(and(eq(member.organizationId, invite.organizationId), eq(member.userId, invite.inviterId)))
+        .for("share");
+      if (inviter?.role !== 'org_owner' && inviter?.role !== 'org_admin') throw new Error('INVITE_ALREADY_USED');
       // Claim the pending invitation before any membership/session changes.
       // A concurrent acceptance/cancellation must not succeed twice.
       const [claimed] = await tx.update(invitation).set({ status: 'accepted' })

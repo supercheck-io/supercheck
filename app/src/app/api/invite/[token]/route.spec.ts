@@ -107,7 +107,7 @@ describe("invitation privacy and acceptance", () => {
     const sessionSet = jest.fn().mockReturnValue({ where: jest.fn().mockReturnValue({ returning: jest.fn().mockResolvedValue(sessionRows) }) });
     const insert = jest.fn().mockReturnValue({ values: jest.fn().mockReturnValue({ onConflictDoNothing: jest.fn().mockResolvedValue([]) }) });
     const tx = {
-      select: jest.fn().mockReturnValueOnce(selectRows([{ id: "user-1" }])).mockReturnValue(selectRows(projectRows)), insert,
+      select: jest.fn().mockReturnValueOnce(selectRows([{ id: "user-1" }])).mockReturnValueOnce(selectRows([{ role: "org_admin" }])).mockReturnValue(selectRows(projectRows)), insert,
       execute: jest.fn().mockResolvedValue([{ value: "0" }]),
       query: { executionEntitlements: { findFirst: trialRow } },
       update: jest.fn().mockReturnValueOnce({ set: jest.fn().mockReturnValue({ where: claimWhere }) })
@@ -185,6 +185,7 @@ describe("invitation privacy and acceptance", () => {
       .mockReturnValueOnce(selectRows([{ subscriptionPlan: null }]))
       .mockReturnValueOnce(selectRows([]))
       .mockReturnValueOnce(selectRows([{ count }]))
+      .mockReturnValueOnce(selectRows([{ role: "org_admin" }]))
       .mockReturnValue(selectRows([{ id: "22222222-2222-4222-8222-222222222222" }]));
     const response = await POST(new NextRequest("http://localhost/api/invite/11111111-1111-4111-8111-111111111111", { method: "POST" }), context);
     expect(response.status).toBe(status);
@@ -237,6 +238,16 @@ describe("invitation privacy and acceptance", () => {
     await expect(db.transaction.mock.results[0].value).rejects.toThrow("INVITE_ALREADY_USED");
   });
 
+  it.each([[[]], [[{ role: "project_editor" }]]])("refuses an invitation whose inviter was removed or demoted (%j)", async inviterRows => {
+    const { tx, sessionSet } = acceptance();
+    tx.select.mockReset().mockReturnValueOnce(selectRows([{ id: "user-1" }])).mockReturnValueOnce(selectRows(inviterRows));
+    const response = await POST(new NextRequest("http://localhost/api/invite/11111111-1111-4111-8111-111111111111", { method: "POST" }), context);
+    expect(response.status).toBe(400);
+    expect(tx.update).not.toHaveBeenCalled();
+    expect(tx.insert).not.toHaveBeenCalled();
+    expect(sessionSet).not.toHaveBeenCalled();
+  });
+
   it("allows an account owner to join an invited project without replacing ownership or touching their original organization", async () => {
     const { tx, sessionSet } = acceptance();
     const response = await POST(new NextRequest("http://localhost/api/invite/11111111-1111-4111-8111-111111111111", { method: "POST" }), context);
@@ -257,6 +268,7 @@ describe("invitation privacy and acceptance", () => {
       .mockReturnValueOnce(selectRows([]))
       .mockReturnValueOnce(selectRows([{ max: 10 }]))
       .mockReturnValueOnce(selectRows([{ count: 1 }]))
+      .mockReturnValueOnce(selectRows([{ role: "org_admin" }]))
       .mockReturnValue(selectRows([{ id: "22222222-2222-4222-8222-222222222222" }]));
     expect((await POST(new NextRequest("http://localhost/api/invite/11111111-1111-4111-8111-111111111111", { method: "POST" }), context)).status).toBe(200);
     const values = tx.insert.mock.results[0].value.values;

@@ -190,4 +190,35 @@ describe("verify-key route", () => {
     expect(response.status).toBe(429);
     expect(response.headers.get("X-RateLimit-Limit")).toBe("300");
   });
+
+  describe("when the rate limiter backend is unavailable", () => {
+    const call = () => POST(new NextRequest("http://localhost/api/auth/verify-key", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-forwarded-for": "2.2.2.2" },
+      body: JSON.stringify({ apiKey: "extABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789", jobId: "job-1" }),
+    }));
+
+    it.each([
+      ["Redis is not configured", () => mockGetRedisConnection.mockResolvedValue(null)],
+      ["Redis throws", () => mockGetRedisConnection.mockRejectedValue(new Error("down"))],
+      ["the transaction fails", () => {
+        const redis = createRedisMock();
+        redis.multi().exec.mockResolvedValue(null);
+        mockGetRedisConnection.mockResolvedValue(redis);
+      }],
+    ])("fails closed with 503 and Retry-After when %s", async (_label, breakRedis) => {
+      breakRedis();
+      const response = await call();
+      expect(response.status).toBe(503);
+      expect(response.headers.get("Retry-After")).toBe("30");
+    });
+
+    it("limits and allows normally while Redis is up", async () => {
+      const redis = createRedisMock();
+      mockGetRedisConnection.mockResolvedValue(redis);
+      expect((await call()).status).not.toBe(503);
+      redis.multi().exec.mockResolvedValue([[null, 0], [null, 10], [null, []]]);
+      expect((await call()).status).toBe(429);
+    });
+  });
 });

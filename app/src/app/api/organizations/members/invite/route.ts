@@ -28,6 +28,8 @@ const INVITE_RATE_LIMIT_MAX =
     : 10;
 const INVITE_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 
+const INVITE_RATE_LIMIT_UNAVAILABLE_RETRY_SECONDS = 30;
+
 type InviteReservation = { key: string; token: string };
 
 async function checkInviteRateLimit(
@@ -36,12 +38,13 @@ async function checkInviteRateLimit(
   allowed: boolean;
   retryAfter?: number;
   reservation?: InviteReservation;
+  unavailable?: boolean;
 }> {
   try {
     const redis = await getRedisConnection();
     if (!redis) {
-      console.warn("[INVITE_RATE_LIMIT] Redis unavailable, allowing request");
-      return { allowed: true };
+      console.error("[INVITE_RATE_LIMIT] Redis unavailable, refusing request");
+      return { allowed: false, unavailable: true, retryAfter: INVITE_RATE_LIMIT_UNAVAILABLE_RETRY_SECONDS };
     }
     const reservation = {
       key: `${INVITE_RATE_LIMIT_KEY_PREFIX}:${userId}`,
@@ -74,8 +77,8 @@ async function checkInviteRateLimit(
       : { allowed: true, reservation };
   } catch (error) {
     console.error("[INVITE_RATE_LIMIT] Error checking rate limit:", error);
-    // Preserve existing fail-open behavior when Redis is unavailable.
-    return { allowed: true };
+    // Fail closed: without the limiter an org admin could send unlimited invitation emails.
+    return { allowed: false, unavailable: true, retryAfter: INVITE_RATE_LIMIT_UNAVAILABLE_RETRY_SECONDS };
   }
 }
 
@@ -200,9 +203,10 @@ export async function POST(request: NextRequest) {
 
       // Owning an account organization does not prevent joining another team's
       // projects. The invitation grants only its explicit role in the target team.
+      // Generic message: a distinct one would tell an org admin which emails are platform administrators.
       if (user.role === "super_admin") {
         return NextResponse.json(
-          { error: "System administrators cannot be invited as team members" },
+          { error: "This email address cannot be invited" },
           { status: 400 },
         );
       }
@@ -279,6 +283,12 @@ export async function POST(request: NextRequest) {
     // Reserve quota only after authorization, request, duplicate, and project validation.
     const rateLimitResult = await checkInviteRateLimit(userId);
     reservation = rateLimitResult.reservation;
+    if (rateLimitResult.unavailable) {
+      return NextResponse.json(
+        { error: "Invitations are temporarily unavailable. Please try again shortly." },
+        { status: 503, headers: { "Retry-After": String(rateLimitResult.retryAfter) } },
+      );
+    }
     if (!rateLimitResult.allowed) {
       return NextResponse.json(
         {
