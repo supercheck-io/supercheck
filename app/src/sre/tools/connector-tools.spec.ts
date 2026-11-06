@@ -27,6 +27,7 @@ jest.mock("@/lib/sre/connectors", () => ({
 jest.mock("@/lib/private-agents/job-router", () => ({
   routeSreConnectorQuery: jest.fn(),
 }));
+jest.mock("@/lib/sre/private-agent-job-cancel", () => ({ cancelQueuedPrivateAgentJob: jest.fn(), requeueAbandonedPrivateAgentJob: jest.fn() }));
 jest.mock("@/lib/sre/private-agent-job-waiter", () => ({
   waitForPrivateAgentConnectorJob: jest.fn(),
 }));
@@ -554,6 +555,33 @@ describe("Copilot connector service scope", () => {
       : "Private Agent connector search failed";
     await expect(searchIncidentLiveConnectorEvidence(scope, search)).rejects.toThrow(expected);
     expect(values).toHaveBeenCalledWith(expect.objectContaining({ status: "error", errorMessage: expected }));
+  });
+
+  it("cancels a Private Agent job that is still queued after the bounded wait", async () => {
+    db.query.sreServices.findFirst.mockResolvedValue({ id: serviceId });
+    db.query.privateAgents.findFirst.mockResolvedValue({ id: "private-agent" });
+    db.select
+      .mockReturnValueOnce(selectRows([{ connector: {
+        id: connectorId, type: "prometheus", privateAgentId: "private-agent",
+        config: { endpointUrl: "https://prometheus.example" }, status: "configured",
+        permissionLevel: "read", sideEffectLevel: "none", defaultTimeWindowMinutes: 60,
+        outputLimits: { maxRows: 10, maxBytes: 1024, maxSeconds: 15 },
+      } }]))
+      .mockReturnValueOnce(selectRows([{ connectorId, serviceId }]));
+    jest.mocked(checkSreConnectorSearchRateLimit).mockResolvedValue({ allowed: true, remaining: 10 });
+    jest.requireMock("@/lib/private-agents/job-router").routeSreConnectorQuery.mockReturnValue({
+      routed: true, privateAgentId: "private-agent", jobClass: "connector-query",
+      jobSpec: {}, jobSpecHash: "hash", idempotencyKey: "job-key",
+    });
+    jest.requireMock("@/lib/sre/private-agent-job-waiter").waitForPrivateAgentConnectorJob.mockResolvedValue({
+      state: "pending", job: { status: "queued" },
+    });
+    const values = jest.fn(() => ({ onConflictDoNothing: () => ({ returning: async () => [{ id: "job-7" }] }) }));
+    db.insert.mockReturnValue({ values });
+    await expect(searchIncidentLiveConnectorEvidence(scope, search)).resolves.toMatchObject({ queued: true });
+    expect(jest.requireMock("@/lib/sre/private-agent-job-cancel").cancelQueuedPrivateAgentJob).toHaveBeenCalledWith(
+      expect.objectContaining({ jobId: "job-7" }),
+    );
   });
 
   it("redacts persisted and model-visible connector failures", async () => {

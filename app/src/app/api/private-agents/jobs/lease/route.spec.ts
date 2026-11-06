@@ -5,7 +5,7 @@ import { NextRequest } from "next/server";
 jest.mock("@/utils/db", () => ({
   db: {
     transaction: jest.fn(),
-    query: { externalConnectorCredentials: { findFirst: jest.fn() } },
+    query: { externalConnectorCredentials: { findFirst: jest.fn() }, externalConnectors: { findFirst: jest.fn() } },
     update: jest.fn(),
   },
 }));
@@ -21,7 +21,7 @@ import { POST } from "./route";
 const { db: mockDb } = jest.requireMock("@/utils/db") as {
   db: {
     transaction: jest.Mock;
-    query: { externalConnectorCredentials: { findFirst: jest.Mock } };
+    query: { externalConnectorCredentials: { findFirst: jest.Mock }; externalConnectors: { findFirst: jest.Mock } };
     update: jest.Mock;
   };
 };
@@ -172,5 +172,80 @@ describe("Private Agent job lease route", () => {
     // Only the agent heartbeat touch runs; no job state is changed.
     expect(sets.every((values) => !("status" in values && values.status !== undefined))).toBe(true);
     expect(selectedWork).not.toHaveBeenCalled();
+  });
+});
+
+describe("Private Agent job lease route MCP endpoint", () => {
+  it("restores the full MCP endpoint from the credential, leaving other connectors untouched", async () => {
+    const { decryptConnectorCredential } = jest.requireMock("@/lib/sre/connectors") as { decryptConnectorCredential: jest.Mock };
+    mockDb.query.externalConnectorCredentials.findFirst.mockResolvedValue({
+      credentialType: "api_key",
+      encryptedCredential: "enc",
+      expiresAt: null,
+    });
+    decryptConnectorCredential.mockReturnValue({ endpointUrl: "https://mcp.example/mcp?key=SECRET" });
+    const base = {
+      id: "j",
+      jobClass: "sre_connector_query",
+      connectorId: "c",
+      organizationId: "o",
+      projectId: "p",
+      jobSpecHash: "h".repeat(64),
+      policyDecisionHash: "x",
+      leaseExpiresAt: new Date(),
+    };
+    const lease = async (jobSpec: Record<string, unknown>) => {
+      mockDb.transaction.mockResolvedValueOnce({ ...base, jobSpec });
+      const res = await POST(new NextRequest("http://localhost/api/private-agents/jobs/lease", { method: "POST", body: "{}" }));
+      return (await res.json()).job.jobSpec;
+    };
+    expect(await lease({ connectorType: "mcp", endpointUrl: "https://mcp.example/mcp?…" })).toMatchObject({
+      endpointUrl: "https://mcp.example/mcp?key=SECRET",
+    });
+    expect(await lease({ connectorType: "datadog", endpointUrl: "https://api.datadoghq.com" })).toMatchObject({
+      endpointUrl: "https://api.datadoghq.com",
+    });
+  });
+
+  const leaseMcp = async (jobSpec: Record<string, unknown>, credentialValue: Record<string, unknown> | null) => {
+    const { decryptConnectorCredential } = jest.requireMock("@/lib/sre/connectors") as { decryptConnectorCredential: jest.Mock };
+    mockDb.query.externalConnectorCredentials.findFirst.mockResolvedValue(
+      credentialValue ? { credentialType: "api_key", encryptedCredential: "enc", expiresAt: null } : null,
+    );
+    decryptConnectorCredential.mockReturnValue(credentialValue);
+    mockDb.transaction.mockResolvedValueOnce({
+      id: "j", jobClass: "sre_connector_query", connectorId: "c", organizationId: "o", projectId: "p",
+      jobSpecHash: "h".repeat(64), policyDecisionHash: "x", leaseExpiresAt: new Date(), jobSpec,
+    });
+    const set = jest.fn(() => ({ where: jest.fn().mockResolvedValue([]) }));
+    mockDb.update.mockReturnValue({ set });
+    const res = await POST(new NextRequest("http://localhost/api/private-agents/jobs/lease", { method: "POST", body: "{}" }));
+    return { body: await res.json(), set };
+  };
+
+  it("fails an MCP job whose redacted endpoint cannot be restored, but leases a query-free one", async () => {
+    const missing = await leaseMcp({ connectorType: "mcp", endpointUrl: "https://mcp.example/mcp?…" }, null);
+    expect(missing.body).toEqual({ job: null });
+    expect(missing.set).toHaveBeenCalledWith(expect.objectContaining({ status: "failed", errorCode: "mcp_endpoint_missing" }));
+    const plain = await leaseMcp({ connectorType: "mcp", endpointUrl: "https://mcp.example/mcp" }, null);
+    expect(plain.body.job.jobSpec.endpointUrl).toBe("https://mcp.example/mcp");    // A job queued before redaction still holds its full URL and must keep leasing.
+    const legacy = await leaseMcp({ connectorType: "mcp", endpointUrl: "https://mcp.example/mcp?key=SECRET" }, null);
+    expect(legacy.body.job.jobSpec.endpointUrl).toBe("https://mcp.example/mcp?key=SECRET");
+  });
+
+  it("fails a queued MCP tool call whose tool is now destructive or no longer allowlisted", async () => {
+    const spec = { connectorType: "mcp", endpointUrl: "https://mcp.example/mcp", filters: { mcp: { kind: "call_tool", tool: "wipe", arguments: {} } } };
+    const entry = { name: "wipe", description: "", inputSchema: { type: "object", properties: {} }, fixedArguments: {} };
+    for (const mcp of [
+      { discovered: [], allowlist: [{ ...entry, destructiveHint: true }] },
+      { discovered: [], allowlist: [] },
+    ]) {
+      mockDb.query.externalConnectors.findFirst.mockResolvedValue({ config: { mcp } });
+      const r = await leaseMcp(spec, null);
+      expect(r.body).toEqual({ job: null });
+      expect(r.set).toHaveBeenCalledWith(expect.objectContaining({ errorCode: "mcp_tool_not_allowed" }));
+    }
+    mockDb.query.externalConnectors.findFirst.mockResolvedValue({ config: { mcp: { discovered: [], allowlist: [entry] } } });
+    expect((await leaseMcp(spec, null)).body.job).toBeTruthy();
   });
 });

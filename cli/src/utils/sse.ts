@@ -2,7 +2,7 @@ import { requireAuth, getStoredBaseUrl } from '../auth/store.js'
 import { getResolvedConfigBaseUrl } from '../api/authenticated-client.js'
 import { CLI_VERSION } from '../version.js'
 import { ApiRequestError, CLIError, ExitCode, networkErrorMessage } from './errors.js'
-import { isTokenSafeUrl } from './api-url.js'
+import { assertSafeApiPath, isTokenSafeUrl } from './api-url.js'
 import { getProxyAgent, getProxyEnv } from './proxy.js'
 
 import { createSpinner } from './spinner.js'
@@ -27,6 +27,7 @@ async function streamSse(
   onEvent: (event: SseEvent) => void | false,
   { idleTimeoutMs = 60_000, isTerminal }: SseOptions = {},
 ): Promise<void> {
+  assertSafeApiPath(path)
   const token = requireAuth()
   const baseUrl = getStoredBaseUrl() ?? getResolvedConfigBaseUrl() ?? 'https://app.supercheck.io'
   const url = new URL(`${baseUrl.replace(/\/+$/, '')}${path}`)
@@ -75,10 +76,11 @@ async function streamSse(
     if (!response) throw new CLIError('Stream connection failed', ExitCode.ApiError)
     phase = 'Subscribed — waiting for output'
     if (!response.ok) {
-      const details = (await response.text()).slice(0, 4096)
-      let parsed: unknown = details
-      try { parsed = JSON.parse(details) } catch { /* Keep the raw text body. */ }
-      throw new ApiRequestError(`Stream request failed (${response.status})${details ? `: ${details}` : ''}`, response.status, parsed)
+      // Parse the whole (bounded) body: cutting JSON at an arbitrary length would make a valid error body look like non-JSON.
+      const details = (await response.text()).slice(0, 64 * 1024)
+      let parsed: unknown
+      try { parsed = JSON.parse(details) } catch { /* A non-JSON body (e.g. a proxy's HTML page) is not echoed. */ }
+      throw new ApiRequestError(`Stream request failed (${response.status})`, response.status, parsed)
     }
     reader = response.body?.getReader()
     if (!reader) throw new CLIError('Stream returned no response body', ExitCode.ApiError)

@@ -14,6 +14,7 @@ import {
   MAX_MCP_ALLOWLIST_TOOLS,
   MCP_DISCOVERY_SERVICE_ID,
   buildAllowlist,
+  markDestructiveAllowlistEntries,
   parseDiscoveredTools,
   readMcpConfig,
   type McpConnectorConfig,
@@ -206,7 +207,12 @@ export async function discoverSreMcpTools(
       const previous = readMcpConfig(freshConfig);
       const merged: Record<string, unknown> = {
         ...freshConfig,
-        mcp: { ...previous, discovered, discoveredAt: new Date().toISOString() },
+        mcp: {
+          ...previous,
+          discovered,
+          discoveredAt: new Date().toISOString(),
+          allowlist: markDestructiveAllowlistEntries(previous.allowlist, discovered),
+        },
       };
       await tx
         .update(externalConnectors)
