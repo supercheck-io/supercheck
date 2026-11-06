@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, Sparkles } from "lucide-react";
+import { ArrowRight, CircleAlert, Sparkles } from "lucide-react";
 
 import type { SreIncidentDetail } from "@/actions/sre-incidents";
 import { Button } from "@/components/ui/button";
@@ -101,7 +101,7 @@ export function IncidentAiSummaryCard({
   const nextCheck = structured?.nextChecks[0] ?? null;
 
   return (
-    <Card data-testid="incident-ai-summary" className="shrink-0 gap-3 py-4">
+    <Card data-testid="incident-ai-summary" className="shadow-none shrink-0 gap-3 py-4">
       <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0 px-4 py-0">
         <CardTitle id="incident-ai-summary-title" className="flex items-center gap-2 text-sm font-semibold">
           <IconTile icon={Sparkles} tone="violet" />
@@ -132,8 +132,9 @@ export function IncidentAiSummaryCard({
         )}
         {failed && (
           <Alert variant="destructive">
-            <AlertTitle>Investigation did not complete</AlertTitle>
-            <AlertDescription className="line-clamp-3">
+            <CircleAlert aria-hidden="true" />
+            <AlertTitle>Last investigation failed</AlertTitle>
+            <AlertDescription className="line-clamp-2">
               {investigation?.summary || "No completed report is available. Review the saved evidence before trying again."}
             </AlertDescription>
           </Alert>

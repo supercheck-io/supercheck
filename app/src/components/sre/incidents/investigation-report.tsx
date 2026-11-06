@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import {
   Activity,
+  CircleAlert,
   ArrowRight,
   Bell,
   CircleCheck,
@@ -273,8 +274,9 @@ export function InvestigationReport({
       >
         {failed && (
           <Alert variant="destructive">
-            <AlertTitle>Investigation did not complete</AlertTitle>
-            <AlertDescription className="line-clamp-3">
+            <CircleAlert aria-hidden="true" />
+            <AlertTitle>Last investigation failed</AlertTitle>
+            <AlertDescription className="line-clamp-2">
               {investigation?.summary || "No completed report is available. Review the saved evidence before trying again."}
             </AlertDescription>
           </Alert>

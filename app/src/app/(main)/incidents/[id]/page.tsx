@@ -1,4 +1,5 @@
 import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
+import { Card, CardContent } from "@/components/ui/card";
 import { SreIncidentDetailPageClient } from "@/components/sre/incidents/sre-incident-detail-page-client";
 import type { IncidentTabParam } from "@/components/sre/incidents/sre-incident-detail-view";
 
@@ -30,10 +31,12 @@ export default async function SreIncidentDetailPage({
   return (
     <div>
       <PageBreadcrumbs items={breadcrumbs} />
-      {/* No fixed height or overflow clipping: the page has one scrollbar and the sidebar can stick. */}
-      <div className="m-4 min-w-0">
-        <SreIncidentDetailPageClient incidentId={id} initialTab={initialTab} />
-      </div>
+      {/* One page card like the other pages; no fixed height, so the page has one scrollbar. */}
+      <Card className="m-4 min-w-0 shadow-sm">
+        <CardContent className="p-6">
+          <SreIncidentDetailPageClient incidentId={id} initialTab={initialTab} />
+        </CardContent>
+      </Card>
     </div>
   );
 }

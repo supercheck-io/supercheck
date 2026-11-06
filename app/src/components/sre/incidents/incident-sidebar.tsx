@@ -78,7 +78,7 @@ export function IncidentSidebar({
 
   return (
     <div className="flex flex-col gap-4">
-      <Card className="gap-3 py-4">
+      <Card className="gap-3 py-4 shadow-none">
         <CardHeader className="px-4 pt-0 pb-0">
           <SectionTitle id="incident-details-title" as="h2" icon={ListTree} tone="slate">Properties</SectionTitle>
         </CardHeader>
@@ -173,7 +173,7 @@ export function IncidentSidebar({
         </CardContent>
       </Card>
 
-      <Card className="gap-3 py-4">
+      <Card className="gap-3 py-4 shadow-none">
         <CardHeader className="px-4 pt-0 pb-0">
           <SectionTitle
             id="incident-alerts-title"

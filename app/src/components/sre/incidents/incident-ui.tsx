@@ -2,6 +2,9 @@ import type { LucideIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
+/** Sections inside the page card: bordered, no shadow, so the page reads as one surface. */
+export const PANEL = "shadow-none";
+
 export type IconTone = "violet" | "amber" | "blue" | "emerald" | "rose" | "slate" | "indigo" | "sky";
 
 // Same palette steps as TableBadge, so icon tiles and badges read as one system in light and dark.

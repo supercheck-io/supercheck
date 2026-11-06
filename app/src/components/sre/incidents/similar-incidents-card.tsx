@@ -23,7 +23,7 @@ export function SimilarIncidentsCard({ incidentId }: { incidentId: string }) {
   if (!data?.success || data.incidents.length === 0) return null;
   const shown = showAll ? data.incidents : data.incidents.slice(0, COLLAPSED);
   return (
-    <Card className="gap-3 py-4" data-testid="similar-incidents">
+    <Card className="gap-3 py-4 shadow-none" data-testid="similar-incidents">
       <CardHeader className="px-4 pt-0 pb-0">
         <SectionTitle as="h2" icon={History} tone="indigo" count={data.incidents.length}>
           Similar incidents

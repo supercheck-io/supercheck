@@ -10,6 +10,7 @@ import { AcknowledgeSreIncidentButton } from "@/components/sre/incidents/acknowl
 import { EditSreIncidentDialog } from "@/components/sre/incidents/edit-sre-incident-dialog";
 import { IncidentAiSummaryCard } from "@/components/sre/incidents/incident-ai-summary-card";
 import { IncidentSidebar, SEVERITY_TONES } from "@/components/sre/incidents/incident-sidebar";
+import { PANEL } from "@/components/sre/incidents/incident-ui";
 import { IncidentTimeline } from "@/components/sre/incidents/incident-timeline";
 import { InvestigationFeedback } from "@/components/sre/incidents/investigation-feedback";
 import { InvestigationReport, type ReportFocus } from "@/components/sre/incidents/investigation-report";
@@ -133,8 +134,8 @@ export function SreIncidentDetailView({
   ) : null;
 
   return (
-    <div className="flex min-w-0 flex-col gap-4">
-      <header className="rounded-lg border bg-card p-2 shadow-sm">
+    <div className="flex min-w-0 flex-col gap-5">
+      <header className="border-b pb-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
             <Button asChild variant="outline" size="icon" className="h-8 w-8 shrink-0">
@@ -280,8 +281,8 @@ export function SreIncidentDetailView({
             </TabsContent>
 
             <TabsContent value="investigation" className="mt-0 min-w-0">
-              <Card className="py-4">
-                <CardContent className="px-4">
+              <Card className={PANEL}>
+                <CardContent className="p-4">
                   <InvestigationReport
                     key={detail.latestBrief?.id ?? "no-brief"}
                     detail={detail}
@@ -294,8 +295,8 @@ export function SreIncidentDetailView({
 
             {!open && (
               <TabsContent value="postmortem" className="mt-0 min-w-0">
-                <Card className="py-4">
-                  <CardContent className="px-4">
+                <Card className={PANEL}>
+                  <CardContent className="p-4">
                     <PostmortemCard
                       key={incident.postmortem?.updatedAt ?? "none"}
                       incidentId={incident.id}

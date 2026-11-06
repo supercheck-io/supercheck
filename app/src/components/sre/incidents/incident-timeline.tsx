@@ -225,7 +225,7 @@ export function IncidentTimeline({
   };
 
   return (
-    <Card data-testid="incident-timeline" className="flex flex-col gap-4 py-4">
+    <Card data-testid="incident-timeline" className="shadow-none flex flex-col gap-4 py-4">
       <CardHeader className="shrink-0 px-4 py-0">
         {/* No count at the fetch cap, where it would understate the total. */}
         <SectionTitle as="h2" icon={Activity} tone="blue" count={events.length > 0 && events.length < TIMELINE_FETCH_LIMIT ? events.length : undefined}>
