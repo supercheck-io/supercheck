@@ -2142,7 +2142,7 @@ export class ExecutionService implements OnModuleDestroy {
                 if (childProcess && !childProcess.killed) {
                   childProcess.kill('SIGKILL');
                 }
-              }, 2000); // 2 second grace period
+              }, 2000).unref(); // 2 second grace period; must not hold the process (or a Jest worker) open
             } catch {
               // If SIGTERM fails, try SIGKILL immediately
               try {
