@@ -32,16 +32,12 @@ export function detectPackageManager(
   userAgent: string = process.env.npm_config_user_agent ?? '',
   installPath: string = entryRealPath(),
 ): 'npm' | 'yarn' | 'pnpm' | 'bun' {
-  const source = userAgent || installPath.replace(/\\/g, '/').toLowerCase()
-  if (source.includes('pnpm')) return 'pnpm'
-  if (source.includes('yarn')) return 'yarn'
-  if (source.includes('bun')) return 'bun'
+  // The user agent starts with the manager name ("pnpm/9.0 npm/? node/..."); a path is matched by whole segments, never substrings.
+  const segments = userAgent ? [userAgent.split('/')[0].toLowerCase()] : installPath.replace(/\\/g, '/').toLowerCase().split('/')
+  if (segments.some((segment) => segment === 'pnpm' || segment === '.pnpm')) return 'pnpm'
+  if (segments.includes('yarn')) return 'yarn'
+  if (segments.some((segment) => segment === 'bun' || segment === '.bun')) return 'bun'
   return 'npm'
-}
-
-/** Windows package managers are `.cmd` shims, which spawn cannot find by bare name. */
-export function executableFor(pm: string, platform: NodeJS.Platform = process.platform): string {
-  return platform === 'win32' ? `${pm}.cmd` : pm
 }
 
 function buildInstallCommand(
@@ -73,7 +69,7 @@ function runInstallCommand(command: string, args: string[]): Promise<number> {
   return new Promise((resolve, reject) => {
     // Node >= 18.20.2 refuses to spawn a .cmd shim without a shell (EINVAL). Safe here: the
     // command is a fixed package manager and the only variable argument is the validated --tag.
-    const child = spawn(executableFor(command), args, { stdio: 'inherit', shell: process.platform === 'win32' })
+    const child = spawn(command, args, { stdio: 'inherit', shell: process.platform === 'win32' })
     child.on('error', (err) => reject(err))
     child.on('close', (code) => resolve(code ?? 0))
   })

@@ -1,5 +1,5 @@
 import { describe, it, expect } from '@jest/globals'
-import { detectPackageManager, executableFor } from '../upgrade.js'
+import { detectPackageManager } from '../upgrade.js'
 
 describe('upgrade package manager detection', () => {
   it('prefers the user agent', () => {
@@ -14,8 +14,8 @@ describe('upgrade package manager detection', () => {
   ])('infers the manager from the install path %s', (path, expected) => {
     expect(detectPackageManager('', path)).toBe(expected)
   })
-  it('uses the .cmd shim on Windows only', () => {
-    expect(executableFor('npm', 'win32')).toBe('npm.cmd')
-    expect(executableFor('npm', 'linux')).toBe('npm')
+  it('matches whole path segments, not substrings of a user or package name', () => {
+    expect(detectPackageManager('', '/Users/bunny/.nvm/versions/node/v22/lib/node_modules/@supercheck/cli/dist/bin.js')).toBe('npm')
+    expect(detectPackageManager('', '/home/bundy/yarnish/lib/node_modules/@supercheck/cli/bin.js')).toBe('npm')
   })
 })
