@@ -20,7 +20,8 @@ export function BreadcrumbDisplay() {
   if (!breadcrumbs || breadcrumbs.length === 0) {
     return (
       <div className="text-sm text-muted-foreground">
-        <Home className="h-4 w-4" />
+        {/* Not yet loaded, so decorative: it must not announce "Home" in place of the real page. */}
+        <Home className="h-4 w-4" aria-hidden="true" />
       </div>
     );
   }
@@ -49,6 +50,7 @@ export function BreadcrumbDisplay() {
                   <BreadcrumbPage
                     className={cn(isHome ? "flex" : "min-w-0 truncate")}
                     title={isHome ? undefined : item.label}
+                    aria-label={isHome ? "Home" : undefined}
                   >
                     {label}
                   </BreadcrumbPage>

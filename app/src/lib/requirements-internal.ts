@@ -159,6 +159,22 @@ export async function updateCoverageSnapshot(
   requirementId: string,
   executor: Executor = db
 ): Promise<void> {
+  // The recompute reads, then writes. Run on the shared pool, two concurrent recomputes (for example
+  // two run deletions) could each write from stale inputs, so take the snapshot row lock first: the
+  // second waits, then reads inputs that include the first one's committed changes.
+  if (executor === db) {
+    return db.transaction((tx) => recomputeCoverageSnapshot(requirementId, tx as unknown as Executor));
+  }
+  return recomputeCoverageSnapshot(requirementId, executor);
+}
+
+async function recomputeCoverageSnapshot(requirementId: string, executor: Executor): Promise<void> {
+  await executor
+    .select({ requirementId: requirementCoverageSnapshots.requirementId })
+    .from(requirementCoverageSnapshots)
+    .where(eq(requirementCoverageSnapshots.requirementId, requirementId))
+    .for("update");
+
   // One statement, so the link set and the run statuses cannot drift apart between reads. Same rule as
   // the worker's getLinkedTestsWithStatus: a test's status is its latest terminal job run (runs.id breaks ties).
   const linkedTests = await executor
@@ -221,6 +237,8 @@ export async function updateCoverageSnapshotsForJob(jobId: string, executor: Exe
     .selectDistinct({ requirementId: testRequirements.requirementId })
     .from(testRequirements)
     .innerJoin(jobTests, eq(jobTests.testId, testRequirements.testId))
-    .where(eq(jobTests.jobId, jobId));
+    .where(eq(jobTests.jobId, jobId))
+    // A fixed order keeps the snapshot locks taken inside one transaction deadlock-free.
+    .orderBy(testRequirements.requirementId);
   for (const { requirementId } of rows) await updateCoverageSnapshot(requirementId, executor);
 }

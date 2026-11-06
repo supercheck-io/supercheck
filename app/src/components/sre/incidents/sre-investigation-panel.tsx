@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useTransition } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useRef, useState } from "react";
+import { useIsMutating, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2, SearchCheck, SlidersHorizontal, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 
@@ -55,7 +55,14 @@ export function SreInvestigationPanel({
   const { projectId } = useProjectContext();
   const [useLiveConnectors, setUseLiveConnectors] = useState(false);
   const liveConnectorsEnabled = useLiveConnectors && hasPrimaryService && canUseLiveConnectors;
-  const [isInvestigating, startInvestigationTransition] = useTransition();
+  // In the query client, not component state: a tab switch remounts this panel while the run is still going.
+  const investigationMutationKey = ["sre-investigate", projectId, incidentId] as const;
+  const isInvestigating = useIsMutating({ mutationKey: investigationMutationKey }) > 0;
+  const { mutate: startInvestigation } = useMutation({
+    mutationKey: investigationMutationKey,
+    mutationFn: async (job: () => Promise<void>) => job(),
+  });
+  const startedRef = useRef(false);
   const investigationRunning =
     isInvestigating || latestInvestigation?.status === "running";
   const [investigationError, setInvestigationError] = useState<string | null>(
@@ -63,10 +70,12 @@ export function SreInvestigationPanel({
   );
   const [guidance, setGuidance] = useState("");
   const runInvestigation = (note?: string) => {
-    if (!canInvestigate || !investigationEnabled || investigationRunning)
+    // The ref closes the gap before the mutation state renders, so a quick second click cannot send a second POST.
+    if (!canInvestigate || !investigationEnabled || investigationRunning || startedRef.current)
       return;
+    startedRef.current = true;
     setInvestigationError(null);
-    startInvestigationTransition(async () => {
+    startInvestigation(async () => {
       try {
         const response = await fetch("/api/sre/investigate", {
           method: "POST",
@@ -115,6 +124,7 @@ export function SreInvestigationPanel({
         setInvestigationError(message);
         toast.error(message);
       } finally {
+        startedRef.current = false;
         await Promise.allSettled([
           queryClient.invalidateQueries({
             queryKey: getSreIncidentDetailQueryKey(projectId, incidentId),

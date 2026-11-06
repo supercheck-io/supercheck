@@ -89,6 +89,10 @@ export function VariableDialog({
   const [revealing, setRevealing] = useState(false);
   const [revealed, setRevealed] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Plaintext shown by "Reveal"; an edit that leaves it unchanged must not send it back.
+  const revealedValueRef = useRef<string | null>(null);
+  // Bumped when the dialog closes so a reveal that finishes later is ignored.
+  const revealTokenRef = useRef(0);
 
   const isEditing = !!variable;
   const isFileType = formData.type === 'file';
@@ -107,6 +111,9 @@ export function VariableDialog({
       setSelectedFile(null);
       setSecretLoadWarning(null);
       setRevealed(false);
+      revealedValueRef.current = null;
+      revealTokenRef.current += 1;
+      setRevealing(false);
       setFetchingData(false);
       setErrors({});
       return;
@@ -140,6 +147,7 @@ export function VariableDialog({
           if (isSecretValue) {
             if (canViewSecrets && initialSecretValue) {
               resolvedValue = initialSecretValue;
+              revealedValueRef.current = initialSecretValue;
             }
           }
         }
@@ -160,6 +168,7 @@ export function VariableDialog({
 
         console.error('Error fetching variable:', error);
         const isSecretValue = toBoolean(variable.isSecret);
+        if (isSecretValue && canViewSecrets && initialSecretValue) revealedValueRef.current = initialSecretValue;
         const varType: VariableType = variable.type || (isSecretValue ? 'secret' : 'variable');
         setFormData({
           key: variable.key,
@@ -185,6 +194,7 @@ export function VariableDialog({
   // Decrypting is audited server-side, so it only happens on an explicit click.
   const revealSecret = async () => {
     if (!variable) return;
+    const token = revealTokenRef.current;
     setRevealing(true);
     try {
       const response = await fetch(
@@ -196,7 +206,10 @@ export function VariableDialog({
         return;
       }
       const decryptData = await response.json();
-      setFormData((current) => ({ ...current, value: decryptData?.data?.value || '' }));
+      if (token !== revealTokenRef.current) return;
+      const plaintext: string = decryptData?.data?.value || '';
+      revealedValueRef.current = plaintext;
+      setFormData((current) => ({ ...current, value: plaintext }));
       setRevealed(true);
     } catch {
       setSecretLoadWarning('Could not reveal the secret value. Leave value blank to keep the current secret.');
@@ -285,7 +298,8 @@ export function VariableDialog({
           payload.description = normalizedDescription;
         }
 
-        if (!isEditing || formData.value.trim() !== '') {
+        const unchangedReveal = formData.value === revealedValueRef.current;
+        if (!isEditing || (formData.value.trim() !== '' && !unchangedReveal)) {
           payload.value = formData.value;
         }
 
@@ -318,10 +332,16 @@ export function VariableDialog({
       const serverErrors: Record<string, string> = {};
       data.details.forEach((error: { path?: string[]; message: string }) => {
         if (error.path && error.path.length > 0) {
-          serverErrors[error.path[0]] = error.message;
+          // File metadata is validated server-side from the upload; show it on the upload field.
+          const field = ['fileName', 'fileSize', 'mimeType'].includes(error.path[0]) ? 'file' : error.path[0];
+          serverErrors[field] = error.message;
         }
       });
-      setErrors(serverErrors);
+      if (Object.keys(serverErrors).length > 0) {
+        setErrors(serverErrors);
+      } else {
+        toast.error(data.error || "Failed to save variable");
+      }
     } else {
       toast.error(data.error || "Failed to save variable");
     }

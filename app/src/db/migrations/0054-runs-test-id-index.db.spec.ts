@@ -66,14 +66,18 @@ it("drops an INVALID index left by an interrupted build and rebuilds it", async 
   await migrate(); // self-contained: do not rely on an earlier test having migrated this database
   // Simulate the leftover of a failed CONCURRENTLY build and an unrecorded migration.
   await client.unsafe(`UPDATE pg_index SET indisvalid = false WHERE indexrelid = '${INDEX}'::regclass`);
-  const [{ id }] = await client<{ id: number }[]>`SELECT max(id) AS id FROM "__drizzle_migrations"`;
-  await client`DELETE FROM "__drizzle_migrations" WHERE id = ${id}`;
+  // By hash, not max(id): later no-transaction migrations are recorded after 0054.
+  const hash0054 = createHash("md5")
+    .update(readFileSync(path.join(APP_ROOT, "src/db/migrations/0054_runs_test_id_index.sql"), "utf8"))
+    .digest("hex");
+  const [{ before }] = await client<{ before: number }[]>`SELECT count(*)::int AS before FROM "__drizzle_migrations"`;
+  await client`DELETE FROM "__drizzle_migrations" WHERE hash = ${hash0054}`;
   expect(await indexState()).toEqual([false]);
 
   await migrate();
   expect(await indexState()).toEqual([true]);
   const [{ count }] = await client<{ count: number }[]>`SELECT count(*)::int AS count FROM "__drizzle_migrations"`;
-  expect(count).toBe(id);
+  expect(count).toBe(before);
 }, 180_000);
 
 it("does not fail the run or record the file when a deferred build fails", async () => {

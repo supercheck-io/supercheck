@@ -108,13 +108,13 @@ export function MemberTableToolbar<TData>({
   return (
     <div className="flex flex-wrap items-center justify-between gap-2">
       <div className="flex flex-1 flex-wrap items-center gap-2">
-        <div className="relative">
+        <div className="relative min-w-0 max-w-full">
           <Search className="absolute left-2 top-2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Search members and invitations..."
             value={(table.getState().globalFilter as string) ?? ""}
             onChange={(event) => table.setGlobalFilter(event.target.value)}
-            className="h-8 w-[300px] pr-8 pl-8"
+            className="h-8 w-[300px] max-w-full pr-8 pl-8"
           />
           {(table.getState().globalFilter as string)?.length > 0 && (
             <button
