@@ -14,7 +14,7 @@ Returned text (test titles, error excerpts, incident summaries, investigation fi
 |---|---|---|---|
 | `mcp:read` | Always | The 21 read tools below | Viewing that resource type |
 | `mcp:incidents:write` | Optional | `assign_incident`, `acknowledge_incident`, `resolve_incident` | Updating incidents |
-| `mcp:sre` | Optional | `triage_incident`, `investigate_incident`, `generate_incident_brief` | Investigating incidents (billable, uses AI credits) |
+| `mcp:sre` | Optional | `triage_incident`, `investigate_incident`, `generate_incident_brief` | Investigating incidents (completed full investigations count toward the AI SRE investigation allowance) |
 
 ## Read tools
 
@@ -56,7 +56,7 @@ Registered only when the connection holds the scope. Calls are recorded in the a
 | `investigate_incident` | `mcp:sre` | investigate incidents | `incidentId`, `useLiveConnectors`, `guidance` | Starts a full investigation. Live connectors also need connector investigate permission |
 | `generate_incident_brief` | `mcp:sre` | investigate incidents | `incidentId` | Generates an evidence brief |
 
-The write tools behave like the dashboard: notifications and timelines are the same. The `mcp:sre` tools use AI credits and apply the same checks as the dashboard (AI SRE enabled, plan, daily AI limit, rate limits). They return `accepted: true` at once, or `conflict` if a run of that kind is already in progress; poll `list_investigations` with `incidentId`, then `get_investigation`. A Copilot chat is not available over MCP.
+The write tools behave like the dashboard: notifications and timelines are the same. Completed full investigations started with `mcp:sre` count toward the AI SRE investigation allowance, and the tools apply the same checks as the dashboard (AI SRE enabled, plan, daily AI limit, rate limits). They return `accepted: true` at once, or `conflict` if a run of that kind is already in progress; poll `list_investigations` with `incidentId`, then `get_investigation`. A Copilot chat is not available over MCP.
 
 <Accordions>
 <Accordion title="Paging" id="paging">

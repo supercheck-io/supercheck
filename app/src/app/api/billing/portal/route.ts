@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { organization } from "@/db/schema";
 import { requireUserAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { getPolarConfig, isPolarEnabled } from "@/lib/feature-flags";
-import { getUserOrgRole } from "@/lib/rbac/middleware";
+import { getUserOrgRole, isImpersonatedSession } from "@/lib/rbac/middleware";
 import { Role } from "@/lib/rbac/permissions";
 import { requireSameOriginRequest } from "@/lib/security/same-origin";
 import { db } from "@/utils/db";
@@ -41,6 +41,13 @@ export async function POST(request: NextRequest) {
     if (role !== Role.ORG_OWNER) {
       return NextResponse.json(
         { error: "Only the organization owner can open the customer portal" },
+        { status: 403 }
+      );
+    }
+    // The portal can cancel the plan, change the card and show invoices.
+    if (await isImpersonatedSession()) {
+      return NextResponse.json(
+        { error: "Billing is unavailable while impersonating a user" },
         { status: 403 }
       );
     }

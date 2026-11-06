@@ -8,7 +8,7 @@ import {
   getPolarProducts,
   isPolarEnabled,
 } from "@/lib/feature-flags";
-import { getUserOrgRole } from "@/lib/rbac/middleware";
+import { getUserOrgRole, isImpersonatedSession } from "@/lib/rbac/middleware";
 import { Role } from "@/lib/rbac/permissions";
 import { requireSameOriginRequest } from "@/lib/security/same-origin";
 import { ensurePolarCustomerAndLink } from "@/lib/services/organization-customer";
@@ -56,6 +56,13 @@ export async function POST(request: NextRequest) {
     if (role !== Role.ORG_OWNER) {
       return NextResponse.json(
         { error: "Only the organization owner can start checkout" },
+        { status: 403 }
+      );
+    }
+    // Support impersonation must never reach the owner's payment flows.
+    if (await isImpersonatedSession()) {
+      return NextResponse.json(
+        { error: "Billing is unavailable while impersonating a user" },
         { status: 403 }
       );
     }
@@ -131,6 +138,18 @@ export async function POST(request: NextRequest) {
       accessToken: config.accessToken,
       server: config.server,
     });
+    // Webhooks can lag a completed payment; ask Polar so a second tab cannot open a duplicate subscription.
+    const customerState = await polar.customers.getState(org.polarCustomerId);
+    if (customerState.active_subscriptions.length > 0) {
+      return NextResponse.json(
+        {
+          error:
+            "This organization already has a subscription. Refresh in a minute, or use Manage subscription to change the plan.",
+          code: "subscription_exists",
+        },
+        { status: 409 }
+      );
+    }
     const appUrl = getAppUrl(request);
     const productId =
       parsed.data.plan === "plus"

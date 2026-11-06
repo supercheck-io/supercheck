@@ -40,6 +40,7 @@ interface PricingPlan {
     organizations: string | number;
     projects: string | number;
     statusPages: string | number;
+    statusPageSubscribers?: string | number;
     monitorDataRetention: string;
     jobDataRetention: string;
     customDomains?: boolean;
@@ -488,7 +489,7 @@ export default function SubscribePage() {
                 price={plan.price}
                 priceInterval={plan.interval}
                 tagline={plan.description}
-                badge={plan.id === "pro" ? "Higher capacity" : undefined}
+                badge={plan.id === "pro" ? "Recommended" : undefined}
                 ctaVariant="outline"
                 keyFeatures={[
                   `${Number(plan.features.monitors).toLocaleString("en-US")} monitors`,
@@ -496,8 +497,13 @@ export default function SubscribePage() {
                   `${Number(plan.features.k6VuMinutes).toLocaleString("en-US")} k6 VU-minutes/month`,
                   `${Number(plan.features.aiCredits).toLocaleString("en-US")} AI credits/month · fair use`,
                   `${Number(plan.features.sreInvestigationUnits).toLocaleString("en-US")} completed AI SRE investigations/month`,
+                  `${Number(plan.features.concurrentExecutions).toLocaleString("en-US")} concurrent runs`,
                   `${plan.features.teamMembers} team members · ${plan.features.projects} projects`,
-                  `${plan.features.statusPages} status pages`,
+                  plan.features.statusPageSubscribers === undefined
+                    ? `${plan.features.statusPages} status pages`
+                    : `${plan.features.statusPages} status pages · ${Number(plan.features.statusPageSubscribers).toLocaleString("en-US")} subscribers each`,
+                  `Monitor data: ${plan.features.monitorDataRetention}`,
+                  ...(plan.features.support ? [plan.features.support] : []),
                 ]}
                 overageText={`Overage: ${formatOveragePrice(plan.overagePricing.playwrightMinutes, "min", true)} Playwright · ${formatOveragePrice(plan.overagePricing.k6VuMinutes, "VU-min")} k6 · ${formatOveragePrice(plan.overagePricing.sreInvestigationUnits, "completed AI SRE investigation")} · AI credits included, fair use`}
                 ctaText={
@@ -516,13 +522,13 @@ export default function SubscribePage() {
             ))}
           </div>
           <p className="mt-5 text-center text-xs leading-relaxed text-muted-foreground">
-            Billed monthly per organization in USD, before tax. Cancel anytime.
+            Billed monthly per organization, not per seat, in USD before tax. Cancel anytime.
             <br />
             Usage overages are shown above. Review your total at checkout.
           </p>
           <p className="mt-6 text-center text-sm text-muted-foreground">
             <a
-              href="https://supercheck.io/pricing"
+              href="https://supercheck.io/pricing#compare"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 underline underline-offset-4"
@@ -533,7 +539,7 @@ export default function SubscribePage() {
             </a>
             {" · "}
             <a
-              href="mailto:hello@supercheck.io"
+              href="mailto:hello@supercheck.io?subject=Supercheck%20Cloud%20Enterprise%20enquiry"
               className="underline underline-offset-4"
             >
               Contact us about Enterprise

@@ -7,12 +7,14 @@ jest.mock("@/lib/services/organization-customer", () => ({ ensurePolarCustomerAn
 jest.mock("@/lib/session", () => ({ getCurrentUser: jest.fn(async () => ({ id: "user_owner", email: "owner@example.com", name: "Owner" })) }));
 
 const mockCheckoutCreate = jest.fn();
+const mockGetCustomerState = jest.fn();
 const mockCustomerSessionCreate = jest.fn();
 
 jest.mock("@polar-sh/sdk/2026-10", () => ({
   createPolar: jest.fn().mockImplementation(() => ({
     checkouts: { create: mockCheckoutCreate },
     customerSessions: { create: mockCustomerSessionCreate },
+    customers: { getState: mockGetCustomerState },
   })),
 }));
 
@@ -34,8 +36,10 @@ jest.mock("@/lib/feature-flags", () => ({
   })),
 }));
 
+const mockIsImpersonated = jest.fn(async () => false);
 jest.mock("@/lib/rbac/middleware", () => ({
   getUserOrgRole: jest.fn(),
+  isImpersonatedSession: () => mockIsImpersonated(),
 }));
 
 jest.mock("@/utils/db", () => ({
@@ -80,6 +84,8 @@ describe("Polar billing routes", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockIsImpersonated.mockResolvedValue(false);
+    mockGetCustomerState.mockResolvedValue({ active_subscriptions: [] });
     process.env = {
       ...originalEnv,
       NEXT_PUBLIC_APP_URL: "https://app.supercheck.io",
@@ -201,6 +207,40 @@ describe("Polar billing routes", () => {
       code: "subscription_exists",
     });
     expect(mockCheckoutCreate).not.toHaveBeenCalled();
+  });
+
+  it("rejects checkout when Polar already has an active subscription the webhooks have not recorded", async () => {
+    mockGetCustomerState.mockResolvedValue({ active_subscriptions: [{ id: "sub_1", product_id: "product_plus" }] });
+
+    const response = await checkoutPost(request("/api/billing/checkout", { plan: "pro" }));
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({ code: "subscription_exists" });
+    expect(mockGetCustomerState).toHaveBeenCalledWith("customer_1");
+    expect(mockCheckoutCreate).not.toHaveBeenCalled();
+  });
+
+  it("fails closed without creating a checkout when Polar customer state is unavailable", async () => {
+    const log = jest.spyOn(console, "error").mockImplementation(() => undefined);
+    mockGetCustomerState.mockRejectedValue(new Error("Polar unavailable"));
+
+    const response = await checkoutPost(request("/api/billing/checkout", { plan: "plus" }));
+
+    expect(response.status).toBe(502);
+    expect(mockCheckoutCreate).not.toHaveBeenCalled();
+    log.mockRestore();
+  });
+
+  it("refuses checkout and portal while a super admin impersonates the owner", async () => {
+    mockIsImpersonated.mockResolvedValue(true);
+
+    const checkout = await checkoutPost(request("/api/billing/checkout", { plan: "pro" }));
+    const portal = await portalPost(request("/api/billing/portal"));
+
+    expect(checkout.status).toBe(403);
+    expect(portal.status).toBe(403);
+    expect(mockCheckoutCreate).not.toHaveBeenCalled();
+    expect(mockCustomerSessionCreate).not.toHaveBeenCalled();
   });
 
   it("rejects cross-origin checkout requests", async () => {

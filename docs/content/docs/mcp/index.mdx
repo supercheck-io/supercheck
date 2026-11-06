@@ -39,7 +39,7 @@ sequenceDiagram
 
 - **Can see:** names, types, priorities, statuses, schedules, run outcomes, durations, a short redacted error excerpt, monitor hosts and non-secret check settings, requirement coverage and linked tests, status page components, services and their dependencies, variable names (never values), incident titles, root-cause summaries and investigation recommendations.
 - **Cannot see:** test scripts, variable or secret values, notification channels, monitor credentials, headers and request bodies, status page subscribers, API keys, other projects, other organizations.
-- **Cannot do (read-only connection):** write anything, trigger a run, start AI SRE work or spend AI credits. With `mcp:incidents:write` it can assign, acknowledge and resolve incidents as you; with `mcp:sre` it can start triage, investigations and evidence briefs. It never creates, edits or deletes tests, monitors, jobs or variables.
+- **Cannot do (read-only connection):** write anything, trigger a run, or start AI SRE work. With `mcp:incidents:write` it can assign, acknowledge and resolve incidents as you; with `mcp:sre` it can start triage, investigations and evidence briefs. It never creates, edits or deletes tests, monitors, jobs or variables.
 
 Your own role still applies. A viewer connects with viewer access; if your role loses access to a resource, the tool call is refused.
 

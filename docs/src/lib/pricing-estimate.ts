@@ -60,7 +60,9 @@ export function estimateCosts(workload: Workload): EstimateResult {
   const executionsPerCheck = MINUTES_PER_MONTH / workload.intervalMinutes;
   // Browser checks run only in Europe, so one run per check.
   const runsPerMonth = Math.round(workload.checks * executionsPerCheck);
-  const playwrightMinutes = (runsPerMonth * workload.durationSeconds) / 60;
+  // Billing rounds each run to four decimal places in minutes, so a 5 s run is 0.0833 min.
+  const minutesPerRun = Math.round((workload.durationSeconds / 60) * 10_000) / 10_000;
+  const playwrightMinutes = runsPerMonth * minutesPerRun;
   const notices: string[] = [];
   const estimates: Estimate[] = [];
 

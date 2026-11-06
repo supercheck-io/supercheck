@@ -1092,7 +1092,8 @@ async function processSubscriptionUpdated(payload: PolarWebhookPayload) {
   await subscriptionService.updateSubscription(
     org.id,
     {
-      ...(newPlan ? { subscriptionPlan: newPlan } : {}),
+      // No paid access means no plan, matching the canceled handler and reconciliation.
+      ...(status === "none" ? { subscriptionPlan: null } : newPlan ? { subscriptionPlan: newPlan } : {}),
       ...(status ? { subscriptionStatus: status } : {}),
       subscriptionId,
       ...(customerId ? { polarCustomerId: customerId } : {}),
