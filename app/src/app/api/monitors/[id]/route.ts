@@ -439,7 +439,7 @@ export async function PUT(
         return updated;
       };
       // Turning a paused monitor back on takes a plan slot: count and write under the plan-limit lock.
-      if (currentMonitor.status === "paused" && updatePayload.status && updatePayload.status !== "paused") {
+      if (updatePayload.status && updatePayload.status !== "paused") {
         const resumed = await withResumeWithinPlan(authCtx.organizationId, "monitor", id, writeMonitor);
         const refusal = resumeRefusalResponse(resumed);
         if (refusal) return refusal;

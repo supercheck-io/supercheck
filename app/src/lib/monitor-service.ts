@@ -202,7 +202,8 @@ export async function updateMonitorHandler(
       .where(eq(monitorTable.id, monitorId))
       .returning();
   // Turning a paused monitor back on takes a plan slot: count and write under the plan-limit lock.
-  const resuming = existingMonitor.status === "paused" && updateData.status !== undefined && updateData.status !== "paused";
+  // Any non-paused status write goes through the lock: the status read above may be stale, and the helper takes no slot for a monitor already on.
+  const resuming = updateData.status !== undefined && updateData.status !== "paused";
   let updatedRows;
   if (resuming && existingMonitor.organizationId) {
     const outcome = await withResumeWithinPlan(existingMonitor.organizationId, "monitor", monitorId, writeUpdate);

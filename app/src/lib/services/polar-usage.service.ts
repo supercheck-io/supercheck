@@ -92,6 +92,7 @@ export function ingestTimeoutMs(deadline?: number, now = Date.now()): number {
   return deadline === undefined ? POLAR_INGEST_TIMEOUT_MS : Math.max(1, Math.min(POLAR_INGEST_TIMEOUT_MS, deadline - now));
 }
 
+const MIN_INGEST_BUDGET_MS = 250;
 const ORGANIZATION_FLUSH_LIMIT = 200;
 const ORGANIZATION_FLUSH_BUDGET_MS = 30_000;
 export { POLAR_API_VERSION };
@@ -360,7 +361,8 @@ class PolarUsageService {
     let synced = 0;
     // Send a bounded batch; any remainder is reported as pending and a retry continues from there.
     for (const event of pendingEvents.slice(0, ORGANIZATION_FLUSH_LIMIT)) {
-      if (Date.now() >= deadline) break;
+      // Too little budget left to finish a request: stop without recording a failed attempt for a healthy event.
+      if (deadline - Date.now() < MIN_INGEST_BUDGET_MS) break;
       // Stop on the first failure: the deletion aborts anyway, so do not hold its locks for more sends.
       if (await this.syncEventToPolar(event.id, db, deadline)) synced++;
       else break;
