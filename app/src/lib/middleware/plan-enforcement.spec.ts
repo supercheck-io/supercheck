@@ -18,6 +18,7 @@ jest.mock("@/lib/feature-flags", () => ({
   isPolarEnabled: jest.fn(),
 }));
 
+const mockCountWhere = jest.fn();
 jest.mock("@/utils/db", () => ({
   db: {
     query: {
@@ -25,6 +26,7 @@ jest.mock("@/utils/db", () => ({
         findFirst: jest.fn(),
       },
     },
+    select: () => ({ from: () => ({ where: (...args: unknown[]) => mockCountWhere(...args) }) }),
   },
 }));
 
@@ -37,6 +39,7 @@ import {
   checkProjectLimit,
   checkSubscriberLimit,
   checkFeatureAvailability,
+  checkResumeWithinPlan,
 } from "./plan-enforcement";
 import { subscriptionService } from "@/lib/services/subscription-service";
 import { isPolarEnabled } from "@/lib/feature-flags";
@@ -671,5 +674,45 @@ describe("checkFeatureAvailability when there is no active subscription or trial
     (isPolarEnabled as jest.Mock).mockReturnValue(false);
     await expect(checkFeatureAvailability("org-1", "customDomains")).resolves.toEqual({ available: true });
     expect(subscriptionService.getOrganizationPlan).not.toHaveBeenCalled();
+  });
+
+  describe("checkResumeWithinPlan", () => {
+    const plus = { id: "plan-plus", plan: "plus", maxMonitors: 50, maxStatusPages: 5 };
+
+    it("allows everything when self-hosted, without counting", async () => {
+      (isPolarEnabled as jest.Mock).mockReturnValue(false);
+      await expect(checkResumeWithinPlan("org-1", "monitor")).resolves.toEqual({ allowed: true });
+      expect(mockCountWhere).not.toHaveBeenCalled();
+    });
+
+    it("allows resuming a monitor below the plan's active monitors", async () => {
+      (isPolarEnabled as jest.Mock).mockReturnValue(true);
+      (subscriptionService.getOrganizationPlan as jest.Mock).mockResolvedValue(plus);
+      mockCountWhere.mockResolvedValue([{ count: "49" }]);
+      await expect(checkResumeWithinPlan("org-1", "monitor")).resolves.toEqual({ allowed: true });
+    });
+
+    it("refuses a monitor at the cap and points Plus at Pro", async () => {
+      (isPolarEnabled as jest.Mock).mockReturnValue(true);
+      (subscriptionService.getOrganizationPlan as jest.Mock).mockResolvedValue(plus);
+      mockCountWhere.mockResolvedValue([{ count: 50 }]);
+      await expect(checkResumeWithinPlan("org-1", "monitor")).resolves.toEqual({
+        allowed: false,
+        error: "Your plus plan allows 50 active monitors. Pause or delete another monitor, or upgrade, to turn this one back on.",
+        limit: 50,
+        upgrade: "pro",
+      });
+    });
+
+    it("refuses a status page at the cap and treats a missing count as zero", async () => {
+      (isPolarEnabled as jest.Mock).mockReturnValue(true);
+      (subscriptionService.getOrganizationPlan as jest.Mock).mockResolvedValue({ ...plus, id: "trial", maxStatusPages: 0 });
+      mockCountWhere.mockResolvedValue([]);
+      await expect(checkResumeWithinPlan("org-1", "status_page")).resolves.toMatchObject({
+        allowed: false,
+        error: expect.stringContaining("Your free trial allows 0 published status pages. Unpublish or delete another status page"),
+        upgrade: "plus",
+      });
+    });
   });
 });

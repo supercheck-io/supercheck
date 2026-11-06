@@ -47,6 +47,15 @@ function isAlreadyGone(error: unknown): boolean {
   return statusCode === 403 && /AlreadyCanceledSubscription/.test(detail);
 }
 
+/** Polar invoices usage ingested before an immediate cancellation, so unsent usage would never be billed. */
+async function flushFinalUsage(organizationId: string): Promise<void> {
+  const { polarUsageService } = await import("@/lib/services/polar-usage.service");
+  const { pending } = await polarUsageService.flushOrganizationUsage(organizationId);
+  if (pending > 0) {
+    throw new BillingCancellationError("Could not send the organization's final usage to the billing provider. Nothing was deleted and the subscription is unchanged. Retry the deletion once billing is available.");
+  }
+}
+
 async function revokeSubscription(subscriptionId: string): Promise<void> {
   const config = isPolarEnabled() ? getPolarConfig() : null;
   // A billing subscription must never outlive its organization silently.
@@ -170,7 +179,8 @@ export class StorageCleanupError extends Error {}
  * organization row lock (FOR UPDATE). The lock conflicts with the foreign-key locks of new members,
  * projects, monitors, tests and jobs, so the organization is frozen until the delete commits.
  *
- * Order: membership guard and audit marker; stop schedules; remove stored files (StorageCleanupError
+ * Order: membership guard and audit marker; send unsynced usage (BillingCancellationError, nothing
+ * changed); stop schedules; remove stored files (StorageCleanupError
  * if any object fails, nothing deleted from the database and billing untouched); end the subscription
  * last (BillingCancellationError, nothing deleted); delete projects and the organization. Audit logs
  * are kept. Rollback leaves schedules removed and some files gone; a retry finishes the job (the sweep
@@ -185,7 +195,7 @@ export async function deleteOrganizationCompletely(
     // Fail fast instead of queueing other writers behind a busy organization row.
     await tx.execute(sql`SET LOCAL lock_timeout = '10s'`);
     const [org] = await tx
-      .select({ id: organization.id, subscriptionId: organization.subscriptionId })
+      .select({ id: organization.id, subscriptionId: organization.subscriptionId, polarCustomerId: organization.polarCustomerId })
       .from(organization).where(eq(organization.id, organizationId)).for("update");
     if (!org) return null;
     // Lock the projects too (same order as other org-then-project writers) before anything
@@ -198,6 +208,8 @@ export async function deleteOrganizationCompletely(
       organizationId, subscriptionId: org.subscriptionId ?? undefined,
     }, tx);
     const subscriptionCancelled = hasCancellableSubscription(org);
+    // Before anything irreversible (the file sweep): a provider outage here leaves everything intact.
+    if (subscriptionCancelled && org.polarCustomerId) await flushFinalUsage(organizationId);
 
     const projectIds = (await tx.select({ id: projects.id }).from(projects).where(eq(projects.organizationId, organizationId))).map((p) => p.id);
     if (projectIds.length) {

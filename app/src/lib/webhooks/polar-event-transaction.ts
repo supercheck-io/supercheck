@@ -17,6 +17,18 @@ export function getPolarWebhookDb(organizationId?: string) {
   return current?.tx ?? db;
 }
 
+/**
+ * The event can never be applied, so retrying only counts toward Polar disabling the endpoint after
+ * ten consecutive failures. It still rolls back the surrounding transaction (no state or ordering
+ * change); the plugin layer logs it and acknowledges the delivery. Reconciliation repairs real misses.
+ */
+export class UnrecoverableWebhookError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "UnrecoverableWebhookError";
+  }
+}
+
 export async function runOrderedPolarEvent(
   input: {
     organizationId: string;
@@ -48,7 +60,7 @@ export async function runOrderedPolarEvent(
       .for("update");
     if (!org) {
       if (await input.organizationDeleted?.()) return;
-      throw new Error("Polar billing organization not found");
+      throw new UnrecoverableWebhookError("Polar billing organization not found");
     }
 
     if (input.affectsSubscriptionState !== false && org.polarWebhookTimestamp) {

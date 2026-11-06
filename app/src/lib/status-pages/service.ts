@@ -21,7 +21,7 @@ import {
 } from "@/db/schema";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { retireOrphanedSubscribers } from "@/lib/incident-notifications/retire-orphaned-subscribers";
-import { checkStatusPageLimit, checkFeatureAvailability } from "@/lib/middleware/plan-enforcement";
+import { checkStatusPageLimit, checkFeatureAvailability, checkResumeWithinPlan } from "@/lib/middleware/plan-enforcement";
 import { insertWithinPlanLimit, notInDeletedProject } from "@/lib/middleware/plan-limit-lock";
 import { statusAggregationService } from "@/lib/status-aggregation.service";
 import {
@@ -583,6 +583,11 @@ export async function checkPublishPreconditions(
         `[SECURITY] User ${userId} attempted to publish status page ${statusPageId} without ownership`
       );
       return fail("not_found", "Status page not found or access denied");
+    }
+
+    if (statusPage.status !== "published") {
+      const cap = await checkResumeWithinPlan(organizationId, "status_page");
+      if (!cap.allowed) return fail("forbidden", cap.error);
     }
 
     const visibleComponent = await db.query.statusPageComponents.findFirst({

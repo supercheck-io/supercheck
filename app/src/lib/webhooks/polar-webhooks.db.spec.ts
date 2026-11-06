@@ -344,8 +344,9 @@ describe("2026-10 webhook payloads through the real handlers", () => {
         }),
         "2026-10-01T00:00:01Z",
       ),
-    ).rejects.toThrow("Unknown product ID");
-    expect((await org()).subscriptionPlan).toBeNull();
+    ).rejects.toMatchObject({ name: "UnrecoverableWebhookError", message: expect.stringContaining("Unknown product ID") });
+    // Acknowledged without applying anything: no plan, and the ordering watermark did not move.
+    expect(await org()).toMatchObject({ subscriptionPlan: null, polarWebhookEventKey: null });
   });
 
   it("does not trust a spoofed camelCase alias inside metadata to choose the organization", async () => {

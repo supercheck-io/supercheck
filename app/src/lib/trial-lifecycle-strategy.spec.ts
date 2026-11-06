@@ -20,6 +20,9 @@ jest.mock("@/lib/execution/trial-lifecycle", () => ({
   sendTrialReminders: (...args: unknown[]) => mockSendTrialReminders(...args),
   reconcilePaidTrialSuspensions: (...args: unknown[]) => mockReconcile(...args),
 }));
+jest.mock("@/lib/billing/plan-caps", () => ({
+  enforcePlanResourceCaps: jest.fn(async () => ({ organizations: 0, monitorsPaused: 0, statusPagesArchived: 0 })),
+}));
 jest.mock("@/lib/execution/trial-reminder-delivery", () => ({
   deliverTrialReminder: jest.fn(),
 }));

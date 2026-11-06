@@ -7,6 +7,8 @@ on:
       - "docs/**"
       - "app/public/openapi.json"
       - "app/src/lib/billing/plan-catalog.json"
+      - "app/src/lib/billing/pricing-copy.ts"
+      - "app/src/lib/billing/trial-copy.ts"
       - ".github/workflows/docs-deploy.yml"
   pull_request:
     # Any base: a PR stacked on another branch needs the docs build too. Deploy still runs only on main.
@@ -15,6 +17,8 @@ on:
       - "docs/**"
       - "app/public/openapi.json"
       - "app/src/lib/billing/plan-catalog.json"
+      - "app/src/lib/billing/pricing-copy.ts"
+      - "app/src/lib/billing/trial-copy.ts"
       - ".github/workflows/docs-deploy.yml"
   workflow_dispatch:
 

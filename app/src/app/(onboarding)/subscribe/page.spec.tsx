@@ -19,9 +19,11 @@ const pricing = {
       k6VuMinutes: 30000,
       aiCredits: 1000,
       sreInvestigationUnits: 200,
+      concurrentExecutions: 5,
       teamMembers: 5,
       projects: 10,
       statusPages: 5,
+      statusPageSubscribers: 1000,
       monitorDataRetention: "7 days raw / 30 days metrics",
       jobDataRetention: "30 days",
       customDomains: true,
@@ -127,18 +129,23 @@ describe("signup plan selection", () => {
       screen.getAllByText("200 completed AI SRE investigations/month"),
     ).toHaveLength(2);
     expect(screen.queryByText("Most Popular")).not.toBeInTheDocument();
+    expect(screen.getByText("Recommended")).toBeVisible();
+    expect(screen.getAllByText("5 status pages · 1,000 subscribers each")).toHaveLength(2);
+    expect(screen.getAllByText("5 concurrent runs")).toHaveLength(2);
+    expect(screen.getAllByText("Monitor data: 7 days raw / 30 days metrics")).toHaveLength(2);
+    expect(screen.getByText(/per organization, not per seat/)).toBeVisible();
     expect(
       screen.queryByRole("heading", { name: "Compare plans in detail" }),
     ).not.toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: /Compare all features and pricing/ }),
-    ).toHaveAttribute("href", "https://supercheck.io/pricing");
+    ).toHaveAttribute("href", "https://supercheck.io/pricing#compare");
     expect(
       screen.getByRole("link", { name: "Terms of service" }),
     ).toHaveAttribute("href", "https://supercheck.io/terms");
     expect(
       screen.getByRole("link", { name: "Contact us about Enterprise" }),
-    ).toHaveAttribute("href", "mailto:hello@supercheck.io");
+    ).toHaveAttribute("href", "mailto:hello@supercheck.io?subject=Supercheck%20Cloud%20Enterprise%20enquiry");
   });
 
   it("keeps the external-tab notice accessible without repeating it visually", async () => {
@@ -380,7 +387,8 @@ describe("signup plan selection", () => {
       expect(screen.getAllByText(/6 days left/)).toHaveLength(1);
       expect(screen.getByText("What your free trial includes")).toBeVisible();
       expect(screen.getByText("5 monitors, checked at most every 5 minutes")).toBeVisible();
-      expect(screen.getByText(/Custom domains and single\s+sign-on are on paid plans/)).toBeVisible();
+      expect(screen.getByText(/Custom domains are on paid\s+plans/)).toBeVisible();
+      expect(screen.queryByText(/single sign-on/i)).not.toBeInTheDocument();
       expect(
         screen.getByRole("link", { name: /Continue with your trial/ }),
       ).toHaveAttribute("href", "/");
