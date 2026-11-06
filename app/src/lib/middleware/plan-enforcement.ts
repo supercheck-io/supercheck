@@ -9,7 +9,7 @@ import { isPolarEnabled } from "@/lib/feature-flags";
 import { db } from "@/utils/db";
 import { monitors, organization, statusPages } from "@/db/schema";
 import { and, eq, ne, sql } from "drizzle-orm";
-import { notInDeletedProject } from "@/lib/middleware/plan-limit-lock";
+import { notInDeletedProject, withPlanLimitLock, PlanLimitBusyError, type PlanLimitTransaction } from "@/lib/middleware/plan-limit-lock";
 
 /** The messages `getOrganizationPlan` throws for an organization's own subscription state; safe to show to it. */
 const SUBSCRIPTION_STATE_ERRORS = [
@@ -139,27 +139,37 @@ export async function checkUsageLimit(
 }
 
 /**
- * Check if organization can create additional status pages
+ * The monitors that count toward maxMonitors: not paused and not in a deleted project. Create, resume,
+ * the usage display and the plan-cap sweep all count this same set.
  */
+export async function countPlanMonitors(executor: PlanLimitTransaction | typeof db, organizationId: string): Promise<number> {
+  const [row] = await executor.select({ count: sql<number>`count(*)` }).from(monitors).where(and(
+    eq(monitors.organizationId, organizationId), ne(monitors.status, "paused"), notInDeletedProject(monitors.projectId)));
+  return Number(row?.count ?? 0);
+}
+
 /**
  * Switching a paused monitor or an unpublished status page back on must stay within the plan. A plan
  * downgrade pauses and archives what exceeds it (lib/billing/plan-caps.ts); without this check the
  * owner could turn it straight back on. Counts only active monitors and published pages.
- * shortcut: two simultaneous resumes can both pass; the periodic plan-cap sweep pauses the excess again.
+ * Not race-free on its own: use withResumeWithinPlan to run the check and the write under the plan-limit lock.
+ * Monitors count when not paused (create, resume and the cap sweep all count the same way); a disabled
+ * monitor is a paused one (the routes keep `enabled` and `status` in step), so it frees its slot.
  */
 export async function checkResumeWithinPlan(
   organizationId: string,
   resource: "monitor" | "status_page",
+  options: { executor?: PlanLimitTransaction | typeof db; plan?: Awaited<ReturnType<typeof subscriptionService.getOrganizationPlan>> } = {},
 ): Promise<{ allowed: true } | { allowed: false; error: string; limit: number; upgrade?: "plus" | "pro" }> {
   if (!isPolarEnabled()) return { allowed: true };
-  const plan = await subscriptionService.getOrganizationPlan(organizationId);
-  const [row] = resource === "monitor"
-    ? await db.select({ count: sql<number>`count(*)` }).from(monitors).where(and(
-        eq(monitors.organizationId, organizationId), ne(monitors.status, "paused"), notInDeletedProject(monitors.projectId)))
-    : await db.select({ count: sql<number>`count(*)` }).from(statusPages).where(and(
-        eq(statusPages.organizationId, organizationId), eq(statusPages.status, "published"), notInDeletedProject(statusPages.projectId)));
+  const plan = options.plan ?? await subscriptionService.getOrganizationPlan(organizationId);
+  const executor = options.executor ?? db;
+  const count = resource === "monitor"
+    ? await countPlanMonitors(executor, organizationId)
+    : Number((await executor.select({ count: sql<number>`count(*)` }).from(statusPages).where(and(
+        eq(statusPages.organizationId, organizationId), eq(statusPages.status, "published"), notInDeletedProject(statusPages.projectId))))[0]?.count ?? 0);
   const limit = resource === "monitor" ? plan.maxMonitors : plan.maxStatusPages;
-  if (Number(row?.count ?? 0) < limit) return { allowed: true };
+  if (count < limit) return { allowed: true };
   const noun = resource === "monitor" ? "active monitors" : "published status pages";
   const action = resource === "monitor" ? "Pause or delete another monitor" : "Unpublish or delete another status page";
   return {
@@ -168,6 +178,32 @@ export async function checkResumeWithinPlan(
     limit,
     upgrade: upgradeFrom(plan),
   };
+}
+
+type ResumeDenied = Extract<Awaited<ReturnType<typeof checkResumeWithinPlan>>, { allowed: false }>;
+
+/**
+ * Runs `write` (a resume or publish) only if the plan still has a slot, serialized with every other
+ * create/resume of the same resource in the organization (same lock as insertWithinPlanLimit). `write`
+ * must use the `tx` it is given. Returns `busy` when the lock could not be taken in time.
+ */
+export async function withResumeWithinPlan<T>(
+  organizationId: string,
+  resource: "monitor" | "status_page",
+  write: (tx: PlanLimitTransaction) => Promise<T>,
+): Promise<{ ok: true; value: T } | { ok: false; denied: ResumeDenied } | { ok: false; busy: true }> {
+  // Resolve the plan before taking the lock: it needs its own pool connection.
+  const plan = isPolarEnabled() ? await subscriptionService.getOrganizationPlan(organizationId) : undefined;
+  try {
+    return await withPlanLimitLock(organizationId, resource === "monitor" ? "monitors" : "status_pages", async (tx) => {
+      const cap = await checkResumeWithinPlan(organizationId, resource, { executor: tx, plan });
+      if (!cap.allowed) return { ok: false as const, denied: cap };
+      return { ok: true as const, value: await write(tx) };
+    });
+  } catch (error) {
+    if (error instanceof PlanLimitBusyError) return { ok: false, busy: true };
+    throw error;
+  }
 }
 
 export async function checkStatusPageLimit(

@@ -21,7 +21,8 @@ jest.mock("@/lib/feature-flags", () => ({
   isPolarEnabled: () => true,
   getPolarConfig: () => ({ accessToken: "t", server: "sandbox" }),
 }));
-jest.mock("@/lib/billing/polar-client", () => ({ createPolarClient: () => ({ subscriptions: { revoke } }) }));
+const getState = jest.fn();
+jest.mock("@/lib/billing/polar-client", () => ({ createPolarClient: () => ({ subscriptions: { revoke }, customers: { getState } }) }));
 const deletePrefix = jest.fn(async (): Promise<{ success: boolean; failedObjects: unknown[] }> => ({ success: true, failedObjects: [] }));
 const deleteReports = jest.fn(async () => ({ success: true, failedObjects: [] }));
 const getRunArtifactInputs = jest.fn((): unknown[] => []);
@@ -112,25 +113,49 @@ describe("final usage before the immediate cancellation", () => {
   beforeAll(() => { global.fetch = ingest as unknown as typeof fetch; });
   afterEach(() => ingest.mockReset());
 
-  it("sends unsynced usage to Polar before revoking, and skips a parked closed period", async () => {
+  it("sends unsynced usage to Polar before revoking", async () => {
     const { organization } = await seed({ subscriptionId: `sub-${randomUUID()}`, subscriptionStatus: "active" });
     await mockDatabase.update(schema.organization).set({ polarCustomerId: `cus-${randomUUID()}` }).where(eq(schema.organization.id, organization.id));
-    await mockDatabase.insert(schema.usageEvents).values([
-      usageEvent(organization.id, new Date(Date.now() + 86_400_000)),
-      usageEvent(organization.id, new Date(Date.now() - 86_400_000)),
-    ]);
+    await mockDatabase.insert(schema.usageEvents).values(usageEvent(organization.id, new Date(Date.now() + 86_400_000)));
     ingest.mockResolvedValue(new Response(JSON.stringify({ inserted: 1, duplicates: 0 })));
     revoke.mockImplementationOnce(async () => {
       expect(ingest).toHaveBeenCalledTimes(1);
-      // Before the cascade: the open-period row was sent, the closed-period row stays parked.
       const rows = await mockDatabase.select().from(schema.usageEvents).where(eq(schema.usageEvents.organizationId, organization.id));
-      expect(rows.find((row) => row.billingPeriodEnd.getTime() > Date.now())?.syncedToPolar).toBe(true);
-      expect(rows.find((row) => row.billingPeriodEnd.getTime() < Date.now())?.syncedToPolar).toBe(false);
+      expect(rows[0].syncedToPolar).toBe(true);
     });
 
     await expect(deleteOrganizationCompletely(organization.id, { noMembers: true }, adminId)).resolves.toMatchObject({ subscriptionCancelled: true });
     expect(revoke).toHaveBeenCalledTimes(1);
     expect(String(ingest.mock.calls[0][0])).toContain("/v1/events/ingest");
+  });
+
+  it("refuses to delete while a closed-period usage event is parked for manual reconciliation", async () => {
+    const { organization } = await seed({ subscriptionId: `sub-${randomUUID()}`, subscriptionStatus: "active" });
+    await mockDatabase.update(schema.organization).set({ polarCustomerId: `cus-${randomUUID()}` }).where(eq(schema.organization.id, organization.id));
+    await mockDatabase.insert(schema.usageEvents).values(usageEvent(organization.id, new Date(Date.now() - 86_400_000)));
+
+    await expect(deleteOrganizationCompletely(organization.id, { noMembers: true }, adminId)).rejects.toThrow(BillingCancellationError);
+    expect(revoke).not.toHaveBeenCalled();
+    expect(await mockDatabase.select().from(schema.organization).where(eq(schema.organization.id, organization.id))).toHaveLength(1);
+    // The evidence is untouched.
+    expect(await mockDatabase.select().from(schema.usageEvents).where(eq(schema.usageEvents.organizationId, organization.id))).toHaveLength(1);
+  });
+
+  it("refuses to delete while an execution receipt is unsettled, and deletes once it is settled", async () => {
+    const { organization } = await seed({ subscriptionId: `sub-${randomUUID()}`, subscriptionStatus: "active" });
+    await mockDatabase.update(schema.organization).set({ polarCustomerId: `cus-${randomUUID()}` }).where(eq(schema.organization.id, organization.id));
+    const receiptId = randomUUID();
+    await mockDatabase.insert(schema.executionUsageReceipts).values({
+      id: receiptId, organizationId: organization.id, runId: randomUUID(), eventType: "playwright_execution", units: "1.0000",
+      billingPeriodStart: new Date(Date.now() - 86_400_000), billingPeriodEnd: new Date(Date.now() + 86_400_000),
+    });
+
+    await expect(deleteOrganizationCompletely(organization.id, { noMembers: true }, adminId)).rejects.toThrow(/not billed/);
+    expect(revoke).not.toHaveBeenCalled();
+    expect(await mockDatabase.select().from(schema.organization).where(eq(schema.organization.id, organization.id))).toHaveLength(1);
+
+    await mockDatabase.update(schema.executionUsageReceipts).set({ settledAt: new Date() }).where(eq(schema.executionUsageReceipts.id, receiptId));
+    await expect(deleteOrganizationCompletely(organization.id, { noMembers: true }, adminId)).resolves.toMatchObject({ subscriptionCancelled: true });
   });
 
   it("neither revokes nor deletes when usage cannot be sent", async () => {
@@ -275,4 +300,47 @@ it("lets an owner delete an organization that has other members, and refuses a n
   await expect(deleteOrganizationCompletely(organization.id, { ownerUserId: viewer.id }, viewer.id)).rejects.toBeInstanceOf(OrganizationMembershipChangedError);
   await expect(deleteOrganizationCompletely(organization.id, { ownerUserId: owner.id }, owner.id)).resolves.toEqual({ subscriptionCancelled: false });
   expect(await mockDatabase.select().from(schema.member).where(eq(schema.member.organizationId, organization.id))).toHaveLength(0);
+});
+
+describe("a subscription the billing webhook has not stored yet", () => {
+  async function seedPending() {
+    const { organization } = await seed();
+    const polarCustomerId = `cus-${randomUUID()}`;
+    await mockDatabase.update(schema.organization).set({ polarCustomerId }).where(eq(schema.organization.id, organization.id));
+    return { organization, polarCustomerId };
+  }
+
+  it("ends the customer's active subscription tagged to this organization", async () => {
+    const { organization, polarCustomerId } = await seedPending();
+    getState.mockResolvedValue({ active_subscriptions: [
+      { id: "sub-mine", metadata: { referenceId: organization.id } },
+      { id: "sub-other-org", metadata: { referenceId: randomUUID() } },
+    ] });
+    await expect(deleteOrganizationCompletely(organization.id, { noMembers: true }, adminId)).resolves.toMatchObject({ subscriptionCancelled: true });
+    expect(getState).toHaveBeenCalledWith(polarCustomerId);
+    expect(revoke).toHaveBeenCalledTimes(1);
+    expect(revoke).toHaveBeenCalledWith("sub-mine");
+  });
+
+  it("refuses to delete when a subscription cannot be attributed to this organization", async () => {
+    const { organization } = await seedPending();
+    getState.mockResolvedValue({ active_subscriptions: [{ id: "sub-legacy", metadata: {} }] });
+    await expect(deleteOrganizationCompletely(organization.id, { noMembers: true }, adminId)).rejects.toThrow(BillingCancellationError);
+    expect(revoke).not.toHaveBeenCalled();
+    expect(await mockDatabase.select().from(schema.organization).where(eq(schema.organization.id, organization.id))).toHaveLength(1);
+  });
+
+  it("refuses to delete when the provider lookup fails", async () => {
+    const { organization } = await seedPending();
+    getState.mockRejectedValue(new Error("unavailable"));
+    await expect(deleteOrganizationCompletely(organization.id, { noMembers: true }, adminId)).rejects.toThrow(BillingCancellationError);
+    expect(revoke).not.toHaveBeenCalled();
+  });
+
+  it("deletes without a cancellation when the customer has no active subscription", async () => {
+    const { organization } = await seedPending();
+    getState.mockResolvedValue({ active_subscriptions: [] });
+    await expect(deleteOrganizationCompletely(organization.id, { noMembers: true }, adminId)).resolves.toMatchObject({ subscriptionCancelled: false });
+    expect(revoke).not.toHaveBeenCalled();
+  });
 });

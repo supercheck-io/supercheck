@@ -1,5 +1,6 @@
 import type { webhooks } from "@polar-sh/better-auth";
 import { createPolarCoreClient } from "@/lib/billing/polar-client";
+import type { UnrecoverableWebhookError } from "@/lib/webhooks/polar-event-transaction";
 import { normalizePolarPayload } from "@/lib/webhooks/polar-payload";
 import { isPolarEnabled, getPolarConfig } from "@/lib/feature-flags";
 
@@ -19,7 +20,11 @@ export function acknowledgeUnrecoverable(handlers: WebhookHandlers): WebhookHand
         await (handler as (payload: unknown) => Promise<void>)(payload);
       } catch (error) {
         if (!(error instanceof Error) || error.name !== "UnrecoverableWebhookError") throw error;
-        console.error(`[Polar] Acknowledged a webhook that cannot be applied (${name}): ${error.message}`);
+        const unrecoverable = error as UnrecoverableWebhookError;
+        console.error(`[Polar] Acknowledged a webhook that cannot be applied (${name}, event ${unrecoverable.context?.eventId ?? "unknown"}): ${error.message}`);
+        // The handler's transaction rolled back; keep a durable record outside it.
+        const { recordUnrecoverableWebhook } = await import("@/lib/webhooks/polar-unrecoverable");
+        await recordUnrecoverableWebhook(unrecoverable);
       }
     };
   }

@@ -24,7 +24,7 @@ import {
   sanitizeUrl,
   sanitizeHostname,
 } from "@/lib/input-sanitizer";
-import { checkMonitorLimit } from "@/lib/middleware/plan-enforcement";
+import { checkMonitorLimit, countPlanMonitors } from "@/lib/middleware/plan-enforcement";
 import { monitorResumeBlockedResponse, trialIntervalErrorResponse } from "@/lib/execution/trial-interval-response";
 import { insertWithinPlanLimit, notInDeletedProject } from "@/lib/middleware/plan-limit-lock";
 import {
@@ -570,13 +570,7 @@ export async function POST(req: NextRequest) {
       organizationId,
       resource: "monitors",
       check: checkMonitorLimit,
-      countRows: async (tx) => {
-        const [row] = await tx
-          .select({ count: sql<number>`count(*)` })
-          .from(monitors)
-          .where(and(eq(monitors.organizationId, organizationId), notInDeletedProject(monitors.projectId)));
-        return Number(row?.count || 0);
-      },
+      countRows: (tx) => countPlanMonitors(tx, organizationId),
       insert: async (executor) => {
         // Hold the live project so a concurrent project delete cannot miss this new monitor. Without a
         // plan limit the executor is the pool (no transaction), so open one for the lock to hold.

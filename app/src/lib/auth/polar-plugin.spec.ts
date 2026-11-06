@@ -11,7 +11,20 @@ jest.mock("@/lib/webhooks/polar-webhooks", () => {
   return { UnrecoverableWebhookError };
 });
 
+const recordUnrecoverableWebhook = jest.fn(async () => undefined);
+jest.mock("@/lib/webhooks/polar-unrecoverable", () => ({ recordUnrecoverableWebhook }));
+
 describe("acknowledgeUnrecoverable", () => {
+  it("logs the event id and persists the failure outside the rolled-back transaction", async () => {
+    const log = jest.spyOn(console, "error").mockImplementation(() => undefined);
+    const failure = Object.assign(new UnrecoverableWebhookError("Unknown product ID: p"), { context: { eventType: "subscription.active", eventId: "sub_9" } });
+    const { onSubscriptionActive } = acknowledgeUnrecoverable({ onSubscriptionActive: async () => { throw failure; } });
+    await expect(onSubscriptionActive!({} as never)).resolves.toBeUndefined();
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("event sub_9"));
+    expect(recordUnrecoverableWebhook).toHaveBeenCalledWith(failure);
+    log.mockRestore();
+  });
+
   it("acknowledges an event that can never be applied", async () => {
     const log = jest.spyOn(console, "error").mockImplementation(() => undefined);
     const { onSubscriptionUpdated } = acknowledgeUnrecoverable({

@@ -5,6 +5,7 @@ import { db } from "@/utils/db";
 import { monitors, projects } from "@/db/schema";
 import { and, eq, ne } from "drizzle-orm";
 import { isAuthError, requireUserAuthContext, authErrorStatus } from "@/lib/auth-context";
+import { withResumeWithinPlan } from "@/lib/middleware/plan-enforcement";
 import { monitorResumeBlockedResponse } from "@/lib/execution/trial-interval-response";
 import { hasPermissionForUser } from '@/lib/rbac/middleware';
 import { logAuditEvent } from "@/lib/audit-logger";
@@ -91,7 +92,7 @@ export async function PATCH(
     // Update the monitor status in the database. Hold the live project row (FOR SHARE) so a
     // concurrent project delete cannot pause the monitor and then be overwritten by this write.
     const { organizationId: monitorOrgId, projectId: monitorProjectId } = currentMonitor;
-    const updatedMonitor = await db.transaction(async (tx) => {
+    const write = async (tx: Parameters<Parameters<typeof db.transaction>[0]>[0]) => {
       const [liveProject] = await tx
         .select({ id: projects.id })
         .from(projects)
@@ -113,7 +114,28 @@ export async function PATCH(
         )
         .returning();
       return updated;
-    });
+    };
+    // Turning a paused monitor back on takes a plan slot: count and write under the plan-limit lock.
+    let updatedMonitor;
+    if (currentMonitor.status === 'paused' && status !== 'paused') {
+      const resumed = await withResumeWithinPlan(monitorOrgId, 'monitor', write);
+      if (!resumed.ok && 'busy' in resumed) {
+        return NextResponse.json(
+          { error: "Too many concurrent requests. Please retry shortly." },
+          { status: 503, headers: { "Retry-After": "2" } },
+        );
+      }
+      if (!resumed.ok) {
+        const { denied } = resumed;
+        return NextResponse.json(
+          { error: denied.error, code: "plan_limit", limit: denied.limit, upgrade: denied.upgrade },
+          { status: 403 },
+        );
+      }
+      updatedMonitor = resumed.value;
+    } else {
+      updatedMonitor = await db.transaction(write);
+    }
 
     if (!updatedMonitor) {
       return NextResponse.json(

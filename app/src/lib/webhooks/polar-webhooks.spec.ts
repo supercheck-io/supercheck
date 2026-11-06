@@ -20,7 +20,14 @@ jest.mock("@/utils/db", () => ({
     select: jest.fn(),
     query: {
       webhookIdempotency: { findFirst: jest.fn() },
-      organization: { findFirst: jest.fn() },
+      organization: {
+        findFirst: jest.fn(),
+        // Customer lookups ask for up to two matches; these tests stub the single match through findFirst.
+        findMany: jest.fn(async (...args: unknown[]) => {
+          const row = await (jest.requireMock("@/utils/db").db.query.organization.findFirst as (...a: unknown[]) => Promise<unknown>)(...args);
+          return row ? [row] : [];
+        }),
+      },
       member: { findFirst: jest.fn(), findMany: jest.fn() },
     },
   },

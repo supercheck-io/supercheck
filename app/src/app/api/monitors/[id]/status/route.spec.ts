@@ -17,6 +17,8 @@ const monitorResumeBlockedResponse = jest.fn();
 jest.mock("@/lib/execution/trial-interval-response", () => ({
   monitorResumeBlockedResponse: (...a: unknown[]) => monitorResumeBlockedResponse(...a),
 }));
+const withResumeWithinPlan = jest.fn();
+jest.mock("@/lib/middleware/plan-enforcement", () => ({ withResumeWithinPlan: (...a: unknown[]) => withResumeWithinPlan(...a) }));
 import { NextRequest } from "next/server";
 import { PgDialect } from "drizzle-orm/pg-core";
 import type { SQL } from "drizzle-orm";
@@ -33,6 +35,11 @@ const patch = (status: string) =>
 beforeEach(() => {
   jest.clearAllMocks();
   monitorResumeBlockedResponse.mockResolvedValue(null);
+  // A resume runs its write on the plan-limit transaction; the stub hands it the mocked db transaction.
+  withResumeWithinPlan.mockImplementation(async (_org: string, _resource: string, write: (tx: unknown) => Promise<unknown>) => ({
+    ok: true,
+    value: await (db.transaction as jest.Mock)(write),
+  }));
 });
 
 it.each([{ organizationId: null, projectId: "project" }, { organizationId: "org", projectId: null }])("does not mutate a monitor with missing scope", async (scope) => {
@@ -103,5 +110,34 @@ describe("locked status write", () => {
     const response = await patch("up");
     expect(update).toHaveBeenCalled();
     expect(response.status).toBe(200);
+  });
+});
+
+describe("resuming under the plan limit", () => {
+  beforeEach(() => {
+    jest.mocked(db.query.monitors.findFirst).mockResolvedValue({ id: "m", organizationId: "org", projectId: "p", status: "paused" } as never);
+    jest.mocked(hasPermissionForUser).mockResolvedValue(true);
+  });
+
+  it("answers 403 and does not write when the plan has no free slot", async () => {
+    withResumeWithinPlan.mockResolvedValue({ ok: false, denied: { allowed: false, error: "Your plus plan allows 5 active monitors.", limit: 5, upgrade: "pro" } });
+    const response = await patch("up");
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ code: "plan_limit", limit: 5, upgrade: "pro" });
+    expect(db.transaction).not.toHaveBeenCalled();
+  });
+
+  it("answers 503 when the plan-limit lock is busy", async () => {
+    withResumeWithinPlan.mockResolvedValue({ ok: false, busy: true });
+    const response = await patch("up");
+    expect(response.status).toBe(503);
+    expect(response.headers.get("Retry-After")).toBe("2");
+  });
+
+  it("does not take a plan slot to pause", async () => {
+    lockedTx([{ id: "p" }], [{ id: "m", name: "M", organizationId: "org", projectId: "p", status: "paused" }]);
+    const response = await patch("paused");
+    expect(response.status).toBe(200);
+    expect(withResumeWithinPlan).not.toHaveBeenCalled();
   });
 });

@@ -48,6 +48,10 @@ export const user = pgTable(
       "user_role_canonical_check",
       sql`${table.role} IS NULL OR ${table.role} IN ('super_admin', 'project_viewer')`
     ),
+    // Gmail trial alias lookup (setup-defaults route): the exact expressions it filters on, trial holders only.
+    gmailTrialKeyIdx: index("user_gmail_trial_key_idx")
+      .on(sql`(replace(split_part(split_part(lower(${table.email}), '@', 1), '+', 1), '.', ''))`)
+      .where(sql`${table.trialGrantedAt} IS NOT NULL AND split_part(lower(${table.email}), '@', 2) IN ('gmail.com', 'googlemail.com')`),
   })
 );
 
