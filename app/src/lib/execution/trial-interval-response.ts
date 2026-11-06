@@ -49,3 +49,14 @@ export async function monitorResumeBlockedResponse(
   // The plan-limit check runs with the write, under the plan-limit lock (withResumeWithinPlan).
   return null;
 }
+
+/** Re-checks subscription access for a resume; used under the plan lock, where the paused status is certain. */
+export async function ensureSubscribedForResume(organizationId: string): Promise<void> {
+  await subscriptionService.blockUntilSubscribed(organizationId);
+}
+
+/** The 402 for a denied subscription check; null for any other error. */
+export function subscriptionDeniedResponse(error: unknown): NextResponse | null {
+  if (!(error instanceof SubscriptionAccessDeniedError)) return null;
+  return NextResponse.json({ error: error.message, code: error.reason }, { status: 402 });
+}

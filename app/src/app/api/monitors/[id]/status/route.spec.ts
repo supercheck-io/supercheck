@@ -16,7 +16,10 @@ jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 const monitorResumeBlockedResponse = jest.fn();
 jest.mock("@/lib/execution/trial-interval-response", () => ({
   monitorResumeBlockedResponse: (...a: unknown[]) => monitorResumeBlockedResponse(...a),
+  ensureSubscribedForResume: (...a: unknown[]) => ensureSubscribedForResume(...a),
+  subscriptionDeniedResponse: (e: { denied?: boolean }) => (e?.denied ? Response.json({ error: "Trial ended" }, { status: 402 }) : null),
 }));
+const ensureSubscribedForResume = jest.fn();
 const withResumeWithinPlan = jest.fn();
 jest.mock("@/lib/middleware/plan-enforcement", () => ({
   ...jest.requireActual("@/lib/middleware/plan-enforcement"),
@@ -130,6 +133,15 @@ describe("resuming under the plan limit", () => {
     expect(db.transaction).not.toHaveBeenCalled();
   });
 
+  it("answers 402 when a concurrent trial end made the monitor paused after the pre-lock read", async () => {
+    withResumeWithinPlan.mockRejectedValue(Object.assign(new Error("Trial ended"), { denied: true }));
+    const response = await patch("up");
+    expect(response.status).toBe(402);
+    const guard = withResumeWithinPlan.mock.calls[0][4] as () => Promise<void>;
+    await guard();
+    expect(ensureSubscribedForResume).toHaveBeenCalledWith("org");
+  });
+
   it("answers 503 when the plan-limit lock is busy", async () => {
     withResumeWithinPlan.mockResolvedValue({ ok: false, busy: true });
     const response = await patch("up");
@@ -142,7 +154,7 @@ describe("resuming under the plan limit", () => {
     lockedTx([{ id: "p" }], [{ id: "m", name: "M", organizationId: "org", projectId: "p", status: "up" }]);
     const response = await patch("up");
     expect(response.status).toBe(200);
-    expect(withResumeWithinPlan).toHaveBeenCalledWith("org", "monitor", "00000000-0000-4000-8000-000000000002", expect.any(Function));
+    expect(withResumeWithinPlan).toHaveBeenCalledWith("org", "monitor", "00000000-0000-4000-8000-000000000002", expect.any(Function), expect.any(Function));
   });
 
   it("does not take a plan slot to pause", async () => {

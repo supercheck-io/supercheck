@@ -6,7 +6,7 @@ import { monitors, projects } from "@/db/schema";
 import { and, eq, ne } from "drizzle-orm";
 import { isAuthError, requireUserAuthContext, authErrorStatus } from "@/lib/auth-context";
 import { resumeRefusalResponse, withResumeWithinPlan } from "@/lib/middleware/plan-enforcement";
-import { monitorResumeBlockedResponse } from "@/lib/execution/trial-interval-response";
+import { ensureSubscribedForResume, monitorResumeBlockedResponse, subscriptionDeniedResponse } from "@/lib/execution/trial-interval-response";
 import { hasPermissionForUser } from '@/lib/rbac/middleware';
 import { logAuditEvent } from "@/lib/audit-logger";
 import { createLogger } from "@/lib/logger/index";
@@ -118,7 +118,15 @@ export async function PATCH(
     // Turning a paused monitor back on takes a plan slot: count and write under the plan-limit lock.
     let updatedMonitor;
     if (status !== 'paused') {
-      const resumed = await withResumeWithinPlan(monitorOrgId, 'monitor', id, write);
+      let resumed;
+      try {
+        // A concurrent trial-end pause can make the pre-lock status stale: re-check subscription access under the lock.
+        resumed = await withResumeWithinPlan(monitorOrgId, 'monitor', id, write, () => ensureSubscribedForResume(monitorOrgId));
+      } catch (error) {
+        const denied = subscriptionDeniedResponse(error);
+        if (denied) return denied;
+        throw error;
+      }
       const refusal = resumeRefusalResponse(resumed);
       if (refusal) return refusal;
       updatedMonitor = resumed.ok ? resumed.value : undefined;

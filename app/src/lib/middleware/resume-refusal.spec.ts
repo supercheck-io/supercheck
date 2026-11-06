@@ -67,6 +67,19 @@ describe("withResumeWithinPlan", () => {
     await expect(withResumeWithinPlan("org", "status_page", "p1", async () => "done")).resolves.toMatchObject({ ok: false, denied: { limit: 1 } });
   });
 
+  it("re-checks under the lock only for a paused monitor, and a refusal aborts before the write", async () => {
+    const guard = jest.fn(async () => { throw new Error("no subscription"); });
+    const write = jest.fn();
+    mockStatus.mockResolvedValue([{ status: "paused" }]);
+    await expect(withResumeWithinPlan("org", "monitor", "m1", write, guard)).rejects.toThrow("no subscription");
+    expect(write).not.toHaveBeenCalled();
+
+    guard.mockClear();
+    mockStatus.mockResolvedValue([{ status: "up" }]);
+    await expect(withResumeWithinPlan("org", "monitor", "m1", async () => "done", guard)).resolves.toMatchObject({ ok: true });
+    expect(guard).not.toHaveBeenCalled();
+  });
+
   it("reports busy when the lock cannot be taken", async () => {
     lockBusy = true;
     await expect(withResumeWithinPlan("org", "monitor", "m1", async () => "done")).resolves.toEqual({ ok: false, busy: true });

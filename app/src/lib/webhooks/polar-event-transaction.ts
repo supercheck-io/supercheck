@@ -9,6 +9,11 @@ const context = new AsyncLocalStorage<{
   organizationId: string;
 }>();
 
+/** The organization the current ordered event is running for, if any. */
+export function getPolarWebhookOrganizationId(): string | undefined {
+  return context.getStore()?.organizationId;
+}
+
 export function getPolarWebhookDb(organizationId?: string) {
   const current = context.getStore();
   if (current && organizationId && current.organizationId !== organizationId) {
@@ -54,8 +59,13 @@ export async function runOrderedPolarEvent(
     snapshot?: { status: string | undefined; plan: string | null };
     /** True when the organization was deliberately deleted meanwhile: acknowledge instead of retrying. */
     organizationDeleted?: () => Promise<boolean>;
-    /** A cancel/revoke for a subscription the organization no longer holds is stale: acknowledge it, never retry. */
-    ignoreWhenReplaced?: boolean;
+    /**
+     * A cancel/revoke for a subscription the organization does not hold. It may be stale (an old subscription)
+     * or early (a new one whose activation has not arrived). While `retry` is true (a fresh event) fail
+     * retryably so the activation can land first; afterwards acknowledge it and retire the subscription, so a
+     * late activation can never bind it.
+     */
+    ignoreWhenReplaced?: { retry: boolean };
   },
   apply: () => Promise<void>,
 ) {
@@ -113,7 +123,9 @@ export async function runOrderedPolarEvent(
         input.subscriptionId !== org.subscriptionId,
     );
     if (replacing && input.ignoreWhenReplaced) {
-      console.warn(`[Polar] Ignoring a ${input.eventKey.split(":")[0]} for a subscription organization ${org.id} no longer holds`);
+      if (input.ignoreWhenReplaced.retry) throw new Error("Waiting for replacement subscription.active event");
+      console.warn(`[Polar] Ignoring a ${input.eventKey.split(":")[0]} for a subscription organization ${org.id} does not hold; retiring it`);
+      await tx.update(organization).set({ polarRetiredSubscriptionIds: [...retired, input.subscriptionId!] }).where(eq(organization.id, org.id));
       return;
     }
     if (replacing) {

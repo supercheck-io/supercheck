@@ -383,27 +383,38 @@ describe("2026-10 webhook payloads through the real handlers", () => {
     }
   });
 
-  it("retries a cancel that arrives before its activation, but only while the event is fresh", async () => {
+  it("retries a cancel that arrives before its activation while fresh; once old, acknowledges it and refuses a late activation", async () => {
     const fresh = new Date().toISOString();
     await expect(
       deliver(handleSubscriptionCanceled, "subscription.canceled", subscription({ status: "canceled" }), fresh),
     ).rejects.toMatchObject({ name: "Error", message: "Organization not found" });
     await expect(
-      deliver(handleSubscriptionCanceled, "subscription.canceled", subscription({ status: "canceled" }), "2026-10-01T00:00:01Z"),
-    ).rejects.toMatchObject({ name: "UnrecoverableWebhookError" });
-    await expect(
       deliver(handleSubscriptionRevoked, "subscription.revoked", subscription({ status: "canceled" }), fresh),
     ).rejects.toMatchObject({ name: "Error" });
+    // Past the retry window: acknowledged (no retry loop) and the subscription is remembered as ended.
+    await expect(
+      deliver(handleSubscriptionRevoked, "subscription.revoked", subscription({ status: "canceled" }), "2026-10-01T00:00:01Z"),
+    ).resolves.toBeUndefined();
+    expect((await org()).polarRetiredSubscriptionIds).toContain(SUB);
+    await deliver(handleSubscriptionActive, "subscription.active", subscription(), "2026-10-01T00:00:05Z");
+    expect(await org()).toMatchObject({ subscriptionId: null, subscriptionStatus: "none" });
   });
 
-  it("acknowledges, without retry or state change, a fresh cancel/revoke for a subscription the organization replaced", async () => {
+  it("for a subscription the organization does not hold: retries a fresh cancel/revoke, then acknowledges and retires it once old", async () => {
     await deliver(handleSubscriptionActive, "subscription.active", subscription({ id: "sub_new" }), "2026-10-01T00:00:01Z");
-    const before = await org();
     const fresh = new Date().toISOString();
     for (const [handler, type] of [[handleSubscriptionCanceled, "subscription.canceled"], [handleSubscriptionRevoked, "subscription.revoked"]] as const) {
-      await expect(deliver(handler, type, subscription({ id: "sub_old", status: "canceled" }), fresh)).resolves.toBeUndefined();
+      await expect(deliver(handler, type, subscription({ id: "sub_x", status: "canceled" }), fresh))
+        .rejects.toMatchObject({ message: "Waiting for replacement subscription.active event" });
     }
-    expect(await org()).toMatchObject({ subscriptionId: "sub_new", subscriptionStatus: "active", subscriptionPlan: before.subscriptionPlan });
+    await expect(
+      deliver(handleSubscriptionRevoked, "subscription.revoked", subscription({ id: "sub_x", status: "canceled" }), "2026-10-01T00:00:02Z"),
+    ).resolves.toBeUndefined();
+    expect(await org()).toMatchObject({ subscriptionId: "sub_new", subscriptionStatus: "active" });
+    expect((await org()).polarRetiredSubscriptionIds).toContain("sub_x");
+    // The late activation of the revoked subscription must not bind it.
+    await deliver(handleSubscriptionActive, "subscription.active", subscription({ id: "sub_x" }), "2026-10-01T00:00:03Z");
+    expect(await org()).toMatchObject({ subscriptionId: "sub_new" });
   });
 
   it("acknowledges a customer.deleted for a customer shared by several organizations", async () => {
