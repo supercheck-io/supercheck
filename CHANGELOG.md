@@ -35,6 +35,10 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 - The incident page now uses **Overview**, **Investigation** and **Post-mortem** tabs instead of side sheets, with the open tab kept in the URL. Unsent notes, drafts and a brief that is still generating survive a tab switch. **Ask Copilot** opens the Copilot page scoped to the incident.
 - The incident summary card shows a short AI summary and says when it comes from the evidence brief or triage. Only a completed investigation shows a confidence rating. Summaries end on a whole sentence, the Overview tab no longer repeats the resolution above the summary, and AI actions on the incident page use subtly coloured buttons.
 
+### Deprecated
+
+- `NEXT_PUBLIC_BASE_URL` (use `NEXT_PUBLIC_APP_URL`), `NEXTAUTH_SECRET` and `AUTH_SECRET` (use `BETTER_AUTH_SECRET`), `PRIVATE_AGENT_POLL_INTERVAL_MS` (use `PRIVATE_AGENT_RETRY_INTERVAL_MS`) and `STATUS_PAGE_CNAME_TARGET` (derived from `STATUS_PAGE_DOMAIN`) still work but log a warning once and will be removed in a future release. `NEXT_PUBLIC_APP_URL` now takes precedence over `NEXT_PUBLIC_BASE_URL` for the job trigger URL. `app/.env.example` and `worker/.env.example` now list the advanced tunables.
+
 ### Fixed
 
 - SSL expiry alerts are suppressed during scheduled maintenance, like other monitor alerts.

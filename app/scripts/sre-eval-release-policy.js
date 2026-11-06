@@ -25,6 +25,7 @@ function normalizeReleaseChannel(value) {
 }
 
 function inferReleaseChannel(env = process.env) {
+  // Internal: SRE_EVAL_* and GITHUB_EVENT_NAME are read by the release-eval CI gate; not operator settings.
   const explicit = env.SRE_EVAL_RELEASE_CHANNEL || env.SRE_EVAL_RELEASE_PROFILE;
   if (explicit) return normalizeReleaseChannel(explicit);
   if (env.GITHUB_EVENT_NAME === "pull_request") return "pull_request";

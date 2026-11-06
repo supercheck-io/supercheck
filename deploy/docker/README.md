@@ -39,6 +39,8 @@ Execution workers use the worker readiness endpoint (`/health/ready`) for health
 
 Use `./init-secrets.sh` to generate secure defaults, then configure:
 
+This section covers the variables the Compose files forward. Advanced tunables you can add to the `app` or `worker` `environment:` block are listed, commented, in `app/.env.example` and `worker/.env.example`.
+
 ### Base (all deployments)
 
 | Variable | Description |

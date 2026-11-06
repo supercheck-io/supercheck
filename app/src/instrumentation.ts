@@ -9,6 +9,7 @@
 
 export async function register() {
   // Only run on server-side
+  // Internal: NEXT_RUNTIME is set by Next.js itself.
   if (process.env.NEXT_RUNTIME === 'nodejs') {
     // Cloud-only error monitoring. The gate does not import the SDK, so disabled
     // and self-hosted deployments never load @sentry/*.

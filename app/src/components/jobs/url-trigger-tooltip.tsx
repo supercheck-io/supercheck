@@ -21,7 +21,7 @@ interface ApiDocsTooltipProps {
 
 export function UrlTriggerTooltip({ jobId }: ApiDocsTooltipProps) {
   const [open, setOpen] = useState(false);
-  const triggerUrl = `${process.env.NEXT_PUBLIC_BASE_URL || window.location.origin}/api/jobs/${jobId}/trigger`;
+  const triggerUrl = `${(process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_BASE_URL || window.location.origin).replace(/\/+$/, "")}/api/jobs/${jobId}/trigger`;
   
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text);

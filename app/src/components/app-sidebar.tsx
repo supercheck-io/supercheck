@@ -51,6 +51,7 @@ import {
 import { useAdminStatus } from "@/hooks/use-admin-status";
 import { getReleaseVersionBadge } from "@/lib/release-metadata";
 
+// Internal: build-time value baked in by the release image build; not an operator setting.
 const releaseVersionBadge = getReleaseVersionBadge(
   process.env.NEXT_PUBLIC_SUPERCHECK_VERSION,
 );

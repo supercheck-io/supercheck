@@ -1,3 +1,8 @@
+const mockWarnOnce = jest.fn();
+jest.mock("@/lib/deprecated-env", () => ({
+  warnDeprecatedEnvOnce: (...args: unknown[]) => mockWarnOnce(...args),
+}));
+
 describe("status page domain utilities", () => {
   const originalEnv = process.env;
 
@@ -140,6 +145,20 @@ describe("status page domain utilities", () => {
       expect(getEffectiveStatusPageCnameTarget()).toBe(
         "cname.status.example.com"
       );
+    });
+
+    it("warns once that STATUS_PAGE_CNAME_TARGET is deprecated, and stays silent without it", async () => {
+      mockWarnOnce.mockClear();
+      process.env.SELF_HOSTED = "true";
+      process.env.STATUS_PAGE_DOMAIN = "status.example.com";
+
+      const { getEffectiveStatusPageCnameTarget } = await import("./status-page-domain");
+      getEffectiveStatusPageCnameTarget();
+      expect(mockWarnOnce).not.toHaveBeenCalled();
+
+      process.env.STATUS_PAGE_CNAME_TARGET = "cname.status.example.com";
+      getEffectiveStatusPageCnameTarget();
+      expect(mockWarnOnce).toHaveBeenCalledWith("STATUS_PAGE_CNAME_TARGET", "STATUS_PAGE_DOMAIN");
     });
 
     it("falls back to localhost when STATUS_PAGE_DOMAIN is localhost", async () => {

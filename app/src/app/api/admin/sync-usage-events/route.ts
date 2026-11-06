@@ -22,6 +22,7 @@ export async function POST(request: NextRequest) {
   try {
     // Verify cron secret for automated calls
     const cronSecret = request.headers.get("x-cron-secret");
+    // Cloud-only: CRON_SECRET guards the hosted-only trigger; self-hosted installs do not set it.
     const expectedSecret = process.env.CRON_SECRET;
     
     // Check if this is a valid cron request

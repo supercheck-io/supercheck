@@ -14,6 +14,7 @@ export type SreLiveEvalEnvironment = {
 };
 
 export function parseSreLiveEvalEnvironment(env: Partial<NodeJS.ProcessEnv> = process.env): SreLiveEvalEnvironment {
+  // Internal: SRE_EVAL_* variables configure the AI SRE eval harness (CI and maintainers); not operator settings.
   const enabled = env.SRE_EVAL_LIVE_ENABLED === "true";
   const incidentIdsRaw = env.SRE_EVAL_INCIDENT_IDS?.trim();
   const incidentIdsByFixtureId = incidentIdsRaw ? liveEvalIncidentMapSchema.parse(JSON.parse(incidentIdsRaw)) : {};

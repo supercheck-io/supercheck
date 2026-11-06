@@ -149,6 +149,7 @@ export async function GET() {
   const responseBody = {
     status: overallStatus,
     build: {
+      // Internal: set by the release image build; not an operator setting.
       revision: process.env.SUPERCHECK_BUILD_SHA || "unknown",
     },
     timestamp: new Date().toISOString(),
