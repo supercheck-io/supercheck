@@ -384,6 +384,31 @@ describe('MonitorDynamicWorkerService lifecycle', () => {
     expect(moveToDelayed).toHaveBeenCalledWith(expect.any(Number), 'token');
   });
 
+  it('saves legacy single-queue results inside the job, so a save failure fails it for retry', async () => {
+    const { service } = setup();
+    const results = [{ monitorId: 'm1' }];
+    const saveMonitorResults = jest
+      .fn()
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error('db down'));
+    Object.assign(service['monitorService'], {
+      executeMonitorWithLocations: jest.fn().mockResolvedValue(results),
+      saveMonitorResults,
+    });
+    jest
+      .spyOn(service as any, 'assertBrowserCapability')
+      .mockResolvedValue(undefined);
+    const job = {
+      name: EXECUTE_MONITOR_JOB_NAME,
+      data: { type: 'http_request' },
+    };
+    await expect(service['processJob'](job as never)).resolves.toBe(results);
+    expect(saveMonitorResults).toHaveBeenCalledWith(results);
+    await expect(service['processJob'](job as never)).rejects.toThrow(
+      'db down',
+    );
+  });
+
   function setup(location = 'local') {
     const execute = jest.fn().mockRejectedValue(new Error('DB unavailable'));
     const subscriber = Object.assign(new EventEmitter(), {
