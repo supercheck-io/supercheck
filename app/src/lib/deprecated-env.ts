@@ -24,10 +24,10 @@ export function getJobTriggerBaseUrl(
   requestOrigin: string,
   env: Record<string, string | undefined> = process.env,
 ): string {
-  if (env.NEXT_PUBLIC_APP_URL) return env.NEXT_PUBLIC_APP_URL;
+  if (env.NEXT_PUBLIC_APP_URL) return env.NEXT_PUBLIC_APP_URL.replace(/\/+$/, "");
   if (env.NEXT_PUBLIC_BASE_URL) {
     warnDeprecatedEnvOnce("NEXT_PUBLIC_BASE_URL", "NEXT_PUBLIC_APP_URL");
-    return env.NEXT_PUBLIC_BASE_URL;
+    return env.NEXT_PUBLIC_BASE_URL.replace(/\/+$/, "");
   }
   return requestOrigin;
 }

@@ -28,6 +28,10 @@ describe("deprecated environment fallbacks", () => {
       expect(warn.mock.calls[0][0]).toContain("NEXT_PUBLIC_BASE_URL");
     });
 
+    it("drops a trailing slash", () => {
+      expect(getJobTriggerBaseUrl("https://origin", { NEXT_PUBLIC_APP_URL: "https://new/" })).toBe("https://new");
+    });
+
     it("falls back to the request origin when neither is set", () => {
       expect(getJobTriggerBaseUrl("https://origin", {})).toBe("https://origin");
       expect(warn).not.toHaveBeenCalled();
