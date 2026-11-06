@@ -133,11 +133,39 @@ describe("EmailService", () => {
     expect(mockSendMail).toHaveBeenCalledWith(expect.objectContaining({ to: "ok@test.com" }));
   });
 
-  it("returns all recipients as failed when SMTP verification fails", async () => {
-    mockedCreateTransport.mockReturnValue({
-      verify: jest.fn().mockRejectedValue(new Error("Connection failed")),
-      sendMail: jest.fn(),
-    });
+  it("does not verify() per send and reuses the pooled transporter", async () => {
+    const mockVerify = jest.fn();
+    mockedCreateTransport.mockReturnValue({ verify: mockVerify, sendMail: jest.fn().mockResolvedValue({}) });
+    const message = { recipients: ["a@test.com"], subject: "S", text: "t", html: "<p>t</p>" };
+
+    await service.sendEmailToMultiple(message);
+    await service.sendEmailToMultiple(message);
+
+    expect(mockVerify).not.toHaveBeenCalled();
+    expect(mockedCreateTransport).toHaveBeenCalledTimes(1);
+    expect(mockedCreateTransport).toHaveBeenCalledWith(
+      expect.objectContaining({ pool: true, connectionTimeout: 10000, greetingTimeout: 5000 }),
+    );
+  });
+
+  it("rebuilds the transporter when the SMTP config changes", async () => {
+    const close = jest.fn();
+    mockedCreateTransport.mockReturnValue({ close, sendMail: jest.fn().mockResolvedValue({}) });
+    const message = { recipients: ["a@test.com"], subject: "S", text: "t", html: "<p>t</p>" };
+
+    await service.sendEmailToMultiple(message);
+    process.env.SMTP_HOST = "smtp2.example.com";
+    await service.sendEmailToMultiple(message);
+
+    expect(mockedCreateTransport).toHaveBeenCalledTimes(2);
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails the remaining recipients fast after a connection-level error", async () => {
+    const mockSendMail = jest
+      .fn()
+      .mockRejectedValueOnce(Object.assign(new Error("Connection timeout"), { code: "ETIMEDOUT" }));
+    mockedCreateTransport.mockReturnValue({ sendMail: mockSendMail });
 
     const result = await service.sendEmailToMultiple({
       recipients: ["first@test.com", "second@test.com"],
@@ -146,12 +174,13 @@ describe("EmailService", () => {
       html: "<p>Alert body</p>",
     });
 
+    expect(mockSendMail).toHaveBeenCalledTimes(1);
     expect(result).toEqual({
       sentCount: 0,
       failedAddresses: ["first@test.com", "second@test.com"],
       errors: {
-        "first@test.com": "Connection failed",
-        "second@test.com": "Connection failed",
+        "first@test.com": "Connection timeout",
+        "second@test.com": "Connection timeout",
       },
       skippedAddresses: [],
     });

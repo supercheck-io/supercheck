@@ -1,4 +1,5 @@
 import nodemailer, { type Transporter } from "nodemailer";
+import type SMTPPool from "nodemailer/lib/smtp-pool";
 import { isUndeliverableRecipient } from "@/lib/email-recipient-policy";
 
 export interface EmailOptions {
@@ -26,7 +27,7 @@ export interface MultiRecipientResult {
 
 type SmtpConfigError = { error: string };
 
-function buildSmtpTransporter(): Transporter | SmtpConfigError {
+function buildSmtpConfig(): SMTPPool.Options | SmtpConfigError {
   const smtpHost = process.env.SMTP_HOST;
   const smtpPort = parseInt(process.env.SMTP_PORT || "587");
   const smtpUser = process.env.SMTP_USER;
@@ -45,7 +46,7 @@ function buildSmtpTransporter(): Transporter | SmtpConfigError {
     return { error: "SMTP sender not configured (missing SMTP_FROM_EMAIL)" };
   }
 
-  return nodemailer.createTransport({
+  return {
     pool: true,
     maxConnections: 5,
     maxMessages: 100,
@@ -62,8 +63,14 @@ function buildSmtpTransporter(): Transporter | SmtpConfigError {
     connectionTimeout: 10000,
     greetingTimeout: 5000,
     socketTimeout: 30000,
-  });
+  };
 }
+
+/** Failures meaning the server is unreachable: the next recipient would only wait again. */
+const CONNECTION_ERROR_CODES = new Set([
+  "ECONNECTION", "ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "ESOCKET",
+  "EDNS", "ENOTFOUND", "EHOSTUNREACH", "EGREETING", "EAUTH",
+]);
 
 /**
  * From/Reply-To for every message. SMTP_FROM_NAME adds a display name unless
@@ -81,19 +88,33 @@ export function smtpSender(env: NodeJS.ProcessEnv = process.env): {
   };
 }
 
-function isSmtpConfigError(value: Transporter | SmtpConfigError): value is SmtpConfigError {
-  return "error" in value;
-}
-
 export class EmailService {
   private static instance: EmailService;
   private transporter?: Transporter;
+  private transporterKey?: string;
 
   public static getInstance(): EmailService {
     if (!EmailService.instance) {
       EmailService.instance = new EmailService();
     }
     return EmailService.instance;
+  }
+
+  /** One pooled transporter, rebuilt only when the SMTP env changes. */
+  private getTransporter(): Transporter | SmtpConfigError {
+    const config = buildSmtpConfig();
+    if ("error" in config) return config;
+    const key = JSON.stringify(config);
+    if (!this.transporter || this.transporterKey !== key) {
+      try {
+        this.transporter?.close?.();
+      } catch {
+        // closing a dead pool must never block sending
+      }
+      this.transporter = nodemailer.createTransport(config);
+      this.transporterKey = key;
+    }
+    return this.transporter;
   }
 
   /**
@@ -106,13 +127,10 @@ export class EmailService {
     if (isUndeliverableRecipient(options.to)) {
       return { success: true, message: "Skipped: recipient domain does not accept email" };
     }
-    const transporterOrError = this.transporter ?? buildSmtpTransporter();
-    if (isSmtpConfigError(transporterOrError)) {
-      return { success: false, message: "", error: transporterOrError.error };
+    const transporter = this.getTransporter();
+    if ("error" in transporter) {
+      return { success: false, message: "", error: transporter.error };
     }
-
-    const transporter = transporterOrError;
-    this.transporter = transporter;
     const sender = smtpSender();
 
     try {
@@ -135,9 +153,11 @@ export class EmailService {
   }
 
   /**
-   * Send the same email to multiple recipients sequentially using a single SMTP
-   * connection. Returns per-address success/failure so callers can report
-   * partial delivery (e.g. one bad address doesn't block the rest).
+   * Send the same email to multiple recipients sequentially over the pooled
+   * transporter. Returns per-address success/failure so callers can report
+   * partial delivery (e.g. one bad address doesn't block the rest). After a
+   * connection-level failure the remaining recipients fail fast with the same
+   * error instead of each waiting out a timeout.
    */
   async sendEmailToMultiple(
     options: MultiRecipientEmailOptions
@@ -148,39 +168,28 @@ export class EmailService {
     if (deliverable.length === 0) {
       return { sentCount: 0, failedAddresses: [], errors: {}, skippedAddresses };
     }
-    const transporterOrError = this.transporter ?? buildSmtpTransporter();
-    if (isSmtpConfigError(transporterOrError)) {
+    const transporter = this.getTransporter();
+    if ("error" in transporter) {
       return {
         sentCount: 0,
         failedAddresses: [...deliverable],
-        errors: Object.fromEntries(
-          deliverable.map((r) => [r, transporterOrError.error])
-        ),
+        errors: Object.fromEntries(deliverable.map((r) => [r, transporter.error])),
         skippedAddresses,
       };
     }
-
-    const transporter = transporterOrError;
-    this.transporter = transporter;
     const sender = smtpSender();
-
-    try {
-      await transporter.verify();
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      return {
-        sentCount: 0,
-        failedAddresses: [...deliverable],
-        errors: Object.fromEntries(deliverable.map((r) => [r, msg])),
-        skippedAddresses,
-      };
-    }
 
     let sentCount = 0;
     const failedAddresses: string[] = [];
     const errors: Record<string, string> = {};
+    let connectionError: string | undefined;
 
     for (const recipient of deliverable) {
+      if (connectionError) {
+        failedAddresses.push(recipient);
+        errors[recipient] = connectionError;
+        continue;
+      }
       try {
         await transporter.sendMail({
           ...sender,
@@ -194,6 +203,10 @@ export class EmailService {
         const msg = error instanceof Error ? error.message : String(error);
         failedAddresses.push(recipient);
         errors[recipient] = msg;
+        const code = (error as { code?: unknown })?.code;
+        if (typeof code === "string" && CONNECTION_ERROR_CODES.has(code)) {
+          connectionError = msg;
+        }
       }
     }
 
