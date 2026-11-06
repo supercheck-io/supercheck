@@ -16,6 +16,11 @@ describe("FormInput maxLength", () => {
     expect(screen.getByText("3/10")).toBeInTheDocument();
   });
 
+  it("starts the count from defaultValue", () => {
+    render(<FormInput label="Name" id="name" maxLength={10} showCharacterCount defaultValue="abc" />);
+    expect(screen.getByText("3/10")).toBeInTheDocument();
+  });
+
   it("follows the value of a controlled input", () => {
     function Controlled() {
       const [value, setValue] = useState("hello");

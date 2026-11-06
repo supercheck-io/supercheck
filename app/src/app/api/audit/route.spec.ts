@@ -237,6 +237,14 @@ describe("Audit API Route", () => {
       expect(logsQuery.offset).toHaveBeenCalledWith(0);
     });
 
+    it("reports only cursor-relevant pagination fields in cursor mode", async () => {
+      setup([row(ID1, "2026-01-01 00:00:00.000001+00")]);
+      const cursor = cursorOf("2026-01-01 00:00:00.000002+00", ID2);
+      const body = await (await GET(new NextRequest(`http://localhost/api/audit?limit=2&cursor=${cursor}`))).json();
+
+      expect(body.data.pagination).toEqual({ totalCount: 3, limit: 2, hasNext: false, nextCursor: null });
+    });
+
     it("uses > for ascending order", async () => {
       const { logsQuery } = setup([]);
       const cursor = cursorOf("2026-01-01 00:00:00.000002+00", ID2);
@@ -245,7 +253,7 @@ describe("Audit API Route", () => {
       expect(new PgDialect().sqlToQuery(logsQuery.where.mock.calls[0][0]).sql).toContain(">");
     });
 
-    it.each(["not-a-cursor", cursorOf("2026-01-01", ID2), cursorOf("2026-01-01 00:00:00+00", "x"), cursorOf("2026-01-01 00:00:00+00", `${ID2}|extra`)])(
+    it.each(["not-a-cursor", cursorOf("2026-02-31 00:00:00+00", ID2), cursorOf("2026-01-01 24:00:00+00", ID2), cursorOf("2026-01-01",ID2), cursorOf("2026-01-01 00:00:00+00", "x"), cursorOf("2026-01-01 00:00:00+00", `${ID2}|extra`)])(
       "rejects the malformed cursor %s with 400",
       async (cursor) => {
         const response = await GET(new NextRequest(`http://localhost/api/audit?cursor=${cursor}`));

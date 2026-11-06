@@ -5,7 +5,7 @@ import { projectVariables } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { resolveProjectPermissionContext, checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireUserAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
-import { updateVariableSchema, createFileVariableSchema, keySchema, MAX_FILE_SIZE, ALLOWED_FILE_MIME_TYPES, resolveFileMimeType, variableValidationDetails, type VariableType } from "@/lib/validations/variable";
+import { updateVariableSchema, keySchema, MAX_FILE_SIZE, ALLOWED_FILE_MIME_TYPES, resolveFileMimeType, variableValidationDetails, type VariableType } from "@/lib/validations/variable";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { encryptValue } from "@/lib/encryption";
 import { getS3Client } from "@/lib/s3-proxy";

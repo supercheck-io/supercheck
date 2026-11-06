@@ -243,7 +243,12 @@ function VariableActionsCell({ row, table }: { row: Row<Variable>; table: Table<
       </DropdownMenu>
       {(canManage || canDelete) && (
         <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-          <AlertDialogContent onCloseAutoFocus={(e) => { e.preventDefault(); triggerRef.current?.focus(); }}>
+          <AlertDialogContent onCloseAutoFocus={(e) => {
+                // After a successful delete the row (and trigger) is gone; leave Radix's default then.
+                if (!triggerRef.current?.isConnected) return;
+                e.preventDefault();
+                triggerRef.current.focus();
+              }}>
             <AlertDialogHeader>
               <AlertDialogTitle>Delete Variable</AlertDialogTitle>
               <AlertDialogDescription>

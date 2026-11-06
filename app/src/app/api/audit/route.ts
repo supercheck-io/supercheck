@@ -17,9 +17,17 @@ function encodeCursor(createdAt: string, id: string) {
   return Buffer.from(`${createdAt}|${id}`).toString('base64url');
 }
 
+// Rejects dates the regex allows but Postgres would not (2026-02-31, hour 24), so a bad cursor is a 400, not a 500.
+function isRealTimestamp(createdAt: string) {
+  const [, y, mo, d, h, mi, sec] = createdAt.match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})/) ?? [];
+  if (!y) return false;
+  const date = new Date(Date.UTC(+y, +mo - 1, +d, +h, +mi, +sec));
+  return date.getUTCMonth() === +mo - 1 && date.getUTCDate() === +d && +h < 24 && +mi < 60 && +sec < 60;
+}
+
 function decodeCursor(raw: string): { createdAt: string; id: string } | null {
   const [createdAt, id, extra] = Buffer.from(raw, 'base64url').toString().split('|');
-  if (extra !== undefined || !createdAt || !id || !TIMESTAMP_RE.test(createdAt) || !UUID_RE.test(id)) return null;
+  if (extra !== undefined || !createdAt || !id || !TIMESTAMP_RE.test(createdAt) || !isRealTimestamp(createdAt) || !UUID_RE.test(id)) return null;
   return { createdAt, id };
 }
 
@@ -124,7 +132,8 @@ export async function GET(request: NextRequest) {
         userName: user.name,
         userEmail: user.email,
         userImage: user.image,
-        createdAtCursor: sql<string>`${auditLogs.createdAt}::text`,
+        // to_char, not ::text: the text form follows the session DateStyle, which the cursor parser must not depend on.
+        createdAtCursor: sql<string>`to_char(${auditLogs.createdAt} at time zone 'UTC', 'YYYY-MM-DD HH24:MI:SS.US') || '+00'`,
       })
       .from(auditLogs)
       .leftJoin(user, eq(auditLogs.userId, user.id))
@@ -163,15 +172,18 @@ export async function GET(request: NextRequest) {
             image: log.userImage
           }
         })),
-        pagination: {
-          currentPage: page,
-          totalPages,
-          totalCount,
-          limit,
-          hasNext: page < totalPages,
-          hasPrev: page > 1,
-          nextCursor
-        },
+        // Offset fields (page, totalPages, hasPrev) describe nothing in cursor mode, so they are left out.
+        pagination: cursor
+          ? { totalCount, limit, hasNext: nextCursor !== null, nextCursor }
+          : {
+              currentPage: page,
+              totalPages,
+              totalCount,
+              limit,
+              hasNext: page < totalPages,
+              hasPrev: page > 1,
+              nextCursor
+            },
         filters: {
           actions: uniqueActions.map(a => a.action).filter(Boolean)
         }

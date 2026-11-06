@@ -112,6 +112,7 @@ export function AuditLogsTable({ className }: AuditLogsTableProps) {
       if ((next.organizationId ?? null) !== data.organizationId) {
         // The active organization changed in another tab: mixing orgs would mislead.
         toast.error("Organization changed. Reloading audit logs.");
+        setData(null);
         void fetchAuditLogs();
         return;
       }
@@ -164,13 +165,24 @@ export function AuditLogsTable({ className }: AuditLogsTableProps) {
     return <TabLoadingSpinner message="Loading audit logs..." />;
   }
 
-  const loaded = data?.logs.length ?? 0;
+  if (!data) {
+    return (
+      <div className={`flex flex-col items-center gap-3 py-10 text-sm text-muted-foreground ${className ?? ""}`}>
+        <p>Audit logs are unavailable.</p>
+        <Button variant="outline" size="sm" onClick={() => void fetchAuditLogs()}>
+          Retry
+        </Button>
+      </div>
+    );
+  }
+
+  const loaded = data.logs.length;
 
   return (
     <div className={`space-y-4 ${className}`}>
       <AdminDataTable
         columns={auditLogColumns}
-        data={data?.logs || []}
+        data={data.logs}
         toolbar={CustomToolbar}
         itemName="audit logs"
         keepPageOnDataChange
@@ -178,7 +190,7 @@ export function AuditLogsTable({ className }: AuditLogsTableProps) {
           globalFilterColumns: ["action", "user", "details"],
         }}
       />
-      {data?.nextCursor && (
+      {data.nextCursor && (
         <div className="flex items-center justify-center gap-3 text-sm text-muted-foreground">
           <span aria-live="polite">
             Showing the newest {loaded.toLocaleString()} of {data.totalCount.toLocaleString()} events. Search and

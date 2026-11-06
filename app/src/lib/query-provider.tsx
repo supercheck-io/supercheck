@@ -126,7 +126,9 @@ function getClient(identity: string | null | undefined) {
   if (isServer) return createClient();
 
   if (identity !== undefined && browserIdentity !== identity) {
+    // First identity: keep the client (children already hold it) but drop anything cached while pending.
     if (browserIdentity !== undefined) clearQueryCache();
+    else browserClient?.clear();
     browserIdentity = identity;
   }
 

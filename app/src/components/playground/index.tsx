@@ -199,6 +199,8 @@ const Playground: React.FC<PlaygroundProps> = ({
   const [reportUrl, setReportUrl] = useState<string | null>(null);
   const [performanceRunId, setPerformanceRunId] = useState<string | null>(null);
   const k6ToastRunRef = useRef<string | null>(null);
+  // Run the user asked to cancel: the report may report it as an error before the cancel call returns.
+  const cancelRequestedRunRef = useRef<string | null>(null);
   const [performanceLocation, setPerformanceLocation] =
     useState<PerformanceLocation>(initialPerformanceLocation ?? "global");
   const [locationDialogOpen, setLocationDialogOpen] = useState(false);
@@ -1209,6 +1211,7 @@ const Playground: React.FC<PlaygroundProps> = ({
 
     setIsCancelling(true);
     setShowCancelConfirm(false);
+    cancelRequestedRunRef.current = performanceRunId;
 
     try {
       const response = await fetch(`/api/runs/${currentRunId}/cancel`, {
@@ -1717,7 +1720,7 @@ const Playground: React.FC<PlaygroundProps> = ({
                             if (status !== "running") {
                               // Announce a run that finished while this page watched it, once.
                               // (Reopening a finished run, or a cancel the user confirmed, is silent.)
-                              if (isRunning && k6ToastRunRef.current !== performanceRunId) {
+                              if (isRunning && k6ToastRunRef.current !== performanceRunId && cancelRequestedRunRef.current !== performanceRunId) {
                                 k6ToastRunRef.current = performanceRunId;
                                 if (status === "passed") {
                                   toast.success("Performance test passed", {

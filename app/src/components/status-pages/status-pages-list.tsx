@@ -362,7 +362,14 @@ export default function StatusPagesList() {
                 Create Status Page
               </Button>
             </DialogTrigger>
-            <DialogContent className="w-[calc(100vw-2rem)] max-h-[90vh] overflow-y-auto sm:max-w-xl">
+            <DialogContent
+              className="w-[calc(100vw-2rem)] max-h-[90vh] overflow-y-auto sm:max-w-xl"
+              onOpenAutoFocus={(event) => {
+                // Start on the name field, not the first info button.
+                event.preventDefault();
+                document.getElementById("name")?.focus();
+              }}
+            >
               <DialogHeader>
                 <DialogTitle>Create Status Page</DialogTitle>
                 <DialogDescription>
