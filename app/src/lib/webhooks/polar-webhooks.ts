@@ -171,9 +171,11 @@ async function updateWebhookResult(
 }
 
 /**
- * A cancel or revoke can arrive before the activation that binds its subscription. Retry such an event
- * for a short window after it was sent (the activation normally lands within seconds); after that it is
- * acknowledged, so a permanent mismatch cannot retry forever and get the endpoint disabled.
+ * A cancel or revoke can arrive before the activation that binds its subscription (the organization
+ * exists but holds no subscription yet). Retry such an event for a short window after it was sent (the
+ * activation normally lands within seconds); after that it is acknowledged, so a permanent mismatch
+ * cannot retry forever and get the endpoint disabled. A cancel/revoke for a subscription the
+ * organization already replaced is stale and never reaches here (runOrderedPolarEvent acknowledges it).
  */
 const OUT_OF_ORDER_RETRY_WINDOW_MS = 15 * 60 * 1000;
 function withinOutOfOrderRetryWindow(payload: PolarWebhookPayload): boolean {
@@ -1841,7 +1843,7 @@ async function processCustomerDeleted(payload: PolarWebhookPayload) {
     console.error(
       `[Polar] Customer ${truncateId(customerId)} is shared by several organizations; refusing to guess one`,
     );
-    return undefined;
+    throw new UnrecoverableWebhookError("Polar customer is shared by several organizations");
   }
   const org = matches[0];
 
@@ -1927,6 +1929,7 @@ function orderedHandler(
         eventKey: eventType + ":" + getWebhookEventKey(payload, eventType),
         subscriptionId,
         canReplaceSubscription: eventType === "subscription.active",
+        ignoreWhenReplaced: eventType === "subscription.canceled" || eventType === "subscription.revoked",
         // The organization can be deleted by an admin while this event waits for its row lock.
         organizationDeleted: subscriptionId ? () => belongsToDeletedOrganization(subscriptionId) : undefined,
         periodStart: getSubscriptionDatesFromPayload(payload).startsAt,
@@ -1950,7 +1953,9 @@ function orderedHandler(
       if (error instanceof UnrecoverableWebhookError && !error.context) {
         error.context = {
           eventType,
-          eventId: typeof payload.data?.id === "string" ? payload.data.id : undefined,
+          // The webhook's own id (what Polar redelivers under), not the resource id below.
+          eventId: typeof payload.id === "string" && payload.id ? payload.id : undefined,
+          resourceId: typeof payload.data?.id === "string" ? payload.data.id : undefined,
           organizationId: getOrganizationIdFromPayload(payload) ?? undefined,
           customerId: getCustomerIdFromPayload(payload) ?? undefined,
           subscriptionId: getSubscriptionIdFromPayload(payload) || undefined,

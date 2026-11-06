@@ -16,7 +16,7 @@ export async function recordUnrecoverableWebhook(error: UnrecoverableWebhookErro
       // The id comes from the payload: store it only when it is a UUID.
       organizationId: organizationId && /^[0-9a-f-]{36}$/i.test(organizationId) ? organizationId : null,
       action: WEBHOOK_UNRECOVERABLE_ACTION,
-      details: { resource: "polar_webhook", resourceId: refs.eventId, metadata: { ...refs, reason: error.message } },
+      details: { resource: "polar_webhook", resourceId: refs.resourceId ?? refs.eventId, metadata: { ...refs, reason: error.message } },
     });
   } catch (persistError) {
     console.error("[Polar] Failed to record an acknowledged webhook failure:", persistError);

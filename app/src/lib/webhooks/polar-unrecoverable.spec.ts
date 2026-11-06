@@ -12,11 +12,11 @@ function failure(context?: UnrecoverableWebhookError["context"]) {
 beforeEach(() => values.mockReset().mockResolvedValue(undefined));
 
 it("stores the event type, id and tenant references with the reason", async () => {
-  await recordUnrecoverableWebhook(failure({ eventType: "subscription.active", eventId: "sub_1", organizationId: ORG, customerId: "cus_1" }));
+  await recordUnrecoverableWebhook(failure({ eventType: "subscription.active", eventId: "evt_1", resourceId: "sub_1", organizationId: ORG, customerId: "cus_1" }));
   expect(values).toHaveBeenCalledWith({
     organizationId: ORG,
     action: WEBHOOK_UNRECOVERABLE_ACTION,
-    details: { resource: "polar_webhook", resourceId: "sub_1", metadata: { eventType: "subscription.active", eventId: "sub_1", customerId: "cus_1", reason: "Unknown product ID: p" } },
+    details: { resource: "polar_webhook", resourceId: "sub_1", metadata: { eventType: "subscription.active", eventId: "evt_1", resourceId: "sub_1", customerId: "cus_1", reason: "Unknown product ID: p" } },
   });
 });
 

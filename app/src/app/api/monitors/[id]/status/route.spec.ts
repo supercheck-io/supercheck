@@ -215,6 +215,14 @@ describe("resuming under the plan limit", () => {
     expect(response.headers.get("Retry-After")).toBe("2");
   });
 
+  it("uses the lock even when the monitor was read as active (a concurrent pause makes that read stale)", async () => {
+    jest.mocked(db.query.monitors.findFirst).mockResolvedValue({ id: "m", organizationId: "org", projectId: "p", status: "up" } as never);
+    lockedTx([{ id: "p" }], [{ id: "m", name: "M", organizationId: "org", projectId: "p", status: "up" }]);
+    const response = await patch("up");
+    expect(response.status).toBe(200);
+    expect(withResumeWithinPlan).toHaveBeenCalledWith("org", "monitor", "00000000-0000-4000-8000-000000000002", expect.any(Function));
+  });
+
   it("does not take a plan slot to pause", async () => {
     lockedTx([{ id: "p" }], [{ id: "m", name: "M", organizationId: "org", projectId: "p", status: "paused" }]);
     const response = await patch("paused");

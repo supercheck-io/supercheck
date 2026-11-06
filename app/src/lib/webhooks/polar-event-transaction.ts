@@ -34,6 +34,8 @@ export class UnrecoverableWebhookError extends Error {
 export type UnrecoverableWebhookContext = {
   eventType: string;
   eventId?: string;
+  /** The provider resource the event is about (subscription, customer, order). */
+  resourceId?: string;
   organizationId?: string;
   customerId?: string;
   subscriptionId?: string;
@@ -52,6 +54,8 @@ export async function runOrderedPolarEvent(
     snapshot?: { status: string | undefined; plan: string | null };
     /** True when the organization was deliberately deleted meanwhile: acknowledge instead of retrying. */
     organizationDeleted?: () => Promise<boolean>;
+    /** A cancel/revoke for a subscription the organization no longer holds is stale: acknowledge it, never retry. */
+    ignoreWhenReplaced?: boolean;
   },
   apply: () => Promise<void>,
 ) {
@@ -108,6 +112,10 @@ export async function runOrderedPolarEvent(
         org.subscriptionId &&
         input.subscriptionId !== org.subscriptionId,
     );
+    if (replacing && input.ignoreWhenReplaced) {
+      console.warn(`[Polar] Ignoring a ${input.eventKey.split(":")[0]} for a subscription organization ${org.id} no longer holds`);
+      return;
+    }
     if (replacing) {
       // An update/payment on an old subscription cannot replace a newer one.
       // Only subscription.active establishes a replacement binding.
