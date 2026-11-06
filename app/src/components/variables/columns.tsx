@@ -1,7 +1,7 @@
 "use client";
 
 import { type ColumnDef, type Row, type Table } from "@tanstack/react-table";
-import { Badge } from "@/components/ui/badge";
+import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
 import { Button } from "@/components/ui/button";
 import { 
   DropdownMenu, 
@@ -26,7 +26,10 @@ import {
   Eye,
   EyeOff,
   FileText,
-  Download
+  Download,
+  Braces,
+  Lock,
+  type LucideIcon,
 } from "lucide-react";
 import { Variable } from "./schema";
 import { DataTableColumnHeader } from "@/components/ui/data-table-column-header";
@@ -286,6 +289,16 @@ function VariableActionsCell({ row, table }: { row: Row<Variable>; table: Table<
   );
 }
 
+// Same tinted pills as the tests, monitors and services tables.
+const TYPE_BADGES: Record<string, { label: string; tone: TableBadgeTone; icon: LucideIcon }> = {
+  variable: { label: "Variable", tone: "info", icon: Braces },
+  secret: { label: "Secret", tone: "danger", icon: Lock },
+  file: { label: "File", tone: "success", icon: FileText },
+};
+
+const typeBadgeKey = (type: unknown) =>
+  typeof type === "string" && Object.hasOwn(TYPE_BADGES, type) ? type : "variable";
+
 export const columns: ColumnDef<Variable>[] = [
   {
     accessorKey: "key",
@@ -314,36 +327,19 @@ export const columns: ColumnDef<Variable>[] = [
       <DataTableColumnHeader column={column} title="Type" />
     ),
     cell: ({ row }) => {
-      const type = (row.getValue("type") as string) || "variable";
-      const badgeConfig: Record<string, { label: string; className: string }> = {
-        secret: {
-          label: "Secret",
-          className: "border-red-300 text-red-600 bg-red-100 dark:border-red-400 dark:text-red-400 dark:bg-red-900/20",
-        },
-        file: {
-          label: "File",
-          className: "border-green-300 text-green-600 bg-green-100 dark:border-green-400 dark:text-green-400 dark:bg-green-900/20",
-        },
-        variable: {
-          label: "Variable",
-          className: "dark:bg-gray-600 dark:text-gray-200",
-        },
-      };
-      const config = badgeConfig[type] || badgeConfig.variable;
+      const config = TYPE_BADGES[typeBadgeKey(row.getValue("type"))];
+      const TypeIcon = config.icon;
       return (
         <div className="flex items-center w-[120px]">
-          <Badge 
-            variant={type === "variable" ? "secondary" : "outline"} 
-            className={`text-xs ${config.className}`}
-          >
+          <TableBadge tone={config.tone} compact className="gap-1">
+            <TypeIcon aria-hidden="true" className="h-3.5 w-3.5" />
             {config.label}
-          </Badge>
+          </TableBadge>
         </div>
       );
     },
     filterFn: (row, id, value) => {
-      const type = (row.getValue(id) as string) || "variable";
-      return value.includes(type);
+      return value.includes(typeBadgeKey(row.getValue(id)));
     },
   },
   {
@@ -366,7 +362,7 @@ export const columns: ColumnDef<Variable>[] = [
       if (type === "file") {
         return (
           <div className="flex items-center gap-1.5">
-            <FileText className="h-4 w-4 text-green-500 shrink-0" />
+            <FileText className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
             <span className="text-sm font-mono truncate max-w-[200px]">{variable.fileName || "file"}</span>
             {variable.fileSize && (
               <span className="text-xs text-muted-foreground">

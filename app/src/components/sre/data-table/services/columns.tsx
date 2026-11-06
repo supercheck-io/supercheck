@@ -8,11 +8,15 @@ import { UUIDField } from "@/components/ui/uuid-field";
 import { isSafeEvidenceSourceUri } from "@/lib/sre/evidence-source-uri";
 import {
   Archive,
-  ExternalLink,
   Eye,
+  GitBranch,
   MoreHorizontal,
+  Network,
   Pencil,
+  Users,
 } from "lucide-react";
+import { IconTile } from "@/components/sre/incidents/incident-ui";
+import { environmentTone, TIER_TONES } from "@/components/sre/services/service-style";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -60,11 +64,11 @@ export const columns: ColumnDef<SreServiceListItem>[] = [
       <DataTableColumnHeader column={column} title="Service" />
     ),
     cell: ({ row }) => (
-      <span
-        className="block max-w-[240px] truncate font-medium"
-        title={row.original.name}
-      >
-        {row.original.name}
+      <span className="flex max-w-[260px] items-center gap-2">
+        <IconTile icon={Network} tone="sky" />
+        <span className="truncate font-medium" title={row.original.name}>
+          {row.original.name}
+        </span>
       </span>
     ),
   },
@@ -75,7 +79,7 @@ export const columns: ColumnDef<SreServiceListItem>[] = [
     ),
     cell: ({ row }) =>
       row.original.environment ? (
-        <TableBadge tone="info" compact className="whitespace-nowrap">
+        <TableBadge tone={environmentTone(row.original.environment)} compact className="whitespace-nowrap">
           {row.original.environment}
         </TableBadge>
       ) : (
@@ -103,7 +107,7 @@ export const columns: ColumnDef<SreServiceListItem>[] = [
     ),
     cell: ({ row }) => {
       const tier = row.getValue("tier") as SreServiceListItem["tier"];
-      return <TableBadge compact>{tierLabels[tier]}</TableBadge>;
+      return <TableBadge tone={TIER_TONES[tier]} compact>{tierLabels[tier]}</TableBadge>;
     },
     filterFn: (row, id, value) => {
       return value.includes(row.getValue(id));
@@ -115,11 +119,14 @@ export const columns: ColumnDef<SreServiceListItem>[] = [
       <DataTableColumnHeader column={column} title="Owner" />
     ),
     cell: ({ row }) => (
-      <span
-        className="block max-w-[180px] truncate"
-        title={row.original.ownerTeam ?? "Unassigned"}
-      >
-        {row.original.ownerTeam ?? "Unassigned"}
+      <span className="flex max-w-[200px] items-center gap-1.5">
+        <Users aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" />
+        <span
+          className={row.original.ownerTeam ? "truncate" : "truncate text-muted-foreground"}
+          title={row.original.ownerTeam ?? "Unassigned"}
+        >
+          {row.original.ownerTeam ?? "Unassigned"}
+        </span>
       </span>
     ),
   },
@@ -133,9 +140,11 @@ export const columns: ColumnDef<SreServiceListItem>[] = [
           href={repo}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center gap-1 text-xs text-primary hover:underline whitespace-nowrap"
+          aria-label={`Open repository for ${row.original.name}`}
+          onClick={(event) => event.stopPropagation()}
+          className="inline-flex items-center gap-1 whitespace-nowrap rounded-sm text-xs font-medium text-sky-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:text-sky-300"
         >
-          Link <ExternalLink className="h-3 w-3" />
+          <GitBranch aria-hidden="true" className="h-3.5 w-3.5" /> Repo
         </a>
       ) : (
         <span>-</span>

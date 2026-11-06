@@ -7,6 +7,7 @@ import { DateCell } from "@/components/ui/table-cells";
 import { DataTableColumnHeader } from "@/components/tests/data-table-column-header";
 import { UUIDField } from "@/components/ui/uuid-field";
 import { TableBadge } from "@/components/ui/table-badge";
+import { IconTile } from "@/components/sre/incidents/incident-ui";
 
 export interface AdminOrganization {
   id: string;
@@ -45,9 +46,9 @@ export const createOrgColumns = (): ColumnDef<AdminOrganization>[] => [
       <DataTableColumnHeader column={column} title="Name" />
     ),
     cell: ({ row }) => (
-      <div className="flex items-center h-8 font-medium">
-        <Building className="mr-2 h-4 w-4 text-muted-foreground" />
-        {row.getValue("name")}
+      <div className="flex h-8 items-center gap-2.5 font-medium">
+        <IconTile icon={Building} tone="indigo" className="size-8 rounded-lg [&_svg]:size-4" />
+        <span className="truncate">{row.getValue("name")}</span>
       </div>
     ),
   },

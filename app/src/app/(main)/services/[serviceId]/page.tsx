@@ -15,17 +15,16 @@ export default async function ServiceDetailPage({
   ];
 
   return (
-    <div className="flex h-[calc(100svh-3.5rem)] min-h-0 flex-col overflow-hidden">
+    // On desktop the page fits the window (no page scrollbar); each column scrolls on its own.
+    <div data-fit-viewport className="flex min-h-0 flex-1 flex-col lg:min-h-[560px] lg:overflow-hidden">
       <div className="sr-only">
         <PageBreadcrumbs items={breadcrumbs} />
       </div>
-      <div className="min-h-0 flex-1 overflow-hidden p-4 pb-6">
-        <Card className="h-full min-w-0 overflow-hidden shadow-sm">
-          <CardContent className="h-full min-w-0 overflow-hidden p-4 md:p-6">
-            <ServiceDetailPageClient serviceId={serviceId} />
-          </CardContent>
-        </Card>
-      </div>
+      <Card className="m-4 flex min-h-0 min-w-0 flex-1 flex-col shadow-sm">
+        <CardContent className="flex min-h-0 flex-1 flex-col p-4 lg:p-6">
+          <ServiceDetailPageClient serviceId={serviceId} />
+        </CardContent>
+      </Card>
     </div>
   );
 }

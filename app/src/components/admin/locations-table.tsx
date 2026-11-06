@@ -7,6 +7,7 @@ import {
   useDeleteLocation,
 } from "@/hooks/use-locations";
 import { TableBadge } from "@/components/ui/table-badge";
+import { IconTile } from "@/components/sre/incidents/incident-ui";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -109,7 +110,7 @@ export function LocationsTable() {
             {row.original.flag ? (
               <span className="text-lg leading-none">{row.original.flag}</span>
             ) : (
-              <MapPin className="h-4 w-4 text-muted-foreground" />
+              <IconTile icon={MapPin} tone="emerald" className="size-8 rounded-lg [&_svg]:size-4" />
             )}
             <span className="truncate">{row.original.name}</span>
           </div>
@@ -144,7 +145,7 @@ export function LocationsTable() {
         ),
         cell: ({ row }) => (
           <div className="flex items-center gap-1">
-            <Server className="h-3.5 w-3.5 text-muted-foreground" />
+            <Server aria-hidden="true" className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" />
             <span className="text-sm">{row.original.workerCount}</span>
           </div>
         ),

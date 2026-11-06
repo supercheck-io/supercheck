@@ -15,6 +15,7 @@ import {
   archiveSreCopilotChat,
   type SreCopilotChatHistory,
 } from "@/actions/sre-ai";
+import { IconTile, toneButton } from "@/components/sre/incidents/incident-ui";
 import { SreAssistantUiThread } from "@/components/sre/sre-assistant-ui-thread";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -37,6 +38,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Spinner } from "@/components/ui/spinner";
+import { TableBadge } from "@/components/ui/table-badge";
 import { cn } from "@/lib/utils";
 
 type SreAiConsoleProps = {
@@ -234,16 +236,19 @@ export function SreAiConsole({
                       onClick={() => selectHistory(history)}
                       className={cn(
                         "w-full rounded-xl px-3 py-2.5 text-left text-sm transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                        isActive && "bg-muted ring-1 ring-border",
+                        isActive && "bg-violet-500/10 ring-1 ring-violet-500/30 hover:bg-violet-500/15",
                       )}
                     >
                       <span className="block truncate font-medium">
                         {history.title ?? "Copilot chat"}
                       </span>
-                      <span className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                      <span className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
                         <time dateTime={history.updatedAt}>
                           {formatHistoryDate(history.updatedAt)}
                         </time>
+                        {history.incidentId && (
+                          <TableBadge tone="indigo" compact className="h-5 px-1.5">Incident</TableBadge>
+                        )}
                       </span>
                     </button>
                   );
@@ -257,11 +262,12 @@ export function SreAiConsole({
       <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <header className="flex min-h-14 shrink-0 flex-col gap-2 border-b bg-background/95 px-3 py-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:px-5">
           <div className="flex min-w-0 items-center gap-3">
-            <div className="hidden h-8 w-8 items-center justify-center rounded-full sm:flex border bg-background shadow-sm">
-              <Bot className="h-4 w-4" />
-            </div>
+            <IconTile icon={Bot} tone="violet" className="hidden size-9 rounded-lg sm:inline-flex [&_svg]:size-5" />
             <div className="min-w-0">
-              <h1 className="truncate text-lg font-semibold leading-tight">Copilot</h1>
+              <div className="flex min-w-0 items-center gap-2">
+                <h1 className="truncate text-lg font-semibold leading-tight">Copilot</h1>
+                {incidentId && <TableBadge tone="indigo" compact>Incident</TableBadge>}
+              </div>
               <p className="truncate text-sm text-muted-foreground">
                 {incidentId
                   ? "Scoped to this incident. Answers cite saved evidence."
@@ -287,6 +293,7 @@ export function SreAiConsole({
               type="button"
               variant="outline"
               size="sm"
+              className={toneButton("violet")}
               onClick={startNewChat}
               aria-label="New chat"
             >

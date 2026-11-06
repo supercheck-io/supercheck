@@ -30,6 +30,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { TableBadge } from "@/components/ui/table-badge";
 import { reportHeadline } from "@/lib/sre/evidence-brief-summary";
 import { getDisplayStatus } from "@/lib/sre/incident-status-display";
+import { COLUMN_SCROLL, TAB_TRIGGER } from "@/components/sre/incidents/incident-ui";
 
 type IncidentTab = "overview" | "investigation" | "postmortem";
 /** The `?tab=` values the page accepts: the three tabs plus the legacy `evidence` and `brief` links. */
@@ -46,12 +47,6 @@ const FOCUS_FOR_LINK: Partial<Record<IncidentTabParam, string>> = {
   evidence: "evidence",
   brief: "conclusion",
 };
-
-// Desktop columns scroll inside the page card with the scrollbar hidden, as on Copilot; small screens scroll the page.
-const COLUMN_SCROLL = "lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden";
-
-// Icons take the tab's text colour; the active tab's icon picks up the primary colour.
-const TAB_TRIGGER = "gap-2 [&_svg]:size-4 [&_svg]:text-muted-foreground data-[state=active]:[&_svg]:text-primary";
 
 /** Pre-fills the resolve dialog with one paragraph; the person still reads and confirms it. */
 export function defaultResolutionNote(recoveredAt: string | null | undefined, rootCause: string | null) {
