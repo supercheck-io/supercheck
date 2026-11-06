@@ -8,6 +8,7 @@ import { hashApiKey } from "@/lib/security/api-key-hash";
 import { createLogger } from "@/lib/logger/index";
 import { decryptConnectorCredential } from "@/lib/sre/connectors";
 import { resolveMcpToolCall } from "@/lib/sre/connectors/providers/mcp";
+import { redactEndpointQuery } from "@/lib/sre/connectors/endpoint-policy";
 import { db } from "@/utils/db";
 import { authenticatePrivateAgent, unauthorized } from "../auth";
 
@@ -228,7 +229,10 @@ export async function POST(request: NextRequest) {
         .where(and(eq(privateAgentJobs.id, leasedJob.id), eq(privateAgentJobs.privateAgentId, auth.agent.id)));
       return NextResponse.json({ job: null });
     };
-    if (isMcp && typeof storedEndpoint === "string" && storedEndpoint.includes("?") && typeof fullEndpoint !== "string") {
+    // Only the redacted form is unrecoverable; a job queued before redaction still holds its full URL and leases as is.
+    const storedIsRedacted =
+      typeof storedEndpoint === "string" && storedEndpoint.includes("?") && redactEndpointQuery(storedEndpoint) === storedEndpoint;
+    if (isMcp && storedIsRedacted && typeof fullEndpoint !== "string") {
       // The stored URL is query-redacted and the key is gone: the agent could only dial a broken endpoint.
       return failLeased("mcp_endpoint_missing");
     }

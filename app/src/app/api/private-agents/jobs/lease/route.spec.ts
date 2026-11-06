@@ -228,7 +228,9 @@ describe("Private Agent job lease route MCP endpoint", () => {
     expect(missing.body).toEqual({ job: null });
     expect(missing.set).toHaveBeenCalledWith(expect.objectContaining({ status: "failed", errorCode: "mcp_endpoint_missing" }));
     const plain = await leaseMcp({ connectorType: "mcp", endpointUrl: "https://mcp.example/mcp" }, null);
-    expect(plain.body.job.jobSpec.endpointUrl).toBe("https://mcp.example/mcp");
+    expect(plain.body.job.jobSpec.endpointUrl).toBe("https://mcp.example/mcp");    // A job queued before redaction still holds its full URL and must keep leasing.
+    const legacy = await leaseMcp({ connectorType: "mcp", endpointUrl: "https://mcp.example/mcp?key=SECRET" }, null);
+    expect(legacy.body.job.jobSpec.endpointUrl).toBe("https://mcp.example/mcp?key=SECRET");
   });
 
   it("fails a queued MCP tool call whose tool is now destructive or no longer allowlisted", async () => {
