@@ -58,7 +58,7 @@ const updateJobSchema = z.object({
       alertOnTimeout: z.boolean().optional(),
       failureThreshold: z.number().nullish(),
       recoveryThreshold: z.number().nullish(),
-      customMessage: z.string().optional(),
+      customMessage: z.string().max(1000, { message: "Alert message must be at most 1000 characters." }).optional(),
       incidentEnabled: z.boolean().optional(),
       incidentSeverity: z.enum(["sev1", "sev2", "sev3", "sev4"]).optional(),
       autoResolveIncident: z.boolean().optional(),

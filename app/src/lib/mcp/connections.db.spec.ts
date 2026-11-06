@@ -115,6 +115,16 @@ describe("MCP connections", () => {
     expect(await client`SELECT 1 FROM oauth_consent WHERE id = ${id}`).toHaveLength(0);
   });
 
+  it("keeps a scope that a racing approval wrote while this one was in flight", async () => {
+    const id = await seedConnection({ userId: aliceId, clientId: dcrClient, projectId: projectA });
+    await client`UPDATE oauth_consent SET scopes = ARRAY['mcp:read'] WHERE id = ${id}`;
+    await withMergedConsentScopes({ userId: aliceId, clientId: dcrClient, projectId: projectA }, ["mcp:read"], async () => {
+      await client`UPDATE oauth_consent SET scopes = ARRAY['mcp:read','mcp:sre'] WHERE id = ${id}`;
+    });
+    const [row] = await client<{ scopes: string[] }[]>`SELECT scopes FROM oauth_consent WHERE id = ${id}`;
+    expect(row.scopes).toEqual(["mcp:read", "mcp:sre"]);
+  });
+
   afterEach(async () => {
     await client`DELETE FROM oauth_access_token`;
     await client`DELETE FROM oauth_refresh_token`;

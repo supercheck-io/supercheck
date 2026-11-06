@@ -205,7 +205,6 @@ export async function GET(request: Request) {
             event
           );
           if (report) {
-            payload.reportPath = report.reportPath;
             payload.reportStatus = report.status;
             reportStatus = report.status;
           }
@@ -248,7 +247,6 @@ export async function GET(request: Request) {
               reportStatus: status,
               derivedStatus: deriveFinalStatus(status, status),
               testId,
-              reportPath: report.reportPath,
               errorDetails: report.errorDetails,
             });
           }
@@ -279,7 +277,6 @@ export async function GET(request: Request) {
           reportStatus: initStatus,
           derivedStatus: deriveFinalStatus(initStatus, initStatus),
           testId,
-          reportPath: initialReport.reportPath,
           errorDetails: initialReport.errorDetails,
         });
         if (isClosed) return;

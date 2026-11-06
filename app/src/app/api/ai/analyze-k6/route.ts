@@ -11,6 +11,7 @@ import { headers } from "next/headers";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { getS3FileContent } from "@/lib/s3-proxy";
 import { requireAuthContext, authErrorStatus, AuthError } from "@/lib/auth-context";
+import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { db } from "@/utils/db";
 import { runs, projects } from "@/db/schema";
 import { and, eq, inArray } from "drizzle-orm";
@@ -115,6 +116,14 @@ export async function POST(request: NextRequest) {
       AuthService.validateUserAccess(request, compareRun.runId),
     ]);
     const authContext = await requireAuthContext();
+
+    // Spends AI credits and sends run data to the model, so it needs the same level as AI fix (update), not view.
+    if (!checkPermissionWithContext("test", "update", authContext)) {
+      return NextResponse.json(
+        { success: false, reason: "forbidden", message: "You do not have permission to use AI analysis in this project" },
+        { status: 403 },
+      );
+    }
     const requestedRunIds = [...new Set([baselineRun.runId, compareRun.runId])];
     const ownedRuns = await db
       .select({ id: runs.id, projectId: runs.projectId, organizationId: projects.organizationId })

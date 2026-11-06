@@ -44,6 +44,7 @@ function request(role = "project_editor", selectedProjects = [HOST_PROJECT]) {
 beforeEach(() => {
   jest.clearAllMocks(); mockSelect.mockReset();
   (getUserOrgRole as jest.Mock).mockResolvedValue("org_owner");
+  (getRedisConnection as jest.Mock).mockResolvedValue({ eval: jest.fn(async () => 0), zrem: jest.fn(async () => 1) });
   mockSelect.mockReturnValueOnce(rows([{ id: "own-org-owner", role: "user", email: "owner@example.com" }]))
     .mockReturnValueOnce(rows([])).mockReturnValueOnce(rows([])).mockReturnValueOnce(rows([{ id: HOST_PROJECT, name: "Project" }]));
   values.mockReturnValue({ returning: jest.fn(async () => [{ id: "invite", email: "owner@example.com", role: "project_editor", expiresAt: new Date() }]) });
@@ -71,6 +72,36 @@ it("rejects a malformed project id with 400 before any database access", async (
   expect((await response.json()).error).toBe("Invalid project id");
   expect(mockSelect).not.toHaveBeenCalled();
   expect(mockInsert).not.toHaveBeenCalled();
+});
+
+it("treats a platform administrator email exactly like any other address", async () => {
+  mockSelect.mockReset().mockReturnValueOnce(rows([{ id: "admin", role: "super_admin", email: "owner@example.com" }]))
+    .mockReturnValueOnce(rows([])).mockReturnValueOnce(rows([])).mockReturnValueOnce(rows([{ id: HOST_PROJECT, name: "Project" }]));
+  const response = await POST(request());
+  expect(response.status).toBe(200);
+  expect(values).toHaveBeenCalledWith(expect.objectContaining({ organizationId: "host", email: "owner@example.com" }));
+  expect(renderOrganizationInvitationEmail).toHaveBeenCalled();
+});
+
+it("fails closed with 503 when Redis never answers, and when it is not ready", async () => {
+  jest.useFakeTimers();
+  try {
+    (getRedisConnection as jest.Mock).mockResolvedValue({ status: "ready", eval: jest.fn(() => new Promise(() => {})), zrem: jest.fn() });
+    const pending = POST(request());
+    await jest.advanceTimersByTimeAsync(2000);
+    const hung = await pending;
+    expect(hung.status).toBe(503);
+    expect(hung.headers.get("Retry-After")).toBe("30");
+  } finally {
+    jest.useRealTimers();
+  }
+  const evalMock = jest.fn();
+  mockSelect.mockReset()
+    .mockReturnValueOnce(rows([{ id: "own-org-owner", role: "user", email: "owner@example.com" }]))
+    .mockReturnValueOnce(rows([])).mockReturnValueOnce(rows([])).mockReturnValueOnce(rows([{ id: HOST_PROJECT, name: "Project" }]));
+  (getRedisConnection as jest.Mock).mockResolvedValue({ status: "reconnecting", eval: evalMock, zrem: jest.fn() });
+  expect((await POST(request())).status).toBe(503);
+  expect(evalMock).not.toHaveBeenCalled();
 });
 
 it("rejects a foreign or archived project before creating the invitation", async () => {
@@ -232,6 +263,17 @@ describe("accepted invitation quota", () => {
     jest.spyOn(console, "error").mockImplementation(() => {});
   });
 
+  it.each([
+    ["Redis is not configured", () => (getRedisConnection as jest.Mock).mockResolvedValue(null)],
+    ["Redis errors", () => (getRedisConnection as jest.Mock).mockResolvedValue({ eval: jest.fn().mockRejectedValue(new Error("down")), zrem: jest.fn() })],
+  ])("fails closed with 503 and Retry-After when %s", async (_label, breakRedis) => {
+    breakRedis();
+    const response = await POST(request());
+    expect(response.status).toBe(503);
+    expect(response.headers.get("Retry-After")).toBe("30");
+    expect(mockInsert).not.toHaveBeenCalled();
+  });
+
   it("returns the schema validation message for an invalid role", async () => {
     const response = await POST(request("org_owner"));
 
@@ -302,4 +344,11 @@ describe("accepted invitation quota", () => {
 it("returns 400, not 500, for a malformed JSON body", async () => {
   const bad = new NextRequest("https://app.supercheck.io/api/organizations/members/invite", { method: "POST", body: "{nope" });
   expect((await POST(bad)).status).toBe(400);
+});
+
+it("releases the reservation token when the limiter call fails", async () => {
+  const zrem = jest.fn(async () => 1);
+  (getRedisConnection as jest.Mock).mockResolvedValue({ status: "ready", eval: jest.fn().mockRejectedValue(new Error("x")), zrem });
+  expect((await POST(request())).status).toBe(503);
+  expect(zrem).toHaveBeenCalledWith(expect.stringContaining("invite:ratelimit"), expect.any(String));
 });

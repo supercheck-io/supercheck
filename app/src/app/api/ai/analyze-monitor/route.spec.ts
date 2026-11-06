@@ -80,18 +80,18 @@ describe("monitor AI analysis project authorization", () => {
     }
   });
 
-  it("checks view access against the monitor's own project and lets permitted users continue", async () => {
+  it("checks update access against the monitor's own project and lets permitted users continue", async () => {
     mockMonitor({ id: MONITOR_ID, organizationId: "org-1", projectId: "project-9" });
     hasPermissionForUser.mockResolvedValue(true);
 
     await post();
 
-    expect(hasPermissionForUser).toHaveBeenCalledWith("effective-user", "monitor", "view", {
+    expect(hasPermissionForUser).toHaveBeenCalledWith("effective-user", "monitor", "update", {
       organizationId: "org-1", projectId: "project-9",
     });
   });
 
-  it("denies users without project view access before spending credits or calling AI", async () => {
+  it("denies users without project update access before spending credits or calling AI", async () => {
     mockMonitor({ id: MONITOR_ID, organizationId: "org-1", projectId: "project-9" });
     hasPermissionForUser.mockResolvedValue(false);
 

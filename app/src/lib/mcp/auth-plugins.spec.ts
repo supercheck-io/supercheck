@@ -189,6 +189,7 @@ describe("createMcpAuthPlugins", () => {
     expect(options.accessTokenExpiresIn).toBe(15 * 60);
     expect(options.refreshTokenExpiresIn).toBe(30 * 24 * 60 * 60);
     expect(options.clientRegistrationAllowedScopes).toEqual(["mcp:read", "mcp:incidents:write", "mcp:sre", "offline_access"]);
+    expect(options.clientRegistrationDefaultScopes).toEqual(["mcp:read"]);
     expect(options.clientRegistrationDefaultApplicationType).toBe("infer");
   });
 

@@ -1,6 +1,6 @@
 /** @jest-environment node */
 import { PgDialect } from "drizzle-orm/pg-core";
-import { apikey, member, projectMembers, session } from "@/db/schema";
+import { apikey, invitation, member, projectMembers, session } from "@/db/schema";
 import { db } from "@/utils/db";
 import { requireUserAuthContext } from "@/lib/auth-context";
 import { clearRequestCache } from "@/lib/session-cache";
@@ -43,6 +43,7 @@ it.each(["project_viewer", "project_editor", "project_admin", "org_admin"])("let
   expect(query.sql).toContain('"active_project_id"');
   expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ action: "member_left", organizationId: "org-1", userId: "user-1" }), tx, { strict: true });
   expect(clearRequestCache).toHaveBeenCalledTimes(1);
+  expect(tx.update).toHaveBeenCalledWith(invitation);
 });
 it("allows leaving an organization with no projects", async () => {
   orgProjects = [];

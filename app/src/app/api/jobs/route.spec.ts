@@ -454,6 +454,7 @@ describe("Jobs route regressions", () => {
       ["a blank name", { name: "   " }],
       ["a name over 255 characters", { name: "x".repeat(256) }],
       ["a description over 2000 characters", { description: "x".repeat(2001) }],
+      ["an alert message over 1000 characters", { alertConfig: { enabled: false, customMessage: "x".repeat(1001) } }],
       ["more than 50 tests", { tests: Array.from({ length: 51 }, () => ({ id: TEST_ID })) }],
     ])("answers 400 for %s", async (_label, extra) => {
       const response = await post(extra);
