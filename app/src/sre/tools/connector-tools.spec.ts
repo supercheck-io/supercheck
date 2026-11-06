@@ -27,7 +27,7 @@ jest.mock("@/lib/sre/connectors", () => ({
 jest.mock("@/lib/private-agents/job-router", () => ({
   routeSreConnectorQuery: jest.fn(),
 }));
-jest.mock("@/lib/sre/private-agent-job-cancel", () => ({ cancelQueuedPrivateAgentJob: jest.fn(), requeueAbandonedPrivateAgentJob: jest.fn() }));
+jest.mock("@/lib/sre/private-agent-job-cancel", () => ({ releasePrivateAgentJobWaiter: jest.fn().mockResolvedValue(true), registerPrivateAgentJobWaiter: jest.fn(), requeueAbandonedPrivateAgentJob: jest.fn() }));
 jest.mock("@/lib/sre/private-agent-job-waiter", () => ({
   waitForPrivateAgentConnectorJob: jest.fn(),
 }));
@@ -578,8 +578,9 @@ describe("Copilot connector service scope", () => {
     });
     const values = jest.fn(() => ({ onConflictDoNothing: () => ({ returning: async () => [{ id: "job-7" }] }) }));
     db.insert.mockReturnValue({ values });
-    await expect(searchIncidentLiveConnectorEvidence(scope, search)).resolves.toMatchObject({ queued: true });
-    expect(jest.requireMock("@/lib/sre/private-agent-job-cancel").cancelQueuedPrivateAgentJob).toHaveBeenCalledWith(
+    jest.requireMock("@/lib/sre/private-agent-job-cancel").releasePrivateAgentJobWaiter.mockResolvedValue(true);
+    await expect(searchIncidentLiveConnectorEvidence(scope, search)).resolves.toMatchObject({ queued: true, message: expect.stringContaining("was cancelled") });
+    expect(jest.requireMock("@/lib/sre/private-agent-job-cancel").releasePrivateAgentJobWaiter).toHaveBeenCalledWith(
       expect.objectContaining({ jobId: "job-7" }),
     );
   });

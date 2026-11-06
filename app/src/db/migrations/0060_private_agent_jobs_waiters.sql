@@ -1,0 +1,1 @@
+ALTER TABLE "private_agent_jobs" ADD COLUMN "waiters" integer DEFAULT 0 NOT NULL;

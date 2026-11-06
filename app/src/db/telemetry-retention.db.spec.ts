@@ -228,6 +228,46 @@ describe("telemetry retention purge", () => {
     expect(seen.slice(1).every((s) => s.includes("> ('"))).toBe(true);
   });
 
+  it("private agent jobs: purges old finished jobs, keeps unfinished ones and each connector's newest", async () => {
+    const [org, proj, agent, c1, c2] = [id(), id(), id(), id(), id()];
+    const job = (status: string, days: number, connector: string | null) => {
+      const jid = id();
+      return [
+        jid,
+        `INSERT INTO private_agent_jobs (id, organization_id, project_id, private_agent_id, connector_id, job_class, status, authorized_by, policy_decision_hash, job_spec_hash, idempotency_key, created_at) VALUES ('${jid}','${org}','${proj}','${agent}',${connector ? `'${connector}'` : "NULL"},'sre_connector_query','${status}','agent','h','h','${jid}',${ago(days)})`,
+      ] as const;
+    };
+    const oldNoConnector = job("completed", 90, null);
+    const oldFailedC1 = job("failed", 90, c1);
+    const oldCancelledC1 = job("cancelled", 80, c1);
+    const newestOldC1 = job("timed_out", 70, c1); // c1's newest, still past the cutoff
+    const onlyOldC2 = job("completed", 60, c2); // c2's only job
+    const oldQueued = job("queued", 90, c2);
+    const recent = job("completed", 2, null);
+    const all = [oldNoConnector, oldFailedC1, oldCancelledC1, newestOldC1, onlyOldC2, oldQueued, recent];
+    await seed(all.map(([, s]) => s));
+    expect(await purge("private_agent_jobs")).toBe(3);
+    const left = await ids("private_agent_jobs");
+    expect([oldNoConnector, oldFailedC1, oldCancelledC1].some(([x]) => left.has(x))).toBe(false);
+    expect([newestOldC1, onlyOldC2, oldQueued, recent].every(([x]) => left.has(x))).toBe(true);
+  });
+
+  it("private agent jobs: the last waiter cancels an abandoned job, an earlier one leaves it queued", async () => {
+    const [org, proj, agent] = [id(), id(), id()];
+    const jid = id();
+    await seed([
+      `INSERT INTO private_agent_jobs (id, organization_id, project_id, private_agent_id, job_class, status, authorized_by, policy_decision_hash, job_spec_hash, idempotency_key, waiters) VALUES ('${jid}','${org}','${proj}','${agent}','sre_connector_query','queued','agent','h','h','${jid}',2)`,
+    ]);
+    const release = async () => {
+      const [row] = await sql.unsafe(
+        `UPDATE private_agent_jobs SET waiters = GREATEST(waiters - 1, 0), status = CASE WHEN waiters <= 1 AND status = 'queued' THEN 'cancelled' ELSE status END WHERE id = '${jid}' RETURNING status, waiters`,
+      );
+      return row;
+    };
+    expect(await release()).toMatchObject({ status: "queued", waiters: 1 });
+    expect(await release()).toMatchObject({ status: "cancelled", waiters: 0 });
+  });
+
   it("incident history cascades from its parent and is not covered by any rule", async () => {
     expect(TELEMETRY_RETENTION_RULES.map((r) => r.table)).not.toEqual(
       expect.arrayContaining(["sre_incident_timeline_events"]),

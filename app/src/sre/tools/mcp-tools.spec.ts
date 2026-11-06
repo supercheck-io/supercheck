@@ -11,13 +11,13 @@ jest.mock("@/lib/sre/mcp-private-agent-job", () => ({
   queueMcpPrivateAgentJob: jest.fn(),
   loadMcpJob: jest.fn(() => jest.fn()),
 }));
-jest.mock("@/lib/sre/private-agent-job-cancel", () => ({ cancelQueuedPrivateAgentJob: jest.fn(), requeueAbandonedPrivateAgentJob: jest.fn() }));
+jest.mock("@/lib/sre/private-agent-job-cancel", () => ({ releasePrivateAgentJobWaiter: jest.fn(), registerPrivateAgentJobWaiter: jest.fn(), requeueAbandonedPrivateAgentJob: jest.fn() }));
 jest.mock("@/lib/sre/private-agent-job-waiter", () => ({ waitForPrivateAgentConnectorJob: jest.fn() }));
 
 import type { externalConnectors } from "@/db/schema";
 import { MCP_FENCE_CLOSE, MCP_FENCE_OPEN } from "@/lib/sre/connectors/providers/mcp";
 import { queueMcpPrivateAgentJob } from "@/lib/sre/mcp-private-agent-job";
-import { cancelQueuedPrivateAgentJob } from "@/lib/sre/private-agent-job-cancel";
+import { releasePrivateAgentJobWaiter } from "@/lib/sre/private-agent-job-cancel";
 import { waitForPrivateAgentConnectorJob } from "@/lib/sre/private-agent-job-waiter";
 import { checkSreConnectorSearchRateLimit } from "@/lib/sre/sre-rate-limiter";
 import { executeMcpToolCall, McpToolCallRejectedError } from "./mcp-tools";
@@ -191,15 +191,15 @@ describe("executeMcpToolCall", () => {
   it("returns a non-evidence marker when the job is still queued", async () => {
     wait.mockResolvedValue({ state: "pending", job: { status: "queued" } });
     queue.mockResolvedValue({ jobId: "job-9", privateAgentId: "a", route: { jobSpecHash: "h" }, inserted: true });
-    await expect(run().promise).resolves.toMatchObject({ queued: true, evidence: [] });
-    expect(cancelQueuedPrivateAgentJob).toHaveBeenCalledWith(expect.objectContaining({ jobId: "job-9" }));
+    (releasePrivateAgentJobWaiter as jest.Mock).mockResolvedValue(true);
+    await expect(run().promise).resolves.toMatchObject({ queued: true, evidence: [], message: expect.stringContaining("was cancelled") });
+    expect(releasePrivateAgentJobWaiter).toHaveBeenCalledWith(expect.objectContaining({ jobId: "job-9" }));
   });
 
-  it("does not cancel a reused job that another caller may be waiting on", async () => {
+  it("reports that the job was not cancelled when another waiter keeps it alive", async () => {
     wait.mockResolvedValue({ state: "pending", job: { status: "queued" } });
     queue.mockResolvedValue({ jobId: "job-9", privateAgentId: "a", route: { jobSpecHash: "h" }, inserted: false });
-    (cancelQueuedPrivateAgentJob as jest.Mock).mockClear();
-    await run().promise;
-    expect(cancelQueuedPrivateAgentJob).not.toHaveBeenCalled();
+    (releasePrivateAgentJobWaiter as jest.Mock).mockResolvedValue(false);
+    await expect(run().promise).resolves.toMatchObject({ queued: true, message: expect.stringContaining("not cancelled") });
   });
 });

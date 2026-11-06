@@ -414,6 +414,20 @@
       "when": 1793839126988,
       "tag": "0058_notification_policy_auto_investigate_enabled_at",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1793958668718,
+      "tag": "0059_private_agent_jobs_created_at_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1793958710736,
+      "tag": "0060_private_agent_jobs_waiters",
+      "breakpoints": true
     }
   ]
 }

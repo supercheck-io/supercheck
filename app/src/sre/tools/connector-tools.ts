@@ -45,7 +45,7 @@ import {
 import { summarizeJobSpec } from "@/lib/sre/connectors/endpoint-policy";
 import { isValidKubernetesLabelSelector } from "@/lib/sre/connectors/kubernetes-label-selector";
 import { normalizePrivateAgentEvidenceSummaries } from "@/lib/sre/connector-job-evidence";
-import { cancelQueuedPrivateAgentJob, requeueAbandonedPrivateAgentJob } from "@/lib/sre/private-agent-job-cancel";
+import { registerPrivateAgentJobWaiter, releasePrivateAgentJobWaiter, requeueAbandonedPrivateAgentJob } from "@/lib/sre/private-agent-job-cancel";
 import { waitForPrivateAgentConnectorJob } from "@/lib/sre/private-agent-job-waiter";
 import { ConnectorQueryRejectedError } from "@/lib/sre/connectors/providers/provider-query-guards";
 import { flatCredentialFields } from "@/lib/sre/connectors/providers/provider-credentials";
@@ -808,6 +808,7 @@ export async function searchIncidentLiveConnectorEvidence(
         jobSpecHash: route.jobSpecHash,
         jobSpec: route.jobSpec,
         idempotencyKey: route.idempotencyKey,
+        waiters: 1,
       })
       .onConflictDoNothing()
       .returning({ id: privateAgentJobs.id });
@@ -827,7 +828,9 @@ export async function searchIncidentLiveConnectorEvidence(
       throw new Error("Failed to queue Private Agent connector job");
     }
     if (existingJob) {
-      await requeueAbandonedPrivateAgentJob({ jobId, organizationId: scope.organizationId, projectId: scope.projectId });
+      const ref = { jobId, organizationId: scope.organizationId, projectId: scope.projectId };
+      await requeueAbandonedPrivateAgentJob(ref);
+      await registerPrivateAgentJobWaiter(ref);
     }
 
     const waitResult = await waitForPrivateAgentConnectorJob({
@@ -912,11 +915,8 @@ export async function searchIncidentLiveConnectorEvidence(
       };
     }
 
-    // Nobody waits for it any more; cancel so it cannot run late (no-op if it was already leased).
-    // Only a job this call inserted: a reused job may have another caller waiting on it.
-    if (insertedJob) {
-      await cancelQueuedPrivateAgentJob({ jobId, organizationId: scope.organizationId, projectId: scope.projectId });
-    }
+    // Leave the waiters; the last one out cancels the job so it cannot run late (not if it was already leased).
+    const cancelled = await releasePrivateAgentJobWaiter({ jobId, organizationId: scope.organizationId, projectId: scope.projectId });
 
     await db.insert(sreInvestigationToolCalls).values({
       investigationRunId: scope.investigationRunId ?? null,
@@ -938,9 +938,9 @@ export async function searchIncidentLiveConnectorEvidence(
       privateAgentJobId: jobId,
       queued: true,
       evidence: [],
-      message: insertedJob
+      message: cancelled
         ? "Private Agent connector search was cancelled after the bounded wait because no agent picked it up; it can be retried"
-        : "Existing Private Agent connector search is still queued after the bounded wait",
+        : "Private Agent connector search was not cancelled and may still run; its result is not available yet. Do not treat it as evidence",
     };
   }
 
