@@ -5,7 +5,7 @@ import { db } from "@/utils/db";
 import { monitors, projects } from "@/db/schema";
 import { and, eq, ne } from "drizzle-orm";
 import { isAuthError, requireUserAuthContext, authErrorStatus } from "@/lib/auth-context";
-import { withResumeWithinPlan } from "@/lib/middleware/plan-enforcement";
+import { resumeRefusalResponse, withResumeWithinPlan } from "@/lib/middleware/plan-enforcement";
 import { monitorResumeBlockedResponse } from "@/lib/execution/trial-interval-response";
 import { hasPermissionForUser } from '@/lib/rbac/middleware';
 import { logAuditEvent } from "@/lib/audit-logger";
@@ -118,21 +118,10 @@ export async function PATCH(
     // Turning a paused monitor back on takes a plan slot: count and write under the plan-limit lock.
     let updatedMonitor;
     if (currentMonitor.status === 'paused' && status !== 'paused') {
-      const resumed = await withResumeWithinPlan(monitorOrgId, 'monitor', write);
-      if (!resumed.ok && 'busy' in resumed) {
-        return NextResponse.json(
-          { error: "Too many concurrent requests. Please retry shortly." },
-          { status: 503, headers: { "Retry-After": "2" } },
-        );
-      }
-      if (!resumed.ok) {
-        const { denied } = resumed;
-        return NextResponse.json(
-          { error: denied.error, code: "plan_limit", limit: denied.limit, upgrade: denied.upgrade },
-          { status: 403 },
-        );
-      }
-      updatedMonitor = resumed.value;
+      const resumed = await withResumeWithinPlan(monitorOrgId, 'monitor', id, write);
+      const refusal = resumeRefusalResponse(resumed);
+      if (refusal) return refusal;
+      updatedMonitor = resumed.ok ? resumed.value : undefined;
     } else {
       updatedMonitor = await db.transaction(write);
     }

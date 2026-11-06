@@ -1,3 +1,4 @@
+import { NextResponse } from "next/server";
 import { getExecutionPolicy } from "@/lib/execution/execution-policy";
 /**
  * Plan Enforcement Middleware
@@ -181,28 +182,55 @@ export async function checkResumeWithinPlan(
 }
 
 type ResumeDenied = Extract<Awaited<ReturnType<typeof checkResumeWithinPlan>>, { allowed: false }>;
+export type ResumeOutcome<T> = { ok: true; value: T } | { ok: false; denied: ResumeDenied } | { ok: false; busy: true };
 
 /**
- * Runs `write` (a resume or publish) only if the plan still has a slot, serialized with every other
- * create/resume of the same resource in the organization (same lock as insertWithinPlanLimit). `write`
- * must use the `tx` it is given. Returns `busy` when the lock could not be taken in time.
+ * Runs `write` (a resume or publish of `targetId`) only if the plan still has a slot, serialized with every
+ * other create/resume of the same resource in the organization (same lock as insertWithinPlanLimit). The
+ * target's status is read under the lock: one that another request already turned on takes no new slot, so
+ * a simultaneous duplicate is not refused. `write` must use the `tx` it is given. `busy` means the lock
+ * could not be taken in time.
  */
 export async function withResumeWithinPlan<T>(
   organizationId: string,
   resource: "monitor" | "status_page",
+  targetId: string,
   write: (tx: PlanLimitTransaction) => Promise<T>,
-): Promise<{ ok: true; value: T } | { ok: false; denied: ResumeDenied } | { ok: false; busy: true }> {
+): Promise<ResumeOutcome<T>> {
   // Resolve the plan before taking the lock: it needs its own pool connection.
   const plan = isPolarEnabled() ? await subscriptionService.getOrganizationPlan(organizationId) : undefined;
   try {
     return await withPlanLimitLock(organizationId, resource === "monitor" ? "monitors" : "status_pages", async (tx) => {
-      const cap = await checkResumeWithinPlan(organizationId, resource, { executor: tx, plan });
-      if (!cap.allowed) return { ok: false as const, denied: cap };
+      const [current] = resource === "monitor"
+        ? await tx.select({ status: monitors.status }).from(monitors).where(eq(monitors.id, targetId))
+        : await tx.select({ status: statusPages.status }).from(statusPages).where(eq(statusPages.id, targetId));
+      const alreadyOn = resource === "monitor" ? current?.status !== "paused" : current?.status === "published";
+      if (current && !alreadyOn) {
+        const cap = await checkResumeWithinPlan(organizationId, resource, { executor: tx, plan });
+        if (!cap.allowed) return { ok: false as const, denied: cap };
+      }
       return { ok: true as const, value: await write(tx) };
     });
   } catch (error) {
     if (error instanceof PlanLimitBusyError) return { ok: false, busy: true };
     throw error;
+  }
+}
+
+/** The response for a resume the plan refused or could not serialize; null when it went through. */
+export function resumeRefusalResponse(outcome: ResumeOutcome<unknown>): NextResponse | null {
+  if (outcome.ok) return null;
+  if ("busy" in outcome) {
+    return NextResponse.json({ error: "Too many concurrent requests. Please retry shortly." }, { status: 503, headers: { "Retry-After": "2" } });
+  }
+  const { denied } = outcome;
+  return NextResponse.json({ error: denied.error, code: "plan_limit", limit: denied.limit, upgrade: denied.upgrade }, { status: 403 });
+}
+
+/** Thrown by code that cannot return a response itself (the monitor update service). */
+export class ResumeRefusedError extends Error {
+  constructor(readonly outcome: Exclude<ResumeOutcome<unknown>, { ok: true }>) {
+    super("Resume refused by the plan limit");
   }
 }
 

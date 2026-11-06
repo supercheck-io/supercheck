@@ -24,7 +24,7 @@ import {
   sanitizeUrl,
   sanitizeHostname,
 } from "@/lib/input-sanitizer";
-import { checkMonitorLimit, countPlanMonitors } from "@/lib/middleware/plan-enforcement";
+import { checkMonitorLimit, countPlanMonitors, resumeRefusalResponse, ResumeRefusedError } from "@/lib/middleware/plan-enforcement";
 import { monitorResumeBlockedResponse, trialIntervalErrorResponse } from "@/lib/execution/trial-interval-response";
 import { insertWithinPlanLimit, notInDeletedProject } from "@/lib/middleware/plan-limit-lock";
 import {
@@ -988,7 +988,13 @@ export async function PUT(req: NextRequest) {
       }
     }
 
-    const updatedMonitor = await updateMonitorHandler(id, monitorUpdateData);
+    let updatedMonitor;
+    try {
+      updatedMonitor = await updateMonitorHandler(id, monitorUpdateData);
+    } catch (error) {
+      if (error instanceof ResumeRefusedError) return resumeRefusalResponse(error.outcome)!;
+      throw error;
+    }
 
     // Update notification provider links if alert config is enabled
     if (

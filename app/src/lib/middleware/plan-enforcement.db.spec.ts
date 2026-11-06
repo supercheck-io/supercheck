@@ -128,7 +128,7 @@ describe("withResumeWithinPlan", () => {
     const paused = rows.filter((row) => row.status === "paused");
 
     const results = await Promise.all(paused.map((row) =>
-      withResumeWithinPlan(organization.id, "monitor", (tx) =>
+      withResumeWithinPlan(organization.id, "monitor", row.id, (tx) =>
         tx.update(schema.monitors).set({ status: "up" }).where(eq(schema.monitors.id, row.id)).returning())));
 
     expect(results.filter((result) => result.ok)).toHaveLength(1);
@@ -147,7 +147,7 @@ describe("withResumeWithinPlan", () => {
     ]).returning();
 
     const results = await Promise.all(rows.map((row) =>
-      withResumeWithinPlan(organization.id, "status_page", (tx) =>
+      withResumeWithinPlan(organization.id, "status_page", row.id, (tx) =>
         tx.update(schema.statusPages).set({ status: "published" }).where(eq(schema.statusPages.id, row.id)).returning())));
 
     expect(results.filter((result) => result.ok)).toHaveLength(1);
@@ -159,7 +159,24 @@ describe("withResumeWithinPlan", () => {
     const { organization, project } = await seedOrg();
     await mockDatabase.insert(schema.monitors).values([monitor(organization.id, project.id), monitor(organization.id, project.id)]);
     const write = jest.fn();
-    await expect(withResumeWithinPlan(organization.id, "monitor", write)).resolves.toMatchObject({ ok: false });
+    const [target] = await mockDatabase.insert(schema.monitors).values(monitor(organization.id, project.id, "paused")).returning();
+    await expect(withResumeWithinPlan(organization.id, "monitor", target.id, write)).resolves.toMatchObject({ ok: false });
     expect(write).not.toHaveBeenCalled();
+  });
+
+  it("does not refuse a duplicate resume of a monitor that is already on, even at the limit", async () => {
+    const { organization, project } = await seedOrg();
+    const [first] = await mockDatabase.insert(schema.monitors).values(monitor(organization.id, project.id)).returning();
+    await mockDatabase.insert(schema.monitors).values(monitor(organization.id, project.id));
+    const write = jest.fn(async () => "done");
+    await expect(withResumeWithinPlan(organization.id, "monitor", first.id, write)).resolves.toEqual({ ok: true, value: "done" });
+    expect(write).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not refuse a duplicate publish of a status page that is already published, even at the limit", async () => {
+    const { organization, project } = await seedOrg();
+    const [published] = await mockDatabase.insert(schema.statusPages).values(page(organization.id, project.id, "published")).returning();
+    const write = jest.fn(async () => "done");
+    await expect(withResumeWithinPlan(organization.id, "status_page", published.id, write)).resolves.toEqual({ ok: true, value: "done" });
   });
 });

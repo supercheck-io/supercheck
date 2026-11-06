@@ -87,6 +87,11 @@ export interface SpendingStatus {
 
 const POLAR_INGEST_TIMEOUT_MS = 15_000;
 // Bounds the final flush that runs while an organization delete holds its row lock.
+/** A request's timeout: the usual limit, cut to what is left of the caller's deadline (at least 1 ms). */
+export function ingestTimeoutMs(deadline?: number, now = Date.now()): number {
+  return deadline === undefined ? POLAR_INGEST_TIMEOUT_MS : Math.max(1, Math.min(POLAR_INGEST_TIMEOUT_MS, deadline - now));
+}
+
 const ORGANIZATION_FLUSH_LIMIT = 200;
 const ORGANIZATION_FLUSH_BUDGET_MS = 30_000;
 export { POLAR_API_VERSION };
@@ -185,7 +190,9 @@ class PolarUsageService {
    */
   private async syncEventToPolar(
     eventId: string,
-    database: Pick<typeof db, "query" | "update"> = db
+    database: Pick<typeof db, "query" | "update"> = db,
+    /** Latest time this send may take; bounds the request so a caller holding locks has a hard limit. */
+    deadline?: number,
   ): Promise<boolean> {
     try {
       const polar = await this.getPolarClient();
@@ -279,7 +286,7 @@ class PolarUsageService {
               },
             }],
           }),
-          signal: AbortSignal.timeout(POLAR_INGEST_TIMEOUT_MS),
+          signal: AbortSignal.timeout(ingestTimeoutMs(deadline)),
         }
       );
 
@@ -355,7 +362,7 @@ class PolarUsageService {
     for (const event of pendingEvents.slice(0, ORGANIZATION_FLUSH_LIMIT)) {
       if (Date.now() >= deadline) break;
       // Stop on the first failure: the deletion aborts anyway, so do not hold its locks for more sends.
-      if (await this.syncEventToPolar(event.id)) synced++;
+      if (await this.syncEventToPolar(event.id, db, deadline)) synced++;
       else break;
     }
     return { synced, pending: pendingEvents.length - synced };

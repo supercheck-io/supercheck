@@ -618,7 +618,7 @@ async function findOrganizationByCustomerId(customerId: string) {
     console.error(
       `[Polar] Customer ${truncateId(customerId)} is shared by several organizations; refusing to guess one`,
     );
-    return undefined;
+    throw new UnrecoverableWebhookError("Polar customer is shared by several organizations");
   }
   const org = matches[0];
 

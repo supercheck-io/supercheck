@@ -18,7 +18,10 @@ jest.mock("@/lib/execution/trial-interval-response", () => ({
   monitorResumeBlockedResponse: (...a: unknown[]) => monitorResumeBlockedResponse(...a),
 }));
 const withResumeWithinPlan = jest.fn();
-jest.mock("@/lib/middleware/plan-enforcement", () => ({ withResumeWithinPlan: (...a: unknown[]) => withResumeWithinPlan(...a) }));
+jest.mock("@/lib/middleware/plan-enforcement", () => ({
+  ...jest.requireActual("@/lib/middleware/plan-enforcement"),
+  withResumeWithinPlan: (...a: unknown[]) => withResumeWithinPlan(...a),
+}));
 import { NextRequest } from "next/server";
 import { PgDialect } from "drizzle-orm/pg-core";
 import type { SQL } from "drizzle-orm";
@@ -36,7 +39,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   monitorResumeBlockedResponse.mockResolvedValue(null);
   // A resume runs its write on the plan-limit transaction; the stub hands it the mocked db transaction.
-  withResumeWithinPlan.mockImplementation(async (_org: string, _resource: string, write: (tx: unknown) => Promise<unknown>) => ({
+  withResumeWithinPlan.mockImplementation(async (_org: string, _resource: string, _id: string, write: (tx: unknown) => Promise<unknown>) => ({
     ok: true,
     value: await (db.transaction as jest.Mock)(write),
   }));

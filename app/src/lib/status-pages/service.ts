@@ -649,7 +649,7 @@ export async function setStatusPagePublished(
     let updatedStatusPage;
     if (publishing && preconditionPage?.status !== "published") {
       // A page coming back online takes a plan slot: count and write under the plan-limit lock.
-      const published = await withResumeWithinPlan(organizationId, "status_page", write);
+      const published = await withResumeWithinPlan(organizationId, "status_page", statusPageId, write);
       if ("busy" in published) return fail("busy", "Too many concurrent requests. Please retry shortly.");
       if (!published.ok) return fail("forbidden", published.denied.error);
       updatedStatusPage = published.value;
