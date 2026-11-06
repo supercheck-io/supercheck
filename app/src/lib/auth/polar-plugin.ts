@@ -6,13 +6,33 @@ import { isPolarEnabled, getPolarConfig } from "@/lib/feature-flags";
 type PolarConfig = NonNullable<ReturnType<typeof getPolarConfig>>;
 type WebhookHandlers = Omit<Parameters<typeof webhooks>[0], "secret">;
 
+/**
+ * Acknowledges events that can never be applied (UnrecoverableWebhookError) instead of returning a
+ * failure: Polar disables an endpoint after ten consecutive failed deliveries. Every other error
+ * still fails the delivery so Polar retries it.
+ */
+export function acknowledgeUnrecoverable(handlers: WebhookHandlers): WebhookHandlers {
+  const wrapped: Record<string, unknown> = {};
+  for (const [name, handler] of Object.entries(handlers)) {
+    wrapped[name] = typeof handler !== "function" ? handler : async (payload: unknown) => {
+      try {
+        await (handler as (payload: unknown) => Promise<void>)(payload);
+      } catch (error) {
+        if (!(error instanceof Error) || error.name !== "UnrecoverableWebhookError") throw error;
+        console.error(`[Polar] Acknowledged a webhook that cannot be applied (${name}): ${error.message}`);
+      }
+    };
+  }
+  return wrapped as WebhookHandlers;
+}
+
 export function buildPolarPlugin(config: PolarConfig, handlers: WebhookHandlers) {
   const { polar, webhooks } = require("@polar-sh/better-auth") as typeof import("@polar-sh/better-auth");
   return polar({
     client: createPolarCoreClient({ accessToken: config.accessToken, server: config.server }),
     // Customer creation runs after signup so upstream errors cannot block signup.
     createCustomerOnSignUp: false,
-    use: [webhooks({ ...handlers, secret: config.webhookSecret })],
+    use: [webhooks({ ...acknowledgeUnrecoverable(handlers), secret: config.webhookSecret })],
   });
 }
 

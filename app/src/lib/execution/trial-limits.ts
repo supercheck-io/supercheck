@@ -191,6 +191,18 @@ export async function getTrialSummary(
 }
 
 /** Trials are granted at signup only when explicitly enabled (an operator launch switch). */
+/**
+ * Gmail delivers every dot and "+tag" variant of an address to one inbox, so those count as one
+ * person for the free trial. Other providers can assign such variants to different people.
+ */
+export function gmailTrialKey(email: string): string | null {
+  const normalized = email.trim().toLowerCase();
+  const at = normalized.lastIndexOf("@");
+  const domain = normalized.slice(at + 1);
+  if (at <= 0 || (domain !== "gmail.com" && domain !== "googlemail.com")) return null;
+  return normalized.slice(0, at).split("+")[0].replaceAll(".", "") || null;
+}
+
 export function isTrialEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   const value = env.TRIAL_ENABLED?.trim().toLowerCase();
   return value === "true" || value === "1";

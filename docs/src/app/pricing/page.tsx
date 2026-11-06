@@ -214,7 +214,7 @@ const faqs = [
     ...SHARED_PRICING_FAQS,
     {
         question: 'Can I change plans?',
-        answer: 'You can change plans through the billing portal once Cloud subscriptions are available. Review the effective date and any prorated charge before confirming.',
+        answer: 'You can change plans through the billing portal once Cloud subscriptions are available. Review the effective date and any prorated charge before confirming. If the new plan has lower limits, the newest monitors and published status pages above them are paused or archived; nothing is deleted, and you can choose which ones run by pausing others first.',
     },
 ];
 

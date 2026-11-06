@@ -86,6 +86,9 @@ export interface SpendingStatus {
 }
 
 const POLAR_INGEST_TIMEOUT_MS = 15_000;
+// Bounds the final flush that runs while an organization delete holds its row lock.
+const ORGANIZATION_FLUSH_LIMIT = 200;
+const ORGANIZATION_FLUSH_BUDGET_MS = 30_000;
 export { POLAR_API_VERSION };
 export const CLOSED_USAGE_PERIOD_ERROR = "Billing period closed; manual reconciliation required";
 type UsageSyncResult = {
@@ -327,6 +330,35 @@ class PolarUsageService {
 
       return false;
     }
+  }
+
+  /**
+   * Sends an organization's unsynced usage now. Called before its subscription is cancelled
+   * immediately, because Polar invoices only the usage ingested up to the cancellation.
+   * Events of a closed billing period stay parked, as in the scheduled sync.
+   * Returns how many syncable events are still unsent (0 means everything was delivered).
+   */
+  async flushOrganizationUsage(organizationId: string): Promise<{ synced: number; pending: number }> {
+    const pendingEvents = await db.query.usageEvents.findMany({
+      where: and(
+        eq(usageEvents.organizationId, organizationId),
+        eq(usageEvents.syncedToPolar, false),
+        gt(usageEvents.billingPeriodEnd, new Date()),
+      ),
+      columns: { id: true },
+      orderBy: (events, { asc }) => [asc(events.createdAt)],
+      limit: ORGANIZATION_FLUSH_LIMIT + 1,
+    });
+    const deadline = Date.now() + ORGANIZATION_FLUSH_BUDGET_MS;
+    let synced = 0;
+    // Send a bounded batch; any remainder is reported as pending and a retry continues from there.
+    for (const event of pendingEvents.slice(0, ORGANIZATION_FLUSH_LIMIT)) {
+      if (Date.now() >= deadline) break;
+      // Stop on the first failure: the deletion aborts anyway, so do not hold its locks for more sends.
+      if (await this.syncEventToPolar(event.id)) synced++;
+      else break;
+    }
+    return { synced, pending: pendingEvents.length - synced };
   }
 
   /**

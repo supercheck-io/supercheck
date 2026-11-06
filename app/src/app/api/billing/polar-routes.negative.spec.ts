@@ -6,6 +6,7 @@ const mockEnsureCustomer = jest.fn();
 jest.mock("@/lib/services/organization-customer", () => ({
   ensurePolarCustomerAndLink: (...args: unknown[]) =>
     mockEnsureCustomer(...args),
+  BillingCustomerConflictError: class extends Error {},
 }));
 jest.mock("@/lib/session", () => ({
   getCurrentUser: jest.fn(async () => ({

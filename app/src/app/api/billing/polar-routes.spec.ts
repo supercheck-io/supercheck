@@ -3,7 +3,12 @@
 import { NextRequest } from "next/server";
 
 const mockEnsureCustomer = jest.fn();
-jest.mock("@/lib/services/organization-customer", () => ({ ensurePolarCustomerAndLink: (...args: unknown[]) => mockEnsureCustomer(...args) }));
+jest.mock("@/lib/services/organization-customer", () => ({
+  ensurePolarCustomerAndLink: (...args: unknown[]) => mockEnsureCustomer(...args),
+  BillingCustomerConflictError: class BillingCustomerConflictError extends Error {
+    constructor() { super("This email is already linked to another billing account. Contact support to continue."); }
+  },
+}));
 jest.mock("@/lib/session", () => ({ getCurrentUser: jest.fn(async () => ({ id: "user_owner", email: "owner@example.com", name: "Owner" })) }));
 
 const mockCheckoutCreate = jest.fn();
@@ -61,6 +66,7 @@ jest.mock("drizzle-orm", () => ({
 import { db } from "@/utils/db";
 import { requireUserAuthContext } from "@/lib/auth-context";
 import { getUserOrgRole } from "@/lib/rbac/middleware";
+import { BillingCustomerConflictError } from "@/lib/services/organization-customer";
 import { POST as checkoutPost } from "./checkout/route";
 import { POST as portalPost } from "./portal/route";
 
@@ -135,6 +141,15 @@ describe("Polar billing routes", () => {
     mockFindOrganization.mockResolvedValueOnce({ id: "org_1", polarCustomerId: null, subscriptionStatus: "none" });
     const response = await checkoutPost(request("/api/billing/checkout", { plan: "plus" }));
     expect(response.status).toBe(502);
+    expect(mockCheckoutCreate).not.toHaveBeenCalled();
+  });
+
+  it("explains an email already linked to another billing account instead of a gateway error", async () => {
+    mockFindOrganization.mockResolvedValue({ polarCustomerId: null, subscriptionStatus: "none" });
+    mockEnsureCustomer.mockRejectedValue(new BillingCustomerConflictError());
+    const response = await checkoutPost(request("/api/billing/checkout", { plan: "plus" }));
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({ code: "billing_customer_conflict", error: expect.stringContaining("Contact support") });
     expect(mockCheckoutCreate).not.toHaveBeenCalled();
   });
 

@@ -31,6 +31,7 @@ jest.mock("@/utils/db", () => ({
 jest.mock("./polar-event-transaction", () => ({
   getPolarWebhookDb: () => jest.requireMock("@/utils/db").db,
   runOrderedPolarEvent: jest.fn((_input, apply) => apply()),
+  UnrecoverableWebhookError: jest.requireActual("./polar-event-transaction").UnrecoverableWebhookError,
 }));
 
 jest.mock("@/db/schema", () => ({
@@ -423,7 +424,7 @@ describe("Polar webhook helpers", () => {
             current_period_end: "2026-07-01T00:00:00.000Z",
           },
         }),
-      ).rejects.toThrow("Unknown product ID");
+      ).rejects.toMatchObject({ name: "UnrecoverableWebhookError", message: expect.stringContaining("Unknown product ID") });
 
       expect(subscriptionService.updateSubscription).not.toHaveBeenCalled();
       expect(set).toHaveBeenCalledWith(
@@ -456,7 +457,7 @@ describe("Polar webhook helpers", () => {
             metadata: { referenceId: "org_123" },
           },
         }),
-      ).rejects.toThrow("does not match organization billing owner");
+      ).rejects.toMatchObject({ name: "UnrecoverableWebhookError", message: expect.stringContaining("does not match organization billing owner") });
 
       expect(subscriptionService.updateSubscription).not.toHaveBeenCalled();
       expect(set).toHaveBeenCalledWith(
@@ -503,7 +504,7 @@ describe("Polar webhook helpers", () => {
             metadata: { referenceId: "org_123", userId: "0198a1b2-c3d4-7e5f-8a6b-7c8d9e0f1a2b" },
           },
         }),
-      ).rejects.toThrow("customer changed while processing webhook");
+      ).rejects.toMatchObject({ name: "Error", message: expect.stringContaining("customer changed while processing webhook") }); // retryable
 
       expect(bindingReturning).toHaveBeenCalled();
       expect(subscriptionService.updateSubscription).not.toHaveBeenCalled();
@@ -660,7 +661,7 @@ describe("Polar webhook helpers", () => {
   it("still fails (so Polar retries) when no organization matches for another reason", async () => {
     (db.query.organization.findFirst as jest.Mock).mockResolvedValue(undefined);
     (db.select as jest.Mock).mockReturnValue({ from: () => ({ where: () => ({ limit: async () => [] }) }) });
-    await expect(handleSubscriptionCanceled({ id: "evt_unknown_org", type: "subscription.canceled", data: { id: "sub_unknown", status: "canceled", customer_id: "cus_unknown" } })).rejects.toThrow("Polar billing organization not found");
+    await expect(handleSubscriptionCanceled({ id: "evt_unknown_org", type: "subscription.canceled", data: { id: "sub_unknown", status: "canceled", customer_id: "cus_unknown" } })).rejects.toMatchObject({ name: "UnrecoverableWebhookError", message: "Polar billing organization not found" });
   });
   it("treats a canceled snapshot without product_id as retaining its current plan", async () => {
       mockWebhookClaim();

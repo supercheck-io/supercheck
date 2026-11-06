@@ -20,9 +20,24 @@ jest.mock("@/lib/services/subscription-service", () => {
   };
 });
 jest.mock("./trial-limits", () => ({ trialCheckIntervalViolation: jest.fn() }));
+const mockCheckResumeWithinPlan = jest.fn(async (): Promise<Record<string, unknown>> => ({ allowed: true }));
+jest.mock("@/lib/middleware/plan-enforcement", () => ({
+  checkResumeWithinPlan: (...args: unknown[]) => mockCheckResumeWithinPlan(...(args as [])),
+}));
 
 describe("monitorResumeBlockedResponse", () => {
   beforeEach(() => mockBlockUntilSubscribed.mockReset());
+
+  it("answers 403 when resuming would exceed the plan's active monitors", async () => {
+    mockBlockUntilSubscribed.mockResolvedValue(undefined);
+    mockCheckResumeWithinPlan.mockResolvedValueOnce({
+      allowed: false, error: "Your plus plan allows 50 active monitors.", limit: 50, upgrade: "pro",
+    });
+    const response = await monitorResumeBlockedResponse("org", "paused", { status: "pending" });
+    expect(response?.status).toBe(403);
+    expect(await response?.json()).toMatchObject({ code: "plan_limit", limit: 50, upgrade: "pro" });
+    expect(mockCheckResumeWithinPlan).toHaveBeenCalledWith("org", "monitor");
+  });
 
   it("answers 402 when a paused monitor is turned back on without a plan", async () => {
     const { SubscriptionAccessDeniedError } = jest.requireMock(
