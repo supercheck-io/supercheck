@@ -46,7 +46,7 @@ const STATUS_POLL_INTERVAL_MS = parseInterval(
   process.env.SSE_STATUS_POLL_INTERVAL_MS,
   3000,
 );
-// A run stuck in queued must not hold a connection (and its Redis subscriber) forever.
+// A run stuck in queued must not hold a connection (and its Redis subscriber) forever. A running run is never cut off.
 const MAX_STREAM_LIFETIME_MS = 15 * 60 * 1000;
 const RETRY_MS = parseInterval(process.env.SSE_RETRY_MS, 4000);
 
@@ -106,7 +106,7 @@ export async function GET(request: NextRequest, context: RunStreamContext) {
         let closed = false;
         let heartbeatTimer: NodeJS.Timeout | null = null;
         let statusPollTimeout: NodeJS.Timeout | null = null;
-        let lifetimeTimer: NodeJS.Timeout | null = null;
+        const streamStartedAt = Date.now();
 
         const safeEnqueue = (payload: string) => {
           if (closed) {
@@ -132,10 +132,6 @@ export async function GET(request: NextRequest, context: RunStreamContext) {
           if (statusPollTimeout) {
             clearTimeout(statusPollTimeout);
             statusPollTimeout = null;
-          }
-          if (lifetimeTimer) {
-            clearTimeout(lifetimeTimer);
-            lifetimeTimer = null;
           }
         };
 
@@ -281,7 +277,11 @@ export async function GET(request: NextRequest, context: RunStreamContext) {
               return;
             }
 
-            // A queued run has not started: it is not terminal, so keep waiting for its real outcome.
+            // A queued run has not started: it is not terminal, so keep waiting, but not forever. The client resumes by polling.
+            if (currentRun.status === 'queued' && Date.now() - streamStartedAt >= MAX_STREAM_LIFETIME_MS) {
+              await shutdown('queued_timeout');
+              return;
+            }
             if (currentRun.status !== 'running' && currentRun.status !== 'queued') {
               sendJsonEvent('complete', { status: currentRun.status });
               await shutdown('completed');
@@ -295,7 +295,6 @@ export async function GET(request: NextRequest, context: RunStreamContext) {
         };
 
         statusPollTimeout = setTimeout(pollRunStatus, STATUS_POLL_INTERVAL_MS);
-        lifetimeTimer = setTimeout(() => { void shutdown('max_lifetime'); }, MAX_STREAM_LIFETIME_MS);
       },
       async cancel() {
         if (finalizeStream) {
