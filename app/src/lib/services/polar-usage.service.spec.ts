@@ -90,7 +90,7 @@ jest.mock("./usage-notification.service", () => ({
 
 import { db, postgresClient } from "@/utils/db";
 
-import { polarUsageService } from "./polar-usage.service";
+import { ingestTimeoutMs, polarUsageService } from "./polar-usage.service";
 import { usageNotificationService } from "./usage-notification.service";
 import { organization } from "@/db/schema";
 
@@ -507,5 +507,16 @@ describe("PolarUsageService ingestion contract", () => {
     expect(event).toMatchObject({ customer_id: "cus_1", name: meter, external_id: "usage-event-9" });
     expect(event.metadata).toMatchObject({ value: 3, event_id: "usage-event-9" });
     expect(Object.keys(event)).not.toEqual(expect.arrayContaining(["customerId", "externalId"]));
+  });
+});
+
+describe("ingestTimeoutMs", () => {
+  it("keeps the usual limit without a deadline or with plenty of budget left", () => {
+    expect(ingestTimeoutMs()).toBe(15_000);
+    expect(ingestTimeoutMs(100_000, 0)).toBe(15_000);
+  });
+  it("is cut to the remaining budget, never below 1 ms", () => {
+    expect(ingestTimeoutMs(1_000, 0)).toBe(1_000);
+    expect(ingestTimeoutMs(1_000, 5_000)).toBe(1);
   });
 });

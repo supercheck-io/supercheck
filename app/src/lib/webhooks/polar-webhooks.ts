@@ -171,6 +171,17 @@ async function updateWebhookResult(
 }
 
 /**
+ * A cancel or revoke can arrive before the activation that binds its subscription. Retry such an event
+ * for a short window after it was sent (the activation normally lands within seconds); after that it is
+ * acknowledged, so a permanent mismatch cannot retry forever and get the endpoint disabled.
+ */
+const OUT_OF_ORDER_RETRY_WINDOW_MS = 15 * 60 * 1000;
+function withinOutOfOrderRetryWindow(payload: PolarWebhookPayload): boolean {
+  const sentAt = new Date(payload.timestamp ?? NaN).getTime();
+  return Number.isFinite(sentAt) && Date.now() - sentAt < OUT_OF_ORDER_RETRY_WINDOW_MS;
+}
+
+/**
  * True when this event's subscription belonged to an organization an admin deleted. Cancelling the
  * subscription during that teardown triggers follow-up events that can never find the organization;
  * they are acknowledged instead of retried (retries could get the endpoint disabled).
@@ -598,9 +609,18 @@ function getOrganizationIdFromPayload(
  * Find organization by Polar customer ID
  */
 async function findOrganizationByCustomerId(customerId: string) {
-  const org = await getPolarWebhookDb().query.organization.findFirst({
+  const matches = await getPolarWebhookDb().query.organization.findMany({
     where: eq(organization.polarCustomerId, customerId),
+    limit: 2,
   });
+  // A legacy customer shared by several organizations cannot say which one an event is for.
+  if (matches.length > 1) {
+    console.error(
+      `[Polar] Customer ${truncateId(customerId)} is shared by several organizations; refusing to guess one`,
+    );
+    throw new UnrecoverableWebhookError("Polar customer is shared by several organizations");
+  }
+  const org = matches[0];
 
   if (!org) {
     console.log(
@@ -1181,7 +1201,7 @@ async function processSubscriptionCanceled(payload: PolarWebhookPayload) {
       "subscription.canceled",
       "error",
       "Organization not found",
-      false,
+      withinOutOfOrderRetryWindow(payload),
     );
     return;
   }
@@ -1380,7 +1400,7 @@ async function processSubscriptionRevoked(payload: PolarWebhookPayload) {
       "subscription.revoked",
       "error",
       "Organization not found",
-      false,
+      withinOutOfOrderRetryWindow(payload),
     );
     return;
   }
@@ -1812,9 +1832,18 @@ async function processCustomerDeleted(payload: PolarWebhookPayload) {
   );
 
   // Find organization by Polar customer ID
-  const org = await getPolarWebhookDb().query.organization.findFirst({
+  const matches = await getPolarWebhookDb().query.organization.findMany({
     where: eq(organization.polarCustomerId, customerId),
+    limit: 2,
   });
+  // A legacy customer shared by several organizations cannot say which one an event is for.
+  if (matches.length > 1) {
+    console.error(
+      `[Polar] Customer ${truncateId(customerId)} is shared by several organizations; refusing to guess one`,
+    );
+    return undefined;
+  }
+  const org = matches[0];
 
   if (!org) {
     console.log(
@@ -1850,7 +1879,7 @@ function orderedHandler(
   eventType: string,
   handler: (payload: PolarWebhookPayload) => Promise<void>,
 ) {
-  return async (payload: PolarWebhookPayload) => {
+  const run = async (payload: PolarWebhookPayload) => {
     const data = payload.data;
     const subscription = asRecord(data.subscription);
     const subscriptionId = eventType.startsWith("subscription.")
@@ -1912,6 +1941,23 @@ function orderedHandler(
       },
       () => handler(payload),
     );
+  };
+  return async (payload: PolarWebhookPayload) => {
+    try {
+      await run(payload);
+    } catch (error) {
+      // The plugin persists this after the transaction rolled back, so the acknowledged event stays traceable.
+      if (error instanceof UnrecoverableWebhookError && !error.context) {
+        error.context = {
+          eventType,
+          eventId: typeof payload.data?.id === "string" ? payload.data.id : undefined,
+          organizationId: getOrganizationIdFromPayload(payload) ?? undefined,
+          customerId: getCustomerIdFromPayload(payload) ?? undefined,
+          subscriptionId: getSubscriptionIdFromPayload(payload) || undefined,
+        };
+      }
+      throw error;
+    }
   };
 }
 

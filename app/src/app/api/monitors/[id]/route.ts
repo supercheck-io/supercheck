@@ -2,6 +2,7 @@ import { deleteMonitorWithContext } from "@/lib/resource-deletion/monitor";
 import { isInvalidUuidError, isUuid } from "@/lib/uuid";
 import { isDeepStrictEqual } from "node:util";
 import { executionConfig, updateMonitorHandler } from "@/lib/monitor-service";
+import { resumeRefusalResponse, withResumeWithinPlan, ResumeRefusedError } from "@/lib/middleware/plan-enforcement";
 import { monitorResumeBlockedResponse, trialIntervalErrorResponse } from "@/lib/execution/trial-interval-response";
 import { monitorConfigForRead, monitorTargetForRead, monitorResultForRead } from "@/lib/monitor-read-config";
 import { NextRequest, NextResponse } from "next/server";
@@ -383,7 +384,7 @@ export async function PUT(
 
     let updatedMonitor;
     try {
-      updatedMonitor = await db.transaction(async (tx) => {
+      const writeMonitor = async (tx: Parameters<Parameters<typeof db.transaction>[0]>[0]) => {
         const [updated] = await tx
           .update(monitors)
           .set(updatePayload)
@@ -440,7 +441,16 @@ export async function PUT(
         }
 
         return updated;
-      });
+      };
+      // Turning a paused monitor back on takes a plan slot: count and write under the plan-limit lock.
+      if (updatePayload.status && updatePayload.status !== "paused") {
+        const resumed = await withResumeWithinPlan(authCtx.organizationId, "monitor", id, writeMonitor);
+        const refusal = resumeRefusalResponse(resumed);
+        if (refusal) return refusal;
+        updatedMonitor = resumed.ok ? resumed.value : null;
+      } else {
+        updatedMonitor = await db.transaction(writeMonitor);
+      }
     } catch (error) {
       if (
         error instanceof Error &&
@@ -902,7 +912,13 @@ export async function PATCH(
       );
     }
 
-    const updatedMonitor = await updateMonitorHandler(id, updatePayload);
+    let updatedMonitor;
+    try {
+      updatedMonitor = await updateMonitorHandler(id, updatePayload);
+    } catch (error) {
+      if (error instanceof ResumeRefusedError) return resumeRefusalResponse(error.outcome)!;
+      throw error;
+    }
 
     // Log the audit event for monitor partial update
     await logAuditEvent({

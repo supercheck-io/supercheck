@@ -849,6 +849,7 @@ export async function reopenRecentlyAutoResolved(
       acknowledgedAt: null,
       acknowledgedByUserId: null,
       renotifiedAt: null,
+      reopenedAt: now,
       updatedAt: now,
     })
     .where(and(eq(sreIncidents.id, latest.id), eq(sreIncidents.status, "resolved")))

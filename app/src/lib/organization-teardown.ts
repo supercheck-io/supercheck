@@ -1,7 +1,7 @@
-import { and, eq, gt, inArray, isNotNull, or, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
 import { db } from "@/utils/db";
 import {
-  jobs, member, monitorResults, monitors, oauthConsent, organization, projects, reports, runs, statusPages,
+  executionUsageReceipts, jobs, member, monitorResults, monitors, oauthConsent, organization, projects, reports, runs, statusPages, usageEvents,
 } from "@/db/schema";
 import { getPolarConfig, isPolarEnabled } from "@/lib/feature-flags";
 import { createPolarClient } from "@/lib/billing/polar-client";
@@ -53,6 +53,49 @@ async function flushFinalUsage(organizationId: string): Promise<void> {
   const { pending } = await polarUsageService.flushOrganizationUsage(organizationId);
   if (pending > 0) {
     throw new BillingCancellationError("Could not send the organization's final usage to the billing provider. Nothing was deleted and the subscription is unchanged. Retry the deletion once billing is available.");
+  }
+}
+
+/**
+ * Usage that was never settled would be lost with the organization (both tables cascade): a completed
+ * execution whose receipt is unsettled, and a usage event parked for manual reconciliation because its
+ * billing period had closed. Refusing keeps that evidence; deletion can be retried once it is settled.
+ */
+async function assertNoUnsettledUsage(executor: Pick<typeof db, "select">, organizationId: string): Promise<void> {
+  const [receipts] = await executor.select({ count: sql<number>`count(*)::int` }).from(executionUsageReceipts)
+    .where(and(eq(executionUsageReceipts.organizationId, organizationId), isNull(executionUsageReceipts.settledAt)));
+  const { CLOSED_USAGE_PERIOD_ERROR } = await import("@/lib/services/polar-usage.service");
+  const [parked] = await executor.select({ count: sql<number>`count(*)::int` }).from(usageEvents)
+    .where(and(eq(usageEvents.organizationId, organizationId), eq(usageEvents.syncedToPolar, false),
+      // The flush skips closed periods, whether or not the sync loop has marked them yet.
+      or(eq(usageEvents.syncError, CLOSED_USAGE_PERIOD_ERROR), lte(usageEvents.billingPeriodEnd, new Date()))));
+  if ((receipts?.count ?? 0) > 0 || (parked?.count ?? 0) > 0) {
+    throw new BillingCancellationError("The organization still has usage that was not billed (an unsettled execution or a closed billing period awaiting manual reconciliation). Nothing was deleted. Settle it, then retry the deletion.");
+  }
+}
+
+/**
+ * The subscription id to end. Normally the stored one; when checkout finished but its webhook has not
+ * stored the id yet, ask the provider for the customer's active subscriptions. Only ones tagged to this
+ * organization are ended; an untagged one (legacy) cannot be attributed, so deletion is refused (fail closed).
+ */
+async function resolveSubscriptionId(org: { id: string; subscriptionId: string | null; polarCustomerId: string | null }): Promise<string | null> {
+  if (org.subscriptionId) return org.subscriptionId;
+  const config = org.polarCustomerId && isPolarEnabled() ? getPolarConfig() : null;
+  if (!org.polarCustomerId || !config) return null;
+  try {
+    const state = await createPolarClient({ accessToken: config.accessToken, server: config.server }).customers.getState(org.polarCustomerId);
+    const owned = state.active_subscriptions.filter((subscription) => {
+      const referenceId = (subscription.metadata as Record<string, unknown> | undefined)?.referenceId;
+      if (typeof referenceId !== "string") throw new BillingCancellationError("The billing customer has a subscription that cannot be matched to this organization. Nothing was deleted. Contact support.");
+      return referenceId === org.id;
+    });
+    if (owned.length > 1) throw new BillingCancellationError("The organization has several active subscriptions. Nothing was deleted. Contact support.");
+    return owned[0]?.id ?? null;
+  } catch (error) {
+    if (error instanceof BillingCancellationError) throw error;
+    console.error("[ORG_TEARDOWN] Failed to look up the customer's subscriptions:", error);
+    throw new BillingCancellationError("Could not check the organization's subscription with the billing provider. Nothing was deleted. Retry the deletion once billing is available.");
   }
 }
 
@@ -203,13 +246,17 @@ export async function deleteOrganizationCompletely(
     await tx.select({ id: projects.id }).from(projects).where(eq(projects.organizationId, organizationId)).for("no key update");
     await assertMembership(tx, organizationId, guard);
 
+    const subscriptionId = await resolveSubscriptionId(org);
     // Lets the provider events that follow the cancellation recognise a deleted organization.
     await logAdminEvent(actorUserId, "organization_teardown_started", organizationId, "organization", organizationId, {
-      organizationId, subscriptionId: org.subscriptionId ?? undefined,
+      organizationId, subscriptionId: subscriptionId ?? undefined,
     }, tx);
-    const subscriptionCancelled = hasCancellableSubscription(org);
+    const subscriptionCancelled = hasCancellableSubscription({ subscriptionId });
     // Before anything irreversible (the file sweep): a provider outage here leaves everything intact.
-    if (subscriptionCancelled && org.polarCustomerId) await flushFinalUsage(organizationId);
+    if (subscriptionCancelled && org.polarCustomerId) {
+      await flushFinalUsage(organizationId);
+      await assertNoUnsettledUsage(tx, organizationId);
+    }
 
     const projectIds = (await tx.select({ id: projects.id }).from(projects).where(eq(projects.organizationId, organizationId))).map((p) => p.id);
     if (projectIds.length) {
@@ -238,7 +285,7 @@ export async function deleteOrganizationCompletely(
       }
     }
     // Last step before the irreversible deletes: any earlier failure leaves billing untouched.
-    if (subscriptionCancelled) await revokeSubscription(org.subscriptionId!);
+    if (subscriptionId) await revokeSubscription(subscriptionId);
     if (projectIds.length) {
       // MCP consents reference projects by id without a foreign key.
       await tx.delete(oauthConsent).where(inArray(oauthConsent.referenceId, projectIds));

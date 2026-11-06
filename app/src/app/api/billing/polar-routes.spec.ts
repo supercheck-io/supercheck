@@ -61,6 +61,8 @@ jest.mock("@/db/schema", () => ({
 
 jest.mock("drizzle-orm", () => ({
   eq: jest.fn((left, right) => ({ left, right })),
+  ne: jest.fn((left, right) => ({ left, right })),
+  and: jest.fn((...conditions) => conditions),
 }));
 
 import { db } from "@/utils/db";
@@ -313,6 +315,7 @@ describe("Polar billing routes", () => {
   });
 
   it("opens the portal only for the active organization owner", async () => {
+    mockFindOrganization.mockResolvedValueOnce({ polarCustomerId: "customer_1" }).mockResolvedValueOnce(null);
     const response = await portalPost(request("/api/billing/portal"));
 
     expect(response.status).toBe(200);

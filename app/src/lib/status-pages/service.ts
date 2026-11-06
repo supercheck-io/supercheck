@@ -21,7 +21,7 @@ import {
 } from "@/db/schema";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { retireOrphanedSubscribers } from "@/lib/incident-notifications/retire-orphaned-subscribers";
-import { checkStatusPageLimit, checkFeatureAvailability, checkResumeWithinPlan } from "@/lib/middleware/plan-enforcement";
+import { checkStatusPageLimit, checkFeatureAvailability, checkResumeWithinPlan, withResumeWithinPlan } from "@/lib/middleware/plan-enforcement";
 import { insertWithinPlanLimit, notInDeletedProject } from "@/lib/middleware/plan-limit-lock";
 import { statusAggregationService } from "@/lib/status-aggregation.service";
 import {
@@ -622,9 +622,11 @@ export async function setStatusPagePublished(
       return fail("validation", "Invalid status page ID");
     }
 
+    let preconditionPage: StatusPageRow | undefined;
     if (publishing) {
       const preconditions = await checkPublishPreconditions(ctx, statusPageId);
       if (!preconditions.ok) return preconditions;
+      preconditionPage = preconditions.data.statusPage;
     } else {
       // SECURITY: Verify ownership
       const statusPage = await findOwnedStatusPage(ctx, statusPageId);
@@ -636,11 +638,24 @@ export async function setStatusPagePublished(
       }
     }
 
-    const [updatedStatusPage] = await db
-      .update(statusPages)
-      .set({ status: target, updatedAt: new Date() })
-      .where(and(eq(statusPages.id, statusPageId), eq(statusPages.organizationId, organizationId)))
-      .returning();
+    const write = async (executor: Pick<typeof db, "update">) => {
+      const [row] = await executor
+        .update(statusPages)
+        .set({ status: target, updatedAt: new Date() })
+        .where(and(eq(statusPages.id, statusPageId), eq(statusPages.organizationId, organizationId)))
+        .returning();
+      return row;
+    };
+    let updatedStatusPage;
+    if (publishing && preconditionPage?.status !== "published") {
+      // A page coming back online takes a plan slot: count and write under the plan-limit lock.
+      const published = await withResumeWithinPlan(organizationId, "status_page", statusPageId, write);
+      if ("busy" in published) return fail("busy", "Too many concurrent requests. Please retry shortly.");
+      if (!published.ok) return fail("forbidden", published.denied.error);
+      updatedStatusPage = published.value;
+    } else {
+      updatedStatusPage = await write(db);
+    }
 
     if (!updatedStatusPage) {
       return fail("internal", `Failed to ${verb} status page`);

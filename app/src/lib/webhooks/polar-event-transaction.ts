@@ -23,11 +23,21 @@ export function getPolarWebhookDb(organizationId?: string) {
  * change); the plugin layer logs it and acknowledges the delivery. Reconciliation repairs real misses.
  */
 export class UnrecoverableWebhookError extends Error {
+  /** Event and tenant references, attached by the event dispatcher, so the acknowledged failure can be traced. */
+  context?: UnrecoverableWebhookContext;
   constructor(message: string) {
     super(message);
     this.name = "UnrecoverableWebhookError";
   }
 }
+
+export type UnrecoverableWebhookContext = {
+  eventType: string;
+  eventId?: string;
+  organizationId?: string;
+  customerId?: string;
+  subscriptionId?: string;
+};
 
 export async function runOrderedPolarEvent(
   input: {

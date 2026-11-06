@@ -1458,6 +1458,7 @@ export async function updateSreIncident(
                 acknowledgedByUserId: null,
                 // Lets the unacknowledged reminder fire again for the reopened incident.
                 renotifiedAt: null,
+                reopenedAt: now,
               }
             : {}),
           // After the reopen reset, so reopening straight to Monitoring still records mitigation.
