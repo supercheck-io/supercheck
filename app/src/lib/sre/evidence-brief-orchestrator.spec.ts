@@ -98,7 +98,7 @@ describe("evidence brief stored evidence", () => {
     const generateBrief = jest.fn().mockResolvedValue({ provider: "ai", summary, modelId: "test-model", confidenceScore: 0.6, suspectedFailureDomain: "job", citedEvidenceIds: [] });
     await runSreEvidenceBriefGeneration({ userId: "user-a", organizationId: "org-a", projectId: "project-a", incidentId: "incident-a", generateBrief });
     const incidentCall = mockSet.mock.calls.findIndex(([v]) => "rootCauseSummary" in (v as object));
-    expect(mockSet.mock.calls[incidentCall][0]).toMatchObject({ rootCauseSummary: "The checkout job timed out." });
+    expect(mockSet.mock.calls[incidentCall][0]).toMatchObject({ rootCauseSummary: "The checkout job timed out.", confidenceScore: null });
     const q = new PgDialect().sqlToQuery(mockUpdateWhere.mock.calls[incidentCall][0]);
     expect(q.sql).toMatch(/not exists \(select 1 from "sre_investigation_runs".*'investigation'.*'completed'\)/);
     expect(q.params).toEqual(expect.arrayContaining(["incident-a", "org-a", "project-a"]));

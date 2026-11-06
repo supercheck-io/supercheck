@@ -146,7 +146,8 @@ export async function generateSrePostmortem(
     const structured = run?.snapshot && typeof run.snapshot === "object"
       ? (run.snapshot as { structured?: { nextChecks?: unknown; outcome?: string } | null }).structured
       : null;
-    const score = incident.confidenceScore === null ? NaN : Number(incident.confidenceScore);
+    // Only a completed investigation rates the root cause; older briefs also stored a score on the incident.
+    const score = !run || incident.confidenceScore === null ? NaN : Number(incident.confidenceScore);
     const context: PostmortemContext = {
       incidentNumber: incident.incidentNumber,
       title: incident.title,

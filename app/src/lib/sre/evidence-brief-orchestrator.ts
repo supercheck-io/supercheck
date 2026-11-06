@@ -448,13 +448,13 @@ export async function runSreEvidenceBriefGeneration(input: {
           ),
         );
 
-      // The incident keeps a one-paragraph headline (the full brief stays on the run), and a brief never
-      // replaces the conclusion or confidence of a completed investigation.
+      // The incident keeps a one-paragraph headline (the full brief and its score stay on the run). Only an
+      // investigation rates the incident, and a brief never replaces a completed investigation's result.
       await tx
         .update(sreIncidents)
         .set({
           rootCauseSummary: reportHeadline(brief.summary, 2000),
-          confidenceScore: String(brief.confidenceScore),
+          confidenceScore: null,
           updatedAt: new Date(),
         })
         .where(
