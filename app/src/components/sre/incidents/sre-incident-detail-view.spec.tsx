@@ -385,6 +385,17 @@ describe("SreIncidentDetailView", () => {
     expect(screen.getByText("Mock post-mortem")).toBe(card);
   });
 
+  it("keeps the Investigation tab (a streaming brief, run options) across tab switches", () => {
+    render(<SreIncidentDetailView detail={detailFixture()} services={[]} initialTab="investigation" />);
+    // Radix keeps the tabpanel element itself; only a kept-mounted tab keeps its children.
+    const runOptions = within(investigationTab()).getByText("Mock AI investigation panel");
+    openTab("Overview");
+    expect(runOptions).toBeInTheDocument();
+    expect(runOptions).not.toBeVisible();
+    openTab("Investigation");
+    expect(within(investigationTab()).getByText("Mock AI investigation panel")).toBe(runOptions);
+  });
+
   it("follows Back and Forward to the tab in the URL", () => {
     render(<SreIncidentDetailView detail={detailFixture()} services={[]} />);
     act(() => {

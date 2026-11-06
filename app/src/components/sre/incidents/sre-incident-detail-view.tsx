@@ -297,13 +297,19 @@ export function SreIncidentDetailView({
               />
             </TabsContent>
 
-            <TabsContent value="investigation" className="mt-0 min-w-0 rounded-md focus-visible:ring-inset focus-visible:ring-offset-0">
+            {/* Kept mounted while hidden so a streaming brief and the run options survive a tab switch. */}
+            <TabsContent
+              value="investigation"
+              forceMount
+              hidden={activeTab !== "investigation"}
+              className="mt-0 min-w-0 rounded-md focus-visible:ring-inset focus-visible:ring-offset-0 data-[state=inactive]:hidden"
+            >
               <InvestigationReport
-                    key={detail.latestBrief?.id ?? "no-brief"}
-                    detail={detail}
-                    focus={focus}
-                    serviceMappingHref={`/incidents/${incident.id}?edit=service`}
-                  />
+                key={detail.latestBrief?.id ?? "no-brief"}
+                detail={detail}
+                focus={focus}
+                serviceMappingHref={`/incidents/${incident.id}?edit=service`}
+              />
             </TabsContent>
 
             {!open && (

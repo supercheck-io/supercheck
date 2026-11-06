@@ -100,7 +100,7 @@ describe("IncidentSidebar", () => {
     expect(screen.getByText("No alerts linked.")).toBeInTheDocument();
   });
 
-  it("has no Similar row; similar incidents live in the investigation sheet", () => {
+  it("has no Similar row; similar incidents have their own card in the right-hand column", () => {
     render(<IncidentSidebar detail={detailFixture()} />);
     expect(screen.queryByRole("button", { name: /Similar past incidents/ })).not.toBeInTheDocument();
   });
