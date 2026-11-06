@@ -16,7 +16,7 @@ jest.unstable_mockModule('../../config/loader.js', () => ({ loadConfig: async ()
 jest.unstable_mockModule('../../utils/managed.js', () => ({
   verifyContext: async () => ({ organization: { id: 'org' }, project: { id: 'project' } }),
   describeTarget: () => 'target',
-  managedState: () => ({ apply: (value: unknown) => value }),
+  managedState: () => { events.push('state'); return { apply: (value: unknown) => value } },
   deploymentLock: () => { events.push('lock'); return () => { events.push('release') } },
 }))
 jest.unstable_mockModule('../../utils/resources.js', () => ({
@@ -51,10 +51,16 @@ describe('destroy requirements', () => {
     expect(deleted).toEqual([`/api/requirements/${MANAGED_REQ}`, `/api/jobs/${JOB}`])
   })
 
-  it('holds the deployment lock around the delete phase and releases it afterwards', async () => {
+  it('holds the deployment lock from before the state is read through the deletes and releases it afterwards', async () => {
     config = { project: {}, jobs: [{ id: JOB, name: 'Nightly', tests: [] }] }
     await destroyCommand.parseAsync(['node', 'destroy', '--force'])
-    expect(events).toEqual(['lock', 'delete', 'release'])
+    expect(events).toEqual(['lock', 'state', 'delete', 'release'])
+  })
+
+  it('does not take the lock for a dry run', async () => {
+    config = { project: {}, jobs: [{ id: JOB, name: 'Nightly', tests: [] }] }
+    await destroyCommand.parseAsync(['node', 'destroy', '--dry-run'])
+    expect(events).toEqual(['state'])
   })
 
   it('never lists requirements when the config manages none', async () => {
