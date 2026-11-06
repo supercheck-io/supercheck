@@ -193,7 +193,7 @@ export function validateMonitorConfiguration({
     if (
       method != null &&
       method !== "" &&
-      !HTTP_METHODS.includes(String(method).toUpperCase())
+      (typeof method !== "string" || !HTTP_METHODS.includes(method.toUpperCase()))
     ) {
       return invalid(
         "Invalid monitor configuration",

@@ -54,7 +54,7 @@ jest.mock('net', () => {
   const actual = jest.requireActual('net');
   const { EventEmitter } = jest.requireActual('events');
   const state = {
-    behavior: 'error' as 'connect' | 'error' | 'aggregate' | 'empty',
+    behavior: 'error' as 'connect' | 'error' | 'aggregate' | 'mixed' | 'empty',
   };
 
   class FakeSocket extends EventEmitter {
@@ -70,6 +70,14 @@ jest.mock('net', () => {
             'error',
             new AggregateError([
               Object.assign(new Error('refused'), { code: 'ECONNREFUSED' }),
+            ]),
+          );
+        else if (state.behavior === 'mixed')
+          this.emit(
+            'error',
+            new AggregateError([
+              Object.assign(new Error('refused'), { code: 'ECONNREFUSED' }),
+              Object.assign(new Error('unreachable'), { code: 'EHOSTUNREACH' }),
             ]),
           );
         else if (state.behavior === 'empty') this.emit('error', new Error(''));
@@ -894,6 +902,19 @@ describe('MonitorService', () => {
       });
 
       expect(result).toMatchObject({ status: 'up', isUp: true });
+    });
+
+    it('does not call a mixed refused and unreachable failure a closed port', async () => {
+      netState.behavior = 'mixed';
+
+      const result = await service.executeMonitor({
+        ...mockJobData,
+        type: 'port_check' as const,
+        target: 'db.example.com',
+        config: { ...mockJobData.config, port: 5432, expectClosed: true },
+      });
+
+      expect(result).toMatchObject({ isUp: false });
     });
 
     it('never reports an error result with an empty message', async () => {

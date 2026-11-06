@@ -3,7 +3,7 @@
 import { monitorTypes } from "@/components/monitors/data";
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { MonitorForm } from "./monitor-form";
-import { incidentsEnabled } from "@/lib/incident-settings";
+import { channelsOptional } from "@/lib/incident-settings";
 import { AlertSettings } from "@/components/alerts/alert-settings";
 import { LocationConfigSection } from "./location-config-section";
 import {
@@ -310,7 +310,7 @@ export function MonitorCreationWizard() {
       if (
         (!alertConfig.notificationProviders ||
           alertConfig.notificationProviders.length === 0) &&
-        !incidentsEnabled(alertConfig)
+        !channelsOptional(alertConfig)
       ) {
         toast.error("Validation Error", {
           description:

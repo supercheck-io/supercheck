@@ -282,7 +282,9 @@ export function normalizeProviderConfig(
 ): Record<string, unknown> {
   if (type === "email") {
     const emails = emailsAsString(config.emails);
-    return emails === null ? { ...config } : { ...config, emails };
+    if (emails === null) return { ...config };
+    // Stored as one clean comma-separated list: no blanks, no stray commas.
+    return { ...config, emails: emails.split(",").map((e) => e.trim()).filter(Boolean).join(",") };
   }
   if (type !== "webhook") {
     return { ...config };

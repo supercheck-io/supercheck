@@ -44,7 +44,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { incidentsEnabled } from "@/lib/incident-settings";
+import { channelsOptional } from "@/lib/incident-settings";
 import { AlertSettings } from "@/components/alerts/alert-settings";
 import { MonitorTypesPopover } from "./monitor-types-popover";
 import { LocationConfigSection } from "./location-config-section";
@@ -1015,7 +1015,7 @@ export function MonitorForm({
       if (
         (!alertConfig.notificationProviders ||
           alertConfig.notificationProviders.length === 0) &&
-        !incidentsEnabled(alertConfig)
+        !channelsOptional(alertConfig)
       ) {
         toast.error("Validation Error", {
           description:

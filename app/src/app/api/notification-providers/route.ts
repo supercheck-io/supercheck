@@ -156,9 +156,10 @@ export async function POST(req: NextRequest) {
     if (!rawData || typeof rawData !== "object" || Array.isArray(rawData)) {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
-    const providedName = [rawData.config?.name, rawData.name].find(
+    // The top-level name is the documented one; config.name is the web form's fallback.
+    const providedName = [rawData.name, rawData.config?.name].find(
       (n) => typeof n === "string" && n.trim()
-    ) ?? rawData.config?.name ?? rawData.name;
+    ) ?? rawData.name ?? rawData.config?.name;
     if (typeof providedName !== "string" || !providedName.trim()) {
       return NextResponse.json({ error: "Provider name is required" }, { status: 400 });
     }

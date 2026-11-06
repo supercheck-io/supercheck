@@ -260,10 +260,14 @@ async function syntheticFailureAlert(failure: SourceFailureInput) {
       organizationId: monitors.organizationId,
       projectId: monitors.projectId,
       alertConfig: monitors.alertConfig,
+      status: monitors.status,
+      enabled: monitors.enabled,
     })
     .from(monitors)
     .where(eq(monitors.id, failure.sourceId))
     .limit(1);
+  // A failure queued before the monitor was paused or disabled must not open or update an incident.
+  if (monitor && (monitor.status === "paused" || !monitor.enabled)) return undefined;
   // Only a monitor that opted in to incidents without alerts, or one that alerts with incidents on, opens one here.
   if (!monitor || !incidentsEnabled(monitor.alertConfig)) return undefined;
   return {

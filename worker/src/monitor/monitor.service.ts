@@ -1712,9 +1712,12 @@ export class MonitorService {
       );
 
       // A multi-address connect failure is an AggregateError with an empty message; the code may sit on an inner error.
+      // Every address must agree: one refusing and another unreachable is not a closed port.
+      const inner = (error as { errors?: NodeJS.ErrnoException[] }).errors;
+      const innerCodes = new Set((inner ?? []).map((e) => e.code));
       const errorCode: string | undefined =
         (error as NodeJS.ErrnoException).code ??
-        (error as { errors?: NodeJS.ErrnoException[] }).errors?.[0]?.code;
+        (innerCodes.size === 1 ? [...innerCodes][0] : undefined);
 
       if (getErrorMessage(error).includes('timeout')) {
         status = 'timeout';

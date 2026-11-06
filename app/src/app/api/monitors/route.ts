@@ -38,7 +38,7 @@ import {
 } from "@/lib/monitor-location-routing";
 import type { LocationConfig } from "@/db/schema";
 import { createLogger } from "@/lib/logger/index";
-import { incidentsEnabled } from "@/lib/incident-settings";
+import { channelsOptional } from "@/lib/incident-settings";
 import { validateMonitorConfiguration } from "@/lib/monitor-validation";
 import { validateMonitorTargetAddress } from "@/lib/monitor-target-policy";
 import { monitorNameError, normalizeMonitorAlertConfig, providerIdsOutsideProject, syntheticFrequencyError } from "@/lib/monitor-write";
@@ -510,7 +510,7 @@ export async function POST(req: NextRequest) {
       if (
         (!alertConfig.notificationProviders ||
           alertConfig.notificationProviders.length === 0) &&
-        !incidentsEnabled(alertConfig)
+        !channelsOptional(alertConfig)
       ) {
         return NextResponse.json(
           {
@@ -941,7 +941,7 @@ export async function PUT(req: NextRequest) {
       if (
         (!alertConfig.notificationProviders ||
           alertConfig.notificationProviders.length === 0) &&
-        !incidentsEnabled(alertConfig)
+        !channelsOptional(alertConfig)
       ) {
         return NextResponse.json(
           {

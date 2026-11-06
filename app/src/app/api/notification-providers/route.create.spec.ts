@@ -52,6 +52,14 @@ describe("POST /api/notification-providers validation", () => {
     expect((await post(body)).status).toBe(400);
   });
 
+  it("prefers the top-level name over config.name, which stays the fallback", async () => {
+    await post({ type: "webhook", name: "Top", config: { ...webhook, name: "Inner" } });
+    expect(mockValues.mock.calls[0][0]).toMatchObject({ name: "Top" });
+    mockValues.mockClear();
+    await post({ type: "webhook", config: { ...webhook, name: "Inner" } });
+    expect(mockValues.mock.calls[0][0]).toMatchObject({ name: "Inner" });
+  });
+
   it("creates a disabled provider when isEnabled is false", async () => {
     const response = await post({ type: "webhook", name: "Ops", isEnabled: false, config: webhook });
     expect(response.status).toBe(201);

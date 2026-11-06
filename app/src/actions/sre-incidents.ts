@@ -1781,6 +1781,7 @@ export async function createSreIncidentFromAlert(
 
       if (existingIncident) {
         // A repeat of the failure that is already linked still counts as the failure returning after a recovery note.
+        await recordRepeatAlert(tx, existingIncident.id, firedAt);
         await noteFailureReturned(tx, existingIncident.id, firedAt);
         return { incident: existingIncident, existing: true };
       }

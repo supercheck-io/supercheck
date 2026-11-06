@@ -3,7 +3,7 @@ import { db } from "@/utils/db";
 import { monitorNotificationSettings, notificationProviders, tests } from "@/db/schema";
 import type { AlertConfig, MonitorConfig } from "@/db/schema";
 import { isUuid } from "@/lib/uuid";
-import { incidentsEnabled } from "@/lib/incident-settings";
+import { channelsOptional } from "@/lib/incident-settings";
 import { alertThresholdError } from "@/lib/alert-thresholds";
 
 /** Config keys the worker writes. A client replacing `config` must not wipe or forge them. */
@@ -76,7 +76,7 @@ export function normalizeMonitorAlertConfig(raw: Raw, existing?: Partial<AlertCo
 export function enabledAlertConfigError(config: AlertConfig): string | null {
   if (!config.enabled) return null;
   // Incidents need no channel, so an incident-only monitor may have none.
-  if (config.notificationProviders.length === 0 && !incidentsEnabled(config)) {
+  if (config.notificationProviders.length === 0 && !channelsOptional(config)) {
     return "At least one notification channel must be selected when alerts are enabled";
   }
   const max = parseInt(process.env.MAX_MONITOR_NOTIFICATION_CHANNELS || "10", 10);

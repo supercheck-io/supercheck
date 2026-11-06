@@ -20,6 +20,9 @@ describe("notification provider validation", () => {
     expect(() => validateProviderConfig("email", { emails: [1] })).toThrow("comma-separated");
     expect(() => validateProviderConfig("email", { emails: { a: 1 } })).toThrow("comma-separated");
     expect(normalizeProviderConfig("email", { emails: ["a@b.co", "c@d.io"] })).toEqual({ emails: "a@b.co,c@d.io" });
+    // Blanks and stray commas never reach storage.
+    expect(normalizeProviderConfig("email", { emails: ["a@b.co", " ", ""] })).toEqual({ emails: "a@b.co" });
+    expect(normalizeProviderConfig("email", { emails: "a@b.co, ,c@d.io," })).toEqual({ emails: "a@b.co,c@d.io" });
     expect(() => validateProviderConfig("email", { emails: "a@b.co, c@d.io" })).not.toThrow();
   });
 

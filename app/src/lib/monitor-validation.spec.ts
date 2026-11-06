@@ -84,7 +84,7 @@ describe("location policy and unsupported assertions", () => {
       validateMonitorConfiguration({ type: "website", target: "https://example.com", config: { checkExpiration: true }, incomingConfig: undefined }),
     ).toEqual({ success: true });
   });
-  it.each(["FOO", 5])("rejects http method %p", (method) => {
+  it.each(["FOO", 5, ["GET"], { a: 1 }])("rejects http method %p", (method) => {
     expect(site({ method }).success).toBe(false);
   });
   it.each(["get", "", "PATCH"])("accepts http method %p (the worker upper-cases, blank is GET)", (method) => {

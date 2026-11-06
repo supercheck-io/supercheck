@@ -274,6 +274,12 @@ describe("monitor PATCH alertConfig (c12)", () => {
     expect(res.status).toBe(400);
   });
 
+  it.each([null, false, 0, ""])("rejects a non-object alertConfig %p instead of ignoring it", async (alertConfig) => {
+    const res = await call(PATCH, "PATCH", { alertConfig } as never);
+    expect(res.status).toBe(400);
+    expect(set).not.toHaveBeenCalled();
+  });
+
   it("allows an enabled alert config with no channel while incidents are on", async () => {
     const res = await call(PATCH, "PATCH", { alertConfig: { enabled: true, notificationProviders: [], incidentEnabled: true } });
     expect(res.status).toBe(200);

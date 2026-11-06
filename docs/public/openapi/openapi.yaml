@@ -2217,7 +2217,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/MonitorUpdateRequest"
+              $ref: "#/components/schemas/MonitorPatchRequest"
       responses:
         "200":
           description: Monitor updated
@@ -7073,6 +7073,44 @@ components:
           $ref: "#/components/schemas/MonitorConfig"
         alertConfig:
           $ref: "#/components/schemas/MonitorAlertConfig"
+    MonitorPatchRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        type:
+          type: string
+          enum:
+            - http_request
+            - website
+            - ping_host
+            - port_check
+            - synthetic_test
+        target:
+          type: string
+        frequencyMinutes:
+          type: integer
+          minimum: 1
+          maximum: 1440
+        enabled:
+          type: boolean
+        status:
+          type: string
+          enum:
+            - up
+            - down
+            - paused
+            - pending
+        config:
+          $ref: "#/components/schemas/MonitorConfig"
+        alertConfig:
+          allOf:
+            - $ref: "#/components/schemas/MonitorAlertConfig"
+          description: Merged into the stored alert settings. A field sent as null is
+            reset to its default (it is not left unset), and notificationProviders
+            null clears the channel list.
     ValidationScriptRequest:
       type: object
       properties:

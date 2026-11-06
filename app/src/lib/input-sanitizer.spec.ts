@@ -266,6 +266,10 @@ describe('InputSanitizer', () => {
       expect(sanitizeUrl('https://example.com/')).toBe('https://example.com/');
       expect(sanitizeUrl('https://example.com/a')).toBe('https://example.com/a');
     });
+
+    it('keeps the host when a backslash starts the path', () => {
+      expect(sanitizeUrl('https://example.com\\health')).toBe('https://example.com/health');
+    });
   });
 
   describe('sanitizeHostname', () => {

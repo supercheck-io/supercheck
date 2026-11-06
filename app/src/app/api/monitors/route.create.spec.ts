@@ -126,7 +126,8 @@ it("lets an enabled alert have no channel while incidents are on, and rejects it
   expect(off.status).toBe(400);
   expect((await off.json()).error).toMatch(/notification channel/);
   const on = await post({ enabled: true, notificationProviders: [], alertOnFailure: true });
-  expect(JSON.stringify(await on.json())).not.toMatch(/notification channel/);
+  // Past the channel rule: any later outcome (the insert is mocked) is fine, a 400 for the channel is not.
+  expect(on.status).not.toBe(400);
 });
 
 it("rejects a name over 255 characters with 400 before inserting", async () => {

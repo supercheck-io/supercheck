@@ -3,7 +3,7 @@ import { notInDeletedProject } from "@/lib/middleware/plan-limit-lock";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { monitors, projects } from "@/db/schema";
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq, ne, sql } from "drizzle-orm";
 import { isAuthError, requireUserAuthContext, authErrorStatus } from "@/lib/auth-context";
 import { resumeRefusalResponse, withResumeWithinPlan } from "@/lib/middleware/plan-enforcement";
 import { monitorResumeBlockedResponse } from "@/lib/execution/trial-interval-response";
@@ -101,6 +101,13 @@ export async function PATCH(
         .where(and(eq(projects.id, monitorProjectId), ne(projects.status, 'deleted')))
         .for('share');
       if (!liveProject) return undefined;
+      // One pause/resume at a time per monitor, so an older request's scheduler effect cannot land after a newer one's.
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`monitor-status:${id}`}))`);
+      const [before] = await tx
+        .select({ status: monitors.status, scheduledJobId: monitors.scheduledJobId })
+        .from(monitors)
+        .where(and(eq(monitors.id, id), eq(monitors.projectId, monitorProjectId)))
+        .for('update');
       const [updated] = await tx
         .update(monitors)
         .set({
@@ -117,6 +124,34 @@ export async function PATCH(
           ),
         )
         .returning();
+      if (!updated) return undefined;
+
+      // Keep the schedule in step with pause and resume, as the monitor update paths do (same lock, same commit order).
+      const wasPaused = (before?.status ?? currentMonitor.status) === "paused";
+      const nowPaused = updated.status === "paused";
+      if (wasPaused !== nowPaused) {
+        if (nowPaused) {
+          const jobId = before?.scheduledJobId ?? currentMonitor.scheduledJobId;
+          const removed = jobId ? await deleteScheduledMonitor(jobId) : false;
+          if (!removed) await deleteScheduledMonitor(id);
+          await tx.update(monitors).set({ scheduledJobId: null }).where(eq(monitors.id, id));
+        } else if (updated.frequencyMinutes > 0) {
+          const schedulerId = await scheduleMonitor({
+            monitorId: id,
+            frequencyMinutes: updated.frequencyMinutes,
+            jobData: {
+              monitorId: id,
+              projectId: monitorProjectId,
+              type: updated.type as MonitorJobData["type"],
+              target: updated.target,
+              config: updated.config as Record<string, unknown>,
+              frequencyMinutes: updated.frequencyMinutes,
+            },
+            retryLimit: 3,
+          });
+          await tx.update(monitors).set({ scheduledJobId: schedulerId }).where(eq(monitors.id, id));
+        }
+      }
       return updated;
     };
     // Turning a paused monitor back on takes a plan slot: count and write under the plan-limit lock.
@@ -137,38 +172,10 @@ export async function PATCH(
       );
     }
 
-    // Keep the schedule in step with pause and resume, as the monitor update paths do.
-    const wasPaused = currentMonitor.status === "paused";
-    const nowPaused = updatedMonitor.status === "paused";
-    if (wasPaused !== nowPaused) {
-      if (nowPaused) {
-        const removed = currentMonitor.scheduledJobId
-          ? await deleteScheduledMonitor(currentMonitor.scheduledJobId)
-          : false;
-        if (!removed) await deleteScheduledMonitor(id);
-        await db.update(monitors).set({ scheduledJobId: null }).where(eq(monitors.id, id));
-      } else if (updatedMonitor.frequencyMinutes > 0) {
-        const schedulerId = await scheduleMonitor({
-          monitorId: id,
-          frequencyMinutes: updatedMonitor.frequencyMinutes,
-          jobData: {
-            monitorId: id,
-            projectId: monitorProjectId,
-            type: updatedMonitor.type as MonitorJobData["type"],
-            target: updatedMonitor.target,
-            config: updatedMonitor.config as Record<string, unknown>,
-            frequencyMinutes: updatedMonitor.frequencyMinutes,
-          },
-          retryLimit: 3,
-        });
-        await db.update(monitors).set({ scheduledJobId: schedulerId }).where(eq(monitors.id, id));
-      }
-    }
-
     // Log the audit event only for human actions (pause/unpause), not automated status changes
     const humanActions = ['paused'];
     const isHumanAction = humanActions.includes(status) || 
-                         (currentMonitor.status === 'paused' && ['up', 'down'].includes(status));
+                         (currentMonitor.status === 'paused' && ['up', 'down', 'pending'].includes(status));
     
     if (isHumanAction) {
       await logAuditEvent({

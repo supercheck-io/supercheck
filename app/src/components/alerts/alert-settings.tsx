@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
-import { incidentsEnabled } from "@/lib/incident-settings";
+import { channelsOptional, incidentsEnabled } from "@/lib/incident-settings";
 import {
   Card,
   CardContent,
@@ -192,7 +192,13 @@ export function AlertSettings({
   useEffect(() => {
     const errors: { notificationProviders?: string; alertTypes?: string } = {};
 
-    const incidentOnlyOk = context === "monitor" && incidentsEnabled({ enabled: config.enabled, incidentEnabled: config.incidentEnabled });
+    const incidentOnlyOk =
+      context === "monitor" &&
+      channelsOptional({
+        enabled: config.enabled,
+        incidentEnabled: config.incidentEnabled,
+        alertOnFailure: config.alertOnFailure,
+      });
     if (config.enabled) {
       if (
         (!config.notificationProviders ||

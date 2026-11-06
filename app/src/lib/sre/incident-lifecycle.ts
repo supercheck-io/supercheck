@@ -599,6 +599,23 @@ export async function applySourceRecovery(
   if (newerFailure) {
     return { resolved: [], recovered: [] };
   }
+  // A failure signalled without an alert row (no channel, or alerts off) only shows up as the incident's last alert.
+  const [newerSignal] = await tx
+    .select({ id: sreIncidents.id })
+    .from(sreIncidentAlerts)
+    .innerJoin(sreIncidents, eq(sreIncidentAlerts.incidentId, sreIncidents.id))
+    .innerJoin(sreAlertEvents, eq(sreIncidentAlerts.alertEventId, sreAlertEvents.id))
+    .where(
+      and(
+        triggerSourceMatch(source),
+        ne(sreIncidents.status, "resolved"),
+        gt(sreIncidents.lastAlertAt, source.recoveredAt),
+      ),
+    )
+    .limit(1);
+  if (newerSignal) {
+    return { resolved: [], recovered: [] };
+  }
 
   // The failure alerts themselves end with the recovery, so the service "firing" count falls.
   // Only alerts that fired before the recovery, and only types a passing check really ends.

@@ -149,13 +149,19 @@ describe("processSreBackgroundAlertTriageJob", () => {
         firedAt: "2026-01-01T00:00:00.000Z",
       },
     };
-    const monitorRow = (alertConfig: unknown) => ({ name: "Checkout", organizationId: "org-1", projectId: "proj-1", alertConfig });
+    const monitorRow = (alertConfig: unknown) => ({ name: "Checkout", organizationId: "org-1", projectId: "proj-1", alertConfig, status: "up", enabled: true });
 
     it("opens an incident for a monitor with alerts off and incidents opted in, with one alert counted", async () => {
       selectQueue.push([monitorRow({ enabled: false, incidentEnabled: true })]);
       freshIncidentQueue();
       expect(await processSreBackgroundAlertTriageJob(FAILURE_JOB)).toEqual({ success: true, skipped: true, reason: "ai_disabled" });
       expect(insertedIncident()).toMatchObject({ incidentNumber: 4, status: "triggered", alertCount: 1 });
+    });
+
+    it.each([{ status: "paused", enabled: true }, { status: "up", enabled: false }])("ignores a queued failure for a paused or disabled monitor %j", async (state) => {
+      selectQueue.push([{ ...monitorRow({ enabled: false, incidentEnabled: true }), ...state }]);
+      expect(await processSreBackgroundAlertTriageJob(FAILURE_JOB)).toEqual({ success: true, skipped: true, reason: "alert_not_found" });
+      expect(insertedIncident()).toBeUndefined();
     });
 
     it("ignores a failure signal for a monitor that did not opt in to incidents", async () => {

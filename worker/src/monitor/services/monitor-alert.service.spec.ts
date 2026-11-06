@@ -103,7 +103,7 @@ describe('MonitorAlertService', () => {
     };
     const sreAlertTriageQueueService = {
       enqueueAlertHistoryRows: jest.fn().mockResolvedValue(undefined),
-      enqueueSourceFailure: jest.fn().mockResolvedValue(undefined),
+      enqueueSourceFailure: jest.fn().mockResolvedValue(true),
     } as unknown as SreAlertTriageQueueService;
 
     const service = new MonitorAlertService(
@@ -218,7 +218,7 @@ describe('MonitorAlertService', () => {
     const { service, sreAlertTriageQueueService } = createService();
     (
       sreAlertTriageQueueService as unknown as Record<string, jest.Mock>
-    ).enqueueSourceFailure = jest.fn();
+    ).enqueueSourceFailure = jest.fn().mockResolvedValue(true);
     await expect(
       service.signalFailure('monitor-1', 'down'),
     ).resolves.toMatchObject({
@@ -238,7 +238,7 @@ describe('MonitorAlertService', () => {
     const held = createService(true);
     (
       held.sreAlertTriageQueueService as unknown as Record<string, jest.Mock>
-    ).enqueueSourceFailure = jest.fn();
+    ).enqueueSourceFailure = jest.fn().mockResolvedValue(true);
     await expect(
       held.service.signalFailure('monitor-1', 'down'),
     ).resolves.toMatchObject({ reason: 'maintenance' });
@@ -246,6 +246,16 @@ describe('MonitorAlertService', () => {
       (held.sreAlertTriageQueueService as unknown as Record<string, jest.Mock>)
         .enqueueSourceFailure,
     ).not.toHaveBeenCalled();
+  });
+
+  it('reports a rejected incident enqueue as a delivery failure, not as sent', async () => {
+    const { service, sreAlertTriageQueueService } = createService();
+    (
+      sreAlertTriageQueueService.enqueueSourceFailure as jest.Mock
+    ).mockResolvedValueOnce(false);
+    await expect(service.signalFailure('monitor-1', 'down')).resolves.toEqual({
+      delivered: false,
+    });
   });
 
   it('enqueues created alert-history rows after monitor notifications', async () => {

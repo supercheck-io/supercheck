@@ -75,26 +75,45 @@ describe("schedule follows pause and resume", () => {
     jest.mocked(hasPermissionForUser).mockResolvedValue(true);
     (db.update as jest.Mock).mockReturnValue(setWhere);
   });
-  const tx = (updated: object) => {
+  let before: object = {};
+  const tx = (updated: object, prior: object = {}) => {
+    before = prior;
     (db.transaction as jest.Mock).mockImplementation(async (cb: (t: unknown) => unknown) =>
       cb({
-        select: () => ({ from: () => ({ where: () => ({ for: async () => [{ id: "p" }] }) }) }),
-        update: () => ({ set: jest.fn(() => ({ where: () => ({ returning: async () => [updated] }) })) }),
+        execute: jest.fn(),
+        select: () => ({ from: () => ({ where: () => ({ for: async (mode: string) => (mode === "share" ? [{ id: "p" }] : [before]) }) }) }),
+        update: () => ({ set: jest.fn(() => ({ where: () => Object.assign(Promise.resolve(), { returning: async () => [updated] }) })) }),
       }),
     );
   };
 
   it("unschedules the monitor when it is paused", async () => {
     jest.mocked(db.query.monitors.findFirst).mockResolvedValue({ id: "m", organizationId: "org", projectId: "p", status: "up", scheduledJobId: "old" } as never);
-    tx({ id: "m", name: "M", organizationId: "org", projectId: "p", status: "paused", frequencyMinutes: 5 });
+    tx({ id: "m", name: "M", organizationId: "org", projectId: "p", status: "paused", frequencyMinutes: 5 }, { status: "up", scheduledJobId: "old" });
     expect((await patch("paused")).status).toBe(200);
     expect(deleteScheduledMonitor).toHaveBeenCalledWith("old");
     expect(scheduleMonitor).not.toHaveBeenCalled();
   });
 
+  it("serializes per monitor with an advisory lock and uses the status read under it", async () => {
+    // The request-time read says up, but a concurrent pause committed first: the locked read decides.
+    jest.mocked(db.query.monitors.findFirst).mockResolvedValue({ id: "m", organizationId: "org", projectId: "p", status: "up", scheduledJobId: "stale" } as never);
+    const execute = jest.fn();
+    (db.transaction as jest.Mock).mockImplementation(async (cb: (t: unknown) => unknown) =>
+      cb({
+        execute,
+        select: () => ({ from: () => ({ where: () => ({ for: async (mode: string) => (mode === "share" ? [{ id: "p" }] : [{ status: "paused", scheduledJobId: null }]) }) }) }),
+        update: () => ({ set: jest.fn(() => ({ where: () => Object.assign(Promise.resolve(), { returning: async () => [{ id: "m", organizationId: "org", projectId: "p", status: "pending", frequencyMinutes: 5, type: "website", target: "https://e.com", config: {} }] }) })) }),
+      }),
+    );
+    expect((await patch("pending")).status).toBe(200);
+    expect(execute).toHaveBeenCalled();
+    expect(scheduleMonitor).toHaveBeenCalledTimes(1);
+  });
+
   it("reschedules the monitor when it is resumed", async () => {
     jest.mocked(db.query.monitors.findFirst).mockResolvedValue({ id: "m", organizationId: "org", projectId: "p", status: "paused" } as never);
-    tx({ id: "m", name: "M", organizationId: "org", projectId: "p", status: "pending", frequencyMinutes: 5, type: "website", target: "https://e.com", config: {} });
+    tx({ id: "m", name: "M", organizationId: "org", projectId: "p", status: "pending", frequencyMinutes: 5, type: "website", target: "https://e.com", config: {} }, { status: "paused" });
     expect((await patch("pending")).status).toBe(200);
     expect(scheduleMonitor).toHaveBeenCalledWith(expect.objectContaining({ monitorId: expect.any(String), frequencyMinutes: 5 }));
     expect(deleteScheduledMonitor).not.toHaveBeenCalled();
@@ -122,9 +141,10 @@ it("answers 401 for an auth failure instead of 500 (c20)", async () => {
 function lockedTx(liveProjects: unknown[], updated: unknown[] = []) {
   const wheres: string[] = [];
   const forShare = jest.fn(async () => liveProjects);
-  const update = jest.fn(() => ({ set: () => ({ where: () => ({ returning: async () => updated }) }) }));
+  const update = jest.fn(() => ({ set: () => ({ where: () => Object.assign(Promise.resolve(), { returning: async () => updated }) }) }));
   (db.transaction as jest.Mock).mockImplementation(async (cb: (tx: unknown) => unknown) =>
     cb({
+      execute: jest.fn(),
       select: () => ({
         from: () => ({
           where: (condition: SQL) => {

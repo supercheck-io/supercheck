@@ -883,7 +883,8 @@ export async function PATCH(
 
     // Handle partial update for 'alertConfig'
     let providerIdsToSync: string[] | null = null;
-    if (rawData.alertConfig && !isObject(rawData.alertConfig)) {
+    // null, false, 0 or "" would be silently ignored below, leaving alerts on: refuse them instead.
+    if (rawData.alertConfig !== undefined && !isObject(rawData.alertConfig)) {
       return NextResponse.json({ error: "alertConfig must be an object" }, { status: 400 });
     }
     if (rawData.alertConfig) {
@@ -897,11 +898,11 @@ export async function PATCH(
       }
       updatePayload.alertConfig = normalized.value;
       // null clears the list (merge-patch delete), so it must clear the delivery rows too.
-      if (
-        normalized.value.enabled &&
-        (Array.isArray(rawData.alertConfig.notificationProviders) ||
-          rawData.alertConfig.notificationProviders === null)
-      ) {
+      const listSent =
+        Array.isArray(rawData.alertConfig.notificationProviders) ||
+        rawData.alertConfig.notificationProviders === null;
+      // Clearing the list must clear the delivery rows even while alerts are being disabled.
+      if (listSent && (normalized.value.enabled || normalized.value.notificationProviders.length === 0)) {
         providerIdsToSync = normalized.value.notificationProviders;
       }
     }

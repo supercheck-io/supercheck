@@ -104,13 +104,15 @@ export class MonitorAlertService {
         reason: 'maintenance' as const,
       };
     }
-    await this.sreAlertTriageQueueService.enqueueSourceFailure({
+    const queued = await this.sreAlertTriageQueueService.enqueueSourceFailure({
       sourceType: 'monitor',
       sourceId: monitorId,
       type: 'monitor_failure',
       message: (reason || 'Monitor is down').slice(0, 2000),
       firedAt: new Date().toISOString(),
     });
+    // A rejected enqueue is a delivery failure: the evaluator retries within its bounded window.
+    if (!queued) return { delivered: false };
     return {
       delivered: false,
       suppressed: true,
