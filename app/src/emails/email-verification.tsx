@@ -1,5 +1,6 @@
 import { Hr, Link, Section, Text } from "@react-email/components";
 import * as React from "react";
+import { PALETTE } from "./palette";
 import { BaseLayout, EmailButton } from "./base-layout";
 
 interface EmailVerificationEmailProps {
@@ -17,12 +18,10 @@ export const EmailVerificationEmail = ({
     <BaseLayout
       preview="Verify your email address to complete signup"
       title="Email Verification"
-      headerColor="#15803d"
+      headerColor={PALETTE.neutral}
     >
       <Section style={contentSection}>
         {/* Main Content */}
-        <Text style={heading}>Verify Your Email</Text>
-
         <Text style={paragraph}>Hi {userName},</Text>
 
         <Text style={paragraph}>
@@ -71,17 +70,7 @@ export const EmailVerificationEmail = ({
 // ============================================================================
 
 const contentSection = {
-  padding: "32px 32px 0",
-};
-
-const heading = {
-  color: "#111827",
-  fontSize: "24px",
-  fontWeight: "700" as const,
-  lineHeight: "1.3",
-  margin: "0 0 24px",
-  textAlign: "center" as const,
-  letterSpacing: "-0.025em",
+  padding: "32px",
 };
 
 const paragraph = {
@@ -134,7 +123,7 @@ const urlText = {
 };
 
 const link = {
-  color: "#059669",
+  color: PALETTE.info,
   textDecoration: "underline",
 };
 
