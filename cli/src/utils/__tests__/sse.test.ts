@@ -42,8 +42,10 @@ describe('postSse', () => {
   })
 
   it('rejects unsuccessful responses without exposing unbounded bodies', async () => {
-    jest.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('denied', { status: 403 }))
-    await expect(postSse('/api/sre/chat', {}, () => undefined)).rejects.toThrow('Stream request failed (403): denied')
+    jest.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('<html>denied</html>', { status: 403 }))
+    const error = await postSse('/api/sre/chat', {}, () => undefined).catch((e) => e)
+    expect(error.message).toBe('Stream request failed (403)')
+    expect(error.responseBody).toBeUndefined()
   })
 
   it('rejects events over the safety limit', async () => {

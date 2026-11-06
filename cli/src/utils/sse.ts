@@ -76,9 +76,9 @@ async function streamSse(
     phase = 'Subscribed — waiting for output'
     if (!response.ok) {
       const details = (await response.text()).slice(0, 4096)
-      let parsed: unknown = details
-      try { parsed = JSON.parse(details) } catch { /* Keep the raw text body. */ }
-      throw new ApiRequestError(`Stream request failed (${response.status})${details ? `: ${details}` : ''}`, response.status, parsed)
+      let parsed: unknown
+      try { parsed = JSON.parse(details) } catch { /* A non-JSON body (e.g. a proxy's HTML page) is not echoed. */ }
+      throw new ApiRequestError(`Stream request failed (${response.status})`, response.status, parsed)
     }
     reader = response.body?.getReader()
     if (!reader) throw new CLIError('Stream returned no response body', ExitCode.ApiError)

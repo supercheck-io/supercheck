@@ -530,7 +530,7 @@ describe('AI SRE CLI Commands', () => {
   it('test get --include-script prints the script unredacted so redirected files stay intact', async () => {
     mockGet.mockResolvedValueOnce({ data: { id: 't1', script: Buffer.from('const k = "x"').toString('base64') } })
     await testCommand.parseAsync(['node', 'test', 'get', 't1', '--include-script'])
-    expect(mockOutput).toHaveBeenCalledWith('const k = "x"', { redact: false })
+    expect(mockOutput).toHaveBeenCalledWith('const k = "x"\n', { redact: false })
   })
 
   describe('test tag commands', () => {
