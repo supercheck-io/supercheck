@@ -29,11 +29,11 @@ export default async function SreIncidentDetailPage({
   ];
 
   return (
-    <div>
+    // On desktop the page fits the window (no page scrollbar); each column scrolls on its own.
+    <div data-fit-viewport className="flex min-h-0 flex-1 flex-col lg:min-h-[560px] lg:overflow-hidden">
       <PageBreadcrumbs items={breadcrumbs} />
-      {/* One page card like the other pages; no fixed height, so the page has one scrollbar. */}
-      <Card className="m-4 min-w-0 shadow-sm">
-        <CardContent className="p-6">
+      <Card className="m-4 flex min-h-0 min-w-0 flex-1 flex-col shadow-sm">
+        <CardContent className="flex min-h-0 flex-1 flex-col p-6">
           <SreIncidentDetailPageClient incidentId={id} initialTab={initialTab} />
         </CardContent>
       </Card>

@@ -8,11 +8,11 @@ import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
 import { cn } from "@/lib/utils";
 import type { SreHypothesisState } from "@/sre/lib/investigation-output";
 
-// The accent and icon carry the state at a glance; ruled-out hypotheses recede.
-const STATE: Record<SreHypothesisState, { label: string; tone: TableBadgeTone; icon: LucideIcon; accent: string; iconClass: string }> = {
-  validated: { label: "Validated", tone: "success", icon: CircleCheck, accent: "border-l-emerald-500", iconClass: "text-emerald-600 dark:text-emerald-400" },
-  ruled_out: { label: "Ruled out", tone: "slate", icon: CircleX, accent: "border-l-slate-400/60", iconClass: "text-muted-foreground" },
-  inconclusive: { label: "Inconclusive", tone: "warning", icon: CircleHelp, accent: "border-l-amber-500", iconClass: "text-amber-600 dark:text-amber-400" },
+// The icon and badge carry the state at a glance; ruled-out hypotheses recede.
+const STATE: Record<SreHypothesisState, { label: string; tone: TableBadgeTone; icon: LucideIcon; iconClass: string }> = {
+  validated: { label: "Validated", tone: "success", icon: CircleCheck, iconClass: "text-emerald-600 dark:text-emerald-400" },
+  ruled_out: { label: "Ruled out", tone: "slate", icon: CircleX, iconClass: "text-muted-foreground" },
+  inconclusive: { label: "Inconclusive", tone: "warning", icon: CircleHelp, iconClass: "text-amber-600 dark:text-amber-400" },
 };
 
 type Investigation = NonNullable<SreIncidentDetail["latestInvestigation"]>;
@@ -39,7 +39,7 @@ export function InvestigationHypotheses({
       <SectionTitle id="investigation-hypotheses-title" icon={Lightbulb} tone="amber" count={hypotheses.length}>
         Hypotheses
       </SectionTitle>
-      <ol className="space-y-2">
+      <ol className="divide-y rounded-lg border">
         {hypotheses.map((hypothesis, index) => {
           const state = STATE[hypothesis.state];
           const cited = hypothesis.evidenceIds
@@ -48,7 +48,7 @@ export function InvestigationHypotheses({
           return (
             <li
               key={hypothesis.key}
-              className={cn("space-y-2 rounded-lg border border-l-4 px-4 py-3", state.accent)}
+              className="space-y-1.5 px-4 py-3"
               data-testid={`hypothesis-${hypothesis.key}`}
             >
               <div className="flex flex-wrap items-start gap-2">

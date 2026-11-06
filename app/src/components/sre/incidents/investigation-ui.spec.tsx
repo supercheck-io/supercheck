@@ -30,6 +30,8 @@ describe("InvestigationStepTrace", () => {
     render(<InvestigationStepTrace steps={[]} running />);
     expect(screen.getByTestId("investigation-step-trace")).toHaveAttribute("data-state", "open");
     expect(screen.getByText("Live")).toBeInTheDocument();
+    expect(screen.getByTestId("investigation-step-trace")).toHaveTextContent("Starting");
+    expect(screen.getByTestId("investigation-step-trace")).not.toHaveTextContent("0 steps");
     expect(screen.getByText(/Steps appear here/)).toBeInTheDocument();
   });
 

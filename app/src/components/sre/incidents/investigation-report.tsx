@@ -33,6 +33,7 @@ import { SreInvestigationPanel, SreReportSnapshotMenuItem } from "@/components/s
 import { SreMessageContent } from "@/components/sre/sre-message-content";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { TableBadge } from "@/components/ui/table-badge";
 
@@ -40,6 +41,7 @@ import { TableBadge } from "@/components/ui/table-badge";
 export type ReportFocus = { target: string; n: number };
 
 const SECTION_ID = "sre-report-";
+const NEXT_STEPS_COLLAPSED = 3;
 
 function Section({
   id,
@@ -204,6 +206,9 @@ export function InvestigationReport({
     />
   ) : null;
 
+  const stepsDone = investigation?.steps.length ?? 0;
+  const [allSteps, setAllSteps] = useState(false);
+  const shownChecks = allSteps ? nextChecks : nextChecks.slice(0, NEXT_STEPS_COLLAPSED);
   const lastRun = investigation
     ? running
       ? "Investigation in progress"
@@ -215,10 +220,20 @@ export function InvestigationReport({
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <p className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 pt-1.5 text-xs text-muted-foreground">
-          <span className="inline-flex items-center gap-1.5">
-            <Clock className="size-3.5" aria-hidden="true" />
-            {lastRun}
-          </span>
+          {running ? (
+            <span role="status" className="inline-flex items-center gap-2 font-medium text-violet-600 dark:text-violet-400">
+              <span aria-hidden="true" className="relative flex size-2">
+                <span className="absolute inline-flex size-full animate-ping rounded-full bg-violet-500 opacity-60" />
+                <span className="relative inline-flex size-2 rounded-full bg-violet-500" />
+              </span>
+              {stepsDone > 0 ? `Investigating: ${stepsDone} ${stepsDone === 1 ? "check" : "checks"} done` : "Investigating"}
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1.5">
+              <Clock className="size-3.5" aria-hidden="true" />
+              {lastRun}
+            </span>
+          )}
           {snapshotSaved && (
             <span className="inline-flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
               <CircleCheck className="size-3.5" aria-hidden="true" />
@@ -285,7 +300,6 @@ export function InvestigationReport({
           <div className="space-y-3">
             {triageConclusion && <p className="text-xs text-muted-foreground">From AI triage. Run an investigation for a full analysis.</p>}
             {(failed || running) && <p className="text-xs text-muted-foreground">Previous conclusion</p>}
-            {inconclusive && <p className="text-xs text-muted-foreground">No root cause established.</p>}
             <div className="break-words rounded-lg border-l-2 border-violet-500/60 bg-muted/30 px-4 py-3 text-sm leading-relaxed">
               <SreMessageContent content={conclusion} />
             </div>
@@ -298,13 +312,25 @@ export function InvestigationReport({
               <div className="space-y-1.5">
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Next steps</p>
                 <ul className="space-y-1.5 text-sm">
-                  {nextChecks.map((step, index) => (
+                  {shownChecks.map((step, index) => (
                     <li key={index} className="flex gap-2 break-words">
                       <ArrowRight className="mt-0.5 size-4 shrink-0 text-violet-500" aria-hidden="true" />
                       <span className="min-w-0">{step}</span>
                     </li>
                   ))}
                 </ul>
+                {nextChecks.length > NEXT_STEPS_COLLAPSED && (
+                  <Button
+                    type="button"
+                    variant="link"
+                    size="sm"
+                    className="h-auto px-0 text-xs text-muted-foreground"
+                    aria-expanded={allSteps}
+                    onClick={() => setAllSteps((value) => !value)}
+                  >
+                    {allSteps ? "Show fewer" : `Show all ${nextChecks.length} steps`}
+                  </Button>
+                )}
               </div>
             )}
             {!streaming && briefButton}
@@ -337,7 +363,14 @@ export function InvestigationReport({
             {!streaming && briefButton}
           </div>
         ) : (
-          !running && (
+          running ? (
+            <div role="status" aria-label="Investigation in progress" className="space-y-2 rounded-lg bg-muted/30 px-4 py-3">
+              <Skeleton className="h-3.5 w-11/12" />
+              <Skeleton className="h-3.5 w-4/5" />
+              <Skeleton className="h-3.5 w-2/3" />
+              <p className="pt-1 text-xs text-muted-foreground">The conclusion appears here when the run finishes.</p>
+            </div>
+          ) : (
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-sm text-muted-foreground">
                 {permissions.canInvestigate

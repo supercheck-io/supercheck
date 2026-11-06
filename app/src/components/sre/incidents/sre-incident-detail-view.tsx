@@ -10,7 +10,6 @@ import { AcknowledgeSreIncidentButton } from "@/components/sre/incidents/acknowl
 import { EditSreIncidentDialog } from "@/components/sre/incidents/edit-sre-incident-dialog";
 import { IncidentAiSummaryCard } from "@/components/sre/incidents/incident-ai-summary-card";
 import { IncidentSidebar, SEVERITY_TONES } from "@/components/sre/incidents/incident-sidebar";
-import { PANEL } from "@/components/sre/incidents/incident-ui";
 import { IncidentTimeline } from "@/components/sre/incidents/incident-timeline";
 import { InvestigationFeedback } from "@/components/sre/incidents/investigation-feedback";
 import { InvestigationReport, type ReportFocus } from "@/components/sre/incidents/investigation-report";
@@ -19,7 +18,6 @@ import { OPEN_POSTMORTEM_EVENT, ResolveSreIncidentDialog } from "@/components/sr
 import { SimilarIncidentsCard } from "@/components/sre/incidents/similar-incidents-card";
 import { SreInvestigationPanel } from "@/components/sre/incidents/sre-investigation-panel";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -48,6 +46,9 @@ const FOCUS_FOR_LINK: Partial<Record<IncidentTabParam, string>> = {
   evidence: "evidence",
   brief: "conclusion",
 };
+
+// Desktop columns scroll inside the page card with the scrollbar hidden, as on Copilot; small screens scroll the page.
+const COLUMN_SCROLL = "lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden";
 
 // Icons take the tab's text colour; the active tab's icon picks up the primary colour.
 const TAB_TRIGGER = "gap-2 [&_svg]:size-4 [&_svg]:text-muted-foreground data-[state=active]:[&_svg]:text-primary";
@@ -134,8 +135,8 @@ export function SreIncidentDetailView({
   ) : null;
 
   return (
-    <div className="flex min-w-0 flex-col gap-5">
-      <header className="border-b pb-4">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-5">
+      <header className="shrink-0 border-b pb-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
             <Button asChild variant="outline" size="icon" className="h-8 w-8 shrink-0">
@@ -212,7 +213,7 @@ export function SreIncidentDetailView({
       </header>
 
       {/* Tabs sit above both columns so the first card on each side starts on the same line. */}
-      <Tabs value={activeTab} onValueChange={changeTab} className="flex min-w-0 flex-col gap-4">
+      <Tabs value={activeTab} onValueChange={changeTab} className="flex min-h-0 min-w-0 flex-1 flex-col gap-4">
         <TabsList className="h-auto w-full shrink-0 flex-wrap justify-start self-start sm:w-auto">
           <TabsTrigger value="overview" className={TAB_TRIGGER}>
             <LayoutDashboard aria-hidden="true" />
@@ -233,8 +234,8 @@ export function SreIncidentDetailView({
           )}
         </TabsList>
 
-        <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start">
-          <div className="flex min-w-0 flex-col">
+        <div className="grid min-h-0 min-w-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_22rem] lg:grid-rows-[minmax(0,1fr)]">
+          <div className={`flex min-w-0 flex-col ${COLUMN_SCROLL}`}>
 
             {/* Kept mounted while hidden so an unsent note or a draft survives a tab switch. */}
             <TabsContent
@@ -281,23 +282,17 @@ export function SreIncidentDetailView({
             </TabsContent>
 
             <TabsContent value="investigation" className="mt-0 min-w-0">
-              <Card className={PANEL}>
-                <CardContent className="p-4">
-                  <InvestigationReport
+              <InvestigationReport
                     key={detail.latestBrief?.id ?? "no-brief"}
                     detail={detail}
                     focus={focus}
                     serviceMappingHref={`/incidents/${incident.id}?edit=service`}
                   />
-                </CardContent>
-              </Card>
             </TabsContent>
 
             {!open && (
               <TabsContent value="postmortem" className="mt-0 min-w-0">
-                <Card className={PANEL}>
-                  <CardContent className="p-4">
-                    <PostmortemCard
+                <PostmortemCard
                       key={incident.postmortem?.updatedAt ?? "none"}
                       incidentId={incident.id}
                       incidentNumber={incident.incidentNumber}
@@ -305,13 +300,11 @@ export function SreIncidentDetailView({
                       postmortem={incident.postmortem}
                       canEdit={permissions.canUpdate}
                     />
-                  </CardContent>
-                </Card>
               </TabsContent>
             )}
           </div>
           {/* Not sticky: with alerts and similar incidents the column can be taller than the window. */}
-          <aside aria-label="Incident details" className="flex min-w-0 flex-col gap-4">
+          <aside aria-label="Incident details" className={`flex min-w-0 flex-col gap-4 ${COLUMN_SCROLL}`}>
             <IncidentSidebar detail={detail} showCommander={showCommander} />
             <SimilarIncidentsCard incidentId={incident.id} />
           </aside>

@@ -17,7 +17,7 @@ export function SreIncidentDetailPageClient({
   if (!query.data) {
     if (query.isPending) {
       return (
-        <SupercheckLoading className="min-h-72" message="Loading incident..." />
+        <SupercheckLoading className="min-h-72 flex-1" message="Loading incident..." />
       );
     }
 
@@ -38,7 +38,7 @@ export function SreIncidentDetailPageClient({
   }
 
   return (
-    <>
+    <div className="flex min-h-0 flex-1 flex-col">
       {!servicesResult.success && (
         <Alert variant="destructive" className="mb-4">
           <AlertTitle>Services unavailable</AlertTitle>
@@ -54,7 +54,7 @@ export function SreIncidentDetailPageClient({
         services={servicesResult.success ? servicesResult.services : []}
         initialTab={initialTab}
       />
-    </>
+    </div>
   );
 }
 

@@ -319,6 +319,44 @@ describe("SreIncidentDetailView", () => {
     expect(within(investigationTab()).getByRole("button", { name: "Generate brief" })).toBeInTheDocument();
   });
 
+  it("shows one running status line and a conclusion placeholder while a first run is in progress", () => {
+    const detail = detailFixture();
+    detail.incident.rootCauseSummary = null;
+    detail.latestBrief = null;
+    detail.latestInvestigation = {
+      ...detail.latestInvestigation!,
+      status: "running",
+      summary: null,
+      steps: [{ index: 0, tool: "listNativeEvidence", args: "", status: "ok", resultCount: 1, durationMs: 5 }],
+    };
+    render(<SreIncidentDetailView detail={detail} services={[]} initialTab="investigation" />);
+    const sheet = investigationTab();
+    expect(within(sheet).getByText("Investigating: 1 check done")).toBeInTheDocument();
+    expect(within(sheet).getByRole("status", { name: "Investigation in progress" })).toBeInTheDocument();
+    expect(within(sheet).queryByText(/Last run/)).not.toBeInTheDocument();
+    expect(within(sheet).queryByText(/^Confidence:/)).not.toBeInTheDocument();
+  });
+
+  it("shows three next steps and the rest on request, with the outcome shown once", () => {
+    const detail = detailFixture();
+    detail.latestInvestigation = {
+      ...detail.latestInvestigation!,
+      structured: {
+        outcome: "inconclusive", confidence: 0, conclusion: "No cause found.",
+        nextChecks: ["Step one", "Step two", "Step three", "Step four"], topEvidenceIds: [], downgraded: false,
+      },
+    };
+    render(<SreIncidentDetailView detail={detail} services={[]} initialTab="investigation" />);
+    const sheet = investigationTab();
+    expect(within(sheet).getByText("Inconclusive")).toBeInTheDocument();
+    expect(within(sheet).queryByText(/No root cause established/)).not.toBeInTheDocument();
+    expect(within(sheet).queryByText("Step four")).not.toBeInTheDocument();
+    fireEvent.click(within(sheet).getByRole("button", { name: "Show all 4 steps" }));
+    expect(within(sheet).getByText("Step four")).toBeInTheDocument();
+    fireEvent.click(within(sheet).getByRole("button", { name: "Show fewer" }));
+    expect(within(sheet).queryByText("Step four")).not.toBeInTheDocument();
+  });
+
   it("does not rate a failed run's earlier conclusion and still offers a brief", () => {
     const detail = detailFixture();
     detail.latestInvestigation = { ...detail.latestInvestigation!, status: "failed", summary: "Timed out." };

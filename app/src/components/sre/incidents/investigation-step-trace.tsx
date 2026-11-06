@@ -34,7 +34,7 @@ export function InvestigationStepTrace({
         <IconTile icon={ListChecks} tone="slate" />
         How it was investigated
         <span className="text-xs font-normal text-muted-foreground">
-          {steps.length} {steps.length === 1 ? "step" : "steps"}
+          {steps.length === 0 && running ? "Starting" : `${steps.length} ${steps.length === 1 ? "step" : "steps"}`}
           {failures > 0 ? `, ${failures} failed` : ""}
         </span>
         <ChevronRight className="ml-auto h-4 w-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-90" aria-hidden="true" />
