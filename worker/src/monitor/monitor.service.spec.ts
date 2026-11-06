@@ -1,3 +1,5 @@
+import { AxiosError } from 'axios';
+import { throwError } from 'rxjs';
 /**
  * Monitor Service Tests
  *
@@ -769,6 +771,19 @@ describe('MonitorService', () => {
       const error = new Error('Timeout');
       (error as any).code = 'ETIMEDOUT';
       expect((error as any).code).toBe('ETIMEDOUT');
+    });
+
+    it('reports the wall-clock abort of a slow response as a timeout', async () => {
+      const abort = new AxiosError('canceled', 'ERR_CANCELED');
+      (service['httpService'].request as jest.Mock).mockImplementationOnce(() =>
+        throwError(() => abort),
+      );
+      const result = await service['executeHttpRequest'](
+        'https://example.com',
+        { timeoutSeconds: 1 } as never,
+      );
+      expect(result.status).toBe('timeout');
+      expect(result.isUp).toBe(false);
     });
 
     it('should recognize DNS error code', () => {
