@@ -434,6 +434,8 @@ export const sreIncidents = pgTable(
     postmortem: jsonb("postmortem").$type<SrePostmortem>(),
     /** Set once when the unacknowledged re-notify step fires, so it never repeats. */
     renotifiedAt: timestamp("renotified_at", { withTimezone: true }),
+    /** Last automatic reopen; the un-acknowledged reminder counts from here instead of from creation. */
+    reopenedAt: timestamp("reopened_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
@@ -921,6 +923,8 @@ export const sreInvestigationRuns = pgTable(
     createdByUserId: uuid("created_by_user_id").references(() => user.id, { onDelete: "set null" }),
     /** The tier the run was admitted under; a trial run is never billed, even after the organization subscribes. */
     billingTier: varchar("billing_tier", { length: 8 }).$type<"paid" | "trial">().notNull().default("paid"),
+    /** "auto" for a run started by the auto-investigate-on-open policy; everything else is "manual". */
+    origin: varchar("origin", { length: 8 }).$type<"auto" | "manual">().notNull().default("manual"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => ({
@@ -930,6 +934,11 @@ export const sreInvestigationRuns = pgTable(
     activeIncidentRunUnique: uniqueIndex("sre_investigation_runs_active_incident_unique")
       .on(table.organizationId, table.projectId, table.incidentId, table.agentType)
       .where(sql`${table.status} = 'running' AND ${table.incidentId} IS NOT NULL`),
+    // At most one live-or-finished automatic run per incident and agent type, so two racing triggers cannot both bill.
+    autoIncidentRunUnique: uniqueIndex("sre_investigation_runs_auto_incident_unique")
+      .on(table.organizationId, table.projectId, table.incidentId, table.agentType)
+      .where(sql`${table.origin} = 'auto' AND ${table.status} IN ('running', 'completed') AND ${table.incidentId} IS NOT NULL`),
+    originCheck: check("sre_investigation_runs_origin_check", sql`${table.origin} IN ('auto', 'manual')`),
     modelIdIdx: index("sre_investigation_runs_model_id_idx").on(table.modelId),
     lowConfidenceIdx: index("sre_investigation_runs_low_confidence_idx").on(table.confidenceScore).where(sql`confidence_score < 0.5`),
     createdAtIdx: index("sre_investigation_runs_created_at_idx").on(table.createdAt),

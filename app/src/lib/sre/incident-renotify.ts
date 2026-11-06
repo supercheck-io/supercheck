@@ -14,6 +14,9 @@ const MAX_AGE_MS = 2 * 24 * 60 * 60 * 1000;
 // Claim small batches so a restart mid-tick loses at most one batch; the cap keeps a late-enabled
 // policy on a busy project from bursting (the rest follows on later ticks).
 const CLAIM_BATCH = 10;
+
+// Since when the incident has been waiting: creation, or its last reopen so a late reopen is still reminded.
+const openedAt = sql<Date>`coalesce(${sreIncidents.reopenedAt}, ${sreIncidents.createdAt})`;
 const MAX_PER_TICK = 50;
 
 /**
@@ -36,11 +39,11 @@ export async function renotifyUnacknowledgedIncidents(now = new Date()) {
           isNull(sreIncidents.acknowledgedAt),
           isNull(sreIncidents.renotifiedAt),
           released.length ? notInArray(sreIncidents.id, released) : undefined,
-          gte(sreIncidents.createdAt, new Date(now.getTime() - MAX_AGE_MS)),
-          lte(sreIncidents.createdAt, sql`${now.toISOString()}::timestamptz - make_interval(mins => ${notificationPolicies.renotifyUnackedMinutes})`),
+          gte(openedAt, sql`${new Date(now.getTime() - MAX_AGE_MS).toISOString()}::timestamptz`),
+          lte(openedAt, sql`${now.toISOString()}::timestamptz - make_interval(mins => ${notificationPolicies.renotifyUnackedMinutes})`),
         ),
       )
-      .orderBy(sreIncidents.createdAt)
+      .orderBy(openedAt)
       .limit(Math.min(CLAIM_BATCH, MAX_PER_TICK - total))
       .for("update", { of: sreIncidents, skipLocked: true });
     const claimed = await db

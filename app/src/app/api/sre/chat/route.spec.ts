@@ -38,6 +38,9 @@ jest.mock("@/sre/lib/session-store", () => ({
   createSreConversation: jest.fn(),
   appendSreMessage: jest.fn(),
   getSreConversation: jest.fn(),
+  listSreMessages: jest.fn(),
+  isSreMessageSuperseded: () => false,
+  SRE_MESSAGE_INTERRUPTED: "interrupted",
 }));
 
 jest.mock("@/sre/lib/agent-runner", () => ({
@@ -68,9 +71,13 @@ const { checkSreChatRateLimit: mockCheckSreChatRateLimit } = jest.requireMock("@
 const {
   createSreConversation: mockCreateSreConversation,
   appendSreMessage: mockAppendSreMessage,
+  getSreConversation: mockGetSreConversation,
+  listSreMessages: mockListSreMessages,
 } = jest.requireMock("@/sre/lib/session-store") as {
   createSreConversation: jest.Mock;
   appendSreMessage: jest.Mock;
+  getSreConversation: jest.Mock;
+  listSreMessages: jest.Mock;
 };
 const { runSreAgent: mockRunSreAgent } = jest.requireMock("@/sre/lib/agent-runner") as {
   runSreAgent: jest.Mock;
@@ -137,6 +144,26 @@ describe("SRE chat API", () => {
         "Never invent or assign team names, owners, departments",
       ),
     }));
+  });
+
+  it("gives a continued conversation its earlier turns, minus interrupted replies", async () => {
+    const conversationId = "018f0000-0000-7000-8000-000000000004";
+    mockGetSreConversation.mockResolvedValue({ id: conversationId, incidentId: null, status: "active" });
+    mockListSreMessages.mockResolvedValue([
+      { role: "user", content: "Is checkout slow?", attachments: [] },
+      { role: "assistant", content: "Latency doubled at 10:00.", attachments: [] },
+      { role: "assistant", content: "half a reply", attachments: [{ type: "interrupted" }] },
+    ]);
+    const response = await POST(new NextRequest("http://localhost/api/sre/chat", {
+      method: "POST",
+      body: JSON.stringify({ conversationId, message: "Why?" }),
+    }));
+    await responseText(response);
+    const { prompt } = mockRunSreAgent.mock.calls[0][0];
+    expect(prompt).toContain("user: Is checkout slow?");
+    expect(prompt).toContain("assistant: Latency doubled at 10:00.");
+    expect(prompt).not.toContain("half a reply");
+    expect(mockListSreMessages).toHaveBeenCalledWith(expect.objectContaining({ conversationId }));
   });
 
   it("rejects unauthorized users before creating conversations", async () => {
