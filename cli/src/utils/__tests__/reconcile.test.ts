@@ -33,6 +33,14 @@ function remote(overrides: Partial<RemoteResource> = {}): RemoteResource {
 }
 
 describe('reconcile', () => {
+  it('treats a bare http(s) monitor target and its server-normalized form as equal', () => {
+    const l = { type: 'monitor' as const, id: 'id-1', name: 'Site', definition: { target: 'https://example.com' } }
+    const r = { id: 'id-1', type: 'monitor' as const, name: 'Site', raw: { target: 'https://example.com/' } }
+    expect(reconcile([l], [r])[0].action).toBe('no-change')
+    const changed = { ...l, definition: { target: 'https://example.org' } }
+    expect(reconcile([changed], [r])[0].action).toBe('update')
+  })
+
   it('treats local resources without an id as creates', () => {
     const changes = reconcile([local()], [])
 

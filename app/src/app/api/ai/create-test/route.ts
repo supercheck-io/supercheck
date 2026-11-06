@@ -16,7 +16,12 @@ export async function POST(request: NextRequest) {
   let refundCredit: (() => Promise<void>) | undefined;
   try {
     // Step 1: Input validation and sanitization
-    const body = await request.json();
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
 
     // Validate required fields
     if (!body.userRequest || typeof body.userRequest !== "string") {

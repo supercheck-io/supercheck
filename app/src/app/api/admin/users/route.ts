@@ -43,7 +43,12 @@ export async function PATCH(request: NextRequest) {
   try {
     await requireAdmin();
     
-    const body = await request.json();
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
     const { userId, action, reason, duration } = body;
     
     if (!userId || !action) {

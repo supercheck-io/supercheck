@@ -85,6 +85,7 @@ x-common-env: &common-env # Database Configuration
   # migration 0036 and BETTER_AUTH_URL set to the public HTTPS URL.
   MCP_SERVER_ENABLED: ${MCP_SERVER_ENABLED:-false}
   MCP_ALLOWED_ORIGINS: ${MCP_ALLOWED_ORIGINS:-}
+  MCP_JWKS_URL: ${MCP_JWKS_URL:-}
   # Let monitors target private, loopback and reserved addresses (app rejects them on save, worker refuses them on run).
   ALLOW_INTERNAL_TARGETS: ${ALLOW_INTERNAL_TARGETS:-false}
   MCP_DYNAMIC_CLIENT_REGISTRATION: ${MCP_DYNAMIC_CLIENT_REGISTRATION:-true}

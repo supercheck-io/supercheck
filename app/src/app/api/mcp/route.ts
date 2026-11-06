@@ -5,7 +5,7 @@ import { InitializeRequestSchema, JSONRPCRequestSchema } from "@modelcontextprot
 import type { JWTPayload } from "jose";
 import { auth } from "@/utils/auth";
 import { logAuditEvent } from "@/lib/audit-logger";
-import { getMcpAllowedOrigins, getMcpResourceUrl, isMcpServerEnabled, MCP_READ_SCOPE } from "@/lib/mcp/config";
+import { getMcpAllowedOrigins, getMcpJwksUrl, getMcpResourceUrl, isMcpServerEnabled, MCP_READ_SCOPE } from "@/lib/mcp/config";
 import { McpAccessDeniedError, resolveMcpCallContext } from "@/lib/mcp/context";
 import { requestWithHeaders } from "@/lib/mcp/request-policy";
 import { registerMcpTools } from "@/lib/mcp/tools";
@@ -153,6 +153,7 @@ export async function POST(request: Request): Promise<Response> {
     headers.set("host", resource.host);
     const protectedHandler = requireMcpAuth(auth as never, handle, {
       resource: resource.toString(),
+      jwksUrl: getMcpJwksUrl(),
       requiredScopes: [MCP_READ_SCOPE],
     } as never);
     const response = await protectedHandler(requestWithHeaders(request, headers));

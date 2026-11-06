@@ -242,7 +242,8 @@ export function ServiceCatalog({
             <AlertDialogTitle>Archive service?</AlertDialogTitle>
             <AlertDialogDescription>
               {archivingService?.name} will be archived, not deleted. Its
-              topology and incident history are kept.
+              incident history is kept, but its dependencies are marked stale
+              and no longer appear in the topology.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

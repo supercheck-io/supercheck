@@ -189,18 +189,33 @@ function diffFields(local: Record<string, unknown>, remote: Record<string, unkno
     }
     // These resources omit empty remote strings, so a local "" already matches an unset field.
     if ((resourceType === 'statusPage' || resourceType === 'requirement') && localVal === '' && (remoteVal === undefined || remoteVal === null)) continue
-    const [comparableLocal, comparableRemote] = key === 'tags' && Array.isArray(localVal) && Array.isArray(remoteVal)
+    let [comparableLocal, comparableRemote] = key === 'tags' && Array.isArray(localVal) && Array.isArray(remoteVal)
       ? [foldTags(localVal), foldTags(remoteVal)]
       : key === 'config'
       ? stripMaskedConfigFields(localVal, remoteVal, maskedFields)
       : key === 'alertConfig' && (resourceType === 'job' || resourceType === 'monitor') && localVal && typeof localVal === 'object'
       ? [normalizeLocalAlertConfig(localVal as Record<string, unknown>, remoteVal, resourceType), remoteVal]
       : [localVal, remoteVal]
+    if (resourceType === 'monitor' && key === 'target') {
+      comparableLocal = normalizeUrlTarget(comparableLocal)
+      comparableRemote = normalizeUrlTarget(comparableRemote)
+    }
     if (stableStringify(comparableLocal) !== stableStringify(comparableRemote)) {
       diffs.push(`${key}: ${JSON.stringify(redact({ type: local.type ?? remote.type, [key]: comparableRemote })[key])} -> ${JSON.stringify(redact({ type: local.type ?? remote.type, [key]: comparableLocal })[key])}`)
     }
   }
   return diffs
+}
+
+/** The server stores http(s) targets as URL.toString() ("https://example.com" -> "https://example.com/"); fold both sides the same way. */
+function normalizeUrlTarget(value: unknown): unknown {
+  if (typeof value !== 'string') return value
+  try {
+    const url = new URL(value.trim())
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.toString() : value
+  } catch {
+    return value
+  }
 }
 
 /** Tag names compare case-insensitively (the server matches them that way and keeps the stored spelling). */

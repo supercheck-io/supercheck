@@ -334,7 +334,12 @@ export async function POST(request: NextRequest) {
     // Regular job creation - use project context
     const context = await requireAuthContext();
     const { userId, project, organizationId } = context;
-    const jobData: JobData = await request.json();
+    let jobData: JobData;
+    try {
+      jobData = await request.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
 
     // Validate required fields
     const parsedFields = z.object({ name: jobNameSchema, description: jobDescriptionSchema.nullish() }).safeParse(jobData);
@@ -678,7 +683,12 @@ export async function POST(request: NextRequest) {
 // PUT to update an existing job
 export async function PUT(request: Request) {
   try {
-    const jobData: JobData = await request.json();
+    let jobData: JobData;
+    try {
+      jobData = await request.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
 
     if (!jobData.id) {
       return NextResponse.json(

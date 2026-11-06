@@ -525,6 +525,20 @@ describe('CLI agent workflows through the real entrypoint', () => {
     expect(JSON.parse(run('deploy', '--force').stdout).status).toBe('no_change')
   })
 
+  it('skips the backup when a renamed script is byte-identical', () => {
+    const SRC = "// @title Home page\nimport {test} from '@playwright/test'; test('home',async()=>{});\n"
+    const path = '_supercheck_/playwright/homepage.pw.ts'; mkdirSync(resolve(cwd, '_supercheck_/playwright'), { recursive: true })
+    writeFileSync(resolve(cwd, path), SRC)
+    config({ tests: { playwright: { testMatch: '_supercheck_/playwright/**/*.pw.ts' } } })
+    expect(run('deploy', '--force').status).toBe(0)
+    const state = read(); state.resources['/api/tests'][0].type = 'performance'; state.resources['/api/tests'][0].script = Buffer.from(SRC).toString('base64')
+    writeFileSync(resolve(cwd, 'fixture.json'), JSON.stringify(state))
+    const pulled = run('pull', '--force'); expect(pulled.status).toBe(0)
+    expect(existsSync(resolve(cwd, path))).toBe(false)
+    const summary = JSON.parse(pulled.stdout)
+    expect(summary.backups.some((file: string) => file.includes('homepage.pw.ts.supercheck-backup.'))).toBe(false)
+  })
+
   it('does not redeploy non-secret providers, tags, or variables after creating them', () => {
     config({ notificationProviders: [{ name: 'Email', type: 'email', config: { recipients: ['ops@example.com'] } }], tags: [{ name: 'prod' }], variables: [{ key: 'REGION', value: 'local' }] })
     expect(run('deploy', '--force').status).toBe(0)
