@@ -112,6 +112,10 @@ describe('ci workflow', () => {
     expect(deployJob).toContain('actions/cache/restore@v4')
     expect(deployJob).toMatch(/actions\/cache\/save@v4\n\s+if: always\(\)/)
     expect(deployJob).toContain('path: supercheck.state.json')
+    expect(deployJob).toContain("key: supercheck-state-${{ hashFiles('supercheck.state.json') }}-${{ github.run_id }}-${{ github.run_attempt }}")
+    expect(deployJob).toContain("restore-keys: supercheck-state-${{ hashFiles('supercheck.state.json') }}-")
+    expect(deployJob).toContain('id: state-cache')
+    expect(deployJob).toContain('key: ${{ steps.state-cache.outputs.cache-primary-key }}')
   })
   it('adapts to pnpm and omits browsers when unused', () => {
     const yaml = githubWorkflow('pnpm', false)

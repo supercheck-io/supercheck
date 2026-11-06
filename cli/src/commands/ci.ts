@@ -68,13 +68,14 @@ ${setupPm}      - uses: actions/setup-node@v4
           cache: ${cache}
       - run: ${install}
 ${browsers}      # Restore the resource IDs from the last deploy so CI updates resources instead of creating duplicates.
-      # Caches can be evicted, and a restored copy replaces a committed supercheck.state.json: keep the file
-      # in sync (commit it, or delete the cache after a local deploy). Never commit its .lock file.
+      # The key includes the hash of the committed file, so a newly committed state starts a fresh cache chain.
+      # Caches can be evicted; never commit the .lock file.
       - uses: actions/cache/restore@v4
+        id: state-cache
         with:
           path: supercheck.state.json
-          key: supercheck-state-\${{ github.run_id }}
-          restore-keys: supercheck-state-
+          key: supercheck-state-\${{ hashFiles('supercheck.state.json') }}-\${{ github.run_id }}-\${{ github.run_attempt }}
+          restore-keys: supercheck-state-\${{ hashFiles('supercheck.state.json') }}-
       # The token is exposed only to the deploy steps, never to dependency install scripts.
       # Create a dedicated CLI token (Dashboard > CLI Tokens) and add it as a repository secret.
       - run: ${run} supercheck deploy --dry-run --json
@@ -90,7 +91,7 @@ ${browsers}      # Restore the resource IDs from the last deploy so CI updates r
         if: always()
         with:
           path: supercheck.state.json
-          key: supercheck-state-\${{ github.run_id }}
+          key: \${{ steps.state-cache.outputs.cache-primary-key }}
 `
 }
 
@@ -123,7 +124,7 @@ ciCommand.command('init')
       ],
       reminders: [
         'The workflow file does not create these secrets. A person must add them in the repository settings.',
-        'The workflow caches supercheck.state.json between deploys. Caches can be evicted, so also commit the file; after a local deploy delete the CI cache, since a restored copy replaces the committed one. Never commit its .lock file.',
+        'The workflow caches supercheck.state.json between deploys. Caches can be evicted, so also commit the file; a newly committed supercheck.state.json starts a fresh cache chain (the cache key includes its hash). Never commit its .lock file.',
       ],
     })
   })
