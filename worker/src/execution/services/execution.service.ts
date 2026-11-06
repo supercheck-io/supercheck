@@ -2144,7 +2144,8 @@ export class ExecutionService implements OnModuleDestroy {
               childProcess.kill('SIGTERM');
               const killTimer = setTimeout(() => {
                 if (isRunning()) {
-                  childProcess.kill('SIGKILL');
+                  // Group kill so the child's descendants (browsers) die too.
+                  this.killProcessTree(childProcess.pid);
                 }
               }, 2000); // 2 second grace period
               killTimer.unref(); // must not hold the process (or a Jest worker) open
