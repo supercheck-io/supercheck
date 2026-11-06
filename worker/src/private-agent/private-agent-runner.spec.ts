@@ -157,6 +157,46 @@ describe('private agent connector execution', () => {
     expect(JSON.stringify(result.evidence)).not.toContain('raw stack');
   });
 
+  it.each([
+    [
+      'sentry',
+      [{ id: '1', title: `boom sk-test-0123456789abcdef ${'x'.repeat(600)}`, permalink: `https://s.example.com/sk-test-0123456789abcdef/${'p'.repeat(1200)}`, culprit: "sk-test-0123456789abcdef" }],
+    ],
+    ['grafana', [{ title: `   `, url: `/d/sk-test-0123456789abcdef/${'g'.repeat(1200)}` }]],
+    ['github', { items: [{ sha: 'abc', html_url: `https://github.com/sk-test-0123456789abcdef/${'h'.repeat(1200)}`, commit: { message: '' } }] }],
+  ] as const)(
+    'clips and redacts %s evidence to the result schema',
+    async (connectorType, body) => {
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => body,
+      });
+
+      const result = await executePrivateAgentConnectorJob({
+        ...baseJob,
+        jobSpec: {
+          ...baseJob.jobSpec,
+          connectorType,
+          endpointUrl: 'https://connector.example.com',
+        },
+        credential: {
+          credentialType: 'bearer_token',
+          value: { secret: 'sk-test-0123456789abcdef' },
+        },
+      });
+
+      const [evidence] = result.evidence;
+      expect(evidence.title.length).toBeLessThanOrEqual(500);
+      expect(evidence.title.trim()).not.toBe('');
+      expect(evidence.sourceUri.length).toBeLessThanOrEqual(1000);
+      expect(evidence.summary.length).toBeLessThanOrEqual(2000);
+      expect(JSON.stringify(result.evidence)).not.toContain(
+        'sk-test-0123456789abcdef',
+      );
+    },
+  );
+
   it('executes Datadog jobs with API and application key headers', async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,

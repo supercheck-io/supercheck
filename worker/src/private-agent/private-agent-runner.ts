@@ -1718,7 +1718,33 @@ async function executeMcp(job: LeasedJob): Promise<ConnectorExecutionResult> {
   };
 }
 
+/**
+ * Every connector's evidence is redacted and clipped to the app's result schema
+ * (title 500, sourceUri 1000, summary 2000), so one oversized or credential-echoing
+ * field can neither fail the whole result nor leak. Ids were hashed from the unclipped values.
+ */
 export async function executePrivateAgentConnectorJob(
+  job: LeasedJob,
+): Promise<ConnectorExecutionResult> {
+  const result = await runConnectorJob(job);
+  const secrets = credentialSecrets(job);
+  const evidence = result.evidence.map((item) => ({
+    ...item,
+    sourceUri:
+      clip(item.sourceUri, 1000, secrets).trim() ||
+      clip(job.jobSpec.endpointUrl ?? undefined, 1000, secrets) ||
+      job.jobSpec.connectorType,
+    title: clip(item.title, 500, secrets).trim() || 'Untitled evidence',
+    summary: clip(item.summary, 2000, secrets),
+  }));
+  return {
+    evidence,
+    truncated: result.truncated,
+    resultHash: hashPayload({ evidence, truncated: result.truncated }),
+  };
+}
+
+async function runConnectorJob(
   job: LeasedJob,
 ): Promise<ConnectorExecutionResult> {
   switch (job.jobSpec.connectorType) {
