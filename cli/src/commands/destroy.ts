@@ -1,4 +1,4 @@
-import { verifyContext, describeTarget, managedState } from '../utils/managed.js'
+import { verifyContext, describeTarget, managedState, deploymentLock } from '../utils/managed.js'
 import { buildLocalResources } from '../utils/resources.js'
 import { getOutputFormat } from '../output/formatter.js'
 import { Command } from 'commander'
@@ -242,20 +242,23 @@ export const destroyCommand = new Command('destroy')
 
     const sorted = [...managed].sort((a, b) => DELETE_ORDER.indexOf(a.type) - DELETE_ORDER.indexOf(b.type))
 
-    for (const resource of sorted) {
-      try {
-        const endpoint = getApiEndpoint(resource.type)
-        await client.delete(`${endpoint}/${resource.id}`)
-        logger.info(pc.red(`  - ${resource.type}/${resource.name} ✓`))
-        results.push({ ...resource, deleted: true })
-        succeeded++
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        logger.error(`  - ${resource.type}/${resource.name} ✗ ${msg}`)
-        results.push({ ...resource, deleted: false, error: msg })
-        failed++
+    const release = deploymentLock(configPath)
+    try {
+      for (const resource of sorted) {
+        try {
+          const endpoint = getApiEndpoint(resource.type)
+          await client.delete(`${endpoint}/${resource.id}`)
+          logger.info(pc.red(`  - ${resource.type}/${resource.name} ✓`))
+          results.push({ ...resource, deleted: true })
+          succeeded++
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          logger.error(`  - ${resource.type}/${resource.name} ✗ ${msg}`)
+          results.push({ ...resource, deleted: false, error: msg })
+          failed++
+        }
       }
-    }
+    } finally { release() }
 
     logger.newline()
 
