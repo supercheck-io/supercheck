@@ -36,7 +36,8 @@ const STATUS_CONFIG: Record<string, StatusConfig> = {
 const UNKNOWN: StatusConfig = { label: "Unknown", icon: Clock, tone: "neutral" };
 
 export function getMonitorStatusConfig(status: string): StatusConfig {
-  return STATUS_CONFIG[status.toLowerCase()] ?? UNKNOWN;
+  const key = status.toLowerCase();
+  return Object.hasOwn(STATUS_CONFIG, key) ? STATUS_CONFIG[key] : UNKNOWN;
 }
 
 /** A tinted pill, the same badge style as the tests and services tables. */

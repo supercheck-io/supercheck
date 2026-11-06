@@ -12,6 +12,7 @@ describe("MonitorStatusIndicator", () => {
     ["error", "Error"],
     ["UP", "Up"],
     ["something-new", "Unknown"],
+    ["constructor", "Unknown"],
   ])("labels %s as %s", (status, label) => {
     render(<MonitorStatusIndicator monitorId="m-1" status={status} />);
     expect(screen.getByText(label)).toBeInTheDocument();

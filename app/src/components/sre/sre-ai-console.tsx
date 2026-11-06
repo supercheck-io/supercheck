@@ -264,10 +264,10 @@ export function SreAiConsole({
           <div className="flex min-w-0 items-center gap-3">
             <IconTile icon={Bot} tone="violet" className="hidden size-9 rounded-lg sm:inline-flex [&_svg]:size-5" />
             <div className="min-w-0">
-              <h1 className="flex items-center gap-2 truncate text-lg font-semibold leading-tight">
-                Copilot
+              <div className="flex min-w-0 items-center gap-2">
+                <h1 className="truncate text-lg font-semibold leading-tight">Copilot</h1>
                 {incidentId && <TableBadge tone="indigo" compact>Incident</TableBadge>}
-              </h1>
+              </div>
               <p className="truncate text-sm text-muted-foreground">
                 {incidentId
                   ? "Scoped to this incident. Answers cite saved evidence."
