@@ -74,24 +74,13 @@ it("rejects a malformed project id with 400 before any database access", async (
   expect(mockInsert).not.toHaveBeenCalled();
 });
 
-it("answers a platform administrator email like a success but creates and sends nothing", async () => {
-  mockSelect.mockReset().mockReturnValueOnce(rows([{ id: "admin", role: "super_admin", email: "owner@example.com" }]));
+it("treats a platform administrator email exactly like any other address", async () => {
+  mockSelect.mockReset().mockReturnValueOnce(rows([{ id: "admin", role: "super_admin", email: "owner@example.com" }]))
+    .mockReturnValueOnce(rows([])).mockReturnValueOnce(rows([])).mockReturnValueOnce(rows([{ id: HOST_PROJECT, name: "Project" }]));
   const response = await POST(request());
   expect(response.status).toBe(200);
-  const body = await response.json();
-  expect(body.success).toBe(true);
-  expect(body.data.status).toBe("pending");
-  expect(mockInsert).not.toHaveBeenCalled();
-  expect(renderOrganizationInvitationEmail).not.toHaveBeenCalled();
-});
-
-it("spends invite quota on a platform administrator email, so it cannot be probed without limit", async () => {
-  const evalMock = jest.fn(async () => 5);
-  (getRedisConnection as jest.Mock).mockResolvedValue({ eval: evalMock, zrem: jest.fn() });
-  mockSelect.mockReset().mockReturnValueOnce(rows([{ id: "admin", role: "super_admin", email: "owner@example.com" }]));
-  const response = await POST(request());
-  expect(evalMock).toHaveBeenCalled();
-  expect(response.status).toBe(429);
+  expect(values).toHaveBeenCalledWith(expect.objectContaining({ organizationId: "host", email: "owner@example.com" }));
+  expect(renderOrganizationInvitationEmail).toHaveBeenCalled();
 });
 
 it("fails closed with 503 when Redis never answers, and when it is not ready", async () => {
@@ -355,4 +344,11 @@ describe("accepted invitation quota", () => {
 it("returns 400, not 500, for a malformed JSON body", async () => {
   const bad = new NextRequest("https://app.supercheck.io/api/organizations/members/invite", { method: "POST", body: "{nope" });
   expect((await POST(bad)).status).toBe(400);
+});
+
+it("releases the reservation token when the limiter call fails", async () => {
+  const zrem = jest.fn(async () => 1);
+  (getRedisConnection as jest.Mock).mockResolvedValue({ status: "ready", eval: jest.fn().mockRejectedValue(new Error("x")), zrem });
+  expect((await POST(request())).status).toBe(503);
+  expect(zrem).toHaveBeenCalledWith(expect.stringContaining("invite:ratelimit"), expect.any(String));
 });

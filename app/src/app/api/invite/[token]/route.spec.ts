@@ -248,6 +248,17 @@ describe("invitation privacy and acceptance", () => {
     expect(sessionSet).not.toHaveBeenCalled();
   });
 
+  it("refuses a platform administrator with the generic error and grants nothing", async () => {
+    const { tx, sessionSet } = acceptance();
+    tx.select.mockReset().mockReturnValueOnce(selectRows([{ id: "user-1", role: "super_admin" }]));
+    const response = await POST(new NextRequest("http://localhost/api/invite/11111111-1111-4111-8111-111111111111", { method: "POST" }), context);
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toBe("Invitation has expired, been used or cancelled");
+    expect(tx.update).not.toHaveBeenCalled();
+    expect(tx.insert).not.toHaveBeenCalled();
+    expect(sessionSet).not.toHaveBeenCalled();
+  });
+
   it("allows an account owner to join an invited project without replacing ownership or touching their original organization", async () => {
     const { tx, sessionSet } = acceptance();
     const response = await POST(new NextRequest("http://localhost/api/invite/11111111-1111-4111-8111-111111111111", { method: "POST" }), context);

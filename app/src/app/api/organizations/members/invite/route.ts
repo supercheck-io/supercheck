@@ -41,12 +41,12 @@ async function checkInviteRateLimit(
   reservation?: InviteReservation;
   unavailable?: boolean;
 }> {
+  const reservation = {
+    key: `${INVITE_RATE_LIMIT_KEY_PREFIX}:${userId}`,
+    token: randomUUID(),
+  };
   try {
     const redis = await getRedisConnection();
-    const reservation = {
-      key: `${INVITE_RATE_LIMIT_KEY_PREFIX}:${userId}`,
-      token: randomUUID(),
-    };
     const retryMs = Number(
       await withRedisDeadline(redis, () => redis!.eval(
         `
@@ -75,7 +75,8 @@ async function checkInviteRateLimit(
   } catch (error) {
     console.error("[INVITE_RATE_LIMIT] Error checking rate limit:", error);
     // Fail closed: without the limiter an org admin could send unlimited invitation emails.
-    return { allowed: false, unavailable: true, retryAfter: INVITE_RATE_LIMIT_UNAVAILABLE_RETRY_SECONDS };
+    // The call may still run later; the caller releases this token.
+    return { allowed: false, unavailable: true, retryAfter: INVITE_RATE_LIMIT_UNAVAILABLE_RETRY_SECONDS, reservation };
   }
 }
 
@@ -98,7 +99,7 @@ function limiterResponse(result: Awaited<ReturnType<typeof checkInviteRateLimit>
 async function releaseInviteReservation(reservation: InviteReservation) {
   try {
     const redis = await getRedisConnection();
-    await redis?.zrem(reservation.key, reservation.token);
+    await withRedisDeadline(redis, () => redis!.zrem(reservation.key, reservation.token));
   } catch (error) {
     console.error(
       "[INVITE_RATE_LIMIT] Error releasing rejected invitation quota:",
@@ -216,25 +217,7 @@ export async function POST(request: NextRequest) {
 
       // Owning an account organization does not prevent joining another team's
       // projects. The invitation grants only its explicit role in the target team.
-      // Generic message: a distinct one would tell an org admin which emails are platform administrators.
-      if (user.role === "super_admin") {
-        // Answer exactly like a success, after spending quota, so neither the response nor the limit tells them apart.
-        const limited = limiterResponse(await checkInviteRateLimit(userId));
-        if (limited) return limited;
-        invitationCreated = true; // the spent quota is kept
-        return NextResponse.json({
-          success: true,
-          data: {
-            id: randomUUID(),
-            email: normalizedEmail,
-            role,
-            status: "pending",
-            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-            inviteLink: `${process.env.NEXT_PUBLIC_APP_URL}/invite/${randomUUID()}`,
-            emailSent: true,
-          },
-        });
-      }
+      // A platform administrator is treated like any address here (no oracle); acceptance refuses it.
 
       // Check if already a member of current organization
       const existingMember = await db

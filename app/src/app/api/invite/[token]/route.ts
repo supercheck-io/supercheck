@@ -230,9 +230,11 @@ export async function POST(
     await withPlanLimitLock(invite.organizationId, "members", async (tx) => {
       // Serialize acceptance with signup and other invitations for this user.
       // The user lock makes the membership check authoritative across requests.
-      const [acceptingUser] = await tx.select({ id: userTable.id }).from(userTable)
+      const [acceptingUser] = await tx.select({ id: userTable.id, role: userTable.role }).from(userTable)
         .where(eq(userTable.id, currentUser.id)).limit(1).for("update");
       if (!acceptingUser) throw new Error('INVITE_SESSION_CHANGED');
+      // Platform administrators are never team members; the invite flow cannot reveal them, so refuse here with the generic error.
+      if (acceptingUser.role === 'super_admin') throw new Error('INVITE_ALREADY_USED');
       // Plan limits only exist when Polar billing is active; cloud mode without
       // Polar (dev, staging, e2e) has no plans to enforce.
       if (isPolarEnabled()) {
