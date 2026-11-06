@@ -31,89 +31,94 @@ export async function DELETE(
 
     // Check if the tag exists, scoped to current org/project to prevent IDOR
     if (!isUuid((await params).id)) return NextResponse.json({ error: "Tag not found" }, { status: 404 });
-    const existingTag = await db
-      .select()
-      .from(tags)
-      .where(and(
-        eq(tags.id, tagId),
-        eq(tags.organizationId, organizationId),
-        eq(tags.projectId, project.id)
-      ))
-      .limit(1);
+    // Lock the tag row: join-table inserts take FOR KEY SHARE on it through their foreign keys,
+    // so an assignment cannot commit between the usage counts and the delete.
+    return await db.transaction(async (tx) => {
+      const existingTag = await tx
+        .select()
+        .from(tags)
+        .where(and(
+          eq(tags.id, tagId),
+          eq(tags.organizationId, organizationId),
+          eq(tags.projectId, project.id)
+        ))
+        .limit(1)
+        .for('update');
 
-    if (existingTag.length === 0) {
-      return NextResponse.json({ error: 'Tag not found' }, { status: 404 });
-    }
+      if (existingTag.length === 0) {
+        return NextResponse.json({ error: 'Tag not found' }, { status: 404 });
+      }
 
-    // Check permission to delete tag, including creator check for PROJECT_EDITOR
-    const canDelete = checkPermissionWithContext('tag', 'delete', context, {
-      resourceCreatorId: existingTag[0].createdByUserId ?? undefined,
-    });
+      // Check permission to delete tag, including creator check for PROJECT_EDITOR
+      const canDelete = checkPermissionWithContext('tag', 'delete', context, {
+        resourceCreatorId: existingTag[0].createdByUserId ?? undefined,
+      });
     
-    if (!canDelete) {
-      return NextResponse.json(
-        { error: 'Insufficient permissions to delete this tag' },
-        { status: 403 }
-      );
-    }
-
-    // Check if the tag is being used in any tests
-    const testUsageCount = await db
-      .select({ count: count() })
-      .from(testTags)
-      .where(eq(testTags.tagId, tagId));
-
-    // Check if the tag is being used in any requirements
-    const requirementUsageCount = await db
-      .select({ count: count() })
-      .from(requirementTags)
-      .where(eq(requirementTags.tagId, tagId));
-
-    // Check if the tag is being used in any monitors
-    const monitorUsageCount = await db
-      .select({ count: count() })
-      .from(monitorTags)
-      .where(eq(monitorTags.tagId, tagId));
-
-    const testCount = testUsageCount[0]?.count ?? 0;
-    const requirementCount = requirementUsageCount[0]?.count ?? 0;
-    const monitorCount = monitorUsageCount[0]?.count ?? 0;
-    const totalUsageCount = testCount + requirementCount + monitorCount;
-
-    if (totalUsageCount > 0) {
-      // Build a descriptive error message
-      const usageDetails: string[] = [];
-      if (testCount > 0) {
-        usageDetails.push(`${testCount} test${testCount === 1 ? '' : 's'}`);
+      if (!canDelete) {
+        return NextResponse.json(
+          { error: 'Insufficient permissions to delete this tag' },
+          { status: 403 }
+        );
       }
-      if (requirementCount > 0) {
-        usageDetails.push(`${requirementCount} requirement${requirementCount === 1 ? '' : 's'}`);
+
+      // Check if the tag is being used in any tests
+      const testUsageCount = await tx
+        .select({ count: count() })
+        .from(testTags)
+        .where(eq(testTags.tagId, tagId));
+
+      // Check if the tag is being used in any requirements
+      const requirementUsageCount = await tx
+        .select({ count: count() })
+        .from(requirementTags)
+        .where(eq(requirementTags.tagId, tagId));
+
+      // Check if the tag is being used in any monitors
+      const monitorUsageCount = await tx
+        .select({ count: count() })
+        .from(monitorTags)
+        .where(eq(monitorTags.tagId, tagId));
+
+      const testCount = testUsageCount[0]?.count ?? 0;
+      const requirementCount = requirementUsageCount[0]?.count ?? 0;
+      const monitorCount = monitorUsageCount[0]?.count ?? 0;
+      const totalUsageCount = testCount + requirementCount + monitorCount;
+
+      if (totalUsageCount > 0) {
+        // Build a descriptive error message
+        const usageDetails: string[] = [];
+        if (testCount > 0) {
+          usageDetails.push(`${testCount} test${testCount === 1 ? '' : 's'}`);
+        }
+        if (requirementCount > 0) {
+          usageDetails.push(`${requirementCount} requirement${requirementCount === 1 ? '' : 's'}`);
+        }
+        if (monitorCount > 0) {
+          usageDetails.push(`${monitorCount} monitor${monitorCount === 1 ? '' : 's'}`);
+        }
+        const usageText = usageDetails.length > 1
+          ? `${usageDetails.slice(0, -1).join(', ')} and ${usageDetails[usageDetails.length - 1]}`
+          : usageDetails[0];
+
+        return NextResponse.json({
+          error: `Cannot delete tag "${existingTag[0].name}" because it is currently used in ${usageText}. Please remove the tag from all resources before deleting it.`,
+          usageCount: totalUsageCount,
+          testCount,
+          requirementCount,
+          monitorCount,
+          tagName: existingTag[0].name
+        }, { status: 409 });
       }
-      if (monitorCount > 0) {
-        usageDetails.push(`${monitorCount} monitor${monitorCount === 1 ? '' : 's'}`);
-      }
-      const usageText = usageDetails.length > 1
-        ? `${usageDetails.slice(0, -1).join(', ')} and ${usageDetails[usageDetails.length - 1]}`
-        : usageDetails[0];
 
-      return NextResponse.json({
-        error: `Cannot delete tag "${existingTag[0].name}" because it is currently used in ${usageText}. Please remove the tag from all resources before deleting it.`,
-        usageCount: totalUsageCount,
-        testCount,
-        requirementCount,
-        monitorCount,
-        tagName: existingTag[0].name
-      }, { status: 409 });
-    }
+      // Delete the tag
+      await tx
+        .delete(tags)
+        .where(eq(tags.id, tagId));
 
-    // Delete the tag
-    await db
-      .delete(tags)
-      .where(eq(tags.id, tagId));
-
-    return NextResponse.json({ 
-      message: 'Tag deleted successfully',
-      deletedTag: existingTag[0]
+      return NextResponse.json({ 
+        message: 'Tag deleted successfully',
+        deletedTag: existingTag[0]
+      });
     });
   } catch (error) {
     if (isAuthError(error)) {

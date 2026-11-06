@@ -8,20 +8,29 @@ jest.mock("@/lib/rbac/middleware", () => ({ checkPermissionWithContext: jest.fn(
 
 const mockSelectQueue: unknown[][] = [];
 const mockDelete = jest.fn();
+const mockFor = jest.fn();
 jest.mock("@/utils/db", () => {
   const chain = () => {
     const node: Record<string, unknown> = {};
     node.from = () => node;
     node.where = () => {
       const rows = () => Promise.resolve(mockSelectQueue.shift() ?? []);
-      return { limit: rows, then: (res: (v: unknown[]) => unknown, rej?: (e: unknown) => unknown) => rows().then(res, rej) };
+      return {
+        limit: () => ({ for: (...a: unknown[]) => { mockFor(...a); return rows(); } }),
+        then: (res: (v: unknown[]) => unknown, rej?: (e: unknown) => unknown) => rows().then(res, rej),
+      };
     };
     return node;
   };
+  const tx = {
+    select: () => chain(),
+    delete: () => ({ where: (...a: unknown[]) => { mockDelete(...a); return Promise.resolve(); } }),
+  };
   return {
     db: {
-      select: () => chain(),
-      delete: () => ({ where: (...a: unknown[]) => { mockDelete(...a); return Promise.resolve(); } }),
+      select: () => { throw new Error("DELETE must query inside the transaction"); },
+      delete: () => { throw new Error("DELETE must delete inside the transaction"); },
+      transaction: async (run: (t: unknown) => unknown) => run(tx),
     },
   };
 });
@@ -96,5 +105,6 @@ describe("DELETE /api/tags/[id]", () => {
     const res = await DELETE(req(), params());
     expect(res.status).toBe(200);
     expect(mockDelete).toHaveBeenCalledTimes(1);
+    expect(mockFor).toHaveBeenCalledWith("update");
   });
 });
