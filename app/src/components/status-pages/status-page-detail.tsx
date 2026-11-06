@@ -271,8 +271,8 @@ export function StatusPageDetail({
   };
 
   return (
-    <div className="min-w-0 space-y-6 p-4">
-      <Tabs defaultValue="overview" className="min-w-0 space-y-4">
+    <div className="space-y-6 p-4">
+      <Tabs defaultValue="overview" className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-3 mb-2 flex-wrap">
@@ -417,7 +417,7 @@ export function StatusPageDetail({
           </AlertDialogContent>
         </AlertDialog>
 
-        <TabsList className="grid w-full grid-cols-[repeat(5,minmax(0,1fr))] lg:w-auto lg:inline-flex">
+        <TabsList className="grid w-full grid-cols-5 lg:w-auto lg:inline-flex">
           <TabsTrigger value="overview" aria-label="Overview" className="flex items-center gap-2">
             <LayoutDashboard className="h-4 w-4" />
             <span className="hidden sm:inline">Overview</span>

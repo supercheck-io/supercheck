@@ -1565,7 +1565,7 @@ const Playground: React.FC<PlaygroundProps> = ({
                     </AlertDialog>
 
                     <AlertDialog
-                      open={navigationGuard.pendingHref !== null}
+                      open={navigationGuard.pending}
                       onOpenChange={(open) => !open && navigationGuard.stay()}
                     >
                       <AlertDialogContent>

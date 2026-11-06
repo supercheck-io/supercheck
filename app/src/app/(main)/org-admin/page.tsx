@@ -812,8 +812,8 @@ function OrgAdminDashboardContent() {
 
   return (
     <div>
-      <Card className="m-4 min-w-0 shadow-sm hover:shadow-md transition-shadow duration-200">
-        <CardContent className="min-w-0 overflow-hidden p-4 sm:p-6">
+      <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 m-4">
+        <CardContent className="p-6 overflow-hidden">
       <Tabs
         value={activeTab}
         className="w-full space-y-4"
