@@ -445,13 +445,15 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     // below the orchestrator's grace period (Kubernetes terminationGracePeriodSeconds, default
     // 30s; Compose stop_grace_period, 30s in the bundled files), or the process is SIGKILLed
     // before the cleanup below runs. Raise that grace period before raising this value.
-    const configured = Number(process.env.WORKER_SHUTDOWN_DRAIN_MS);
+    const raw = process.env.WORKER_SHUTDOWN_DRAIN_MS?.trim();
+    const configured = raw ? Number(raw) : NaN; // blank means the default
     const drainMs =
       Number.isFinite(configured) && configured >= 0
         ? Math.min(configured, 600_000)
         : 20_000;
-    const drainDeadline = Date.now() + drainMs;
-    while (this.runningJobs.size > 0 && Date.now() < drainDeadline) {
+    // Monotonic clock: a wall-clock step must not stretch or cut the window.
+    const drainDeadline = performance.now() + drainMs;
+    while (this.runningJobs.size > 0 && performance.now() < drainDeadline) {
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
 

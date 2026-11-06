@@ -356,6 +356,7 @@ services:
     read_only: true
     environment:
       <<: *common-env
+      WORKER_SHUTDOWN_DRAIN_MS: ${WORKER_SHUTDOWN_DRAIN_MS:-20000}
       WORKER_IMAGE: supercheck-worker:latest
       EXECUTION_NAMESPACE: ${EXECUTION_NAMESPACE:-supercheck-execution}
       KUBECONFIG: /run/secrets/supercheck-kubeconfig

@@ -438,6 +438,7 @@ services:
     user: "pwuser:pwuser"
     environment:
       <<: *common-env
+      WORKER_SHUTDOWN_DRAIN_MS: ${WORKER_SHUTDOWN_DRAIN_MS:-20000}
       # Worker-specific configuration (inherits all common env vars)
       # Note: MAX_CONCURRENT_EXECUTIONS=1 is hardcoded in worker code (scale via replicas)
       WORKER_IMAGE: ghcr.io/supercheck-io/supercheck/worker:${SUPERCHECK_VERSION:-1.6.0}

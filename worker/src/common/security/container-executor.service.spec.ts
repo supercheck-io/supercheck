@@ -88,6 +88,8 @@ describe('ContainerExecutorService', () => {
       ['600000000', 601_000, 600_000],
       ['abc', 21_000, 20_000],
       ['-5', 21_000, 20_000],
+      ['', 21_000, 20_000],
+      ['   ', 21_000, 20_000],
     ])(
       'WORKER_SHUTDOWN_DRAIN_MS=%s drains for the expected bound',
       async (value, advanceMs, boundMs) => {
