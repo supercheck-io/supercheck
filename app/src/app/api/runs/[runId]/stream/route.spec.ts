@@ -61,4 +61,27 @@ describe('GET /api/runs/[runId]/stream', () => {
     const completes = [...text.matchAll(/event: complete\ndata: (.*)\n/g)].map((m) => m[1]);
     expect(completes).toEqual(['{"status":"passed"}']);
   });
+
+  it('closes the stream after the maximum lifetime when the run never leaves queued', async () => {
+    jest.useFakeTimers();
+    findFirst.mockReset();
+    findFirst.mockResolvedValue({ status: 'queued' });
+
+    const request = { signal: new AbortController().signal } as unknown as NextRequest;
+    const response = await GET(request, { params: Promise.resolve({ runId: RUN_ID }) });
+    const reader = response.body!.getReader();
+    let text = '';
+    const drain = (async () => {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) return;
+        text += new TextDecoder().decode(value);
+      }
+    })();
+    await jest.advanceTimersByTimeAsync(15 * 60 * 1000 + 1000);
+    await drain; // resolves only if the server closed the stream
+    jest.useRealTimers();
+
+    expect(text).not.toContain('event: complete');
+  });
 });
