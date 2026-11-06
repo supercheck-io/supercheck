@@ -526,28 +526,36 @@ export async function requireAuth(): Promise<{
  * impersonation. Fails closed (reports true) when the state cannot be determined.
  */
 export async function isImpersonatedSession(): Promise<boolean> {
+  return (await getImpersonationState()) !== "none";
+}
+
+/**
+ * Like isImpersonatedSession, but reports "unknown" when the lookup failed so callers can return a
+ * retryable error instead of an impersonation message. Callers must still refuse on "unknown".
+ */
+export async function getImpersonationState(): Promise<"none" | "impersonated" | "unknown"> {
   try {
     const authSession = await getCachedAuthSession();
     // No usable session (signed out or suspended): refuse, consistent with failing closed.
-    if (!authSession) return true;
+    if (!authSession) return "impersonated";
     // The auth session may already carry the flag; honour it without waiting for the lookup.
-    if ((authSession.session as { impersonatedBy?: string | null }).impersonatedBy) return true;
+    if ((authSession.session as { impersonatedBy?: string | null }).impersonatedBy) return "impersonated";
     const [dbSession] = await db
       .select({ impersonatedBy: session.impersonatedBy })
       .from(session)
       .where(eq(session.token, authSession.session.token))
       .limit(1);
-    return Boolean(dbSession?.impersonatedBy);
+    return dbSession?.impersonatedBy ? "impersonated" : "none";
   } catch (error) {
     // Fail closed, but leave a trace: callers show a generic refusal, so this is the only clue to a DB problem.
     // Log only the error's name and code: drizzle's message embeds the failed query's parameters, and here that
     // parameter is the caller's live session token.
     console.error(
-      "Could not determine impersonation state; refusing credential minting:",
+      "Could not determine impersonation state; refusing the request:",
       (error as { name?: string })?.name ?? "Error",
       (error as { code?: string })?.code ?? "",
     );
-    return true;
+    return "unknown";
   }
 }
 

@@ -2609,6 +2609,13 @@ export class TrialLifecycleStrategy implements ICleanupStrategy {
     } catch (error) {
       result.errors.push(`Trial restore reconciliation failed: ${error instanceof Error ? error.message : String(error)}`);
     }
+    // A plan change in the billing portal can leave more running than the new plan allows.
+    try {
+      const { enforcePlanResourceCaps } = await import("@/lib/billing/plan-caps");
+      result.details = { ...result.details, planCaps: await enforcePlanResourceCaps() };
+    } catch (error) {
+      result.errors.push(`Plan limit enforcement failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
     // Reminders are best effort and independent of ending trials: an email
     // problem must never stop monitors from being paused.
     try {

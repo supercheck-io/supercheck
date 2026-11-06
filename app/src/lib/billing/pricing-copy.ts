@@ -1,6 +1,7 @@
 import { trialFaqs } from "./trial-copy";
 
-export const PRICING_FAQS = [
+/** Usage and billing answers shown on both the in-app plan picker and the marketing pricing page. */
+export const SHARED_PRICING_FAQS = [
   {
     question: "Does one subscription cover the projects in my organization?",
     answer:
@@ -29,7 +30,7 @@ export const PRICING_FAQS = [
   {
     question: "How do AI credits work?",
     answer:
-      "Each plan includes a monthly pool of AI credits for test generation, test fixes, and failure analysis, subject to fair use. Automated bulk use and abuse are restricted. Your account shows your monthly allowance and remaining credits. Each accepted action uses one credit before generation or analysis starts, even if it later fails. There are no AI credit overages; upgrade or wait for your next billing cycle when the pool is exhausted.",
+      "Each plan includes a monthly pool of AI credits for test generation, test fixes, and failure analysis, subject to fair use. Automated bulk use and abuse are restricted. Your account shows your monthly allowance and remaining credits. Each accepted action reserves one credit before generation or analysis starts; the credit is returned if the AI fails or produces no output. There are no AI credit overages; upgrade or wait for your next billing cycle when the pool is exhausted.",
   },
   {
     question: "What counts as an AI SRE investigation?",
@@ -47,13 +48,17 @@ export const PRICING_FAQS = [
       "Organization owners and admins can configure a monthly spending limit, billing contacts, threshold alerts, and optional blocking of new billable executions and full investigations. Basic uptime checks continue at the spending limit. Only the owner can manage the paid subscription. Limits apply to usage overages in addition to the base subscription. In-flight execution usage can exceed a configured limit, so it is not a guaranteed invoice cap.",
   },
   {
-    question: "Can I change plans?",
-    answer:
-      "The organization owner can change plans in Manage subscription. Review the effective date and any prorated charges in the Polar portal before confirming.",
-  },
-  {
     question: "Do unused allowances roll over?",
     answer: "No. Execution minutes, AI credits, and AI SRE investigation allowances reset monthly on your billing date.",
+  },
+];
+
+export const PRICING_FAQS = [
+  ...SHARED_PRICING_FAQS,
+  {
+    question: "Can I change plans?",
+    answer:
+      "The organization owner can change plans in Manage subscription. Review the effective date and any prorated charges in the Polar portal before confirming. If the new plan has lower limits, the newest monitors and published status pages above them are paused or archived; nothing is deleted, and you can choose which ones run by pausing others first.",
   },
   ...trialFaqs(),
   {

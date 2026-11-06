@@ -6,6 +6,7 @@ const mockEnsureCustomer = jest.fn();
 jest.mock("@/lib/services/organization-customer", () => ({
   ensurePolarCustomerAndLink: (...args: unknown[]) =>
     mockEnsureCustomer(...args),
+  BillingCustomerConflictError: class extends Error {},
 }));
 jest.mock("@/lib/session", () => ({
   getCurrentUser: jest.fn(async () => ({
@@ -16,12 +17,14 @@ jest.mock("@/lib/session", () => ({
 }));
 
 const mockCheckoutCreate = jest.fn();
+const mockGetCustomerState = jest.fn();
 const mockCustomerSessionCreate = jest.fn();
 
 jest.mock("@polar-sh/sdk/2026-10", () => ({
   createPolar: jest.fn().mockImplementation(() => ({
     checkouts: { create: mockCheckoutCreate },
     customerSessions: { create: mockCustomerSessionCreate },
+    customers: { getState: mockGetCustomerState },
   })),
 }));
 
@@ -46,8 +49,10 @@ jest.mock("@/lib/feature-flags", () => ({
   })),
 }));
 
+const mockImpersonationState = jest.fn(async (): Promise<string> => "none");
 jest.mock("@/lib/rbac/middleware", () => ({
   getUserOrgRole: jest.fn(),
+  getImpersonationState: () => mockImpersonationState(),
 }));
 
 jest.mock("@/utils/db", () => ({
@@ -99,6 +104,7 @@ describe("Polar billing routes: hostile and failing inputs", () => {
   const originalEnv = process.env;
   beforeEach(() => {
     jest.clearAllMocks();
+    mockGetCustomerState.mockResolvedValue({ active_subscriptions: [] });
     jest.spyOn(console, "error").mockImplementation(() => undefined);
     process.env = {
       ...originalEnv,

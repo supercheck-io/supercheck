@@ -246,10 +246,10 @@ describe("SubscriptionTab", () => {
       },
     }) });
     render(<SubscribePage />);
-    expect(await screen.findByText(/Billed monthly per organization in USD/)).toBeInTheDocument();
+    expect(await screen.findByText(/Billed monthly per organization, not per seat, in USD/)).toBeInTheDocument();
     expect(screen.getByText(/Overage:.*\$2.50 per 1,000 VU-min/)).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Enterprise" })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Contact us about Enterprise" })).toHaveAttribute("href", "mailto:hello@supercheck.io");
+    expect(screen.getByRole("link", { name: "Contact us about Enterprise" })).toHaveAttribute("href", "mailto:hello@supercheck.io?subject=Supercheck%20Cloud%20Enterprise%20enquiry");
     expect(screen.queryByText(/annual/i)).not.toBeInTheDocument();
   });
   it("does not let an invited member start a personal subscription for the organization", async () => {

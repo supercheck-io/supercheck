@@ -14,7 +14,10 @@ import { billingSettingsService } from "@/lib/services/billing-settings.service"
 import {
   getPolarWebhookDb,
   runOrderedPolarEvent,
+  UnrecoverableWebhookError,
 } from "./polar-event-transaction";
+
+export { UnrecoverableWebhookError };
 import { auditLogs, organization, webhookIdempotency } from "@/db/schema";
 import { eq, and, lt, lte, isNull, or, sql } from "drizzle-orm";
 import type { SubscriptionPlan } from "@/db/schema";
@@ -136,6 +139,8 @@ async function updateWebhookResult(
   eventType: string,
   status: "success" | "error" | "skipped",
   message?: string,
+  /** False when no redelivery can succeed (missing ids, unknown product, foreign customer). */
+  retryable = true,
 ): Promise<void> {
   try {
     await getPolarWebhookDb()
@@ -160,7 +165,8 @@ async function updateWebhookResult(
   // apply. Throwing makes the signature-verified webhook endpoint return a
   // retryable failure; the next delivery can reclaim the recorded error.
   if (status === "error") {
-    throw new Error(message ?? `Failed to process Polar ${eventType} webhook`);
+    const reason = message ?? `Failed to process Polar ${eventType} webhook`;
+    throw retryable ? new Error(reason) : new UnrecoverableWebhookError(reason);
   }
 }
 
@@ -703,6 +709,7 @@ async function ensureCustomerBinding(
       eventType,
       "error",
       "Missing customer ID",
+      false,
     );
     return false;
   }
@@ -718,6 +725,7 @@ async function ensureCustomerBinding(
       eventType,
       "error",
       "Polar customer does not match organization billing owner",
+      false,
     );
     return false;
   }
@@ -728,6 +736,7 @@ async function ensureCustomerBinding(
       eventType,
       "error",
       "Organization has no customer binding and webhook has no owner identity",
+      false,
     );
     return false;
   }
@@ -748,6 +757,7 @@ async function ensureCustomerBinding(
       eventType,
       "error",
       "Webhook customer is not owned by the organization owner",
+      false,
     );
     return false;
   }
@@ -795,6 +805,7 @@ async function processSubscriptionActive(payload: PolarWebhookPayload) {
       "subscription.active",
       "error",
       "Missing subscription ID",
+      false,
     );
     return;
   }
@@ -851,6 +862,7 @@ async function processSubscriptionActive(payload: PolarWebhookPayload) {
       "subscription.active",
       "error",
       "Organization not found",
+      false,
     );
     return;
   }
@@ -873,6 +885,7 @@ async function processSubscriptionActive(payload: PolarWebhookPayload) {
     await updateWebhookResult(
       webhookEventKey, "subscription.active", "error",
       `Unknown product ID: ${productId || "missing"}`,
+      false,
     );
     return;
   }
@@ -999,6 +1012,7 @@ async function processSubscriptionUpdated(payload: PolarWebhookPayload) {
       "subscription.updated",
       "error",
       "Missing subscription ID",
+      false,
     );
     return;
   }
@@ -1043,6 +1057,7 @@ async function processSubscriptionUpdated(payload: PolarWebhookPayload) {
       "subscription.updated",
       "error",
       "Organization not found",
+      false,
     );
     return;
   }
@@ -1067,6 +1082,7 @@ async function processSubscriptionUpdated(payload: PolarWebhookPayload) {
       "subscription.updated",
       "error",
       `Unknown product ID: ${productId}`,
+      false,
     );
     return;
   }
@@ -1092,7 +1108,8 @@ async function processSubscriptionUpdated(payload: PolarWebhookPayload) {
   await subscriptionService.updateSubscription(
     org.id,
     {
-      ...(newPlan ? { subscriptionPlan: newPlan } : {}),
+      // No paid access means no plan, matching the canceled handler and reconciliation.
+      ...(status === "none" ? { subscriptionPlan: null } : newPlan ? { subscriptionPlan: newPlan } : {}),
       ...(status ? { subscriptionStatus: status } : {}),
       subscriptionId,
       ...(customerId ? { polarCustomerId: customerId } : {}),
@@ -1141,6 +1158,7 @@ async function processSubscriptionCanceled(payload: PolarWebhookPayload) {
       "subscription.canceled",
       "error",
       "Missing subscription ID",
+      false,
     );
     return;
   }
@@ -1163,6 +1181,7 @@ async function processSubscriptionCanceled(payload: PolarWebhookPayload) {
       "subscription.canceled",
       "error",
       "Organization not found",
+      false,
     );
     return;
   }
@@ -1217,6 +1236,7 @@ async function processSubscriptionPastDue(payload: PolarWebhookPayload) {
       "subscription.past_due",
       "error",
       "Missing subscription ID",
+      false,
     );
     return;
   }
@@ -1254,6 +1274,7 @@ async function processSubscriptionPastDue(payload: PolarWebhookPayload) {
       "subscription.past_due",
       "error",
       "Organization not found",
+      false,
     );
     return;
   }
@@ -1277,6 +1298,7 @@ async function processSubscriptionPastDue(payload: PolarWebhookPayload) {
       "subscription.past_due",
       "error",
       `Unknown product ID: ${productId}`,
+      false,
     );
     return;
   }
@@ -1332,6 +1354,7 @@ async function processSubscriptionRevoked(payload: PolarWebhookPayload) {
       "subscription.revoked",
       "error",
       "Missing subscription ID",
+      false,
     );
     return;
   }
@@ -1357,6 +1380,7 @@ async function processSubscriptionRevoked(payload: PolarWebhookPayload) {
       "subscription.revoked",
       "error",
       "Organization not found",
+      false,
     );
     return;
   }
@@ -1478,6 +1502,7 @@ async function processOrderPaid(payload: PolarWebhookPayload) {
       "order.paid",
       "error",
       "Organization not found",
+      false,
     );
     return;
   }
@@ -1503,6 +1528,7 @@ async function processOrderPaid(payload: PolarWebhookPayload) {
         "order.paid",
         "error",
         `Unknown product ID: ${productId}`,
+        false,
       );
       return;
     }
@@ -1665,6 +1691,7 @@ async function processSubscriptionUncanceled(payload: PolarWebhookPayload) {
       "subscription.uncanceled",
       "error",
       "Missing subscription ID",
+      false,
     );
     return;
   }
@@ -1698,6 +1725,7 @@ async function processSubscriptionUncanceled(payload: PolarWebhookPayload) {
       "subscription.uncanceled",
       "error",
       "Organization not found",
+      false,
     );
     return;
   }
@@ -1721,6 +1749,7 @@ async function processSubscriptionUncanceled(payload: PolarWebhookPayload) {
       "subscription.uncanceled",
       "error",
       `Unknown product ID: ${productId || "missing"}`,
+      false,
     );
     return;
   }
@@ -1859,7 +1888,8 @@ function orderedHandler(
     if (!org && userId) org = await findOrganizationByUserId(userId);
     if (!org) {
       if (eventType === "customer.deleted") return;
-      throw new Error("Polar billing organization not found");
+      // No organization matches any identifier, e.g. a customer made outside this deployment.
+      throw new UnrecoverableWebhookError("Polar billing organization not found");
     }
     await runOrderedPolarEvent(
       {

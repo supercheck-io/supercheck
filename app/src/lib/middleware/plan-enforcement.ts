@@ -7,8 +7,9 @@ import { getExecutionPolicy } from "@/lib/execution/execution-policy";
 import { subscriptionService } from "@/lib/services/subscription-service";
 import { isPolarEnabled } from "@/lib/feature-flags";
 import { db } from "@/utils/db";
-import { organization } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { monitors, organization, statusPages } from "@/db/schema";
+import { and, eq, ne, sql } from "drizzle-orm";
+import { notInDeletedProject } from "@/lib/middleware/plan-limit-lock";
 
 /** The messages `getOrganizationPlan` throws for an organization's own subscription state; safe to show to it. */
 const SUBSCRIPTION_STATE_ERRORS = [
@@ -140,6 +141,35 @@ export async function checkUsageLimit(
 /**
  * Check if organization can create additional status pages
  */
+/**
+ * Switching a paused monitor or an unpublished status page back on must stay within the plan. A plan
+ * downgrade pauses and archives what exceeds it (lib/billing/plan-caps.ts); without this check the
+ * owner could turn it straight back on. Counts only active monitors and published pages.
+ * shortcut: two simultaneous resumes can both pass; the periodic plan-cap sweep pauses the excess again.
+ */
+export async function checkResumeWithinPlan(
+  organizationId: string,
+  resource: "monitor" | "status_page",
+): Promise<{ allowed: true } | { allowed: false; error: string; limit: number; upgrade?: "plus" | "pro" }> {
+  if (!isPolarEnabled()) return { allowed: true };
+  const plan = await subscriptionService.getOrganizationPlan(organizationId);
+  const [row] = resource === "monitor"
+    ? await db.select({ count: sql<number>`count(*)` }).from(monitors).where(and(
+        eq(monitors.organizationId, organizationId), ne(monitors.status, "paused"), notInDeletedProject(monitors.projectId)))
+    : await db.select({ count: sql<number>`count(*)` }).from(statusPages).where(and(
+        eq(statusPages.organizationId, organizationId), eq(statusPages.status, "published"), notInDeletedProject(statusPages.projectId)));
+  const limit = resource === "monitor" ? plan.maxMonitors : plan.maxStatusPages;
+  if (Number(row?.count ?? 0) < limit) return { allowed: true };
+  const noun = resource === "monitor" ? "active monitors" : "published status pages";
+  const action = resource === "monitor" ? "Pause or delete another monitor" : "Unpublish or delete another status page";
+  return {
+    allowed: false,
+    error: `Your ${planLabel(plan)} allows ${limit} ${noun}. ${action}, or upgrade, to turn this one back on.`,
+    limit,
+    upgrade: upgradeFrom(plan),
+  };
+}
+
 export async function checkStatusPageLimit(
   organizationId: string,
   currentCount: number

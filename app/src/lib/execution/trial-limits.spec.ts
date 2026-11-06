@@ -1,5 +1,6 @@
 /** @jest-environment node */
 import {
+  gmailTrialKey,
   TRIAL_DURATION_DAYS,
   TRIAL_LIMITS,
   getActiveTrial,
@@ -296,5 +297,19 @@ describe("trial limits", () => {
         sreInvestigationsUsed: 2,
       });
     });
+  });
+});
+
+describe("gmailTrialKey", () => {
+  it("treats dot and plus variants of a Gmail address as one inbox", () => {
+    expect(gmailTrialKey("Jane.Doe+trial2@gmail.com")).toBe("janedoe");
+    expect(gmailTrialKey("janedoe@googlemail.com")).toBe("janedoe");
+    expect(gmailTrialKey(" JaneDoe@Gmail.com ")).toBe("janedoe");
+  });
+
+  it("leaves other providers and malformed addresses alone", () => {
+    expect(gmailTrialKey("jane.doe+x@example.com")).toBeNull();
+    expect(gmailTrialKey("@gmail.com")).toBeNull();
+    expect(gmailTrialKey("+tag@gmail.com")).toBeNull();
   });
 });

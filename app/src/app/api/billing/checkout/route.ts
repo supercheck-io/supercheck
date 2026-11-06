@@ -8,10 +8,10 @@ import {
   getPolarProducts,
   isPolarEnabled,
 } from "@/lib/feature-flags";
-import { getUserOrgRole } from "@/lib/rbac/middleware";
+import { getUserOrgRole, getImpersonationState } from "@/lib/rbac/middleware";
 import { Role } from "@/lib/rbac/permissions";
 import { requireSameOriginRequest } from "@/lib/security/same-origin";
-import { ensurePolarCustomerAndLink } from "@/lib/services/organization-customer";
+import { BillingCustomerConflictError, ensurePolarCustomerAndLink } from "@/lib/services/organization-customer";
 import { createPolarClient } from "@/lib/billing/polar-client";
 import { getCurrentUser } from "@/lib/session";
 import { db } from "@/utils/db";
@@ -56,6 +56,20 @@ export async function POST(request: NextRequest) {
     if (role !== Role.ORG_OWNER) {
       return NextResponse.json(
         { error: "Only the organization owner can start checkout" },
+        { status: 403 }
+      );
+    }
+    // Support impersonation must never reach the owner's payment flows.
+    const impersonation = await getImpersonationState();
+    if (impersonation === "unknown") {
+      return NextResponse.json(
+        { error: "Could not verify your session. Please try again." },
+        { status: 503 }
+      );
+    }
+    if (impersonation === "impersonated") {
+      return NextResponse.json(
+        { error: "Billing is unavailable while impersonating a user" },
         { status: 403 }
       );
     }
@@ -131,6 +145,23 @@ export async function POST(request: NextRequest) {
       accessToken: config.accessToken,
       server: config.server,
     });
+    // Webhooks can lag a completed payment; ask Polar so a second tab cannot open a duplicate subscription.
+    const customerState = await polar.customers.getState(org.polarCustomerId);
+    // Legacy orgs can share a customer: skip subscriptions tagged to another org, block untagged ones (fail closed).
+    const ownsActiveSubscription = customerState.active_subscriptions.some((subscription) => {
+      const referenceId = (subscription.metadata as Record<string, unknown> | undefined)?.referenceId;
+      return typeof referenceId !== "string" || referenceId === organizationId;
+    });
+    if (ownsActiveSubscription) {
+      return NextResponse.json(
+        {
+          error:
+            "This organization already has a subscription. Refresh in a minute, or use Manage subscription to change the plan.",
+          code: "subscription_exists",
+        },
+        { status: 409 }
+      );
+    }
     const appUrl = getAppUrl(request);
     const productId =
       parsed.data.plan === "plus"
@@ -153,6 +184,9 @@ export async function POST(request: NextRequest) {
         { error: error instanceof Error ? error.message : "Authentication required" },
         { status: authErrorStatus(error) }
       );
+    }
+    if (error instanceof BillingCustomerConflictError) {
+      return NextResponse.json({ error: error.message, code: "billing_customer_conflict" }, { status: 409 });
     }
     console.error("[Billing] Failed to create Polar checkout:", error);
     return NextResponse.json(
