@@ -814,6 +814,8 @@ export const privateAgentJobs = pgTable(
     leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
     idempotencyKey: varchar("idempotency_key", { length: 128 }).notNull(),
     cancelRequestedAt: timestamp("cancel_requested_at", { withTimezone: true }),
+    // Callers waiting on this (possibly shared) job; an abandoned job is cancelled only by the last one.
+    waiters: integer("waiters").notNull().default(0),
     startedAt: timestamp("started_at", { withTimezone: true }),
     completedAt: timestamp("completed_at", { withTimezone: true }),
     durationMs: integer("duration_ms"),
@@ -829,6 +831,7 @@ export const privateAgentJobs = pgTable(
     leaseExpiresAtIdx: index("private_agent_jobs_lease_expires_at_idx").on(table.leaseExpiresAt).where(sql`status IN ('leased', 'running')`),
     privateAgentJobsAuthorizedByUserIdIdx: index("private_agent_jobs_authorized_by_user_id_idx").on(table.authorizedByUserId),
     privateAgentJobsConnectorIdIdx: index("private_agent_jobs_connector_id_idx").on(table.connectorId),
+    privateAgentJobsCreatedAtIdx: index("private_agent_jobs_created_at_idx").on(table.createdAt, table.id),
     privateAgentJobsOrganizationIdIdx: index("private_agent_jobs_organization_id_idx").on(table.organizationId),
     privateAgentJobsStatusCheck: check("private_agent_jobs_status_check", sql`${table.status} IN ('queued', 'leased', 'running', 'completed', 'failed', 'cancelled', 'timed_out')`),
     privateAgentJobsJobClassCheck: check("private_agent_jobs_job_class_check", sql`${table.jobClass} IN ('sre_connector_query', 'http_monitor_check', 'playwright_run', 'k6_run', 'network_check')`),

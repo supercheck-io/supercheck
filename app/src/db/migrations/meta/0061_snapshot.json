@@ -1,6 +1,6 @@
 {
-  "id": "05c7dad8-ef9f-485d-9189-617a4ca76f73",
-  "prevId": "b3239586-2bd8-4bd4-a144-18d10e83d8e3",
+  "id": "9e213843-1c6a-4298-9a78-293020facac2",
+  "prevId": "ac81bde1-be29-457d-8ecf-cc8483929cea",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -14030,6 +14030,13 @@
           "primaryKey": false,
           "notNull": false
         },
+        "waiters": {
+          "name": "waiters",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
         "started_at": {
           "name": "started_at",
           "type": "timestamp with time zone",
@@ -14174,6 +14181,27 @@
           "columns": [
             {
               "expression": "connector_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "private_agent_jobs_created_at_idx": {
+          "name": "private_agent_jobs_created_at_idx",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

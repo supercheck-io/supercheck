@@ -8,7 +8,7 @@ import {
   type ConnectorDefinition,
   type ConnectorOutputLimits,
 } from "@/lib/sre/connectors";
-import { requeueAbandonedPrivateAgentJob } from "@/lib/sre/private-agent-job-cancel";
+import { registerPrivateAgentJobWaiter, requeueAbandonedPrivateAgentJob } from "@/lib/sre/private-agent-job-cancel";
 import { redactEndpointQuery } from "@/lib/sre/connectors/endpoint-policy";
 import { resolveMcpEndpointUrl } from "@/lib/sre/connectors/mcp-endpoint-secret";
 import { db } from "@/utils/db";
@@ -123,6 +123,7 @@ export async function queueMcpPrivateAgentJob(input: {
       jobSpecHash: route.jobSpecHash,
       jobSpec: route.jobSpec,
       idempotencyKey: route.idempotencyKey,
+      waiters: 1,
     })
     .onConflictDoNothing()
     .returning({ id: privateAgentJobs.id });
@@ -140,7 +141,9 @@ export async function queueMcpPrivateAgentJob(input: {
   const jobId = inserted?.id ?? existing?.id;
   if (!jobId) throw new Error("Failed to queue Private Agent connector job");
   if (!inserted) {
-    await requeueAbandonedPrivateAgentJob({ jobId, organizationId: input.organizationId, projectId: input.projectId });
+    const ref = { jobId, organizationId: input.organizationId, projectId: input.projectId };
+    await requeueAbandonedPrivateAgentJob(ref);
+    await registerPrivateAgentJobWaiter(ref);
   }
 
   return { jobId, inserted: Boolean(inserted), route, privateAgentId: route.privateAgentId };
