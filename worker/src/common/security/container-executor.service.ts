@@ -440,6 +440,13 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleDestroy(): Promise<void> {
+    // This hook runs before the BullMQ workers close, so give in-flight runs a bounded
+    // window to finish before deleting the Jobs that are still alive.
+    const drainDeadline = Date.now() + BILLABLE_DEADLINE_GRACE_MS;
+    while (this.runningJobs.size > 0 && Date.now() < drainDeadline) {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+
     // Clear all cancellation intervals
     for (const interval of this.activeCancellationIntervals) {
       clearInterval(interval);

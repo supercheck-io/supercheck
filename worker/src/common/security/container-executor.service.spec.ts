@@ -63,6 +63,44 @@ describe('ContainerExecutorService', () => {
     await service.onModuleDestroy();
   });
 
+  describe('shutdown', () => {
+    it('waits for in-flight runs to finish before deleting remaining jobs', async () => {
+      jest.useFakeTimers();
+      try {
+        const deleteJob = jest
+          .spyOn(service as any, 'deleteExecutionJob')
+          .mockResolvedValue(undefined);
+        (service as any).runningJobs.set('run-1', 'job-1');
+        const destroyed = service.onModuleDestroy();
+        await jest.advanceTimersByTimeAsync(5000);
+        expect(deleteJob).not.toHaveBeenCalled();
+
+        (service as any).runningJobs.delete('run-1');
+        await jest.advanceTimersByTimeAsync(1000);
+        await destroyed;
+        expect(deleteJob).not.toHaveBeenCalled();
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('deletes jobs still alive once the drain window passes', async () => {
+      jest.useFakeTimers();
+      try {
+        const deleteJob = jest
+          .spyOn(service as any, 'deleteExecutionJob')
+          .mockResolvedValue(undefined);
+        (service as any).runningJobs.set('run-2', 'job-2');
+        const destroyed = service.onModuleDestroy();
+        await jest.advanceTimersByTimeAsync(151_000);
+        await destroyed;
+        expect(deleteJob).toHaveBeenCalledWith('job-2');
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+  });
+
   describe('isolation canary admission', () => {
     beforeEach(() => {
       (service as any).k8sModule = {
