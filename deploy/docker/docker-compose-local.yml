@@ -339,6 +339,9 @@ services:
   # Source-based local iteration using the same per-run Kubernetes Job model
   # as the production Compose variants.
   worker:
+    # Compose sends SIGKILL after 10s by default; the worker drains in-flight runs for up to
+    # WORKER_SHUTDOWN_DRAIN_MS (default 20s) first. Keep this above that value.
+    stop_grace_period: 30s
     build:
       context: ../../worker
       dockerfile: Dockerfile
