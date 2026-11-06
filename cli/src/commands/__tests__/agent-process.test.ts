@@ -231,9 +231,9 @@ describe('CLI agent workflows through the real entrypoint', () => {
     const result = run('destroy', '--force'); expect(result.status).not.toBe(0)
     expect(read().requests.every((request) => request.method === 'GET')).toBe(true)
   })
-  it('treats a disconnected running stream as incomplete', () => {
-    const result = run('run', 'stream', id); expect(result.status).toBe(4)
-    expect(JSON.parse(result.stderr).error).toContain('before the server reported completion')
+  it('resumes by polling when the stream disconnects before completion', () => {
+    const result = run('run', 'stream', id); expect(result.status).toBe(0)
+    expect(read().requests.some((request) => request.method === 'GET' && request.path === `/api/runs/${id}`)).toBe(true)
   })
   it('preserves legacy arrays and exposes pagination with --envelope', () => {
     fixture('paged')
