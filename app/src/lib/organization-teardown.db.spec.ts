@@ -120,7 +120,13 @@ describe("final usage before the immediate cancellation", () => {
       usageEvent(organization.id, new Date(Date.now() - 86_400_000)),
     ]);
     ingest.mockResolvedValue(new Response(JSON.stringify({ inserted: 1, duplicates: 0 })));
-    revoke.mockImplementationOnce(async () => expect(ingest).toHaveBeenCalledTimes(1));
+    revoke.mockImplementationOnce(async () => {
+      expect(ingest).toHaveBeenCalledTimes(1);
+      // Before the cascade: the open-period row was sent, the closed-period row stays parked.
+      const rows = await mockDatabase.select().from(schema.usageEvents).where(eq(schema.usageEvents.organizationId, organization.id));
+      expect(rows.find((row) => row.billingPeriodEnd.getTime() > Date.now())?.syncedToPolar).toBe(true);
+      expect(rows.find((row) => row.billingPeriodEnd.getTime() < Date.now())?.syncedToPolar).toBe(false);
+    });
 
     await expect(deleteOrganizationCompletely(organization.id, { noMembers: true }, adminId)).resolves.toMatchObject({ subscriptionCancelled: true });
     expect(revoke).toHaveBeenCalledTimes(1);

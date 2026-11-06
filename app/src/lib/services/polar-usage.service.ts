@@ -354,7 +354,9 @@ class PolarUsageService {
     // Send a bounded batch; any remainder is reported as pending and a retry continues from there.
     for (const event of pendingEvents.slice(0, ORGANIZATION_FLUSH_LIMIT)) {
       if (Date.now() >= deadline) break;
+      // Stop on the first failure: the deletion aborts anyway, so do not hold its locks for more sends.
       if (await this.syncEventToPolar(event.id)) synced++;
+      else break;
     }
     return { synced, pending: pendingEvents.length - synced };
   }

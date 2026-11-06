@@ -88,7 +88,8 @@ it("pauses the newest monitors and archives the newest pages above a downgraded 
   const [archived] = await mockDatabase.select().from(schema.statusPages).where(inArray(schema.statusPages.id, pageRows.map((p) => p.id)))
     .then((rows) => rows.filter((row) => row.status === "archived"));
   expect(archived.id).toBe(pageRows[pageRows.length - 1].id);
-  expect(deleteScheduledMonitor).toHaveBeenCalledWith(newest[0]);
+  for (const id of newest) expect(deleteScheduledMonitor).toHaveBeenCalledWith(id);
+  expect(deleteScheduledMonitor).toHaveBeenCalledTimes(newest.length);
   const audit = await mockDatabase.select().from(schema.auditLogs).where(eq(schema.auditLogs.organizationId, organization.id));
   expect(audit.map((row) => row.action)).toEqual([PLAN_CAP_AUDIT_ACTION]);
   // Nothing is deleted; trial restore must not resume these.
