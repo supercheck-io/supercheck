@@ -86,16 +86,31 @@ const REDACTIONS: Array<[RegExp, string]> = [
     '$1[REDACTED]$2',
   ],
   [
-    /("(?:token|api[_-]?key|access[_-]?token|refresh[_-]?token|secret|password|passwd|pwd)"\s*:\s*)"(?:\\.|[^"\\])*"/gi,
+    /("[A-Za-z0-9_-]{0,40}(?:token|api[_-]?key|secret|password|passwd|pwd)[A-Za-z0-9_-]{0,20}"\s*:\s*)"(?:\\.|[^"\\])*"/gi,
     '$1"[REDACTED]"',
+  ],
+  // Credential-bearing query parameters.
+  [
+    /([?&](?:token|api[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|secret|password|x-amz-(?:signature|credential|security-token)|signature|sig)=)[^&#\s]+/gi,
+    '$1[REDACTED]',
   ],
   [/\b(Bearer\s+)[A-Za-z0-9._~+/-]+=*/gi, '$1[REDACTED]'],
   [
-    /\b(token|api[_-]?key|access[_-]?token|secret|password|passwd|pwd)\s*[:=]\s*[^\s,;"']+/gi,
+    /\b((?:[A-Za-z0-9]{1,30}[_-]){0,4}(?:token|api[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|secret|password|passwd|pwd)(?:[_-][A-Za-z0-9]{1,30}){0,3})\s*[:=]\s*[^\s,;"']+/gi,
     '$1=[REDACTED]',
   ],
   [/\b(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{20,}\b/g, '[REDACTED_GITHUB_TOKEN]'],
   [/\bAKIA[0-9A-Z]{16}\b/g, '[REDACTED_AWS_ACCESS_KEY]'],
+  [/\bAIza[0-9A-Za-z_-]{35}\b/g, '[REDACTED_API_KEY]'],
+  [
+    /\b(?:github_pat_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{20,}|sntrys_[A-Za-z0-9_=+/-]{20,}|[rs]k_live_[A-Za-z0-9]{16,})/g,
+    '[REDACTED_API_KEY]',
+  ],
+  [/\b(Authorization:\s*Basic\s+)[A-Za-z0-9+/]+=*/gi, '$1[REDACTED]'],
+  [
+    /\bhttps:\/\/hooks\.slack\.com\/services\/[A-Za-z0-9/_-]+/gi,
+    '[REDACTED_SLACK_WEBHOOK]',
+  ],
   [
     /(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}(?![A-Za-z0-9_-])/g,
     '[REDACTED_JWT]',
