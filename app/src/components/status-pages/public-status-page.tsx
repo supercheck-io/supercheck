@@ -12,7 +12,7 @@ import {
   ChevronRight,
   Bell,
 } from "lucide-react";
-import { format, subDays, startOfDay, isSameDay, differenceInCalendarDays } from "date-fns";
+import { format, subDays, isSameDay, differenceInCalendarDays } from "date-fns";
 import { SubscribeDialog } from "./subscribe-dialog";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
