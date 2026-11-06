@@ -1,5 +1,6 @@
 import { Command } from 'commander'
 import { spawn } from 'node:child_process'
+import { realpathSync } from 'node:fs'
 import { logger } from '../utils/logger.js'
 import { CLIError, ExitCode } from '../utils/errors.js'
 import { confirmPrompt } from '../utils/prompt.js'
@@ -21,12 +22,26 @@ function getDefaultTag(): string {
   return 'latest'
 }
 
-function detectPackageManager(): 'npm' | 'yarn' | 'pnpm' | 'bun' {
-  const userAgent = process.env.npm_config_user_agent ?? ''
-  if (userAgent.includes('pnpm')) return 'pnpm'
-  if (userAgent.includes('yarn')) return 'yarn'
-  if (userAgent.includes('bun')) return 'bun'
+function entryRealPath(): string {
+  const entry = process.argv[1] ?? ''
+  try { return realpathSync(entry) } catch { return entry }
+}
+
+/** The user agent is only set when launched through a package manager; otherwise infer it from where the CLI is installed. */
+export function detectPackageManager(
+  userAgent: string = process.env.npm_config_user_agent ?? '',
+  installPath: string = entryRealPath(),
+): 'npm' | 'yarn' | 'pnpm' | 'bun' {
+  const source = userAgent || installPath.replace(/\\/g, '/').toLowerCase()
+  if (source.includes('pnpm')) return 'pnpm'
+  if (source.includes('yarn')) return 'yarn'
+  if (source.includes('bun')) return 'bun'
   return 'npm'
+}
+
+/** Windows package managers are `.cmd` shims, which spawn cannot find by bare name. */
+export function executableFor(pm: string, platform: NodeJS.Platform = process.platform): string {
+  return platform === 'win32' ? `${pm}.cmd` : pm
 }
 
 function buildInstallCommand(
@@ -56,7 +71,7 @@ function buildInstallCommand(
 
 function runInstallCommand(command: string, args: string[]): Promise<number> {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { stdio: 'inherit' })
+    const child = spawn(executableFor(command), args, { stdio: 'inherit' })
     child.on('error', (err) => reject(err))
     child.on('close', (code) => resolve(code ?? 0))
   })
