@@ -39,7 +39,7 @@ export function SimilarIncidentsCard({ incidentId }: { incidentId: string }) {
               >
                 <span className="flex min-w-0 items-baseline gap-1.5 text-sm font-medium">
                   <span className="shrink-0 tabular-nums text-muted-foreground">#{incident.incidentNumber}</span>
-                  <span className="truncate">{incident.title}</span>
+                  <span className="line-clamp-2 break-words">{incident.title}</span>
                 </span>
                 <span className="mt-1 flex flex-wrap gap-1">
                   {incident.matchedOn.map((match) => (

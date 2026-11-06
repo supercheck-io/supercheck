@@ -112,6 +112,8 @@ describe("IncidentTimeline", () => {
     ready(Array.from({ length: 500 }, (_, i) => ev(`e${i}`, "comment", { text: `note ${i}` })));
     render(<IncidentTimeline incidentId="inc-1" canUpdate={false} />);
     expect(screen.getByRole("button", { name: "Show the 500 most recent events" })).toBeInTheDocument();
+    // A capped list shows no count, which would understate the total.
+    expect(screen.getByRole("heading", { level: 2, name: "Activity" })).toBeInTheDocument();
   });
 
   it("shows the latest 20 events and expands to all of them", () => {
@@ -274,6 +276,11 @@ it("cuts long AI headlines at a word with an ellipsis", () => {
 });
 
 describe("timelineEventVisual", () => {
+  it("keeps a long note whole", () => {
+    const text = "Line one.\n\nLine two.\n\nLine three.\n\nLine four.";
+    expect(describeTimelineEvent({ eventType: "comment", eventData: { text } }).body).toBe(text);
+  });
+
   it.each([
     [{ eventType: "comment", eventData: {} }, "blue"],
     [{ eventType: "ai_finding", eventData: { type: "sre_investigation" } }, "violet"],

@@ -77,7 +77,7 @@ export function IncidentSidebar({
   const firing = detail.linkedAlerts.filter((alert) => alert.status === "firing").length;
 
   return (
-    <aside aria-labelledby="incident-details-title" className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4">
       <Card className="gap-3 py-4">
         <CardHeader className="px-4 pt-0 pb-0">
           <SectionTitle id="incident-details-title" as="h2" icon={ListTree} tone="slate">Properties</SectionTitle>
@@ -214,6 +214,6 @@ export function IncidentSidebar({
           )}
         </CardContent>
       </Card>
-    </aside>
+    </div>
   );
 }

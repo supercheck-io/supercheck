@@ -142,7 +142,7 @@ describe("IncidentSidebar", () => {
     detail.incident.status = "resolved";
     render(<IncidentSidebar detail={detail} />);
     expect(screen.getByText("Skipped")).toBeInTheDocument();
-    expect(screen.getByRole("complementary", { name: "Properties" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Properties" })).toBeInTheDocument();
   });
 
   it("lists the watch toggle as a plain property and leaves status and severity to the page header", () => {

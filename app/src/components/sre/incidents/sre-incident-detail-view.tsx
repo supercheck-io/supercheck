@@ -310,10 +310,10 @@ export function SreIncidentDetailView({
             )}
           </div>
           {/* Not sticky: with alerts and similar incidents the column can be taller than the window. */}
-          <div className="flex min-w-0 flex-col gap-4">
+          <aside aria-label="Incident details" className="flex min-w-0 flex-col gap-4">
             <IncidentSidebar detail={detail} showCommander={showCommander} />
             <SimilarIncidentsCard incidentId={incident.id} />
-          </div>
+          </aside>
         </div>
       </Tabs>
 

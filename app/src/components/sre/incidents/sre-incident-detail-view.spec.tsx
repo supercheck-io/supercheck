@@ -357,7 +357,7 @@ describe("SreIncidentDetailView", () => {
     expect(screen.getAllByText("sev2")).toHaveLength(1);
     expect(screen.getByText("Checkout monitor down")).toBeInTheDocument();
     // Similar incidents sit in the right-hand column on every tab.
-    expect(screen.getByTestId("similar-incidents")).toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "Incident details" })).toContainElement(screen.getByTestId("similar-incidents"));
     fireEvent.click(screen.getByRole("button", { name: "View investigation" }));
     expect(screen.getByRole("tab", { name: "Investigation" })).toHaveAttribute("aria-selected", "true");
     expect(within(investigationTab()).getByText("Mock AI investigation panel")).toBeInTheDocument();
