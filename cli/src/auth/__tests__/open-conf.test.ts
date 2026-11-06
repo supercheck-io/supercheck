@@ -1,5 +1,5 @@
 import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals'
-import { mkdtempSync, writeFileSync, readFileSync, readdirSync, rmSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, readFileSync, readdirSync, rmSync, chmodSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -43,5 +43,22 @@ describe('openConf', () => {
     expect(store.load()).toBeNull()
     expect(readdirSync(cwd).some((name) => name.startsWith('device-login.json.corrupt-'))).toBe(true)
     expect(warn).toHaveBeenCalledTimes(1)
+  })
+  const unprivileged = process.platform !== 'win32' && process.getuid?.() !== 0
+  ;(unprivileged ? it : it.skip)('rethrows a filesystem error and leaves the file in place', () => {
+    const file = join(cwd, 'config.json')
+    writeFileSync(file, '{}')
+    chmodSync(file, 0o000)
+    try {
+      expect(() => openConf({ ...authConfOptions, cwd })).toThrow(/EACCES/)
+    } finally { chmodSync(file, 0o600) }
+    expect(readdirSync(cwd)).toEqual(['config.json'])
+    expect(warn).not.toHaveBeenCalled()
+  })
+
+  it('backs up a file that was written with a different encryption key', () => {
+    openConf({ ...authConfOptions, cwd, encryptionKey: 'another-key' }).set('token', 'sck_live_' + 'a'.repeat(32))
+    openConf({ ...authConfOptions, cwd })
+    expect(readdirSync(cwd).some((name) => name.startsWith('config.json.corrupt-'))).toBe(true)
   })
 })

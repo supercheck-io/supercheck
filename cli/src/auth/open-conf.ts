@@ -6,10 +6,16 @@ import { ConfigurationError } from '../utils/errors.js'
 
 type Options<T extends Record<string, unknown>> = ConstructorParameters<typeof Conf<T>>[0]
 
-/** Where conf keeps this file; a probe store (no encryption or schema, so it cannot fail) reveals the directory. */
+/** Where conf keeps this file; a bare probe store (no encryption or schema) only reveals the directory. */
 function configFilePath<T extends Record<string, unknown>>(options: Options<T>): string {
   const probe = new Conf<Record<string, unknown>>({ projectName: options?.projectName, projectSuffix: options?.projectSuffix, cwd: options?.cwd, configName: '__path-probe' })
   return join(dirname(probe.path), `${options?.configName ?? 'config'}.${options?.fileExtension ?? 'json'}`)
+}
+
+/** conf does not export its content-error classes; these are the bad-JSON, wrong-key and schema-violation failures. */
+function isContentError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false
+  return error.name === 'SyntaxError' || /^(Failed to decrypt config data\.|Config schema violation)/.test(error.message)
 }
 
 /**
@@ -21,7 +27,10 @@ export function openConf<T extends Record<string, unknown>>(options: Options<T>)
   try {
     return new Conf<T>(options)
   } catch (error) {
-    const path = configFilePath(options)
+    // Filesystem errors (EACCES, EISDIR, ...) and bad options are not corruption: never touch the file for them.
+    if (!isContentError(error)) throw error
+    let path: string
+    try { path = configFilePath(options) } catch { throw error }
     const backup = `${path}.corrupt-${Date.now()}`
     try { renameSync(path, backup) } catch {
       throw new ConfigurationError(`Config file ${path} is unreadable (${error instanceof Error ? error.message : String(error)}) and could not be moved aside. Fix or remove it.`)
