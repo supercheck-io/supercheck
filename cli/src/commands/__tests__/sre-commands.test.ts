@@ -12,6 +12,7 @@ const mockInfo = jest.fn<(...args: unknown[]) => void>()
 const mockWarn = jest.fn<(...args: unknown[]) => void>()
 const mockError = jest.fn<(...args: unknown[]) => void>()
 const mockPostSse = jest.fn<(...args: unknown[]) => Promise<void>>()
+const mockRequest = jest.fn<(...args: unknown[]) => Promise<{ data: unknown }>>()
 const mockGetSse = jest.fn<(...args: unknown[]) => Promise<void>>()
 
 jest.unstable_mockModule('../../api/authenticated-client.js', () => ({
@@ -19,6 +20,8 @@ jest.unstable_mockModule('../../api/authenticated-client.js', () => ({
     get: mockGet,
     post: mockPost,
     patch: mockPatch,
+    request: mockRequest,
+    getBaseUrl: () => 'https://app.example.com',
   }),
 }))
 
@@ -493,12 +496,19 @@ describe('AI SRE CLI Commands', () => {
       await expect(runCommand.parseAsync(['node', 'run', 'stream', 'run-1'])).rejects.toMatchObject({ exitCode: 1 })
       expect(mockSuccess).not.toHaveBeenCalled()
     })
-    it('run stream does not treat a queued complete event as success', async () => {
+    it('run stream polls past a queued complete event and succeeds when the run passes', async () => {
       mockGetSse.mockImplementationOnce(async (_path: unknown, callback: unknown) => {
         (callback as (event: { event: string; data: unknown }) => void)({ event: 'complete', data: { status: 'queued' } })
       })
+      mockRequest.mockResolvedValueOnce({ data: { status: 'passed' } })
+      await runCommand.parseAsync(['node', 'run', 'stream', 'run-1'])
+      expect(mockRequest).toHaveBeenCalledWith('GET', '/api/runs/run-1', expect.anything())
+    })
+    it('run stream fails on an unknown complete status', async () => {
+      mockGetSse.mockImplementationOnce(async (_path: unknown, callback: unknown) => {
+        (callback as (event: { event: string; data: unknown }) => void)({ event: 'complete', data: { status: 'weird' } })
+      })
       await expect(runCommand.parseAsync(['node', 'run', 'stream', 'run-1'])).rejects.toMatchObject({ exitCode: 1 })
-      expect(mockSuccess).not.toHaveBeenCalled()
     })
     it('run stream redacts CLI tokens in console lines', async () => {
       const write = jest.spyOn(process.stdout, 'write').mockImplementation(() => true)

@@ -97,19 +97,27 @@ runCommand
   .option('--idle-timeout <seconds>', 'Abort if no data received within this period', '60')
   .action(async (id: string, options: { idleTimeout: string }) => {
     const json = getOutputFormat() === 'json'
+    let stillActive = false
     await getSse(`/api/runs/${id}/stream`, ({ event, data }) => {
       const record = typeof data === 'object' && data !== null ? data as Record<string, unknown> : {}
       if (json) logger.output(JSON.stringify({ event, data }))
       else if (getOutputFormat() === 'table' && event === 'console' && typeof record.line === 'string') process.stdout.write(redactText(record.line))
       else if (event === 'status') logger.info(`Status: ${String(record.status ?? 'unknown')}`)
       if (event === 'complete') {
-        if (!['passed', 'completed'].includes(String(record.status))) {
-          throw new CLIError(`Run ended with status: ${String(record.status)}`, ExitCode.GeneralError)
+        const status = String(record.status)
+        // Servers before the queued fix report `complete` for a run that has not started: keep waiting for its outcome.
+        if (['queued', 'running'].includes(status)) { stillActive = true; return false }
+        if (!['passed', 'completed'].includes(status)) {
+          throw new CLIError(`Run ended with status: ${status}`, ExitCode.GeneralError)
         }
-        if (!json) logger.success(`Run complete: ${String(record.status)}`)
+        if (!json) logger.success(`Run complete: ${status}`)
         return false
       }
     }, { idleTimeoutMs: Math.max(Number(options.idleTimeout) || 60, 10) * 1000, isTerminal: ({ event }) => event === 'complete' })
+    if (stillActive) {
+      const run = await waitForRun(createAuthenticatedClient(), id, 30 * 60 * 1000)
+      if (!json) logger.success(`Run complete: ${String(run.status)}`)
+    }
   })
 
 runCommand
