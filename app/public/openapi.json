@@ -8473,6 +8473,11 @@
             "type": "integer",
             "nullable": true
           },
+          "testId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Test ID of a single-test run (`test execute`, playground); null for job runs"
+          },
           "location": {
             "type": "string",
             "nullable": true

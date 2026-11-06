@@ -8,6 +8,8 @@ import { isAuthError, requireUserAuthContext, authErrorStatus } from "@/lib/auth
 import { monitorResumeBlockedResponse } from "@/lib/execution/trial-interval-response";
 import { hasPermissionForUser } from '@/lib/rbac/middleware';
 import { logAuditEvent } from "@/lib/audit-logger";
+import { deleteScheduledMonitor, scheduleMonitor } from "@/lib/monitor-scheduler";
+import type { MonitorJobData } from "@/lib/queue";
 import { createLogger } from "@/lib/logger/index";
 
 const logger = createLogger({ module: "monitor-status-api" }) as {
@@ -102,6 +104,8 @@ export async function PATCH(
         .update(monitors)
         .set({
           status: status,
+          // The scheduler skips a monitor with enabled=false, so the two move together (as in PATCH /api/monitors/{id}).
+          enabled: status !== "paused",
           updatedAt: new Date(),
         })
         .where(
@@ -122,8 +126,36 @@ export async function PATCH(
       );
     }
 
+    // Keep the schedule in step with pause and resume, as the monitor update paths do.
+    const wasPaused = currentMonitor.status === "paused";
+    const nowPaused = updatedMonitor.status === "paused";
+    if (wasPaused !== nowPaused) {
+      if (nowPaused) {
+        const removed = currentMonitor.scheduledJobId
+          ? await deleteScheduledMonitor(currentMonitor.scheduledJobId)
+          : false;
+        if (!removed) await deleteScheduledMonitor(id);
+        await db.update(monitors).set({ scheduledJobId: null }).where(eq(monitors.id, id));
+      } else if (updatedMonitor.frequencyMinutes > 0) {
+        const schedulerId = await scheduleMonitor({
+          monitorId: id,
+          frequencyMinutes: updatedMonitor.frequencyMinutes,
+          jobData: {
+            monitorId: id,
+            projectId: monitorProjectId,
+            type: updatedMonitor.type as MonitorJobData["type"],
+            target: updatedMonitor.target,
+            config: updatedMonitor.config as Record<string, unknown>,
+            frequencyMinutes: updatedMonitor.frequencyMinutes,
+          },
+          retryLimit: 3,
+        });
+        await db.update(monitors).set({ scheduledJobId: schedulerId }).where(eq(monitors.id, id));
+      }
+    }
+
     // Log the audit event only for human actions (pause/unpause), not automated status changes
-    const humanActions = ['paused', 'maintenance'];
+    const humanActions = ['paused'];
     const isHumanAction = humanActions.includes(status) || 
                          (currentMonitor.status === 'paused' && ['up', 'down'].includes(status));
     

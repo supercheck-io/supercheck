@@ -52,6 +52,45 @@ it("refuses to resume a paused monitor without a plan (c9)", async () => {
   expect(db.update).not.toHaveBeenCalled();
 });
 
+const deleteScheduledMonitor = jest.fn(async () => true);
+const scheduleMonitor = jest.fn(async () => "sched-new");
+jest.mock("@/lib/monitor-scheduler", () => ({
+  deleteScheduledMonitor: (...a: unknown[]) => (deleteScheduledMonitor as jest.Mock)(...a),
+  scheduleMonitor: (...a: unknown[]) => (scheduleMonitor as jest.Mock)(...a),
+}));
+
+describe("schedule follows pause and resume", () => {
+  const setWhere = { set: jest.fn(() => ({ where: jest.fn() })) };
+  beforeEach(() => {
+    jest.mocked(hasPermissionForUser).mockResolvedValue(true);
+    (db.update as jest.Mock).mockReturnValue(setWhere);
+  });
+  const tx = (updated: object) => {
+    (db.transaction as jest.Mock).mockImplementation(async (cb: (t: unknown) => unknown) =>
+      cb({
+        select: () => ({ from: () => ({ where: () => ({ for: async () => [{ id: "p" }] }) }) }),
+        update: () => ({ set: jest.fn(() => ({ where: () => ({ returning: async () => [updated] }) })) }),
+      }),
+    );
+  };
+
+  it("unschedules the monitor when it is paused", async () => {
+    jest.mocked(db.query.monitors.findFirst).mockResolvedValue({ id: "m", organizationId: "org", projectId: "p", status: "up", scheduledJobId: "old" } as never);
+    tx({ id: "m", name: "M", organizationId: "org", projectId: "p", status: "paused", frequencyMinutes: 5 });
+    expect((await patch("paused")).status).toBe(200);
+    expect(deleteScheduledMonitor).toHaveBeenCalledWith("old");
+    expect(scheduleMonitor).not.toHaveBeenCalled();
+  });
+
+  it("reschedules the monitor when it is resumed", async () => {
+    jest.mocked(db.query.monitors.findFirst).mockResolvedValue({ id: "m", organizationId: "org", projectId: "p", status: "paused" } as never);
+    tx({ id: "m", name: "M", organizationId: "org", projectId: "p", status: "pending", frequencyMinutes: 5, type: "website", target: "https://e.com", config: {} });
+    expect((await patch("pending")).status).toBe(200);
+    expect(scheduleMonitor).toHaveBeenCalledWith(expect.objectContaining({ monitorId: expect.any(String), frequencyMinutes: 5 }));
+    expect(deleteScheduledMonitor).not.toHaveBeenCalled();
+  });
+});
+
 it.each(["error", "maintenance", "bogus", ""])("rejects status %p before any lookup", async (status) => {
   const response = await patch(status);
   expect(response.status).toBe(400);
