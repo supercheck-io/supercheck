@@ -62,6 +62,7 @@ export const products: Product[] = [
         ],
         href: "/docs/app/monitor#monitor-types",
         linkLabel: "Monitor types",
+        visual: shot("create-http-monitor", "HTTP monitor form with target URL, check interval, method and expected status codes"),
       },
       {
         title: "Send alerts where your team already works",
@@ -225,7 +226,7 @@ export const products: Product[] = [
       },
       {
         title: "Cited findings",
-        body: "Reports label statements as Fact, Inference or Hypothesis. If the evidence cannot determine a cause, the report states the gap.",
+        body: "Reports rate their confidence and mark each hypothesis as validated, ruled out or inconclusive. If the evidence cannot determine a cause, the report states the gap.",
       },
       {
         title: "Evidence from where you already look",
@@ -266,6 +267,7 @@ export const products: Product[] = [
         ],
         href: "/docs/app/investigate/copilot",
         linkLabel: "Copilot guide",
+        visual: shot("sre-copilot-chat", "Copilot chat with Live sources, chat history and suggested prompts"),
       },
       {
         title: "Connect read-only sources",
@@ -277,6 +279,7 @@ export const products: Product[] = [
         ],
         href: "/docs/app/investigate/connectors",
         linkLabel: "Connectors",
+        visual: shot("sre-add-connector-dialog", "Add connector dialog with connector type, execution mode, read-only credential and service scope"),
       },
     ],
     faq: [
@@ -347,6 +350,7 @@ export const products: Product[] = [
         ],
         href: "/docs/app/communicate/status-pages#components",
         linkLabel: "Components",
+        visual: shot("status-page-components", "Status page components with their status and linked monitors"),
       },
       {
         title: "Publish and share",
@@ -370,6 +374,7 @@ export const products: Product[] = [
         ],
         href: "/docs/app/communicate/status-pages#subscribers",
         linkLabel: "Subscribers",
+        visual: shot("status-page-create-incident", "New status update dialog with status, impact, affected components and Notify subscribers"),
       },
     ],
     faq: [

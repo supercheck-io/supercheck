@@ -157,13 +157,13 @@ Deploy records returned IDs in `supercheck.state.json`. Share it with CI so subs
 | Command | What it does | Key flags |
 |---|---|---|
 | `supercheck login` | Sign in through your browser, or store a CLI token | `--token`, `--url`, `--reauth`, `--no-browser`, `--wait`, `--timeout` |
-| `supercheck link` | Point `supercheck.config.ts` at the org and project you are logged in to | `--dry-run`, `--force` |
+| `supercheck link` | Point `supercheck.config.ts` at the org and project you are logged in to | `--dry-run`, `--force`, `--config <path>` |
 | `supercheck onboard` | Read-only status of the current directory and the single next command | — |
 | `supercheck discover` | Bounded, read-only facts about the repository | `--root <directory>` |
 | `supercheck plan` | Show whether the organization has an active subscription | — |
 | `supercheck ci init --github` | Write `.github/workflows/supercheck.yml` | `--path <file>`, `--force` |
 | `supercheck agent install` | Install the Supercheck skill for a coding agent | `--target`, `--path`, `--pointer`, `--force` |
-| `supercheck whoami` | Show the authenticated project, organization and role | — |
+| `supercheck whoami` | Show the authenticated project, role and token details | — |
 | `supercheck logout` | Clear stored credentials | — |
 
 ```bash
@@ -173,7 +173,7 @@ supercheck whoami
 supercheck logout
 ```
 
-`whoami` includes token identity and expiry when your role permits viewing API keys (user, token name, API URL, expiry). A project viewer cannot create a CLI token or sign in with the CLI, so it cannot use `whoami` either.
+`whoami` prints User, Token, API URL, Project, Role, Expires and Last used when your role permits viewing API keys; the organization appears only with `--json`. A project viewer cannot create a CLI token or sign in with the CLI, so it cannot use `whoami` either.
 
 <Accordions>
 <Accordion title="supercheck login: flags and browser sign-in" id="supercheck-login">
@@ -186,7 +186,7 @@ supercheck login --token <token> --url https://supercheck.yourdomain.com
 | Flag | Description |
 |---|---|
 | `--token <token>` | CLI token (`sck_live_*` or `sck_test_*`). Without it, the CLI signs in through your browser when the server supports it |
-| `--url <url>` | API base URL; otherwise uses `SUPERCHECK_URL`, stored URL, config URL, then the cloud default |
+| `--url <url>` | API base URL. Browser login uses `--url`, then `SUPERCHECK_URL`, then the stored URL, then the cloud default. With `--token`, the project config `api.baseUrl` is also tried after the stored URL |
 | `--reauth` | Start a new browser login even if you are already signed in |
 | `--no-browser` | Print the login URL and code without opening a browser |
 | `--wait` | Wait for browser approval instead of returning immediately (default in an interactive terminal) |
@@ -219,9 +219,15 @@ Points `supercheck.config.ts` at the organization and project you are logged in 
 </Accordion>
 <Accordion title="supercheck ci init and agent install" id="supercheck-ci-init---github">
 
-**`ci init --github`** writes `.github/workflows/supercheck.yml`: pull requests run tests locally without credentials, and pushes to `main` deploy using the `SUPERCHECK_TOKEN` repository secret. It does not create that secret. It refuses to overwrite an existing file without `--force`.
+**`ci init --github`** writes `.github/workflows/supercheck.yml`: pull requests run tests locally without credentials, and pushes to `main` deploy using the `SUPERCHECK_TOKEN` repository secret. It does not create that secret. For self-hosted servers, set an optional `SUPERCHECK_URL` repository variable; the workflow passes it to the CLI. The workflow runs the locally installed CLI (`npx --no-install`, `pnpm exec` or `yarn`, matching your lockfile), so add `@supercheck/cli` as a devDependency. It refuses to overwrite an existing file without `--force`.
 
 **`agent install`** installs the Supercheck skill for a coding agent with `--target claude`, `cursor`, `codex`, `opencode` or `generic`. Existing files are never overwritten without `--force`; `--pointer AGENTS.md` adds a short block delimited by markers and only ever rewrites that block.
+
+| Target | Installed to |
+|---|---|
+| `claude` | `.claude/skills/supercheck/SKILL.md` |
+| `cursor` | `.cursor/rules/supercheck.mdc` |
+| `codex`, `opencode`, `generic` | `.agents/skills/supercheck/SKILL.md` |
 
 </Accordion>
 </Accordions>
@@ -271,7 +277,7 @@ supercheck config print --offline
 | `job delete <job-id>` | Delete a job with confirmation | `--force` |
 | `job run` | Run a job immediately, bypassing the cron schedule | `--id`, `--local`, `--cloud`, `--offline`, `--playwright-config` |
 | `job trigger <job-id>` | Trigger a job with a trigger key, optionally wait | `--wait`, `--timeout` (300) |
-| `job keys` | List, create and revoke trigger keys | `create --name --expires-in`, `delete` |
+| `job keys` | List, create and revoke trigger keys | `create --name --expires-in <seconds>` (min 60), `delete` |
 
 <Accordions>
 <Accordion title="Examples" id="jobs-examples">
@@ -430,7 +436,7 @@ Requirements track what the product must do and which tests prove it. `superchec
 
 | Command | What it does | Key flags |
 |---|---|---|
-| `requirement list` | List requirements with coverage status | `--search`, `--priority`, `--status` (`covered`, `failing`, `missing`), `--page` (1), `--page-size` (50) |
+| `requirement list` | List requirements with coverage status | `--search`, `--priority`, `--status` (`covered`, `failing`, `missing`), `--page` (1), `--page-size` (50, max 500) |
 | `requirement get <id>` | Get a requirement with its tags, linked tests and coverage | — |
 | `requirement create` | Create a requirement | `--title` (required, 1-500 characters), `--description`, `--priority`, `--tag`, `--external-id`, `--external-url`, `--test` |
 | `requirement update <id>` | Update a requirement; only the flags you pass change | `create` flags, `--clear-tags`, `--clear-tests` |
@@ -529,7 +535,7 @@ supercheck monitor delete <monitor-id> --force
 |---|---|---|
 | `var list` | List project variables | — |
 | `var get <key>` | Get a variable by key | — |
-| `var set <key> <value>` | Create or update a variable | `--secret`, `--value-stdin`, `--description` |
+| `var set <key> <value>` | Create or update a variable | `--secret`, `--value-stdin` (read the value from stdin, max 1 MB), `--description` |
 | `var upload <key> <file>` | Create a file variable (`.csv`, `.json`, `.txt`, `.tsv`, `.xml`, `.yaml`, `.yml`; max 5 MB) | `--description` |
 | `var download <key>` | Print a file variable's content, or save it to a new file (owner-only permissions on macOS and Linux) | `--out <path>`, `--force` (overwrite an existing file) |
 | `var delete <key>` | Delete a variable | `--force` |
@@ -721,7 +727,7 @@ These commands are read-only and require `sre_service:view`.
 
 | Command | What it does | Key flags |
 |---|---|---|
-| `pull` | Pull remote resources into local config and files | `--dry-run`, `--force`, `--tests-only`, `--config-only` |
+| `pull` | Pull remote resources into local config and files | `--dry-run`, `--force`, `--tests-only`, `--config-only`, `--skip-install` (do not install dependencies when initializing a project) |
 | `diff` | Preview changes between local config and server state | `--delete` |
 | `deploy` | Push configuration to the API | `--dry-run`, `--delete`, `--no-delete`, `--force`, `--verify`, `--verify-timeout <seconds>` |
 | `destroy` | Tear down all managed resources defined with IDs in the local config, including notification providers, requirements and status pages | `--dry-run`, `--force` |

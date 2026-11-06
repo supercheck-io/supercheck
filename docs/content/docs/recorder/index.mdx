@@ -66,7 +66,7 @@ Open the extension's **Options** page.
 </Step>
 <Step>
 
-Expand **Self-hosted instance**, enter the HTTPS URL of your deployment and select **Save**.
+Expand **Self-hosted instance**, enter the HTTPS URL of your deployment (plain `http://localhost` is also accepted for local development) and select **Save**.
 
 </Step>
 <Step>
@@ -154,7 +154,7 @@ Pin the extension. Unpacked installs do not auto-update, so repeat this after ea
 | Extension is not detected on a self-hosted instance | Open **Options**, save the exact HTTPS origin shown in the Record dialog, reload the tab, then sign in |
 | **Too many connection checks** | Connection checks are rate limited. Wait for the shown number of seconds, then reopen Options |
 | Connection fails | Confirm the instance URL uses HTTPS, then sign in and open an authenticated dashboard page in the same browser profile |
-| Extension stays **Not connected to Supercheck** after sign-in | If the extension still has its key, use **Disconnect** to revoke it, then reconnect from an authenticated page. If the extension was reinstalled or its storage was cleared, the app still holds the old key and will not issue a new one. There is no screen to revoke it yet: contact support (cloud) or your Supercheck administrator (self-hosted). If disconnect could not reach the server, keep the configuration and retry. |
+| Extension stays **Not connected** (or "Not connected yet. Open Supercheck in this browser…") after sign-in | If the extension still has its key, use **Disconnect** to revoke it, then reconnect from an authenticated page. If the extension was reinstalled or its storage was cleared, the app still holds the old key and will not issue a new one. The app has no screen for managing recorder keys, so **Disconnect** is the only self-service way to revoke one: otherwise contact support (cloud) or your Supercheck administrator (self-hosted). If disconnect could not reach the server, keep the configuration and retry. |
 | Self-hosted instance is unreachable | Open the instance directly and verify its certificate and network access |
 | Recording does not start | Confirm the tab uses HTTP or HTTPS and no other debugger is attached |
 | Save is unavailable | Start the recording from Supercheck so the originating Playground context is available |

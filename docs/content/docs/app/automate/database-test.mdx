@@ -54,6 +54,10 @@ test.describe('database read health check', () => {
 });
 ```
 
+<Callout type="warn">
+For databases reachable over a public network, enable TLS with certificate verification. Add `ssl: true` to the `Pool` options (node-postgres 8 verifies the certificate by default), or `ssl: { ca: getSecret('DB_CA_CERT') }` for a private CA. Never set `rejectUnauthorized: false`.
+</Callout>
+
 <Accordions>
 <Accordion title="Supported databases, connections, and assertions" id="db-reference">
 

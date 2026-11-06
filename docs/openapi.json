@@ -5764,10 +5764,30 @@
       "delete": {
         "operationId": "deleteOrganization",
         "summary": "Delete organization",
-        "description": "Owner only. Only empty organizations without protected dependencies can be deleted. Selected browser session references are cleared atomically. Organizations containing projects or protected dependencies return 409; contact an administrator or support for safe removal. Browser mutations require a same-origin request; CLI tokens retain their existing authorization. Requires an interactive browser session. Project-scoped CLI tokens receive 403.",
+        "description": "Owner only. Deletes the organization and everything in it: every project, its data and stored files, and member access. An active subscription is cancelled. This cannot be undone. The request body must name the organization in confirmOrganizationId. Not allowed from an impersonated session. Rate limited to 5 attempts per 10 minutes. Selected browser session references are cleared atomically. Browser mutations require a same-origin request; CLI tokens retain their existing authorization. Requires an interactive browser session. Project-scoped CLI tokens receive 403.",
         "tags": [
           "Organizations"
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "confirmOrganizationId"
+                ],
+                "properties": {
+                  "confirmOrganizationId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Must equal the id in the path."
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Organization deleted",
@@ -5787,6 +5807,9 @@
               }
             }
           },
+          "400": {
+            "description": "confirmOrganizationId is missing or does not match the organization id."
+          },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
@@ -5796,11 +5819,17 @@
           "404": {
             "$ref": "#/components/responses/NotFound"
           },
+          "409": {
+            "description": "The organization is busy with another change. Try again in a moment."
+          },
+          "429": {
+            "description": "Too many deletion attempts. Try again later."
+          },
           "500": {
             "description": "Internal server error"
           },
-          "409": {
-            "description": "Organization contains projects or protected dependencies; removal requires administrator or support assistance."
+          "502": {
+            "description": "Billing cancellation or storage cleanup failed; the organization was not deleted."
           }
         },
         "security": [

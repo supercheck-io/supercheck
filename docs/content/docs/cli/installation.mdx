@@ -77,7 +77,7 @@ my-project/
 └── supercheck.config.ts
 ```
 
-`init` also installs `@playwright/test` and `@types/k6` as dev dependencies, downloads the Playwright **chromium** browser for local execution, and warns if **k6** is not installed (needed for performance tests).
+`init` also creates `package.json` if missing, writes `tsconfig.supercheck.json`, adds Supercheck entries to `.gitignore`, writes example tests, and installs `@supercheck/cli`, `typescript`, `@types/node`, `@playwright/test` and `@types/k6` as dev dependencies. It downloads the Playwright **chromium** browser for local execution and warns if **k6** is not installed (needed for performance tests). With `--skip-examples`, no example tests are written, `@playwright/test` is not installed and chromium is not downloaded.
 
 ## Test Dependencies
 
