@@ -15,6 +15,9 @@ it("requeues a job it cancelled as abandoned, so an identical retry runs", async
   mockSet.mockClear();
   await requeueAbandonedPrivateAgentJob({ jobId: "j", organizationId: "o", projectId: "p" });
   expect(mockSet).toHaveBeenCalledWith(
-    expect.objectContaining({ status: "queued", completedAt: null, errorCode: null, createdAt: expect.any(Date) }),
+    expect.objectContaining({
+      status: "queued", completedAt: null, errorCode: null, createdAt: expect.any(Date),
+      leaseTokenHash: null, leaseExpiresAt: null, resultSummary: null, resultHash: null, durationMs: null, startedAt: null,
+    }),
   );
 });

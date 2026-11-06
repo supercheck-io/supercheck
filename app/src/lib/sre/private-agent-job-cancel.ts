@@ -35,7 +35,19 @@ export async function requeueAbandonedPrivateAgentJob(input: {
 }) {
   await db
     .update(privateAgentJobs)
-    .set({ status: "queued", completedAt: null, errorCode: null, startedAt: null, createdAt: new Date() })
+    .set({
+      status: "queued",
+      leaseTokenHash: null,
+      leaseExpiresAt: null,
+      startedAt: null,
+      completedAt: null,
+      durationMs: null,
+      errorCode: null,
+      resultHash: null,
+      resultSummary: null,
+      cancelRequestedAt: null,
+      createdAt: new Date(),
+    })
     .where(
       and(
         eq(privateAgentJobs.id, input.jobId),

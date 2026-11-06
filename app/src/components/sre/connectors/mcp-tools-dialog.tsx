@@ -96,11 +96,18 @@ export function McpToolsDialog({ connector, open, onOpenChange }: McpToolsDialog
       // Keep ticks the admin already made; new tools stay unticked. Drop ticks for
       // tools that disappeared or became unsupported so Save cannot get stuck.
       setState(result.state);
+      const destructive = result.state.discovered.filter((tool) => tool.destructiveHint);
+      const dropped = Object.keys(selected).filter((name) => destructive.some((tool) => tool.name === name));
+      if (dropped.length > 0) {
+        toast.warning(
+          `Destructive tools are no longer allowed and will be removed when you save: ${dropped.join(", ")}`,
+        );
+      }
       setSelected((current) =>
         Object.fromEntries(
           Object.entries(current).filter(([name]) =>
             result.state.discovered.some(
-              (tool) => tool.name === name && !tool.unsupportedReason,
+              (tool) => tool.name === name && !tool.unsupportedReason && !tool.destructiveHint,
             ),
           ),
         ),

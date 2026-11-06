@@ -109,4 +109,27 @@ describe("McpToolsDialog", () => {
       expect(mockSave).toHaveBeenCalledWith({ id: "c1", tools: [{ name: "get_errors", fixedArguments: {} }] }),
     );
   });
+
+  it("unticks a ticked tool that rediscovery marks destructive and warns", async () => {
+    const tool = state().discovered[0];
+    mockGet.mockResolvedValue({
+      success: true, message: "",
+      state: state({ allowlist: [{ name: "get_errors", description: "", inputSchema: schema, fixedArguments: {} }] }),
+    });
+    mockDiscover.mockResolvedValue({
+      success: true, message: "found",
+      state: state({
+        discovered: [{ ...tool, destructiveHint: true }],
+        allowlist: [{ name: "get_errors", description: "", inputSchema: schema, fixedArguments: {} }],
+      }),
+    });
+    mockSave.mockResolvedValue({ success: true, state: state(), message: "ok" });
+    render(<McpToolsDialog connector={connector} open onOpenChange={jest.fn()} />);
+    expect(await screen.findByLabelText("Allow get_errors")).toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: /Discover tools/ }));
+    await waitFor(() => expect(screen.getByLabelText("Allow get_errors")).not.toBeChecked());
+    expect(jest.requireMock("sonner").toast.warning).toHaveBeenCalledWith(expect.stringContaining("get_errors"));
+    fireEvent.click(screen.getByRole("button", { name: "Save allowlist" }));
+    await waitFor(() => expect(mockSave).toHaveBeenCalledWith({ id: "c1", tools: [] }));
+  });
 });

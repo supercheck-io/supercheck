@@ -345,6 +345,18 @@ export function buildAllowlist(
   return { ok: true, allowlist };
 }
 
+/** Persists a destructive flag from discovery onto allowlist entries, so the block survives a later discovery that omits the tool. */
+export function markDestructiveAllowlistEntries(
+  allowlist: McpAllowlistedTool[],
+  discovered: McpDiscoveredTool[],
+): McpAllowlistedTool[] {
+  return allowlist.map((entry) =>
+    entry.destructiveHint !== true && discovered.some((d) => d.name === entry.name && d.destructiveHint === true)
+      ? { ...entry, destructiveHint: true }
+      : entry,
+  );
+}
+
 export type McpToolCallResolution =
   | { ok: true; tool: McpAllowlistedTool; arguments: Record<string, unknown> }
   | { ok: false; error: string };

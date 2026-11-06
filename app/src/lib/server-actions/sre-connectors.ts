@@ -648,7 +648,7 @@ export async function getSreConnectors(
             inArray(privateAgentJobs.connectorId, connectorIds),
           ),
         )
-        .orderBy(privateAgentJobs.connectorId, desc(privateAgentJobs.createdAt)),
+        .orderBy(privateAgentJobs.connectorId, desc(privateAgentJobs.createdAt), desc(privateAgentJobs.id)),
     ]);
 
     const servicesByConnectorId = new Map<string, string[]>();
