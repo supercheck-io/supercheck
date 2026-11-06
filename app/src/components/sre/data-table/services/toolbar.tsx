@@ -18,7 +18,13 @@ export function ServicesToolbar<TData>({
   setupGuide,
 }: ServicesToolbarProps<TData>) {
   return (
-    <div className="mb-4 -mt-2 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-end">
+    <div className="mb-4 -mt-2 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+      <div className="flex min-w-0 flex-col">
+        <h2 className="text-2xl font-semibold">Services</h2>
+        <p className="text-sm text-muted-foreground">
+          Link monitors and jobs to services for investigation context.
+        </p>
+      </div>
       <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center lg:justify-end">
         <div className="relative w-full sm:w-[250px]">
           <Search className="absolute left-2 top-2 h-4 w-4 text-muted-foreground" />

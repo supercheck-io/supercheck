@@ -85,7 +85,7 @@ export function createProjectColumns(
             <span className="truncate text-sm font-medium text-foreground">
               {project.name}
             </span>
-            {project.isDefault && <TableBadge compact>Default</TableBadge>}
+            {project.isDefault && <TableBadge tone="info" compact>Default</TableBadge>}
           </div>
         );
       },

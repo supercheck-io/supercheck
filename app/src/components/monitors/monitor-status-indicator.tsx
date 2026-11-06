@@ -2,14 +2,18 @@
 
 import * as React from "react";
 
-import { 
-  CheckCircle, 
-  XCircle, 
-  Pause, 
-  Clock, 
+import {
   AlertCircle,
-  PlayCircle 
+  CheckCircle,
+  Clock,
+  Pause,
+  PlayCircle,
+  Wrench,
+  XCircle,
+  type LucideIcon,
 } from "lucide-react";
+
+import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
 
 interface MonitorStatusIndicatorProps {
   monitorId: string;
@@ -17,68 +21,32 @@ interface MonitorStatusIndicatorProps {
   uptime?: number;
 }
 
-const getStatusConfig = (status: string) => {
-  switch (status.toLowerCase()) {
-    case "up":
-      return {
-        label: "Up",
-        variant: "default" as const,
-        icon: CheckCircle,
-        color: "text-green-500",
-      };
-    case "down":
-      return {
-        label: "Down",
-        variant: "destructive" as const,
-        icon: XCircle,
-        color: "text-red-500",
-      };
-    case "paused":
-      return {
-        label: "Paused",
-        variant: "secondary" as const,
-        icon: Pause,
-        color: "text-gray-500",
-      };
-    case "pending":
-      return {
-        label: "Pending",
-        variant: "outline" as const,
-        icon: Clock,
-        color: "text-gray-500",
-      };
-    case "running":
-      return {
-        label: "Running",
-        variant: "outline" as const,
-        icon: PlayCircle,
-        color: "text-blue-500",
-      };
-    case "error":
-      return {
-        label: "Error",
-        variant: "destructive" as const,
-        icon: AlertCircle,
-        color: "text-orange-500",
-      };
-    default:
-      return {
-        label: "Unknown",
-        variant: "outline" as const,
-        icon: Clock,
-        color: "text-gray-500",
-      };
-  }
+type StatusConfig = { label: string; icon: LucideIcon; tone: TableBadgeTone };
+
+const STATUS_CONFIG: Record<string, StatusConfig> = {
+  up: { label: "Up", icon: CheckCircle, tone: "success" },
+  down: { label: "Down", icon: XCircle, tone: "danger" },
+  paused: { label: "Paused", icon: Pause, tone: "slate" },
+  pending: { label: "Pending", icon: Clock, tone: "neutral" },
+  running: { label: "Running", icon: PlayCircle, tone: "info" },
+  maintenance: { label: "Maintenance", icon: Wrench, tone: "indigo" },
+  error: { label: "Error", icon: AlertCircle, tone: "warning" },
 };
 
+const UNKNOWN: StatusConfig = { label: "Unknown", icon: Clock, tone: "neutral" };
+
+export function getMonitorStatusConfig(status: string): StatusConfig {
+  return STATUS_CONFIG[status.toLowerCase()] ?? UNKNOWN;
+}
+
+/** A tinted pill, the same badge style as the tests and services tables. */
 export function MonitorStatusIndicator({ status }: MonitorStatusIndicatorProps) {
-  const statusConfig = getStatusConfig(status);
-  const StatusIcon = statusConfig.icon;
+  const { label, icon: StatusIcon, tone } = getMonitorStatusConfig(status);
 
   return (
-    <div className="flex items-center">
-      <StatusIcon className={`h-4 w-4 mr-2 ${statusConfig.color}`} />
-      <span>{statusConfig.label}</span>
-    </div>
+    <TableBadge tone={tone} compact className="gap-1 whitespace-nowrap">
+      <StatusIcon aria-hidden="true" className="h-3.5 w-3.5" />
+      {label}
+    </TableBadge>
   );
-} 
+}

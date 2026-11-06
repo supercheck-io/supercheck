@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
+import { IconTile } from "@/components/sre/incidents/incident-ui";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
@@ -385,7 +386,7 @@ export function CliTokensTable() {
         ),
         cell: ({ row }) => (
           <div className="flex h-8 items-center gap-2">
-            <Key className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <IconTile icon={Key} tone="amber" className="size-8 rounded-lg [&_svg]:size-4" />
             <span className="truncate font-medium">{row.original.name}</span>
           </div>
         ),

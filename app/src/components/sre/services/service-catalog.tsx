@@ -153,12 +153,13 @@ export function ServiceCatalog({
 
   return (
     <div className="mt-6 min-w-0 space-y-4 p-2">
-      <PageHeader
-        title="Services"
-        description="Link monitors and jobs to services for investigation context."
-        className="mb-4 -mt-2"
-      />
       {services.length === 0 ? (
+        <>
+        <PageHeader
+          title="Services"
+          description="Link monitors and jobs to services for investigation context."
+          className="mb-4 -mt-2"
+        />
         <DashboardEmptyState
           className="min-h-[420px]"
           title="No services registered"
@@ -180,6 +181,7 @@ export function ServiceCatalog({
             </div>
           }
         />
+        </>
       ) : (
         <DataTable
           columns={columns}

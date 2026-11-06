@@ -132,7 +132,8 @@ describe("ServiceDetailView", () => {
         "aria-selected",
         "true",
       );
-      expect(screen.getByText("No recent activity")).toBeInTheDocument();
+      expect(screen.getByText("No recent incidents")).toBeInTheDocument();
+      expect(screen.getByText("No alerts are linked to this service.")).toBeInTheDocument();
       expect(screen.getByText(/GitHub or GitLab connectors/)).toBeInTheDocument();
       fireEvent.mouseDown(screen.getByRole("tab", { name: /Dependencies/ }), {
         button: 0,
@@ -188,6 +189,100 @@ describe("ServiceDetailView", () => {
       screen.queryByRole("button", { name: "Reject" }),
     ).not.toBeInTheDocument();
     expect(screen.getByText("Configure access required")).toBeInTheDocument();
+  });
+
+  it("shows incident status, alert status and signal counts", () => {
+    const when = new Date("2026-07-10T12:00:00Z");
+    render(
+      <ServiceDetailView
+        initialDetail={detailFixture({
+          health: {
+            health: "failing",
+            score: 0,
+            stale: false,
+            calculatedAt: when,
+            explanation: "1 firing alert is linked to this service; at least one is SEV1 or SEV2.",
+            activeIncidentCount: 0,
+            firingAlertCount: 1,
+          },
+          recentIncidents: [
+            { id: "inc-1", incidentNumber: 7, title: "Checkout down", severity: "sev2", status: "resolved", acknowledgedAt: when, updatedAt: when },
+            { id: "inc-2", incidentNumber: 8, title: "Checkout slow", severity: "sev1", status: "triggered", acknowledgedAt: null, updatedAt: when },
+          ],
+          recentAlerts: [
+            { id: "alert-1", title: "Checkout monitor down", severity: "sev2", status: "firing", firedAt: when },
+          ],
+        })}
+      />,
+    );
+
+    expect(screen.getByRole("link", { name: "Back to services" })).toHaveAttribute("href", "/services");
+    expect(screen.getByRole("heading", { level: 2, name: /Service health/ })).toBeInTheDocument();
+    expect(screen.getByText("Firing alerts").nextElementSibling).toHaveTextContent("1");
+    expect(screen.getByText("Active incidents").nextElementSibling).toHaveTextContent("0");
+    expect(screen.getByRole("link", { name: /#7.*Checkout down.*Resolved/ })).toHaveAttribute("href", "/incidents/inc-1");
+    expect(screen.getByRole("link", { name: /#8.*Checkout slow.*Triggered/ })).toBeInTheDocument();
+    expect(screen.getByText("firing")).toBeInTheDocument();
+    // Owner and calculated time are inline rows in the side column, not behind a toggle.
+    expect(screen.getByText("Owner").nextElementSibling).toHaveTextContent("payments");
+    expect(screen.getByRole("complementary", { name: "Service overview" })).toBeInTheDocument();
+  });
+
+  it("shows tier and environment pills, section hints outside headings, and collapses long side lists", () => {
+    const when = new Date("2026-07-10T12:00:00Z");
+    render(
+      <ServiceDetailView
+        initialDetail={detailFixture({
+          health: {
+            health: "failing",
+            score: 0,
+            stale: false,
+            calculatedAt: when,
+            explanation: "1 firing alert is linked to this service.",
+            activeIncidentCount: 0,
+            firingAlertCount: 1,
+          },
+          recentAlerts: Array.from({ length: 7 }, (_, index) => ({
+            id: `alert-${index}`,
+            title: `Alert ${index}`,
+            severity: "sev3" as const,
+            status: "resolved",
+            firedAt: when,
+          })),
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Tier 1")).toBeInTheDocument();
+    expect(screen.getByText("production")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "About recent incidents" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: /^Recent incidents/ })).not.toHaveTextContent("About");
+    // A live alert overrides health with a placeholder score, so no score row.
+    expect(screen.queryByText("Health score")).not.toBeInTheDocument();
+    expect(screen.queryByText("Alert 6")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show all 7" }));
+    expect(screen.getByText("Alert 6")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Show fewer" })).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("shows a snapshot health score when no live signal overrides it", () => {
+    const base = detailFixture();
+    render(<ServiceDetailView initialDetail={{ ...base, health: { ...base.health, health: "healthy", score: 0.92 } }} />);
+    expect(screen.getByText("Health score").nextElementSibling).toHaveTextContent("92%");
+  });
+
+  it("links only http(s) repository URLs", () => {
+    const base = detailFixture();
+    const { unmount } = render(
+      <ServiceDetailView initialDetail={{ ...base, service: { ...base.service, repoUrl: "https://github.com/acme/checkout" } }} />,
+    );
+    expect(screen.getByRole("link", { name: "github.com/acme/checkout" })).toHaveAttribute("href", "https://github.com/acme/checkout");
+    unmount();
+    render(
+      <ServiceDetailView initialDetail={{ ...base, service: { ...base.service, repoUrl: "javascript:alert(1)" } }} />,
+    );
+    expect(screen.queryByRole("link", { name: /alert/ })).not.toBeInTheDocument();
+    expect(screen.getByText("javascript:alert(1)")).toBeInTheDocument();
   });
 
   it("shows topology management actions with edit access", () => {

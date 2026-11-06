@@ -11,7 +11,7 @@ export function ServiceDetailPageClient({ serviceId }: { serviceId: string }) {
   if (!query.data) {
     if (query.isPending) {
       return (
-        <SupercheckLoading className="h-full" message="Loading service..." />
+        <SupercheckLoading className="min-h-64 flex-1" message="Loading service..." />
       );
     }
 

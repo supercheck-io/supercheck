@@ -32,22 +32,28 @@ import {
 
 import type { SreCopilotChatHistory } from "@/actions/sre-ai";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
+import { IconTile, type IconTone } from "@/components/sre/incidents/incident-ui";
 import { CopilotChatHelp } from "@/components/sre/sre-copilot-chat-help";
 import {
   formatCopilotError,
   getQuickRepliesForAssistantText,
 } from "@/components/sre/sre-generative-ui";
 import { SreMessageContent } from "@/components/sre/sre-message-content";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { TableBadge } from "@/components/ui/table-badge";
 import { UserAvatar } from "@/components/ui/user-cell";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { canUseSreLiveConnectors } from "@/lib/rbac/permissions-client";
 import { useSession } from "@/utils/auth-client";
 
 const SRE_COPILOT_MESSAGE_MAX_LENGTH = 4000;
+
+// Violet marks AI across the incident pages; the Copilot avatar and labels use it too.
+const ASSISTANT_AVATAR =
+  "mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-violet-500/20 bg-violet-500/10 text-violet-600 dark:text-violet-400";
+const STARTER_TONES: IconTone[] = ["violet", "sky", "amber", "emerald"];
 
 const STANDALONE_STARTERS = [
   {
@@ -247,12 +253,12 @@ function AssistantMessage() {
       className="group mb-5 flex gap-3"
       aria-label="Copilot message"
     >
-      <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border bg-background shadow-sm">
+      <div aria-hidden="true" className={ASSISTANT_AVATAR}>
         <Bot className="h-4 w-4" />
       </div>
       <div className="min-w-0 flex-1 rounded-2xl border bg-background px-4 py-3 text-sm leading-6 shadow-sm">
         <div className="mb-2 flex flex-wrap items-center gap-2">
-          <Badge variant="secondary">Copilot</Badge>
+          <TableBadge tone="purple" compact>Copilot</TableBadge>
         </div>
         <MessagePrimitive.Content components={{ Text: AssistantTextPart }} />
         <LiveInterruptedNotice />
@@ -307,9 +313,9 @@ function UserMessage() {
       className="group mb-5 flex justify-end gap-3"
       aria-label="User message"
     >
-      <div className="max-w-[82%] rounded-2xl rounded-tr-md border bg-muted/70 px-4 py-3 text-sm leading-6 text-foreground shadow-sm sm:max-w-[62%]">
+      <div className="max-w-[82%] rounded-2xl rounded-tr-md border border-sky-500/20 bg-sky-500/5 px-4 py-3 text-sm leading-6 text-foreground shadow-sm sm:max-w-[62%]">
         <div className="mb-2 flex flex-wrap items-center gap-2">
-          <Badge variant="outline">You</Badge>
+          <TableBadge tone="info" compact>You</TableBadge>
         </div>
         <MessagePrimitive.Content components={{ Text: AssistantTextPart }} />
         <BranchPickerPrimitive.Root
@@ -336,13 +342,13 @@ function AssistantThinking() {
         aria-live="polite"
         className="mx-auto flex w-full max-w-4xl gap-3"
       >
-        <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border bg-background shadow-sm">
+        <div aria-hidden="true" className={ASSISTANT_AVATAR}>
           <Bot className="h-4 w-4" />
         </div>
-        <div className="flex-1 rounded-2xl border border-dashed bg-muted/20 px-4 py-3 text-sm leading-6">
+        <div className="flex-1 rounded-2xl border border-dashed border-violet-500/30 bg-violet-500/5 px-4 py-3 text-sm leading-6">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="secondary">Copilot</Badge>
-            <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+            <TableBadge tone="purple" compact>Copilot</TableBadge>
+            <Loader2 className="h-3.5 w-3.5 animate-spin text-violet-600 dark:text-violet-400" />
             <span className="text-sm text-muted-foreground">
               Reading the context and preparing a response...
             </span>
@@ -368,7 +374,7 @@ function EmptyThread({
       <div className="flex w-full min-w-0 flex-col">
         <div className="mx-auto flex w-full min-h-[inherit] max-w-2xl flex-col justify-center p-3">
           <DashboardEmptyState
-            icon={<Bot className="h-10 w-10 text-muted-foreground" />}
+            icon={<IconTile icon={Bot} tone="violet" className="size-14 rounded-xl [&_svg]:size-7" />}
             title={
               incidentId
                 ? "Ask about this incident"
@@ -382,7 +388,7 @@ function EmptyThread({
             className="min-h-[320px]"
             action={
               <div className="mt-5 flex w-full flex-col gap-2">
-                {starters.map((starter) => (
+                {starters.map((starter, index) => (
                   <Button
                     key={starter.label}
                     type="button"
@@ -393,7 +399,7 @@ function EmptyThread({
                     }}
                     className="h-auto justify-start rounded-xl px-3 py-2 text-left text-sm font-normal whitespace-normal bg-background"
                   >
-                    <PencilLine className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <IconTile icon={PencilLine} tone={STARTER_TONES[index % STARTER_TONES.length]} />
                     <span className="min-w-0">{starter.label}</span>
                   </Button>
                 ))}
@@ -529,7 +535,7 @@ function SreComposer({
         </div>
         <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t pt-3">
           <div className="min-w-0 flex-1 text-xs text-muted-foreground">
-            <span className="inline-flex shrink-0 items-center gap-1 rounded-full border bg-muted/30 px-2 py-1">
+            <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-1 text-emerald-700 dark:text-emerald-300">
               <ShieldCheck className="h-3.5 w-3.5" />
               Read-only
             </span>

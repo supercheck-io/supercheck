@@ -26,6 +26,8 @@ import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { createLogger } from "@/lib/logger/index";
 import { isAssignableUser } from "@/lib/sre/incident-lifecycle";
+import { describeServiceSignals } from "@/lib/sre/service-health-explanation";
+import { listServiceDependencySuggestions } from "@/lib/sre/service-dependency-suggestions";
 
 const logger = createLogger({ module: "sre-services" }) as {
   error: (data: unknown, message?: string) => void;
@@ -188,7 +190,8 @@ export type SreServiceDetail = {
     incidentNumber: number;
     title: string;
     severity: "sev1" | "sev2" | "sev3" | "sev4";
-    status: string;
+    status: (typeof sreIncidents.$inferSelect)["status"];
+    acknowledgedAt: Date | null;
     updatedAt: Date;
   }>;
   recentAlerts: Array<{
@@ -732,7 +735,11 @@ function buildHealthRollup(input: {
       score: failing ? 0 : 0.5,
       stale: false,
       calculatedAt: new Date(),
-      explanation: `${input.activeIncidents} active incident${input.activeIncidents === 1 ? "" : "s"} and ${input.firingAlerts} firing alert${input.firingAlerts === 1 ? "" : "s"} are linked to this service${failing ? "; at least one is SEV1 or SEV2" : ""}.`,
+      explanation: describeServiceSignals({
+        activeIncidents: input.activeIncidents,
+        firingAlerts: input.firingAlerts,
+        critical: failing,
+      }),
       activeIncidentCount: input.activeIncidents,
       firingAlertCount: input.firingAlerts,
     };
@@ -829,18 +836,11 @@ export async function getSreServiceDetail(input: { id: string }): Promise<
         .orderBy(desc(sreServiceResources.createdAt))
         .limit(200),
       getResourceCandidates(context),
-      db
-        .select()
-        .from(sreServiceDiscoverySuggestions)
-        .where(
-          and(
-            eq(sreServiceDiscoverySuggestions.organizationId, context.organizationId),
-            eq(sreServiceDiscoverySuggestions.projectId, context.project.id),
-            eq(sreServiceDiscoverySuggestions.suggestionType, "add_dependency"),
-          ),
-        )
-        .orderBy(desc(sreServiceDiscoverySuggestions.createdAt))
-        .limit(100),
+      listServiceDependencySuggestions({
+        organizationId: context.organizationId,
+        projectId: context.project.id,
+        serviceId: service.id,
+      }),
       db.query.sreServiceHealthSnapshots.findFirst({
         where: and(
           eq(sreServiceHealthSnapshots.serviceId, service.id),
@@ -855,6 +855,7 @@ export async function getSreServiceDetail(input: { id: string }): Promise<
           title: sreIncidents.title,
           severity: sreIncidents.severity,
           status: sreIncidents.status,
+          acknowledgedAt: sreIncidents.acknowledgedAt,
           updatedAt: sreIncidents.updatedAt,
         })
         .from(sreIncidents)

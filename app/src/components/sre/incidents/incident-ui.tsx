@@ -1,5 +1,6 @@
-import type { LucideIcon } from "lucide-react";
+import { Info, type LucideIcon } from "lucide-react";
 
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 export type IconTone = "violet" | "amber" | "blue" | "emerald" | "rose" | "slate" | "indigo" | "sky";
@@ -39,12 +40,29 @@ export function IconTile({ icon: Icon, tone, className }: { icon: LucideIcon; to
   );
 }
 
+// Desktop columns scroll inside the page card with the scrollbar hidden, as on Copilot; small screens scroll the page.
+export const COLUMN_SCROLL = "lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden";
+
+// Icons take the tab's text colour; the active tab's icon picks up the primary colour.
+export const TAB_TRIGGER = "gap-2 [&_svg]:size-4 [&_svg]:text-muted-foreground data-[state=active]:[&_svg]:text-primary";
+
+/** One figure: small label above a prominent value, for a `<dl>` grid. */
+export function Metric({ label, children, title }: { label: string; children: React.ReactNode; title?: string }) {
+  return (
+    <div className="min-w-0 rounded-md bg-muted/50 px-2.5 py-2" title={title}>
+      <dt className="truncate text-xs text-muted-foreground">{label}</dt>
+      <dd className="mt-0.5 truncate text-sm font-semibold tabular-nums" suppressHydrationWarning>{children}</dd>
+    </div>
+  );
+}
+
 /** Section heading used across the incident page: icon tile, title, optional count and a right-hand action. */
 export function SectionTitle({
   id,
   icon,
   tone,
   count,
+  hint,
   action,
   as: Heading = "h3",
   children,
@@ -53,19 +71,37 @@ export function SectionTitle({
   icon: LucideIcon;
   tone: IconTone;
   count?: number | null;
+  /** One or two sentences shown from a small info button beside the heading, outside it. */
+  hint?: string;
   action?: React.ReactNode;
   as?: "h2" | "h3";
   children: React.ReactNode;
 }) {
   return (
     <div className="flex min-h-7 flex-wrap items-center justify-between gap-2">
-      <Heading id={id} className="flex items-center gap-2 text-sm font-semibold">
-        <IconTile icon={icon} tone={tone} />
-        {children}
-        {typeof count === "number" && (
-          <span className="rounded-full bg-muted px-1.5 text-xs font-medium tabular-nums text-muted-foreground">{count}</span>
+      <div className="flex min-w-0 items-center gap-1.5">
+        <Heading id={id} className="flex items-center gap-2 text-sm font-semibold">
+          <IconTile icon={icon} tone={tone} />
+          {children}
+          {typeof count === "number" && (
+            <span className="rounded-full bg-muted px-1.5 text-xs font-medium tabular-nums text-muted-foreground">{count}</span>
+          )}
+        </Heading>
+        {hint && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                aria-label={`About ${typeof children === "string" ? children.toLowerCase() : "this section"}`}
+                className="inline-flex size-5 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <Info className="size-3.5" aria-hidden="true" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs text-xs">{hint}</TooltipContent>
+          </Tooltip>
         )}
-      </Heading>
+      </div>
       {action}
     </div>
   );

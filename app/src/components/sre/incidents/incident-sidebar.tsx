@@ -9,7 +9,7 @@ import { IncidentAssigneePicker } from "@/components/sre/incidents/incident-assi
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
 import { useNow } from "@/components/sre/incidents/incident-age";
-import { SectionTitle } from "@/components/sre/incidents/incident-ui";
+import { Metric, SectionTitle } from "@/components/sre/incidents/incident-ui";
 import { WatchSreIncidentButton } from "@/components/sre/incidents/watch-sre-incident-button";
 
 const ALERTS_COLLAPSED = 3;
@@ -46,16 +46,6 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
     <div className="grid min-h-8 grid-cols-[6.5rem_minmax(0,1fr)] items-center gap-x-3 text-sm">
       <dt className="text-muted-foreground">{label}</dt>
       <dd className="min-w-0 break-words" suppressHydrationWarning>{children}</dd>
-    </div>
-  );
-}
-
-/** One timing figure: small label above a prominent value. */
-function Metric({ label, children, title }: { label: string; children: React.ReactNode; title?: string }) {
-  return (
-    <div className="min-w-0 rounded-md bg-muted/50 px-2.5 py-2" title={title}>
-      <dt className="truncate text-xs text-muted-foreground">{label}</dt>
-      <dd className="mt-0.5 truncate text-sm font-semibold tabular-nums" suppressHydrationWarning>{children}</dd>
     </div>
   );
 }
