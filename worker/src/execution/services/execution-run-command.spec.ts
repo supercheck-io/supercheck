@@ -76,4 +76,13 @@ describe('ExecutionService._executeCommand kill escalation', () => {
     expect(child.kill).toHaveBeenCalledTimes(1);
     expect(child.kill).not.toHaveBeenCalledWith('SIGKILL');
   });
+
+  it('does not signal a child that already exited', async () => {
+    const child = new FakeChild();
+    child.exitCode = 0;
+    await run(child);
+
+    jest.advanceTimersByTime(5000);
+    expect(child.kill).not.toHaveBeenCalled();
+  });
 });
