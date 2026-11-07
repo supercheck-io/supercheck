@@ -332,13 +332,7 @@ describe("SRE chat API", () => {
     expect(mockRunSreAgent).not.toHaveBeenCalled();
   });
 
-  it("accepts server-issued file attachment metadata for the scoped incident", async () => {
-    mockCreateSreConversation.mockResolvedValueOnce({
-      id: "018f0000-0000-7000-8000-000000000004",
-      incidentId: "018f0000-0000-7000-8000-000000000007",
-      status: "active",
-    });
-
+  it("rejects file attachments, which are no longer supported", async () => {
     const response = await POST(new NextRequest("http://localhost/api/sre/chat", {
       method: "POST",
       body: JSON.stringify({
@@ -351,55 +345,13 @@ describe("SRE chat API", () => {
           mimeType: "text/plain",
           size: 12,
           storageBucket: "sre-chat-attachments",
-          storagePath: "projects/018f0000-0000-7000-8000-000000000003/sre-chat/018f0000-0000-7000-8000-000000000007/file.txt",
+          storagePath: "projects/p/sre-chat/018f0000-0000-7000-8000-000000000007/file.txt",
           incidentId: "018f0000-0000-7000-8000-000000000007",
         }],
       }),
     }));
 
-    await responseText(response);
-
-    expect(response.status).toBe(200);
-    expect(mockAppendSreMessage).toHaveBeenCalledWith(expect.objectContaining({
-      role: "user",
-      attachments: [expect.objectContaining({
-        type: "file",
-        fileName: "notes.txt",
-        note: expect.stringContaining("metadata only"),
-      })],
-    }));
-    expect(mockRunSreAgent.mock.calls[0][0].prompt).toContain("File bytes are stored securely");
-  });
-
-  it("rejects file attachment metadata outside the scoped incident path", async () => {
-    mockCreateSreConversation.mockResolvedValueOnce({
-      id: "018f0000-0000-7000-8000-000000000004",
-      incidentId: "018f0000-0000-7000-8000-000000000007",
-      status: "active",
-    });
-
-    const response = await POST(new NextRequest("http://localhost/api/sre/chat", {
-      method: "POST",
-      body: JSON.stringify({
-        incidentId: "018f0000-0000-7000-8000-000000000007",
-        message: "Use this uploaded context",
-        attachments: [{
-          type: "file",
-          title: "notes.txt",
-          fileName: "notes.txt",
-          mimeType: "text/plain",
-          size: 12,
-          storageBucket: "sre-chat-attachments",
-          storagePath: "projects/other/sre-chat/018f0000-0000-7000-8000-000000000007/file.txt",
-          incidentId: "018f0000-0000-7000-8000-000000000007",
-        }],
-      }),
-    }));
-
-    const text = await responseText(response);
-
-    expect(text).toContain("event: error");
-    expect(text).toContain("Invalid SRE chat file attachment storage reference");
+    expect(response.status).toBe(400);
     expect(mockRunSreAgent).not.toHaveBeenCalled();
   });
 
