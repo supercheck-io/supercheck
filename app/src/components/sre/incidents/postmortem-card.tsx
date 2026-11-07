@@ -82,39 +82,53 @@ function EmptySection() {
   return <p className="text-sm italic text-muted-foreground">Not written yet.</p>;
 }
 
-/** The draft timeline as a rail of moments, with the same icons as the Activity feed. */
+/** The draft timeline: a heading per day, then each moment as time, icon on a rail, and what happened. */
 function TimelineMoments({ moments }: { moments: PostmortemMoment[] }) {
+  const days: Array<{ date: string; moments: PostmortemMoment[] }> = [];
+  for (const moment of moments) {
+    const last = days.at(-1);
+    if (last?.date === moment.date) last.moments.push(moment);
+    else days.push({ date: moment.date, moments: [moment] });
+  }
   return (
-    <ol data-testid="postmortem-timeline" className="pt-1">
-      {moments.map((moment, index) => {
-        const visual = moment.event ? timelineEventVisual(moment.event) : { icon: CircleDot, tone: "slate" as const };
-        return (
-          <li key={index} className="relative flex gap-3 pb-4 last:pb-0">
-            {index < moments.length - 1 && (
-              <span aria-hidden="true" className="absolute left-3 top-7 bottom-0 w-px -translate-x-1/2 bg-border" />
-            )}
-            <IconTile icon={visual.icon} tone={visual.tone} className="relative z-10 rounded-full" />
-            <div className="min-w-0 flex-1 pt-0.5">
-              <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
-                {moment.title ? (
-                  <span className="text-sm font-medium">{moment.title}</span>
-                ) : (
-                  <div className="min-w-0 flex-1 [overflow-wrap:anywhere] text-sm">
-                    <SreMessageContent content={moment.detail} />
+    <div data-testid="postmortem-timeline" className="space-y-4 pt-1">
+      <p className="text-xs text-muted-foreground">All times in UTC.</p>
+      {days.map((day) => (
+        <div key={day.date} className="space-y-3">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{day.date}</h4>
+          <ol>
+            {day.moments.map((moment, index) => {
+              const visual = moment.event ? timelineEventVisual(moment.event) : { icon: CircleDot, tone: "slate" as const };
+              const last = index === day.moments.length - 1;
+              return (
+                <li key={index} className="relative grid grid-cols-[2.75rem_1.5rem_minmax(0,1fr)] gap-x-3 pb-4 last:pb-0">
+                  <time className="pt-0.5 text-right text-sm font-semibold tabular-nums">{moment.time}</time>
+                  {/* The rail joins each icon to the next row of the day. */}
+                  {!last && <span aria-hidden="true" className="absolute left-[calc(2.75rem+0.75rem+0.75rem)] top-7 bottom-0 w-px -translate-x-1/2 bg-border" />}
+                  <IconTile icon={visual.icon} tone={visual.tone} className="relative z-10 rounded-full" />
+                  <div className="min-w-0 pt-0.5 [overflow-wrap:anywhere]">
+                    {moment.title ? (
+                      <>
+                        <p className="text-sm font-medium">{moment.title}</p>
+                        {moment.detail && (
+                          <div className="mt-0.5 text-sm text-muted-foreground">
+                            <SreMessageContent content={moment.detail} />
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <div className="text-sm">
+                        <SreMessageContent content={moment.detail} />
+                      </div>
+                    )}
                   </div>
-                )}
-                <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{moment.when}</span>
-              </div>
-              {moment.title && moment.detail && (
-                <div className="mt-0.5 min-w-0 [overflow-wrap:anywhere] text-sm text-muted-foreground">
-                  <SreMessageContent content={moment.detail} />
-                </div>
-              )}
-            </div>
-          </li>
-        );
-      })}
-    </ol>
+                </li>
+              );
+            })}
+          </ol>
+        </div>
+      ))}
+    </div>
   );
 }
 

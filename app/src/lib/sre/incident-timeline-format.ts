@@ -69,36 +69,64 @@ const EVENT_FOR_TITLE = new Map<string, TimelineEventKind>([
 ]);
 // Longest first, so "AI triage failed" wins over "AI triage".
 const KNOWN_TITLES = [...EVENT_FOR_TITLE.keys()].sort((a, b) => b.length - a.length);
-const POSTMORTEM_MOMENT = /^\s*(?:[-*]\s+)?(\d{1,2} [A-Z][a-z]{2} \d{4}), (\d{2}:\d{2}) UTC:\s*(.*)$/;
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+// "- 6 Oct 2026, 14:58 UTC: text" is the draft format; "- 2026-10-26T23:49:24Z — text" is how models often write it.
+const SEPARATOR = String.raw`(?:\s*[:\u2014\u2013]\s*|\s+-\s+)`;
+const DRAFT_MOMENT = new RegExp(String.raw`^\s*(?:[-*]\s+)?(\d{1,2}) ([A-Z][a-z]{2}) (\d{4}),? (\d{2}):(\d{2}) UTC${SEPARATOR}(.*)$`);
+const ISO_MOMENT = new RegExp(String.raw`^\s*(?:[-*]\s+)?(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::\d{2}(?:\.\d+)?)?\s*(?:Z|UTC)?${SEPARATOR}(.*)$`);
+
+// Moments without a known title still get an icon from what the sentence says.
+const INFERRED_EVENTS: Array<[RegExp, TimelineEventKind]> = [
+  [/\bresolved\b/i, { eventType: "state_change", eventData: { state: "resolved" } }],
+  [/\brecover/i, { eventType: "state_change", eventData: { state: "recovered" } }],
+  [/\b(?:reopen|returned)/i, { eventType: "state_change", eventData: { state: "reopened" } }],
+  [/\backnowledg/i, { eventType: "state_change", eventData: { state: "acknowledged" } }],
+  [/\b(?:created|opened|triggered|declared)\b/i, { eventType: "state_change", eventData: { state: "manual_incident_created" } }],
+  [/\b(?:AI|investigation|triage|finding)\b/, { eventType: "ai_finding", eventData: { type: "sre_investigation" } }],
+  [/\balert/i, { eventType: "state_change", eventData: { state: "alert_correlated" } }],
+];
 
 export type PostmortemMoment = {
-  when: string;
+  /** "26 Oct 2026", UTC. */
+  date: string;
+  /** "23:49", UTC. */
+  time: string;
   title: string | null;
   detail: string;
   event: TimelineEventKind | null;
 };
 
+function momentWhen(line: string): { date: string; time: string; rest: string } | null {
+  const draft = DRAFT_MOMENT.exec(line);
+  if (draft) return { date: `${Number(draft[1])} ${draft[2]} ${draft[3]}`, time: `${draft[4]}:${draft[5]}`, rest: draft[6]! };
+  const iso = ISO_MOMENT.exec(line);
+  const month = iso ? Number(iso[2]) : 0;
+  if (!iso || month < 1 || month > 12) return null;
+  return { date: `${Number(iso[3])} ${MONTHS[month - 1]} ${iso[1]}`, time: `${iso[4]}:${iso[5]}`, rest: iso[6]! };
+}
+
 /**
- * Reads a timeline in the draft's shape ("- 6 Oct 2026, 14:58 UTC: Resolved: detail") as moments.
- * Null when any line has another shape, so hand-written text is shown as written.
+ * Reads a timeline written one moment per line ("- 6 Oct 2026, 14:58 UTC: Resolved: detail", or an ISO
+ * timestamp) as moments. Null when any line has another shape, so hand-written text is shown as written.
  */
 export function parsePostmortemTimeline(text: string): PostmortemMoment[] | null {
   const lines = text.split("\n").filter((line) => line.trim());
   if (lines.length === 0) return null;
   const moments: PostmortemMoment[] = [];
   for (const line of lines) {
-    const match = POSTMORTEM_MOMENT.exec(line);
-    if (!match) return null;
-    const rest = match[3]!.trim();
+    const when = momentWhen(line);
+    if (!when) return null;
+    const rest = when.rest.trim();
     if (!rest) return null;
     // Titles match without emphasis; the detail keeps its inline markdown for the renderer.
     const bare = rest.replace(/\*\*|__|`/g, "");
     const title = KNOWN_TITLES.find((known) => bare === known || bare.startsWith(`${known}:`)) ?? null;
     moments.push({
-      when: `${match[1]}, ${match[2]} UTC`,
+      date: when.date,
+      time: when.time,
       title,
       detail: title ? (rest.includes(":") ? rest.slice(rest.indexOf(":") + 1).trim() : "") : rest,
-      event: title ? EVENT_FOR_TITLE.get(title)! : null,
+      event: title ? EVENT_FOR_TITLE.get(title)! : (INFERRED_EVENTS.find(([pattern]) => pattern.test(bare))?.[1] ?? null),
     });
   }
   return moments;
