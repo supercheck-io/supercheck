@@ -9,6 +9,9 @@ describe("classifyLoadError", () => {
     ["Insufficient permissions to view SRE incidents", "forbidden"],
     ["Failed to fetch SRE incident", "failed"],
     [undefined, "failed"],
+    ["Invalid session token", "failed"],
+    ["Request failed: 404 route not found", "failed"],
+    ["Session expired", "failed"],
   ])("sorts %p as %s", (message, kind) => {
     expect(classifyLoadError(message)).toBe(kind);
   });

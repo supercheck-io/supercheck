@@ -50,6 +50,32 @@ describe("parsePostmortemTimeline", () => {
     expect(moments?.[0]?.detail).toBe("Incident created from alert history.");
   });
 
+  it.each([
+    ["a zone offset", "- 2026-10-26T23:49:24+02:00 \u2014 Resolved"],
+    ["a negative offset", "- 2026-10-26T23:49:24-05:00 - Resolved"],
+    ["fractional seconds with an offset", "- 2026-10-26T23:49:24.5+02:00: Resolved"],
+    ["a named zone", "- 2026-10-26T23:49:24 CET \u2014 Resolved"],
+    ["no zone at all", "- 2026-10-26 23:49 \u2014 Resolved"],
+    ["an impossible day", "- 2026-02-31T10:00:00Z \u2014 Resolved"],
+    ["an impossible time", "- 2026-10-26T25:99:00Z \u2014 Resolved"],
+    ["an unknown month name", "- 6 Foo 2026, 14:58 UTC: Resolved"],
+    ["a day past the month's end", "- 31 Apr 2026, 14:58 UTC: Resolved"],
+  ])("shows the text as written for %s, never as UTC", (_name, line) => {
+    expect(parsePostmortemTimeline(line)).toBeNull();
+  });
+
+  it("does not infer a reopened or created icon from incidental words", () => {
+    const [returned, alert] = parsePostmortemTimeline(
+      "- 2026-10-26T23:49:24Z \u2014 The service returned 500s\n- 2026-10-26T23:50:24Z \u2014 An alert triggered",
+    )!;
+    expect(returned!.event).toBeNull();
+    expect(alert!.event?.eventData).toEqual({ state: "alert_correlated" });
+  });
+
+  it("accepts a UTC marker on a minute-precision ISO time", () => {
+    expect(parsePostmortemTimeline("- 2026-11-06 09:40 UTC: Rolled back")?.[0]).toMatchObject({ date: "6 Nov 2026", time: "09:40" });
+  });
+
   it("rejects an impossible month", () => {
     expect(parsePostmortemTimeline("- 2026-13-01T10:00:00Z \u2014 Resolved")).toBeNull();
   });

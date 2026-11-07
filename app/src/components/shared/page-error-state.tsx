@@ -9,8 +9,9 @@ export type LoadErrorKind = "not_found" | "forbidden" | "failed";
 export function classifyLoadError(message: string | null | undefined): LoadErrorKind {
   const text = (message ?? "").toLowerCase();
   if (text.includes("insufficient permission")) return "forbidden";
-  // Actions answer "not found or access denied" for both, so the page words it that way too.
-  if (text.includes("not found") || text.includes("access denied") || text.startsWith("invalid ")) return "not_found";
+  // Actions answer "not found or access denied" for both, so the page words it that way too. A thrown
+  // network or auth error that merely says "not found" stays a failed load, which can be retried.
+  if (text.includes("not found or access denied") || /^invalid \w+ id\b/.test(text)) return "not_found";
   return "failed";
 }
 
