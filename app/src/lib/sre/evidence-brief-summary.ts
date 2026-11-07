@@ -87,7 +87,7 @@ const NO_EVIDENCE_NOTICE = new RegExp(
 
 /** Removes the no-evidence notice and keeps any other text, for example a resolution note pre-filled from it. */
 export function withoutNoEvidenceNotice(text: string | null | undefined): string | null {
-  const kept = (text ?? "").replace(NO_EVIDENCE_NOTICE, "").replace(/\n{3,}/g, "\n\n").trim();
+  const kept = (text ?? "").replace(/\r\n?/g, "\n").replace(NO_EVIDENCE_NOTICE, "").replace(/\n{3,}/g, "\n\n").trim();
   return kept || null;
 }
 

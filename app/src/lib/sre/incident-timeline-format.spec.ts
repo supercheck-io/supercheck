@@ -8,12 +8,12 @@ describe("parsePostmortemTimeline", () => {
         "- 13 Sep 2026, 16:34 UTC: AI triage failed: model timeout",
         "",
         "- 7 Nov 2026, 05:00 UTC: Acknowledged",
-        "* 7 Nov 2026, 05:01 UTC: Incident created: by hand",
+        "* 7 Nov 2026, 05:01 UTC: **Incident created**: by hand",
         "- 7 Nov 2026, 05:02 UTC: Rolled back the canary",
       ].join("\n"),
     );
     expect(moments).toEqual([
-      { when: "4 Sep 2026, 05:46 UTC", title: "AI investigation", detail: "Latency rose after deploy 42.", event: { eventType: "ai_finding", eventData: { type: "sre_investigation" } } },
+      { when: "4 Sep 2026, 05:46 UTC", title: "AI investigation", detail: "Latency rose after **deploy 42**.", event: { eventType: "ai_finding", eventData: { type: "sre_investigation" } } },
       // The longer title wins over its prefix "AI triage".
       { when: "13 Sep 2026, 16:34 UTC", title: "AI triage failed", detail: "model timeout", event: { eventType: "state_change", eventData: { state: "triage_failed" } } },
       { when: "7 Nov 2026, 05:00 UTC", title: "Acknowledged", detail: "", event: { eventType: "state_change", eventData: { state: "acknowledged" } } },

@@ -493,7 +493,7 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
                     return (
                       <div
                         key={dependency.id}
-                        className="flex items-center justify-between gap-3 px-4 py-3"
+                        className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
                       >
                         <div className="flex min-w-0 items-start gap-3">
                           <IconTile
@@ -514,7 +514,7 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
                             </p>
                           </div>
                         </div>
-                        <div className="flex shrink-0 items-center gap-1">
+                        <div className="flex shrink-0 items-center gap-1 pl-9 sm:pl-0">
                           <TableBadge
                             tone={dependency.source === "manual" ? "info" : dependency.source === "ai_suggested" ? "purple" : "slate"}
                             compact
@@ -718,7 +718,7 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
                       {detail.permissions.canEdit && (
                         <div className="flex shrink-0 items-center gap-1">
                           <RowAction
-                            label={`Edit link for ${resource.resourceName}`}
+                            label={`Edit link for ${resourceLabels[resource.resourceType].toLowerCase()} ${resource.resourceName}`}
                             onClick={() => {
                               setEditingResourceId(resource.id);
                               setResourceType(resource.resourceType);
@@ -730,7 +730,7 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
                             <Pencil className="h-4 w-4" />
                           </RowAction>
                           <RowAction
-                            label={`Unlink ${resource.resourceName}`}
+                            label={`Unlink ${resourceLabels[resource.resourceType].toLowerCase()} ${resource.resourceName}`}
                             destructive
                             disabled={isPending}
                             onClick={() =>

@@ -96,11 +96,19 @@ function TimelineMoments({ moments }: { moments: PostmortemMoment[] }) {
             <IconTile icon={visual.icon} tone={visual.tone} className="relative z-10 rounded-full" />
             <div className="min-w-0 flex-1 pt-0.5">
               <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
-                <span className={moment.title ? "text-sm font-medium" : "break-words text-sm"}>{moment.title ?? moment.detail}</span>
+                {moment.title ? (
+                  <span className="text-sm font-medium">{moment.title}</span>
+                ) : (
+                  <div className="min-w-0 flex-1 [overflow-wrap:anywhere] text-sm">
+                    <SreMessageContent content={moment.detail} />
+                  </div>
+                )}
                 <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{moment.when}</span>
               </div>
               {moment.title && moment.detail && (
-                <p className="mt-0.5 break-words text-sm text-muted-foreground">{moment.detail}</p>
+                <div className="mt-0.5 min-w-0 [overflow-wrap:anywhere] text-sm text-muted-foreground">
+                  <SreMessageContent content={moment.detail} />
+                </div>
               )}
             </div>
           </li>

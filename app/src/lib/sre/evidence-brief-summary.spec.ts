@@ -157,6 +157,7 @@ describe("no-evidence notice", () => {
     expect(withoutNoEvidenceNotice(undefined)).toBeNull();
     // Same paragraph, and the stored fallback brief's Summary heading.
     expect(withoutNoEvidenceNotice(`${NO_EVIDENCE_HEADLINE}\nRolled back deploy 42.`)).toBe("Rolled back deploy 42.");
+    expect(withoutNoEvidenceNotice(`## Summary\r\n${NO_EVIDENCE_HEADLINE}\r\n\r\nRolled back.`)).toBe("Rolled back.");
     expect(withoutNoEvidenceNotice(`## Summary\n${NO_EVIDENCE_HEADLINE} Generate or link evidence.\n\n## Impact\nUnknown.`)).toBe("## Impact\nUnknown.");
   });
 });

@@ -79,7 +79,7 @@ export type PostmortemMoment = {
 };
 
 /**
- * Reads a timeline in the draft's shape (plain text: inline markdown such as links shows as written) ("- 6 Oct 2026, 14:58 UTC: Resolved: detail") as moments.
+ * Reads a timeline in the draft's shape ("- 6 Oct 2026, 14:58 UTC: Resolved: detail") as moments.
  * Null when any line has another shape, so hand-written text is shown as written.
  */
 export function parsePostmortemTimeline(text: string): PostmortemMoment[] | null {
@@ -89,13 +89,15 @@ export function parsePostmortemTimeline(text: string): PostmortemMoment[] | null
   for (const line of lines) {
     const match = POSTMORTEM_MOMENT.exec(line);
     if (!match) return null;
-    const rest = match[3]!.replace(/\*\*|__|`/g, "").trim();
+    const rest = match[3]!.trim();
     if (!rest) return null;
-    const title = KNOWN_TITLES.find((known) => rest === known || rest.startsWith(`${known}:`)) ?? null;
+    // Titles match without emphasis; the detail keeps its inline markdown for the renderer.
+    const bare = rest.replace(/\*\*|__|`/g, "");
+    const title = KNOWN_TITLES.find((known) => bare === known || bare.startsWith(`${known}:`)) ?? null;
     moments.push({
       when: `${match[1]}, ${match[2]} UTC`,
       title,
-      detail: title ? rest.slice(title.length + 1).trim() : rest,
+      detail: title ? (rest.includes(":") ? rest.slice(rest.indexOf(":") + 1).trim() : "") : rest,
       event: title ? EVENT_FOR_TITLE.get(title)! : null,
     });
   }
