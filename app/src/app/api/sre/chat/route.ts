@@ -36,27 +36,11 @@ const chatRequestSchema = z.object({
   title: z.string().trim().max(200).optional().nullable(),
   attachments: z
     .array(
-      z.union([
-        z.object({
-          type: z.literal("text"),
-          title: z.string().trim().min(1).max(120),
-          content: z.string().trim().min(1).max(2000),
-        }),
-        z.object({
-          type: z.literal("file"),
-          title: z.string().trim().min(1).max(120),
-          fileName: z.string().trim().min(1).max(120),
-          mimeType: z.string().trim().min(1).max(120),
-          size: z
-            .number()
-            .int()
-            .min(1)
-            .max(2 * 1024 * 1024),
-          storageBucket: z.string().trim().min(1).max(120),
-          storagePath: z.string().trim().min(1).max(1000),
-          incidentId: z.string().uuid(),
-        }),
-      ]),
+      z.object({
+        type: z.literal("text"),
+        title: z.string().trim().min(1).max(120),
+        content: z.string().trim().min(1).max(2000),
+      }),
     )
     .max(3)
     .optional()
@@ -66,9 +50,6 @@ const chatRequestSchema = z.object({
 const CHAT_HISTORY_MESSAGES = 10;
 const CHAT_HISTORY_FETCH = 40;
 const CHAT_HISTORY_CHARS = 1500;
-
-const SRE_ATTACHMENTS_BUCKET =
-  process.env.S3_SRE_ATTACHMENTS_BUCKET_NAME || "sre-chat-attachments";
 
 const chatLogger = createLogger({ module: "sre-chat-api" }) as {
   error: (data: unknown, msg?: string) => void;
@@ -90,22 +71,6 @@ type SreChatTextAttachment = z.infer<
 >["attachments"][number];
 
 function sanitizeAttachmentForPrompt(attachment: SreChatTextAttachment) {
-  if (attachment.type === "file") {
-    return {
-      type: attachment.type,
-      title: safeSummaryText(attachment.title, "File attachment", 120),
-      fileName: safeSummaryText(attachment.fileName, "attachment", 120),
-      mimeType: safeSummaryText(
-        attachment.mimeType,
-        "application/octet-stream",
-        120,
-      ),
-      size: attachment.size,
-      storagePath: attachment.storagePath,
-      note: "File bytes are stored securely; Copilot receives metadata only and must not claim file contents were inspected unless provided in text evidence.",
-    };
-  }
-
   return {
     type: attachment.type,
     title: safeSummaryText(attachment.title, "Context attachment", 120),
@@ -117,32 +82,8 @@ function sanitizeAttachmentForPrompt(attachment: SreChatTextAttachment) {
   };
 }
 
-function validateChatAttachments(input: {
-  attachments: SreChatTextAttachment[];
-  incidentId: string | null;
-  projectId: string;
-}) {
-  return input.attachments.map((attachment) => {
-    if (attachment.type === "text") {
-      return sanitizeAttachmentForPrompt(attachment);
-    }
-
-    if (!input.incidentId || attachment.incidentId !== input.incidentId) {
-      throw new SseClientError(
-        "SRE chat file attachment does not belong to this incident",
-      );
-    }
-
-    const expectedPrefix = `projects/${input.projectId}/sre-chat/${input.incidentId}/`;
-    if (
-      attachment.storageBucket !== SRE_ATTACHMENTS_BUCKET ||
-      !attachment.storagePath.startsWith(expectedPrefix)
-    ) {
-      throw new SseClientError("Invalid SRE chat file attachment storage reference");
-    }
-
-    return sanitizeAttachmentForPrompt(attachment);
-  });
+function validateChatAttachments(attachments: SreChatTextAttachment[]) {
+  return attachments.map(sanitizeAttachmentForPrompt);
 }
 
 function buildChatPrompt(input: {
@@ -441,11 +382,7 @@ export async function POST(request: NextRequest) {
       status: conversation.status,
     });
 
-    const sanitizedAttachments = validateChatAttachments({
-      attachments: parsed.data.attachments,
-      incidentId: conversation.incidentId,
-      projectId: context.project.id,
-    });
+    const sanitizedAttachments = validateChatAttachments(parsed.data.attachments);
 
     // Earlier turns of a continued conversation, read before this message is stored so it is not repeated.
     const history = parsed.data.conversationId
