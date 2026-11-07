@@ -420,8 +420,8 @@ export function TagSelector({
               . This action cannot be undone.
               <br />
               <br />
-              <strong>Note:</strong> If this tag is currently used in any tests or
-              requirements, the deletion will be prevented and you&apos;ll need
+              <strong>Note:</strong> If this tag is currently used in any tests,
+              requirements or monitors, the deletion will be prevented and you&apos;ll need
               to remove the tag from those resources first.
             </AlertDialogDescription>
           </AlertDialogHeader>

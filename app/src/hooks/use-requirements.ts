@@ -56,7 +56,7 @@ export function getRequirementLinkedTestsQueryKey(requirementId: string | null) 
 const requirementsHook = createDataHook<Requirement>({
   queryKey: REQUIREMENTS_QUERY_KEY,
   endpoint: "/api/requirements",
-  // Inherits staleTime (5min) and gcTime (24h) from factory defaults
+  // Inherits staleTime (30min) and gcTime (24h) from the QueryClient defaults
   refetchOnWindowFocus: false,
   refetchOnMount: 'always',  // Always refetch on page visit for fresh data
   singleItemField: "requirement",
