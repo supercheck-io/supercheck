@@ -113,6 +113,9 @@ describe('K6ExecutionService', () => {
     uploadFileFromPath: jest
       .fn()
       .mockResolvedValue('https://s3.example.com/file'),
+    prepareFileVariables: jest
+      .fn()
+      .mockResolvedValue({ additionalFiles: {}, filePaths: {} }),
   };
 
   const mockDbService = {

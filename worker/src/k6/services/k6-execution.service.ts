@@ -385,9 +385,7 @@ export class K6ExecutionService {
       const htmlExportFileName = 'report.html';
       const htmlExportPathContainer = `${k6OutputDir}/${reportDirName}/${htmlExportFileName}`;
 
-      const preparedScript = reservation?.limited
-        ? script
-        : this.injectK6VariableRuntimeHelpers(script);
+      const preparedScript = this.injectK6VariableRuntimeHelpers(script);
 
       // Filter file variables to only those referenced by getFile() in the script,
       // then download from S3
@@ -395,9 +393,7 @@ export class K6ExecutionService {
         script,
       ]);
       const { additionalFiles: fileAdditionalFiles, filePaths } =
-        reservation?.limited
-          ? { additionalFiles: {}, filePaths: {} }
-          : await this.s3Service.prepareFileVariables(filteredFiles);
+        await this.s3Service.prepareFileVariables(filteredFiles);
 
       const args = [
         'run',
@@ -418,6 +414,7 @@ export class K6ExecutionService {
 
       // Configure web dashboard environment variables for robust HTML export
       // These settings ensure the HTML report is generated regardless of port conflicts
+      // A limited run gets one attempt so a retry cannot run beyond its reserved time.
       const maxDashboardAttempts = reservation?.limited
         ? 1
         : Math.max(
@@ -447,13 +444,11 @@ export class K6ExecutionService {
           K6_WEB_DASHBOARD_PORT: dashboardPort.toString(), // Use unique port
           K6_WEB_DASHBOARD_ADDR: this.dashboardBindAddress,
           K6_NO_COLOR: '1', // Disable ANSI colors in output
-          ...(reservation?.limited
-            ? {}
-            : this.buildVariableRuntimeEnv(
-                runtimeVariables,
-                filterSecretVariablesToUsedKeys(runtimeSecrets, [script]),
-                filePaths,
-              )),
+          ...this.buildVariableRuntimeEnv(
+            runtimeVariables,
+            filterSecretVariablesToUsedKeys(runtimeSecrets, [script]),
+            filePaths,
+          ),
         };
 
         try {
