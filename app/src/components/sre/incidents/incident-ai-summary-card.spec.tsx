@@ -125,6 +125,22 @@ describe("IncidentAiSummaryCard structured states", () => {
     expect(screen.queryByRole("button", { name: /^View evidence:/ })).not.toBeInTheDocument();
   });
 
+  it("drops the next step once the incident is resolved", () => {
+    render(
+      <IncidentAiSummaryCard
+        rootCauseSummary="Deploy 42 caused it."
+        confidenceScore="0.8200"
+        investigationStatus="completed"
+        resolved
+        investigation={investigation({
+          structured: { outcome: "identified", confidence: 0.82, conclusion: "Deploy 42 caused it.", nextChecks: ["Compare p95"], topEvidenceIds: [], downgraded: false },
+        })}
+      />,
+    );
+    expect(screen.getByText("Deploy 42 caused it.")).toBeInTheDocument();
+    expect(screen.queryByText(/Next step/)).not.toBeInTheDocument();
+  });
+
   it("shows Inconclusive as a first-class outcome ", () => {
     render(
       <IncidentAiSummaryCard

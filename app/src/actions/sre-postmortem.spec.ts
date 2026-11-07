@@ -24,11 +24,12 @@ jest.mock("@/lib/sre/postmortem", () => ({
 const queue: unknown[][] = [];
 const wheres: unknown[] = [];
 const updates: unknown[] = [];
+const limits: unknown[] = [];
 function chain(result: unknown[]) {
   const c: Record<string, unknown> = {};
   for (const n of ["from", "leftJoin", "orderBy"]) c[n] = () => c;
   c.where = (w: unknown) => { wheres.push(w); return c; };
-  c.limit = () => Promise.resolve(result);
+  c.limit = (n: unknown) => { limits.push(n); return Promise.resolve(result); };
   c.then = (r: (v: unknown[]) => unknown) => Promise.resolve(result).then(r);
   return c;
 }
@@ -99,7 +100,10 @@ describe("generateSrePostmortem timeline", () => {
     queue.push([resolved], tail, head, [], []);
     await generateSrePostmortem({ incidentId });
     const labels = (generate.mock.calls[0][0] as { timeline: { label: string }[] }).timeline.map((e) => e.label);
-    expect(labels).toEqual(["created", "ai finding: bad deploy", "state change: resolved - rolled back", "created: triggered - opening note"]);
+    // Deduplicated across the head and tail windows, oldest first, named as in the Activity feed.
+    expect(labels).toEqual(["created", "AI finding: bad deploy", "Resolved: rolled back", "created"]);
+    // A wide window (newest 150, oldest 50), because curation drops many rows afterwards.
+    expect(limits).toEqual(expect.arrayContaining([150, 50]));
   });
 });
 

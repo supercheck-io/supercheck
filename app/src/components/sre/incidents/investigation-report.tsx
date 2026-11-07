@@ -281,7 +281,7 @@ export function InvestigationReport({
         action={
           showConfidence &&
           (inconclusive || confidence.label === "Inconclusive" ? (
-            <TableBadge tone="slate" compact aria-label="Confidence: Inconclusive">
+            <TableBadge tone="warning" compact aria-label="Confidence: Inconclusive">
               Inconclusive
             </TableBadge>
           ) : (
@@ -314,7 +314,9 @@ export function InvestigationReport({
             )}
             {nextChecks.length > 0 && !running && (
               <div className="space-y-1.5">
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Next steps</p>
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  {incident.status === "resolved" ? "Suggested checks" : "Next steps"}
+                </p>
                 <ul className="space-y-1.5 text-sm">
                   {shownChecks.map((step, index) => (
                     <li key={index} className="flex gap-2 break-words">
