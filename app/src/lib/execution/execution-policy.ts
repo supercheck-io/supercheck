@@ -100,7 +100,7 @@ async function freshTrialRemaining(organizationId: string) {
   return {
     playwrightRemainingMs: entitlement.playwrightBudgetMs - entitlement.playwrightUsedMs - playwrightHeldMs,
     k6RemainingVuMs: entitlement.k6BudgetVuMs - entitlement.k6UsedVuMs - k6HeldVuMs,
-    playwrightHeldMs, k6HeldVuMs,
+    playwrightHeldMs, k6HeldVuMs, expiresAt: entitlement.expiresAt,
   };
 }
 
@@ -121,9 +121,9 @@ export async function assertExecutionWorkload(
     }
     return;
   }
-  // Mirrors worker admission: a trial run needs at least 5 seconds at its VU cap.
+  // Mirrors worker admission: a trial run needs at least 5 seconds at its VU cap, before the trial ends.
   const minimumVuMs = policy.k6MaxVus * 5_000;
-  if (remaining.k6RemainingVuMs < minimumVuMs) {
+  if (remaining.k6RemainingVuMs < minimumVuMs || remaining.expiresAt.getTime() - Date.now() < 5_000) {
     throw new ExecutionWorkloadError("Trial load-testing allowance exhausted", 402, remaining.k6RemainingVuMs + remaining.k6HeldVuMs >= minimumVuMs);
   }
 }

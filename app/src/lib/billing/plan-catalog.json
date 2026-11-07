@@ -84,7 +84,7 @@
       },
       {
         "question": "What tests can I run during the trial?",
-        "answer": "You can run Playwright, API, and k6 load tests against public targets without registering a domain or setting up DNS verification. k6 tests can use up to {k6MaxVus} virtual users per run and {k6VuMinutes} virtual-user minutes across the whole trial."
+        "answer": "You can run Playwright, API, and k6 load tests against public targets without registering a domain or setting up DNS verification. k6 tests can use up to {k6MaxVus} virtual users per run and {k6VuMinutes} virtual-user minutes across the whole trial. Each run is reserved at {k6MaxVus} virtual users, so it can last as long as your remaining minutes cover at that size, and it stops when they run out."
       },
       {
         "question": "What happens when the free trial ends?",

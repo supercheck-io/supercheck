@@ -214,33 +214,34 @@ describe('K6ExecutionService', () => {
   // INITIALIZATION TESTS
   // ==========================================================================
 
-  it('isolates a constrained workload from control and proxy environment overrides', async () => {
+  it('gives a limited run the same command, runtime data and files as a paid run', async () => {
+    const runtimeEnv = {
+      K6_WEB_DASHBOARD: 'true',
+      SUPERCHECK_VARIABLES_B64: Buffer.from(
+        '{"BASE_URL":"https://a.test"}',
+      ).toString('base64'),
+      SUPERCHECK_SECRETS_B64: Buffer.from('{"TOKEN":"t"}').toString('base64'),
+    };
+    const files = { 'data.csv': 'a,b' };
     await service['executeK6Binary'](
       ['run', '/tmp/test.js'],
       'export default function() {}',
       '/tmp/out',
       'run-id',
       'unique',
-      {
-        K6_VUS: '999',
-        HTTPS_PROXY: 'http://attacker.test',
-        K6_WEB_DASHBOARD: 'true',
-      },
+      runtimeEnv,
       1000,
       0,
-      undefined,
+      files,
       1000,
+      undefined,
+      { maxVus: 5, workloadMs: 1000 },
     );
-    const command = mockContainerExecutorService.executeInContainer.mock
-      .calls[0][1] as string[];
-    expect(command.slice(0, 3)).toEqual([
-      'env',
-      '-i',
-      'PATH=/usr/local/bin:/usr/bin:/bin',
-    ]);
-    expect(command).not.toContain('K6_VUS=999');
-    expect(command).not.toContain('HTTPS_PROXY=http://attacker.test');
-    expect(command).toContain('K6_WEB_DASHBOARD=true');
+    const [, command, options] = mockContainerExecutorService.executeInContainer
+      .mock.calls[0] as [unknown, string[], Record<string, unknown>];
+    expect(command).toEqual(['k6', 'run', '/tmp/test.js']);
+    expect(options.env).toMatchObject(runtimeEnv);
+    expect(options.additionalFiles).toEqual(files);
   });
 
   describe('limited (trial) k6 runs', () => {
@@ -356,17 +357,16 @@ describe('K6ExecutionService', () => {
         });
       });
       const call = executeK6Binary.mock.calls[0];
-      const [timeoutMs, hardDeadlineMs, expiresAtMs, maxVus] = [
+      const [timeoutMs, hardDeadlineMs, expiresAtMs] = [
         call[6],
         call[9],
         call[10],
-        call[11],
       ] as number[];
       expect(timeoutMs).toBeGreaterThan(30000);
       expect(hardDeadlineMs).toBeGreaterThan(30000);
       expect(hardDeadlineMs).toBe(timeoutMs);
       expect(expiresAtMs).toBe(expiresAt.getTime());
-      expect(maxVus).toBe(5);
+      expect(call[11]).toEqual({ maxVus: 5, workloadMs: 30000 });
     });
     it('stops a run that allocates more VUs than its cap', async () => {
       const abortRun = jest.fn();
@@ -397,14 +397,57 @@ describe('K6ExecutionService', () => {
         undefined,
         90000,
         undefined,
-        5,
+        { maxVus: 5, workloadMs: 60000 },
       );
       expect(abortRun).toHaveBeenCalledTimes(1);
+      expect(result.exitCode).not.toBe(0);
       expect(abortRun).toHaveBeenCalledWith('run-cap');
       expect(result.cancelled).toBe(false);
       expect(result.error).toBe(
         'Trial load tests are limited to 5 virtual users',
       );
+    });
+    it('stops a run whose load outlasts its reserved time and never reports it as passed', async () => {
+      jest.useFakeTimers();
+      try {
+        const abortRun = jest.fn();
+        (mockContainerExecutorService as Record<string, unknown>).abortRun =
+          abortRun;
+        mockContainerExecutorService.executeInContainer.mockImplementationOnce(
+          async (
+            _script: unknown,
+            _command: unknown,
+            options: { onStdoutChunk: (chunk: string) => void },
+          ) => {
+            options.onStdoutChunk('running (00m01.0s), 1/1 VUs, 0 complete\n');
+            jest.advanceTimersByTime(29_999);
+            expect(abortRun).not.toHaveBeenCalled();
+            jest.advanceTimersByTime(1);
+            return { exitCode: 0, stdout: '', stderr: '' };
+          },
+        );
+        const result = await service['executeK6Binary'](
+          ['run', 'test.js'],
+          'export default function() {}',
+          '/tmp/k6-test',
+          'run-time',
+          'run-time-abc',
+          {},
+          120000,
+          undefined,
+          undefined,
+          120000,
+          undefined,
+          { maxVus: 5, workloadMs: 30000 },
+        );
+        expect(abortRun).toHaveBeenCalledWith('run-time');
+        expect(result.exitCode).toBe(1);
+        expect(result.error).toBe(
+          'The trial load-testing allowance ran out during the run',
+        );
+      } finally {
+        jest.useRealTimers();
+      }
     });
   });
 
