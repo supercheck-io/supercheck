@@ -11,6 +11,7 @@ export type TableBadgeTone =
   | "danger"
   | "purple"
   | "indigo"
+  | "cyan"
   | "slate";
 
 const tableBadgeToneClasses: Record<TableBadgeTone, string> = {
@@ -21,6 +22,7 @@ const tableBadgeToneClasses: Record<TableBadgeTone, string> = {
   danger: "bg-rose-500/10 text-rose-700 dark:text-rose-300",
   purple: "bg-purple-500/10 text-purple-700 dark:text-purple-300",
   indigo: "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300",
+  cyan: "bg-cyan-500/10 text-cyan-700 dark:text-cyan-300",
   slate: "bg-slate-500/10 text-slate-700 dark:text-slate-300",
 };
 

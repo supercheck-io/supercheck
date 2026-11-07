@@ -117,7 +117,7 @@ export function IncidentAiSummaryCard({
   const nextCheck = resolved ? null : (structured?.nextChecks[0] ?? null);
 
   return (
-    <Card data-testid="incident-ai-summary" className="shadow-none shrink-0 gap-3 py-4">
+    <Card data-testid="incident-ai-summary" className="flex shrink-0 flex-col gap-3 py-4 shadow-none">
       <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0 px-4 py-0">
         <CardTitle id="incident-ai-summary-title" className="flex items-center gap-2 text-sm font-semibold">
           <IconTile icon={Sparkles} tone="violet" />

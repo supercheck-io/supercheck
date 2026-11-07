@@ -23,7 +23,7 @@ import {
   type PostmortemContext,
 } from "@/lib/sre/postmortem";
 import { checkSrePostmortemRateLimit } from "@/lib/sre/sre-rate-limiter";
-import { storedRootCause } from "@/lib/sre/evidence-brief-summary";
+import { isNoEvidenceBrief, storedRootCause, withoutNoEvidenceNotice } from "@/lib/sre/evidence-brief-summary";
 import { readStoredHypotheses } from "@/sre/lib/investigation-output";
 import { db } from "@/utils/db";
 
@@ -146,9 +146,12 @@ export async function generateSrePostmortem(
       serviceName: incident.serviceName,
       createdAt: incident.createdAt,
       resolvedAt: incident.resolvedAt,
-      resolutionSummary: incident.resolutionSummary,
+      // A resolution pre-filled from the no-evidence notice says nothing about how the incident ended.
+      resolutionSummary: withoutNoEvidenceNotice(incident.resolutionSummary),
       // Without a completed investigation the stored root cause is only the evidence brief's headline.
-      rootCauseSummary: run
+      rootCauseSummary: isNoEvidenceBrief(incident.rootCauseSummary)
+        ? null
+        : run
         ? storedRootCause(incident.rootCauseSummary)
         : incident.rootCauseSummary
           ? `Unverified, from the evidence brief: ${storedRootCause(incident.rootCauseSummary)}`

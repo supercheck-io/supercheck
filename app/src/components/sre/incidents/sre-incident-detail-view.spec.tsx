@@ -733,5 +733,9 @@ describe("defaultResolutionNote", () => {
   it("falls back to the root cause alone, or nothing", () => {
     expect(defaultResolutionNote(null, "Bad deploy")).toBe("Bad deploy");
     expect(defaultResolutionNote(undefined, null)).toBe("");
+    // The no-evidence fallback brief is a prompt to collect evidence, not a resolution.
+    expect(
+      defaultResolutionNote("2026-06-24T12:00:00Z", "## Summary\nNo stored incident evidence was available for this incident yet. Generate or link evidence."),
+    ).toBe("The checks that raised this incident recovered on Wed, 24 Jun 2026 12:00:00 GMT and are passing again.");
   });
 });

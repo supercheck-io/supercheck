@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
+  CircleDot,
   Clock,
   Download,
   FileText,
@@ -40,19 +41,21 @@ import { SreMessageContent } from "@/components/sre/sre-message-content";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { getSreIncidentDetailQueryKey } from "@/lib/sre/query-keys";
 import { POSTMORTEM_SECTIONS, postmortemToMarkdown } from "@/lib/sre/postmortem-format";
+import { parsePostmortemTimeline, type PostmortemMoment } from "@/lib/sre/incident-timeline-format";
 import type { SrePostmortem } from "@/db/schema";
 import { formatAgo, useNow } from "@/components/sre/incidents/incident-age";
 import { IconTile, SectionTitle, toneButton, type IconTone } from "@/components/sre/incidents/incident-ui";
+import { timelineEventVisual } from "@/components/sre/incidents/incident-timeline";
 
 const TEXT_SECTIONS = POSTMORTEM_SECTIONS.filter(({ key }) => key !== "follow_ups");
 
 // Same section icons and tones as the rest of the incident page.
 const SECTION_VISUAL: Record<string, { icon: LucideIcon; tone: IconTone; hint: string }> = {
-  summary: { icon: FileText, tone: "violet", hint: "What happened, in two or three sentences." },
+  summary: { icon: FileText, tone: "sky", hint: "What happened, in two or three sentences." },
   impact: { icon: Activity, tone: "rose", hint: "Who was affected, for how long, and how badly." },
   timeline: { icon: Clock, tone: "blue", hint: "- 6 Oct 2026, 14:58 UTC: What happened" },
   root_cause: { icon: Search, tone: "amber", hint: "Why it happened, as confirmed by the team." },
-  contributing_factors: { icon: GitBranch, tone: "indigo", hint: "What made it worse or slower to fix." },
+  contributing_factors: { icon: GitBranch, tone: "slate", hint: "What made it worse or slower to fix." },
   follow_ups: { icon: ListChecks, tone: "emerald", hint: "" },
 };
 
@@ -77,6 +80,34 @@ function download(filename: string, markdown: string) {
 
 function EmptySection() {
   return <p className="text-sm italic text-muted-foreground">Not written yet.</p>;
+}
+
+/** The draft timeline as a rail of moments, with the same icons as the Activity feed. */
+function TimelineMoments({ moments }: { moments: PostmortemMoment[] }) {
+  return (
+    <ol data-testid="postmortem-timeline" className="pt-1">
+      {moments.map((moment, index) => {
+        const visual = moment.event ? timelineEventVisual(moment.event) : { icon: CircleDot, tone: "slate" as const };
+        return (
+          <li key={index} className="relative flex gap-3 pb-4 last:pb-0">
+            {index < moments.length - 1 && (
+              <span aria-hidden="true" className="absolute left-3 top-7 bottom-0 w-px -translate-x-1/2 bg-border" />
+            )}
+            <IconTile icon={visual.icon} tone={visual.tone} className="relative z-10 rounded-full" />
+            <div className="min-w-0 flex-1 pt-0.5">
+              <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+                <span className={moment.title ? "text-sm font-medium" : "break-words text-sm"}>{moment.title ?? moment.detail}</span>
+                <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{moment.when}</span>
+              </div>
+              {moment.title && moment.detail && (
+                <p className="mt-0.5 break-words text-sm text-muted-foreground">{moment.detail}</p>
+              )}
+            </div>
+          </li>
+        );
+      })}
+    </ol>
+  );
 }
 
 /** Post-mortem for a resolved incident: read as a document, edited in place, exportable as Markdown. */
@@ -199,8 +230,8 @@ export function PostmortemCard({
 
   if (!saved) {
     return (
-      <Card id="incident-postmortem" data-testid="postmortem-card" className="items-center gap-4 px-6 py-12 text-center shadow-none">
-        <IconTile icon={FileText} tone="violet" className="size-10 rounded-lg [&_svg]:size-5" />
+      <Card id="incident-postmortem" data-testid="postmortem-card" className="flex flex-col items-center gap-4 px-6 py-12 text-center shadow-none">
+        <IconTile icon={FileText} tone="sky" className="size-10 rounded-lg [&_svg]:size-5" />
         <div className="max-w-md space-y-1">
           <h2 className="text-sm font-semibold">No post-mortem yet</h2>
           <p className="text-sm text-muted-foreground">
@@ -245,7 +276,7 @@ export function PostmortemCard({
           )}
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button type="button" variant="outline" size="icon" className={`h-8 w-8 ${toneButton("sky")}`} aria-label="Export Markdown" onClick={exportMarkdown}>
+              <Button type="button" variant="outline" size="icon" className="h-8 w-8" aria-label="Export Markdown" onClick={exportMarkdown}>
                 <Download className="h-4 w-4" aria-hidden="true" />
               </Button>
             </TooltipTrigger>
@@ -332,7 +363,7 @@ export function PostmortemCard({
               ))}
             </ul>
             {followUps.length < 20 && (
-              <Button type="button" variant="outline" size="sm" className={toneButton("sky")} onClick={() => setFollowUps((current) => [...current, ""])}>
+              <Button type="button" variant="outline" size="sm" onClick={() => setFollowUps((current) => [...current, ""])}>
                 <Plus className="h-4 w-4" aria-hidden="true" />
                 Add follow-up
               </Button>
@@ -353,12 +384,15 @@ export function PostmortemCard({
         <div className="divide-y">
           {TEXT_SECTIONS.map(({ key, label }) => {
             const text = saved.sections[key]?.trim();
+            const moments = key === "timeline" && text ? parsePostmortemTimeline(text) : null;
             return (
               <section key={key} aria-labelledby={`postmortem-${key}-title`} className="space-y-2 px-4 py-4">
                 <SectionTitle id={`postmortem-${key}-title`} icon={SECTION_VISUAL[key]!.icon} tone={SECTION_VISUAL[key]!.tone}>
                   {label}
                 </SectionTitle>
-                {text ? (
+                {moments ? (
+                  <TimelineMoments moments={moments} />
+                ) : text ? (
                   <div className="break-words text-sm leading-relaxed">
                     <SreMessageContent content={text} />
                   </div>

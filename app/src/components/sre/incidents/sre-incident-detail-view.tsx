@@ -28,7 +28,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { TableBadge } from "@/components/ui/table-badge";
-import { reportHeadline } from "@/lib/sre/evidence-brief-summary";
+import { isNoEvidenceBrief, reportHeadline } from "@/lib/sre/evidence-brief-summary";
 import { getDisplayStatus } from "@/lib/sre/incident-status-display";
 import { COLUMN_SCROLL, TAB_TRIGGER } from "@/components/sre/incidents/incident-ui";
 
@@ -48,12 +48,12 @@ const FOCUS_FOR_LINK: Partial<Record<IncidentTabParam, string>> = {
   brief: "conclusion",
 };
 
-/** Pre-fills the resolve dialog with one paragraph; the person still reads and confirms it. */
+/** Pre-fills the resolve dialog with one paragraph; the person still reads and confirms it. The no-evidence notice is not a cause. */
 export function defaultResolutionNote(recoveredAt: string | null | undefined, rootCause: string | null) {
   const recovery = recoveredAt
     ? `The checks that raised this incident recovered on ${new Date(recoveredAt).toUTCString()} and are passing again.`
     : "";
-  return [recovery, reportHeadline(rootCause) ?? ""].filter(Boolean).join("\n\n");
+  return [recovery, isNoEvidenceBrief(rootCause) ? "" : (reportHeadline(rootCause) ?? "")].filter(Boolean).join("\n\n");
 }
 
 /** Keeps the open tab in the URL so it survives a reload and can be shared. */

@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { History } from "lucide-react";
 
-import { SectionTitle } from "@/components/sre/incidents/incident-ui";
+import { PANEL_CARD, PANEL_CONTENT, PANEL_HEADER, SectionTitle } from "@/components/sre/incidents/incident-ui";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { TableBadge } from "@/components/ui/table-badge";
 import { useSreSimilarIncidents } from "@/hooks/use-sre";
@@ -23,11 +23,11 @@ export function SimilarIncidentsCard({ incidentId }: { incidentId: string }) {
   // A failed lookup says so; only a successful lookup with no matches hides the card.
   if (isError || (data && !data.success)) {
     return (
-      <Card className="gap-3 py-4 shadow-none" data-testid="similar-incidents">
-        <CardHeader className="px-4 pt-0 pb-0">
-          <SectionTitle as="h2" icon={History} tone="indigo">Similar incidents</SectionTitle>
+      <Card className={PANEL_CARD} data-testid="similar-incidents">
+        <CardHeader className={PANEL_HEADER}>
+          <SectionTitle as="h2" icon={History} tone="slate">Similar incidents</SectionTitle>
         </CardHeader>
-        <CardContent className="px-4">
+        <CardContent className={PANEL_CONTENT}>
           <p role="alert" className="text-sm text-muted-foreground">Similar incidents could not be loaded.</p>
         </CardContent>
       </Card>
@@ -36,13 +36,13 @@ export function SimilarIncidentsCard({ incidentId }: { incidentId: string }) {
   if (!data?.success || data.incidents.length === 0) return null;
   const shown = showAll ? data.incidents : data.incidents.slice(0, COLLAPSED);
   return (
-    <Card className="gap-3 py-4 shadow-none" data-testid="similar-incidents">
-      <CardHeader className="px-4 pt-0 pb-0">
-        <SectionTitle as="h2" icon={History} tone="indigo" count={data.incidents.length}>
+    <Card className={PANEL_CARD} data-testid="similar-incidents">
+      <CardHeader className={PANEL_HEADER}>
+        <SectionTitle as="h2" icon={History} tone="slate" count={data.incidents.length}>
           Similar incidents
         </SectionTitle>
       </CardHeader>
-      <CardContent className="px-4">
+      <CardContent className={PANEL_CONTENT}>
         <ul className="-mx-2 space-y-1">
           {shown.map((incident) => (
             <li key={incident.id}>
@@ -56,7 +56,7 @@ export function SimilarIncidentsCard({ incidentId }: { incidentId: string }) {
                 </span>
                 <span className="mt-1 flex flex-wrap gap-1">
                   {incident.matchedOn.map((match) => (
-                    <TableBadge key={match} compact tone="indigo" className="h-5 px-1.5">
+                    <TableBadge key={match} compact tone="slate" className="h-5 px-1.5">
                       {MATCH_LABEL[match]}
                     </TableBadge>
                   ))}

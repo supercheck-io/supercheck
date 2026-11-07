@@ -8,6 +8,7 @@ import {
   validateAIConfiguration,
 } from "@/lib/ai/ai-provider";
 import { createLogger } from "@/lib/logger/index";
+import { NO_EVIDENCE_HEADLINE } from "@/lib/sre/evidence-brief-summary";
 import { checkSreDailyTokenLimit, recordSreTokenUsage } from "@/lib/sre/sre-daily-token-limit";
 
 const briefLogger = createLogger({ module: "sre-evidence-brief" }) as {
@@ -56,7 +57,7 @@ export function fallbackBrief(
       suspectedFailureDomain: "Insufficient incident evidence",
       summary: [
         "## Summary",
-        "No stored incident evidence was available for this incident yet. Generate or link monitor, job, run, or connector evidence before relying on a root-cause summary.",
+        `${NO_EVIDENCE_HEADLINE} Generate or link monitor, job, run, or connector evidence before relying on a root-cause summary.`,
         "",
         "## Impact",
         "Unknown, because no evidence establishes an affected scope.",

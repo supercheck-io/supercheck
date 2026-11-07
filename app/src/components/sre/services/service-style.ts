@@ -1,12 +1,13 @@
 import type { SreServiceListItem } from "@/actions/sre-services";
 import type { TableBadgeTone } from "@/components/ui/table-badge";
 
-// Tier 1 is the most critical; colour fades with criticality.
+// Tier 1 is the most critical; colour fades with criticality. Amber, rose and green are taken by
+// environment, severity and health, so tiers stay in the cool range.
 export const TIER_TONES: Record<SreServiceListItem["tier"], TableBadgeTone> = {
-  "1": "purple",
-  "2": "indigo",
-  "3": "info",
-  "4": "slate",
+  "1": "info",
+  "2": "cyan",
+  "3": "slate",
+  "4": "neutral",
 };
 
 export const TIER_HINT: Record<SreServiceListItem["tier"], string> = {
@@ -20,7 +21,7 @@ export const TIER_HINT: Record<SreServiceListItem["tier"], string> = {
 export function environmentTone(environment: string): TableBadgeTone {
   const value = environment.trim().toLowerCase();
   if (value === "production" || value === "prod") return "warning";
-  if (value === "staging" || value === "stage" || value === "preprod") return "indigo";
-  if (value === "development" || value === "dev" || value === "test" || value === "local") return "slate";
-  return "info";
+  if (value === "staging" || value === "stage" || value === "preprod") return "cyan";
+  if (value === "development" || value === "dev" || value === "test" || value === "local") return "neutral";
+  return "slate";
 }

@@ -15,7 +15,7 @@ import {
   archiveSreCopilotChat,
   type SreCopilotChatHistory,
 } from "@/actions/sre-ai";
-import { IconTile, toneButton } from "@/components/sre/incidents/incident-ui";
+import { IconTile } from "@/components/sre/incidents/incident-ui";
 import { SreAssistantUiThread } from "@/components/sre/sre-assistant-ui-thread";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -236,7 +236,7 @@ export function SreAiConsole({
                       onClick={() => selectHistory(history)}
                       className={cn(
                         "w-full rounded-xl px-3 py-2.5 text-left text-sm transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                        isActive && "bg-violet-500/10 ring-1 ring-violet-500/30 hover:bg-violet-500/15",
+                        isActive && "bg-muted ring-1 ring-border hover:bg-muted",
                       )}
                     >
                       <span className="block truncate font-medium">
@@ -247,7 +247,7 @@ export function SreAiConsole({
                           {formatHistoryDate(history.updatedAt)}
                         </time>
                         {history.incidentId && (
-                          <TableBadge tone="indigo" compact className="h-5 px-1.5">Incident</TableBadge>
+                          <TableBadge tone="info" compact className="h-5 px-1.5">Incident</TableBadge>
                         )}
                       </span>
                     </button>
@@ -266,7 +266,7 @@ export function SreAiConsole({
             <div className="min-w-0">
               <div className="flex min-w-0 items-center gap-2">
                 <h1 className="truncate text-lg font-semibold leading-tight">Copilot</h1>
-                {incidentId && <TableBadge tone="indigo" compact>Incident</TableBadge>}
+                {incidentId && <TableBadge tone="info" compact>Incident</TableBadge>}
               </div>
               <p className="truncate text-sm text-muted-foreground">
                 {incidentId
@@ -293,7 +293,6 @@ export function SreAiConsole({
               type="button"
               variant="outline"
               size="sm"
-              className={toneButton("violet")}
               onClick={startNewChat}
               aria-label="New chat"
             >

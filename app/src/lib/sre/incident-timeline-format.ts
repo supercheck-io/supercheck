@@ -59,6 +59,49 @@ function describeEdit(data: Record<string, unknown>) {
   return lines.join("\n") || null;
 }
 
+type TimelineEventKind = Pick<SreIncidentTimelineItem, "eventType" | "eventData">;
+
+// Draft rows read "<title>: <detail>"; a known title maps back to its event so the post-mortem can reuse the Activity icons.
+const EVENT_FOR_TITLE = new Map<string, TimelineEventKind>([
+  ["Note", { eventType: "comment", eventData: {} }],
+  ...Object.entries(AI_FINDING_TITLES).map(([type, title]): [string, TimelineEventKind] => [title, { eventType: "ai_finding", eventData: { type } }]),
+  ...Object.entries(STATE_LABELS).map(([state, title]): [string, TimelineEventKind] => [title, { eventType: "state_change", eventData: { state } }]),
+]);
+// Longest first, so "AI triage failed" wins over "AI triage".
+const KNOWN_TITLES = [...EVENT_FOR_TITLE.keys()].sort((a, b) => b.length - a.length);
+const POSTMORTEM_MOMENT = /^\s*(?:[-*]\s+)?(\d{1,2} [A-Z][a-z]{2} \d{4}), (\d{2}:\d{2}) UTC:\s*(.*)$/;
+
+export type PostmortemMoment = {
+  when: string;
+  title: string | null;
+  detail: string;
+  event: TimelineEventKind | null;
+};
+
+/**
+ * Reads a timeline in the draft's shape (plain text: inline markdown such as links shows as written) ("- 6 Oct 2026, 14:58 UTC: Resolved: detail") as moments.
+ * Null when any line has another shape, so hand-written text is shown as written.
+ */
+export function parsePostmortemTimeline(text: string): PostmortemMoment[] | null {
+  const lines = text.split("\n").filter((line) => line.trim());
+  if (lines.length === 0) return null;
+  const moments: PostmortemMoment[] = [];
+  for (const line of lines) {
+    const match = POSTMORTEM_MOMENT.exec(line);
+    if (!match) return null;
+    const rest = match[3]!.replace(/\*\*|__|`/g, "").trim();
+    if (!rest) return null;
+    const title = KNOWN_TITLES.find((known) => rest === known || rest.startsWith(`${known}:`)) ?? null;
+    moments.push({
+      when: `${match[1]}, ${match[2]} UTC`,
+      title,
+      detail: title ? rest.slice(title.length + 1).trim() : rest,
+      event: title ? EVENT_FOR_TITLE.get(title)! : null,
+    });
+  }
+  return moments;
+}
+
 export function describeTimelineEvent(
   event: Pick<SreIncidentTimelineItem, "eventType" | "eventData">,
   refs?: SreIncidentTimelineRefs,
