@@ -32,7 +32,8 @@ export function formatDuration(from: Date | string | null, to: Date | string | n
 }
 
 // One link style for every in-panel link.
-export const PANEL_LINK = "font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm";
+// Always underlined: in dark mode text-primary is near-white and would read as a plain value.
+export const PANEL_LINK = "font-medium text-primary underline decoration-muted-foreground/50 underline-offset-4 hover:decoration-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm";
 
 export const SEVERITY_TONES: Record<SreIncidentDetail["incident"]["severity"], TableBadgeTone> = {
   sev1: "danger",
@@ -156,7 +157,7 @@ export function IncidentSidebar({
                     </>
                   )}
                 </span>
-              ) : canUpdate ? (
+              ) : editable ? (
                 <Link className={PANEL_LINK} href="/status-pages">Post update</Link>
               ) : (
                 <span className="text-muted-foreground">Not published</span>

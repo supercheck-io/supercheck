@@ -121,12 +121,14 @@ Stored evidence stays available when a connector is disabled. Disabling a connec
 
 ## Post-mortem
 
-When an incident is resolved, the **Post-mortem** tab offers **Generate post-mortem draft**. The draft is built from the activity feed, the resolution summary, the hypotheses, and the evidence titles, in these sections: **Summary**, **Impact**, **Timeline**, **Root cause**, **Contributing factors**, and **Follow-ups**.
+When an incident is resolved, the **Post-mortem** tab offers **Generate post-mortem draft**. The draft is built from the activity feed, the resolution summary, the hypotheses, and the evidence titles, in these sections: **Summary**, **Impact**, **Timeline**, **Root cause**, **Contributing factors**, and **Follow-ups**. It opens as a read-only document; a section with nothing in it shows **Not written yet**.
+
+The **Timeline** lists the key moments in UTC, named as in the Activity feed: when the incident was created, alerts linked, AI triage and investigations, acknowledgement, notes, recovery and resolution. Evidence briefs, reassignments and edits are left out, and back-to-back investigations are shown once, as the latest result.
 
 | Behavior | Detail |
 |---|---|
-| **Drafting** | If AI is unavailable, your organization's usage limit is reached, or the model returns something unusable, a template filled from the incident record is used instead, with placeholders where facts are missing. Nothing is invented |
-| **Editing** | Every section is editable. Follow-ups are a list you can add to and remove from. **Save post-mortem** keeps your edits |
+| **Drafting** | If AI is unavailable, your organization's usage limit is reached, or the model returns something unusable, a template filled from the incident record is used instead. Sections without recorded facts are left empty for you to fill in. Nothing is invented |
+| **Editing** | **Edit** turns every section into a text field. Follow-ups are a list you can add to and remove from. **Save post-mortem** keeps your edits; **Cancel** discards them. Unsaved edits survive switching tabs |
 | **Regenerate / Export** | **Regenerate draft** replaces the text after you confirm. The download button (**Export Markdown**) next to it saves a `.md` file |
 | **Limits** | Five drafts per person per incident per hour. Drafting needs permission to update incidents; people with view access can read and export |
 
