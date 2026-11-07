@@ -73,9 +73,9 @@ function Section({
 const EVIDENCE_TYPE: Record<string, { label: string; icon: LucideIcon; tone: IconTone }> = {
   metric: { label: "Metric", icon: Activity, tone: "blue" },
   log: { label: "Log", icon: ScrollText, tone: "slate" },
-  trace: { label: "Trace", icon: Waypoints, tone: "indigo" },
+  trace: { label: "Trace", icon: Waypoints, tone: "blue" },
   artifact: { label: "Artifact", icon: Paperclip, tone: "slate" },
-  deployment: { label: "Deployment", icon: GitCommitHorizontal, tone: "violet" },
+  deployment: { label: "Deployment", icon: GitCommitHorizontal, tone: "sky" },
   event: { label: "Event", icon: Bell, tone: "amber" },
   document: { label: "Document", icon: FileText, tone: "sky" },
   topology: { label: "Topology", icon: Network, tone: "emerald" },

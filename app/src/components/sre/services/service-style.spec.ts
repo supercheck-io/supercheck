@@ -1,21 +1,21 @@
 import { environmentTone, TIER_TONES } from "./service-style";
 
 it("maps tiers 1 to 4 from most to least prominent tone", () => {
-  expect(TIER_TONES).toEqual({ "1": "purple", "2": "indigo", "3": "info", "4": "slate" });
+  expect(TIER_TONES).toEqual({ "1": "info", "2": "cyan", "3": "slate", "4": "neutral" });
 });
 
 describe("environmentTone", () => {
   it.each([
     [" Production ", "warning"],
     ["prod", "warning"],
-    ["staging", "indigo"],
-    ["stage", "indigo"],
-    ["preprod", "indigo"],
-    ["development", "slate"],
-    ["dev", "slate"],
-    ["test", "slate"],
-    ["local", "slate"],
-    ["eu-west", "info"],
+    ["staging", "cyan"],
+    ["stage", "cyan"],
+    ["preprod", "cyan"],
+    ["development", "neutral"],
+    ["dev", "neutral"],
+    ["test", "neutral"],
+    ["local", "neutral"],
+    ["eu-west", "slate"],
   ])("maps %p to %s", (environment, tone) => {
     expect(environmentTone(environment)).toBe(tone);
   });

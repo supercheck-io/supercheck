@@ -1,6 +1,7 @@
 "use client";
 
 import { SreIncidentDetailView, type IncidentTabParam } from "@/components/sre/incidents/sre-incident-detail-view";
+import { PageErrorState } from "@/components/shared/page-error-state";
 import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useSreIncidentPageData } from "@/hooks/use-sre";
@@ -23,18 +24,16 @@ export function SreIncidentDetailPageClient({
 
     return (
       <Unavailable
-        message={
-          query.error instanceof Error
-            ? query.error.message
-            : "Failed to load incident"
-        }
+        message={query.error instanceof Error ? query.error.message : "Failed to load incident"}
+        onRetry={() => void query.refetch()}
+        retrying={query.isFetching}
       />
     );
   }
 
   const { incidentResult, servicesResult } = query.data;
   if (!incidentResult.success || !incidentResult.detail) {
-    return <Unavailable message={incidentResult.error} />;
+    return <Unavailable message={incidentResult.error} onRetry={() => void query.refetch()} retrying={query.isFetching} />;
   }
 
   return (
@@ -58,11 +57,8 @@ export function SreIncidentDetailPageClient({
   );
 }
 
-function Unavailable({ message }: { message: string }) {
+function Unavailable({ message, onRetry, retrying }: { message: string; onRetry: () => void; retrying: boolean }) {
   return (
-    <Alert variant="destructive">
-      <AlertTitle>Incident unavailable</AlertTitle>
-      <AlertDescription>{message}</AlertDescription>
-    </Alert>
+    <PageErrorState noun="incident" message={message} backHref="/incidents" backLabel="Back to incidents" onRetry={onRetry} retrying={retrying} />
   );
 }

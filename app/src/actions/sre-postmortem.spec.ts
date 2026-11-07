@@ -120,6 +120,15 @@ describe("generateSrePostmortem root cause", () => {
   });
 });
 
+describe("generateSrePostmortem no-evidence notice", () => {
+  it("does not present the no-evidence notice as a root cause or resolution", async () => {
+    const notice = "No stored incident evidence was available for this incident yet. Generate or link evidence.";
+    queue.push([{ ...resolved, rootCauseSummary: `## Summary\n${notice}`, resolutionSummary: notice }], [], [], [], []);
+    await generateSrePostmortem({ incidentId });
+    expect(generate.mock.calls[0][0]).toMatchObject({ rootCauseSummary: null, resolutionSummary: null });
+  });
+});
+
 describe("generateSrePostmortem usage gate", () => {
   it("skips the model call (template only) when the usage gate is closed", async () => {
     queue.push([resolved], [], [], []);

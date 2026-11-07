@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import {
   approveSreTopologySuggestion,
+  removeSreServiceDependency,
   rejectSreTopologySuggestion,
   getSreServiceDetail,
   type SreServiceDetail,
@@ -100,6 +101,42 @@ function detailFixture(
 }
 
 describe("ServiceDetailView", () => {
+  it("names each dependency row action and opens the editor from the pencil", async () => {
+    const now = new Date("2026-07-10T12:00:00Z");
+    const initial = detailFixture({
+      permissions: { canEdit: true, canConfigure: true },
+      dependencies: [
+        {
+          id: "018f0000-0000-7000-8000-000000000009",
+          sourceServiceId: "018f0000-0000-7000-8000-000000000001",
+          sourceServiceName: "checkout-api",
+          targetServiceId: "018f0000-0000-7000-8000-000000000002",
+          targetServiceName: "payments-db",
+          source: "manual",
+          sourceRef: null,
+          confidence: null,
+          approvedAt: now,
+          firstSeenAt: now,
+          lastSeenAt: now,
+          status: "active",
+        },
+      ],
+    });
+    jest.mocked(removeSreServiceDependency).mockResolvedValue({ success: true, message: "Removed" });
+    jest.mocked(getSreServiceDetail).mockResolvedValue({ success: true, detail: { ...initial, dependencies: [] } });
+    render(<ServiceDetailView initialDetail={initial} />);
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /Dependencies/ }), { button: 0, ctrlKey: false });
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit dependency with payments-db" }));
+    expect(await screen.findByRole("dialog", { name: "Edit dependency" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove dependency with payments-db" }));
+    await waitFor(() =>
+      expect(removeSreServiceDependency).toHaveBeenCalledWith({ id: "018f0000-0000-7000-8000-000000000009" }),
+    );
+  });
+
   it.each(["approve", "reject"])(
     "retains %s and review history inside Dependencies",
     async (action) => {

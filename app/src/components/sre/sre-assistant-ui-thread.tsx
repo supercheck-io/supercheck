@@ -50,10 +50,10 @@ import { useSession } from "@/utils/auth-client";
 
 const SRE_COPILOT_MESSAGE_MAX_LENGTH = 4000;
 
-// Violet marks AI across the incident pages; the Copilot avatar and labels use it too.
+// Violet marks AI identity across the SRE pages: the Copilot avatar keeps it, labels and buttons stay neutral.
 const ASSISTANT_AVATAR =
   "mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-violet-500/20 bg-violet-500/10 text-violet-600 dark:text-violet-400";
-const STARTER_TONES: IconTone[] = ["violet", "sky", "amber", "emerald"];
+const STARTER_TONES: IconTone[] = ["sky", "blue", "amber", "emerald"];
 
 const STANDALONE_STARTERS = [
   {
@@ -258,7 +258,7 @@ function AssistantMessage() {
       </div>
       <div className="min-w-0 flex-1 rounded-2xl border bg-background px-4 py-3 text-sm leading-6 shadow-sm">
         <div className="mb-2 flex flex-wrap items-center gap-2">
-          <TableBadge tone="purple" compact>Copilot</TableBadge>
+          <TableBadge tone="slate" compact>Copilot</TableBadge>
         </div>
         <MessagePrimitive.Content components={{ Text: AssistantTextPart }} />
         <LiveInterruptedNotice />
@@ -345,10 +345,10 @@ function AssistantThinking() {
         <div aria-hidden="true" className={ASSISTANT_AVATAR}>
           <Bot className="h-4 w-4" />
         </div>
-        <div className="flex-1 rounded-2xl border border-dashed border-violet-500/30 bg-violet-500/5 px-4 py-3 text-sm leading-6">
+        <div className="flex-1 rounded-2xl border border-dashed bg-muted/30 px-4 py-3 text-sm leading-6">
           <div className="flex flex-wrap items-center gap-2">
-            <TableBadge tone="purple" compact>Copilot</TableBadge>
-            <Loader2 className="h-3.5 w-3.5 animate-spin text-violet-600 dark:text-violet-400" />
+            <TableBadge tone="slate" compact>Copilot</TableBadge>
+            <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
             <span className="text-sm text-muted-foreground">
               Reading the context and preparing a response...
             </span>

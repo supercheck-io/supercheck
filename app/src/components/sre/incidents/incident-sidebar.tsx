@@ -9,7 +9,7 @@ import { IncidentAssigneePicker } from "@/components/sre/incidents/incident-assi
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
 import { useNow } from "@/components/sre/incidents/incident-age";
-import { Metric, SectionTitle } from "@/components/sre/incidents/incident-ui";
+import { Metric, PANEL_CARD, PANEL_CONTENT, PANEL_HEADER, SectionTitle } from "@/components/sre/incidents/incident-ui";
 import { WatchSreIncidentButton } from "@/components/sre/incidents/watch-sre-incident-button";
 
 const ALERTS_COLLAPSED = 3;
@@ -71,11 +71,11 @@ export function IncidentSidebar({
 
   return (
     <div className="flex flex-col gap-4">
-      <Card className="gap-3 py-4 shadow-none">
-        <CardHeader className="px-4 pt-0 pb-0">
+      <Card className={PANEL_CARD}>
+        <CardHeader className={PANEL_HEADER}>
           <SectionTitle id="incident-details-title" as="h2" icon={ListTree} tone="slate">Properties</SectionTitle>
         </CardHeader>
-        <CardContent className="space-y-3 px-4">
+        <CardContent className={`space-y-3 ${PANEL_CONTENT}`}>
           <dl className="grid grid-cols-2 gap-2">
             <Metric
               label="Time to acknowledge"
@@ -170,8 +170,8 @@ export function IncidentSidebar({
         </CardContent>
       </Card>
 
-      <Card className="gap-3 py-4 shadow-none">
-        <CardHeader className="px-4 pt-0 pb-0">
+      <Card className={PANEL_CARD}>
+        <CardHeader className={PANEL_HEADER}>
           <SectionTitle
             id="incident-alerts-title"
             as="h2"
@@ -182,7 +182,7 @@ export function IncidentSidebar({
             Alerts
           </SectionTitle>
         </CardHeader>
-        <CardContent className="px-4">
+        <CardContent className={PANEL_CONTENT}>
           {detail.linkedAlerts.length === 0 ? (
             <p className="text-sm text-muted-foreground">No alerts linked.</p>
           ) : (
