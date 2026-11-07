@@ -123,7 +123,9 @@ export async function assertExecutionWorkload(
   }
   // Mirrors worker admission: a trial run needs at least 5 seconds at its VU cap, before the trial ends.
   const minimumVuMs = policy.k6MaxVus * 5_000;
-  if (remaining.k6RemainingVuMs < minimumVuMs || remaining.expiresAt.getTime() - Date.now() < 5_000) {
-    throw new ExecutionWorkloadError("Trial load-testing allowance exhausted", 402, remaining.k6RemainingVuMs + remaining.k6HeldVuMs >= minimumVuMs);
+  const expiringSoon = remaining.expiresAt.getTime() - Date.now() < 5_000;
+  if (remaining.k6RemainingVuMs < minimumVuMs || expiringSoon) {
+    // Only held VU-ms can clear; an expiring trial never will, so it is rejected outright.
+    throw new ExecutionWorkloadError("Trial load-testing allowance exhausted", 402, !expiringSoon && remaining.k6RemainingVuMs + remaining.k6HeldVuMs >= minimumVuMs);
   }
 }

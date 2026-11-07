@@ -209,7 +209,7 @@ describe("trial workload admission", () => {
   });
   it("refuses a load test when the trial ends in under five seconds", async () => {
     jest.mocked(db.query.executionEntitlements.findFirst).mockResolvedValue({ ...trial, expiresAt: new Date(Date.now() + 4_000) } as never);
-    await expect(assertExecutionWorkload("org", policy, "k6")).rejects.toMatchObject({ status: 402 });
+    await expect(assertExecutionWorkload("org", policy, "k6")).rejects.toMatchObject({ status: 402, inFlightOnly: false });
   });
   it("refuses an exhausted browser quota", async () => {
     mockFresh({ playwrightUsedMs: trial.playwrightBudgetMs });
