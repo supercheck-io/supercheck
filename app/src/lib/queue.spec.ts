@@ -17,6 +17,10 @@ describe("queue location refresh", () => {
   const reserveSlot = jest.fn();
   const enqueue = jest.fn();
   const getExecutionPolicy = jest.fn();
+  const assertExecutionWorkload = jest.fn().mockResolvedValue(undefined);
+  class MockExecutionWorkloadError extends Error {
+    constructor(message: string, readonly status: 400 | 402 | 503 = 400, readonly inFlightOnly = false) { super(message); }
+  }
   const expire = jest.fn();
   const persist = jest.fn();
   const flowAddBulk = jest.fn();
@@ -137,7 +141,8 @@ describe("queue location refresh", () => {
     }));
     jest.doMock("./execution/execution-policy", () => ({
       getExecutionPolicy,
-      assertExecutionWorkload: jest.fn().mockResolvedValue(undefined),
+      assertExecutionWorkload,
+      ExecutionWorkloadError: MockExecutionWorkloadError,
     }));
     jest.doMock("./worker-registry", () => ({ getActiveWorkerQueueNames }));
     queueModule = await import("./queue");
@@ -148,6 +153,36 @@ describe("queue location refresh", () => {
     jest.useRealTimers();
     jest.restoreAllMocks();
     Reflect.deleteProperty(globalThis, "__SUPERCHECK_QUEUE_SINGLETON__");
+  });
+
+  it.each(["addTestToQueue", "addJobToQueue", "addK6TestToQueue", "addK6JobToQueue"] as const)("%s queues a trial run whose allowance is only held by in-flight runs", async (producer) => {
+    reserveSlot.mockResolvedValue(2);
+    getExecutionPolicy.mockResolvedValue({ tier: "trial", priority: 1, runningCapacity: 1, queuedCapacity: 5 });
+    getActiveWorkerQueueNames.mockResolvedValue(new Set(["k6-eu-central"]));
+    assertExecutionWorkload.mockRejectedValueOnce(new MockExecutionWorkloadError("Trial load-testing allowance exhausted", 402, true));
+    const task = { runId: "run", testId: "test", jobId: "job", organizationId: "org", projectId: "project", location: "eu-central", code: "code", script: "code", tests: [{ id: "test", script: "code" }], testScripts: [{ id: "test", script: "code" }] };
+    await expect(queueModule[producer](task)).resolves.toMatchObject({ status: "queued" });
+    expect(reserveSlot).toHaveBeenCalled();
+    expect(assertExecutionWorkload).toHaveBeenCalledWith("org", expect.objectContaining({ tier: "trial" }), producer.startsWith("addK6") ? "k6" : "playwright");
+  });
+
+  it("hands an in-flight-only shortfall to the worker when a running slot is free; worker admission defers it", async () => {
+    reserveSlot.mockResolvedValue(1);
+    getExecutionPolicy.mockResolvedValue({ tier: "trial", priority: 1, runningCapacity: 1, queuedCapacity: 5 });
+    getActiveWorkerQueueNames.mockResolvedValue(new Set(["k6-eu-central"]));
+    assertExecutionWorkload.mockRejectedValueOnce(new MockExecutionWorkloadError("Trial load-testing allowance exhausted", 402, true));
+    await expect(queueModule.addK6TestToQueue({ runId: "run", testId: "test", organizationId: "org", projectId: "project", location: "eu-central", script: "code", tests: [] }))
+      .resolves.toMatchObject({ status: "running" });
+    expect(enqueue).toHaveBeenCalled();
+  });
+
+  it.each(["addTestToQueue", "addJobToQueue", "addK6TestToQueue", "addK6JobToQueue"] as const)("%s still rejects an exhausted trial allowance", async (producer) => {
+    getExecutionPolicy.mockResolvedValue({ tier: "trial", priority: 1, runningCapacity: 1, queuedCapacity: 5 });
+    getActiveWorkerQueueNames.mockResolvedValue(new Set(["k6-eu-central"]));
+    assertExecutionWorkload.mockRejectedValueOnce(new MockExecutionWorkloadError("Trial load-testing allowance exhausted", 402, false));
+    const task = { runId: "run", testId: "test", jobId: "job", organizationId: "org", projectId: "project", location: "eu-central", code: "code", script: "code", tests: [{ id: "test", script: "code" }], testScripts: [{ id: "test", script: "code" }] };
+    await expect(queueModule[producer](task)).rejects.toMatchObject({ status: 402 });
+    expect(reserveSlot).not.toHaveBeenCalled();
   });
 
   it.each(["addTestToQueue", "addJobToQueue", "addK6TestToQueue", "addK6JobToQueue"] as const)("%s stamps authoritative tier and priority after caller input", async (producer) => {
