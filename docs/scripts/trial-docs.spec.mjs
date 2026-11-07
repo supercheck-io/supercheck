@@ -19,7 +19,7 @@ test('the docs pricing page takes its trial text from the shared plan catalog', 
 });
 
 test('every placeholder in the trial FAQs names a trial limit', () => {
-  const known = new Set([...Object.keys(catalog.trial.limits), 'durationDays', 'k6MaxDurationMinutes']);
+  const known = new Set([...Object.keys(catalog.trial.limits), 'durationDays']);
   assert.ok(catalog.trial.faqs.length >= 3);
   for (const { answer } of catalog.trial.faqs) {
     for (const [, name] of answer.matchAll(/\{(\w+)\}/g)) assert.ok(known.has(name), `unknown placeholder {${name}}`);

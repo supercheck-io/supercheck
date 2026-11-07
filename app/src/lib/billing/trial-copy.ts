@@ -1,14 +1,13 @@
 import catalog from "./plan-catalog.json";
 
 type TrialLimits = typeof catalog.trial.limits;
-type TrialValues = TrialLimits & { durationDays: number; k6MaxDurationMinutes: number };
+type TrialValues = TrialLimits & { durationDays: number };
 
 /** The numbers trial copy may mention, taken from the plan catalog so the text can never disagree with the limits. */
 export function trialValues(source: typeof catalog.trial = catalog.trial): TrialValues {
   return {
     ...source.limits,
     durationDays: source.durationDays,
-    k6MaxDurationMinutes: source.limits.k6MaxDurationSeconds / 60,
   };
 }
 
@@ -32,7 +31,7 @@ export function trialHighlights(values: TrialValues = trialValues()): string[] {
     `${values.maxMonitors} monitors, checked at most every ${values.minCheckIntervalMinutes} minutes`,
     `${values.maxStatusPages} status pages with up to ${values.maxStatusPageSubscribers} subscribers each`,
     `${values.playwrightMinutes} browser minutes for Playwright tests and synthetic monitors`,
-    `k6 load tests of up to ${values.k6MaxVus} virtual users for ${values.k6MaxDurationMinutes} minutes per run (${values.k6VuMinutes} virtual-user minutes in total)`,
+    `k6 load tests of up to ${values.k6MaxVus} virtual users per run (${values.k6VuMinutes} virtual-user minutes in total)`,
     `${values.sreInvestigations} AI SRE investigations and ${values.aiCredits} AI credits`,
     `${values.maxTeamMembers} team members and ${values.maxProjects} projects`,
   ];

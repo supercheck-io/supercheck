@@ -105,13 +105,13 @@ async function freshTrialRemaining(organizationId: string) {
 }
 
 /**
- * Trials run the same Playwright workloads as paid plans, and k6 trials keep
- * their generated HTTP workload so the VU-ms allowance can be metered exactly.
- * Neither path asks for domain ownership: the cluster egress policy remains the
- * network boundary.
+ * Trials run the same Playwright and k6 scripts as paid plans. They are bounded
+ * only by their remaining browser time and VU-minutes (the worker sizes and
+ * meters each run) and by their concurrency. Neither path asks for domain
+ * ownership: the cluster egress policy remains the network boundary.
  */
 export async function assertExecutionWorkload(
-  organizationId: string, policy: ExecutionPolicy, kind: "playwright" | "k6", scripts: string[],
+  organizationId: string, policy: ExecutionPolicy, kind: "playwright" | "k6",
 ): Promise<void> {
   if (policy.tier !== "trial") return;
   const remaining = await freshTrialRemaining(organizationId);
@@ -121,16 +121,7 @@ export async function assertExecutionWorkload(
     }
     return;
   }
-  const { parseTrialK6Workload } = await import("./trial-k6-workload");
-  if (scripts.length !== 1) throw new ExecutionWorkloadError("Trials accept one generated HTTP workload per run");
-  let workload;
-  try { workload = parseTrialK6Workload(scripts[0]); }
-  catch (error) { throw new ExecutionWorkloadError(error instanceof Error ? error.message : "Invalid trial HTTP workload"); }
-  if (workload.vus > policy.k6MaxVus || workload.durationSeconds * 1000 > policy.expiresAt.getTime() - Date.now()) {
-    throw new ExecutionWorkloadError("HTTP workload exceeds the trial VU or remaining duration limit");
-  }
-  const needed = workload.vus * workload.durationSeconds * 1000;
-  if (needed > remaining.k6RemainingVuMs) {
-    throw new ExecutionWorkloadError("Trial load-testing allowance exhausted", 402, needed <= remaining.k6RemainingVuMs + remaining.k6HeldVuMs);
+  if (remaining.k6RemainingVuMs <= 0) {
+    throw new ExecutionWorkloadError("Trial load-testing allowance exhausted", 402, remaining.k6RemainingVuMs + remaining.k6HeldVuMs > 0);
   }
 }

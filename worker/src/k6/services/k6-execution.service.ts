@@ -1,18 +1,8 @@
-import { isIP } from 'node:net';
 import {
   ExecutionAdmissionService,
-  ExecutionCapacityError,
   type ExecutionReservation,
   LIMITED_RUN_OVERHEAD_MS,
 } from '../../execution/services/execution-admission.service';
-import {
-  parseTrialK6Workload,
-  createTrialK6Script,
-} from '../../common/security/trial-k6-workload';
-import {
-  TargetDnsUnavailableError,
-  resolvePublicTargetAddresses,
-} from '../../common/security/execution-target-domain';
 import {
   attachBillableMs,
   getBillableMs,
@@ -305,49 +295,20 @@ export class K6ExecutionService {
       timeoutMs,
       async (reservation) => {
         if (reservation?.limited) {
-          const workload = parseTrialK6Workload(task.script);
-          if (workload.vus > (reservation.k6MaxVus ?? 0))
-            throw new Error('HTTP workload exceeds the VU allowance');
-          if (workload.durationSeconds * 1000 > reservation.reservedMs)
-            throw new Error(
-              'HTTP workload duration exceeds entitlement expiry',
-            );
-          const hostname = new URL(workload.url).hostname;
-          let addresses: string[];
-          try {
-            addresses = await resolvePublicTargetAddresses(hostname);
-          } catch (error) {
-            if (error instanceof TargetDnsUnavailableError)
-              throw new ExecutionCapacityError(
-                'DNS lookup is temporarily unavailable',
-              );
-            throw error;
-          }
-          const address =
-            addresses.find((ip) => isIP(ip) === 4) ?? addresses[0];
-          if (!address) throw new Error('HTTP workload domain did not resolve');
-          if (
-            reservation.expiresAt &&
-            Date.now() + workload.durationSeconds * 1000 >
-              reservation.expiresAt.getTime()
-          )
-            throw new Error(
-              'HTTP workload duration exceeds entitlement expiry',
-            );
+          // A limited run is reserved at its VU cap for as long as its remaining VU-minutes allow,
+          // and is charged for the VUs it actually allocated.
+          const maxVus = reservation.k6MaxVus ?? 0;
           await this.admissionService.setK6Workload(
             reservation,
-            workload.vus,
-            workload.durationSeconds * 1000,
+            maxVus,
+            reservation.reservedMs,
           );
-          task = {
-            ...task,
-            script: createTrialK6Script(workload, { [hostname]: address }),
-            files: {},
-          };
-          reservation = {
-            ...reservation,
-            reservedMs: workload.durationSeconds * 1000,
-          };
+          const result = await this.runK6TestReserved(task, reservation);
+          reservation.vus = Math.min(
+            maxVus,
+            result.billingVirtualUsers ?? maxVus,
+          );
+          return result;
         }
         return this.runK6TestReserved(task, reservation);
       },
@@ -358,20 +319,15 @@ export class K6ExecutionService {
     task: K6ExecutionTask,
     reservation?: ExecutionReservation,
   ): Promise<K6ExecutionResult> {
-    if (reservation?.limited)
-      task = { ...task, variables: {}, secrets: {}, files: {} };
-    else {
-      const resolved =
-        await this.variableResolverService.resolveProjectVariables(
-          task.projectId,
-        );
-      task = {
-        ...task,
-        variables: resolved.variables,
-        secrets: resolved.secrets,
-        files: resolved.files,
-      };
-    }
+    const resolved = await this.variableResolverService.resolveProjectVariables(
+      task.projectId,
+    );
+    task = {
+      ...task,
+      variables: resolved.variables,
+      secrets: resolved.secrets,
+      files: resolved.files,
+    };
     const { runId, testId: _testId, script, location } = task;
     const runtimeVariables = task.variables ?? {};
     const runtimeSecrets = task.secrets ?? {};
@@ -517,6 +473,7 @@ export class K6ExecutionService {
               ? reservation.reservedMs + LIMITED_RUN_OVERHEAD_MS
               : undefined,
             reservation?.expiresAt?.getTime(),
+            reservation?.limited ? reservation.k6MaxVus : undefined,
           );
         } finally {
           if (this.useDashboardPortPool) {
@@ -929,6 +886,7 @@ export class K6ExecutionService {
     additionalFiles?: Record<string, string>,
     hardDeadlineMs?: number,
     expiresAtMs?: number,
+    maxVus?: number,
   ): Promise<{
     exitCode: number;
     stdout: string;
@@ -941,6 +899,7 @@ export class K6ExecutionService {
   }> {
     const _startTime = Date.now();
     const allocation = createK6AllocationTracker();
+    let overVuCap = false;
     let observedBillableMs = 0;
     this.logger.log(`[${runId}] Executing in container: k6 ${args.join(' ')}`);
     this.logger.debug(
@@ -1071,6 +1030,17 @@ export class K6ExecutionService {
             image: this.k6DockerImage, // Use K6-specific Docker image
             onStdoutChunk: (chunk) => {
               allocation.write(chunk);
+              if (
+                maxVus !== undefined &&
+                !overVuCap &&
+                (allocation.value() ?? 0) > maxVus
+              ) {
+                overVuCap = true;
+                this.logger.warn(
+                  `[${runId}] k6 allocated more than ${maxVus} VUs; stopping the run`,
+                );
+                this.containerExecutorService.abortRun(runId);
+              }
               return consoleStream.write(chunk);
             },
           },
@@ -1092,10 +1062,9 @@ export class K6ExecutionService {
         containerResult.stderr,
         runtimeSecrets,
       );
-      const redactedError = this.redactSecretsFromText(
-        containerResult.error,
-        runtimeSecrets,
-      );
+      const redactedError = overVuCap
+        ? `Trial load tests are limited to ${maxVus} virtual users`
+        : this.redactSecretsFromText(containerResult.error, runtimeSecrets);
 
       // Persist stdout + stderr to console.log so it can be fetched/archived later
       try {

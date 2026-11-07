@@ -980,7 +980,7 @@ export async function addTestToQueue(task: TestExecutionTask): Promise<{
   const orgId = task.organizationId || "global";
   const queuedAt = Date.now();
   const policy = await getExecutionPolicy(orgId);
-  await assertExecutionWorkload(orgId, policy, "playwright", [task.code]);
+  await assertExecutionWorkload(orgId, policy, "playwright");
   const safeTask = { ...omitExecutionSecrets(task), _executionTier: policy.tier };
 
   try {
@@ -1065,7 +1065,7 @@ export async function addJobToQueue(task: JobExecutionTask): Promise<{
   const orgId = task.organizationId || "global";
   const queuedAt = Date.now();
   const policy = await getExecutionPolicy(orgId);
-  await assertExecutionWorkload(orgId, policy, "playwright", task.testScripts.map(test => test.script));
+  await assertExecutionWorkload(orgId, policy, "playwright");
   const safeTask = { ...omitExecutionSecrets(task), _executionTier: policy.tier };
 
   try {
@@ -1150,7 +1150,7 @@ export async function addK6TestToQueue(
   const orgId = task.organizationId || "global";
   const queuedAt = Date.now();
   const policy = await getExecutionPolicy(orgId);
-  await assertExecutionWorkload(orgId, policy, "k6", task.tests?.length ? task.tests.map(test => test.script) : [task.script]);
+  await assertExecutionWorkload(orgId, policy, "k6");
   const safeTask = { ...omitExecutionSecrets(task), _executionTier: policy.tier };
 
   // Resolve the queue location: use caller-provided location, or fall back to DB default.
@@ -1248,7 +1248,7 @@ export async function addK6JobToQueue(
   const orgId = task.organizationId || "global";
   const queuedAt = Date.now();
   const policy = await getExecutionPolicy(orgId);
-  await assertExecutionWorkload(orgId, policy, "k6", task.tests?.length ? task.tests.map(test => test.script) : [task.script]);
+  await assertExecutionWorkload(orgId, policy, "k6");
   const safeTask = { ...omitExecutionSecrets(task), _executionTier: policy.tier };
 
   // Respect the caller-provided location (already validated by resolveProjectK6Location);

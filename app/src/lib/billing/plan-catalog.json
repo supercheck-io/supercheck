@@ -67,7 +67,6 @@
       "runningCapacity": 1,
       "queuedCapacity": 5,
       "k6MaxVus": 5,
-      "k6MaxDurationSeconds": 300,
       "k6VuMinutes": 150,
       "maxMonitors": 5,
       "minCheckIntervalMinutes": 5,
@@ -81,11 +80,11 @@
     "faqs": [
       {
         "question": "Is there a free trial?",
-        "answer": "Yes. Eligible new Cloud accounts get one {durationDays}-day free trial of most of the product, with no card required. It includes {maxMonitors} monitors checked at most every {minCheckIntervalMinutes} minutes, {maxStatusPages} status pages with up to {maxStatusPageSubscribers} subscribers each, {playwrightMinutes} browser minutes in total for Playwright tests and synthetic monitors, k6 load tests of up to {k6MaxVus} virtual users for {k6MaxDurationMinutes} minutes per run ({k6VuMinutes} virtual-user minutes in total), {sreInvestigations} AI SRE investigations, {aiCredits} AI credits, and {maxTeamMembers} team members and {maxProjects} projects. Custom domains are available on paid plans only. Choose Plus or Pro at any time to lift the limits."
+        "answer": "Yes. Eligible new Cloud accounts get one {durationDays}-day free trial of most of the product, with no card required. It includes {maxMonitors} monitors checked at most every {minCheckIntervalMinutes} minutes, {maxStatusPages} status pages with up to {maxStatusPageSubscribers} subscribers each, {playwrightMinutes} browser minutes in total for Playwright tests and synthetic monitors, k6 load tests of up to {k6MaxVus} virtual users per run ({k6VuMinutes} virtual-user minutes in total), {sreInvestigations} AI SRE investigations, {aiCredits} AI credits, and {maxTeamMembers} team members and {maxProjects} projects. Custom domains are available on paid plans only. Choose Plus or Pro at any time to lift the limits."
       },
       {
         "question": "What tests can I run during the trial?",
-        "answer": "You can run Playwright and API tests against public targets without registering a domain or setting up DNS verification. Trial k6 load tests use a generated HTTPS GET workload with up to {k6MaxVus} virtual users for {k6MaxDurationMinutes} minutes per run and {k6VuMinutes} virtual-user minutes across the whole trial. Arbitrary k6 scripts are available on paid plans."
+        "answer": "You can run Playwright, API, and k6 load tests against public targets without registering a domain or setting up DNS verification. k6 tests can use up to {k6MaxVus} virtual users per run and {k6VuMinutes} virtual-user minutes across the whole trial."
       },
       {
         "question": "What happens when the free trial ends?",

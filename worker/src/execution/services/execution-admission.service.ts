@@ -339,8 +339,8 @@ export class ExecutionAdmissionService implements OnApplicationShutdown {
   }
 
   /**
-   * Fixes the size of a limited load test once its workload is parsed and checks it against the
-   * remaining load-test allowance (VUs x time, minus what other active runs have reserved).
+   * Reserves a limited load test at its VU cap, shortening its duration to whatever the remaining
+   * load-test allowance covers (VUs x time, minus what other active runs have reserved).
    */
   async setK6Workload(
     reservation: ExecutionReservation,
@@ -382,7 +382,9 @@ export class ExecutionAdmissionService implements OnApplicationShutdown {
           entitlement.k6UsedVuMs -
           Number(others.reserved)
         : 0;
-      if (vus * durationMs > remaining)
+      durationMs =
+        Math.floor(Math.min(durationMs, remaining / vus) / 1000) * 1000;
+      if (!(vus > 0) || !(durationMs >= MIN_RESERVED_RUN_MS))
         throw new ExecutionEntitlementError(
           'Trial load-testing allowance is exhausted',
         );
@@ -485,7 +487,8 @@ export class ExecutionAdmissionService implements OnApplicationShutdown {
         reservation.limited,
         current.kind,
         chargedMs,
-        current.vus,
+        // The run may report the VUs it actually used; never charge more than it reserved.
+        Math.min(current.vus, reservation.vus ?? current.vus),
       );
       await tx
         .update(schema.executionReservations)
