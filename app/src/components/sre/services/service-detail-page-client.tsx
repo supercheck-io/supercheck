@@ -1,8 +1,8 @@
 "use client";
 
 import { ServiceDetailView } from "@/components/sre/services/service-detail-view";
+import { PageErrorState } from "@/components/shared/page-error-state";
 import { SupercheckLoading } from "@/components/shared/supercheck-loading";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useSreServiceDetail } from "@/hooks/use-sre";
 
 export function ServiceDetailPageClient({ serviceId }: { serviceId: string }) {
@@ -17,11 +17,9 @@ export function ServiceDetailPageClient({ serviceId }: { serviceId: string }) {
 
     return (
       <Unavailable
-        message={
-          query.error instanceof Error
-            ? query.error.message
-            : "Failed to load service"
-        }
+        message={query.error instanceof Error ? query.error.message : "Failed to load service"}
+        onRetry={() => void query.refetch()}
+        retrying={query.isFetching}
       />
     );
   }
@@ -29,15 +27,12 @@ export function ServiceDetailPageClient({ serviceId }: { serviceId: string }) {
   return query.data.success ? (
     <ServiceDetailView initialDetail={query.data.detail} />
   ) : (
-    <Unavailable message={query.data.error} />
+    <Unavailable message={query.data.error} onRetry={() => void query.refetch()} retrying={query.isFetching} />
   );
 }
 
-function Unavailable({ message }: { message: string }) {
+function Unavailable({ message, onRetry, retrying }: { message: string; onRetry: () => void; retrying: boolean }) {
   return (
-    <Alert variant="destructive">
-      <AlertTitle>Service unavailable</AlertTitle>
-      <AlertDescription>{message}</AlertDescription>
-    </Alert>
+    <PageErrorState noun="service" message={message} backHref="/services" backLabel="Back to services" onRetry={onRetry} retrying={retrying} />
   );
 }
