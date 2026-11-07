@@ -121,7 +121,9 @@ export async function assertExecutionWorkload(
     }
     return;
   }
-  if (remaining.k6RemainingVuMs <= 0) {
-    throw new ExecutionWorkloadError("Trial load-testing allowance exhausted", 402, remaining.k6RemainingVuMs + remaining.k6HeldVuMs > 0);
+  // Mirrors worker admission: a trial run needs at least 5 seconds at its VU cap.
+  const minimumVuMs = policy.k6MaxVus * 5_000;
+  if (remaining.k6RemainingVuMs < minimumVuMs) {
+    throw new ExecutionWorkloadError("Trial load-testing allowance exhausted", 402, remaining.k6RemainingVuMs + remaining.k6HeldVuMs >= minimumVuMs);
   }
 }

@@ -204,15 +204,18 @@ describe("trial workload admission", () => {
   };
   beforeEach(() => mockFresh({}));
   it("admits arbitrary trial k6 scripts while VU-minutes remain", async () => {
-    mockFresh({ k6UsedVuMs: trial.k6BudgetVuMs - 1 });
+    mockFresh({ k6UsedVuMs: trial.k6BudgetVuMs - 10_000 });
     await expect(assertExecutionWorkload("org", policy, "k6")).resolves.toBeUndefined();
   });
   it("refuses an exhausted browser quota", async () => {
     mockFresh({ playwrightUsedMs: trial.playwrightBudgetMs });
     await expect(assertExecutionWorkload("org", policy, "playwright")).rejects.toMatchObject({ status: 402 });
   });
-  it("refuses a load test once the VU-millisecond allowance is used up", async () => {
-    mockFresh({ k6UsedVuMs: trial.k6BudgetVuMs });
+  it("refuses a load test once less than a minimum run at the VU cap remains", async () => {
+    // policy.k6MaxVus is 2, so the minimum run is 10 000 VU-ms.
+    mockFresh({ k6UsedVuMs: trial.k6BudgetVuMs - 10_000 });
+    await expect(assertExecutionWorkload("org", policy, "k6")).resolves.toBeUndefined();
+    mockFresh({ k6UsedVuMs: trial.k6BudgetVuMs - 9_999 });
     await expect(assertExecutionWorkload("org", policy, "k6"))
       .rejects.toMatchObject({ status: 402, message: "Trial load-testing allowance exhausted" });
   });

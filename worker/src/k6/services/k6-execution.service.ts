@@ -6,6 +6,7 @@ import {
 import {
   attachBillableMs,
   getBillableMs,
+  getBillableVirtualUsers,
   createK6AllocationTracker,
 } from '../../common/billable-ms';
 import {
@@ -303,12 +304,20 @@ export class K6ExecutionService {
             maxVus,
             reservation.reservedMs,
           );
-          const result = await this.runK6TestReserved(task, reservation);
-          reservation.vus = Math.min(
-            maxVus,
-            result.billingVirtualUsers ?? maxVus,
-          );
-          return result;
+          const chargeVus = (observed: number | undefined) => {
+            reservation.vus = Math.max(
+              1,
+              Math.min(maxVus, observed ?? maxVus),
+            );
+          };
+          try {
+            const result = await this.runK6TestReserved(task, reservation);
+            chargeVus(result.billingVirtualUsers);
+            return result;
+          } catch (error) {
+            chargeVus(getBillableVirtualUsers(error));
+            throw error;
+          }
         }
         return this.runK6TestReserved(task, reservation);
       },
@@ -1105,7 +1114,8 @@ export class K6ExecutionService {
         exitCode,
         stdout,
         stderr,
-        cancelled: containerResult.cancelled,
+        // Stopped for going over the VU cap: a failed run, not a user cancellation.
+        cancelled: containerResult.cancelled && !overVuCap,
         billableMs: containerResult.billableMs ?? 0,
         billingVirtualUsers: allocation.value(),
         error: redactedError || null,

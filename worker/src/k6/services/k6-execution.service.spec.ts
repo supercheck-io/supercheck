@@ -16,6 +16,7 @@ import { ExecutionAdmissionService } from '../../execution/services/execution-ad
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import {
+  attachBillableMs,
   createK6AllocationTracker,
   getBillableMs,
   getBillableVirtualUsers,
@@ -295,6 +296,17 @@ describe('K6ExecutionService', () => {
       await service.runK6Test(mockTask);
       expect(reservation.vus).toBe(5);
     });
+    it('charges the observed VUs when the run fails after starting', async () => {
+      jest
+        .spyOn(service, 'runK6TestReserved' as never)
+        .mockRejectedValueOnce(
+          attachBillableMs(new Error('upload failed'), 1000, 2) as never,
+        );
+      await expect(service.runK6Test(mockTask)).rejects.toThrow(
+        'upload failed',
+      );
+      expect(reservation.vus).toBe(2);
+    });
     it('does not execute when no load-test allowance remains', async () => {
       mockAdmissionService.setK6Workload.mockRejectedValueOnce(
         new Error('Trial load-testing allowance is exhausted'),
@@ -389,6 +401,7 @@ describe('K6ExecutionService', () => {
       );
       expect(abortRun).toHaveBeenCalledTimes(1);
       expect(abortRun).toHaveBeenCalledWith('run-cap');
+      expect(result.cancelled).toBe(false);
       expect(result.error).toBe(
         'Trial load tests are limited to 5 virtual users',
       );
