@@ -10,7 +10,7 @@ import {
 describe("execution API responses", () => {
   it("preserves actionable workload and quota rejection responses", async () => {
     const invalid = buildExecutionQueueErrorResponse(
-      new ExecutionWorkloadError("Generated HTTP workload required"),
+      new ExecutionWorkloadError("Invalid workload"),
     );
     const quota = buildExecutionQueueErrorResponse(
       new ExecutionWorkloadError("Trial quota exhausted", 402),
@@ -18,7 +18,7 @@ describe("execution API responses", () => {
     expect(invalid?.status).toBe(400);
     expect(quota?.status).toBe(402);
     await expect(invalid?.json()).resolves.toMatchObject({
-      error: "Generated HTTP workload required",
+      error: "Invalid workload",
     });
   });
   it("returns 429 only for a real rate-limit decision", async () => {

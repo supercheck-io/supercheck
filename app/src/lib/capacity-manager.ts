@@ -657,16 +657,7 @@ export class CapacityManager {
         return false;
       }
       const policy = await getExecutionPolicy(jobData.organizationId);
-      const scripts = jobData.type === 'k6'
-        ? (Array.isArray(jobData.taskData.tests) && jobData.taskData.tests.length
-          ? jobData.taskData.tests.map((test: { script: string }) => test.script)
-          : [String(jobData.taskData.script ?? '')])
-        : jobData.type === 'playwright'
-          ? (Array.isArray(jobData.taskData.testScripts)
-            ? jobData.taskData.testScripts.map((test: { script: string }) => test.script)
-            : [String(jobData.taskData.code ?? '')])
-          : [];
-      await assertExecutionWorkload(jobData.organizationId, policy, jobData.type, scripts);
+      await assertExecutionWorkload(jobData.organizationId, policy, jobData.type);
       const result = await redis.eval(
         luaScript,
         3,

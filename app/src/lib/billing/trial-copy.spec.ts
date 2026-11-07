@@ -13,7 +13,7 @@ describe("trial copy", () => {
     expect(first).not.toContain("Every new Cloud organization");
     expect(first).toContain(`${limits.playwrightMinutes} browser minutes`);
     expect(first).toContain(`${limits.k6VuMinutes} virtual-user minutes`);
-    expect(first).toContain(`${limits.k6MaxDurationSeconds / 60} minutes per run`);
+    expect(first).toContain(`${limits.k6MaxVus} virtual users per run`);
   });
 
   it("refuses a placeholder that does not exist instead of printing a blank", () => {

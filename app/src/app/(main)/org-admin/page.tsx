@@ -44,7 +44,6 @@ import { ProjectLocationsDialog } from "@/components/org-admin/project-locations
 import { ProjectIncidentPolicyDialog } from "@/components/org-admin/project-incident-policy-dialog";
 import { SubscriptionTab } from "@/components/org-admin/subscription-tab";
 import { DeleteOrganizationButton } from "@/components/org-admin/delete-organization-button";
-import { TrialLoadTesting } from "@/components/org-admin/trial-load-testing";
 import { MemberAccessDialog } from "@/components/members/MemberAccessDialog";
 import { PrivateAgentsAdminView } from "@/components/sre/private-agents/private-agents-admin-view";
 import { ConnectorAdminView } from "@/components/sre/connectors/connector-admin-view";
@@ -1169,7 +1168,6 @@ function OrgAdminDashboardContent() {
               key={orgDetails?.id}
               currentUserRole={currentUserRole}
             />
-            <TrialLoadTesting canManage={userCanRenameOrg} />
           </TabsContent>
         )}
       </Tabs>
