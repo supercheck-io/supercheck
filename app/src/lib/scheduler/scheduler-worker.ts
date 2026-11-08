@@ -10,7 +10,7 @@
 
 import { Worker } from 'bullmq';
 import { getQueues, getRedisConnection, queueLogger } from '@/lib/queue';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db } from '@/utils/db';
 import { jobs } from '@/db/schema';
 import { processLegacyK6Tick } from './legacy-k6-tick';
@@ -25,8 +25,14 @@ import {
 const logger = queueLogger;
 
 // The database is the source of truth for a job's cron when a legacy tick disagrees with job-scheduler.
-async function loadJobCron(jobId: string): Promise<string | null> {
-  const [row] = await db.select({ cron: jobs.cronSchedule }).from(jobs).where(eq(jobs.id, jobId)).limit(1);
+// Scoped to the tick's own project and organization (every scheduled payload carries both).
+export async function loadJobCron(jobId: string, scope: { projectId?: string; organizationId?: string }): Promise<string | null> {
+  if (!jobId || !scope.projectId || !scope.organizationId) return null;
+  const [row] = await db
+    .select({ cron: jobs.cronSchedule })
+    .from(jobs)
+    .where(and(eq(jobs.id, jobId), eq(jobs.projectId, scope.projectId), eq(jobs.organizationId, scope.organizationId)))
+    .limit(1);
   return row?.cron ?? null;
 }
 

@@ -142,6 +142,48 @@ describe("QueueEvents", () => {
     expect(worker.close).toHaveBeenCalledTimes(1);
   });
 
+  it("fails, closes and does not cache a QueueEvents that never becomes ready", async () => {
+    jest.useFakeTimers();
+    try {
+      const service = new DataLifecycleService([config]);
+      await service.initialize(redis);
+      events.waitUntilReady.mockReturnValueOnce(new Promise(() => {}));
+      const pending = service.triggerManualCleanup("monitor_results");
+      const assertion = expect(pending).rejects.toThrow("not ready");
+      await jest.advanceTimersByTimeAsync(10_000);
+      await assertion;
+      expect(events.close).toHaveBeenCalledTimes(1);
+      expect(queue.add).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("a timed-out caller does not evict a fresh instance another caller cached meanwhile", async () => {
+    jest.useFakeTimers();
+    try {
+      QueueEventsCtor.mockImplementation(() => ({ ...events })); // a distinct instance per construction
+      const service = new DataLifecycleService([config]);
+      await service.initialize(redis);
+      events.waitUntilReady.mockReturnValueOnce(new Promise(() => {})).mockReturnValueOnce(new Promise(() => {}));
+      const a = expect(service.triggerManualCleanup("monitor_results")).rejects.toThrow("not ready");
+      await jest.advanceTimersByTimeAsync(5_000);
+      const b = expect(service.triggerManualCleanup("monitor_results")).rejects.toThrow("not ready");
+      await jest.advanceTimersByTimeAsync(5_000); // A times out and evicts the shared instance
+      queue.add.mockResolvedValue({ waitUntilFinished: jest.fn().mockResolvedValue({}) });
+      await service.triggerManualCleanup("monitor_results"); // C caches a fresh one
+      await jest.advanceTimersByTimeAsync(5_000); // B times out later
+      await a;
+      await b;
+      const created = QueueEventsCtor.mock.calls.length;
+      await service.triggerManualCleanup("monitor_results");
+      expect(QueueEventsCtor).toHaveBeenCalledTimes(created); // C's instance is still cached, not leaked
+    } finally {
+      jest.useRealTimers();
+      QueueEventsCtor.mockImplementation(() => events);
+    }
+  });
+
   it("shutdown without a manual run closes no QueueEvents, and manual cleanup is rejected afterwards", async () => {
     const service = new DataLifecycleService([config]);
     await service.initialize(redis);

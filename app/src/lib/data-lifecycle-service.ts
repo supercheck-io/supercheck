@@ -65,6 +65,8 @@ import { monitorAggregationService } from "./monitor-aggregation-service";
 import { endExpiredTrials, reconcilePaidTrialSuspensions, sendTrialReminders } from "@/lib/execution/trial-lifecycle";
 import { deliverTrialReminder } from "@/lib/execution/trial-reminder-delivery";
 
+const QUEUE_EVENTS_READY_TIMEOUT_MS = 10_000;
+
 // ============================================================================
 // TYPE DEFINITIONS
 // ============================================================================
@@ -2939,12 +2941,22 @@ export class DataLifecycleService {
       });
     }
     const events = this.cleanupQueueEvents;
+    let readyTimer: ReturnType<typeof setTimeout> | undefined;
     try {
-      await events.waitUntilReady();
+      // Bounded: a Redis that refuses new connections must fail this call, not hang it (and every later one).
+      await Promise.race([
+        events.waitUntilReady(),
+        new Promise<never>((_, reject) => {
+          readyTimer = setTimeout(() => reject(new Error("Cleanup QueueEvents not ready")), QUEUE_EVENTS_READY_TIMEOUT_MS);
+        }),
+      ]);
     } catch (error) {
-      this.cleanupQueueEvents = null; // do not cache a broken instance
+      // Do not cache a broken instance; a concurrent caller may already have cached a fresh one.
+      if (this.cleanupQueueEvents === events) this.cleanupQueueEvents = null;
       await events.close().catch(() => {});
       throw error;
+    } finally {
+      clearTimeout(readyTimer);
     }
 
     const job = await queue.add(
