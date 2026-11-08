@@ -747,23 +747,109 @@ export class MonitorService {
     )
       return;
 
-    const monitor = await this.getMonitorById(result.monitorId);
+    await this.evaluateLegacyGroup(
+      result.monitorId,
+      executionGroupId,
+      expectedLocations,
+    );
+  }
+
+  /**
+   * A queued scheduled check that went stale never ran, so its region leaves the group's expected set (like a
+   * region with no live worker) and the regions that did run are judged without it. A cycle shrinks its persisted
+   * set and wakes the control plane; the legacy path records the region in Redis and re-evaluates the group now,
+   * because the other regions may already have reported.
+   */
+  async dropStaleRegion(
+    monitorId: string,
+    executionGroupId: string,
+    location: string,
+    monitorCycle = false,
+    expectedLocations?: MonitoringLocation[],
+  ): Promise<void> {
+    const expected =
+      expectedLocations && Array.from(new Set(expectedLocations));
+    if (monitorCycle) {
+      // Row-locked like the closer, so concurrent drops of different regions cannot overwrite each other.
+      const outcome = await this.dbService.db.transaction(async (tx) => {
+        const [cycle] = await tx
+          .select({
+            monitorId: schema.monitorCycles.monitorId,
+            status: schema.monitorCycles.status,
+            expectedLocations: schema.monitorCycles.expectedLocations,
+          })
+          .from(schema.monitorCycles)
+          .where(eq(schema.monitorCycles.id, executionGroupId))
+          .limit(1)
+          .for('no key update');
+        if (!cycle) return 'absent' as const;
+        if (cycle.monitorId !== monitorId || cycle.status !== 'open')
+          return 'done' as const;
+        const remaining = cycle.expectedLocations.filter((l) => l !== location);
+        const now = new Date();
+        await tx
+          .update(schema.monitorCycles)
+          .set(
+            remaining.length === 0
+              ? { status: 'aborted', closedAt: now, notifiedAt: now }
+              : { expectedLocations: remaining },
+          )
+          .where(eq(schema.monitorCycles.id, executionGroupId));
+        return remaining.length === 0 ? ('done' as const) : ('shrunk' as const);
+      });
+      if (outcome === 'shrunk') {
+        // Wake the control plane: the remaining regions may already be complete.
+        await this.recordCycleArrival(executionGroupId, monitorId, location);
+      }
+      if (outcome !== 'absent') return;
+    }
+    const redis = this.redisService.getClient();
+    const key = `monitor:aggr:dropped:${executionGroupId}`;
+    // One transaction, so a crash between the two cannot leave the key without a TTL.
+    const replies = await redis
+      .multi()
+      .sadd(key, location)
+      .expire(key, 7 * 86400)
+      .exec();
+    // exec() resolves even when a queued command failed; surface it so the closure retry runs.
+    const failed = replies?.find(([error]) => error);
+    if (!replies || failed)
+      throw (
+        failed?.[0] ?? new Error('Dropped-region transaction was discarded')
+      );
+    await this.evaluateLegacyGroup(monitorId, executionGroupId, expected);
+  }
+
+  private async evaluateLegacyGroup(
+    monitorId: string,
+    executionGroupId: string,
+    expectedLocations?: MonitoringLocation[],
+  ): Promise<void> {
+    const monitor = await this.getMonitorById(monitorId);
     if (!monitor) {
       return;
     }
 
     const monitorConfig = monitor.config ?? null;
     const locationConfig = monitorConfig?.locationConfig ?? null;
-    const expected =
-      expectedLocations && expectedLocations.length > 0
-        ? expectedLocations
-        : this.locationService.getEffectiveLocations(locationConfig);
-
     const redis = this.redisService.getClient();
     const completedKey = `monitor:aggr:completed:${executionGroupId}`;
     const abortedKey = `monitor:aggr:aborted:${executionGroupId}`;
     if ((await redis.get(completedKey)) || (await redis.get(abortedKey)))
       return;
+    // Regions dropped as stale never ran, so they are not expected (like regions with no live worker).
+    const dropped = new Set(
+      await redis.smembers(`monitor:aggr:dropped:${executionGroupId}`),
+    );
+    const expected = (
+      expectedLocations && expectedLocations.length > 0
+        ? expectedLocations
+        : this.locationService.getEffectiveLocations(locationConfig)
+    ).filter((location) => !dropped.has(location));
+    if (expected.length === 0) {
+      await redis.set(abortedKey, '1', 'EX', 7 * 86400);
+      return;
+    }
 
     // Define the type for the rows we're selecting
     type MonitorResultRow = {
@@ -794,7 +880,7 @@ export class MonitorService {
       .from(schema.monitorResults)
       .where(
         and(
-          eq(schema.monitorResults.monitorId, result.monitorId),
+          eq(schema.monitorResults.monitorId, monitorId),
           eq(schema.monitorResults.executionGroupId, executionGroupId),
         ),
       )
@@ -820,7 +906,7 @@ export class MonitorService {
     }
 
     this.logger.log(
-      `All locations reported for monitor ${result.monitorId}. Aggregating results...`,
+      `All locations reported for monitor ${monitorId}. Aggregating results...`,
     );
 
     const aggregatedResults: MonitorExecutionResult[] = expected
@@ -849,16 +935,16 @@ export class MonitorService {
     }
 
     this.logger.log(
-      `Calling saveMonitorResults for monitor ${result.monitorId} with ${aggregatedResults.length} results`,
+      `Calling saveMonitorResults for monitor ${monitorId} with ${aggregatedResults.length} results`,
     );
-    await this.withAggregationLease(result.monitorId, async (assertOwned) => {
+    await this.withAggregationLease(monitorId, async (assertOwned) => {
       if ((await redis.get(completedKey)) || (await redis.get(abortedKey)))
         return;
       await assertOwned();
       await this.saveMonitorResults(aggregatedResults, {
         persisted: true,
         executionGroupId,
-        expectedLocations,
+        expectedLocations: dropped.size ? expected : expectedLocations,
       });
       await assertOwned();
       await redis
@@ -870,7 +956,7 @@ export class MonitorService {
         );
     });
     this.logger.log(
-      `Successfully aggregated and saved results for monitor ${result.monitorId}`,
+      `Successfully aggregated and saved results for monitor ${monitorId}`,
     );
   }
 

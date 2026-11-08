@@ -114,6 +114,60 @@ suite('MonitorCycleService (PostgreSQL)', () => {
     expect(sendNotification).not.toHaveBeenCalled();
   });
 
+  it.each([
+    [false, 'down'],
+    [true, 'up'],
+  ])(
+    'judges a cycle over the regions that ran when another went stale (eu up=%s)',
+    async (euUp, expected) => {
+      const id = `stale-${expected}`;
+      await openCycle(id, { locations: ['eu', 'us'], strategy: 'all' });
+      await report(id, 'eu', euUp);
+      const worker = Object.assign(Object.create(MonitorService.prototype), {
+        dbService: { db },
+        logger: { warn: jest.fn() },
+      }) as MonitorService;
+      await worker.dropStaleRegion(monitorId, id, 'us', true, ['eu', 'us']);
+      // Decided on arrival, well before the deadline, with no synthetic row for the stale region.
+      expect(await service.closeCycle(id, t0)).toBe('closed');
+      expect(await cycleRow(id)).toMatchObject({ resultStatus: expected });
+      expect(await results(id)).toHaveLength(1);
+    },
+  );
+
+  it('keeps every concurrent stale drop, so none returns to the expected set', async () => {
+    await openCycle('stale-concurrent', {
+      locations: ['eu', 'us', 'ap'],
+      strategy: 'all',
+    });
+    await report('stale-concurrent', 'ap', true);
+    const worker = Object.assign(Object.create(MonitorService.prototype), {
+      dbService: { db },
+      logger: { warn: jest.fn() },
+    }) as MonitorService;
+    await Promise.all(
+      ['eu', 'us'].map((region) =>
+        worker.dropStaleRegion(monitorId, 'stale-concurrent', region, true),
+      ),
+    );
+    expect((await cycleRow('stale-concurrent')).expectedLocations).toEqual([
+      'ap',
+    ]);
+    expect(await service.closeCycle('stale-concurrent', t0)).toBe('closed');
+    expect(await results('stale-concurrent')).toHaveLength(1);
+  });
+
+  it('aborts a cycle whose every region went stale', async () => {
+    await openCycle('stale-all', { locations: ['eu', 'us'] });
+    const worker = Object.assign(Object.create(MonitorService.prototype), {
+      dbService: { db },
+      logger: { warn: jest.fn() },
+    }) as MonitorService;
+    await worker.dropStaleRegion(monitorId, 'stale-all', 'eu', true);
+    await worker.dropStaleRegion(monitorId, 'stale-all', 'us', true);
+    expect(await cycleRow('stale-all')).toMatchObject({ status: 'aborted' });
+  });
+
   it('does not write synthetic Down rows for regions never enqueued (no live worker)', async () => {
     // The app snapshots only the enqueued regions, so the skipped third region is not expected.
     await openCycle('partial-skip', {

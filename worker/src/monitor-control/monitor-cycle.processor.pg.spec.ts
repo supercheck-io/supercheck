@@ -1,5 +1,6 @@
 /** Real-PostgreSQL tests for the polling processor. Skipped without MONITOR_CYCLE_TEST_DATABASE_URL. */
 
+import { MonitorService } from '../monitor/monitor.service';
 import postgres = require('postgres');
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { eq } from 'drizzle-orm';
@@ -80,6 +81,22 @@ suite('MonitorCycleProcessor (PostgreSQL)', () => {
         .from(schema.monitorCycles)
         .where(eq(schema.monitorCycles.id, id))
     )[0];
+
+  it('closes a cycle by arrival from a stale-drop hint, before the deadline', async () => {
+    await open('p-stale', 'all');
+    await report('p-stale', 'eu');
+    const worker = Object.assign(Object.create(MonitorService.prototype), {
+      dbService: { db },
+      logger: { warn: jest.fn() },
+    }) as MonitorService;
+    await worker.dropStaleRegion(monitorId, 'p-stale', 'us', true);
+    await processor.tick(new Date(t0.getTime() + 3000));
+    expect(await cycle('p-stale')).toMatchObject({
+      status: 'closed',
+      closedBy: 'arrival',
+      resultStatus: 'up',
+    });
+  });
 
   it('closes a decisive cycle from an arrival hint without waiting for the deadline, and notifies once', async () => {
     await open('p1', 'any');

@@ -536,7 +536,7 @@ const RECOVERABLE_TITLES = ["Monitor Failure", "Job Failed", "Job Timeout", "Mon
 // `_` and `%` are LIKE wildcards; alert types such as monitor_failure contain `_`.
 const likeLiteral = (value: string) => value.replace(/[\\%_]/g, "\\$&");
 
-const recoverableTrigger = () =>
+export const recoverableTrigger = () =>
   or(
     ...RECOVERABLE_ALERT_TYPES.map((type) => sql`${sreAlertEvents.dedupKey} like ${`%:${likeLiteral(type)}`}`),
     ...RECOVERABLE_TITLES.map((title) => sql`${sreAlertEvents.title} like ${`%: ${likeLiteral(title)}`}`),

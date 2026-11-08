@@ -11,9 +11,9 @@ import { Job } from 'bullmq';
 import crypto from 'crypto';
 import { db } from '@/utils/db';
 import { jobs, runs, projects } from '@/db/schema';
-import { eq, and, inArray, desc } from 'drizzle-orm';
+import { eq, and, gte, inArray, desc, sql } from 'drizzle-orm';
 import { validateK6Script } from '@/lib/k6-validator';
-import { addJobToQueue, addK6JobToQueue, JobExecutionTask, K6ExecutionTask, queueLogger } from '@/lib/queue';
+import { addJobToQueue, addK6JobToQueue, assertExecutionQueueReady, JobExecutionTask, K6ExecutionTask, queueLogger } from '@/lib/queue';
 import { prepareJobTestScripts } from '@/lib/job-execution-utils';
 import { getNextRunDate } from './cron-utils';
 import {
@@ -30,6 +30,40 @@ import { getSafeExecutionQueueErrorDetails } from '@/lib/execution-api-responses
 const logger = queueLogger;
 
 // A run queued this long never reached the worker; stop it blocking future ticks.
+
+// A redelivery follows within minutes; the bound keeps the lookup off a job's whole history.
+const TICK_LOOKUP_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+function tickRunCondition(jobId: string, tickKey: string) {
+  return and(
+    eq(runs.jobId, jobId),
+    gte(runs.createdAt, new Date(Date.now() - TICK_LOOKUP_WINDOW_MS)),
+    sql`${runs.metadata}->>'scheduleTickKey' = ${tickKey}`,
+  );
+}
+
+/**
+ * Inserts a tick's run once. BullMQ hands a tick to a second processor only after the first one's lock expired
+ * (stalled redelivery), but a processor that lost its lock keeps running, so two can overlap. A transaction-scoped
+ * advisory lock on the tick key makes check-and-insert atomic across them. Returns false if the tick has a run.
+ */
+async function insertTickRun(
+  values: typeof runs.$inferInsert,
+  jobId: string,
+  tickKey: string | null,
+): Promise<boolean> {
+  if (!tickKey) {
+    await db.insert(runs).values(values);
+    return true;
+  }
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${tickKey}, 0))`);
+    const [existing] = await tx.select({ id: runs.id }).from(runs).where(tickRunCondition(jobId, tickKey)).limit(1);
+    if (existing) return false;
+    await tx.insert(runs).values(values);
+    return true;
+  });
+}
 
 async function removeOrphanedSchedule(jobId: string, reason: string): Promise<void> {
   // Dynamic import: lib/job-scheduler imports this module.
@@ -134,6 +168,22 @@ export async function processScheduledJob(
       logger.error({ jobId, error }, 'Failed to update the next run date');
     }
 
+    // A tick redelivered after a crash (stalled lock) must not start a second run once the first has finished,
+    // when the active-run check below no longer sees it. A retry after a failure has a higher attemptsMade and
+    // is a new tick on purpose.
+    const tickKey = job.id ? `${job.id}:${job.attemptsMade ?? 0}` : null;
+    if (tickKey) {
+      const [existingTickRun] = await db
+        .select({ id: runs.id })
+        .from(runs)
+        .where(tickRunCondition(jobId, tickKey))
+        .limit(1);
+      if (existingTickRun) {
+        logger.warn({ jobId, tickKey, runId: existingTickRun.id }, 'Scheduled tick already has a run, skipping redelivered tick');
+        return { success: true };
+      }
+    }
+
     // Runs stuck in queued are recovered by the worker's stalled-run sweep, which can tell a lost run
     // from one still waiting in the organization's capacity queue.
     // A queued run already owns capacity/queue position and must also prevent
@@ -167,7 +217,7 @@ export async function processScheduledJob(
         return;
       }
       const now = new Date();
-      await db.insert(runs).values({
+      const inserted = await insertTickRun({
         id: runId,
         jobId,
         status: 'blocked',
@@ -176,9 +226,9 @@ export async function processScheduledJob(
         trigger: 'schedule',
         projectId,
         errorDetails: reason,
-        metadata: { jobType, executionEngine: isK6Job ? 'k6' : 'playwright', cronSchedule: jobRecord.cronSchedule },
-      });
-      insertedRunId = runId;
+        metadata: { jobType, executionEngine: isK6Job ? 'k6' : 'playwright', cronSchedule: jobRecord.cronSchedule, ...(tickKey ? { scheduleTickKey: tickKey } : {}) },
+      }, jobId, tickKey);
+      if (inserted) insertedRunId = runId;
     };
 
     // Scheduled executions must pass the same subscription and spending
@@ -229,7 +279,7 @@ export async function processScheduledJob(
         );
         // Leave a visible failed run so the skipped tick is not silent.
         const now = new Date();
-        await db.insert(runs).values({
+        await insertTickRun({
           id: runId,
           jobId,
           status: 'failed',
@@ -242,15 +292,20 @@ export async function processScheduledJob(
             jobType,
             executionEngine: isK6Job ? 'k6' : 'playwright',
             cronSchedule: jobRecord.cronSchedule,
+            ...(tickKey ? { scheduleTickKey: tickKey } : {}),
           },
-        });
+        }, jobId, tickKey);
         return { success: true };
       }
       throw error;
     }
 
+    // Before the run row exists: during an outage the tick fails without a run and BullMQ retries it (3 attempts, ~15s
+    // of backoff); a longer outage loses that cron run, as it did before.
+    await assertExecutionQueueReady();
+
     // Create run record with 'queued' status - capacity manager will update to 'running'
-    await db.insert(runs).values({
+    const created = await insertTickRun({
       id: runId,
       jobId: jobId,
       status: 'queued', // Start as queued - capacity manager handles promotion
@@ -263,9 +318,14 @@ export async function processScheduledJob(
         executionEngine: isK6Job ? 'k6' : 'playwright',
         // The schedule that fired this run; the live job schedule can change later.
         cronSchedule: jobRecord.cronSchedule,
+        ...(tickKey ? { scheduleTickKey: tickKey } : {}),
         ...(isK6Job ? { location: resolvedLocation } : {}),
       },
-    });
+    }, jobId, tickKey);
+    if (!created) {
+      logger.warn({ jobId, tickKey }, 'Scheduled tick already has a run, skipping the duplicate');
+      return { success: true };
+    }
 
     insertedRunId = runId;
     logger.info({ jobId, runId }, 'Created run record for scheduled job');
