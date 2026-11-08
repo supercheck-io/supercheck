@@ -26,11 +26,15 @@ import type * as k8s from '@kubernetes/client-node';
 import { PassThrough, Readable, Writable } from 'stream';
 import { finished } from 'stream/promises';
 import { CancellationService } from '../services/cancellation.service';
+import { stopIntake } from '../shutdown-intake';
 import {
   type ImagePullPolicy,
   isMutableImageReference,
   parseImagePullPolicyOverride,
 } from '../utils/image-reference';
+
+/** Recorded for a run whose execution Job the shutdown drain deleted. */
+export const WORKER_INTERRUPTED_ERROR = 'Interrupted by worker restart';
 
 export interface ContainerExecutionOptions {
   /**
@@ -263,6 +267,8 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
   private coreApi: k8s.CoreV1Api | null = null;
   private logClient: k8s.Log | null = null;
   private execClient: k8s.Exec | null = null;
+  // Runs whose Job the shutdown drain deleted; their pod disappearing is not a user cancellation.
+  private readonly shutdownDeletedRunIds = new Set<string>();
   private readonly runningJobs: Map<string, string> = new Map();
   private readonly uncertainExecutionChecks: Map<string, number> = new Map();
   /** Track pods that have already logged an exec failure at warn level to avoid log spam. */
@@ -440,16 +446,19 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleDestroy(): Promise<void> {
-    // This hook runs before the BullMQ workers close, so give in-flight runs a bounded
-    // window to finish before deleting the Jobs that are still alive. The window must stay
-    // below the orchestrator's grace period (Kubernetes terminationGracePeriodSeconds, default
-    // 30s; Compose stop_grace_period, 30s in the bundled files), or the process is SIGKILLed
-    // before the cleanup below runs. Raise that grace period before raising this value.
+    // Ordering: queue consumers stop fetching first (the drain below would otherwise be refilled
+    // by the next job), and they only close in onApplicationShutdown, after this drain.
+    await stopIntake();
+    // Give in-flight runs a bounded window to finish before deleting the Jobs that are still
+    // alive. The window must stay below the orchestrator's grace period (Kubernetes
+    // terminationGracePeriodSeconds, default 30s; Compose stop_grace_period, 30s in the bundled
+    // files), or the process is SIGKILLed before the cleanup below runs. Raise that grace period
+    // before raising this value; the cap covers a 60-minute run plus margin.
     const raw = process.env.WORKER_SHUTDOWN_DRAIN_MS?.trim();
     const configured = raw ? Number(raw) : NaN; // blank means the default
     const drainMs =
       Number.isFinite(configured) && configured >= 0
-        ? Math.min(configured, 600_000)
+        ? Math.min(configured, 3_900_000)
         : 20_000;
     // Monotonic clock: a wall-clock step must not stretch or cut the window.
     const drainDeadline = performance.now() + drainMs;
@@ -468,6 +477,8 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
         this.logger.warn(
           `Deleting orphaned execution job ${jobName} for ${runId}`,
         );
+        // Marked first so the run reads as interrupted by the restart, not cancelled by the user.
+        this.shutdownDeletedRunIds.add(runId);
         await this.deleteExecutionJob(jobName);
       },
     );
@@ -1057,7 +1068,12 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
         },
       );
       timedOut = outcome.timedOut;
-      killed = killed || outcome.cancelled;
+      const interrupted =
+        outcome.cancelled &&
+        !killed &&
+        !!options.runId &&
+        this.shutdownDeletedRunIds.has(options.runId);
+      killed = killed || (outcome.cancelled && !interrupted);
       if (
         outcome.exitCode === 0 &&
         options.extractFromContainer &&
@@ -1097,11 +1113,13 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
         cancelled: killed,
         error: timedOut
           ? `Execution timed out after ${limits.timeoutMs}ms`
-          : killed
-            ? 'Execution cancelled (exit code 137)'
-            : exitCode !== 0
-              ? outcome.message || `Process exited with code ${exitCode}`
-              : undefined,
+          : interrupted
+            ? WORKER_INTERRUPTED_ERROR
+            : killed
+              ? 'Execution cancelled (exit code 137)'
+              : exitCode !== 0
+                ? outcome.message || `Process exited with code ${exitCode}`
+                : undefined,
       };
     } catch (error) {
       return {
@@ -1124,6 +1142,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       }
       if (options.runId) {
         this.runningJobs.delete(options.runId);
+        this.shutdownDeletedRunIds.delete(options.runId);
       }
       if (podName) {
         this.execFailureLogged.delete(podName);

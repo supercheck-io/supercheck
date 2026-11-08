@@ -62,9 +62,10 @@ flowchart LR
 - Cancellation is idempotent: mark intent, stop queued work or signal active work, terminate the execution Job when necessary, persist one terminal state, and release capacity once.
 - Runs cancelled before any worker picks them up must still be finalized, and give-up paths (for example capacity-wait timeouts) must not overwrite an existing cancellation marker. Cancellation is asynchronous to API callers and E2E tests.
 - Capacity and unverifiable-execution give-up paths use `DbService.failRunUnlessCancelled`; its single guarded write prevents a late cancellation from being overwritten and preserves terminal results.
-- Let BullMQ retry eligible failures; do not swallow processor errors after marking an intermediate state.
-- Stalled-job policy is bounded and aligned with execution duration/lock settings.
-- Worker shutdown drains or safely relinquishes work and does not orphan Jobs or reservations.
+- Let BullMQ retry eligible failures; do not swallow processor errors after marking an intermediate state. Once an execution container has run, a post-run failure (report upload, result save) is `UnrecoverableError`: a retry would run the test against the customer's target again.
+- A busy pod throws `ExecutionCapacityError` before any reservation so the processor delays the job (`deferForCapacity`) without spending an attempt.
+- Stalled-job policy is bounded: queue workers use a 5-minute `lockDuration` (renewed while alive) so a crashed worker frees its run quickly, and the age-based stalled-run sweep stays above the 60-minute maximum run.
+- Worker shutdown stops queue intake, drains for `WORKER_SHUTDOWN_DRAIN_MS` (max 65 minutes), then deletes the remaining Jobs; those runs are recorded as errors ("Interrupted by worker restart"), never as user cancellations. Queue workers close only after the drain.
 
 ## Production sandbox
 

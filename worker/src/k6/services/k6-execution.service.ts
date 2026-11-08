@@ -1,5 +1,6 @@
 import {
   ExecutionAdmissionService,
+  ExecutionCapacityError,
   type ExecutionReservation,
   LIMITED_RUN_OVERHEAD_MS,
 } from '../../execution/services/execution-admission.service';
@@ -16,6 +17,7 @@ import {
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { execa } from 'execa';
+import { UnrecoverableError } from 'bullmq';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as crypto from 'crypto';
@@ -289,6 +291,8 @@ export class K6ExecutionService {
     const timeoutMs = task.jobId
       ? this.jobExecutionTimeoutMs
       : this.testExecutionTimeoutMs;
+    // Checked before the reservation too, so a second run on this pod defers without taking one.
+    this.assertK6Capacity();
     return this.admissionService.run(
       task.organizationId,
       task.runId,
@@ -321,6 +325,15 @@ export class K6ExecutionService {
     );
   }
 
+  /** The pod is busy: the queue processors delay the job without spending an attempt. */
+  private assertK6Capacity(): void {
+    if (this.activeK6Runs.size >= this.maxConcurrentK6Runs) {
+      throw new ExecutionCapacityError(
+        `Max concurrent k6 runs reached: ${this.maxConcurrentK6Runs}`,
+      );
+    }
+  }
+
   private async runK6TestReserved(
     task: K6ExecutionTask,
     reservation?: ExecutionReservation,
@@ -345,11 +358,7 @@ export class K6ExecutionService {
     const uniqueRunId = `${runId}-${crypto.randomUUID().substring(0, 8)}`;
 
     // Check concurrency and reserve a slot atomically to prevent race condition
-    if (this.activeK6Runs.size >= this.maxConcurrentK6Runs) {
-      throw new Error(
-        `Max concurrent k6 runs reached: ${this.maxConcurrentK6Runs}`,
-      );
-    }
+    this.assertK6Capacity();
 
     // Reserve slot before async setup to prevent other calls from bypassing the limit
     this.activeK6Runs.set(uniqueRunId, {
@@ -375,6 +384,7 @@ export class K6ExecutionService {
     const extractedReportsDir = createSafeTempPath(`k6-reports-${uniqueRunId}`);
 
     let finalResult: K6ExecutionResult;
+    let containerRan = false;
 
     try {
       // Ensure OS temp directory exists for extracted reports
@@ -515,6 +525,7 @@ export class K6ExecutionService {
       if (!execResult) {
         throw new Error(`[${runId}] k6 did not produce an execution result`);
       }
+      containerRan = true;
 
       execResult.stdout = this.redactSecretsFromText(
         execResult.stdout,
@@ -790,7 +801,16 @@ export class K6ExecutionService {
         error: getErrorMessage(error),
       };
 
-      throw attachBillableMs(error, totalBillableMs, billingVirtualUsers);
+      // After the container ran, a retry would run the test again against the customer's target.
+      throw attachBillableMs(
+        containerRan && !(error instanceof UnrecoverableError)
+          ? new UnrecoverableError(
+              `k6 finished but its results could not be saved: ${getErrorMessage(error)}`,
+            )
+          : error,
+        totalBillableMs,
+        billingVirtualUsers,
+      );
     } finally {
       this.activeK6Runs.delete(uniqueRunId);
 

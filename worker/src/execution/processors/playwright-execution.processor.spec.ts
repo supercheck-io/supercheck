@@ -976,6 +976,17 @@ describe('PlaywrightExecutionProcessor', () => {
   // WORKER EVENT TESTS
   // ==========================================================================
 
+  describe('Worker options', () => {
+    it('locks a job for five minutes so a crashed worker releases its run quickly', () => {
+      expect(
+        Reflect.getMetadata(
+          'bullmq:worker_metadata',
+          PlaywrightExecutionProcessor,
+        ),
+      ).toMatchObject({ lockDuration: 300_000 });
+    });
+  });
+
   describe('Worker Events', () => {
     describe('onFailed', () => {
       it('should log failed job', () => {

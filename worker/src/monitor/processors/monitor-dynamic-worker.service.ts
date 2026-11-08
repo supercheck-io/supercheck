@@ -23,6 +23,7 @@ import {
 import { HeartbeatService } from '../../common/heartbeat/heartbeat.service';
 import { DbService } from '../../db/db.service';
 import { ExecutionCapacityError } from '../../execution/services/execution-admission.service';
+import { registerIntakeStopper } from '../../common/shutdown-intake';
 import { deferForCapacity } from '../../common/capacity-deferral';
 import { getErrorMessage } from '../../common/validation';
 import { and, desc, eq, sql } from 'drizzle-orm';
@@ -77,6 +78,12 @@ export class MonitorDynamicWorkerService
   ) {}
 
   async onModuleInit(): Promise<void> {
+    registerIntakeStopper(() => {
+      this.shuttingDown = true;
+      return Promise.allSettled(
+        Array.from(this.workers.values()).map((w) => w.pause(true)),
+      );
+    });
     this.workerLocation = this.configService
       .get<string>('WORKER_LOCATION', 'local')
       .toLowerCase();

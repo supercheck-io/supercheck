@@ -35,6 +35,8 @@ import { consumesWorkerQueue } from '../../common/worker-queues';
 import { GlobalQueueCapabilityGuard } from '../../common/location/global-queue-guard';
 import type { ExecutionUsageTransaction } from '../services/execution-usage-receipts';
 import { captureJobFailure } from '../../common/sentry-reporter';
+import { registerIntakeStopper } from '../../common/shutdown-intake';
+import { TIMEOUTS } from '../../common/constants/timeouts.constants';
 
 /** The run executed but its result could not be saved; a BullMQ retry would re-run (and re-bill) it. */
 export class ResultNotPersistedError extends UnrecoverableError {}
@@ -44,7 +46,7 @@ const PERSIST_BACKOFF_MS = 250;
 
 @Processor(PLAYWRIGHT_QUEUE, {
   concurrency: 1,
-  lockDuration: 70 * 60 * 1000,
+  lockDuration: TIMEOUTS.QUEUE_LOCK_DURATION_MS,
   stalledInterval: 30000,
   maxStalledCount: 2,
   metrics: { maxDataPoints: 60 },
@@ -74,6 +76,10 @@ export class PlaywrightExecutionProcessor
   onApplicationBootstrap(): void {
     // Only the global consumer needs guarding; idle consumers never run.
     if (!consumesWorkerQueue('global-playwright')) return;
+    registerIntakeStopper(() => {
+      this.capabilityGuard?.stop(); // a resume after the pause would restart intake
+      return this.worker.pause(true);
+    });
     this.capabilityGuard = new GlobalQueueCapabilityGuard(
       () => this.worker,
       this.dbService,

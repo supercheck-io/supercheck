@@ -12,7 +12,11 @@ import * as secretStream from '../../common/utils/secret-stream';
  * - Dashboard Integration (port allocation, web dashboard)
  */
 
-import { ExecutionAdmissionService } from '../../execution/services/execution-admission.service';
+import {
+  ExecutionAdmissionService,
+  ExecutionCapacityError,
+} from '../../execution/services/execution-admission.service';
+import { UnrecoverableError } from 'bullmq';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import {
@@ -307,6 +311,21 @@ describe('K6ExecutionService', () => {
         'upload failed',
       );
       expect(reservation.vus).toBe(2);
+    });
+    it('defers a second run on a busy pod before reserving anything', async () => {
+      service['activeK6Runs'].set('other', {
+        pid: 0,
+        startTime: Date.now(),
+        runId: 'other-run',
+      });
+      await expect(service.runK6Test(mockTask)).rejects.toBeInstanceOf(
+        ExecutionCapacityError,
+      );
+      expect(mockAdmissionService.run).not.toHaveBeenCalled();
+      await expect(
+        service['runK6TestReserved'](mockTask),
+      ).rejects.toBeInstanceOf(ExecutionCapacityError);
+      expect(service['activeK6Runs'].size).toBe(1);
     });
     it('does not execute when no load-test allowance remains', async () => {
       mockAdmissionService.setK6Workload.mockRejectedValueOnce(
@@ -1276,6 +1295,9 @@ describe('K6ExecutionService', () => {
           const error = await execution.catch((error: unknown) => error);
           expect(getBillableMs(error)).toBe(61_000);
           expect(getBillableVirtualUsers(error)).toBe(10);
+          // The run executed, so BullMQ must not retry (and re-run k6 against the target).
+          expect(error).toBeInstanceOf(UnrecoverableError);
+          expect((error as Error).message).toContain('upload unavailable');
           return;
         }
         const result = await execution;

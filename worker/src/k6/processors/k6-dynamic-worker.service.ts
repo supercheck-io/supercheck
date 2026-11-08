@@ -2,6 +2,7 @@ import {
   Injectable,
   OnModuleInit,
   OnModuleDestroy,
+  OnApplicationShutdown,
   Logger,
   Inject,
   forwardRef,
@@ -19,6 +20,8 @@ import { HeartbeatService } from '../../common/heartbeat/heartbeat.service';
 import { DbService } from '../../db/db.service';
 import { sql } from 'drizzle-orm';
 import { captureJobFailure } from '../../common/sentry-reporter';
+import { registerIntakeStopper } from '../../common/shutdown-intake';
+import { TIMEOUTS } from '../../common/constants/timeouts.constants';
 
 /**
  * Dynamically creates BullMQ Workers for regional K6 queues.
@@ -31,7 +34,9 @@ import { captureJobFailure } from '../../common/sentry-reporter';
  * This service handles the regional queues (k6-{locationCode}).
  */
 @Injectable()
-export class K6DynamicWorkerService implements OnModuleInit, OnModuleDestroy {
+export class K6DynamicWorkerService
+  implements OnModuleInit, OnModuleDestroy, OnApplicationShutdown
+{
   private readonly logger = new Logger('K6DynamicWorkerService');
   private readonly workers = new Map<string, Worker>();
   private readonly activeQueueNames = new Set<string>();
@@ -51,6 +56,10 @@ export class K6DynamicWorkerService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   async onModuleInit(): Promise<void> {
+    registerIntakeStopper(() => {
+      this.shuttingDown = true;
+      return this.pauseWorkers();
+    });
     this.workerLocation = this.configService
       .get<string>('WORKER_LOCATION', 'local')
       .toLowerCase();
@@ -102,7 +111,11 @@ export class K6DynamicWorkerService implements OnModuleInit, OnModuleDestroy {
     }
 
     await this.refreshPromise;
+    await this.pauseWorkers();
+  }
 
+  /** Closing waits for the active run, so it happens after the executor's drain (onModuleDestroy of an imported module runs later than this one). */
+  async onApplicationShutdown(): Promise<void> {
     const closePromises = Array.from(this.workers.values()).map((w) =>
       w.close(),
     );
@@ -114,6 +127,12 @@ export class K6DynamicWorkerService implements OnModuleInit, OnModuleDestroy {
       await this.connection.quit().catch(() => {});
       this.connection = null;
     }
+  }
+
+  private async pauseWorkers(): Promise<void> {
+    await Promise.allSettled(
+      Array.from(this.workers.values()).map((w) => w.pause(true)),
+    );
   }
 
   /**
@@ -135,7 +154,7 @@ export class K6DynamicWorkerService implements OnModuleInit, OnModuleDestroy {
         // owns this shared command connection and closes it during shutdown.
         connection: this.connection,
         concurrency: 1,
-        lockDuration: 70 * 60 * 1000,
+        lockDuration: TIMEOUTS.QUEUE_LOCK_DURATION_MS,
         stalledInterval: 30000,
         maxStalledCount: 2,
         metrics: { maxDataPoints: 60 },

@@ -10,7 +10,7 @@ import {
   getFailedHttpRequestCount,
   K6ExecutionProcessor,
 } from './k6-execution.processor';
-import { Job, UnrecoverableError } from 'bullmq';
+import { DelayedError, Job, UnrecoverableError } from 'bullmq';
 import { attachBillableMs } from '../../common/billable-ms';
 import { clearLocationCapabilityCache } from '../../common/location/location-capability';
 import { CAPACITY_DEFERRAL_LIMIT } from '../../common/capacity-deferral';
@@ -410,6 +410,63 @@ describe('k6 container-start metering', () => {
     expect(set).not.toHaveBeenCalled();
     expect(runK6Test).not.toHaveBeenCalled();
     expect(usage.completeRunWithUsage).not.toHaveBeenCalled();
+  });
+
+  it('defers a run that finds the pod busy without consuming an attempt', async () => {
+    const runK6Test = jest
+      .fn()
+      .mockRejectedValue(new ExecutionCapacityError('busy'));
+    const { processor, usage } = build(runK6Test);
+    const queued = Object.assign(job(), {
+      opts: { attempts: 3 },
+      token: 'token',
+      updateData: jest.fn().mockResolvedValue(undefined),
+      moveToDelayed: jest.fn().mockResolvedValue(undefined),
+    });
+
+    await expect(processor.process(queued)).rejects.toBeInstanceOf(
+      DelayedError,
+    );
+
+    expect(queued.moveToDelayed).toHaveBeenCalledTimes(1);
+    expect(queued.updateData).toHaveBeenCalledWith(
+      expect.objectContaining({ _capacityDeferrals: 1 }),
+    );
+    expect(usage.completeRunWithUsage).not.toHaveBeenCalled();
+  });
+
+  it('does not retry (and re-run k6) when a finished run cannot be saved', async () => {
+    const runK6Test = jest.fn().mockResolvedValue({
+      success: true,
+      timedOut: false,
+      runId: 'run-id',
+      durationMs: 4000,
+      billableMs: 4000,
+      billingVirtualUsers: 1,
+      summary: {},
+      thresholdsPassed: true,
+      error: null,
+    });
+    const { processor, usage } = build(runK6Test);
+    usage.completeRunWithUsage.mockRejectedValueOnce(new Error('db down'));
+    const queued = Object.assign(job(), { opts: { attempts: 3 } });
+
+    const failure = processor.process(queued);
+
+    await expect(failure).rejects.toBeInstanceOf(UnrecoverableError);
+    await expect(failure).rejects.toThrow(/could not be saved.*db down/);
+    expect(runK6Test).toHaveBeenCalledTimes(1);
+    // The failure is still recorded for the run, with the container time that ran.
+    expect(usage.completeRunWithUsage).toHaveBeenLastCalledWith(
+      expect.objectContaining({ durationMs: 4000, runId: 'run-id' }),
+      expect.any(Function),
+    );
+  });
+
+  it('locks a job for five minutes so a crashed worker releases its run quickly', () => {
+    expect(
+      Reflect.getMetadata('bullmq:worker_metadata', K6ExecutionProcessor),
+    ).toMatchObject({ lockDuration: 300_000 });
   });
 
   it('creates no usage receipt when the run fails before any container started', async () => {

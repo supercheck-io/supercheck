@@ -37,6 +37,8 @@ import { consumesWorkerQueue } from '../../common/worker-queues';
 import { locationSupportsWorkload } from '../../common/location/location-capability';
 import { GlobalQueueCapabilityGuard } from '../../common/location/global-queue-guard';
 import { captureJobFailure } from '../../common/sentry-reporter';
+import { registerIntakeStopper } from '../../common/shutdown-intake';
+import { TIMEOUTS } from '../../common/constants/timeouts.constants';
 
 type K6Task = K6ExecutionTask;
 
@@ -142,6 +144,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
     let observedBillableMs = 0;
     let observedVirtualUsers: number | undefined;
     let usagePersisted = false;
+    let executed = false;
     const requestedLocation = job.data.location || this.workerLocation;
     const normalizedJobLocation = requestedLocation.toLowerCase();
     const jobLocationIsWildcard = this.isWildcardLocation(
@@ -307,6 +310,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
 
       // Execute k6
       const result = await this.k6ExecutionService.runK6Test(taskData);
+      executed = true;
       // Meter only container run time evidenced by Kubernetes.
       const billableMs = result.billableMs ?? 0;
       observedBillableMs = billableMs;
@@ -582,7 +586,14 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
           ? RUN_CANCELLATION_MARKER
           : (result.error ?? undefined),
       };
-    } catch (error) {
+    } catch (caught) {
+      // The run executed but its result is not saved; a retry would run k6 against the target again.
+      const error: unknown =
+        executed && !usagePersisted && !(caught instanceof UnrecoverableError)
+          ? new UnrecoverableError(
+              `k6 finished but its result could not be saved: ${getErrorMessage(caught)}`,
+            )
+          : caught;
       if (error instanceof ExecutionCapacityError) {
         return deferForCapacity(job, async (reason) => {
           // A run the user already cancelled ends as cancelled; the capacity failure must not replace that.
@@ -848,7 +859,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
 
 @Processor(K6_QUEUE, {
   concurrency: 1,
-  lockDuration: 70 * 60 * 1000,
+  lockDuration: TIMEOUTS.QUEUE_LOCK_DURATION_MS,
   stalledInterval: 30000,
   maxStalledCount: 2,
   metrics: { maxDataPoints: 60 },
@@ -886,6 +897,10 @@ export class K6ExecutionProcessor
   onApplicationBootstrap(): void {
     // k6-global has no location: the consuming worker's own location decides.
     if (!consumesWorkerQueue('global-k6')) return;
+    registerIntakeStopper(() => {
+      this.capabilityGuard?.stop(); // a resume after the pause would restart intake
+      return this.worker.pause(true);
+    });
     this.capabilityGuard = new GlobalQueueCapabilityGuard(
       () => this.worker,
       this.dbService,

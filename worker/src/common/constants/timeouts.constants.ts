@@ -21,10 +21,14 @@ export const TIMEOUTS = {
   TEMP_FILE_CLEANUP_AGE_MS: 7200000, // 2 hours
   STALE_EXECUTION_TIMEOUT_MS: 1800000, // 30 minutes
 
-  // Stalled job detection
+  // BullMQ lock for Playwright and k6 workers. The worker renews it every half period while alive,
+  // so a crashed worker releases its run (and the organization's capacity slot) within this window.
+  QUEUE_LOCK_DURATION_MS: 5 * 60 * 1000, // 5 minutes
+
+  // Stalled run detection (age-based, independent of lockDuration)
   STALLED_JOB_CHECK_INTERVAL_MS: 60000, // 1 minute - check for stalled jobs
   STALLED_JOB_BUFFER_MS: 10 * 60 * 1000, // 10 minutes - buffer before marking as stalled
-  STALLED_JOB_THRESHOLD_MS: 70 * 60 * 1000, // 70 minutes - matches lockDuration in queue config
+  STALLED_JOB_THRESHOLD_MS: 70 * 60 * 1000, // 70 minutes - above the 60 minute maximum run time
 
   // Session and authentication
   SESSION_MAX_AGE_MS: 86400000, // 24 hours

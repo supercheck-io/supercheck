@@ -9,7 +9,10 @@ import { S3Service } from './s3.service';
 import { DbService } from './db.service';
 import { RedisService } from './redis.service';
 import { ReportUploadService } from '../../common/services/report-upload.service';
-import { ContainerExecutorService } from '../../common/security/container-executor.service';
+import {
+  ContainerExecutorService,
+  WORKER_INTERRUPTED_ERROR,
+} from '../../common/security/container-executor.service';
 import {
   CancellationService,
   RUN_CANCELLATION_MARKER,
@@ -26,6 +29,7 @@ import {
   type ExecutionReservation,
   LIMITED_RUN_OVERHEAD_MS,
 } from './execution-admission.service';
+import { UnrecoverableError } from 'bullmq';
 import { attachBillableMs } from '../../common/billable-ms';
 import { VariableResolverService } from '../../common/services/variable-resolver.service';
 import {
@@ -482,6 +486,7 @@ export class ExecutionService implements OnModuleDestroy {
     let s3Url: string | null = null;
     // Container run time once the execution pod has actually started.
     let billableMs = 0;
+    let containerRan = false;
 
     // Create temp directory for extracted reports (OS-managed temp)
     const extractedReportsDir = path.join(
@@ -564,6 +569,7 @@ export class ExecutionService implements OnModuleDestroy {
       );
 
       billableMs = execResult.billableMs ?? 0;
+      containerRan = true;
       execResult.stdout = this.redactSecretsFromText(
         execResult.stdout,
         runtimeSecrets,
@@ -766,7 +772,13 @@ export class ExecutionService implements OnModuleDestroy {
       );
       // Propagate the error to the BullMQ processor so the job is marked as failed.
       // Carry container run time so metering charges only work that ran.
-      throw attachBillableMs(error, billableMs);
+      // After the container ran, a retry would run the test again against the customer's target.
+      throw attachBillableMs(
+        containerRan && !isCancellation
+          ? new UnrecoverableError(errorMessage)
+          : error,
+        billableMs,
+      );
     } finally {
       // Remove from active executions
       this.activeExecutions.delete(uniqueRunId);
@@ -1386,7 +1398,8 @@ export class ExecutionService implements OnModuleDestroy {
         if (
           execResult.error &&
           (execResult.error.includes('code 137') ||
-            execResult.error.includes('timed out'))
+            execResult.error.includes('timed out') ||
+            execResult.error === WORKER_INTERRUPTED_ERROR)
         ) {
           extractedError = execResult.error;
         } else if (
