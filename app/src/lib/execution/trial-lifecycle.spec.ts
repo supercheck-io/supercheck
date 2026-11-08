@@ -97,7 +97,8 @@ function build(fixture: Fixture) {
     update: jest.fn(() => ({
       set: jest.fn((values: Record<string, unknown>) => {
         updates.push({ table: "monitors", values });
-        return chain([]);
+        // The monitor is still paused when it is unscheduled.
+        return chain([{ id: "monitor" }]);
       }),
     })),
     transaction: jest.fn(async (callback: (tx: unknown) => unknown) =>

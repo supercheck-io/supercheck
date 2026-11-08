@@ -34,7 +34,7 @@ const trial = (overrides: Record<string, unknown> = {}) => ({
   k6MaxVus: TRIAL_LIMITS.k6MaxVus,
   playwrightBudgetMs: TRIAL_LIMITS.playwrightBudgetMs,
   playwrightUsedMs: 0,
-  k6BudgetVuMs: 9_000_000,
+  k6BudgetVuMs: 45_000_000,
   k6UsedVuMs: 0,
   trialStartedAt: new Date(0),
   maxMonitors: TRIAL_LIMITS.maxMonitors,
@@ -181,8 +181,8 @@ describe("trial access", () => {
         .mocked(db.select)
         .mockReturnValue({ from: jest.fn(() => ({ where })) } as never);
       await expect(service.getUsageSafe("org")).resolves.toEqual({
-        playwrightMinutes: { used: 7.5, included: 30, overage: 0 },
-        k6VuMinutes: { used: 51, included: 150, overage: 0 },
+        playwrightMinutes: { used: 7.5, included: 150, overage: 0 },
+        k6VuMinutes: { used: 51, included: 750, overage: 0 },
         aiCredits: { used: 12, included: 100, overage: 0 },
         sreInvestigations: { used: 2, included: 5, overage: 0 },
       });

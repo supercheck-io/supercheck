@@ -23,9 +23,19 @@ describe("trial copy", () => {
   it("lists the same limits in the highlights", () => {
     const text = trialHighlights().join(" | ");
     const v = trialValues();
-    for (const needle of [v.maxMonitors, v.maxStatusPages, v.playwrightMinutes, v.k6VuMinutes, v.sreInvestigations, v.aiCredits]) {
+    for (const needle of [v.maxMonitors, v.maxStatusPages, v.playwrightMinutes, v.k6VuMinutes, v.sreInvestigations, v.triageRuns, v.aiCredits]) {
       expect(text).toContain(String(needle));
     }
+  });
+
+  it("discloses the triage cap and the paid-only AI SRE chat", () => {
+    const first = trialFaqs()[0].answer;
+    expect(first).toContain(`${catalog.trial.limits.triageRuns} AI triage runs`);
+    expect(first).toContain("AI SRE chat and evidence briefs");
+  });
+
+  it("keeps the end-of-trial question last, so the subscribe page can drop only the offer questions", () => {
+    expect(trialFaqs().at(-1)?.question).toBe("What happens when the free trial ends?");
   });
 
   it("says what happens at the end of the trial", () => {

@@ -38,12 +38,12 @@ const pricing = {
   })),
   featureComparison: [],
   faqs: [
-    { question: "Is there a free trial?", answer: "Yes. Every new Cloud organization starts with a 14-day free trial." },
+    { question: "Is there a free trial?", answer: "Yes. Every new Cloud organization starts with a 30-day free trial." },
     { question: "Can I change plans?", answer: "The organization owner can change plans in Manage subscription." },
   ],
   trial: {
-    durationDays: 14,
-    highlights: ["5 monitors, checked at most every 5 minutes", "30 browser minutes for Playwright tests and synthetic monitors"],
+    durationDays: 30,
+    highlights: ["5 monitors, checked at most every 5 minutes", "150 browser minutes for Playwright tests and synthetic monitors"],
   },
 };
 
@@ -385,6 +385,7 @@ describe("signup plan selection", () => {
       await openPage();
       expect(screen.getByText("Free trial · 6 days left")).toBeVisible();
       expect(screen.getAllByText(/6 days left/)).toHaveLength(1);
+      pricing.faqs.forEach(({ question }) => expect(screen.getByText(question)).toBeInTheDocument());
       expect(screen.getByText("What your free trial includes")).toBeVisible();
       expect(screen.getByText("5 monitors, checked at most every 5 minutes")).toBeVisible();
       expect(screen.getByText(/Custom domains are on paid\s+plans/)).toBeVisible();
@@ -417,6 +418,15 @@ describe("signup plan selection", () => {
       expect(
         screen.queryByRole("link", { name: /Continue with your trial/ }),
       ).not.toBeInTheDocument();
+      expect(screen.queryByText("Is there a free trial?")).not.toBeInTheDocument();
+      expect(screen.getByText("Can I change plans?")).toBeInTheDocument();
+    });
+
+    it("does not offer a trial to an organization that has none", async () => {
+      (useQuery as jest.Mock).mockImplementation(() => subscriptionAccessFixture());
+      await openPage();
+      expect(screen.queryByText("Is there a free trial?")).not.toBeInTheDocument();
+      expect(screen.getByText("Can I change plans?")).toBeInTheDocument();
     });
 
     it("does not call a trial an ended subscription", async () => {

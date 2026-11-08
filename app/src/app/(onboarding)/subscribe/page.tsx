@@ -13,6 +13,8 @@ import { toast } from "sonner";
 import { TrialCard } from "@/components/billing/trial-card";
 import { PricingTierCard } from "@/components/billing/pricing-tier-card";
 import { PricingFaqs } from "@/components/billing/pricing-faqs";
+import { trialFaqs } from "@/lib/billing/trial-copy";
+
 import {
   RefreshCw,
   AlertCircle,
@@ -21,6 +23,9 @@ import {
   CreditCard,
   Mail,
 } from "lucide-react";
+
+// Every trial FAQ except the last one ("What happens when the free trial ends?") offers the trial.
+const TRIAL_OFFER_QUESTIONS = new Set(trialFaqs().slice(0, -1).map((faq) => faq.question));
 
 interface PricingPlan {
   id: string;
@@ -549,7 +554,15 @@ export default function SubscribePage() {
       )}
 
       {!hasBillingContext && pricingData?.faqs && pricingData.faqs.length > 0 && (
-        <PricingFaqs faqs={pricingData.faqs} />
+        <PricingFaqs
+          faqs={
+            // The trial is granted at organization setup, so the offer questions only apply while it runs;
+            // an ended or ineligible organization keeps just "what happens when it ends".
+            trialActive
+              ? pricingData.faqs
+              : pricingData.faqs.filter((faq) => !TRIAL_OFFER_QUESTIONS.has(faq.question))
+          }
+        />
       )}
 
       <footer className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 pb-4 text-xs text-muted-foreground">

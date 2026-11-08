@@ -133,6 +133,7 @@ describe("trial advertising on the pricing endpoint", () => {
     expect(body.trial).toBeUndefined();
     expect(body.faqs.map((faq) => faq.question).join("\n")).not.toMatch(/free trial/i);
     expect(body.faqs.length).toBeGreaterThan(0);
+    expect(body.faqs.map((faq) => faq.question)).toContain("Can I try Supercheck before subscribing?");
   });
 
   it("offers the trial and its questions once trials are enabled", async () => {
@@ -141,6 +142,8 @@ describe("trial advertising on the pricing endpoint", () => {
     expect(body.trial?.durationDays).toBeGreaterThan(0);
     expect(body.trial?.highlights.length).toBeGreaterThan(0);
     expect(body.faqs.map((faq) => faq.question)).toContain("Is there a free trial?");
+    // The trial answer already points to the demo, so the separate demo question is dropped.
+    expect(body.faqs.map((faq) => faq.question)).not.toContain("Can I try Supercheck before subscribing?");
   });
 });
 

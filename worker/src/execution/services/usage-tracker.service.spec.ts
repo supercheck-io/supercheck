@@ -4,6 +4,9 @@ import { PgDialect } from 'drizzle-orm/pg-core';
 import { organization } from '../../db/schema/organization';
 import { UsageTrackerService } from './usage-tracker.service';
 
+// Cloud sync requires an explicit Polar server; there is no default.
+process.env.POLAR_SERVER = 'sandbox';
+
 describe('UsageTrackerService ledger settlement', () => {
   const originalSelfHosted = process.env.SELF_HOSTED;
   const originalToken = process.env.POLAR_ACCESS_TOKEN;
@@ -297,6 +300,40 @@ describe('UsageTrackerService ledger settlement', () => {
         );
       } finally {
         global.fetch = originalFetch;
+      }
+    },
+  );
+
+  it.each([undefined, '', 'staging'])(
+    'does not call Polar and records a failed attempt when POLAR_SERVER is %j',
+    async (server) => {
+      const f = fixture();
+      f.database.query.organization.findFirst.mockResolvedValue({
+        polarCustomerId: 'polar-cust-1',
+      });
+      const settled = new Promise<string>((resolve) => {
+        f.database.execute.mockImplementation(async (query: SQL) => {
+          resolve(new PgDialect().sqlToQuery(query).sql);
+          return [];
+        });
+      });
+      const originalFetch = global.fetch;
+      const fetchMock = jest.fn();
+      global.fetch = fetchMock as never;
+      const original = process.env.POLAR_SERVER;
+      if (server === undefined) delete process.env.POLAR_SERVER;
+      else process.env.POLAR_SERVER = server;
+      try {
+        await f.service.trackPlaywrightExecution('org-1', 60000, {
+          runId: 'run-no-server',
+        });
+        expect(await settled).toContain(
+          'SET sync_attempts = sync_attempts + 1',
+        );
+        expect(fetchMock).not.toHaveBeenCalled();
+      } finally {
+        global.fetch = originalFetch;
+        process.env.POLAR_SERVER = original;
       }
     },
   );

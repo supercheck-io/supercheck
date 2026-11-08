@@ -1,0 +1,2 @@
+ALTER TABLE "execution_entitlements" ALTER COLUMN "playwright_budget_ms" SET DEFAULT 9000000;--> statement-breakpoint
+ALTER TABLE "execution_entitlements" ALTER COLUMN "k6_budget_vu_ms" SET DEFAULT 45000000;

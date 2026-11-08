@@ -39,8 +39,8 @@ const entitlement = (expiresAt: Date) => ({
 });
 
 describe("trial limits", () => {
-  it("defines a 14 day trial with abuse-bounded limits", () => {
-    expect(TRIAL_DURATION_DAYS).toBe(14);
+  it("defines a 30 day trial with abuse-bounded limits", () => {
+    expect(TRIAL_DURATION_DAYS).toBe(30);
     expect(TRIAL_LIMITS).toMatchObject({
       runningCapacity: 1,
       queuedCapacity: 5,
@@ -49,7 +49,7 @@ describe("trial limits", () => {
       maxStatusPages: 2,
       maxTeamMembers: 3,
     });
-    expect(TRIAL_LIMITS.playwrightBudgetMs).toBe(30 * 60 * 1000);
+    expect(TRIAL_LIMITS.playwrightBudgetMs).toBe(150 * 60 * 1000);
   });
 
   it.each([
@@ -68,7 +68,7 @@ describe("trial limits", () => {
   it("maps an entitlement to a never-billed plan view", () => {
     const plan = trialPlanLimits(entitlement(new Date(Date.now() + 1000)));
     expect(plan).toMatchObject({
-      playwrightMinutesIncluded: 30,
+      playwrightMinutesIncluded: 150,
       k6VuMinutesIncluded: 0,
       maxOrganizations: 1,
       customDomains: false,
@@ -189,28 +189,30 @@ describe("trial limits", () => {
       ).toBe(enabled);
     });
 
-    it("builds a 14 day entitlement with the trial limits", () => {
+    it("builds a 30 day entitlement with the trial limits", () => {
       const now = new Date("2026-11-01T00:00:00Z");
       expect(buildTrialEntitlement("org", now)).toEqual({
         organizationId: "org",
         trialStartedAt: now,
-        expiresAt: new Date("2026-11-15T00:00:00Z"),
+        expiresAt: new Date("2026-12-01T00:00:00Z"),
         ...TRIAL_LIMITS,
       });
     });
   });
 
   describe("consistency with the database defaults", () => {
-    // Column defaults live in 0037 and in the later migration that added the load-test allowance.
-    const migration = ["0037_execution_entitlements.sql", "0038_trial_load_test_budget.sql"]
+    // Column defaults are created in 0037 and 0038; 0065 raised the trial budgets. The last statement wins.
+    const migration = ["0037_execution_entitlements.sql", "0038_trial_load_test_budget.sql", "0065_trial_budget_defaults.sql"]
       .map((file) => readFileSync(resolve(__dirname, "../../db/migrations", file), "utf8"))
       .join("\n");
     const defaultOf = (column: string) => {
-      const match = migration.match(
-        new RegExp(`"${column}" (?:integer|bigint) NOT NULL DEFAULT (\\d+)`),
-      );
-      expect(match).not.toBeNull();
-      return Number(match![1]);
+      const matches = [
+        ...migration.matchAll(
+          new RegExp(`"${column}" (?:(?:integer|bigint) NOT NULL|SET) DEFAULT (\\d+)`, "g"),
+        ),
+      ];
+      expect(matches.length).toBeGreaterThan(0);
+      return Number(matches.at(-1)![1]);
     };
 
     it.each([

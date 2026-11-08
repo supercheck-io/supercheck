@@ -90,13 +90,18 @@ export const validatePolarConfig = (): void => {
     );
   }
 
-  // Validate server value
-  const server = process.env.POLAR_SERVER || "production";
-  if (!["production", "sandbox"].includes(server)) {
+  readPolarServer();
+};
+
+/** POLAR_SERVER must be set explicitly: a silent default could point sandbox deployments at live. */
+const readPolarServer = (): "production" | "sandbox" => {
+  const server = process.env.POLAR_SERVER;
+  if (server !== "production" && server !== "sandbox") {
     throw new Error(
-      `Invalid POLAR_SERVER value: "${server}". Must be "production" or "sandbox".`
+      `Invalid or missing POLAR_SERVER: "${server ?? ""}". Must be "production" or "sandbox".`
     );
   }
+  return server;
 };
 
 /**
@@ -121,9 +126,7 @@ export const getPolarConfig = (): {
 
   return {
     accessToken: process.env.POLAR_ACCESS_TOKEN!,
-    server: (process.env.POLAR_SERVER || "production") as
-      | "production"
-      | "sandbox",
+    server: readPolarServer(),
     webhookSecret,
   };
 };

@@ -55,9 +55,9 @@ function logError(message) {
  * - GitLab CI: 30-90 days depending on plan
  */
 const PLAN_LIMITS_SEED = [
-  // The trial entry describes execution_entitlements, not a purchasable plan row.
+  // Only the plus and pro entries are purchasable plan rows; trial and shared settings are not.
   ...Object.entries(catalog)
-    .filter(([plan]) => plan !== "trial")
+    .filter(([plan]) => plan === "plus" || plan === "pro")
     .map(([plan, details]) => ({ plan, ...details.limits })),
   {
     plan: "unlimited",

@@ -24,14 +24,14 @@ export const executionEntitlements = pgTable(
     k6MaxVus: integer("k6_max_vus").notNull().default(5),
     playwrightBudgetMs: bigint("playwright_budget_ms", { mode: "number" })
       .notNull()
-      .default(1800000),
+      .default(9000000),
     playwrightUsedMs: bigint("playwright_used_ms", { mode: "number" })
       .notNull()
       .default(0),
-    /** Load-test allowance in virtual-user milliseconds (VUs x run time); 9,000,000 = 150 VU-minutes. */
+    /** Load-test allowance in virtual-user milliseconds (VUs x run time); 45,000,000 = 750 VU-minutes. */
     k6BudgetVuMs: bigint("k6_budget_vu_ms", { mode: "number" })
       .notNull()
-      .default(9000000),
+      .default(45000000),
     k6UsedVuMs: bigint("k6_used_vu_ms", { mode: "number" })
       .notNull()
       .default(0),
