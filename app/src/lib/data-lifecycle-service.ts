@@ -3011,11 +3011,16 @@ export class DataLifecycleService {
     this.cleanupQueue = null;
     this.cleanupQueueEvents = null;
 
-    await Promise.allSettled([
+    const results = await Promise.allSettled([
       cleanupWorker?.close(),
       cleanupQueue?.close(),
       cleanupQueueEvents?.close(),
     ]);
+    for (const result of results) {
+      if (result.status === "rejected") {
+        console.error("[DataLifecycle] Shutdown close failed:", result.reason instanceof Error ? result.reason.message : result.reason);
+      }
+    }
   }
 }
 

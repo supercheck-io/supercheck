@@ -143,7 +143,7 @@ describe("Bull Board replica state", () => {
   it("still lists the status page and re-notify queues when the board is built before their schedulers start", async () => {
     (getStatusPageQueue as jest.Mock).mockReturnValue(undefined);
     (getIncidentRenotifyQueue as jest.Mock).mockReturnValue(undefined);
-    jest.requireMock("bullmq").Queue.mockImplementation((name: string) => ({ name }));
+    jest.requireMock("bullmq").Queue.mockImplementation((name: string) => ({ name, on: jest.fn() }));
     const { BullMQAdapter } = jest.requireMock("@bull-board/api/bullMQAdapter");
     await poll();
     const names = BullMQAdapter.mock.calls.map(([queue]: [{ name: string }]) => queue.name);

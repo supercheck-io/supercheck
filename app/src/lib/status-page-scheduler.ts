@@ -17,6 +17,7 @@ export async function initializeStatusPageScheduler() {
   if (worker) return;
   const redis = await getRedisConnection();
   queue = new Queue("status-page-jobs", { connection: redis });
+  queue.on("error", (error) => console.error("Status page queue error:", error.message));
   worker = new Worker(
     "status-page-jobs",
     async (job) => {

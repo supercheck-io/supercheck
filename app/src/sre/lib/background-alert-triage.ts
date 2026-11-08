@@ -101,6 +101,7 @@ export type SreBackgroundAlertTriageResult =
         | "already_triaged"
         | "triage_in_progress"
         | "triage_billing"
+        | "org_concurrency_limit"
         | "unsupported_source"
         | "incident_disabled"
         | "recovery_handled"
@@ -933,6 +934,12 @@ export async function processSreBackgroundAlertTriageJob(
     origin: "auto" as const,
   };
   const triage = await startSreIncidentTriage(triageInput);
+
+  if (!triage.success && triage.status === 409 && triage.reason === "org_concurrency_limit") {
+    // The organization's run cap clears as its other runs finish: the processor delays and retries this job.
+    logger.warn({ incidentId: incident.incidentId }, "Background triage deferred: organization run limit");
+    return { success: true, skipped: true, reason: "org_concurrency_limit" };
+  }
 
   if (!triage.success && triage.status === 409) {
     // Another triage/investigation is already running for this incident; nothing to retry.

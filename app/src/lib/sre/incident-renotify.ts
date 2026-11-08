@@ -88,6 +88,7 @@ export async function initializeIncidentRenotifyScheduler() {
   if (worker) return;
   const redis = await getRedisConnection();
   queue = new Queue(QUEUE_NAME, { connection: redis });
+  queue.on("error", (error) => queueLogger.error({ err: error }, "Incident re-notify queue error"));
   worker = new Worker(
     QUEUE_NAME,
     async () => {

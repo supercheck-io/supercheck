@@ -257,6 +257,23 @@ describe("processSreBackgroundAlertTriageJob", () => {
       expect(mockLogInfo).toHaveBeenCalledWith(expect.objectContaining({ incidentId: expect.any(String) }), expect.stringContaining("already running"));
     });
 
+    it("reports the organization run cap separately so the processor defers instead of dropping triage", async () => {
+      mockAutomatic.mockReturnValue(true);
+      (startSreIncidentTriage as jest.Mock).mockResolvedValue({
+        success: false,
+        status: 409,
+        error: "limit",
+        reason: "org_concurrency_limit",
+      });
+      selectQueue.push([alertRow()]);
+      freshIncidentQueue();
+      expect(await processSreBackgroundAlertTriageJob(JOB)).toMatchObject({
+        success: true,
+        skipped: true,
+        reason: "org_concurrency_limit",
+      });
+    });
+
     it("skips with incident_disabled and creates nothing when incidentEnabled is false", async () => {
       selectQueue.push([alertRow({ monitorAlertConfig: { incidentEnabled: false } })]);
       expect(await processSreBackgroundAlertTriageJob(JOB)).toEqual({ success: true, skipped: true, reason: "incident_disabled" });
