@@ -10,7 +10,7 @@ import {
 } from "@/db/schema";
 import type { TrialNotificationKind } from "@/emails";
 import { db } from "@/utils/db";
-import { hasPaidAccess } from "@/lib/execution/trial-limits";
+import { hasPaidAccess, TRIAL_DURATION_DAYS } from "@/lib/execution/trial-limits";
 import { notInDeletedProject } from "@/lib/middleware/plan-limit-lock";
 
 /** How many expired trials one run processes; the rest are picked up on the next run. */
@@ -484,7 +484,6 @@ export interface TrialReminderResult {
 }
 
 const DAY_MS = 86_400_000;
-const MIDWAY_DAYS = 7;
 const REMINDER_BATCH_SIZE = 50;
 
 const REMINDER_COLUMN = {
@@ -499,7 +498,8 @@ function reminderCondition(kind: TrialNotificationKind, now: Date) {
   if (kind === "midway") {
     return and(
       gt(ends, new Date(now.getTime() + DAY_MS)),
-      lte(ends, new Date(now.getTime() + MIDWAY_DAYS * DAY_MS)),
+      // Halfway through this trial's own length, so trials granted under an older duration are not told "halfway" early.
+      sql`${ends} - (${ends} - coalesce(${executionEntitlements.trialStartedAt}, ${ends} - make_interval(days => ${TRIAL_DURATION_DAYS}))) / 2 <= ${now.toISOString()}::timestamptz`,
       isNull(executionEntitlements.midwayNotifiedAt),
     );
   }

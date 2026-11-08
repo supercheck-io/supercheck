@@ -181,7 +181,7 @@ describe("trial access", () => {
         .mocked(db.select)
         .mockReturnValue({ from: jest.fn(() => ({ where })) } as never);
       await expect(service.getUsageSafe("org")).resolves.toEqual({
-        playwrightMinutes: { used: 7.5, included: 30, overage: 0 },
+        playwrightMinutes: { used: 7.5, included: 150, overage: 0 },
         k6VuMinutes: { used: 51, included: 150, overage: 0 },
         aiCredits: { used: 12, included: 100, overage: 0 },
         sreInvestigations: { used: 2, included: 5, overage: 0 },

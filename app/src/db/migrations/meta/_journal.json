@@ -456,6 +456,13 @@
       "when": 1793981628335,
       "tag": "0064_sre_run_origin_required_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1794162418697,
+      "tag": "0065_trial_budget_defaults",
+      "breakpoints": true
     }
   ]
 }

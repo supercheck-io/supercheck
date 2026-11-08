@@ -141,3 +141,27 @@ it("keeps draining batches past 50 organizations", async () => {
   expect(result.organizations).toBe(52);
   expect(await monitorStatus(orgs[51].monitor.id)).toBe("paused");
 });
+
+it("sends the midway reminder halfway through each trial's own length", async () => {
+  const { sendTrialReminders } = await import("./trial-lifecycle");
+  const trial = async (lengthDays: number, elapsedDays: number) => {
+    const [org] = await mockDatabase.insert(schema.organization).values({ name: "Trial", createdAt: new Date() }).returning();
+    const started = new Date(NOW.getTime() - elapsedDays * DAY);
+    await mockDatabase.insert(schema.executionEntitlements).values({
+      organizationId: org.id, trialStartedAt: started, expiresAt: new Date(started.getTime() + lengthDays * DAY),
+    } as never);
+    return org.id;
+  };
+  const cases = [
+    { id: await trial(14, 1), midway: false }, // a 14-day trial granted before the change is not halfway after one day
+    { id: await trial(14, 8), midway: true },
+    { id: await trial(30, 10), midway: false },
+    { id: await trial(30, 16), midway: true },
+    { id: await trial(30, 29.5), midway: false }, // inside the last day only the ending reminder applies
+  ];
+  await sendTrialReminders({ deliver: jest.fn(async () => true), now: NOW });
+  for (const { id, midway } of cases) {
+    const [row] = await mockDatabase.select().from(schema.executionEntitlements).where(eq(schema.executionEntitlements.organizationId, id));
+    expect({ id, midway: row.midwayNotifiedAt !== null }).toEqual({ id, midway });
+  }
+});
