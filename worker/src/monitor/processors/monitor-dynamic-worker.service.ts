@@ -129,6 +129,7 @@ export class MonitorDynamicWorkerService
     // This module is destroyed before the executor's: stop every consumer now so none refills the drain.
     await stopIntake();
     this.shuttingDown = true;
+    this.flushStaleSkips();
     this.heartbeatService.removeQueues(Array.from(this.activeQueueNames));
     if (this.discoveryRetryTimer) {
       clearTimeout(this.discoveryRetryTimer);
@@ -527,16 +528,22 @@ export class MonitorDynamicWorkerService
    * returning worker). Manual runs, retries, deferrals and resumed closures are never stale.
    */
   private staleSkips = 0;
-  private staleWindowStart = 0;
+  private staleFlushTimer: ReturnType<typeof setTimeout> | null = null;
 
   /** The worker exposes no metrics, so a burst (clock skew, saturation) is surfaced as one warning a minute. */
   private reportStaleSkip(): void {
-    const now = Date.now();
-    if (this.staleSkips === 0) this.staleWindowStart = now;
     this.staleSkips++;
-    if (now - this.staleWindowStart < 60_000) return;
+    if (this.staleFlushTimer) return;
+    this.staleFlushTimer = setTimeout(() => this.flushStaleSkips(), 60_000);
+    this.staleFlushTimer.unref();
+  }
+
+  private flushStaleSkips(): void {
+    if (this.staleFlushTimer) clearTimeout(this.staleFlushTimer);
+    this.staleFlushTimer = null;
+    if (this.staleSkips === 0) return;
     this.logger.warn(
-      `${this.staleSkips} stale monitor checks skipped in the last ${Math.round((now - this.staleWindowStart) / 1000)}s: check worker clock skew or queue saturation`,
+      `${this.staleSkips} stale monitor checks skipped in the last minute: check worker clock skew or queue saturation`,
     );
     this.staleSkips = 0;
   }
@@ -772,12 +779,14 @@ export class MonitorDynamicWorkerService
 
     // The check never ran because the organization's slot stayed busy. That says nothing about the
     // monitored service, so it must not be recorded as a failed check.
+    // A dropped region aborts its cycle only as a last resort, once the job has failed for good.
+    const dropped = (job.data as { _regionDropped?: boolean })._regionDropped;
+    if (dropped && (await job.getState()) !== 'failed') return;
     if (
       (job.data as { _capacityGaveUp?: boolean })._capacityGaveUp ||
       (job.data as { _groupSkipped?: boolean })._groupSkipped ||
-      (job.data as { _regionDropped?: boolean })._regionDropped
+      dropped
     ) {
-      // For a dropped stale region this is the last resort after its closure retries ran out: abort, never downtime.
       this.logger.warn(
         `Monitor ${monitorId}/${executionLocation} not recorded: the check was skipped, not failed`,
       );

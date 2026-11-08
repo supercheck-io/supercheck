@@ -2488,6 +2488,17 @@ describe('MonitorService', () => {
         redis.smembers.mockResolvedValue([]);
       });
 
+      it('fails the drop when the Redis transaction reports a command error, so closure retries', async () => {
+        const redis = mockRedisService.getClient();
+        const boom = new Error('READONLY');
+        redis.multi.mockImplementationOnce(() => ({
+          sadd: jest.fn().mockReturnThis(),
+          expire: jest.fn().mockReturnThis(),
+          exec: jest.fn().mockResolvedValue([[boom, null]]),
+        }));
+        await expect(drop()).rejects.toBe(boom);
+      });
+
       it('keeps waiting when a remaining region has not reported yet', async () => {
         const aggregate = jest
           .spyOn(service, 'saveMonitorResults')

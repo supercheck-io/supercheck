@@ -806,11 +806,17 @@ export class MonitorService {
     const redis = this.redisService.getClient();
     const key = `monitor:aggr:dropped:${executionGroupId}`;
     // One transaction, so a crash between the two cannot leave the key without a TTL.
-    await redis
+    const replies = await redis
       .multi()
       .sadd(key, location)
       .expire(key, 7 * 86400)
       .exec();
+    // exec() resolves even when a queued command failed; surface it so the closure retry runs.
+    const failed = replies?.find(([error]) => error);
+    if (!replies || failed)
+      throw (
+        failed?.[0] ?? new Error('Dropped-region transaction was discarded')
+      );
     await this.evaluateLegacyGroup(monitorId, executionGroupId, expected);
   }
 

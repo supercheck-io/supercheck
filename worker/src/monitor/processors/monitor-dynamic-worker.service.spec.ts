@@ -1704,6 +1704,7 @@ describe('MonitorDynamicWorkerService stale scheduled checks', () => {
       saveMonitorResults: jest.fn().mockResolvedValue(undefined),
       skipDistributedMonitorGroup: jest.fn().mockResolvedValue(undefined),
       dropStaleRegion: jest.fn().mockResolvedValue(undefined),
+      abortMonitorCycle: jest.fn().mockResolvedValue(undefined),
     };
     const service = new MonitorDynamicWorkerService(
       monitorService as unknown as MonitorService,
@@ -1832,30 +1833,43 @@ describe('MonitorDynamicWorkerService stale scheduled checks', () => {
     expect(monitorService.dropStaleRegion).toHaveBeenCalledTimes(1);
   });
 
-  it('reports a burst of stale skips as one aggregated warning a minute', async () => {
-    const { service } = build();
-    const warn = jest
-      .spyOn(
-        (service as unknown as { logger: { warn: () => void } }).logger,
-        'warn',
-      )
-      .mockImplementation(() => undefined);
-    const now = Date.now();
-    const spy = jest.spyOn(Date, 'now');
+  it('reports a burst of stale skips as one warning even when no further job arrives', async () => {
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
     try {
-      spy.mockReturnValue(now);
+      const { service } = build();
+      const warn = jest
+        .spyOn(
+          (service as unknown as { logger: { warn: () => void } }).logger,
+          'warn',
+        )
+        .mockImplementation(() => undefined);
       for (let i = 0; i < 3; i++)
-        await run(service, jobOf({ timestamp: now - 10 * 60_000 }));
+        await run(service, jobOf({ timestamp: Date.now() - 10 * 60_000 }));
       expect(warn).not.toHaveBeenCalled();
-      spy.mockReturnValue(now + 61_000);
-      await run(service, jobOf({ timestamp: now - 10 * 60_000 }));
+      jest.advanceTimersByTime(60_000);
       expect(warn).toHaveBeenCalledTimes(1);
       expect((warn.mock.calls[0] as unknown[])[0]).toMatch(
-        /^4 stale monitor checks skipped/,
+        /^3 stale monitor checks skipped/,
       );
     } finally {
-      spy.mockRestore();
+      jest.useRealTimers();
     }
+  });
+
+  it('does not abort a cycle for a dropped region whose job has not failed for good', async () => {
+    const { monitorService, service } = build();
+    const job = jobOf(
+      {
+        getState: jest.fn().mockResolvedValue('delayed'),
+        attemptsMade: 3,
+      },
+      { _regionDropped: true, monitorCycle: true },
+    );
+    await service['handleFinalJobFailure'](
+      job as unknown as Job<MonitorJobDataDto>,
+      new Error('closure busy'),
+    );
+    expect(monitorService.abortMonitorCycle).not.toHaveBeenCalled();
   });
 
   it('falls back to the 3 minute floor when frequencyMinutes is missing', async () => {
