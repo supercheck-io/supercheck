@@ -280,6 +280,14 @@ describe('MonitorService', () => {
       sadd: jest.fn().mockResolvedValue(1),
       smembers: jest.fn().mockResolvedValue([]),
       expire: jest.fn().mockResolvedValue(1),
+      multi: jest.fn().mockImplementation(() => {
+        const chain = {
+          sadd: jest.fn().mockReturnThis(),
+          expire: jest.fn().mockReturnThis(),
+          exec: jest.fn().mockResolvedValue([]),
+        };
+        return chain;
+      }),
       scard: jest.fn().mockResolvedValue(1),
       del: jest.fn().mockResolvedValue(1),
     }),
@@ -2456,10 +2464,17 @@ describe('MonitorService', () => {
         redis.smembers.mockResolvedValue(['us-east']);
         persistedRows([result('eu-central')]);
         await drop();
-        expect(redis.sadd).toHaveBeenCalledWith(
+        const chain = redis.multi.mock.results[0].value;
+        expect(chain.sadd).toHaveBeenCalledWith(
           'monitor:aggr:dropped:group-stale',
           'us-east',
         );
+        expect(chain.expire).toHaveBeenCalledWith(
+          'monitor:aggr:dropped:group-stale',
+          604800,
+        );
+        expect(chain.exec).toHaveBeenCalledTimes(1);
+        expect(redis.sadd).not.toHaveBeenCalled();
         expect(aggregate).toHaveBeenCalledWith(
           [expect.objectContaining({ location: 'eu-central' })],
           expect.objectContaining({ expectedLocations: ['eu-central'] }),
@@ -2542,10 +2557,7 @@ describe('MonitorService', () => {
         txOver([]);
         persistedRows([]);
         await drop(true);
-        expect(mockRedisService.getClient().sadd).toHaveBeenCalledWith(
-          'monitor:aggr:dropped:group-stale',
-          'us-east',
-        );
+        expect(mockRedisService.getClient().multi).toHaveBeenCalled();
       });
     });
 

@@ -526,6 +526,21 @@ export class MonitorDynamicWorkerService
    * True for a scheduled check on its first start that waited in the queue past its bound (a saturated or
    * returning worker). Manual runs, retries, deferrals and resumed closures are never stale.
    */
+  private staleSkips = 0;
+  private staleWindowStart = 0;
+
+  /** The worker exposes no metrics, so a burst (clock skew, saturation) is surfaced as one warning a minute. */
+  private reportStaleSkip(): void {
+    const now = Date.now();
+    if (this.staleSkips === 0) this.staleWindowStart = now;
+    this.staleSkips++;
+    if (now - this.staleWindowStart < 60_000) return;
+    this.logger.warn(
+      `${this.staleSkips} stale monitor checks skipped in the last ${Math.round((now - this.staleWindowStart) / 1000)}s: check worker clock skew or queue saturation`,
+    );
+    this.staleSkips = 0;
+  }
+
   private async isStale(job: Job<MonitorJobDataDto>): Promise<boolean> {
     const data = job.data;
     if (
@@ -544,12 +559,7 @@ export class MonitorDynamicWorkerService
     if (ageMs <= boundMs) {
       // A cycle closes at its own deadline, which can pass before this bound: its region is then already settled,
       // so running the check late would only add a stale row.
-      if (
-        ageMs <= STALE_CHECK_FLOOR_MS ||
-        !data.monitorCycle ||
-        !data.executionGroupId
-      )
-        return false;
+      if (!data.monitorCycle || !data.executionGroupId) return false;
       const [cycle] = await this.dbService.db
         .select({ status: schema.monitorCycles.status })
         .from(schema.monitorCycles)
@@ -558,9 +568,10 @@ export class MonitorDynamicWorkerService
         .catch(() => []);
       if (!cycle || cycle.status === 'open') return false;
     }
-    this.logger.warn(
+    this.logger.log(
       `Skipping stale monitor check ${data.monitorId}: queued ${Math.round(ageMs / 1000)}s, bound ${Math.round(boundMs / 1000)}s`,
     );
+    this.reportStaleSkip();
     return true;
   }
 

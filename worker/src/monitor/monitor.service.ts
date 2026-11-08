@@ -805,8 +805,12 @@ export class MonitorService {
     }
     const redis = this.redisService.getClient();
     const key = `monitor:aggr:dropped:${executionGroupId}`;
-    await redis.sadd(key, location);
-    await redis.expire(key, 7 * 86400);
+    // One transaction, so a crash between the two cannot leave the key without a TTL.
+    await redis
+      .multi()
+      .sadd(key, location)
+      .expire(key, 7 * 86400)
+      .exec();
     await this.evaluateLegacyGroup(monitorId, executionGroupId, expected);
   }
 

@@ -1812,6 +1812,52 @@ describe('MonitorDynamicWorkerService stale scheduled checks', () => {
     expect(monitorService.dropStaleRegion).toHaveBeenCalledTimes(1);
   });
 
+  it('settles a young cycle job whose short deadline already passed', async () => {
+    const { monitorService, service } = build();
+    const db = (service as unknown as { dbService: { db: object } }).dbService;
+    Object.assign(db.db, {
+      select: () => ({
+        from: () => ({
+          where: () => ({
+            limit: () => Promise.resolve([{ status: 'closed' }]),
+          }),
+        }),
+      }),
+    });
+    await run(
+      service,
+      jobOf({ timestamp: Date.now() - 2 * 60_000 }, { monitorCycle: true }),
+    );
+    expect(monitorService.executeMonitor).not.toHaveBeenCalled();
+    expect(monitorService.dropStaleRegion).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports a burst of stale skips as one aggregated warning a minute', async () => {
+    const { service } = build();
+    const warn = jest
+      .spyOn(
+        (service as unknown as { logger: { warn: () => void } }).logger,
+        'warn',
+      )
+      .mockImplementation(() => undefined);
+    const now = Date.now();
+    const spy = jest.spyOn(Date, 'now');
+    try {
+      spy.mockReturnValue(now);
+      for (let i = 0; i < 3; i++)
+        await run(service, jobOf({ timestamp: now - 10 * 60_000 }));
+      expect(warn).not.toHaveBeenCalled();
+      spy.mockReturnValue(now + 61_000);
+      await run(service, jobOf({ timestamp: now - 10 * 60_000 }));
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect((warn.mock.calls[0] as unknown[])[0]).toMatch(
+        /^4 stale monitor checks skipped/,
+      );
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('falls back to the 3 minute floor when frequencyMinutes is missing', async () => {
     const { monitorService, service } = build();
     await run(
