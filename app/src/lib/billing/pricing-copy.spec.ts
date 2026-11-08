@@ -17,6 +17,12 @@ describe("PRICING_FAQS", () => {
     expect(PRICING_FAQS.find((faq) => faq.question === "Can I self-host Supercheck?")?.answer).toContain("no trial or usage limits");
   });
 
+  it("says a plan that ends pauses resources without deleting them", () => {
+    const answer = PRICING_FAQS.find((faq) => faq.question === "What happens if I cancel?")?.answer;
+    expect(answer).toContain("end of the period you paid for");
+    expect(answer).toContain("Nothing is deleted");
+  });
+
   it("states three monitoring regions and Europe-only browser and k6 execution", () => {
     const faq = PRICING_FAQS.find(
       (item) => item.question === "Where do Cloud checks run?",
