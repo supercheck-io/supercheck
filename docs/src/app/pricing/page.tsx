@@ -416,7 +416,7 @@ export default function PricingPage() {
                     <div className="mx-auto mb-8 max-w-2xl text-center">
                         <h2 id="compare-heading" className={sectionHeading}>Compare plans</h2>
                     </div>
-                    <div className="space-y-6 md:hidden" aria-label="Plan feature comparison">
+                    <div className="space-y-6 md:hidden">
                         {comparisonFeatures.map((category) => (
                             <div key={category.category} className="rounded-xl border border-fd-border">
                                 <h3 className="border-b border-fd-border bg-fd-muted/40 px-4 py-2.5 text-xs font-medium text-fd-muted-foreground">{category.category}</h3>

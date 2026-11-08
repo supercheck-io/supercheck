@@ -38,6 +38,8 @@ afterAll(async () => {
   await maintenance?.end({ timeout: 5 });
 });
 
+// Scope: a fresh install. An empty database is seeded from the catalog (the pricing migrations only update
+// existing stock rows), so this guards seed and schema drift, not the upgrade path of already-priced rows.
 describe.each(["plus", "pro"] as const)("%s catalog matches the migrated rows", (plan) => {
   it("plan limits", async () => {
     const [row] = await database.select().from(schema.planLimits).where(eq(schema.planLimits.plan, plan));
