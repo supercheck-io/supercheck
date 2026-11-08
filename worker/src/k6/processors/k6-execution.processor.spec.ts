@@ -642,3 +642,106 @@ describe('k6 execution admission', () => {
     expect(updateRunStatus).not.toHaveBeenCalled();
   });
 });
+
+describe('k6 interrupted completion with a summary on hand', () => {
+  it('stores a run killed after its summary was extracted as an error, not a threshold failure', async () => {
+    const result = {
+      success: false,
+      interrupted: true,
+      timedOut: false,
+      durationMs: 61000,
+      billableMs: 61000,
+      billingVirtualUsers: 10,
+      thresholdsPassed: false,
+      error: 'Interrupted by worker restart',
+      summary: { metrics: { vus_max: { max: 10 } } },
+    };
+    const transactionSet = jest.fn().mockReturnValue({
+      where: jest.fn().mockResolvedValue(undefined),
+    });
+    const values = jest.fn().mockResolvedValue(undefined);
+    const tx = {
+      query: {
+        k6PerformanceRuns: {
+          findFirst: jest.fn().mockResolvedValue(undefined),
+        },
+      },
+      select: jest.fn().mockReturnValue({
+        from: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnValue({
+            for: jest.fn().mockResolvedValue([{ id: 'test-id' }]),
+          }),
+        }),
+      }),
+      insert: jest.fn().mockReturnValue({ values }),
+      update: jest.fn().mockReturnValue({ set: transactionSet }),
+    };
+    const db = {
+      update: jest.fn().mockReturnValue({
+        set: jest.fn().mockReturnValue({
+          where: jest.fn().mockResolvedValue(undefined),
+        }),
+      }),
+      execute: jest
+        .fn()
+        .mockResolvedValue([{ supports_browser: true, supports_k6: true }]),
+    };
+    const usage = {
+      shouldBlockExecution: jest.fn().mockResolvedValue({ blocked: false }),
+      trackK6Execution: jest.fn().mockResolvedValue({ blocked: false }),
+      completeRunWithUsage: jest.fn(
+        async (
+          _input: unknown,
+          persist: (transaction: ExecutionUsageTransaction) => Promise<void>,
+        ) => {
+          await persist(tx as unknown as ExecutionUsageTransaction);
+        },
+      ),
+    };
+    type Dependencies = ConstructorParameters<typeof K6ExecutionProcessor>;
+    const processor = new K6ExecutionProcessor(
+      {
+        runK6Test: jest.fn().mockResolvedValue(result),
+        hasActiveExecution: jest.fn().mockResolvedValue(false),
+      } as unknown as Dependencies[0],
+      {
+        db,
+        getTerminalRun: jest.fn().mockResolvedValue(undefined),
+        claimRunExecution: jest.fn().mockResolvedValue(true),
+        finalizeCancelledRun: jest.fn().mockResolvedValue(false),
+      } as unknown as Dependencies[1],
+      { get: () => 'eu' } as unknown as Dependencies[2],
+      {} as Dependencies[3],
+      usage as unknown as Dependencies[4],
+      {} as Dependencies[5],
+      {
+        isCancelled: jest.fn().mockResolvedValue(false),
+      } as unknown as Dependencies[6],
+    );
+
+    await processor.process({
+      id: 'queue-id',
+      data: {
+        runId: 'run-id',
+        testId: 'test-id',
+        organizationId: 'org-id',
+        projectId: 'project-id',
+        script: '',
+        tests: [],
+      },
+    } as unknown as Job<K6ExecutionTask>);
+
+    expect(values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'error',
+        errorDetails: 'Interrupted by worker restart',
+      }),
+    );
+    expect(transactionSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'error',
+        errorDetails: 'Interrupted by worker restart',
+      }),
+    );
+  });
+});

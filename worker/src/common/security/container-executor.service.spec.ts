@@ -249,6 +249,49 @@ describe('ContainerExecutorService', () => {
       });
     });
 
+    it('keeps the interrupted outcome when shutdown deletes the Job during artifact extraction', async () => {
+      service['batchApi'] = {
+        createNamespacedJob: jest
+          .fn()
+          .mockResolvedValue({ metadata: { uid: 'job-uid' } }),
+      } as unknown as NonNullable<(typeof service)['batchApi']>;
+      service['createExecutionSecret'] = jest.fn().mockResolvedValue(undefined);
+      service['waitForExecutionPod'] = jest.fn().mockResolvedValue('pod');
+      service['startLogStreamWithReconnect'] = jest
+        .fn()
+        .mockReturnValue(new AbortController());
+      service['extractPodArtifacts'] = jest
+        .fn()
+        .mockRejectedValue(new Error('pod not found'));
+      service['waitForExecutionOutcome'] = jest
+        .fn()
+        .mockImplementation(
+          async (
+            _pod,
+            _workspace,
+            _timeout,
+            _evidence,
+            collect: () => Promise<void>,
+          ) => {
+            service['shutdownDeletedRunIds'].add('run-8');
+            await collect();
+            return { exitCode: 0, timedOut: false, cancelled: false };
+          },
+        );
+      service['deleteExecutionJob'] = jest.fn().mockResolvedValue(undefined);
+      const result = await service.executeInContainer(null, ['node'], {
+        ...defaultOptions,
+        runId: 'run-8',
+        extractFromContainer: '/tmp/report',
+        extractToHost: '/tmp/host-report',
+      });
+      expect(result).toMatchObject({
+        success: false,
+        interrupted: true,
+        error: WORKER_INTERRUPTED_ERROR,
+      });
+    });
+
     it('deletes jobs still alive once the drain window passes', async () => {
       jest.useFakeTimers();
       try {

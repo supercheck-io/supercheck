@@ -1407,6 +1407,60 @@ describe('K6ExecutionService', () => {
       );
     });
 
+    it('reports a run killed after its summary was extracted as an error, not a threshold failure', async () => {
+      const fs = jest.requireMock('fs/promises');
+      fs.access.mockRejectedValue(new Error('missing HTML'));
+      fs.readFile.mockResolvedValueOnce(
+        JSON.stringify({ metrics: { checks: { fails: 0 } } }),
+      );
+      fs.rename = jest.fn().mockResolvedValue(undefined);
+      fs.copyFile = jest.fn().mockResolvedValue(undefined);
+      Object.assign(mockS3Service, {
+        prepareFileVariables: jest
+          .fn()
+          .mockResolvedValue({ additionalFiles: {}, filePaths: {} }),
+        getBucketForEntityType: jest.fn().mockReturnValue('bucket'),
+        uploadDirectory: jest.fn().mockResolvedValue(undefined),
+        getBaseUrlForEntity: jest
+          .fn()
+          .mockReturnValue('https://example.com/run'),
+      });
+      const storeReportMetadata = jest.fn().mockResolvedValue(undefined);
+      Object.assign(mockDbService, { storeReportMetadata });
+      jest
+        .spyOn(service, 'allocateDashboardPort' as never)
+        .mockResolvedValue(0 as never);
+      jest.spyOn(service, 'executeK6Binary' as never).mockResolvedValue({
+        exitCode: 137,
+        billableMs: 30_000,
+        billingVirtualUsers: 10,
+        stdout: '',
+        stderr: '',
+        error: 'Interrupted by worker restart',
+        timedOut: false,
+        cancelled: false,
+        interrupted: true,
+      } as never);
+      try {
+        const result = await service.runK6Test({
+          runId: 'run-1',
+          testId: 'test-1',
+          organizationId: 'org-1',
+          projectId: 'project-1',
+          tests: [],
+          script: 'export default function() {}',
+          location: 'local',
+        });
+        expect(result.interrupted).toBe(true);
+        expect(result.success).toBe(false);
+        expect(storeReportMetadata).toHaveBeenCalledWith(
+          expect.objectContaining({ status: 'error' }),
+        );
+      } finally {
+        fs.access.mockResolvedValue(undefined);
+      }
+    });
+
     it('scrubs the report directory with the run secrets before uploading', async () => {
       const fs = jest.requireMock('fs/promises');
       fs.access.mockRejectedValue(new Error('missing HTML'));
