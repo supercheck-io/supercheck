@@ -385,7 +385,7 @@ describe("signup plan selection", () => {
       await openPage();
       expect(screen.getByText("Free trial · 6 days left")).toBeVisible();
       expect(screen.getAllByText(/6 days left/)).toHaveLength(1);
-      expect(screen.getByText("Is there a free trial?")).toBeInTheDocument();
+      pricing.faqs.forEach(({ question }) => expect(screen.getByText(question)).toBeInTheDocument());
       expect(screen.getByText("What your free trial includes")).toBeVisible();
       expect(screen.getByText("5 monitors, checked at most every 5 minutes")).toBeVisible();
       expect(screen.getByText(/Custom domains are on paid\s+plans/)).toBeVisible();
