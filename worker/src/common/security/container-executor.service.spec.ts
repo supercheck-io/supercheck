@@ -1545,6 +1545,91 @@ describe('ContainerExecutorService', () => {
       controller.abort();
     });
 
+    it('keeps waiting for a slow container start past the reconnect budget until aborted', async () => {
+      const log = jest.fn().mockResolvedValue(new AbortController());
+      let started = false;
+      const readNamespacedPod = jest.fn().mockImplementation(() =>
+        Promise.resolve({
+          status: {
+            containerStatuses: [
+              {
+                name: 'execution',
+                state: started
+                  ? { running: { startedAt: '' } }
+                  : { waiting: { reason: 'ContainerCreating' } },
+              },
+            ],
+          },
+        }),
+      );
+      service['logClient'] = { log } as unknown as NonNullable<
+        (typeof service)['logClient']
+      >;
+      service['coreApi'] = { readNamespacedPod } as unknown as NonNullable<
+        (typeof service)['coreApi']
+      >;
+      const collector = service['createLogCollector']({});
+
+      const controller = service['startLogStreamWithReconnect'](
+        'pod',
+        collector.stream,
+        'job',
+      );
+
+      // 100 polls (~200s) is past the 60-attempt reconnect budget.
+      await jest.advanceTimersByTimeAsync(200_000);
+      expect(readNamespacedPod.mock.calls.length).toBeGreaterThanOrEqual(90);
+      expect(log).not.toHaveBeenCalled();
+
+      started = true;
+      await jest.advanceTimersByTimeAsync(2_000);
+      expect(log).toHaveBeenCalledTimes(1);
+      controller.abort();
+    });
+
+    it('stops waiting for the container start when aborted mid-read', async () => {
+      const log = jest.fn();
+      let resolveRead: (value: unknown) => void = () => {};
+      const readNamespacedPod = jest.fn().mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            resolveRead = resolve;
+          }),
+      );
+      service['logClient'] = { log } as unknown as NonNullable<
+        (typeof service)['logClient']
+      >;
+      service['coreApi'] = { readNamespacedPod } as unknown as NonNullable<
+        (typeof service)['coreApi']
+      >;
+      const collector = service['createLogCollector']({});
+
+      const controller = service['startLogStreamWithReconnect'](
+        'pod',
+        collector.stream,
+        'job',
+      );
+      await jest.advanceTimersByTimeAsync(0);
+      expect(readNamespacedPod).toHaveBeenCalledTimes(1);
+      controller.abort();
+      resolveRead({
+        status: {
+          containerStatuses: [
+            {
+              name: 'execution',
+              state: { waiting: { reason: 'ContainerCreating' } },
+            },
+          ],
+        },
+      });
+      await jest.advanceTimersByTimeAsync(0);
+      expect(jest.getTimerCount()).toBe(0);
+
+      await jest.advanceTimersByTimeAsync(20_000);
+      expect(readNamespacedPod).toHaveBeenCalledTimes(1);
+      expect(log).not.toHaveBeenCalled();
+    });
+
     it('attaches to a container that already terminated', async () => {
       const log = jest.fn().mockResolvedValue(new AbortController());
       const readNamespacedPod = jest.fn().mockResolvedValue({

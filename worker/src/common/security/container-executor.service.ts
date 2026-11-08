@@ -1725,10 +1725,9 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
   ): AbortController {
     const controller = new AbortController();
     const reconnectDelayMs = 2_000;
-    // Allow up to 60 reconnect attempts (~2 min) so that cold-node image
-    // pulls (3+ GB worker image) don't exhaust reconnects before the
-    // container starts.  Once the stream is established the reconnect
-    // counter only matters for mid-stream network blips, which are rare.
+    // Up to 60 attach/reconnect attempts (~2 min). The wait for the container
+    // to start does not count, so this budget covers failed attaches and
+    // mid-stream network blips only.
     const maxReconnects = 60;
     const sinceSecondsOnReconnect = 5;
     let connected = false;
@@ -1748,19 +1747,15 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       // first attach attempts would otherwise race the container start and be
       // rejected with 400 BadRequest. Waiting for the container phase keeps
       // that expected window out of the logs and preserves the reconnect
-      // budget for real failures.
+      // budget for real failures. The wait does not spend that budget: slow
+      // image pulls can exceed it, and the caller aborts the controller when
+      // the execution ends or times out.
       if (!connected && !(await this.hasExecutionContainerStarted(podName))) {
         if (controller.signal.aborted) return;
-        if (attempt < maxReconnects) {
-          reconnectTimer = setTimeout(
-            () => void connect(attempt + 1),
-            reconnectDelayMs,
-          );
-        } else {
-          this.logger.warn(
-            `Stopped waiting for the execution container of ${jobName} to start after ${maxReconnects} attempts; final logs will be fetched via snapshot`,
-          );
-        }
+        reconnectTimer = setTimeout(
+          () => void connect(attempt),
+          reconnectDelayMs,
+        );
         return;
       }
 
