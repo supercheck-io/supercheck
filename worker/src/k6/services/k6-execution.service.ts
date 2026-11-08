@@ -18,6 +18,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { execa } from 'execa';
 import { UnrecoverableError } from 'bullmq';
+import { RunInterruptedError } from '../../common/run-interrupted.error';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as crypto from 'crypto';
@@ -362,6 +363,7 @@ export class K6ExecutionService {
     let totalBillableMs = 0;
     // Kubernetes reported a container start; billable time alone can be zero for a sub-second run.
     let containerStarted = false;
+    let interruptedRun = false;
     let billingVirtualUsers: number | undefined;
 
     const uniqueRunId = `${runId}-${crypto.randomUUID().substring(0, 8)}`;
@@ -545,6 +547,7 @@ export class K6ExecutionService {
         throw new ExecutionCapacityError(WORKER_INTERRUPTED_ERROR);
       }
       const interrupted = execResult.interrupted === true;
+      interruptedRun = interrupted;
 
       execResult.stdout = this.redactSecretsFromText(
         execResult.stdout,
@@ -828,9 +831,11 @@ export class K6ExecutionService {
       throw attachBillableMs(
         (containerStarted || totalBillableMs > 0) &&
           !(error instanceof UnrecoverableError)
-          ? new UnrecoverableError(
-              `k6 finished but its results could not be saved: ${getErrorMessage(error)}`,
-            )
+          ? interruptedRun
+            ? new RunInterruptedError(WORKER_INTERRUPTED_ERROR)
+            : new UnrecoverableError(
+                `k6 finished but its results could not be saved: ${getErrorMessage(error)}`,
+              )
           : error,
         totalBillableMs,
         billingVirtualUsers,

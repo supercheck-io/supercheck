@@ -205,6 +205,7 @@ describe('ContainerExecutorService', () => {
         success: false,
         interrupted: true,
         billableMs: 0,
+        started: false,
         error: WORKER_INTERRUPTED_ERROR,
       });
       expect(service['waitForExecutionPod']).not.toHaveBeenCalled();
@@ -241,11 +242,13 @@ describe('ContainerExecutorService', () => {
         ...defaultOptions,
         runId: 'run-7',
       });
+      // The Secrets existed, so an unobserved start cannot be ruled out: it is not reported unstarted.
       expect(result).toMatchObject({
         success: false,
         interrupted: true,
         error: WORKER_INTERRUPTED_ERROR,
         billableMs: 0,
+        started: true,
       });
     });
 
@@ -331,6 +334,43 @@ describe('ContainerExecutorService', () => {
       });
       expect(service['runningJobs'].has(trackedKey)).toBe(false);
       expect(service['shutdownDeletedRunIds'].has(trackedKey)).toBe(false);
+    });
+
+    it('registers the Job before awaiting its Secrets so a drain ending meanwhile can delete it', async () => {
+      service['batchApi'] = {
+        createNamespacedJob: jest
+          .fn()
+          .mockResolvedValue({ metadata: { uid: 'job-uid' } }),
+      } as unknown as NonNullable<(typeof service)['batchApi']>;
+      let failSecret!: (error: Error) => void;
+      service['createExecutionSecret'] = jest.fn().mockImplementation(
+        () =>
+          new Promise<void>((_resolve, reject) => {
+            failSecret = reject;
+          }),
+      );
+      service['waitForExecutionPod'] = jest.fn();
+      service['deleteExecutionJob'] = jest.fn().mockResolvedValue(undefined);
+
+      const running = service.executeInContainer(null, ['node'], {
+        ...defaultOptions,
+        runId: 'run-10',
+      });
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(service['runningJobs'].get('run-10')).toBeDefined();
+
+      // Shutdown's cleanup marks and deletes the registered Job; the pending Secret then fails.
+      service['shutdownDeletedRunIds'].add('run-10');
+      failSecret(new Error('owner Job is gone'));
+      const result = await running;
+
+      expect(result).toMatchObject({
+        interrupted: true,
+        error: WORKER_INTERRUPTED_ERROR,
+        // The Secrets never completed, so the container provably did not start.
+        started: false,
+      });
+      expect(service['runningJobs'].has('run-10')).toBe(false);
     });
 
     it('deletes jobs still alive once the drain window passes', async () => {

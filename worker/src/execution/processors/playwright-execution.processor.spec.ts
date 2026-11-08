@@ -723,6 +723,28 @@ describe('PlaywrightExecutionProcessor', () => {
         ).toHaveBeenCalledWith(expect.objectContaining({ cancelled: true }));
       });
 
+      it('keeps an interrupted job out of alerts even when saving its result fails', async () => {
+        mockExecutionService.runJob.mockResolvedValueOnce({
+          ...mockJobSuccessResult,
+          success: false,
+          interrupted: true,
+          error: 'Interrupted by worker restart',
+          billableMs: 12_000,
+          results: [],
+        });
+        mockUsageTrackerService.completeRunWithUsage.mockRejectedValue(
+          new Error('database unavailable'),
+        );
+
+        await expect(
+          processor.process(createMockJob(mockJobTask)),
+        ).rejects.toThrow(/could not be saved/);
+
+        expect(
+          mockJobNotificationService.handleJobNotifications,
+        ).toHaveBeenCalledWith(expect.objectContaining({ cancelled: true }));
+      });
+
       it('delays a job whose pod never started instead of consuming an attempt', async () => {
         mockExecutionService.runJob.mockRejectedValueOnce(
           new ExecutionCapacityError('Interrupted by worker restart'),

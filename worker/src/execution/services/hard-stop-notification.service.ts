@@ -1,3 +1,4 @@
+import { trackInFlight } from '../../common/shutdown-intake';
 import {
   Injectable,
   Logger,
@@ -42,6 +43,17 @@ export class HardStopNotificationService implements OnApplicationShutdown {
    * Send a hard stop notification if not rate limited
    */
   async notify(
+    organizationId: string,
+    runId: string,
+    blockReason: string,
+  ): Promise<{ sent: boolean; reason?: string }> {
+    // Counted in-flight so the shutdown drain waits for the email (and its Redis dedup write).
+    return trackInFlight(() =>
+      this.notifyUntracked(organizationId, runId, blockReason),
+    );
+  }
+
+  private async notifyUntracked(
     organizationId: string,
     runId: string,
     blockReason: string,

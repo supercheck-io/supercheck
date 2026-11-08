@@ -12,6 +12,7 @@ import {
 } from './k6-execution.processor';
 import { DelayedError, Job, UnrecoverableError } from 'bullmq';
 import { attachBillableMs } from '../../common/billable-ms';
+import { RunInterruptedError } from '../../common/run-interrupted.error';
 import { clearLocationCapabilityCache } from '../../common/location/location-capability';
 import { CAPACITY_DEFERRAL_LIMIT } from '../../common/capacity-deferral';
 import { ExecutionCapacityError } from '../../execution/services/execution-admission.service';
@@ -495,6 +496,38 @@ describe('k6 container-start metering', () => {
     expect(notify).toHaveBeenCalledWith(
       expect.objectContaining({ cancelled: true, finalStatus: 'error' }),
     );
+  });
+
+  it('records a RunInterruptedError as the restart (error status) and sends no alert', async () => {
+    const runK6Test = jest
+      .fn()
+      .mockRejectedValue(
+        new RunInterruptedError('Interrupted by worker restart'),
+      );
+    const { processor, usage, set } = build(runK6Test);
+    const notify = jest.fn().mockResolvedValue(undefined);
+    (
+      processor as unknown as {
+        jobNotificationService: { handleJobNotifications: jest.Mock };
+      }
+    ).jobNotificationService = { handleJobNotifications: notify };
+    const queued = job();
+    Object.assign(queued.data, { jobId: 'job-1' });
+
+    await expect(processor.process(queued)).rejects.toBeInstanceOf(
+      RunInterruptedError,
+    );
+
+    expect(set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'error',
+        errorDetails: 'Interrupted by worker restart',
+      }),
+    );
+    expect(notify).toHaveBeenCalledWith(
+      expect.objectContaining({ cancelled: true }),
+    );
+    expect(usage.completeRunWithUsage).not.toHaveBeenCalled();
   });
 
   it('never records a post-run save failure as a cancellation, whatever its message says', async () => {

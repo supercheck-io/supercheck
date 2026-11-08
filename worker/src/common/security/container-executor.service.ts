@@ -962,6 +962,8 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       : undefined;
 
     let podName: string | null = null;
+    // Once the Secrets exist the container may start without us observing it.
+    let secretsReady = false;
     let logAbort: AbortController | null = null;
     let cancellationInterval: NodeJS.Timeout | null = null;
     let killed = false;
@@ -1001,6 +1003,16 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
         );
       }
 
+      if (this.shuttingDown) {
+        // The drain ended while the Job was being created; the finally below deletes it. Its
+        // Secrets do not exist, so the container cannot have started.
+        this.shutdownDeletedRunIds.add(trackKey);
+        throw new Error(WORKER_INTERRUPTED_ERROR);
+      }
+      // Registered before the Secrets are awaited, so a drain that ends while they are pending
+      // still finds, marks and deletes this Job.
+      this.runningJobs.set(trackKey, jobName);
+
       await Promise.all([
         ...payloadChunks.map((chunk, index) =>
           this.createExecutionSecret(
@@ -1026,13 +1038,12 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
           : []),
       ]);
 
+      secretsReady = true;
       if (this.shuttingDown) {
-        // The drain ended while the Job was being created; the finally below deletes it.
         this.shutdownDeletedRunIds.add(trackKey);
         throw new Error(WORKER_INTERRUPTED_ERROR);
       }
 
-      this.runningJobs.set(trackKey, jobName);
       if (options.runId) {
         cancellationInterval = this.startKubernetesCancellationPoller(
           options.runId,
@@ -1161,7 +1172,8 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
         duration,
         billableMs: computeBillableMs(startEvidence, limits.timeoutMs),
         timedOut,
-        started: hasStartEvidence(startEvidence),
+        // An interrupted run with no observed start may still have started: never call it unstarted.
+        started: hasStartEvidence(startEvidence) || interrupted,
         cancelled: killed,
         ...(interrupted ? { interrupted: true } : {}),
         error: timedOut
@@ -1186,7 +1198,10 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
         duration: Date.now() - startTime,
         billableMs: computeBillableMs(startEvidence, limits.timeoutMs),
         timedOut,
-        started: hasStartEvidence(startEvidence),
+        // After the Secrets exist an unobserved start cannot be ruled out, so it is not deferred.
+        started:
+          hasStartEvidence(startEvidence) ||
+          (deletedByShutdown && secretsReady),
         ...(deletedByShutdown ? { interrupted: true } : {}),
         error: deletedByShutdown ? WORKER_INTERRUPTED_ERROR : message,
       };

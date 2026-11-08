@@ -624,8 +624,10 @@ export class PlaywrightExecutionProcessor
       // Delegate the actual execution to the service
       const result = await this.executionService.runJob(job.data);
       observedBillableMs = result.billableMs ?? 0;
+      // Interrupted runs are excluded from alerts like cancelled ones, even if saving the result fails.
       runWasCancelled =
-        !result.success && !!result.error?.includes(RUN_CANCELLATION_MARKER);
+        result.interrupted === true ||
+        (!result.success && !!result.error?.includes(RUN_CANCELLATION_MARKER));
 
       await job
         .updateProgress(100)

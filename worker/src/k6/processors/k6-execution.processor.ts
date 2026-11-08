@@ -37,10 +37,12 @@ import { consumesWorkerQueue } from '../../common/worker-queues';
 import { locationSupportsWorkload } from '../../common/location/location-capability';
 import { GlobalQueueCapabilityGuard } from '../../common/location/global-queue-guard';
 import { captureJobFailure } from '../../common/sentry-reporter';
+import { RunInterruptedError } from '../../common/run-interrupted.error';
 import {
   registerIntakeStopper,
   trackInFlight,
 } from '../../common/shutdown-intake';
+import { WORKER_INTERRUPTED_ERROR } from '../../common/security/container-executor.service';
 import { TIMEOUTS } from '../../common/constants/timeouts.constants';
 
 type K6Task = K6ExecutionTask;
@@ -629,6 +631,8 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
       const cancellationLike =
         !(error instanceof UnrecoverableError) &&
         (message.includes('cancelled') || message.includes('cancellation'));
+      // A restart-interrupted run whose result could not be saved: stored as the restart, no alert.
+      const interruptedFailure = error instanceof RunInterruptedError;
 
       if (
         !cancellationLike &&
@@ -678,10 +682,14 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
           await (transaction ?? this.dbService.db)
             .update(schema.runs)
             .set({
-              status: isCancellation ? 'error' : 'failed',
+              status: isCancellation || interruptedFailure ? 'error' : 'failed',
               completedAt: new Date(),
               durationMs: Date.now() - processStartTime,
-              errorDetails: isCancellation ? RUN_CANCELLATION_MARKER : message,
+              errorDetails: interruptedFailure
+                ? WORKER_INTERRUPTED_ERROR
+                : isCancellation
+                  ? RUN_CANCELLATION_MARKER
+                  : message,
             })
             .where(
               and(
@@ -752,7 +760,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
           projectId: taskData.projectId,
           runId,
           finalStatus: 'failed',
-          cancelled: cancellationLike,
+          cancelled: cancellationLike || interruptedFailure,
           durationSeconds: Math.round((Date.now() - processStartTime) / 1000),
           results: [{ success: false }],
           jobType: taskData.jobType ?? 'k6',
