@@ -9,6 +9,7 @@ import crypto from "crypto";
 import {
   addJobToQueue,
   addK6JobToQueue,
+  assertExecutionQueueReady,
   JobExecutionTask,
   K6ExecutionTask,
 } from "@/lib/queue";
@@ -179,6 +180,9 @@ export async function POST(
       rateLimitTimeWindow: key.rateLimitTimeWindow,
       rateLimitMax: key.rateLimitMax,
     });
+
+    // First Redis use and before any write: during an outage this answers 503 instead of hanging.
+    await assertExecutionQueueReady();
 
     const rateLimitResult = await apiKeyRateLimiter.checkAndIncrement(
       key.id,

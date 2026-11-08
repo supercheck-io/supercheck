@@ -1,5 +1,5 @@
 import catalog from "@/lib/billing/plan-catalog.json";
-import { PRICING_FAQS } from "@/lib/billing/pricing-copy";
+import { DEMO_FAQ_QUESTION, PRICING_FAQS } from "@/lib/billing/pricing-copy";
 import { trialFaqs, trialHighlights, trialValues } from "@/lib/billing/trial-copy";
 import { isTrialEnabled } from "@/lib/execution/trial-limits";
 import { DEFAULT_OVERAGE_PRICING } from "@/lib/billing/pricing-defaults";
@@ -106,7 +106,7 @@ export async function GET() {
             customDomains: plan.customDomains,
             support:
               planType === "pro" ? "Priority email support" : "Email support",
-            checkInterval: "1 min (Synthetic: 5 min)",
+            checkInterval: `1 min (Synthetic: ${catalog.syntheticMinIntervalMinutes} min)`,
             monitoringLocations: locationsSummary,
           },
           overagePricing: overage
@@ -134,9 +134,9 @@ export async function GET() {
           },
           {
             name: "Check Interval",
-            plus: "1 min (Synthetic: 5 min)",
-            pro: "1 min (Synthetic: 5 min)",
-            enterprise: "1 min (Synthetic: 5 min)",
+            plus: `1 min (Synthetic: ${catalog.syntheticMinIntervalMinutes} min)`,
+            pro: `1 min (Synthetic: ${catalog.syntheticMinIntervalMinutes} min)`,
+            enterprise: `1 min (Synthetic: ${catalog.syntheticMinIntervalMinutes} min)`,
           },
           {
             name: "Monitoring Locations",
@@ -295,7 +295,10 @@ export async function GET() {
     // promises a free trial the signup flow will not give is worse than no mention at all.
     const trialOffered = isTrialEnabled();
     const trialQuestions = new Set(trialFaqs().map((faq) => faq.question));
-    const faqs = trialOffered ? PRICING_FAQS : PRICING_FAQS.filter((faq) => !trialQuestions.has(faq.question));
+    // The generic demo answer is the fallback when no trial is offered; with a trial, its answer carries the demo.
+    const faqs = trialOffered
+      ? PRICING_FAQS.filter((faq) => faq.question !== DEMO_FAQ_QUESTION)
+      : PRICING_FAQS.filter((faq) => !trialQuestions.has(faq.question));
 
     // Build overage pricing data from database
     const plusOverage = overagePricingMap.get("plus");

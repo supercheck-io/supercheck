@@ -146,10 +146,11 @@ describe("2026-10 webhook payloads through the real handlers", () => {
     await deliver(handleSubscriptionActive, "subscription.active", subscription(), "2026-10-01T00:00:01Z");
     await mockDatabase.update(schema.organization).set({ playwrightMinutesUsed: 11 }).where(eq(schema.organization.id, orgId));
     const savedFetch = global.fetch;
-    const savedEnv = { SELF_HOSTED: process.env.SELF_HOSTED, POLAR_ACCESS_TOKEN: process.env.POLAR_ACCESS_TOKEN, POLAR_WEBHOOK_SECRET: process.env.POLAR_WEBHOOK_SECRET };
+    const savedEnv = { SELF_HOSTED: process.env.SELF_HOSTED, POLAR_ACCESS_TOKEN: process.env.POLAR_ACCESS_TOKEN, POLAR_WEBHOOK_SECRET: process.env.POLAR_WEBHOOK_SECRET, POLAR_SERVER: process.env.POLAR_SERVER };
     process.env.SELF_HOSTED = "false";
     process.env.POLAR_ACCESS_TOKEN = "test";
     process.env.POLAR_WEBHOOK_SECRET = "test";
+    process.env.POLAR_SERVER = "sandbox";
     let injectConflict = changed;
     global.fetch = jest.fn(async (url) => {
       if (String(url).endsWith("/state")) return new Response(JSON.stringify({ id: CUS, active_subscriptions: [] }));

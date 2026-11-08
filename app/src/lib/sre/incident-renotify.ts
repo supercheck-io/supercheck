@@ -4,6 +4,7 @@ import { Queue, Worker } from "bullmq";
 import { notificationPolicies, sreIncidents } from "@/db/schema";
 import { getRedisConnection, queueLogger } from "@/lib/queue";
 import { notifyIncidentEvent } from "@/lib/sre/incident-notifier";
+import { sweepSreIncidents } from "@/sre/lib/incident-sweep";
 import { db } from "@/utils/db";
 
 const QUEUE_NAME = "sre-incident-renotify";
@@ -92,7 +93,12 @@ export async function initializeIncidentRenotifyScheduler() {
   worker = new Worker(
     QUEUE_NAME,
     async () => {
-      await renotifyUnacknowledgedIncidents();
+      try {
+        await renotifyUnacknowledgedIncidents();
+      } finally {
+        // Same 60 s tick, independent of the above: lost recovery signals and detached triage runs (sweepSreIncidents).
+        await sweepSreIncidents().catch((error) => queueLogger.error({ err: error }, "Incident sweep failed"));
+      }
     },
     { connection: redis.duplicate(), concurrency: 1, lockDuration: 120_000 },
   );

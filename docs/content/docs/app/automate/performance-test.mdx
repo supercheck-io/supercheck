@@ -28,7 +28,7 @@ Run and analyze results
 <Accordions>
 <Accordion title="Worker availability (503 EXECUTION_QUEUE_UNAVAILABLE)" id="worker-availability">
 
-If no worker is available to run k6 tests, the API returns HTTP 503 with code `EXECUTION_QUEUE_UNAVAILABLE`. Self-hosted: make sure a worker is running, wait for it to finish starting, then retry.
+If no worker is available to run k6 tests, the API returns HTTP 503 with code `EXECUTION_QUEUE_UNAVAILABLE`. The same response is returned, without creating a run, while the application cannot reach Redis for more than about two seconds. Retry after the `Retry-After` interval. Self-hosted: if no worker is available, make sure a worker is running and has finished starting; if Redis is unreachable, check the Redis (or Sentinel) service and the app's connection settings.
 </Accordion>
 </Accordions>
 

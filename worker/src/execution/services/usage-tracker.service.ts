@@ -551,10 +551,15 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
       );
 
       // Determine Polar API URL
-      const isSandbox = process.env.POLAR_SERVER === 'sandbox';
-      const polarUrl = isSandbox
-        ? 'https://sandbox-api.polar.sh'
-        : 'https://api.polar.sh';
+      // No default: an unset value must not silently target the live API.
+      const polarServer = process.env.POLAR_SERVER;
+      if (polarServer !== 'sandbox' && polarServer !== 'production') {
+        throw new Error('POLAR_SERVER must be "production" or "sandbox"');
+      }
+      const polarUrl =
+        polarServer === 'sandbox'
+          ? 'https://sandbox-api.polar.sh'
+          : 'https://api.polar.sh';
 
       // Sync to Polar using the /v1/events/ingest endpoint
       const response = await fetch(`${polarUrl}/v1/events/ingest`, {

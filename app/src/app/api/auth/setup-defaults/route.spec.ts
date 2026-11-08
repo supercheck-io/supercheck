@@ -295,7 +295,7 @@ describe("POST /api/auth/setup-defaults", () => {
       return { values, txSet };
     }
 
-    it("starts a 14 day trial with the trial limits for a new cloud organization when enabled", async () => {
+    it("starts a 30 day trial with the trial limits for a new cloud organization when enabled", async () => {
       process.env.TRIAL_ENABLED = "true";
       const { values, txSet } = arrangeCreation();
       const before = Date.now();
@@ -304,8 +304,8 @@ describe("POST /api/auth/setup-defaults", () => {
       expect(trial).toMatchObject({ organizationId: "new-id", maxMonitors: 5, maxStatusPages: 2, queuedCapacity: 5 });
       expect(txSet).toHaveBeenCalledWith({ trialGrantedAt: trial.trialStartedAt });
       const days = (trial.expiresAt.getTime() - before) / 86_400_000;
-      expect(days).toBeGreaterThan(13.99);
-      expect(days).toBeLessThan(14.01);
+      expect(days).toBeGreaterThan(29.99);
+      expect(days).toBeLessThan(30.01);
     });
 
     it("grants no trial unless the launch switch is on", async () => {

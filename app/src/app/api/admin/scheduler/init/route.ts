@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAdmin } from '@/lib/admin';
 import { adminDeniedResponse } from '@/lib/admin-errors';
 import { initializeJobSchedulers, cleanupJobScheduler } from '@/lib/job-scheduler';
-import { initializeMonitorSchedulers, cleanupMonitorScheduler } from '@/lib/monitor-scheduler';
+import { initializeMonitorSchedulers } from '@/lib/monitor-scheduler';
 
 export async function POST(request: Request) {
   try {
@@ -30,7 +30,6 @@ export async function POST(request: Request) {
     if (type === 'monitors' || type === 'all' || !type) {
       console.log('🔄 Manual monitor scheduler initialization started');
       try {
-        await cleanupMonitorScheduler();
         const monitorResult = await initializeMonitorSchedulers();
         results.monitors = monitorResult;
         console.log(`✅ Monitor scheduler manual init: ${monitorResult.scheduled} succeeded, ${monitorResult.failed} failed`);

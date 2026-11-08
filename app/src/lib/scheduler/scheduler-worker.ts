@@ -9,7 +9,11 @@
  */
 
 import { Worker } from 'bullmq';
-import { getRedisConnection, queueLogger } from '@/lib/queue';
+import { getQueues, getRedisConnection, queueLogger } from '@/lib/queue';
+import { and, eq } from 'drizzle-orm';
+import { db } from '@/utils/db';
+import { jobs } from '@/db/schema';
+import { processLegacyK6Tick } from './legacy-k6-tick';
 import { processScheduledJob, type ScheduledJobData } from './job-scheduler';
 import { processScheduledMonitor, type MonitorJobData } from './monitor-scheduler';
 import {
@@ -19,6 +23,18 @@ import {
 } from './constants';
 
 const logger = queueLogger;
+
+// The database is the source of truth for a job's cron when a legacy tick disagrees with job-scheduler.
+// Scoped to the tick's own project and organization (every scheduled payload carries both).
+export async function loadJobCron(jobId: string, scope: { projectId?: string; organizationId?: string }): Promise<string | null> {
+  if (!jobId || !scope.projectId || !scope.organizationId) return null;
+  const [row] = await db
+    .select({ cron: jobs.cronSchedule })
+    .from(jobs)
+    .where(and(eq(jobs.id, jobId), eq(jobs.projectId, scope.projectId), eq(jobs.organizationId, scope.organizationId)))
+    .limit(1);
+  return row?.cron ?? null;
+}
 
 // Singleton workers (handles Next.js hot-reload)
 let playwrightSchedulerWorker: Worker | null = null;
@@ -93,11 +109,13 @@ export async function initializeSchedulerWorkers(): Promise<void> {
       });
 
       // K6 Job Scheduler Worker
+      // shortcut: legacy k6-job-scheduler consumer kept for one release; remove in release N+1
       k6SchedulerWorker = new Worker<ScheduledJobData>(
         K6_JOB_SCHEDULER_QUEUE,
         async (job) => {
           logger.debug({ jobId: job.id, name: job.name }, 'Processing K6 scheduler job');
-          return processScheduledJob(job);
+          // Converges a schedule an old-version replica re-added here (see legacy-k6-tick.ts).
+          return processLegacyK6Tick(job, await getQueues(), processScheduledJob, loadJobCron);
         },
         {
           connection: baseConnection.duplicate(),

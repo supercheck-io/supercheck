@@ -51,7 +51,14 @@ export const SHARED_PRICING_FAQS = [
     question: "Do unused allowances roll over?",
     answer: "No. Execution minutes, AI credits, and AI SRE investigation allowances reset monthly on your billing date.",
   },
+  {
+    question: "What happens if I cancel?",
+    answer:
+      "Your plan stays active until the end of the period you paid for. Once that period ends, your monitors are paused and your status pages are archived, so nothing keeps running without a plan. Nothing is deleted by the plan ending, though normal data retention still applies to old results and artifacts, and when you subscribe again, paused monitors resume and archived status pages are republished automatically.",
+  },
 ];
+
+export const DEMO_FAQ_QUESTION = "Can I try Supercheck before subscribing?";
 
 export const PRICING_FAQS = [
   ...SHARED_PRICING_FAQS,
@@ -62,7 +69,7 @@ export const PRICING_FAQS = [
   },
   ...trialFaqs(),
   {
-    question: "Can I try Supercheck before subscribing?",
+    question: DEMO_FAQ_QUESTION,
     answer: "Yes. Try our free demo at demo.supercheck.dev — no signup required. When you are ready, choose a monthly plan. Cancel anytime.",
   },
   {

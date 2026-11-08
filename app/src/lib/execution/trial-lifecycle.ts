@@ -1,4 +1,4 @@
-import { and, eq, gt, inArray, isNotNull, isNull, lte, ne, notInArray, or } from "drizzle-orm";
+import { and, eq, exists, gt, inArray, isNotNull, isNull, lte, ne, notExists, notInArray, or, sql } from "drizzle-orm";
 import {
   executionEntitlements,
   member,
@@ -10,7 +10,7 @@ import {
 } from "@/db/schema";
 import type { TrialNotificationKind } from "@/emails";
 import { db } from "@/utils/db";
-import { hasPaidAccess } from "@/lib/execution/trial-limits";
+import { hasPaidAccess, TRIAL_DURATION_DAYS } from "@/lib/execution/trial-limits";
 import { notInDeletedProject } from "@/lib/middleware/plan-limit-lock";
 
 /** How many expired trials one run processes; the rest are picked up on the next run. */
@@ -31,12 +31,17 @@ export async function unscheduleMonitors(
   const { deleteScheduledMonitor } = await import("@/lib/monitor-scheduler");
   for (const row of monitorRows) {
     try {
-      if (row.scheduledJobId) await deleteScheduledMonitor(row.scheduledJobId);
-      await deleteScheduledMonitor(row.id);
-      await database
+      // Unscheduling runs after the pause committed; a resubscribe in between resumed and rescheduled
+      // the monitor, so only clear the schedule of a monitor that is still paused.
+      const stillPaused = await database
         .update(monitors)
         .set({ scheduledJobId: null })
-        .where(eq(monitors.id, row.id));
+        .where(and(eq(monitors.id, row.id), eq(monitors.status, "paused")))
+        .returning({ id: monitors.id });
+      if (!stillPaused.length) continue;
+      // scheduleMonitor keys the repeatable by monitor id; a legacy scheduledJobId may differ.
+      if (row.scheduledJobId && row.scheduledJobId !== row.id) await deleteScheduledMonitor(row.scheduledJobId);
+      await deleteScheduledMonitor(row.id);
     } catch (error) {
       console.error(`Failed to unschedule monitor ${row.id}:`, error);
     }
@@ -81,6 +86,86 @@ async function rescheduleMonitors(
       console.error(`Failed to reschedule monitor ${monitor.id} after trial:`, error);
     }
   }
+}
+
+type SuspendTx = Pick<typeof db, "select" | "insert" | "update">;
+
+/**
+ * Pauses every running monitor and archives every published status page of one organization and
+ * records each change in trial_suspensions, so a later subscription restores it. The caller holds
+ * the organization row lock. Idempotent: paused monitors and archived pages are skipped.
+ */
+async function suspendOrganizationResources(
+  tx: SuspendTx,
+  organizationId: string,
+  now: Date,
+) {
+  const running = await tx
+    .select({
+      id: monitors.id,
+      status: monitors.status,
+      scheduledJobId: monitors.scheduledJobId,
+    })
+    .from(monitors)
+    .where(
+      and(
+        eq(monitors.organizationId, organizationId),
+        ne(monitors.status, "paused"),
+      ),
+    );
+  const published = await tx
+    .select({ id: statusPages.id })
+    .from(statusPages)
+    .where(
+      and(
+        eq(statusPages.organizationId, organizationId),
+        eq(statusPages.status, "published"),
+      ),
+    );
+
+  const suspensions = [
+    ...running.map((monitor) => ({
+      organizationId,
+      resourceType: "monitor" as const,
+      resourceId: monitor.id,
+      previousStatus: monitor.status as string,
+    })),
+    ...published.map((page) => ({
+      organizationId,
+      resourceType: "status_page" as const,
+      resourceId: page.id,
+      previousStatus: "published",
+    })),
+  ];
+  if (suspensions.length)
+    await tx
+      .insert(trialSuspensions)
+      .values(suspensions)
+      .onConflictDoNothing();
+
+  if (running.length) {
+    await tx
+      .update(monitors)
+      .set({ status: "paused", updatedAt: now })
+      .where(
+        inArray(
+          monitors.id,
+          running.map((m) => m.id),
+        ),
+      );
+  }
+  if (published.length) {
+    await tx
+      .update(statusPages)
+      .set({ status: "archived", updatedAt: now })
+      .where(
+        inArray(
+          statusPages.id,
+          published.map((p) => p.id),
+        ),
+      );
+  }
+  return { running, published };
 }
 
 export interface TrialEndResult {
@@ -135,71 +220,7 @@ export async function endExpiredTrials(
         return [];
       }
 
-      const running = await tx
-        .select({
-          id: monitors.id,
-          status: monitors.status,
-          scheduledJobId: monitors.scheduledJobId,
-        })
-        .from(monitors)
-        .where(
-          and(
-            eq(monitors.organizationId, organizationId),
-            ne(monitors.status, "paused"),
-          ),
-        );
-      const published = await tx
-        .select({ id: statusPages.id })
-        .from(statusPages)
-        .where(
-          and(
-            eq(statusPages.organizationId, organizationId),
-            eq(statusPages.status, "published"),
-          ),
-        );
-
-      const suspensions = [
-        ...running.map((monitor) => ({
-          organizationId,
-          resourceType: "monitor" as const,
-          resourceId: monitor.id,
-          previousStatus: monitor.status as string,
-        })),
-        ...published.map((page) => ({
-          organizationId,
-          resourceType: "status_page" as const,
-          resourceId: page.id,
-          previousStatus: "published",
-        })),
-      ];
-      if (suspensions.length)
-        await tx
-          .insert(trialSuspensions)
-          .values(suspensions)
-          .onConflictDoNothing();
-
-      if (running.length) {
-        await tx
-          .update(monitors)
-          .set({ status: "paused", updatedAt: now })
-          .where(
-            inArray(
-              monitors.id,
-              running.map((m) => m.id),
-            ),
-          );
-      }
-      if (published.length) {
-        await tx
-          .update(statusPages)
-          .set({ status: "archived", updatedAt: now })
-          .where(
-            inArray(
-              statusPages.id,
-              published.map((p) => p.id),
-            ),
-          );
-      }
+      const { running, published } = await suspendOrganizationResources(tx, organizationId, now);
       await markEnded();
 
       result.organizations += 1;
@@ -243,6 +264,88 @@ export async function endExpiredTrials(
   // After every transaction has committed, so a rolled-back pause never loses a schedule.
   await unscheduleMonitors(toUnschedule, database);
 
+  return result;
+}
+
+/**
+ * Suspends organizations whose subscription ended: revoked (status none after a subscription) or
+ * canceled with the paid period over. Never past_due or a canceled period still running. An
+ * organization still inside its trial keeps its trial limits. Reuses trial_suspensions, so
+ * subscribing again restores everything. Idempotent: nothing running means nothing to do.
+ */
+export async function suspendLapsedOrganizations(
+  options: { now?: Date; database?: Database } = {},
+): Promise<TrialEndResult> {
+  const now = options.now ?? new Date();
+  const database = options.database ?? db;
+  const result: TrialEndResult = { organizations: 0, monitorsPaused: 0, statusPagesArchived: 0 };
+  const toUnschedule: Array<{ id: string; scheduledJobId: string | null }> = [];
+  // Organizations that failed or turned out paid under the lock are skipped for the rest of this run,
+  // so one stuck organization cannot starve the others.
+  const skip: string[] = [];
+  const deadline = Date.now() + DRAIN_BUDGET_MS;
+  for (;;) {
+    const candidates = await database
+      .select({ id: organization.id })
+      .from(organization)
+      .where(
+        and(
+          skip.length ? notInArray(organization.id, skip) : undefined,
+          isNotNull(organization.polarCustomerId),
+          or(
+            eq(organization.subscriptionStatus, "none"),
+            and(eq(organization.subscriptionStatus, "canceled"), lte(organization.subscriptionEndsAt, now)),
+          ),
+          // Trial organizations are handled by endExpiredTrials once their trial is over.
+          notExists(
+            database
+              .select({ one: sql`1` })
+              .from(executionEntitlements)
+              .where(and(eq(executionEntitlements.organizationId, organization.id), gt(executionEntitlements.expiresAt, now))),
+          ),
+          or(
+            exists(
+              database
+                .select({ one: sql`1` })
+                .from(monitors)
+                .where(and(eq(monitors.organizationId, organization.id), ne(monitors.status, "paused"))),
+            ),
+            exists(
+              database
+                .select({ one: sql`1` })
+                .from(statusPages)
+                .where(and(eq(statusPages.organizationId, organization.id), eq(statusPages.status, "published"))),
+            ),
+          ),
+        ),
+      )
+      .orderBy(organization.id)
+      .limit(BATCH_SIZE);
+
+    for (const { id } of candidates) {
+      try {
+        const paused = await database.transaction(async (tx) => {
+          // Serialize with a concurrent subscription, then re-check under the lock.
+          const [org] = await tx.select().from(organization).where(eq(organization.id, id)).for("update");
+          if (!org || hasPaidAccess(org, now)) {
+            skip.push(id);
+            return [];
+          }
+          const { running, published } = await suspendOrganizationResources(tx, id, now);
+          if (running.length || published.length) result.organizations += 1;
+          result.monitorsPaused += running.length;
+          result.statusPagesArchived += published.length;
+          return running;
+        });
+        toUnschedule.push(...paused);
+      } catch (error) {
+        skip.push(id);
+        console.error(`Failed to suspend lapsed org ${id}:`, error);
+      }
+    }
+    if (candidates.length < BATCH_SIZE || Date.now() >= deadline) break;
+  }
+  await unscheduleMonitors(toUnschedule, database);
   return result;
 }
 
@@ -296,10 +399,11 @@ export async function restoreTrialSuspensions(
           )
           .returning({ id: statusPages.id })
       : [];
+    // Only the rows read here: a suspension committed meanwhile must survive for the next restore.
     if (rows.length)
       await tx
         .delete(trialSuspensions)
-        .where(eq(trialSuspensions.organizationId, organizationId));
+        .where(inArray(trialSuspensions.id, rows.map((row) => row.id)));
 
     resumedIds.push(...resumed.map((row) => row.id));
     return {
@@ -380,7 +484,6 @@ export interface TrialReminderResult {
 }
 
 const DAY_MS = 86_400_000;
-const MIDWAY_DAYS = 7;
 const REMINDER_BATCH_SIZE = 50;
 
 const REMINDER_COLUMN = {
@@ -395,7 +498,8 @@ function reminderCondition(kind: TrialNotificationKind, now: Date) {
   if (kind === "midway") {
     return and(
       gt(ends, new Date(now.getTime() + DAY_MS)),
-      lte(ends, new Date(now.getTime() + MIDWAY_DAYS * DAY_MS)),
+      // Halfway through this trial's own length, so trials granted under an older duration are not told "halfway" early.
+      sql`${ends} - (${ends} - coalesce(${executionEntitlements.trialStartedAt}, ${ends} - make_interval(days => ${TRIAL_DURATION_DAYS}))) / 2 <= ${now.toISOString()}::timestamptz`,
       isNull(executionEntitlements.midwayNotifiedAt),
     );
   }

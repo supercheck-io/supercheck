@@ -13,7 +13,7 @@ jest.mock("@/lib/rbac/middleware", () => ({ isImpersonatedSession: jest.fn() }))
 jest.mock("@/lib/user-avatar", () => ({ pruneAvatars: jest.fn() }));
 jest.mock("@/lib/data-lifecycle-service", () => ({ getDataLifecycleService: jest.fn() }));
 jest.mock("@/lib/job-scheduler", () => ({ initializeJobSchedulers: jest.fn(), cleanupJobScheduler: jest.fn() }));
-jest.mock("@/lib/monitor-scheduler", () => ({ initializeMonitorSchedulers: jest.fn(), cleanupMonitorScheduler: jest.fn() }));
+jest.mock("@/lib/monitor-scheduler", () => ({ initializeMonitorSchedulers: jest.fn() }));
 jest.mock("@/lib/organization-teardown", () => ({
   BillingCancellationError: class extends Error {},
   OrganizationMembershipChangedError: class extends Error {},
