@@ -61,12 +61,19 @@ export class LocationService {
 
   /**
    * Calculate the overall status based on location results and threshold.
+   *
+   * `enqueuedLocations` is the set of regions actually scheduled for this cycle (regions with no live
+   * worker are skipped by the app). When absent or empty (old jobs during a rolling deploy) the
+   * configured locations are used. An enqueued region with no result still counts as down.
    */
   calculateAggregatedStatus(
     locationStatuses: Record<string, boolean>,
     config: LocationConfig,
+    enqueuedLocations?: string[],
   ): 'up' | 'down' | 'partial' {
-    const rawLocations = config.locations || [];
+    const rawLocations = enqueuedLocations?.length
+      ? enqueuedLocations
+      : config.locations || [];
     if (rawLocations.length === 0) {
       return 'down';
     }

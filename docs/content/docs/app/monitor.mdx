@@ -295,6 +295,8 @@ Use **Copy Prompt** to copy error details for AI-assisted debugging.
 
 A check cycle is skipped, not recorded as Down, when none of the monitor's locations has a live worker (for example during a deployment rollout that restarts workers). No result is stored and the failure count is unchanged. Because a location that permanently has no workers never turns Down this way, alert on worker health in your infrastructure monitoring to catch sustained worker absence.
 
+When some, but not all, of a multi-location monitor's locations have a live worker, the check runs in the locations that do. Status and thresholds are judged over those locations only; locations that were not run never count as down. A location that was started but returned no result still counts as down.
+
 ## Check Intervals
 
 Available intervals: 1 minute, 5 minutes, 10 minutes, 15 minutes, 30 minutes, 1 hour, 3 hours, 12 hours, and 24 hours. Shorter intervals detect failures sooner and use more resources.
