@@ -902,11 +902,12 @@ describe('ContainerExecutorService', () => {
     );
 
     describe.each([
-      [true, false, 'Interrupted by worker restart'],
-      [false, true, 'Execution cancelled (exit code 137)'],
+      [true, true, false, 'Interrupted by worker restart'],
+      [true, false, false, 'Interrupted by worker restart'], // killed before it vanished
+      [false, true, true, 'Execution cancelled (exit code 137)'],
     ])(
       'when the pod disappears (deleted by shutdown=%s)',
-      (deletedByShutdown, cancelled, error) => {
+      (deletedByShutdown, podGone, cancelled, error) => {
         it(`reports cancelled=${cancelled}`, async () => {
           service['batchApi'] = {
             createNamespacedJob: jest
@@ -920,7 +921,7 @@ describe('ContainerExecutorService', () => {
           service['waitForExecutionOutcome'] = jest.fn().mockResolvedValue({
             exitCode: 137,
             timedOut: false,
-            cancelled: true,
+            cancelled: podGone,
           });
           service['startLogStreamWithReconnect'] = jest
             .fn()

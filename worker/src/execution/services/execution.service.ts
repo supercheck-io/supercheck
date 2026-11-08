@@ -569,7 +569,8 @@ export class ExecutionService implements OnModuleDestroy {
       );
 
       billableMs = execResult.billableMs ?? 0;
-      containerRan = true;
+      // Without start evidence the pod never ran, so a retry cannot hit the target twice.
+      containerRan = billableMs > 0;
       execResult.stdout = this.redactSecretsFromText(
         execResult.stdout,
         runtimeSecrets,
@@ -587,6 +588,10 @@ export class ExecutionService implements OnModuleDestroy {
       if (wasCancelled) {
         this.logger.warn(`[${testId}] Execution was cancelled (exit code 137)`);
         throw new Error('Execution cancelled by user');
+      }
+      // Surfaces as an execution error (monitors report 'error', not 'down'), never as a cancellation.
+      if (execResult.error === WORKER_INTERRUPTED_ERROR) {
+        throw new Error(WORKER_INTERRUPTED_ERROR);
       }
 
       // 5. Process result and upload report

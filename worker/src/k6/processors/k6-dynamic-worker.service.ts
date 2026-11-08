@@ -20,7 +20,10 @@ import { HeartbeatService } from '../../common/heartbeat/heartbeat.service';
 import { DbService } from '../../db/db.service';
 import { sql } from 'drizzle-orm';
 import { captureJobFailure } from '../../common/sentry-reporter';
-import { registerIntakeStopper } from '../../common/shutdown-intake';
+import {
+  registerIntakeStopper,
+  stopIntake,
+} from '../../common/shutdown-intake';
 import { TIMEOUTS } from '../../common/constants/timeouts.constants';
 
 /**
@@ -97,6 +100,7 @@ export class K6DynamicWorkerService
   }
 
   async onModuleDestroy(): Promise<void> {
+    await stopIntake(); // this module is destroyed before the executor's, so stop every consumer now
     this.shuttingDown = true;
     this.heartbeatService.removeQueues(Array.from(this.activeQueueNames));
     if (this.discoveryRetryTimer) {

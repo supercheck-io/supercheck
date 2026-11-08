@@ -384,7 +384,6 @@ export class K6ExecutionService {
     const extractedReportsDir = createSafeTempPath(`k6-reports-${uniqueRunId}`);
 
     let finalResult: K6ExecutionResult;
-    let containerRan = false;
 
     try {
       // Ensure OS temp directory exists for extracted reports
@@ -525,7 +524,6 @@ export class K6ExecutionService {
       if (!execResult) {
         throw new Error(`[${runId}] k6 did not produce an execution result`);
       }
-      containerRan = true;
 
       execResult.stdout = this.redactSecretsFromText(
         execResult.stdout,
@@ -801,9 +799,9 @@ export class K6ExecutionService {
         error: getErrorMessage(error),
       };
 
-      // After the container ran, a retry would run the test again against the customer's target.
+      // After the container started, a retry would run the test again against the customer's target.
       throw attachBillableMs(
-        containerRan && !(error instanceof UnrecoverableError)
+        totalBillableMs > 0 && !(error instanceof UnrecoverableError)
           ? new UnrecoverableError(
               `k6 finished but its results could not be saved: ${getErrorMessage(error)}`,
             )

@@ -1068,11 +1068,14 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
         },
       );
       timedOut = outcome.timedOut;
+      // The deleted Job's pod is seen either gone (404) or killed (137/143) first.
       const interrupted =
-        outcome.cancelled &&
         !killed &&
         !!options.runId &&
-        this.shutdownDeletedRunIds.has(options.runId);
+        this.shutdownDeletedRunIds.has(options.runId) &&
+        (outcome.cancelled ||
+          outcome.exitCode === 137 ||
+          outcome.exitCode === 143);
       killed = killed || (outcome.cancelled && !interrupted);
       if (
         outcome.exitCode === 0 &&

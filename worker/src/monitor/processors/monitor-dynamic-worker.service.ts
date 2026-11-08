@@ -23,7 +23,10 @@ import {
 import { HeartbeatService } from '../../common/heartbeat/heartbeat.service';
 import { DbService } from '../../db/db.service';
 import { ExecutionCapacityError } from '../../execution/services/execution-admission.service';
-import { registerIntakeStopper } from '../../common/shutdown-intake';
+import {
+  registerIntakeStopper,
+  stopIntake,
+} from '../../common/shutdown-intake';
 import { deferForCapacity } from '../../common/capacity-deferral';
 import { getErrorMessage } from '../../common/validation';
 import { and, desc, eq, sql } from 'drizzle-orm';
@@ -116,6 +119,8 @@ export class MonitorDynamicWorkerService
   }
 
   async onModuleDestroy(): Promise<void> {
+    // Closing below waits for the active check, so stop the other consumers first.
+    await stopIntake();
     this.shuttingDown = true;
     this.heartbeatService.removeQueues(Array.from(this.activeQueueNames));
     if (this.discoveryRetryTimer) {

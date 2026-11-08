@@ -144,7 +144,6 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
     let observedBillableMs = 0;
     let observedVirtualUsers: number | undefined;
     let usagePersisted = false;
-    let executed = false;
     const requestedLocation = job.data.location || this.workerLocation;
     const normalizedJobLocation = requestedLocation.toLowerCase();
     const jobLocationIsWildcard = this.isWildcardLocation(
@@ -310,7 +309,6 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
 
       // Execute k6
       const result = await this.k6ExecutionService.runK6Test(taskData);
-      executed = true;
       // Meter only container run time evidenced by Kubernetes.
       const billableMs = result.billableMs ?? 0;
       observedBillableMs = billableMs;
@@ -587,9 +585,11 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
           : (result.error ?? undefined),
       };
     } catch (caught) {
-      // The run executed but its result is not saved; a retry would run k6 against the target again.
+      // The container started but the result is not saved; a retry would run k6 against the target again.
       const error: unknown =
-        executed && !usagePersisted && !(caught instanceof UnrecoverableError)
+        observedBillableMs > 0 &&
+        !usagePersisted &&
+        !(caught instanceof UnrecoverableError)
           ? new UnrecoverableError(
               `k6 finished but its result could not be saved: ${getErrorMessage(caught)}`,
             )
