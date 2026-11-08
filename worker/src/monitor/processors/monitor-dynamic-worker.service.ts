@@ -41,6 +41,9 @@ const MAX_AGGREGATION_BUSY_RETRIES = 30;
 /** A scheduled check queued longer than max(3 x frequency, this floor) is stale and is skipped, not run late. */
 const STALE_CHECK_FLOOR_MS = 3 * 60 * 1000;
 
+/** Synthetic monitors never run more often than this (mirrors the app scheduler's clamp). */
+const SYNTHETIC_MIN_FREQUENCY_MINUTES = 5;
+
 /** Excludes the cycle's synthetic deadline row, which shares the key but is not a check's result. */
 const realResultOnly = sql`${schema.monitorResults.details} ->> 'synthetic' is distinct from 'true'`;
 
@@ -390,13 +393,17 @@ export class MonitorDynamicWorkerService
 
     const jobLocation = job.data.executionLocation;
 
-    if (this.isStale(job)) {
-      // Same path as any other deliberately skipped check: no result, no downtime, no alert; the group is aborted.
-      await this.closeSkippedGroup(job);
+    if (await this.isStale(job)) {
+      // No result, no downtime, no alert: the region leaves the group's expected set, as if it had no live worker.
+      await this.closeSkippedGroup(job, true);
       return [];
     }
 
     if (jobLocation) {
+      if ((job.data as { _regionDropped?: boolean })._regionDropped) {
+        await this.closeSkippedGroup(job, true);
+        return [];
+      }
       if (
         (job.data as { _capacityGaveUp?: boolean; _groupSkipped?: boolean })
           ._capacityGaveUp ||
@@ -519,7 +526,7 @@ export class MonitorDynamicWorkerService
    * True for a scheduled check on its first start that waited in the queue past its bound (a saturated or
    * returning worker). Manual runs, retries, deferrals and resumed closures are never stale.
    */
-  private isStale(job: Job<MonitorJobDataDto>): boolean {
+  private async isStale(job: Job<MonitorJobDataDto>): Promise<boolean> {
     const data = job.data;
     if (
       !data.scheduledCheck ||
@@ -528,11 +535,29 @@ export class MonitorDynamicWorkerService
     )
       return false;
     const ageMs = Date.now() - job.timestamp;
-    const boundMs = Math.max(
-      3 * (data.frequencyMinutes ?? 0) * 60_000,
-      STALE_CHECK_FLOOR_MS,
-    );
-    if (ageMs <= boundMs) return false;
+    // Base the bound on the interval the scheduler really uses, not a stored value it clamps.
+    const frequency =
+      data.type === 'synthetic_test'
+        ? Math.max(data.frequencyMinutes ?? 0, SYNTHETIC_MIN_FREQUENCY_MINUTES)
+        : (data.frequencyMinutes ?? 0);
+    const boundMs = Math.max(3 * frequency * 60_000, STALE_CHECK_FLOOR_MS);
+    if (ageMs <= boundMs) {
+      // A cycle closes at its own deadline, which can pass before this bound: its region is then already settled,
+      // so running the check late would only add a stale row.
+      if (
+        ageMs <= STALE_CHECK_FLOOR_MS ||
+        !data.monitorCycle ||
+        !data.executionGroupId
+      )
+        return false;
+      const [cycle] = await this.dbService.db
+        .select({ status: schema.monitorCycles.status })
+        .from(schema.monitorCycles)
+        .where(eq(schema.monitorCycles.id, data.executionGroupId))
+        .limit(1)
+        .catch(() => []);
+      if (!cycle || cycle.status === 'open') return false;
+    }
     this.logger.warn(
       `Skipping stale monitor check ${data.monitorId}: queued ${Math.round(ageMs / 1000)}s, bound ${Math.round(boundMs / 1000)}s`,
     );
@@ -621,25 +646,43 @@ export class MonitorDynamicWorkerService
     }
   }
 
-  private async closeSkippedGroup(job: Job<MonitorJobDataDto>): Promise<void> {
+  private async closeSkippedGroup(
+    job: Job<MonitorJobDataDto>,
+    stale = false,
+  ): Promise<void> {
     const { monitorId, executionGroupId, monitorCycle } = job.data;
-    if (!executionGroupId) return;
+    if (!executionGroupId || (stale && !job.data.executionLocation)) return;
     // The capacity path closes the group and then reports "skipped" to processJob, which closes it again.
     if (this.closedSkippedGroups.has(job)) return;
     const flags = job.data as {
       _capacityGaveUp?: boolean;
       _groupSkipped?: boolean;
     };
-    if (!flags._capacityGaveUp && !flags._groupSkipped) {
-      job.data = { ...job.data, _groupSkipped: true } as never;
+    const flag = stale ? '_regionDropped' : '_groupSkipped';
+    if (
+      !flags._capacityGaveUp &&
+      !flags._groupSkipped &&
+      !(job.data as unknown as Record<string, unknown>)[flag]
+    ) {
+      job.data = { ...job.data, [flag]: true };
       await this.rememberFlags(job);
     }
     try {
-      await this.monitorService.skipDistributedMonitorGroup(
-        monitorId,
-        executionGroupId,
-        !!monitorCycle,
-      );
+      if (stale) {
+        await this.monitorService.dropStaleRegion(
+          monitorId,
+          executionGroupId,
+          job.data.executionLocation as string,
+          !!monitorCycle,
+          job.data.expectedLocations,
+        );
+      } else {
+        await this.monitorService.skipDistributedMonitorGroup(
+          monitorId,
+          executionGroupId,
+          !!monitorCycle,
+        );
+      }
       this.closedSkippedGroups.add(job);
     } catch (error) {
       // A busy lease or an outage of the database or Redis: wait it out, but not forever. A plain failure here
@@ -720,10 +763,12 @@ export class MonitorDynamicWorkerService
     // monitored service, so it must not be recorded as a failed check.
     if (
       (job.data as { _capacityGaveUp?: boolean })._capacityGaveUp ||
-      (job.data as { _groupSkipped?: boolean })._groupSkipped
+      (job.data as { _groupSkipped?: boolean })._groupSkipped ||
+      (job.data as { _regionDropped?: boolean })._regionDropped
     ) {
+      // For a dropped stale region this is the last resort after its closure retries ran out: abort, never downtime.
       this.logger.warn(
-        `Monitor ${monitorId}/${executionLocation} not recorded: no execution slot became free`,
+        `Monitor ${monitorId}/${executionLocation} not recorded: the check was skipped, not failed`,
       );
       await this.abortCycleOf(job);
       return;

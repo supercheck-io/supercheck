@@ -1703,12 +1703,21 @@ describe('MonitorDynamicWorkerService stale scheduled checks', () => {
       saveDistributedMonitorResult: jest.fn().mockResolvedValue(undefined),
       saveMonitorResults: jest.fn().mockResolvedValue(undefined),
       skipDistributedMonitorGroup: jest.fn().mockResolvedValue(undefined),
+      dropStaleRegion: jest.fn().mockResolvedValue(undefined),
     };
     const service = new MonitorDynamicWorkerService(
       monitorService as unknown as MonitorService,
       new ConfigService(),
       {} as HeartbeatService,
-      {} as DbService,
+      {
+        db: {
+          execute: jest
+            .fn()
+            .mockResolvedValue([
+              { supports_browser: true, supports_k6: false },
+            ]),
+        },
+      } as unknown as DbService,
     );
     return { monitorService, service };
   };
@@ -1736,7 +1745,7 @@ describe('MonitorDynamicWorkerService stale scheduled checks', () => {
     service['processJob'](job as Job<MonitorJobDataDto>);
 
   it.each([false, true])(
-    'skips a stale scheduled check and aborts its group without a result (cycle=%s)',
+    'drops the stale region from its group without a result or an abort (cycle=%s)',
     async (monitorCycle) => {
       const { monitorService, service } = build();
       const job = jobOf({}, monitorCycle ? { monitorCycle: true } : {});
@@ -1745,16 +1754,96 @@ describe('MonitorDynamicWorkerService stale scheduled checks', () => {
       expect(
         monitorService.saveDistributedMonitorResult,
       ).not.toHaveBeenCalled();
-      expect(monitorService.skipDistributedMonitorGroup).toHaveBeenCalledWith(
+      expect(monitorService.skipDistributedMonitorGroup).not.toHaveBeenCalled();
+      expect(monitorService.dropStaleRegion).toHaveBeenCalledWith(
         'monitor-1',
         'group-1',
+        'eu',
         monitorCycle,
+        ['eu', 'us'],
       );
       expect(job.updateData).toHaveBeenCalledWith(
-        expect.objectContaining({ _groupSkipped: true }),
+        expect.objectContaining({ _regionDropped: true }),
       );
     },
   );
+
+  it('finishes a delayed drop on restart without re-checking staleness or aborting', async () => {
+    const { monitorService, service } = build();
+    await run(service, jobOf({ attemptsStarted: 2 }, { _regionDropped: true }));
+    expect(monitorService.dropStaleRegion).toHaveBeenCalledTimes(1);
+    expect(monitorService.skipDistributedMonitorGroup).not.toHaveBeenCalled();
+    expect(monitorService.executeMonitor).not.toHaveBeenCalled();
+  });
+
+  it('keeps the exact bound running and skips just over it', async () => {
+    const now = Date.now();
+    jest.spyOn(Date, 'now').mockReturnValue(now);
+    try {
+      const { monitorService, service } = build();
+      await run(service, jobOf({ timestamp: now - 3 * 60_000 }));
+      expect(monitorService.executeMonitor).toHaveBeenCalledTimes(1);
+      await run(service, jobOf({ timestamp: now - 3 * 60_000 - 1 }));
+      expect(monitorService.executeMonitor).toHaveBeenCalledTimes(1);
+      expect(monitorService.dropStaleRegion).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.restoreAllMocks();
+    }
+  });
+
+  it('skips a cycle check inside its bound once the cycle already settled, and not while it is open', async () => {
+    const { monitorService, service } = build();
+    const select = (status: string) => ({
+      select: () => ({
+        from: () => ({
+          where: () => ({ limit: () => Promise.resolve([{ status }]) }),
+        }),
+      }),
+    });
+    const db = (service as unknown as { dbService: { db: object } }).dbService;
+    const aged = { timestamp: Date.now() - 4 * 60_000 };
+    const data = { frequencyMinutes: 5, monitorCycle: true };
+    Object.assign(db.db, select('open'));
+    await run(service, jobOf(aged, data));
+    expect(monitorService.executeMonitor).toHaveBeenCalledTimes(1);
+    Object.assign(db.db, select('closed'));
+    await run(service, jobOf(aged, data));
+    expect(monitorService.executeMonitor).toHaveBeenCalledTimes(1);
+    expect(monitorService.dropStaleRegion).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to the 3 minute floor when frequencyMinutes is missing', async () => {
+    const { monitorService, service } = build();
+    await run(
+      service,
+      jobOf(
+        { timestamp: Date.now() - 2 * 60_000 },
+        { frequencyMinutes: undefined },
+      ),
+    );
+    expect(monitorService.executeMonitor).toHaveBeenCalledTimes(1);
+    await run(
+      service,
+      jobOf(
+        { timestamp: Date.now() - 4 * 60_000 },
+        { frequencyMinutes: undefined },
+      ),
+    );
+    expect(monitorService.dropStaleRegion).toHaveBeenCalledTimes(1);
+  });
+
+  it('bases a synthetic monitor bound on the 5 minute scheduling minimum, not a stored 1 minute', async () => {
+    const { monitorService, service } = build();
+    const synthetic = { type: 'synthetic_test', frequencyMinutes: 1 };
+    // 10 min old: stale for a 1 min monitor (3 min floor) but within 3 x 5 = 15 min for synthetic.
+    await run(service, jobOf({}, synthetic));
+    expect(monitorService.executeMonitor).toHaveBeenCalledTimes(1);
+    await run(
+      service,
+      jobOf({ timestamp: Date.now() - 16 * 60_000 }, synthetic),
+    );
+    expect(monitorService.dropStaleRegion).toHaveBeenCalledTimes(1);
+  });
 
   it('skips a stale legacy single-queue check without recording anything', async () => {
     const { monitorService, service } = build();
