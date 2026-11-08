@@ -21,6 +21,8 @@ import { getAllEnabledLocationCodes } from "@/lib/location-registry";
 import { getCurrentUser } from "@/lib/session";
 import { Role } from "@/lib/rbac/permissions";
 import { getSreAlertTriageQueue } from "@/sre/lib/background-alert-triage-queue";
+import { getStatusPageQueue } from "@/lib/status-page-scheduler";
+import { getIncidentRenotifyQueue } from "@/lib/sre/incident-renotify";
 
 import type { NextBullBoardAdapterState } from "@/lib/bull-board/next-adapter";
 
@@ -113,7 +115,6 @@ const initializeBullBoard = async (): Promise<NextBullBoardAdapterState> => {
     jobSchedulerQueue,
     k6JobSchedulerQueue,
     monitorSchedulerQueue,
-    emailTemplateQueue,
     dataLifecycleCleanupQueue,
   } = await getQueues();
   const { k6Queues } = await getCapacityQueues();
@@ -149,13 +150,15 @@ const initializeBullBoard = async (): Promise<NextBullBoardAdapterState> => {
       new BullMQAdapter(monitorSchedulerQueue, {
         displayName: "Monitor Scheduler",
       }),
-      new BullMQAdapter(emailTemplateQueue, {
-        displayName: "Email Template Render",
-      }),
       new BullMQAdapter(dataLifecycleCleanupQueue, {
         displayName: "Data Lifecycle Cleanup",
       }),
-      new BullMQAdapter(sreAlertTriageQueue, { displayName: "SRE Alert Triage" }),
+      // Incident events: opens/resolves incidents; AI triage runs in the background afterwards.
+      new BullMQAdapter(sreAlertTriageQueue, { displayName: "Incident Events" }),
+      ...[
+        { queue: getStatusPageQueue(), displayName: "Status Page Jobs" },
+        { queue: getIncidentRenotifyQueue(), displayName: "Incident Re-notify" },
+      ].flatMap(({ queue, displayName }) => (queue ? [new BullMQAdapter(queue, { displayName })] : [])),
     ],
     serverAdapter,
     options: {

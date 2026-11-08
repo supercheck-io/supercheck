@@ -23,6 +23,7 @@ flowchart LR
 | `app/src/lib/capacity-manager.ts` | Atomic Redis reserve/release (app-side admission) |
 | `worker/src/execution/services/execution-admission.service.ts`, `execution-queue-fairness.service.ts` | Worker-side admission and fairness, the enforcement point |
 | `app/src/lib/queue.ts`, `app/src/lib/job-scheduler.ts`, `app/src/lib/monitor-scheduler.ts` | Queues, connections, schedulers |
+| `app/src/lib/status-page-scheduler.ts`, `app/src/lib/sre/incident-renotify.ts`, `app/src/sre/lib/background-alert-triage-processor.ts` | App-owned BullMQ workers (`status-page-jobs`, `sre-incident-renotify`, `sre-alert-triage`); `closeQueue()` in `queue.ts` closes each on SIGTERM, so new ones need a shutdown hook there and an entry in the Bull dashboard and worker queue alerting |
 | `app/src/lib/location-registry.ts`, `app/src/lib/monitor-location-routing.ts` | Location normalization and queue routing |
 | `worker/src/common/security/container-executor.service.ts` (+ `.spec.ts`) | Kubernetes Job rendering: runtime class, deadlines, TTL |
 

@@ -56,9 +56,11 @@ export async function initializeSreAlertTriageProcessor() {
 }
 
 export async function shutdownSreAlertTriageProcessor() {
-  if (worker) {
-    await worker.close();
-    worker = null;
-  }
+  const pending = initPromise;
   initPromise = null;
+  // Wait for an in-flight init so its Worker is not left running after shutdown.
+  await pending?.catch(() => undefined);
+  const w = worker;
+  worker = null;
+  await w?.close();
 }

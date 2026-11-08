@@ -23,7 +23,7 @@ jest.mock("@/sre/lib/investigation-runner", () => ({
   startSreIncidentInvestigation: (...a: unknown[]) => start(...a),
   completeSreIncidentInvestigation: async () => ({ success: true }),
 }));
-jest.mock("@/sre/lib/triage-runner", () => ({ runSreIncidentTriage: jest.fn() }));
+jest.mock("@/sre/lib/triage-runner", () => ({ startSreIncidentTriage: jest.fn(), completeSreIncidentTriage: jest.fn() }));
 
 import { maybeAutoInvestigateOnOpen } from "./auto-investigate";
 import { insertSreRun, MAX_AUTO_RUNNING_PER_ORG, SreOrgConcurrencyError } from "./run-insert";

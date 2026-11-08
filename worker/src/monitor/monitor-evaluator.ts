@@ -399,7 +399,13 @@ export class MonitorEvaluator {
 
       // Once per recovery, before the alert toggle, channels or maintenance can drop it.
       if (consecutiveSuccessCount === recoveryThreshold) {
-        await this.monitorAlertService.signalRecovery(monitorId, new Date());
+        const signalled = await this.monitorAlertService.signalRecovery(
+          monitorId,
+          new Date(),
+        );
+        // A dropped signal leaves the incident open: retry the cycle within the bounded window, as a
+        // dropped failure signal does. The recovery alert has not gone out yet, so it is neither lost nor sent twice.
+        if (!signalled) return { alertSent: false, deliveryFailed: true };
       }
 
       // A blip shorter than the failure threshold was never an outage, so it gets no recovery alert.

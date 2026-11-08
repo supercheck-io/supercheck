@@ -14,7 +14,7 @@ jest.mock("@/lib/sre/investigation-billing", () => ({
 import { db } from "@/utils/db";
 import { runSreAgent } from "./agent-runner";
 import { SreInvestigationBillingError } from "@/lib/sre/investigation-billing";
-import { runSreIncidentTriage } from "./triage-runner";
+import { runSreIncidentTriage, startSreIncidentTriage } from "./triage-runner";
 
 describe("incident triage admission", () => {
   const input = { organizationId: "org", projectId: "project", userId: "user", incidentId: "incident" };
@@ -53,6 +53,12 @@ describe("incident triage admission", () => {
     withSreTriageAdmission.mockRejectedValue(new SreInvestigationBillingError("Your trial includes 20 AI triage runs and they are used. Subscribe to continue.", "trial_limit"));
     await expect(runSreIncidentTriage(input)).resolves.toMatchObject({ success: false, status: 402 });
     expect(db.insert).not.toHaveBeenCalled();
+    expect(runSreAgent).not.toHaveBeenCalled();
+  });
+
+  it("start inserts the run row and returns before the agent runs", async () => {
+    (db.insert as jest.Mock).mockReturnValue({ values: () => ({ returning: async () => [{ id: "run-1" }] }) });
+    await expect(startSreIncidentTriage(input)).resolves.toMatchObject({ success: true, investigationRunId: "run-1" });
     expect(runSreAgent).not.toHaveBeenCalled();
   });
 

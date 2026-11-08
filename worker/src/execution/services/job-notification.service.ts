@@ -116,11 +116,18 @@ export class JobNotificationService {
       break;
     }
     if (passes !== recoveryThreshold || !afterFailure) return;
-    await this.sreAlertTriageQueueService.enqueueSourceRecovery({
+    const queued = await this.sreAlertTriageQueueService.enqueueSourceRecovery({
       sourceType: 'job',
       sourceId: jobId,
       recoveredAt: new Date().toISOString(),
     });
+    // Job runs have no retry loop (the streak check only matches this one run), so a dropped signal can
+    // only be surfaced here. The recovery alert below is independent and still goes out.
+    if (!queued) {
+      this.logger.error(
+        `Recovery signal for job ${jobId} was not queued; its incident stays open until resolved manually`,
+      );
+    }
   }
 
   async handleJobNotifications({

@@ -98,9 +98,9 @@ export class SreAlertTriageQueueService implements OnModuleDestroy {
    * Tell the app a monitor or job recovered, so its open incident can auto-resolve.
    * Sent on every recovery, even when no recovery alert is delivered.
    */
-  async enqueueSourceRecovery(recovery: SreSourceRecovery): Promise<void> {
+  async enqueueSourceRecovery(recovery: SreSourceRecovery): Promise<boolean> {
     if (!this.isEnabled()) {
-      return;
+      return true; // incidents are off: nothing to retry
     }
     try {
       await this.getQueue().add(
@@ -111,8 +111,10 @@ export class SreAlertTriageQueueService implements OnModuleDestroy {
           jobId: `sre-recovery-${recovery.sourceType}-${recovery.sourceId}-${Date.parse(recovery.recoveredAt)}`,
         },
       );
+      return true;
     } catch (error) {
       this.logger.error('Failed to enqueue SRE source recovery job', error);
+      return false;
     }
   }
 

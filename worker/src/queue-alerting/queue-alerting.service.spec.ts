@@ -204,7 +204,6 @@ describe('QueueAlertingService', () => {
 
       return expect(names).resolves.toEqual([
         'data-lifecycle-cleanup',
-        'email-template-render',
         'job-scheduler',
         'k6-eu-central',
         'k6-global',
@@ -212,6 +211,9 @@ describe('QueueAlertingService', () => {
         'monitor-scheduler',
         'monitor-us-east',
         'playwright-global',
+        'sre-alert-triage',
+        'sre-incident-renotify',
+        'status-page-jobs',
       ]);
     });
 

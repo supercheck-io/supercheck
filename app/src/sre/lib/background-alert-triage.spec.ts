@@ -10,7 +10,8 @@ jest.mock("@/sre/lib/feature-gates", () => ({
 }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 const mockLogInfo = jest.fn();
-jest.mock("@/lib/logger/index", () => ({ createLogger: () => ({ warn: (...a: unknown[]) => mockLogInfo(...a) }) }));
+const mockLogError = jest.fn();
+jest.mock("@/lib/logger/index", () => ({ createLogger: () => ({ warn: (...a: unknown[]) => mockLogInfo(...a), error: (...a: unknown[]) => mockLogError(...a) }) }));
 jest.mock("@/lib/sre/incident-notifier", () => ({ notifyIncidentEvent: jest.fn().mockResolvedValue(undefined) }));
 jest.mock("@/lib/sre/incident-lifecycle", () => ({
   applySourceRecovery: jest.fn(),
@@ -21,7 +22,7 @@ jest.mock("@/lib/sre/incident-lifecycle", () => ({
   getDefaultAssigneeId: jest.fn().mockResolvedValue(null),
 }));
 jest.mock("@/lib/status-page-reconciliation", () => ({ linkStatusPageIncidentsToSreIncident: jest.fn().mockResolvedValue([]) }));
-jest.mock("@/sre/lib/triage-runner", () => ({ runSreIncidentTriage: jest.fn() }));
+jest.mock("@/sre/lib/triage-runner", () => ({ startSreIncidentTriage: jest.fn(), completeSreIncidentTriage: jest.fn() }));
 jest.mock("@/sre/lib/auto-investigate", () => ({ maybeAutoInvestigateOnOpen: jest.fn().mockResolvedValue({ handled: false }) }));
 
 const selectQueue: unknown[][] = [];
@@ -65,7 +66,7 @@ import {
   isSreAutomaticTriageEnabled,
   isSreBackgroundAlertTriageEnabled,
 } from "@/sre/lib/feature-gates";
-import { runSreIncidentTriage } from "@/sre/lib/triage-runner";
+import { completeSreIncidentTriage, startSreIncidentTriage } from "@/sre/lib/triage-runner";
 import { db } from "@/utils/db";
 import { processSreBackgroundAlertTriageJob } from "./background-alert-triage";
 
@@ -137,7 +138,7 @@ describe("processSreBackgroundAlertTriageJob", () => {
       expect(await processSreBackgroundAlertTriageJob(JOB)).toEqual({ success: true, skipped: true, reason: "ai_disabled" });
       expect(insertedIncident()).toMatchObject({ incidentNumber: 4, severity: "sev2", status: "triggered" });
       expect(notifyIncidentEvent).toHaveBeenCalledWith(expect.objectContaining({ event: "created", incidentId: "new-id" }));
-      expect(runSreIncidentTriage).not.toHaveBeenCalled();
+      expect(startSreIncidentTriage).not.toHaveBeenCalled();
     });
 
     const FAILURE_JOB = {
@@ -177,7 +178,7 @@ describe("processSreBackgroundAlertTriageJob", () => {
       freshIncidentQueue();
       expect(await processSreBackgroundAlertTriageJob(JOB)).toEqual({ success: true, skipped: true, reason: "ai_not_configured" });
       expect(insertedIncident()).toBeDefined();
-      expect(runSreIncidentTriage).not.toHaveBeenCalled();
+      expect(startSreIncidentTriage).not.toHaveBeenCalled();
     });
 
     it("hands a new incident to the project's automatic investigation and skips the instance-wide triage", async () => {
@@ -188,7 +189,7 @@ describe("processSreBackgroundAlertTriageJob", () => {
       freshIncidentQueue();
       expect(await processSreBackgroundAlertTriageJob(JOB)).toEqual({ success: true, skipped: true, reason: "auto_investigation" });
       expect(maybeAutoInvestigateOnOpen).toHaveBeenCalledWith(expect.objectContaining({ incidentId: "new-id", userId: null }));
-      expect(runSreIncidentTriage).not.toHaveBeenCalled();
+      expect(startSreIncidentTriage).not.toHaveBeenCalled();
     });
 
     it("runs the project's automatic investigation even when instance-wide triage is off", async () => {
@@ -207,20 +208,49 @@ describe("processSreBackgroundAlertTriageJob", () => {
       selectQueue.push([alertRow()]);
       freshIncidentQueue();
       expect(await processSreBackgroundAlertTriageJob(JOB)).toEqual({ success: true, skipped: true, reason: "already_triaged" });
-      expect(runSreIncidentTriage).not.toHaveBeenCalled();
+      expect(startSreIncidentTriage).not.toHaveBeenCalled();
     });
 
     it("runs AI triage when automation is on and AI is configured", async () => {
       mockAutomatic.mockReturnValue(true);
-      (runSreIncidentTriage as jest.Mock).mockResolvedValue({ success: true, investigationRunId: "run-1" });
+      (startSreIncidentTriage as jest.Mock).mockResolvedValue({ success: true, investigationRunId: "run-1" });
       selectQueue.push([alertRow()]);
       freshIncidentQueue();
+      (completeSreIncidentTriage as jest.Mock).mockReturnValue(new Promise(() => {})); // the job must not wait for the AI run
       expect(await processSreBackgroundAlertTriageJob(JOB)).toMatchObject({ success: true, skipped: false, investigationRunId: "run-1" });
+      expect(completeSreIncidentTriage).toHaveBeenCalledWith(expect.objectContaining({ investigationRunId: "run-1" }), expect.objectContaining({ userId: null }));
+    });
+
+    it("logs, not throws, when the background triage completion fails", async () => {
+      mockAutomatic.mockReturnValue(true);
+      (startSreIncidentTriage as jest.Mock).mockResolvedValue({ success: true, investigationRunId: "run-1" });
+      (completeSreIncidentTriage as jest.Mock).mockRejectedValue(new Error("boom"));
+      selectQueue.push([alertRow()]);
+      freshIncidentQueue();
+      expect(await processSreBackgroundAlertTriageJob(JOB)).toMatchObject({ success: true, skipped: false });
+      await Promise.resolve();
+      expect(mockLogError).toHaveBeenCalledWith(expect.objectContaining({ investigationRunId: "run-1" }), expect.stringContaining("failed after it started"));
+    });
+
+    it("skips, not fails, when triage is refused for billing (402)", async () => {
+      mockAutomatic.mockReturnValue(true);
+      (startSreIncidentTriage as jest.Mock).mockResolvedValue({ success: false, status: 402, error: "limit" });
+      selectQueue.push([alertRow()]);
+      freshIncidentQueue();
+      expect(await processSreBackgroundAlertTriageJob(JOB)).toMatchObject({ success: true, skipped: true, reason: "triage_billing" });
+    });
+
+    it("fails the job so BullMQ retries on a real start error", async () => {
+      mockAutomatic.mockReturnValue(true);
+      (startSreIncidentTriage as jest.Mock).mockResolvedValue({ success: false, status: 502, error: "x" });
+      selectQueue.push([alertRow()]);
+      freshIncidentQueue();
+      expect(await processSreBackgroundAlertTriageJob(JOB)).toMatchObject({ success: false });
     });
 
     it("logs and skips when triage is already running (409)", async () => {
       mockAutomatic.mockReturnValue(true);
-      (runSreIncidentTriage as jest.Mock).mockResolvedValue({ success: false, status: 409, error: "running" });
+      (startSreIncidentTriage as jest.Mock).mockResolvedValue({ success: false, status: 409, error: "running" });
       selectQueue.push([alertRow()]);
       freshIncidentQueue();
       expect(await processSreBackgroundAlertTriageJob(JOB)).toMatchObject({ success: true, skipped: true, reason: "triage_in_progress" });

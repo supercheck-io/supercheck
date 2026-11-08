@@ -58,9 +58,11 @@ describe('SreAlertTriageQueueService', () => {
       sourceId: 'm1',
       recoveredAt: '2026-10-28T10:00:00.000Z',
     };
-    await new SreAlertTriageQueueService(configService).enqueueSourceRecovery(
-      recovery,
-    );
+    await expect(
+      new SreAlertTriageQueueService(configService).enqueueSourceRecovery(
+        recovery,
+      ),
+    ).resolves.toBe(true);
     const queue = mockQueueConstructor.mock.results[0].value;
     expect(queue.add).toHaveBeenCalledWith(
       'source-recovery',
@@ -72,10 +74,29 @@ describe('SreAlertTriageQueueService', () => {
 
     config.set('SRE_ENABLED', 'false');
     mockQueueConstructor.mockClear();
-    await new SreAlertTriageQueueService(configService).enqueueSourceRecovery(
-      recovery,
-    );
+    await expect(
+      new SreAlertTriageQueueService(configService).enqueueSourceRecovery(
+        recovery,
+      ),
+    ).resolves.toBe(true);
     expect(mockQueueConstructor).not.toHaveBeenCalled();
+  });
+
+  it('reports a failed source recovery enqueue so the caller can retry', async () => {
+    const errorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation();
+    mockQueueConstructor.mockImplementationOnce(() => ({
+      add: jest.fn().mockRejectedValue(new Error('redis down')),
+      on: jest.fn(),
+      close: jest.fn().mockResolvedValue(undefined),
+    }));
+    await expect(
+      new SreAlertTriageQueueService(configService).enqueueSourceRecovery({
+        sourceType: 'monitor',
+        sourceId: 'm1',
+        recoveredAt: '2026-10-28T10:00:00.000Z',
+      }),
+    ).resolves.toBe(false);
+    errorSpy.mockRestore();
   });
 
   it('enqueues failed deliveries but not pending ones', async () => {

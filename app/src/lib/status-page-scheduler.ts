@@ -80,3 +80,15 @@ export async function initializeStatusPageScheduler() {
     },
   );
 }
+
+export function getStatusPageQueue() {
+  return queue;
+}
+
+export async function shutdownStatusPageScheduler() {
+  const w = worker;
+  const q = queue;
+  worker = undefined;
+  queue = undefined;
+  await Promise.allSettled([w?.close(), q?.close()]);
+}

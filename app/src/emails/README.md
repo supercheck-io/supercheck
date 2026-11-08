@@ -50,9 +50,3 @@ the drift spec. Templates must not import from `app/src/lib`.
 1. Create `my-template.tsx` using `BaseLayout` and `EmailButton`; give every prop a default so it previews.
 2. Export it from `index.ts` and add a `renderMyTemplateEmail` to `lib/email-renderer.ts` returning `{ subject, html, text }`.
 3. Add a case to `templates.spec.tsx`.
-
-## Deprecated
-
-The `email-template` BullMQ queue and `lib/processors/email-template-processor.ts` are
-kept only so workers from earlier releases keep getting rendered emails during a
-rolling deploy. Delete both next release.

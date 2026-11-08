@@ -3005,21 +3005,17 @@ export class DataLifecycleService {
   }
 
   async shutdown(): Promise<void> {
-    const promises: Promise<void>[] = [];
+    const { cleanupWorker, cleanupQueue, cleanupQueueEvents } = this;
+    // Reset first so a repeated shutdown is a no-op.
+    this.cleanupWorker = null;
+    this.cleanupQueue = null;
+    this.cleanupQueueEvents = null;
 
-    if (this.cleanupWorker) {
-      promises.push(this.cleanupWorker.close());
-    }
-
-    if (this.cleanupQueue) {
-      promises.push(this.cleanupQueue.close());
-    }
-
-    if (this.cleanupQueueEvents) {
-      promises.push(this.cleanupQueueEvents.close());
-    }
-
-    await Promise.all(promises);
+    await Promise.allSettled([
+      cleanupWorker?.close(),
+      cleanupQueue?.close(),
+      cleanupQueueEvents?.close(),
+    ]);
   }
 }
 

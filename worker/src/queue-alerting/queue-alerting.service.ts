@@ -50,8 +50,10 @@ const STATIC_MONITORED_QUEUES = [
   'job-scheduler',
   'k6-job-scheduler',
   'monitor-scheduler',
-  'email-template-render',
   'data-lifecycle-cleanup',
+  'status-page-jobs',
+  'sre-incident-renotify',
+  'sre-alert-triage',
 ];
 
 const DYNAMIC_QUEUE_PREFIXES = ['k6-', 'monitor-'];

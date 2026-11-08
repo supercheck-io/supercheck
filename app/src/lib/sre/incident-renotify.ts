@@ -102,3 +102,15 @@ export async function initializeIncidentRenotifyScheduler() {
     { name: "tick", data: {}, opts: { removeOnComplete: true, removeOnFail: 100 } },
   );
 }
+
+export function getIncidentRenotifyQueue() {
+  return queue;
+}
+
+export async function shutdownIncidentRenotifyScheduler() {
+  const w = worker;
+  const q = queue;
+  worker = undefined;
+  queue = undefined;
+  await Promise.allSettled([w?.close(), q?.close()]);
+}

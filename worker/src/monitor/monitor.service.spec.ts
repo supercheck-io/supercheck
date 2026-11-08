@@ -209,7 +209,7 @@ describe('MonitorService', () => {
     checkAndSendAlerts: jest.fn().mockResolvedValue(undefined),
     processMonitorResult: jest.fn().mockResolvedValue(undefined),
     sendNotification: jest.fn().mockResolvedValue(undefined),
-    signalRecovery: jest.fn().mockResolvedValue(undefined),
+    signalRecovery: jest.fn().mockResolvedValue(true),
     sendSslExpirationNotification: jest.fn().mockResolvedValue(true),
   };
 

@@ -10,7 +10,7 @@ import { isSreEnabled } from "@/sre/lib/feature-gates";
 import { completeSreIncidentInvestigation, startSreIncidentInvestigation } from "@/sre/lib/investigation-runner";
 import { STALE_RUN_AFTER_MS, failStaleSreInvestigationRunsForIncident } from "@/sre/lib/stale-run-recovery";
 import { MAX_AUTO_RUNNING_PER_ORG } from "@/sre/lib/run-insert";
-import { runSreIncidentTriage } from "@/sre/lib/triage-runner";
+import { completeSreIncidentTriage, startSreIncidentTriage } from "@/sre/lib/triage-runner";
 import { db } from "@/utils/db";
 
 // Failed automatic attempts (manual runs do not count) per incident before it stops retrying; a person can still start one.
@@ -139,9 +139,13 @@ async function startOnce(
     if (blocked) return { handled: false, reason: blocked };
 
     if (severity === "sev3" || severity === "sev4") {
-      const triage = await runSreIncidentTriage({ ...input, origin: "auto" });
+      const triageInput = { ...input, origin: "auto" as const };
+      const triage = await startSreIncidentTriage(triageInput);
       if (!triage.success && triage.status === 409) return { handled: false, reason: triage.reason ?? "already_running" };
-      return { handled: triage.success, reason: triage.success ? undefined : "triage_refused" };
+      if (!triage.success) return { handled: false, reason: "triage_refused" };
+      // Settles in the background, like the investigation below.
+      void completeSreIncidentTriage(triage, triageInput).catch((error) => logger.error({ error, incidentId: input.incidentId }, "Automatic triage failed after it started"));
+      return { handled: true };
     }
 
     try {

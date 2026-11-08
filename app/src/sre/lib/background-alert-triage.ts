@@ -43,11 +43,12 @@ import { linkStatusPageIncidentsToSreIncident } from "@/lib/status-page-reconcil
 import { notifyIncidentEvent } from "@/lib/sre/incident-notifier";
 import { watchIncident } from "@/lib/sre/incident-watchers";
 import { maybeAutoInvestigateOnOpen } from "@/sre/lib/auto-investigate";
-import { runSreIncidentTriage } from "@/sre/lib/triage-runner";
+import { completeSreIncidentTriage, startSreIncidentTriage } from "@/sre/lib/triage-runner";
 import { db } from "@/utils/db";
 
 const logger = createLogger({ module: "sre-background-alert-triage" }) as {
   warn: (data: unknown, message?: string) => void;
+  error: (data: unknown, message?: string) => void;
 };
 
 // Keep in sync with SreAlertTriageQueueJob in worker/src/monitor/services/sre-alert-triage-queue.service.ts.
@@ -99,6 +100,7 @@ export type SreBackgroundAlertTriageResult =
         | "resolved_alert"
         | "already_triaged"
         | "triage_in_progress"
+        | "triage_billing"
         | "unsupported_source"
         | "incident_disabled"
         | "recovery_handled"
@@ -920,17 +922,26 @@ export async function processSreBackgroundAlertTriageJob(
     return { success: true, skipped: true, reason: "ai_not_configured" };
   }
 
-  const triage = await runSreIncidentTriage({
+  // Only the start (admission, billing and concurrency checks, run row) is awaited: the AI run
+  // takes minutes, longer than the job lock. Stale-run recovery fails a run that never settles.
+  const triageInput = {
     organizationId: incident.organizationId,
     projectId: incident.projectId,
     userId: null,
     incidentId: incident.incidentId,
-  });
+  };
+  const triage = await startSreIncidentTriage(triageInput);
 
   if (!triage.success && triage.status === 409) {
     // Another triage/investigation is already running for this incident; nothing to retry.
     logger.warn({ incidentId: incident.incidentId }, "Background triage skipped: an investigation is already running");
     return { success: true, skipped: true, reason: "triage_in_progress" };
+  }
+
+  if (!triage.success && triage.status === 402) {
+    // Plan or credit limits do not clear on retry.
+    logger.warn({ incidentId: incident.incidentId }, "Background triage skipped: billing limit");
+    return { success: true, skipped: true, reason: "triage_billing" };
   }
 
   if (!triage.success) {
@@ -942,16 +953,31 @@ export async function processSreBackgroundAlertTriageJob(
     };
   }
 
-  await db
-    .update(sreAlertEvents)
-    .set({ triageInvestigationRunId: triage.investigationRunId })
-    .where(
-      and(
-        eq(sreAlertEvents.id, incident.alertEventId),
-        eq(sreAlertEvents.organizationId, incident.organizationId),
-        eq(sreAlertEvents.projectId, incident.projectId),
-      ),
+  void completeSreIncidentTriage(triage, triageInput).catch((error) =>
+    logger.error(
+      { errorName: error instanceof Error ? error.name : typeof error, incidentId: incident.incidentId, investigationRunId: triage.investigationRunId },
+      "Background triage failed after it started",
+    ),
+  );
+
+  try {
+    await db
+      .update(sreAlertEvents)
+      .set({ triageInvestigationRunId: triage.investigationRunId })
+      .where(
+        and(
+          eq(sreAlertEvents.id, incident.alertEventId),
+          eq(sreAlertEvents.organizationId, incident.organizationId),
+          eq(sreAlertEvents.projectId, incident.projectId),
+        ),
+      );
+  } catch (error) {
+    // The run is already in flight; a retry would only hit the 409 skip, so log instead of failing the job.
+    logger.error(
+      { errorName: error instanceof Error ? error.name : typeof error, alertEventId: incident.alertEventId, investigationRunId: triage.investigationRunId },
+      "Could not link background triage run to the alert event",
     );
+  }
 
   return {
     success: true,
