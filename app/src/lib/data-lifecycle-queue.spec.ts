@@ -7,7 +7,7 @@ const queue = {
   close: jest.fn(),
 };
 const worker = { on: jest.fn(), close: jest.fn() };
-const events = { waitUntilReady: jest.fn(), close: jest.fn() };
+const events = { waitUntilReady: jest.fn(), close: jest.fn(), on: jest.fn() };
 const QueueEventsCtor = jest.fn((..._args: unknown[]) => events);
 
 jest.mock("bullmq", () => ({
@@ -19,6 +19,7 @@ jest.mock("bullmq", () => ({
 }));
 jest.mock("@/lib/monitor-aggregation-service", () => ({ monitorAggregationService: {} }));
 jest.mock("@/utils/db", () => ({ db: {} }));
+jest.mock("@/lib/queue", () => ({ buildRedisOptions: (o: object) => ({ host: "redis-opts", ...o }) }));
 
 import type { Redis } from "ioredis";
 import { DataLifecycleService, type CleanupStrategyConfig } from "./data-lifecycle-service";
@@ -108,6 +109,11 @@ describe("QueueEvents", () => {
     await service.triggerManualCleanup("monitor_results", true);
 
     expect(QueueEventsCtor).toHaveBeenCalledTimes(1);
+    // Its own connection options (BullMQ owns and quits it), never the shared client, plus an error listener.
+    expect(QueueEventsCtor).toHaveBeenCalledWith("data-lifecycle-cleanup", { connection: { host: "redis-opts", lazyConnect: false } });
+    expect(events.on).toHaveBeenCalledWith("error", expect.any(Function));
+    const onError = events.on.mock.calls.find(([name]) => name === "error")![1] as (e: Error) => void;
+    expect(() => onError(new Error("redis down"))).not.toThrow(); // logged, never an unhandled 'error' event
     expect(order.slice(0, 2)).toEqual(["ready", "add"]);
   });
 

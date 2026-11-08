@@ -57,6 +57,7 @@ import {
 import { sql, and, or, isNotNull, isNull, lt, lte, eq, inArray, gt, asc, type SQL } from "drizzle-orm";
 import { Queue, Worker, QueueEvents } from "bullmq";
 import type Redis from "ioredis";
+import { buildRedisOptions } from "@/lib/queue";
 import { createS3CleanupService, type ReportDeletionInput } from "./s3-cleanup";
 import { isPolarEnabled } from "@/lib/feature-flags";
 import { removeK6RunLinks } from "@/lib/resource-deletion/linked-records";
@@ -2928,9 +2929,15 @@ export class DataLifecycleService {
 
     // Created on the first manual run only: QueueEvents holds a permanent blocking Redis connection.
     // Ready before add, so the completion event cannot be missed. shutdown() closes it.
-    this.cleanupQueueEvents ??= new QueueEvents("data-lifecycle-cleanup", {
-      connection: this.redisConnection,
-    });
+    // Options, not the shared client: BullMQ then owns the blocking connection and close() quits it (AGENTS.md gotcha 5).
+    if (!this.cleanupQueueEvents) {
+      this.cleanupQueueEvents = new QueueEvents("data-lifecycle-cleanup", {
+        connection: buildRedisOptions({ lazyConnect: false }),
+      });
+      this.cleanupQueueEvents.on("error", (error) => {
+        console.error("[DATA LIFECYCLE] Cleanup QueueEvents error:", error);
+      });
+    }
     const events = this.cleanupQueueEvents;
     try {
       await events.waitUntilReady();

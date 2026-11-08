@@ -298,6 +298,19 @@ suite("scheduler upgrade (real Redis, BullMQ)", () => {
       expect(run).toHaveBeenCalledTimes(1);
     });
 
+    it("a same-schedule copy in both queues gets the same tick id, so the run guard keyed on it dedupes either order", async () => {
+      // When job-scheduler's copy is picked first, its `next` has already advanced past the slot and the legacy tick
+      // runs too; processScheduledJob's per-tick run guard (job.id + attempt, under an advisory lock) then refuses
+      // the second run. That only holds while BullMQ derives the id without the queue name, which this pins.
+      jobRows = [row(JOB)];
+      await initializeJobSchedulers();
+      await oldScheduleJob(JOB);
+      const [legacy] = await k6Queue.getDelayed();
+      const [current] = await jobQueue.getDelayed();
+      expect(legacy.id).toMatch(/^repeat:/);
+      expect(legacy.id).toBe(current.id);
+    });
+
     it("a legacy tick of a deleted or unscheduled job drops the legacy entry and leaves job-scheduler alone", async () => {
       jobRows = [row(JOB)];
       await initializeJobSchedulers();

@@ -73,6 +73,18 @@ describe("orphaned repeatable cleanup", () => {
     expect(queue.removeRepeatableByKey).toHaveBeenCalledWith(`key:${A}`);
   });
 
+  it("re-adds a monitor resumed between the cleanup read and its removal: the active read runs after removal", async () => {
+    queue.getRepeatableJobs.mockResolvedValue([repeatable(A)]);
+    queue.removeRepeatableByKey.mockImplementation(async () => void events.push("remove"));
+    queue.add.mockImplementation(async () => void events.push("add"));
+    selects.push(
+      [{ id: A, enabled: true, status: "paused", scheduledJobId: A }], // cleanup saw it paused
+      [{ id: A, projectId: "p", type: "http_request", target: "t", config: {}, frequencyMinutes: 1 }], // resume committed
+    );
+    await initializeMonitorSchedulers();
+    expect(events).toEqual(["select", "remove", "select", "add"]);
+  });
+
   it("releases its tokenised lock with compare-and-delete, also when no monitor is active", async () => {
     await initializeMonitorSchedulers();
     const [script, , key, token] = redis.eval.mock.calls[0];

@@ -33,6 +33,10 @@ export function addJobRepeatable(
  *   before a reschedule is stale; a job with no cron is orphaned and just drops the legacy
  *   entry). job-scheduler is made to match, and this due tick is processed.
  * - no job-scheduler copy: move the schedule (add first, so it is never dropped), then process.
+ * The same-slot skip is only a fast path: once job-scheduler's copy has been picked up, BullMQ has already advanced
+ * its `next`, so a later legacy tick for that slot runs. Both copies carry the same tick id (BullMQ derives it from
+ * name, jobId, tz and pattern, not the queue), so processScheduledJob's per-tick run guard (keyed on the tick id and
+ * attempt; it ships with the execution-capacity hardening change, which must merge first) rejects the second run.
  * Idempotent: adds are keyed by job id and removals of a missing key are no-ops. The
  * job-scheduler lookup is a getRepeatableJobs scan (legacy-created entries are not job
  * schedulers); it runs only for legacy ticks, which stop once converged.

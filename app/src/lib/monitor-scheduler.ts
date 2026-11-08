@@ -248,6 +248,8 @@ export async function initializeMonitorSchedulers(): Promise<{ success: boolean;
  * Removes repeatables whose monitor is deleted, disabled or scheduled under a different id.
  * A repeatable for an existing enabled monitor is never removed: a monitor created
  * mid-rollout may not have its scheduledJobId written yet. Runs under the init lock.
+ * A paused monitor resumed concurrently is not lost: resume commits its status before re-adding the repeatable, and
+ * init reads active monitors only after these removals and re-schedules them.
  */
 async function removeOrphanedMonitorRepeatables(queue: Queue): Promise<RepeatableJob[]> {
   const repeatableJobs = await queue.getRepeatableJobs();
