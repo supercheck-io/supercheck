@@ -34,6 +34,10 @@ describe("trial copy", () => {
     expect(first).toContain("AI SRE chat and evidence briefs");
   });
 
+  it("keeps the end-of-trial question last, so the subscribe page can drop only the offer questions", () => {
+    expect(trialFaqs().at(-1)?.question).toBe("What happens when the free trial ends?");
+  });
+
   it("says what happens at the end of the trial", () => {
     const text = trialFaqs().map((faq) => faq.answer).join(" ");
     expect(text).toContain("Nothing is deleted");

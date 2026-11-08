@@ -18,7 +18,7 @@ jest.mock("@/utils/db", () => ({
 const deleteScheduledMonitor = jest.fn(async () => true);
 const scheduleMonitor = jest.fn(async () => "sched-new");
 jest.mock("@/lib/monitor-scheduler", () => ({ deleteScheduledMonitor, scheduleMonitor }));
-import { restoreTrialSuspensions, suspendLapsedOrganizations } from "./trial-lifecycle";
+import { restoreTrialSuspensions, suspendLapsedOrganizations, unscheduleMonitors } from "./trial-lifecycle";
 
 const name = `lapsed_${randomUUID().replaceAll("-", "")}`;
 let maintenance: ReturnType<typeof postgres>;
@@ -119,6 +119,19 @@ it("ignores organizations without a billing customer, picks up an expired trial,
   expect(await pageStatus(noCustomer.page.id)).toBe("published");
   expect(await monitorStatus(expiredTrial.monitor.id)).toBe("paused");
   expect(await pageStatus(pageOnly.page.id)).toBe("archived");
+});
+
+it("does not unschedule a monitor that a resubscribe resumed after the pause committed", async () => {
+  const { org, monitor } = await seed({ status: "none" });
+  await suspendLapsedOrganizations({ now: NOW });
+  await mockDatabase.update(schema.organization).set({ subscriptionStatus: "active" }).where(eq(schema.organization.id, org.id));
+  await restoreTrialSuspensions(org.id);
+  deleteScheduledMonitor.mockClear();
+  // The lapse run's delayed unschedule still holds the pre-restore row.
+  await unscheduleMonitors([{ id: monitor.id, scheduledJobId: "sched-1" }], mockDatabase);
+  expect(deleteScheduledMonitor).not.toHaveBeenCalled();
+  const [row] = await mockDatabase.select().from(schema.monitors).where(eq(schema.monitors.id, monitor.id));
+  expect(row).toMatchObject({ status: "pending", scheduledJobId: "sched-new" });
 });
 
 it("keeps draining batches past 50 organizations", async () => {

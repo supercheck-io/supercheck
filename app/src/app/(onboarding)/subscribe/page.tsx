@@ -13,6 +13,10 @@ import { toast } from "sonner";
 import { TrialCard } from "@/components/billing/trial-card";
 import { PricingTierCard } from "@/components/billing/pricing-tier-card";
 import { PricingFaqs } from "@/components/billing/pricing-faqs";
+import { trialFaqs } from "@/lib/billing/trial-copy";
+
+// Every trial FAQ except the last one ("What happens when the free trial ends?") offers the trial.
+const TRIAL_OFFER_QUESTIONS = new Set(trialFaqs().slice(0, -1).map((faq) => faq.question));
 import {
   RefreshCw,
   AlertCircle,
@@ -549,7 +553,14 @@ export default function SubscribePage() {
       )}
 
       {!hasBillingContext && pricingData?.faqs && pricingData.faqs.length > 0 && (
-        <PricingFaqs faqs={pricingData.faqs} />
+        <PricingFaqs
+          faqs={
+            // After the trial, only "what happens when it ends" still applies; the offer questions would mislead.
+            trialEnded
+              ? pricingData.faqs.filter((faq) => !TRIAL_OFFER_QUESTIONS.has(faq.question))
+              : pricingData.faqs
+          }
+        />
       )}
 
       <footer className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 pb-4 text-xs text-muted-foreground">

@@ -31,12 +31,16 @@ export async function unscheduleMonitors(
   const { deleteScheduledMonitor } = await import("@/lib/monitor-scheduler");
   for (const row of monitorRows) {
     try {
-      if (row.scheduledJobId) await deleteScheduledMonitor(row.scheduledJobId);
-      await deleteScheduledMonitor(row.id);
-      await database
+      // Unscheduling runs after the pause committed; a resubscribe in between resumed and rescheduled
+      // the monitor, so only clear the schedule of a monitor that is still paused.
+      const stillPaused = await database
         .update(monitors)
         .set({ scheduledJobId: null })
-        .where(eq(monitors.id, row.id));
+        .where(and(eq(monitors.id, row.id), eq(monitors.status, "paused")))
+        .returning({ id: monitors.id });
+      if (!stillPaused.length) continue;
+      if (row.scheduledJobId) await deleteScheduledMonitor(row.scheduledJobId);
+      await deleteScheduledMonitor(row.id);
     } catch (error) {
       console.error(`Failed to unschedule monitor ${row.id}:`, error);
     }
@@ -394,10 +398,11 @@ export async function restoreTrialSuspensions(
           )
           .returning({ id: statusPages.id })
       : [];
+    // Only the rows read here: a suspension committed meanwhile must survive for the next restore.
     if (rows.length)
       await tx
         .delete(trialSuspensions)
-        .where(eq(trialSuspensions.organizationId, organizationId));
+        .where(inArray(trialSuspensions.id, rows.map((row) => row.id)));
 
     resumedIds.push(...resumed.map((row) => row.id));
     return {

@@ -417,6 +417,8 @@ describe("signup plan selection", () => {
       expect(
         screen.queryByRole("link", { name: /Continue with your trial/ }),
       ).not.toBeInTheDocument();
+      expect(screen.queryByText("Is there a free trial?")).not.toBeInTheDocument();
+      expect(screen.getByText("Can I change plans?")).toBeInTheDocument();
     });
 
     it("does not call a trial an ended subscription", async () => {
