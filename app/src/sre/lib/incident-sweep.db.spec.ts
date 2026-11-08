@@ -327,6 +327,15 @@ describe("re-triage", () => {
     expect(startMock).not.toHaveBeenCalled();
   });
 
+  it("ignores runs recorded under another project of the organization", async () => {
+    const t = await tenant();
+    const id = await incident(t, { withAlert: false });
+    await staleAuto(t, id);
+    const [other] = await mockDatabase.insert(schema.projects).values({ organizationId: t.orgId, name: "Other" }).returning();
+    await run({ ...t, projectId: other.id }, id, { origin: "manual", status: "completed" });
+    expect(await retriageStaleRuns()).toBe(1);
+  });
+
   it("skips incidents that already have a completed run or a live running one", async () => {
     const t = await tenant();
     const completedManual = await incident(t, { withAlert: false });

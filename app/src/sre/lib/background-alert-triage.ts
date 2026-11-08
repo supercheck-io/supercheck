@@ -110,6 +110,7 @@ export type SreBackgroundAlertTriageResult =
         | "ai_disabled"
         | "ai_not_configured"
         | "daily_limit"
+        | "daily_limit_unavailable"
         | "auto_investigation";
     }
   | {
@@ -910,7 +911,9 @@ export async function startAutomaticIncidentTriage(incident: {
     return { skipped: true, reason: "ai_not_configured" };
   }
   // The org's daily AI token cap applies to every automatic run, like the investigate and triage routes.
-  if (await sreDailyTokenLimitResponse(incident.organizationId)) return { skipped: true, reason: "daily_limit" };
+  const limited = await sreDailyTokenLimitResponse(incident.organizationId);
+  // A limiter that cannot answer (Redis down) is transient: the job defers it like the org run cap.
+  if (limited) return { skipped: true, reason: limited.status === 503 ? "daily_limit_unavailable" : "daily_limit" };
 
   // Only the start (admission, billing and concurrency checks, run row) is awaited: the AI run
   // takes minutes, longer than the job lock. Stale-run recovery fails a run that never settles.

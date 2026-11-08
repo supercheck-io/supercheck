@@ -20,7 +20,8 @@ const logger = createLogger({ module: "sre-incident-sweep" }) as {
 // Per branch and tick. Candidates are filtered in SQL and picked in random order, so ones a gate keeps refusing
 // (billing, AI config, org cap) cannot permanently crowd out the rest.
 const BATCH = 25;
-// Wall-clock budget per tick (the job lock is 120 s): remaining candidates wait for the next tick.
+// Wall-clock budget per tick (the job lock is 120 s), split so slow recovery work cannot starve re-triage;
+// remaining candidates wait for the next tick.
 const TICK_BUDGET_MS = 60_000;
 // Only recent incidents are swept: a first deploy or a long outage must not mass-resolve, and so mass-notify,
 // months-old incidents (those are left for their owners), and re-triage must not spend credits on old ones.
@@ -39,7 +40,6 @@ type SourceType = "monitor" | "job";
  */
 export async function sweepSreIncidents(now = new Date()) {
   if (!isSreBackgroundAlertTriageEnabled()) return { skipped: "disabled" as const };
-  const deadline = Date.now() + TICK_BUDGET_MS;
   return db.transaction(async (tx) => {
     const [lock] = await tx.execute<{ locked: boolean }>(
       sql`SELECT pg_try_advisory_xact_lock(7311, hashtext('sre-incident-sweep')) AS locked`,
@@ -47,11 +47,11 @@ export async function sweepSreIncidents(now = new Date()) {
     if (!lock?.locked) return { skipped: "locked" as const };
     // One branch failing must not starve the other.
     // Two-key form: a separate lock space from the single-key organization locks.
-    const reconciled = await reconcileRecoveries(now, deadline).catch((error) => {
+    const reconciled = await reconcileRecoveries(now, Date.now() + TICK_BUDGET_MS / 2).catch((error) => {
       logger.error({ error }, "Incident recovery reconcile failed");
       return 0;
     });
-    const retriaged = await retriageStaleRuns(now, deadline).catch((error) => {
+    const retriaged = await retriageStaleRuns(now, Date.now() + TICK_BUDGET_MS / 2).catch((error) => {
       logger.error({ error }, "Incident re-triage failed");
       return 0;
     });
@@ -217,7 +217,7 @@ export async function retriageStaleRuns(now = new Date(), deadline = Infinity): 
           or (r.status = 'running' and r.started_at < ${cutoff}::timestamptz))) as stale,
         bool_or(r.status = 'completed' or (r.status = 'running' and r.started_at >= ${cutoff}::timestamptz)) as busy
       from ${sreInvestigationRuns} r
-      where r.incident_id = i.id and r.organization_id = i.organization_id
+      where r.incident_id = i.id and r.organization_id = i.organization_id and r.project_id = i.project_id
     ) s
     where i.status <> 'resolved'
       and i.created_by_user_id is null

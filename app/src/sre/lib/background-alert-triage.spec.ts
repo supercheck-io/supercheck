@@ -400,6 +400,13 @@ describe("startAutomaticIncidentTriage (shared with the recovery sweep)", () => 
     expect(startSreIncidentTriage).not.toHaveBeenCalled();
   });
 
+  it("reports an unavailable limiter separately so the job retries instead of dropping triage", async () => {
+    mockAutomatic.mockReturnValue(true);
+    (sreDailyTokenLimitResponse as jest.Mock).mockResolvedValueOnce({ status: 503 });
+    expect(await startAutomaticIncidentTriage(scope)).toEqual({ skipped: true, reason: "daily_limit_unavailable" });
+    expect(startSreIncidentTriage).not.toHaveBeenCalled();
+  });
+
   it("maps billing refusal to a skip and starts an automatic run otherwise", async () => {
     mockAutomatic.mockReturnValue(true);
     (startSreIncidentTriage as jest.Mock).mockResolvedValueOnce({ success: false, status: 402, error: "limit" });

@@ -155,6 +155,25 @@ describe("retriageStaleRuns", () => {
 });
 
 describe("sweepSreIncidents", () => {
+  it("gives re-triage its own budget when recovery work is slow", async () => {
+    let clock = Date.now();
+    const spy = jest.spyOn(Date, "now").mockImplementation(() => clock);
+    try {
+      mockRecoveredSince.mockImplementation(async () => {
+        clock += 45_000;
+        return recoveredAt;
+      });
+      mockResults.push(
+        [monitorRow(), monitorRow({ sourceId: "mon-2" })], [],
+        [{ id: "inc-1", organizationId: "org-1", projectId: "proj-1" }],
+        [{ origin: "auto", status: "failed", startedAt: new Date(0), errorCode: "stale_run" }],
+      );
+      expect(await sweepSreIncidents(now)).toEqual({ reconciled: 1, retriaged: 1 });
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it("does nothing when SRE is off", async () => {
     mockGate.mockReturnValue(false);
     expect(await sweepSreIncidents(now)).toEqual({ skipped: "disabled" });
