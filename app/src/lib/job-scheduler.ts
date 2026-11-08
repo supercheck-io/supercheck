@@ -1,4 +1,4 @@
-import { Job, type Queue } from "bullmq";
+import { Job } from "bullmq";
 import { randomUUID } from "crypto";
 import type { Redis } from "ioredis";
 import { db } from "@/utils/db";
@@ -11,6 +11,7 @@ import {
   setDataLifecycleInstance,
   type DataLifecycleService,
 } from "./data-lifecycle-service";
+import { addJobRepeatable } from "./scheduler/legacy-k6-tick";
 import {
   processScheduledJob,
   type ScheduledJobData,
@@ -23,27 +24,6 @@ interface ScheduleOptions {
   jobId: string;
   // queue: string; // This is now constant (JOB_EXECUTION_QUEUE)
   retryLimit?: number;
-}
-
-/**
- * Adds the cron repeatable for a scheduled job. The deterministic jobId makes
- * re-adding the same schedule idempotent and removal by key easy.
- */
-function addJobRepeatable(
-  queue: Queue,
-  schedulerJobName: string,
-  data: Record<string, unknown>,
-  pattern: string,
-  tz: string
-) {
-  return queue.add(schedulerJobName, data, {
-    repeat: { pattern, tz },
-    removeOnComplete: true,
-    removeOnFail: 100,
-    jobId: schedulerJobName,
-    attempts: 3,
-    backoff: { type: "exponential", delay: 5000 },
-  });
 }
 
 /**

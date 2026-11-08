@@ -9,7 +9,8 @@
  */
 
 import { Worker } from 'bullmq';
-import { getRedisConnection, queueLogger } from '@/lib/queue';
+import { getQueues, getRedisConnection, queueLogger } from '@/lib/queue';
+import { processLegacyK6Tick } from './legacy-k6-tick';
 import { processScheduledJob, type ScheduledJobData } from './job-scheduler';
 import { processScheduledMonitor, type MonitorJobData } from './monitor-scheduler';
 import {
@@ -98,7 +99,8 @@ export async function initializeSchedulerWorkers(): Promise<void> {
         K6_JOB_SCHEDULER_QUEUE,
         async (job) => {
           logger.debug({ jobId: job.id, name: job.name }, 'Processing K6 scheduler job');
-          return processScheduledJob(job);
+          // Converges a schedule an old-version replica re-added here (see legacy-k6-tick.ts).
+          return processLegacyK6Tick(job, await getQueues(), processScheduledJob);
         },
         {
           connection: baseConnection.duplicate(),

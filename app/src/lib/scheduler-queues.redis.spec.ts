@@ -3,7 +3,7 @@
 // exactly one schedule per job/entity. Skipped unless TEST_REDIS_URL is set
 // (throwaway Redis only). Every key lives under a random BullMQ prefix.
 import Redis from "ioredis";
-import { Queue } from "bullmq";
+import { Queue, Worker } from "bullmq";
 
 jest.mock("bullmq", () => {
   const actual = jest.requireActual("bullmq");
@@ -49,6 +49,7 @@ jest.mock("./scheduler/job-scheduler", () => ({ processScheduledJob: jest.fn() }
 
 import { getQueues } from "./queue";
 import { initializeJobSchedulers } from "./job-scheduler";
+import { processLegacyK6Tick } from "./scheduler/legacy-k6-tick";
 import { initializeMonitorSchedulers } from "./monitor-scheduler";
 import { DataLifecycleService, type CleanupStrategyConfig } from "./data-lifecycle-service";
 
@@ -191,6 +192,121 @@ suite("scheduler upgrade (real Redis, BullMQ)", () => {
       expect(await k6Queue.getRepeatableJobs()).toHaveLength(0);
       expect(await jobQueue.getRepeatableJobs()).toHaveLength(1);
       expect(await jobQueue.getJobCounts("delayed", "waiting")).toMatchObject({ delayed: 1, waiting: 0 });
+    });
+  });
+
+  describe("legacy k6 consumer converges a re-added schedule", () => {
+    const workers: Worker[] = [];
+    const connections: Redis[] = [];
+    const run = jest.fn(async (_job: unknown) => "ran");
+    let done = 0;
+    const startWorkers = async (count: number) => {
+      for (let i = 0; i < count; i++) {
+        const worker = new Worker(
+          "k6-job-scheduler",
+          async (job) => {
+            try {
+              return await processLegacyK6Tick(job, { jobSchedulerQueue: jobQueue, k6JobSchedulerQueue: k6Queue }, run);
+            } finally {
+              done++;
+            }
+          },
+          { connection: connections[connections.push(redis.duplicate()) - 1] },
+        );
+        await worker.waitUntilReady();
+        workers.push(worker);
+      }
+    };
+    const fireLegacyTick = async () => {
+      const [tick] = await k6Queue.getDelayed();
+      await tick.promote();
+      workers.forEach((w) => void w.run());
+    };
+    const until = async (cond: () => boolean) => {
+      for (let i = 0; i < 100 && !cond(); i++) await new Promise((r) => setTimeout(r, 50));
+      expect(cond()).toBe(true);
+    };
+    beforeEach(() => {
+      run.mockClear();
+      done = 0;
+    });
+    afterEach(async () => {
+      await Promise.all(workers.splice(0).map((w) => w.close(true)));
+      await Promise.all(connections.splice(0).map((c) => c.quit()));
+    });
+
+    it("old replica re-adds a schedule that job-scheduler already has: the legacy tick removes it, runs nothing", async () => {
+      jobRows = [row(JOB)];
+      await initializeJobSchedulers();
+      const expected = await shape(jobQueue);
+      await oldScheduleJob(JOB); // old-version pod re-adds the legacy repeatable
+      await startWorkers(1);
+      await fireLegacyTick();
+      await until(() => done === 1);
+
+      expect(run).not.toHaveBeenCalled();
+      expect(await k6Queue.getRepeatableJobs()).toHaveLength(0);
+      expect(await k6Queue.getJobCounts("delayed", "waiting", "active")).toMatchObject({ delayed: 0, waiting: 0, active: 0 });
+      expect(await shape(jobQueue)).toEqual(expected); // only job-scheduler fires from now on
+      expect(await jobQueue.getJobCounts("delayed")).toMatchObject({ delayed: 1 });
+    });
+
+    it("an old-replica update with a different cron replaces the stale job-scheduler copy", async () => {
+      jobRows = [row(JOB)];
+      await initializeJobSchedulers();
+      await oldScheduleJob(JOB, "0 5 * * *", "Europe/Paris");
+      await startWorkers(1);
+      await fireLegacyTick();
+      await until(() => done === 1);
+
+      expect(run).not.toHaveBeenCalled();
+      expect(await k6Queue.getRepeatableJobs()).toHaveLength(0);
+      expect((await shape(jobQueue)).map(({ pattern, tz }) => ({ pattern, tz }))).toEqual([{ pattern: "0 5 * * *", tz: "Europe/Paris" }]);
+      expect(await jobQueue.getJobCounts("delayed")).toMatchObject({ delayed: 1 });
+    });
+
+    it("a legacy-only schedule migrates on its tick and that tick runs once", async () => {
+      await oldScheduleJob(JOB, "*/10 * * * *", "Asia/Tokyo");
+      const before = await shape(k6Queue);
+      await startWorkers(1);
+      await fireLegacyTick();
+      await until(() => done === 1);
+
+      expect(run).toHaveBeenCalledTimes(1);
+      expect(run.mock.calls[0][0]).toMatchObject({ data: payload(JOB) });
+      expect(await k6Queue.getRepeatableJobs()).toHaveLength(0);
+      expect(await shape(jobQueue)).toEqual(before);
+      expect((await jobQueue.getDelayed()).map((j) => j.data)).toEqual([payload(JOB)]);
+      await noImmediateFire(jobQueue);
+    });
+
+    it("two replicas on the same legacy tick produce exactly one run", async () => {
+      await oldScheduleJob(JOB);
+      await startWorkers(2);
+      await fireLegacyTick();
+      await until(() => done >= 1);
+      await new Promise((r) => setTimeout(r, 300));
+
+      expect(done).toBe(1);
+      expect(run).toHaveBeenCalledTimes(1);
+      expect(await k6Queue.getRepeatableJobs()).toHaveLength(0);
+      expect(await jobQueue.getRepeatableJobs()).toHaveLength(1);
+    });
+
+    it("racing handlers on the same tick still leave one schedule (idempotent)", async () => {
+      await oldScheduleJob(JOB);
+      const [tick] = await k6Queue.getDelayed();
+      const queues = { jobSchedulerQueue: jobQueue, k6JobSchedulerQueue: k6Queue };
+      await Promise.all([processLegacyK6Tick(tick, queues, run), processLegacyK6Tick(tick, queues, run)]);
+      expect(await k6Queue.getRepeatableJobs()).toHaveLength(0);
+      expect(await jobQueue.getRepeatableJobs()).toHaveLength(1);
+      expect(await jobQueue.getJobCounts("delayed")).toMatchObject({ delayed: 1 });
+    });
+
+    it("processes a non-repeat job untouched", async () => {
+      const job = await k6Queue.add("manual", { a: 1 });
+      await processLegacyK6Tick(job, { jobSchedulerQueue: jobQueue, k6JobSchedulerQueue: k6Queue }, run);
+      expect(run).toHaveBeenCalledTimes(1);
     });
   });
 
