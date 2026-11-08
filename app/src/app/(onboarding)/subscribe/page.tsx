@@ -15,8 +15,6 @@ import { PricingTierCard } from "@/components/billing/pricing-tier-card";
 import { PricingFaqs } from "@/components/billing/pricing-faqs";
 import { trialFaqs } from "@/lib/billing/trial-copy";
 
-// Every trial FAQ except the last one ("What happens when the free trial ends?") offers the trial.
-const TRIAL_OFFER_QUESTIONS = new Set(trialFaqs().slice(0, -1).map((faq) => faq.question));
 import {
   RefreshCw,
   AlertCircle,
@@ -25,6 +23,9 @@ import {
   CreditCard,
   Mail,
 } from "lucide-react";
+
+// Every trial FAQ except the last one ("What happens when the free trial ends?") offers the trial.
+const TRIAL_OFFER_QUESTIONS = new Set(trialFaqs().slice(0, -1).map((faq) => faq.question));
 
 interface PricingPlan {
   id: string;

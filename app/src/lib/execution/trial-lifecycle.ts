@@ -39,7 +39,8 @@ export async function unscheduleMonitors(
         .where(and(eq(monitors.id, row.id), eq(monitors.status, "paused")))
         .returning({ id: monitors.id });
       if (!stillPaused.length) continue;
-      if (row.scheduledJobId) await deleteScheduledMonitor(row.scheduledJobId);
+      // scheduleMonitor keys the repeatable by monitor id; a legacy scheduledJobId may differ.
+      if (row.scheduledJobId && row.scheduledJobId !== row.id) await deleteScheduledMonitor(row.scheduledJobId);
       await deleteScheduledMonitor(row.id);
     } catch (error) {
       console.error(`Failed to unschedule monitor ${row.id}:`, error);

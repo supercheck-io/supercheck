@@ -54,7 +54,7 @@ export const SHARED_PRICING_FAQS = [
   {
     question: "What happens if I cancel?",
     answer:
-      "Your plan stays active until the end of the period you paid for. After that, your monitors are paused and your status pages are archived, so nothing keeps running without a plan. Nothing is deleted, and when you subscribe again, paused monitors resume and archived status pages are republished automatically.",
+      "Your plan stays active until the end of the period you paid for. Once that period ends, your monitors are paused and your status pages are archived, so nothing keeps running without a plan. Nothing is deleted, and when you subscribe again, paused monitors resume and archived status pages are republished automatically.",
   },
 ];
 
