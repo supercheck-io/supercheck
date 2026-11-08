@@ -31,6 +31,40 @@ const logger = queueLogger;
 
 // A run queued this long never reached the worker; stop it blocking future ticks.
 
+// A redelivery follows within minutes; the bound keeps the lookup off a job's whole history.
+const TICK_LOOKUP_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+function tickRunCondition(jobId: string, tickKey: string) {
+  return and(
+    eq(runs.jobId, jobId),
+    gte(runs.createdAt, new Date(Date.now() - TICK_LOOKUP_WINDOW_MS)),
+    sql`${runs.metadata}->>'scheduleTickKey' = ${tickKey}`,
+  );
+}
+
+/**
+ * Inserts a tick's run once. BullMQ hands a tick to a second processor only after the first one's lock expired
+ * (stalled redelivery), but a processor that lost its lock keeps running, so two can overlap. A transaction-scoped
+ * advisory lock on the tick key makes check-and-insert atomic across them. Returns false if the tick has a run.
+ */
+async function insertTickRun(
+  values: typeof runs.$inferInsert,
+  jobId: string,
+  tickKey: string | null,
+): Promise<boolean> {
+  if (!tickKey) {
+    await db.insert(runs).values(values);
+    return true;
+  }
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${tickKey}, 0))`);
+    const [existing] = await tx.select({ id: runs.id }).from(runs).where(tickRunCondition(jobId, tickKey)).limit(1);
+    if (existing) return false;
+    await tx.insert(runs).values(values);
+    return true;
+  });
+}
+
 async function removeOrphanedSchedule(jobId: string, reason: string): Promise<void> {
   // Dynamic import: lib/job-scheduler imports this module.
   const { deleteScheduledJob } = await import('@/lib/job-scheduler');
@@ -142,12 +176,7 @@ export async function processScheduledJob(
       const [existingTickRun] = await db
         .select({ id: runs.id })
         .from(runs)
-        .where(and(
-          eq(runs.jobId, jobId),
-          // A redelivery follows within minutes; the bound keeps the scan off a job's whole history.
-          gte(runs.createdAt, new Date(Date.now() - 24 * 60 * 60 * 1000)),
-          sql`${runs.metadata}->>'scheduleTickKey' = ${tickKey}`,
-        ))
+        .where(tickRunCondition(jobId, tickKey))
         .limit(1);
       if (existingTickRun) {
         logger.warn({ jobId, tickKey, runId: existingTickRun.id }, 'Scheduled tick already has a run, skipping redelivered tick');
@@ -188,7 +217,7 @@ export async function processScheduledJob(
         return;
       }
       const now = new Date();
-      await db.insert(runs).values({
+      const inserted = await insertTickRun({
         id: runId,
         jobId,
         status: 'blocked',
@@ -198,8 +227,8 @@ export async function processScheduledJob(
         projectId,
         errorDetails: reason,
         metadata: { jobType, executionEngine: isK6Job ? 'k6' : 'playwright', cronSchedule: jobRecord.cronSchedule, ...(tickKey ? { scheduleTickKey: tickKey } : {}) },
-      });
-      insertedRunId = runId;
+      }, jobId, tickKey);
+      if (inserted) insertedRunId = runId;
     };
 
     // Scheduled executions must pass the same subscription and spending
@@ -250,7 +279,7 @@ export async function processScheduledJob(
         );
         // Leave a visible failed run so the skipped tick is not silent.
         const now = new Date();
-        await db.insert(runs).values({
+        await insertTickRun({
           id: runId,
           jobId,
           status: 'failed',
@@ -265,7 +294,7 @@ export async function processScheduledJob(
             cronSchedule: jobRecord.cronSchedule,
             ...(tickKey ? { scheduleTickKey: tickKey } : {}),
           },
-        });
+        }, jobId, tickKey);
         return { success: true };
       }
       throw error;
@@ -275,7 +304,7 @@ export async function processScheduledJob(
     await assertExecutionQueueReady();
 
     // Create run record with 'queued' status - capacity manager will update to 'running'
-    await db.insert(runs).values({
+    const created = await insertTickRun({
       id: runId,
       jobId: jobId,
       status: 'queued', // Start as queued - capacity manager handles promotion
@@ -291,7 +320,11 @@ export async function processScheduledJob(
         ...(tickKey ? { scheduleTickKey: tickKey } : {}),
         ...(isK6Job ? { location: resolvedLocation } : {}),
       },
-    });
+    }, jobId, tickKey);
+    if (!created) {
+      logger.warn({ jobId, tickKey }, 'Scheduled tick already has a run, skipping the duplicate');
+      return { success: true };
+    }
 
     insertedRunId = runId;
     logger.info({ jobId, runId }, 'Created run record for scheduled job');

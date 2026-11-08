@@ -17,6 +17,7 @@ jest.mock("@/utils/db", () => ({
     select: jest.fn(),
     insert: jest.fn(),
     update: jest.fn(),
+    transaction: jest.fn(),
   },
 }));
 jest.mock("@/lib/queue", () => ({
@@ -225,7 +226,18 @@ describe("scheduled execution admission", () => {
       expect(polarUsageService.shouldBlockUsage).not.toHaveBeenCalled();
     });
 
-    it("stamps the tick key on the run it creates, so a redelivery can find it", async () => {
+    afterEach(() => (db.transaction as jest.Mock).mockReset());
+
+    // Runs the callback against a transaction whose lookup sees `existing`.
+    function mockTransaction(existing: unknown[], values = jest.fn().mockResolvedValue(undefined)) {
+      const execute = jest.fn().mockResolvedValue(undefined);
+      (db.transaction as jest.Mock).mockImplementation(async (callback: (tx: unknown) => unknown) =>
+        callback({ execute, select: jest.fn().mockReturnValue(selectRows(existing)), insert: jest.fn().mockReturnValue({ values }) }),
+      );
+      return { execute, values };
+    }
+
+    it("stamps the tick key on the run it creates under a tick-scoped advisory lock", async () => {
       (db.select as jest.Mock)
         .mockReturnValueOnce(selectRows([jobRow]))
         .mockReturnValueOnce(selectRows([{ status: "active" }]))
@@ -233,13 +245,26 @@ describe("scheduled execution admission", () => {
         .mockReturnValueOnce(selectRows([]))
         .mockReturnValueOnce(selectRows([]));
       (polarUsageService.shouldBlockUsage as jest.Mock).mockResolvedValue({ blocked: true, reason: "Spending limit reached" });
-      const values = jest.fn().mockResolvedValue(undefined);
-      (db.insert as jest.Mock).mockReturnValue({ values });
+      const { execute, values } = mockTransaction([]);
 
       await processScheduledJob({ ...tick, attemptsMade: 1 } as typeof tick);
+      expect(execute).toHaveBeenCalledTimes(1);
       expect(values).toHaveBeenCalledWith(
         expect.objectContaining({ metadata: expect.objectContaining({ scheduleTickKey: "repeat:abc:1700000000000:1" }) }),
       );
+    });
+
+    it("inserts nothing when an overlapping processor created the tick's run first", async () => {
+      (db.select as jest.Mock)
+        .mockReturnValueOnce(selectRows([jobRow]))
+        .mockReturnValueOnce(selectRows([{ status: "active" }]))
+        .mockReturnValueOnce(selectRows([]))
+        .mockReturnValueOnce(selectRows([]));
+      const { values } = mockTransaction([{ id: "run-of-the-other-processor" }]);
+
+      await expect(processScheduledJob(tick)).resolves.toEqual({ success: true });
+      expect(values).not.toHaveBeenCalled();
+      expect(db.update).toHaveBeenCalledTimes(1); // only the nextRunAt bookkeeping; no job or run touched
     });
   });
 
