@@ -1587,11 +1587,25 @@ describe('ContainerExecutorService', () => {
       controller.abort();
     });
 
-    it('stops waiting when the pod fails before the container starts', async () => {
+    it.each([
+      [
+        'fails before the container starts',
+        () =>
+          Promise.resolve({
+            status: {
+              phase: 'Failed',
+              reason: 'Evicted',
+              containerStatuses: [],
+            },
+          }),
+      ],
+      [
+        'has been deleted',
+        () => Promise.reject(new Error('HTTP-Code: 404 Message: NotFound')),
+      ],
+    ])('stops waiting when the pod %s', async (_case, read) => {
       const log = jest.fn();
-      const readNamespacedPod = jest.fn().mockResolvedValue({
-        status: { phase: 'Failed', reason: 'Evicted', containerStatuses: [] },
-      });
+      const readNamespacedPod = jest.fn().mockImplementation(read);
       service['logClient'] = { log } as unknown as NonNullable<
         (typeof service)['logClient']
       >;

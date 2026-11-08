@@ -1681,7 +1681,8 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
    *   state (for example, evicted or rejected at admission). It will never
    *   start, so stop waiting and leave the logs to the final snapshot.
    *
-   * Returns `started` when the pod cannot be read: an API or RBAC blip must
+   * A 404 also counts as `ended`, because the pod was deleted. Any other read
+   * error returns `started`: an API or RBAC blip must
    * degrade to the previous attach-and-retry behaviour instead of never
    * streaming logs at all.
    */
@@ -1700,7 +1701,16 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       if (state?.running || state?.terminated) return 'started';
       const phase = pod.status?.phase;
       return phase === 'Failed' || phase === 'Succeeded' ? 'ended' : 'pending';
-    } catch {
+    } catch (error) {
+      // A deleted pod (for example, cancelled) will never stream logs.
+      const msg = error instanceof Error ? error.message : String(error);
+      if (
+        msg.includes('404') ||
+        msg.includes('NotFound') ||
+        msg.includes('not found')
+      ) {
+        return 'ended';
+      }
       return 'started';
     }
   }
