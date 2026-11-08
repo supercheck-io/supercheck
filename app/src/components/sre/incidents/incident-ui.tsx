@@ -17,19 +17,20 @@ const ICON_TONE: Record<IconTone, string> = {
   sky: "bg-sky-500/10 text-sky-600 dark:text-sky-400",
 };
 
-// Tinted secondary buttons in the same palette: violet marks AI actions, sky marks export and save.
-// Applied over variant="outline"; primary actions keep the solid default button.
+// Violet is kept for AI identity only. AI actions are plain outline buttons whose icon alone carries the colour.
 const BUTTON_TONE = {
-  violet:
-    "border-violet-500/30 bg-violet-500/10 text-violet-700 hover:bg-violet-500/15 hover:text-violet-800 dark:border-violet-400/30 dark:bg-violet-500/15 dark:text-violet-300 dark:hover:bg-violet-500/25 dark:hover:text-violet-200 [&_svg]:text-violet-600 dark:[&_svg]:text-violet-400",
-  sky:
-    "border-sky-500/30 bg-sky-500/10 text-sky-700 hover:bg-sky-500/15 hover:text-sky-800 dark:border-sky-400/30 dark:bg-sky-500/15 dark:text-sky-300 dark:hover:bg-sky-500/25 dark:hover:text-sky-200 [&_svg]:text-sky-600 dark:[&_svg]:text-sky-400",
+  violet: "[&_svg]:text-violet-600 dark:[&_svg]:text-violet-400",
 } as const;
 
-/** Classes for a subtly coloured outline button. */
+/** Classes for an outline button that marks an AI action by its icon colour. */
 export function toneButton(tone: keyof typeof BUTTON_TONE) {
   return BUTTON_TONE[tone];
 }
+
+// The shared Card is block-level with `p-6 pt-0` content; these make it a padded flex column with a real gap.
+export const PANEL_CARD = "flex flex-col gap-3 py-4 shadow-none";
+export const PANEL_HEADER = "px-4 pt-0 pb-0";
+export const PANEL_CONTENT = "px-4 pb-0";
 
 /** A small tinted square holding an icon; marks a section or an event type. */
 export function IconTile({ icon: Icon, tone, className }: { icon: LucideIcon; tone: IconTone; className?: string }) {

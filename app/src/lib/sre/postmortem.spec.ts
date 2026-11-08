@@ -126,6 +126,15 @@ describe("postmortemTimeline", () => {
     ]);
   });
 
+  it("drops the no-evidence notice from a row's detail", () => {
+    const notice = "No stored incident evidence was available for this incident yet. Generate or link evidence.";
+    const labels = postmortemTimeline([
+      { at: at(1), eventType: "ai_finding", eventData: { type: "sre_triage", summary: `## Summary\n${notice}` } },
+      { at: at(2), eventType: "state_change", eventData: { state: "resolved", comment: notice } },
+    ]).map((event) => event.label);
+    expect(labels).toEqual(["AI triage", "Resolved"]);
+  });
+
   it("never leaks raw keys, markdown or unbounded report text", () => {
     const text = postmortemTimeline(rows).map((event) => event.label).join("\n");
     expect(text).not.toMatch(/native_evidence_brief|created_from_alert_history|state change|ai finding|\*\*|#{2,}|---/);

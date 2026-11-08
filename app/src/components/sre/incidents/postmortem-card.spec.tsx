@@ -40,6 +40,33 @@ describe("PostmortemCard", () => {
     expect(screen.getByRole("button", { name: "Regenerate draft" })).toBeInTheDocument();
   });
 
+  it("shows a draft-shaped timeline as a rail of moments", () => {
+    const timeline = "- 6 Oct 2026, 14:58 UTC: Incident created from alert\n- 6 Oct 2026, 16:04 UTC: Resolved: Job passes again";
+    render(<PostmortemCard {...base} postmortem={{ sections: { ...stored.sections, timeline } }} canEdit />);
+    const timelineEl = screen.getByTestId("postmortem-timeline");
+    const items = screen.getAllByRole("listitem").filter((item) => timelineEl.contains(item));
+    expect(items).toHaveLength(2);
+    expect(items[1]).toHaveTextContent("Resolved");
+    expect(items[1]).toHaveTextContent("Job passes again");
+    expect(items[1]).toHaveTextContent("16:04");
+    // One heading for the day, and the times are stated as UTC once.
+    expect(screen.getAllByRole("heading", { level: 4, name: "6 Oct 2026" })).toHaveLength(1);
+    expect(timelineEl).toHaveTextContent("All times in UTC.");
+  });
+
+  it("groups an ISO-timestamp timeline by day", () => {
+    const timeline = "- 2026-10-26T23:49:24Z \u2014 Incident created from alert history.\n- 2026-11-06T09:31:15Z \u2014 Incident resolved.";
+    render(<PostmortemCard {...base} postmortem={{ sections: { ...stored.sections, timeline } }} canEdit />);
+    expect(screen.getAllByRole("heading", { level: 4 }).map((h) => h.textContent)).toEqual(["26 Oct 2026", "6 Nov 2026"]);
+    expect(screen.getByText("23:49")).toBeInTheDocument();
+  });
+
+  it("shows a hand-written timeline as written", () => {
+    render(<PostmortemCard {...base} postmortem={{ sections: { ...stored.sections, timeline: "Around noon the deploy went out." } }} canEdit />);
+    expect(screen.queryByTestId("postmortem-timeline")).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Timeline" })).toHaveTextContent("Around noon the deploy went out.");
+  });
+
   it("marks empty sections instead of showing placeholder text", () => {
     render(<PostmortemCard {...base} postmortem={{ sections: { ...stored.sections, impact: "", follow_ups: "" } }} canEdit />);
     expect(screen.getByRole("region", { name: "Impact" })).toHaveTextContent("Not written yet.");

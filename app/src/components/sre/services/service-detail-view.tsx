@@ -23,6 +23,7 @@ import {
   Link2,
   Loader2,
   Network,
+  Pencil,
   Plus,
   RefreshCw,
   Siren,
@@ -47,6 +48,9 @@ import {
   COLUMN_SCROLL,
   IconTile,
   Metric,
+  PANEL_CARD,
+  PANEL_CONTENT,
+  PANEL_HEADER,
   SectionTitle,
   TAB_TRIGGER,
   type IconTone,
@@ -115,12 +119,11 @@ const resourceLabels: Record<ResourceType, string> = {
 const resourceIcons: Record<ResourceType, { icon: LucideIcon; tone: IconTone }> = {
   monitor: { icon: Activity, tone: "emerald" },
   job: { icon: CalendarClock, tone: "blue" },
-  test: { icon: FlaskConical, tone: "violet" },
-  status_page_component: { icon: Globe, tone: "sky" },
+  test: { icon: FlaskConical, tone: "sky" },
+  status_page_component: { icon: Globe, tone: "slate" },
   k6_run: { icon: Gauge, tone: "amber" },
 };
 
-const SECTION_CARD = "gap-3 py-4 shadow-none";
 const LIST_COLLAPSED = 5;
 
 // Same control as the incident page's Similar incidents list.
@@ -134,6 +137,30 @@ function ShowAllToggle({ expanded, total, onToggle }: { expanded: boolean; total
     >
       {expanded ? "Show fewer" : `Show all ${total}`}
     </button>
+  );
+}
+
+// Row actions: same-size icon buttons, each named for its row and labelled on hover.
+function RowAction({ label, onClick, disabled, destructive, children }: { label: string; onClick: () => void; disabled?: boolean; destructive?: boolean; children: ReactNode }) {
+  return (
+    <Tooltip>
+      {/* The span keeps the tooltip working while the button is disabled. */}
+      <TooltipTrigger asChild>
+        <span className="inline-flex">
+          <Button
+            variant="ghost"
+            size="icon"
+            className={cn("size-8", destructive && "text-destructive hover:bg-destructive/10 hover:text-destructive")}
+            aria-label={label}
+            disabled={disabled}
+            onClick={onClick}
+          >
+            {children}
+          </Button>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -434,8 +461,8 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
           value="dependencies"
           className="mt-0 space-y-4"
         >
-          <Card className={SECTION_CARD}>
-            <CardHeader className="px-4 pt-0 pb-0">
+          <Card className={PANEL_CARD}>
+            <CardHeader className={PANEL_HEADER}>
               <SectionTitle
                 as="h2"
                 icon={Network}
@@ -453,7 +480,7 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
                 Dependencies
               </SectionTitle>
             </CardHeader>
-            <CardContent className="px-4">
+            <CardContent className={PANEL_CONTENT}>
               {activeDependencies.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
                   No dependencies yet.
@@ -466,12 +493,12 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
                     return (
                       <div
                         key={dependency.id}
-                        className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+                        className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
                       >
                         <div className="flex min-w-0 items-start gap-3">
                           <IconTile
                             icon={outbound ? ArrowUpRight : ArrowDownLeft}
-                            tone={outbound ? "blue" : "violet"}
+                            tone={outbound ? "blue" : "slate"}
                             className="mt-0.5"
                           />
                           <div className="min-w-0">
@@ -487,38 +514,30 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
                             </p>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex shrink-0 items-center gap-1 pl-9 sm:pl-0">
                           <TableBadge
-                            tone={
-                              dependency.source === "manual"
-                                ? "info"
-                                : dependency.source === "ai_suggested"
-                                  ? "purple"
-                                  : "slate"
-                            }
+                            tone={dependency.source === "manual" ? "info" : dependency.source === "ai_suggested" ? "purple" : "slate"}
                             compact
                             className="capitalize"
                           >
                             {dependency.source.replaceAll("_", " ")}
                           </TableBadge>
                           {dependency.confidence !== null && (
-                            <span className="text-xs tabular-nums text-muted-foreground">
+                            <span className="px-1 text-xs tabular-nums text-muted-foreground">
                               {Math.round(dependency.confidence * 100)}%
                             </span>
                           )}
                           {detail.permissions.canEdit && (
                             <>
-                              <Button
-                                variant="ghost"
-                                size="sm"
+                              <RowAction
+                                label={`Edit dependency with ${outbound ? dependency.targetServiceName : dependency.sourceServiceName}`}
                                 onClick={() => openEditDependency(dependency)}
                               >
-                                Edit
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                aria-label={`Remove dependency with ${outbound ? dependency.targetServiceName : dependency.sourceServiceName}`}
+                                <Pencil className="h-4 w-4" />
+                              </RowAction>
+                              <RowAction
+                                label={`Remove dependency with ${outbound ? dependency.targetServiceName : dependency.sourceServiceName}`}
+                                destructive
                                 disabled={isPending}
                                 onClick={() =>
                                   runMutation(() =>
@@ -528,8 +547,8 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
                                   )
                                 }
                               >
-                                <Trash2 className="h-4 w-4 text-destructive" />
-                              </Button>
+                                <Trash2 className="h-4 w-4" />
+                              </RowAction>
                             </>
                           )}
                         </div>
@@ -635,12 +654,12 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
           value="resources"
           className="mt-0 space-y-4"
         >
-          <Card className={SECTION_CARD}>
-            <CardHeader className="px-4 pt-0 pb-0">
+          <Card className={PANEL_CARD}>
+            <CardHeader className={PANEL_HEADER}>
               <SectionTitle
                 as="h2"
                 icon={Boxes}
-                tone="violet"
+                tone="sky"
                 count={detail.resources.length}
                 action={
                   detail.permissions.canEdit && (
@@ -663,7 +682,7 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
                 Linked resources
               </SectionTitle>
             </CardHeader>
-            <CardContent className="px-4">
+            <CardContent className={PANEL_CONTENT}>
               {detail.resources.length === 0 ? (
                 <EmptySection
                   icon={<Boxes className="h-8 w-8" />}
@@ -697,10 +716,9 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
                         </div>
                       </div>
                       {detail.permissions.canEdit && (
-                        <div className="flex items-center gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
+                        <div className="flex shrink-0 items-center gap-1">
+                          <RowAction
+                            label={`Edit link for ${resourceLabels[resource.resourceType].toLowerCase()} ${resource.resourceName}`}
                             onClick={() => {
                               setEditingResourceId(resource.id);
                               setResourceType(resource.resourceType);
@@ -709,12 +727,11 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
                               setResourceOpen(true);
                             }}
                           >
-                            Edit
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            aria-label={`Unlink ${resource.resourceName}`}
+                            <Pencil className="h-4 w-4" />
+                          </RowAction>
+                          <RowAction
+                            label={`Unlink ${resourceLabels[resource.resourceType].toLowerCase()} ${resource.resourceName}`}
+                            destructive
                             disabled={isPending}
                             onClick={() =>
                               runMutation(() =>
@@ -725,8 +742,8 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
                               )
                             }
                           >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
+                            <Trash2 className="h-4 w-4" />
+                          </RowAction>
                         </div>
                       )}
                     </div>
@@ -738,8 +755,8 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
         </TabsContent>
 
         <TabsContent value="context" className="mt-0">
-          <Card className={SECTION_CARD}>
-            <CardHeader className="px-4 pt-0 pb-0">
+          <Card className={PANEL_CARD}>
+            <CardHeader className={PANEL_HEADER}>
               <SectionTitle
                 as="h2"
                 icon={Siren}
@@ -750,7 +767,7 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
                 Recent incidents
               </SectionTitle>
             </CardHeader>
-            <CardContent className="px-4">
+            <CardContent className={PANEL_CONTENT}>
               {detail.recentIncidents.length === 0 ? (
                 <EmptySection
                   icon={<Siren className="h-8 w-8" />}
@@ -796,8 +813,8 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
           </div>
 
           <aside aria-label="Service overview" className={cn("flex min-w-0 flex-col gap-4", COLUMN_SCROLL)}>
-            <Card role="region" className={SECTION_CARD} aria-labelledby="service-health-heading">
-              <CardHeader className="px-4 pt-0 pb-0">
+            <Card role="region" className={PANEL_CARD} aria-labelledby="service-health-heading">
+              <CardHeader className={PANEL_HEADER}>
                 <SectionTitle
                   id="service-health-heading"
                   as="h2"
@@ -812,7 +829,7 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
                   Service health
                 </SectionTitle>
               </CardHeader>
-              <CardContent className="space-y-3 px-4">
+              <CardContent className={`space-y-3 ${PANEL_CONTENT}`}>
                 <p className="text-sm text-muted-foreground">{detail.health.explanation}</p>
                 <dl className="grid grid-cols-2 gap-2">
                   <Metric label="Active incidents">
@@ -865,13 +882,13 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
               </CardContent>
             </Card>
 
-            <Card className={SECTION_CARD}>
-              <CardHeader className="px-4 pt-0 pb-0">
+            <Card className={PANEL_CARD}>
+              <CardHeader className={PANEL_HEADER}>
                 <SectionTitle as="h2" icon={BellRing} tone="amber" count={detail.recentAlerts.length}>
                   Recent alerts
                 </SectionTitle>
               </CardHeader>
-              <CardContent className="px-4">
+              <CardContent className={PANEL_CONTENT}>
                 {detail.recentAlerts.length === 0 ? (
                   <p className="text-sm text-muted-foreground">
                     No alerts are linked to this service.
@@ -908,13 +925,13 @@ export function ServiceDetailView({ initialDetail }: ServiceDetailViewProps) {
               </CardContent>
             </Card>
 
-            <Card className={SECTION_CARD}>
-              <CardHeader className="px-4 pt-0 pb-0">
+            <Card className={PANEL_CARD}>
+              <CardHeader className={PANEL_HEADER}>
                 <SectionTitle as="h2" icon={GitCommitHorizontal} tone="sky" count={detail.recentDeployments.length}>
                   Recent deployments
                 </SectionTitle>
               </CardHeader>
-              <CardContent className="px-4">
+              <CardContent className={PANEL_CONTENT}>
                 {detail.recentDeployments.length === 0 ? (
                   <p className="text-sm text-muted-foreground">
                     No deployments are recorded for this service. Deployment

@@ -6,7 +6,6 @@ import {
   assertExecutionWorkload,
   type ExecutionPolicy,
 } from "./execution-policy";
-import { createTrialK6Script } from "./trial-k6-workload";
 import { db } from "@/utils/db";
 import { isCloudHosted, isPolarEnabled } from "@/lib/feature-flags";
 import {
@@ -204,77 +203,48 @@ describe("trial workload admission", () => {
     } as never);
   };
   beforeEach(() => mockFresh({}));
-  it("refuses arbitrary scripts, multiple workloads, and excessive VUs before execution", async () => {
-    const canonical = createTrialK6Script({
-      url: "https://example.com/",
-      vus: 3,
-      durationSeconds: 1,
-    });
-    await expect(
-      assertExecutionWorkload("org", policy, "k6", [
-        "import http from 'k6/http';",
-      ]),
-    ).rejects.toThrow("generated HTTP workload");
-    await expect(
-      assertExecutionWorkload("org", policy, "k6", [canonical, canonical]),
-    ).rejects.toThrow("one generated");
-    await expect(
-      assertExecutionWorkload("org", policy, "k6", [canonical]),
-    ).rejects.toThrow("trial VU");
+  it("admits arbitrary trial k6 scripts while VU-minutes remain", async () => {
+    mockFresh({ k6UsedVuMs: trial.k6BudgetVuMs - 10_000 });
+    await expect(assertExecutionWorkload("org", policy, "k6")).resolves.toBeUndefined();
   });
-  it("admits a canonical trial workload without a registered domain", async () => {
-    await expect(assertExecutionWorkload("org", policy, "k6", [createTrialK6Script({
-      url: "https://unregistered.example.com/", vus: 2, durationSeconds: 1,
-    })])).resolves.toBeUndefined();
+  it("refuses a load test when the trial ends in under five seconds", async () => {
+    jest.mocked(db.query.executionEntitlements.findFirst).mockResolvedValue({ ...trial, expiresAt: new Date(Date.now() + 4_000) } as never);
+    await expect(assertExecutionWorkload("org", policy, "k6")).rejects.toMatchObject({ status: 402, inFlightOnly: false });
   });
-  it("refuses exhausted browser quotas and workloads longer than the remaining trial", async () => {
+  it("refuses an exhausted browser quota", async () => {
     mockFresh({ playwrightUsedMs: trial.playwrightBudgetMs });
-    await expect(
-      assertExecutionWorkload("org", policy, "playwright", []),
-    ).rejects.toMatchObject({ status: 402 });
-    mockFresh({});
-    const canonical = createTrialK6Script({
-      url: "https://example.com/",
-      vus: 1,
-      durationSeconds: 120,
-    });
-    await expect(
-      assertExecutionWorkload("org", policy, "k6", [canonical]),
-    ).rejects.toThrow("remaining duration");
+    await expect(assertExecutionWorkload("org", policy, "playwright")).rejects.toMatchObject({ status: 402 });
   });
-  it("refuses a load test larger than the remaining VU-millisecond allowance", async () => {
-    const canonical = createTrialK6Script({ url: "https://example.com/", vus: 5, durationSeconds: 30 });
-    const five = { ...policy, k6MaxVus: 5 };
-    mockFresh({ k6UsedVuMs: trial.k6BudgetVuMs - 149_999 });
-    await expect(assertExecutionWorkload("org", five, "k6", [canonical]))
+  it("refuses a load test once less than a minimum run at the VU cap remains", async () => {
+    // policy.k6MaxVus is 2, so the minimum run is 10 000 VU-ms.
+    mockFresh({ k6UsedVuMs: trial.k6BudgetVuMs - 10_000 });
+    await expect(assertExecutionWorkload("org", policy, "k6")).resolves.toBeUndefined();
+    mockFresh({ k6UsedVuMs: trial.k6BudgetVuMs - 9_999 });
+    await expect(assertExecutionWorkload("org", policy, "k6"))
       .rejects.toMatchObject({ status: 402, message: "Trial load-testing allowance exhausted" });
-    mockFresh({ k6UsedVuMs: trial.k6BudgetVuMs - 150_000 });
-    await expect(assertExecutionWorkload("org", five, "k6", [canonical])).resolves.toBeUndefined();
   });
   it("marks a shortfall caused only by in-flight reservations, not a genuine one", async () => {
     mockFresh({}, { pw: trial.playwrightBudgetMs });
-    await expect(assertExecutionWorkload("org", policy, "playwright", [])).rejects.toMatchObject({ status: 402, inFlightOnly: true });
+    await expect(assertExecutionWorkload("org", policy, "playwright")).rejects.toMatchObject({ status: 402, inFlightOnly: true });
     mockFresh({ playwrightUsedMs: trial.playwrightBudgetMs }, { pw: 1000 });
-    await expect(assertExecutionWorkload("org", policy, "playwright", [])).rejects.toMatchObject({ status: 402, inFlightOnly: false });
-    const canonical = createTrialK6Script({ url: "https://example.com/", vus: 5, durationSeconds: 30 });
-    const five = { ...policy, k6MaxVus: 5 };
-    mockFresh({}, { k6: trial.k6BudgetVuMs - 149_999 });
-    await expect(assertExecutionWorkload("org", five, "k6", [canonical])).rejects.toMatchObject({ inFlightOnly: true });
-    mockFresh({ k6UsedVuMs: trial.k6BudgetVuMs - 149_999 });
-    await expect(assertExecutionWorkload("org", five, "k6", [canonical])).rejects.toMatchObject({ inFlightOnly: false });
+    await expect(assertExecutionWorkload("org", policy, "playwright")).rejects.toMatchObject({ status: 402, inFlightOnly: false });
+    mockFresh({}, { k6: trial.k6BudgetVuMs });
+    await expect(assertExecutionWorkload("org", policy, "k6")).rejects.toMatchObject({ inFlightOnly: true });
+    mockFresh({ k6UsedVuMs: trial.k6BudgetVuMs }, { k6: 0 });
+    await expect(assertExecutionWorkload("org", policy, "k6")).rejects.toMatchObject({ inFlightOnly: false });
   });
   it("treats an expired entitlement as having no remaining trial allowance", async () => {
     jest.mocked(db.query.executionEntitlements.findFirst).mockResolvedValue({ ...trial, expiresAt: new Date(Date.now() - 1) } as never);
-    await expect(assertExecutionWorkload("org", policy, "playwright", [])).rejects.toMatchObject({ status: 402 });
+    await expect(assertExecutionWorkload("org", policy, "playwright")).rejects.toMatchObject({ status: 402 });
+    await expect(assertExecutionWorkload("org", policy, "k6")).rejects.toMatchObject({ status: 402 });
   });
   it("subtracts in-flight reservations from a fresh read, ignoring the cached policy", async () => {
     // The cached policy still shows the whole allowance; the worker would refuse this run.
-    const stale = { ...policy, k6MaxVus: 5, k6RemainingVuMs: 9_000_000, playwrightRemainingMs: 1_800_000 };
-    const canonical = createTrialK6Script({ url: "https://example.com/", vus: 5, durationSeconds: 30 });
-    mockFresh({}, { k6: trial.k6BudgetVuMs - 149_999 });
-    await expect(assertExecutionWorkload("org", stale, "k6", [canonical])).rejects.toMatchObject({ status: 402 });
+    const stale = { ...policy, k6RemainingVuMs: 9_000_000, playwrightRemainingMs: 1_800_000 };
+    mockFresh({}, { k6: trial.k6BudgetVuMs });
+    await expect(assertExecutionWorkload("org", stale, "k6")).rejects.toMatchObject({ status: 402 });
     mockFresh({}, { pw: trial.playwrightBudgetMs });
-    await expect(assertExecutionWorkload("org", stale, "playwright", [])).rejects.toMatchObject({ status: 402 });
+    await expect(assertExecutionWorkload("org", stale, "playwright")).rejects.toMatchObject({ status: 402 });
   });
   it("shares one policy resolution between the calls of a request but never caches a failure", async () => {
     jest.mocked(isPolarEnabled).mockReturnValue(false);
@@ -311,14 +281,11 @@ describe("trial workload admission", () => {
   });
   describe("trial browser and API tests", () => {
     it("admits trial scripts targeting unregistered public URLs", async () => {
-      await expect(assertExecutionWorkload("org", policy, "playwright", [
-        'await page.goto("https://unregistered.example.com/")',
-        'await request.get("https://api.example.com/")',
-      ])).resolves.toBeUndefined();
+      await expect(assertExecutionWorkload("org", policy, "playwright")).resolves.toBeUndefined();
     });
     it("does not restrict paid workloads", async () => {
       await expect(assertExecutionWorkload("org", { tier: "paid", priority: 0, runningCapacity: 5, queuedCapacity: 50 },
-        "playwright", ['await request.get("https://anything.test/")'])).resolves.toBeUndefined();
+        "playwright")).resolves.toBeUndefined();
     });
   });
 });

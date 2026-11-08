@@ -1,4 +1,11 @@
-import { describeEvidenceBrief, reportHeadline, storedRootCause } from "./evidence-brief-summary";
+import {
+  describeEvidenceBrief,
+  isNoEvidenceBrief,
+  NO_EVIDENCE_HEADLINE,
+  reportHeadline,
+  storedRootCause,
+  withoutNoEvidenceNotice,
+} from "./evidence-brief-summary";
 
 // The brief format stored before this change (the one pre-filled into the resolve dialog).
 const LEGACY_BRIEF = `# Incident Investigation Report
@@ -72,6 +79,19 @@ describe("reportHeadline", () => {
     );
   });
 
+  it("skips incident id and evidence count lines, bold or plain", () => {
+    expect(
+      reportHeadline("**Incident ID:** AISRE checkout latency\n**Stored Evidence:** 7 items\n**Connector Evidence:** 7 items\n\nPrometheus returned 61 samples."),
+    ).toBe("Prometheus returned 61 samples.");
+    expect(reportHeadline("Incident ID: AISRE checkout latency\n\nLatency rose at 10:02.")).toBe("Latency rose at 10:02.");
+    // Field lines in the same paragraph as the finding.
+    expect(
+      reportHeadline("Stored Evidence: 7 items\nConnector Evidence: 7 items (all from Prometheus metrics)\nPrometheus shows 61 samples with no errors."),
+    ).toBe("Prometheus shows 61 samples with no errors.");
+    // A labelled finding is not a count line and is kept.
+    expect(reportHeadline("**Connector Evidence:** Prometheus shows 500s from 10:02.")).toBe("Connector Evidence: Prometheus shows 500s from 10:02.");
+  });
+
   it("returns null for empty input and clips long text on a word boundary", () => {
     expect(reportHeadline(null)).toBeNull();
     expect(reportHeadline("  ")).toBeNull();
@@ -117,5 +137,27 @@ describe("describeEvidenceBrief", () => {
     expect(describeEvidenceBrief({ evidenceCount: 0, confidenceScore: 0 })).toBe("0 evidence items reviewed; confidence 0%.");
     expect(describeEvidenceBrief({ evidenceCount: 2, confidenceScore: NaN })).toBe("2 evidence items reviewed.");
     expect(describeEvidenceBrief({ evidenceCount: 2, confidenceScore: Infinity })).toBe("2 evidence items reviewed.");
+  });
+});
+
+describe("no-evidence notice", () => {
+  const brief = `## Summary\n${NO_EVIDENCE_HEADLINE} Generate or link evidence.\n\n## Impact\nUnknown.`;
+
+  it("recognises the fallback brief and its headline, and nothing else", () => {
+    expect(isNoEvidenceBrief(brief)).toBe(true);
+    expect(isNoEvidenceBrief(`${NO_EVIDENCE_HEADLINE} Generate or link evidence.`)).toBe(true);
+    expect(isNoEvidenceBrief("Deploy 42 caused it.")).toBe(false);
+    expect(isNoEvidenceBrief(null)).toBe(false);
+  });
+
+  it("drops only the notice and keeps other text", () => {
+    expect(withoutNoEvidenceNotice(`${NO_EVIDENCE_HEADLINE} Generate or link evidence.`)).toBeNull();
+    expect(withoutNoEvidenceNotice(`Checks recovered at 10:02.\n\n${NO_EVIDENCE_HEADLINE} Generate or link monitor, job, run, or connector evidence before relying on a root-cause summary.`)).toBe("Checks recovered at 10:02.");
+    expect(withoutNoEvidenceNotice("Rolled back deploy 42.")).toBe("Rolled back deploy 42.");
+    expect(withoutNoEvidenceNotice(undefined)).toBeNull();
+    // Same paragraph, and the stored fallback brief's Summary heading.
+    expect(withoutNoEvidenceNotice(`${NO_EVIDENCE_HEADLINE}\nRolled back deploy 42.`)).toBe("Rolled back deploy 42.");
+    expect(withoutNoEvidenceNotice(`## Summary\r\n${NO_EVIDENCE_HEADLINE}\r\n\r\nRolled back.`)).toBe("Rolled back.");
+    expect(withoutNoEvidenceNotice(`## Summary\n${NO_EVIDENCE_HEADLINE} Generate or link evidence.\n\n## Impact\nUnknown.`)).toBe("## Impact\nUnknown.");
   });
 });

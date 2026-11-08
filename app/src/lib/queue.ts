@@ -1,4 +1,4 @@
-import { getExecutionPolicy, assertExecutionWorkload } from "./execution/execution-policy";
+import { getExecutionPolicy, assertExecutionWorkload, ExecutionWorkloadError, type ExecutionPolicy } from "./execution/execution-policy";
 import crypto from "crypto";
 import { FlowProducer, Queue, QueueEvents, type JobsOptions } from "bullmq";
 import Redis, { RedisOptions } from "ioredis";
@@ -16,6 +16,21 @@ import {
 } from "./location-registry";
 import { omitExecutionSecrets } from "./execution-payload";
 import { ExecutionQueueError } from "./execution-errors";
+
+/**
+ * Admission check at enqueue. A shortfall caused only by in-flight runs is not a rejection:
+ * the run is queued and capacity promotion waits for those runs to release their allowance.
+ */
+async function assertEnqueueWorkload(
+  organizationId: string, policy: ExecutionPolicy, kind: "playwright" | "k6",
+): Promise<void> {
+  try {
+    await assertExecutionWorkload(organizationId, policy, kind);
+  } catch (error) {
+    if (error instanceof ExecutionWorkloadError && error.inFlightOnly) return;
+    throw error;
+  }
+}
 import {
   abortMonitorCycle,
   MonitorCycleClosedError,
@@ -980,7 +995,7 @@ export async function addTestToQueue(task: TestExecutionTask): Promise<{
   const orgId = task.organizationId || "global";
   const queuedAt = Date.now();
   const policy = await getExecutionPolicy(orgId);
-  await assertExecutionWorkload(orgId, policy, "playwright", [task.code]);
+  await assertEnqueueWorkload(orgId, policy, "playwright");
   const safeTask = { ...omitExecutionSecrets(task), _executionTier: policy.tier };
 
   try {
@@ -1065,7 +1080,7 @@ export async function addJobToQueue(task: JobExecutionTask): Promise<{
   const orgId = task.organizationId || "global";
   const queuedAt = Date.now();
   const policy = await getExecutionPolicy(orgId);
-  await assertExecutionWorkload(orgId, policy, "playwright", task.testScripts.map(test => test.script));
+  await assertEnqueueWorkload(orgId, policy, "playwright");
   const safeTask = { ...omitExecutionSecrets(task), _executionTier: policy.tier };
 
   try {
@@ -1150,7 +1165,7 @@ export async function addK6TestToQueue(
   const orgId = task.organizationId || "global";
   const queuedAt = Date.now();
   const policy = await getExecutionPolicy(orgId);
-  await assertExecutionWorkload(orgId, policy, "k6", task.tests?.length ? task.tests.map(test => test.script) : [task.script]);
+  await assertEnqueueWorkload(orgId, policy, "k6");
   const safeTask = { ...omitExecutionSecrets(task), _executionTier: policy.tier };
 
   // Resolve the queue location: use caller-provided location, or fall back to DB default.
@@ -1248,7 +1263,7 @@ export async function addK6JobToQueue(
   const orgId = task.organizationId || "global";
   const queuedAt = Date.now();
   const policy = await getExecutionPolicy(orgId);
-  await assertExecutionWorkload(orgId, policy, "k6", task.tests?.length ? task.tests.map(test => test.script) : [task.script]);
+  await assertEnqueueWorkload(orgId, policy, "k6");
   const safeTask = { ...omitExecutionSecrets(task), _executionTier: policy.tier };
 
   // Respect the caller-provided location (already validated by resolveProjectK6Location);

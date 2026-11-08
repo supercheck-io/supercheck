@@ -5,6 +5,7 @@ import {
   type PostmortemSections,
 } from "@/lib/sre/postmortem-format";
 import type { SreIncidentTimelineItem } from "@/actions/sre-incident-lifecycle";
+import { withoutNoEvidenceNotice } from "@/lib/sre/evidence-brief-summary";
 import { aiFindingHeadline, describeTimelineEvent } from "@/lib/sre/incident-timeline-format";
 import { runSreAgent } from "@/sre/lib/agent-runner";
 import { fenceUntrustedBlock, SRE_UNTRUSTED_CONTENT_RULE } from "@/sre/lib/untrusted-content";
@@ -73,7 +74,7 @@ export function postmortemTimeline(rows: TimelineRow[]): PostmortemContext["time
       row.eventType === "ai_finding"
         ? aiFindingHeadline(data.summary, DETAIL_LENGTH) ?? body
         : body;
-    const oneLine = detail?.replace(/\s+/g, " ").trim();
+    const oneLine = withoutNoEvidenceNotice(detail)?.replace(/\s+/g, " ").trim();
     const label = oneLine ? `${title}: ${oneLine.length > DETAIL_LENGTH ? `${oneLine.slice(0, DETAIL_LENGTH - 1).trimEnd()}…` : oneLine}` : title;
     const investigation = row.eventType === "ai_finding" && data.type === "sre_investigation";
     if (investigation && kept.at(-1)?.investigation) kept.pop();

@@ -257,13 +257,28 @@ describe('execution reservation lease (embedded PostgreSQL)', () => {
       ),
     ).toBe(60_000);
 
+    // 40 000 VU-ms remain: at 2 VUs the run is shortened to 20 s instead of refused.
     const second = await service.reserve(orgId, 'k6-2', 'k6', 60_000);
+    await service.setK6Workload(second!, 2, 30_000);
+    expect(second!.reservedMs).toBe(20_000);
+    // The run reports it only used 1 VU, so it is charged for 1 VU.
+    second!.vus = 1;
+    await service.finish(second!, 20_000);
+    const used = async () =>
+      Number(
+        (
+          await pg.query<{ used: string }>(
+            'SELECT k6_used_vu_ms AS used FROM execution_entitlements',
+          )
+        ).rows[0].used,
+      );
+    expect(await used()).toBe(80_000);
+
+    // 20 000 VU-ms left covers less than the minimum run at 5 VUs.
+    const third = await service.reserve(orgId, 'k6-3', 'k6', 60_000);
     await expect(
-      service.setK6Workload(second!, 2, 30_000),
+      service.setK6Workload(third!, 5, 60_000),
     ).rejects.toBeInstanceOf(ExecutionEntitlementError);
-    await expect(
-      service.setK6Workload(second!, 1, 30_000),
-    ).resolves.toBeUndefined();
   });
 
   it('refuses to start a load test whose reservation lapsed, instead of running it unmetered', async () => {

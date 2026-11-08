@@ -10,7 +10,6 @@ import { logAdminEvent } from "@/lib/audit-logger";
 export { TEARDOWN_ACTION } from "@/lib/organization-teardown-action";
 
 const BATCH = 200;
-const SRE_ATTACHMENTS_BUCKET = process.env.S3_SRE_ATTACHMENTS_BUCKET_NAME || "sre-chat-attachments";
 
 export class BillingCancellationError extends Error {}
 /** The organization's members changed since the admin confirmed the deletion. */
@@ -202,7 +201,6 @@ async function sweepProjectArtifacts(
   for (const id of projectIds) {
     await run("requirement documents", () => s3.deletePrefix(s3.bucket("requirementsBucketName"), `projects/${id}/`));
     await run("project data files", () => s3.deletePrefix(s3.bucket("projectDataFilesBucketName"), `projects/${id}/`));
-    await run("SRE attachments", () => s3.deletePrefix(SRE_ATTACHMENTS_BUCKET, `projects/${id}/`));
   }
   // Saved browser runs write their report under the test id in the test bucket.
   for (const id of testIds) {

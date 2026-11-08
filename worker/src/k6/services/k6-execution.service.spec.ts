@@ -1,14 +1,4 @@
 import * as secretStream from '../../common/utils/secret-stream';
-import { createTrialK6Script } from '../../common/security/trial-k6-workload';
-import {
-  TargetDnsUnavailableError,
-  resolvePublicTargetAddresses,
-} from '../../common/security/execution-target-domain';
-import { ExecutionCapacityError } from '../../execution/services/execution-admission.service';
-jest.mock('../../common/security/execution-target-domain', () => ({
-  ...jest.requireActual('../../common/security/execution-target-domain'),
-  resolvePublicTargetAddresses: jest.fn(),
-}));
 /**
  * K6 Execution Service Tests
  *
@@ -26,6 +16,7 @@ import { ExecutionAdmissionService } from '../../execution/services/execution-ad
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import {
+  attachBillableMs,
   createK6AllocationTracker,
   getBillableMs,
   getBillableVirtualUsers,
@@ -123,6 +114,9 @@ describe('K6ExecutionService', () => {
     uploadFileFromPath: jest
       .fn()
       .mockResolvedValue('https://s3.example.com/file'),
+    prepareFileVariables: jest
+      .fn()
+      .mockResolvedValue({ additionalFiles: {}, filePaths: {} }),
   };
 
   const mockDbService = {
@@ -220,42 +214,46 @@ describe('K6ExecutionService', () => {
   // INITIALIZATION TESTS
   // ==========================================================================
 
-  it('isolates a constrained workload from control and proxy environment overrides', async () => {
+  it('gives a limited run the same command, runtime data and files as a paid run', async () => {
+    const runtimeEnv = {
+      K6_WEB_DASHBOARD: 'true',
+      SUPERCHECK_VARIABLES_B64: Buffer.from(
+        '{"BASE_URL":"https://a.test"}',
+      ).toString('base64'),
+      SUPERCHECK_SECRETS_B64: Buffer.from('{"TOKEN":"t"}').toString('base64'),
+    };
+    const files = { 'data.csv': 'a,b' };
     await service['executeK6Binary'](
       ['run', '/tmp/test.js'],
       'export default function() {}',
       '/tmp/out',
       'run-id',
       'unique',
-      {
-        K6_VUS: '999',
-        HTTPS_PROXY: 'http://attacker.test',
-        K6_WEB_DASHBOARD: 'true',
-      },
+      runtimeEnv,
       1000,
       0,
-      undefined,
+      files,
       1000,
+      undefined,
+      { maxVus: 5, workloadMs: 1000 },
     );
-    const command = mockContainerExecutorService.executeInContainer.mock
-      .calls[0][1] as string[];
-    expect(command.slice(0, 3)).toEqual([
-      'env',
-      '-i',
-      'PATH=/usr/local/bin:/usr/bin:/bin',
-    ]);
-    expect(command).not.toContain('K6_VUS=999');
-    expect(command).not.toContain('HTTPS_PROXY=http://attacker.test');
-    expect(command).toContain('K6_WEB_DASHBOARD=true');
+    const [, command, options] = mockContainerExecutorService.executeInContainer
+      .mock.calls[0] as [unknown, string[], Record<string, unknown>];
+    expect(command).toEqual(['k6', 'run', '/tmp/test.js']);
+    expect(options.env).toMatchObject(runtimeEnv);
+    expect(options.additionalFiles).toEqual(files);
   });
 
-  describe('constrained HTTP admission', () => {
-    const workload = {
-      url: 'https://example.test/path',
-      vus: 5,
-      durationSeconds: 30,
-    };
+  describe('limited (trial) k6 runs', () => {
+    let reservation: Record<string, unknown>;
     beforeEach(() => {
+      reservation = {
+        organizationId: 'org',
+        limited: true,
+        k6MaxVus: 5,
+        reservedMs: 300000,
+        expiresAt: new Date(Date.now() + 3600000),
+      };
       mockAdmissionService.run.mockImplementation(
         (
           _org: unknown,
@@ -263,53 +261,64 @@ describe('K6ExecutionService', () => {
           _kind: unknown,
           _timeout: unknown,
           callback: (value: unknown) => unknown,
-        ) =>
-          callback({
-            organizationId: 'org',
-            limited: true,
-            k6MaxVus: 5,
-            reservedMs: 300000,
-            expiresAt: new Date(Date.now() + 3600000),
-          }),
+        ) => callback(reservation),
       );
-      jest
-        .mocked(resolvePublicTargetAddresses)
-        .mockResolvedValue(['93.184.216.34']);
     });
-    it('rejects arbitrary scripts before DNS, variables or execution', async () => {
-      const execute = jest.spyOn(service, 'runK6TestReserved' as never);
-      await expect(
-        service.runK6Test({
-          ...mockTask,
-          script: "http.get('https://other.test')",
-        }),
-      ).rejects.toThrow('arbitrary k6 scripts');
-      expect(execute).not.toHaveBeenCalled();
-      expect(resolvePublicTargetAddresses).not.toHaveBeenCalled();
-      expect(
-        mockVariableResolverService.resolveProjectVariables,
-      ).not.toHaveBeenCalled();
-    });
-    it('executes an unregistered trial workload pinned to a public address', async () => {
+    it('runs the user script unchanged, reserved at the VU cap, with project variables', async () => {
       const execute = jest
         .spyOn(service, 'runK6TestReserved' as never)
-        .mockResolvedValue({ success: true } as never);
-      await service.runK6Test({
-        ...mockTask,
-        script: createTrialK6Script(workload),
-      });
-      expect(resolvePublicTargetAddresses).toHaveBeenCalledWith('example.test');
-      expect(execute).toHaveBeenCalledWith(
-        expect.objectContaining({
-          script: createTrialK6Script(workload, {
-            'example.test': '93.184.216.34',
-          }),
-          files: {},
-        }),
-        expect.objectContaining({ reservedMs: 30000, limited: true }),
+        .mockResolvedValue({ success: true, billingVirtualUsers: 3 } as never);
+      const script =
+        "import http from 'k6/http'; export default () => http.post('https://api.test/')";
+      await service.runK6Test({ ...mockTask, script });
+      expect(mockAdmissionService.setK6Workload).toHaveBeenCalledWith(
+        reservation,
+        5,
+        300000,
       );
+      expect(execute).toHaveBeenCalledWith(
+        expect.objectContaining({ script }),
+        reservation,
+      );
+      // Charged for the VUs the run actually allocated.
+      expect(reservation.vus).toBe(3);
     });
-    it('gives the pod time beyond the workload duration to start, finish and export its report', async () => {
+    it('charges the VU cap when the run did not report its VUs or went over it', async () => {
+      jest
+        .spyOn(service, 'runK6TestReserved' as never)
+        .mockResolvedValueOnce({ success: false } as never)
+        .mockResolvedValueOnce({
+          success: false,
+          billingVirtualUsers: 50,
+        } as never);
+      await service.runK6Test(mockTask);
+      expect(reservation.vus).toBe(5);
+      reservation.vus = undefined;
+      await service.runK6Test(mockTask);
+      expect(reservation.vus).toBe(5);
+    });
+    it('charges the observed VUs when the run fails after starting', async () => {
+      jest
+        .spyOn(service, 'runK6TestReserved' as never)
+        .mockRejectedValueOnce(
+          attachBillableMs(new Error('upload failed'), 1000, 2) as never,
+        );
+      await expect(service.runK6Test(mockTask)).rejects.toThrow(
+        'upload failed',
+      );
+      expect(reservation.vus).toBe(2);
+    });
+    it('does not execute when no load-test allowance remains', async () => {
+      mockAdmissionService.setK6Workload.mockRejectedValueOnce(
+        new Error('Trial load-testing allowance is exhausted'),
+      );
+      const execute = jest.spyOn(service, 'runK6TestReserved' as never);
+      await expect(service.runK6Test(mockTask)).rejects.toThrow(
+        'allowance is exhausted',
+      );
+      expect(execute).not.toHaveBeenCalled();
+    });
+    it('gives the pod time beyond the reserved duration and passes the VU cap', async () => {
       jest
         .spyOn(
           service as unknown as {
@@ -357,62 +366,88 @@ describe('K6ExecutionService', () => {
       expect(hardDeadlineMs).toBeGreaterThan(30000);
       expect(hardDeadlineMs).toBe(timeoutMs);
       expect(expiresAtMs).toBe(expiresAt.getTime());
+      expect(call[11]).toEqual({ maxVus: 5, workloadMs: 30000 });
     });
-
-    it('sizes the reservation to the parsed workload so it is metered in VU-milliseconds', async () => {
-      jest
-        .spyOn(service, 'runK6TestReserved' as never)
-        .mockResolvedValue({ success: true } as never);
-      await service.runK6Test({
-        ...mockTask,
-        script: createTrialK6Script(workload),
-      });
-      expect(mockAdmissionService.setK6Workload).toHaveBeenCalledWith(
-        expect.objectContaining({ organizationId: 'org' }),
-        5,
-        30000,
+    it('stops a run that allocates more VUs than its cap', async () => {
+      const abortRun = jest.fn();
+      (mockContainerExecutorService as Record<string, unknown>).abortRun =
+        abortRun;
+      mockContainerExecutorService.executeInContainer.mockImplementationOnce(
+        async (
+          _script: unknown,
+          _command: unknown,
+          options: { onStdoutChunk: (chunk: string) => void },
+        ) => {
+          options.onStdoutChunk('running (00m01.0s), 0/4 VUs, 0 complete\n');
+          expect(abortRun).not.toHaveBeenCalled();
+          options.onStdoutChunk('running (00m02.0s), 1/6 VUs, 0 complete\n');
+          options.onStdoutChunk('running (00m03.0s), 1/6 VUs, 0 complete\n');
+          return { exitCode: 1, stdout: '', stderr: '', cancelled: true };
+        },
+      );
+      const result = await service['executeK6Binary'](
+        ['run', 'test.js'],
+        'export default function() {}',
+        '/tmp/k6-test',
+        'run-cap',
+        'run-cap-abc',
+        {},
+        60000,
+        undefined,
+        undefined,
+        90000,
+        undefined,
+        { maxVus: 5, workloadMs: 60000 },
+      );
+      expect(abortRun).toHaveBeenCalledTimes(1);
+      expect(result.exitCode).not.toBe(0);
+      expect(abortRun).toHaveBeenCalledWith('run-cap');
+      expect(result.cancelled).toBe(false);
+      expect(result.error).toBe(
+        'Trial load tests are limited to 5 virtual users',
       );
     });
-
-    it('rejects a target without a resolved address', async () => {
-      jest.mocked(resolvePublicTargetAddresses).mockResolvedValueOnce([]);
-      const execute = jest.spyOn(service, 'runK6TestReserved' as never);
-      await expect(
-        service.runK6Test({
-          ...mockTask,
-          script: createTrialK6Script(workload),
-        }),
-      ).rejects.toThrow('did not resolve');
-      expect(execute).not.toHaveBeenCalled();
-    });
-    it('defers instead of failing the run when the resolver is unavailable', async () => {
-      jest
-        .mocked(resolvePublicTargetAddresses)
-        .mockRejectedValueOnce(new TargetDnsUnavailableError());
-      const execute = jest.spyOn(service, 'runK6TestReserved' as never);
-      await expect(
-        service.runK6Test({
-          ...mockTask,
-          script: createTrialK6Script(workload),
-        }),
-      ).rejects.toBeInstanceOf(ExecutionCapacityError);
-      expect(execute).not.toHaveBeenCalled();
-    });
-
-    it('does not execute after domain proof is revoked', async () => {
-      jest
-        .mocked(resolvePublicTargetAddresses)
-        .mockRejectedValueOnce(
-          new Error('Execution targets must resolve only to public addresses'),
+    it('stops a run whose load outlasts its reserved time and never reports it as passed', async () => {
+      jest.useFakeTimers();
+      try {
+        const abortRun = jest.fn();
+        (mockContainerExecutorService as Record<string, unknown>).abortRun =
+          abortRun;
+        mockContainerExecutorService.executeInContainer.mockImplementationOnce(
+          async (
+            _script: unknown,
+            _command: unknown,
+            options: { onStdoutChunk: (chunk: string) => void },
+          ) => {
+            options.onStdoutChunk('running (00m01.0s), 1/1 VUs, 0 complete\n');
+            jest.advanceTimersByTime(29_999);
+            expect(abortRun).not.toHaveBeenCalled();
+            jest.advanceTimersByTime(1);
+            return { exitCode: 0, stdout: '', stderr: '' };
+          },
         );
-      const execute = jest.spyOn(service, 'runK6TestReserved' as never);
-      await expect(
-        service.runK6Test({
-          ...mockTask,
-          script: createTrialK6Script(workload),
-        }),
-      ).rejects.toThrow('public addresses');
-      expect(execute).not.toHaveBeenCalled();
+        const result = await service['executeK6Binary'](
+          ['run', 'test.js'],
+          'export default function() {}',
+          '/tmp/k6-test',
+          'run-time',
+          'run-time-abc',
+          {},
+          120000,
+          undefined,
+          undefined,
+          120000,
+          undefined,
+          { maxVus: 5, workloadMs: 30000 },
+        );
+        expect(abortRun).toHaveBeenCalledWith('run-time');
+        expect(result.exitCode).toBe(1);
+        expect(result.error).toBe(
+          'The trial load-testing allowance ran out during the run',
+        );
+      } finally {
+        jest.useRealTimers();
+      }
     });
   });
 

@@ -1,21 +1,12 @@
-import { isIP } from 'node:net';
 import {
   ExecutionAdmissionService,
-  ExecutionCapacityError,
   type ExecutionReservation,
   LIMITED_RUN_OVERHEAD_MS,
 } from '../../execution/services/execution-admission.service';
 import {
-  parseTrialK6Workload,
-  createTrialK6Script,
-} from '../../common/security/trial-k6-workload';
-import {
-  TargetDnsUnavailableError,
-  resolvePublicTargetAddresses,
-} from '../../common/security/execution-target-domain';
-import {
   attachBillableMs,
   getBillableMs,
+  getBillableVirtualUsers,
   createK6AllocationTracker,
 } from '../../common/billable-ms';
 import {
@@ -305,49 +296,25 @@ export class K6ExecutionService {
       timeoutMs,
       async (reservation) => {
         if (reservation?.limited) {
-          const workload = parseTrialK6Workload(task.script);
-          if (workload.vus > (reservation.k6MaxVus ?? 0))
-            throw new Error('HTTP workload exceeds the VU allowance');
-          if (workload.durationSeconds * 1000 > reservation.reservedMs)
-            throw new Error(
-              'HTTP workload duration exceeds entitlement expiry',
-            );
-          const hostname = new URL(workload.url).hostname;
-          let addresses: string[];
-          try {
-            addresses = await resolvePublicTargetAddresses(hostname);
-          } catch (error) {
-            if (error instanceof TargetDnsUnavailableError)
-              throw new ExecutionCapacityError(
-                'DNS lookup is temporarily unavailable',
-              );
-            throw error;
-          }
-          const address =
-            addresses.find((ip) => isIP(ip) === 4) ?? addresses[0];
-          if (!address) throw new Error('HTTP workload domain did not resolve');
-          if (
-            reservation.expiresAt &&
-            Date.now() + workload.durationSeconds * 1000 >
-              reservation.expiresAt.getTime()
-          )
-            throw new Error(
-              'HTTP workload duration exceeds entitlement expiry',
-            );
+          // A limited run is reserved at its VU cap for as long as its remaining VU-minutes allow,
+          // and is charged for the VUs it actually allocated.
+          const maxVus = reservation.k6MaxVus ?? 0;
           await this.admissionService.setK6Workload(
             reservation,
-            workload.vus,
-            workload.durationSeconds * 1000,
+            maxVus,
+            reservation.reservedMs,
           );
-          task = {
-            ...task,
-            script: createTrialK6Script(workload, { [hostname]: address }),
-            files: {},
+          const chargeVus = (observed: number | undefined) => {
+            reservation.vus = Math.max(1, Math.min(maxVus, observed ?? maxVus));
           };
-          reservation = {
-            ...reservation,
-            reservedMs: workload.durationSeconds * 1000,
-          };
+          try {
+            const result = await this.runK6TestReserved(task, reservation);
+            chargeVus(result.billingVirtualUsers);
+            return result;
+          } catch (error) {
+            chargeVus(getBillableVirtualUsers(error));
+            throw error;
+          }
         }
         return this.runK6TestReserved(task, reservation);
       },
@@ -358,20 +325,15 @@ export class K6ExecutionService {
     task: K6ExecutionTask,
     reservation?: ExecutionReservation,
   ): Promise<K6ExecutionResult> {
-    if (reservation?.limited)
-      task = { ...task, variables: {}, secrets: {}, files: {} };
-    else {
-      const resolved =
-        await this.variableResolverService.resolveProjectVariables(
-          task.projectId,
-        );
-      task = {
-        ...task,
-        variables: resolved.variables,
-        secrets: resolved.secrets,
-        files: resolved.files,
-      };
-    }
+    const resolved = await this.variableResolverService.resolveProjectVariables(
+      task.projectId,
+    );
+    task = {
+      ...task,
+      variables: resolved.variables,
+      secrets: resolved.secrets,
+      files: resolved.files,
+    };
     const { runId, testId: _testId, script, location } = task;
     const runtimeVariables = task.variables ?? {};
     const runtimeSecrets = task.secrets ?? {};
@@ -429,9 +391,7 @@ export class K6ExecutionService {
       const htmlExportFileName = 'report.html';
       const htmlExportPathContainer = `${k6OutputDir}/${reportDirName}/${htmlExportFileName}`;
 
-      const preparedScript = reservation?.limited
-        ? script
-        : this.injectK6VariableRuntimeHelpers(script);
+      const preparedScript = this.injectK6VariableRuntimeHelpers(script);
 
       // Filter file variables to only those referenced by getFile() in the script,
       // then download from S3
@@ -439,9 +399,7 @@ export class K6ExecutionService {
         script,
       ]);
       const { additionalFiles: fileAdditionalFiles, filePaths } =
-        reservation?.limited
-          ? { additionalFiles: {}, filePaths: {} }
-          : await this.s3Service.prepareFileVariables(filteredFiles);
+        await this.s3Service.prepareFileVariables(filteredFiles);
 
       const args = [
         'run',
@@ -462,6 +420,7 @@ export class K6ExecutionService {
 
       // Configure web dashboard environment variables for robust HTML export
       // These settings ensure the HTML report is generated regardless of port conflicts
+      // A limited run gets one attempt so a retry cannot run beyond its reserved time.
       const maxDashboardAttempts = reservation?.limited
         ? 1
         : Math.max(
@@ -491,13 +450,11 @@ export class K6ExecutionService {
           K6_WEB_DASHBOARD_PORT: dashboardPort.toString(), // Use unique port
           K6_WEB_DASHBOARD_ADDR: this.dashboardBindAddress,
           K6_NO_COLOR: '1', // Disable ANSI colors in output
-          ...(reservation?.limited
-            ? {}
-            : this.buildVariableRuntimeEnv(
-                runtimeVariables,
-                filterSecretVariablesToUsedKeys(runtimeSecrets, [script]),
-                filePaths,
-              )),
+          ...this.buildVariableRuntimeEnv(
+            runtimeVariables,
+            filterSecretVariablesToUsedKeys(runtimeSecrets, [script]),
+            filePaths,
+          ),
         };
 
         try {
@@ -517,6 +474,12 @@ export class K6ExecutionService {
               ? reservation.reservedMs + LIMITED_RUN_OVERHEAD_MS
               : undefined,
             reservation?.expiresAt?.getTime(),
+            reservation?.limited
+              ? {
+                  maxVus: reservation.k6MaxVus ?? 0,
+                  workloadMs: reservation.reservedMs,
+                }
+              : undefined,
           );
         } finally {
           if (this.useDashboardPortPool) {
@@ -929,6 +892,8 @@ export class K6ExecutionService {
     additionalFiles?: Record<string, string>,
     hardDeadlineMs?: number,
     expiresAtMs?: number,
+    /** Limited (trial) run: the VU cap and how long k6 may generate load. */
+    limits?: { maxVus: number; workloadMs: number },
   ): Promise<{
     exitCode: number;
     stdout: string;
@@ -941,6 +906,14 @@ export class K6ExecutionService {
   }> {
     const _startTime = Date.now();
     const allocation = createK6AllocationTracker();
+    let stopReason: string | undefined;
+    let workloadTimer: NodeJS.Timeout | undefined;
+    const stopRun = (reason: string) => {
+      if (stopReason) return;
+      stopReason = reason;
+      this.logger.warn(`[${runId}] ${reason}; stopping the run`);
+      this.containerExecutorService.abortRun(runId);
+    };
     let observedBillableMs = 0;
     this.logger.log(`[${runId}] Executing in container: k6 ${args.join(' ')}`);
     this.logger.debug(
@@ -1000,55 +973,15 @@ export class K6ExecutionService {
           );
         }
       });
-      const strict = hardDeadlineMs !== undefined;
-      const allowedEnv = [
-        'K6_WEB_DASHBOARD',
-        'K6_WEB_DASHBOARD_PERIOD',
-        'K6_WEB_DASHBOARD_EXPORT',
-        'K6_WEB_DASHBOARD_PORT',
-        'K6_WEB_DASHBOARD_ADDR',
-        'K6_NO_COLOR',
-      ];
-      const executionEnv = strict
-        ? Object.fromEntries(
-            Object.entries(overrideEnv).filter(([key]) =>
-              allowedEnv.includes(key),
-            ),
-          )
-        : overrideEnv;
-      const executionArgs = strict
-        ? [
-            ...args.slice(0, -1),
-            '--no-usage-report',
-            '--config',
-            '/tmp/k6-control.json',
-            args[args.length - 1],
-          ]
-        : args;
-      const executionCommand = strict
-        ? [
-            'env',
-            '-i',
-            'PATH=/usr/local/bin:/usr/bin:/bin',
-            'HOME=/tmp',
-            ...Object.entries(executionEnv).map(
-              ([key, value]) => `${key}=${value}`,
-            ),
-            'k6',
-            ...executionArgs,
-          ]
-        : ['k6', ...args];
       const containerResult =
         await this.containerExecutorService.executeInContainer(
           null, // No host script path - using inline content
-          executionCommand,
+          ['k6', ...args],
           {
             runId, // Pass runId for cancellation tracking
             inlineScriptContent: scriptContent,
             inlineScriptFileName: scriptFileName,
-            additionalFiles: strict
-              ? { 'k6-control.json': '{}' }
-              : additionalFiles,
+            additionalFiles,
             ensureDirectories: Array.from(directoriesToEnsure),
             extractFromContainer: this.K6_OUTPUT_DIR, // Only extract K6 output dir (avoids node-compile-cache and other junk)
             extractToHost: extractToHost, // To OS temp directory
@@ -1056,7 +989,7 @@ export class K6ExecutionService {
             hardDeadlineMs,
             expiresAtMs,
             env: {
-              ...executionEnv,
+              ...overrideEnv,
               K6_NO_COLOR: '1', // Disable ANSI colors
             },
             // Do NOT set workingDir here — the container executor defaults to
@@ -1071,6 +1004,22 @@ export class K6ExecutionService {
             image: this.k6DockerImage, // Use K6-specific Docker image
             onStdoutChunk: (chunk) => {
               allocation.write(chunk);
+              const allocated = allocation.value();
+              if (limits && allocated !== undefined) {
+                if (allocated > limits.maxVus)
+                  stopRun(
+                    `Trial load tests are limited to ${limits.maxVus} virtual users`,
+                  );
+                // The reserved time counts from k6's first progress line, so pod startup and report
+                // export keep their own headroom without generating unmetered load.
+                workloadTimer ??= setTimeout(
+                  () =>
+                    stopRun(
+                      'The trial load-testing allowance ran out during the run',
+                    ),
+                  limits.workloadMs,
+                );
+              }
               return consoleStream.write(chunk);
             },
           },
@@ -1083,7 +1032,11 @@ export class K6ExecutionService {
       this.activeK6Runs.delete(uniqueRunId);
 
       const timedOut = containerResult.timedOut;
-      const exitCode = containerResult.exitCode;
+      // A run stopped by a trial limit never counts as passed, even if k6 exited cleanly first.
+      const exitCode =
+        stopReason && containerResult.exitCode === 0
+          ? 1
+          : containerResult.exitCode;
       const stdout = this.redactSecretsFromText(
         containerResult.stdout,
         runtimeSecrets,
@@ -1092,10 +1045,10 @@ export class K6ExecutionService {
         containerResult.stderr,
         runtimeSecrets,
       );
-      const redactedError = this.redactSecretsFromText(
-        containerResult.error,
-        runtimeSecrets,
-      );
+      if (workloadTimer) clearTimeout(workloadTimer);
+      const redactedError =
+        stopReason ??
+        this.redactSecretsFromText(containerResult.error, runtimeSecrets);
 
       // Persist stdout + stderr to console.log so it can be fetched/archived later
       try {
@@ -1141,13 +1094,15 @@ export class K6ExecutionService {
         exitCode,
         stdout,
         stderr,
-        cancelled: containerResult.cancelled,
+        // Stopped by a trial limit: a failed run, not a user cancellation.
+        cancelled: containerResult.cancelled && !stopReason,
         billableMs: containerResult.billableMs ?? 0,
         billingVirtualUsers: allocation.value(),
         error: redactedError || null,
         timedOut,
       };
     } catch (error) {
+      if (workloadTimer) clearTimeout(workloadTimer);
       this.activeK6Runs.delete(uniqueRunId);
       this.logger.error(
         `[${runId}] k6 container execution error: ${getErrorMessage(error)}`,

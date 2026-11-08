@@ -72,6 +72,8 @@ The open tab is kept in the URL: `?tab=investigation` or `?tab=postmortem` (Over
 
 ![Incident Workspace Overview](/screenshots/incident-workspace-overview.png)
 
+If an incident cannot be opened, the page says whether it was not found, you do not have access, or loading failed. It offers **Try again** (for a failed load) and a link back to **Incidents**.
+
 ### AI summary
 
 The summary card and the Investigation tab answer these questions in order. The card shows a short version; the tab shows the full report.
@@ -123,7 +125,9 @@ Stored evidence stays available when a connector is disabled. Disabling a connec
 
 When an incident is resolved, the **Post-mortem** tab offers **Generate post-mortem draft**. The draft is built from the activity feed, the resolution summary, the hypotheses, and the evidence titles, in these sections: **Summary**, **Impact**, **Timeline**, **Root cause**, **Contributing factors**, and **Follow-ups**. It opens as a read-only document; a section with nothing in it shows **Not written yet**.
 
-The **Timeline** lists the key moments in UTC, named as in the Activity feed: when the incident was created, alerts linked, AI triage and investigations, acknowledgement, notes, recovery and resolution. Evidence briefs, reassignments and edits are left out, and back-to-back investigations are shown once, as the latest result.
+The **Timeline** lists the key moments in UTC, named as in the Activity feed: when the incident was created, alerts linked, AI triage and investigations, acknowledgement, notes, recovery and resolution. Evidence briefs, reassignments and edits are left out, and back-to-back investigations are shown once, as the latest result. The tab shows the timeline grouped by day. Each moment has its time in a bold column on the left, an icon that matches the Activity feed (or fits the sentence), and what happened, with "All times in UTC" stated once at the top. It reads lines such as `- 6 Oct 2026, 14:58 UTC: <what happened>` and ISO timestamps such as `- 2026-10-26T23:49:24Z — <what happened>`; if any line has another shape, the tab shows the text as written. When an incident has no stored evidence, the "no evidence yet" notice is not used as the root cause, the resolution or a timeline detail.
+
+![Post-mortem tab with the timeline grouped by day](/screenshots/incident-postmortem.png)
 
 | Behavior | Detail |
 |---|---|
