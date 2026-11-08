@@ -1668,21 +1668,27 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Whether the execution container has started (or already finished).
+   * Whether the log stream can attach to the execution container yet.
    *
    * The API server answers pod-log requests with 400 BadRequest until the
    * container's state is `running` or `terminated`, so attaching before that
    * point only burns reconnect attempts and logs a warning for an expected
    * startup window.
    *
-   * Returns `true` when the pod cannot be read: an API or RBAC blip must
+   * - `started`: the container is running or terminated, so attach now.
+   * - `pending`: the container has not started yet, so poll again.
+   * - `ended`: the pod failed or succeeded without an execution container
+   *   state (for example, evicted or rejected at admission). It will never
+   *   start, so stop waiting and leave the logs to the final snapshot.
+   *
+   * Returns `started` when the pod cannot be read: an API or RBAC blip must
    * degrade to the previous attach-and-retry behaviour instead of never
    * streaming logs at all.
    */
-  private async hasExecutionContainerStarted(
+  private async getExecutionContainerStartState(
     podName: string,
-  ): Promise<boolean> {
-    if (!this.coreApi) return true;
+  ): Promise<'started' | 'pending' | 'ended'> {
+    if (!this.coreApi) return 'started';
     try {
       const pod = await this.coreApi.readNamespacedPod({
         name: podName,
@@ -1691,9 +1697,11 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       const state = pod.status?.containerStatuses?.find(
         (container) => container.name === 'execution',
       )?.state;
-      return Boolean(state?.running || state?.terminated);
+      if (state?.running || state?.terminated) return 'started';
+      const phase = pod.status?.phase;
+      return phase === 'Failed' || phase === 'Succeeded' ? 'ended' : 'pending';
     } catch {
-      return true;
+      return 'started';
     }
   }
 
@@ -1750,8 +1758,17 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       // budget for real failures. The wait does not spend that budget: slow
       // image pulls can exceed it, and the caller aborts the controller when
       // the execution ends or times out.
-      if (!connected && !(await this.hasExecutionContainerStarted(podName))) {
+      const startState = connected
+        ? 'started'
+        : await this.getExecutionContainerStartState(podName);
+      if (startState !== 'started') {
         if (controller.signal.aborted) return;
+        if (startState === 'ended') {
+          this.logger.warn(
+            `Execution pod for ${jobName} ended before its container started; final logs will be fetched via snapshot`,
+          );
+          return;
+        }
         reconnectTimer = setTimeout(
           () => void connect(attempt),
           reconnectDelayMs,

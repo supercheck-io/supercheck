@@ -1587,6 +1587,32 @@ describe('ContainerExecutorService', () => {
       controller.abort();
     });
 
+    it('stops waiting when the pod fails before the container starts', async () => {
+      const log = jest.fn();
+      const readNamespacedPod = jest.fn().mockResolvedValue({
+        status: { phase: 'Failed', reason: 'Evicted', containerStatuses: [] },
+      });
+      service['logClient'] = { log } as unknown as NonNullable<
+        (typeof service)['logClient']
+      >;
+      service['coreApi'] = { readNamespacedPod } as unknown as NonNullable<
+        (typeof service)['coreApi']
+      >;
+      const collector = service['createLogCollector']({});
+
+      const controller = service['startLogStreamWithReconnect'](
+        'pod',
+        collector.stream,
+        'job',
+      );
+
+      await jest.advanceTimersByTimeAsync(20_000);
+      expect(readNamespacedPod).toHaveBeenCalledTimes(1);
+      expect(log).not.toHaveBeenCalled();
+      expect(jest.getTimerCount()).toBe(0);
+      controller.abort();
+    });
+
     it('stops waiting for the container start when aborted mid-read', async () => {
       const log = jest.fn();
       let resolveRead: (value: unknown) => void = () => {};
