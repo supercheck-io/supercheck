@@ -534,6 +534,18 @@ describe("queue location refresh", () => {
     for (const shutdown of Object.values(appShutdowns)) expect(shutdown).toHaveBeenCalledTimes(1);
   });
 
+  it("does not let a stuck app worker block the rest of shutdown", async () => {
+    await queueModule.getQueues();
+    appShutdowns.triageWorker.mockReturnValueOnce(new Promise(() => {}));
+    let closed = false;
+    const closing = queueModule.closeQueue().then(() => {
+      closed = true;
+    });
+    await jest.advanceTimersByTimeAsync(queueModule.APP_WORKER_SHUTDOWN_TIMEOUT_MS);
+    await closing;
+    expect(closed).toBe(true);
+  });
+
   it("disconnects an offline refresh subscriber without waiting on Redis commands at shutdown", async () => {
     await queueModule.getQueues();
     for (let i = 0; i < 10; i++) await Promise.resolve();

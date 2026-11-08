@@ -1596,6 +1596,9 @@ async function reconcileQueuesWithLocations(): Promise<void> {
 /**
  * Close queue connections (useful for graceful shutdown).
  */
+/** Upper bound for closing app-owned workers on shutdown; stays inside the app's 60 s termination grace. */
+export const APP_WORKER_SHUTDOWN_TIMEOUT_MS = 20_000;
+
 export async function closeQueue(): Promise<void> {
   await queueState.refreshPromise?.catch(() => undefined);
   // Wait for any in-flight initialization to complete before tearing down.
@@ -1626,13 +1629,23 @@ export async function closeQueue(): Promise<void> {
 
   // Close the other app-owned BullMQ workers/queues before the shared Redis connection quits.
   // allSettled: one failing module must not block the rest.
-  const appWorkerShutdowns = await Promise.allSettled([
-    import("./status-page-scheduler").then((m) => m.shutdownStatusPageScheduler()),
-    import("./sre/incident-renotify").then((m) => m.shutdownIncidentRenotifyScheduler()),
-    import("@/sre/lib/background-alert-triage-processor").then((m) => m.shutdownSreAlertTriageProcessor()),
-    import("@/sre/lib/background-alert-triage-queue").then((m) => m.closeSreAlertTriageQueue()),
-    import("./job-scheduler").then((m) => m.cleanupDataLifecycleService()),
-  ]);
+  // Bounded: a job stuck on an unreachable dependency must not keep the shared Redis cleanup below from running.
+  let shutdownTimer: ReturnType<typeof setTimeout> | undefined;
+  const appWorkerShutdowns = await Promise.race([
+    Promise.allSettled([
+      import("./status-page-scheduler").then((m) => m.shutdownStatusPageScheduler()),
+      import("./sre/incident-renotify").then((m) => m.shutdownIncidentRenotifyScheduler()),
+      import("@/sre/lib/background-alert-triage-processor").then((m) => m.shutdownSreAlertTriageProcessor()),
+      import("@/sre/lib/background-alert-triage-queue").then((m) => m.closeSreAlertTriageQueue()),
+      import("./job-scheduler").then((m) => m.cleanupDataLifecycleService()),
+    ]),
+    new Promise<PromiseSettledResult<void>[]>((resolve) => {
+      shutdownTimer = setTimeout(() => {
+        queueLogger.warn({ timeoutMs: APP_WORKER_SHUTDOWN_TIMEOUT_MS }, "App worker shutdown timed out; continuing");
+        resolve([]);
+      }, APP_WORKER_SHUTDOWN_TIMEOUT_MS);
+    }),
+  ]).finally(() => clearTimeout(shutdownTimer));
   for (const result of appWorkerShutdowns) {
     if (result.status === "rejected") {
       queueLogger.warn({ err: result.reason }, "App worker shutdown failed");

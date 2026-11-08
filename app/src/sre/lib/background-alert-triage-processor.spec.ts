@@ -76,7 +76,7 @@ describe("initializeSreAlertTriageProcessor", () => {
       mockWorkerRun.mockReturnValue(new Promise(() => undefined));
       await initializeSreAlertTriageProcessor();
       return mockWorkerConstructor.mock.calls[0][1] as (
-        job: { data: unknown; timestamp?: number; moveToDelayed?: jest.Mock },
+        job: { data: Record<string, unknown>; moveToDelayed?: jest.Mock; updateData?: jest.Mock },
         token?: string,
       ) => Promise<unknown>;
     }
@@ -93,21 +93,40 @@ describe("initializeSreAlertTriageProcessor", () => {
       (processSreBackgroundAlertTriageJob as jest.Mock).mockResolvedValue(limited);
       const handler = await getHandler();
       const moveToDelayed = jest.fn().mockResolvedValue(undefined);
+      const updateData = jest.fn().mockResolvedValue(undefined);
       const before = Date.now();
 
-      await expect(handler({ data: {}, timestamp: before, moveToDelayed }, "tok")).rejects.toBeInstanceOf(DelayedError);
+      await expect(handler({ data: { alertHistoryId: "a1" }, moveToDelayed, updateData }, "tok")).rejects.toBeInstanceOf(
+        DelayedError,
+      );
       expect(moveToDelayed).toHaveBeenCalledWith(expect.any(Number), "tok");
       expect(moveToDelayed.mock.calls[0][0]).toBeGreaterThanOrEqual(before + ORG_LIMIT_DEFER_DELAY_MS);
+      // The first block is recorded so the window is measured from it, not from when the job was queued.
+      expect(updateData).toHaveBeenCalledWith({ alertHistoryId: "a1", orgLimitFirstBlockedAt: expect.any(Number) });
+      expect(updateData.mock.calls[0][0].orgLimitFirstBlockedAt).toBeGreaterThanOrEqual(before);
     });
 
-    it("gives up deferring once the job is older than the defer window", async () => {
+    it("keeps the first block time on later deferrals", async () => {
+      const limited = { success: true, skipped: true, reason: "org_concurrency_limit" };
+      (processSreBackgroundAlertTriageJob as jest.Mock).mockResolvedValue(limited);
+      const handler = await getHandler();
+      const moveToDelayed = jest.fn().mockResolvedValue(undefined);
+      const updateData = jest.fn();
+
+      await expect(
+        handler({ data: { orgLimitFirstBlockedAt: Date.now() - 60_000 }, moveToDelayed, updateData }, "tok"),
+      ).rejects.toBeInstanceOf(DelayedError);
+      expect(updateData).not.toHaveBeenCalled();
+    });
+
+    it("gives up deferring once the window since the first block has passed", async () => {
       const limited = { success: true, skipped: true, reason: "org_concurrency_limit" };
       (processSreBackgroundAlertTriageJob as jest.Mock).mockResolvedValue(limited);
       const handler = await getHandler();
       const moveToDelayed = jest.fn();
 
       await expect(
-        handler({ data: {}, timestamp: Date.now() - ORG_LIMIT_DEFER_WINDOW_MS - 1, moveToDelayed }, "tok"),
+        handler({ data: { orgLimitFirstBlockedAt: Date.now() - ORG_LIMIT_DEFER_WINDOW_MS - 1 }, moveToDelayed }, "tok"),
       ).resolves.toEqual(limited);
       expect(moveToDelayed).not.toHaveBeenCalled();
     });

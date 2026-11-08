@@ -6,6 +6,8 @@ import { Queue } from 'bullmq';
 export const SRE_ALERT_TRIAGE_QUEUE_NAME = 'sre-alert-triage';
 /** Backoff between in-place retries of a recovery enqueue. */
 export const RECOVERY_ENQUEUE_DELAYS_MS = [250, 1_000];
+/** Per-attempt cap on a recovery enqueue, so a Redis outage cannot hold the recovery alert. */
+export const RECOVERY_ENQUEUE_ATTEMPT_TIMEOUT_MS = 2_000;
 
 // Keep in sync with backgroundTriageJobSchema in app/src/sre/lib/background-alert-triage.ts.
 export type SreSourceRecovery = {
@@ -111,15 +113,26 @@ export class SreAlertTriageQueueService implements OnModuleDestroy {
       attempt < RECOVERY_ENQUEUE_DELAYS_MS.length + 1;
       attempt++
     ) {
+      let timer: NodeJS.Timeout | undefined;
       try {
-        await this.getQueue().add(
-          'source-recovery',
-          { sourceRecovery: recovery },
-          // One job per recovery; a fixed id would be dropped while the last one is retained.
-          {
-            jobId: `sre-recovery-${recovery.sourceType}-${recovery.sourceId}-${Date.parse(recovery.recoveredAt)}`,
-          },
-        );
+        // Bounded: while Redis is disconnected an add waits in the client's offline queue indefinitely.
+        // A timed-out add that lands later is harmless, since the next attempt reuses its jobId.
+        await Promise.race([
+          this.getQueue().add(
+            'source-recovery',
+            { sourceRecovery: recovery },
+            // One job per recovery; a fixed id would be dropped while the last one is retained.
+            {
+              jobId: `sre-recovery-${recovery.sourceType}-${recovery.sourceId}-${Date.parse(recovery.recoveredAt)}`,
+            },
+          ),
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(
+              () => reject(new Error('Recovery enqueue timed out')),
+              RECOVERY_ENQUEUE_ATTEMPT_TIMEOUT_MS,
+            );
+          }),
+        ]);
         return true;
       } catch (error) {
         const delay = RECOVERY_ENQUEUE_DELAYS_MS[attempt];
@@ -128,6 +141,8 @@ export class SreAlertTriageQueueService implements OnModuleDestroy {
           return false;
         }
         await new Promise((resolve) => setTimeout(resolve, delay));
+      } finally {
+        clearTimeout(timer);
       }
     }
     return false;

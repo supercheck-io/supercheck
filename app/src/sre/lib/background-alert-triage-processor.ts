@@ -9,7 +9,10 @@ import { isSreBackgroundAlertTriageEnabled } from "@/sre/lib/feature-gates";
 export const ORG_LIMIT_DEFER_WINDOW_MS = 30 * 60_000;
 export const ORG_LIMIT_DEFER_DELAY_MS = 60_000;
 
-let worker: Worker<SreAlertTriageQueueJob> | null = null;
+/** Job data plus the processor's own bookkeeping; the job schema ignores the extra key. */
+type TriageJobData = SreAlertTriageQueueJob & { orgLimitFirstBlockedAt?: number };
+
+let worker: Worker<TriageJobData> | null = null;
 let initPromise: Promise<boolean> | null = null;
 
 export async function initializeSreAlertTriageProcessor() {
@@ -27,7 +30,7 @@ export async function initializeSreAlertTriageProcessor() {
 
   initPromise = (async () => {
     const connection = await getRedisConnection();
-    worker = new Worker<SreAlertTriageQueueJob>(
+    worker = new Worker<TriageJobData>(
       SRE_ALERT_TRIAGE_QUEUE_NAME,
       async (job, token) => {
         const result = await processSreBackgroundAlertTriageJob(job.data);
@@ -37,11 +40,19 @@ export async function initializeSreAlertTriageProcessor() {
           result.success &&
           result.skipped &&
           result.reason === "org_concurrency_limit" &&
-          token &&
-          Date.now() - job.timestamp < ORG_LIMIT_DEFER_WINDOW_MS
+          token
         ) {
-          await job.moveToDelayed(Date.now() + ORG_LIMIT_DEFER_DELAY_MS, token);
-          throw new DelayedError();
+          // The window starts when the cap first blocks this job, not when it was queued, so a backlog
+          // ahead of it cannot use up the wait.
+          const firstBlockedAt =
+            typeof job.data.orgLimitFirstBlockedAt === "number" ? job.data.orgLimitFirstBlockedAt : Date.now();
+          if (Date.now() - firstBlockedAt < ORG_LIMIT_DEFER_WINDOW_MS) {
+            if (job.data.orgLimitFirstBlockedAt !== firstBlockedAt) {
+              await job.updateData({ ...job.data, orgLimitFirstBlockedAt: firstBlockedAt });
+            }
+            await job.moveToDelayed(Date.now() + ORG_LIMIT_DEFER_DELAY_MS, token);
+            throw new DelayedError();
+          }
         }
         // Throw on real failures so BullMQ applies its attempts/backoff instead of marking the job completed.
         if (!result.success) {

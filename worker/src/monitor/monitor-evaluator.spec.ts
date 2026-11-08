@@ -587,7 +587,7 @@ describe('incident-only monitors (alerts off or no channel)', () => {
       details: { recoverySequence: true },
     };
     const alertService = {
-      sendNotification: jest.fn(),
+      sendNotification: jest.fn(async () => ({ delivered: true })),
       signalFailure: jest.fn(),
       signalRecovery: jest.fn(async () => false),
     };
@@ -595,7 +595,9 @@ describe('incident-only monitors (alerts off or no channel)', () => {
       {
         db: {
           query: { monitorResults: { findFirst: jest.fn(async () => latest) } },
-          update: jest.fn(),
+          update: jest.fn(() => ({
+            set: jest.fn(() => ({ where: jest.fn() })),
+          })),
         },
       } as never,
       alertService as never,
@@ -611,7 +613,8 @@ describe('incident-only monitors (alerts off or no channel)', () => {
       reason: 'up',
       metadata: {},
     });
-    expect(res).not.toEqual({ alertSent: false, deliveryFailed: true });
+    expect(res).toEqual({ alertSent: true, alertType: 'recovery' });
+    expect(alertService.sendNotification).toHaveBeenCalledTimes(1);
     expect(alertService.signalRecovery).toHaveBeenCalledTimes(1);
   });
 });

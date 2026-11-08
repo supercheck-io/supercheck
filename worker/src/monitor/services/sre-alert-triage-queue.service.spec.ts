@@ -2,6 +2,7 @@ import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Queue } from 'bullmq';
 import {
+  RECOVERY_ENQUEUE_ATTEMPT_TIMEOUT_MS,
   RECOVERY_ENQUEUE_DELAYS_MS,
   SreAlertTriageQueueService,
 } from './sre-alert-triage-queue.service';
@@ -105,6 +106,33 @@ describe('SreAlertTriageQueueService', () => {
     await expect(result).resolves.toBe(false);
     expect(add).toHaveBeenCalledTimes(RECOVERY_ENQUEUE_DELAYS_MS.length + 1);
     expect(errorSpy).toHaveBeenCalledTimes(1);
+    errorSpy.mockRestore();
+    jest.useRealTimers();
+  });
+
+  it('gives up on a recovery enqueue that hangs while Redis is disconnected', async () => {
+    jest.useFakeTimers();
+    const errorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation();
+    const add = jest.fn(() => new Promise(() => undefined));
+    mockQueueConstructor.mockImplementationOnce(() => ({
+      add,
+      on: jest.fn(),
+      close: jest.fn().mockResolvedValue(undefined),
+    }));
+    const result = new SreAlertTriageQueueService(
+      configService,
+    ).enqueueSourceRecovery({
+      sourceType: 'monitor',
+      sourceId: 'm1',
+      recoveredAt: '2026-10-28T10:00:00.000Z',
+    });
+    await jest.advanceTimersByTimeAsync(
+      RECOVERY_ENQUEUE_ATTEMPT_TIMEOUT_MS *
+        (RECOVERY_ENQUEUE_DELAYS_MS.length + 1) +
+        RECOVERY_ENQUEUE_DELAYS_MS.reduce((a, b) => a + b, 0),
+    );
+    await expect(result).resolves.toBe(false);
+    expect(add).toHaveBeenCalledTimes(RECOVERY_ENQUEUE_DELAYS_MS.length + 1);
     errorSpy.mockRestore();
     jest.useRealTimers();
   });
