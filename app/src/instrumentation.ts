@@ -88,8 +88,7 @@ export async function register() {
     // Initialize monitor schedulers (MOVED from SchedulerInitializer component)
     try {
       console.log('[Instrumentation] Initializing monitor schedulers...');
-      const { initializeMonitorSchedulers, cleanupMonitorScheduler } = await import('@/lib/monitor-scheduler');
-      await cleanupMonitorScheduler();
+      const { initializeMonitorSchedulers } = await import('@/lib/monitor-scheduler');
       const monitorResult = await initializeMonitorSchedulers();
       if (monitorResult.success) {
         console.log(`[Instrumentation] ✅ Monitor scheduler initialized (${monitorResult.scheduled} monitors)`);

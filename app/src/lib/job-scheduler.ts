@@ -1,4 +1,4 @@
-import { Job } from "bullmq";
+import { Job, type RepeatableJob } from "bullmq";
 import { randomUUID } from "crypto";
 import type { Redis } from "ioredis";
 import { db } from "@/utils/db";
@@ -11,6 +11,7 @@ import {
   setDataLifecycleInstance,
   type DataLifecycleService,
 } from "./data-lifecycle-service";
+import { addJobRepeatable } from "./scheduler/legacy-k6-tick";
 import {
   processScheduledJob,
   type ScheduledJobData,
@@ -26,9 +27,51 @@ interface ScheduleOptions {
 }
 
 /**
+ * Moves repeatables from the legacy k6-job-scheduler queue into job-scheduler
+ * with the same schedule and data, then removes them from the old queue.
+ * Idempotent: a job already present in job-scheduler is only removed from the
+ * old queue. An entry whose payload cannot be read stays put; the per-job
+ * scheduleJob pass that follows replaces it from the database.
+ *
+ * shortcut: legacy k6-job-scheduler consumer kept for one release; remove in release N+1
+ */
+async function migrateLegacyK6Repeatables(): Promise<void> {
+  try {
+    const { jobSchedulerQueue, k6JobSchedulerQueue } = await getQueues();
+    const legacy = await k6JobSchedulerQueue.getRepeatableJobs();
+    if (legacy.length === 0) return;
+
+    const current = await jobSchedulerQueue.getRepeatableJobs();
+
+    for (const repeatable of legacy) {
+      try {
+        if (!current.some((c) => c.name === repeatable.name)) {
+          // The pending tick's id is repeat:<key>:<next fire>; it carries the payload.
+          const tick = await k6JobSchedulerQueue.getJob(`repeat:${repeatable.key}:${repeatable.next}`);
+          if (!tick || !repeatable.pattern) {
+            console.warn(`[JobScheduler] Cannot migrate legacy k6 schedule ${repeatable.name}; leaving it for rescheduling`);
+            continue;
+          }
+          await addJobRepeatable(jobSchedulerQueue, repeatable.name, tick.data, repeatable.pattern, repeatable.tz || "UTC");
+        }
+        await k6JobSchedulerQueue.removeRepeatableByKey(repeatable.key);
+      } catch (error) {
+        console.error(`[JobScheduler] Failed to migrate legacy k6 schedule ${repeatable.name}:`, error);
+      }
+    }
+  } catch (error) {
+    console.error("[JobScheduler] Failed to migrate legacy k6 schedules:", error);
+  }
+}
+
+/**
  * Creates or updates a job scheduler using BullMQ
  */
-export async function scheduleJob(options: ScheduleOptions): Promise<string> {
+export async function scheduleJob(
+  options: ScheduleOptions,
+  // Init passes both queues' repeatables, fetched once, instead of rescanning them per job.
+  prefetched?: [RepeatableJob[], RepeatableJob[]]
+): Promise<string> {
   try {
     // Setting up scheduled job
 
@@ -38,7 +81,7 @@ export async function scheduleJob(options: ScheduleOptions): Promise<string> {
     // Generate a unique name for this scheduled job
     const schedulerJobName = `scheduled-job-${options.jobId}`;
 
-    // First, get job information to access projectId and jobType
+    // First, get job information to access projectId
     const jobData = await db
       .select()
       .from(jobs)
@@ -55,27 +98,25 @@ export async function scheduleJob(options: ScheduleOptions): Promise<string> {
     // Test scripts and variables are fetched at trigger time by processScheduledJob
     // to ensure executions always use the latest test content and variable values.
 
-    // Clean up ALL existing repeatable jobs for this job ID
-    // Using .filter() instead of .find() to remove ALL matching jobs,
-    // preventing accumulated schedules from causing multiple triggers
-    const schedulerQueue = job.jobType === "k6" ? k6JobSchedulerQueue : jobSchedulerQueue;
-
-    const repeatableJobs = await schedulerQueue.getRepeatableJobs();
-    const existingJobs = repeatableJobs.filter(
-      (job) =>
-        job.id === options.jobId ||
-        job.key.includes(options.jobId) ||
-        job.name === schedulerJobName
-    );
-
-    if (existingJobs.length > 0) {
-      // Removing all existing jobs for this scheduler
+    // Clean up ALL existing repeatable jobs for this job ID in BOTH queues, using
+    // .filter() so accumulated schedules cannot cause multiple triggers. A k6 job
+    // scheduled before the queue merge still has its repeatable in the legacy queue.
+    for (const [index, queue] of [jobSchedulerQueue, k6JobSchedulerQueue].entries()) {
+      const repeatableJobs = prefetched?.[index] ?? (await queue.getRepeatableJobs());
+      const existingJobs = repeatableJobs.filter(
+        (job) =>
+          job.id === options.jobId ||
+          job.key.includes(options.jobId) ||
+          job.name === schedulerJobName
+      );
       await Promise.all(
-        existingJobs.map(job => schedulerQueue.removeRepeatableByKey(job.key))
+        existingJobs.map(job => queue.removeRepeatableByKey(job.key))
       );
     }
 
-    await schedulerQueue.add(
+    // All new schedules go to job-scheduler; the processor branches on the DB jobType.
+    await addJobRepeatable(
+      jobSchedulerQueue,
       schedulerJobName,
       {
         // Minimal identifier payload — scripts/variables are resolved at trigger time
@@ -85,17 +126,8 @@ export async function scheduleJob(options: ScheduleOptions): Promise<string> {
         projectId: job.projectId!,
         organizationId: job.organizationId!,
       },
-      {
-        repeat: {
-          pattern: options.cron,
-          tz: options.timezone || "UTC",
-        },
-        removeOnComplete: true,
-        removeOnFail: 100,
-        jobId: schedulerJobName, // Use a deterministic job ID for easier removal
-        attempts: 3,
-        backoff: { type: "exponential", delay: 5000 },
-      }
+      options.cron,
+      options.timezone || "UTC"
     );
 
     // Update the job's nextRunAt field in the database
@@ -221,6 +253,7 @@ export async function initializeJobSchedulers() {
       try {
         // Under the lock so concurrent instances cannot remove each other's fresh repeatables.
         await cleanupJobScheduler();
+        await migrateLegacyK6Repeatables();
 
         const jobsWithSchedules = await db
           .select()
@@ -237,6 +270,12 @@ export async function initializeJobSchedulers() {
         // OPTIMIZED: Collect updates and batch them at the end
         const schedulerUpdates: { id: string; scheduledJobId: string; nextRunAt: Date | null }[] = [];
 
+        const { jobSchedulerQueue, k6JobSchedulerQueue } = await getQueues();
+        const prefetched: [RepeatableJob[], RepeatableJob[]] = await Promise.all([
+          jobSchedulerQueue.getRepeatableJobs(),
+          k6JobSchedulerQueue.getRepeatableJobs(),
+        ]);
+
         for (const job of jobsWithSchedules) {
           if (!job.cronSchedule) continue;
 
@@ -246,7 +285,7 @@ export async function initializeJobSchedulers() {
               cron: job.cronSchedule,
               jobId: job.id,
               retryLimit: 3,
-            });
+            }, prefetched);
 
             // Collect updates instead of executing immediately
             if (!job.scheduledJobId || job.scheduledJobId !== schedulerId) {
