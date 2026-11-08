@@ -35,8 +35,8 @@ export function addJobRepeatable(
  *   re-runs the (idempotent) convergence. A retry is never skipped as a duplicate.
  * Once job-scheduler's copy has been picked up, BullMQ has already advanced its `next`, so a later legacy
  * tick for that slot runs. Both copies carry the same tick id (BullMQ derives it from name, jobId, tz and
- * pattern, not the queue), so processScheduledJob's per-tick run guard (keyed on the tick id and attempt; it
- * ships with the execution-capacity hardening change, which must merge first) rejects the second run.
+ * pattern, not the queue), so processScheduledJob's per-tick run guard (keyed on the tick id and attempt, under a
+ * transaction-scoped advisory lock) rejects the second run.
  * The job-scheduler lookup is a getRepeatableJobs scan (legacy-created entries are not job
  * schedulers); it runs only for legacy ticks, which stop once converged.
  *

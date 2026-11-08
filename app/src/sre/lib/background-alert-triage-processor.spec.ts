@@ -106,6 +106,13 @@ describe("initializeSreAlertTriageProcessor", () => {
       expect(updateData.mock.calls[0][0].orgLimitFirstBlockedAt).toBeGreaterThanOrEqual(before);
     });
 
+    it("also delays a job whose daily token limiter was unavailable, so triage is not dropped", async () => {
+      (processSreBackgroundAlertTriageJob as jest.Mock).mockResolvedValue({ success: true, skipped: true, reason: "daily_limit_unavailable" });
+      const handler = await getHandler();
+      const moveToDelayed = jest.fn().mockResolvedValue(undefined);
+      await expect(handler({ data: { alertHistoryId: "a1" }, moveToDelayed, updateData: jest.fn() }, "tok")).rejects.toBeInstanceOf(DelayedError);
+    });
+
     it("keeps the first block time on later deferrals", async () => {
       const limited = { success: true, skipped: true, reason: "org_concurrency_limit" };
       (processSreBackgroundAlertTriageJob as jest.Mock).mockResolvedValue(limited);

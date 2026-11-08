@@ -1072,6 +1072,27 @@ paths:
                   resetAt:
                     type: string
                     format: date-time
+        "503":
+          description: "Execution is temporarily unavailable: the queue or admission store
+            (Redis) cannot be reached, or no worker can run this test type. No
+            run is created. Retry after the `Retry-After` interval."
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying.
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+                    enum:
+                      - EXECUTION_QUEUE_UNAVAILABLE
+                      - EXECUTION_ADMISSION_UNAVAILABLE
     get:
       operationId: getJobTriggerInfo
       summary: Get job trigger information
@@ -1181,6 +1202,27 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "503":
+          description: "Execution is temporarily unavailable: the queue or admission store
+            (Redis) cannot be reached, or no worker can run this test type. No
+            run is created. Retry after the `Retry-After` interval."
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying.
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+                    enum:
+                      - EXECUTION_QUEUE_UNAVAILABLE
+                      - EXECUTION_ADMISSION_UNAVAILABLE
   /api/jobs/{id}/api-keys:
     parameters:
       - name: id
@@ -2089,6 +2131,27 @@ paths:
           $ref: "#/components/responses/NotFound"
         "429":
           description: Execution rate limit exceeded
+        "503":
+          description: "Execution is temporarily unavailable: the queue or admission store
+            (Redis) cannot be reached, or no worker can run this test type. No
+            run is created. Retry after the `Retry-After` interval."
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying.
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+                    enum:
+                      - EXECUTION_QUEUE_UNAVAILABLE
+                      - EXECUTION_ADMISSION_UNAVAILABLE
   /api/monitors:
     get:
       operationId: listMonitors

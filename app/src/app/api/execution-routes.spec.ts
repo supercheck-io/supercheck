@@ -44,6 +44,7 @@ jest.mock("@/lib/queue", () => ({
   addK6TestToQueue: jest.fn(),
   addJobToQueue: jest.fn(),
   addK6JobToQueue: jest.fn(),
+  assertExecutionQueueReady: jest.fn().mockResolvedValue(undefined),
 }));
 
 jest.mock("@/lib/playwright-validator", () => ({
@@ -156,7 +157,9 @@ const {
   addTestToQueue: mockAddTestToQueue,
   addK6TestToQueue: mockAddK6TestToQueue,
   addJobToQueue: mockAddJobToQueue,
+  assertExecutionQueueReady: mockAssertExecutionQueueReady,
 } = jest.requireMock("@/lib/queue") as {
+  assertExecutionQueueReady: jest.Mock;
   addTestToQueue: jest.Mock;
   addK6TestToQueue: jest.Mock;
   addJobToQueue: jest.Mock;
@@ -830,6 +833,32 @@ describe("Execution route regressions", () => {
     const { sql, params } = new PgDialect().sqlToQuery(where.mock.calls[0][0]);
     expect(sql).toMatch(/"projects"\."status" = \$\d+/);
     expect(params).toContain("active");
+    expect(mockAddJobToQueue).not.toHaveBeenCalled();
+  });
+
+  it("POST /api/jobs/[id]/trigger returns 503 before any Redis write or run when the queue is unreachable", async () => {
+    const jobId = "00000000-0000-4000-8000-000000000015";
+    mockDb.select.mockReturnValueOnce(triggerKeySelect(jobId));
+    const insertValues = jest.fn().mockResolvedValue(undefined);
+    mockDb.insert.mockReturnValue({ values: insertValues });
+    mockAssertExecutionQueueReady.mockRejectedValueOnce(
+      new ExecutionQueueError("queue_unavailable", "Execution queue is temporarily unavailable"),
+    );
+
+    const response = await postTrigger(
+      new NextRequest(`http://localhost/api/jobs/${jobId}/trigger`, {
+        method: "POST",
+        headers: { authorization: "Bearer supercheck_api_key_123456789", "content-type": "application/json" },
+        body: JSON.stringify({}),
+      }),
+      { params: Promise.resolve({ id: jobId }) },
+    );
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ code: "EXECUTION_QUEUE_UNAVAILABLE" });
+    expect(response.headers.get("Retry-After")).toBe("5");
+    expect(apiKeyRateLimiter.checkAndIncrement).not.toHaveBeenCalled();
+    expect(insertValues).not.toHaveBeenCalled();
     expect(mockAddJobToQueue).not.toHaveBeenCalled();
   });
 

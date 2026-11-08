@@ -1570,6 +1570,36 @@
           },
           "402": {
             "description": "Access denied by deployment policy"
+          },
+          "503": {
+            "description": "Execution is temporarily unavailable: the queue or admission store (Redis) cannot be reached, or no worker can run this test type. No run is created. Retry after the `Retry-After` interval.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "EXECUTION_QUEUE_UNAVAILABLE",
+                        "EXECUTION_ADMISSION_UNAVAILABLE"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       },
@@ -1719,6 +1749,36 @@
           },
           "402": {
             "description": "Access denied by deployment policy"
+          },
+          "503": {
+            "description": "Execution is temporarily unavailable: the queue or admission store (Redis) cannot be reached, or no worker can run this test type. No run is created. Retry after the `Retry-After` interval.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "EXECUTION_QUEUE_UNAVAILABLE",
+                        "EXECUTION_ADMISSION_UNAVAILABLE"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -3057,6 +3117,36 @@
           },
           "402": {
             "description": "Execution access denied"
+          },
+          "503": {
+            "description": "Execution is temporarily unavailable: the queue or admission store (Redis) cannot be reached, or no worker can run this test type. No run is created. Retry after the `Retry-After` interval.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "EXECUTION_QUEUE_UNAVAILABLE",
+                        "EXECUTION_ADMISSION_UNAVAILABLE"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
