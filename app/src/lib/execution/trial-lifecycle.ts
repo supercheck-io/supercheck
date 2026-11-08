@@ -274,59 +274,71 @@ export async function suspendLapsedOrganizations(
   const now = options.now ?? new Date();
   const database = options.database ?? db;
   const result: TrialEndResult = { organizations: 0, monitorsPaused: 0, statusPagesArchived: 0 };
-  const candidates = await database
-    .select({ id: organization.id })
-    .from(organization)
-    .where(
-      and(
-        isNotNull(organization.polarCustomerId),
-        or(
-          eq(organization.subscriptionStatus, "none"),
-          and(eq(organization.subscriptionStatus, "canceled"), lte(organization.subscriptionEndsAt, now)),
-        ),
-        // Trial organizations are handled by endExpiredTrials once their trial is over.
-        notExists(
-          database
-            .select({ one: sql`1` })
-            .from(executionEntitlements)
-            .where(and(eq(executionEntitlements.organizationId, organization.id), gt(executionEntitlements.expiresAt, now))),
-        ),
-        or(
-          exists(
-            database
-              .select({ one: sql`1` })
-              .from(monitors)
-              .where(and(eq(monitors.organizationId, organization.id), ne(monitors.status, "paused"))),
-          ),
-          exists(
-            database
-              .select({ one: sql`1` })
-              .from(statusPages)
-              .where(and(eq(statusPages.organizationId, organization.id), eq(statusPages.status, "published"))),
-          ),
-        ),
-      ),
-    )
-    .orderBy(organization.id)
-    .limit(BATCH_SIZE);
-
   const toUnschedule: Array<{ id: string; scheduledJobId: string | null }> = [];
-  for (const { id } of candidates) {
-    try {
-      const paused = await database.transaction(async (tx) => {
-        // Serialize with a concurrent subscription, then re-check under the lock.
-        const [org] = await tx.select().from(organization).where(eq(organization.id, id)).for("update");
-        if (!org || hasPaidAccess(org, now)) return [];
-        const { running, published } = await suspendOrganizationResources(tx, id, now);
-        if (running.length || published.length) result.organizations += 1;
-        result.monitorsPaused += running.length;
-        result.statusPagesArchived += published.length;
-        return running;
-      });
-      toUnschedule.push(...paused);
-    } catch (error) {
-      console.error(`Failed to suspend lapsed org ${id}:`, error);
+  // Organizations that failed or turned out paid under the lock are skipped for the rest of this run,
+  // so one stuck organization cannot starve the others.
+  const skip: string[] = [];
+  const deadline = Date.now() + DRAIN_BUDGET_MS;
+  for (;;) {
+    const candidates = await database
+      .select({ id: organization.id })
+      .from(organization)
+      .where(
+        and(
+          skip.length ? notInArray(organization.id, skip) : undefined,
+          isNotNull(organization.polarCustomerId),
+          or(
+            eq(organization.subscriptionStatus, "none"),
+            and(eq(organization.subscriptionStatus, "canceled"), lte(organization.subscriptionEndsAt, now)),
+          ),
+          // Trial organizations are handled by endExpiredTrials once their trial is over.
+          notExists(
+            database
+              .select({ one: sql`1` })
+              .from(executionEntitlements)
+              .where(and(eq(executionEntitlements.organizationId, organization.id), gt(executionEntitlements.expiresAt, now))),
+          ),
+          or(
+            exists(
+              database
+                .select({ one: sql`1` })
+                .from(monitors)
+                .where(and(eq(monitors.organizationId, organization.id), ne(monitors.status, "paused"))),
+            ),
+            exists(
+              database
+                .select({ one: sql`1` })
+                .from(statusPages)
+                .where(and(eq(statusPages.organizationId, organization.id), eq(statusPages.status, "published"))),
+            ),
+          ),
+        ),
+      )
+      .orderBy(organization.id)
+      .limit(BATCH_SIZE);
+
+    for (const { id } of candidates) {
+      try {
+        const paused = await database.transaction(async (tx) => {
+          // Serialize with a concurrent subscription, then re-check under the lock.
+          const [org] = await tx.select().from(organization).where(eq(organization.id, id)).for("update");
+          if (!org || hasPaidAccess(org, now)) {
+            skip.push(id);
+            return [];
+          }
+          const { running, published } = await suspendOrganizationResources(tx, id, now);
+          if (running.length || published.length) result.organizations += 1;
+          result.monitorsPaused += running.length;
+          result.statusPagesArchived += published.length;
+          return running;
+        });
+        toUnschedule.push(...paused);
+      } catch (error) {
+        skip.push(id);
+        console.error(`Failed to suspend lapsed org ${id}:`, error);
+      }
     }
+    if (candidates.length < BATCH_SIZE || Date.now() >= deadline) break;
   }
   await unscheduleMonitors(toUnschedule, database);
   return result;

@@ -50,11 +50,11 @@ afterAll(async () => {
 
 beforeEach(() => jest.clearAllMocks());
 
-async function seed(fields: { status: "active" | "canceled" | "past_due" | "none"; endsAt?: Date; trialEndsAt?: Date }) {
+async function seed(fields: { status: "active" | "canceled" | "past_due" | "none"; endsAt?: Date; trialEndsAt?: Date; customer?: boolean; monitorStatus?: "up" | "paused" }) {
   const [org] = await mockDatabase.insert(schema.organization).values({
     name: "Org", createdAt: new Date(), subscriptionStatus: fields.status,
     subscriptionPlan: fields.status === "none" ? null : "plus", subscriptionEndsAt: fields.endsAt ?? null,
-    polarCustomerId: `cus-${randomUUID()}`, subscriptionId: `sub-${randomUUID()}`,
+    polarCustomerId: fields.customer === false ? null : `cus-${randomUUID()}`, subscriptionId: `sub-${randomUUID()}`,
   }).returning();
   if (fields.trialEndsAt) {
     await mockDatabase.insert(schema.executionEntitlements).values({ organizationId: org.id, expiresAt: fields.trialEndsAt } as never);
@@ -62,7 +62,7 @@ async function seed(fields: { status: "active" | "canceled" | "past_due" | "none
   const [project] = await mockDatabase.insert(schema.projects).values({ organizationId: org.id, name: "P" }).returning();
   const [monitor] = await mockDatabase.insert(schema.monitors).values({
     organizationId: org.id, projectId: project.id, name: "M", type: "http_request" as const,
-    target: "https://example.com", frequencyMinutes: 5, status: "up" as const, scheduledJobId: "sched-1",
+    target: "https://example.com", frequencyMinutes: 5, status: fields.monitorStatus ?? ("up" as const), scheduledJobId: "sched-1",
   }).returning();
   const [page] = await mockDatabase.insert(schema.statusPages).values({
     organizationId: org.id, projectId: project.id, name: "S", subdomain: randomUUID().replaceAll("-", ""), status: "published" as const,
@@ -108,4 +108,23 @@ it("never touches past_due, a canceled period still running, active, or an organ
     expect(await monitorStatus(monitor.id)).toBe("up");
     expect(await pageStatus(page.id)).toBe("published");
   }
+});
+
+it("ignores organizations without a billing customer, picks up an expired trial, and suspends status-page-only organizations", async () => {
+  const noCustomer = await seed({ status: "none", customer: false });
+  const expiredTrial = await seed({ status: "none", trialEndsAt: new Date(NOW.getTime() - DAY) });
+  const pageOnly = await seed({ status: "none", monitorStatus: "paused" });
+  await suspendLapsedOrganizations({ now: NOW });
+  expect(await monitorStatus(noCustomer.monitor.id)).toBe("up");
+  expect(await pageStatus(noCustomer.page.id)).toBe("published");
+  expect(await monitorStatus(expiredTrial.monitor.id)).toBe("paused");
+  expect(await pageStatus(pageOnly.page.id)).toBe("archived");
+});
+
+it("keeps draining batches past 50 organizations", async () => {
+  const orgs = [];
+  for (let i = 0; i < 52; i++) orgs.push(await seed({ status: "none" }));
+  const result = await suspendLapsedOrganizations({ now: NOW });
+  expect(result.organizations).toBe(52);
+  expect(await monitorStatus(orgs[51].monitor.id)).toBe("paused");
 });
