@@ -43,6 +43,7 @@ export interface TestExecutionResult {
   timestamp: string;
   duration?: string;
   billableMs?: number; // Container run time evidenced by Kubernetes; 0 when no container started
+  interrupted?: boolean; // Ended by a worker restart: neither a user cancellation nor a failure to alert on
   stdout?: string;
   stderr?: string;
   // Additional properties for notifications

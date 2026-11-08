@@ -5,6 +5,7 @@ jest.mock('bullmq', () => ({
   Worker: jest.fn().mockImplementation(() => ({
     on: jest.fn(),
     close: jest.fn().mockResolvedValue(undefined),
+    pause: jest.fn().mockResolvedValue(undefined),
   })),
 }));
 jest.mock('../monitor.service', () => ({
@@ -37,7 +38,39 @@ import {
 import { DbService } from '../../db/db.service';
 import { HeartbeatService } from '../../common/heartbeat/heartbeat.service';
 
+/** Both shutdown hooks, in the order Nest runs them. */
+async function destroy(service: MonitorDynamicWorkerService): Promise<void> {
+  await service.onModuleDestroy();
+  await service.onApplicationShutdown();
+}
+
 describe('MonitorDynamicWorkerService lifecycle', () => {
+  it('does not let a disabled location draining its check delay the executor drain', async () => {
+    const { service } = setup('eu');
+    await service['handleQueueRefresh'](
+      JSON.stringify({ locationCodes: ['eu'] }),
+    );
+    const worker = service['workers'].get('monitor-eu')!;
+    let finishCheck!: () => void;
+    let closing!: () => void;
+    const closeStarted = new Promise<void>((resolve) => {
+      closing = resolve;
+    });
+    (worker.close as jest.Mock).mockImplementationOnce(() => {
+      closing();
+      return new Promise<void>((resolve) => (finishCheck = resolve));
+    });
+    const disable = service['handleQueueRefresh'](
+      JSON.stringify({ locationCodes: [] }),
+    );
+    await closeStarted;
+
+    await expect(service.onModuleDestroy()).resolves.toBeUndefined();
+
+    finishCheck();
+    await Promise.all([disable, service.onApplicationShutdown()]);
+  });
+
   it('defers a synthetic check while its organization slot is occupied', async () => {
     const { service } = setup();
     const executeMonitor = jest
@@ -476,7 +509,7 @@ describe('MonitorDynamicWorkerService lifecycle', () => {
     } finally {
       if (previous === undefined) delete process.env.DB_POOL_MAX;
       else process.env.DB_POOL_MAX = previous;
-      await service.onModuleDestroy();
+      await destroy(service);
     }
   });
 
@@ -520,7 +553,7 @@ describe('MonitorDynamicWorkerService lifecycle', () => {
     } finally {
       finishSlow();
       await pending;
-      await service.onModuleDestroy();
+      await destroy(service);
     }
   });
 
@@ -568,7 +601,7 @@ describe('MonitorDynamicWorkerService lifecycle', () => {
       releaseFirst();
       releaseRest();
       await Promise.all(pending);
-      await service.onModuleDestroy();
+      await destroy(service);
     }
   });
 
@@ -598,7 +631,7 @@ describe('MonitorDynamicWorkerService lifecycle', () => {
         await expect(failed).resolves.toBe(error);
         await expect(next).resolves.toEqual([]);
       } finally {
-        await service.onModuleDestroy();
+        await destroy(service);
       }
     },
   );
@@ -614,7 +647,7 @@ describe('MonitorDynamicWorkerService lifecycle', () => {
     }
     expect(connection.duplicate).not.toHaveBeenCalled();
     const workers = Array.from(service['workers'].values());
-    await service.onModuleDestroy();
+    await destroy(service);
     for (const worker of workers) {
       expect(worker.close).toHaveBeenCalledTimes(1);
       expect(
@@ -656,7 +689,7 @@ describe('MonitorDynamicWorkerService lifecycle', () => {
         enabled ? [] : ['monitor-eu-central'],
       );
       expect(heartbeat.addQueues).toHaveBeenCalledWith(['monitor-eu-central']);
-      await service.onModuleDestroy();
+      await destroy(service);
     },
   );
 
@@ -678,7 +711,7 @@ describe('MonitorDynamicWorkerService lifecycle', () => {
         enabled ? ['monitor-eu-central'] : [],
       );
       expect(execute).toHaveBeenCalledTimes(6);
-      await service.onModuleDestroy();
+      await destroy(service);
       expect(jest.getTimerCount()).toBe(0);
     },
   );
@@ -691,7 +724,7 @@ describe('MonitorDynamicWorkerService lifecycle', () => {
     await service['handleQueueRefresh']();
     expect(service['workers'].size).toBe(0);
     expect(Worker).not.toHaveBeenCalled();
-    await service.onModuleDestroy();
+    await destroy(service);
   });
 
   it('preserves all active local queues when DB refresh fails', async () => {
@@ -706,7 +739,7 @@ describe('MonitorDynamicWorkerService lifecycle', () => {
       'monitor-us',
     ]);
     expect(Worker).toHaveBeenCalledTimes(2);
-    await service.onModuleDestroy();
+    await destroy(service);
   });
 
   it('uses the enabled DB set for local startup and ignores stale Redis queues', async () => {
@@ -722,7 +755,7 @@ describe('MonitorDynamicWorkerService lifecycle', () => {
     await service['handleQueueRefresh']();
     expect(service['workers'].size).toBe(0);
     expect(connection.scan).not.toHaveBeenCalled();
-    await service.onModuleDestroy();
+    await destroy(service);
   });
 
   it.each([true, false])(
@@ -744,7 +777,7 @@ describe('MonitorDynamicWorkerService lifecycle', () => {
       execute.mockResolvedValue([{ code: 'us' }]);
       await jest.advanceTimersByTimeAsync(30_000);
       expect([...service['activeQueueNames']]).toEqual(['monitor-us']);
-      await service.onModuleDestroy();
+      await destroy(service);
     },
   );
 
@@ -771,7 +804,7 @@ describe('MonitorDynamicWorkerService lifecycle', () => {
     await Promise.resolve();
     await service['refreshPromise'];
     expect([...service['activeQueueNames']]).toEqual(['monitor-eu-central']);
-    await service.onModuleDestroy();
+    await destroy(service);
   });
 
   it('serializes disable/re-enable while unregistering before the old worker drains', async () => {
@@ -807,7 +840,7 @@ describe('MonitorDynamicWorkerService lifecycle', () => {
     expect(service['workers'].get('monitor-eu')).not.toBe(worker);
     expect(Worker).toHaveBeenCalledTimes(2);
     expect(worker.close).toHaveBeenCalledTimes(1);
-    await service.onModuleDestroy();
+    await destroy(service);
   });
 
   it('applies a newer notification after an older slow DB discovery', async () => {
@@ -827,7 +860,7 @@ describe('MonitorDynamicWorkerService lifecycle', () => {
     execute.mockResolvedValue([{ code: 'us' }]);
     await Promise.all([oldRefresh, newRefresh]);
     expect([...service['activeQueueNames']]).toEqual(['monitor-us']);
-    await service.onModuleDestroy();
+    await destroy(service);
   });
 
   it('continues after a failed refresh and rejects malformed location codes', async () => {
@@ -852,7 +885,7 @@ describe('MonitorDynamicWorkerService lifecycle', () => {
       JSON.stringify({ locationCodes: ['us'] }),
     );
     expect([...service['activeQueueNames']]).toEqual(['monitor-us']);
-    await service.onModuleDestroy();
+    await destroy(service);
   });
 
   it('blocks refresh work and timer rescheduling once shutdown begins', async () => {
@@ -869,7 +902,7 @@ describe('MonitorDynamicWorkerService lifecycle', () => {
     );
     jest.advanceTimersByTime(30_000);
     await Promise.resolve();
-    const shutdown = service.onModuleDestroy();
+    const shutdown = destroy(service);
     discover([{ code: 'eu-central' }]);
     await shutdown;
     await service['handleQueueRefresh'](
@@ -904,7 +937,7 @@ describe('MonitorDynamicWorkerService lifecycle', () => {
       JSON.stringify({ locationCodes: [] }),
     );
     await closeStarted;
-    const shutdown = service.onModuleDestroy();
+    const shutdown = destroy(service);
     expect(heartbeat.removeQueues).toHaveBeenCalledWith(['monitor-eu']);
     expect(connection.quit).not.toHaveBeenCalled();
     drain();
@@ -919,7 +952,7 @@ describe('MonitorDynamicWorkerService lifecycle', () => {
     await service.onModuleInit();
     subscriber.unsubscribe.mockReturnValue(new Promise(() => {}));
     subscriber.quit.mockReturnValue(new Promise(() => {}));
-    await service.onModuleDestroy();
+    await destroy(service);
     expect(subscriber.disconnect).toHaveBeenCalledTimes(1);
     expect(subscriber.unsubscribe).not.toHaveBeenCalled();
     expect(subscriber.quit).not.toHaveBeenCalled();
@@ -942,7 +975,7 @@ describe('MonitorDynamicWorkerService lifecycle', () => {
         JSON.stringify({ locationCodes: [] }),
       );
       expect([...service['activeQueueNames']]).toEqual(['monitor-eu-central']);
-      await service.onModuleDestroy();
+      await destroy(service);
     },
   );
 
@@ -971,7 +1004,7 @@ describe('MonitorDynamicWorkerService lifecycle', () => {
       expect.any(Object),
     );
     expect(heartbeat.addQueues).toHaveBeenCalledWith(['monitor-eu-central']);
-    await service.onModuleDestroy();
+    await destroy(service);
   });
 
   it('drains queues when an authoritative refresh disables every location', async () => {
@@ -984,7 +1017,7 @@ describe('MonitorDynamicWorkerService lifecycle', () => {
     expect(worker.close).toHaveBeenCalledTimes(1);
     expect(service['workers'].size).toBe(0);
     expect(heartbeat.removeQueues).toHaveBeenCalledWith(['monitor-eu']);
-    await service.onModuleDestroy();
+    await destroy(service);
   });
   it.each(['failed', 'delayed'])(
     'records a distributed terminal result only for state %s',

@@ -2,6 +2,7 @@ jest.mock('bullmq', () => ({
   Worker: jest.fn().mockImplementation(() => ({
     on: jest.fn(),
     close: jest.fn().mockResolvedValue(undefined),
+    pause: jest.fn().mockResolvedValue(undefined),
   })),
 }));
 jest.mock('./k6-execution.processor', () => ({
@@ -20,6 +21,13 @@ import { K6DynamicWorkerService } from './k6-dynamic-worker.service';
 import { K6ExecutionProcessor } from './k6-execution.processor';
 import { DbService } from '../../db/db.service';
 import { HeartbeatService } from '../../common/heartbeat/heartbeat.service';
+import { stopIntake } from '../../common/shutdown-intake';
+
+/** Both shutdown hooks, in the order Nest runs them. */
+async function destroy(service: K6DynamicWorkerService): Promise<void> {
+  await service.onModuleDestroy();
+  await service.onApplicationShutdown();
+}
 
 describe('K6DynamicWorkerService lifecycle', () => {
   function setup(location = 'local') {
@@ -62,7 +70,7 @@ describe('K6DynamicWorkerService lifecycle', () => {
     }
     expect(connection.duplicate).not.toHaveBeenCalled();
     const workers = Array.from(service['workers'].values());
-    await service.onModuleDestroy();
+    await destroy(service);
     for (const worker of workers) {
       expect(worker.close).toHaveBeenCalledTimes(1);
       expect(
@@ -70,6 +78,49 @@ describe('K6DynamicWorkerService lifecycle', () => {
       ).toBeLessThan(connection.quit.mock.invocationCallOrder[0]);
     }
     expect(connection.quit).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops pulling jobs at shutdown but closes (waits for active runs) only after the drain hook', async () => {
+    const { service, connection, execute } = setup('eu-central');
+    execute.mockResolvedValue([{ code: 'eu-central' }]);
+    await service.onModuleInit();
+    const worker = service['workers'].get('k6-eu-central')!;
+    const [, , options] = (Worker as unknown as jest.Mock).mock.calls[0];
+    expect(options.lockDuration).toBe(300_000);
+
+    await stopIntake();
+    expect(worker.pause).toHaveBeenCalledWith(true);
+    expect(worker.close).not.toHaveBeenCalled();
+
+    await service.onModuleDestroy();
+    expect(worker.close).not.toHaveBeenCalled();
+    expect(connection.quit).not.toHaveBeenCalled();
+
+    await service.onApplicationShutdown();
+    expect(worker.close).toHaveBeenCalledTimes(1);
+    expect(connection.quit).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not let a disabled location draining its run delay the executor drain', async () => {
+    const { service } = setup();
+    await service['handleQueueRefresh'](
+      JSON.stringify({ locationCodes: ['eu'] }),
+    );
+    const worker = service['workers'].get('k6-eu')!;
+    let finishRun!: () => void;
+    (worker.close as jest.Mock).mockImplementationOnce(
+      () => new Promise<void>((resolve) => (finishRun = resolve)),
+    );
+    const disable = service['handleQueueRefresh'](
+      JSON.stringify({ locationCodes: [] }),
+    );
+    await Promise.resolve();
+
+    // The module-destroy hook (which precedes the executor drain) returns at once.
+    await expect(service.onModuleDestroy()).resolves.toBeUndefined();
+
+    finishRun();
+    await Promise.all([disable, service.onApplicationShutdown()]);
   });
 
   it.each([true, false])(
@@ -104,7 +155,7 @@ describe('K6DynamicWorkerService lifecycle', () => {
         enabled ? [] : ['k6-eu-central'],
       );
       expect(heartbeat.addQueues).toHaveBeenCalledWith(['k6-eu-central']);
-      await service.onModuleDestroy();
+      await destroy(service);
     },
   );
 
@@ -126,7 +177,7 @@ describe('K6DynamicWorkerService lifecycle', () => {
         enabled ? ['k6-eu-central'] : [],
       );
       expect(execute).toHaveBeenCalledTimes(6);
-      await service.onModuleDestroy();
+      await destroy(service);
       expect(jest.getTimerCount()).toBe(0);
     },
   );
@@ -139,7 +190,7 @@ describe('K6DynamicWorkerService lifecycle', () => {
     await service['handleQueueRefresh']();
     expect(service['workers'].size).toBe(0);
     expect(Worker).not.toHaveBeenCalled();
-    await service.onModuleDestroy();
+    await destroy(service);
   });
 
   it('preserves all active local queues when DB refresh fails', async () => {
@@ -151,7 +202,7 @@ describe('K6DynamicWorkerService lifecycle', () => {
     await service['handleQueueRefresh']();
     expect([...service['activeQueueNames']]).toEqual(['k6-eu', 'k6-us']);
     expect(Worker).toHaveBeenCalledTimes(2);
-    await service.onModuleDestroy();
+    await destroy(service);
   });
 
   it('uses the enabled DB set for local startup and ignores stale Redis queues', async () => {
@@ -164,7 +215,7 @@ describe('K6DynamicWorkerService lifecycle', () => {
     await service['handleQueueRefresh']();
     expect(service['workers'].size).toBe(0);
     expect(connection.scan).not.toHaveBeenCalled();
-    await service.onModuleDestroy();
+    await destroy(service);
   });
 
   it.each([true, false])(
@@ -186,7 +237,7 @@ describe('K6DynamicWorkerService lifecycle', () => {
       execute.mockResolvedValue([{ code: 'us' }]);
       await jest.advanceTimersByTimeAsync(30_000);
       expect([...service['activeQueueNames']]).toEqual(['k6-us']);
-      await service.onModuleDestroy();
+      await destroy(service);
     },
   );
 
@@ -213,7 +264,7 @@ describe('K6DynamicWorkerService lifecycle', () => {
     await Promise.resolve();
     await service['refreshPromise'];
     expect([...service['activeQueueNames']]).toEqual(['k6-eu-central']);
-    await service.onModuleDestroy();
+    await destroy(service);
   });
 
   it('serializes disable/re-enable while unregistering before the old worker drains', async () => {
@@ -249,7 +300,7 @@ describe('K6DynamicWorkerService lifecycle', () => {
     expect(service['workers'].get('k6-eu')).not.toBe(worker);
     expect(Worker).toHaveBeenCalledTimes(2);
     expect(worker.close).toHaveBeenCalledTimes(1);
-    await service.onModuleDestroy();
+    await destroy(service);
   });
 
   it('applies a newer notification after an older slow DB discovery', async () => {
@@ -269,7 +320,7 @@ describe('K6DynamicWorkerService lifecycle', () => {
     execute.mockResolvedValue([{ code: 'us' }]);
     await Promise.all([oldRefresh, newRefresh]);
     expect([...service['activeQueueNames']]).toEqual(['k6-us']);
-    await service.onModuleDestroy();
+    await destroy(service);
   });
 
   it('continues after a failed refresh and rejects malformed location codes', async () => {
@@ -294,7 +345,7 @@ describe('K6DynamicWorkerService lifecycle', () => {
       JSON.stringify({ locationCodes: ['us'] }),
     );
     expect([...service['activeQueueNames']]).toEqual(['k6-us']);
-    await service.onModuleDestroy();
+    await destroy(service);
   });
 
   it('blocks refresh work and timer rescheduling once shutdown begins', async () => {
@@ -311,7 +362,7 @@ describe('K6DynamicWorkerService lifecycle', () => {
     );
     jest.advanceTimersByTime(30_000);
     await Promise.resolve();
-    const shutdown = service.onModuleDestroy();
+    const shutdown = destroy(service);
     discover([{ code: 'eu-central' }]);
     await shutdown;
     await service['handleQueueRefresh'](
@@ -346,7 +397,7 @@ describe('K6DynamicWorkerService lifecycle', () => {
       JSON.stringify({ locationCodes: [] }),
     );
     await closeStarted;
-    const shutdown = service.onModuleDestroy();
+    const shutdown = destroy(service);
     expect(heartbeat.removeQueues).toHaveBeenCalledWith(['k6-eu']);
     expect(connection.quit).not.toHaveBeenCalled();
     drain();
@@ -361,7 +412,7 @@ describe('K6DynamicWorkerService lifecycle', () => {
     await service.onModuleInit();
     subscriber.unsubscribe.mockReturnValue(new Promise(() => {}));
     subscriber.quit.mockReturnValue(new Promise(() => {}));
-    await service.onModuleDestroy();
+    await destroy(service);
     expect(subscriber.disconnect).toHaveBeenCalledTimes(1);
     expect(subscriber.unsubscribe).not.toHaveBeenCalled();
     expect(subscriber.quit).not.toHaveBeenCalled();
@@ -384,7 +435,7 @@ describe('K6DynamicWorkerService lifecycle', () => {
         JSON.stringify({ locationCodes: [] }),
       );
       expect([...service['activeQueueNames']]).toEqual(['k6-eu-central']);
-      await service.onModuleDestroy();
+      await destroy(service);
     },
   );
 
@@ -415,7 +466,7 @@ describe('K6DynamicWorkerService lifecycle', () => {
       expect.any(Object),
     );
     expect(heartbeat.addQueues).toHaveBeenCalledWith(['k6-eu-central']);
-    await service.onModuleDestroy();
+    await destroy(service);
   });
 
   it('drains queues when an authoritative refresh disables every location', async () => {
@@ -428,6 +479,6 @@ describe('K6DynamicWorkerService lifecycle', () => {
     expect(worker.close).toHaveBeenCalledTimes(1);
     expect(service['workers'].size).toBe(0);
     expect(heartbeat.removeQueues).toHaveBeenCalledWith(['k6-eu']);
-    await service.onModuleDestroy();
+    await destroy(service);
   });
 });

@@ -113,9 +113,16 @@ export async function withRunCallback<T>(
   }, 10_000);
   timer.unref();
   return callbacks.run(scope, async () => {
+    let failed = false;
+    let failure: unknown;
+    let value!: T;
     try {
-      return await callback();
-    } finally {
+      value = await callback();
+    } catch (error) {
+      failed = true;
+      failure = error;
+    }
+    try {
       scope.closed = true;
       await Promise.allSettled([...scope.pending]);
       clearInterval(timer);
@@ -129,7 +136,13 @@ export async function withRunCallback<T>(
             eq(schema.runCallbacks.owner, owner),
           ),
         );
+    } catch (cleanupError) {
+      // The callback's own error (for example an UnrecoverableError that forbids a retry) wins;
+      // a failed cleanup must not turn it into a retryable one.
+      if (!failed) throw cleanupError;
     }
+    if (failed) throw failure;
+    return value;
   });
 }
 

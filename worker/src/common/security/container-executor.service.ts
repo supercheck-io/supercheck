@@ -26,11 +26,15 @@ import type * as k8s from '@kubernetes/client-node';
 import { PassThrough, Readable, Writable } from 'stream';
 import { finished } from 'stream/promises';
 import { CancellationService } from '../services/cancellation.service';
+import { inFlightCount, stopIntake, trackInFlight } from '../shutdown-intake';
 import {
   type ImagePullPolicy,
   isMutableImageReference,
   parseImagePullPolicyOverride,
 } from '../utils/image-reference';
+
+/** Recorded for a run whose execution Job the shutdown drain deleted. */
+export const WORKER_INTERRUPTED_ERROR = 'Interrupted by worker restart';
 
 export interface ContainerExecutionOptions {
   /**
@@ -139,6 +143,10 @@ export interface ContainerExecutionResult {
   billableMs?: number;
   timedOut: boolean;
   cancelled?: boolean;
+  /** Kubernetes reported the container started. Billable time can still be zero for a sub-second run, so retry guards use this. */
+  started?: boolean;
+  /** The worker restart ended this execution (its Job was deleted by shutdown, or never created). Not a user cancellation. */
+  interrupted?: boolean;
   error?: string;
 }
 
@@ -153,6 +161,13 @@ interface ContainerStartEvidence {
 const MIN_PLAUSIBLE_START_MS = Date.UTC(2000, 0, 1);
 /** Job activeDeadline is the timeout plus 120s; allow the same grace here. */
 const BILLABLE_DEADLINE_GRACE_MS = 150_000;
+
+function hasStartEvidence(evidence: ContainerStartEvidence): boolean {
+  return (
+    evidence.startedAtMs !== null &&
+    evidence.startedAtMs >= MIN_PLAUSIBLE_START_MS
+  );
+}
 
 export function computeBillableMs(
   evidence: ContainerStartEvidence,
@@ -263,6 +278,10 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
   private coreApi: k8s.CoreV1Api | null = null;
   private logClient: k8s.Log | null = null;
   private execClient: k8s.Exec | null = null;
+  // Runs whose Job the shutdown drain deleted; their pod disappearing is not a user cancellation.
+  private readonly shutdownDeletedRunIds = new Set<string>();
+  // Set once the drain ended: nothing may create a new execution Job after that.
+  private shuttingDown = false;
   private readonly runningJobs: Map<string, string> = new Map();
   private readonly uncertainExecutionChecks: Map<string, number> = new Map();
   /** Track pods that have already logged an exec failure at warn level to avoid log spam. */
@@ -440,22 +459,30 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleDestroy(): Promise<void> {
-    // This hook runs before the BullMQ workers close, so give in-flight runs a bounded
-    // window to finish before deleting the Jobs that are still alive. The window must stay
-    // below the orchestrator's grace period (Kubernetes terminationGracePeriodSeconds, default
-    // 30s; Compose stop_grace_period, 30s in the bundled files), or the process is SIGKILLed
-    // before the cleanup below runs. Raise that grace period before raising this value.
+    // Ordering: queue consumers stop fetching first (the drain below would otherwise be refilled
+    // by the next job), and they only close in onApplicationShutdown, after this drain.
+    await stopIntake();
+    // Give in-flight runs a bounded window to finish before deleting the Jobs that are still
+    // alive. The window must stay below the orchestrator's grace period (Kubernetes
+    // terminationGracePeriodSeconds, default 30s; Compose stop_grace_period, 30s in the bundled
+    // files), or the process is SIGKILLed before the cleanup below runs. Raise that grace period
+    // before raising this value; the cap covers a 60-minute run plus margin.
     const raw = process.env.WORKER_SHUTDOWN_DRAIN_MS?.trim();
     const configured = raw ? Number(raw) : NaN; // blank means the default
     const drainMs =
       Number.isFinite(configured) && configured >= 0
-        ? Math.min(configured, 600_000)
+        ? Math.min(configured, 3_900_000)
         : 20_000;
     // Monotonic clock: a wall-clock step must not stretch or cut the window.
     const drainDeadline = performance.now() + drainMs;
-    while (this.runningJobs.size > 0 && performance.now() < drainDeadline) {
+    // inFlightCount covers work that is still in admission or setup (no Job in runningJobs yet).
+    while (
+      (this.runningJobs.size > 0 || inFlightCount() > 0) &&
+      performance.now() < drainDeadline
+    ) {
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
+    this.shuttingDown = true;
 
     // Clear all cancellation intervals
     for (const interval of this.activeCancellationIntervals) {
@@ -468,6 +495,8 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
         this.logger.warn(
           `Deleting orphaned execution job ${jobName} for ${runId}`,
         );
+        // Marked first so the run reads as interrupted by the restart, not cancelled by the user.
+        this.shutdownDeletedRunIds.add(runId);
         await this.deleteExecutionJob(jobName);
       },
     );
@@ -563,6 +592,29 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     scriptPath: string | null,
     command: string[],
     options: ContainerExecutionOptions = {},
+  ): Promise<ContainerExecutionResult> {
+    if (this.shuttingDown) {
+      return {
+        success: false,
+        exitCode: 137,
+        stdout: '',
+        stderr: '',
+        duration: 0,
+        billableMs: 0,
+        timedOut: false,
+        interrupted: true,
+        error: WORKER_INTERRUPTED_ERROR,
+      };
+    }
+    return trackInFlight(() =>
+      this.executeInContainerCounted(scriptPath, command, options),
+    );
+  }
+
+  private async executeInContainerCounted(
+    scriptPath: string | null,
+    command: string[],
+    options: ContainerExecutionOptions,
   ): Promise<ContainerExecutionResult> {
     if (options.networkMode && options.networkMode !== 'bridge') {
       throw new Error(
@@ -891,6 +943,8 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       containerCommand,
     );
     const jobName = this.buildExecutionJobName(options.runId);
+    // Runs are tracked by run id; synthetic monitor checks have none, so they are tracked by Job name.
+    const trackKey = options.runId ?? `job:${jobName}`;
     const exitCodeFile = this.getWorkspaceExitCodeFile(workspace);
     const exitSignalFile = this.getWorkspaceExitSignalFile(workspace);
     const wrappedScript = this.buildKubernetesWrapperScript(
@@ -908,6 +962,8 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       : undefined;
 
     let podName: string | null = null;
+    // Once the Secrets exist the container may start without us observing it.
+    let secretsReady = false;
     let logAbort: AbortController | null = null;
     let cancellationInterval: NodeJS.Timeout | null = null;
     let killed = false;
@@ -947,6 +1003,16 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
         );
       }
 
+      if (this.shuttingDown) {
+        // The drain ended while the Job was being created; the finally below deletes it. Its
+        // Secrets do not exist, so the container cannot have started.
+        this.shutdownDeletedRunIds.add(trackKey);
+        throw new Error(WORKER_INTERRUPTED_ERROR);
+      }
+      // Registered before the Secrets are awaited, so a drain that ends while they are pending
+      // still finds, marks and deletes this Job.
+      this.runningJobs.set(trackKey, jobName);
+
       await Promise.all([
         ...payloadChunks.map((chunk, index) =>
           this.createExecutionSecret(
@@ -972,8 +1038,13 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
           : []),
       ]);
 
+      secretsReady = true;
+      if (this.shuttingDown) {
+        this.shutdownDeletedRunIds.add(trackKey);
+        throw new Error(WORKER_INTERRUPTED_ERROR);
+      }
+
       if (options.runId) {
-        this.runningJobs.set(options.runId, jobName);
         cancellationInterval = this.startKubernetesCancellationPoller(
           options.runId,
           jobName,
@@ -984,7 +1055,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       }
 
       const podWaitStartedAt = Date.now();
-      podName = await this.waitForExecutionPod(jobName);
+      podName = await this.waitForExecutionPod(jobName, trackKey);
       podStartupDurationMs = Date.now() - podWaitStartedAt;
       if (
         podStartupDurationMs > ContainerExecutorService.SLOW_POD_STARTUP_WARN_MS
@@ -1057,7 +1128,14 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
         },
       );
       timedOut = outcome.timedOut;
-      killed = killed || outcome.cancelled;
+      // The deleted Job's pod is seen either gone (404) or killed (137/143) first.
+      const interrupted =
+        !killed &&
+        this.shutdownDeletedRunIds.has(trackKey) &&
+        (outcome.cancelled ||
+          outcome.exitCode === 137 ||
+          outcome.exitCode === 143);
+      killed = killed || (outcome.cancelled && !interrupted);
       if (
         outcome.exitCode === 0 &&
         options.extractFromContainer &&
@@ -1094,25 +1172,38 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
         duration,
         billableMs: computeBillableMs(startEvidence, limits.timeoutMs),
         timedOut,
+        // An interrupted run with no observed start may still have started: never call it unstarted.
+        started: hasStartEvidence(startEvidence) || interrupted,
         cancelled: killed,
+        ...(interrupted ? { interrupted: true } : {}),
         error: timedOut
           ? `Execution timed out after ${limits.timeoutMs}ms`
-          : killed
-            ? 'Execution cancelled (exit code 137)'
-            : exitCode !== 0
-              ? outcome.message || `Process exited with code ${exitCode}`
-              : undefined,
+          : interrupted
+            ? WORKER_INTERRUPTED_ERROR
+            : killed
+              ? 'Execution cancelled (exit code 137)'
+              : exitCode !== 0
+                ? outcome.message || `Process exited with code ${exitCode}`
+                : undefined,
       };
     } catch (error) {
+      // Any failure after shutdown deleted this run's Job is the restart, not a fault of the run.
+      const deletedByShutdown = this.shutdownDeletedRunIds.has(trackKey);
+      const message = error instanceof Error ? error.message : String(error);
       return {
         success: false,
         exitCode: 1,
         stdout: logCollector.getOutput(),
-        stderr: error instanceof Error ? error.message : String(error),
+        stderr: deletedByShutdown ? '' : message,
         duration: Date.now() - startTime,
         billableMs: computeBillableMs(startEvidence, limits.timeoutMs),
         timedOut,
-        error: error instanceof Error ? error.message : String(error),
+        // After the Secrets exist an unobserved start cannot be ruled out, so it is not deferred.
+        started:
+          hasStartEvidence(startEvidence) ||
+          (deletedByShutdown && secretsReady),
+        ...(deletedByShutdown ? { interrupted: true } : {}),
+        error: deletedByShutdown ? WORKER_INTERRUPTED_ERROR : message,
       };
     } finally {
       if (logAbort) {
@@ -1122,9 +1213,8 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
         clearInterval(cancellationInterval);
         this.activeCancellationIntervals.delete(cancellationInterval);
       }
-      if (options.runId) {
-        this.runningJobs.delete(options.runId);
-      }
+      this.runningJobs.delete(trackKey);
+      this.shutdownDeletedRunIds.delete(trackKey);
       if (podName) {
         this.execFailureLogged.delete(podName);
       }
@@ -1582,11 +1672,18 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     return normalized.slice(0, 63);
   }
 
-  private async waitForExecutionPod(jobName: string): Promise<string> {
+  private async waitForExecutionPod(
+    jobName: string,
+    runId?: string,
+  ): Promise<string> {
     const timeoutAt = Date.now() + 120_000;
     const labelSelector = `job-name=${jobName}`;
 
     while (Date.now() < timeoutAt) {
+      // Shutdown deleted the Job before its pod was listed: no pod will ever appear.
+      if (runId && this.shutdownDeletedRunIds.has(runId)) {
+        throw new Error(WORKER_INTERRUPTED_ERROR);
+      }
       const pods = await this.coreApi!.listNamespacedPod({
         namespace: this.executionNamespace,
         labelSelector,

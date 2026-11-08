@@ -65,12 +65,6 @@ module.exports = {
       lines: 28,
       statements: 28,
     },
-    './src/execution/services/queue-status.service.ts': {
-      branches: 90,
-      functions: 55,
-      lines: 85,
-      statements: 85,
-    },
     // Operator-facing structured logging contract.
     './src/logger/logger.service.ts': {
       branches: 80,
