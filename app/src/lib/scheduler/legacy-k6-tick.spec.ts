@@ -6,14 +6,19 @@ const jobQueue = { getRepeatableJobs: jest.fn(), removeRepeatableByKey: jest.fn(
 const k6Queue = { removeRepeatableByKey: jest.fn() };
 const queues = { jobSchedulerQueue: jobQueue as unknown as Queue, k6JobSchedulerQueue: k6Queue as unknown as Queue };
 const run = jest.fn();
-const tick = (over: Partial<{ id: string; pattern: string; tz: string }> = {}) =>
+const loadCron = jest.fn();
+const go = (job: Job) => processLegacyK6Tick(job, queues, run, loadCron);
+const DUE = 1_000;
+const tick = (over: Record<string, unknown> = {}, repeat: Record<string, unknown> = {}) =>
   ({
-    id: "repeat:abc:123",
+    id: `repeat:abc:${DUE}`,
     name: "scheduled-job-1",
     data: { jobId: "1" },
-    opts: { repeat: { pattern: "*/5 * * * *", tz: "UTC", ...over } },
-    ...(over.id ? { id: over.id } : {}),
+    attemptsMade: 0,
+    opts: { repeat: { pattern: "*/5 * * * *", tz: "UTC", ...repeat } },
+    ...over,
   }) as unknown as Job;
+const copy = (over: Record<string, unknown> = {}) => ({ name: "scheduled-job-1", key: "k", pattern: "*/5 * * * *", tz: "UTC", next: DUE, ...over });
 
 beforeEach(() => {
   jest.resetAllMocks();
@@ -21,32 +26,69 @@ beforeEach(() => {
 });
 
 it("processes a job that is not a repeat tick, or has no pattern, untouched", async () => {
-  await processLegacyK6Tick(tick({ id: "manual-1" }), queues, run);
-  await processLegacyK6Tick({ id: "repeat:abc:1", name: "n", data: {}, opts: {} } as unknown as Job, queues, run);
+  await go(tick({ id: "manual-1" }));
+  await go({ id: "repeat:abc:1", name: "n", data: {}, attemptsMade: 0, opts: {} } as unknown as Job);
   expect(run).toHaveBeenCalledTimes(2);
   expect(jobQueue.getRepeatableJobs).not.toHaveBeenCalled();
 });
 
 it("migrates then runs when job-scheduler has no schedule for the job", async () => {
-  jobQueue.getRepeatableJobs.mockResolvedValue([{ name: "other", key: "o", pattern: "* * * * *", tz: "UTC" }]);
-  await expect(processLegacyK6Tick(tick(), queues, run)).resolves.toBe("ran");
+  jobQueue.getRepeatableJobs.mockResolvedValue([{ ...copy(), name: "other" }]);
+  await expect(go(tick())).resolves.toBe("ran");
   expect(jobQueue.add).toHaveBeenCalledWith("scheduled-job-1", { jobId: "1" }, expect.objectContaining({ repeat: { pattern: "*/5 * * * *", tz: "UTC" }, jobId: "scheduled-job-1" }));
   expect(k6Queue.removeRepeatableByKey).toHaveBeenCalledWith("abc");
-  expect(jobQueue.removeRepeatableByKey).not.toHaveBeenCalled();
+  expect(loadCron).not.toHaveBeenCalled();
 });
 
-it("skips and removes the legacy entry when job-scheduler already has the same schedule (null tz is UTC)", async () => {
-  jobQueue.getRepeatableJobs.mockResolvedValue([{ name: "scheduled-job-1", key: "k", pattern: "*/5 * * * *", tz: null }]);
-  await expect(processLegacyK6Tick(tick(), queues, run)).resolves.toBeUndefined();
+it("skips and removes the legacy entry when the same schedule fires in this slot (null tz is UTC)", async () => {
+  jobQueue.getRepeatableJobs.mockResolvedValue([copy({ tz: null })]);
+  await expect(go(tick())).resolves.toBeUndefined();
   expect(run).not.toHaveBeenCalled();
   expect(jobQueue.add).not.toHaveBeenCalled();
   expect(k6Queue.removeRepeatableByKey).toHaveBeenCalledWith("abc");
 });
 
-it("replaces a different job-scheduler schedule with the legacy one and skips the tick", async () => {
-  jobQueue.getRepeatableJobs.mockResolvedValue([{ name: "scheduled-job-1", key: "stale", pattern: "0 * * * *", tz: "UTC" }]);
-  await expect(processLegacyK6Tick(tick({ tz: "Asia/Tokyo" }), queues, run)).resolves.toBeUndefined();
-  expect(jobQueue.removeRepeatableByKey).toHaveBeenCalledWith("stale");
-  expect(jobQueue.add).toHaveBeenCalledWith("scheduled-job-1", { jobId: "1" }, expect.objectContaining({ repeat: { pattern: "*/5 * * * *", tz: "Asia/Tokyo" } }));
-  expect(run).not.toHaveBeenCalled();
+it("processes the due tick when the same schedule's copy fires only later (in-flight tick around migration)", async () => {
+  jobQueue.getRepeatableJobs.mockResolvedValue([copy({ next: DUE + 300_000 })]);
+  await expect(go(tick())).resolves.toBe("ran");
+  expect(jobQueue.add).not.toHaveBeenCalled();
+  expect(k6Queue.removeRepeatableByKey).toHaveBeenCalledWith("abc");
+});
+
+it("removes the legacy entry by repeatJobKey when BullMQ provides it (long-format keys)", async () => {
+  jobQueue.getRepeatableJobs.mockResolvedValue([copy()]);
+  await go(tick({ repeatJobKey: "scheduled-job-1:scheduled-job-1::UTC:*/5 * * * *" }));
+  expect(k6Queue.removeRepeatableByKey).toHaveBeenCalledWith("scheduled-job-1:scheduled-job-1::UTC:*/5 * * * *");
+});
+
+it("a retry of a failed tick is processed without any convergence", async () => {
+  await expect(go(tick({ attemptsMade: 1 }))).resolves.toBe("ran");
+  expect(jobQueue.getRepeatableJobs).not.toHaveBeenCalled();
+  expect(k6Queue.removeRepeatableByKey).not.toHaveBeenCalled();
+});
+
+describe("different schedule in job-scheduler: the database decides", () => {
+  beforeEach(() => jobQueue.getRepeatableJobs.mockResolvedValue([copy({ key: "stale", pattern: "0 * * * *" })]));
+
+  it("legacy schedule matches the database: it wins and the due tick still runs", async () => {
+    loadCron.mockResolvedValue("*/5 * * * *");
+    await expect(go(tick({}, { tz: "Asia/Tokyo" }))).resolves.toBe("ran");
+    expect(jobQueue.removeRepeatableByKey).toHaveBeenCalledWith("stale");
+    expect(jobQueue.add).toHaveBeenCalledWith("scheduled-job-1", { jobId: "1" }, expect.objectContaining({ repeat: { pattern: "*/5 * * * *", tz: "Asia/Tokyo" } }));
+  });
+
+  it("stale in-flight legacy tick: job-scheduler is made to match the database, not overwritten", async () => {
+    loadCron.mockResolvedValue("0 * * * *"); // newer reschedule already in job-scheduler
+    await expect(go(tick())).resolves.toBe("ran");
+    expect(jobQueue.add).toHaveBeenCalledWith("scheduled-job-1", { jobId: "1" }, expect.objectContaining({ repeat: { pattern: "0 * * * *", tz: "UTC" } }));
+    expect(k6Queue.removeRepeatableByKey).toHaveBeenCalledWith("abc");
+  });
+
+  it("deleted or unscheduled job: drops the legacy entry, leaves job-scheduler alone, and lets the processor clean up", async () => {
+    loadCron.mockResolvedValue(null);
+    await expect(go(tick())).resolves.toBe("ran");
+    expect(k6Queue.removeRepeatableByKey).toHaveBeenCalledWith("abc");
+    expect(jobQueue.add).not.toHaveBeenCalled();
+    expect(jobQueue.removeRepeatableByKey).not.toHaveBeenCalled();
+  });
 });

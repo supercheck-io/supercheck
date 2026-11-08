@@ -1,5 +1,5 @@
 /** @jest-environment node */
-const redis = { ping: jest.fn(), set: jest.fn(), del: jest.fn() };
+const redis = { ping: jest.fn(), set: jest.fn(), eval: jest.fn() };
 const queue = {
   getRepeatableJobs: jest.fn(),
   removeRepeatableByKey: jest.fn(),
@@ -40,13 +40,14 @@ beforeEach(() => {
   jest.spyOn(console, "error").mockImplementation(() => {});
   redis.ping.mockResolvedValue("PONG");
   redis.set.mockResolvedValue("OK");
+  redis.eval.mockResolvedValue(1);
   queue.removeRepeatableByKey.mockResolvedValue(true);
 });
 
 describe("orphaned repeatable cleanup", () => {
   it("keeps a repeatable for an enabled monitor whose scheduledJobId is not written yet", async () => {
     queue.getRepeatableJobs.mockResolvedValue([repeatable(A)]);
-    selects.push([{ id: A, enabled: true, scheduledJobId: null }]);
+    selects.push([{ id: A, enabled: true, status: "up", scheduledJobId: null }]);
     await initializeMonitorSchedulers();
     expect(queue.removeRepeatableByKey).not.toHaveBeenCalled();
   });
@@ -54,15 +55,30 @@ describe("orphaned repeatable cleanup", () => {
   it("removes repeatables for deleted, disabled and differently scheduled monitors only", async () => {
     queue.getRepeatableJobs.mockResolvedValue([repeatable(A), repeatable(B), repeatable(C), repeatable(D)]);
     selects.push([
-      { id: A, enabled: true, scheduledJobId: A }, // same id: keep
-      { id: B, enabled: false, scheduledJobId: B }, // disabled
-      { id: C, enabled: true, scheduledJobId: "other" }, // different id
+      { id: A, enabled: true, status: "up", scheduledJobId: A }, // same id: keep
+      { id: B, enabled: false, status: "up", scheduledJobId: B }, // disabled
+      { id: C, enabled: true, status: "up", scheduledJobId: "other" }, // different id
       // D has no row: deleted
     ]);
     await initializeMonitorSchedulers();
     expect(queue.removeRepeatableByKey.mock.calls.map(([key]) => key).sort()).toEqual(
       [`key:${B}`, `key:${C}`, `key:${D}`].sort(),
     );
+  });
+
+  it("removes the repeatable of a paused monitor", async () => {
+    queue.getRepeatableJobs.mockResolvedValue([repeatable(A)]);
+    selects.push([{ id: A, enabled: true, status: "paused", scheduledJobId: A }]);
+    await initializeMonitorSchedulers();
+    expect(queue.removeRepeatableByKey).toHaveBeenCalledWith(`key:${A}`);
+  });
+
+  it("releases its tokenised lock with compare-and-delete, also when no monitor is active", async () => {
+    await initializeMonitorSchedulers();
+    const [script, , key, token] = redis.eval.mock.calls[0];
+    expect(script).toContain("redis.call('get'");
+    expect(key).toBe("monitor:scheduler:init:lock");
+    expect(redis.set).toHaveBeenCalledWith(key, token, "EX", 120, "NX");
   });
 
   it("leaves repeatables whose name is not a monitor schedule alone and skips the lookup when none exist", async () => {

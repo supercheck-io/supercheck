@@ -199,6 +199,7 @@ suite("scheduler upgrade (real Redis, BullMQ)", () => {
     const workers: Worker[] = [];
     const connections: Redis[] = [];
     const run = jest.fn(async (_job: unknown) => "ran");
+    const loadCron = jest.fn(async (_jobId: string): Promise<string | null> => CRON);
     let done = 0;
     const startWorkers = async (count: number) => {
       for (let i = 0; i < count; i++) {
@@ -206,7 +207,7 @@ suite("scheduler upgrade (real Redis, BullMQ)", () => {
           "k6-job-scheduler",
           async (job) => {
             try {
-              return await processLegacyK6Tick(job, { jobSchedulerQueue: jobQueue, k6JobSchedulerQueue: k6Queue }, run);
+              return await processLegacyK6Tick(job, { jobSchedulerQueue: jobQueue, k6JobSchedulerQueue: k6Queue }, run, loadCron);
             } finally {
               done++;
             }
@@ -227,7 +228,8 @@ suite("scheduler upgrade (real Redis, BullMQ)", () => {
       expect(cond()).toBe(true);
     };
     beforeEach(() => {
-      run.mockClear();
+      run.mockReset().mockResolvedValue("ran");
+      loadCron.mockReset().mockResolvedValue(CRON);
       done = 0;
     });
     afterEach(async () => {
@@ -251,18 +253,75 @@ suite("scheduler upgrade (real Redis, BullMQ)", () => {
       expect(await jobQueue.getJobCounts("delayed")).toMatchObject({ delayed: 1 });
     });
 
-    it("an old-replica update with a different cron replaces the stale job-scheduler copy", async () => {
+    it("an old-replica cron change (matching the database) replaces the stale copy and its due tick still runs", async () => {
       jobRows = [row(JOB)];
       await initializeJobSchedulers();
-      await oldScheduleJob(JOB, "0 5 * * *", "Europe/Paris");
+      loadCron.mockResolvedValue("0 5 * * *");
+      await oldScheduleJob(JOB, "0 5 * * *", "UTC");
       await startWorkers(1);
       await fireLegacyTick();
       await until(() => done === 1);
 
-      expect(run).not.toHaveBeenCalled();
+      expect(run).toHaveBeenCalledTimes(1);
       expect(await k6Queue.getRepeatableJobs()).toHaveLength(0);
-      expect((await shape(jobQueue)).map(({ pattern, tz }) => ({ pattern, tz }))).toEqual([{ pattern: "0 5 * * *", tz: "Europe/Paris" }]);
+      expect((await shape(jobQueue)).map(({ pattern, tz }) => ({ pattern, tz }))).toEqual([{ pattern: "0 5 * * *", tz: "UTC" }]);
       expect(await jobQueue.getJobCounts("delayed")).toMatchObject({ delayed: 1 });
+    });
+
+    it("a stale in-flight legacy tick does not overwrite a newer reschedule (database wins)", async () => {
+      jobRows = [row(JOB, { cronSchedule: "0 7 * * *" })];
+      await initializeJobSchedulers(); // job-scheduler now holds the new schedule B
+      loadCron.mockResolvedValue("0 7 * * *");
+      await oldScheduleJob(JOB, "*/10 * * * *"); // legacy A, tick queued before the reschedule
+      await startWorkers(1);
+      await fireLegacyTick();
+      await until(() => done === 1);
+
+      expect(await k6Queue.getRepeatableJobs()).toHaveLength(0);
+      expect((await shape(jobQueue)).map(({ pattern }) => pattern)).toEqual(["0 7 * * *"]);
+    });
+
+    it("a legacy tick that is already due, with the migrated copy firing later, still runs; a same-slot copy does not", async () => {
+      await oldScheduleJob(JOB);
+      const [tick] = await k6Queue.getDelayed();
+      const slot = Number(tick.id!.split(":")[2]);
+      jobRows = [row(JOB)];
+      await initializeJobSchedulers(); // removes the legacy repeatable; the copy's next fire is `slot`
+      const queues = { jobSchedulerQueue: jobQueue, k6JobSchedulerQueue: k6Queue };
+
+      await processLegacyK6Tick(tick, queues, run, loadCron); // same slot: the copy covers it
+      expect(run).not.toHaveBeenCalled();
+
+      // The same tick was already due one slot earlier: the copy only fires a slot later.
+      tick.id = `repeat:${tick.repeatJobKey}:${slot - 600_000}`;
+      await processLegacyK6Tick(tick, queues, run, loadCron);
+      expect(run).toHaveBeenCalledTimes(1);
+    });
+
+    it("a legacy tick of a deleted or unscheduled job drops the legacy entry and leaves job-scheduler alone", async () => {
+      jobRows = [row(JOB)];
+      await initializeJobSchedulers();
+      loadCron.mockResolvedValue(null);
+      await oldScheduleJob(JOB, "0 9 * * *");
+      await startWorkers(1);
+      await fireLegacyTick();
+      await until(() => done === 1);
+
+      expect(await k6Queue.getRepeatableJobs()).toHaveLength(0);
+      expect(run).toHaveBeenCalledTimes(1); // the real processor removes the orphan from both queues
+      expect((await shape(jobQueue)).map(({ pattern }) => pattern)).toEqual([CRON]);
+    });
+
+    it("a retried failed legacy tick is processed again after convergence", async () => {
+      await oldScheduleJob(JOB);
+      run.mockRejectedValueOnce(new Error("run failed"));
+      const [tick] = await k6Queue.getDelayed();
+      const queues = { jobSchedulerQueue: jobQueue, k6JobSchedulerQueue: k6Queue };
+      await expect(processLegacyK6Tick(tick, queues, run, loadCron)).rejects.toThrow("run failed");
+      expect(await jobQueue.getRepeatableJobs()).toHaveLength(1); // converged
+      tick.attemptsMade = 1; // BullMQ retry of the same job id
+      await processLegacyK6Tick(tick, queues, run, loadCron);
+      expect(run).toHaveBeenCalledTimes(2);
     });
 
     it("a legacy-only schedule migrates on its tick and that tick runs once", async () => {
@@ -297,7 +356,7 @@ suite("scheduler upgrade (real Redis, BullMQ)", () => {
       await oldScheduleJob(JOB);
       const [tick] = await k6Queue.getDelayed();
       const queues = { jobSchedulerQueue: jobQueue, k6JobSchedulerQueue: k6Queue };
-      await Promise.all([processLegacyK6Tick(tick, queues, run), processLegacyK6Tick(tick, queues, run)]);
+      await Promise.all([processLegacyK6Tick(tick, queues, run, loadCron), processLegacyK6Tick(tick, queues, run, loadCron)]);
       expect(await k6Queue.getRepeatableJobs()).toHaveLength(0);
       expect(await jobQueue.getRepeatableJobs()).toHaveLength(1);
       expect(await jobQueue.getJobCounts("delayed")).toMatchObject({ delayed: 1 });
@@ -305,7 +364,7 @@ suite("scheduler upgrade (real Redis, BullMQ)", () => {
 
     it("processes a non-repeat job untouched", async () => {
       const job = await k6Queue.add("manual", { a: 1 });
-      await processLegacyK6Tick(job, { jobSchedulerQueue: jobQueue, k6JobSchedulerQueue: k6Queue }, run);
+      await processLegacyK6Tick(job, { jobSchedulerQueue: jobQueue, k6JobSchedulerQueue: k6Queue }, run, loadCron);
       expect(run).toHaveBeenCalledTimes(1);
     });
   });
@@ -370,6 +429,7 @@ suite("scheduler upgrade (real Redis, BullMQ)", () => {
   });
 
   describe("monitor orphan cleanup", () => {
+    const M_PAUSED = "55555555-5555-5555-5555-555555555555";
     const M_ENABLED = "11111111-1111-1111-1111-111111111111";
     const M_DELETED = "22222222-2222-2222-2222-222222222222";
     const M_DISABLED = "33333333-3333-3333-3333-333333333333";
@@ -380,13 +440,25 @@ suite("scheduler upgrade (real Redis, BullMQ)", () => {
       await Promise.all([M_ENABLED, M_DELETED, M_DISABLED].map(oldScheduleMonitor));
       monitorSelects = [
         [
-          { id: M_ENABLED, enabled: true, scheduledJobId: null },
-          { id: M_DISABLED, enabled: false, scheduledJobId: M_DISABLED },
+          { id: M_ENABLED, enabled: true, status: "up", scheduledJobId: null },
+          { id: M_DISABLED, enabled: false, status: "up", scheduledJobId: M_DISABLED },
         ],
         [], // no active monitors to re-schedule
       ];
       await initializeMonitorSchedulers();
       expect((await monitorQueue.getRepeatableJobs()).map((j) => j.name)).toEqual([`scheduled-monitor-${M_ENABLED}`]);
+      expect(await redis.exists("monitor:scheduler:init:lock")).toBe(0); // released after success
+    });
+
+    it("removes the repeatable of a paused monitor and keeps the init lock of another holder", async () => {
+      await oldScheduleMonitor(M_PAUSED);
+      monitorSelects = [[{ id: M_PAUSED, enabled: true, status: "paused", scheduledJobId: M_PAUSED }], []];
+      await initializeMonitorSchedulers();
+      expect(await monitorQueue.getRepeatableJobs()).toHaveLength(0);
+
+      await redis.set("monitor:scheduler:init:lock", "other-holder", "EX", 60);
+      await expect(initializeMonitorSchedulers()).resolves.toMatchObject({ scheduled: 0 });
+      expect(await redis.get("monitor:scheduler:init:lock")).toBe("other-holder");
     });
   });
 });

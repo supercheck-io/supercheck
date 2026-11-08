@@ -10,6 +10,9 @@
 
 import { Worker } from 'bullmq';
 import { getQueues, getRedisConnection, queueLogger } from '@/lib/queue';
+import { eq } from 'drizzle-orm';
+import { db } from '@/utils/db';
+import { jobs } from '@/db/schema';
 import { processLegacyK6Tick } from './legacy-k6-tick';
 import { processScheduledJob, type ScheduledJobData } from './job-scheduler';
 import { processScheduledMonitor, type MonitorJobData } from './monitor-scheduler';
@@ -20,6 +23,12 @@ import {
 } from './constants';
 
 const logger = queueLogger;
+
+// The database is the source of truth for a job's cron when a legacy tick disagrees with job-scheduler.
+async function loadJobCron(jobId: string): Promise<string | null> {
+  const [row] = await db.select({ cron: jobs.cronSchedule }).from(jobs).where(eq(jobs.id, jobId)).limit(1);
+  return row?.cron ?? null;
+}
 
 // Singleton workers (handles Next.js hot-reload)
 let playwrightSchedulerWorker: Worker | null = null;
@@ -100,7 +109,7 @@ export async function initializeSchedulerWorkers(): Promise<void> {
         async (job) => {
           logger.debug({ jobId: job.id, name: job.name }, 'Processing K6 scheduler job');
           // Converges a schedule an old-version replica re-added here (see legacy-k6-tick.ts).
-          return processLegacyK6Tick(job, await getQueues(), processScheduledJob);
+          return processLegacyK6Tick(job, await getQueues(), processScheduledJob, loadJobCron);
         },
         {
           connection: baseConnection.duplicate(),

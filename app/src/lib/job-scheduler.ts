@@ -1,4 +1,4 @@
-import { Job } from "bullmq";
+import { Job, type RepeatableJob } from "bullmq";
 import { randomUUID } from "crypto";
 import type { Redis } from "ioredis";
 import { db } from "@/utils/db";
@@ -67,7 +67,11 @@ async function migrateLegacyK6Repeatables(): Promise<void> {
 /**
  * Creates or updates a job scheduler using BullMQ
  */
-export async function scheduleJob(options: ScheduleOptions): Promise<string> {
+export async function scheduleJob(
+  options: ScheduleOptions,
+  // Init passes both queues' repeatables, fetched once, instead of rescanning them per job.
+  prefetched?: [RepeatableJob[], RepeatableJob[]]
+): Promise<string> {
   try {
     // Setting up scheduled job
 
@@ -97,8 +101,8 @@ export async function scheduleJob(options: ScheduleOptions): Promise<string> {
     // Clean up ALL existing repeatable jobs for this job ID in BOTH queues, using
     // .filter() so accumulated schedules cannot cause multiple triggers. A k6 job
     // scheduled before the queue merge still has its repeatable in the legacy queue.
-    for (const queue of [jobSchedulerQueue, k6JobSchedulerQueue]) {
-      const repeatableJobs = await queue.getRepeatableJobs();
+    for (const [index, queue] of [jobSchedulerQueue, k6JobSchedulerQueue].entries()) {
+      const repeatableJobs = prefetched?.[index] ?? (await queue.getRepeatableJobs());
       const existingJobs = repeatableJobs.filter(
         (job) =>
           job.id === options.jobId ||
@@ -266,6 +270,12 @@ export async function initializeJobSchedulers() {
         // OPTIMIZED: Collect updates and batch them at the end
         const schedulerUpdates: { id: string; scheduledJobId: string; nextRunAt: Date | null }[] = [];
 
+        const { jobSchedulerQueue, k6JobSchedulerQueue } = await getQueues();
+        const prefetched: [RepeatableJob[], RepeatableJob[]] = await Promise.all([
+          jobSchedulerQueue.getRepeatableJobs(),
+          k6JobSchedulerQueue.getRepeatableJobs(),
+        ]);
+
         for (const job of jobsWithSchedules) {
           if (!job.cronSchedule) continue;
 
@@ -275,7 +285,7 @@ export async function initializeJobSchedulers() {
               cron: job.cronSchedule,
               jobId: job.id,
               retryLimit: 3,
-            });
+            }, prefetched);
 
             // Collect updates instead of executing immediately
             if (!job.scheduledJobId || job.scheduledJobId !== schedulerId) {

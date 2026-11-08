@@ -24,35 +24,53 @@ export function addJobRepeatable(
 /**
  * Processor for the legacy k6-job-scheduler queue. An old-version replica can
  * re-add a k6 repeatable there after the queue merge; the first tick converges it
- * so the job never fires from both queues.
+ * so the job never fires from both queues, and no due fire is lost.
  *
- * - job-scheduler already schedules this job: drop the legacy repeatable and skip the tick.
- *   If the legacy schedule differs it is the newer write (only old code adds here), so it
- *   replaces the job-scheduler copy.
- * - otherwise: move the schedule to job-scheduler (add first, so it is never dropped),
- *   remove the legacy entry and process this tick.
- * Idempotent: the add is keyed by job id and removals of a missing key are no-ops.
- * A job-scheduler lookup is a getRepeatableJobs scan (legacy-created entries are not
- * job schedulers); it runs only for legacy ticks, which stop once converged.
+ * - Retry of a failed tick: just process it (convergence already happened on attempt 1).
+ * - job-scheduler has the same schedule: drop the legacy repeatable. Skip this tick only if
+ *   that copy fires at or before this tick's due time (same slot); otherwise process it.
+ * - job-scheduler has a different schedule: the database decides the winner (a tick queued
+ *   before a reschedule is stale; a job with no cron is orphaned and just drops the legacy
+ *   entry). job-scheduler is made to match, and this due tick is processed.
+ * - no job-scheduler copy: move the schedule (add first, so it is never dropped), then process.
+ * Idempotent: adds are keyed by job id and removals of a missing key are no-ops. The
+ * job-scheduler lookup is a getRepeatableJobs scan (legacy-created entries are not job
+ * schedulers); it runs only for legacy ticks, which stop once converged.
  *
  * shortcut: legacy k6-job-scheduler consumer kept for one release; remove in release N+1
  */
 export async function processLegacyK6Tick<R>(
   job: Job,
   { jobSchedulerQueue, k6JobSchedulerQueue }: { jobSchedulerQueue: Queue; k6JobSchedulerQueue: Queue },
-  process: (job: Job) => Promise<R>
+  process: (job: Job) => Promise<R>,
+  loadCron: (jobId: string) => Promise<string | null>
 ): Promise<R | undefined> {
   // Repeat tick ids are repeat:<repeat key>:<fire time>; anything else is not ours to converge.
-  const legacyKey = job.id?.startsWith("repeat:") ? job.id.split(":")[1] : undefined;
+  const idParts = job.id?.startsWith("repeat:") ? job.id.split(":") : undefined;
+  const legacyKey = job.repeatJobKey ?? idParts?.[1];
   const { pattern, tz } = job.opts?.repeat ?? {};
-  if (!legacyKey || !pattern) return process(job);
+  if (!idParts || !legacyKey || !pattern) return process(job);
+  if (job.attemptsMade > 0) return process(job);
 
+  const dueAt = Number(idParts[idParts.length - 1]) || job.timestamp + (job.delay ?? 0);
   const existing = (await jobSchedulerQueue.getRepeatableJobs()).filter((r) => r.name === job.name);
-  const same = existing.some((r) => r.pattern === pattern && (r.tz ?? "UTC") === (tz ?? "UTC"));
-  if (existing.length === 0 || !same) {
+  const sameCopy = existing.find((r) => r.pattern === pattern && (r.tz ?? "UTC") === (tz ?? "UTC"));
+
+  let win = { pattern, tz: tz ?? "UTC" };
+  if (existing.length > 0 && !sameCopy) {
+    const cron = await loadCron(job.data?.jobId);
+    if (!cron) {
+      await k6JobSchedulerQueue.removeRepeatableByKey(legacyKey);
+      return process(job); // deleted or unscheduled: the processor removes the schedule everywhere
+    }
+    if (cron !== pattern) win = { pattern: cron, tz: "UTC" };
+  }
+  const keep = sameCopy && win.pattern === pattern;
+  if (!keep) {
     await Promise.all(existing.map((r) => jobSchedulerQueue.removeRepeatableByKey(r.key)));
-    await addJobRepeatable(jobSchedulerQueue, job.name, job.data, pattern, tz ?? "UTC");
+    await addJobRepeatable(jobSchedulerQueue, job.name, job.data, win.pattern, win.tz);
   }
   await k6JobSchedulerQueue.removeRepeatableByKey(legacyKey);
-  return existing.length === 0 ? process(job) : undefined;
+  const duplicate = keep && (sameCopy?.next ?? Infinity) <= dueAt;
+  return duplicate ? undefined : process(job);
 }
