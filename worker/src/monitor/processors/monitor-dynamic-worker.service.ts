@@ -38,6 +38,9 @@ import { captureJobFailure } from '../../common/sentry-reporter';
 /** How many times a skipped group's closure waits (about a minute each) for the aggregation lease. */
 const MAX_AGGREGATION_BUSY_RETRIES = 30;
 
+/** A scheduled check queued longer than max(3 x frequency, this floor) is stale and is skipped, not run late. */
+const STALE_CHECK_FLOOR_MS = 3 * 60 * 1000;
+
 /** Excludes the cycle's synthetic deadline row, which shares the key but is not a check's result. */
 const realResultOnly = sql`${schema.monitorResults.details} ->> 'synthetic' is distinct from 'true'`;
 
@@ -387,6 +390,12 @@ export class MonitorDynamicWorkerService
 
     const jobLocation = job.data.executionLocation;
 
+    if (this.isStale(job)) {
+      // Same path as any other deliberately skipped check: no result, no downtime, no alert; the group is aborted.
+      await this.closeSkippedGroup(job);
+      return [];
+    }
+
     if (jobLocation) {
       if (
         (job.data as { _capacityGaveUp?: boolean; _groupSkipped?: boolean })
@@ -504,6 +513,30 @@ export class MonitorDynamicWorkerService
       }
     }
     return results;
+  }
+
+  /**
+   * True for a scheduled check on its first start that waited in the queue past its bound (a saturated or
+   * returning worker). Manual runs, retries, deferrals and resumed closures are never stale.
+   */
+  private isStale(job: Job<MonitorJobDataDto>): boolean {
+    const data = job.data;
+    if (
+      !data.scheduledCheck ||
+      (job.attemptsStarted ?? 1) > 1 ||
+      typeof job.timestamp !== 'number'
+    )
+      return false;
+    const ageMs = Date.now() - job.timestamp;
+    const boundMs = Math.max(
+      3 * (data.frequencyMinutes ?? 0) * 60_000,
+      STALE_CHECK_FLOOR_MS,
+    );
+    if (ageMs <= boundMs) return false;
+    this.logger.warn(
+      `Skipping stale monitor check ${data.monitorId}: queued ${Math.round(ageMs / 1000)}s, bound ${Math.round(boundMs / 1000)}s`,
+    );
+    return true;
   }
 
   /**

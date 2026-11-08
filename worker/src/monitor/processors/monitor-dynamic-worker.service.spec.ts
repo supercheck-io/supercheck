@@ -1690,3 +1690,106 @@ describe('MonitorDynamicWorkerService workload gating and backstops', () => {
     expect(execute).not.toHaveBeenCalled();
   });
 });
+
+describe('MonitorDynamicWorkerService stale scheduled checks', () => {
+  const build = () => {
+    const monitorService = {
+      executeMonitor: jest.fn().mockResolvedValue({
+        monitorId: 'monitor-1',
+        location: 'eu',
+        isUp: true,
+      }),
+      executeMonitorWithLocations: jest.fn().mockResolvedValue([]),
+      saveDistributedMonitorResult: jest.fn().mockResolvedValue(undefined),
+      saveMonitorResults: jest.fn().mockResolvedValue(undefined),
+      skipDistributedMonitorGroup: jest.fn().mockResolvedValue(undefined),
+    };
+    const service = new MonitorDynamicWorkerService(
+      monitorService as unknown as MonitorService,
+      new ConfigService(),
+      {} as HeartbeatService,
+      {} as DbService,
+    );
+    return { monitorService, service };
+  };
+  const jobOf = (
+    over: Record<string, unknown> = {},
+    data: Record<string, unknown> = {},
+  ) => ({
+    name: 'executeMonitorJob',
+    timestamp: Date.now() - 10 * 60_000,
+    attemptsStarted: 1,
+    attemptsMade: 0,
+    data: {
+      monitorId: 'monitor-1',
+      executionGroupId: 'group-1',
+      executionLocation: 'eu',
+      expectedLocations: ['eu', 'us'],
+      frequencyMinutes: 1,
+      scheduledCheck: true,
+      ...data,
+    },
+    updateData: jest.fn().mockResolvedValue(undefined),
+    ...over,
+  });
+  const run = (service: MonitorDynamicWorkerService, job: unknown) =>
+    service['processJob'](job as Job<MonitorJobDataDto>);
+
+  it.each([false, true])(
+    'skips a stale scheduled check and aborts its group without a result (cycle=%s)',
+    async (monitorCycle) => {
+      const { monitorService, service } = build();
+      const job = jobOf({}, monitorCycle ? { monitorCycle: true } : {});
+      await expect(run(service, job)).resolves.toEqual([]);
+      expect(monitorService.executeMonitor).not.toHaveBeenCalled();
+      expect(
+        monitorService.saveDistributedMonitorResult,
+      ).not.toHaveBeenCalled();
+      expect(monitorService.skipDistributedMonitorGroup).toHaveBeenCalledWith(
+        'monitor-1',
+        'group-1',
+        monitorCycle,
+      );
+      expect(job.updateData).toHaveBeenCalledWith(
+        expect.objectContaining({ _groupSkipped: true }),
+      );
+    },
+  );
+
+  it('skips a stale legacy single-queue check without recording anything', async () => {
+    const { monitorService, service } = build();
+    const job = jobOf(
+      {},
+      { executionLocation: undefined, executionGroupId: undefined },
+    );
+    await expect(run(service, job)).resolves.toEqual([]);
+    expect(monitorService.executeMonitorWithLocations).not.toHaveBeenCalled();
+    expect(monitorService.saveMonitorResults).not.toHaveBeenCalled();
+    expect(monitorService.skipDistributedMonitorGroup).not.toHaveBeenCalled();
+  });
+
+  it('runs a fresh scheduled check', async () => {
+    const { monitorService, service } = build();
+    await run(service, jobOf({ timestamp: Date.now() - 60_000 }));
+    expect(monitorService.executeMonitor).toHaveBeenCalledTimes(1);
+    expect(monitorService.skipDistributedMonitorGroup).not.toHaveBeenCalled();
+  });
+
+  it('scales the bound with frequency: 3 x 5 min keeps a 10 min old check', async () => {
+    const { monitorService, service } = build();
+    await run(service, jobOf({}, { frequencyMinutes: 5 }));
+    expect(monitorService.executeMonitor).toHaveBeenCalledTimes(1);
+  });
+
+  it('never skips a manual run, even when old', async () => {
+    const { monitorService, service } = build();
+    await run(service, jobOf({}, { scheduledCheck: undefined }));
+    expect(monitorService.executeMonitor).toHaveBeenCalledTimes(1);
+  });
+
+  it('never skips a retry or a deferred restart of a job that already started', async () => {
+    const { monitorService, service } = build();
+    await run(service, jobOf({ attemptsStarted: 2 }));
+    expect(monitorService.executeMonitor).toHaveBeenCalledTimes(1);
+  });
+});
