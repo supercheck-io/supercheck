@@ -22,11 +22,32 @@ export interface ActiveWorker {
   pid: number;
 }
 
+// Short cache so scheduler ticks and manual runs share one keyspace SCAN. Heartbeat keys live 60s, so 5s staleness is harmless.
+const ACTIVE_WORKERS_CACHE_TTL_MS = 5_000;
+let cachedWorkers: { at: number; workers: ActiveWorker[] } | null = null;
+let inflightScan: Promise<ActiveWorker[]> | null = null;
+
 /**
  * Get all active workers from Redis heartbeat keys.
  * Keys auto-expire after 60s, so only live workers appear.
+ * Results are cached for 5s and concurrent callers share one scan; errors are never cached.
  */
 export async function getActiveWorkers(): Promise<ActiveWorker[]> {
+  if (cachedWorkers && Date.now() - cachedWorkers.at < ACTIVE_WORKERS_CACHE_TTL_MS) {
+    return cachedWorkers.workers;
+  }
+  inflightScan ??= scanActiveWorkers()
+    .then((workers) => {
+      cachedWorkers = { at: Date.now(), workers };
+      return workers;
+    })
+    .finally(() => {
+      inflightScan = null;
+    });
+  return inflightScan;
+}
+
+async function scanActiveWorkers(): Promise<ActiveWorker[]> {
   const redis = await getRedisConnection();
   const workers: ActiveWorker[] = [];
 

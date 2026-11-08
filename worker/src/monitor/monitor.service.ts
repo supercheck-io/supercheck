@@ -80,6 +80,8 @@ type MonitorResult = z.infer<typeof monitorResultsSelectSchema>;
 
 const RESULT_SAVE_ATTEMPTS = 3;
 const RESULT_SAVE_BACKOFF_MS = 250;
+// The completed marker only guards late sibling completions within a job's lifetime (attempts x 15-min lock + backoff + busy retries, under ~80 min); later duplicates are still guarded by the persisted aggregationEvaluation in the DB.
+export const AGGREGATION_COMPLETED_TTL_SECONDS = 2 * 60 * 60;
 
 function serializeResponseData(value: unknown): string {
   if (typeof value === 'string') return value;
@@ -453,6 +455,8 @@ export class MonitorService {
     options?: {
       persisted?: boolean;
       executionGroupId?: string;
+      /** Regions enqueued for this cycle; aggregation judges these, not regions skipped for lack of a live worker. */
+      expectedLocations?: MonitoringLocation[];
       /** Surface insert errors instead of logging them (the caller must not re-run the check). */
       rethrow?: boolean;
     },
@@ -503,6 +507,7 @@ export class MonitorService {
       const aggregatedStatus = this.locationService.calculateAggregatedStatus(
         locationStatuses,
         locationConfig,
+        options?.expectedLocations,
       );
       overallStatus =
         aggregatedStatus === 'partial' ? 'down' : aggregatedStatus;
@@ -542,10 +547,18 @@ export class MonitorService {
     const currentStatus = overallStatus;
 
     // Calculate location summary for alert reason
-    const configuredLocations =
+    const configuredSet =
       locationConfig?.enabled && locationConfig.locations?.length
         ? Array.from(new Set(locationConfig.locations))
-        : Object.keys(locationStatuses);
+        : undefined;
+    const configuredLocations = configuredSet
+      ? options?.expectedLocations?.length
+        ? Array.from(new Set(options.expectedLocations))
+        : configuredSet
+      : Object.keys(locationStatuses);
+    const skippedLocations = (configuredSet ?? []).filter(
+      (location) => !configuredLocations.includes(location),
+    );
     const missingLocations = configuredLocations.filter(
       (location) => !(location in locationStatuses),
     );
@@ -555,7 +568,7 @@ export class MonitorService {
     const downCount = configuredLocations.length - upCount;
     const reason =
       currentStatus === 'down'
-        ? `Monitor is down in ${downCount}/${configuredLocations.length} locations${missingLocations.length ? ` (no results from ${missingLocations.join(', ')})` : ''}`
+        ? `Monitor is down in ${downCount}/${configuredLocations.length} locations${missingLocations.length ? ` (no results from ${missingLocations.join(', ')})` : ''}${skippedLocations.length ? ` (skipped, no live worker: ${skippedLocations.join(', ')})` : ''}`
         : `Monitor has recovered (${upCount}/${configuredLocations.length} locations up)`;
 
     const avgResponseTime =
@@ -716,7 +729,10 @@ export class MonitorService {
     }
 
     if (!executionGroupId) {
-      await this.saveMonitorResults([persistedResult], { persisted: true });
+      await this.saveMonitorResults([persistedResult], {
+        persisted: true,
+        expectedLocations,
+      });
       return;
     }
 
@@ -842,10 +858,11 @@ export class MonitorService {
       await this.saveMonitorResults(aggregatedResults, {
         persisted: true,
         executionGroupId,
+        expectedLocations,
       });
       await assertOwned();
       await redis
-        .set(completedKey, '1', 'EX', 7 * 24 * 60 * 60)
+        .set(completedKey, '1', 'EX', AGGREGATION_COMPLETED_TTL_SECONDS)
         .catch((error: unknown) =>
           this.logger.warn(
             `Unable to mark aggregated group ${executionGroupId} complete: ${getErrorMessage(error)}`,

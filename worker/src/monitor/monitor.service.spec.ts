@@ -138,7 +138,11 @@ jest.mock('tls', () => {
   return { ...actual, __state: state, connect };
 });
 
-import { MonitorService, MonitorAggregationBusyError } from './monitor.service';
+import {
+  MonitorService,
+  MonitorAggregationBusyError,
+  AGGREGATION_COMPLETED_TTL_SECONDS,
+} from './monitor.service';
 import { vettedLookup } from '../common/utils/pinned-monitor-request';
 import type { MonitorEvaluator } from './monitor-evaluator';
 import type { MonitorExecutionResult } from './types/monitor-result.type';
@@ -2461,7 +2465,11 @@ describe('MonitorService', () => {
       expect(persist).toHaveBeenCalledTimes(2);
       expect(aggregate).toHaveBeenCalledWith(
         [expect.objectContaining(early), expect.objectContaining(late)],
-        { persisted: true, executionGroupId: 'group-slow' },
+        {
+          persisted: true,
+          executionGroupId: 'group-slow',
+          expectedLocations: ['eu-central', 'us-east'],
+        },
       );
       expect(mockRedisService.getClient().sadd).not.toHaveBeenCalled();
     });
@@ -2755,7 +2763,7 @@ describe('MonitorService', () => {
         'monitor:aggr:completed:group-lost',
         '1',
         'EX',
-        604800,
+        AGGREGATION_COMPLETED_TTL_SECONDS,
       );
     });
 
@@ -2821,6 +2829,51 @@ describe('MonitorService', () => {
       );
     });
 
+    it('judges only the enqueued regions and notes skipped ones in the alert reason', async () => {
+      mockDbService.db.query.monitors.findFirst.mockResolvedValue({
+        ...mockMonitor,
+        status: 'up',
+        config: {
+          locationConfig: {
+            enabled: true,
+            locations: ['eu-central', 'us-east', 'asia-pacific'],
+            strategy: 'majority',
+            threshold: 50,
+          },
+        },
+      });
+      mockLocationService.calculateAggregatedStatus.mockReturnValueOnce(
+        'partial',
+      );
+      const alert = jest
+        .spyOn(
+          service as unknown as {
+            evaluateAndSendAlert(data: { reason: string }): Promise<void>;
+          },
+          'evaluateAndSendAlert',
+        )
+        .mockResolvedValue(undefined);
+      await service.saveMonitorResults([result('eu-central')], {
+        persisted: true,
+        expectedLocations: ['eu-central', 'us-east'],
+      });
+      expect(
+        mockLocationService.calculateAggregatedStatus,
+      ).toHaveBeenLastCalledWith(
+        { 'eu-central': true },
+        expect.objectContaining({ strategy: 'majority' }),
+        ['eu-central', 'us-east'],
+      );
+      // An enqueued region without a result is still missing/down; the skipped one is only noted.
+      expect(alert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          currentStatus: 'down',
+          reason:
+            'Monitor is down in 1/2 locations (no results from us-east) (skipped, no live worker: asia-pacific)',
+        }),
+      );
+    });
+
     it('does not retry an already committed aggregate when its completion marker cannot be written', async () => {
       jest
         .spyOn(
@@ -2881,7 +2934,7 @@ describe('MonitorService', () => {
         'monitor:aggr:completed:group-retry',
         '1',
         'EX',
-        604800,
+        AGGREGATION_COMPLETED_TTL_SECONDS,
       );
       await service.saveDistributedMonitorResult(current, group);
       expect(aggregate).toHaveBeenCalledTimes(2);
@@ -2889,7 +2942,7 @@ describe('MonitorService', () => {
         'monitor:aggr:completed:group-retry',
         '1',
         'EX',
-        604800,
+        AGGREGATION_COMPLETED_TTL_SECONDS,
       );
     });
   });

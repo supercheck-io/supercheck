@@ -44,6 +44,7 @@ flowchart LR
   - `monitor-cycle.service.ts` aborts cycles for paused or disabled monitors. An aborted cycle writes no synthetic failures, so it does not count against uptime.
   - `monitor-cycle.processor.ts` backs off and retries closure when a dependency check is temporarily unavailable, instead of failing the cycle.
   - `recordCycleArrival` in `worker/src/monitor/monitor.service.ts` treats a cycle owned by another monitor as absent, and a result for a closed or aborted cycle never re-evaluates it.
+- Multi-region status is judged over the regions enqueued for that check (`expectedLocations` in the job data, `LocationService.calculateAggregatedStatus`'s third argument, and the persisted cycle's `expected_locations`), not every configured region. The app skips regions with no live worker heartbeat; those never count as down and are named in the alert reason. An enqueued region with no result still counts as missing/down. Jobs without `expectedLocations` (rolling deploy) fall back to the configured regions. The Redis `monitor:aggr:completed:<group>` marker lives 2 hours (`AGGREGATION_COMPLETED_TTL_SECONDS`); the persisted `aggregationEvaluation` in the DB is the durable duplicate guard.
 - Use consistent units and boundaries for latency, uptime, thresholds, and time windows.
 - Store enough immutable evidence to explain why an alert transitioned without retaining secrets or unrestricted response bodies.
 
