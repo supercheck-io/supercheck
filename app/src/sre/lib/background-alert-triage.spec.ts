@@ -218,7 +218,7 @@ describe("processSreBackgroundAlertTriageJob", () => {
       freshIncidentQueue();
       (completeSreIncidentTriage as jest.Mock).mockReturnValue(new Promise(() => {})); // the job must not wait for the AI run
       expect(await processSreBackgroundAlertTriageJob(JOB)).toMatchObject({ success: true, skipped: false, investigationRunId: "run-1" });
-      expect(completeSreIncidentTriage).toHaveBeenCalledWith(expect.objectContaining({ investigationRunId: "run-1" }), expect.objectContaining({ userId: null }));
+      expect(completeSreIncidentTriage).toHaveBeenCalledWith(expect.objectContaining({ investigationRunId: "run-1" }), expect.objectContaining({ userId: null, origin: "auto" }));
     });
 
     it("logs, not throws, when the background triage completion fails", async () => {

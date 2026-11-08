@@ -144,7 +144,7 @@ async function startOnce(
       if (!triage.success && triage.status === 409) return { handled: false, reason: triage.reason ?? "already_running" };
       if (!triage.success) return { handled: false, reason: "triage_refused" };
       // Settles in the background, like the investigation below.
-      void completeSreIncidentTriage(triage, triageInput).catch((error) => logger.error({ error, incidentId: input.incidentId }, "Automatic triage failed after it started"));
+      void completeSreIncidentTriage(triage, triageInput).catch((error) => logger.error({ errorName: error instanceof Error ? error.name : typeof error, incidentId: input.incidentId }, "Automatic triage failed after it started"));
       return { handled: true };
     }
 

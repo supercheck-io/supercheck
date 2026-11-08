@@ -929,6 +929,8 @@ export async function processSreBackgroundAlertTriageJob(
     projectId: incident.projectId,
     userId: null,
     incidentId: incident.incidentId,
+    // Detached runs are no longer bounded by the queue concurrency: "auto" applies the per-organization cap.
+    origin: "auto" as const,
   };
   const triage = await startSreIncidentTriage(triageInput);
 
