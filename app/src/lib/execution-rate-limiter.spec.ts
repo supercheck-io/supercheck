@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 jest.mock("@/lib/queue", () => ({ getRedisConnection: jest.fn() }));
 
 import { getRedisConnection } from "@/lib/queue";
@@ -10,7 +11,7 @@ describe("checkExecutionRateLimit", () => {
 
   it("checks and increments the user and organization windows atomically", async () => {
     const evalMock = jest.fn().mockResolvedValue([1, 0]);
-    (getRedisConnection as jest.Mock).mockResolvedValue({ eval: evalMock });
+    (getRedisConnection as jest.Mock).mockResolvedValue({ status: "ready", eval: evalMock });
 
     await expect(
       checkExecutionRateLimit("user-1", "org-1"),
@@ -31,6 +32,7 @@ describe("checkExecutionRateLimit", () => {
   it("returns an accurate retry delay when either sliding window is exhausted", async () => {
     jest.spyOn(Date, "now").mockReturnValue(1_000_000);
     (getRedisConnection as jest.Mock).mockResolvedValue({
+      status: "ready",
       eval: jest.fn().mockResolvedValue([0, 1_012_001]),
     });
 
@@ -50,5 +52,30 @@ describe("checkExecutionRateLimit", () => {
       allowed: false,
       reason: "unavailable",
     });
+  });
+
+  it("rides out a reconnect and then checks the limit", async () => {
+    const evalMock = jest.fn().mockResolvedValue([1, 0]);
+    const redis = Object.assign(new EventEmitter(), { status: "reconnecting", eval: evalMock });
+    (getRedisConnection as jest.Mock).mockResolvedValue(redis);
+    const result = checkExecutionRateLimit("user-1", "org-1");
+    await new Promise((r) => setTimeout(r, 0));
+    expect(evalMock).not.toHaveBeenCalled();
+    redis.status = "ready";
+    redis.emit("ready");
+    await expect(result).resolves.toMatchObject({ allowed: true });
+    expect(evalMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails without issuing a command while the client is down for good", async () => {
+    const evalMock = jest.fn();
+    (getRedisConnection as jest.Mock).mockResolvedValue({ status: "end", eval: evalMock });
+
+    await expect(checkExecutionRateLimit("user-1", "org-1")).resolves.toMatchObject({
+      allowed: false,
+      retryAfter: 5,
+      reason: "unavailable",
+    });
+    expect(evalMock).not.toHaveBeenCalled();
   });
 });
