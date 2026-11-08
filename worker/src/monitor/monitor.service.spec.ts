@@ -278,7 +278,16 @@ describe('MonitorService', () => {
       set: jest.fn().mockResolvedValue('OK'),
       eval: jest.fn().mockResolvedValue(1),
       sadd: jest.fn().mockResolvedValue(1),
+      smembers: jest.fn().mockResolvedValue([]),
       expire: jest.fn().mockResolvedValue(1),
+      multi: jest.fn().mockImplementation(() => {
+        const chain = {
+          sadd: jest.fn().mockReturnThis(),
+          expire: jest.fn().mockReturnThis(),
+          exec: jest.fn().mockResolvedValue([]),
+        };
+        return chain;
+      }),
       scard: jest.fn().mockResolvedValue(1),
       del: jest.fn().mockResolvedValue(1),
     }),
@@ -2434,6 +2443,132 @@ describe('MonitorService', () => {
         persistedRows([{ monitorId: 'someone-else', status: 'open' }] as never);
         await skip(true);
         expect(mockDbService.db.update).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('stale regions leave the expected set', () => {
+      const drop = (cycle = false) =>
+        service.dropStaleRegion(
+          mockMonitor.id,
+          'group-stale',
+          'us-east',
+          cycle,
+          ['eu-central', 'us-east'],
+        );
+
+      it('judges the legacy group over the regions that ran, without aborting it', async () => {
+        const aggregate = jest
+          .spyOn(service, 'saveMonitorResults')
+          .mockResolvedValue(undefined);
+        const redis = mockRedisService.getClient();
+        redis.smembers.mockResolvedValue(['us-east']);
+        persistedRows([result('eu-central')]);
+        await drop();
+        const chain = redis.multi.mock.results[0].value;
+        expect(chain.sadd).toHaveBeenCalledWith(
+          'monitor:aggr:dropped:group-stale',
+          'us-east',
+        );
+        expect(chain.expire).toHaveBeenCalledWith(
+          'monitor:aggr:dropped:group-stale',
+          604800,
+        );
+        expect(chain.exec).toHaveBeenCalledTimes(1);
+        expect(redis.sadd).not.toHaveBeenCalled();
+        expect(aggregate).toHaveBeenCalledWith(
+          [expect.objectContaining({ location: 'eu-central' })],
+          expect.objectContaining({ expectedLocations: ['eu-central'] }),
+        );
+        expect(redis.set).not.toHaveBeenCalledWith(
+          'monitor:aggr:aborted:group-stale',
+          expect.anything(),
+          expect.anything(),
+          expect.anything(),
+        );
+        redis.smembers.mockResolvedValue([]);
+      });
+
+      it('fails the drop when the Redis transaction reports a command error, so closure retries', async () => {
+        const redis = mockRedisService.getClient();
+        const boom = new Error('READONLY');
+        redis.multi.mockImplementationOnce(() => ({
+          sadd: jest.fn().mockReturnThis(),
+          expire: jest.fn().mockReturnThis(),
+          exec: jest.fn().mockResolvedValue([[boom, null]]),
+        }));
+        await expect(drop()).rejects.toBe(boom);
+      });
+
+      it('keeps waiting when a remaining region has not reported yet', async () => {
+        const aggregate = jest
+          .spyOn(service, 'saveMonitorResults')
+          .mockResolvedValue(undefined);
+        const redis = mockRedisService.getClient();
+        redis.smembers.mockResolvedValue(['us-east']);
+        persistedRows([]);
+        await drop();
+        expect(aggregate).not.toHaveBeenCalled();
+        redis.smembers.mockResolvedValue([]);
+      });
+
+      const txOver = (rows: unknown[]) => {
+        const where = jest.fn().mockResolvedValue(undefined);
+        const set = jest.fn().mockReturnValue({ where });
+        const tx = {
+          select: () => ({
+            from: () => ({
+              where: () => ({
+                limit: () => ({ for: () => Promise.resolve(rows) }),
+              }),
+            }),
+          }),
+          update: jest.fn().mockReturnValue({ set }),
+        };
+        mockDbService.db.transaction.mockImplementation(
+          (cb: (t: typeof tx) => unknown) => cb(tx),
+        );
+        return { set, tx };
+      };
+      const cycle = (status: string, expectedLocations: string[]) => ({
+        monitorId: mockMonitor.id,
+        status,
+        expectedLocations,
+      });
+
+      it('shrinks an open cycle and wakes the control plane', async () => {
+        const { set } = txOver([cycle('open', ['eu-central', 'us-east'])]);
+        persistedRows([cycle('open', [])] as never);
+        const values = jest.fn().mockReturnValue({
+          onConflictDoUpdate: jest.fn().mockResolvedValue(undefined),
+        });
+        mockDbService.db.insert.mockReturnValue({ values });
+        await drop(true);
+        expect(set).toHaveBeenCalledWith({ expectedLocations: ['eu-central'] });
+        expect(values).toHaveBeenCalledWith({
+          cycleId: 'group-stale',
+          location: 'us-east',
+        });
+      });
+
+      it('aborts a cycle whose last expected region went stale', async () => {
+        const { set } = txOver([cycle('open', ['us-east'])]);
+        await drop(true);
+        expect(set).toHaveBeenCalledWith(
+          expect.objectContaining({ status: 'aborted' }),
+        );
+      });
+
+      it('leaves a closed cycle alone', async () => {
+        const { set } = txOver([cycle('closed', [])]);
+        await drop(true);
+        expect(set).not.toHaveBeenCalled();
+      });
+
+      it('falls back to the legacy group when no cycle row exists', async () => {
+        txOver([]);
+        persistedRows([]);
+        await drop(true);
+        expect(mockRedisService.getClient().multi).toHaveBeenCalled();
       });
     });
 

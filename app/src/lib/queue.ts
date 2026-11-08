@@ -161,6 +161,7 @@ export interface MonitorJobData {
   executionLocation?: MonitoringLocation;
   executionGroupId?: string;
   expectedLocations?: MonitoringLocation[];
+  scheduledCheck?: boolean; // Set by the scheduler only; lets the worker skip a check that sat queued too long
 }
 
 export interface K6ExecutionTask {

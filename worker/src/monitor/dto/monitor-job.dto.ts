@@ -25,4 +25,6 @@ export class MonitorJobDataDto {
   _pendingResult?: MonitorExecutionResult;
   /** Set by the app when MISSING_CYCLE_CLOSURE_ENABLED persisted a cycle row for executionGroupId. */
   monitorCycle?: boolean;
+  /** Set by the scheduler, never by a manual run: only these first-attempt checks may be skipped as stale. */
+  scheduledCheck?: boolean;
 }

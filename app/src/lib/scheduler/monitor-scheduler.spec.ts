@@ -120,7 +120,7 @@ describe("monitor-scheduler", () => {
     const data = { monitorId: "monitor-1", projectId: "project-1", type: "website", target: "https://old.example.com", config: oldConfig };
     await processScheduledMonitor({ data: nested ? { monitorId: data.monitorId, jobData: data } : data } as never);
     expect(resolveMonitorLocations).toHaveBeenCalledWith(config.locationConfig, "project-1", { monitorType: "website" });
-    expect(enqueueMonitorLocationJobs).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ config, target: currentMonitor.target, type: currentMonitor.type, projectId: currentMonitor.projectId }), ["eu-central"], expect.anything(), expect.anything());
+    expect(enqueueMonitorLocationJobs).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ config, target: currentMonitor.target, type: currentMonitor.type, projectId: currentMonitor.projectId, scheduledCheck: true }), ["eu-central"], expect.anything(), expect.anything());
   });
 
   it.each([null, { enabled: false }, { status: "paused" }])("skips a removed or paused monitor %j", async monitor => {

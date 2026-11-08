@@ -185,7 +185,7 @@ async function enqueueMonitorExecutionJobs(
   }
 
   await enqueueMonitorLocationJobs(
-    queues.monitorExecutionQueue, jobData, enqueuedLocations,
+    queues.monitorExecutionQueue, { ...jobData, scheduledCheck: true }, enqueuedLocations,
     {
       attempts: retryLimit,
       backoff: { type: 'exponential', delay: 5000 },

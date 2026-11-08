@@ -354,6 +354,16 @@ describe("queue location refresh", () => {
       expect(persistMonitorCycle).toHaveBeenCalledWith(expect.objectContaining({ configuredLocations: ["eu-central", "us-east"] }));
     });
 
+    it("never marks a run-now job as a scheduled check, so a worker never skips it as stale", async () => {
+      enabledCodes = ["eu-central"];
+      resolveMonitorLocations.mockResolvedValue(["eu-central"]);
+      partitionMonitorLocationsByAvailability.mockResolvedValue({ enqueuedLocations: ["eu-central"], skippedLocations: [] });
+      flowAddBulk.mockImplementation(async (flows: unknown[]) => flows.map(() => ({ job: { getState: async () => "waiting" } })));
+      await queueModule.addMonitorExecutionJobToQueue(task);
+      const [flow] = flowAddBulk.mock.calls[0][0];
+      expect(flow.data).not.toHaveProperty("scheduledCheck");
+    });
+
     it("still records a real scheduling failure", async () => {
       resolveMonitorLocations.mockRejectedValue(new Error("project restricts all locations"));
       await expect(queueModule.addMonitorExecutionJobToQueue(task)).rejects.toThrow("project restricts all locations");
