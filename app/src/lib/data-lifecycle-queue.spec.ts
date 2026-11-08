@@ -148,6 +148,7 @@ describe("QueueEvents", () => {
       const service = new DataLifecycleService([config]);
       await service.initialize(redis);
       events.waitUntilReady.mockReturnValueOnce(new Promise(() => {}));
+      events.close.mockReturnValueOnce(new Promise(() => {})); // close of a never-connected client can hang too
       const pending = service.triggerManualCleanup("monitor_results");
       const assertion = expect(pending).rejects.toThrow("not ready");
       await jest.advanceTimersByTimeAsync(10_000);

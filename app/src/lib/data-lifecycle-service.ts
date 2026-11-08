@@ -2953,7 +2953,8 @@ export class DataLifecycleService {
     } catch (error) {
       // Do not cache a broken instance; a concurrent caller may already have cached a fresh one.
       if (this.cleanupQueueEvents === events) this.cleanupQueueEvents = null;
-      await events.close().catch(() => {});
+      // Not awaited: close() first awaits a client that may never connect, which would void the deadline.
+      void events.close().catch(() => {});
       throw error;
     } finally {
       clearTimeout(readyTimer);
