@@ -1,4 +1,5 @@
 import { getRedisConnection } from "@/lib/queue";
+import { waitForRedisReady } from "@/lib/redis-ready";
 import { createLogger } from "@/lib/logger/index";
 import { randomUUID } from "crypto";
 
@@ -76,7 +77,7 @@ export async function checkExecutionRateLimit(
   try {
     const redis = await getRedisConnection();
     // Commands issued while disconnected wait in ioredis's offline queue and would hang the request.
-    if (redis.status !== "ready") throw new Error(`Redis client status is ${redis.status}`);
+    if (!(await waitForRedisReady(redis))) throw new Error(`Redis client status is ${redis.status}`);
     const result = (await redis.eval(
       script,
       2,

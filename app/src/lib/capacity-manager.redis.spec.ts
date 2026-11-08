@@ -198,8 +198,8 @@ suite("promotion ownership (real Redis)", () => {
     add.mockImplementation(async () => {
       // The moment between the promotion script and queue.add: payload still there, but on a short fuse.
       const ttl = await redis.pttl(keys[2]);
-      expect(ttl).toBeGreaterThan(0);
-      expect(ttl).toBeLessThanOrEqual(120_000);
+      expect(ttl).toBeGreaterThan(2 * 60_000);
+      expect(ttl).toBeLessThanOrEqual(15 * 60_000);
       return {};
     });
     expect(await manager["promoteJob"](queued.organizationId, queued.jobId)).toBe(true);
@@ -214,13 +214,13 @@ suite("promotion ownership (real Redis)", () => {
     expect(await redis.zscore(keys[1], queued.jobId)).toBeNull();
     const ttl = await redis.pttl(keys[2]);
     expect(ttl).toBeGreaterThan(0);
-    expect(ttl).toBeLessThanOrEqual(120_000);
+    expect(ttl).toBeLessThanOrEqual(15 * 60_000);
   });
 
   describe("setRunningCounter compare-and-set", () => {
     it("writes only while the counter still equals the value the decision was made on", async () => {
       await redis.set(keys[0], "3");
-      expect(await manager.setRunningCounter(1, queued.organizationId, 3)).toBe(true);
+      expect(await manager.setRunningCounter(1, queued.organizationId, 3)).toBe("applied");
       expect(await redis.get(keys[0])).toBe("1");
       expect(await redis.ttl(keys[0])).toBeGreaterThan(0);
     });
@@ -228,15 +228,15 @@ suite("promotion ownership (real Redis)", () => {
     it("keeps a concurrent increment instead of overwriting it", async () => {
       await redis.set(keys[0], "3");
       await redis.incr(keys[0]); // lands between the reconciler's read and its write
-      expect(await manager.setRunningCounter(1, queued.organizationId, 3)).toBe(false);
+      expect(await manager.setRunningCounter(1, queued.organizationId, 3)).toBe("changed");
       expect(await redis.get(keys[0])).toBe("4");
     });
 
     it("deletes the counter at zero, and treats a missing counter as 0", async () => {
       await redis.set(keys[0], "2");
-      expect(await manager.setRunningCounter(0, queued.organizationId, 2)).toBe(true);
+      expect(await manager.setRunningCounter(0, queued.organizationId, 2)).toBe("applied");
       expect(await redis.exists(keys[0])).toBe(0);
-      expect(await manager.setRunningCounter(2, queued.organizationId, 0)).toBe(true);
+      expect(await manager.setRunningCounter(2, queued.organizationId, 0)).toBe("applied");
       expect(await redis.get(keys[0])).toBe("2");
     });
   });

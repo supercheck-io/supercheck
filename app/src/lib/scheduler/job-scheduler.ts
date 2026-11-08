@@ -300,7 +300,8 @@ export async function processScheduledJob(
       throw error;
     }
 
-    // Before the run row exists: a Redis outage retries the tick (BullMQ backoff) instead of failing a run.
+    // Before the run row exists: during an outage the tick fails without a run and BullMQ retries it (3 attempts, ~15s
+    // of backoff); a longer outage loses that cron run, as it did before.
     await assertExecutionQueueReady();
 
     // Create run record with 'queued' status - capacity manager will update to 'running'

@@ -40,7 +40,9 @@ jest.mock("@/lib/location-registry", () => ({
 }));
 jest.mock("@/lib/job-scheduler", () => ({ deleteScheduledJob: jest.fn() }));
 
-import { addJobToQueue } from "@/lib/queue";
+import { addJobToQueue, addK6JobToQueue } from "@/lib/queue";
+import { prepareJobTestScripts } from "@/lib/job-execution-utils";
+import { resolveProjectK6Location } from "@/lib/location-registry";
 import { processScheduledJob } from "./job-scheduler";
 
 const execFileAsync = promisify(execFile);
@@ -144,5 +146,23 @@ describe("scheduled tick idempotency (real runs table)", () => {
     console.info(`tick lookup plan:\n${text}`);
     expect(text).toMatch(/Index|Bitmap/);
     expect(text).not.toMatch(/Seq Scan on runs/);
+  });
+
+  it("a k6 tick carries the tick key and a redelivery of it creates no second run", async () => {
+    await mockDatabase.update(schema.jobs).set({ jobType: "k6" } as never).where(eq(schema.jobs.id, jobId));
+    (resolveProjectK6Location as jest.Mock).mockResolvedValue("global");
+    (addK6JobToQueue as jest.Mock).mockResolvedValue({ status: "queued", position: 1 });
+    (prepareJobTestScripts as jest.Mock).mockResolvedValue({
+      testScripts: [{ id: "test-1", type: "performance", title: "t", script: "import http from 'k6/http';\nexport default function () { http.get('https://example.com'); }" }],
+      variableResolution: { variables: {}, secrets: {}, files: {} },
+    });
+    await processScheduledJob(tick("repeat:k6:1000"));
+    const first = await runsOf();
+    expect(first).toHaveLength(1);
+    expect(first[0].metadata).toMatchObject({ jobType: "k6", scheduleTickKey: "repeat:k6:1000:0" });
+    await finishAll();
+    await processScheduledJob(tick("repeat:k6:1000"));
+    expect(await runsOf()).toHaveLength(1);
+    expect(addK6JobToQueue).toHaveBeenCalledTimes(1);
   });
 });

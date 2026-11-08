@@ -33,9 +33,10 @@ const PROMOTION_ROTATE_AFTER = 3;
 // A failure count is forgotten after an hour without a further failure.
 const PROMOTION_FAILURE_TTL = 3600;
 // A promoted job's payload outlives the promotion by this long. It is deleted once the job is in BullMQ; if the
-// app dies in between, it expires instead of keeping the worker's orphan sweep away for JOB_DATA_TTL, and it still
-// covers the moment between promotion and queue.add.
-const PROMOTED_PAYLOAD_GRACE_MS = 120_000;
+// app dies in between, it expires instead of keeping the worker's orphan sweep away for JOB_DATA_TTL. It also covers a
+// queue.add stalled by a Redis failover (no command timeout), which can flush late. The sweep only looks at runs
+// older than 30 minutes, so a long grace costs nothing.
+const PROMOTED_PAYLOAD_GRACE_MS = 15 * 60_000;
 // Queue processor interval (5 seconds)
 const QUEUE_PROCESSOR_INTERVAL_MS = 5000;
 
@@ -923,7 +924,7 @@ export class CapacityManager {
   /**
    * Set running counter to specific value (for drift correction)
    */
-  async setRunningCounter(value: number, organizationId: string = 'global', expected?: number): Promise<boolean> {
+  async setRunningCounter(value: number, organizationId: string = 'global', expected?: number): Promise<'applied' | 'changed' | 'failed'> {
     try {
       const redis = await this.getRedis();
       const key = KEYS.running(organizationId);
@@ -937,17 +938,17 @@ export class CapacityManager {
            return 1`,
           1, key, expected, value, KEY_TTL,
         ) as number;
-        return written === 1;
+        return written === 1 ? 'applied' : 'changed';
       }
       if (value <= 0) {
         await redis.del(key);
       } else {
         await redis.set(key, value.toString(), 'EX', KEY_TTL);
       }
-      return true;
+      return 'applied';
     } catch (error) {
       logger.error({ err: error, organizationId, value }, "Failed to set running counter");
-      return false;
+      return 'failed';
     }
   }
 
@@ -1290,7 +1291,8 @@ export async function reconcileCapacityCounters(
           drift 
         }, "Capacity drift detected, auto-correcting");
         
-        if (!(await manager.setRunningCounter(actual, orgId, stored))) {
+        // 'failed' is already logged by setRunningCounter; only a refused compare-and-set means the counter moved.
+        if ((await manager.setRunningCounter(actual, orgId, stored)) === 'changed') {
           logger.info({ organizationId: orgId, expected: stored }, "Running counter changed during reconciliation; correction skipped");
         }
       }

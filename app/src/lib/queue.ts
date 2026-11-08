@@ -1,3 +1,4 @@
+import { waitForRedisReady } from "./redis-ready";
 import { getExecutionPolicy, assertExecutionWorkload, ExecutionWorkloadError, type ExecutionPolicy } from "./execution/execution-policy";
 import crypto from "crypto";
 import { FlowProducer, Queue, QueueEvents, type JobsOptions } from "bullmq";
@@ -92,7 +93,7 @@ function throwExecutionQueueError(error: unknown, operation: string): never {
  */
 export async function assertExecutionQueueReady(): Promise<void> {
   const redis = await getRedisConnection();
-  if (redis.status !== "ready") {
+  if (!(await waitForRedisReady(redis))) {
     throw new ExecutionQueueError(
       "queue_unavailable",
       "Execution queue is temporarily unavailable",

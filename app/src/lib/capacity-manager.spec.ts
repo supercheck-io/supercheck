@@ -1141,6 +1141,17 @@ describe('Reconciliation', () => {
     expect(mockLogger.info).toHaveBeenCalledWith(expect.objectContaining({ organizationId: 'org-moved', expected: 3 }), expect.stringContaining('correction skipped'));
   });
 
+  it('does not call a Redis error a concurrent change', async () => {
+    mockQueue.getJobs.mockResolvedValue([{ id: 'j', data: { organizationId: 'org-err' } }]);
+    mockRedisScan.mockResolvedValue(['0', ['capacity:running:org-err']]);
+    mockRedisGet.mockResolvedValue('3');
+    mockRedisEval.mockRejectedValue(new Error('READONLY'));
+    await reconcileCapacityCounters(mockQueues, true);
+    await reconcileCapacityCounters(mockQueues, true);
+    expect(mockLogger.error).toHaveBeenCalledWith(expect.objectContaining({ organizationId: 'org-err' }), 'Failed to set running counter');
+    expect(mockLogger.info).not.toHaveBeenCalledWith(expect.anything(), expect.stringContaining('correction skipped'));
+  });
+
   it('does not report a skipped correction when the compare-and-set applied', async () => {
     mockQueue.getJobs.mockResolvedValue([{ id: 'j', data: { organizationId: 'org-ok' } }]);
     mockRedisScan.mockResolvedValue(['0', ['capacity:running:org-ok']]);
