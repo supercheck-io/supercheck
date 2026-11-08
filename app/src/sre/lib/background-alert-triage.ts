@@ -168,7 +168,7 @@ type SourceRecoveryInput = {
   discriminator: string;
 };
 
-async function handleSourceRecovery(input: SourceRecoveryInput) {
+export async function handleSourceRecovery(input: SourceRecoveryInput) {
   const { discriminator, ...source } = input;
   const recovery = await db.transaction(async (tx) => {
     await tx.execute(
@@ -230,7 +230,7 @@ async function processSourceRecovery(recovery: {
  * Used only when recoveryThreshold is 1: a monitor flips to up and a job run passes on the first
  * success, so a longer threshold is left to the worker's recovery signal.
  */
-async function sourceRecoveredSince(
+export async function sourceRecoveredSince(
   sourceType: SreAlertSourceType,
   sourceId: string,
   firedAt: Date,
@@ -873,6 +873,90 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string, failur
   return result;
 }
 
+/**
+ * The AI step on top of an open incident: the project's auto-investigate policy first, else instance-wide
+ * automatic triage. Every gate lives here (policy, feature flag, AI config, billing, org run cap), so the
+ * alert job and the recovery sweep's re-triage cannot diverge. Only the start is awaited; the run settles detached.
+ */
+export async function startAutomaticIncidentTriage(incident: {
+  organizationId: string;
+  projectId: string;
+  incidentId: string;
+}): Promise<
+  | { skipped: true; reason: Extract<SreBackgroundAlertTriageResult, { skipped: true }>["reason"] }
+  | { skipped?: false; success: true; investigationRunId: string }
+  | { skipped?: false; success: false; error: string; incidentId: string; investigationRunId?: string }
+> {
+  // The project's own opt-in (SEV1-2 full investigation, SEV3-4 triage) takes over from the instance-wide triage below.
+  const auto = await maybeAutoInvestigateOnOpen({
+    organizationId: incident.organizationId,
+    projectId: incident.projectId,
+    incidentId: incident.incidentId,
+    userId: null,
+  });
+  if (auto.handled) return { skipped: true, reason: "auto_investigation" };
+  // Already investigated automatically: a later alert joining this incident must not start another AI run.
+  if (auto.reason === "already_investigated") return { skipped: true, reason: "already_triaged" };
+
+  // Incidents open regardless; AI triage is the optional part on top.
+  if (!isSreAutomaticTriageEnabled()) {
+    return { skipped: true, reason: "ai_disabled" };
+  }
+  try {
+    validateAIConfiguration();
+  } catch {
+    return { skipped: true, reason: "ai_not_configured" };
+  }
+
+  // Only the start (admission, billing and concurrency checks, run row) is awaited: the AI run
+  // takes minutes, longer than the job lock. Stale-run recovery fails a run that never settles.
+  const triageInput = {
+    organizationId: incident.organizationId,
+    projectId: incident.projectId,
+    userId: null,
+    incidentId: incident.incidentId,
+    // Detached runs are no longer bounded by the queue concurrency: "auto" applies the per-organization cap.
+    origin: "auto" as const,
+  };
+  const triage = await startSreIncidentTriage(triageInput);
+
+  if (!triage.success && triage.status === 409 && triage.reason === "org_concurrency_limit") {
+    // The organization's run cap clears as its other runs finish: the processor delays and retries this job.
+    logger.warn({ incidentId: incident.incidentId }, "Background triage deferred: organization run limit");
+    return { skipped: true, reason: "org_concurrency_limit" };
+  }
+
+  if (!triage.success && triage.status === 409) {
+    // Another triage/investigation is already running for this incident; nothing to retry.
+    logger.warn({ incidentId: incident.incidentId }, "Background triage skipped: an investigation is already running");
+    return { skipped: true, reason: "triage_in_progress" };
+  }
+
+  if (!triage.success && triage.status === 402) {
+    // Plan or credit limits do not clear on retry.
+    logger.warn({ incidentId: incident.incidentId }, "Background triage skipped: billing limit");
+    return { skipped: true, reason: "triage_billing" };
+  }
+
+  if (!triage.success) {
+    return {
+      success: false,
+      error: triage.error,
+      incidentId: incident.incidentId,
+      investigationRunId: triage.investigationRunId,
+    };
+  }
+
+
+  void completeSreIncidentTriage(triage, triageInput).catch((error) =>
+    logger.error(
+      { errorName: error instanceof Error ? error.name : typeof error, incidentId: incident.incidentId, investigationRunId: triage.investigationRunId },
+      "Background triage failed after it started",
+    ),
+  );
+  return { success: true, investigationRunId: triage.investigationRunId };
+}
+
 export async function processSreBackgroundAlertTriageJob(
   jobData: unknown,
 ): Promise<SreBackgroundAlertTriageResult> {
@@ -902,72 +986,10 @@ export async function processSreBackgroundAlertTriageJob(
     return { success: true, skipped: true, reason: "already_triaged" };
   }
 
-  // The project's own opt-in (SEV1-2 full investigation, SEV3-4 triage) takes over from the instance-wide triage below.
-  const auto = await maybeAutoInvestigateOnOpen({
-    organizationId: incident.organizationId,
-    projectId: incident.projectId,
-    incidentId: incident.incidentId,
-    userId: null,
-  });
-  if (auto.handled) return { success: true, skipped: true, reason: "auto_investigation" };
-  // Already investigated automatically: a later alert joining this incident must not start another AI run.
-  if (auto.reason === "already_investigated") return { success: true, skipped: true, reason: "already_triaged" };
-
-  // Incidents open regardless; AI triage is the optional part on top.
-  if (!isSreAutomaticTriageEnabled()) {
-    return { success: true, skipped: true, reason: "ai_disabled" };
-  }
-  try {
-    validateAIConfiguration();
-  } catch {
-    return { success: true, skipped: true, reason: "ai_not_configured" };
-  }
-
-  // Only the start (admission, billing and concurrency checks, run row) is awaited: the AI run
-  // takes minutes, longer than the job lock. Stale-run recovery fails a run that never settles.
-  const triageInput = {
-    organizationId: incident.organizationId,
-    projectId: incident.projectId,
-    userId: null,
-    incidentId: incident.incidentId,
-    // Detached runs are no longer bounded by the queue concurrency: "auto" applies the per-organization cap.
-    origin: "auto" as const,
-  };
-  const triage = await startSreIncidentTriage(triageInput);
-
-  if (!triage.success && triage.status === 409 && triage.reason === "org_concurrency_limit") {
-    // The organization's run cap clears as its other runs finish: the processor delays and retries this job.
-    logger.warn({ incidentId: incident.incidentId }, "Background triage deferred: organization run limit");
-    return { success: true, skipped: true, reason: "org_concurrency_limit" };
-  }
-
-  if (!triage.success && triage.status === 409) {
-    // Another triage/investigation is already running for this incident; nothing to retry.
-    logger.warn({ incidentId: incident.incidentId }, "Background triage skipped: an investigation is already running");
-    return { success: true, skipped: true, reason: "triage_in_progress" };
-  }
-
-  if (!triage.success && triage.status === 402) {
-    // Plan or credit limits do not clear on retry.
-    logger.warn({ incidentId: incident.incidentId }, "Background triage skipped: billing limit");
-    return { success: true, skipped: true, reason: "triage_billing" };
-  }
-
-  if (!triage.success) {
-    return {
-      success: false,
-      error: triage.error,
-      incidentId: incident.incidentId,
-      investigationRunId: triage.investigationRunId,
-    };
-  }
-
-  void completeSreIncidentTriage(triage, triageInput).catch((error) =>
-    logger.error(
-      { errorName: error instanceof Error ? error.name : typeof error, incidentId: incident.incidentId, investigationRunId: triage.investigationRunId },
-      "Background triage failed after it started",
-    ),
-  );
+  const started = await startAutomaticIncidentTriage(incident);
+  if (started.skipped) return { success: true, skipped: true, reason: started.reason };
+  if (!started.success) return started;
+  const triage = started;
 
   try {
     await db

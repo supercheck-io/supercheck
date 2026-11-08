@@ -68,7 +68,7 @@ import {
 } from "@/sre/lib/feature-gates";
 import { completeSreIncidentTriage, startSreIncidentTriage } from "@/sre/lib/triage-runner";
 import { db } from "@/utils/db";
-import { processSreBackgroundAlertTriageJob } from "./background-alert-triage";
+import { processSreBackgroundAlertTriageJob, startAutomaticIncidentTriage } from "./background-alert-triage";
 
 const mockIsSreBackgroundAlertTriageEnabled = isSreBackgroundAlertTriageEnabled as jest.Mock;
 const mockAutomatic = isSreAutomaticTriageEnabled as jest.Mock;
@@ -365,5 +365,39 @@ describe("processSreBackgroundAlertTriageJob", () => {
       await processSreBackgroundAlertTriageJob(JOB);
       expect(applySourceRecovery).toHaveBeenCalledWith(tx, expect.objectContaining({ sourceType: "job", sourceId: "job-1", autoResolve: true }));
     });
+  });
+});
+
+describe("startAutomaticIncidentTriage (shared with the recovery sweep)", () => {
+  const scope = { organizationId: "org-1", projectId: "proj-1", incidentId: "inc-1" };
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (validateAIConfiguration as jest.Mock).mockReset();
+  });
+
+  it("starts nothing when automation is off", async () => {
+    mockAutomatic.mockReturnValue(false);
+    expect(await startAutomaticIncidentTriage(scope)).toEqual({ skipped: true, reason: "ai_disabled" });
+    expect(startSreIncidentTriage).not.toHaveBeenCalled();
+  });
+
+  it("starts nothing when the AI provider is not configured", async () => {
+    mockAutomatic.mockReturnValue(true);
+    (validateAIConfiguration as jest.Mock).mockImplementation(() => {
+      throw new Error("no key");
+    });
+    expect(await startAutomaticIncidentTriage(scope)).toEqual({ skipped: true, reason: "ai_not_configured" });
+    expect(startSreIncidentTriage).not.toHaveBeenCalled();
+  });
+
+  it("maps billing refusal to a skip and starts an automatic run otherwise", async () => {
+    mockAutomatic.mockReturnValue(true);
+    (startSreIncidentTriage as jest.Mock).mockResolvedValueOnce({ success: false, status: 402, error: "limit" });
+    expect(await startAutomaticIncidentTriage(scope)).toEqual({ skipped: true, reason: "triage_billing" });
+
+    (startSreIncidentTriage as jest.Mock).mockResolvedValueOnce({ success: true, investigationRunId: "run-2" });
+    (completeSreIncidentTriage as jest.Mock).mockResolvedValue({ success: true });
+    expect(await startAutomaticIncidentTriage(scope)).toEqual({ success: true, investigationRunId: "run-2" });
+    expect(startSreIncidentTriage).toHaveBeenLastCalledWith({ ...scope, userId: null, origin: "auto" });
   });
 });
