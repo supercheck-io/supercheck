@@ -556,10 +556,11 @@ export default function SubscribePage() {
       {!hasBillingContext && pricingData?.faqs && pricingData.faqs.length > 0 && (
         <PricingFaqs
           faqs={
-            // After the trial, only "what happens when it ends" still applies; the offer questions would mislead.
-            trialEnded
-              ? pricingData.faqs.filter((faq) => !TRIAL_OFFER_QUESTIONS.has(faq.question))
-              : pricingData.faqs
+            // The trial is granted at organization setup, so the offer questions only apply while it runs;
+            // an ended or ineligible organization keeps just "what happens when it ends".
+            trialActive
+              ? pricingData.faqs
+              : pricingData.faqs.filter((faq) => !TRIAL_OFFER_QUESTIONS.has(faq.question))
           }
         />
       )}

@@ -21,6 +21,7 @@ describe("PRICING_FAQS", () => {
     const answer = PRICING_FAQS.find((faq) => faq.question === "What happens if I cancel?")?.answer;
     expect(answer).toContain("end of the period you paid for");
     expect(answer).toContain("Nothing is deleted");
+    expect(answer).toContain("normal data retention still applies");
   });
 
   it("states three monitoring regions and Europe-only browser and k6 execution", () => {
