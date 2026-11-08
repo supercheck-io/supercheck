@@ -36,6 +36,7 @@ import {
   getDefaultAssigneeId,
   reopenRecentlyAutoResolved,
 } from "@/lib/sre/incident-lifecycle";
+import { sreDailyTokenLimitResponse } from "@/lib/sre/sre-daily-token-limit";
 import { incidentsEnabled } from "@/lib/incident-settings";
 import { isAttemptedAlertStatus } from "@/lib/alert-escalation";
 import { alertIncidentTitle } from "@/lib/sre/alert-labels";
@@ -108,6 +109,7 @@ export type SreBackgroundAlertTriageResult =
         | "recovered_before_triage"
         | "ai_disabled"
         | "ai_not_configured"
+        | "daily_limit"
         | "auto_investigation";
     }
   | {
@@ -907,6 +909,8 @@ export async function startAutomaticIncidentTriage(incident: {
   } catch {
     return { skipped: true, reason: "ai_not_configured" };
   }
+  // The org's daily AI token cap applies to every automatic run, like the investigate and triage routes.
+  if (await sreDailyTokenLimitResponse(incident.organizationId)) return { skipped: true, reason: "daily_limit" };
 
   // Only the start (admission, billing and concurrency checks, run row) is awaited: the AI run
   // takes minutes, longer than the job lock. Stale-run recovery fails a run that never settles.

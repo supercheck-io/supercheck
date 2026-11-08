@@ -1,4 +1,4 @@
-import { and, eq, gt, isNotNull, isNull, ne, sql } from "drizzle-orm";
+import { and, eq, gte, isNull, ne, sql } from "drizzle-orm";
 
 import { jobs, monitors, runs, sreAlertEvents, sreIncidentAlerts, sreIncidents, sreInvestigationRuns } from "@/db/schema";
 import { createLogger } from "@/lib/logger/index";
@@ -20,6 +20,11 @@ const logger = createLogger({ module: "sre-incident-sweep" }) as {
 // Per branch and tick. Candidates are filtered in SQL and picked in random order, so ones a gate keeps refusing
 // (billing, AI config, org cap) cannot permanently crowd out the rest.
 const BATCH = 25;
+// Wall-clock budget per tick (the job lock is 120 s): remaining candidates wait for the next tick.
+const TICK_BUDGET_MS = 60_000;
+// Only recent incidents are swept: a first deploy or a long outage must not mass-resolve, and so mass-notify,
+// months-old incidents (those are left for their owners), and re-triage must not spend credits on old ones.
+const RECOVERY_MAX_AGE_MS = 2 * 24 * 60 * 60 * 1000;
 // Only recent incidents are re-triaged: a late-enabled gate must not spend AI credits on old ones.
 const RETRIAGE_MAX_AGE_MS = 2 * 24 * 60 * 60 * 1000;
 
@@ -29,11 +34,12 @@ type SourceType = "monitor" | "job";
 /**
  * Safety net for two signals that can be lost: the worker's recovery enqueue (Redis down for all retries)
  * and a detached AI triage run killed by an app restart. Runs on the incident re-notify tick; a
- * transaction advisory lock makes a second replica skip the tick. The lock holds one pooled connection
- * for the (bounded) tick.
+ * transaction advisory lock makes a second replica skip the tick. The lock holds one pooled connection, so the
+ * tick stops at a wall-clock budget well under the 120 s job lock instead of running unbounded.
  */
 export async function sweepSreIncidents(now = new Date()) {
   if (!isSreBackgroundAlertTriageEnabled()) return { skipped: "disabled" as const };
+  const deadline = Date.now() + TICK_BUDGET_MS;
   return db.transaction(async (tx) => {
     const [lock] = await tx.execute<{ locked: boolean }>(
       sql`SELECT pg_try_advisory_xact_lock(7311, hashtext('sre-incident-sweep')) AS locked`,
@@ -41,11 +47,11 @@ export async function sweepSreIncidents(now = new Date()) {
     if (!lock?.locked) return { skipped: "locked" as const };
     // One branch failing must not starve the other.
     // Two-key form: a separate lock space from the single-key organization locks.
-    const reconciled = await reconcileRecoveries().catch((error) => {
+    const reconciled = await reconcileRecoveries(now, deadline).catch((error) => {
       logger.error({ error }, "Incident recovery reconcile failed");
       return 0;
     });
-    const retriaged = await retriageStaleRuns(now).catch((error) => {
+    const retriaged = await retriageStaleRuns(now, deadline).catch((error) => {
       logger.error({ error }, "Incident re-triage failed");
       return 0;
     });
@@ -55,12 +61,12 @@ export async function sweepSreIncidents(now = new Date()) {
 
 // Necessary conditions (the exact recovery check is sourceRecoveredSince): open, automatically created (never by a person),
 // unacknowledged (an acknowledged incident stays open for its owner, so the worker signal alone leaves its note), trigger source in the same org/project, one-check recovery threshold, autoResolve not off.
-const openAutomaticIncident = (alertConfig: typeof monitors.alertConfig | typeof jobs.alertConfig, sourceType: SourceType) =>
+const openAutomaticIncident = (alertConfig: typeof monitors.alertConfig | typeof jobs.alertConfig, sourceType: SourceType, now: Date) =>
   and(
     ne(sreIncidents.status, "resolved"),
     isNull(sreIncidents.createdByUserId),
     isNull(sreIncidents.acknowledgedAt),
-    isNotNull(sreIncidents.lastAlertAt),
+    gte(sreIncidents.lastAlertAt, new Date(now.getTime() - RECOVERY_MAX_AGE_MS)),
     eq(sreIncidentAlerts.role, "trigger"),
     recoverableTrigger(),
     eq(sreAlertEvents.organizationId, sreIncidents.organizationId),
@@ -82,7 +88,7 @@ type RecoveryCandidate = {
 
 const latestAlertAt = sql<string>`max(${sreIncidents.lastAlertAt})`;
 
-async function findRecoveryCandidates(): Promise<RecoveryCandidate[]> {
+async function findRecoveryCandidates(now: Date): Promise<RecoveryCandidate[]> {
   const monitorRows = await db
     .select({
       organizationId: monitors.organizationId,
@@ -105,12 +111,13 @@ async function findRecoveryCandidates(): Promise<RecoveryCandidate[]> {
     )
     .where(
       and(
-        openAutomaticIncident(monitors.alertConfig, "monitor"),
+        openAutomaticIncident(monitors.alertConfig, "monitor", now),
         eq(monitors.status, "up"),
-        gt(monitors.lastStatusChangeAt, sreIncidents.lastAlertAt),
       ),
     )
     .groupBy(monitors.id)
+    // Actionable only if every open incident of the source alerted before the recovery.
+    .having(sql`max(${sreIncidents.lastAlertAt}) < ${monitors.lastStatusChangeAt}`)
     .orderBy(sql`random()`)
     .limit(BATCH);
   const jobRows = await db
@@ -135,11 +142,11 @@ async function findRecoveryCandidates(): Promise<RecoveryCandidate[]> {
     )
     .where(
       and(
-        openAutomaticIncident(jobs.alertConfig, "job"),
-        sql`(select r.status from ${runs} r where r.job_id = ${jobs.id} and r.completed_at > ${sreIncidents.lastAlertAt} order by r.completed_at desc limit 1) = 'passed'`,
+        openAutomaticIncident(jobs.alertConfig, "job", now),
       ),
     )
     .groupBy(jobs.id)
+    .having(sql`(select r.status from ${runs} r where r.job_id = ${jobs.id} and r.completed_at > max(${sreIncidents.lastAlertAt}) order by r.completed_at desc limit 1) = 'passed'`)
     .orderBy(sql`random()`)
     .limit(BATCH);
   return [
@@ -153,9 +160,10 @@ async function findRecoveryCandidates(): Promise<RecoveryCandidate[]> {
 }
 
 /** Resolves open incidents whose source recovered after their latest alert, as the worker's lost signal would have. */
-export async function reconcileRecoveries(): Promise<number> {
+export async function reconcileRecoveries(now = new Date(), deadline = Infinity): Promise<number> {
   let count = 0;
-  for (const source of await findRecoveryCandidates()) {
+  for (const source of await findRecoveryCandidates(now)) {
+    if (Date.now() > deadline) break;
     // The same rules as the worker signal; no streak can be proven from stored state, so a longer threshold is left to it.
     if ((source.alertConfig?.recoveryThreshold ?? 1) > 1 || source.alertConfig?.autoResolveIncident === false) continue;
     try {
@@ -193,7 +201,7 @@ export function shouldRetriage(runRows: RunRow[], now: Date) {
 }
 
 /** Starts automatic triage once more for open incidents whose only automatic run was failed as stale. */
-export async function retriageStaleRuns(now = new Date()): Promise<number> {
+export async function retriageStaleRuns(now = new Date(), deadline = Infinity): Promise<number> {
   const cutoff = new Date(now.getTime() - STALE_RUN_AFTER_MS).toISOString();
   // Starts from the small set of open, recent, automatic incidents and reaches runs only per incident (a LATERAL
   // aggregate cannot be flattened into a runs-first join), so sre_investigation_runs_incident_id_idx serves it.
@@ -220,6 +228,7 @@ export async function retriageStaleRuns(now = new Date()): Promise<number> {
 
   let count = 0;
   for (const incident of incidents) {
+    if (Date.now() > deadline) break;
     const scope = { organizationId: incident.organizationId, projectId: incident.projectId, incidentId: incident.id };
     try {
       // Fails a still-"running" dead run so it frees its slot, then re-reads under the same org/project scope.

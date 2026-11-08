@@ -16,12 +16,15 @@ jest.mock("@/utils/db", () => ({
 }));
 jest.mock("@/lib/sre/incident-notifier", () => ({ notifyIncidentEvent: jest.fn(async () => undefined) }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn(async () => undefined) }));
+jest.mock("@/lib/sre/sre-daily-token-limit", () => ({ sreDailyTokenLimitResponse: jest.fn(async () => null) }));
 jest.mock("@/lib/ai/ai-provider", () => ({ validateAIConfiguration: jest.fn() }));
 // Stubs the AI start only: the stub records a real run row, like the runner's insert would.
 jest.mock("@/sre/lib/triage-runner", () => ({ startSreIncidentTriage: jest.fn(), completeSreIncidentTriage: jest.fn(async () => undefined) }));
 
 import { reconcileRecoveries, retriageStaleRuns, sweepSreIncidents } from "./incident-sweep";
+import { notifyIncidentEvent } from "@/lib/sre/incident-notifier";
 import { startSreIncidentTriage } from "@/sre/lib/triage-runner";
+import { sreDailyTokenLimitResponse } from "@/lib/sre/sre-daily-token-limit";
 import { validateAIConfiguration } from "@/lib/ai/ai-provider";
 
 const execFileAsync = promisify(execFile);
@@ -190,6 +193,28 @@ describe("recovery reconcile", () => {
     expect(await reconcileRecoveries()).toBe(0);
   });
 
+  it("announces a recent recovery but resolves nothing whose last alert is older than the window", async () => {
+    const t = await tenant();
+    await setMonitor(t, "up", 10);
+    const recent = await incident(t, { alertMinutesAgo: 30 });
+    const old = await tenant();
+    await setMonitor(old, "up", 10);
+    const oldId = await incident(old, { alertMinutesAgo: 3 * 24 * 60 });
+    expect(await reconcileRecoveries()).toBe(1);
+    expect(await statusOf(recent, oldId)).toEqual({ [recent]: "resolved", [oldId]: "triggered" });
+    const announced = (notifyIncidentEvent as jest.Mock).mock.calls.map(([arg]) => arg.incidentId);
+    expect(announced).toEqual([recent]);
+  });
+
+  it("does not hold a batch slot for a source whose newer open incident alerted after the recovery", async () => {
+    const t = await tenant();
+    await setMonitor(t, "up", 20);
+    await incident(t, { alertMinutesAgo: 40 });
+    await incident(t, { alertMinutesAgo: 5 });
+    expect(await reconcileRecoveries()).toBe(0);
+    expect(captured.some(({ query }) => /having/i.test(query))).toBe(true);
+  });
+
   it("leaves a monitor that is still down, or failed again after it came up, alone", async () => {
     const down = await tenant();
     await setMonitor(down, "down", 10);
@@ -324,6 +349,15 @@ describe("re-triage", () => {
     await retriageStaleRuns();
     const calls = startMock.mock.calls.map(([input]) => [input.incidentId, input.organizationId]);
     expect(calls).toEqual(expect.arrayContaining([[aId, a.orgId], [bId, b.orgId]]));
+  });
+
+  it("starts nothing when the organization is over its daily token cap", async () => {
+    const t = await tenant();
+    const id = await incident(t, { withAlert: false });
+    await staleAuto(t, id);
+    (sreDailyTokenLimitResponse as jest.Mock).mockResolvedValueOnce({ status: 429 });
+    expect(await retriageStaleRuns()).toBe(0);
+    expect(startMock).not.toHaveBeenCalled();
   });
 
   it("starts nothing when automation is off or the AI provider is not configured", async () => {

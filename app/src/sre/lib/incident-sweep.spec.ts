@@ -97,6 +97,13 @@ describe("reconcileRecoveries", () => {
     expect(mockHandleRecovery).not.toHaveBeenCalled();
   });
 
+  it("stops at the tick's wall-clock budget", async () => {
+    mockResults.push([monitorRow(), monitorRow({ sourceId: "mon-2" })], []);
+    mockRecoveredSince.mockResolvedValue(recoveredAt);
+    expect(await reconcileRecoveries(now, Date.now() - 1)).toBe(0);
+    expect(mockHandleRecovery).not.toHaveBeenCalled();
+  });
+
   it("keeps going when one source fails", async () => {
     mockResults.push([monitorRow(), monitorRow({ sourceId: "mon-2" })], []);
     mockRecoveredSince.mockResolvedValue(recoveredAt);

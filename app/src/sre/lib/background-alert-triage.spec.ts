@@ -8,6 +8,7 @@ jest.mock("@/sre/lib/feature-gates", () => ({
   isSreAutomaticTriageEnabled: jest.fn(),
   isSreAlertCorrelationEnabled: jest.fn(() => false),
 }));
+jest.mock("@/lib/sre/sre-daily-token-limit", () => ({ sreDailyTokenLimitResponse: jest.fn().mockResolvedValue(null) }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 const mockLogInfo = jest.fn();
 const mockLogError = jest.fn();
@@ -68,6 +69,7 @@ import {
 } from "@/sre/lib/feature-gates";
 import { completeSreIncidentTriage, startSreIncidentTriage } from "@/sre/lib/triage-runner";
 import { db } from "@/utils/db";
+import { sreDailyTokenLimitResponse } from "@/lib/sre/sre-daily-token-limit";
 import { processSreBackgroundAlertTriageJob, startAutomaticIncidentTriage } from "./background-alert-triage";
 
 const mockIsSreBackgroundAlertTriageEnabled = isSreBackgroundAlertTriageEnabled as jest.Mock;
@@ -387,6 +389,14 @@ describe("startAutomaticIncidentTriage (shared with the recovery sweep)", () => 
       throw new Error("no key");
     });
     expect(await startAutomaticIncidentTriage(scope)).toEqual({ skipped: true, reason: "ai_not_configured" });
+    expect(startSreIncidentTriage).not.toHaveBeenCalled();
+  });
+
+  it("starts nothing past the organization's daily token cap", async () => {
+    mockAutomatic.mockReturnValue(true);
+    (sreDailyTokenLimitResponse as jest.Mock).mockResolvedValueOnce({ status: 429 });
+    expect(await startAutomaticIncidentTriage(scope)).toEqual({ skipped: true, reason: "daily_limit" });
+    expect(sreDailyTokenLimitResponse).toHaveBeenCalledWith("org-1");
     expect(startSreIncidentTriage).not.toHaveBeenCalled();
   });
 
