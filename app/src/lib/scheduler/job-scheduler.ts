@@ -11,9 +11,9 @@ import { Job } from 'bullmq';
 import crypto from 'crypto';
 import { db } from '@/utils/db';
 import { jobs, runs, projects } from '@/db/schema';
-import { eq, and, inArray, desc } from 'drizzle-orm';
+import { eq, and, gte, inArray, desc, sql } from 'drizzle-orm';
 import { validateK6Script } from '@/lib/k6-validator';
-import { addJobToQueue, addK6JobToQueue, JobExecutionTask, K6ExecutionTask, queueLogger } from '@/lib/queue';
+import { addJobToQueue, addK6JobToQueue, assertExecutionQueueReady, JobExecutionTask, K6ExecutionTask, queueLogger } from '@/lib/queue';
 import { prepareJobTestScripts } from '@/lib/job-execution-utils';
 import { getNextRunDate } from './cron-utils';
 import {
@@ -134,6 +134,27 @@ export async function processScheduledJob(
       logger.error({ jobId, error }, 'Failed to update the next run date');
     }
 
+    // A tick redelivered after a crash (stalled lock) must not start a second run once the first has finished,
+    // when the active-run check below no longer sees it. A retry after a failure has a higher attemptsMade and
+    // is a new tick on purpose.
+    const tickKey = job.id ? `${job.id}:${job.attemptsMade ?? 0}` : null;
+    if (tickKey) {
+      const [existingTickRun] = await db
+        .select({ id: runs.id })
+        .from(runs)
+        .where(and(
+          eq(runs.jobId, jobId),
+          // A redelivery follows within minutes; the bound keeps the scan off a job's whole history.
+          gte(runs.createdAt, new Date(Date.now() - 24 * 60 * 60 * 1000)),
+          sql`${runs.metadata}->>'scheduleTickKey' = ${tickKey}`,
+        ))
+        .limit(1);
+      if (existingTickRun) {
+        logger.warn({ jobId, tickKey, runId: existingTickRun.id }, 'Scheduled tick already has a run, skipping redelivered tick');
+        return { success: true };
+      }
+    }
+
     // Runs stuck in queued are recovered by the worker's stalled-run sweep, which can tell a lost run
     // from one still waiting in the organization's capacity queue.
     // A queued run already owns capacity/queue position and must also prevent
@@ -176,7 +197,7 @@ export async function processScheduledJob(
         trigger: 'schedule',
         projectId,
         errorDetails: reason,
-        metadata: { jobType, executionEngine: isK6Job ? 'k6' : 'playwright', cronSchedule: jobRecord.cronSchedule },
+        metadata: { jobType, executionEngine: isK6Job ? 'k6' : 'playwright', cronSchedule: jobRecord.cronSchedule, ...(tickKey ? { scheduleTickKey: tickKey } : {}) },
       });
       insertedRunId = runId;
     };
@@ -242,12 +263,16 @@ export async function processScheduledJob(
             jobType,
             executionEngine: isK6Job ? 'k6' : 'playwright',
             cronSchedule: jobRecord.cronSchedule,
+            ...(tickKey ? { scheduleTickKey: tickKey } : {}),
           },
         });
         return { success: true };
       }
       throw error;
     }
+
+    // Before the run row exists: a Redis outage retries the tick (BullMQ backoff) instead of failing a run.
+    await assertExecutionQueueReady();
 
     // Create run record with 'queued' status - capacity manager will update to 'running'
     await db.insert(runs).values({
@@ -263,6 +288,7 @@ export async function processScheduledJob(
         executionEngine: isK6Job ? 'k6' : 'playwright',
         // The schedule that fired this run; the live job schedule can change later.
         cronSchedule: jobRecord.cronSchedule,
+        ...(tickKey ? { scheduleTickKey: tickKey } : {}),
         ...(isK6Job ? { location: resolvedLocation } : {}),
       },
     });

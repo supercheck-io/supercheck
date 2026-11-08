@@ -193,4 +193,51 @@ suite("promotion ownership (real Redis)", () => {
     expect(await redis.get(keys[2])).toBe(JSON.stringify(queued));
     expect(await redis.get(keys[0])).toBeNull();
   });
+
+  it("lets the payload expire right after promotion instead of holding it for 48h if the app dies before queue.add", async () => {
+    add.mockImplementation(async () => {
+      // The moment between the promotion script and queue.add: payload still there, but on a short fuse.
+      const ttl = await redis.pttl(keys[2]);
+      expect(ttl).toBeGreaterThan(0);
+      expect(ttl).toBeLessThanOrEqual(120_000);
+      return {};
+    });
+    expect(await manager["promoteJob"](queued.organizationId, queued.jobId)).toBe(true);
+    expect(add).toHaveBeenCalledTimes(1);
+    expect(await redis.get(keys[2])).toBeNull(); // removed once the job is in BullMQ
+  });
+
+  it("leaves the payload on the short fuse when the app dies between promotion and queue.add", async () => {
+    add.mockImplementation(() => new Promise(() => undefined)); // never settles: the process is gone
+    void manager["promoteJob"](queued.organizationId, queued.jobId);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(await redis.zscore(keys[1], queued.jobId)).toBeNull();
+    const ttl = await redis.pttl(keys[2]);
+    expect(ttl).toBeGreaterThan(0);
+    expect(ttl).toBeLessThanOrEqual(120_000);
+  });
+
+  describe("setRunningCounter compare-and-set", () => {
+    it("writes only while the counter still equals the value the decision was made on", async () => {
+      await redis.set(keys[0], "3");
+      expect(await manager.setRunningCounter(1, queued.organizationId, 3)).toBe(true);
+      expect(await redis.get(keys[0])).toBe("1");
+      expect(await redis.ttl(keys[0])).toBeGreaterThan(0);
+    });
+
+    it("keeps a concurrent increment instead of overwriting it", async () => {
+      await redis.set(keys[0], "3");
+      await redis.incr(keys[0]); // lands between the reconciler's read and its write
+      expect(await manager.setRunningCounter(1, queued.organizationId, 3)).toBe(false);
+      expect(await redis.get(keys[0])).toBe("4");
+    });
+
+    it("deletes the counter at zero, and treats a missing counter as 0", async () => {
+      await redis.set(keys[0], "2");
+      expect(await manager.setRunningCounter(0, queued.organizationId, 2)).toBe(true);
+      expect(await redis.exists(keys[0])).toBe(0);
+      expect(await manager.setRunningCounter(2, queued.organizationId, 0)).toBe(true);
+      expect(await redis.get(keys[0])).toBe("2");
+    });
+  });
 });

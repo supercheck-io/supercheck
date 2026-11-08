@@ -10,7 +10,7 @@ describe("checkExecutionRateLimit", () => {
 
   it("checks and increments the user and organization windows atomically", async () => {
     const evalMock = jest.fn().mockResolvedValue([1, 0]);
-    (getRedisConnection as jest.Mock).mockResolvedValue({ eval: evalMock });
+    (getRedisConnection as jest.Mock).mockResolvedValue({ status: "ready", eval: evalMock });
 
     await expect(
       checkExecutionRateLimit("user-1", "org-1"),
@@ -31,6 +31,7 @@ describe("checkExecutionRateLimit", () => {
   it("returns an accurate retry delay when either sliding window is exhausted", async () => {
     jest.spyOn(Date, "now").mockReturnValue(1_000_000);
     (getRedisConnection as jest.Mock).mockResolvedValue({
+      status: "ready",
       eval: jest.fn().mockResolvedValue([0, 1_012_001]),
     });
 
@@ -50,5 +51,16 @@ describe("checkExecutionRateLimit", () => {
       allowed: false,
       reason: "unavailable",
     });
+  });
+
+  it("fails fast without issuing a command while the client is reconnecting", async () => {
+    const evalMock = jest.fn();
+    (getRedisConnection as jest.Mock).mockResolvedValue({ status: "reconnecting", eval: evalMock });
+
+    await expect(checkExecutionRateLimit("user-1", "org-1")).resolves.toMatchObject({
+      allowed: false,
+      reason: "unavailable",
+    });
+    expect(evalMock).not.toHaveBeenCalled();
   });
 });

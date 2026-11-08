@@ -178,6 +178,20 @@ describe("queue location refresh", () => {
     expect(assertExecutionWorkload).toHaveBeenCalledWith("org", expect.objectContaining({ tier: "trial" }), producer.startsWith("addK6") ? "k6" : "playwright");
   });
 
+  it.each(["addTestToQueue", "addJobToQueue", "addK6TestToQueue", "addK6JobToQueue"] as const)("%s fails fast with a retryable queue error while Redis is not connected", async (producer) => {
+    const redis = await queueModule.getRedisConnection();
+    Object.assign(redis, { status: "reconnecting" });
+    getActiveWorkerQueueNames.mockResolvedValue(new Set(["k6-eu-central"]));
+    const task = { runId: "run", testId: "test", jobId: "job", organizationId: "org", projectId: "project", location: "eu-central", code: "code", script: "code", tests: [{ id: "test", script: "code" }], testScripts: [{ id: "test", script: "code" }] };
+    await expect(queueModule[producer](task)).rejects.toMatchObject({ name: "ExecutionQueueError", code: "queue_unavailable" });
+    expect(reserveSlot).not.toHaveBeenCalled();
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it("assertExecutionQueueReady passes once the client is ready", async () => {
+    await expect(queueModule.assertExecutionQueueReady()).resolves.toBeUndefined();
+  });
+
   it("hands an in-flight-only shortfall to the worker when a running slot is free; worker admission defers it", async () => {
     reserveSlot.mockResolvedValue(1);
     getExecutionPolicy.mockResolvedValue({ tier: "trial", priority: 1, runningCapacity: 1, queuedCapacity: 5 });

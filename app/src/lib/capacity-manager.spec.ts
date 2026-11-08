@@ -1040,6 +1040,7 @@ describe('Reconciliation', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockRedisEval.mockReset();
     mockQueue.getJobs.mockResolvedValue([]);
     mockRedisScan.mockResolvedValue(['0', []]); // Empty scan result
     mockRedisGet.mockResolvedValue(null);
@@ -1087,23 +1088,13 @@ describe('Reconciliation', () => {
 
     // Expect fixes
     // Org 1: 0 -> 2
-    expect(mockRedisSet).toHaveBeenCalledWith(
-      'capacity:running:org-1',
-      '2',
-      expect.any(String),
-      expect.any(Number)
-    );
+    expect(mockRedisEval).toHaveBeenCalledWith(expect.any(String), 1, 'capacity:running:org-1', 0, 2, expect.any(Number));
 
-    // Org 2: 5 -> 0 (deleted)
-    expect(mockRedisDel).toHaveBeenCalledWith('capacity:running:org-2');
+    // Org 2: 5 -> 0 (deleted by the script)
+    expect(mockRedisEval).toHaveBeenCalledWith(expect.any(String), 1, 'capacity:running:org-2', 5, 0, expect.any(Number));
 
     // Org 3: 1 -> 1 (no change)
-    expect(mockRedisSet).not.toHaveBeenCalledWith(
-      'capacity:running:org-3',
-      expect.any(String),
-      expect.any(String),
-      expect.any(Number)
-    );
+    expect(mockRedisEval).not.toHaveBeenCalledWith(expect.any(String), 1, 'capacity:running:org-3', expect.anything(), expect.anything(), expect.anything());
   });
 
   it('only corrects a drift that is still there on the next pass', async () => {
@@ -1113,9 +1104,9 @@ describe('Reconciliation', () => {
     mockRedisScan.mockResolvedValue(['0', ['capacity:running:org-race']]);
     mockRedisGet.mockResolvedValue('3');
     await reconcileCapacityCounters(mockQueues, true);
-    expect(mockRedisSet).not.toHaveBeenCalled();
+    expect(mockRedisEval).not.toHaveBeenCalled();
     await reconcileCapacityCounters(mockQueues, true);
-    expect(mockRedisSet).toHaveBeenCalledTimes(1);
+    expect(mockRedisEval).toHaveBeenCalledTimes(1);
   });
 
   it('repairs a leaked slot even when the counters keep moving between passes', async () => {
@@ -1126,7 +1117,7 @@ describe('Reconciliation', () => {
     mockQueue.getJobs.mockResolvedValue([{ id: 'j', data: { organizationId: 'org-leak' } }, { id: 'k', data: { organizationId: 'org-leak' } }]);
     mockRedisGet.mockResolvedValueOnce('5');
     await reconcileCapacityCounters({ ...mockQueues, k6Queues: {} }, true);
-    expect(mockRedisSet).toHaveBeenCalledWith('capacity:running:org-leak', '2', expect.any(String), expect.any(Number));
+    expect(mockRedisEval).toHaveBeenCalledWith(expect.any(String), 1, 'capacity:running:org-leak', 5, 2, expect.any(Number));
   });
 
   it('pages large queues and deduplicates jobs that move across mutable pages', async () => {
@@ -1136,7 +1127,28 @@ describe('Reconciliation', () => {
     mockQueue.getJobs.mockResolvedValueOnce(page).mockResolvedValueOnce([page[0], { id: '250', data: { organizationId: 'org-1' } }]);
     await reconcileCapacityCounters({ ...mockQueues, k6Queues: {} }, true);
     expect(mockQueue.getJobs).toHaveBeenNthCalledWith(2, expect.any(Array), 250, 499);
-    expect(mockRedisSet).toHaveBeenCalledWith('capacity:running:org-1', '251', expect.any(String), expect.any(Number));
+    expect(mockRedisEval).toHaveBeenCalledWith(expect.any(String), 1, 'capacity:running:org-1', 0, 251, expect.any(Number));
+  });
+
+  it('skips the correction and says so when the counter moved since it was read', async () => {
+    mockQueue.getJobs.mockResolvedValue([{ id: 'j', data: { organizationId: 'org-moved' } }]);
+    mockRedisScan.mockResolvedValue(['0', ['capacity:running:org-moved']]);
+    mockRedisGet.mockResolvedValue('3');
+    mockRedisEval.mockResolvedValue(0); // compare-and-set refused: a concurrent INCR/DECR landed
+    await reconcileCapacityCounters(mockQueues, true);
+    await reconcileCapacityCounters(mockQueues, true);
+    expect(mockRedisEval).toHaveBeenCalledWith(expect.any(String), 1, 'capacity:running:org-moved', 3, 2, expect.any(Number));
+    expect(mockLogger.info).toHaveBeenCalledWith(expect.objectContaining({ organizationId: 'org-moved', expected: 3 }), expect.stringContaining('correction skipped'));
+  });
+
+  it('does not report a skipped correction when the compare-and-set applied', async () => {
+    mockQueue.getJobs.mockResolvedValue([{ id: 'j', data: { organizationId: 'org-ok' } }]);
+    mockRedisScan.mockResolvedValue(['0', ['capacity:running:org-ok']]);
+    mockRedisGet.mockResolvedValue('3');
+    mockRedisEval.mockResolvedValue(1);
+    await reconcileCapacityCounters(mockQueues, true);
+    await reconcileCapacityCounters(mockQueues, true);
+    expect(mockLogger.info).not.toHaveBeenCalledWith(expect.anything(), expect.stringContaining('correction skipped'));
   });
 
   it('should gracefully handle empty queues', async () => {

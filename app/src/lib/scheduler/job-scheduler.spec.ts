@@ -22,6 +22,7 @@ jest.mock("@/utils/db", () => ({
 jest.mock("@/lib/queue", () => ({
   addJobToQueue: jest.fn(),
   addK6JobToQueue: jest.fn(),
+  assertExecutionQueueReady: jest.fn().mockResolvedValue(undefined),
   queueLogger: {
     info: jest.fn(),
     warn: jest.fn(),
@@ -70,7 +71,7 @@ import {
   resolveProjectK6Location,
 } from "@/lib/location-registry";
 import { processScheduledJob } from "./job-scheduler";
-import { addK6JobToQueue } from "@/lib/queue";
+import { addK6JobToQueue, assertExecutionQueueReady } from "@/lib/queue";
 import { prepareJobTestScripts } from "@/lib/job-execution-utils";
 import { deleteScheduledJob } from "@/lib/job-scheduler";
 
@@ -207,6 +208,50 @@ describe("scheduled execution admission", () => {
     });
     expect(db.insert).not.toHaveBeenCalled();
     expect(subscriptionService.blockUntilSubscribed).not.toHaveBeenCalled();
+  });
+
+  describe("redelivered ticks", () => {
+    const tick = { ...scheduledJob, id: "repeat:abc:1700000000000", attemptsMade: 0 } as Parameters<typeof processScheduledJob>[0];
+    const jobRow = { id: "job-1", projectId: "project-1", organizationId: "org-1", jobType: "playwright", cronSchedule: "*/5 * * * *" };
+
+    it("skips a tick that already created a run even after that run finished", async () => {
+      (db.select as jest.Mock)
+        .mockReturnValueOnce(selectRows([jobRow]))
+        .mockReturnValueOnce(selectRows([{ status: "active" }]))
+        .mockReturnValueOnce(selectRows([{ id: "run-of-this-tick" }]));
+
+      await expect(processScheduledJob(tick)).resolves.toEqual({ success: true });
+      expect(db.insert).not.toHaveBeenCalled();
+      expect(polarUsageService.shouldBlockUsage).not.toHaveBeenCalled();
+    });
+
+    it("stamps the tick key on the run it creates, so a redelivery can find it", async () => {
+      (db.select as jest.Mock)
+        .mockReturnValueOnce(selectRows([jobRow]))
+        .mockReturnValueOnce(selectRows([{ status: "active" }]))
+        .mockReturnValueOnce(selectRows([]))
+        .mockReturnValueOnce(selectRows([]))
+        .mockReturnValueOnce(selectRows([]));
+      (polarUsageService.shouldBlockUsage as jest.Mock).mockResolvedValue({ blocked: true, reason: "Spending limit reached" });
+      const values = jest.fn().mockResolvedValue(undefined);
+      (db.insert as jest.Mock).mockReturnValue({ values });
+
+      await processScheduledJob({ ...tick, attemptsMade: 1 } as typeof tick);
+      expect(values).toHaveBeenCalledWith(
+        expect.objectContaining({ metadata: expect.objectContaining({ scheduleTickKey: "repeat:abc:1700000000000:1" }) }),
+      );
+    });
+  });
+
+  it("checks the queue is reachable before it creates the run, and retries the tick when it is not", async () => {
+    (db.select as jest.Mock)
+      .mockReturnValueOnce(selectRows([{ id: "job-1", projectId: "project-1", organizationId: "org-1", jobType: "playwright", cronSchedule: "*/5 * * * *" }]))
+      .mockReturnValueOnce(selectRows([{ status: "active" }]))
+      .mockReturnValueOnce(selectRows([]));
+    (assertExecutionQueueReady as jest.Mock).mockRejectedValueOnce(new Error("queue unavailable"));
+
+    await expect(processScheduledJob(scheduledJob)).rejects.toThrow("queue unavailable");
+    expect(db.insert).not.toHaveBeenCalled();
   });
 
   it("records a failed run instead of skipping silently when no location supports the workload", async () => {

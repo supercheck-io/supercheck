@@ -32,6 +32,10 @@ const JOB_DATA_TTL = 86400 * 2;
 const PROMOTION_ROTATE_AFTER = 3;
 // A failure count is forgotten after an hour without a further failure.
 const PROMOTION_FAILURE_TTL = 3600;
+// A promoted job's payload outlives the promotion by this long. It is deleted once the job is in BullMQ; if the
+// app dies in between, it expires instead of keeping the worker's orphan sweep away for JOB_DATA_TTL, and it still
+// covers the moment between promotion and queue.add.
+const PROMOTED_PAYLOAD_GRACE_MS = 120_000;
 // Queue processor interval (5 seconds)
 const QUEUE_PROCESSOR_INTERVAL_MS = 5000;
 
@@ -608,6 +612,7 @@ export class CapacityManager {
       local jobId = ARGV[1]
       local runningCapacity = tonumber(ARGV[2])
       local ttl = tonumber(ARGV[3])
+      local payloadGraceMs = tonumber(ARGV[4])
       
       local running = tonumber(redis.call('GET', runningKey) or '0')
       
@@ -624,6 +629,9 @@ export class CapacityManager {
       
       -- A new promotion owns a new slot, even after an earlier attempt released one.
       redis.call('DEL', KEYS[3])
+
+      -- The job is promoted: its payload no longer vouches for a queued run.
+      redis.call('PEXPIRE', KEYS[4], payloadGraceMs)
 
       -- Increment running counter
       redis.call('INCR', runningKey)
@@ -660,13 +668,15 @@ export class CapacityManager {
       await assertExecutionWorkload(jobData.organizationId, policy, jobData.type);
       const result = await redis.eval(
         luaScript,
-        3,
+        4,
         runningKey,
         queuedKey,
         KEYS.released(jobId),
+        jobDataKey,
         jobId,
         limits.runningCapacity,
-        KEY_TTL
+        KEY_TTL,
+        PROMOTED_PAYLOAD_GRACE_MS
       ) as number;
 
       if (result === 1) {
@@ -913,17 +923,31 @@ export class CapacityManager {
   /**
    * Set running counter to specific value (for drift correction)
    */
-  async setRunningCounter(value: number, organizationId: string = 'global'): Promise<void> {
+  async setRunningCounter(value: number, organizationId: string = 'global', expected?: number): Promise<boolean> {
     try {
       const redis = await this.getRedis();
       const key = KEYS.running(organizationId);
+      if (expected !== undefined) {
+        // Compare-and-set: an INCR/DECR that landed since `expected` was read must not be overwritten.
+        const written = await redis.eval(
+          `local current = tonumber(redis.call('GET', KEYS[1]) or '0')
+           if current ~= tonumber(ARGV[1]) then return 0 end
+           if tonumber(ARGV[2]) <= 0 then redis.call('DEL', KEYS[1])
+           else redis.call('SET', KEYS[1], ARGV[2], 'EX', ARGV[3]) end
+           return 1`,
+          1, key, expected, value, KEY_TTL,
+        ) as number;
+        return written === 1;
+      }
       if (value <= 0) {
         await redis.del(key);
       } else {
         await redis.set(key, value.toString(), 'EX', KEY_TTL);
       }
+      return true;
     } catch (error) {
       logger.error({ err: error, organizationId, value }, "Failed to set running counter");
+      return false;
     }
   }
 
@@ -1266,7 +1290,9 @@ export async function reconcileCapacityCounters(
           drift 
         }, "Capacity drift detected, auto-correcting");
         
-        await manager.setRunningCounter(actual, orgId);
+        if (!(await manager.setRunningCounter(actual, orgId, stored))) {
+          logger.info({ organizationId: orgId, expected: stored }, "Running counter changed during reconciliation; correction skipped");
+        }
       }
     }
     

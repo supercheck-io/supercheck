@@ -85,6 +85,22 @@ function throwExecutionQueueError(error: unknown, operation: string): never {
   );
 }
 
+/**
+ * Fails fast, before any side effect, while the shared Redis client is not connected. The client has no
+ * command timeout (blocking connections inherit its options) and queues commands offline, so without this an
+ * enqueue during a Redis outage would hang the request instead of returning a 503.
+ */
+export async function assertExecutionQueueReady(): Promise<void> {
+  const redis = await getRedisConnection();
+  if (redis.status !== "ready") {
+    throw new ExecutionQueueError(
+      "queue_unavailable",
+      "Execution queue is temporarily unavailable",
+      new Error(`Redis client status is ${redis.status}`),
+    );
+  }
+}
+
 // Create queue logger
 export const queueLogger = createLogger({ module: "queue-client" }) as {
   debug: (data: unknown, msg?: string) => void;
@@ -460,7 +476,7 @@ export async function getQueues(): Promise<{
 
         // Memory-optimized job options with retry for transient failures
         // Retries help with container startup issues, network problems, etc.
-        // Usage is only tracked on successful completion, so retries don't cause duplicate billing
+        // Usage is metered per attempt (`runId:attempt:N`), so a retry is a separate, idempotent usage event
         const defaultJobOptions = {
           removeOnComplete: { count: 500, age: 24 * 3600 }, // Keep completed jobs for 24 hours (500 max)
           removeOnFail: { count: 1000, age: 7 * 24 * 3600 }, // Keep failed jobs for 7 days (1000 max)
@@ -982,6 +998,7 @@ export async function addTestToQueue(task: TestExecutionTask): Promise<{
   const safeTask = { ...omitExecutionSecrets(task), _executionTier: policy.tier };
 
   try {
+    await assertExecutionQueueReady();
     const { getCapacityManager } = await import("./capacity-manager");
     const capacityManager = await getCapacityManager();
 
@@ -1067,6 +1084,7 @@ export async function addJobToQueue(task: JobExecutionTask): Promise<{
   const safeTask = { ...omitExecutionSecrets(task), _executionTier: policy.tier };
 
   try {
+    await assertExecutionQueueReady();
     const { getCapacityManager } = await import("./capacity-manager");
     const capacityManager = await getCapacityManager();
 
@@ -1155,6 +1173,7 @@ export async function addK6TestToQueue(
   const k6TestLocation = task.location || await getFirstDefaultLocationCode();
 
   try {
+    await assertExecutionQueueReady();
     await assertK6QueueAvailable(k6TestLocation);
 
     const { getCapacityManager } = await import("./capacity-manager");
@@ -1254,6 +1273,7 @@ export async function addK6JobToQueue(
   const k6JobLocation = task.location || await getFirstDefaultLocationCode();
 
   try {
+    await assertExecutionQueueReady();
     await assertK6QueueAvailable(k6JobLocation);
 
     const { getCapacityManager } = await import("./capacity-manager");

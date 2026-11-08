@@ -49,6 +49,9 @@ flowchart LR
 - General queue operations may share appropriate base connections.
 - Every `QueueEvents` consumer needs its own dedicated connection because blocking `XREAD` cannot share a normal command connection. In the app, pass Redis options (`buildRedisOptions(...)`) so BullMQ creates and owns it; an external `duplicate()` gets duplicated again and leaks.
 - Do not set `commandTimeout` on shared options inherited by QueueEvents (see the note in `app/src/lib/queue.ts`); non-blocking clients such as the stalled-job handler may set it. Keep bounded connection establishment while allowing intentional failover reconnection.
+- With no `commandTimeout`, commands wait in ioredis's offline queue during an outage. Enqueue entry points (the `add*ToQueue` producers, the execution rate limiter, the API-key trigger route and the scheduler tick) call `assertExecutionQueueReady()` / check `status === 'ready'` before any run row or reservation, so the request gets the existing 503 (`EXECUTION_QUEUE_UNAVAILABLE` / `EXECUTION_ADMISSION_UNAVAILABLE`) instead of hanging.
+- Promotion deletes nothing it still needs: the payload `capacity:job:<id>` gets a short expiry in the promotion script and is deleted after `queue.add`, so a crash in between lets the worker's orphan sweep recover the run (once it is past its 30-minute age bar) instead of after 48h. The drift reconciler corrects the running counter by compare-and-set against the value it read, so a concurrent INCR/DECR is never overwritten.
+- A scheduler tick is idempotent: its run carries `metadata.scheduleTickKey` (`<repeat job id>:<attemptsMade>`) and a redelivered tick that already created a run is skipped; a BullMQ retry (higher `attemptsMade`) is a new tick on purpose. Usage is metered per attempt (`runId:attempt:N`).
 - Monitor connection count across app replicas, workers, schedulers, dashboards, and event streams.
 
 ## Payloads, secrets, and artifacts
