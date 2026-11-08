@@ -1422,7 +1422,7 @@ describe('NotificationService', () => {
         close,
       });
       await service.sendNotification(emailProvider, basePayload);
-      service.onModuleDestroy();
+      service.onApplicationShutdown();
       expect(close).toHaveBeenCalledTimes(1);
     });
 

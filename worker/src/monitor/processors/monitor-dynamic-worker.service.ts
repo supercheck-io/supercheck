@@ -2,6 +2,7 @@ import {
   Injectable,
   OnModuleInit,
   OnModuleDestroy,
+  OnApplicationShutdown,
   Logger,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -23,6 +24,10 @@ import {
 import { HeartbeatService } from '../../common/heartbeat/heartbeat.service';
 import { DbService } from '../../db/db.service';
 import { ExecutionCapacityError } from '../../execution/services/execution-admission.service';
+import {
+  registerIntakeStopper,
+  stopIntake,
+} from '../../common/shutdown-intake';
 import { deferForCapacity } from '../../common/capacity-deferral';
 import { getErrorMessage } from '../../common/validation';
 import { and, desc, eq, sql } from 'drizzle-orm';
@@ -50,7 +55,7 @@ export class ResultNotKeptError extends UnrecoverableError {}
  */
 @Injectable()
 export class MonitorDynamicWorkerService
-  implements OnModuleInit, OnModuleDestroy
+  implements OnModuleInit, OnModuleDestroy, OnApplicationShutdown
 {
   private readonly logger = new Logger('MonitorDynamicWorkerService');
   private readonly workers = new Map<string, Worker>();
@@ -77,6 +82,12 @@ export class MonitorDynamicWorkerService
   ) {}
 
   async onModuleInit(): Promise<void> {
+    registerIntakeStopper(() => {
+      this.shuttingDown = true;
+      return Promise.allSettled(
+        Array.from(this.workers.values()).map((w) => w.pause(true)),
+      );
+    });
     this.workerLocation = this.configService
       .get<string>('WORKER_LOCATION', 'local')
       .toLowerCase();
@@ -109,6 +120,8 @@ export class MonitorDynamicWorkerService
   }
 
   async onModuleDestroy(): Promise<void> {
+    // This module is destroyed before the executor's: stop every consumer now so none refills the drain.
+    await stopIntake();
     this.shuttingDown = true;
     this.heartbeatService.removeQueues(Array.from(this.activeQueueNames));
     if (this.discoveryRetryTimer) {
@@ -122,8 +135,18 @@ export class MonitorDynamicWorkerService
       this.subscriber = null;
     }
 
-    await this.refreshPromise;
+    await Promise.allSettled(
+      Array.from(this.workers.values()).map((w) => w.pause(true)),
+    );
+  }
 
+  /**
+   * Closing waits for the active check. It runs after the executor's drain (which counts checks as
+   * in flight), so the drain clock starts at SIGTERM and checks get the drain window to finish.
+   */
+  async onApplicationShutdown(): Promise<void> {
+    // A refresh may be closing a disabled worker (waiting for its run); that wait must not delay the drain.
+    await this.refreshPromise;
     await Promise.allSettled(
       Array.from(this.workers.values()).map((w) => w.close()),
     );

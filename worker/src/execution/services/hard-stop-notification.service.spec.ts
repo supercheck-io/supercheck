@@ -1,4 +1,5 @@
 import { HardStopNotificationService } from './hard-stop-notification.service';
+import { inFlightCount } from '../../common/shutdown-intake';
 import * as smtp from '../../common/utils/smtp-transport';
 
 jest.mock('../../common/utils/smtp-transport', () => ({
@@ -64,8 +65,22 @@ describe('HardStopNotificationService', () => {
     expect(redis.setex).not.toHaveBeenCalled();
   });
 
+  it('counts a pending notification as in-flight work so the shutdown drain waits for it', async () => {
+    send.mockResolvedValue({ sentCount: 1, failedRecipients: [], errors: {} });
+    const { service, redis } = build();
+    let release!: (value: number) => void;
+    redis.exists.mockReturnValue(new Promise<number>((r) => (release = r)));
+    const before = inFlightCount();
+
+    const pending = service.notify('org-1', 'run-1', 'limit');
+    expect(inFlightCount()).toBe(before + 1);
+    release(0);
+    await pending;
+    expect(inFlightCount()).toBe(before);
+  });
+
   it('closes the shared transport on module destroy', () => {
-    build().service.onModuleDestroy();
+    build().service.onApplicationShutdown();
     expect(smtp.closeSmtpTransport).toHaveBeenCalledTimes(1);
   });
 });

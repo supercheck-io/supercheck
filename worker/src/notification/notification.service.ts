@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, Logger, OnApplicationShutdown } from '@nestjs/common';
 import { createHash } from 'crypto';
 import {
   closeSmtpTransport,
@@ -241,7 +241,7 @@ export function buildEmailFields(
 }
 
 @Injectable()
-export class NotificationService implements OnModuleDestroy {
+export class NotificationService implements OnApplicationShutdown {
   private readonly logger = new Logger(NotificationService.name);
 
   constructor(private readonly emailTemplateService: EmailTemplateService) {
@@ -947,7 +947,8 @@ export class NotificationService implements OnModuleDestroy {
     return result;
   }
 
-  onModuleDestroy(): void {
+  // After the shutdown drain: in-flight runs still send their completion notifications.
+  onApplicationShutdown(): void {
     closeSmtpTransport();
   }
 

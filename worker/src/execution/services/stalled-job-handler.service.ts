@@ -33,13 +33,13 @@ import { RUN_CANCELLATION_MARKER } from '../../common/services/cancellation.serv
 /**
  * Service to handle stalled jobs
  *
- * When a BullMQ job is marked as stalled (execution takes longer than lockDuration),
+ * When a BullMQ job is marked as stalled (its worker stopped renewing the lock),
  * this service ensures the database is updated with proper error status, preventing
  * jobs from being stuck in "running" state indefinitely.
  *
  * This addresses the issue where:
  * 1. Job starts execution
- * 2. After 20 minutes (lockDuration), BullMQ marks it as stalled
+ * 2. After the lock (5 minutes) lapses, BullMQ marks it as stalled
  * 3. Job is moved back to waiting for retry
  * 4. But the run status in the database was never updated to "error"
  * 5. So the job appears "stuck" in "running" state
@@ -280,7 +280,7 @@ export class StalledJobHandlerService implements OnModuleInit, OnModuleDestroy {
         if (unfinishedCallback && !staleCallback) continue;
 
         // If a run has been "running" for longer than threshold + buffer, it's likely stuck
-        // Threshold matches lockDuration in queue config (70 minutes)
+        // Threshold is the longest run (60 minutes) plus margin; it does not depend on lockDuration
         // Buffer provides additional time for graceful completion (10 minutes)
         if (
           staleCallback ||

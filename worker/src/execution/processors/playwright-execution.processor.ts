@@ -35,6 +35,11 @@ import { consumesWorkerQueue } from '../../common/worker-queues';
 import { GlobalQueueCapabilityGuard } from '../../common/location/global-queue-guard';
 import type { ExecutionUsageTransaction } from '../services/execution-usage-receipts';
 import { captureJobFailure } from '../../common/sentry-reporter';
+import {
+  registerIntakeStopper,
+  trackInFlight,
+} from '../../common/shutdown-intake';
+import { TIMEOUTS } from '../../common/constants/timeouts.constants';
 
 /** The run executed but its result could not be saved; a BullMQ retry would re-run (and re-bill) it. */
 export class ResultNotPersistedError extends UnrecoverableError {}
@@ -44,7 +49,7 @@ const PERSIST_BACKOFF_MS = 250;
 
 @Processor(PLAYWRIGHT_QUEUE, {
   concurrency: 1,
-  lockDuration: 70 * 60 * 1000,
+  lockDuration: TIMEOUTS.QUEUE_LOCK_DURATION_MS,
   stalledInterval: 30000,
   maxStalledCount: 2,
   metrics: { maxDataPoints: 60 },
@@ -74,6 +79,10 @@ export class PlaywrightExecutionProcessor
   onApplicationBootstrap(): void {
     // Only the global consumer needs guarding; idle consumers never run.
     if (!consumesWorkerQueue('global-playwright')) return;
+    registerIntakeStopper(() => {
+      this.capabilityGuard?.stop(); // a resume after the pause would restart intake
+      return this.worker.pause(true);
+    });
     this.capabilityGuard = new GlobalQueueCapabilityGuard(
       () => this.worker,
       this.dbService,
@@ -92,8 +101,10 @@ export class PlaywrightExecutionProcessor
     job: Job<JobExecutionTask | TestExecutionTask>,
   ): Promise<TestExecutionResult | TestResult> {
     try {
-      return await withRunCallback(this.dbService.db, job.data.runId, () =>
-        this.processOwned(job),
+      return await trackInFlight(() =>
+        withRunCallback(this.dbService.db, job.data.runId, () =>
+          this.processOwned(job),
+        ),
       );
     } catch (error) {
       if (error instanceof RunCallbackBusyError) {
@@ -613,8 +624,10 @@ export class PlaywrightExecutionProcessor
       // Delegate the actual execution to the service
       const result = await this.executionService.runJob(job.data);
       observedBillableMs = result.billableMs ?? 0;
+      // Interrupted runs are excluded from alerts like cancelled ones, even if saving the result fails.
       runWasCancelled =
-        !result.success && !!result.error?.includes(RUN_CANCELLATION_MARKER);
+        result.interrupted === true ||
+        (!result.success && !!result.error?.includes(RUN_CANCELLATION_MARKER));
 
       await job
         .updateProgress(100)
@@ -722,8 +735,11 @@ export class PlaywrightExecutionProcessor
         projectId: jobData.projectId,
         runId,
         finalStatus,
+        // A restart-interrupted run is neither a failure to alert on nor part of a streak.
         cancelled:
-          !result.success && !!result.error?.includes(RUN_CANCELLATION_MARKER),
+          result.interrupted === true ||
+          (!result.success &&
+            !!result.error?.includes(RUN_CANCELLATION_MARKER)),
         durationSeconds,
         results: result.results ?? [],
         jobType: jobData.jobType ?? 'playwright',

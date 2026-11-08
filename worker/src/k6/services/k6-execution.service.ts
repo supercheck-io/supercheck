@@ -1,5 +1,6 @@
 import {
   ExecutionAdmissionService,
+  ExecutionCapacityError,
   type ExecutionReservation,
   LIMITED_RUN_OVERHEAD_MS,
 } from '../../execution/services/execution-admission.service';
@@ -16,6 +17,8 @@ import {
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { execa } from 'execa';
+import { UnrecoverableError } from 'bullmq';
+import { RunInterruptedError } from '../../common/run-interrupted.error';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as crypto from 'crypto';
@@ -24,7 +27,10 @@ import { DbService } from '../../execution/services/db.service';
 import { RedisService } from '../../execution/services/redis.service';
 import * as net from 'net';
 import { createSafeTempPath } from '../../common/security/path-validator';
-import { ContainerExecutorService } from '../../common/security/container-executor.service';
+import {
+  ContainerExecutorService,
+  WORKER_INTERRUPTED_ERROR,
+} from '../../common/security/container-executor.service';
 import {
   findFirstFileByNames,
   pathExists,
@@ -77,6 +83,10 @@ export interface K6ExecutionTask {
 export interface K6ExecutionResult {
   success: boolean;
   cancelled?: boolean;
+  /** Ended by a worker restart: an execution error, never a user cancellation or an alert. */
+  interrupted?: boolean;
+  /** A container start was reported, even when billable time is zero. */
+  containerStarted?: boolean;
   timedOut: boolean;
   runId: string;
   durationMs: number;
@@ -289,6 +299,8 @@ export class K6ExecutionService {
     const timeoutMs = task.jobId
       ? this.jobExecutionTimeoutMs
       : this.testExecutionTimeoutMs;
+    // Checked before the reservation too, so a second run on this pod defers without taking one.
+    this.assertK6Capacity();
     return this.admissionService.run(
       task.organizationId,
       task.runId,
@@ -321,6 +333,15 @@ export class K6ExecutionService {
     );
   }
 
+  /** The pod is busy: the queue processors delay the job without spending an attempt. */
+  private assertK6Capacity(): void {
+    if (this.activeK6Runs.size >= this.maxConcurrentK6Runs) {
+      throw new ExecutionCapacityError(
+        `Max concurrent k6 runs reached: ${this.maxConcurrentK6Runs}`,
+      );
+    }
+  }
+
   private async runK6TestReserved(
     task: K6ExecutionTask,
     reservation?: ExecutionReservation,
@@ -340,16 +361,15 @@ export class K6ExecutionService {
     const startTime = Date.now();
     // Container run time summed over every launch (dashboard-port retries).
     let totalBillableMs = 0;
+    // Kubernetes reported a container start; billable time alone can be zero for a sub-second run.
+    let containerStarted = false;
+    let interruptedRun = false;
     let billingVirtualUsers: number | undefined;
 
     const uniqueRunId = `${runId}-${crypto.randomUUID().substring(0, 8)}`;
 
     // Check concurrency and reserve a slot atomically to prevent race condition
-    if (this.activeK6Runs.size >= this.maxConcurrentK6Runs) {
-      throw new Error(
-        `Max concurrent k6 runs reached: ${this.maxConcurrentK6Runs}`,
-      );
-    }
+    this.assertK6Capacity();
 
     // Reserve slot before async setup to prevent other calls from bypassing the limit
     this.activeK6Runs.set(uniqueRunId, {
@@ -435,6 +455,8 @@ export class K6ExecutionService {
         error: string | null;
         timedOut: boolean;
         cancelled?: boolean;
+        interrupted?: boolean;
+        started?: boolean;
         billableMs?: number;
         billingVirtualUsers?: number;
       } | null = null;
@@ -488,6 +510,7 @@ export class K6ExecutionService {
         }
 
         totalBillableMs += execResult.billableMs ?? 0;
+        containerStarted ||= execResult.started === true;
         if (execResult.billingVirtualUsers !== undefined)
           billingVirtualUsers = Math.max(
             billingVirtualUsers ?? 0,
@@ -515,6 +538,16 @@ export class K6ExecutionService {
       if (!execResult) {
         throw new Error(`[${runId}] k6 did not produce an execution result`);
       }
+      // The pod never started: let the queue delay the run so a new worker runs it.
+      if (
+        execResult.interrupted &&
+        !containerStarted &&
+        totalBillableMs === 0
+      ) {
+        throw new ExecutionCapacityError(WORKER_INTERRUPTED_ERROR);
+      }
+      const interrupted = execResult.interrupted === true;
+      interruptedRun = interrupted;
 
       execResult.stdout = this.redactSecretsFromText(
         execResult.stdout,
@@ -701,7 +734,8 @@ export class K6ExecutionService {
           : false;
 
       // Test passes only if BOTH thresholds pass AND all checks pass without a timeout
-      const overallSuccess = !timedOut && thresholdsPassed && !checksFailed;
+      const overallSuccess =
+        !timedOut && !interrupted && thresholdsPassed && !checksFailed;
 
       // A non-zero exit with no summary is an execution error even when stderr was empty.
       const executionError =
@@ -713,6 +747,8 @@ export class K6ExecutionService {
       finalResult = {
         success: overallSuccess,
         cancelled: execResult.cancelled,
+        interrupted,
+        containerStarted,
         timedOut,
         runId,
         durationMs: Date.now() - startTime,
@@ -735,7 +771,8 @@ export class K6ExecutionService {
       // - 'error': execution error (infrastructure issue, Docker not available, timeout, etc.)
       // Note: timedOut is a standalone condition since execResult.error might be null for timeouts
       const isExecutionError =
-        !overallSuccess && (timedOut || (!summary && executionError));
+        !overallSuccess &&
+        (timedOut || interrupted || (!summary && executionError));
       const reportStatus = overallSuccess
         ? 'passed'
         : isExecutionError
@@ -790,7 +827,19 @@ export class K6ExecutionService {
         error: getErrorMessage(error),
       };
 
-      throw attachBillableMs(error, totalBillableMs, billingVirtualUsers);
+      // After the container started, a retry would run the test again against the customer's target.
+      throw attachBillableMs(
+        (containerStarted || totalBillableMs > 0) &&
+          !(error instanceof UnrecoverableError)
+          ? interruptedRun
+            ? new RunInterruptedError(WORKER_INTERRUPTED_ERROR)
+            : new UnrecoverableError(
+                `k6 finished but its results could not be saved: ${getErrorMessage(error)}`,
+              )
+          : error,
+        totalBillableMs,
+        billingVirtualUsers,
+      );
     } finally {
       this.activeK6Runs.delete(uniqueRunId);
 
@@ -901,6 +950,8 @@ export class K6ExecutionService {
     error: string | null;
     timedOut: boolean;
     cancelled?: boolean;
+    interrupted?: boolean;
+    started?: boolean;
     billableMs?: number;
     billingVirtualUsers?: number;
   }> {
@@ -1096,6 +1147,8 @@ export class K6ExecutionService {
         stderr,
         // Stopped by a trial limit: a failed run, not a user cancellation.
         cancelled: containerResult.cancelled && !stopReason,
+        interrupted: containerResult.interrupted,
+        started: containerResult.started,
         billableMs: containerResult.billableMs ?? 0,
         billingVirtualUsers: allocation.value(),
         error: redactedError || null,

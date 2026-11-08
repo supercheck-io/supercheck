@@ -12,7 +12,12 @@ import * as secretStream from '../../common/utils/secret-stream';
  * - Dashboard Integration (port allocation, web dashboard)
  */
 
-import { ExecutionAdmissionService } from '../../execution/services/execution-admission.service';
+import {
+  ExecutionAdmissionService,
+  ExecutionCapacityError,
+} from '../../execution/services/execution-admission.service';
+import { UnrecoverableError } from 'bullmq';
+import { RunInterruptedError } from '../../common/run-interrupted.error';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import {
@@ -307,6 +312,21 @@ describe('K6ExecutionService', () => {
         'upload failed',
       );
       expect(reservation.vus).toBe(2);
+    });
+    it('defers a second run on a busy pod before reserving anything', async () => {
+      service['activeK6Runs'].set('other', {
+        pid: 0,
+        startTime: Date.now(),
+        runId: 'other-run',
+      });
+      await expect(service.runK6Test(mockTask)).rejects.toBeInstanceOf(
+        ExecutionCapacityError,
+      );
+      expect(mockAdmissionService.run).not.toHaveBeenCalled();
+      await expect(
+        service['runK6TestReserved'](mockTask),
+      ).rejects.toBeInstanceOf(ExecutionCapacityError);
+      expect(service['activeK6Runs'].size).toBe(1);
     });
     it('does not execute when no load-test allowance remains', async () => {
       mockAdmissionService.setK6Workload.mockRejectedValueOnce(
@@ -1276,6 +1296,9 @@ describe('K6ExecutionService', () => {
           const error = await execution.catch((error: unknown) => error);
           expect(getBillableMs(error)).toBe(61_000);
           expect(getBillableVirtualUsers(error)).toBe(10);
+          // The run executed, so BullMQ must not retry (and re-run k6 against the target).
+          expect(error).toBeInstanceOf(UnrecoverableError);
+          expect((error as Error).message).toContain('upload unavailable');
           return;
         }
         const result = await execution;
@@ -1292,6 +1315,247 @@ describe('K6ExecutionService', () => {
         fs.access.mockResolvedValue(undefined);
       },
     );
+
+    describe.each([
+      ['never started', 0, true],
+      ['interrupted after it started', 30_000, false],
+    ])('a run %s by a worker restart', (_name, billableMs, delayed) => {
+      async function runInterrupted() {
+        const fs = jest.requireMock('fs/promises');
+        fs.access.mockRejectedValue(new Error('missing HTML'));
+        fs.readFile.mockRejectedValueOnce(new Error('no summary'));
+        fs.rename = jest.fn().mockResolvedValue(undefined);
+        fs.copyFile = jest.fn().mockResolvedValue(undefined);
+        Object.assign(mockS3Service, {
+          prepareFileVariables: jest
+            .fn()
+            .mockResolvedValue({ additionalFiles: {}, filePaths: {} }),
+          getBucketForEntityType: jest.fn().mockReturnValue('bucket'),
+          uploadDirectory: jest.fn().mockResolvedValue(undefined),
+          getBaseUrlForEntity: jest
+            .fn()
+            .mockReturnValue('https://example.com/run'),
+        });
+        Object.assign(mockDbService, {
+          storeReportMetadata: jest.fn().mockResolvedValue(undefined),
+        });
+        jest
+          .spyOn(service, 'allocateDashboardPort' as never)
+          .mockResolvedValue(0 as never);
+        jest.spyOn(service, 'executeK6Binary' as never).mockResolvedValue({
+          exitCode: 137,
+          billableMs,
+          billingVirtualUsers: billableMs ? 10 : undefined,
+          stdout: '',
+          stderr: '',
+          error: 'Interrupted by worker restart',
+          timedOut: false,
+          cancelled: false,
+          interrupted: true,
+        } as never);
+        try {
+          return await service
+            .runK6Test({
+              runId: 'run-1',
+              testId: 'test-1',
+              organizationId: 'org-1',
+              projectId: 'project-1',
+              tests: [],
+              script: 'export default function() {}',
+              location: 'local',
+            })
+            .then(
+              (value) => ({ value }),
+              (error: unknown) => ({ error }),
+            );
+        } finally {
+          fs.access.mockResolvedValue(undefined);
+        }
+      }
+
+      it(
+        delayed
+          ? 'is delayed through ExecutionCapacityError and stores nothing'
+          : 'ends as an interrupted execution error that is never a cancellation',
+        async () => {
+          const outcome = await runInterrupted();
+          if (delayed) {
+            expect(outcome).toHaveProperty('error');
+            expect((outcome as { error: unknown }).error).toBeInstanceOf(
+              ExecutionCapacityError,
+            );
+            expect(
+              (mockS3Service as unknown as { uploadDirectory: jest.Mock })
+                .uploadDirectory,
+            ).not.toHaveBeenCalled();
+            return;
+          }
+          const result = (
+            outcome as { value: Awaited<ReturnType<typeof service.runK6Test>> }
+          ).value;
+          expect(result).toMatchObject({
+            success: false,
+            interrupted: true,
+            cancelled: false,
+            error: 'Interrupted by worker restart',
+            billableMs: 30_000,
+          });
+          expect(
+            (mockDbService as unknown as { storeReportMetadata: jest.Mock })
+              .storeReportMetadata,
+          ).toHaveBeenCalledWith(expect.objectContaining({ status: 'error' }));
+        },
+      );
+    });
+
+    it('reports a run killed after its summary was extracted as an error, not a threshold failure', async () => {
+      const fs = jest.requireMock('fs/promises');
+      fs.access.mockRejectedValue(new Error('missing HTML'));
+      fs.readFile.mockResolvedValueOnce(
+        JSON.stringify({ metrics: { checks: { fails: 0 } } }),
+      );
+      fs.rename = jest.fn().mockResolvedValue(undefined);
+      fs.copyFile = jest.fn().mockResolvedValue(undefined);
+      Object.assign(mockS3Service, {
+        prepareFileVariables: jest
+          .fn()
+          .mockResolvedValue({ additionalFiles: {}, filePaths: {} }),
+        getBucketForEntityType: jest.fn().mockReturnValue('bucket'),
+        uploadDirectory: jest.fn().mockResolvedValue(undefined),
+        getBaseUrlForEntity: jest
+          .fn()
+          .mockReturnValue('https://example.com/run'),
+      });
+      const storeReportMetadata = jest.fn().mockResolvedValue(undefined);
+      Object.assign(mockDbService, { storeReportMetadata });
+      jest
+        .spyOn(service, 'allocateDashboardPort' as never)
+        .mockResolvedValue(0 as never);
+      jest.spyOn(service, 'executeK6Binary' as never).mockResolvedValue({
+        exitCode: 137,
+        billableMs: 30_000,
+        billingVirtualUsers: 10,
+        stdout: '',
+        stderr: '',
+        error: 'Interrupted by worker restart',
+        timedOut: false,
+        cancelled: false,
+        interrupted: true,
+      } as never);
+      try {
+        const result = await service.runK6Test({
+          runId: 'run-1',
+          testId: 'test-1',
+          organizationId: 'org-1',
+          projectId: 'project-1',
+          tests: [],
+          script: 'export default function() {}',
+          location: 'local',
+        });
+        expect(result.interrupted).toBe(true);
+        expect(result.success).toBe(false);
+        expect(storeReportMetadata).toHaveBeenCalledWith(
+          expect.objectContaining({ status: 'error' }),
+        );
+      } finally {
+        fs.access.mockResolvedValue(undefined);
+      }
+    });
+
+    it('keeps the restart classification when saving the results of an interrupted run fails', async () => {
+      const fs = jest.requireMock('fs/promises');
+      fs.access.mockRejectedValue(new Error('missing HTML'));
+      fs.readFile.mockRejectedValueOnce(new Error('no summary'));
+      fs.rename = jest.fn().mockResolvedValue(undefined);
+      fs.copyFile = jest.fn().mockResolvedValue(undefined);
+      Object.assign(mockS3Service, {
+        prepareFileVariables: jest
+          .fn()
+          .mockResolvedValue({ additionalFiles: {}, filePaths: {} }),
+        getBucketForEntityType: jest.fn().mockReturnValue('bucket'),
+        uploadDirectory: jest.fn().mockRejectedValue(new Error('s3 down')),
+        getBaseUrlForEntity: jest
+          .fn()
+          .mockReturnValue('https://example.com/run'),
+      });
+      jest
+        .spyOn(service, 'allocateDashboardPort' as never)
+        .mockResolvedValue(0 as never);
+      jest.spyOn(service, 'executeK6Binary' as never).mockResolvedValue({
+        exitCode: 137,
+        billableMs: 30_000,
+        started: true,
+        stdout: '',
+        stderr: '',
+        error: 'Interrupted by worker restart',
+        timedOut: false,
+        cancelled: false,
+        interrupted: true,
+      } as never);
+      try {
+        const error = await service
+          .runK6Test({
+            runId: 'run-1',
+            testId: 'test-1',
+            organizationId: 'org-1',
+            projectId: 'project-1',
+            tests: [],
+            script: 'export default function() {}',
+            location: 'local',
+          })
+          .catch((caught: unknown) => caught);
+        expect(error).toBeInstanceOf(RunInterruptedError);
+        expect(error).toBeInstanceOf(UnrecoverableError);
+      } finally {
+        fs.access.mockResolvedValue(undefined);
+      }
+    });
+
+    it('does not retry a sub-second run (started, zero billable time) whose upload fails', async () => {
+      const fs = jest.requireMock('fs/promises');
+      fs.access.mockRejectedValue(new Error('missing HTML'));
+      fs.rename = jest.fn().mockResolvedValue(undefined);
+      fs.copyFile = jest.fn().mockResolvedValue(undefined);
+      Object.assign(mockS3Service, {
+        prepareFileVariables: jest
+          .fn()
+          .mockResolvedValue({ additionalFiles: {}, filePaths: {} }),
+        getBucketForEntityType: jest.fn().mockReturnValue('bucket'),
+        uploadDirectory: jest.fn().mockRejectedValue(new Error('s3 down')),
+        getBaseUrlForEntity: jest
+          .fn()
+          .mockReturnValue('https://example.com/run'),
+      });
+      jest
+        .spyOn(service, 'allocateDashboardPort' as never)
+        .mockResolvedValue(0 as never);
+      jest.spyOn(service, 'executeK6Binary' as never).mockResolvedValue({
+        exitCode: 0,
+        billableMs: 0,
+        started: true,
+        stdout: '',
+        stderr: '',
+        error: null,
+        timedOut: false,
+        cancelled: false,
+      } as never);
+      try {
+        const error = await service
+          .runK6Test({
+            runId: 'run-1',
+            testId: 'test-1',
+            organizationId: 'org-1',
+            projectId: 'project-1',
+            tests: [],
+            script: 'export default function() {}',
+            location: 'local',
+          })
+          .catch((caught: unknown) => caught);
+        expect(error).toBeInstanceOf(UnrecoverableError);
+      } finally {
+        fs.access.mockResolvedValue(undefined);
+      }
+    });
 
     it('scrubs the report directory with the run secrets before uploading', async () => {
       const fs = jest.requireMock('fs/promises');
