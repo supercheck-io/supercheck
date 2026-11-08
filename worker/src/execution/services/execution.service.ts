@@ -9,7 +9,10 @@ import { S3Service } from './s3.service';
 import { DbService } from './db.service';
 import { RedisService } from './redis.service';
 import { ReportUploadService } from '../../common/services/report-upload.service';
-import { ContainerExecutorService } from '../../common/security/container-executor.service';
+import {
+  ContainerExecutorService,
+  WORKER_INTERRUPTED_ERROR,
+} from '../../common/security/container-executor.service';
 import {
   CancellationService,
   RUN_CANCELLATION_MARKER,
@@ -25,7 +28,9 @@ import {
   ExecutionAdmissionService,
   type ExecutionReservation,
   LIMITED_RUN_OVERHEAD_MS,
+  ExecutionCapacityError,
 } from './execution-admission.service';
+import { UnrecoverableError } from 'bullmq';
 import { attachBillableMs } from '../../common/billable-ms';
 import { VariableResolverService } from '../../common/services/variable-resolver.service';
 import {
@@ -121,6 +126,8 @@ export function ensureProperTraceConfiguration(
 interface PlaywrightExecutionResult {
   success: boolean;
   cancelled?: boolean;
+  interrupted?: boolean;
+  started?: boolean;
   error: string | null;
   stdout: string;
   stderr: string;
@@ -482,6 +489,8 @@ export class ExecutionService implements OnModuleDestroy {
     let s3Url: string | null = null;
     // Container run time once the execution pod has actually started.
     let billableMs = 0;
+    let containerRan = false;
+    let userCancelled = false;
 
     // Create temp directory for extracted reports (OS-managed temp)
     const extractedReportsDir = path.join(
@@ -564,6 +573,8 @@ export class ExecutionService implements OnModuleDestroy {
       );
 
       billableMs = execResult.billableMs ?? 0;
+      // Without start evidence the pod never ran, so a retry cannot hit the target twice.
+      containerRan = execResult.started === true || billableMs > 0;
       execResult.stdout = this.redactSecretsFromText(
         execResult.stdout,
         runtimeSecrets,
@@ -580,7 +591,15 @@ export class ExecutionService implements OnModuleDestroy {
       const wasCancelled = execResult.cancelled === true;
       if (wasCancelled) {
         this.logger.warn(`[${testId}] Execution was cancelled (exit code 137)`);
+        userCancelled = true;
         throw new Error('Execution cancelled by user');
+      }
+      if (execResult.interrupted) {
+        // The pod never started: let the queue delay the run so a new worker runs it.
+        if (!containerRan)
+          throw new ExecutionCapacityError(WORKER_INTERRUPTED_ERROR);
+        // A started run is terminal: an execution error for the processor and monitors, not a cancellation.
+        throw new Error(WORKER_INTERRUPTED_ERROR);
       }
 
       // 5. Process result and upload report
@@ -717,11 +736,15 @@ export class ExecutionService implements OnModuleDestroy {
         // throw new Error(specificError); // OLD WAY
       }
     } catch (error: any) {
-      // Check if this is a cancellation error
+      if (error instanceof ExecutionCapacityError) throw error;
+      // Check if this is a cancellation error. After the container ran, only the explicit
+      // cancellation above counts; a message that merely contains "cancelled" does not.
       const errorMessage = (error as Error).message;
       const isCancellation =
-        errorMessage.includes('cancelled') ||
-        errorMessage.includes('cancellation');
+        userCancelled ||
+        (!containerRan &&
+          (errorMessage.includes('cancelled') ||
+            errorMessage.includes('cancellation')));
 
       // Use 'error' status for cancellation, 'failed' for other errors
       const finalStatus = isCancellation ? 'error' : 'failed';
@@ -766,7 +789,13 @@ export class ExecutionService implements OnModuleDestroy {
       );
       // Propagate the error to the BullMQ processor so the job is marked as failed.
       // Carry container run time so metering charges only work that ran.
-      throw attachBillableMs(error, billableMs);
+      // After the container ran, a retry would run the test again against the customer's target.
+      throw attachBillableMs(
+        containerRan && !userCancelled
+          ? new UnrecoverableError(errorMessage)
+          : error,
+        billableMs,
+      );
     } finally {
       // Remove from active executions
       this.activeExecutions.delete(uniqueRunId);
@@ -853,6 +882,9 @@ export class ExecutionService implements OnModuleDestroy {
     // Container run time once the execution pod has actually started.
     let jobBillableMs = 0;
     let finalError: string | null = null;
+    let userCancelled = false;
+    let interrupted = false;
+    let jobStarted = false;
     const timestamp = new Date().toISOString();
     let overallSuccess = false; // Default to failure
     let stdout_log = '';
@@ -1035,6 +1067,7 @@ export class ExecutionService implements OnModuleDestroy {
 
       const taskSecrets = task.secrets ?? {};
       jobBillableMs = execResult.billableMs ?? 0;
+      jobStarted = execResult.started === true || jobBillableMs > 0;
       execResult.stdout = this.redactSecretsFromText(
         execResult.stdout,
         taskSecrets,
@@ -1056,7 +1089,16 @@ export class ExecutionService implements OnModuleDestroy {
       const wasCancelled = execResult.cancelled === true;
       if (wasCancelled) {
         this.logger.warn(`[${runId}] Execution was cancelled (exit code 137)`);
+        userCancelled = true;
         throw new Error('Execution cancelled by user');
+      }
+      if (execResult.interrupted) {
+        interrupted = true;
+        // The pod never started: let the queue delay the run so a new worker runs it.
+        if (!jobStarted)
+          throw new ExecutionCapacityError(WORKER_INTERRUPTED_ERROR);
+        // A started run is terminal and recorded as the restart, not a cancellation.
+        throw new Error(WORKER_INTERRUPTED_ERROR);
       }
 
       // 5. Process result and upload report
@@ -1158,10 +1200,13 @@ export class ExecutionService implements OnModuleDestroy {
         `[Playwright Job] ${runId} ${finalStatus} (${durationMs}ms, ${testScripts.length} tests)`,
       );
     } catch (error) {
+      if (error instanceof ExecutionCapacityError) throw error;
       const errorMessage = (error as Error).message;
       const isCancellation =
-        errorMessage.includes('cancelled') ||
-        errorMessage.includes('cancellation');
+        userCancelled ||
+        (!jobStarted &&
+          (errorMessage.includes('cancelled') ||
+            errorMessage.includes('cancellation')));
 
       this.logger.error(
         `[${runId}] Unhandled error during job execution: ${errorMessage}`,
@@ -1200,6 +1245,7 @@ export class ExecutionService implements OnModuleDestroy {
         results: [],
         timestamp,
         billableMs: jobBillableMs,
+        ...(interrupted ? { interrupted: true } : {}),
         stdout: stdout_log,
         stderr: stderr_log + ((error as Error).stack || ''),
       };
@@ -1386,7 +1432,8 @@ export class ExecutionService implements OnModuleDestroy {
         if (
           execResult.error &&
           (execResult.error.includes('code 137') ||
-            execResult.error.includes('timed out'))
+            execResult.error.includes('timed out') ||
+            execResult.interrupted)
         ) {
           extractedError = execResult.error;
         } else if (
@@ -1411,6 +1458,8 @@ export class ExecutionService implements OnModuleDestroy {
       return {
         success: execResult.success,
         cancelled: execResult.cancelled,
+        interrupted: execResult.interrupted,
+        started: execResult.started,
         error: extractedError, // Use the extracted error message
         stdout: execResult.stdout,
         stderr: execResult.stderr,
@@ -1867,6 +1916,8 @@ export class ExecutionService implements OnModuleDestroy {
   ): Promise<{
     success: boolean;
     cancelled?: boolean;
+    interrupted?: boolean;
+    started?: boolean;
     stdout: string;
     stderr: string;
     executionTimeMs?: number;
@@ -1969,6 +2020,8 @@ export class ExecutionService implements OnModuleDestroy {
     return {
       success: containerResult.success,
       cancelled: containerResult.cancelled,
+      interrupted: containerResult.interrupted,
+      started: containerResult.started,
       stdout: redactedStdout,
       stderr: redactedStderr,
       executionTimeMs: containerResult.duration,

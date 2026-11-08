@@ -1,4 +1,10 @@
-import { Injectable, Logger, Inject, OnModuleDestroy } from '@nestjs/common';
+import { trackInFlight } from '../../common/shutdown-intake';
+import {
+  Injectable,
+  Logger,
+  Inject,
+  OnApplicationShutdown,
+} from '@nestjs/common';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { eq, and, inArray } from 'drizzle-orm';
 import {
@@ -17,7 +23,7 @@ import { RedisService } from './redis.service';
  * notification spam (max 1 email per hour per organization).
  */
 @Injectable()
-export class HardStopNotificationService implements OnModuleDestroy {
+export class HardStopNotificationService implements OnApplicationShutdown {
   private readonly logger = new Logger(HardStopNotificationService.name);
   private readonly RATE_LIMIT_KEY_PREFIX = 'hard_stop_notification:';
   private readonly RATE_LIMIT_TTL_SECONDS = 3600; // 1 hour
@@ -28,7 +34,8 @@ export class HardStopNotificationService implements OnModuleDestroy {
     private readonly redisService: RedisService,
   ) {}
 
-  onModuleDestroy(): void {
+  // After the shutdown drain: in-flight runs still send their completion notifications.
+  onApplicationShutdown(): void {
     closeSmtpTransport();
   }
 
@@ -36,6 +43,17 @@ export class HardStopNotificationService implements OnModuleDestroy {
    * Send a hard stop notification if not rate limited
    */
   async notify(
+    organizationId: string,
+    runId: string,
+    blockReason: string,
+  ): Promise<{ sent: boolean; reason?: string }> {
+    // Counted in-flight so the shutdown drain waits for the email (and its Redis dedup write).
+    return trackInFlight(() =>
+      this.notifyUntracked(organizationId, runId, blockReason),
+    );
+  }
+
+  private async notifyUntracked(
     organizationId: string,
     runId: string,
     blockReason: string,

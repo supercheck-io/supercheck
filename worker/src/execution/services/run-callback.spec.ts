@@ -125,6 +125,45 @@ describe.each(engines)('whole callback fencing (%s)', (engine) => {
     expect(await db.select().from(schema.reports)).toHaveLength(1);
   });
 
+  it('keeps the callback error when the cleanup write fails, so an unrecoverable error stays unrecoverable', async () => {
+    const flaky = new Proxy(db, {
+      get(target, prop) {
+        const value: unknown = Reflect.get(target, prop, target);
+        if (prop === 'update') {
+          return (table: Parameters<typeof target.update>[0]) => {
+            const builder = target.update(table);
+            return new Proxy(builder, {
+              get(inner, innerProp) {
+                if (innerProp === 'set')
+                  return (values: Record<string, unknown>) => {
+                    if ('finishedAt' in values)
+                      throw new Error('response lost');
+                    return (inner.set as (v: unknown) => unknown)(values);
+                  };
+                const member: unknown = Reflect.get(inner, innerProp, inner);
+                return typeof member === 'function'
+                  ? (member as () => unknown).bind(inner)
+                  : member;
+              },
+            });
+          };
+        }
+        return typeof value === 'function'
+          ? (value as () => unknown).bind(target)
+          : value;
+      },
+    });
+    const original = new Error('result could not be saved');
+
+    await expect(
+      withRunCallback(flaky, runId, async () => {
+        throw original;
+      }),
+    ).rejects.toBe(original);
+    // Recover the stuck callback so later tests start clean.
+    await db.execute(sql`UPDATE run_callbacks SET finished_at = now()`);
+  });
+
   it('fences a stale callback, preserves its prefix on deletion, and rejects late metadata', async () => {
     const entered = deferred();
     const release = deferred();

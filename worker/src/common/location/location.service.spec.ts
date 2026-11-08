@@ -51,4 +51,35 @@ describe('LocationService', () => {
       ),
     ).toBe('partial');
   });
+  it('judges only enqueued locations when a configured region was skipped', () => {
+    expect(
+      service.calculateAggregatedStatus(
+        { 'eu-central': true },
+        {
+          ...multiLocationConfig,
+          locations: ['eu-central', 'us-east', 'asia-pacific'],
+          strategy: 'all',
+        },
+        ['eu-central'],
+      ),
+    ).toBe('up');
+  });
+  it('still counts an enqueued region without a result as down', () => {
+    expect(
+      service.calculateAggregatedStatus(
+        { 'eu-central': true },
+        { ...multiLocationConfig, strategy: 'all' },
+        ['eu-central', 'us-east'],
+      ),
+    ).toBe('partial');
+  });
+  it('falls back to configured locations when no enqueued locations are given', () => {
+    expect(
+      service.calculateAggregatedStatus(
+        { 'us-east': true },
+        { ...multiLocationConfig, strategy: 'all' },
+        [],
+      ),
+    ).toBe('partial');
+  });
 });

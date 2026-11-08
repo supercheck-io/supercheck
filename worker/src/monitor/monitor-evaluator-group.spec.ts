@@ -159,3 +159,42 @@ describe('MonitorEvaluator.advanceAggregatedAlertState', () => {
     ).toMatchObject({ consecutiveFailureCount: 10, alertsSentForFailure: 3 });
   });
 });
+
+describe('MonitorEvaluator.prepareGroupEvaluation late duplicate', () => {
+  // Backs the 2 h AGGREGATION_COMPLETED_TTL_SECONDS: once the Redis marker has expired, a late sibling
+  // of an already-notified group is stopped by the persisted evaluation, so it cannot alert twice.
+  it('returns null for a group whose evaluation was already applied and notified', async () => {
+    const monitor = {
+      id: 'm1',
+      status: 'down',
+      config: { locationConfig: { enabled: true, locations: ['a', 'b'] } },
+      alertConfig: { enabled: true, alertOnFailure: true, failureThreshold: 1 },
+    };
+    const resultRow = {
+      id: 'r1',
+      details: {
+        aggregationEvaluation: { alertState: {} },
+        aggregationNotificationProcessed: true,
+      },
+    };
+    const update = jest.fn();
+    const select = jest.fn().mockImplementation(() => {
+      const chain: Record<string, unknown> = {};
+      chain.from = () => chain;
+      chain.where = () => chain;
+      chain.limit = () => chain;
+      chain.for = () => [monitor];
+      chain.then = (res: (v: unknown) => void) => res([resultRow]);
+      return chain;
+    });
+    const tx = { select, update };
+    const evaluator = new MonitorEvaluator(
+      { db: { transaction: (fn: (t: unknown) => unknown) => fn(tx) } } as never,
+      {} as never,
+    );
+    await expect(
+      evaluator.prepareGroupEvaluation('m1', 'g1', 'down', new Date(), 2),
+    ).resolves.toBeNull();
+    expect(update).not.toHaveBeenCalled();
+  });
+});
