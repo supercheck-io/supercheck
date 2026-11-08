@@ -26,7 +26,7 @@ export const SUPERCHECK_PLANS: readonly SupercheckPlanCost[] = (["plus", "pro"] 
 }));
 
 // Supercheck's shortest interval for browser (synthetic) checks.
-export const MIN_SYNTHETIC_INTERVAL_MINUTES = 5;
+export const MIN_SYNTHETIC_INTERVAL_MINUTES = catalog.syntheticMinIntervalMinutes;
 
 export interface RunPricedTier {
   name: string;

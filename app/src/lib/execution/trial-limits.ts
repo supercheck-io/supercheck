@@ -92,11 +92,7 @@ export async function getActiveTrial(
 }
 
 /** How long a trial organization's data is kept; the plan-shaped view and the retention sweeps share it. */
-export const TRIAL_RETENTION = {
-  dataRetentionDays: 7,
-  aggregatedDataRetentionDays: 30,
-  jobDataRetentionDays: 30,
-} as const;
+export const TRIAL_RETENTION = catalog.trial.retention;
 
 /**
  * The plan-shaped view of a trial, so every existing limit check (monitors,
@@ -251,7 +247,7 @@ export async function countTrialInvestigations(
 }
 
 /** Triage runs a trial may start in total; triage is cheaper than a full investigation, so it has its own cap. */
-export const TRIAL_TRIAGE_RUNS = 20;
+export const TRIAL_TRIAGE_RUNS = trial.triageRuns;
 
 /** Triage runs a trial organization has started during its trial; failed runs produced no result and do not count. */
 export async function countTrialTriageRuns(

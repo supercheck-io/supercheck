@@ -53,6 +53,8 @@ export const SHARED_PRICING_FAQS = [
   },
 ];
 
+export const DEMO_FAQ_QUESTION = "Can I try Supercheck before subscribing?";
+
 export const PRICING_FAQS = [
   ...SHARED_PRICING_FAQS,
   {
@@ -62,7 +64,7 @@ export const PRICING_FAQS = [
   },
   ...trialFaqs(),
   {
-    question: "Can I try Supercheck before subscribing?",
+    question: DEMO_FAQ_QUESTION,
     answer: "Yes. Try our free demo at demo.supercheck.dev — no signup required. When you are ready, choose a monthly plan. Cancel anytime.",
   },
   {

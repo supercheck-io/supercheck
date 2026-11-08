@@ -61,7 +61,7 @@ import { createS3CleanupService, type ReportDeletionInput } from "./s3-cleanup";
 import { isPolarEnabled } from "@/lib/feature-flags";
 import { removeK6RunLinks } from "@/lib/resource-deletion/linked-records";
 import { monitorAggregationService } from "./monitor-aggregation-service";
-import { endExpiredTrials, reconcilePaidTrialSuspensions, sendTrialReminders } from "@/lib/execution/trial-lifecycle";
+import { endExpiredTrials, reconcilePaidTrialSuspensions, sendTrialReminders, suspendLapsedOrganizations } from "@/lib/execution/trial-lifecycle";
 import { deliverTrialReminder } from "@/lib/execution/trial-reminder-delivery";
 
 // ============================================================================
@@ -2608,6 +2608,12 @@ export class TrialLifecycleStrategy implements ICleanupStrategy {
       result.details = { ...result.details, restored: await reconcilePaidTrialSuspensions() };
     } catch (error) {
       result.errors.push(`Trial restore reconciliation failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    // An ended subscription (revoked, or canceled with the period over) stops consuming resources too.
+    try {
+      result.details = { ...result.details, lapsed: await suspendLapsedOrganizations() };
+    } catch (error) {
+      result.errors.push(`Lapsed organization suspension failed: ${error instanceof Error ? error.message : String(error)}`);
     }
     // A plan change in the billing portal can leave more running than the new plan allows.
     try {

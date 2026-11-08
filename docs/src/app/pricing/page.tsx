@@ -134,7 +134,7 @@ const comparisonFeatures: { category: string; items: ComparisonItem[] }[] = [
             { name: 'Concurrent runs', hint: 'Tests and jobs that run at once. Extra runs wait in the queue, up to the queued-runs limit.', plus: `${Number(catalog.plus.limits.runningCapacity).toLocaleString("en-US")}`, pro: `${Number(catalog.pro.limits.runningCapacity).toLocaleString("en-US")}`, enterprise: CUSTOM },
             { name: 'Queued runs', plus: `${Number(catalog.plus.limits.queuedCapacity).toLocaleString("en-US")}`, pro: `${Number(catalog.pro.limits.queuedCapacity).toLocaleString("en-US")}`, enterprise: CUSTOM },
             { name: 'Minimum check interval', plus: '1 minute', pro: '1 minute', enterprise: CUSTOM },
-            { name: 'Minimum synthetic check interval', plus: '5 minutes', pro: '5 minutes', enterprise: CUSTOM },
+            { name: 'Minimum synthetic check interval', plus: `${catalog.syntheticMinIntervalMinutes} minutes`, pro: `${catalog.syntheticMinIntervalMinutes} minutes`, enterprise: CUSTOM },
             { name: 'HTTP, SSL, ping and port monitoring locations', plus: 'Europe, North America, Asia Pacific', pro: 'Europe, North America, Asia Pacific', enterprise: CUSTOM },
             { name: 'Browser checks, Playwright tests and k6 execution', plus: 'Europe', pro: 'Europe', enterprise: CUSTOM },
         ]
@@ -416,8 +416,32 @@ export default function PricingPage() {
                     <div className="mx-auto mb-8 max-w-2xl text-center">
                         <h2 id="compare-heading" className={sectionHeading}>Compare plans</h2>
                     </div>
-                    <p className="mb-4 text-center text-sm text-fd-muted-foreground md:hidden">Scroll horizontally to compare all plans.</p>
-                    <div className="relative overflow-x-auto rounded-xl border border-fd-border" role="region" aria-label="Plan feature comparison" tabIndex={0}>
+                    <div className="space-y-6 md:hidden" aria-label="Plan feature comparison">
+                        {comparisonFeatures.map((category) => (
+                            <div key={category.category} className="rounded-xl border border-fd-border">
+                                <h3 className="border-b border-fd-border bg-fd-muted/40 px-4 py-2.5 text-xs font-medium text-fd-muted-foreground">{category.category}</h3>
+                                <dl className="divide-y divide-fd-border">
+                                    {category.items.map((item) => (
+                                        <div key={item.name} className="px-4 py-3">
+                                            <dt className="text-sm">
+                                                {item.name}
+                                                {item.hint && <span className="block text-xs text-fd-muted-foreground">{item.hint}</span>}
+                                            </dt>
+                                            <dd className="mt-1.5 grid grid-cols-3 gap-2 text-center text-sm">
+                                                {([['Plus', item.plus], ['Pro', item.pro], ['Enterprise', item.enterprise]] as const).map(([plan, value]) => (
+                                                    <span key={plan} className="rounded-md bg-fd-muted/40 px-2 py-1.5">
+                                                        <span className="block text-[11px] text-fd-muted-foreground">{plan}</span>
+                                                        <ComparisonCell value={value} />
+                                                    </span>
+                                                ))}
+                                            </dd>
+                                        </div>
+                                    ))}
+                                </dl>
+                            </div>
+                        ))}
+                    </div>
+                    <div className="relative hidden overflow-x-auto rounded-xl border border-fd-border md:block" role="region" aria-label="Plan feature comparison" tabIndex={0}>
                         <table className="w-full min-w-[640px] text-sm" aria-label="Full plan feature comparison">
                             <thead>
                                 <tr className="border-b border-fd-border">

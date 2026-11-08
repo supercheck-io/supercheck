@@ -2,6 +2,7 @@
 const mockWhere = jest.fn();
 const mockEndExpiredTrials = jest.fn();
 const mockReconcile = jest.fn();
+const mockSuspendLapsed = jest.fn();
 const mockSendTrialReminders = jest.fn();
 jest.mock("@/utils/db", () => ({
   db: {
@@ -19,6 +20,7 @@ jest.mock("@/lib/execution/trial-lifecycle", () => ({
   endExpiredTrials: (...args: unknown[]) => mockEndExpiredTrials(...args),
   sendTrialReminders: (...args: unknown[]) => mockSendTrialReminders(...args),
   reconcilePaidTrialSuspensions: (...args: unknown[]) => mockReconcile(...args),
+  suspendLapsedOrganizations: (...args: unknown[]) => mockSuspendLapsed(...args),
 }));
 jest.mock("@/lib/billing/plan-caps", () => ({
   enforcePlanResourceCaps: jest.fn(async () => ({ organizations: 0, monitorsPaused: 0, statusPagesArchived: 0 })),
@@ -38,6 +40,7 @@ const strategy = () =>
 beforeEach(() => {
   jest.clearAllMocks();
   mockSendTrialReminders.mockResolvedValue({ midway: 0, ending: 0, ended: 0 });
+  mockSuspendLapsed.mockResolvedValue({ organizations: 0, monitorsPaused: 0, statusPagesArchived: 0 });
   mockReconcile.mockResolvedValue({ organizations: 0, monitorsResumed: 0, statusPagesRestored: 0 });
 });
 
@@ -130,5 +133,18 @@ it("repairs paid organizations that are still suspended and keeps going if that 
   mockReconcile.mockRejectedValueOnce(new Error("db down"));
   const failed = await strategy().execute(false);
   expect(failed.errors).toEqual(["Trial restore reconciliation failed: db down"]);
+  expect(mockSendTrialReminders).toHaveBeenCalledTimes(2);
+});
+
+it("suspends lapsed subscriptions each run and keeps going when that step fails", async () => {
+  mockEndExpiredTrials.mockResolvedValue({ organizations: 0, monitorsPaused: 0, statusPagesArchived: 0 });
+  mockSuspendLapsed.mockResolvedValueOnce({ organizations: 1, monitorsPaused: 2, statusPagesArchived: 1 });
+  await expect(strategy().execute()).resolves.toMatchObject({
+    success: true,
+    details: { lapsed: { organizations: 1, monitorsPaused: 2, statusPagesArchived: 1 } },
+  });
+  mockSuspendLapsed.mockRejectedValueOnce(new Error("lock timeout"));
+  const result = await strategy().execute();
+  expect(result.errors).toEqual(["Lapsed organization suspension failed: lock timeout"]);
   expect(mockSendTrialReminders).toHaveBeenCalledTimes(2);
 });

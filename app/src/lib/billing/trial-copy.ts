@@ -32,7 +32,7 @@ export function trialHighlights(values: TrialValues = trialValues()): string[] {
     `${values.maxStatusPages} status pages with up to ${values.maxStatusPageSubscribers} subscribers each`,
     `${values.playwrightMinutes} browser minutes for Playwright tests and synthetic monitors`,
     `k6 load tests of up to ${values.k6MaxVus} virtual users per run (${values.k6VuMinutes} virtual-user minutes in total)`,
-    `${values.sreInvestigations} AI SRE investigations and ${values.aiCredits} AI credits`,
+    `${values.sreInvestigations} AI SRE investigations, ${values.triageRuns} AI triage runs and ${values.aiCredits} AI credits (AI SRE chat and evidence briefs are on paid plans)`,
     `${values.maxTeamMembers} team members and ${values.maxProjects} projects`,
   ];
 }

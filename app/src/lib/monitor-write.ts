@@ -5,6 +5,7 @@ import type { AlertConfig, MonitorConfig } from "@/db/schema";
 import { isUuid } from "@/lib/uuid";
 import { channelsOptional } from "@/lib/incident-settings";
 import { alertThresholdError } from "@/lib/alert-thresholds";
+import catalog from "@/lib/billing/plan-catalog.json";
 
 /** Config keys the worker writes. A client replacing `config` must not wipe or forge them. */
 export const WORKER_OWNED_CONFIG_KEYS = ["aggregatedAlertState", "sslLastCheckedAt"] as const;
@@ -172,7 +173,7 @@ export function monitorNameError(name: unknown): string | null {
 }
 
 /** Synthetic checks run a full browser test, so plans and the form advertise a 5-minute floor. */
-export const SYNTHETIC_MIN_FREQUENCY_MINUTES = 5;
+export const SYNTHETIC_MIN_FREQUENCY_MINUTES = catalog.syntheticMinIntervalMinutes;
 
 /** Checks the stored-or-new type against the stored-or-new frequency, so changing either one is covered. */
 export function syntheticFrequencyError(type: unknown, frequencyMinutes: unknown): string | null {
