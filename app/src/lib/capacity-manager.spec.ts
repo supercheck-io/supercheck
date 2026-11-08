@@ -1138,7 +1138,12 @@ describe('Reconciliation', () => {
     await reconcileCapacityCounters(mockQueues, true);
     await reconcileCapacityCounters(mockQueues, true);
     expect(mockRedisEval).toHaveBeenCalledWith(expect.any(String), 1, 'capacity:running:org-moved', 3, 2, expect.any(Number));
-    expect(mockLogger.info).toHaveBeenCalledWith(expect.objectContaining({ organizationId: 'org-moved', expected: 3 }), expect.stringContaining('correction skipped'));
+    expect(mockLogger.warn).toHaveBeenCalledWith(expect.objectContaining({ organizationId: 'org-moved', expected: 3 }), expect.stringContaining('correction skipped'));
+
+    // The next pass retries straight away instead of re-confirming the drift over two more passes.
+    mockRedisEval.mockClear().mockResolvedValue(1);
+    await reconcileCapacityCounters(mockQueues, true);
+    expect(mockRedisEval).toHaveBeenCalledWith(expect.any(String), 1, 'capacity:running:org-moved', 3, 2, expect.any(Number));
   });
 
   it('does not call a Redis error a concurrent change', async () => {
@@ -1149,7 +1154,7 @@ describe('Reconciliation', () => {
     await reconcileCapacityCounters(mockQueues, true);
     await reconcileCapacityCounters(mockQueues, true);
     expect(mockLogger.error).toHaveBeenCalledWith(expect.objectContaining({ organizationId: 'org-err' }), 'Failed to set running counter');
-    expect(mockLogger.info).not.toHaveBeenCalledWith(expect.anything(), expect.stringContaining('correction skipped'));
+    expect(mockLogger.warn).not.toHaveBeenCalledWith(expect.anything(), expect.stringContaining('correction skipped'));
   });
 
   it('does not report a skipped correction when the compare-and-set applied', async () => {
@@ -1159,7 +1164,7 @@ describe('Reconciliation', () => {
     mockRedisEval.mockResolvedValue(1);
     await reconcileCapacityCounters(mockQueues, true);
     await reconcileCapacityCounters(mockQueues, true);
-    expect(mockLogger.info).not.toHaveBeenCalledWith(expect.anything(), expect.stringContaining('correction skipped'));
+    expect(mockLogger.warn).not.toHaveBeenCalledWith(expect.anything(), expect.stringContaining('correction skipped'));
   });
 
   it('should gracefully handle empty queues', async () => {

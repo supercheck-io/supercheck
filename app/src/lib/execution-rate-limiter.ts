@@ -8,6 +8,8 @@ const logger = createLogger({ module: "execution-rate-limiter" }) as {
 };
 
 const WINDOW_SECONDS = 60;
+// Same as the queue-unavailable 503, so clients back off the same way whichever check hit the outage.
+const UNAVAILABLE_RETRY_AFTER_SECONDS = 5;
 
 function positiveLimit(value: string | undefined, fallback: number): number {
   const parsed = Number.parseInt(value ?? "", 10);
@@ -105,7 +107,7 @@ export async function checkExecutionRateLimit(
     );
     return {
       allowed: false,
-      retryAfter: WINDOW_SECONDS,
+      retryAfter: UNAVAILABLE_RETRY_AFTER_SECONDS,
       reason: "unavailable",
     };
   }

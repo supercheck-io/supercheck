@@ -178,14 +178,26 @@ describe("queue location refresh", () => {
     expect(assertExecutionWorkload).toHaveBeenCalledWith("org", expect.objectContaining({ tier: "trial" }), producer.startsWith("addK6") ? "k6" : "playwright");
   });
 
-  it.each(["addTestToQueue", "addJobToQueue", "addK6TestToQueue", "addK6JobToQueue"] as const)("%s fails fast with a retryable queue error while Redis is not connected", async (producer) => {
+  it.each(["addTestToQueue", "addJobToQueue", "addK6TestToQueue", "addK6JobToQueue"] as const)("%s waits up to 2 s, then fails with a retryable queue error while Redis stays down", async (producer) => {
     const redis = await queueModule.getRedisConnection();
-    Object.assign(redis, { status: "reconnecting" });
+    Object.assign(redis, { status: "reconnecting" }); // still down after the 2 s bounded wait
     getActiveWorkerQueueNames.mockResolvedValue(new Set(["k6-eu-central"]));
     const task = { runId: "run", testId: "test", jobId: "job", organizationId: "org", projectId: "project", location: "eu-central", code: "code", script: "code", tests: [{ id: "test", script: "code" }], testScripts: [{ id: "test", script: "code" }] };
-    await expect(queueModule[producer](task)).rejects.toMatchObject({ name: "ExecutionQueueError", code: "queue_unavailable" });
+    const result = expect(queueModule[producer](task)).rejects.toMatchObject({ name: "ExecutionQueueError", code: "queue_unavailable" });
+    await jest.advanceTimersByTimeAsync(2_000);
+    await result;
     expect(reserveSlot).not.toHaveBeenCalled();
     expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it("assertExecutionQueueReady rides out a short reconnect (failover) instead of failing", async () => {
+    const redis = await queueModule.getRedisConnection();
+    Object.assign(redis, { status: "reconnecting" });
+    const ready = queueModule.assertExecutionQueueReady();
+    await jest.advanceTimersByTimeAsync(1_000);
+    Object.assign(redis, { status: "ready" });
+    redis.emit("ready");
+    await expect(ready).resolves.toBeUndefined();
   });
 
   it("assertExecutionQueueReady passes once the client is ready", async () => {

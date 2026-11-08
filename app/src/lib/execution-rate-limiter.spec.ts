@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 jest.mock("@/lib/queue", () => ({ getRedisConnection: jest.fn() }));
 
 import { getRedisConnection } from "@/lib/queue";
@@ -53,12 +54,26 @@ describe("checkExecutionRateLimit", () => {
     });
   });
 
-  it("fails fast without issuing a command while the client is reconnecting", async () => {
+  it("rides out a reconnect and then checks the limit", async () => {
+    const evalMock = jest.fn().mockResolvedValue([1, 0]);
+    const redis = Object.assign(new EventEmitter(), { status: "reconnecting", eval: evalMock });
+    (getRedisConnection as jest.Mock).mockResolvedValue(redis);
+    const result = checkExecutionRateLimit("user-1", "org-1");
+    await new Promise((r) => setTimeout(r, 0));
+    expect(evalMock).not.toHaveBeenCalled();
+    redis.status = "ready";
+    redis.emit("ready");
+    await expect(result).resolves.toMatchObject({ allowed: true });
+    expect(evalMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails without issuing a command while the client is down for good", async () => {
     const evalMock = jest.fn();
-    (getRedisConnection as jest.Mock).mockResolvedValue({ status: "reconnecting", eval: evalMock });
+    (getRedisConnection as jest.Mock).mockResolvedValue({ status: "end", eval: evalMock });
 
     await expect(checkExecutionRateLimit("user-1", "org-1")).resolves.toMatchObject({
       allowed: false,
+      retryAfter: 5,
       reason: "unavailable",
     });
     expect(evalMock).not.toHaveBeenCalled();

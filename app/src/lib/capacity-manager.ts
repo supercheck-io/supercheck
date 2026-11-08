@@ -34,8 +34,8 @@ const PROMOTION_ROTATE_AFTER = 3;
 const PROMOTION_FAILURE_TTL = 3600;
 // A promoted job's payload outlives the promotion by this long. It is deleted once the job is in BullMQ; if the
 // app dies in between, it expires instead of keeping the worker's orphan sweep away for JOB_DATA_TTL. It also covers a
-// queue.add stalled by a Redis failover (no command timeout), which can flush late. The sweep only looks at runs
-// older than 30 minutes, so a long grace costs nothing.
+// queue.add stalled by a Redis failover (no command timeout), which can flush late. It must stay below the worker's
+// 30-minute orphaned-queued bar (ORPHANED_QUEUED_MS), or a lost promotion would hide its run from that sweep.
 const PROMOTED_PAYLOAD_GRACE_MS = 15 * 60_000;
 // Queue processor interval (5 seconds)
 const QUEUE_PROCESSOR_INTERVAL_MS = 5000;
@@ -1293,7 +1293,10 @@ export async function reconcileCapacityCounters(
         
         // 'failed' is already logged by setRunningCounter; only a refused compare-and-set means the counter moved.
         if ((await manager.setRunningCounter(actual, orgId, stored)) === 'changed') {
-          logger.info({ organizationId: orgId, expected: stored }, "Running counter changed during reconciliation; correction skipped");
+          // Keep the drift confirmed so the next pass retries at once, not after two more passes: a busy
+          // organization's counter rarely holds still, which is exactly when a leaked slot matters.
+          pendingDrift.set(orgId, seen);
+          logger.warn({ organizationId: orgId, expected: stored }, "Running counter changed during reconciliation; correction skipped, retrying next pass");
         }
       }
     }

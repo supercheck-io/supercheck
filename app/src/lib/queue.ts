@@ -87,9 +87,9 @@ function throwExecutionQueueError(error: unknown, operation: string): never {
 }
 
 /**
- * Fails fast, before any side effect, while the shared Redis client is not connected. The client has no
- * command timeout (blocking connections inherit its options) and queues commands offline, so without this an
- * enqueue during a Redis outage would hang the request instead of returning a 503.
+ * Before any side effect, waits up to 2 s for the shared Redis client to be connected (riding out a failover),
+ * then fails with a retryable 503. The client has no command timeout (blocking connections inherit its options)
+ * and queues commands offline, so without this an enqueue during a Redis outage would hang the request.
  */
 export async function assertExecutionQueueReady(): Promise<void> {
   const redis = await getRedisConnection();
