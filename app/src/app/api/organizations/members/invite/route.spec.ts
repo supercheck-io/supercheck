@@ -99,7 +99,7 @@ it("fails closed with 503 when Redis never answers, and when it is not ready", a
   mockSelect.mockReset()
     .mockReturnValueOnce(rows([{ id: "own-org-owner", role: "user", email: "owner@example.com" }]))
     .mockReturnValueOnce(rows([])).mockReturnValueOnce(rows([])).mockReturnValueOnce(rows([{ id: HOST_PROJECT, name: "Project" }]));
-  (getRedisConnection as jest.Mock).mockResolvedValue({ status: "reconnecting", eval: evalMock, zrem: jest.fn() });
+  (getRedisConnection as jest.Mock).mockResolvedValue({ status: "end", eval: evalMock, zrem: jest.fn() });
   expect((await POST(request())).status).toBe(503);
   expect(evalMock).not.toHaveBeenCalled();
 });
