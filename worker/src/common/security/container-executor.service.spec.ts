@@ -10,7 +10,8 @@ import {
 import { CancellationService } from '../services/cancellation.service';
 import { EventEmitter } from 'events';
 import { PassThrough, Writable } from 'stream';
-import { registerIntakeStopper } from '../shutdown-intake';
+import { registerIntakeStopper, trackInFlight } from '../shutdown-intake';
+import { WORKER_INTERRUPTED_ERROR } from './container-executor.service';
 
 const defaultOptions: ContainerExecutionOptions = {
   inlineScriptContent: 'console.log("hello")',
@@ -135,6 +136,117 @@ describe('ContainerExecutorService', () => {
         unregister();
         jest.useRealTimers();
       }
+    });
+
+    it('keeps draining while work is in flight before it reaches a container, then refuses new Jobs', async () => {
+      jest.useFakeTimers();
+      try {
+        const createJob = jest.fn();
+        service['batchApi'] = {
+          createNamespacedJob: createJob,
+        } as unknown as NonNullable<(typeof service)['batchApi']>;
+        let release!: () => void;
+        const inFlight = trackInFlight(
+          () => new Promise<void>((resolve) => (release = resolve)),
+        );
+        let drained = false;
+        const destroyed = service.onModuleDestroy().then(() => {
+          drained = true;
+        });
+
+        await jest.advanceTimersByTimeAsync(10_000);
+        expect(drained).toBe(false);
+
+        release();
+        await inFlight;
+        await jest.advanceTimersByTimeAsync(1000);
+        await destroyed;
+        expect(drained).toBe(true);
+
+        const result = await service.executeInContainer(
+          null,
+          ['node'],
+          defaultOptions,
+        );
+        expect(result).toMatchObject({
+          success: false,
+          interrupted: true,
+          billableMs: 0,
+          error: WORKER_INTERRUPTED_ERROR,
+        });
+        expect(createJob).not.toHaveBeenCalled();
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('deletes a Job that was being created when the drain ended and reports it interrupted', async () => {
+      service['batchApi'] = {
+        createNamespacedJob: jest.fn().mockImplementation(async () => {
+          service['shuttingDown'] = true;
+          return { metadata: { uid: 'job-uid' } };
+        }),
+      } as unknown as NonNullable<(typeof service)['batchApi']>;
+      service['createExecutionSecret'] = jest.fn().mockResolvedValue(undefined);
+      service['waitForExecutionPod'] = jest.fn();
+      const deleteJob = jest.fn().mockResolvedValue(undefined);
+      service['deleteExecutionJob'] = deleteJob;
+      // Reaching the check means the shutdown flag flipped after the entry guard.
+      const result = await service['executeInKubernetes'](
+        ['node'],
+        { ...defaultOptions, runId: 'run-5' },
+        {
+          memoryLimitMb: 512,
+          cpuLimit: 0.5,
+          timeoutMs: 30000,
+        } as never,
+      );
+      expect(result).toMatchObject({
+        success: false,
+        interrupted: true,
+        billableMs: 0,
+        error: WORKER_INTERRUPTED_ERROR,
+      });
+      expect(service['waitForExecutionPod']).not.toHaveBeenCalled();
+      expect(deleteJob).toHaveBeenCalledTimes(1);
+      expect(service['runningJobs'].has('run-5')).toBe(false);
+    });
+
+    it('reports interrupted at once when shutdown deleted the Job before its pod was listed', async () => {
+      service['shutdownDeletedRunIds'].add('run-6');
+      service['coreApi'] = {
+        listNamespacedPod: jest.fn().mockResolvedValue({ items: [] }),
+      } as unknown as NonNullable<(typeof service)['coreApi']>;
+      await expect(
+        service['waitForExecutionPod']('job-6', 'run-6'),
+      ).rejects.toThrow(WORKER_INTERRUPTED_ERROR);
+      expect(service['coreApi'].listNamespacedPod).not.toHaveBeenCalled();
+    });
+
+    it('maps any failure after shutdown deleted the run Job to an interrupted result', async () => {
+      service['batchApi'] = {
+        createNamespacedJob: jest
+          .fn()
+          .mockResolvedValue({ metadata: { uid: 'job-uid' } }),
+      } as unknown as NonNullable<(typeof service)['batchApi']>;
+      service['createExecutionSecret'] = jest.fn().mockResolvedValue(undefined);
+      service['waitForExecutionPod'] = jest
+        .fn()
+        .mockImplementation(async () => {
+          service['shutdownDeletedRunIds'].add('run-7');
+          throw new Error('Execution pod for job did not appear within 120s');
+        });
+      service['deleteExecutionJob'] = jest.fn().mockResolvedValue(undefined);
+      const result = await service.executeInContainer(null, ['node'], {
+        ...defaultOptions,
+        runId: 'run-7',
+      });
+      expect(result).toMatchObject({
+        success: false,
+        interrupted: true,
+        error: WORKER_INTERRUPTED_ERROR,
+        billableMs: 0,
+      });
     });
 
     it('deletes jobs still alive once the drain window passes', async () => {
@@ -939,6 +1051,7 @@ describe('ContainerExecutorService', () => {
 
           expect(result.success).toBe(false);
           expect(result.cancelled).toBe(cancelled);
+          expect(result.interrupted ?? false).toBe(deletedByShutdown);
           expect(result.error).toBe(error);
           expect(service['shutdownDeletedRunIds'].has('run-9')).toBe(false);
         });

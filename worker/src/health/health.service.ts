@@ -1,3 +1,4 @@
+import { isDraining } from '../common/shutdown-intake';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DbService } from '../execution/services/db.service';
@@ -78,6 +79,8 @@ export class HealthService {
   }
 
   async getReadinessStatus(): Promise<{ status: string; ready: boolean }> {
+    // Shutting down: report not-ready at once so no new traffic arrives while in-flight runs finish.
+    if (isDraining()) return { status: 'not ready', ready: false };
     const health = await this.getHealthStatus();
     const ready = health.status === 'healthy';
 

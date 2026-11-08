@@ -65,7 +65,7 @@ describe('HardStopNotificationService', () => {
   });
 
   it('closes the shared transport on module destroy', () => {
-    build().service.onModuleDestroy();
+    build().service.onApplicationShutdown();
     expect(smtp.closeSmtpTransport).toHaveBeenCalledTimes(1);
   });
 });

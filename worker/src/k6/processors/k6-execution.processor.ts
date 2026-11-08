@@ -37,7 +37,10 @@ import { consumesWorkerQueue } from '../../common/worker-queues';
 import { locationSupportsWorkload } from '../../common/location/location-capability';
 import { GlobalQueueCapabilityGuard } from '../../common/location/global-queue-guard';
 import { captureJobFailure } from '../../common/sentry-reporter';
-import { registerIntakeStopper } from '../../common/shutdown-intake';
+import {
+  registerIntakeStopper,
+  trackInFlight,
+} from '../../common/shutdown-intake';
 import { TIMEOUTS } from '../../common/constants/timeouts.constants';
 
 type K6Task = K6ExecutionTask;
@@ -125,8 +128,10 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
     job: Job<K6Task>,
   ): Promise<{ success: boolean; timedOut?: boolean; error?: string }> {
     try {
-      return await withRunCallback(this.dbService.db, job.data.runId, () =>
-        this.handleProcessOwned(job),
+      return await trackInFlight(() =>
+        withRunCallback(this.dbService.db, job.data.runId, () =>
+          this.handleProcessOwned(job),
+        ),
       );
     } catch (error) {
       if (error instanceof RunCallbackBusyError) {
@@ -323,6 +328,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
       const metrics = this.extractMetrics(result.summary);
 
       const wasCancelled = result.cancelled === true;
+      const wasInterrupted = result.interrupted === true;
 
       // Create k6_performance_runs record
       const totalRequests = Math.round(metrics.totalRequests || 0);
@@ -339,7 +345,9 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
       // Note: timedOut is a standalone condition since result.error might be null for timeouts
       const isExecutionError =
         !result.success &&
-        (result.timedOut || (!result.summary && result.error));
+        (result.timedOut ||
+          wasInterrupted ||
+          (!result.summary && result.error));
       const k6PerformanceStatus =
         wasCancelled || isExecutionError
           ? 'error'
@@ -564,7 +572,8 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
           // A timeout makes finalStatus 'error' above, so map it directly (cancellation stays 'error').
           finalStatus:
             result.timedOut && !wasCancelled ? 'timeout' : finalStatus,
-          cancelled: wasCancelled,
+          // A restart-interrupted run is neither a failure to alert on nor part of a streak.
+          cancelled: wasCancelled || wasInterrupted,
           durationSeconds: Math.round((Date.now() - processStartTime) / 1000),
           results: [{ success: result.success }],
           jobType: taskData.jobType ?? 'k6',
@@ -613,10 +622,14 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
         message,
         error instanceof Error ? error.stack : undefined,
       );
+      // An UnrecoverableError (for example a post-run save failure) is never a cancellation,
+      // even when the underlying message mentions one.
+      const cancellationLike =
+        !(error instanceof UnrecoverableError) &&
+        (message.includes('cancelled') || message.includes('cancellation'));
 
       if (
-        !message.includes('cancelled') &&
-        !message.includes('cancellation') &&
+        !cancellationLike &&
         !(error instanceof UnrecoverableError) &&
         (job.attemptsMade ?? 0) + 1 < (job.opts?.attempts ?? 1)
       ) {
@@ -653,8 +666,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
           (Date.now() - processStartTime) / 1000,
         );
         // Check if this is a cancellation error
-        const isCancellation =
-          message.includes('cancelled') || message.includes('cancellation');
+        const isCancellation = cancellationLike;
 
         const persistError = async (
           transaction?: Parameters<
@@ -738,8 +750,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
           projectId: taskData.projectId,
           runId,
           finalStatus: 'failed',
-          cancelled:
-            message.includes('cancelled') || message.includes('cancellation'),
+          cancelled: cancellationLike,
           durationSeconds: Math.round((Date.now() - processStartTime) / 1000),
           results: [{ success: false }],
           jobType: taskData.jobType ?? 'k6',
@@ -755,8 +766,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
       );
 
       // Check if this is a cancellation error (re-check at outer scope)
-      const isCancellationOuter =
-        message.includes('cancelled') || message.includes('cancellation');
+      const isCancellationOuter = cancellationLike;
 
       // For cancellations, return a result instead of throwing to prevent BullMQ retry
       if (isCancellationOuter) {

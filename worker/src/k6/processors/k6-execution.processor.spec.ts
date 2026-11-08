@@ -463,6 +463,70 @@ describe('k6 container-start metering', () => {
     );
   });
 
+  it('records a restart-interrupted run as an error without alerting anyone', async () => {
+    const runK6Test = jest.fn().mockResolvedValue({
+      success: false,
+      interrupted: true,
+      timedOut: false,
+      runId: 'run-id',
+      durationMs: 4000,
+      billableMs: 4000,
+      billingVirtualUsers: 1,
+      summary: null,
+      thresholdsPassed: false,
+      error: 'Interrupted by worker restart',
+    });
+    const { processor } = build(runK6Test);
+    const notify = jest.fn().mockResolvedValue(undefined);
+    (
+      processor as unknown as {
+        jobNotificationService: { handleJobNotifications: jest.Mock };
+      }
+    ).jobNotificationService = { handleJobNotifications: notify };
+    const queued = job();
+    Object.assign(queued.data, { jobId: 'job-1' });
+
+    const result = await processor.process(queued);
+
+    expect(result).toMatchObject({
+      success: false,
+      error: 'Interrupted by worker restart',
+    });
+    expect(notify).toHaveBeenCalledWith(
+      expect.objectContaining({ cancelled: true, finalStatus: 'error' }),
+    );
+  });
+
+  it('never records a post-run save failure as a cancellation, whatever its message says', async () => {
+    const runK6Test = jest.fn().mockResolvedValue({
+      success: true,
+      timedOut: false,
+      runId: 'run-id',
+      durationMs: 4000,
+      billableMs: 4000,
+      billingVirtualUsers: 1,
+      summary: {},
+      thresholdsPassed: true,
+      error: null,
+    });
+    const { processor, usage, set } = build(runK6Test);
+    usage.completeRunWithUsage.mockRejectedValueOnce(
+      new Error('statement cancelled by timeout'),
+    );
+    const queued = Object.assign(job(), { opts: { attempts: 3 } });
+
+    await expect(processor.process(queued)).rejects.toBeInstanceOf(
+      UnrecoverableError,
+    );
+
+    expect(runK6Test).toHaveBeenCalledTimes(1);
+    expect(set).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        errorDetails: 'Cancellation requested by user',
+      }),
+    );
+  });
+
   it('locks a job for five minutes so a crashed worker releases its run quickly', () => {
     expect(
       Reflect.getMetadata('bullmq:worker_metadata', K6ExecutionProcessor),

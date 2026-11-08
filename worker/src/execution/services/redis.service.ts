@@ -2,7 +2,7 @@ import {
   Injectable,
   Logger,
   OnModuleInit,
-  OnModuleDestroy,
+  OnApplicationShutdown,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Redis, RedisOptions } from 'ioredis';
@@ -24,7 +24,7 @@ const REDIS_CLEANUP_BATCH_SIZE = 100; // Process keys in smaller batches to redu
  * job execution processors.
  */
 @Injectable()
-export class RedisService implements OnModuleInit, OnModuleDestroy {
+export class RedisService implements OnModuleInit, OnApplicationShutdown {
   private readonly logger = new Logger(RedisService.name);
   private redisClient: Redis;
   private readonly redisOptions: RedisOptions;
@@ -225,7 +225,8 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  async onModuleDestroy() {
+  /** After the shutdown drain: in-flight runs still publish console output and read rate limits through this client. */
+  async onApplicationShutdown() {
     this.logger.log('Closing Redis connection and cleanup resources');
 
     // Clear the cleanup interval

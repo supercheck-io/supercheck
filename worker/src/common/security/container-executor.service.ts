@@ -26,7 +26,7 @@ import type * as k8s from '@kubernetes/client-node';
 import { PassThrough, Readable, Writable } from 'stream';
 import { finished } from 'stream/promises';
 import { CancellationService } from '../services/cancellation.service';
-import { stopIntake } from '../shutdown-intake';
+import { inFlightCount, stopIntake, trackInFlight } from '../shutdown-intake';
 import {
   type ImagePullPolicy,
   isMutableImageReference,
@@ -143,6 +143,8 @@ export interface ContainerExecutionResult {
   billableMs?: number;
   timedOut: boolean;
   cancelled?: boolean;
+  /** The worker restart ended this execution (its Job was deleted by shutdown, or never created). Not a user cancellation. */
+  interrupted?: boolean;
   error?: string;
 }
 
@@ -269,6 +271,8 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
   private execClient: k8s.Exec | null = null;
   // Runs whose Job the shutdown drain deleted; their pod disappearing is not a user cancellation.
   private readonly shutdownDeletedRunIds = new Set<string>();
+  // Set once the drain ended: nothing may create a new execution Job after that.
+  private shuttingDown = false;
   private readonly runningJobs: Map<string, string> = new Map();
   private readonly uncertainExecutionChecks: Map<string, number> = new Map();
   /** Track pods that have already logged an exec failure at warn level to avoid log spam. */
@@ -462,9 +466,14 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
         : 20_000;
     // Monotonic clock: a wall-clock step must not stretch or cut the window.
     const drainDeadline = performance.now() + drainMs;
-    while (this.runningJobs.size > 0 && performance.now() < drainDeadline) {
+    // inFlightCount covers work that is still in admission or setup (no Job in runningJobs yet).
+    while (
+      (this.runningJobs.size > 0 || inFlightCount() > 0) &&
+      performance.now() < drainDeadline
+    ) {
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
+    this.shuttingDown = true;
 
     // Clear all cancellation intervals
     for (const interval of this.activeCancellationIntervals) {
@@ -574,6 +583,29 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     scriptPath: string | null,
     command: string[],
     options: ContainerExecutionOptions = {},
+  ): Promise<ContainerExecutionResult> {
+    if (this.shuttingDown) {
+      return {
+        success: false,
+        exitCode: 137,
+        stdout: '',
+        stderr: '',
+        duration: 0,
+        billableMs: 0,
+        timedOut: false,
+        interrupted: true,
+        error: WORKER_INTERRUPTED_ERROR,
+      };
+    }
+    return trackInFlight(() =>
+      this.executeInContainerCounted(scriptPath, command, options),
+    );
+  }
+
+  private async executeInContainerCounted(
+    scriptPath: string | null,
+    command: string[],
+    options: ContainerExecutionOptions,
   ): Promise<ContainerExecutionResult> {
     if (options.networkMode && options.networkMode !== 'bridge') {
       throw new Error(
@@ -983,6 +1015,12 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
           : []),
       ]);
 
+      if (this.shuttingDown) {
+        // The drain ended while the Job was being created; the finally below deletes it.
+        if (options.runId) this.shutdownDeletedRunIds.add(options.runId);
+        throw new Error(WORKER_INTERRUPTED_ERROR);
+      }
+
       if (options.runId) {
         this.runningJobs.set(options.runId, jobName);
         cancellationInterval = this.startKubernetesCancellationPoller(
@@ -995,7 +1033,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       }
 
       const podWaitStartedAt = Date.now();
-      podName = await this.waitForExecutionPod(jobName);
+      podName = await this.waitForExecutionPod(jobName, options.runId);
       podStartupDurationMs = Date.now() - podWaitStartedAt;
       if (
         podStartupDurationMs > ContainerExecutorService.SLOW_POD_STARTUP_WARN_MS
@@ -1114,6 +1152,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
         billableMs: computeBillableMs(startEvidence, limits.timeoutMs),
         timedOut,
         cancelled: killed,
+        ...(interrupted ? { interrupted: true } : {}),
         error: timedOut
           ? `Execution timed out after ${limits.timeoutMs}ms`
           : interrupted
@@ -1125,15 +1164,20 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
                 : undefined,
       };
     } catch (error) {
+      // Any failure after shutdown deleted this run's Job is the restart, not a fault of the run.
+      const deletedByShutdown =
+        !!options.runId && this.shutdownDeletedRunIds.has(options.runId);
+      const message = error instanceof Error ? error.message : String(error);
       return {
         success: false,
         exitCode: 1,
         stdout: logCollector.getOutput(),
-        stderr: error instanceof Error ? error.message : String(error),
+        stderr: deletedByShutdown ? '' : message,
         duration: Date.now() - startTime,
         billableMs: computeBillableMs(startEvidence, limits.timeoutMs),
         timedOut,
-        error: error instanceof Error ? error.message : String(error),
+        ...(deletedByShutdown ? { interrupted: true } : {}),
+        error: deletedByShutdown ? WORKER_INTERRUPTED_ERROR : message,
       };
     } finally {
       if (logAbort) {
@@ -1604,11 +1648,18 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     return normalized.slice(0, 63);
   }
 
-  private async waitForExecutionPod(jobName: string): Promise<string> {
+  private async waitForExecutionPod(
+    jobName: string,
+    runId?: string,
+  ): Promise<string> {
     const timeoutAt = Date.now() + 120_000;
     const labelSelector = `job-name=${jobName}`;
 
     while (Date.now() < timeoutAt) {
+      // Shutdown deleted the Job before its pod was listed: no pod will ever appear.
+      if (runId && this.shutdownDeletedRunIds.has(runId)) {
+        throw new Error(WORKER_INTERRUPTED_ERROR);
+      }
       const pods = await this.coreApi!.listNamespacedPod({
         namespace: this.executionNamespace,
         labelSelector,

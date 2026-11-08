@@ -26,7 +26,10 @@ import { DbService } from '../../execution/services/db.service';
 import { RedisService } from '../../execution/services/redis.service';
 import * as net from 'net';
 import { createSafeTempPath } from '../../common/security/path-validator';
-import { ContainerExecutorService } from '../../common/security/container-executor.service';
+import {
+  ContainerExecutorService,
+  WORKER_INTERRUPTED_ERROR,
+} from '../../common/security/container-executor.service';
 import {
   findFirstFileByNames,
   pathExists,
@@ -79,6 +82,8 @@ export interface K6ExecutionTask {
 export interface K6ExecutionResult {
   success: boolean;
   cancelled?: boolean;
+  /** Ended by a worker restart: an execution error, never a user cancellation or an alert. */
+  interrupted?: boolean;
   timedOut: boolean;
   runId: string;
   durationMs: number;
@@ -444,6 +449,7 @@ export class K6ExecutionService {
         error: string | null;
         timedOut: boolean;
         cancelled?: boolean;
+        interrupted?: boolean;
         billableMs?: number;
         billingVirtualUsers?: number;
       } | null = null;
@@ -524,6 +530,11 @@ export class K6ExecutionService {
       if (!execResult) {
         throw new Error(`[${runId}] k6 did not produce an execution result`);
       }
+      // The pod never started: let the queue delay the run so a new worker runs it.
+      if (execResult.interrupted && totalBillableMs === 0) {
+        throw new ExecutionCapacityError(WORKER_INTERRUPTED_ERROR);
+      }
+      const interrupted = execResult.interrupted === true;
 
       execResult.stdout = this.redactSecretsFromText(
         execResult.stdout,
@@ -710,7 +721,8 @@ export class K6ExecutionService {
           : false;
 
       // Test passes only if BOTH thresholds pass AND all checks pass without a timeout
-      const overallSuccess = !timedOut && thresholdsPassed && !checksFailed;
+      const overallSuccess =
+        !timedOut && !interrupted && thresholdsPassed && !checksFailed;
 
       // A non-zero exit with no summary is an execution error even when stderr was empty.
       const executionError =
@@ -722,6 +734,7 @@ export class K6ExecutionService {
       finalResult = {
         success: overallSuccess,
         cancelled: execResult.cancelled,
+        interrupted,
         timedOut,
         runId,
         durationMs: Date.now() - startTime,
@@ -744,7 +757,8 @@ export class K6ExecutionService {
       // - 'error': execution error (infrastructure issue, Docker not available, timeout, etc.)
       // Note: timedOut is a standalone condition since execResult.error might be null for timeouts
       const isExecutionError =
-        !overallSuccess && (timedOut || (!summary && executionError));
+        !overallSuccess &&
+        (timedOut || interrupted || (!summary && executionError));
       const reportStatus = overallSuccess
         ? 'passed'
         : isExecutionError
@@ -919,6 +933,7 @@ export class K6ExecutionService {
     error: string | null;
     timedOut: boolean;
     cancelled?: boolean;
+    interrupted?: boolean;
     billableMs?: number;
     billingVirtualUsers?: number;
   }> {
@@ -1114,6 +1129,7 @@ export class K6ExecutionService {
         stderr,
         // Stopped by a trial limit: a failed run, not a user cancellation.
         cancelled: containerResult.cancelled && !stopReason,
+        interrupted: containerResult.interrupted,
         billableMs: containerResult.billableMs ?? 0,
         billingVirtualUsers: allocation.value(),
         error: redactedError || null,

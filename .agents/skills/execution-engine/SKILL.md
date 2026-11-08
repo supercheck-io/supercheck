@@ -65,7 +65,9 @@ flowchart LR
 - Let BullMQ retry eligible failures; do not swallow processor errors after marking an intermediate state. Once an execution container has run, a post-run failure (report upload, result save) is `UnrecoverableError`: a retry would run the test against the customer's target again.
 - A busy pod throws `ExecutionCapacityError` before any reservation so the processor delays the job (`deferForCapacity`) without spending an attempt.
 - Stalled-job policy is bounded: queue workers use a 5-minute `lockDuration` (renewed while alive) so a crashed worker frees its run quickly, and the age-based stalled-run sweep stays above the 60-minute maximum run.
-- Worker shutdown stops queue intake, drains for `WORKER_SHUTDOWN_DRAIN_MS` (max 65 minutes), then deletes the remaining Jobs; those runs are recorded as errors ("Interrupted by worker restart"), never as user cancellations. Queue workers close only after the drain.
+- Worker shutdown stops queue intake and reports not-ready, then drains for `WORKER_SHUTDOWN_DRAIN_MS` (max 65 minutes) while in-flight work finishes. The drain counts everything picked up (`trackInFlight`), not only runs that already have a Job, and nothing creates a Job after it ends. Remaining Jobs are then deleted.
+- A restart-interrupted run is `interrupted`, never a user cancellation. If its pod never started it is delayed with `ExecutionCapacityError` (no attempt, no billing) and another worker runs it. If it had started it is terminal: not re-run, stored with "Interrupted by worker restart" and each engine's existing error status (Playwright `failed`, k6 `error`), and it sends no job notification or alert (treated like `cancelled` by `handleJobNotifications`).
+- Teardown that in-flight runs depend on (the shared Redis client, SMTP transport, queue workers) runs in `onApplicationShutdown`, after the drain. `onModuleDestroy` only stops intake and timers. Queue workers close only after the drain.
 
 ## Production sandbox
 

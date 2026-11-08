@@ -1,4 +1,10 @@
-import { registerIntakeStopper, stopIntake } from './shutdown-intake';
+import {
+  inFlightCount,
+  isDraining,
+  registerIntakeStopper,
+  stopIntake,
+  trackInFlight,
+} from './shutdown-intake';
 
 describe('shutdown intake', () => {
   it('stops every registered consumer even when one fails to pause', async () => {
@@ -18,5 +24,26 @@ describe('shutdown intake', () => {
     stopped.length = 0;
     await stopIntake();
     expect(stopped).toEqual([]);
+  });
+
+  it('counts work from pickup until it settles, including when it fails', async () => {
+    let release!: () => void;
+    const first = trackInFlight(
+      () => new Promise<void>((resolve) => (release = resolve)),
+    );
+    const failing = trackInFlight(async () => {
+      throw new Error('boom');
+    }).catch(() => undefined);
+
+    await failing;
+    expect(inFlightCount()).toBe(1);
+    release();
+    await first;
+    expect(inFlightCount()).toBe(0);
+  });
+
+  it('reports draining once intake was stopped', async () => {
+    await stopIntake();
+    expect(isDraining()).toBe(true);
   });
 });

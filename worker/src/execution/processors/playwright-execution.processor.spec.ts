@@ -17,7 +17,7 @@ jest.mock('../services/run-callback', () => ({
  * - Edge Cases (timeouts, concurrent execution)
  */
 
-import { Job, UnrecoverableError } from 'bullmq';
+import { DelayedError, Job, UnrecoverableError } from 'bullmq';
 import { Logger } from '@nestjs/common';
 import { attachBillableMs } from '../../common/billable-ms';
 
@@ -696,6 +696,53 @@ describe('PlaywrightExecutionProcessor', () => {
 
         expect(result.success).toBe(true);
         expect(mockExecutionService.runJob).toHaveBeenCalledWith(mockJobTask);
+      });
+
+      it('stores a restart-interrupted job as failed with the restart message and sends no alert', async () => {
+        mockExecutionService.runJob.mockResolvedValueOnce({
+          ...mockJobSuccessResult,
+          success: false,
+          interrupted: true,
+          error: 'Interrupted by worker restart',
+          billableMs: 12_000,
+          results: [],
+        });
+
+        const result = await processor.process(createMockJob(mockJobTask));
+
+        expect(result.success).toBe(false);
+        expect(mockDbService.updateRunStatus).toHaveBeenCalledWith(
+          mockJobTask.runId,
+          'failed',
+          expect.anything(),
+          'Interrupted by worker restart',
+          expect.anything(),
+        );
+        expect(
+          mockJobNotificationService.handleJobNotifications,
+        ).toHaveBeenCalledWith(expect.objectContaining({ cancelled: true }));
+      });
+
+      it('delays a job whose pod never started instead of consuming an attempt', async () => {
+        mockExecutionService.runJob.mockRejectedValueOnce(
+          new ExecutionCapacityError('Interrupted by worker restart'),
+        );
+        const job = createMockJob(mockJobTask);
+        Object.assign(job, {
+          updateData: jest.fn().mockResolvedValue(undefined),
+          moveToDelayed: jest.fn().mockResolvedValue(undefined),
+        });
+
+        await expect(processor.process(job)).rejects.toThrow(DelayedError);
+
+        expect(job.moveToDelayed).toHaveBeenCalledTimes(1);
+        expect(mockDbService.updateRunStatus).not.toHaveBeenCalledWith(
+          expect.anything(),
+          'failed',
+          expect.anything(),
+          expect.anything(),
+          expect.anything(),
+        );
       });
 
       it('should update job status on completion', async () => {

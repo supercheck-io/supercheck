@@ -2,6 +2,7 @@ import {
   Injectable,
   OnModuleInit,
   OnModuleDestroy,
+  OnApplicationShutdown,
   Logger,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -54,7 +55,7 @@ export class ResultNotKeptError extends UnrecoverableError {}
  */
 @Injectable()
 export class MonitorDynamicWorkerService
-  implements OnModuleInit, OnModuleDestroy
+  implements OnModuleInit, OnModuleDestroy, OnApplicationShutdown
 {
   private readonly logger = new Logger('MonitorDynamicWorkerService');
   private readonly workers = new Map<string, Worker>();
@@ -119,7 +120,7 @@ export class MonitorDynamicWorkerService
   }
 
   async onModuleDestroy(): Promise<void> {
-    // Closing below waits for the active check, so stop the other consumers first.
+    // This module is destroyed before the executor's: stop every consumer now so none refills the drain.
     await stopIntake();
     this.shuttingDown = true;
     this.heartbeatService.removeQueues(Array.from(this.activeQueueNames));
@@ -135,7 +136,16 @@ export class MonitorDynamicWorkerService
     }
 
     await this.refreshPromise;
+    await Promise.allSettled(
+      Array.from(this.workers.values()).map((w) => w.pause(true)),
+    );
+  }
 
+  /**
+   * Closing waits for the active check. It runs after the executor's drain (which counts checks as
+   * in flight), so the drain clock starts at SIGTERM and checks get the drain window to finish.
+   */
+  async onApplicationShutdown(): Promise<void> {
     await Promise.allSettled(
       Array.from(this.workers.values()).map((w) => w.close()),
     );

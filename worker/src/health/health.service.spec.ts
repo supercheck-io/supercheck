@@ -1,3 +1,4 @@
+import * as shutdownIntake from '../common/shutdown-intake';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { HealthService } from './health.service';
@@ -138,6 +139,20 @@ describe('HealthService', () => {
       const result = await service.getReadinessStatus();
       expect(result.ready).toBe(true);
       expect(result.status).toBe('ready');
+    });
+
+    it('is not ready while draining for shutdown, without probing dependencies', async () => {
+      jest.spyOn(shutdownIntake, 'isDraining').mockReturnValue(true);
+      const health = jest.spyOn(service, 'getHealthStatus');
+
+      await expect(service.getReadinessStatus()).resolves.toEqual({
+        status: 'not ready',
+        ready: false,
+      });
+      expect(health).not.toHaveBeenCalled();
+      // Liveness stays up so the orchestrator does not kill in-flight runs.
+      expect(service.getLivenessStatus().alive).toBe(true);
+      jest.restoreAllMocks();
     });
 
     it('should not be ready if health is unhealthy', async () => {

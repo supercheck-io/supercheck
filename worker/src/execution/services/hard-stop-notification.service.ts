@@ -1,4 +1,9 @@
-import { Injectable, Logger, Inject, OnModuleDestroy } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  Inject,
+  OnApplicationShutdown,
+} from '@nestjs/common';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { eq, and, inArray } from 'drizzle-orm';
 import {
@@ -17,7 +22,7 @@ import { RedisService } from './redis.service';
  * notification spam (max 1 email per hour per organization).
  */
 @Injectable()
-export class HardStopNotificationService implements OnModuleDestroy {
+export class HardStopNotificationService implements OnApplicationShutdown {
   private readonly logger = new Logger(HardStopNotificationService.name);
   private readonly RATE_LIMIT_KEY_PREFIX = 'hard_stop_notification:';
   private readonly RATE_LIMIT_TTL_SECONDS = 3600; // 1 hour
@@ -28,7 +33,8 @@ export class HardStopNotificationService implements OnModuleDestroy {
     private readonly redisService: RedisService,
   ) {}
 
-  onModuleDestroy(): void {
+  // After the shutdown drain: in-flight runs still send their completion notifications.
+  onApplicationShutdown(): void {
     closeSmtpTransport();
   }
 

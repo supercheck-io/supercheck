@@ -1315,6 +1315,98 @@ describe('K6ExecutionService', () => {
       },
     );
 
+    describe.each([
+      ['never started', 0, true],
+      ['interrupted after it started', 30_000, false],
+    ])('a run %s by a worker restart', (_name, billableMs, delayed) => {
+      async function runInterrupted() {
+        const fs = jest.requireMock('fs/promises');
+        fs.access.mockRejectedValue(new Error('missing HTML'));
+        fs.readFile.mockRejectedValueOnce(new Error('no summary'));
+        fs.rename = jest.fn().mockResolvedValue(undefined);
+        fs.copyFile = jest.fn().mockResolvedValue(undefined);
+        Object.assign(mockS3Service, {
+          prepareFileVariables: jest
+            .fn()
+            .mockResolvedValue({ additionalFiles: {}, filePaths: {} }),
+          getBucketForEntityType: jest.fn().mockReturnValue('bucket'),
+          uploadDirectory: jest.fn().mockResolvedValue(undefined),
+          getBaseUrlForEntity: jest
+            .fn()
+            .mockReturnValue('https://example.com/run'),
+        });
+        Object.assign(mockDbService, {
+          storeReportMetadata: jest.fn().mockResolvedValue(undefined),
+        });
+        jest
+          .spyOn(service, 'allocateDashboardPort' as never)
+          .mockResolvedValue(0 as never);
+        jest.spyOn(service, 'executeK6Binary' as never).mockResolvedValue({
+          exitCode: 137,
+          billableMs,
+          billingVirtualUsers: billableMs ? 10 : undefined,
+          stdout: '',
+          stderr: '',
+          error: 'Interrupted by worker restart',
+          timedOut: false,
+          cancelled: false,
+          interrupted: true,
+        } as never);
+        try {
+          return await service
+            .runK6Test({
+              runId: 'run-1',
+              testId: 'test-1',
+              organizationId: 'org-1',
+              projectId: 'project-1',
+              tests: [],
+              script: 'export default function() {}',
+              location: 'local',
+            })
+            .then(
+              (value) => ({ value }),
+              (error: unknown) => ({ error }),
+            );
+        } finally {
+          fs.access.mockResolvedValue(undefined);
+        }
+      }
+
+      it(
+        delayed
+          ? 'is delayed through ExecutionCapacityError and stores nothing'
+          : 'ends as an interrupted execution error that is never a cancellation',
+        async () => {
+          const outcome = await runInterrupted();
+          if (delayed) {
+            expect(outcome).toHaveProperty('error');
+            expect((outcome as { error: unknown }).error).toBeInstanceOf(
+              ExecutionCapacityError,
+            );
+            expect(
+              (mockS3Service as unknown as { uploadDirectory: jest.Mock })
+                .uploadDirectory,
+            ).not.toHaveBeenCalled();
+            return;
+          }
+          const result = (
+            outcome as { value: Awaited<ReturnType<typeof service.runK6Test>> }
+          ).value;
+          expect(result).toMatchObject({
+            success: false,
+            interrupted: true,
+            cancelled: false,
+            error: 'Interrupted by worker restart',
+            billableMs: 30_000,
+          });
+          expect(
+            (mockDbService as unknown as { storeReportMetadata: jest.Mock })
+              .storeReportMetadata,
+          ).toHaveBeenCalledWith(expect.objectContaining({ status: 'error' }));
+        },
+      );
+    });
+
     it('scrubs the report directory with the run secrets before uploading', async () => {
       const fs = jest.requireMock('fs/promises');
       fs.access.mockRejectedValue(new Error('missing HTML'));
