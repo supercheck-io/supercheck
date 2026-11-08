@@ -8,6 +8,7 @@ jest.mock("@/sre/lib/feature-gates", () => ({
   isSreAutomaticTriageEnabled: jest.fn(),
   isSreAlertCorrelationEnabled: jest.fn(() => false),
 }));
+jest.mock("@/lib/sre/sre-daily-token-limit", () => ({ sreDailyTokenLimitResponse: jest.fn().mockResolvedValue(null) }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 const mockLogInfo = jest.fn();
 const mockLogError = jest.fn();
@@ -68,7 +69,8 @@ import {
 } from "@/sre/lib/feature-gates";
 import { completeSreIncidentTriage, startSreIncidentTriage } from "@/sre/lib/triage-runner";
 import { db } from "@/utils/db";
-import { processSreBackgroundAlertTriageJob } from "./background-alert-triage";
+import { sreDailyTokenLimitResponse } from "@/lib/sre/sre-daily-token-limit";
+import { processSreBackgroundAlertTriageJob, startAutomaticIncidentTriage } from "./background-alert-triage";
 
 const mockIsSreBackgroundAlertTriageEnabled = isSreBackgroundAlertTriageEnabled as jest.Mock;
 const mockAutomatic = isSreAutomaticTriageEnabled as jest.Mock;
@@ -365,5 +367,54 @@ describe("processSreBackgroundAlertTriageJob", () => {
       await processSreBackgroundAlertTriageJob(JOB);
       expect(applySourceRecovery).toHaveBeenCalledWith(tx, expect.objectContaining({ sourceType: "job", sourceId: "job-1", autoResolve: true }));
     });
+  });
+});
+
+describe("startAutomaticIncidentTriage (shared with the recovery sweep)", () => {
+  const scope = { organizationId: "org-1", projectId: "proj-1", incidentId: "inc-1" };
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (validateAIConfiguration as jest.Mock).mockReset();
+  });
+
+  it("starts nothing when automation is off", async () => {
+    mockAutomatic.mockReturnValue(false);
+    expect(await startAutomaticIncidentTriage(scope)).toEqual({ skipped: true, reason: "ai_disabled" });
+    expect(startSreIncidentTriage).not.toHaveBeenCalled();
+  });
+
+  it("starts nothing when the AI provider is not configured", async () => {
+    mockAutomatic.mockReturnValue(true);
+    (validateAIConfiguration as jest.Mock).mockImplementation(() => {
+      throw new Error("no key");
+    });
+    expect(await startAutomaticIncidentTriage(scope)).toEqual({ skipped: true, reason: "ai_not_configured" });
+    expect(startSreIncidentTriage).not.toHaveBeenCalled();
+  });
+
+  it("starts nothing past the organization's daily token cap", async () => {
+    mockAutomatic.mockReturnValue(true);
+    (sreDailyTokenLimitResponse as jest.Mock).mockResolvedValueOnce({ status: 429 });
+    expect(await startAutomaticIncidentTriage(scope)).toEqual({ skipped: true, reason: "daily_limit" });
+    expect(sreDailyTokenLimitResponse).toHaveBeenCalledWith("org-1");
+    expect(startSreIncidentTriage).not.toHaveBeenCalled();
+  });
+
+  it("reports an unavailable limiter separately so the job retries instead of dropping triage", async () => {
+    mockAutomatic.mockReturnValue(true);
+    (sreDailyTokenLimitResponse as jest.Mock).mockResolvedValueOnce({ status: 503 });
+    expect(await startAutomaticIncidentTriage(scope)).toEqual({ skipped: true, reason: "daily_limit_unavailable" });
+    expect(startSreIncidentTriage).not.toHaveBeenCalled();
+  });
+
+  it("maps billing refusal to a skip and starts an automatic run otherwise", async () => {
+    mockAutomatic.mockReturnValue(true);
+    (startSreIncidentTriage as jest.Mock).mockResolvedValueOnce({ success: false, status: 402, error: "limit" });
+    expect(await startAutomaticIncidentTriage(scope)).toEqual({ skipped: true, reason: "triage_billing" });
+
+    (startSreIncidentTriage as jest.Mock).mockResolvedValueOnce({ success: true, investigationRunId: "run-2" });
+    (completeSreIncidentTriage as jest.Mock).mockResolvedValue({ success: true });
+    expect(await startAutomaticIncidentTriage(scope)).toEqual({ success: true, investigationRunId: "run-2" });
+    expect(startSreIncidentTriage).toHaveBeenLastCalledWith({ ...scope, userId: null, origin: "auto" });
   });
 });

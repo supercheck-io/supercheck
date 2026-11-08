@@ -1,4 +1,5 @@
 import { getRedisConnection } from "@/lib/queue";
+import { waitForRedisReady } from "@/lib/redis-ready";
 import { createLogger } from "@/lib/logger/index";
 import { randomUUID } from "crypto";
 
@@ -7,6 +8,8 @@ const logger = createLogger({ module: "execution-rate-limiter" }) as {
 };
 
 const WINDOW_SECONDS = 60;
+// Same as the queue-unavailable 503, so clients back off the same way whichever check hit the outage.
+const UNAVAILABLE_RETRY_AFTER_SECONDS = 5;
 
 function positiveLimit(value: string | undefined, fallback: number): number {
   const parsed = Number.parseInt(value ?? "", 10);
@@ -75,6 +78,8 @@ export async function checkExecutionRateLimit(
 
   try {
     const redis = await getRedisConnection();
+    // Commands issued while disconnected wait in ioredis's offline queue and would hang the request.
+    if (!(await waitForRedisReady(redis))) throw new Error(`Redis client status is ${redis.status}`);
     const result = (await redis.eval(
       script,
       2,
@@ -102,7 +107,7 @@ export async function checkExecutionRateLimit(
     );
     return {
       allowed: false,
-      retryAfter: WINDOW_SECONDS,
+      retryAfter: UNAVAILABLE_RETRY_AFTER_SECONDS,
       reason: "unavailable",
     };
   }
