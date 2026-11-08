@@ -30,7 +30,7 @@ import {
 } from '../../common/shutdown-intake';
 import { deferForCapacity } from '../../common/capacity-deferral';
 import { getErrorMessage } from '../../common/validation';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, sql } from 'drizzle-orm';
 import * as schema from '../../db/schema';
 import { getDatabasePoolMax } from '../../db/db-pool';
 import { captureJobFailure } from '../../common/sentry-reporter';
@@ -563,23 +563,60 @@ export class MonitorDynamicWorkerService
         ? Math.max(data.frequencyMinutes ?? 0, SYNTHETIC_MIN_FREQUENCY_MINUTES)
         : (data.frequencyMinutes ?? 0);
     const boundMs = Math.max(3 * frequency * 60_000, STALE_CHECK_FLOOR_MS);
-    if (ageMs <= boundMs) {
-      // A cycle closes at its own deadline, which can pass before this bound: its region is then already settled,
-      // so running the check late would only add a stale row.
-      if (!data.monitorCycle || !data.executionGroupId) return false;
-      const [cycle] = await this.dbService.db
-        .select({ status: schema.monitorCycles.status })
-        .from(schema.monitorCycles)
-        .where(eq(schema.monitorCycles.id, data.executionGroupId))
-        .limit(1)
-        .catch(() => []);
-      if (!cycle || cycle.status === 'open') return false;
+    const stale = ageMs > boundMs;
+    // A closed cycle already has its outcome (closure wrote it) and ignores a late result, so running this check at
+    // any age would only add a diagnostic row (and bill a synthetic probe).
+    if (await this.isCycleSettled(data)) {
+      if (!stale) {
+        // Routine for a slow region, not saturation: not part of the stale-skip warning.
+        this.logger.debug(
+          `Skipping check ${data.monitorId}: cycle ${data.executionGroupId} already closed`,
+        );
+        return true;
+      }
+    } else if (
+      !stale ||
+      // Without a settled cycle only a check already superseded by a newer real result is dropped; otherwise it
+      // runs late, so a backlog does not by itself freeze status. The first late run supersedes the rest.
+      !(await this.hasNewerResult(job))
+    ) {
+      return false;
     }
     this.logger.log(
       `Skipping stale monitor check ${data.monitorId}: queued ${Math.round(ageMs / 1000)}s, bound ${Math.round(boundMs / 1000)}s`,
     );
     this.reportStaleSkip();
     return true;
+  }
+
+  private async isCycleSettled(data: MonitorJobDataDto): Promise<boolean> {
+    if (!data.monitorCycle || !data.executionGroupId) return false;
+    const [cycle] = await this.dbService.db
+      .select({ status: schema.monitorCycles.status })
+      .from(schema.monitorCycles)
+      .where(eq(schema.monitorCycles.id, data.executionGroupId))
+      .limit(1)
+      .catch(() => []);
+    return !!cycle && cycle.status !== 'open';
+  }
+
+  /** A real result checked after this job was queued, from the job's region (any region for a legacy all-region job). */
+  private async hasNewerResult(job: Job<MonitorJobDataDto>): Promise<boolean> {
+    const location = job.data.executionLocation;
+    const [row] = await this.dbService.db
+      .select({ id: schema.monitorResults.id })
+      .from(schema.monitorResults)
+      .where(
+        and(
+          eq(schema.monitorResults.monitorId, job.data.monitorId),
+          gt(schema.monitorResults.checkedAt, new Date(job.timestamp)),
+          ...(location ? [eq(schema.monitorResults.location, location)] : []),
+          realResultOnly,
+        ),
+      )
+      .limit(1)
+      .catch(() => []); // unknown: run the check rather than risk a silent gap
+    return !!row;
   }
 
   /**

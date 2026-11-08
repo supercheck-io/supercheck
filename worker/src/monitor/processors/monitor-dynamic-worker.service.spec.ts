@@ -1,4 +1,6 @@
 import { ExecutionCapacityError } from '../../execution/services/execution-admission.service';
+import { PgDialect } from 'drizzle-orm/pg-core';
+import type { SQL } from 'drizzle-orm';
 jest.mock('bullmq', () => ({
   DelayedError: jest.requireActual('bullmq').DelayedError,
   UnrecoverableError: jest.requireActual('bullmq').UnrecoverableError,
@@ -1717,11 +1719,33 @@ describe('MonitorDynamicWorkerService stale scheduled checks', () => {
             .mockResolvedValue([
               { supports_browser: true, supports_k6: false },
             ]),
+          // Cycle lookup selects `status`, newer-result lookup selects `id`. By default there is no cycle row and a
+          // later check already superseded a stale one.
+          select: (fields: Record<string, unknown>) => ({
+            from: () => ({
+              where: (cond: SQL) => ({
+                limit: () => {
+                  if ('status' in fields) return cycleRow();
+                  newerWhere.push(cond);
+                  return newerResult();
+                },
+              }),
+            }),
+          }),
         },
       } as unknown as DbService,
     );
     return { monitorService, service };
   };
+  let newerResult: () => Promise<unknown[]>;
+  let cycleRow: () => Promise<unknown[]>;
+  let newerWhere: SQL[];
+  beforeEach(() => {
+    newerResult = () => Promise.resolve([{ id: 'newer' }]);
+    cycleRow = () => Promise.resolve([]);
+    newerWhere = [];
+  });
+  const sqlOf = (cond: SQL) => new PgDialect().sqlToQuery(cond);
   const jobOf = (
     over: Record<string, unknown> = {},
     data: Record<string, unknown> = {},
@@ -1915,6 +1939,95 @@ describe('MonitorDynamicWorkerService stale scheduled checks', () => {
     expect(monitorService.executeMonitorWithLocations).not.toHaveBeenCalled();
     expect(monitorService.saveMonitorResults).not.toHaveBeenCalled();
     expect(monitorService.skipDistributedMonitorGroup).not.toHaveBeenCalled();
+  });
+
+  it('runs a stale check late when no newer result superseded it, so a backlog never freezes the monitor', async () => {
+    const { monitorService, service } = build();
+    newerResult = () => Promise.resolve([]);
+    await run(service, jobOf());
+    expect(monitorService.executeMonitor).toHaveBeenCalledTimes(1);
+    expect(monitorService.dropStaleRegion).not.toHaveBeenCalled();
+  });
+
+  it('runs a stale check when the newer-result lookup fails', async () => {
+    const { monitorService, service } = build();
+    newerResult = () => Promise.reject(new Error('db down'));
+    await run(service, jobOf());
+    expect(monitorService.executeMonitor).toHaveBeenCalledTimes(1);
+  });
+
+  it('settles a closed young cycle quietly, without counting it as a stale skip', async () => {
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
+    try {
+      const { monitorService, service } = build();
+      cycleRow = () => Promise.resolve([{ status: 'closed' }]);
+      const logger = (
+        service as unknown as {
+          logger: { warn: () => void; debug: () => void };
+        }
+      ).logger;
+      const warn = jest
+        .spyOn(logger, 'warn')
+        .mockImplementation(() => undefined);
+      const debug = jest
+        .spyOn(logger, 'debug')
+        .mockImplementation(() => undefined);
+      await run(
+        service,
+        jobOf({ timestamp: Date.now() - 2 * 60_000 }, { monitorCycle: true }),
+      );
+      jest.advanceTimersByTime(60_000);
+      expect(monitorService.executeMonitor).not.toHaveBeenCalled();
+      expect(monitorService.dropStaleRegion).toHaveBeenCalledTimes(1);
+      expect(debug).toHaveBeenCalledWith(
+        expect.stringMatching(/already closed/),
+      );
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('skips a past-bound check whose cycle is closed even with no newer real result (closure wrote the outcome)', async () => {
+    const { monitorService, service } = build();
+    cycleRow = () => Promise.resolve([{ status: 'closed' }]);
+    newerResult = () => Promise.resolve([]);
+    await run(service, jobOf({}, { monitorCycle: true }));
+    expect(monitorService.executeMonitor).not.toHaveBeenCalled();
+    expect(monitorService.dropStaleRegion).toHaveBeenCalledTimes(1);
+  });
+
+  it('looks for a newer real result after enqueue in the job region only, any region for a legacy job', async () => {
+    const { service } = build();
+    const job = jobOf();
+    await run(service, job);
+    const located = sqlOf(newerWhere[0]);
+    expect(located.sql).toMatch(/"checked_at" > \$\d/);
+    expect(located.sql).toMatch(/"location" = \$\d/);
+    expect(located.sql).toMatch(/'synthetic' is distinct from 'true'/);
+    expect(located.params).toEqual(
+      expect.arrayContaining([
+        'monitor-1',
+        'eu',
+        new Date(job.timestamp).toISOString(),
+      ]),
+    );
+
+    await run(
+      service,
+      jobOf({}, { executionLocation: undefined, executionGroupId: undefined }),
+    );
+    expect(sqlOf(newerWhere[1]).sql).not.toMatch(/"location"/);
+  });
+
+  it('treats a failed cycle lookup as an open cycle: a young check runs', async () => {
+    const { monitorService, service } = build();
+    cycleRow = () => Promise.reject(new Error('db down'));
+    await run(
+      service,
+      jobOf({ timestamp: Date.now() - 2 * 60_000 }, { monitorCycle: true }),
+    );
+    expect(monitorService.executeMonitor).toHaveBeenCalledTimes(1);
   });
 
   it('runs a fresh scheduled check', async () => {
