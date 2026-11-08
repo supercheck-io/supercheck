@@ -7,9 +7,12 @@ function fakeQueue() {
   const repeatables = new Map<string, Repeatable>();
   return {
     repeatables,
-    getRepeatableJobs: jest.fn(async () => [...repeatables.values()].map(({ data: _data, ...rest }) => rest)),
+    getRepeatableJobs: jest.fn(async () => [...repeatables.values()].map(({ data: _data, ...rest }) => ({ ...rest, next: 1 }))),
     removeRepeatableByKey: jest.fn(async (key: string) => repeatables.delete(key)),
-    getDelayed: jest.fn(async () => [...repeatables.values()].map((r) => ({ data: r.data, opts: { repeatJobKey: r.key } }))),
+    getJob: jest.fn(async (id: string) => {
+      const found = [...repeatables.values()].find((r) => id === `repeat:${r.key}:1`);
+      return found ? { data: found.data } : undefined;
+    }),
     add: jest.fn(async (name: string, data: Record<string, unknown>, opts: { repeat: { pattern: string; tz: string }; jobId: string }) => {
       const key = `${name}:${opts.jobId}:::${opts.repeat.tz}:${opts.repeat.pattern}`;
       repeatables.set(key, { key, name, pattern: opts.repeat.pattern, tz: opts.repeat.tz, data });
@@ -133,12 +136,12 @@ describe("initializeJobSchedulers k6 migration", () => {
     rows = [];
     await initializeJobSchedulers();
     expect(jobQueue.getRepeatableJobs).toHaveBeenCalledTimes(1); // cleanup only
-    expect(k6Queue.getDelayed).not.toHaveBeenCalled();
+    expect(k6Queue.getJob).not.toHaveBeenCalled();
   });
 
   it("leaves an unreadable legacy entry for the database pass to replace", async () => {
     oldReplicaSchedules();
-    k6Queue.getDelayed.mockResolvedValueOnce([]); // active/waiting tick: payload not readable
+    k6Queue.getJob.mockResolvedValueOnce(undefined); // active/waiting tick: payload not readable
     rows = [dbJob];
     await initializeJobSchedulers();
     expect(console.warn).toHaveBeenCalledWith(expect.stringContaining("Cannot migrate"));
@@ -154,7 +157,8 @@ describe("initializeJobSchedulers k6 migration", () => {
     expect(k6Queue.repeatables.size).toBe(1);
     expect(console.error).toHaveBeenCalledWith(expect.stringContaining("Failed to migrate legacy k6 schedule"), expect.any(Error));
 
-    k6Queue.getDelayed.mockRejectedValueOnce(new Error("redis"));
+    // first call is the orphan cleanup (which tolerates it), second is the migration
+    k6Queue.getRepeatableJobs.mockRejectedValueOnce(new Error("redis")).mockRejectedValueOnce(new Error("redis"));
     await expect(initializeJobSchedulers()).resolves.toBeDefined();
     expect(console.error).toHaveBeenCalledWith(expect.stringContaining("Failed to migrate legacy k6 schedules"), expect.any(Error));
   });

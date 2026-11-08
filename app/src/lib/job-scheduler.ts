@@ -61,15 +61,13 @@ async function migrateLegacyK6Repeatables(): Promise<void> {
     const legacy = await k6JobSchedulerQueue.getRepeatableJobs();
     if (legacy.length === 0) return;
 
-    const [current, delayed] = await Promise.all([
-      jobSchedulerQueue.getRepeatableJobs(),
-      k6JobSchedulerQueue.getDelayed(),
-    ]);
+    const current = await jobSchedulerQueue.getRepeatableJobs();
 
     for (const repeatable of legacy) {
       try {
         if (!current.some((c) => c.name === repeatable.name)) {
-          const tick = delayed.find((d) => d.opts?.repeatJobKey === repeatable.key);
+          // The pending tick's id is repeat:<key>:<next fire>; it carries the payload.
+          const tick = await k6JobSchedulerQueue.getJob(`repeat:${repeatable.key}:${repeatable.next}`);
           if (!tick || !repeatable.pattern) {
             console.warn(`[JobScheduler] Cannot migrate legacy k6 schedule ${repeatable.name}; leaving it for rescheduling`);
             continue;
