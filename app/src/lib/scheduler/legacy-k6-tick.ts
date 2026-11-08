@@ -26,17 +26,16 @@ export function addJobRepeatable(
  * re-add a k6 repeatable there after the queue merge; the tick converges it
  * so the job never fires from both queues, and no due fire is lost.
  *
- * - job-scheduler holds exactly this schedule: drop the legacy repeatable. Skip this tick only if
- *   that copy's next fire is this tick's slot (it will fire it); otherwise process it.
+ * - job-scheduler holds exactly this schedule: drop the legacy repeatable.
  * - anything else (no copy, a different copy, or several): the database cron decides. A job with no
  *   cron is orphaned and just drops the legacy entry. job-scheduler is made to hold one repeatable
  *   with that cron (keeping a matching entry and its timezone), and this due tick is processed.
  * - Order is add, then remove: a failure part way leaves an extra schedule, never none, and a retry
- *   re-runs the (idempotent) convergence. A retry is never skipped as a duplicate.
- * Once job-scheduler's copy has been picked up, BullMQ has already advanced its `next`, so a later legacy
- * tick for that slot runs. Both copies carry the same tick id (BullMQ derives it from name, jobId, tz and
+ *   re-runs the (idempotent) convergence.
+ * The tick is always processed, never skipped from a repeatable snapshot (a concurrent reschedule can make one
+ * stale). A same-schedule copy in both queues carries the same tick id (BullMQ derives it from name, jobId, tz and
  * pattern, not the queue), so processScheduledJob's per-tick run guard (keyed on the tick id and attempt, under a
- * transaction-scoped advisory lock) rejects the second run.
+ * transaction-scoped advisory lock) runs that slot once whichever queue fires first.
  * The job-scheduler lookup is a getRepeatableJobs scan (legacy-created entries are not job
  * schedulers); it runs only for legacy ticks, which stop once converged.
  *
@@ -47,7 +46,7 @@ export async function processLegacyK6Tick<R>(
   { jobSchedulerQueue, k6JobSchedulerQueue }: { jobSchedulerQueue: Queue; k6JobSchedulerQueue: Queue },
   process: (job: Job) => Promise<R>,
   loadCron: (jobId: string, scope: { projectId?: string; organizationId?: string }) => Promise<string | null>
-): Promise<R | undefined> {
+): Promise<R> {
   // Repeat tick ids are repeat:<repeat key>:<fire time>; anything else is not ours to converge.
   const idParts = job.id?.startsWith("repeat:") ? job.id.split(":") : undefined;
   const legacyKey = job.repeatJobKey ?? idParts?.[1];
@@ -58,7 +57,6 @@ export async function processLegacyK6Tick<R>(
   // The cron lookup is tenant-scoped; without scope leave the legacy entry for startup migration to converge.
   if (!projectId || !organizationId) return process(job);
 
-  const dueAt = Number(idParts[idParts.length - 1]) || job.timestamp + (job.delay ?? 0);
   const existing = (await jobSchedulerQueue.getRepeatableJobs()).filter((r) => r.name === job.name);
   const matches = (r: RepeatableJob, w: { pattern: string; tz: string }) => r.pattern === w.pattern && (r.tz ?? "UTC") === w.tz;
 
@@ -75,6 +73,5 @@ export async function processLegacyK6Tick<R>(
   if (!kept) await addJobRepeatable(jobSchedulerQueue, job.name, job.data, win.pattern, win.tz);
   await Promise.all(existing.filter((r) => r !== kept).map((r) => jobSchedulerQueue.removeRepeatableByKey(r.key)));
   await k6JobSchedulerQueue.removeRepeatableByKey(legacyKey);
-  const duplicate = job.attemptsMade === 0 && win.pattern === pattern && win.tz === tz && kept?.next === dueAt;
-  return duplicate ? undefined : process(job);
+  return process(job);
 }

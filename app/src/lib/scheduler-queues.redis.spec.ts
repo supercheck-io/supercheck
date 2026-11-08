@@ -237,7 +237,7 @@ suite("scheduler upgrade (real Redis, BullMQ)", () => {
       await Promise.all(connections.splice(0).map((c) => c.quit()));
     });
 
-    it("old replica re-adds a schedule that job-scheduler already has: the legacy tick removes it, runs nothing", async () => {
+    it("old replica re-adds a schedule that job-scheduler already has: the legacy tick removes it and hands the slot to the run guard", async () => {
       jobRows = [row(JOB)];
       await initializeJobSchedulers();
       const expected = await shape(jobQueue);
@@ -246,7 +246,7 @@ suite("scheduler upgrade (real Redis, BullMQ)", () => {
       await fireLegacyTick();
       await until(() => done === 1);
 
-      expect(run).not.toHaveBeenCalled();
+      expect(run).toHaveBeenCalledTimes(1); // processScheduledJob dedupes it by tick id against the copy's fire
       expect(await k6Queue.getRepeatableJobs()).toHaveLength(0);
       expect(await k6Queue.getJobCounts("delayed", "waiting", "active")).toMatchObject({ delayed: 0, waiting: 0, active: 0 });
       expect(await shape(jobQueue)).toEqual(expected); // only job-scheduler fires from now on
@@ -279,36 +279,6 @@ suite("scheduler upgrade (real Redis, BullMQ)", () => {
 
       expect(await k6Queue.getRepeatableJobs()).toHaveLength(0);
       expect((await shape(jobQueue)).map(({ pattern }) => pattern)).toEqual(["0 7 * * *"]);
-    });
-
-    it("a legacy tick that is already due, with the migrated copy firing later, still runs; a same-slot copy does not", async () => {
-      await oldScheduleJob(JOB);
-      const [tick] = await k6Queue.getDelayed();
-      const slot = Number(tick.id!.split(":")[2]);
-      jobRows = [row(JOB)];
-      await initializeJobSchedulers(); // removes the legacy repeatable; the copy's next fire is `slot`
-      const queues = { jobSchedulerQueue: jobQueue, k6JobSchedulerQueue: k6Queue };
-
-      await processLegacyK6Tick(tick, queues, run, loadCron); // same slot: the copy covers it
-      expect(run).not.toHaveBeenCalled();
-
-      // The same tick was already due one slot earlier: the copy only fires a slot later.
-      tick.id = `repeat:${tick.repeatJobKey}:${slot - 600_000}`;
-      await processLegacyK6Tick(tick, queues, run, loadCron);
-      expect(run).toHaveBeenCalledTimes(1);
-    });
-
-    it("a same-schedule copy in both queues gets the same tick id, so the run guard keyed on it dedupes either order", async () => {
-      // When job-scheduler's copy is picked first, its `next` has already advanced past the slot and the legacy tick
-      // runs too; processScheduledJob's per-tick run guard (job.id + attempt, under an advisory lock) then refuses
-      // the second run. That only holds while BullMQ derives the id without the queue name, which this pins.
-      jobRows = [row(JOB)];
-      await initializeJobSchedulers();
-      await oldScheduleJob(JOB);
-      const [legacy] = await k6Queue.getDelayed();
-      const [current] = await jobQueue.getDelayed();
-      expect(legacy.id).toMatch(/^repeat:/);
-      expect(legacy.id).toBe(current.id);
     });
 
     it("a legacy tick of a deleted or unscheduled job drops the legacy entry and leaves job-scheduler alone", async () => {

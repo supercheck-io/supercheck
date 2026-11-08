@@ -59,7 +59,7 @@ it("adds the winning schedule before removing others, so a failed add removes no
 it("reconciles competing job-scheduler copies to the database cron even when one matches the legacy tick", async () => {
   jobQueue.getRepeatableJobs.mockResolvedValue([copy({ key: "a" }), copy({ key: "b", pattern: "0 9 * * *" })]);
   loadCron.mockResolvedValue("*/5 * * * *");
-  await expect(go(tick())).resolves.toBeUndefined(); // the kept copy fires this slot
+  await expect(go(tick())).resolves.toBe("ran"); // the run guard dedupes it against the kept copy's fire
   expect(jobQueue.add).not.toHaveBeenCalled();
   expect(jobQueue.removeRepeatableByKey.mock.calls).toEqual([["b"]]);
 });
@@ -69,17 +69,12 @@ it("processes the tick when the job-scheduler copy is behind this slot (a backlo
   await expect(go(tick())).resolves.toBe("ran");
 });
 
-it("skips and removes the legacy entry when the same schedule fires in this slot (null tz is UTC)", async () => {
+it("same schedule in job-scheduler (null tz is UTC): drops the legacy entry and still processes the tick", async () => {
+  // Never skipped from the repeatable snapshot: a concurrent reschedule could have removed that copy's fire.
+  // processScheduledJob's per-tick run guard runs a slot once, whichever queue fires it first.
   jobQueue.getRepeatableJobs.mockResolvedValue([copy({ tz: null })]);
-  await expect(go(tick())).resolves.toBeUndefined();
-  expect(run).not.toHaveBeenCalled();
-  expect(jobQueue.add).not.toHaveBeenCalled();
-  expect(k6Queue.removeRepeatableByKey).toHaveBeenCalledWith("abc");
-});
-
-it("processes the due tick when the same schedule's copy fires only later (in-flight tick around migration)", async () => {
-  jobQueue.getRepeatableJobs.mockResolvedValue([copy({ next: DUE + 300_000 })]);
   await expect(go(tick())).resolves.toBe("ran");
+  expect(run).toHaveBeenCalledTimes(1);
   expect(jobQueue.add).not.toHaveBeenCalled();
   expect(k6Queue.removeRepeatableByKey).toHaveBeenCalledWith("abc");
 });
