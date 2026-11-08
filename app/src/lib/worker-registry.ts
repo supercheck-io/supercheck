@@ -33,7 +33,9 @@ let inflightScan: Promise<ActiveWorker[]> | null = null;
  * Results are cached for 5s and concurrent callers share one scan; errors are never cached.
  */
 export async function getActiveWorkers(): Promise<ActiveWorker[]> {
-  if (cachedWorkers && Date.now() - cachedWorkers.at < ACTIVE_WORKERS_CACHE_TTL_MS) {
+  // age >= 0: a wall-clock step backwards must expire the snapshot, not extend it.
+  const age = cachedWorkers ? Date.now() - cachedWorkers.at : -1;
+  if (cachedWorkers && age >= 0 && age < ACTIVE_WORKERS_CACHE_TTL_MS) {
     return cachedWorkers.workers;
   }
   inflightScan ??= scanActiveWorkers()

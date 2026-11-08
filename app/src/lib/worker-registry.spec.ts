@@ -80,6 +80,17 @@ describe("worker-registry helpers", () => {
       expect(scan).toHaveBeenCalledTimes(2);
     });
 
+    it("rescans when the clock steps backwards instead of serving a stale snapshot", async () => {
+      const now = jest.spyOn(Date, "now").mockReturnValue(100_000);
+      const scan = jest.fn().mockResolvedValue(["0", ["supercheck:worker-heartbeat:w1"]]);
+      const { getActiveWorkers } = await loadWithRedis(scan);
+
+      await getActiveWorkers();
+      now.mockReturnValue(100_000 - 60_000);
+      await getActiveWorkers();
+      expect(scan).toHaveBeenCalledTimes(2);
+    });
+
     it("does not cache errors", async () => {
       const scan = jest
         .fn()

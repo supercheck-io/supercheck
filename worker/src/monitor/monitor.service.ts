@@ -568,7 +568,7 @@ export class MonitorService {
     const downCount = configuredLocations.length - upCount;
     const reason =
       currentStatus === 'down'
-        ? `Monitor is down in ${downCount}/${configuredLocations.length} locations${missingLocations.length ? ` (no results from ${missingLocations.join(', ')})` : ''}${skippedLocations.length ? ` (skipped, no live worker: ${skippedLocations.join(', ')})` : ''}`
+        ? `Monitor is down in ${downCount}/${configuredLocations.length} locations${missingLocations.length ? ` (no results from ${missingLocations.join(', ')})` : ''}${skippedLocations.length ? ` (not run: ${skippedLocations.join(', ')})` : ''}`
         : `Monitor has recovered (${upCount}/${configuredLocations.length} locations up)`;
 
     const avgResponseTime =

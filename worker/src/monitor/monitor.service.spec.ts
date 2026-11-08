@@ -2869,7 +2869,7 @@ describe('MonitorService', () => {
         expect.objectContaining({
           currentStatus: 'down',
           reason:
-            'Monitor is down in 1/2 locations (no results from us-east) (skipped, no live worker: asia-pacific)',
+            'Monitor is down in 1/2 locations (no results from us-east) (not run: asia-pacific)',
         }),
       );
     });
