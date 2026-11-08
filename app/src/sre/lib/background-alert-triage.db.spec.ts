@@ -15,6 +15,7 @@ jest.mock("@/utils/db", () => ({
   },
 }));
 jest.mock("@/lib/sre/incident-notifier", () => ({ notifyIncidentEvent: jest.fn(async () => undefined) }));
+jest.mock("@/lib/sre/sre-daily-token-limit", () => ({ sreDailyTokenLimitResponse: jest.fn(async () => null) }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn(async () => undefined) }));
 jest.mock("@/sre/lib/triage-runner", () => ({ startSreIncidentTriage: jest.fn(), completeSreIncidentTriage: jest.fn() }));
 jest.mock("@/lib/auth-context", () => ({ requireAuthContext: jest.fn(), isAuthError: () => false }));

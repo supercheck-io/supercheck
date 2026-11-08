@@ -39,7 +39,7 @@ export async function initializeSreAlertTriageProcessor() {
         if (
           result.success &&
           result.skipped &&
-          result.reason === "org_concurrency_limit" &&
+          (result.reason === "org_concurrency_limit" || result.reason === "daily_limit_unavailable") &&
           token
         ) {
           // The window starts when the cap first blocks this job, not when it was queued, so a backlog
