@@ -36,11 +36,11 @@ For each service, set its name, tier, **Status** (**Active** or **Deprecated**),
 
 | Section | Shows |
 |---|---|
-| **Activity** | Opens first. Recent incidents, alerts, and deployments |
+| **Activity** | Opens first. Recent incidents for the service, open and resolved |
 | **Resources** | Linked monitors, jobs, tests, k6 runs, and status components |
 | **Dependencies** | Service relationships. Expand **Suggested dependencies** to approve or reject discoveries and review past decisions |
 
-Service health shows its status and an explanation. Nonzero incident and alert counts stay visible. Expand **Service details** for tier, owner, available health score, and calculation time.
+Beside the tabs, **Service health** shows the status with an explanation, counts of active incidents, firing alerts, linked resources and dependencies, and the service's owner, repository, Slack channel and tags. The health score appears when nothing is open or firing. **Recent alerts** and **Recent deployments** follow below.
 
 <Callout type="info">
 Suggested relationships are not used as service dependencies or for alert correlation until an authorized user approves them.
