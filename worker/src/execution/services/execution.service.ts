@@ -127,6 +127,7 @@ interface PlaywrightExecutionResult {
   success: boolean;
   cancelled?: boolean;
   interrupted?: boolean;
+  started?: boolean;
   error: string | null;
   stdout: string;
   stderr: string;
@@ -573,7 +574,7 @@ export class ExecutionService implements OnModuleDestroy {
 
       billableMs = execResult.billableMs ?? 0;
       // Without start evidence the pod never ran, so a retry cannot hit the target twice.
-      containerRan = billableMs > 0;
+      containerRan = execResult.started === true || billableMs > 0;
       execResult.stdout = this.redactSecretsFromText(
         execResult.stdout,
         runtimeSecrets,
@@ -883,6 +884,7 @@ export class ExecutionService implements OnModuleDestroy {
     let finalError: string | null = null;
     let userCancelled = false;
     let interrupted = false;
+    let jobStarted = false;
     const timestamp = new Date().toISOString();
     let overallSuccess = false; // Default to failure
     let stdout_log = '';
@@ -1065,6 +1067,7 @@ export class ExecutionService implements OnModuleDestroy {
 
       const taskSecrets = task.secrets ?? {};
       jobBillableMs = execResult.billableMs ?? 0;
+      jobStarted = execResult.started === true || jobBillableMs > 0;
       execResult.stdout = this.redactSecretsFromText(
         execResult.stdout,
         taskSecrets,
@@ -1092,7 +1095,7 @@ export class ExecutionService implements OnModuleDestroy {
       if (execResult.interrupted) {
         interrupted = true;
         // The pod never started: let the queue delay the run so a new worker runs it.
-        if (jobBillableMs === 0)
+        if (!jobStarted)
           throw new ExecutionCapacityError(WORKER_INTERRUPTED_ERROR);
         // A started run is terminal and recorded as the restart, not a cancellation.
         throw new Error(WORKER_INTERRUPTED_ERROR);
@@ -1201,7 +1204,7 @@ export class ExecutionService implements OnModuleDestroy {
       const errorMessage = (error as Error).message;
       const isCancellation =
         userCancelled ||
-        (jobBillableMs === 0 &&
+        (!jobStarted &&
           (errorMessage.includes('cancelled') ||
             errorMessage.includes('cancellation')));
 
@@ -1456,6 +1459,7 @@ export class ExecutionService implements OnModuleDestroy {
         success: execResult.success,
         cancelled: execResult.cancelled,
         interrupted: execResult.interrupted,
+        started: execResult.started,
         error: extractedError, // Use the extracted error message
         stdout: execResult.stdout,
         stderr: execResult.stderr,
@@ -1913,6 +1917,7 @@ export class ExecutionService implements OnModuleDestroy {
     success: boolean;
     cancelled?: boolean;
     interrupted?: boolean;
+    started?: boolean;
     stdout: string;
     stderr: string;
     executionTimeMs?: number;
@@ -2016,6 +2021,7 @@ export class ExecutionService implements OnModuleDestroy {
       success: containerResult.success,
       cancelled: containerResult.cancelled,
       interrupted: containerResult.interrupted,
+      started: containerResult.started,
       stdout: redactedStdout,
       stderr: redactedStderr,
       executionTimeMs: containerResult.duration,

@@ -101,6 +101,28 @@ describe('K6DynamicWorkerService lifecycle', () => {
     expect(connection.quit).toHaveBeenCalledTimes(1);
   });
 
+  it('does not let a disabled location draining its run delay the executor drain', async () => {
+    const { service } = setup();
+    await service['handleQueueRefresh'](
+      JSON.stringify({ locationCodes: ['eu'] }),
+    );
+    const worker = service['workers'].get('k6-eu')!;
+    let finishRun!: () => void;
+    (worker.close as jest.Mock).mockImplementationOnce(
+      () => new Promise<void>((resolve) => (finishRun = resolve)),
+    );
+    const disable = service['handleQueueRefresh'](
+      JSON.stringify({ locationCodes: [] }),
+    );
+    await Promise.resolve();
+
+    // The module-destroy hook (which precedes the executor drain) returns at once.
+    await expect(service.onModuleDestroy()).resolves.toBeUndefined();
+
+    finishRun();
+    await Promise.all([disable, service.onApplicationShutdown()]);
+  });
+
   it.each([true, false])(
     'starts only its enabled region (enabled=%s)',
     async (enabled) => {

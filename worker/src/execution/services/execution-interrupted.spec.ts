@@ -196,6 +196,29 @@ describe('ExecutionService post-container failures of a single test', () => {
     },
   );
 
+  it('treats a sub-second container (started, zero billable time) as run', async () => {
+    const { service } = createService();
+    jest
+      .spyOn(service, '_executePlaywrightNativeRunner' as never)
+      .mockResolvedValue({
+        success: true,
+        started: true,
+        stdout: '',
+        stderr: '',
+        billableMs: 0,
+      } as never);
+    jest
+      .spyOn(service, 'evaluatePlaywrightReport' as never)
+      .mockRejectedValue(new Error('report missing') as never);
+
+    const error = await service['runSingleTestReserved'](singleTask).catch(
+      (caught: unknown) => caught,
+    );
+
+    expect(error).toBeInstanceOf(UnrecoverableError);
+    service.onModuleDestroy();
+  });
+
   it('keeps a plain retryable error when no container started', async () => {
     const { service } = createService();
     jest

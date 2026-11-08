@@ -1461,6 +1461,52 @@ describe('K6ExecutionService', () => {
       }
     });
 
+    it('does not retry a sub-second run (started, zero billable time) whose upload fails', async () => {
+      const fs = jest.requireMock('fs/promises');
+      fs.access.mockRejectedValue(new Error('missing HTML'));
+      fs.rename = jest.fn().mockResolvedValue(undefined);
+      fs.copyFile = jest.fn().mockResolvedValue(undefined);
+      Object.assign(mockS3Service, {
+        prepareFileVariables: jest
+          .fn()
+          .mockResolvedValue({ additionalFiles: {}, filePaths: {} }),
+        getBucketForEntityType: jest.fn().mockReturnValue('bucket'),
+        uploadDirectory: jest.fn().mockRejectedValue(new Error('s3 down')),
+        getBaseUrlForEntity: jest
+          .fn()
+          .mockReturnValue('https://example.com/run'),
+      });
+      jest
+        .spyOn(service, 'allocateDashboardPort' as never)
+        .mockResolvedValue(0 as never);
+      jest.spyOn(service, 'executeK6Binary' as never).mockResolvedValue({
+        exitCode: 0,
+        billableMs: 0,
+        started: true,
+        stdout: '',
+        stderr: '',
+        error: null,
+        timedOut: false,
+        cancelled: false,
+      } as never);
+      try {
+        const error = await service
+          .runK6Test({
+            runId: 'run-1',
+            testId: 'test-1',
+            organizationId: 'org-1',
+            projectId: 'project-1',
+            tests: [],
+            script: 'export default function() {}',
+            location: 'local',
+          })
+          .catch((caught: unknown) => caught);
+        expect(error).toBeInstanceOf(UnrecoverableError);
+      } finally {
+        fs.access.mockResolvedValue(undefined);
+      }
+    });
+
     it('scrubs the report directory with the run secrets before uploading', async () => {
       const fs = jest.requireMock('fs/promises');
       fs.access.mockRejectedValue(new Error('missing HTML'));

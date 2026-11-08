@@ -45,6 +45,32 @@ async function destroy(service: MonitorDynamicWorkerService): Promise<void> {
 }
 
 describe('MonitorDynamicWorkerService lifecycle', () => {
+  it('does not let a disabled location draining its check delay the executor drain', async () => {
+    const { service } = setup('eu');
+    await service['handleQueueRefresh'](
+      JSON.stringify({ locationCodes: ['eu'] }),
+    );
+    const worker = service['workers'].get('monitor-eu')!;
+    let finishCheck!: () => void;
+    let closing!: () => void;
+    const closeStarted = new Promise<void>((resolve) => {
+      closing = resolve;
+    });
+    (worker.close as jest.Mock).mockImplementationOnce(() => {
+      closing();
+      return new Promise<void>((resolve) => (finishCheck = resolve));
+    });
+    const disable = service['handleQueueRefresh'](
+      JSON.stringify({ locationCodes: [] }),
+    );
+    await closeStarted;
+
+    await expect(service.onModuleDestroy()).resolves.toBeUndefined();
+
+    finishCheck();
+    await Promise.all([disable, service.onApplicationShutdown()]);
+  });
+
   it('defers a synthetic check while its organization slot is occupied', async () => {
     const { service } = setup();
     const executeMonitor = jest

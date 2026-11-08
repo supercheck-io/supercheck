@@ -135,7 +135,6 @@ export class MonitorDynamicWorkerService
       this.subscriber = null;
     }
 
-    await this.refreshPromise;
     await Promise.allSettled(
       Array.from(this.workers.values()).map((w) => w.pause(true)),
     );
@@ -146,6 +145,8 @@ export class MonitorDynamicWorkerService
    * in flight), so the drain clock starts at SIGTERM and checks get the drain window to finish.
    */
   async onApplicationShutdown(): Promise<void> {
+    // A refresh may be closing a disabled worker (waiting for its run); that wait must not delay the drain.
+    await this.refreshPromise;
     await Promise.allSettled(
       Array.from(this.workers.values()).map((w) => w.close()),
     );

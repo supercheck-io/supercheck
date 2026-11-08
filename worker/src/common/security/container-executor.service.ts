@@ -143,6 +143,8 @@ export interface ContainerExecutionResult {
   billableMs?: number;
   timedOut: boolean;
   cancelled?: boolean;
+  /** Kubernetes reported the container started. Billable time can still be zero for a sub-second run, so retry guards use this. */
+  started?: boolean;
   /** The worker restart ended this execution (its Job was deleted by shutdown, or never created). Not a user cancellation. */
   interrupted?: boolean;
   error?: string;
@@ -159,6 +161,13 @@ interface ContainerStartEvidence {
 const MIN_PLAUSIBLE_START_MS = Date.UTC(2000, 0, 1);
 /** Job activeDeadline is the timeout plus 120s; allow the same grace here. */
 const BILLABLE_DEADLINE_GRACE_MS = 150_000;
+
+function hasStartEvidence(evidence: ContainerStartEvidence): boolean {
+  return (
+    evidence.startedAtMs !== null &&
+    evidence.startedAtMs >= MIN_PLAUSIBLE_START_MS
+  );
+}
 
 export function computeBillableMs(
   evidence: ContainerStartEvidence,
@@ -934,6 +943,8 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       containerCommand,
     );
     const jobName = this.buildExecutionJobName(options.runId);
+    // Runs are tracked by run id; synthetic monitor checks have none, so they are tracked by Job name.
+    const trackKey = options.runId ?? `job:${jobName}`;
     const exitCodeFile = this.getWorkspaceExitCodeFile(workspace);
     const exitSignalFile = this.getWorkspaceExitSignalFile(workspace);
     const wrappedScript = this.buildKubernetesWrapperScript(
@@ -1017,12 +1028,12 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
 
       if (this.shuttingDown) {
         // The drain ended while the Job was being created; the finally below deletes it.
-        if (options.runId) this.shutdownDeletedRunIds.add(options.runId);
+        this.shutdownDeletedRunIds.add(trackKey);
         throw new Error(WORKER_INTERRUPTED_ERROR);
       }
 
+      this.runningJobs.set(trackKey, jobName);
       if (options.runId) {
-        this.runningJobs.set(options.runId, jobName);
         cancellationInterval = this.startKubernetesCancellationPoller(
           options.runId,
           jobName,
@@ -1033,7 +1044,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       }
 
       const podWaitStartedAt = Date.now();
-      podName = await this.waitForExecutionPod(jobName, options.runId);
+      podName = await this.waitForExecutionPod(jobName, trackKey);
       podStartupDurationMs = Date.now() - podWaitStartedAt;
       if (
         podStartupDurationMs > ContainerExecutorService.SLOW_POD_STARTUP_WARN_MS
@@ -1109,8 +1120,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       // The deleted Job's pod is seen either gone (404) or killed (137/143) first.
       const interrupted =
         !killed &&
-        !!options.runId &&
-        this.shutdownDeletedRunIds.has(options.runId) &&
+        this.shutdownDeletedRunIds.has(trackKey) &&
         (outcome.cancelled ||
           outcome.exitCode === 137 ||
           outcome.exitCode === 143);
@@ -1151,6 +1161,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
         duration,
         billableMs: computeBillableMs(startEvidence, limits.timeoutMs),
         timedOut,
+        started: hasStartEvidence(startEvidence),
         cancelled: killed,
         ...(interrupted ? { interrupted: true } : {}),
         error: timedOut
@@ -1165,8 +1176,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       };
     } catch (error) {
       // Any failure after shutdown deleted this run's Job is the restart, not a fault of the run.
-      const deletedByShutdown =
-        !!options.runId && this.shutdownDeletedRunIds.has(options.runId);
+      const deletedByShutdown = this.shutdownDeletedRunIds.has(trackKey);
       const message = error instanceof Error ? error.message : String(error);
       return {
         success: false,
@@ -1176,6 +1186,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
         duration: Date.now() - startTime,
         billableMs: computeBillableMs(startEvidence, limits.timeoutMs),
         timedOut,
+        started: hasStartEvidence(startEvidence),
         ...(deletedByShutdown ? { interrupted: true } : {}),
         error: deletedByShutdown ? WORKER_INTERRUPTED_ERROR : message,
       };
@@ -1187,10 +1198,8 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
         clearInterval(cancellationInterval);
         this.activeCancellationIntervals.delete(cancellationInterval);
       }
-      if (options.runId) {
-        this.runningJobs.delete(options.runId);
-        this.shutdownDeletedRunIds.delete(options.runId);
-      }
+      this.runningJobs.delete(trackKey);
+      this.shutdownDeletedRunIds.delete(trackKey);
       if (podName) {
         this.execFailureLogged.delete(podName);
       }

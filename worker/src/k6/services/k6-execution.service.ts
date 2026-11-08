@@ -84,6 +84,8 @@ export interface K6ExecutionResult {
   cancelled?: boolean;
   /** Ended by a worker restart: an execution error, never a user cancellation or an alert. */
   interrupted?: boolean;
+  /** A container start was reported, even when billable time is zero. */
+  containerStarted?: boolean;
   timedOut: boolean;
   runId: string;
   durationMs: number;
@@ -358,6 +360,8 @@ export class K6ExecutionService {
     const startTime = Date.now();
     // Container run time summed over every launch (dashboard-port retries).
     let totalBillableMs = 0;
+    // Kubernetes reported a container start; billable time alone can be zero for a sub-second run.
+    let containerStarted = false;
     let billingVirtualUsers: number | undefined;
 
     const uniqueRunId = `${runId}-${crypto.randomUUID().substring(0, 8)}`;
@@ -450,6 +454,7 @@ export class K6ExecutionService {
         timedOut: boolean;
         cancelled?: boolean;
         interrupted?: boolean;
+        started?: boolean;
         billableMs?: number;
         billingVirtualUsers?: number;
       } | null = null;
@@ -503,6 +508,7 @@ export class K6ExecutionService {
         }
 
         totalBillableMs += execResult.billableMs ?? 0;
+        containerStarted ||= execResult.started === true;
         if (execResult.billingVirtualUsers !== undefined)
           billingVirtualUsers = Math.max(
             billingVirtualUsers ?? 0,
@@ -531,7 +537,11 @@ export class K6ExecutionService {
         throw new Error(`[${runId}] k6 did not produce an execution result`);
       }
       // The pod never started: let the queue delay the run so a new worker runs it.
-      if (execResult.interrupted && totalBillableMs === 0) {
+      if (
+        execResult.interrupted &&
+        !containerStarted &&
+        totalBillableMs === 0
+      ) {
         throw new ExecutionCapacityError(WORKER_INTERRUPTED_ERROR);
       }
       const interrupted = execResult.interrupted === true;
@@ -735,6 +745,7 @@ export class K6ExecutionService {
         success: overallSuccess,
         cancelled: execResult.cancelled,
         interrupted,
+        containerStarted,
         timedOut,
         runId,
         durationMs: Date.now() - startTime,
@@ -815,7 +826,8 @@ export class K6ExecutionService {
 
       // After the container started, a retry would run the test again against the customer's target.
       throw attachBillableMs(
-        totalBillableMs > 0 && !(error instanceof UnrecoverableError)
+        (containerStarted || totalBillableMs > 0) &&
+          !(error instanceof UnrecoverableError)
           ? new UnrecoverableError(
               `k6 finished but its results could not be saved: ${getErrorMessage(error)}`,
             )
@@ -934,6 +946,7 @@ export class K6ExecutionService {
     timedOut: boolean;
     cancelled?: boolean;
     interrupted?: boolean;
+    started?: boolean;
     billableMs?: number;
     billingVirtualUsers?: number;
   }> {
@@ -1130,6 +1143,7 @@ export class K6ExecutionService {
         // Stopped by a trial limit: a failed run, not a user cancellation.
         cancelled: containerResult.cancelled && !stopReason,
         interrupted: containerResult.interrupted,
+        started: containerResult.started,
         billableMs: containerResult.billableMs ?? 0,
         billingVirtualUsers: allocation.value(),
         error: redactedError || null,

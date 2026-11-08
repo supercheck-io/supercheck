@@ -114,12 +114,13 @@ export class K6DynamicWorkerService
       this.subscriber = null;
     }
 
-    await this.refreshPromise;
     await this.pauseWorkers();
   }
 
   /** Closing waits for the active run, so it happens after the executor's drain (onModuleDestroy of an imported module runs later than this one). */
   async onApplicationShutdown(): Promise<void> {
+    // A refresh may be closing a disabled worker (waiting for its run); that wait must not delay the drain.
+    await this.refreshPromise;
     const closePromises = Array.from(this.workers.values()).map((w) =>
       w.close(),
     );
