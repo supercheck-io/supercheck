@@ -2726,10 +2726,6 @@ export class DataLifecycleService {
         },
       });
 
-      this.cleanupQueueEvents = new QueueEvents("data-lifecycle-cleanup", {
-        connection: redisConnection,
-      });
-
       // Create worker with distributed locking
       this.cleanupWorker = new Worker<CleanupJobData, CleanupOperationResult>(
         "data-lifecycle-cleanup",
@@ -2817,33 +2813,34 @@ export class DataLifecycleService {
     }
 
     try {
-      // Remove existing job if any
-      const existingJobs = await this.cleanupQueue.getRepeatableJobs();
-      const existingJob = existingJobs.find(
-        (job) => job.name === `${config.entityType}-cleanup`
-      );
+      const name = `${config.entityType}-cleanup`;
 
-      if (existingJob) {
-        await this.cleanupQueue.removeRepeatableByKey(existingJob.key);
-      }
-
-      // Schedule new job
-      await this.cleanupQueue.add(
-        `${config.entityType}-cleanup`,
+      // upsertJobScheduler is atomic, so replicas starting together cannot drop a firing.
+      await this.cleanupQueue.upsertJobScheduler(
+        name,
+        { pattern: config.cronSchedule },
         {
-          entityType: config.entityType,
-          scheduledAt: new Date().toISOString(),
-          manual: false,
-          dryRun: false,
-          config,
-        },
-        {
-          jobId: `${config.entityType}-cleanup-recurring`,
-          repeat: {
-            pattern: config.cronSchedule,
+          name,
+          data: {
+            entityType: config.entityType,
+            scheduledAt: new Date().toISOString(),
+            manual: false,
+            dryRun: false,
+            config,
           },
         }
       );
+
+      // Removed after the upsert so a failed upsert never leaves nothing scheduled.
+      // One-time, idempotent removal of the legacy repeatable (added with
+      // `repeat` + jobId `<entity>-cleanup-recurring`). Scheduler entries share
+      // this zset and the same name, but their key is the scheduler id.
+      // An old replica still on the legacy code finds our scheduler by this name,
+      // removes it and re-adds its repeatable: one firing either way.
+      const existingJobs = await this.cleanupQueue.getRepeatableJobs();
+      for (const legacy of existingJobs.filter((job) => job.name === name && job.key !== name)) {
+        await this.cleanupQueue.removeRepeatableByKey(legacy.key);
+      }
     } catch (error) {
       console.error(
         `[DATA_LIFECYCLE] Failed to schedule ${config.entityType}:`,
@@ -2919,7 +2916,8 @@ export class DataLifecycleService {
     entityType: CleanupEntityType,
     dryRun = false
   ): Promise<CleanupOperationResult> {
-    if (!this.cleanupQueue || !this.cleanupQueueEvents) {
+    const queue = this.cleanupQueue;
+    if (!queue || !this.redisConnection) {
       throw new Error("Cleanup queue not initialized");
     }
 
@@ -2928,7 +2926,21 @@ export class DataLifecycleService {
       throw new Error(`No strategy found for entity type: ${entityType}`);
     }
 
-    const job = await this.cleanupQueue.add(
+    // Created on the first manual run only: QueueEvents holds a permanent blocking Redis connection.
+    // Ready before add, so the completion event cannot be missed. shutdown() closes it.
+    this.cleanupQueueEvents ??= new QueueEvents("data-lifecycle-cleanup", {
+      connection: this.redisConnection,
+    });
+    const events = this.cleanupQueueEvents;
+    try {
+      await events.waitUntilReady();
+    } catch (error) {
+      this.cleanupQueueEvents = null; // do not cache a broken instance
+      await events.close().catch(() => {});
+      throw error;
+    }
+
+    const job = await queue.add(
       `manual-${entityType}-cleanup`,
       {
         entityType,
@@ -2942,7 +2954,7 @@ export class DataLifecycleService {
       }
     );
 
-    const result = await job.waitUntilFinished(this.cleanupQueueEvents);
+    const result = await job.waitUntilFinished(events);
     return result;
   }
 

@@ -1,9 +1,10 @@
 import { db } from "@/utils/db";
 import { monitors as monitorSchemaDb, MonitorConfig } from "@/db/schema";
-import { eq, isNotNull, and, ne } from "drizzle-orm";
+import { eq, isNotNull, and, ne, inArray } from "drizzle-orm";
 import { getQueues, MonitorJobData } from "./queue";
 import { SYNTHETIC_MIN_FREQUENCY_MINUTES } from "./monitor-write";
 import type { Redis } from "ioredis";
+import type { Queue } from "bullmq";
 
 interface ScheduleMonitorOptions {
   monitorId: string;
@@ -150,6 +151,12 @@ export async function initializeMonitorSchedulers(): Promise<{ success: boolean;
       
       console.log('[MonitorScheduler] Lock acquired, initializing schedulers...');
 
+      try {
+        await removeOrphanedMonitorRepeatables(monitorSchedulerQueue);
+      } catch (cleanupError) {
+        console.error('Failed to clean up orphaned monitor repeatables:', cleanupError);
+      }
+
       const activeMonitors = await db
         .select()
         .from(monitorSchemaDb)
@@ -226,43 +233,28 @@ export async function initializeMonitorSchedulers(): Promise<{ success: boolean;
 }
 
 /**
- * Cleanup function to close all monitor scheduler queues and workers.
- * Should be called when shutting down the application
+ * Removes repeatables whose monitor is deleted, disabled or scheduled under a different id.
+ * A repeatable for an existing enabled monitor is never removed: a monitor created
+ * mid-rollout may not have its scheduledJobId written yet. Runs under the init lock.
  */
-export async function cleanupMonitorScheduler(): Promise<boolean> {
-  try {
-    const { monitorSchedulerQueue } = await getQueues();
-    const repeatableJobs = await monitorSchedulerQueue.getRepeatableJobs();
-    
-    // Get all monitors with schedules from the database
-    const monitorsWithSchedules = await db
-      .select({ id: monitorSchemaDb.id, scheduledJobId: monitorSchemaDb.scheduledJobId })
-      .from(monitorSchemaDb)
-      .where(isNotNull(monitorSchemaDb.scheduledJobId));
-    
-    const validMonitorIds = new Set(monitorsWithSchedules.map(m => m.id));
-    const validSchedulerIds = new Set(monitorsWithSchedules.map(m => m.scheduledJobId).filter(Boolean));
-    
-    // Find orphaned jobs
-    const orphanedJobs = repeatableJobs.filter(job => {
-      const monitorIdMatch = job.name?.match(/scheduled-monitor-([0-9a-f-]+)/);
-      const monitorId = monitorIdMatch ? monitorIdMatch[1] : null;
-      
-      return (!monitorId || !validMonitorIds.has(monitorId)) && 
-             (!job.id || !validSchedulerIds.has(job.id as string));
-    });
-    
-    if (orphanedJobs.length > 0) {
-      const removePromises = orphanedJobs.map(async (job) => {
-        return monitorSchedulerQueue.removeRepeatableByKey(job.key);
-      });
+async function removeOrphanedMonitorRepeatables(queue: Queue): Promise<void> {
+  const repeatableJobs = await queue.getRepeatableJobs();
+  const monitorIdOf = (job: { name?: string | null }) =>
+    job.name?.match(/^scheduled-monitor-([0-9a-f-]+)$/)?.[1];
+  const monitorIds = [...new Set(repeatableJobs.map(monitorIdOf).filter((id): id is string => !!id))];
+  if (monitorIds.length === 0) return;
 
-      await Promise.all(removePromises);
-    }
+  const rows = await db
+    .select({ id: monitorSchemaDb.id, enabled: monitorSchemaDb.enabled, scheduledJobId: monitorSchemaDb.scheduledJobId })
+    .from(monitorSchemaDb)
+    .where(inArray(monitorSchemaDb.id, monitorIds));
+  const monitorsById = new Map(rows.map((row) => [row.id, row]));
 
-    return true;
-  } catch (error) {
-    console.error("Failed to cleanup monitor scheduler:", error);
-    return false;
-  }
+  const orphanedJobs = repeatableJobs.filter((job) => {
+    const monitorId = monitorIdOf(job);
+    if (!monitorId) return false;
+    const monitor = monitorsById.get(monitorId);
+    return !monitor || !monitor.enabled || (monitor.scheduledJobId != null && monitor.scheduledJobId !== monitorId);
+  });
+  await Promise.all(orphanedJobs.map((job) => queue.removeRepeatableByKey(job.key)));
 }

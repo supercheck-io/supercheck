@@ -93,6 +93,7 @@ export async function initializeSchedulerWorkers(): Promise<void> {
       });
 
       // K6 Job Scheduler Worker
+      // shortcut: legacy k6-job-scheduler consumer kept for one release; remove in release N+1
       k6SchedulerWorker = new Worker<ScheduledJobData>(
         K6_JOB_SCHEDULER_QUEUE,
         async (job) => {
