@@ -1,4 +1,4 @@
-import { and, eq, gt, gte, isNotNull, isNull, ne, sql } from "drizzle-orm";
+import { and, eq, gt, isNotNull, isNull, ne, sql } from "drizzle-orm";
 
 import { jobs, monitors, runs, sreAlertEvents, sreIncidentAlerts, sreIncidents, sreInvestigationRuns } from "@/db/schema";
 import { createLogger } from "@/lib/logger/index";
@@ -194,28 +194,29 @@ export function shouldRetriage(runRows: RunRow[], now: Date) {
 
 /** Starts automatic triage once more for open incidents whose only automatic run was failed as stale. */
 export async function retriageStaleRuns(now = new Date()): Promise<number> {
-  const staleAuto = sql`exists (select 1 from ${sreInvestigationRuns} r where r.incident_id = ${sreIncidents.id} and r.origin = 'auto' and (
-    (r.status = 'failed' and r.agent_state_snapshot->>'errorCode' = 'stale_run')
-    or (r.status = 'running' and r.started_at < ${new Date(now.getTime() - STALE_RUN_AFTER_MS).toISOString()}::timestamptz)))`;
-  // The same count the durable guard below uses, so an incident already retried never selects again.
-  const oneAuto = sql`(select count(*) from ${sreInvestigationRuns} r where r.incident_id = ${sreIncidents.id} and r.origin = 'auto') = 1`;
-  const noOtherRun = sql`not exists (select 1 from ${sreInvestigationRuns} r where r.incident_id = ${sreIncidents.id} and (r.status = 'completed' or (r.status = 'running' and r.started_at >= ${new Date(now.getTime() - STALE_RUN_AFTER_MS).toISOString()}::timestamptz)))`;
-  const incidents = await db
-    .select({ id: sreIncidents.id, organizationId: sreIncidents.organizationId, projectId: sreIncidents.projectId })
-    .from(sreIncidents)
-    .where(
-      and(
-        ne(sreIncidents.status, "resolved"),
-        isNull(sreIncidents.createdByUserId),
-        gte(sreIncidents.createdAt, new Date(now.getTime() - RETRIAGE_MAX_AGE_MS)),
-        staleAuto,
-        oneAuto,
-        // Nothing else already triaged it or is still running.
-        noOtherRun,
-      ),
-    )
-    .orderBy(sql`random()`)
-    .limit(BATCH);
+  const cutoff = new Date(now.getTime() - STALE_RUN_AFTER_MS).toISOString();
+  // Starts from the small set of open, recent, automatic incidents and reaches runs only per incident (a LATERAL
+  // aggregate cannot be flattened into a runs-first join), so sre_investigation_runs_incident_id_idx serves it.
+  // Per incident: exactly one automatic run, it failed stale (or is a dead "running" one), and no completed or live run.
+  const incidents = await db.execute<{ id: string; organizationId: string; projectId: string }>(sql`
+    select i.id, i.organization_id as "organizationId", i.project_id as "projectId"
+    from ${sreIncidents} i
+    cross join lateral (
+      select
+        count(*) filter (where r.origin = 'auto') as autos,
+        bool_or(r.origin = 'auto' and (
+          (r.status = 'failed' and r.agent_state_snapshot->>'errorCode' = 'stale_run')
+          or (r.status = 'running' and r.started_at < ${cutoff}::timestamptz))) as stale,
+        bool_or(r.status = 'completed' or (r.status = 'running' and r.started_at >= ${cutoff}::timestamptz)) as busy
+      from ${sreInvestigationRuns} r
+      where r.incident_id = i.id and r.organization_id = i.organization_id
+    ) s
+    where i.status <> 'resolved'
+      and i.created_by_user_id is null
+      and i.created_at >= ${new Date(now.getTime() - RETRIAGE_MAX_AGE_MS).toISOString()}::timestamptz
+      and s.autos = 1 and coalesce(s.stale, false) and not coalesce(s.busy, false)
+    order by random()
+    limit ${BATCH}`);
 
   let count = 0;
   for (const incident of incidents) {

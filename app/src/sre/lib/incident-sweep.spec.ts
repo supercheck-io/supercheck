@@ -11,6 +11,7 @@ jest.mock("@/utils/db", () => {
         mockSelect(...args);
         return chain;
       },
+      execute: () => Promise.resolve(mockResults.shift() ?? []),
       transaction: (fn: (tx: unknown) => unknown) => fn({ execute: mockExecute }),
     },
   };

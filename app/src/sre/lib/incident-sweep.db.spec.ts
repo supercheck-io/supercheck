@@ -382,29 +382,46 @@ describe("sweepSreIncidents", () => {
   });
 });
 
-// Runs the candidate SELECTs of a sweep over bulk data through EXPLAIN. Set SWEEP_EXPLAIN=1 to print the plans.
-it("candidate queries plan and run on a larger data set", async () => {
+// Runs the candidate SELECTs of a sweep through EXPLAIN on a table shape like production: many incidents, most
+// resolved or old, 60k investigation runs, a few hundred open recent ones. Set SWEEP_EXPLAIN=1 to print the plans.
+it("candidate queries reach investigation runs only through an index", async () => {
   const t = await tenant();
   await client.unsafe(`
     INSERT INTO sre_incidents (id, incident_number, organization_id, project_id, title, severity, status, alert_count, last_alert_at, created_at, updated_at)
-    SELECT gen_random_uuid(), 100000 + g, '${t.orgId}', '${t.projectId}', 't', 'sev2', CASE WHEN g % 10 = 0 THEN 'triggered' ELSE 'resolved' END, 1, now() - interval '1 hour', now() - interval '1 hour', now()
-    FROM generate_series(1, 5000) g`);
+    SELECT gen_random_uuid(), 100000 + g, '${t.orgId}', '${t.projectId}', 't', 'sev2',
+      CASE WHEN g % 20 = 0 THEN 'triggered' ELSE 'resolved' END, 1, now() - interval '1 hour',
+      CASE WHEN g % 20 = 0 AND g % 40 <> 0 THEN now() - interval '1 hour' ELSE now() - interval '10 days' END, now()
+    FROM generate_series(1, 20000) g`);
   await client.unsafe(`
     INSERT INTO sre_alert_events (id, organization_id, project_id, fingerprint_hash, dedup_key, severity, status, source_type, source_id, title, fired_at)
     SELECT gen_random_uuid(), '${t.orgId}', '${t.projectId}', md5(i.id::text) || md5(i.id::text), '${t.projectId}:monitor:${t.monitorId}:monitor_failure', 'sev2', 'firing', 'monitor', '${t.monitorId}', 'API: Monitor down', now() - interval '1 hour'
-    FROM sre_incidents i WHERE i.incident_number > 100000`);
+    FROM sre_incidents i WHERE i.incident_number > 100000 AND i.status = 'triggered'`);
   await client.unsafe(`INSERT INTO sre_incident_alerts (id, incident_id, alert_event_id, role) SELECT gen_random_uuid(), i.id, e.id, 'trigger' FROM sre_incidents i JOIN sre_alert_events e ON e.fingerprint_hash = md5(i.id::text) || md5(i.id::text)`);
+  // Three runs per incident (60k): a stale automatic run for the open ones, so they are real candidates.
   await client.unsafe(`
     INSERT INTO sre_investigation_runs (id, organization_id, project_id, incident_id, agent_type, status, model_id, origin, started_at, agent_state_snapshot)
-    SELECT gen_random_uuid(), organization_id, project_id, id, 'triage', 'failed', 'm', 'auto', now() - interval '1 hour', '{"errorCode":"stale_run"}'::jsonb FROM sre_incidents WHERE incident_number > 100000 AND status = 'triggered'`);
+    SELECT gen_random_uuid(), i.organization_id, i.project_id, i.id, 'triage',
+      CASE WHEN n = 1 AND i.status = 'triggered' THEN 'failed' ELSE 'completed' END, 'm',
+      CASE WHEN n = 1 THEN 'auto' ELSE 'manual' END, now() - interval '1 hour',
+      CASE WHEN n = 1 AND i.status = 'triggered' THEN '{"errorCode":"stale_run"}'::jsonb END
+    FROM sre_incidents i CROSS JOIN generate_series(1, 3) n
+    WHERE i.incident_number > 100000 AND (i.status = 'resolved' OR n = 1)`);
+  await client.unsafe(`
+    INSERT INTO sre_investigation_runs (id, organization_id, project_id, incident_id, agent_type, status, model_id, origin, started_at)
+    SELECT gen_random_uuid(), i.organization_id, i.project_id, i.id, 'triage', 'completed', 'm', 'manual', now() - interval '2 hours'
+    FROM sre_incidents i CROSS JOIN generate_series(1, 2) n WHERE i.incident_number > 100000 AND i.status = 'resolved'`);
   await client.unsafe("ANALYZE");
-  await setMonitor(t, "up", 10);
+  const [{ runCount }] = await client`SELECT count(*)::int AS "runCount" FROM sre_investigation_runs`;
+  expect(runCount).toBeGreaterThan(50_000);
   captured.length = 0;
+  // The monitor is still down, so the recovery branch leaves the open incidents for the re-triage branch to see.
   await sweepSreIncidents();
-  const selects = captured.filter(({ query }) => /^select/i.test(query) && /sre_incidents/.test(query) && /random\(\)/i.test(query));
-  expect(selects.length).toBeGreaterThanOrEqual(3);
+  await setMonitor(t, "up", 10);
+  const selects = captured.filter(({ query }) => /^\s*select/i.test(query) && /sre_incidents/.test(query) && /random\(\)/i.test(query));
+  expect(selects.length).toBe(3);
   for (const { query, params } of selects) {
-    const plan = await client.unsafe(`EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF) ${query}`, params as never[]);
-    if (process.env.SWEEP_EXPLAIN) console.log(`${query.slice(0, 120)}...\n${plan.map((row) => row["QUERY PLAN"]).join("\n")}`);
+    const plan = (await client.unsafe(`EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF) ${query}`, params as never[])).map((row) => String(row["QUERY PLAN"])).join("\n");
+    if (process.env.SWEEP_EXPLAIN) console.log(`${query.trim().slice(0, 80)}...\n${plan}`);
+    expect(plan).not.toMatch(/Seq Scan on sre_investigation_runs/);
   }
 });
