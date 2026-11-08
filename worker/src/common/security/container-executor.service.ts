@@ -1597,8 +1597,8 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
         // On cold nodes, image pulls for the 3+ GB worker image can take
         // minutes — blocking here until Running would cause spurious
         // "did not appear within 120s" failures.
-        // The log stream's reconnect logic handles 400 errors from the
-        // API server while the container is still starting up.
+        // The log stream waits for the container phase before attaching, so
+        // this early return no longer races the container start.
         return pod.metadata.name;
       }
       await this.sleep(1000);
@@ -1668,6 +1668,36 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Whether the execution container has started (or already finished).
+   *
+   * The API server answers pod-log requests with 400 BadRequest until the
+   * container's state is `running` or `terminated`, so attaching before that
+   * point only burns reconnect attempts and logs a warning for an expected
+   * startup window.
+   *
+   * Returns `true` when the pod cannot be read: an API or RBAC blip must
+   * degrade to the previous attach-and-retry behaviour instead of never
+   * streaming logs at all.
+   */
+  private async hasExecutionContainerStarted(
+    podName: string,
+  ): Promise<boolean> {
+    if (!this.coreApi) return true;
+    try {
+      const pod = await this.coreApi.readNamespacedPod({
+        name: podName,
+        namespace: this.executionNamespace,
+      });
+      const state = pod.status?.containerStatuses?.find(
+        (container) => container.name === 'execution',
+      )?.state;
+      return Boolean(state?.running || state?.terminated);
+    } catch {
+      return true;
+    }
+  }
+
+  /**
    * Start log streaming with automatic reconnect on network errors.
    *
    * K8s log follow streams can disconnect prematurely due to API server
@@ -1713,6 +1743,26 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
 
     const connect = async (attempt: number) => {
       if (controller.signal.aborted) return;
+
+      // waitForExecutionPod returns as soon as the pod is visible, so the
+      // first attach attempts would otherwise race the container start and be
+      // rejected with 400 BadRequest. Waiting for the container phase keeps
+      // that expected window out of the logs and preserves the reconnect
+      // budget for real failures.
+      if (!connected && !(await this.hasExecutionContainerStarted(podName))) {
+        if (controller.signal.aborted) return;
+        if (attempt < maxReconnects) {
+          reconnectTimer = setTimeout(
+            () => void connect(attempt + 1),
+            reconnectDelayMs,
+          );
+        } else {
+          this.logger.warn(
+            `Stopped waiting for the execution container of ${jobName} to start after ${maxReconnects} attempts; final logs will be fetched via snapshot`,
+          );
+        }
+        return;
+      }
 
       // On reconnect, suppress live forwarding for the replay window
       // to prevent duplicating lines in the user-visible streaming output.

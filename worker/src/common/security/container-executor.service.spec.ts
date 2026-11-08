@@ -1495,6 +1495,108 @@ describe('ContainerExecutorService', () => {
       controller.abort();
     });
 
+    it('waits for the execution container to start before attaching', async () => {
+      const log = jest
+        .fn()
+        .mockImplementation((_namespace, _pod, _container, sink: Writable) => {
+          sink.write('after start\n');
+          return Promise.resolve(new AbortController());
+        });
+      const readNamespacedPod = jest
+        .fn()
+        .mockResolvedValueOnce({
+          status: {
+            containerStatuses: [
+              {
+                name: 'execution',
+                state: { waiting: { reason: 'ContainerCreating' } },
+              },
+            ],
+          },
+        })
+        .mockResolvedValue({
+          status: {
+            containerStatuses: [
+              { name: 'execution', state: { running: { startedAt: '' } } },
+            ],
+          },
+        });
+      service['logClient'] = { log } as unknown as NonNullable<
+        (typeof service)['logClient']
+      >;
+      service['coreApi'] = { readNamespacedPod } as unknown as NonNullable<
+        (typeof service)['coreApi']
+      >;
+      const collector = service['createLogCollector']({});
+
+      const controller = service['startLogStreamWithReconnect'](
+        'pod',
+        collector.stream,
+        'job',
+      );
+
+      await jest.advanceTimersByTimeAsync(0);
+      expect(readNamespacedPod).toHaveBeenCalledTimes(1);
+      expect(log).not.toHaveBeenCalled();
+
+      await jest.advanceTimersByTimeAsync(2_000);
+      expect(log).toHaveBeenCalledTimes(1);
+      expect(collector.getOutput()).toBe('after start\n');
+      controller.abort();
+    });
+
+    it('attaches to a container that already terminated', async () => {
+      const log = jest.fn().mockResolvedValue(new AbortController());
+      const readNamespacedPod = jest.fn().mockResolvedValue({
+        status: {
+          containerStatuses: [
+            { name: 'execution', state: { terminated: { exitCode: 1 } } },
+          ],
+        },
+      });
+      service['logClient'] = { log } as unknown as NonNullable<
+        (typeof service)['logClient']
+      >;
+      service['coreApi'] = { readNamespacedPod } as unknown as NonNullable<
+        (typeof service)['coreApi']
+      >;
+      const collector = service['createLogCollector']({});
+
+      const controller = service['startLogStreamWithReconnect'](
+        'pod',
+        collector.stream,
+        'job',
+      );
+
+      await jest.advanceTimersByTimeAsync(0);
+      expect(log).toHaveBeenCalledTimes(1);
+      controller.abort();
+    });
+
+    it('attaches without waiting when the pod cannot be read', async () => {
+      const log = jest.fn().mockResolvedValue(new AbortController());
+      const readNamespacedPod = jest
+        .fn()
+        .mockRejectedValue(new Error('HTTP-Code: 403'));
+      service['logClient'] = { log } as unknown as NonNullable<
+        (typeof service)['logClient']
+      >;
+      service['coreApi'] = { readNamespacedPod } as unknown as NonNullable<
+        (typeof service)['coreApi']
+      >;
+      const collector = service['createLogCollector']({});
+
+      const controller = service['startLogStreamWithReconnect'](
+        'pod',
+        collector.stream,
+        'job',
+      );
+
+      await jest.advanceTimersByTimeAsync(0);
+      expect(log).toHaveBeenCalledTimes(1);
+      controller.abort();
+    });
+
     it.each(['close', 'error'])(
       'reconnects on response %s without ending the collector',
       async (event) => {
