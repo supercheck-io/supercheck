@@ -1,5 +1,6 @@
 import { createBullBoard } from "@bull-board/api";
 import { BullMQAdapter } from "@bull-board/api/bullMQAdapter";
+import { Queue } from "bullmq";
 import { NextRequest, NextResponse } from "next/server";
 import { promises as fs } from "fs";
 import path from "path";
@@ -14,6 +15,7 @@ import {
   getQueueLocationSignature,
   getCapacityQueues,
   getQueues,
+  getRedisConnection,
   invalidateQueueMaps,
   locationCodesSignature,
 } from "@/lib/queue";
@@ -155,10 +157,13 @@ const initializeBullBoard = async (): Promise<NextBullBoardAdapterState> => {
       }),
       // Incident events: opens/resolves incidents; AI triage runs in the background afterwards.
       new BullMQAdapter(sreAlertTriageQueue, { displayName: "Incident Events" }),
-      ...[
-        { queue: getStatusPageQueue(), displayName: "Status Page Jobs" },
-        { queue: getIncidentRenotifyQueue(), displayName: "Incident Re-notify" },
-      ].flatMap(({ queue, displayName }) => (queue ? [new BullMQAdapter(queue, { displayName })] : [])),
+      // A board built before these schedulers start gets its own handle on the same queue name.
+      new BullMQAdapter(getStatusPageQueue() ?? new Queue("status-page-jobs", { connection: await getRedisConnection() }), {
+        displayName: "Status Page Jobs",
+      }),
+      new BullMQAdapter(getIncidentRenotifyQueue() ?? new Queue("sre-incident-renotify", { connection: await getRedisConnection() }), {
+        displayName: "Incident Re-notify",
+      }),
     ],
     serverAdapter,
     options: {

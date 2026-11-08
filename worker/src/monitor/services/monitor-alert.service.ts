@@ -54,7 +54,7 @@ export class MonitorAlertService {
 
   /**
    * Lets an open incident for this monitor auto-resolve, whether or not a recovery alert goes out.
-   * False when the enqueue failed: the caller treats it as a delivery failure and retries.
+   * False when the enqueue still failed after its in-place retries (already logged).
    */
   async signalRecovery(monitorId: string, recoveredAt: Date): Promise<boolean> {
     return this.sreAlertTriageQueueService.enqueueSourceRecovery({

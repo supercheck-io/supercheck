@@ -579,7 +579,7 @@ describe('incident-only monitors (alerts off or no channel)', () => {
     expect(alertService.signalRecovery).toHaveBeenCalled();
   });
 
-  it('retries the cycle when the recovery signal could not be queued, without sending the recovery alert', async () => {
+  it('does not hold back the recovery alert when the recovery signal could not be queued', async () => {
     const latest = {
       id: 'r1',
       consecutiveSuccessCount: 1,
@@ -611,7 +611,7 @@ describe('incident-only monitors (alerts off or no channel)', () => {
       reason: 'up',
       metadata: {},
     });
-    expect(res).toEqual({ alertSent: false, deliveryFailed: true });
-    expect(alertService.sendNotification).not.toHaveBeenCalled();
+    expect(res).not.toEqual({ alertSent: false, deliveryFailed: true });
+    expect(alertService.signalRecovery).toHaveBeenCalledTimes(1);
   });
 });

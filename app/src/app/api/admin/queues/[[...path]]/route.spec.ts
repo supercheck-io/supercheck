@@ -11,8 +11,10 @@ jest.mock("@/lib/rbac/permissions", () => ({
 jest.mock("@/lib/location-registry", () => ({
   getAllEnabledLocationCodes: jest.fn(),
 }));
+jest.mock("bullmq", () => ({ Queue: jest.fn() }));
 jest.mock("@/lib/queue", () => ({
   getQueues: jest.fn(),
+  getRedisConnection: jest.fn(async () => ({})),
   getCapacityQueues: jest.fn(),
   getQueueLocationSignature: jest.fn(),
   invalidateQueueMaps: jest.fn(),
@@ -136,6 +138,16 @@ describe("Bull Board replica state", () => {
     expect(labels["status-page-jobs"]).toBe("Status Page Jobs");
     expect(labels["sre-incident-renotify"]).toBe("Incident Re-notify");
     expect(Object.keys(labels)).not.toContain("email-template");
+  });
+
+  it("still lists the status page and re-notify queues when the board is built before their schedulers start", async () => {
+    (getStatusPageQueue as jest.Mock).mockReturnValue(undefined);
+    (getIncidentRenotifyQueue as jest.Mock).mockReturnValue(undefined);
+    jest.requireMock("bullmq").Queue.mockImplementation((name: string) => ({ name }));
+    const { BullMQAdapter } = jest.requireMock("@bull-board/api/bullMQAdapter");
+    await poll();
+    const names = BullMQAdapter.mock.calls.map(([queue]: [{ name: string }]) => queue.name);
+    expect(names).toEqual(expect.arrayContaining(["status-page-jobs", "sre-incident-renotify"]));
   });
 
   it("shares the cached board with an isolated route bundle", async () => {

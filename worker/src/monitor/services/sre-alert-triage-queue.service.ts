@@ -4,6 +4,8 @@ import { buildRedisOptions } from '../../common/redis/redis-options';
 import { Queue } from 'bullmq';
 
 export const SRE_ALERT_TRIAGE_QUEUE_NAME = 'sre-alert-triage';
+/** Backoff between in-place retries of a recovery enqueue. */
+export const RECOVERY_ENQUEUE_DELAYS_MS = [250, 1_000];
 
 // Keep in sync with backgroundTriageJobSchema in app/src/sre/lib/background-alert-triage.ts.
 export type SreSourceRecovery = {
@@ -102,20 +104,33 @@ export class SreAlertTriageQueueService implements OnModuleDestroy {
     if (!this.isEnabled()) {
       return true; // incidents are off: nothing to retry
     }
-    try {
-      await this.getQueue().add(
-        'source-recovery',
-        { sourceRecovery: recovery },
-        // One job per recovery; a fixed id would be dropped while the last one is retained.
-        {
-          jobId: `sre-recovery-${recovery.sourceType}-${recovery.sourceId}-${Date.parse(recovery.recoveredAt)}`,
-        },
-      );
-      return true;
-    } catch (error) {
-      this.logger.error('Failed to enqueue SRE source recovery job', error);
-      return false;
+    // Retried in place: the caller sends the user's recovery alert either way, so a short Redis blip
+    // must not leave the incident open. The jobId makes a retry after an unacknowledged add a no-op.
+    for (
+      let attempt = 0;
+      attempt < RECOVERY_ENQUEUE_DELAYS_MS.length + 1;
+      attempt++
+    ) {
+      try {
+        await this.getQueue().add(
+          'source-recovery',
+          { sourceRecovery: recovery },
+          // One job per recovery; a fixed id would be dropped while the last one is retained.
+          {
+            jobId: `sre-recovery-${recovery.sourceType}-${recovery.sourceId}-${Date.parse(recovery.recoveredAt)}`,
+          },
+        );
+        return true;
+      } catch (error) {
+        const delay = RECOVERY_ENQUEUE_DELAYS_MS[attempt];
+        if (delay === undefined) {
+          this.logger.error('Failed to enqueue SRE source recovery job', error);
+          return false;
+        }
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
     }
+    return false;
   }
 
   async onModuleDestroy(): Promise<void> {
