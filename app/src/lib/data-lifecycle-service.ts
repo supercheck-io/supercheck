@@ -3005,21 +3005,22 @@ export class DataLifecycleService {
   }
 
   async shutdown(): Promise<void> {
-    const promises: Promise<void>[] = [];
+    const { cleanupWorker, cleanupQueue, cleanupQueueEvents } = this;
+    // Reset first so a repeated shutdown is a no-op.
+    this.cleanupWorker = null;
+    this.cleanupQueue = null;
+    this.cleanupQueueEvents = null;
 
-    if (this.cleanupWorker) {
-      promises.push(this.cleanupWorker.close());
+    const results = await Promise.allSettled([
+      cleanupWorker?.close(),
+      cleanupQueue?.close(),
+      cleanupQueueEvents?.close(),
+    ]);
+    for (const result of results) {
+      if (result.status === "rejected") {
+        console.error("[DataLifecycle] Shutdown close failed:", result.reason instanceof Error ? result.reason.message : result.reason);
+      }
     }
-
-    if (this.cleanupQueue) {
-      promises.push(this.cleanupQueue.close());
-    }
-
-    if (this.cleanupQueueEvents) {
-      promises.push(this.cleanupQueueEvents.close());
-    }
-
-    await Promise.all(promises);
   }
 }
 

@@ -399,6 +399,8 @@ export class MonitorEvaluator {
 
       // Once per recovery, before the alert toggle, channels or maintenance can drop it.
       if (consecutiveSuccessCount === recoveryThreshold) {
+        // signalRecovery retries in place and logs a signal it still loses; the recovery alert below goes
+        // out whatever it returns, so a failed incident enqueue cannot suppress the alert.
         await this.monitorAlertService.signalRecovery(monitorId, new Date());
       }
 

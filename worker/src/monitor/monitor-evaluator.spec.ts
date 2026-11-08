@@ -32,7 +32,7 @@ async function alertCounts(
       attempted.push(latest.consecutiveFailureCount);
       return { delivered };
     }),
-    signalRecovery: jest.fn(),
+    signalRecovery: jest.fn(async () => true),
   };
   const evaluator = new MonitorEvaluator(
     dbService as never,
@@ -134,7 +134,7 @@ describe('MonitorEvaluator recovery alert after a short blip', () => {
     };
     const alertService = {
       sendNotification: jest.fn(async () => ({ delivered: true })),
-      signalRecovery: jest.fn(),
+      signalRecovery: jest.fn(async () => true),
     };
     const evaluator = new MonitorEvaluator(
       dbService as never,
@@ -310,7 +310,7 @@ describe('MonitorEvaluator recovery alert retries', () => {
         attempted.push(latest.consecutiveSuccessCount);
         return outcome;
       }),
-      signalRecovery: jest.fn(),
+      signalRecovery: jest.fn(async () => true),
     };
     const evaluator = new MonitorEvaluator(
       dbService as never,
@@ -470,7 +470,7 @@ describe('incident-only monitors (alerts off or no channel)', () => {
         suppressed: true,
         reason: 'incident_only',
       })),
-      signalRecovery: jest.fn(),
+      signalRecovery: jest.fn(async () => true),
     };
     const evaluator = new MonitorEvaluator(
       dbService as never,
@@ -547,7 +547,7 @@ describe('incident-only monitors (alerts off or no channel)', () => {
     const alertService = {
       sendNotification: jest.fn(),
       signalFailure: jest.fn(),
-      signalRecovery: jest.fn(),
+      signalRecovery: jest.fn(async () => true),
     };
     const evaluator = new MonitorEvaluator(
       {
@@ -577,5 +577,44 @@ describe('incident-only monitors (alerts off or no channel)', () => {
     expect(alertService.signalFailure).not.toHaveBeenCalled();
     expect(alertService.sendNotification).not.toHaveBeenCalled();
     expect(alertService.signalRecovery).toHaveBeenCalled();
+  });
+
+  it('does not hold back the recovery alert when the recovery signal could not be queued', async () => {
+    const latest = {
+      id: 'r1',
+      consecutiveSuccessCount: 1,
+      alertsSentForRecovery: 0,
+      details: { recoverySequence: true },
+    };
+    const alertService = {
+      sendNotification: jest.fn(async () => ({ delivered: true })),
+      signalFailure: jest.fn(),
+      signalRecovery: jest.fn(async () => false),
+    };
+    const evaluator = new MonitorEvaluator(
+      {
+        db: {
+          query: { monitorResults: { findFirst: jest.fn(async () => latest) } },
+          update: jest.fn(() => ({
+            set: jest.fn(() => ({ where: jest.fn() })),
+          })),
+        },
+      } as never,
+      alertService as never,
+    );
+    const res = await evaluator.evaluateAndSendAlert({
+      monitorId: 'm1',
+      monitor: {
+        alertConfig: { enabled: true, alertOnRecovery: true },
+        config: {},
+      } as never,
+      previousStatus: 'down',
+      currentStatus: 'up',
+      reason: 'up',
+      metadata: {},
+    });
+    expect(res).toEqual({ alertSent: true, alertType: 'recovery' });
+    expect(alertService.sendNotification).toHaveBeenCalledTimes(1);
+    expect(alertService.signalRecovery).toHaveBeenCalledTimes(1);
   });
 });

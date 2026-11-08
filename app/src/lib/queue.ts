@@ -56,7 +56,6 @@ interface CleanupQueues {
   jobSchedulerQueue: Queue;
   k6JobSchedulerQueue: Queue;
   monitorSchedulerQueue: Queue;
-  emailTemplateQueue: Queue;
   dataLifecycleCleanupQueue: Queue;
 }
 
@@ -170,9 +169,6 @@ export const JOB_SCHEDULER_QUEUE = "job-scheduler";
 export const K6_JOB_SCHEDULER_QUEUE = "k6-job-scheduler";
 export const MONITOR_SCHEDULER_QUEUE = "monitor-scheduler";
 
-// Email template rendering queue
-export const EMAIL_TEMPLATE_QUEUE = "email-template-render";
-
 // Data lifecycle cleanup queue
 export const DATA_LIFECYCLE_CLEANUP_QUEUE = "data-lifecycle-cleanup";
 
@@ -253,7 +249,6 @@ type QueueSingleton = {
   jobSchedulerQueue: Queue | null;
   k6JobSchedulerQueue: Queue | null;
   monitorSchedulerQueue: Queue | null;
-  emailTemplateQueue: Queue | null;
   dataLifecycleCleanupQueue: Queue | null;
   monitorExecutionEvents: Record<string, QueueEvents> | null;
   executionQueueEvents: QueueEvents[];
@@ -284,7 +279,6 @@ function createQueueSingleton(): QueueSingleton {
     jobSchedulerQueue: null,
     k6JobSchedulerQueue: null,
     monitorSchedulerQueue: null,
-    emailTemplateQueue: null,
     dataLifecycleCleanupQueue: null,
     monitorExecutionEvents: null,
     executionQueueEvents: [],
@@ -455,7 +449,6 @@ export async function getQueues(): Promise<{
   jobSchedulerQueue: Queue;
   k6JobSchedulerQueue: Queue;
   monitorSchedulerQueue: Queue;
-  emailTemplateQueue: Queue;
   dataLifecycleCleanupQueue: Queue;
   redisConnection: Redis;
 }> {
@@ -540,9 +533,6 @@ export async function getQueues(): Promise<{
           queueSettings
         );
 
-        // Email template rendering queue
-        queueState.emailTemplateQueue = new Queue(EMAIL_TEMPLATE_QUEUE, queueSettings);
-
         // Data lifecycle cleanup queue
         queueState.dataLifecycleCleanupQueue = new Queue(
           DATA_LIFECYCLE_CLEANUP_QUEUE,
@@ -606,9 +596,6 @@ export async function getQueues(): Promise<{
         queueState.monitorSchedulerQueue.on("error", (error) =>
           queueLogger.error({ err: error }, "Monitor Scheduler Queue Error")
         );
-        queueState.emailTemplateQueue.on("error", (error) =>
-          queueLogger.error({ err: error }, "Email Template Queue Error")
-        );
         queueState.dataLifecycleCleanupQueue.on("error", (error) =>
           queueLogger.error(
             { err: error },
@@ -624,7 +611,6 @@ export async function getQueues(): Promise<{
           jobSchedulerQueue: queueState.jobSchedulerQueue,
           k6JobSchedulerQueue: queueState.k6JobSchedulerQueue,
           monitorSchedulerQueue: queueState.monitorSchedulerQueue,
-          emailTemplateQueue: queueState.emailTemplateQueue,
           dataLifecycleCleanupQueue: queueState.dataLifecycleCleanupQueue,
         });
 
@@ -700,7 +686,6 @@ export async function getQueues(): Promise<{
     !queueState.jobSchedulerQueue ||
     !queueState.k6JobSchedulerQueue ||
     !queueState.monitorSchedulerQueue ||
-    !queueState.emailTemplateQueue ||
     !queueState.dataLifecycleCleanupQueue ||
     !queueState.redisClient
   ) {
@@ -724,7 +709,6 @@ export async function getQueues(): Promise<{
     jobSchedulerQueue: queueState.jobSchedulerQueue,
     k6JobSchedulerQueue: queueState.k6JobSchedulerQueue,
     monitorSchedulerQueue: queueState.monitorSchedulerQueue,
-    emailTemplateQueue: queueState.emailTemplateQueue,
     dataLifecycleCleanupQueue: queueState.dataLifecycleCleanupQueue,
     redisConnection: queueState.redisClient,
   };
@@ -845,7 +829,6 @@ async function performQueueCleanup(connection: Redis): Promise<void> {
     { name: JOB_SCHEDULER_QUEUE, queue: queueState.jobSchedulerQueue },
     { name: K6_JOB_SCHEDULER_QUEUE, queue: queueState.k6JobSchedulerQueue },
     { name: MONITOR_SCHEDULER_QUEUE, queue: queueState.monitorSchedulerQueue },
-    { name: EMAIL_TEMPLATE_QUEUE, queue: queueState.emailTemplateQueue },
     ...Object.entries(queueState.playwrightQueues).map(([region, queue]) => ({
       name: `playwright-${region}`,
       queue,
@@ -1613,6 +1596,9 @@ async function reconcileQueuesWithLocations(): Promise<void> {
 /**
  * Close queue connections (useful for graceful shutdown).
  */
+/** Upper bound for closing app-owned workers on shutdown; stays inside the app's 60 s termination grace. */
+export const APP_WORKER_SHUTDOWN_TIMEOUT_MS = 20_000;
+
 export async function closeQueue(): Promise<void> {
   await queueState.refreshPromise?.catch(() => undefined);
   // Wait for any in-flight initialization to complete before tearing down.
@@ -1639,6 +1625,31 @@ export async function closeQueue(): Promise<void> {
     await shutdownSchedulerWorkers();
   } catch {
     // scheduler may not be initialized
+  }
+
+  // Close the other app-owned BullMQ workers/queues before the shared Redis connection quits.
+  // allSettled: one failing module must not block the rest.
+  // Bounded: a job stuck on an unreachable dependency must not keep the shared Redis cleanup below from running.
+  let shutdownTimer: ReturnType<typeof setTimeout> | undefined;
+  const appWorkerShutdowns = await Promise.race([
+    Promise.allSettled([
+      import("./status-page-scheduler").then((m) => m.shutdownStatusPageScheduler()),
+      import("./sre/incident-renotify").then((m) => m.shutdownIncidentRenotifyScheduler()),
+      import("@/sre/lib/background-alert-triage-processor").then((m) => m.shutdownSreAlertTriageProcessor()),
+      import("@/sre/lib/background-alert-triage-queue").then((m) => m.closeSreAlertTriageQueue()),
+      import("./job-scheduler").then((m) => m.cleanupDataLifecycleService()),
+    ]),
+    new Promise<PromiseSettledResult<void>[]>((resolve) => {
+      shutdownTimer = setTimeout(() => {
+        queueLogger.warn({ timeoutMs: APP_WORKER_SHUTDOWN_TIMEOUT_MS }, "App worker shutdown timed out; continuing");
+        resolve([]);
+      }, APP_WORKER_SHUTDOWN_TIMEOUT_MS);
+    }),
+  ]).finally(() => clearTimeout(shutdownTimer));
+  for (const result of appWorkerShutdowns) {
+    if (result.status === "rejected") {
+      queueLogger.warn({ err: result.reason }, "App worker shutdown failed");
+    }
   }
 
   // Clear periodic cleanup/reconciliation intervals
@@ -1678,7 +1689,6 @@ export async function closeQueue(): Promise<void> {
   if (queueState.jobSchedulerQueue) promises.push(queueState.jobSchedulerQueue.close());
   if (queueState.k6JobSchedulerQueue) promises.push(queueState.k6JobSchedulerQueue.close());
   if (queueState.monitorSchedulerQueue) promises.push(queueState.monitorSchedulerQueue.close());
-  if (queueState.emailTemplateQueue) promises.push(queueState.emailTemplateQueue.close());
   if (queueState.dataLifecycleCleanupQueue) promises.push(queueState.dataLifecycleCleanupQueue.close());
   if (queueState.redisClient) promises.push(queueState.redisClient.quit());
 
@@ -1711,7 +1721,6 @@ export async function closeQueue(): Promise<void> {
     queueState.jobSchedulerQueue = null;
     queueState.k6JobSchedulerQueue = null;
     queueState.monitorSchedulerQueue = null;
-    queueState.emailTemplateQueue = null;
     queueState.dataLifecycleCleanupQueue = null;
     queueState.redisClient = null;
     queueState.initPromise = null;

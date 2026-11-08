@@ -1,7 +1,11 @@
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Queue } from 'bullmq';
-import { SreAlertTriageQueueService } from './sre-alert-triage-queue.service';
+import {
+  RECOVERY_ENQUEUE_ATTEMPT_TIMEOUT_MS,
+  RECOVERY_ENQUEUE_DELAYS_MS,
+  SreAlertTriageQueueService,
+} from './sre-alert-triage-queue.service';
 
 jest.mock('bullmq', () => ({
   Queue: jest.fn().mockImplementation(() => ({
@@ -58,9 +62,11 @@ describe('SreAlertTriageQueueService', () => {
       sourceId: 'm1',
       recoveredAt: '2026-10-28T10:00:00.000Z',
     };
-    await new SreAlertTriageQueueService(configService).enqueueSourceRecovery(
-      recovery,
-    );
+    await expect(
+      new SreAlertTriageQueueService(configService).enqueueSourceRecovery(
+        recovery,
+      ),
+    ).resolves.toBe(true);
     const queue = mockQueueConstructor.mock.results[0].value;
     expect(queue.add).toHaveBeenCalledWith(
       'source-recovery',
@@ -72,10 +78,88 @@ describe('SreAlertTriageQueueService', () => {
 
     config.set('SRE_ENABLED', 'false');
     mockQueueConstructor.mockClear();
-    await new SreAlertTriageQueueService(configService).enqueueSourceRecovery(
-      recovery,
-    );
+    await expect(
+      new SreAlertTriageQueueService(configService).enqueueSourceRecovery(
+        recovery,
+      ),
+    ).resolves.toBe(true);
     expect(mockQueueConstructor).not.toHaveBeenCalled();
+  });
+
+  it('retries a failed source recovery enqueue in place and reports false when every attempt fails', async () => {
+    jest.useFakeTimers();
+    const errorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation();
+    const add = jest.fn().mockRejectedValue(new Error('redis down'));
+    mockQueueConstructor.mockImplementationOnce(() => ({
+      add,
+      on: jest.fn(),
+      close: jest.fn().mockResolvedValue(undefined),
+    }));
+    const result = new SreAlertTriageQueueService(
+      configService,
+    ).enqueueSourceRecovery({
+      sourceType: 'monitor',
+      sourceId: 'm1',
+      recoveredAt: '2026-10-28T10:00:00.000Z',
+    });
+    await jest.runAllTimersAsync();
+    await expect(result).resolves.toBe(false);
+    expect(add).toHaveBeenCalledTimes(RECOVERY_ENQUEUE_DELAYS_MS.length + 1);
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    errorSpy.mockRestore();
+    jest.useRealTimers();
+  });
+
+  it('gives up on a recovery enqueue that hangs while Redis is disconnected', async () => {
+    jest.useFakeTimers();
+    const errorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation();
+    const add = jest.fn(() => new Promise(() => undefined));
+    mockQueueConstructor.mockImplementationOnce(() => ({
+      add,
+      on: jest.fn(),
+      close: jest.fn().mockResolvedValue(undefined),
+    }));
+    const result = new SreAlertTriageQueueService(
+      configService,
+    ).enqueueSourceRecovery({
+      sourceType: 'monitor',
+      sourceId: 'm1',
+      recoveredAt: '2026-10-28T10:00:00.000Z',
+    });
+    await jest.advanceTimersByTimeAsync(
+      RECOVERY_ENQUEUE_ATTEMPT_TIMEOUT_MS *
+        (RECOVERY_ENQUEUE_DELAYS_MS.length + 1) +
+        RECOVERY_ENQUEUE_DELAYS_MS.reduce((a, b) => a + b, 0),
+    );
+    await expect(result).resolves.toBe(false);
+    expect(add).toHaveBeenCalledTimes(RECOVERY_ENQUEUE_DELAYS_MS.length + 1);
+    errorSpy.mockRestore();
+    jest.useRealTimers();
+  });
+
+  it('succeeds when a retry of the source recovery enqueue goes through', async () => {
+    jest.useFakeTimers();
+    const add = jest
+      .fn()
+      .mockRejectedValueOnce(new Error('redis blip'))
+      .mockResolvedValue({ id: 'queued-job' });
+    mockQueueConstructor.mockImplementationOnce(() => ({
+      add,
+      on: jest.fn(),
+      close: jest.fn().mockResolvedValue(undefined),
+    }));
+    const result = new SreAlertTriageQueueService(
+      configService,
+    ).enqueueSourceRecovery({
+      sourceType: 'monitor',
+      sourceId: 'm1',
+      recoveredAt: '2026-10-28T10:00:00.000Z',
+    });
+    await jest.runAllTimersAsync();
+    await expect(result).resolves.toBe(true);
+    expect(add).toHaveBeenCalledTimes(2);
+    expect(add.mock.calls[0][2]).toEqual(add.mock.calls[1][2]);
+    jest.useRealTimers();
   });
 
   it('enqueues failed deliveries but not pending ones', async () => {

@@ -79,6 +79,12 @@ export async function getSreAlertTriageQueue() {
   return queue;
 }
 
+export async function closeSreAlertTriageQueue() {
+  const q = queue;
+  queue = null;
+  await q?.close();
+}
+
 export async function enqueueSreAlertTriageJob(input: SreAlertTriageQueueJob) {
   if (!isSreBackgroundAlertTriageEnabled()) {
     return null;

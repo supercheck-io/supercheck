@@ -117,16 +117,6 @@ export async function register() {
       console.error('[Instrumentation] Failed to initialize incident re-notify scheduler:', error);
     }
 
-    // Initialize email template processor
-    try {
-      console.log('[Instrumentation] Loading email template processor...');
-      const { initializeEmailTemplateProcessor } = await import('@/lib/processors/email-template-processor');
-      await initializeEmailTemplateProcessor();
-      console.log('[Instrumentation] ✅ Email template processor initialized');
-    } catch (error) {
-      console.error('[Instrumentation] ❌ Failed to initialize email template processor:', error);
-    }
-
     // Initialize SRE alert triage processor only when explicitly enabled.
     try {
       const { initializeSreAlertTriageProcessor } = await import('@/sre/lib/background-alert-triage-processor');

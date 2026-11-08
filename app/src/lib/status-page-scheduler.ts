@@ -17,6 +17,7 @@ export async function initializeStatusPageScheduler() {
   if (worker) return;
   const redis = await getRedisConnection();
   queue = new Queue("status-page-jobs", { connection: redis });
+  queue.on("error", (error) => console.error("Status page queue error:", error.message));
   worker = new Worker(
     "status-page-jobs",
     async (job) => {
@@ -79,4 +80,16 @@ export async function initializeStatusPageScheduler() {
       opts: { removeOnComplete: true, removeOnFail: 100 },
     },
   );
+}
+
+export function getStatusPageQueue() {
+  return queue;
+}
+
+export async function shutdownStatusPageScheduler() {
+  const w = worker;
+  const q = queue;
+  worker = undefined;
+  queue = undefined;
+  await Promise.allSettled([w?.close(), q?.close()]);
 }

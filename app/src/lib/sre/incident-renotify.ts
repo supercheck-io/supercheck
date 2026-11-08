@@ -88,6 +88,7 @@ export async function initializeIncidentRenotifyScheduler() {
   if (worker) return;
   const redis = await getRedisConnection();
   queue = new Queue(QUEUE_NAME, { connection: redis });
+  queue.on("error", (error) => queueLogger.error({ err: error }, "Incident re-notify queue error"));
   worker = new Worker(
     QUEUE_NAME,
     async () => {
@@ -101,4 +102,16 @@ export async function initializeIncidentRenotifyScheduler() {
     { every: TICK_MS },
     { name: "tick", data: {}, opts: { removeOnComplete: true, removeOnFail: 100 } },
   );
+}
+
+export function getIncidentRenotifyQueue() {
+  return queue;
+}
+
+export async function shutdownIncidentRenotifyScheduler() {
+  const w = worker;
+  const q = queue;
+  worker = undefined;
+  queue = undefined;
+  await Promise.allSettled([w?.close(), q?.close()]);
 }

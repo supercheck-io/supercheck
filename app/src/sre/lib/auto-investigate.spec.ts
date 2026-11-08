@@ -17,7 +17,11 @@ jest.mock("@/sre/lib/investigation-runner", () => ({
   completeSreIncidentInvestigation: (...a: unknown[]) => complete(...a),
 }));
 const triage = jest.fn();
-jest.mock("@/sre/lib/triage-runner", () => ({ runSreIncidentTriage: (...a: unknown[]) => triage(...a) }));
+const completeTriage = jest.fn();
+jest.mock("@/sre/lib/triage-runner", () => ({
+  startSreIncidentTriage: (...a: unknown[]) => triage(...a),
+  completeSreIncidentTriage: (...a: unknown[]) => completeTriage(...a),
+}));
 let incidentRows: unknown[] = [];
 let runRows: unknown[] = [];
 // Runs visible to the re-check before starting, i.e. ones that appeared after the decision.
@@ -79,7 +83,8 @@ beforeEach(() => {
   assertCanStart.mockResolvedValue(undefined);
   start.mockResolvedValue({ success: true, investigationRunId: "run-1", incident: { id: "i1" } });
   complete.mockResolvedValue({ success: true });
-  triage.mockResolvedValue({ success: true });
+  triage.mockResolvedValue({ success: true, investigationRunId: "run-1" });
+  completeTriage.mockResolvedValue({ success: true });
 });
 
 it("does nothing unless the project switched it on", async () => {
@@ -104,7 +109,16 @@ it.each(["sev3", "sev4"])("runs only a triage for %s", async (severity) => {
   incidentRows = [{ severity, status: "triggered" }];
   expect(await maybeAutoInvestigateOnOpen(input)).toEqual({ handled: true });
   expect(triage).toHaveBeenCalledWith({ ...input, origin: "auto" });
+  expect(completeTriage).toHaveBeenCalledWith(expect.objectContaining({ investigationRunId: "run-1" }), { ...input, origin: "auto" });
   expect(start).not.toHaveBeenCalled();
+});
+
+it("does not wait for the triage run, and a failed completion is logged not thrown", async () => {
+  incidentRows = [{ severity: "sev3", status: "triggered" }];
+  completeTriage.mockReturnValue(new Promise(() => {}));
+  expect(await maybeAutoInvestigateOnOpen(input)).toEqual({ handled: true });
+  completeTriage.mockRejectedValue(new Error("boom"));
+  expect(await maybeAutoInvestigateOnOpen(input)).toEqual({ handled: true });
 });
 
 it("takes a per-incident advisory lock and releases it before the run starts", async () => {
@@ -127,7 +141,7 @@ it("runs triage outside the transaction too", async () => {
   let inside: boolean | undefined;
   triage.mockImplementationOnce(async () => {
     inside = inTransaction;
-    return { success: true };
+    return { success: true, investigationRunId: "run-1" };
   });
   await maybeAutoInvestigateOnOpen(input);
   expect(inside).toBe(false);

@@ -29,6 +29,13 @@ describe("queue location refresh", () => {
   const abortMonitorCycle = jest.fn().mockResolvedValue(undefined);
   const MonitorCycleClosedError = class extends Error { cycleId = "c"; status = "closed"; };
   const set = jest.fn().mockResolvedValue("OK");
+  const appShutdowns = {
+    statusPage: jest.fn().mockResolvedValue(undefined),
+    renotify: jest.fn().mockResolvedValue(undefined),
+    triageWorker: jest.fn().mockResolvedValue(undefined),
+    triageQueue: jest.fn().mockResolvedValue(undefined),
+    dataLifecycle: jest.fn().mockResolvedValue(undefined),
+  };
   const resolveMonitorLocations = jest.fn();
   const partitionMonitorLocationsByAvailability = jest.fn();
   const recordSchedulingFailure = jest.fn().mockResolvedValue(undefined);
@@ -129,6 +136,11 @@ describe("queue location refresh", () => {
       initializeSchedulerWorkers: jest.fn().mockResolvedValue(undefined),
       shutdownSchedulerWorkers: jest.fn().mockResolvedValue(undefined),
     }));
+    jest.doMock("./status-page-scheduler", () => ({ shutdownStatusPageScheduler: appShutdowns.statusPage }));
+    jest.doMock("./sre/incident-renotify", () => ({ shutdownIncidentRenotifyScheduler: appShutdowns.renotify }));
+    jest.doMock("@/sre/lib/background-alert-triage-processor", () => ({ shutdownSreAlertTriageProcessor: appShutdowns.triageWorker }));
+    jest.doMock("@/sre/lib/background-alert-triage-queue", () => ({ closeSreAlertTriageQueue: appShutdowns.triageQueue }));
+    jest.doMock("./job-scheduler", () => ({ cleanupDataLifecycleService: appShutdowns.dataLifecycle }));
     jest.doMock("./queue-event-hub", () => ({ invalidateQueueEventHub }));
     jest.doMock("./bull-board/state", () => ({ invalidateBullBoard }));
     jest.doMock("./monitor-location-routing", () => ({ resolveMonitorLocations, partitionMonitorLocationsByAvailability }));
@@ -507,6 +519,31 @@ describe("queue location refresh", () => {
     await jest.advanceTimersByTimeAsync(15_000);
     expect(subscribers).toHaveLength(2);
     expect(subscribers[1].listenerCount("message")).toBe(1);
+  });
+
+  it("no longer creates or returns an email template queue", async () => {
+    const queues = await queueModule.getQueues();
+    expect(queues).not.toHaveProperty("emailTemplateQueue");
+    expect(queueModule).not.toHaveProperty("EMAIL_TEMPLATE_QUEUE");
+  });
+
+  it("closes every app worker and queue at shutdown even when one fails", async () => {
+    await queueModule.getQueues();
+    appShutdowns.renotify.mockRejectedValueOnce(new Error("close failed"));
+    await queueModule.closeQueue();
+    for (const shutdown of Object.values(appShutdowns)) expect(shutdown).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not let a stuck app worker block the rest of shutdown", async () => {
+    await queueModule.getQueues();
+    appShutdowns.triageWorker.mockReturnValueOnce(new Promise(() => {}));
+    let closed = false;
+    const closing = queueModule.closeQueue().then(() => {
+      closed = true;
+    });
+    await jest.advanceTimersByTimeAsync(queueModule.APP_WORKER_SHUTDOWN_TIMEOUT_MS);
+    await closing;
+    expect(closed).toBe(true);
   });
 
   it("disconnects an offline refresh subscriber without waiting on Redis commands at shutdown", async () => {

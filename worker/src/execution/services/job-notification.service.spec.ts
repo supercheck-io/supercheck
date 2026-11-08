@@ -81,7 +81,7 @@ describe('JobNotificationService', () => {
     };
     const sreAlertTriageQueueService = {
       enqueueAlertHistoryRows: jest.fn().mockResolvedValue(undefined),
-      enqueueSourceRecovery: jest.fn().mockResolvedValue(undefined),
+      enqueueSourceRecovery: jest.fn().mockResolvedValue(true),
     };
 
     const service = new JobNotificationService(
@@ -611,6 +611,35 @@ describe('JobNotificationService', () => {
       ).toHaveBeenCalledWith(
         expect.objectContaining({ sourceType: 'job', sourceId: 'job-1' }),
       );
+    });
+
+    it('logs and carries on when the recovery signal could not be queued', async () => {
+      const errorSpy = jest
+        .spyOn(Logger.prototype, 'error')
+        .mockImplementation();
+      const { service, dbService, sreAlertTriageQueueService } =
+        createService();
+      sreAlertTriageQueueService.enqueueSourceRecovery.mockResolvedValue(false);
+      dbService.getJobById.mockResolvedValue({
+        id: 'job-1',
+        name: 'J',
+        alertConfig: { enabled: false, recoveryThreshold: 1 },
+      });
+      dbService.getRecentRunsForJob.mockResolvedValueOnce([
+        { id: 'r0', status: 'failed' },
+      ]);
+      await expect(
+        service.handleJobNotifications({
+          jobId: 'job-1',
+          runId: 'run-new',
+          finalStatus: 'passed',
+          durationSeconds: 1,
+        }),
+      ).resolves.toBeUndefined();
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Recovery signal for job job-1'),
+      );
+      errorSpy.mockRestore();
     });
 
     it('does not alert for a run the user cancelled', async () => {

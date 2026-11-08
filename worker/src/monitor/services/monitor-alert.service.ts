@@ -52,9 +52,12 @@ export class MonitorAlertService {
     });
   }
 
-  /** Lets an open incident for this monitor auto-resolve, whether or not a recovery alert goes out. */
-  async signalRecovery(monitorId: string, recoveredAt: Date): Promise<void> {
-    await this.sreAlertTriageQueueService.enqueueSourceRecovery({
+  /**
+   * Lets an open incident for this monitor auto-resolve, whether or not a recovery alert goes out.
+   * False when the enqueue still failed after its in-place retries (already logged).
+   */
+  async signalRecovery(monitorId: string, recoveredAt: Date): Promise<boolean> {
+    return this.sreAlertTriageQueueService.enqueueSourceRecovery({
       sourceType: 'monitor',
       sourceId: monitorId,
       recoveredAt: recoveredAt.toISOString(),

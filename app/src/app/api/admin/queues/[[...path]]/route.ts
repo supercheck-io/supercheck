@@ -1,5 +1,6 @@
 import { createBullBoard } from "@bull-board/api";
 import { BullMQAdapter } from "@bull-board/api/bullMQAdapter";
+import { Queue } from "bullmq";
 import { NextRequest, NextResponse } from "next/server";
 import { promises as fs } from "fs";
 import path from "path";
@@ -14,6 +15,7 @@ import {
   getQueueLocationSignature,
   getCapacityQueues,
   getQueues,
+  getRedisConnection,
   invalidateQueueMaps,
   locationCodesSignature,
 } from "@/lib/queue";
@@ -21,6 +23,8 @@ import { getAllEnabledLocationCodes } from "@/lib/location-registry";
 import { getCurrentUser } from "@/lib/session";
 import { Role } from "@/lib/rbac/permissions";
 import { getSreAlertTriageQueue } from "@/sre/lib/background-alert-triage-queue";
+import { getStatusPageQueue } from "@/lib/status-page-scheduler";
+import { getIncidentRenotifyQueue } from "@/lib/sre/incident-renotify";
 
 import type { NextBullBoardAdapterState } from "@/lib/bull-board/next-adapter";
 
@@ -100,6 +104,18 @@ const ensureBullBoard = async (): Promise<NextBullBoardAdapterState> => {
  * Core initialization logic for Bull Board.
  * Separated from ensureBullBoard for cleaner error handling.
  */
+// A board built before a scheduler starts gets one memoized handle on the same queue name, reused across rebuilds.
+const boardOnlyQueues = new Map<string, Queue>();
+async function boardOnlyQueue(name: string): Promise<Queue> {
+  let queue = boardOnlyQueues.get(name);
+  if (!queue) {
+    queue = new Queue(name, { connection: await getRedisConnection() });
+    queue.on("error", (error) => console.error(`[Bull-Board] ${name} queue error:`, error.message));
+    boardOnlyQueues.set(name, queue);
+  }
+  return queue;
+}
+
 const initializeBullBoard = async (): Promise<NextBullBoardAdapterState> => {
   const enabledCodes = await getAllEnabledLocationCodes();
   const signature = locationCodesSignature(enabledCodes);
@@ -113,7 +129,6 @@ const initializeBullBoard = async (): Promise<NextBullBoardAdapterState> => {
     jobSchedulerQueue,
     k6JobSchedulerQueue,
     monitorSchedulerQueue,
-    emailTemplateQueue,
     dataLifecycleCleanupQueue,
   } = await getQueues();
   const { k6Queues } = await getCapacityQueues();
@@ -149,13 +164,17 @@ const initializeBullBoard = async (): Promise<NextBullBoardAdapterState> => {
       new BullMQAdapter(monitorSchedulerQueue, {
         displayName: "Monitor Scheduler",
       }),
-      new BullMQAdapter(emailTemplateQueue, {
-        displayName: "Email Template Render",
-      }),
       new BullMQAdapter(dataLifecycleCleanupQueue, {
         displayName: "Data Lifecycle Cleanup",
       }),
-      new BullMQAdapter(sreAlertTriageQueue, { displayName: "SRE Alert Triage" }),
+      // Incident events: opens/resolves incidents; AI triage runs in the background afterwards.
+      new BullMQAdapter(sreAlertTriageQueue, { displayName: "Incident Events" }),
+      new BullMQAdapter(getStatusPageQueue() ?? (await boardOnlyQueue("status-page-jobs")), {
+        displayName: "Status Page Jobs",
+      }),
+      new BullMQAdapter(getIncidentRenotifyQueue() ?? (await boardOnlyQueue("sre-incident-renotify")), {
+        displayName: "Incident Re-notify",
+      }),
     ],
     serverAdapter,
     options: {

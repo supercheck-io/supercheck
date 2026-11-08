@@ -43,7 +43,28 @@ export type RunSreIncidentTriageResult =
       reason?: "org_concurrency_limit";
     };
 
-export async function runSreIncidentTriage(input: RunSreIncidentTriageInput): Promise<RunSreIncidentTriageResult> {
+type TriageIncident = {
+  id: string;
+  title: string;
+  severity: string;
+  primaryServiceName: string | null;
+  evidenceCount: number;
+  connectorEvidenceCount: number;
+};
+
+export type StartedSreIncidentTriage = {
+  success: true;
+  investigationRunId: string;
+  run: typeof sreInvestigationRuns.$inferSelect;
+  incident: TriageIncident;
+  startedAt: number;
+};
+
+export type StartSreIncidentTriageResult =
+  | StartedSreIncidentTriage
+  | Extract<RunSreIncidentTriageResult, { success: false }>;
+
+export async function startSreIncidentTriage(input: RunSreIncidentTriageInput): Promise<StartSreIncidentTriageResult> {
   const [incident] = await db
     .select({
       id: sreIncidents.id,
@@ -117,6 +138,14 @@ export async function runSreIncidentTriage(input: RunSreIncidentTriageInput): Pr
     throw error;
   }
 
+  return { success: true, investigationRunId: run.id, run, incident, startedAt };
+}
+
+export async function completeSreIncidentTriage(
+  started: StartedSreIncidentTriage,
+  input: RunSreIncidentTriageInput,
+): Promise<RunSreIncidentTriageResult> {
+  const { run, incident, startedAt } = started;
   try {
     const result = await runSreAgent({
       organizationId: input.organizationId,
@@ -260,4 +289,11 @@ export async function runSreIncidentTriage(input: RunSreIncidentTriageInput): Pr
 
     return { success: false, status: 502, error: "SRE triage failed", investigationRunId: run.id };
   }
+}
+
+/** Starts and finishes triage in one call, for callers that need the result. */
+export async function runSreIncidentTriage(input: RunSreIncidentTriageInput): Promise<RunSreIncidentTriageResult> {
+  const started = await startSreIncidentTriage(input);
+  if (!started.success) return started;
+  return completeSreIncidentTriage(started, input);
 }
