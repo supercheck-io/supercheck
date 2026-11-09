@@ -917,7 +917,7 @@ describe('single-location last alert count', () => {
               })),
             },
           },
-          update: jest.fn((table: unknown) => ({
+          update: jest.fn(() => ({
             set: jest.fn((values: { config?: SQL }) => {
               if (values.config) configWrites.push(values.config);
               return { where: jest.fn() };
