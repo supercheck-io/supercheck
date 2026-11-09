@@ -1,11 +1,11 @@
 /** @jest-environment node */
 // CI-only: needs TEST_DATABASE_URL (run with `npm run test:db`).
-// Upgrade from a database at migration 0067 that already holds alert_history rows: 0068 adds the claim
+// Upgrade from a database at migration 0067 that already holds alert_history rows: 0068 and 0069 add the claim
 // columns and the partial unique index (empty, because old rows have NULL keys), widens the alert type check
 // for ssl_renewed, and leaves monitors.muted_until in place for workers that still select it.
 import { execFile } from "node:child_process";
-import { randomUUID } from "node:crypto";
-import { cpSync, mkdtempSync, rmSync } from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
+import { cpSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -94,6 +94,11 @@ it("upgrades a populated alert_history: keeps old rows, adds an empty valid clai
   const [index] = await client`SELECT i.indisvalid AS valid, i.indisunique AS "unique", pg_get_expr(i.indpred, i.indrelid) AS predicate FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid WHERE c.relname = 'alert_history_monitor_claim_uidx'`;
   expect(index).toMatchObject({ valid: true, unique: true });
   expect(index.predicate).toMatch(/outage_key IS NOT NULL/);
+  // Built by 0069 outside the migration transaction, and recorded only after it succeeded.
+  const hash0069 = createHash("md5")
+    .update(readFileSync(path.join(APP_ROOT, "src/db/migrations/0069_monitor_alert_claim_index.sql"), "utf8"))
+    .digest("hex");
+  expect(await client`SELECT 1 FROM "__drizzle_migrations" WHERE hash = ${hash0069}`).toHaveLength(1);
   expect(await client`SELECT 1 FROM alert_history`).toHaveLength(2);
   expect(await client`SELECT 1 FROM alert_history WHERE outage_key IS NOT NULL`).toHaveLength(0);
   // The column drop waits one release: workers on the previous version still select it.

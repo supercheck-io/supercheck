@@ -92,6 +92,14 @@ function isMonitorNotificationType(type: AlertType): boolean {
   );
 }
 
+export interface ProviderDeliveryResult {
+  provider: NotificationProvider;
+  success: boolean;
+  partial?: boolean;
+  error?: string;
+  deliveryMetadata?: AlertDeliveryMetadata;
+}
+
 export interface NotificationPayload {
   type: AlertType;
   title: string;
@@ -755,16 +763,15 @@ export class NotificationService implements OnApplicationShutdown {
   async sendNotificationToMultipleProviders(
     providers: NotificationProvider[],
     payload: NotificationPayload,
+    /**
+     * Called as each provider's own send settles, before the slower ones finish, so a caller can record a
+     * delivery without waiting for the others. A throwing callback is logged and does not affect delivery.
+     */
+    onSettled?: (entry: ProviderDeliveryResult) => Promise<void>,
   ): Promise<{
     success: number;
     failed: number;
-    results: Array<{
-      provider: NotificationProvider;
-      success: boolean;
-      partial?: boolean;
-      error?: string;
-      deliveryMetadata?: AlertDeliveryMetadata;
-    }>;
+    results: ProviderDeliveryResult[];
   }> {
     if (!providers || providers.length === 0) {
       this.logger.warn('No providers to send notifications to');
@@ -773,38 +780,44 @@ export class NotificationService implements OnApplicationShutdown {
 
     this.logger.log(`Sending notifications to ${providers.length} providers`);
 
-    const settledResults = await Promise.allSettled(
-      providers.map((provider) =>
-        this.sendNotificationDetailed(provider, payload),
-      ),
+    const detailedResults = await Promise.all(
+      providers.map(async (provider): Promise<ProviderDeliveryResult> => {
+        let entry: ProviderDeliveryResult;
+        try {
+          const value = await this.sendNotificationDetailed(provider, payload);
+          const success = value.success;
+          entry = {
+            provider,
+            success,
+            partial: value.partial,
+            error: success
+              ? undefined
+              : (value.error ?? 'Notification send returned false'),
+            deliveryMetadata: value.deliveryMetadata,
+          };
+        } catch (reason) {
+          entry = {
+            provider,
+            success: false,
+            error: getErrorMessage(reason),
+            deliveryMetadata: this.withDeliveryMetadata(provider, payload, {
+              success: false,
+              error: getErrorMessage(reason),
+            }).deliveryMetadata,
+          };
+        }
+        if (onSettled) {
+          try {
+            await onSettled(entry);
+          } catch (error) {
+            this.logger.error(
+              `Delivery callback failed for provider ${provider.id}: ${getErrorMessage(error)}`,
+            );
+          }
+        }
+        return entry;
+      }),
     );
-
-    const detailedResults = settledResults.map((result, index) => {
-      const provider = providers[index];
-
-      if (result.status === 'fulfilled') {
-        const success = result.value.success;
-        return {
-          provider,
-          success,
-          partial: result.value.partial,
-          error: success
-            ? undefined
-            : (result.value.error ?? 'Notification send returned false'),
-          deliveryMetadata: result.value.deliveryMetadata,
-        };
-      }
-
-      return {
-        provider,
-        success: false,
-        error: getErrorMessage(result.reason),
-        deliveryMetadata: this.withDeliveryMetadata(provider, payload, {
-          success: false,
-          error: getErrorMessage(result.reason),
-        }).deliveryMetadata,
-      };
-    });
 
     const success = detailedResults.filter((entry) => entry.success).length;
     const failed = detailedResults.length - success;

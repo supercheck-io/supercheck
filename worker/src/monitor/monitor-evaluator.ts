@@ -290,7 +290,7 @@ export class MonitorEvaluator {
     monitorId: string,
     aggregatedAlertState: AggregatedAlertState,
     options: { monotonicFailureCounter?: boolean } = {},
-  ): Promise<void> {
+  ): Promise<boolean> {
     try {
       await this.dbService.db
         .update(schema.monitors)
@@ -309,10 +309,12 @@ export class MonitorEvaluator {
               : []),
           ),
         );
+      return true;
     } catch (error) {
       this.logger.error(
         `Failed to persist aggregated alert state for monitor ${monitorId}: ${getErrorMessage(error)}`,
       );
+      return false;
     }
   }
 
@@ -601,7 +603,15 @@ export class MonitorEvaluator {
       !options.preparedAlertState &&
       this.readAggregatedAlertState(monitorConfig).outageKey !== outageKey
     ) {
-      await this.persistAggregatedAlertState(monitorId, aggregatedAlertState);
+      // Not durable: sending under it could be repeated under another key, so defer the alert (retried).
+      if (
+        (await this.persistAggregatedAlertState(
+          monitorId,
+          aggregatedAlertState,
+        )) === false
+      ) {
+        return { alertSent: false, deliveryFailed: true };
+      }
     }
 
     // Set once the provider accepted the alert: later persistence errors are not delivery failures.
@@ -1053,21 +1063,23 @@ export class MonitorEvaluator {
     const warningDays =
       monitor.config?.sslDaysUntilExpirationWarning ??
       SECURITY.SSL_DEFAULT_WARNING_DAYS;
-    // The warned certificate itself (same expiry) is not renewed, however the warning window was edited since.
-    const sameCertificate = validToMs <= warnedToMs;
+    // "Renewed" only when the expiry actually moved later than the warned certificate's (the warning window
+    // being edited since does not make the same certificate new). A warning with no recorded expiry (the
+    // certificate could not be read) has nothing to compare: the notice then says it is readable again,
+    // once the certificate is outside the warning window.
+    const hasWarnedExpiry = !Number.isNaN(warnedToMs);
     const healthy =
       certificate.valid !== false &&
       days !== undefined &&
       days > 0 &&
-      !sameCertificate &&
-      (days > warningDays || validToMs > warnedToMs);
+      (hasWarnedExpiry ? validToMs > warnedToMs : days > warningDays);
     if (!healthy) return false;
 
     const validUntil = Number.isNaN(validToMs)
       ? undefined
       : new Date(validToMs).toISOString().slice(0, 10);
     // The warning was that no certificate could be read (nothing recorded to renew): say it is readable again.
-    const readableAgain = !state.validTo;
+    const readableAgain = !hasWarnedExpiry;
     const noun = readableAgain
       ? 'SSL certificate readable again'
       : 'SSL certificate renewed';

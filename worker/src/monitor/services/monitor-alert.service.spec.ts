@@ -799,6 +799,7 @@ describe('MonitorAlertService', () => {
           title: 'SSL Certificate Renewed - Checkout API',
           message: 'SSL certificate renewed (valid until 2027-02-01)',
         }),
+        expect.any(Function),
       );
       expect(
         ctx.sreAlertTriageQueueService.enqueueAlertHistoryRows,
@@ -826,6 +827,128 @@ describe('MonitorAlertService', () => {
       ).resolves.toMatchObject({ delivered: true });
     });
 
+    it('states what happened in a renewed notice instead of using the monitor custom message', async () => {
+      const ctx = createService();
+      withClaims(ctx, { claimed: [both[0]] });
+      const alertConfig = monitor.alertConfig as { customMessage: unknown };
+      alertConfig.customMessage = 'API is on fire';
+      try {
+        await ctx.service.sendSslRenewedNotification(
+          'monitor-1',
+          'SSL certificate renewed (valid until 2027-02-01)',
+          {},
+          { outageKey: 'warning-1', ordinal: 0 },
+        );
+      } finally {
+        alertConfig.customMessage = null;
+      }
+      expect(
+        ctx.notificationService.sendNotificationToMultipleProviders,
+      ).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          message: 'SSL certificate renewed (valid until 2027-02-01)',
+        }),
+        expect.any(Function),
+      );
+    });
+
+    it('finishes a provider row as soon as its own send settles, before a slower provider is done', async () => {
+      const ctx = createService();
+      twoProviders(ctx);
+      const { set, where } = withClaims(ctx, { claimed: both });
+      const order: string[] = [];
+      set.mockImplementation(((v: { status: string }) => {
+        order.push(`row:${v.status}`);
+        return { where };
+      }) as never);
+      ctx.notificationService.sendNotificationToMultipleProviders.mockImplementationOnce(
+        (async (
+          _providers: unknown,
+          _payload: unknown,
+          onSettled: (entry: unknown) => Promise<void>,
+        ) => {
+          await onSettled({ provider: { id: 'provider-1' }, success: true });
+          order.push('slow provider still sending');
+          await onSettled({
+            provider: { id: 'provider-2' },
+            success: false,
+            error: 'timeout',
+          });
+          return {
+            success: 1,
+            failed: 1,
+            results: [
+              { provider: { id: 'provider-1' }, success: true },
+              {
+                provider: { id: 'provider-2' },
+                success: false,
+                error: 'timeout',
+              },
+            ],
+          };
+        }) as never,
+      );
+      await ctx.service.sendNotification(
+        'monitor-1',
+        'failure',
+        'Down',
+        {},
+        claim,
+      );
+      expect(order).toEqual([
+        'row:sent',
+        'slow provider still sending',
+        'row:failed',
+      ]);
+      // Results already handed over are not written a second time.
+      expect(set).toHaveBeenCalledTimes(2);
+    });
+
+    it('opens the incident from the delivery it knows happened when the outcome cannot be recorded, and records it later', async () => {
+      const ctx = createService();
+      const { where } = withClaims(ctx, {
+        claimed: [both[0]],
+        updateFailures: 5, // every in-process attempt of the first alert
+      });
+      const first = await ctx.service.sendNotification(
+        'monitor-1',
+        'failure',
+        'Down',
+        { observedAt: '2026-06-23T00:00:00.000Z' },
+        claim,
+      );
+      // The provider accepted it: delivered, not a failure to retry from the evaluator.
+      expect(first).toEqual({ delivered: true });
+      expect(where).toHaveBeenCalledTimes(5);
+      expect(
+        ctx.sreAlertTriageQueueService.enqueueAlertHistoryRows,
+      ).toHaveBeenCalledWith([]);
+      expect(
+        ctx.sreAlertTriageQueueService.enqueueSourceFailure,
+      ).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sourceType: 'monitor',
+          sourceId: 'monitor-1',
+          type: 'monitor_failure',
+          firedAt: '2026-06-23T00:00:00.000Z',
+        }),
+      );
+
+      // The next alert from this process first writes the outcome it still holds, while the row is not stale.
+      await ctx.service.sendNotification(
+        'monitor-1',
+        'recovery',
+        'Up',
+        {},
+        {
+          outageKey: 'key-2',
+          ordinal: 0,
+        },
+      );
+      expect(where).toHaveBeenCalledTimes(7); // the held outcome, then the recovery's own row
+    });
+
     it('titles the notice as readable again when asked', async () => {
       const ctx = createService();
       withClaims(ctx, { claimed: [both[0]] });
@@ -849,6 +972,7 @@ describe('MonitorAlertService', () => {
         expect.objectContaining({
           title: 'SSL Certificate Readable Again - Checkout API',
         }),
+        expect.any(Function),
       );
     });
 

@@ -1431,7 +1431,7 @@ describe('claims passed with alerts', () => {
     );
     const persist = jest
       .spyOn(evaluator, 'persistAggregatedAlertState')
-      .mockResolvedValue(undefined);
+      .mockResolvedValue(true);
     const call = (over: Record<string, unknown> = {}) =>
       evaluator.evaluateAndSendAlert({
         monitorId: 'm1',
@@ -1530,6 +1530,16 @@ describe('claims passed with alerts', () => {
         deliveryFailed: true,
       },
     );
+  });
+
+  it('defers the alert, sending nothing, when the key it minted for a manual run cannot be persisted', async () => {
+    const { call, persist, alertService } = setup({ delivered: true });
+    persist.mockResolvedValueOnce(false);
+    expect(await call({ metadata: { locationResults: [{}, {}] } })).toEqual({
+      alertSent: false,
+      deliveryFailed: true,
+    });
+    expect(alertService.sendNotification).not.toHaveBeenCalled();
   });
 
   it('persists a key it minted for a manual multi-location run before sending under it', async () => {
@@ -1651,6 +1661,13 @@ describe('SSL renewed notice', () => {
     expect(alertService.sendSslRenewedNotification).not.toHaveBeenCalled();
     // The warning itself still goes out.
     expect(alertService.sendSslExpirationNotification).toHaveBeenCalled();
+  });
+
+  it('does not call a read renewed when it cannot show the expiry moved later than the warned one', async () => {
+    const { alertService, check } = setup();
+    await check({ valid: true, daysRemaining: 80, validTo: undefined });
+    await check({ valid: true, daysRemaining: 80, validTo: 'garbage' });
+    expect(alertService.sendSslRenewedNotification).not.toHaveBeenCalled();
   });
 
   it('does not call the warned certificate renewed because the warning window was lowered', async () => {

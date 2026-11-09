@@ -7960,46 +7960,6 @@
           "method": "btree",
           "with": {}
         },
-        "alert_history_monitor_claim_uidx": {
-          "name": "alert_history_monitor_claim_uidx",
-          "columns": [
-            {
-              "expression": "monitor_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "outage_key",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "type",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "alert_ordinal",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "provider",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"alert_history\".\"outage_key\" IS NOT NULL AND \"alert_history\".\"alert_ordinal\" IS NOT NULL",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "alert_history_monitor_sent_idx": {
           "name": "alert_history_monitor_sent_idx",
           "columns": [

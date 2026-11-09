@@ -14,6 +14,7 @@ import {
   NotificationService,
   NotificationPayload,
   NotificationProvider,
+  ProviderDeliveryResult,
 } from '../../notification/notification.service';
 import { decryptNotificationProviderConfig } from '../../common/notification-provider-crypto';
 import {
@@ -44,7 +45,15 @@ export type AlertClaim = { outageKey: string; ordinal: number };
 export const MAX_CLAIM_ATTEMPTS = 5;
 /** A claim still 'pending' after this long (longer than any provider's delivery attempts) belongs to a process that died before it recorded the outcome. */
 export const STALE_PENDING_CLAIM_SECONDS = 120;
-const HISTORY_FINISH_ATTEMPTS = 3;
+const HISTORY_FINISH_ATTEMPTS = 5;
+
+/** What is written to a claimed row once its provider's send has settled. */
+type ClaimOutcome = {
+  status: AlertStatus;
+  errorMessage: string | null;
+  deliveryMetadata: AlertDeliveryMetadata | null;
+  sentAt: Date;
+};
 
 @Injectable()
 export class MonitorAlertService {
@@ -291,6 +300,7 @@ export class MonitorAlertService {
     let alreadySent = 0;
     let inFlight = 0;
     if (input.claim) {
+      await this.flushUnrecordedOutcomes();
       try {
         ({ claimed, alreadySent, inFlight } = await this.claimProviders({
           monitorId,
@@ -323,83 +333,104 @@ export class MonitorAlertService {
     this.logger.log(
       `${logTag} Sending ${payload.type} notifications to ${sendTo.length} providers`,
     );
-    const deliveryResults =
-      await this.notificationService.sendNotificationToMultipleProviders(
-        sendTo,
-        payload,
-      );
-    const successCount = deliveryResults.success;
-    this.logger.log(
-      `${logTag} Notification results: ${successCount} success, ${deliveryResults.failed} failed`,
-    );
 
     // A provider that reached some recipients (partial email) counts as delivered: a retry would resend to them.
     const isDelivered = (result: { success: boolean; partial?: boolean }) =>
       result.success || Boolean(result.partial);
-    const anyDelivered = deliveryResults.results.some(isDelivered);
+    const created: AlertHistoryTriageCandidate[] = [];
+    // Delivered alerts whose row could not be updated: they stay 'pending' in the database.
+    const unrecorded: Array<{ id: string; status: AlertStatus }> = [];
+    const finished = new Set<string>();
     let stillOwed = 0;
-
-    if (deliveryResults.results.length > 0) {
-      const created: AlertHistoryTriageCandidate[] = [];
-      // Delivery already happened: a bookkeeping failure must not be reported as a failed delivery.
+    // Each provider's row is finished as soon as its own send settles, so a slow provider never leaves a
+    // delivered one 'pending' long enough to be taken over (and sent again) as abandoned.
+    const finishRow = async (result: ProviderDeliveryResult) => {
+      const row = claimed.get(result.provider.id);
+      if (!row || finished.has(result.provider.id)) return;
+      finished.add(result.provider.id);
+      const status: AlertStatus = isDelivered(result) ? 'sent' : 'failed';
+      if (status === 'failed' && row.attempts < MAX_CLAIM_ATTEMPTS) stillOwed++;
+      const values = {
+        status,
+        errorMessage: redactAlertText(result.error) ?? null,
+        deliveryMetadata: result.deliveryMetadata ?? null,
+        sentAt: input.sentAt,
+      };
       try {
-        if (claimed.size > 0) {
-          for (const result of deliveryResults.results) {
-            const row = claimed.get(result.provider.id);
-            const status: AlertStatus = isDelivered(result) ? 'sent' : 'failed';
-            if (!row) continue;
-            if (status === 'failed' && row.attempts < MAX_CLAIM_ATTEMPTS)
-              stillOwed++;
-            try {
-              await this.finishClaimedRow(row.id, {
-                status,
-                errorMessage: redactAlertText(result.error) ?? null,
-                deliveryMetadata: result.deliveryMetadata ?? null,
-                sentAt: input.sentAt,
-              });
-              created.push({ id: row.id, status });
-            } catch (error) {
-              this.logger.error(
-                `${logTag} Failed to record ${historyType} outcome for monitor ${monitorId}: ${getErrorMessage(error)}`,
-              );
-            }
-          }
-        } else {
-          const rows = await db
-            .insert(schema.alertHistory)
-            .values(
-              deliveryResults.results.map((result) => ({
-                type: historyType,
-                message: redactAlertText(payload.message) ?? '',
-                target: input.monitorName,
-                targetType: 'monitor',
-                monitorId,
-                provider: result.provider.id,
-                status: isDelivered(result)
-                  ? ('sent' as const)
-                  : ('failed' as const),
-                errorMessage: redactAlertText(result.error),
-                deliveryMetadata: result.deliveryMetadata,
-                sentAt: input.sentAt,
-              })),
-            )
-            .returning({
-              id: schema.alertHistory.id,
-              status: schema.alertHistory.status,
-            });
-          created.push(...rows);
-        }
-        // Renewal notices are informational: they never open or resolve an incident.
-        if (historyType !== 'ssl_renewed') {
-          await this.sreAlertTriageQueueService.enqueueAlertHistoryRows(
-            created,
-          );
-        }
+        await this.finishClaimedRow(row.id, values);
+        created.push({ id: row.id, status });
       } catch (error) {
+        unrecorded.push({ id: row.id, status });
+        this.rememberUnrecorded(row.id, values);
         this.logger.error(
-          `${logTag} Failed to record alert history for monitor ${monitorId}: ${getErrorMessage(error)}`,
+          `${logTag} Failed to record ${historyType} outcome for monitor ${monitorId}: ${getErrorMessage(error)}`,
         );
       }
+    };
+
+    const deliveryResults =
+      await this.notificationService.sendNotificationToMultipleProviders(
+        sendTo,
+        payload,
+        claimed.size > 0 ? finishRow : undefined,
+      );
+    this.logger.log(
+      `${logTag} Notification results: ${deliveryResults.success} success, ${deliveryResults.failed} failed`,
+    );
+    const anyDelivered = deliveryResults.results.some(isDelivered);
+
+    // Delivery already happened: a bookkeeping failure must not be reported as a failed delivery.
+    try {
+      if (claimed.size > 0) {
+        // Results the sender did not hand over one by one.
+        for (const result of deliveryResults.results) await finishRow(result);
+      } else if (deliveryResults.results.length > 0) {
+        const rows = await db
+          .insert(schema.alertHistory)
+          .values(
+            deliveryResults.results.map((result) => ({
+              type: historyType,
+              message: redactAlertText(payload.message) ?? '',
+              target: input.monitorName,
+              targetType: 'monitor',
+              monitorId,
+              provider: result.provider.id,
+              status: isDelivered(result)
+                ? ('sent' as const)
+                : ('failed' as const),
+              errorMessage: redactAlertText(result.error),
+              deliveryMetadata: result.deliveryMetadata,
+              sentAt: input.sentAt,
+            })),
+          )
+          .returning({
+            id: schema.alertHistory.id,
+            status: schema.alertHistory.status,
+          });
+        created.push(...rows);
+      }
+      // Renewal notices are informational: they never open or resolve an incident.
+      if (historyType !== 'ssl_renewed') {
+        await this.sreAlertTriageQueueService.enqueueAlertHistoryRows(created);
+        // The rows above are still 'pending' for the app, which skips them: open the incident from the
+        // delivery we know happened. (A recovery resolves its incident through signalRecovery instead.)
+        if (
+          historyType === 'monitor_failure' &&
+          unrecorded.some((row) => row.status === 'sent')
+        ) {
+          await this.sreAlertTriageQueueService.enqueueSourceFailure({
+            sourceType: 'monitor',
+            sourceId: monitorId,
+            type: 'monitor_failure',
+            message: (redactAlertText(payload.message) ?? '').slice(0, 2000),
+            firedAt: input.sentAt.toISOString(),
+          });
+        }
+      }
+    } catch (error) {
+      this.logger.error(
+        `${logTag} Failed to record alert history for monitor ${monitorId}: ${getErrorMessage(error)}`,
+      );
     }
 
     if (claimed.size === 0) return { delivered: anyDelivered };
@@ -412,14 +443,37 @@ export class MonitorAlertService {
     };
   }
 
+  /** Outcomes this process could not write: retried before the next claim, while the row is still not stale. */
+  private readonly unrecordedOutcomes = new Map<string, ClaimOutcome>();
+
+  private rememberUnrecorded(id: string, values: ClaimOutcome) {
+    // Bounded: oldest entries go first.
+    if (this.unrecordedOutcomes.size >= 200) {
+      for (const oldest of this.unrecordedOutcomes.keys()) {
+        this.unrecordedOutcomes.delete(oldest);
+        break;
+      }
+    }
+    this.unrecordedOutcomes.set(id, values);
+  }
+
+  private async flushUnrecordedOutcomes(): Promise<void> {
+    for (const [id, values] of [...this.unrecordedOutcomes]) {
+      try {
+        await this.dbService.db
+          .update(schema.alertHistory)
+          .set(values)
+          .where(eq(schema.alertHistory.id, id));
+        this.unrecordedOutcomes.delete(id);
+      } catch {
+        return; // still down: the next claim tries again
+      }
+    }
+  }
+
   private async finishClaimedRow(
     id: string,
-    values: {
-      status: AlertStatus;
-      errorMessage: string | null;
-      deliveryMetadata: AlertDeliveryMetadata | null;
-      sentAt: Date;
-    },
+    values: ClaimOutcome,
   ): Promise<void> {
     for (let attempt = 1; ; attempt++) {
       try {
@@ -430,7 +484,7 @@ export class MonitorAlertService {
         return;
       } catch (error) {
         if (attempt >= HISTORY_FINISH_ATTEMPTS) throw error;
-        await new Promise((resolve) => setTimeout(resolve, 100 * attempt));
+        await new Promise((resolve) => setTimeout(resolve, 200 * attempt));
       }
     }
   }
@@ -809,9 +863,11 @@ export class MonitorAlertService {
           ? `SSL Certificate Readable Again - ${monitor.name}`
           : `SSL Certificate Renewed - ${monitor.name}`
         : `SSL Certificate Warning - ${monitor.name}`,
-      message:
-        monitor.alertConfig.customMessage ||
-        (renewed ? reason : `SSL certificate issue detected: ${reason}`),
+      // The custom message describes a failure: a renewed or readable-again notice always states what happened.
+      message: renewed
+        ? reason
+        : monitor.alertConfig.customMessage ||
+          `SSL certificate issue detected: ${reason}`,
       targetName: monitor.name,
       targetId: monitor.id,
       severity: renewed ? 'success' : 'warning',
