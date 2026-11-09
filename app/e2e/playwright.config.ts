@@ -66,6 +66,8 @@ export default defineConfig({
     },
     {
       name: 'chromium',
+      // The PR screenshot tour runs only against its own throwaway app.
+      testIgnore: /tests\/screenshots\//,
       use: {
         ...devices['Desktop Chrome'],
         // 1.64 forwards screen from device descriptors; pinned for parity, revisit deliberately.
@@ -74,6 +76,27 @@ export default defineConfig({
       },
       dependencies: ['setup'],
     },
+    /* PR screenshot tour (pr-screenshots.yml): only with E2E_SCREENSHOTS=1, so full-suite runs never sign up on a real deployment. */
+    ...(process.env.E2E_SCREENSHOTS === '1' ? [
+      {
+        name: 'screenshots-setup',
+        testMatch: /tests\/screenshots\/screenshots\.setup\.ts$/,
+        use: { ...devices['Desktop Chrome'], screen: undefined, viewport: { width: 1440, height: 900 } },
+      },
+      {
+        name: 'screenshots',
+        testMatch: /tests\/screenshots\/[^/]+\.spec\.ts$/,
+        use: {
+          ...devices['Desktop Chrome'],
+          screen: undefined,
+          viewport: { width: 1440, height: 900 },
+          storageState: 'screenshots-auth-state.json',
+          // Failure screenshots would land in the gallery as test-failed-1.png.
+          screenshot: 'off' as const,
+        },
+        dependencies: ['screenshots-setup'],
+      },
+    ] : []),
   ],
 
   /* Output directory for test artifacts */
