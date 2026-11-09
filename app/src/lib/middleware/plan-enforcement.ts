@@ -294,9 +294,10 @@ export async function checkTeamMemberLimit(
     const limit = effectiveMemberLimit(plan, org?.memberUnits);
 
     if (currentCount >= limit) {
-      const next = plan.plan === "pro"
-        ? ` The organization owner can add member seats on the Subscription tab of Organization Admin ($${EXTRA_MEMBER_PRICE_CENTS / 100} per extra member per month, up to ${MAX_MEMBER_SEATS} members).`
-        : "";
+      const next = plan.plan !== "pro" ? ""
+        : limit >= MAX_MEMBER_SEATS
+          ? ` Need more than ${MAX_MEMBER_SEATS} members? Contact us at hello@supercheck.io.`
+          : ` The organization owner can add member seats on the Subscription tab of Organization Admin ($${EXTRA_MEMBER_PRICE_CENTS / 100} per extra member per month, up to ${MAX_MEMBER_SEATS} members).`;
       return {
         allowed: false,
         error: `Team member limit reached. Your ${planLabel(plan)} allows ${limit} team members.${next}`,

@@ -75,6 +75,12 @@ describe("POST /api/billing/members", () => {
     expect(mockUpdate).toHaveBeenCalledWith("sub_1", { units: 30, proration_behavior: "prorate" });
   });
 
+  it("accepts the member maximum and charges an increase from no purchased seats now", async () => {
+    (db.query.organization.findFirst as jest.Mock).mockResolvedValue({ id: ORG, subscriptionId: "sub_1", memberUnits: null });
+    expect((await post({ organizationId: ORG, totalMembers: 100 })).status).toBe(200);
+    expect(mockUpdate).toHaveBeenCalledWith("sub_1", { units: 100, proration_behavior: "invoice" });
+  });
+
   it("does not call the provider when the seats are unchanged", async () => {
     const response = await post({ organizationId: ORG, totalMembers: 25 });
     expect(response.status).toBe(200);

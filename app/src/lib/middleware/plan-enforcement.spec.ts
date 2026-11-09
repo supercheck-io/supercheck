@@ -361,6 +361,16 @@ describe("Plan Enforcement Middleware", () => {
         expect(result.allowed).toBe(false);
         expect(result.error).toContain("allows 30 team members");
         expect(result.error).toContain("$8 per extra member per month");
+        expect(result.error).toContain("organization owner");
+      });
+
+      it("points to contact once Pro is at the member maximum", async () => {
+        (subscriptionService.getOrganizationPlan as jest.Mock).mockResolvedValue({ plan: "pro", maxTeamMembers: 25 });
+        mockCountWhere.mockReturnValueOnce({ limit: async () => [{ memberUnits: 100 }] });
+        const result = await checkTeamMemberLimit("org-1", 100);
+        expect(result.allowed).toBe(false);
+        expect(result.error).toContain("Need more than 100 members? Contact us");
+        expect(result.error).not.toContain("can add member seats");
       });
     });
   });
