@@ -65,7 +65,7 @@ test('gallery and comment escape everything they print', () => {
   // The renderers must escape on their own, even for names that skipped collectScreenshots.
   const hostile = '<img src=x onerror=alert(1)>.png';
   const gallery = renderGallery([hostile], { sha: SHA, runUrl: `${RUN}?"><script>` });
-  assert.doesNotMatch(gallery, /<img src=x|<script>/);
+  assert.ok(!gallery.includes('<img src=x') && !gallery.includes('<script>'));
   assert.match(gallery, /&#60;img src=x onerror=alert\(1\)&#62;/);
   assert.match(gallery, /href="https:\/\/github\.com\/o\/r\/actions\/runs\/1\?&#34;&#62;&#60;script&#62;"/);
   const comment = renderComment([hostile], {
@@ -74,7 +74,7 @@ test('gallery and comment escape everything they print', () => {
     result: 'success',
     galleryBaseUrl: 'https://shots.example.com/x',
   });
-  assert.doesNotMatch(comment, /<img src=x/);
+  assert.ok(!comment.includes('<img src=x'));
   assert.match(comment, /alt="&#60;img src=x onerror=alert\(1\)&#62;"/);
   assert.match(comment, /images\/%3Cimg%20src%3Dx%20onerror%3Dalert\(1\)%3E\.png/);
 });
