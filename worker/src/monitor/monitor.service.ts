@@ -68,6 +68,7 @@ import {
   resolvePublicAddress,
   vettedLookup,
 } from '../common/utils/pinned-monitor-request';
+import type { LookupFunction } from 'node:net';
 import { allowInternalMonitorTargets } from '../common/utils/url-validator';
 import {
   MonitorRedirectError,
@@ -1466,6 +1467,10 @@ export class MonitorService {
           if (received === undefined || config?.keywordInBody) {
             // Without a status or the full body the check cannot be judged either way.
             status = 'error';
+          } else if (received >= 300 && received < 400) {
+            // A redirect with an oversized body is not followed, so the destination was never checked.
+            status = 'error';
+            details.errorMessage = `Response too large to verify the redirect (status ${received})`;
           } else if (isExpectedStatus(received, config?.expectedStatusCodes)) {
             status = 'up';
             isUp = true;
@@ -1610,9 +1615,8 @@ export class MonitorService {
         } catch (portError) {
           lastError = portError as Error;
           // A refusal (RST) comes from the host itself, so the host is alive even though the port is closed.
-          // Every address must agree, as for port checks.
-          const codes = networkErrorCodes(portError);
-          if (codes.length > 0 && codes.every((c) => c === 'ECONNREFUSED')) {
+          // Any refusing address proves the host is up, even if another family is unreachable.
+          if (networkErrorCodes(portError).includes('ECONNREFUSED')) {
             answeredPort = port;
             refused = true;
           }
@@ -1675,6 +1679,40 @@ export class MonitorService {
     return { status, details, responseTimeMs, isUp };
   }
 
+  /** Is the host alive? A connect or a refusal on 443 or 80 says yes; both ports are tried in parallel. */
+  private async probeHostAlive(
+    target: string,
+    lookup: LookupFunction,
+    budgetMs: number,
+  ): Promise<boolean> {
+    const { createConnection } = await import('net');
+    const attempts = [443, 80].map(
+      (port) =>
+        new Promise<boolean>((resolve) => {
+          const socket = createConnection({
+            host: target,
+            lookup,
+            autoSelectFamily: true,
+            port,
+          });
+          const timer = setTimeout(() => {
+            socket.destroy();
+            resolve(false);
+          }, budgetMs);
+          socket.on('connect', () => {
+            clearTimeout(timer);
+            socket.destroy();
+            resolve(true);
+          });
+          socket.on('error', (error) => {
+            clearTimeout(timer);
+            resolve(networkErrorCodes(error).includes('ECONNREFUSED'));
+          });
+        }),
+    );
+    return (await Promise.all(attempts)).some(Boolean);
+  }
+
   private async executePortCheck(
     target: string,
     config?: MonitorConfig,
@@ -1721,10 +1759,12 @@ export class MonitorService {
     let isUp = false;
     let responseTimeMs: number | undefined;
 
+    let tcpLookup: LookupFunction | undefined;
     try {
       const allowInternal = allowInternalMonitorTargets();
       if (protocol === 'tcp') {
         const lookup = await vettedLookup(target, allowInternal);
+        tcpLookup = lookup;
         // TCP port check using net module
         const net = await import('net');
 
@@ -1803,11 +1843,18 @@ export class MonitorService {
             );
             client.on('error', (error) => finish(error));
             client.on('message', () => finish(undefined, 'answered'));
-            client.connect(port, resolved.address, () => {
+            // connect() reports failure through 'error'; send only on an established association.
+            client.once('connect', () => {
+              if (done) return;
               client.send(Buffer.from('ping'), (error) => {
                 if (error) finish(error);
               });
             });
+            try {
+              client.connect(port, resolved.address);
+            } catch (error) {
+              finish(error as Error);
+            }
           },
         );
 
@@ -1865,10 +1912,24 @@ export class MonitorService {
 
       if (isTimeoutError(error)) {
         // A filtered port drops the SYN, but so does a powered-off host: only pass if the host answers elsewhere.
+        // The probe reuses the vetted addresses (no re-resolution) and gets only what is left of the budget.
         const hostAlive =
-          expectClosed &&
-          protocol === 'tcp' &&
-          (await this.executePingHost(target, config)).isUp;
+          expectClosed && tcpLookup
+            ? await this.probeHostAlive(
+                target,
+                tcpLookup,
+                Math.max(
+                  1000,
+                  timeout -
+                    Math.round(
+                      Number(process.hrtime.bigint() - startTime) / 1000000,
+                    ),
+                ),
+              )
+            : false;
+        responseTimeMs = Math.round(
+          Number(process.hrtime.bigint() - startTime) / 1000000,
+        );
         if (expectClosed && hostAlive) {
           status = 'up';
           isUp = true;

@@ -65,7 +65,7 @@ jest.mock('net', () => {
       | 'enotfound',
     // Per-attempt outcomes for createConnection (ping), consumed in order before `behavior`.
     attempts: [] as Array<{
-      outcome: 'connect' | 'refused' | 'timeout' | 'enotfound';
+      outcome: 'connect' | 'refused' | 'mixed' | 'timeout' | 'enotfound';
       delayMs?: number;
     }>,
   };
@@ -145,6 +145,16 @@ jest.mock('net', () => {
               code: 'ECONNREFUSED',
             }),
           );
+        else if (outcome === 'mixed')
+          socket.emit(
+            'error',
+            new AggregateError([
+              Object.assign(new Error('refused'), { code: 'ECONNREFUSED' }),
+              Object.assign(new Error('unreachable'), {
+                code: 'ENETUNREACH',
+              }),
+            ]),
+          );
         else if (outcome === 'timeout')
           socket.emit(
             'error',
@@ -167,7 +177,7 @@ jest.mock('net', () => {
 jest.mock('dgram', () => {
   const { EventEmitter } = jest.requireActual('events');
   const state = {
-    behavior: 'silent' as 'silent' | 'refused' | 'reply',
+    behavior: 'silent' as 'silent' | 'refused' | 'reply' | 'connect-fail',
     connectedTo: undefined as unknown[] | undefined,
     sentUnconnected: false,
   };
@@ -175,9 +185,14 @@ jest.mock('dgram', () => {
   class FakeUdpSocket extends EventEmitter {
     connect = jest.fn((...args: unknown[]) => {
       state.connectedTo = args;
-      const callback = args.find((a) => typeof a === 'function') as
-        (() => void) | undefined;
-      process.nextTick(() => callback?.());
+      process.nextTick(() => {
+        if (state.behavior === 'connect-fail')
+          this.emit(
+            'error',
+            Object.assign(new Error('connect EINVAL'), { code: 'EINVAL' }),
+          );
+        else this.emit('connect');
+      });
     });
     send = jest.fn((...args: unknown[]) => {
       // send(msg, port, host) is the old unconnected form: ICMP errors never reach it.
@@ -1403,6 +1418,14 @@ describe('MonitorService', () => {
         expect(result.details.responseSize).toBe(9);
       });
 
+      it('does not count an oversized redirect as up', async () => {
+        tooLarge(301);
+        const result = await http({ expectedStatusCodes: '3xx' });
+        expect(result.status).toBe('error');
+        expect(result.isUp).toBe(false);
+        expect(result.details.errorMessage).toContain('verify the redirect');
+      });
+
       const tooLarge = (statusCode?: number) => {
         const error = new AxiosError(
           'maxContentLength size of 10485760 exceeded',
@@ -1449,6 +1472,12 @@ describe('MonitorService', () => {
         expect(result).toMatchObject({ status: 'up', isUp: true });
         expect(result?.details).toMatchObject({ port: 443 });
         expect(result?.details?.message).toContain('refused');
+      });
+
+      it('counts a refusal on one address as alive even if another is unreachable', async () => {
+        netState.attempts.push({ outcome: 'mixed' });
+        const result = await service.executeMonitor(pingJob);
+        expect(result).toMatchObject({ status: 'up', isUp: true });
       });
 
       it('still reports down when the host cannot be resolved', async () => {
@@ -1502,6 +1531,8 @@ describe('MonitorService', () => {
           );
           expect(result).toMatchObject({ status: 'up', isUp: true });
           expect(result?.details).toMatchObject({ filtered: true });
+          // The liveness probe reuses the vetted lookup instead of resolving again.
+          expect(vettedLookup).toHaveBeenCalledTimes(1);
         },
       );
 
@@ -1531,6 +1562,13 @@ describe('MonitorService', () => {
         expect(udpState.sentUnconnected).toBe(false);
         expect(result).toMatchObject({ status: 'down', isUp: false });
         expect(result?.details?.errorMessage).toContain('refused');
+      });
+
+      it('reports a failed connect() as an error without sending', async () => {
+        udpState.behavior = 'connect-fail';
+        const result = await udp();
+        expect(result).toMatchObject({ isUp: false });
+        expect(result?.status).toBe('error');
       });
 
       it('treats a refusal as success when the port is expected to be closed', async () => {
