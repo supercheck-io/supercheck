@@ -71,13 +71,17 @@ test.describe("AI SRE service topology administration @aisre @topology @critical
         .click();
       await expect(dialog).toBeHidden();
 
+      // The innermost element holding both the target's name and its remove button is its row.
       const dependency = page
-        .getByRole("button", {
-          name: `Remove dependency with ${targetName}`,
-          exact: true,
+        .locator("div")
+        .filter({
+          has: page.getByRole("button", {
+            name: `Remove dependency with ${targetName}`,
+            exact: true,
+          }),
         })
-        .locator("..")
-        .locator("..");
+        .filter({ has: page.getByText(targetName, { exact: true }) })
+        .last();
       await expect(dependency).toContainText("This service depends on it");
       await expect(dependency).toContainText("manual");
       await page.reload();
