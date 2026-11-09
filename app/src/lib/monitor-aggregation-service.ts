@@ -1070,15 +1070,23 @@ export class MonitorAggregationService {
           expected: number | null;
           cycles: number;
         }>(sql`
-          WITH g AS (
-            SELECT ${monitorResults.executionGroupId} AS gid,
-              min(${monitorResults.checkedAt}) AS first_at,
-              count(DISTINCT ${monitorResults.location})::int AS observed,
-              (count(DISTINCT ${monitorResults.location}) FILTER (WHERE ${monitorResults.isUp}))::int AS up
+          WITH r AS (
+            SELECT ${monitorResults.executionGroupId} AS gid, ${monitorResults.isUp} AS is_up,
+              min(${monitorResults.checkedAt}) OVER (PARTITION BY ${monitorResults.executionGroupId}) AS first_at,
+              -- the latest attempt of a region decides, as in groupChecks
+              row_number() OVER (
+                PARTITION BY ${monitorResults.executionGroupId}, ${monitorResults.location}
+                ORDER BY ${monitorResults.checkedAt} DESC, ${monitorResults.id} DESC
+              ) AS rn
             FROM ${monitorResults}
             WHERE ${base} AND ${monitorResults.executionGroupId} IS NOT NULL AND (${inRanges(monitorResults.checkedAt, margin)})
-            GROUP BY ${monitorResults.executionGroupId}
-            HAVING ${inRanges(sql`min(${monitorResults.checkedAt})`, gaps)}
+          ),
+          g AS (
+            SELECT gid, min(first_at) AS first_at, count(*)::int AS observed,
+              (count(*) FILTER (WHERE is_up))::int AS up
+            FROM r WHERE rn = 1
+            GROUP BY gid
+            HAVING ${inRanges(sql`min(first_at)`, gaps)}
           )
           SELECT g.observed, g.up, (g.first_at > ${cutoff}::timestamptz) AS recent,
             c.strategy, c.threshold, jsonb_array_length(c.expected_locations)::int AS expected,

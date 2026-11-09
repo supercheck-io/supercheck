@@ -259,6 +259,27 @@ it("summarises a window with no aggregates in SQL: cycle rule, missing region, i
   expect(regional).toMatchObject({ totalChecks: 1, successfulChecks: 0 });
 });
 
+it("lets the latest attempt of a retried region decide, the same in the aggregates and in the SQL tail", async () => {
+  await mockDatabase
+    .update(schema.monitors)
+    .set({ config: { locationConfig: { enabled: true, locations: ["a", "b"], strategy: "all", threshold: 100 } } })
+    .where(eq(schema.monitors.id, monitorId));
+  const row = (group: string, location: string, isUp: boolean, minutes: number) => ({
+    monitorId, executionGroupId: group, checkedAt: at(minutes), location, status: isUp ? ("up" as const) : ("down" as const), isUp, responseTimeMs: isUp ? 100 : null,
+  });
+  // r1: a up then down (retry failed), b up => "all" fails. r2: a down then up, b up => "all" holds.
+  await mockDatabase.insert(schema.monitorResults).values([
+    row("r1", "a", true, 0), row("r1", "a", false, 1), row("r1", "b", true, 0),
+    row("r2", "a", false, 10), row("r2", "a", true, 11), row("r2", "b", true, 10),
+  ]);
+  const end = new Date(day.getTime() + 86_400_000);
+  const tail = await monitorAggregationService.getWindowMetrics(monitorId, "daily", day, end, null);
+  expect(tail).toMatchObject({ totalChecks: 2, successfulChecks: 1 });
+  expect((await monitorAggregationService.runDailyAggregation()).errors).toEqual([]);
+  const aggregated = await monitorAggregationService.getWindowMetrics(monitorId, "daily", day, end, null);
+  expect(aggregated).toMatchObject({ totalChecks: 2, successfulChecks: 1 });
+});
+
 it("keeps the latest duplicate, archives superseded rows and cascades their deletion", async () => {
   await client`DROP INDEX monitor_aggregates_combined_unique_idx`;
   await client`DROP TABLE monitor_aggregate_dedup_audit`;
