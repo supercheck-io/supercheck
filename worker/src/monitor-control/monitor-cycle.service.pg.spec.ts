@@ -532,6 +532,42 @@ suite('MonitorCycleService (PostgreSQL)', () => {
       ]);
     });
 
+    it('falls back to the latest row for a cycle closed before observed locations were stored', async () => {
+      await openCycle('old-row', { strategy: 'all', locations: ['eu', 'us'] });
+      await report('old-row', 'eu', false, new Date(t0.getTime() + 1000));
+      await report('old-row', 'us', false, new Date(t0.getTime() + 2000));
+      await service.closeCycle('old-row', afterDeadline);
+      await db
+        .update(schema.monitorCycles)
+        .set({ observedLocations: null, missingLocations: null })
+        .where(eq(schema.monitorCycles.id, 'old-row'));
+      await report('old-row', 'us', true, new Date(t0.getTime() + 500_000));
+      await service.notifyCycle('old-row');
+      const metadata = sendNotification.mock.calls[0][3] as {
+        locationResults: Array<{ location: string; isUp: boolean }>;
+      };
+      expect(
+        metadata.locationResults.find((r) => r.location === 'us')?.isUp,
+      ).toBe(true);
+    });
+
+    it('keeps a region pending after an early closure even when its late result lands before the alert', async () => {
+      await openCycle('early-late', {
+        strategy: 'any',
+        locations: ['eu', 'us'],
+      });
+      await report('early-late', 'eu', true, new Date(t0.getTime() + 1000));
+      expect(await service.closeCycle('early-late', t0)).toBe('closed');
+      await report('early-late', 'us', true, new Date(t0.getTime() + 2000));
+      const rows = await results('early-late');
+      const cycle = await cycleRow('early-late');
+      expect(cycle.missingLocations).toEqual(['us']);
+      expect(service['frozenRow'](cycle, 'us', rows)).toBeUndefined(); // reported as pending
+      expect(service['frozenRow'](cycle, 'eu', rows)).toMatchObject({
+        isUp: true,
+      });
+    });
+
     it('ignores a late result for an observed region when building alert metadata', async () => {
       await openCycle('late-pending', {
         strategy: 'any',

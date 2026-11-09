@@ -150,6 +150,7 @@ it("persists a cycle idempotently and refreshes the snapshot on an untouched ret
     deadlineMs: 60_000,
   };
   const first = await persistMonitorCycle(input);
+  await markMonitorCyclePublished(id);
   const retry = await persistMonitorCycle({ ...input, configuredLocations: ["other"] });
   expect(first).toEqual({ created: true });
   expect(retry).toEqual({ created: false });
@@ -159,6 +160,7 @@ it("persists a cycle idempotently and refreshes the snapshot on an untouched ret
     .where(eq(schema.monitorCycles.id, id));
   expect(row.expectedLocations).toEqual(["other"]);
   expect(row.status).toBe("open");
+  expect(row.publishPending).toBe(false); // the retry leaves a published cycle published
   expect(row.deadlineAt.getTime()).toBeGreaterThan(row.scheduledFor.getTime());
 });
 

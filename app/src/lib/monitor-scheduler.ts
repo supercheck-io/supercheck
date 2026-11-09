@@ -151,6 +151,7 @@ export async function initializeMonitorSchedulers(): Promise<{ success: boolean;
       // Acquire distributed lock to prevent multiple instances from initializing simultaneously
       // This is critical in clustered deployments where multiple Next.js instances start together
       const lockToken = `${process.pid}:${randomUUID()}`;
+      const lockedAt = Date.now();
       const lockAcquired = await redisClient.set(LOCK_KEY, lockToken, 'EX', LOCK_TTL_SECONDS, 'NX');
       
       if (!lockAcquired) {
@@ -185,8 +186,9 @@ export async function initializeMonitorSchedulers(): Promise<{ success: boolean;
         let failedCount = 0;
 
         const RENEW_EVERY_MS = 30_000;
-        let lastRenewal = Date.now();
-        for (const listed of activeMonitors) {
+        let lockLost = false;
+        let lastRenewal = lockedAt;
+        for (const [index, listed] of activeMonitors.entries()) {
           // The 120s lock outlives a normal sync, but a large fleet can exceed it: extend it while
           // still the owner, and stop if another replica has taken over.
           if (Date.now() - lastRenewal >= RENEW_EVERY_MS) {
@@ -195,7 +197,10 @@ export async function initializeMonitorSchedulers(): Promise<{ success: boolean;
               1, LOCK_KEY, lockToken, LOCK_TTL_SECONDS,
             );
             if (!renewed) {
-              console.warn('[MonitorScheduler] Init lock lost mid-sync; stopping so a newer sync owns the queue');
+              const unprocessed = activeMonitors.length - index;
+              console.error(`[MonitorScheduler] Init lock lost mid-sync; stopping with ${unprocessed} monitor(s) unscheduled so a newer sync owns the queue`);
+              failedCount += unprocessed;
+              lockLost = true;
               break;
             }
             lastRenewal = Date.now();
@@ -241,7 +246,7 @@ export async function initializeMonitorSchedulers(): Promise<{ success: boolean;
       
         // Consider initialization successful if at least some monitors were scheduled
         // or if there were no monitors to schedule
-        const success = scheduledCount > 0 || (scheduledCount === 0 && failedCount === 0);
+        const success = !lockLost && (scheduledCount > 0 || (scheduledCount === 0 && failedCount === 0));
         return { success, scheduled: scheduledCount, failed: failedCount };
       } finally {
         // Compare-and-delete: the TTL may have expired and another instance taken over.
@@ -287,18 +292,22 @@ async function removeOrphanedMonitorRepeatables(queue: Queue): Promise<Repeatabl
 
   // An enabled monitor keeps one repeatable at its current cadence. A frequency edit that raced a
   // sync leaves an extra one at the old cadence (a different key), which would double its checks.
-  const keptFor = new Set<string>();
+  const cadenceOk = (job: RepeatableJob, monitor: { type: string; frequencyMinutes: number | null }) =>
+    !job.pattern && !!monitor.frequencyMinutes && Number(job.every) === effectiveFrequencyMinutes(monitor.type, monitor.frequencyMinutes) * 60_000;
+  // Extras go only when a correct-cadence repeatable stays: removing a lone stale one would leave the
+  // monitor unscheduled if init then died; scheduleMonitor replaces it instead.
+  const keeper = new Map<string, RepeatableJob>();
+  for (const job of repeatableJobs) {
+    const monitorId = monitorIdOf(job);
+    const monitor = monitorId ? monitorsById.get(monitorId) : undefined;
+    if (monitorId && monitor && !keeper.has(monitorId) && cadenceOk(job, monitor)) keeper.set(monitorId, job);
+  }
   const orphanedJobs = repeatableJobs.filter((job) => {
     const monitorId = monitorIdOf(job);
     if (!monitorId) return false;
     const monitor = monitorsById.get(monitorId);
     if (!monitor || !monitor.enabled || monitor.status === "paused" || (monitor.scheduledJobId != null && monitor.scheduledJobId !== monitorId)) return true;
-    if (!monitor.frequencyMinutes) return false;
-    const expectedEvery = effectiveFrequencyMinutes(monitor.type, monitor.frequencyMinutes) * 60_000;
-    if (job.pattern || Number(job.every) !== expectedEvery) return true;
-    if (keptFor.has(monitorId)) return true;
-    keptFor.add(monitorId);
-    return false;
+    return keeper.has(monitorId) && keeper.get(monitorId) !== job;
   });
   await Promise.all(orphanedJobs.map((job) => queue.removeRepeatableByKey(job.key)));
   return repeatableJobs.filter((job) => !orphanedJobs.includes(job));

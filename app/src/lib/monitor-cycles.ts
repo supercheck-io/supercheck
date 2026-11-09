@@ -154,7 +154,7 @@ export async function persistMonitorCycle(input: {
   if (existing) {
     await db
       .update(monitorCycles)
-      .set({ expectedLocations: Array.from(new Set(input.configuredLocations)), publishPending: true })
+      .set({ expectedLocations: Array.from(new Set(input.configuredLocations)) })
       .where(
         and(
           eq(monitorCycles.id, input.id),

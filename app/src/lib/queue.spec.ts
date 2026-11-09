@@ -457,6 +457,16 @@ describe("queue location refresh", () => {
       for (const flow of flowAddBulk.mock.calls[0][0]) expect(flow.data.executionGroupId).toBe(first);
     });
 
+    it("still returns the cycle id when marking it published fails", async () => {
+      process.env.MISSING_CYCLE_CLOSURE_ENABLED = "true";
+      enabledCodes = ["eu-central"];
+      const { monitorExecutionQueue } = await queueModule.getQueues();
+      markMonitorCyclePublished.mockRejectedValueOnce(new Error("database unavailable"));
+      flowAddBulk.mockImplementation(async (flows: unknown[]) => flows.map(() => ({ job: { getState: async () => "waiting" } })));
+      await expect(queueModule.enqueueMonitorLocationJobs(monitorExecutionQueue, task, enabledCodes, {}, cycle())).resolves.toEqual(expect.any(String));
+      expect(abortMonitorCycle).not.toHaveBeenCalled();
+    });
+
     it("uses distinct cycles for different scheduled runs", async () => {
       process.env.MISSING_CYCLE_CLOSURE_ENABLED = "true";
       enabledCodes = ["eu-central"];

@@ -131,6 +131,30 @@ describe("orphaned repeatable cleanup", () => {
     expect(queue.removeRepeatableByKey.mock.calls.map(([key]) => key).sort()).toEqual(["key:A-dup", "key:A-old"]);
   });
 
+  it("keeps a lone stale-cadence or pattern repeatable so a dying init cannot leave the monitor unscheduled", async () => {
+    queue.getRepeatableJobs.mockResolvedValue([repeatable(A, 5), { ...repeatable(B, 1), every: null, pattern: "*/1 * * * *" }]);
+    selects.push([
+      { id: A, enabled: true, status: "up", scheduledJobId: A, type: "http_request", frequencyMinutes: 1 },
+      { id: B, enabled: true, status: "up", scheduledJobId: B, type: "http_request", frequencyMinutes: 1 },
+    ]);
+    await initializeMonitorSchedulers();
+    expect(queue.removeRepeatableByKey).not.toHaveBeenCalled();
+  });
+
+  it("treats a pattern repeatable as a mismatch once a correct-cadence one exists", async () => {
+    queue.getRepeatableJobs.mockResolvedValue([{ ...repeatable(A, 1, "key:A-cron"), every: null, pattern: "*/1 * * * *" }, repeatable(A, 1)]);
+    selects.push([{ id: A, enabled: true, status: "up", scheduledJobId: A, type: "http_request", frequencyMinutes: 1 }]);
+    await initializeMonitorSchedulers();
+    expect(queue.removeRepeatableByKey.mock.calls).toEqual([["key:A-cron"]]);
+  });
+
+  it("matches BullMQ's string `every` against the cadence in milliseconds", async () => {
+    queue.getRepeatableJobs.mockResolvedValue([{ ...repeatable(A, 1), every: "60000" }, repeatable(A, 1, "key:A-dup")]);
+    selects.push([{ id: A, enabled: true, status: "up", scheduledJobId: A, type: "http_request", frequencyMinutes: 1 }]);
+    await initializeMonitorSchedulers();
+    expect(queue.removeRepeatableByKey.mock.calls).toEqual([["key:A-dup"]]);
+  });
+
   it("applies the synthetic frequency floor when judging the cadence", async () => {
     queue.getRepeatableJobs.mockResolvedValue([repeatable(A, 5)]);
     selects.push([{ id: A, enabled: true, status: "up", scheduledJobId: A, type: "synthetic_test", frequencyMinutes: 1 }]);
@@ -172,8 +196,25 @@ describe("init sync against concurrent edits", () => {
       selects.push([activeRow(A), activeRow(B)], [activeRow(A)], [activeRow(B)]);
       queue.getRepeatableJobs.mockResolvedValue([]);
       queue.add.mockImplementation(async () => void jest.setSystemTime(Date.now() + 40_000));
-      await initializeMonitorSchedulers();
+      const result = await initializeMonitorSchedulers();
       expect(queue.add).toHaveBeenCalledTimes(1);
+      expect(result).toEqual({ success: false, scheduled: 1, failed: 1 });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("survives a renewal eval error by retrying the whole init", async () => {
+    jest.useFakeTimers({ now: 0 });
+    try {
+      selects.push([activeRow(A), activeRow(B)], [activeRow(A)]);
+      queue.add.mockImplementation(async () => void jest.setSystemTime(Date.now() + 40_000));
+      redis.eval.mockRejectedValueOnce(new Error("redis down")); // the renewal
+      redis.eval.mockResolvedValue(1);
+      const pending = initializeMonitorSchedulers();
+      await jest.advanceTimersByTimeAsync(10_000);
+      await expect(pending).resolves.toBeDefined();
+      expect(redis.set).toHaveBeenCalledTimes(2); // first attempt aborted, second re-acquired the lock
     } finally {
       jest.useRealTimers();
     }
