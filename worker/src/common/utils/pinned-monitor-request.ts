@@ -10,6 +10,7 @@ import {
   type AxiosResponse,
 } from 'axios';
 
+import { MonitorRedirectError } from './network-error';
 import { createPinnedLookup } from './pinned-lookup';
 import {
   isMetadataOrLinkLocalAddress,
@@ -54,7 +55,10 @@ export async function resolvePublicAddresses(
     : await lookup(hostname, { all: true, verbatim: true });
 
   if (addresses.length === 0) {
-    throw new Error('Monitor target did not resolve to an address');
+    throw Object.assign(
+      new Error('Monitor target did not resolve to an address'),
+      { code: 'ENOTFOUND' },
+    );
   }
   // Cloud metadata and link-local addresses stay blocked even when internal targets are allowed.
   if (addresses.some(({ address }) => isMetadataOrLinkLocalAddress(address))) {
@@ -107,11 +111,11 @@ async function pinRequestConfig(
 
   // dns.lookup cannot take a signal, so race it: a slow resolver must not outlive the check deadline.
   const signal = input.signal as AbortSignal | undefined;
-  const resolving = resolvePublicAddress(
+  const resolving = resolvePublicAddresses(
     url.hostname.replace(/^\[|\]$/g, ''),
     allowInternalTargets,
   );
-  const selected = await (signal
+  const vetted = await (signal
     ? Promise.race([
         resolving,
         new Promise<never>((_resolve, reject) => {
@@ -122,10 +126,17 @@ async function pinRequestConfig(
         }),
       ])
     : resolving);
-  const pinnedLookup = createPinnedLookup(selected);
+  // Every vetted address is offered so the agent can fail over (IPv4 first); none is ever re-resolved.
+  const pinnedLookup = createPinnedLookup(vetted);
 
-  const httpAgent = new HttpAgent({ lookup: pinnedLookup });
-  const httpsAgent = new HttpsAgent({ lookup: pinnedLookup });
+  const httpAgent = new HttpAgent({
+    lookup: pinnedLookup,
+    autoSelectFamily: true,
+  });
+  const httpsAgent = new HttpsAgent({
+    lookup: pinnedLookup,
+    autoSelectFamily: true,
+  });
 
   return {
     config: {
@@ -245,10 +256,28 @@ export async function requestPinnedMonitorTarget(
     const location = redirectLocation(response);
     if (!location || !REDIRECT_STATUSES.has(response.status)) return response;
     if (redirectCount >= options.maxRedirects) {
-      throw new Error('Monitor target exceeded the redirect limit');
+      throw new MonitorRedirectError(
+        `Monitor target exceeded the redirect limit of ${options.maxRedirects}`,
+      );
     }
 
-    const nextUrl = new URL(location, currentUrl);
+    let nextUrl: URL;
+    try {
+      nextUrl = new URL(location, currentUrl);
+    } catch {
+      throw new MonitorRedirectError(
+        'Monitor target redirected to an invalid URL',
+      );
+    }
+    if (
+      (nextUrl.protocol !== 'http:' && nextUrl.protocol !== 'https:') ||
+      nextUrl.username ||
+      nextUrl.password
+    ) {
+      throw new MonitorRedirectError(
+        'Monitor target redirected to an unsupported URL',
+      );
+    }
     requestConfig = buildRedirectConfig(
       requestConfig,
       currentUrl,

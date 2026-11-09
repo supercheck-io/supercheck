@@ -27,6 +27,10 @@ import {
 } from '../common/utils/url-validator';
 import { fetchPublicEndpoint } from '../common/utils/pinned-public-fetch';
 import { isUndeliverableRecipient } from '../common/utils/email-recipient-policy';
+import {
+  redactTargetUrl,
+  redactUrlsInText,
+} from '../common/validation/data-sanitizer';
 
 // Utility function to safely get error message
 function getErrorMessage(error: unknown): string {
@@ -194,8 +198,26 @@ function escapeDiscordDescription(value: string): string {
   return escapeMarkdown(value).replace(/^(#+)/gm, '\\$1');
 }
 
+/** Slack mrkdwn treats & < > as control characters (<!channel>, <url|text>). */
+function escapeSlack(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 function clip(value: string, max: number): string {
   return value.length > max ? `${value.slice(0, max - 1)}…` : value;
+}
+
+/** When the problem was observed, if the payload carries it; otherwise the payload time. */
+function observedTime(payload: NotificationPayload): Date {
+  const raw: unknown = payload.metadata?.observedAt;
+  const d =
+    typeof raw === 'string' || typeof raw === 'number'
+      ? new Date(raw)
+      : undefined;
+  return d && !Number.isNaN(d.getTime()) ? d : payload.timestamp;
 }
 
 const EMAIL_ERROR_MAX = 1000;
@@ -495,12 +517,25 @@ export class NotificationService implements OnApplicationShutdown {
       dashboardUrl = `${baseUrl}/incidents?tab=alerts`;
     }
 
-    const targetUrl = payload.metadata?.target;
+    // Every channel (and the webhook's originalPayload) reads the target from here.
+    const target = payload.metadata?.target;
+    const targetUrl =
+      target === undefined ? undefined : redactTargetUrl(target);
 
     return {
       ...payload,
+      message: redactUrlsInText(payload.message),
       metadata: {
         ...payload.metadata,
+        ...(target === undefined ? {} : { target: targetUrl }),
+        ...(payload.metadata?.errorMessage
+          ? {
+              errorMessage: clip(
+                redactUrlsInText(String(payload.metadata.errorMessage)),
+                EMAIL_ERROR_MAX,
+              ),
+            }
+          : {}),
         dashboardUrl,
         targetUrl,
         timestamp: payload.timestamp.toISOString(),
@@ -522,7 +557,7 @@ export class NotificationService implements OnApplicationShutdown {
     // Enhanced message with context
     let enhancedMessage = payload.message;
     if (payload.metadata?.errorMessage) {
-      enhancedMessage += `\n\nError Details: ${payload.metadata.errorMessage}`;
+      enhancedMessage += `\n\nError Details: ${clip(String(payload.metadata.errorMessage), EMAIL_ERROR_MAX)}`;
     }
 
     // Build standardized fields
@@ -566,7 +601,7 @@ export class NotificationService implements OnApplicationShutdown {
     // Time
     fields.push({
       title: 'Time',
-      value: payload.timestamp.toUTCString(),
+      value: observedTime(payload).toUTCString(),
       short: true,
     });
 
@@ -810,7 +845,11 @@ export class NotificationService implements OnApplicationShutdown {
         this.logger.warn(
           `Skipped email for ${payload.type}: every recipient is on a domain that does not accept email`,
         );
-        return { success: true };
+        return {
+          success: false,
+          error:
+            'No deliverable email recipients: every address is on a domain that does not accept email',
+        };
       }
 
       // Render email using centralized template service (React Email templates)
@@ -981,13 +1020,17 @@ export class NotificationService implements OnApplicationShutdown {
             'User-Agent': 'Supercheck-Monitor/1.0',
           },
           body: JSON.stringify({
-            text: formatted.title,
+            text: escapeSlack(formatted.title),
             attachments: [
               {
                 color: formatted.color,
-                text: formatted.message,
-                fields: formatted.fields,
-                footer: formatted.footer,
+                text: escapeSlack(formatted.message),
+                fields: formatted.fields.map((f) => ({
+                  ...f,
+                  title: escapeSlack(f.title),
+                  value: escapeSlack(f.value),
+                })),
+                footer: escapeSlack(formatted.footer),
                 ts: formatted.timestamp,
               },
             ],
@@ -1006,7 +1049,7 @@ export class NotificationService implements OnApplicationShutdown {
       }
 
       this.logger.error(
-        `Failed to send Slack notification after ${result.attempts} attempts: ${result.error}`,
+        `Failed to send Slack notification after ${result.attempts} attempts: ${this.safeSendError('Slack', result.error, secrets)}`,
       );
       return {
         success: false,
@@ -1014,7 +1057,7 @@ export class NotificationService implements OnApplicationShutdown {
       };
     } catch (error) {
       this.logger.error(
-        `Failed to send Slack notification: ${getErrorMessage(error)}`,
+        `Failed to send Slack notification: ${this.safeSendError('Slack', getErrorMessage(error), secrets)}`,
       );
       return {
         success: false,
@@ -1030,19 +1073,29 @@ export class NotificationService implements OnApplicationShutdown {
     payload: NotificationPayload,
   ): Promise<NotificationSendResult> {
     const deliveryDetails = this.getWebhookDeliveryDetails(config, payload);
+    // Endpoint URL and custom header values (often auth tokens) must never reach delivery history.
+    const secrets: string[] = [];
 
     try {
       const webhookUrl = config.url as string | undefined;
       if (!webhookUrl) {
         throw new Error('Webhook URL is required');
       }
+      secrets.push(webhookUrl);
 
       const method = this.normalizeWebhookMethod(config.method);
 
+      const customHeaders = this.normalizeWebhookHeaders(config.headers) ?? {};
+      for (const v of Object.values(customHeaders)) {
+        // Also the credential after an auth scheme ("Bearer x"): endpoints may echo only that.
+        for (const part of [v, v.split(/\s+/).pop() ?? '']) {
+          if (part.length >= 4) secrets.push(part);
+        }
+      }
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         'User-Agent': 'Supercheck-Monitor/1.0',
-        ...this.normalizeWebhookHeaders(config.headers),
+        ...customHeaders,
       };
 
       const body = this.buildWebhookRequestBody(config, formatted, payload);
@@ -1083,7 +1136,11 @@ export class NotificationService implements OnApplicationShutdown {
           payload,
           {
             success: false,
-            error: `Webhook returned ${response.status}: ${response.statusText}. Response: ${clip(responseText, 1024)}`,
+            error: this.safeSendError(
+              'Webhook',
+              `Webhook returned ${response.status}: ${response.statusText}. Response: ${clip(responseText, 1024)}`,
+              secrets,
+            ),
           },
           responseDetails,
         );
@@ -1096,16 +1153,14 @@ export class NotificationService implements OnApplicationShutdown {
         responseDetails,
       );
     } catch (error) {
-      const errorMessage =
+      const errorMessage = this.safeSendError(
+        'Webhook',
         error instanceof Error && error.name === 'AbortError'
-          ? 'Webhook notification timed out after 10 seconds'
-          : `Failed to send webhook notification: ${getErrorMessage(error)}`;
-
-      if (error instanceof Error && error.name === 'AbortError') {
-        this.logger.error(errorMessage);
-      } else {
-        this.logger.error(errorMessage);
-      }
+          ? 'timed out after 10 seconds'
+          : getErrorMessage(error),
+        secrets,
+      );
+      this.logger.error(errorMessage);
 
       return this.withDeliveryMetadata(
         provider,
@@ -1262,7 +1317,10 @@ export class NotificationService implements OnApplicationShutdown {
       projectName: payload.projectName || '',
       projectId: payload.projectId || '',
       responseTime: String(payload.metadata?.responseTime ?? ''),
-      errorMessage: payload.metadata?.errorMessage || '',
+      errorMessage: clip(
+        String(payload.metadata?.errorMessage ?? ''),
+        EMAIL_ERROR_MAX,
+      ),
       monitorType: payload.metadata?.monitorType || '',
       dashboardUrl: payload.metadata?.dashboardUrl || '',
       alertAction,
@@ -1462,7 +1520,7 @@ export class NotificationService implements OnApplicationShutdown {
       }
 
       this.logger.error(
-        `Failed to send Telegram notification after ${result.attempts} attempts: ${result.error}`,
+        `Failed to send Telegram notification after ${result.attempts} attempts: ${this.safeSendError('Telegram', result.error, secrets)}`,
       );
       return {
         success: false,
@@ -1470,7 +1528,7 @@ export class NotificationService implements OnApplicationShutdown {
       };
     } catch (error) {
       this.logger.error(
-        `Failed to send Telegram notification: ${getErrorMessage(error)}`,
+        `Failed to send Telegram notification: ${this.safeSendError('Telegram', getErrorMessage(error), secrets)}`,
         getErrorStack(error),
       );
       return {
@@ -1547,7 +1605,7 @@ export class NotificationService implements OnApplicationShutdown {
       }
 
       this.logger.error(
-        `Failed to send Discord notification after ${result.attempts} attempts: ${result.error}`,
+        `Failed to send Discord notification after ${result.attempts} attempts: ${this.safeSendError('Discord', result.error, secrets)}`,
       );
       return {
         success: false,
@@ -1555,7 +1613,7 @@ export class NotificationService implements OnApplicationShutdown {
       };
     } catch (error) {
       this.logger.error(
-        `Failed to send Discord notification: ${getErrorMessage(error)}`,
+        `Failed to send Discord notification: ${this.safeSendError('Discord', getErrorMessage(error), secrets)}`,
       );
       return {
         success: false,
@@ -1716,7 +1774,7 @@ export class NotificationService implements OnApplicationShutdown {
       }
 
       this.logger.error(
-        `Failed to send Teams notification after ${result.attempts} attempts: ${result.error}`,
+        `Failed to send Teams notification after ${result.attempts} attempts: ${this.safeSendError('Teams', result.error, secrets)}`,
       );
       return {
         success: false,
@@ -1724,7 +1782,7 @@ export class NotificationService implements OnApplicationShutdown {
       };
     } catch (error) {
       this.logger.error(
-        `Failed to send Teams notification: ${getErrorMessage(error)}`,
+        `Failed to send Teams notification: ${this.safeSendError('Teams', getErrorMessage(error), secrets)}`,
       );
       return {
         success: false,

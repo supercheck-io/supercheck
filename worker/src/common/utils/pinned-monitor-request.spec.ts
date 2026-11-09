@@ -14,6 +14,7 @@ import {
   resolvePublicAddress,
   vettedLookup,
 } from './pinned-monitor-request';
+import { MonitorRedirectError } from './network-error';
 
 const mockLookup = lookup as jest.MockedFunction<typeof lookup>;
 
@@ -406,6 +407,107 @@ describe('pinned HTTP monitor requests', () => {
       ),
     ).resolves.toMatchObject({ status: 200 });
     expect(execute).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('pinned HTTP monitor request failover and error classes', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('offers every vetted address to the agent, IPv4 first, with family selection on', async () => {
+    (mockLookup as jest.Mock).mockResolvedValueOnce([
+      { address: '2606:2800:220:1::1', family: 6 },
+      { address: '203.0.114.10', family: 4 },
+    ]);
+    const execute = jest.fn(async (config: AxiosRequestConfig) => {
+      const agent = config.httpsAgent as {
+        options: {
+          autoSelectFamily?: boolean;
+          lookup: (
+            host: string,
+            options: unknown,
+            callback: (error: unknown, addresses: unknown) => void,
+          ) => void;
+        };
+      };
+      expect(agent.options.autoSelectFamily).toBe(true);
+      const callback = jest.fn();
+      agent.options.lookup('monitor.example', { all: true }, callback);
+      expect(callback).toHaveBeenCalledWith(null, [
+        { address: '203.0.114.10', family: 4 },
+        { address: '2606:2800:220:1::1', family: 6 },
+      ]);
+      return response();
+    });
+
+    await requestPinnedMonitorTarget(
+      { url: 'https://monitor.example/' },
+      { allowInternalTargets: false, maxRedirects: 5 },
+      execute,
+    );
+    expect(execute).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses the whole set when any address is private, so failover cannot reach it', async () => {
+    (mockLookup as jest.Mock).mockResolvedValueOnce([
+      { address: '203.0.114.10', family: 4 },
+      { address: '2606:2800:220:1::1', family: 6 },
+      { address: 'fd00::1', family: 6 },
+    ]);
+    const execute = jest.fn();
+    await expect(
+      requestPinnedMonitorTarget(
+        { url: 'https://monitor.example/' },
+        { allowInternalTargets: false, maxRedirects: 5 },
+        execute,
+      ),
+    ).rejects.toThrow('private or reserved');
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it('gives an empty DNS answer the ENOTFOUND code', async () => {
+    (mockLookup as jest.Mock).mockResolvedValueOnce([]);
+    await expect(
+      requestPinnedMonitorTarget(
+        { url: 'https://monitor.example/' },
+        { allowInternalTargets: false, maxRedirects: 5 },
+        jest.fn(),
+      ),
+    ).rejects.toMatchObject({ code: 'ENOTFOUND' });
+  });
+
+  it.each([
+    ['http://[bad'],
+    ['ftp://files.example/'],
+    ['https://user:pw@other.example/'],
+  ])('rejects redirect %s as a redirect error', async (location) => {
+    (mockLookup as jest.Mock).mockResolvedValue([
+      { address: '203.0.114.10', family: 4 },
+    ]);
+    const execute = jest.fn().mockResolvedValue(response(302, { location }));
+    await expect(
+      requestPinnedMonitorTarget(
+        { url: 'https://monitor.example/' },
+        { allowInternalTargets: false, maxRedirects: 5 },
+        execute,
+      ),
+    ).rejects.toBeInstanceOf(MonitorRedirectError);
+  });
+
+  it('raises a redirect error when the hop limit is exceeded', async () => {
+    (mockLookup as jest.Mock).mockResolvedValue([
+      { address: '203.0.114.10', family: 4 },
+    ]);
+    const execute = jest
+      .fn()
+      .mockResolvedValue(response(302, { location: '/again' }));
+    await expect(
+      requestPinnedMonitorTarget(
+        { url: 'https://monitor.example/' },
+        { allowInternalTargets: false, maxRedirects: 2 },
+        execute,
+      ),
+    ).rejects.toBeInstanceOf(MonitorRedirectError);
+    expect(execute).toHaveBeenCalledTimes(3);
   });
 });
 
