@@ -2163,6 +2163,35 @@ describe('MonitorService', () => {
       ).not.toHaveBeenCalled();
     });
 
+    it('returns an error without running the test when variable resolution fails', async () => {
+      mockDbService.getTestById.mockResolvedValue({
+        id: 'test-1',
+        title: 'Health',
+        projectId: 'project-1',
+        script: 'test("health", async () => {});',
+      });
+      mockExecutionService.runSingleTest.mockClear();
+      const resolver = (
+        service as unknown as {
+          variableResolverService: { resolveProjectVariables: jest.Mock };
+        }
+      ).variableResolverService;
+      resolver.resolveProjectVariables.mockRejectedValueOnce(
+        new Error('decrypt failed: key=abc'),
+      );
+      const result = await (
+        service as unknown as {
+          executeSyntheticTest: (
+            id: string,
+            config: { testId: string },
+          ) => Promise<{ status: string; details: { errorMessage: string } }>;
+        }
+      ).executeSyntheticTest('monitor-1', { testId: 'test-1' });
+      expect(result.status).toBe('error');
+      expect(result.details.errorMessage).not.toContain('abc');
+      expect(mockExecutionService.runSingleTest).not.toHaveBeenCalled();
+    });
+
     it('rethrows an occupied execution slot instead of recording a failed check', async () => {
       mockDbService.getTestById.mockResolvedValue({
         id: 'test-1',
