@@ -119,6 +119,8 @@ export type MonitorConfig = {
   sslDaysUntilExpirationWarning?: number;
   sslCheckFrequencyHours?: number;
   sslLastCheckedAt?: string;
+  /** First failed certificate probe since the last successful read; worker-owned. */
+  sslProbeFailedSince?: string;
   /** Last certificate the worker read; written by the worker, not by clients. */
   sslCertificate?: MonitorResultDetails["sslCertificate"];
   timeoutSeconds?: number;

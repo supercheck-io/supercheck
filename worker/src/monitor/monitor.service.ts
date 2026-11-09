@@ -275,7 +275,12 @@ export class MonitorService {
                   }
                 } else if (!sslResult.details?.sslCertificate) {
                   // No certificate read (timeout, reset): the probe failed, not the certificate.
-                  // Not stamped as checked, so it retries on the next run.
+                  // Not stamped as checked, so it retries on the next run; the first failure time
+                  // is kept so a probe that never recovers still alerts (see checkSslExpirationAlert).
+                  const failedSince = await this.recordSslProbeFailure(
+                    jobData.monitorId,
+                  );
+                  if (failedSince) details.sslProbeFailedSince = failedSince;
                   details.sslWarning = `SSL check could not complete: ${
                     (sslResult.details?.errorMessage as string) ||
                     'unknown error'
@@ -2247,13 +2252,40 @@ export class MonitorService {
       await this.dbService.db
         .update(schema.monitors)
         .set({
-          config: sql`coalesce(${schema.monitors.config}, '{}'::jsonb) || ${patch}::jsonb`,
+          config: sql`(coalesce(${schema.monitors.config}, '{}'::jsonb) - 'sslProbeFailedSince') || ${patch}::jsonb`,
         })
         .where(eq(schema.monitors.id, monitorId));
     } catch (error) {
       this.logger.warn(
         `Failed to record SSL check for monitor ${monitorId}: ${getErrorMessage(error)}`,
       );
+    }
+  }
+
+  /**
+   * Keeps the time the certificate probe started failing (first failure since the last read).
+   * Returns that time, or undefined if it could not be recorded.
+   */
+  private async recordSslProbeFailure(
+    monitorId: string,
+  ): Promise<string | undefined> {
+    const now = new Date().toISOString();
+    try {
+      const [row] = await this.dbService.db
+        .update(schema.monitors)
+        .set({
+          config: sql`coalesce(${schema.monitors.config}, '{}'::jsonb) || jsonb_build_object('sslProbeFailedSince', coalesce(${schema.monitors.config}->'sslProbeFailedSince', to_jsonb(${now}::text)))`,
+        })
+        .where(eq(schema.monitors.id, monitorId))
+        .returning({ config: schema.monitors.config });
+      const since = (row?.config as Record<string, unknown> | null | undefined)
+        ?.sslProbeFailedSince;
+      return typeof since === 'string' ? since : undefined;
+    } catch (error) {
+      this.logger.warn(
+        `Failed to record SSL probe failure for monitor ${monitorId}: ${getErrorMessage(error)}`,
+      );
+      return undefined;
     }
   }
 

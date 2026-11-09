@@ -86,7 +86,14 @@ Web page availability with built-in SSL tracking, for marketing sites, landing p
 | **SSL** | Certificate is valid; expiration date |
 | **Keyword** | Optional text on the page |
 
-With **SSL Check** on (HTTPS targets only), the certificate is read about once a day, every 6 hours when it is within twice the warning window, and every hour inside the window. A certificate that is expired, not yet valid, untrusted or issued for another hostname marks the check down and is re-read on every check until it is fixed. The monitor page shows the days left from the last certificate read; right after you turn SSL Check on or change the target, it shows **No certificate data yet** until the next check runs. If the certificate probe itself fails (for example a timeout), the check is not marked down and the probe is retried on the next check.
+With **SSL Check** on (HTTPS targets only):
+
+| Situation | What happens |
+|---|---|
+| Certificate is valid | Read about once a day; every 6 hours near the warning window; hourly inside it |
+| Expired, not yet valid, untrusted or wrong hostname | Check is **down**; re-read on every check until fixed |
+| Certificate can't be read (timeout, reset) | Check stays up and retries next check; after 24 hours of failures an SSL alert is sent |
+| SSL Check just turned on, or target changed | Monitor page shows **No certificate data yet** until the next check |
 
 Website monitors accept custom headers and Basic or Bearer authentication. The form always sends `GET` with no request body; use an HTTP monitor to send another method or a body.
 

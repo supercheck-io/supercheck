@@ -254,6 +254,7 @@ function normalizeMonitorConfig(config: Record<string, unknown>): Record<string,
   // Remove runtime-only fields
   delete normalized.sslLastCheckedAt
   delete normalized.sslCertificate
+  delete normalized.sslProbeFailedSince
   delete normalized.aggregatedAlertState
   for (const key of UNEVALUATED_MONITOR_CONFIG_KEYS) delete normalized[key]
 

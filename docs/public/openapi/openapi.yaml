@@ -7040,6 +7040,12 @@ components:
           readOnly: true
           description: When the worker last read the certificate. Written by the worker;
             ignored on create and update.
+        sslProbeFailedSince:
+          type: string
+          format: date-time
+          readOnly: true
+          description: When the certificate probe started failing, while no certificate
+            could be read. Written by the worker; ignored on create and update.
         sslCertificate:
           type: object
           readOnly: true

@@ -646,6 +646,25 @@ describe('MonitorEvaluator.checkSslExpirationAlert', () => {
     expect(send).not.toHaveBeenCalled();
   });
 
+  it('alerts when the certificate probe has failed for a day while the site is up', async () => {
+    const send = await run({
+      sslWarning: 'SSL check could not complete: timeout',
+      sslProbeFailedSince: new Date(Date.now() - 25 * 3_600_000).toISOString(),
+    });
+    expect(send).toHaveBeenCalledWith(
+      'm1',
+      'SSL certificate could not be read for 25 hours',
+      expect.anything(),
+    );
+  });
+
+  it('stays quiet while the probe has failed for less than a day', async () => {
+    const send = await run({
+      sslProbeFailedSince: new Date(Date.now() - 2 * 3_600_000).toISOString(),
+    });
+    expect(send).not.toHaveBeenCalled();
+  });
+
   it('alerts from a certificate inside the warning window', async () => {
     const send = await run({
       sslCertificate: { valid: true, daysRemaining: 10 },

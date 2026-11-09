@@ -13,6 +13,9 @@ import { getErrorMessage } from '../common/validation';
 import { SECURITY } from '../common/constants';
 import { MonitorExecutionResult } from './types/monitor-result.type';
 
+/** A certificate probe failing this long while the site is up raises an SSL alert. */
+const SSL_PROBE_FAILURE_ALERT_MS = 24 * 60 * 60 * 1000;
+
 type Monitor = z.infer<typeof monitorsSelectSchema>;
 type MonitorResult = z.infer<typeof monitorResultsSelectSchema>;
 
@@ -691,12 +694,24 @@ export class MonitorEvaluator {
       // Alert from certificate data only: a probe that read no certificate (timeout,
       // reset) is not an expiring certificate and must not send one.
       const sslCertificate = resultData.details?.sslCertificate;
-      if (!sslCertificate) {
-        return;
-      }
-
       let shouldAlert = false;
       let alertReason = '';
+
+      if (!sslCertificate) {
+        // The site answers but the certificate probe keeps failing: after a day, say so.
+        const since = resultData.details?.sslProbeFailedSince;
+        const sinceMs = typeof since === 'string' ? Date.parse(since) : NaN;
+        if (
+          Number.isNaN(sinceMs) ||
+          Date.now() - sinceMs < SSL_PROBE_FAILURE_ALERT_MS
+        ) {
+          return;
+        }
+        shouldAlert = true;
+        alertReason = `SSL certificate could not be read for ${Math.floor(
+          (Date.now() - sinceMs) / 3_600_000,
+        )} hours`;
+      }
 
       // Check for SSL expiration warning
       if (sslCertificate?.daysRemaining !== undefined) {

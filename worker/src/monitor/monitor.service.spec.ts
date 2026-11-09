@@ -1242,6 +1242,15 @@ describe('MonitorService', () => {
 
     it('does not fail the site or stamp the check when the probe reads no certificate', async () => {
       mockDbService.db.update.mockClear();
+      const since = '2026-11-01T00:00:00.000Z';
+      mockDbService.db.update.mockReturnValueOnce({
+        set: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnValue({
+          returning: jest
+            .fn()
+            .mockResolvedValue([{ config: { sslProbeFailedSince: since } }]),
+        }),
+      });
       jest.spyOn(service as any, 'executeSslCheck').mockResolvedValueOnce({
         status: 'timeout',
         isUp: false,
@@ -1255,7 +1264,14 @@ describe('MonitorService', () => {
       expect(result?.details?.sslWarning).toBe(
         'SSL check could not complete: SSL connection timeout after 10000ms',
       );
-      expect(mockDbService.db.update).not.toHaveBeenCalledWith(schema.monitors);
+      // Only the probe-failure marker is written; sslLastCheckedAt is not stamped.
+      expect(mockDbService.db.update).toHaveBeenCalledTimes(1);
+      const set = mockDbService.db.update.mock.results[0].value
+        .set as jest.Mock;
+      const written = new PgDialect().sqlToQuery(set.mock.calls[0][0].config);
+      expect(written.sql).toContain('sslProbeFailedSince');
+      expect(written.sql).not.toContain('sslLastCheckedAt');
+      expect(result?.details?.sslProbeFailedSince).toBe(since);
     });
 
     it('should not check SSL for http targets', async () => {
