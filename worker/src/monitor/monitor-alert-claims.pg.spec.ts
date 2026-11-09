@@ -550,6 +550,33 @@ suite('monitor alert claims (PostgreSQL)', () => {
       expect(sent).toEqual([]);
     });
 
+    it('gives up a renewed notice that no channel accepts after the attempt cap, and stops claiming it', async () => {
+      await check(newEvaluator(), reading(cert(5, '2026-12-01T00:00:00.000Z')));
+      const stateOf = async () => {
+        const [m] = await db
+          .select()
+          .from(schema.monitors)
+          .where(eq(schema.monitors.id, monitorId));
+        return (m.config as { sslAlertState?: unknown }).sslAlertState;
+      };
+      expect(await stateOf()).toBeDefined();
+      providerIds.forEach((id) => failing.add(id));
+      const renewed = reading(cert(89, '2027-02-01T00:00:00.000Z'));
+      for (let i = 0; i < MAX_CLAIM_ATTEMPTS; i++) {
+        expect(await stateOf()).toBeDefined(); // still owed while attempts remain
+        await check(newEvaluator(), renewed);
+      }
+      expect(await stateOf()).toBeUndefined();
+      const calls =
+        notificationService.sendNotificationToMultipleProviders.mock.calls
+          .length;
+      await check(newEvaluator(), renewed);
+      expect(
+        notificationService.sendNotificationToMultipleProviders.mock.calls
+          .length,
+      ).toBe(calls);
+    });
+
     it('sends no renewed notice when no warning was sent', async () => {
       await check(
         newEvaluator(),

@@ -646,7 +646,7 @@ describe('MonitorAlertService', () => {
           {},
           claim,
         ),
-      ).toEqual({ delivered: false, alreadySent: false });
+      ).toEqual({ delivered: false, gaveUp: true });
     });
 
     it('leaves an alert another evaluator is sending to it', async () => {
@@ -787,7 +787,7 @@ describe('MonitorAlertService', () => {
           { observedAt: new Date('2026-12-05T00:00:00Z') },
           { outageKey: 'warning-1', ordinal: 0 },
         ),
-      ).resolves.toBe(true);
+      ).resolves.toMatchObject({ delivered: true });
       expect(conflict).toHaveBeenCalled();
       expect(
         ctx.notificationService.sendNotificationToMultipleProviders,
@@ -823,7 +823,70 @@ describe('MonitorAlertService', () => {
           {},
           { outageKey: 'warning-1', ordinal: 0 },
         ),
-      ).resolves.toBe(true);
+      ).resolves.toMatchObject({ delivered: true });
+    });
+
+    it('titles the notice as readable again when asked', async () => {
+      const ctx = createService();
+      withClaims(ctx, { claimed: [both[0]] });
+      ctx.notificationService.sendNotificationToMultipleProviders.mockResolvedValueOnce(
+        {
+          success: 1,
+          failed: 0,
+          results: [{ provider: { id: 'provider-1' }, success: true }],
+        },
+      );
+      await ctx.service.sendSslRenewedNotification(
+        'monitor-1',
+        'SSL certificate readable again',
+        { readableAgain: true },
+        { outageKey: 'warning-1', ordinal: 0 },
+      );
+      expect(
+        ctx.notificationService.sendNotificationToMultipleProviders,
+      ).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          title: 'SSL Certificate Readable Again - Checkout API',
+        }),
+      );
+    });
+
+    it('reports a gave-up alert when every provider is out of attempts and none was sent', async () => {
+      const ctx = createService();
+      twoProviders(ctx);
+      withClaims(ctx, {
+        existing: [{ status: 'failed' }, { status: 'failed' }],
+      });
+      await expect(
+        ctx.service.sendSslRenewedNotification(
+          'monitor-1',
+          'renewed',
+          {},
+          { outageKey: 'warning-1', ordinal: 0 },
+        ),
+      ).resolves.toEqual({ delivered: false, gaveUp: true });
+
+      // Still owed (attempts left) or delivered: not given up.
+      const owed = createService();
+      withClaims(owed, { claimed: [both[0]] });
+      owed.notificationService.sendNotificationToMultipleProviders.mockResolvedValueOnce(
+        {
+          success: 0,
+          failed: 1,
+          results: [
+            { provider: { id: 'provider-1' }, success: false, error: 'down' },
+          ],
+        },
+      );
+      await expect(
+        owed.service.sendSslRenewedNotification(
+          'monitor-1',
+          'renewed',
+          {},
+          { outageKey: 'warning-1', ordinal: 0 },
+        ),
+      ).resolves.toEqual({ delivered: false, gaveUp: undefined });
     });
   });
 });

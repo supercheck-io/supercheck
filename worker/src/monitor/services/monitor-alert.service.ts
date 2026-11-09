@@ -279,6 +279,8 @@ export class MonitorAlertService {
     inFlight?: boolean;
     /** Nothing sent: every provider already had this alert. */
     alreadySent?: boolean;
+    /** Every provider used up its attempts without the alert reaching any: it will never be sent. */
+    gaveUp?: boolean;
     suppressed?: undefined;
     reason?: undefined;
   }> {
@@ -312,7 +314,9 @@ export class MonitorAlertService {
         );
         return inFlight > 0
           ? { delivered: false, inFlight: true }
-          : { delivered: alreadySent > 0, alreadySent: alreadySent > 0 };
+          : alreadySent > 0
+            ? { delivered: true, alreadySent: true }
+            : { delivered: false, gaveUp: true };
       }
     }
 
@@ -401,8 +405,10 @@ export class MonitorAlertService {
     if (claimed.size === 0) return { delivered: anyDelivered };
     // A provider another evaluator is still sending to: it finishes (or its claim goes stale) on its own.
     if (inFlight > 0) return { delivered: false, inFlight: true };
+    const delivered = stillOwed === 0 && (anyDelivered || alreadySent > 0);
     return {
-      delivered: stillOwed === 0 && (anyDelivered || alreadySent > 0),
+      delivered,
+      ...(stillOwed === 0 && !delivered ? { gaveUp: true } : {}),
     };
   }
 
@@ -652,7 +658,7 @@ export class MonitorAlertService {
     if (deliveredAt && Date.now() - deliveredAt < SSL_ALERT_THROTTLE_MS) {
       return false;
     }
-    const delivered = await this.sendSslNotice(
+    const { delivered } = await this.sendSslNotice(
       'ssl_expiring',
       monitorId,
       reason,
@@ -678,7 +684,7 @@ export class MonitorAlertService {
     reason: string,
     metadata: Record<string, unknown>,
     claim: AlertClaim,
-  ): Promise<boolean> {
+  ): Promise<{ delivered: boolean; gaveUp?: boolean }> {
     return this.sendSslNotice(
       'ssl_renewed',
       monitorId,
@@ -694,7 +700,7 @@ export class MonitorAlertService {
     reason: string,
     metadata: Record<string, unknown>,
     claim?: AlertClaim,
-  ): Promise<boolean> {
+  ): Promise<{ delivered: boolean; gaveUp?: boolean }> {
     this.logger.log(
       `[SSL-NOTIFY] ${type} notification for monitor ${monitorId}`,
     );
@@ -708,7 +714,7 @@ export class MonitorAlertService {
 
     if (!monitor) {
       this.logger.error(`[SSL-NOTIFY] Monitor not found: ${monitorId}`);
-      return false;
+      return { delivered: false };
     }
 
     // Get project information
@@ -729,7 +735,7 @@ export class MonitorAlertService {
       this.logger.log(
         `[SSL-NOTIFY] SSL alerts not enabled for monitor ${monitorId}`,
       );
-      return false;
+      return { delivered: false };
     }
 
     // Same rule as status alerts. Nothing is recorded as sent, so the next check after the window alerts again.
@@ -737,7 +743,7 @@ export class MonitorAlertService {
       this.logger.log(
         `[SSL-NOTIFY] Suppressing monitor ${monitorId} SSL notice during scheduled maintenance`,
       );
-      return false;
+      return { delivered: false };
     }
 
     // Get notification providers
@@ -771,7 +777,7 @@ export class MonitorAlertService {
           ? `[SSL-NOTIFY] Not delivered for monitor ${monitorId}: no provider config could be decrypted`
           : `[SSL-NOTIFY] No notification providers configured for monitor ${monitorId}`,
       );
-      return false;
+      return { delivered: false };
     }
 
     const baseUrl =
@@ -799,7 +805,9 @@ export class MonitorAlertService {
     const notificationPayload: NotificationPayload = {
       type,
       title: renewed
-        ? `SSL Certificate Renewed - ${monitor.name}`
+        ? metadata.readableAgain === true
+          ? `SSL Certificate Readable Again - ${monitor.name}`
+          : `SSL Certificate Renewed - ${monitor.name}`
         : `SSL Certificate Warning - ${monitor.name}`,
       message:
         monitor.alertConfig.customMessage ||
@@ -840,6 +848,6 @@ export class MonitorAlertService {
       claim,
       logTag: '[SSL-NOTIFY]',
     });
-    return result.delivered;
+    return { delivered: result.delivered, gaveUp: result.gaveUp };
   }
 }

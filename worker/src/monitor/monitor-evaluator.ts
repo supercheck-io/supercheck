@@ -221,9 +221,12 @@ export class MonitorEvaluator {
           : {}),
         // A sequence without a key (older state, or counting resumed mid-outage) gets one here, where the
         // counters are committed; a new sequence always starts a new key.
-        outageKey: continuingFailureSequence
-          ? (previousState.outageKey ?? randomUUID())
-          : randomUUID(),
+        // The count must be > 0: an up-state frozen with an old key (counting paused, location config toggled)
+        // is not a failure sequence, and reusing its key would find the new outage's first alert already claimed.
+        outageKey:
+          continuingFailureSequence && previousState.consecutiveFailureCount > 0
+            ? (previousState.outageKey ?? randomUUID())
+            : randomUUID(),
       };
     }
 
@@ -847,10 +850,23 @@ export class MonitorEvaluator {
     monitor: Monitor | null,
   ): Promise<void> {
     try {
-      if (
+      // SSL alerts or SSL Check turned off: a warning sent earlier must not leave a stale "renewed" notice
+      // that fires when they are turned back on.
+      const warnedId = monitor?.config?.sslAlertState?.id;
+      const alertsOff =
         !monitor?.alertConfig?.enabled ||
-        !monitor.alertConfig.alertOnSslExpiration
+        !monitor.alertConfig.alertOnSslExpiration;
+      const sslCheckOff = monitor?.config?.enableSslCheck !== true;
+      if (
+        monitor &&
+        typeof warnedId === 'string' &&
+        (alertsOff || sslCheckOff)
       ) {
+        await this.clearSslWarning(monitor.id, warnedId);
+        // The state read above is stale now: it must not drive a renewed notice.
+        if (!alertsOff) return;
+      }
+      if (alertsOff) {
         return;
       }
       // Removed debug log
@@ -1050,25 +1066,36 @@ export class MonitorEvaluator {
     const validUntil = Number.isNaN(validToMs)
       ? undefined
       : new Date(validToMs).toISOString().slice(0, 10);
-    const delivered = await this.monitorAlertService.sendSslRenewedNotification(
+    // The warning was that no certificate could be read (nothing recorded to renew): say it is readable again.
+    const readableAgain = !state.validTo;
+    const noun = readableAgain
+      ? 'SSL certificate readable again'
+      : 'SSL certificate renewed';
+    const result = await this.monitorAlertService.sendSslRenewedNotification(
       monitor.id,
-      validUntil
-        ? `SSL certificate renewed (valid until ${validUntil})`
-        : 'SSL certificate renewed',
+      validUntil ? `${noun} (valid until ${validUntil})` : noun,
       {
         sslCertificate: certificate,
         daysRemaining: days,
         observedAt: resultData.checkedAt,
+        ...(readableAgain ? { readableAgain: true } : {}),
       },
       { outageKey: state.id, ordinal: 0 },
     );
-    if (delivered) {
+    if (result.delivered) {
       this.logger.log(
-        `Sent SSL renewed notice for monitor ${monitor.id}${validUntil ? ` (valid until ${validUntil})` : ''}`,
+        `Sent SSL ${readableAgain ? 'readable again' : 'renewed'} notice for monitor ${monitor.id}${validUntil ? ` (valid until ${validUntil})` : ''}`,
       );
+    } else if (result.gaveUp) {
+      // Every channel used up its attempts: stop claiming it on every check.
+      this.logger.warn(
+        `Giving up the SSL ${readableAgain ? 'readable again' : 'renewed'} notice for monitor ${monitor.id}: delivery failed on every attempt`,
+      );
+    }
+    if (result.delivered || result.gaveUp) {
       await this.clearSslWarning(monitor.id, state.id);
     }
-    return delivered;
+    return result.delivered;
   }
 
   /**
