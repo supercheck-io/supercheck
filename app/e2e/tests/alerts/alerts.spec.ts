@@ -35,7 +35,8 @@ test.describe('Notification providers lifecycle @alerts @channels', () => {
     expect(created.id).toMatch(/^[0-9a-f-]{36}$/i);
     expect(created.projectId).toMatch(/^[0-9a-f-]{36}$/i);
     expect(created.organizationId).toMatch(/^[0-9a-f-]{36}$/i);
-    expect(created.config).toMatchObject({ name: providerName, emails: [recipient] });
+    // Stored as a comma-separated string; one recipient is just the address.
+    expect(created.config).toMatchObject({ name: providerName, emails: recipient });
 
     const list = await request.get('/api/notification-providers');
     expect(list.status()).toBe(200);
