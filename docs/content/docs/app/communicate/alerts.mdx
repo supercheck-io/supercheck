@@ -97,7 +97,7 @@ SSL warnings are separate from the monitor's up/down result. Turn on **SSL Check
 
 **Alert limiting**
 
-At most **3 failure alerts** go out per failure streak, for monitors and jobs: the first when the threshold is reached, then reminders after every further `max(5, 2 × threshold)` failures. A passing run resets the streak, and each recovery sends one alert. The interval is not configurable.
+At most **3 failure alerts** go out per failure streak, for monitors and jobs. The first goes out when the failure threshold is reached, then come reminders. For jobs a reminder follows every further `max(5, 2 × threshold)` failures. For monitors the gap doubles: with `N = max(5, 2 × threshold)`, the first reminder comes `N` failures after the first alert and the second `2N` after that. A monitor alert that cannot be delivered is retried on the next checks for up to `N` checks, and the following gap is counted from when it was actually sent. A passing run resets the streak, and each recovery sends one alert. The interval is not configurable.
 
 </Tab>
 <Tab value="Example">

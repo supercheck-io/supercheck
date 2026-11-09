@@ -239,10 +239,11 @@ export function redactTargetUrl(target: string): string {
 
 /** Redacts every http(s) URL embedded in free text (error messages echo target URLs). */
 export function redactUrlsInText(text: string): string {
-  return text.replace(/https?:\/\/[^\s"'<>]+/gi, (u) => {
-    // Trailing prose punctuation is not part of the URL; keep it outside the redaction.
+  // Apostrophes may appear inside a password or query value, so they stay in the match.
+  return text.replace(/https?:\/\/[^\s"<>]+/gi, (u) => {
+    // Trailing prose punctuation and quotes are not part of the URL; keep them outside the redaction.
     let end = u.length;
-    while (end > 0 && ').,;'.includes(u[end - 1])) end--;
+    while (end > 0 && ").,;'`".includes(u[end - 1])) end--;
     return redactTargetUrl(u.slice(0, end)) + u.slice(end);
   });
 }

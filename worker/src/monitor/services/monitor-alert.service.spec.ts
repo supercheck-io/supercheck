@@ -1,5 +1,5 @@
 import { ConfigService } from '@nestjs/config';
-import { MonitorAlertService } from './monitor-alert.service';
+import { MonitorAlertService, redactAlertText } from './monitor-alert.service';
 import { SreAlertTriageQueueService } from './sre-alert-triage-queue.service';
 
 jest.mock('../../common/notification-provider-crypto', () => ({
@@ -410,5 +410,83 @@ describe('MonitorAlertService', () => {
     await expect(
       service.sendSslExpirationNotification('monitor-1', 'expiring'),
     ).resolves.toBe(false);
+  });
+
+  it('redacts URL credentials and secret query values before persisting', () => {
+    const cases = [
+      [
+        'GET https://u:p@example.com/health?token=abc&page=2 failed',
+        ['u:p', 'abc'],
+      ],
+      ["failed 'https://u:p'w@h.example/x?token=a'b'", ["p'w", "a'b"]],
+      ['GET http://[::1]:8080/x?token=abc failed', ['abc']],
+      ['see (https://h.example/p?api_key=v).', ['=v)']],
+    ] as const;
+    for (const [text, secrets] of cases) {
+      const out = redactAlertText(text) ?? '';
+      for (const secret of secrets) expect(out).not.toContain(secret);
+    }
+    expect(redactAlertText('GET https://example.com/?page=2 failed')).toContain(
+      'page=2',
+    );
+    expect(redactAlertText('see (https://h.example/p?api_key=v).')).toMatch(
+      /\)\.$/,
+    );
+    expect(redactAlertText(undefined)).toBeUndefined();
+  });
+
+  it('persists redacted errors and passes the check time to the payload', async () => {
+    const { service, valuesMock, notificationService } = createService();
+    notificationService.sendNotificationToMultipleProviders.mockResolvedValueOnce(
+      {
+        success: 0,
+        failed: 1,
+        results: [
+          {
+            provider: { id: 'provider-1' },
+            success: false,
+            error: 'POST https://a:b@hook.example.com/x?token=s3cret 500',
+          },
+        ],
+      },
+    );
+    const observedAt = '2026-06-23T00:01:00.000Z';
+    await service.sendNotification('monitor-1', 'failure', 'down', {
+      observedAt,
+    });
+    const payload =
+      notificationService.sendNotificationToMultipleProviders.mock.calls[0][1];
+    expect(payload.metadata.observedAt).toBe(observedAt);
+    expect(payload.timestamp.toISOString()).toBe(observedAt);
+    const rows = (valuesMock.mock.calls[0] as unknown[])[0] as {
+      errorMessage: string;
+    }[];
+    expect(rows[0].errorMessage).not.toMatch(/s3cret|a:b/);
+  });
+
+  it('still throttles an SSL alert whose history row could not be written', async () => {
+    const { service, db, notificationService } = createService();
+    db.insert.mockImplementation(() => {
+      throw new Error('db down');
+    });
+    await expect(
+      service.sendSslExpirationNotification('monitor-1', 'expiring'),
+    ).resolves.toBe(true);
+    notificationService.sendNotificationToMultipleProviders.mockClear();
+    await expect(
+      service.sendSslExpirationNotification('monitor-1', 'expiring'),
+    ).resolves.toBe(false);
+    expect(
+      notificationService.sendNotificationToMultipleProviders,
+    ).not.toHaveBeenCalled();
+  });
+
+  it('prunes expired SSL throttle entries', async () => {
+    const { service } = createService();
+    const map = service['sslAlertDeliveredAt'];
+    map.set('old-monitor', Date.now() - 25 * 60 * 60 * 1000);
+    await service.sendSslExpirationNotification('monitor-1', 'expiring');
+    expect(map.has('old-monitor')).toBe(false);
+    expect(map.has('monitor-1')).toBe(true);
   });
 });

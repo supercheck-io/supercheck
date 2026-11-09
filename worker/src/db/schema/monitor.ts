@@ -67,6 +67,7 @@ export const monitors = pgTable(
     lastStatusChangeAt: timestamp('last_status_change_at', {
       withTimezone: true,
     }),
+    // Unused: kept only so drizzle-kit does not generate a DROP COLUMN while old workers still select it.
     mutedUntil: timestamp('muted_until', { withTimezone: true }),
     scheduledJobId: varchar('scheduled_job_id', { length: 255 }),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),

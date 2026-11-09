@@ -6333,6 +6333,9 @@ components:
           type: string
           format: date-time
           nullable: true
+          deprecated: true
+          description: "Deprecated and unused: monitors cannot be muted. May hold a stale
+            value from older data."
         scheduledJobId:
           type: string
           nullable: true

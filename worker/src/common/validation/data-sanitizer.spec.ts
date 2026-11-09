@@ -507,6 +507,15 @@ describe('redactTargetUrl', () => {
     expect(out).toContain('q=4');
   });
 
+  it('keeps apostrophes inside a URL so a quoted secret is not left behind', () => {
+    const out = redactUrlsInText(
+      "failed 'https://u:p'w@h.example/x?token=a'b'",
+    );
+    expect(out).not.toContain("p'w");
+    expect(out).not.toContain("a'b");
+    expect(out.endsWith("'")).toBe(true);
+  });
+
   it('redacts URLs followed by prose punctuation or with parentheses', () => {
     expect(redactUrlsInText('see https://h/?a=(x)&token=SECRET')).not.toContain(
       'SECRET',

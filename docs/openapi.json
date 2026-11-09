@@ -9190,7 +9190,9 @@
           "mutedUntil": {
             "type": "string",
             "format": "date-time",
-            "nullable": true
+            "nullable": true,
+            "deprecated": true,
+            "description": "Deprecated and unused: monitors cannot be muted. May hold a stale value from older data."
           },
           "scheduledJobId": {
             "type": "string",

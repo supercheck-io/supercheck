@@ -278,6 +278,13 @@ import { VariableResolverService } from '../common/services/variable-resolver.se
 import * as schema from '../db/schema';
 
 describe('MonitorService', () => {
+  /** The aggregatedAlertState JSON of the first monitors.config write (a jsonb_set statement). */
+  const firstWrittenAlertState = (): unknown => {
+    const config =
+      mockDbService.db.update.mock.results[0].value.set.mock.calls[0][0].config;
+    return JSON.parse(new PgDialect().sqlToQuery(config).params[0] as string);
+  };
+
   // Deterministic network fakes installed by the jest.mock('net'|'tls') factories.
   const netState = jest.requireMock('net').__state;
   const udpState = jest.requireMock('dgram').__state;
@@ -2283,15 +2290,10 @@ describe('MonitorService', () => {
       ).not.toHaveBeenCalled();
       expect(mockDbService.db.update).toHaveBeenCalled();
 
-      const firstUpdateCall = mockDbService.db.update.mock.results[0]?.value;
-      expect(firstUpdateCall?.set).toHaveBeenCalledWith(
+      expect(firstWrittenAlertState()).toEqual(
         expect.objectContaining({
-          config: expect.objectContaining({
-            aggregatedAlertState: expect.objectContaining({
-              consecutiveFailureCount: 2,
-              alertsSentForFailure: 0,
-            }),
-          }),
+          consecutiveFailureCount: 2,
+          alertsSentForFailure: 0,
         }),
       );
     });
@@ -2517,16 +2519,8 @@ describe('MonitorService', () => {
     expect(
       mockDbService.db.query.monitorResults.findFirst,
     ).not.toHaveBeenCalled();
-    expect(
-      mockDbService.db.update.mock.results[0].value.set,
-    ).toHaveBeenCalledWith(
-      expect.objectContaining({
-        config: expect.objectContaining({
-          aggregatedAlertState: expect.objectContaining({
-            consecutiveFailureCount: 2,
-          }),
-        }),
-      }),
+    expect(firstWrittenAlertState()).toEqual(
+      expect.objectContaining({ consecutiveFailureCount: 2 }),
     );
   });
 

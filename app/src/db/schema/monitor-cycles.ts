@@ -24,6 +24,9 @@ export type MonitorCycleEvaluation = {
     consecutiveSuccessCount: number;
     alertsSentForFailure: number;
     alertsSentForRecovery: number;
+    lastAlertCount?: number;
+    lastAlertWindows?: number;
+    alertCounterVersion?: 2;
     recoverySequence?: boolean;
     priorFailureCount?: number;
     failureCountUnknown?: boolean;

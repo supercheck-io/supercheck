@@ -31,7 +31,6 @@ export interface Monitor {
   alertConfig?: MonitorAlertConfig | null;
   lastCheckAt?: string | null;
   lastStatusChangeAt?: string | null;
-  mutedUntil?: string | null;
   createdAt?: string;
   updatedAt?: string;
   projectId?: string;
