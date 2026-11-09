@@ -10,6 +10,10 @@ Supercheck brings Playwright test automation, k6 performance testing, uptime and
 [![License](https://img.shields.io/badge/license-AGPL--3.0--only-blue.svg)](LICENSE)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/supercheck-io/supercheck/badge)](https://scorecard.dev/viewer/?uri=github.com/supercheck-io/supercheck)
 
+<a href="https://www.youtube.com/watch?v=D9dqy93zL9o"><img src="docs/public/supercheck-screenshot.webp" alt="Supercheck dashboard. Select to watch the overview video on YouTube." width="100%"></a>
+
+<p align="center"><a href="https://www.youtube.com/watch?v=D9dqy93zL9o">▶ Watch the overview video</a></p>
+
 ## What Supercheck includes
 
 - **Test automation:** browser, API, database, custom, and k6 performance tests, with AI-assisted creation and failure analysis.
@@ -18,6 +22,49 @@ Supercheck brings Playwright test automation, k6 performance testing, uptime and
 - **Communication:** alerts through email, Slack, Discord, Telegram, Microsoft Teams, and webhooks, plus public status pages and subscriber notifications.
 - **Governance:** organizations, projects, six RBAC roles, API keys, audit trails, requirements traceability, and coverage snapshots.
 - **Secure execution:** isolated execution environments, network restrictions, and resource limits for Playwright and k6 workloads.
+
+<table>
+<tr>
+<td width="50%" valign="top">
+
+### [Automate](https://supercheck.io/docs/app/automate)
+
+Write, record and run end-to-end and load tests.
+
+<img src="docs/public/screenshots/site/playground-editor.webp" alt="Playground editor with a Playwright checkout test" width="100%">
+
+</td>
+<td width="50%" valign="top">
+
+### [Monitor](https://supercheck.io/docs/app/monitor)
+
+Know when something breaks before your users tell you.
+
+<img src="docs/public/screenshots/site/monitors-list.webp" alt="Monitors list with HTTP, website, ping, port and synthetic monitors" width="100%">
+
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+### [Respond](https://supercheck.io/docs/app/investigate)
+
+Failing monitors and jobs open an incident you can work from (on by default, per check), with AI SRE investigations that cite their evidence.
+
+<img src="docs/public/screenshots/site/incident-workspace-overview.webp" alt="Incident workspace for a Checkout API outage with an AI summary" width="100%">
+
+</td>
+<td width="50%" valign="top">
+
+### [Communicate](https://supercheck.io/docs/app/communicate)
+
+Tell your team first, then tell your users.
+
+<img src="docs/public/screenshots/site/status-page-public.webp" alt="Public status page with a partial outage banner and 90 days of uptime per component" width="100%">
+
+</td>
+</tr>
+</table>
 
 ## Competitive landscape
 
