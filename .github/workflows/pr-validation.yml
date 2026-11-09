@@ -435,6 +435,9 @@ jobs:
       - name: Verify licenses and distribution notices
         run: node .github/scripts/check-licenses.mjs
 
+      - name: Test PR screenshot publisher
+        run: node --test .github/scripts/pr-screenshots.test.mjs
+
       - name: Validate Compose files and deploy scripts
         run: ./deploy/docker/validate.sh
 

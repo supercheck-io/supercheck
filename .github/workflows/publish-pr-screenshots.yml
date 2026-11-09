@@ -1,0 +1,133 @@
+name: Publish PR Screenshots
+
+# Runs after "PR Screenshots" with repository secrets, so it only ever executes
+# default-branch code and treats the downloaded artifact as untrusted data
+# (.github/scripts/pr-screenshots.mjs validates every file).
+#
+# Hosting is optional. With the R2 secrets and variables below unset, the comment
+# links the run artifact instead of showing thumbnails.
+#   secrets: PR_SCREENSHOTS_R2_ACCESS_KEY_ID, PR_SCREENSHOTS_R2_SECRET_ACCESS_KEY
+#   vars:    PR_SCREENSHOTS_R2_ENDPOINT, PR_SCREENSHOTS_R2_BUCKET, PR_SCREENSHOTS_PUBLIC_URL
+on:
+  workflow_run:
+    workflows: ["PR Screenshots"]
+    types: [completed]
+
+permissions: {}
+
+concurrency:
+  group: publish-pr-screenshots-${{ github.event.workflow_run.head_repository.full_name }}-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish PR Screenshots
+    if: >-
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.actor.login != 'dependabot[bot]' &&
+      (github.event.workflow_run.conclusion == 'success' ||
+       github.event.workflow_run.conclusion == 'failure')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout trusted default branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      # Fork PRs leave workflow_run.pull_requests empty, so match by head branch and SHA.
+      # A run for an older commit matches no open PR head and is skipped.
+      - name: Resolve pull request
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_OWNER: ${{ github.event.workflow_run.head_repository.owner.login }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          number="$(gh api --method GET "repos/${GITHUB_REPOSITORY}/pulls" \
+            -f state=open -f head="${HEAD_OWNER}:${HEAD_BRANCH}" -f per_page=100 \
+            | jq -r --arg sha "$HEAD_SHA" '[.[] | select(.head.sha == $sha)] | if length == 1 then .[0].number else empty end')"
+          if [[ ! "$number" =~ ^[1-9][0-9]*$ ]]; then
+            echo "No open pull request has head ${HEAD_SHA}; skipping."
+            number=""
+          fi
+          echo "number=$number" >> "$GITHUB_OUTPUT"
+
+      - name: Download screenshots
+        if: steps.pr.outputs.number != ''
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        continue-on-error: true
+        with:
+          name: pr-screenshots
+          path: ${{ runner.temp }}/artifact
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+
+      - name: Prepare gallery
+        if: steps.pr.outputs.number != ''
+        env:
+          SHA: ${{ github.event.workflow_run.head_sha }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/artifact"
+          node .github/scripts/pr-screenshots.mjs prepare "$RUNNER_TEMP/artifact" "$RUNNER_TEMP/gallery"
+
+      # On failure the comment falls back to linking the run artifact.
+      - name: Upload gallery to R2
+        id: upload
+        if: steps.pr.outputs.number != '' && vars.PR_SCREENSHOTS_R2_BUCKET != ''
+        continue-on-error: true
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.PR_SCREENSHOTS_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.PR_SCREENSHOTS_R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          AWS_EC2_METADATA_DISABLED: "true"
+          R2_ENDPOINT: ${{ vars.PR_SCREENSHOTS_R2_ENDPOINT }}
+          R2_BUCKET: ${{ vars.PR_SCREENSHOTS_R2_BUCKET }}
+          PUBLIC_URL: ${{ vars.PR_SCREENSHOTS_PUBLIC_URL }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          RUN_KEY: ${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
+        run: |
+          [[ "$R2_BUCKET" =~ ^[a-z0-9.-]+$ ]] || { echo "::error::Invalid bucket name"; exit 1; }
+          [[ "$R2_ENDPOINT" == https://* && "$PUBLIC_URL" == https://* ]] || { echo "::error::R2 endpoint and public URL must be https"; exit 1; }
+          # Keyed by run attempt, so immutable caching never serves stale bytes after a re-run.
+          prefix="prs/${PR_NUMBER}/${RUN_KEY}"
+          aws s3 cp "$RUNNER_TEMP/gallery/images/" "s3://${R2_BUCKET}/${prefix}/images/" --recursive \
+            --endpoint-url "$R2_ENDPOINT" --content-type image/png --cache-control "public,max-age=31536000,immutable"
+          aws s3 cp "$RUNNER_TEMP/gallery/index.html" "s3://${R2_BUCKET}/${prefix}/index.html" \
+            --endpoint-url "$R2_ENDPOINT" --content-type "text/html; charset=utf-8" --cache-control "public,max-age=300"
+          echo "base_url=${PUBLIC_URL%/}/${prefix}" >> "$GITHUB_OUTPUT"
+
+      - name: Comment on pull request
+        if: steps.pr.outputs.number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          RESULT: ${{ github.event.workflow_run.conclusion }}
+          GALLERY_BASE_URL: ${{ steps.upload.outputs.base_url }}
+        run: |
+          # A newer push may have landed while this run was publishing; leave the comment to its run.
+          head="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq .head.sha)"
+          if [[ "$head" != "$SHA" ]]; then
+            echo "Pull request head moved to ${head}; not updating the comment for ${SHA}."
+            exit 0
+          fi
+          body="$(node .github/scripts/pr-screenshots.mjs comment "$RUNNER_TEMP/gallery")"
+          marker='<!-- supercheck-pr-screenshots -->'
+          comment_id="$(gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments?per_page=100" \
+            | jq -r --arg marker "$marker" '[.[][] | select(.user.login == "github-actions[bot]" and (.body | contains($marker)))] | last | .id // empty')"
+          payload="$(jq -n --arg body "$body" '{body: $body}')"
+          if [[ -n "$comment_id" ]]; then
+            gh api --method PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${comment_id}" --input - <<<"$payload" > /dev/null
+          else
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" --input - <<<"$payload" > /dev/null
+          fi
