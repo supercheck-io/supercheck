@@ -1,5 +1,6 @@
 "use client";
 
+import { formatResponseTime } from "@/lib/format-response-time";
 import { formatUptime } from "./monitor-actions";
 import React, { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -228,7 +229,7 @@ export function LocationStatusGrid({
                       <span>Avg Response</span>
                     </div>
                     <span className="font-medium">
-                      {Math.round(stat.avgResponseTime)}ms
+                      {formatResponseTime(stat.avgResponseTime)}
                     </span>
                   </div>
                 )}
@@ -239,11 +240,11 @@ export function LocationStatusGrid({
                     <div className="flex items-center justify-between text-xs text-gray-500">
                       <div className="flex items-center gap-1">
                         <TrendingDown className="h-3 w-3 text-green-600" />
-                        <span>{Math.round(stat.minResponseTime)}ms</span>
+                        <span>{formatResponseTime(stat.minResponseTime)}</span>
                       </div>
                       <div className="flex items-center gap-1">
                         <TrendingUp className="h-3 w-3 text-orange-600" />
-                        <span>{Math.round(stat.maxResponseTime)}ms</span>
+                        <span>{formatResponseTime(stat.maxResponseTime)}</span>
                       </div>
                     </div>
                   )}
@@ -255,7 +256,7 @@ export function LocationStatusGrid({
                     <span>
                       Last check:{" "}
                       {stat.latest.responseTimeMs !== null
-                        ? `${stat.latest.responseTimeMs}ms`
+                        ? formatResponseTime(stat.latest.responseTimeMs)
                         : "N/A"}
                     </span>
                   </div>

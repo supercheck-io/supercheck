@@ -13,7 +13,24 @@ jest.mock("@/utils/db", () => ({
       monitorNotificationSettings: { findFirst: (...a: unknown[]) => linkFindFirst(...a) },
     },
     select: () => ({ from: () => ({ where: (...a: unknown[]) => countWhere(...a) }) }),
-    insert: () => ({ values: () => ({ returning: (...a: unknown[]) => insertReturning(...a) }) }),
+    insert: () => ({ values: () => ({ returning: (...a: unknown[]) => { callOrder.push("insert"); return insertReturning(...a); } }) }),
+    delete: () => ({ where: () => ({ returning: (...a: unknown[]) => { callOrder.push("delete"); return deleteReturning(...a); } }) }),
+    transaction: async (cb: (tx: unknown) => unknown) => cb(jest.requireMock("@/utils/db").db),
+  },
+}));
+const deleteReturning = jest.fn();
+const callOrder: string[] = [];
+const mirrorProviderRowsToAlertConfig = jest.fn();
+const lockMonitorRow = jest.fn();
+jest.mock("@/lib/monitor-write", () => ({
+  AlertConfigConflictError: class extends Error {},
+  mirrorProviderRowsToAlertConfig: (...a: unknown[]) => {
+    callOrder.push("mirror");
+    return mirrorProviderRowsToAlertConfig(...a);
+  },
+  lockMonitorRow: (...a: unknown[]) => {
+    callOrder.push("lock");
+    return lockMonitorRow(...a);
   },
 }));
 jest.mock("@/db/schema", () => ({
@@ -58,6 +75,7 @@ const call = () =>
 describe("POST /api/monitors/[id]/notifications channel cap", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    callOrder.length = 0;
     delete process.env.MAX_MONITOR_NOTIFICATION_CHANNELS;
     monitorFindFirst.mockResolvedValue({ organizationId: "o1", projectId: "p1" });
     providerFindFirst.mockResolvedValue({ id: "prov-1" });
@@ -85,6 +103,36 @@ describe("POST /api/monitors/[id]/notifications channel cap", () => {
     countWhere.mockResolvedValue([{ value: 9 }]);
     const res = await call();
     expect(res.status).toBe(201);
+    // alertConfig.notificationProviders follows the rows, in the same transaction.
+    expect(mirrorProviderRowsToAlertConfig).toHaveBeenCalledWith(expect.anything(), MONITOR_ID);
+    // Monitor row lock first, so concurrent links serialize and cannot deadlock with PUT/PATCH.
+    expect(callOrder).toEqual(["lock", "insert", "mirror"]);
+  });
+
+  it("mirrors an unlink into alertConfig, and skips it when no link was removed", async () => {
+    const unlink = () =>
+      DELETE(
+        new NextRequest("http://localhost/api/monitors/x/notifications", {
+          method: "DELETE",
+          body: JSON.stringify({ notificationProviderId: "4b8e7c62-2f1d-4e5a-9c3b-8a7d6e5f4c3b" }),
+        }),
+        { params: Promise.resolve({ id: MONITOR_ID }) },
+      );
+    deleteReturning.mockResolvedValueOnce([{ id: "link-1" }]);
+    callOrder.length = 0;
+    expect((await unlink()).status).toBe(200);
+    expect(callOrder).toEqual(["lock", "delete", "mirror"]);
+    expect(mirrorProviderRowsToAlertConfig).toHaveBeenCalledWith(expect.anything(), MONITOR_ID);
+    mirrorProviderRowsToAlertConfig.mockClear();
+    // Removing the last channel of an enabled alert that cannot open incidents is refused (and rolled back).
+    deleteReturning.mockResolvedValueOnce([{ id: "link-1" }]);
+    mirrorProviderRowsToAlertConfig.mockRejectedValueOnce(new (jest.requireMock("@/lib/monitor-write").AlertConfigConflictError)("At least one notification channel must be selected when alerts are enabled"));
+    const refused = await unlink();
+    expect(refused.status).toBe(400);
+    mirrorProviderRowsToAlertConfig.mockClear();
+    deleteReturning.mockResolvedValueOnce([]);
+    expect((await unlink()).status).toBe(404);
+    expect(mirrorProviderRowsToAlertConfig).not.toHaveBeenCalled();
   });
 });
 

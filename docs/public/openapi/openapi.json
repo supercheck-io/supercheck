@@ -3211,6 +3211,9 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "400": {
+            "description": "`page` or `limit` is not a whole number of at least 1"
           }
         }
       },
@@ -3256,7 +3259,7 @@
       "put": {
         "operationId": "updateMonitorByBodyId",
         "summary": "Update a monitor (collection PUT)",
-        "description": "Compatibility update that requires `id` in the JSON body. Prefer `PATCH /api/monitors/{id}` or `PUT /api/monitors/{id}` for new integrations. The monitor must belong to the current project.",
+        "description": "Compatibility update that requires `id` in the JSON body. Prefer `PATCH /api/monitors/{id}` or `PUT /api/monitors/{id}` for new integrations. The monitor must belong to the current project. `alertConfig` is applied only when the body has the key: omit it to leave alert settings and linked channels untouched, send `null` to clear both. The caller needs the same `monitor:update` permission as `PUT /api/monitors/{id}`, checked before the monitor is looked up.",
         "tags": [
           "Monitors"
         ],
@@ -3292,6 +3295,9 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "503": {
+            "description": "The monitor was saved but the check schedule could not be updated (repeat the request to reconcile it)."
           }
         }
       }
@@ -10180,7 +10186,8 @@
           },
           "timeoutSeconds": {
             "type": "integer",
-            "minimum": 1
+            "minimum": 1,
+            "description": "Per-check timeout in seconds. Must not exceed `frequencyMinutes` * 60; a save that raises the timeout above the interval, or shortens the interval below the timeout, returns 400 (an existing monitor already in that state still saves other changes)."
           },
           "regions": {
             "type": "array",
@@ -10369,7 +10376,7 @@
           },
           "frequencyMinutes": {
             "type": "integer",
-            "description": "Check interval in minutes",
+            "description": "Check interval in minutes. Whole minutes, 1 to 1440. `config.timeoutSeconds` must not exceed this interval in seconds.",
             "default": 5,
             "minimum": 1,
             "maximum": 1440,
@@ -10416,7 +10423,8 @@
           "frequencyMinutes": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 1440
+            "maximum": 1440,
+            "description": "Check interval in minutes. Whole minutes, 1 to 1440. `config.timeoutSeconds` must not exceed this interval in seconds."
           },
           "enabled": {
             "type": "boolean"
@@ -10465,7 +10473,8 @@
           "frequencyMinutes": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 1440
+            "maximum": 1440,
+            "description": "Check interval in minutes. Whole minutes, 1 to 1440. `config.timeoutSeconds` must not exceed this interval in seconds."
           },
           "enabled": {
             "type": "boolean"

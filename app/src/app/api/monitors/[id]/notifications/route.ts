@@ -9,6 +9,7 @@ import {
 import { eq, and, count } from "drizzle-orm";
 import { hasPermissionForUser, forbiddenOrNotFound } from "@/lib/rbac/middleware";
 import { requireUserAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
+import { AlertConfigConflictError, lockMonitorRow, mirrorProviderRowsToAlertConfig } from "@/lib/monitor-write";
 import { createLogger } from "@/lib/logger/index";
 
 const logger = createLogger({ module: "monitor-notifications-api" }) as {
@@ -205,14 +206,16 @@ export async function POST(
       );
     }
 
-    // Create the link
-    const [newLink] = await db
-      .insert(monitorNotificationSettings)
-      .values({
-        monitorId: id,
-        notificationProviderId,
-      })
-      .returning();
+    // Create the link and mirror the list into alertConfig in one transaction, so the UI and the worker agree.
+    const newLink = await db.transaction(async (tx) => {
+      await lockMonitorRow(tx, id);
+      const [link] = await tx
+        .insert(monitorNotificationSettings)
+        .values({ monitorId: id, notificationProviderId })
+        .returning();
+      await mirrorProviderRowsToAlertConfig(tx, id);
+      return link;
+    });
 
     return NextResponse.json(newLink, { status: 201 });
   } catch (error) {
@@ -221,6 +224,9 @@ export async function POST(
         { error: error instanceof Error ? error.message : "Authentication required" },
         { status: authErrorStatus(error) }
       );
+    }
+    if (error instanceof AlertConfigConflictError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
     }
     logger.error({ err: error, monitorId: id }, "Error linking notification provider");
     return NextResponse.json(
@@ -287,19 +293,21 @@ export async function DELETE(
       );
     }
 
-    // Remove the link
-    const [deletedLink] = await db
-      .delete(monitorNotificationSettings)
-      .where(
-        and(
-          eq(monitorNotificationSettings.monitorId, id),
-          eq(
-            monitorNotificationSettings.notificationProviderId,
-            notificationProviderId
-          )
+    // Remove the link and mirror the list into alertConfig in one transaction.
+    const deletedLink = await db.transaction(async (tx) => {
+      await lockMonitorRow(tx, id);
+      const [deleted] = await tx
+        .delete(monitorNotificationSettings)
+        .where(
+          and(
+            eq(monitorNotificationSettings.monitorId, id),
+            eq(monitorNotificationSettings.notificationProviderId, notificationProviderId),
+          ),
         )
-      )
-      .returning();
+        .returning();
+      if (deleted) await mirrorProviderRowsToAlertConfig(tx, id);
+      return deleted;
+    });
 
     if (!deletedLink) {
       return NextResponse.json({ error: "Link not found" }, { status: 404 });
@@ -312,6 +320,9 @@ export async function DELETE(
         { error: error instanceof Error ? error.message : "Authentication required" },
         { status: authErrorStatus(error) }
       );
+    }
+    if (error instanceof AlertConfigConflictError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
     }
     logger.error({ err: error, monitorId: id }, "Error unlinking notification provider");
     return NextResponse.json(

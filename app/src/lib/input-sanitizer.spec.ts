@@ -526,15 +526,17 @@ describe('InputSanitizer', () => {
       expect(result.target).toContain('https://example.com');
     });
 
-    it('should sanitize hostname targets for ping_host type', () => {
-      const data = {
-        name: 'Test',
-        target: 'example<script>.com',
-        type: 'ping_host',
-      };
-      const result = sanitizeMonitorFormData(data);
-      // sanitizeString removes <script> tags first, then sanitizeHostname runs
-      expect(result.target).toBe('example.com');
+    it('keeps targets as typed, trimming only surrounding whitespace', () => {
+      for (const [type, target] of [
+        ['http_request', 'https://example.com/check?token=ab${x}&y=1'],
+        ['website', 'https://example.com/a b'],
+        ['ping_host', '2606:4700:4700::1111'],
+        ['port_check', '[2606:4700:4700::1111]'],
+        ['ping_host', 'example<script>.com'],
+      ]) {
+        const result = sanitizeMonitorFormData({ name: 'm', type, target: `  ${target}  ` });
+        expect(result.target).toBe(target);
+      }
     });
 
     it('should sanitize HTTP method', () => {
