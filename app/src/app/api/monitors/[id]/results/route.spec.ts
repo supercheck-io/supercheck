@@ -159,6 +159,7 @@ describe("GET /api/monitors/[id]/results validation", () => {
       routeContext,
     );
     expect(response.status).toBe(400);
+    expect((await response.json()).error).toContain("timezoneOffsetEnd");
   });
 
   it("queries the DST day with the start offset at its start and the end offset at its end", async () => {

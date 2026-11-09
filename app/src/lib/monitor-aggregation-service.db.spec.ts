@@ -280,6 +280,44 @@ it("lets the latest attempt of a retried region decide, the same in the aggregat
   expect(aggregated).toMatchObject({ totalChecks: 2, successfulChecks: 1 });
 });
 
+it("judges a cycle over the regions the worker enqueued when no cycle snapshot exists (flag off), in SQL and in the aggregates", async () => {
+  // Config says a,b,c with "all", but region c had no live worker and was skipped: the worker judged a,b only.
+  await mockDatabase
+    .update(schema.monitors)
+    .set({ config: { locationConfig: { enabled: true, locations: ["a", "b", "c"], strategy: "all", threshold: 100 } } })
+    .where(eq(schema.monitors.id, monitorId));
+  const rows: (typeof schema.monitorResults.$inferInsert)[] = [0, 10].flatMap((minutes, i) =>
+    ["a", "b"].map((location) => ({
+      monitorId, executionGroupId: `skip-${i}`, checkedAt: at(minutes), location, status: "up" as const, isUp: true, responseTimeMs: 100,
+      details: { expectedLocations: ["a", "b"] },
+    })),
+  );
+  // A third cycle also has a stray row from a region outside its expected set (down): it must not count.
+  rows.push(
+    ...["a", "b"].map((location) => ({ monitorId, executionGroupId: "skip-2", checkedAt: at(20), location, status: "up" as const, isUp: true, responseTimeMs: 100, details: { expectedLocations: ["a", "b"] } })),
+    { monitorId, executionGroupId: "skip-2", checkedAt: at(20), location: "z", status: "down" as const, isUp: false, details: { expectedLocations: ["a", "b"] } },
+  );
+  await mockDatabase.insert(schema.monitorResults).values(rows);
+  const end = new Date(day.getTime() + 86_400_000);
+  expect(await monitorAggregationService.getWindowMetrics(monitorId, "daily", day, end, null)).toMatchObject({ totalChecks: 3, successfulChecks: 3 });
+  expect((await monitorAggregationService.runDailyAggregation()).errors).toEqual([]);
+  expect(await monitorAggregationService.getWindowMetrics(monitorId, "daily", day, end, null)).toMatchObject({ totalChecks: 3, successfulChecks: 3 });
+});
+
+it("never rewrites a period older than ordinary raw history, even when status-change rows survive retention", async () => {
+  const older = new Date(day.getTime() - 3 * 86_400_000 + 60_000);
+  await mockDatabase.insert(schema.monitorResults).values([
+    { monitorId, checkedAt: older, location: "local", status: "down", isUp: false, isStatusChange: true },
+    { monitorId, checkedAt: at(10), location: "local", status: "up", isUp: true, responseTimeMs: 50 },
+  ]);
+  // A previous run aggregated the old day from rows that retention has since purged (only the status change stayed).
+  const oldDay = new Date(Date.UTC(older.getUTCFullYear(), older.getUTCMonth(), older.getUTCDate()));
+  await mockDatabase.insert(schema.monitorAggregates).values({ monitorId, periodType: "daily", periodStart: oldDay, location: null, totalChecks: 50, successfulChecks: 49, uptimePercentage: "98.00" });
+  expect((await monitorAggregationService.runDailyAggregation()).errors).toEqual([]);
+  const [kept] = await mockDatabase.select().from(schema.monitorAggregates).where(and(eq(schema.monitorAggregates.monitorId, monitorId), eq(schema.monitorAggregates.periodStart, oldDay)));
+  expect(kept).toMatchObject({ totalChecks: 50, successfulChecks: 49 });
+});
+
 it("keeps the latest duplicate, archives superseded rows and cascades their deletion", async () => {
   await client`DROP INDEX monitor_aggregates_combined_unique_idx`;
   await client`DROP TABLE monitor_aggregate_dedup_audit`;

@@ -76,10 +76,12 @@ export async function GET(
     }, { status: 400 });
   }
 
-  if (Number.isNaN(timezoneOffset) || Number.isNaN(timezoneOffsetEnd)) {
-    return NextResponse.json({
-      error: "Invalid timezoneOffset parameter. Must be an integer between -840 and 840 minutes"
-    }, { status: 400 });
+  for (const [name, value] of [["timezoneOffset", timezoneOffset], ["timezoneOffsetEnd", timezoneOffsetEnd]] as const) {
+    if (Number.isNaN(value)) {
+      return NextResponse.json({
+        error: `Invalid ${name} parameter. Must be an integer between -840 and 840 minutes`
+      }, { status: 400 });
+    }
   }
 
   const dateRange = dateFilter

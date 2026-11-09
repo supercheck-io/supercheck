@@ -225,8 +225,11 @@ const PERIOD_MS: Record<AggregationPeriod, number> = {
 };
 /** Regions of one cycle report within the cycle deadline (<= 30 min), so an hour of context finds them all. */
 const CYCLE_MARGIN_MS = HOUR_MS;
-/** Longest cycle deadline (MAX_DEADLINE 1800 s + two check timeouts is capped by the worker's own timeout). */
-const CYCLE_SETTLE_MS = 35 * 60_000;
+/**
+ * A cycle with a persisted deadline settles at that deadline. Without a snapshot (cycle closure off) the
+ * longest deadline is 1800 s plus two check timeouts (synthetic checks run a whole test), so wait 60 min.
+ */
+const CYCLE_SETTLE_MS = 60 * 60_000;
 
 /** A raw check as the aggregates and the stats tail read it. */
 export interface CheckRow {
@@ -236,6 +239,8 @@ export interface CheckRow {
   responseTimeMs: number | null;
   isStatusChange: boolean;
   executionGroupId: string | null;
+  /** Regions the worker enqueued for this cycle (details.expectedLocations); absent on older rows. */
+  expectedLocations?: string[] | null;
 }
 
 /** Region rule of one cycle: the persisted cycle snapshot, or the monitor's current config. */
@@ -243,11 +248,15 @@ export interface CyclePolicy {
   strategy: "all" | "any" | "majority";
   threshold: number;
   expected: string[];
+  /** Persisted cycle deadline (ms); the cycle is in flight until then. */
+  deadlineAt?: number;
 }
 
+/** `hint` = union of the regions the worker enqueued for the group, when its rows say so. */
 type PolicyResolver = (
   executionGroupId: string,
   observed: string[],
+  hint: string[] | null,
 ) => CyclePolicy | null;
 
 /**
@@ -288,7 +297,7 @@ export function cycleUpFromCounts(
  * Collapse raw rows into checks. A cycle is attributed to the time of its earliest row, so it is
  * counted once even when its regions straddle an hour or day boundary. Rows without an
  * execution group are one check each. A cycle still waiting for a region (not every expected region
- * reported and it began less than CYCLE_SETTLE_MS ago) is left out until it settles, so a check in
+ * reported and its deadline, or CYCLE_SETTLE_MS after it began, has not passed) is left out until it settles, so a check in
  * flight is not shown as down.
  */
 export function groupChecks(
@@ -312,10 +321,11 @@ export function groupChecks(
     const results: Record<string, boolean> = {};
     // Latest row per region wins (a retried region replaces its earlier attempt).
     for (const row of group) results[row.location] = row.isUp;
-    const policy = resolve(groupId, Object.keys(results));
+    const hint = [...new Set(group.flatMap((row) => row.expectedLocations ?? []))];
+    const policy = resolve(groupId, Object.keys(results), hint.length > 0 ? hint : null);
     const start = group[0].checkedAt.getTime();
     const waiting = policy?.expected.some((location) => !(location in results));
-    if (waiting && start > nowMs - CYCLE_SETTLE_MS) continue;
+    if (waiting && nowMs < (policy?.deadlineAt ?? start + CYCLE_SETTLE_MS)) continue;
     checks.push({ start, isUp: isCycleUp(policy, results) });
   }
   return checks;
@@ -370,6 +380,7 @@ async function loadPolicyResolver(
       strategy: monitorCycles.strategy,
       threshold: monitorCycles.threshold,
       expectedLocations: monitorCycles.expectedLocations,
+      deadlineAt: monitorCycles.deadlineAt,
     })
     .from(monitorCycles)
     .where(
@@ -381,19 +392,22 @@ async function loadPolicyResolver(
     );
   const snapshots = new Map(cycles.map((cycle) => [cycle.id, cycle]));
 
-  return (groupId, observed) => {
+  return (groupId, observed, hint) => {
     const snapshot = snapshots.get(groupId);
     if (snapshot) {
       return {
         strategy: snapshot.strategy,
         threshold: snapshot.threshold,
         expected: snapshot.expectedLocations,
+        deadlineAt: snapshot.deadlineAt.getTime(),
       };
     }
     if (!configured) return null;
+    // Without a snapshot, judge over the regions the worker enqueued (skipped regions never count as down);
+    // only rows without that detail fall back to the current configuration.
     return {
       ...current,
-      expected: [...new Set([...configured, ...observed])],
+      expected: hint ?? [...new Set([...configured, ...observed])],
     };
   };
 }
@@ -508,6 +522,7 @@ async function fetchCheckRows(
       responseTimeMs: monitorResults.responseTimeMs,
       isStatusChange: monitorResults.isStatusChange,
       executionGroupId: monitorResults.executionGroupId,
+      expectedLocations: sql<string[] | null>`CASE WHEN jsonb_typeof(${monitorResults.details}->'expectedLocations') = 'array' THEN ${monitorResults.details}->'expectedLocations' END`,
     })
     .from(monitorResults)
     .where(
@@ -756,6 +771,35 @@ export class MonitorAggregationService {
       combined.push(build(periodStart, null, periodRows, counts));
     }
 
+    // Raw rows are purged by retention (shorter than aggregate retention) but status-change rows are kept, so
+    // the oldest ordinary row marks how far raw history really reaches. A period older than that, which
+    // already has an aggregate (the period holding the oldest row is still recomputed), is never rewritten or deleted: its raw rows may be partly or wholly purged.
+    const [oldestRaw] = await db
+      .select({ checkedAt: monitorResults.checkedAt })
+      .from(monitorResults)
+      .where(and(eq(monitorResults.monitorId, monitorId), eq(monitorResults.isStatusChange, false)))
+      .orderBy(monitorResults.checkedAt)
+      .limit(1);
+    const rawFloor = oldestRaw ? oldestRaw.checkedAt.getTime() : Infinity;
+    const existing = await db
+      .select({
+        id: monitorAggregates.id,
+        periodStart: monitorAggregates.periodStart,
+        location: monitorAggregates.location,
+      })
+      .from(monitorAggregates)
+      .where(
+        and(
+          eq(monitorAggregates.monitorId, monitorId),
+          eq(monitorAggregates.periodType, periodType),
+          gte(monitorAggregates.periodStart, start),
+          lt(monitorAggregates.periodStart, end),
+        ),
+      );
+    const frozen = new Set(
+      existing.map((row) => row.periodStart.getTime()).filter((t) => t < periodOf(rawFloor)),
+    );
+
     let created = 0;
     let updated = 0;
     const target = [
@@ -799,8 +843,9 @@ export class MonitorAggregationService {
         }
       }
     };
-    await upsert(located, true);
-    await upsert(combined, false);
+    const writable = (row: MonitorAggregateInsert) => !frozen.has(row.periodStart.getTime());
+    await upsert(located.filter(writable), true);
+    await upsert(combined.filter(writable), false);
 
     // Delete rows of this range that the data no longer supports (e.g. the last raw rows of a period were
     // removed, or a superseded synthetic row was replaced), instead of keeping a stale aggregate forever.
@@ -809,30 +854,7 @@ export class MonitorAggregationService {
         (row) => `${row.periodStart.getTime()}|${row.location ?? ""}`,
       ),
     );
-    const existing = await db
-      .select({
-        id: monitorAggregates.id,
-        periodStart: monitorAggregates.periodStart,
-        location: monitorAggregates.location,
-      })
-      .from(monitorAggregates)
-      .where(
-        and(
-          eq(monitorAggregates.monitorId, monitorId),
-          eq(monitorAggregates.periodType, periodType),
-          gte(monitorAggregates.periodStart, start),
-          lt(monitorAggregates.periodStart, end),
-        ),
-      );
-    // Raw rows are purged by retention (shorter than aggregate retention). A period with no rows is only
-    // "stale" when raw history reaches back before it; otherwise its rows may simply have been purged.
-    const [oldestRaw] = await db
-      .select({ checkedAt: monitorResults.checkedAt })
-      .from(monitorResults)
-      .where(eq(monitorResults.monitorId, monitorId))
-      .orderBy(monitorResults.checkedAt)
-      .limit(1);
-    const rawReachesBack = oldestRaw ? periodOf(oldestRaw.checkedAt.getTime()) : Infinity;
+    const rawReachesBack = periodOf(rawFloor);
     const stale = existing
       .filter(
         (row) =>
@@ -1059,8 +1081,9 @@ export class MonitorAggregationService {
       } else {
         const configured = await loadConfiguredPolicy(monitorId);
         const margin = gaps.map(([a, b]): [number, number] => [a - CYCLE_MARGIN_MS, b + CYCLE_MARGIN_MS]);
-        const cutoff = new Date(now.getTime() - CYCLE_SETTLE_MS).toISOString();
-        // One row per cycle shape: how many regions reported / were up, and the cycle's own rule if persisted.
+        const nowIso = now.toISOString();
+        // One row per cycle shape: regions reported / up (restricted to the cycle's expected set, latest attempt
+        // per region), the expected-set size, and the cycle's own rule if persisted.
         const shapes = await db.execute<{
           observed: number;
           up: number;
@@ -1070,33 +1093,52 @@ export class MonitorAggregationService {
           expected: number | null;
           cycles: number;
         }>(sql`
-          WITH r AS (
-            SELECT ${monitorResults.executionGroupId} AS gid, ${monitorResults.isUp} AS is_up,
-              min(${monitorResults.checkedAt}) OVER (PARTITION BY ${monitorResults.executionGroupId}) AS first_at,
-              -- the latest attempt of a region decides, as in groupChecks
-              row_number() OVER (
-                PARTITION BY ${monitorResults.executionGroupId}, ${monitorResults.location}
-                ORDER BY ${monitorResults.checkedAt} DESC, ${monitorResults.id} DESC
-              ) AS rn
+          WITH b AS (
+            SELECT ${monitorResults.id} AS id, ${monitorResults.executionGroupId} AS gid,
+              ${monitorResults.location} AS location, ${monitorResults.isUp} AS is_up,
+              ${monitorResults.checkedAt} AS checked_at,
+              CASE WHEN jsonb_typeof(${monitorResults.details}->'expectedLocations') = 'array'
+                THEN ${monitorResults.details}->'expectedLocations' END AS e
             FROM ${monitorResults}
             WHERE ${base} AND ${monitorResults.executionGroupId} IS NOT NULL AND (${inRanges(monitorResults.checkedAt, margin)})
           ),
+          ex AS (
+            SELECT b.gid, array_agg(DISTINCT x) AS arr
+            FROM b, LATERAL jsonb_array_elements_text(b.e) AS x
+            WHERE b.e IS NOT NULL
+            GROUP BY b.gid
+          ),
+          r AS (
+            SELECT b.gid, b.location, b.is_up,
+              min(b.checked_at) OVER (PARTITION BY b.gid) AS first_at,
+              -- the latest attempt of a region decides, as in groupChecks
+              row_number() OVER (PARTITION BY b.gid, b.location ORDER BY b.checked_at DESC, b.id DESC) AS rn,
+              c.strategy, c.threshold, c.deadline_at,
+              -- expected regions: the persisted snapshot, else what the worker enqueued, else unknown
+              CASE WHEN c.id IS NOT NULL THEN ARRAY(SELECT jsonb_array_elements_text(c.expected_locations))
+                   ELSE ex.arr END AS exp
+            FROM b
+            LEFT JOIN ex ON ex.gid = b.gid
+            LEFT JOIN ${monitorCycles} c ON c.id = b.gid AND c.monitor_id = ${monitorId}
+          ),
           g AS (
-            SELECT gid, min(first_at) AS first_at, count(*)::int AS observed,
-              (count(*) FILTER (WHERE is_up))::int AS up
+            SELECT gid, min(first_at) AS first_at, max(deadline_at) AS deadline_at,
+              (count(*) FILTER (WHERE exp IS NULL OR location = ANY(exp)))::int AS observed,
+              (count(*) FILTER (WHERE is_up AND (exp IS NULL OR location = ANY(exp))))::int AS up,
+              max(strategy) AS strategy, max(threshold) AS threshold, max(cardinality(exp)) AS expected
             FROM r WHERE rn = 1
             GROUP BY gid
             HAVING ${inRanges(sql`min(first_at)`, gaps)}
           )
-          SELECT g.observed, g.up, (g.first_at > ${cutoff}::timestamptz) AS recent,
-            c.strategy, c.threshold, jsonb_array_length(c.expected_locations)::int AS expected,
-            count(*)::int AS cycles
-          FROM g LEFT JOIN ${monitorCycles} c ON c.id = g.gid AND c.monitor_id = ${monitorId}
+          SELECT observed, up,
+            (${nowIso}::timestamptz < COALESCE(deadline_at, first_at + interval '60 minutes')) AS recent,
+            strategy, threshold, expected, count(*)::int AS cycles
+          FROM g
           GROUP BY 1, 2, 3, 4, 5, 6`);
         for (const shape of shapes) {
           const policy = shape.strategy
             ? { strategy: shape.strategy, threshold: shape.threshold ?? 50, expected: shape.expected ?? 0 }
-            : configured && { ...configured, expected: Math.max(configured.expected, shape.observed) };
+            : configured && { ...configured, expected: shape.expected ?? Math.max(configured.expected, shape.observed) };
           if (policy && shape.recent && shape.observed < policy.expected) continue; // still in flight
           totalChecks += shape.cycles;
           if (cycleUpFromCounts(policy || null, shape.observed, shape.up)) successfulChecks += shape.cycles;

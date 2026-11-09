@@ -100,9 +100,29 @@ describe("groupChecks", () => {
     const inFlight = [row("a", true, 0, "g1"), row("b", true, 0, "g1")];
     const settle = (nowMs: number) => groupChecks(inFlight, resolve, nowMs);
     expect(settle(t0 + 60_000)).toEqual([]);
-    expect(settle(t0 + 40 * 60_000)).toEqual([{ start: t0, isUp: true }]);
+    expect(settle(t0 + 70 * 60_000)).toEqual([{ start: t0, isUp: true }]);
     // A complete cycle counts at once.
     expect(groupChecks([...inFlight, row("c", true, 0, "g1")], resolve, t0 + 60_000)).toHaveLength(1);
+  });
+
+  it("honours a persisted deadline: in flight before it, down after it", () => {
+    const withDeadline = () => ({ ...majority3, deadlineAt: t0 + 50 * 60_000 });
+    const rows = [row("a", true, 0, "g1"), row("b", true, 0, "g1")];
+    expect(groupChecks(rows, withDeadline, t0 + 49 * 60_000)).toEqual([]);
+    expect(groupChecks(rows, withDeadline, t0 + 51 * 60_000)).toEqual([{ start: t0, isUp: true }]);
+  });
+
+  it("passes the union of the enqueued regions to the resolver as a hint", () => {
+    const seen: (string[] | null)[] = [];
+    groupChecks(
+      [
+        { ...row("a", true, 0, "g1"), expectedLocations: ["a", "b"] },
+        { ...row("b", true, 0, "g1"), expectedLocations: ["a", "b"] },
+        row("c", true, 0, "g2"),
+      ],
+      (_g, _o, hint) => (seen.push(hint), majority3),
+    );
+    expect(seen).toEqual([["a", "b"], null]);
   });
 
   it("uses a single-region rule when the resolver has no policy", () => {
