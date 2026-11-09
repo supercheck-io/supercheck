@@ -258,6 +258,8 @@ it("drops worker-owned config keys a client sends on create, so a certificate ca
   expect(config).toMatchObject({ enableSslCheck: true });
   expect(config).not.toHaveProperty("sslCertificate");
   expect(config).not.toHaveProperty("sslLastCheckedAt");
+});
+
 describe("collection write paths", () => {
   const MONITOR = "00000000-0000-4000-8000-000000000002";
   const { updateMonitorHandler, insertMonitorRecord } = jest.requireMock("@/lib/monitor-service") as {
