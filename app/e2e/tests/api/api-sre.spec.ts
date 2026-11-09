@@ -113,4 +113,13 @@ test.describe('SRE API authenticated contracts @api @sre @critical', () => {
       expect.objectContaining({ success: true }),
     );
   });
+
+  // The org-admin Integrations and Private Agents tabs load these as the org owner; the body names any server error.
+  for (const endpoint of ['/api/sre/integrations', '/api/sre/private-agents']) {
+    test(`${endpoint} loads for the org owner`, async ({ orgOwnerPage }) => {
+      const response = await orgOwnerPage.request.get(endpoint);
+      expect(response.status(), await response.text()).toBe(200);
+      expect(await response.json()).toMatchObject({ success: true });
+    });
+  }
 });

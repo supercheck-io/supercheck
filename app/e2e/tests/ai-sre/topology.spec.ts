@@ -71,13 +71,17 @@ test.describe("AI SRE service topology administration @aisre @topology @critical
         .click();
       await expect(dialog).toBeHidden();
 
+      // The innermost element holding both the remove button and the direction label is the row.
       const dependency = page
-        .getByRole("button", {
-          name: `Remove dependency with ${targetName}`,
-          exact: true,
+        .locator("div")
+        .filter({
+          has: page.getByRole("button", {
+            name: `Remove dependency with ${targetName}`,
+            exact: true,
+          }),
         })
-        .locator("..")
-        .locator("..");
+        .filter({ hasText: "This service depends on it" })
+        .last();
       await expect(dependency).toContainText("This service depends on it");
       await expect(dependency).toContainText("manual");
       await page.reload();
