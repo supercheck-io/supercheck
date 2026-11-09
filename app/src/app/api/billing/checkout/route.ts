@@ -13,6 +13,7 @@ import { Role } from "@/lib/rbac/permissions";
 import { requireSameOriginRequest } from "@/lib/security/same-origin";
 import { BillingCustomerConflictError, ensurePolarCustomerAndLink } from "@/lib/services/organization-customer";
 import { createPolarClient } from "@/lib/billing/polar-client";
+import { countSeatsInUse, PRO_INCLUDED_MEMBERS } from "@/lib/billing/member-seats";
 import { getCurrentUser } from "@/lib/session";
 import { db } from "@/utils/db";
 import { eq } from "drizzle-orm";
@@ -175,6 +176,10 @@ export async function POST(request: NextRequest) {
       return_url: `${appUrl}/subscribe`,
       metadata: { referenceId: organizationId },
       allow_discount_codes: true,
+      // Pro bills seats as total members (the included ones are free); start at no less than in use.
+      ...(parsed.data.plan === "pro"
+        ? { units: Math.max(PRO_INCLUDED_MEMBERS, await countSeatsInUse(db, organizationId)) }
+        : {}),
     });
 
     return NextResponse.json({ url: checkout.url });

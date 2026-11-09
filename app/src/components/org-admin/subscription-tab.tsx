@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { SpendingLimits } from "@/components/billing/spending-limits";
+import { MemberSeats, type TeamMemberSeats } from "@/components/billing/member-seats";
 import { HardStopAlert } from "@/components/billing/hard-stop-alert";
 import { PlaywrightLogo } from "@/components/logo/playwright-logo";
 import { K6Logo } from "@/components/logo/k6-logo";
@@ -99,9 +100,7 @@ interface SubscriptionData {
       remaining: number;
       percentage: number;
     };
-    teamMembers: {
-      current: number;
-      limit: number;
+    teamMembers: TeamMemberSeats & {
       remaining: number;
       percentage: number;
     };
@@ -545,6 +544,15 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
                   label="Team Members"
                   current={data.limits.teamMembers.current}
                   limit={data.limits.teamMembers.limit}
+                />
+              </div>
+              <div className="mt-3">
+                <MemberSeats
+                  organizationId={data.organizationId}
+                  plan={data.subscription.plan}
+                  seats={data.limits.teamMembers}
+                  canManage={currentUserRole === "org_owner" || currentUserRole === "org_admin"}
+                  onSaved={fetchSubscriptionData}
                 />
               </div>
             </CardContent>

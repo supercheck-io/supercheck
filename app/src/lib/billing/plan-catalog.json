@@ -35,6 +35,7 @@
     "name": "Pro",
     "description": "For growing teams",
     "monthlyPriceCents": 9900,
+    "extraMemberPriceCents": 800,
     "limits": {
       "maxMonitors": 200,
       "minCheckIntervalMinutes": 1,

@@ -44,6 +44,8 @@ export const organization = pgTable("organization", {
     .$type<"active" | "canceled" | "past_due" | "none">()
     .default("none"),
   subscriptionId: text("subscription_id"), // Polar subscription ID
+  // Pro member seats (total members) Polar last reported; null when the subscription has no seat price.
+  memberUnits: integer("member_units"),
   // Durable ordering state is not subject to webhook-delivery log cleanup.
   polarWebhookTimestamp: timestamp("polar_webhook_timestamp", { withTimezone: true }),
   polarWebhookEventKey: text("polar_webhook_event_key"),

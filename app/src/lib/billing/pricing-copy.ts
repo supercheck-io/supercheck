@@ -7,6 +7,7 @@ const proCap = usd(catalog.pro.limits.defaultSpendingLimitCents);
 const plusMax = usd(catalog.plus.monthlyPriceCents + catalog.plus.limits.defaultSpendingLimitCents);
 const proMax = usd(catalog.pro.monthlyPriceCents + catalog.pro.limits.defaultSpendingLimitCents);
 const proPrice = usd(catalog.pro.monthlyPriceCents);
+const extraMember = usd(catalog.pro.extraMemberPriceCents);
 
 /** Usage and billing answers shown on both the in-app plan picker and the marketing pricing page. */
 export const SHARED_PRICING_FAQS = [
@@ -48,7 +49,7 @@ export const SHARED_PRICING_FAQS = [
   {
     question: "What happens if I exceed my limits?",
     answer:
-      "Playwright minutes, K6 VU-minutes, and completed full AI SRE reports use the overage rates shown above, up to your monthly overage cap. AI credits are included, subject to fair use, with no overages. Monitor, member, project, and status-page limits require an upgrade rather than an overage payment.",
+      `Playwright minutes, K6 VU-minutes, and completed full AI SRE reports use the overage rates shown above, up to your monthly overage cap. AI credits are included, subject to fair use, with no overages. Monitor, project, and status-page limits require an upgrade rather than an overage payment. ${catalog.pro.name} includes ${catalog.pro.limits.maxTeamMembers} team members, and owners and admins can add more at ${extraMember} per extra member per month, prorated; on ${catalog.plus.name}, more members require an upgrade to ${catalog.pro.name}.`,
   },
   {
     question: "How can I control overage spending?",

@@ -47,6 +47,12 @@ jest.mock("@/lib/rbac/middleware", () => ({
   getImpersonationState: () => mockImpersonationState(),
 }));
 
+const mockCountSeatsInUse = jest.fn(async () => 3);
+jest.mock("@/lib/billing/member-seats", () => ({
+  PRO_INCLUDED_MEMBERS: 25,
+  countSeatsInUse: () => mockCountSeatsInUse(),
+}));
+
 jest.mock("@/utils/db", () => ({
   db: {
     query: {
@@ -134,8 +140,17 @@ describe("Polar billing routes", () => {
         success_url:
           "https://app.supercheck.io/billing/success?checkout_id={CHECKOUT_ID}&organization_id=org_1",
         return_url: "https://app.supercheck.io/subscribe",
+        units: 25,
       })
     );
+  });
+
+  it("starts Pro checkout at the members already in use when above the included seats, and Plus without seats", async () => {
+    mockCountSeatsInUse.mockResolvedValueOnce(31);
+    expect((await checkoutPost(request("/api/billing/checkout", { plan: "pro" }))).status).toBe(200);
+    expect(mockCheckoutCreate).toHaveBeenLastCalledWith(expect.objectContaining({ units: 31 }));
+    expect((await checkoutPost(request("/api/billing/checkout", { plan: "plus" }))).status).toBe(200);
+    expect(mockCheckoutCreate.mock.calls.at(-1)?.[0]).not.toHaveProperty("units");
   });
 
   it("reports a transient customer provisioning outage as a gateway failure", async () => {

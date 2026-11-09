@@ -10,6 +10,7 @@ import { isPolarEnabled } from "@/lib/feature-flags";
 import { db } from "@/utils/db";
 import { monitors, organization, statusPages } from "@/db/schema";
 import { and, eq, ne, sql } from "drizzle-orm";
+import { EXTRA_MEMBER_PRICE_CENTS, effectiveMemberLimit } from "@/lib/billing/member-seats";
 import { notInDeletedProject, withPlanLimitLock, PlanLimitBusyError, type PlanLimitTransaction } from "@/lib/middleware/plan-limit-lock";
 
 /** The messages `getOrganizationPlan` throws for an organization's own subscription state; safe to show to it. */
@@ -286,21 +287,29 @@ export async function checkTeamMemberLimit(
 
   try {
     const plan = await subscriptionService.getOrganizationPlan(organizationId);
+    const [org] = plan.plan === "pro"
+      ? await db.select({ memberUnits: organization.memberUnits }).from(organization)
+        .where(eq(organization.id, organizationId)).limit(1)
+      : [];
+    const limit = effectiveMemberLimit(plan, org?.memberUnits);
 
-    if (currentCount >= plan.maxTeamMembers) {
+    if (currentCount >= limit) {
+      const next = plan.plan === "pro"
+        ? ` An owner or admin can add member seats on the Subscription tab of Organization Admin ($${EXTRA_MEMBER_PRICE_CENTS / 100} per extra member per month).`
+        : "";
       return {
         allowed: false,
-        error: `Team member limit reached. Your ${planLabel(plan)} allows ${plan.maxTeamMembers} team members.`,
-        limit: plan.maxTeamMembers,
+        error: `Team member limit reached. Your ${planLabel(plan)} allows ${limit} team members.${next}`,
+        limit,
         currentCount,
       };
     }
 
     return {
       allowed: true,
-      limit: plan.maxTeamMembers,
+      limit,
       currentCount,
-      remaining: plan.maxTeamMembers - currentCount,
+      remaining: limit - currentCount,
     };
   } catch (error) {
     return {

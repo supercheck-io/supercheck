@@ -151,6 +151,26 @@ describe("invitation privacy and acceptance", () => {
   });
 
   it.each([
+    [30, 402],
+    [31, null],
+  ])("caps Pro acceptance at purchased seats (%s seats, 30 members)", async (memberUnits, status) => {
+    const { tx } = acceptance();
+    (isCloudHosted as jest.Mock).mockReturnValue(true);
+    getCurrentUser.mockResolvedValue({ id: "user-1", email: invite.email, emailVerified: true });
+    db.select.mockReset().mockReturnValueOnce(selectRows([{ ...invite, role: "project_viewer" }])).mockReturnValueOnce(selectRows([{ emailVerified: true }])).mockReturnValueOnce(selectRows([]));
+    tx.select.mockReset()
+      .mockReturnValueOnce(selectRows([{ id: "user-1" }]))
+      .mockReturnValueOnce(selectRows([{ subscriptionPlan: "pro", polarCustomerId: "cus", subscriptionStatus: "active", subscriptionEndsAt: null, memberUnits }]))
+      .mockReturnValueOnce(selectRows([]))
+      .mockReturnValueOnce(selectRows([{ max: 25 }]))
+      .mockReturnValueOnce(selectRows([{ count: 30 }]))
+      .mockReturnValue(selectRows([{ role: "org_admin" }]));
+    const response = await POST(new NextRequest("http://localhost/api/invite/11111111-1111-4111-8111-111111111111", { method: "POST" }), context);
+    if (status) expect(response.status).toBe(status);
+    else expect(tx.update).toHaveBeenCalled(); // past the member cap: the invitation is claimed
+  });
+
+  it.each([
     ["unpaid", null],
     ["canceled", new Date(Date.now() - 86_400_000)],
   ])("ignores a lapsed %s paid plan when applying the member cap", async (status, endsAt) => {

@@ -16,6 +16,7 @@ import {
 import { and, eq, gte, ne, sql } from "drizzle-orm";
 import { notInDeletedProject } from "@/lib/middleware/plan-limit-lock";
 import { getPlanPricing, isCloudHosted } from "@/lib/feature-flags";
+import { EXTRA_MEMBER_PRICE_CENTS, effectiveMemberLimit } from "@/lib/billing/member-seats";
 
 /**
  * GET /api/billing/current
@@ -111,6 +112,7 @@ export async function GET() {
     const periodStart = org.usagePeriodStart ?? org.subscriptionStartedAt;
     const periodEnd = org.usagePeriodEnd ?? org.subscriptionEndsAt;
 
+    const memberLimit = effectiveMemberLimit(plan, org.memberUnits);
     const toPercent = (used: number, included: number) =>
       included > 0 ? Math.floor((used / included) * 100) : 100;
 
@@ -182,9 +184,13 @@ export async function GET() {
         },
         teamMembers: {
           current: membersTotal,
-          limit: plan.maxTeamMembers,
-          remaining: Math.max(0, plan.maxTeamMembers - membersTotal),
-          percentage: toPercent(membersTotal, plan.maxTeamMembers),
+          limit: memberLimit,
+          remaining: Math.max(0, memberLimit - membersTotal),
+          percentage: toPercent(membersTotal, memberLimit),
+          // Seats are sold on Pro only; the first `included` are part of the plan price.
+          included: plan.maxTeamMembers,
+          purchasedSeats: plan.plan === "pro" ? org.memberUnits ?? null : null,
+          extraMemberPriceCents: EXTRA_MEMBER_PRICE_CENTS,
         },
         capacity: {
           runningCapacity: plan.runningCapacity,

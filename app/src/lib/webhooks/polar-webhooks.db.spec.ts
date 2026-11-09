@@ -207,6 +207,47 @@ describe("2026-10 webhook payloads through the real handlers", () => {
     );
   });
 
+  describe("Pro member seats", () => {
+    it("stores seats from subscription.active and a later seats-only subscription.updated", async () => {
+      await deliver(handleSubscriptionActive, "subscription.active", subscription({ units: 25 }), "2026-10-01T00:00:01Z");
+      expect((await org()).memberUnits).toBe(25);
+      await deliver(handleSubscriptionUpdated, "subscription.updated", subscription({ units: 30 }), "2026-10-05T00:00:00Z");
+      expect((await org()).memberUnits).toBe(30);
+      // Redelivering the activation with the current state but new seats is not skipped as "already active".
+      await deliver(handleSubscriptionActive, "subscription.active", subscription({ units: 32 }), "2026-10-06T00:00:00Z");
+      expect((await org()).memberUnits).toBe(32);
+    });
+
+    it("keeps seats when a payload omits units, clears them on null, and ignores invalid values", async () => {
+      await deliver(handleSubscriptionActive, "subscription.active", subscription({ units: 30 }), "2026-10-01T00:00:01Z");
+      await deliver(handleSubscriptionUpdated, "subscription.updated", subscription(), "2026-10-02T00:00:00Z");
+      expect((await org()).memberUnits).toBe(30);
+      await deliver(handleSubscriptionUpdated, "subscription.updated", subscription({ units: -4 }), "2026-10-03T00:00:00Z");
+      expect((await org()).memberUnits).toBe(30);
+      // A Pro subscription without a seat price reports null: no purchased seats, and the webhook still succeeds.
+      await deliver(handleSubscriptionUpdated, "subscription.updated", subscription({ units: null }), "2026-10-04T00:00:00Z");
+      expect(await org()).toMatchObject({ memberUnits: null, subscriptionPlan: "pro", subscriptionStatus: "active" });
+    });
+
+    it("does not apply an older event's seats over newer ones", async () => {
+      await deliver(handleSubscriptionActive, "subscription.active", subscription({ units: 25 }), "2026-10-01T00:00:01Z");
+      await deliver(handleSubscriptionUpdated, "subscription.updated", subscription({ units: 40 }), "2026-10-05T00:00:00Z");
+      await deliver(handleSubscriptionUpdated, "subscription.updated", subscription({ units: 28 }), "2026-10-04T00:00:00Z");
+      expect((await org()).memberUnits).toBe(40);
+    });
+
+    it("never writes seats to another organization", async () => {
+      await deliver(handleSubscriptionActive, "subscription.active", subscription({ units: 25 }), "2026-10-01T00:00:01Z");
+      await expect(deliver(handleSubscriptionUpdated, "subscription.updated", subscription({
+        units: 99,
+        customer_id: "cus_attacker",
+        customer: { id: "cus_attacker", external_id: "x", metadata: {} },
+      }), "2026-10-02T00:00:00Z")).rejects.toThrow();
+      expect((await org()).memberUnits).toBe(25);
+      expect((await org(otherOrgId)).memberUnits).toBeNull();
+    });
+  });
+
   it("maps the second product to its plan", async () => {
     await deliver(
       handleSubscriptionActive,
