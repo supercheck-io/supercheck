@@ -17,7 +17,7 @@ describe("seatChangePreview", () => {
 
   it("previews a decrease as a credit", () => {
     expect(seatChangePreview({ ...seats, limit: 30 }, 27)).toBe(
-      "Remove 3 seats: -$24/month. The unused time is credited to your next invoice.",
+      "Remove 3 seats: -$24/month. The unused time is credited on your next invoice.",
     );
   });
 });
@@ -28,7 +28,7 @@ describe("MemberSeats", () => {
 
   it("tells Plus organizations what Pro offers", () => {
     render(<MemberSeats plan="plus" seats={{ current: 5, limit: 5 }} canManage onSaved={jest.fn()} />);
-    expect(screen.getByText(/Need more than 5 members\? Pro includes 25, and extra members are \$8 per member per month/)).toBeInTheDocument();
+    expect(screen.getByText(/Need more than 5 members\? Pro includes 25, and extra members are \$8 per member per month, up to 100 members/)).toBeInTheDocument();
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 
@@ -36,6 +36,7 @@ describe("MemberSeats", () => {
     render(<MemberSeats plan="pro" seats={{ ...proSeats, limit: 30, purchasedSeats: 30 }} canManage={false} onSaved={jest.fn()} />);
     expect(screen.getByText(/Members: 22 \/ 30 \(25 included \+ 5 extra at \$8\/month each\)/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Change member seats" })).not.toBeInTheDocument();
+    expect(screen.getByText("Ask the organization owner to change member seats.")).toBeInTheDocument();
   });
 
   it("previews the cost and buys seats for the organization", async () => {
@@ -74,6 +75,14 @@ describe("MemberSeats", () => {
   ] as const)("renders nothing for %s without seat details", (plan, seats) => {
     const { container } = render(<MemberSeats plan={plan} seats={seats} canManage onSaved={jest.fn()} />);
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it("points to sales above the member maximum", () => {
+    render(<MemberSeats organizationId="org_1" plan="pro" seats={proSeats} canManage onSaved={jest.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Change member seats" }));
+    fireEvent.change(screen.getByLabelText("Total members"), { target: { value: "101" } });
+    expect(screen.getByText(/Need more than 100 members\? Contact us/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Confirm" })).toBeDisabled();
   });
 
   it("will not go below the members in use", () => {

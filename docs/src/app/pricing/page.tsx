@@ -50,7 +50,7 @@ function planFeatures(id: 'plus' | 'pro', support: string): Feature[] {
         { text: `${usd(limits.defaultSpendingLimitCents)} default overage cap`, hint: 'Monthly cap with a hard stop. Owners can change it.' },
         `${fmt(limits.runningCapacity)} concurrent runs`,
         id === 'pro'
-            ? { text: `${fmt(limits.maxTeamMembers)} team members, ${fmt(limits.maxProjects)} projects`, hint: `Extra members ${usd(catalog.pro.extraMemberPriceCents)} per member per month, prorated` }
+            ? { text: `${fmt(limits.maxTeamMembers)} team members, ${fmt(limits.maxProjects)} projects`, hint: `Then ${usd(catalog.pro.extraMemberPriceCents)} per extra member per month, prorated, up to ${fmt(catalog.pro.maxTotalMembers)} members` }
             : `${fmt(limits.maxTeamMembers)} team members, ${fmt(limits.maxProjects)} projects`,
         `${fmt(limits.maxStatusPages)} status pages with custom domains, ${fmt(limits.maxStatusPageSubscribers)} subscribers each`,
         support,
@@ -156,7 +156,7 @@ const comparisonFeatures: { category: string; items: ComparisonItem[] }[] = [
     },
     {
         category: 'Team and projects', items: [
-            { name: 'Team members', plus: `${Number(catalog.plus.limits.maxTeamMembers).toLocaleString("en-US")}`, pro: `${Number(catalog.pro.limits.maxTeamMembers).toLocaleString("en-US")}, then ${usd(catalog.pro.extraMemberPriceCents)}/member/month`, enterprise: CUSTOM },
+            { name: 'Team members', plus: `${Number(catalog.plus.limits.maxTeamMembers).toLocaleString("en-US")}`, pro: `${Number(catalog.pro.limits.maxTeamMembers).toLocaleString("en-US")}, then ${usd(catalog.pro.extraMemberPriceCents)}/member/month up to ${fmt(catalog.pro.maxTotalMembers)}`, enterprise: CUSTOM },
             { name: 'Projects', plus: `${Number(catalog.plus.limits.maxProjects).toLocaleString("en-US")}`, pro: `${Number(catalog.pro.limits.maxProjects).toLocaleString("en-US")}`, enterprise: CUSTOM },
             { name: 'Status pages', plus: `${Number(catalog.plus.limits.maxStatusPages).toLocaleString("en-US")}`, pro: `${Number(catalog.pro.limits.maxStatusPages).toLocaleString("en-US")}`, enterprise: CUSTOM },
             { name: 'Subscribers per status page', plus: `${Number(catalog.plus.limits.maxStatusPageSubscribers).toLocaleString("en-US")}`, pro: `${Number(catalog.pro.limits.maxStatusPageSubscribers).toLocaleString("en-US")}`, enterprise: CUSTOM },

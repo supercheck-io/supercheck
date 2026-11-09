@@ -506,7 +506,7 @@ export default function SubscribePage() {
                   `${Number(plan.features.aiCredits).toLocaleString("en-US")} AI credits/month · fair use`,
                   `${Number(plan.features.sreInvestigationUnits).toLocaleString("en-US")} completed AI SRE investigations/month`,
                   `${Number(plan.features.concurrentExecutions).toLocaleString("en-US")} concurrent runs`,
-                  `${plan.features.teamMembers} team members${plan.id === "pro" ? ` (extra members ${usd(catalog.pro.extraMemberPriceCents)}/month each)` : ""} · ${plan.features.projects} projects`,
+                  `${plan.features.teamMembers} team members${plan.id === "pro" ? ` (then ${usd(catalog.pro.extraMemberPriceCents)}/month per extra member, up to ${catalog.pro.maxTotalMembers})` : ""} · ${plan.features.projects} projects`,
                   plan.features.statusPageSubscribers === undefined
                     ? `${plan.features.statusPages} status pages`
                     : `${plan.features.statusPages} status pages · ${Number(plan.features.statusPageSubscribers).toLocaleString("en-US")} subscribers each`,

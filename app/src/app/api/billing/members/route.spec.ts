@@ -48,7 +48,7 @@ describe("POST /api/billing/members", () => {
     jest.clearAllMocks();
     mockImpersonation.mockResolvedValue("none");
     (requireUserAuthContext as jest.Mock).mockResolvedValue({ userId: "user-1", organizationId: ORG, isCliAuth: false });
-    (getUserOrgRole as jest.Mock).mockResolvedValue("org_admin");
+    (getUserOrgRole as jest.Mock).mockResolvedValue("org_owner");
     (subscriptionService.getSubscriptionAccessStatus as jest.Mock).mockResolvedValue({ isActive: true, plan: "pro", status: "active" });
     (subscriptionService.getPlanLimits as jest.Mock).mockResolvedValue({ plan: "pro", maxTeamMembers: 25 });
     (db.query.organization.findFirst as jest.Mock).mockResolvedValue({ id: ORG, subscriptionId: "sub_1", memberUnits: 25 });
@@ -68,12 +68,11 @@ describe("POST /api/billing/members", () => {
     }));
   });
 
-  it("lets the owner lower seats down to the members in use", async () => {
-    (getUserOrgRole as jest.Mock).mockResolvedValue("org_owner");
+  it("lowers seats down to the members in use, crediting the next invoice", async () => {
     (db.query.organization.findFirst as jest.Mock).mockResolvedValue({ id: ORG, subscriptionId: "sub_1", memberUnits: 40 });
     mockCountSeats.mockResolvedValue(30);
     expect((await post({ organizationId: ORG, totalMembers: 30 })).status).toBe(200);
-    expect(mockUpdate).toHaveBeenCalledWith("sub_1", { units: 30, proration_behavior: "invoice" });
+    expect(mockUpdate).toHaveBeenCalledWith("sub_1", { units: 30, proration_behavior: "prorate" });
   });
 
   it("does not call the provider when the seats are unchanged", async () => {
@@ -82,9 +81,11 @@ describe("POST /api/billing/members", () => {
     expect(mockUpdate).not.toHaveBeenCalled();
   });
 
-  it.each(["project_admin", "project_editor", "project_viewer", null])("refuses role %s", async (role) => {
+  it.each(["org_admin", "project_admin", "project_editor", "project_viewer", null])("refuses role %s", async (role) => {
     (getUserOrgRole as jest.Mock).mockResolvedValue(role);
-    expect((await post({ organizationId: ORG, totalMembers: 30 })).status).toBe(403);
+    const response = await post({ organizationId: ORG, totalMembers: 30 });
+    expect(response.status).toBe(403);
+    expect((await response.json()).error).toBe("Only the organization owner can change member seats");
     expect(mockUpdate).not.toHaveBeenCalled();
   });
 
@@ -99,7 +100,7 @@ describe("POST /api/billing/members", () => {
     expect(mockUpdate).not.toHaveBeenCalled();
   });
 
-  it.each([24, 1001, 25.5, "30", null])("rejects totalMembers %p", async (totalMembers) => {
+  it.each([24, 101, 25.5, "30", null])("rejects totalMembers %p", async (totalMembers) => {
     expect((await post({ organizationId: ORG, totalMembers })).status).toBe(400);
     expect(mockUpdate).not.toHaveBeenCalled();
   });

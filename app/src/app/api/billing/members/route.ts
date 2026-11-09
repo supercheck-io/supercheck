@@ -52,8 +52,9 @@ export async function POST(request: NextRequest) {
     }
 
     const orgRole = await getUserOrgRole(userId, organizationId);
-    if (orgRole !== Role.ORG_ADMIN && orgRole !== Role.ORG_OWNER) {
-      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
+    // Seats change what the owner's card is charged, like checkout and the customer portal.
+    if (orgRole !== Role.ORG_OWNER) {
+      return NextResponse.json({ error: "Only the organization owner can change member seats" }, { status: 403 });
     }
     const impersonation = await getImpersonationState();
     if (impersonation === "unknown") {
@@ -104,7 +105,8 @@ export async function POST(request: NextRequest) {
       used: inUse,
       extraMemberPriceCents: EXTRA_MEMBER_PRICE_CENTS,
     });
-    if (totalMembers === effectiveMemberLimit(plan, org.memberUnits)) {
+    const currentLimit = effectiveMemberLimit(plan, org.memberUnits);
+    if (totalMembers === currentLimit) {
       return NextResponse.json(summary(org.memberUnits));
     }
 
@@ -114,7 +116,11 @@ export async function POST(request: NextRequest) {
     let units: number | null;
     try {
       const subscription = await createPolarClient({ accessToken: config.accessToken, server: config.server })
-        .subscriptions.update(org.subscriptionId, { units: totalMembers, proration_behavior: "invoice" });
+        .subscriptions.update(org.subscriptionId, {
+          units: totalMembers,
+          // An increase is charged now; a decrease is credited on the next invoice.
+          proration_behavior: totalMembers > currentLimit ? "invoice" : "prorate",
+        });
       units = subscription.units ?? null;
     } catch (error) {
       const statusCode = (error as { statusCode?: unknown })?.statusCode;
@@ -137,7 +143,7 @@ export async function POST(request: NextRequest) {
       action: "billing_member_seats_updated",
       details: {
         resource: "billing_member_seats",
-        changes: { memberSeats: { before: effectiveMemberLimit(plan, org.memberUnits), after: units } },
+        changes: { memberSeats: { before: currentLimit, after: units } },
       },
     });
     // Bound to the subscription we changed, so a replacement written meanwhile by a webhook is not overwritten.

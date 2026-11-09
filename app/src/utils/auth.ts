@@ -22,6 +22,7 @@ import { apiKey } from "@better-auth/api-key";
 import { ac, roles, Role } from "@/lib/rbac/permissions";
 import { EmailService } from "@/lib/email-service";
 import { revokeCredentialsAfterPasswordResetSafely } from "@/lib/security/password-reset-cleanup";
+import catalog from "@/lib/billing/plan-catalog.json";
 import {
   checkPasswordResetRateLimit,
   checkEmailVerificationRateLimit,
@@ -341,7 +342,7 @@ export const auth = betterAuth({
       allowUserToCreateOrganization: false,
       organizationLimit: 1,
       creatorRole: "org_owner",
-      membershipLimit: 100,
+      membershipLimit: catalog.pro.maxTotalMembers,
       // Disable team features (we use projects instead)
       teams: {
         enabled: false,

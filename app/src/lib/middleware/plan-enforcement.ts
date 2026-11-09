@@ -10,7 +10,7 @@ import { isPolarEnabled } from "@/lib/feature-flags";
 import { db } from "@/utils/db";
 import { monitors, organization, statusPages } from "@/db/schema";
 import { and, eq, ne, sql } from "drizzle-orm";
-import { EXTRA_MEMBER_PRICE_CENTS, effectiveMemberLimit } from "@/lib/billing/member-seats";
+import { EXTRA_MEMBER_PRICE_CENTS, MAX_MEMBER_SEATS, effectiveMemberLimit } from "@/lib/billing/member-seats";
 import { notInDeletedProject, withPlanLimitLock, PlanLimitBusyError, type PlanLimitTransaction } from "@/lib/middleware/plan-limit-lock";
 
 /** The messages `getOrganizationPlan` throws for an organization's own subscription state; safe to show to it. */
@@ -295,7 +295,7 @@ export async function checkTeamMemberLimit(
 
     if (currentCount >= limit) {
       const next = plan.plan === "pro"
-        ? ` An owner or admin can add member seats on the Subscription tab of Organization Admin ($${EXTRA_MEMBER_PRICE_CENTS / 100} per extra member per month).`
+        ? ` The organization owner can add member seats on the Subscription tab of Organization Admin ($${EXTRA_MEMBER_PRICE_CENTS / 100} per extra member per month, up to ${MAX_MEMBER_SEATS} members).`
         : "";
       return {
         allowed: false,

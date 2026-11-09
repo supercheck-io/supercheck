@@ -7,8 +7,8 @@ import catalog from "./plan-catalog.json";
 export const EXTRA_MEMBER_PRICE_CENTS = catalog.pro.extraMemberPriceCents;
 /** Members the Pro price includes (catalog default; the plan_limits row is authoritative for enforcement). */
 export const PRO_INCLUDED_MEMBERS = catalog.pro.limits.maxTeamMembers;
-/** Upper bound an organization can buy without talking to sales. */
-export const MAX_MEMBER_SEATS = 1000;
+/** Most members an organization can have; also the auth layer's membership limit, so they cannot drift. */
+export const MAX_MEMBER_SEATS = catalog.pro.maxTotalMembers;
 
 /**
  * Member limit for an organization: Pro may buy seats above its included members (seats count

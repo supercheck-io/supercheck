@@ -1,4 +1,4 @@
-import { countSeatsInUse, effectiveMemberLimit, EXTRA_MEMBER_PRICE_CENTS, PRO_INCLUDED_MEMBERS } from "./member-seats";
+import { countSeatsInUse, effectiveMemberLimit, EXTRA_MEMBER_PRICE_CENTS, MAX_MEMBER_SEATS, PRO_INCLUDED_MEMBERS } from "./member-seats";
 
 describe("effectiveMemberLimit", () => {
   const pro = { plan: "pro", maxTeamMembers: 25 };
@@ -17,6 +17,7 @@ describe("effectiveMemberLimit", () => {
   it("reads the catalog price and included members", () => {
     expect(EXTRA_MEMBER_PRICE_CENTS).toBe(800);
     expect(PRO_INCLUDED_MEMBERS).toBe(25);
+    expect(MAX_MEMBER_SEATS).toBe(100);
   });
 });
 

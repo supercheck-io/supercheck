@@ -551,7 +551,7 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
                   organizationId={data.organizationId}
                   plan={data.subscription.plan}
                   seats={data.limits.teamMembers}
-                  canManage={currentUserRole === "org_owner" || currentUserRole === "org_admin"}
+                  canManage={canManageSubscription}
                   onSaved={fetchSubscriptionData}
                 />
               </div>

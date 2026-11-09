@@ -23,6 +23,7 @@ export interface TeamMemberSeats {
   extraMemberPriceCents?: number;
 }
 
+const MAX_MEMBERS = catalog.pro.maxTotalMembers;
 const dollars = (cents: number) =>
   `$${(cents / 100).toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
 
@@ -34,10 +35,10 @@ export function seatChangePreview(seats: Required<Pick<TeamMemberSeats, "limit" 
   if (next === seats.limit) return "No change.";
   return deltaSeats > 0
     ? `Add ${deltaSeats} ${deltaSeats === 1 ? "member" : "members"}: +${dollars(deltaCents)}/month. The prorated charge for the rest of this billing period is invoiced now.`
-    : `Remove ${-deltaSeats} ${deltaSeats === -1 ? "seat" : "seats"}: -${dollars(-deltaCents)}/month. The unused time is credited to your next invoice.`;
+    : `Remove ${-deltaSeats} ${deltaSeats === -1 ? "seat" : "seats"}: -${dollars(-deltaCents)}/month. The unused time is credited on your next invoice.`;
 }
 
-/** Member seat summary for the subscription tab, with a seat dialog for Pro owners and admins. */
+/** Member seat summary for the subscription tab, with a seat dialog for the Pro owner. */
 export function MemberSeats({
   organizationId,
   plan,
@@ -59,7 +60,7 @@ export function MemberSeats({
     return (
       <p className="text-sm text-muted-foreground">
         Need more than {seats.limit} members? {catalog.pro.name} includes {catalog.pro.limits.maxTeamMembers}, and extra
-        members are {dollars(catalog.pro.extraMemberPriceCents)} per member per month.
+        members are {dollars(catalog.pro.extraMemberPriceCents)} per member per month, up to {MAX_MEMBERS} members.
       </p>
     );
   }
@@ -70,7 +71,7 @@ export function MemberSeats({
   const extra = Math.max(0, seats.limit - included);
   const floor = Math.max(included, seats.current);
   const next = Number(value);
-  const valid = Number.isInteger(next) && next >= floor && next <= 1000;
+  const valid = Number.isInteger(next) && next >= floor && next <= MAX_MEMBERS;
 
   const save = async () => {
     setSaving(true);
@@ -101,10 +102,12 @@ export function MemberSeats({
         Members: {seats.current} / {seats.limit} ({included} included
         {extra > 0 ? ` + ${extra} extra at ${dollars(price)}/month each` : `; extra members ${dollars(price)}/month each`})
       </p>
-      {canManage && (
+      {canManage ? (
         <Button variant="outline" size="sm" onClick={() => { setValue(String(seats.limit)); setOpen(true); }}>
           Change member seats
         </Button>
+      ) : (
+        <p className="text-muted-foreground">Ask the organization owner to change member seats.</p>
       )}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
@@ -121,7 +124,7 @@ export function MemberSeats({
               type="number"
               inputMode="numeric"
               min={floor}
-              max={1000}
+              max={MAX_MEMBERS}
               step={1}
               value={value}
               onChange={(event) => setValue(event.target.value)}
@@ -129,7 +132,9 @@ export function MemberSeats({
             <p className="text-sm text-muted-foreground" aria-live="polite">
               {valid
                 ? seatChangePreview({ limit: seats.limit, included, extraMemberPriceCents: price }, next)
-                : `Choose a whole number from ${floor} to 1,000. You can't go below the members and pending invitations you have now.`}
+                : next > MAX_MEMBERS
+                  ? `Need more than ${MAX_MEMBERS} members? Contact us at hello@supercheck.io.`
+                  : `Choose a whole number from ${floor} to ${MAX_MEMBERS}. You can't go below the members and pending invitations you have now.`}
             </p>
           </div>
           <DialogFooter>
