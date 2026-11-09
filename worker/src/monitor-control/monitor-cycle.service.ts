@@ -137,6 +137,20 @@ export class MonitorCycleService {
       );
       if (!decision) return 'waiting';
 
+      // Published jobs were never confirmed (crash between persist and addBulk) and nothing landed:
+      // the regions were never asked, so "missing" would be a false outage. Never synthesize it.
+      if (
+        cycle.publishPending &&
+        rows.length === 0 &&
+        decision.closedBy === 'deadline'
+      ) {
+        this.logger.warn(
+          `Cycle ${cycleId} aborted: its jobs were never confirmed published and no result arrived`,
+        );
+        await this.finish(tx, cycleId, 'aborted', now);
+        return 'aborted';
+      }
+
       // Paused, disabled or billing-held monitors must never become missing-region downtime.
       if (!monitor.enabled || monitor.status === 'paused') {
         await this.finish(tx, cycleId, 'aborted', now);
@@ -348,9 +362,7 @@ export class MonitorCycleService {
         // multi-location mode from this count, so it must match the mode chosen at closure.
         locationResults: [...new Set(cycle.expectedLocations)].map(
           (location) => {
-            const row = rows.find(
-              (candidate) => candidate.location === location,
-            );
+            const row = this.frozenRow(cycle, location, rows);
             if (row)
               return {
                 location,
@@ -406,6 +418,30 @@ export class MonitorCycleService {
         ),
       );
     return true;
+  }
+
+  /**
+   * The row the closure judged, not whatever is newest now: a region the cycle recorded as missing
+   * keeps its synthetic row, an observed one ignores results that landed after the closure. Rows
+   * closed before observed/missing were stored fall back to the latest row.
+   */
+  private frozenRow<T extends ResultRow>(
+    cycle: typeof schema.monitorCycles.$inferSelect,
+    location: string,
+    rows: T[],
+  ): T | undefined {
+    const forLocation = rows.filter((row) => row.location === location);
+    const isSynthetic = (row: T) =>
+      Boolean((row.details as { synthetic?: boolean } | null)?.synthetic);
+    if (!cycle.observedLocations) return forLocation[0];
+    if (cycle.missingLocations?.includes(location))
+      return forLocation.find(isSynthetic);
+    const frozenAt = cycle.evaluation?.observedAt
+      ? new Date(cycle.evaluation.observedAt).getTime()
+      : Infinity;
+    return forLocation.find(
+      (row) => !isSynthetic(row) && row.checkedAt.getTime() <= frozenAt,
+    );
   }
 
   /** A cycle that cannot be closed (persistent verification failure) must not stay open forever. */

@@ -472,6 +472,90 @@ suite('MonitorCycleService (PostgreSQL)', () => {
     );
   });
 
+  describe('publish confirmation and frozen alert metadata', () => {
+    const pending = (id: string) =>
+      db
+        .update(schema.monitorCycles)
+        .set({ publishPending: true })
+        .where(eq(schema.monitorCycles.id, id));
+
+    it('aborts, never writes synthetic downs or alerts, for a cycle whose jobs were never published', async () => {
+      await openCycle('unpub');
+      await pending('unpub');
+      expect(await service.closeCycle('unpub', afterDeadline)).toBe('aborted');
+      expect(await cycleRow('unpub')).toMatchObject({ status: 'aborted' });
+      expect(await results('unpub')).toHaveLength(0);
+      expect(await service.notifyCycle('unpub')).toBe(false);
+      expect(sendNotification).not.toHaveBeenCalled();
+    });
+
+    it('still closes a cycle with results even if the published flag was never cleared', async () => {
+      await openCycle('stale-flag', {
+        strategy: 'all',
+        locations: ['eu', 'us'],
+      });
+      await pending('stale-flag');
+      await report('stale-flag', 'eu', true);
+      expect(await service.closeCycle('stale-flag', afterDeadline)).toBe(
+        'closed',
+      );
+      expect(await results('stale-flag')).toHaveLength(2); // us is a genuine synthetic miss
+    });
+
+    it('keeps the legacy outage when an older app persisted the cycle (flag false)', async () => {
+      await openCycle('legacy', { strategy: 'all', locations: ['eu', 'us'] });
+      expect(await service.closeCycle('legacy', afterDeadline)).toBe('closed');
+      expect(await cycleRow('legacy')).toMatchObject({ resultStatus: 'down' });
+    });
+
+    it('does not abort an unpublished cycle before its deadline', async () => {
+      await openCycle('early-unpub');
+      await pending('early-unpub');
+      expect(await service.closeCycle('early-unpub', t0)).toBe('waiting');
+      expect(await cycleRow('early-unpub')).toMatchObject({ status: 'open' });
+    });
+
+    it('reports the synthetic missing row, not a late real up result, in the alert metadata', async () => {
+      await openCycle('late-up', { strategy: 'all', locations: ['eu', 'us'] });
+      await report('late-up', 'eu', false, new Date(t0.getTime() + 1000));
+      await service.closeCycle('late-up', afterDeadline);
+      // us missed the deadline (synthetic down); then its real result lands.
+      await report('late-up', 'us', true, new Date(t0.getTime() + 400_000));
+      await report('late-up', 'eu', true, new Date(t0.getTime() + 410_000));
+      expect(await service.notifyCycle('late-up')).toBe(true);
+      const metadata = sendNotification.mock.calls[0][3] as {
+        locationResults: Array<{ location: string; isUp: boolean }>;
+      };
+      expect(metadata.locationResults).toEqual([
+        expect.objectContaining({ location: 'eu', isUp: false }),
+        expect.objectContaining({ location: 'us', isUp: false }),
+      ]);
+    });
+
+    it('ignores a late result for an observed region when building alert metadata', async () => {
+      await openCycle('late-pending', {
+        strategy: 'any',
+        locations: ['eu', 'us'],
+      });
+      await report('late-pending', 'eu', false, new Date(t0.getTime() + 1000));
+      await report('late-pending', 'us', false, new Date(t0.getTime() + 2000));
+      await service.closeCycle('late-pending', afterDeadline);
+      await report(
+        'late-pending',
+        'us',
+        true,
+        new Date(t0.getTime() + 500_000),
+      );
+      await service.notifyCycle('late-pending');
+      const metadata = sendNotification.mock.calls[0][3] as {
+        locationResults: Array<{ location: string; isUp: boolean }>;
+      };
+      expect(
+        metadata.locationResults.find((r) => r.location === 'us')?.isUp,
+      ).toBe(false);
+    });
+  });
+
   describe('review hardening', () => {
     it('keeps the cycle without a receipt when delivery fails, backs off and gives up after bounded attempts', async () => {
       await openCycle('r1', { strategy: 'all' });

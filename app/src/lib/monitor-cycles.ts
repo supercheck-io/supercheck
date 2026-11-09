@@ -137,6 +137,8 @@ export async function persistMonitorCycle(input: {
       expectedLocations: Array.from(new Set(input.configuredLocations)),
       strategy: input.policy.strategy,
       threshold: input.policy.threshold,
+      // Cleared by markMonitorCyclePublished once addBulk returned; the closer never fails a never-published cycle.
+      publishPending: true,
     })
     .onConflictDoNothing({ target: monitorCycles.id })
     .returning({ id: monitorCycles.id });
@@ -152,7 +154,7 @@ export async function persistMonitorCycle(input: {
   if (existing) {
     await db
       .update(monitorCycles)
-      .set({ expectedLocations: Array.from(new Set(input.configuredLocations)) })
+      .set({ expectedLocations: Array.from(new Set(input.configuredLocations)), publishPending: true })
       .where(
         and(
           eq(monitorCycles.id, input.id),
@@ -181,4 +183,12 @@ export async function abortMonitorCycle(id: string): Promise<void> {
     .update(monitorCycles)
     .set({ status: "aborted", closedAt: new Date() })
     .where(and(eq(monitorCycles.id, id), eq(monitorCycles.status, "open")));
+}
+
+/** Jobs are in Redis: from here a silent region really is missing. Best effort, the closer tolerates a stale flag. */
+export async function markMonitorCyclePublished(id: string): Promise<void> {
+  await db
+    .update(monitorCycles)
+    .set({ publishPending: false })
+    .where(eq(monitorCycles.id, id));
 }

@@ -14,6 +14,11 @@ interface ScheduleMonitorOptions {
   retryLimit?: number;
 }
 
+/** The cadence scheduleMonitor actually registers (synthetic checks have a floor). */
+function effectiveFrequencyMinutes(type: string, frequencyMinutes: number): number {
+  return type === "synthetic_test" ? Math.max(frequencyMinutes, SYNTHETIC_MIN_FREQUENCY_MINUTES) : frequencyMinutes;
+}
+
 /**
  * Creates or updates a monitor scheduler using BullMQ
  */
@@ -27,10 +32,7 @@ export async function scheduleMonitor(
     const { monitorSchedulerQueue } = await getQueues();
     const schedulerJobName = `scheduled-monitor-${options.monitorId}`;
     // Backstop for the write-path check: concurrent edits (or rows saved before it) must not schedule faster checks.
-    const frequencyMinutes =
-      options.jobData.type === "synthetic_test"
-        ? Math.max(options.frequencyMinutes, SYNTHETIC_MIN_FREQUENCY_MINUTES)
-        : options.frequencyMinutes;
+    const frequencyMinutes = effectiveFrequencyMinutes(options.jobData.type, options.frequencyMinutes);
 
     // Clean up ALL existing repeatable jobs for this monitor ID
     // Using .filter() instead of .find() to remove ALL matching jobs,
@@ -182,8 +184,27 @@ export async function initializeMonitorSchedulers(): Promise<{ success: boolean;
         let scheduledCount = 0;
         let failedCount = 0;
 
-        for (const monitor of activeMonitors) {
-          if (monitor.frequencyMinutes && monitor.frequencyMinutes > 0) {
+        const RENEW_EVERY_MS = 30_000;
+        let lastRenewal = Date.now();
+        for (const listed of activeMonitors) {
+          // The 120s lock outlives a normal sync, but a large fleet can exceed it: extend it while
+          // still the owner, and stop if another replica has taken over.
+          if (Date.now() - lastRenewal >= RENEW_EVERY_MS) {
+            const renewed = await redisClient.eval(
+              "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('expire', KEYS[1], ARGV[2]) else return 0 end",
+              1, LOCK_KEY, lockToken, LOCK_TTL_SECONDS,
+            );
+            if (!renewed) {
+              console.warn('[MonitorScheduler] Init lock lost mid-sync; stopping so a newer sync owns the queue');
+              break;
+            }
+            lastRenewal = Date.now();
+          }
+          // The list was read before the loop: a frequency/pause/delete edit since then must win,
+          // so schedule from the current row, never the listed one.
+          const [monitor] = await db.select().from(monitorSchemaDb).where(eq(monitorSchemaDb.id, listed.id));
+          if (!monitor || !monitor.enabled || monitor.status === 'paused' || !monitor.frequencyMinutes) continue;
+          if (monitor.frequencyMinutes > 0) {
             try {
             
               const jobDataPayload: MonitorJobData = {
@@ -246,8 +267,8 @@ export async function initializeMonitorSchedulers(): Promise<{ success: boolean;
 
 /**
  * Removes repeatables whose monitor is deleted, disabled or scheduled under a different id.
- * A repeatable for an existing enabled monitor is never removed: a monitor created
- * mid-rollout may not have its scheduledJobId written yet. Runs under the init lock.
+ * A repeatable at the monitor's current cadence is never removed (a monitor created
+ * mid-rollout may not have its scheduledJobId written yet); extra or stale-cadence ones are. Runs under the init lock.
  * A paused monitor resumed concurrently is not lost: resume commits its status before re-adding the repeatable, and
  * init reads active monitors only after these removals and re-schedules them.
  */
@@ -259,16 +280,25 @@ async function removeOrphanedMonitorRepeatables(queue: Queue): Promise<Repeatabl
   if (monitorIds.length === 0) return repeatableJobs;
 
   const rows = await db
-    .select({ id: monitorSchemaDb.id, enabled: monitorSchemaDb.enabled, status: monitorSchemaDb.status, scheduledJobId: monitorSchemaDb.scheduledJobId })
+    .select({ id: monitorSchemaDb.id, enabled: monitorSchemaDb.enabled, status: monitorSchemaDb.status, scheduledJobId: monitorSchemaDb.scheduledJobId, type: monitorSchemaDb.type, frequencyMinutes: monitorSchemaDb.frequencyMinutes })
     .from(monitorSchemaDb)
     .where(inArray(monitorSchemaDb.id, monitorIds));
   const monitorsById = new Map(rows.map((row) => [row.id, row]));
 
+  // An enabled monitor keeps one repeatable at its current cadence. A frequency edit that raced a
+  // sync leaves an extra one at the old cadence (a different key), which would double its checks.
+  const keptFor = new Set<string>();
   const orphanedJobs = repeatableJobs.filter((job) => {
     const monitorId = monitorIdOf(job);
     if (!monitorId) return false;
     const monitor = monitorsById.get(monitorId);
-    return !monitor || !monitor.enabled || monitor.status === "paused" || (monitor.scheduledJobId != null && monitor.scheduledJobId !== monitorId);
+    if (!monitor || !monitor.enabled || monitor.status === "paused" || (monitor.scheduledJobId != null && monitor.scheduledJobId !== monitorId)) return true;
+    if (!monitor.frequencyMinutes) return false;
+    const expectedEvery = effectiveFrequencyMinutes(monitor.type, monitor.frequencyMinutes) * 60_000;
+    if (job.pattern || Number(job.every) !== expectedEvery) return true;
+    if (keptFor.has(monitorId)) return true;
+    keptFor.add(monitorId);
+    return false;
   });
   await Promise.all(orphanedJobs.map((job) => queue.removeRepeatableByKey(job.key)));
   return repeatableJobs.filter((job) => !orphanedJobs.includes(job));
