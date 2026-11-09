@@ -8,6 +8,7 @@ Supercheck brings Playwright test automation, k6 performance testing, uptime and
 [![Documentation](https://img.shields.io/badge/Docs-supercheck.io-blue)](https://supercheck.io/docs/app/welcome)
 [![npm](https://img.shields.io/npm/v/@supercheck/cli?logo=npm&label=CLI)](https://www.npmjs.com/package/@supercheck/cli)
 [![License](https://img.shields.io/badge/license-AGPL--3.0--only-blue.svg)](LICENSE)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/supercheck-io/supercheck/badge)](https://scorecard.dev/viewer/?uri=github.com/supercheck-io/supercheck)
 
 ## What Supercheck includes
 
