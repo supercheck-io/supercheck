@@ -130,6 +130,82 @@ export async function removeScheduledMonitor(schedulerId: string, signal?: Abort
   }
 }
 
+type MonitorRow = typeof monitorSchemaDb.$inferSelect;
+
+/** Schedules a monitor from its row and records the scheduler id. */
+async function scheduleFromRow(monitor: MonitorRow, repeatables?: RepeatableJob[]): Promise<void> {
+  const schedulerId = await scheduleMonitor({
+    monitorId: monitor.id,
+    frequencyMinutes: monitor.frequencyMinutes!,
+    jobData: {
+      monitorId: monitor.id,
+      projectId: monitor.projectId ?? undefined,
+      type: monitor.type as MonitorJobData['type'],
+      target: monitor.target,
+      config: monitor.config as MonitorConfig,
+      frequencyMinutes: monitor.frequencyMinutes!,
+    },
+    retryLimit: 3,
+  }, undefined, repeatables);
+  await db.update(monitorSchemaDb).set({ scheduledJobId: schedulerId }).where(eq(monitorSchemaDb.id, monitor.id));
+}
+
+const REPAIR_BATCH = 100;
+const REPAIR_INTERVAL_MS = 5 * 60_000;
+const REPAIR_LOCK_KEY = 'monitor:scheduler:init:lock'; // shared with init so the two never interleave
+
+/**
+ * Periodic repair: schedules enabled, non-paused monitors with a frequency whose schedule is lost
+ * (a failed reconcile nulled scheduledJobId, or the repeatable vanished). Init only runs at startup, so
+ * without this a lost schedule stays lost until the next restart. Idempotent with init: it takes the same
+ * lock, only adds what is missing, and handles at most REPAIR_BATCH monitors per sweep.
+ */
+export async function repairMonitorSchedules(): Promise<{ repaired: number; failed: number }> {
+  const { monitorSchedulerQueue } = await getQueues();
+  const redisClient = (await monitorSchedulerQueue.client) as unknown as Redis;
+  const lockToken = `${process.pid}:${randomUUID()}`;
+  if (!(await redisClient.set(REPAIR_LOCK_KEY, lockToken, 'EX', 60, 'NX'))) return { repaired: 0, failed: 0 };
+  try {
+    const repeatables = await monitorSchedulerQueue.getRepeatableJobs();
+    const scheduled = new Set(repeatables.map((job) => job.name?.match(/^scheduled-monitor-([0-9a-f-]+)$/)?.[1]));
+    const active = await db
+      .select({ id: monitorSchemaDb.id, scheduledJobId: monitorSchemaDb.scheduledJobId })
+      .from(monitorSchemaDb)
+      .where(and(isNotNull(monitorSchemaDb.frequencyMinutes), eq(monitorSchemaDb.enabled, true), ne(monitorSchemaDb.status, 'paused')));
+    const missing = active.filter((row) => row.scheduledJobId == null || !scheduled.has(row.id)).slice(0, REPAIR_BATCH);
+    let repaired = 0;
+    let failed = 0;
+    for (const { id } of missing) {
+      try {
+        // Re-read: an edit or pause since the list must win.
+        const [monitor] = await db.select().from(monitorSchemaDb).where(eq(monitorSchemaDb.id, id));
+        if (!monitor || !monitor.enabled || monitor.status === 'paused' || !monitor.frequencyMinutes) continue;
+        await scheduleFromRow(monitor);
+        repaired++;
+      } catch (error) {
+        console.error(`[MonitorScheduler] Repair failed for monitor ${id}:`, error);
+        failed++;
+      }
+    }
+    if (repaired > 0 || failed > 0) console.log(`[MonitorScheduler] Repair sweep rescheduled ${repaired} monitor(s), ${failed} failed`);
+    return { repaired, failed };
+  } finally {
+    await redisClient
+      .eval("if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end", 1, REPAIR_LOCK_KEY, lockToken)
+      .catch((unlockError: unknown) => console.error('[MonitorScheduler] Failed to release repair lock:', unlockError));
+  }
+}
+
+/** Starts the repair sweep once per process (survives hot reload). */
+export function startMonitorScheduleRepair(): void {
+  const state = globalThis as { __monitorRepairTimer?: ReturnType<typeof setInterval> };
+  if (state.__monitorRepairTimer) return;
+  state.__monitorRepairTimer = setInterval(() => {
+    repairMonitorSchedules().catch((error) => console.error('[MonitorScheduler] Repair sweep failed:', error));
+  }, REPAIR_INTERVAL_MS);
+  state.__monitorRepairTimer.unref?.();
+}
+
 /**
  * Initializes monitor schedulers for all monitors with frequency
  * Called on application startup.
@@ -212,27 +288,7 @@ export async function initializeMonitorSchedulers(): Promise<{ success: boolean;
           if (monitor.frequencyMinutes > 0) {
             try {
             
-              const jobDataPayload: MonitorJobData = {
-                monitorId: monitor.id,
-                projectId: monitor.projectId ?? undefined,
-                type: monitor.type as MonitorJobData['type'],
-                target: monitor.target,
-                config: monitor.config as MonitorConfig,
-                frequencyMinutes: monitor.frequencyMinutes,
-              };
-
-              const schedulerId = await scheduleMonitor({
-                monitorId: monitor.id,
-                frequencyMinutes: monitor.frequencyMinutes,
-                jobData: jobDataPayload,
-                retryLimit: 3
-              }, undefined, repeatables);
-            
-              // Update the monitor with the scheduler ID (like jobs do)
-              await db
-                .update(monitorSchemaDb)
-                .set({ scheduledJobId: schedulerId })
-                .where(eq(monitorSchemaDb.id, monitor.id));
+              await scheduleFromRow(monitor, repeatables);
 
               scheduledCount++;
             } catch (error) {

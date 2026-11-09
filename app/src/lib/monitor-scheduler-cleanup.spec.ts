@@ -7,6 +7,7 @@ const queue = {
   client: Promise.resolve(redis),
 };
 const selects: unknown[][] = [];
+const updates: unknown[] = [];
 const events: string[] = [];
 
 jest.mock("@/utils/db", () => ({
@@ -19,12 +20,12 @@ jest.mock("@/utils/db", () => ({
         },
       }),
     }),
-    update: () => ({ set: () => ({ where: async () => undefined }) }),
+    update: () => ({ set: (v: unknown) => ({ where: async () => void updates.push(v) }) }),
   },
 }));
 jest.mock("./queue", () => ({ getQueues: async () => ({ monitorSchedulerQueue: queue }) }));
 
-import { initializeMonitorSchedulers } from "./monitor-scheduler";
+import { initializeMonitorSchedulers, repairMonitorSchedules } from "./monitor-scheduler";
 
 const A = "11111111-1111-1111-1111-111111111111";
 const B = "22222222-2222-2222-2222-222222222222";
@@ -36,6 +37,7 @@ const repeatable = (id: string, minutes = 1, key = `key:${id}`) => ({ name: `sch
 beforeEach(() => {
   jest.resetAllMocks();
   selects.length = 0;
+  updates.length = 0;
   events.length = 0;
   jest.spyOn(console, "log").mockImplementation(() => {});
   jest.spyOn(console, "error").mockImplementation(() => {});
@@ -218,5 +220,45 @@ describe("init sync against concurrent edits", () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+});
+
+describe("periodic repair sweep", () => {
+  it("reschedules enabled monitors with no scheduledJobId or no repeatable, and leaves healthy ones alone", async () => {
+    queue.getRepeatableJobs.mockResolvedValue([repeatable(A)]);
+    selects.push(
+      [{ id: A, scheduledJobId: A }, { id: B, scheduledJobId: null }, { id: C, scheduledJobId: C }], // active list
+      [activeRow(B)], // re-read of B (null scheduledJobId)
+      [activeRow(C)], // re-read of C (repeatable lost)
+    );
+    await expect(repairMonitorSchedules()).resolves.toEqual({ repaired: 2, failed: 0 });
+    expect(queue.add.mock.calls.map(([name]) => name).sort()).toEqual([`scheduled-monitor-${B}`, `scheduled-monitor-${C}`]);
+    expect(updates).toHaveLength(2);
+  });
+
+  it("skips a monitor paused between the list and the re-read, and counts a failing one without stopping", async () => {
+    queue.getRepeatableJobs.mockResolvedValue([]);
+    queue.add.mockRejectedValueOnce(new Error("redis down"));
+    selects.push(
+      [{ id: A, scheduledJobId: null }, { id: B, scheduledJobId: null }, { id: C, scheduledJobId: null }],
+      [activeRow(A)], // fails
+      [{ ...activeRow(B), status: "paused" }], // skipped
+      [activeRow(C)],
+    );
+    await expect(repairMonitorSchedules()).resolves.toEqual({ repaired: 1, failed: 1 });
+  });
+
+  it("does nothing while init or another sweep holds the lock", async () => {
+    redis.set.mockResolvedValue(null);
+    await expect(repairMonitorSchedules()).resolves.toEqual({ repaired: 0, failed: 0 });
+    expect(queue.getRepeatableJobs).not.toHaveBeenCalled();
+  });
+
+  it("repairs at most one bounded batch per sweep and releases the lock", async () => {
+    queue.getRepeatableJobs.mockResolvedValue([]);
+    const ids = Array.from({ length: 150 }, (_, n) => `00000000-0000-0000-0000-${String(n).padStart(12, "0")}`);
+    selects.push(ids.map((id) => ({ id, scheduledJobId: null })), ...ids.slice(0, 100).map((id) => [activeRow(id)]));
+    await expect(repairMonitorSchedules()).resolves.toEqual({ repaired: 100, failed: 0 });
+    expect(redis.eval).toHaveBeenCalledTimes(1);
   });
 });

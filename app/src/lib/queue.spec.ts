@@ -458,6 +458,7 @@ describe("queue location refresh", () => {
     });
 
     it("still returns the cycle id when marking it published fails", async () => {
+      jest.useRealTimers(); // the mark retry backs off on a real timer
       process.env.MISSING_CYCLE_CLOSURE_ENABLED = "true";
       enabledCodes = ["eu-central"];
       const { monitorExecutionQueue } = await queueModule.getQueues();
@@ -465,6 +466,22 @@ describe("queue location refresh", () => {
       flowAddBulk.mockImplementation(async (flows: unknown[]) => flows.map(() => ({ job: { getState: async () => "waiting" } })));
       await expect(queueModule.enqueueMonitorLocationJobs(monitorExecutionQueue, task, enabledCodes, {}, cycle())).resolves.toEqual(expect.any(String));
       expect(abortMonitorCycle).not.toHaveBeenCalled();
+    });
+
+    it("retries marking the cycle published and logs an error when all attempts fail", async () => {
+      jest.useRealTimers(); // the mark retry backs off on a real timer
+      process.env.MISSING_CYCLE_CLOSURE_ENABLED = "true";
+      enabledCodes = ["eu-central"];
+      const { monitorExecutionQueue } = await queueModule.getQueues();
+      flowAddBulk.mockImplementation(async (flows: unknown[]) => flows.map(() => ({ job: { getState: async () => "waiting" } })));
+      markMonitorCyclePublished.mockRejectedValueOnce(new Error("blip")).mockResolvedValueOnce(undefined);
+      await queueModule.enqueueMonitorLocationJobs(monitorExecutionQueue, task, enabledCodes, {}, cycle());
+      expect(markMonitorCyclePublished).toHaveBeenCalledTimes(2);
+      markMonitorCyclePublished.mockClear();
+      markMonitorCyclePublished.mockRejectedValue(new Error("down"));
+      await queueModule.enqueueMonitorLocationJobs(monitorExecutionQueue, task, enabledCodes, {}, cycle());
+      expect(markMonitorCyclePublished).toHaveBeenCalledTimes(3);
+      markMonitorCyclePublished.mockResolvedValue(undefined);
     });
 
     it("uses distinct cycles for different scheduled runs", async () => {

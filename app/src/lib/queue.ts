@@ -1907,9 +1907,17 @@ export async function enqueueMonitorLocationJobs(
       throw new Error(`Monitor ${task.monitorId}: incomplete cycle enqueue`);
     }
     if (closureCycle) {
-      // A failed mark only leaves the flag set: the closer still judges a cycle that has any result.
-      await markMonitorCyclePublished(executionGroupId)
-        .catch((markError) => queueLogger.warn({ err: markError, executionGroupId }, "Unable to mark monitor cycle published"));
+      // Retried: a flag left set is aborted at the deadline if every region is silent, hiding a real outage.
+      let marked = false;
+      for (let attempt = 1; attempt <= 3 && !marked; attempt++) {
+        try {
+          await markMonitorCyclePublished(executionGroupId);
+          marked = true;
+        } catch (markError) {
+          if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, 200 * attempt));
+          else queueLogger.error({ err: markError, executionGroupId }, "Unable to mark monitor cycle published after 3 attempts; if every region is silent the cycle will be aborted, not alerted");
+        }
+      }
     }
     return executionGroupId;
   } catch (error) {

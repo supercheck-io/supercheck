@@ -139,9 +139,18 @@ export class MonitorCycleService {
 
       // Published jobs were never confirmed (crash between persist and addBulk) and nothing landed:
       // the regions were never asked, so "missing" would be a false outage. Never synthesize it.
+      // Any result or arrival proves the jobs were published, so a stale flag then means nothing.
+      const [arrival] = cycle.publishPending
+        ? await tx
+            .select({ id: schema.monitorCycleArrivals.id })
+            .from(schema.monitorCycleArrivals)
+            .where(eq(schema.monitorCycleArrivals.cycleId, cycle.id))
+            .limit(1)
+        : [];
       if (
         cycle.publishPending &&
         rows.length === 0 &&
+        !arrival &&
         decision.closedBy === 'deadline'
       ) {
         this.logger.warn(

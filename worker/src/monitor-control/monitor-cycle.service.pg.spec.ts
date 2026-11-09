@@ -489,6 +489,23 @@ suite('MonitorCycleService (PostgreSQL)', () => {
       expect(sendNotification).not.toHaveBeenCalled();
     });
 
+    it('treats an arrival hint as proof of publication when the flag was never cleared', async () => {
+      await openCycle('arrival-only', {
+        strategy: 'all',
+        locations: ['eu', 'us'],
+      });
+      await pending('arrival-only');
+      await db
+        .insert(schema.monitorCycleArrivals)
+        .values({ cycleId: 'arrival-only', location: 'eu' });
+      expect(await service.closeCycle('arrival-only', afterDeadline)).toBe(
+        'closed',
+      );
+      expect(await cycleRow('arrival-only')).toMatchObject({
+        resultStatus: 'down',
+      });
+    });
+
     it('still closes a cycle with results even if the published flag was never cleared', async () => {
       await openCycle('stale-flag', {
         strategy: 'all',
