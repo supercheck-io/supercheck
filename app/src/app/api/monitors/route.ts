@@ -43,6 +43,7 @@ import {
   MonitorScheduleError,
   monitorNameError,
   normalizeMonitorAlertConfig,
+  preserveWorkerConfigKeys,
   providerIdsOutsideProject,
   SCHEDULE_FAILURE_MESSAGE,
   sanitizeMonitorFields,
@@ -421,7 +422,8 @@ export async function POST(req: NextRequest) {
     }
 
     // Construct the config object (for monitor-specific settings, not alerts)
-    const finalConfig = rawData.config || {};
+    // A new monitor has no worker state; a client must not forge it (e.g. a stored certificate).
+    const finalConfig = preserveWorkerConfigKeys(null, rawData.config || {});
 
     // Validate locationConfig.locations against enabled locations in DB
     if (finalConfig.locationConfig?.locations?.length > 0) {

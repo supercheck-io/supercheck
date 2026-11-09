@@ -239,6 +239,27 @@ it("removes the schedule and the row when the post-scheduling check fails", asyn
   expect(dbDeleteWhere).toHaveBeenCalledTimes(1);
 });
 
+it("drops worker-owned config keys a client sends on create, so a certificate cannot be forged", async () => {
+  const { insertMonitorRecord } = jest.requireMock("@/lib/monitor-service") as { insertMonitorRecord: jest.Mock };
+  const executor = { select: () => ({ from: () => ({ where: () => ({ for: async () => [{ id: "project-1" }] }) }) }) };
+  insertWithinPlanLimit.mockImplementation(async (opts: { insert: (e: unknown) => Promise<unknown> }) => ({ ok: true, row: await opts.insert(executor) }));
+  await POST(
+    new NextRequest("http://localhost/api/monitors", {
+      method: "POST",
+      body: JSON.stringify({
+        name: "m", type: "website", target: "https://example.com",
+        config: { enableSslCheck: true, sslLastCheckedAt: "2026-01-01T00:00:00.000Z", sslCertificate: { valid: true, daysRemaining: 999 } },
+        alertConfig: { enabled: false, notificationProviders: [] },
+      }),
+      headers: { "content-type": "application/json" },
+    }),
+  );
+  const config = insertMonitorRecord.mock.calls[0][0].config;
+  expect(config).toMatchObject({ enableSslCheck: true });
+  expect(config).not.toHaveProperty("sslCertificate");
+  expect(config).not.toHaveProperty("sslLastCheckedAt");
+});
+
 describe("collection write paths", () => {
   const MONITOR = "00000000-0000-4000-8000-000000000002";
   const { updateMonitorHandler, insertMonitorRecord } = jest.requireMock("@/lib/monitor-service") as {

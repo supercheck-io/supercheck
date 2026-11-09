@@ -9222,7 +9222,9 @@
           "mutedUntil": {
             "type": "string",
             "format": "date-time",
-            "nullable": true
+            "nullable": true,
+            "deprecated": true,
+            "description": "Deprecated and unused: monitors cannot be muted. May hold a stale value from older data."
           },
           "scheduledJobId": {
             "type": "string",
@@ -10212,7 +10214,32 @@
           "sslLastCheckedAt": {
             "type": "string",
             "format": "date-time",
-            "nullable": true
+            "nullable": true,
+            "readOnly": true,
+            "description": "When the worker last read the certificate. Written by the worker; ignored on create and update."
+          },
+          "sslProbeFailure": {
+            "type": "object",
+            "readOnly": true,
+            "description": "First failed certificate probe for the current host while no certificate could be read. Written by the worker; ignored on create and update.",
+            "properties": {
+              "since": { "type": "string", "format": "date-time" },
+              "host": { "type": "string", "nullable": true }
+            }
+          },
+          "sslCertificate": {
+            "type": "object",
+            "readOnly": true,
+            "description": "Last certificate the worker read for a website monitor with SSL checks on. Written by the worker; ignored on create and update.",
+            "properties": {
+              "valid": { "type": "boolean" },
+              "issuer": { "type": "string" },
+              "subject": { "type": "string" },
+              "validFrom": { "type": "string", "format": "date-time" },
+              "validTo": { "type": "string", "format": "date-time" },
+              "daysRemaining": { "type": "integer" },
+              "host": { "type": "string" }
+            }
           },
           "timeoutSeconds": {
             "type": "integer",

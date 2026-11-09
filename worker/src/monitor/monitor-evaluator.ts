@@ -13,14 +13,29 @@ import { getErrorMessage } from '../common/validation';
 import { SECURITY } from '../common/constants';
 import { MonitorExecutionResult } from './types/monitor-result.type';
 
+/** A certificate probe failing this long while the site is up raises an SSL alert. */
+const SSL_PROBE_FAILURE_ALERT_MS = 24 * 60 * 60 * 1000;
+
 type Monitor = z.infer<typeof monitorsSelectSchema>;
 type MonitorResult = z.infer<typeof monitorResultsSelectSchema>;
+
+/** First failure alert plus two reminders per failure sequence. */
+const MAX_FAILURE_ALERTS = 3;
 
 export type AggregatedAlertState = {
   consecutiveFailureCount: number;
   consecutiveSuccessCount: number;
   alertsSentForFailure: number;
   alertsSentForRecovery: number;
+  /** `consecutiveFailureCount` at the last delivered failure alert of this sequence; keeps reminder gaps. */
+  lastAlertCount?: number;
+  /**
+   * 2 = `alertsSentForFailure` counts alert windows used (see evaluateAndSendAlert); absent = an older
+   * worker's delivered count. `lastAlertCount` is trusted only together with `lastAlertWindows`, the counter
+   * value it was written with, so an older worker bumping the counter invalidates it.
+   */
+  alertCounterVersion?: 2;
+  lastAlertWindows?: number;
   recoverySequence?: boolean;
   /** Failure count of the outage this recovery follows, when that outage sent no failure alert. */
   priorFailureCount?: number;
@@ -130,6 +145,15 @@ export class MonitorEvaluator {
         rawAlertState?.alertsSentForRecovery,
       ),
       recoverySequence: rawAlertState?.recoverySequence === true,
+      ...(typeof rawAlertState?.lastAlertCount === 'number'
+        ? { lastAlertCount: toSafeCounter(rawAlertState.lastAlertCount) }
+        : {}),
+      ...(rawAlertState?.alertCounterVersion === 2
+        ? { alertCounterVersion: 2 as const }
+        : {}),
+      ...(typeof rawAlertState?.lastAlertWindows === 'number'
+        ? { lastAlertWindows: toSafeCounter(rawAlertState.lastAlertWindows) }
+        : {}),
       ...(typeof rawAlertState?.priorFailureCount === 'number'
         ? { priorFailureCount: toSafeCounter(rawAlertState.priorFailureCount) }
         : {}),
@@ -157,6 +181,18 @@ export class MonitorEvaluator {
           : 0,
         alertsSentForRecovery: 0,
         recoverySequence: false,
+        ...(continuingFailureSequence &&
+        previousState.lastAlertCount !== undefined
+          ? {
+              lastAlertCount: previousState.lastAlertCount,
+              ...(previousState.alertCounterVersion
+                ? { alertCounterVersion: previousState.alertCounterVersion }
+                : {}),
+              ...(previousState.lastAlertWindows !== undefined
+                ? { lastAlertWindows: previousState.lastAlertWindows }
+                : {}),
+            }
+          : {}),
         ...(continuingFailureSequence && previousState.failureCountUnknown
           ? { failureCountUnknown: true }
           : {}),
@@ -209,23 +245,22 @@ export class MonitorEvaluator {
         { ...previousState, failureCountUnknown: true };
   }
 
+  /**
+   * Writes only `aggregatedAlertState`, atomically (jsonb_set), so worker-owned config keys written
+   * concurrently (SSL check times, certificate) are never overwritten by a stale read of the config.
+   */
   async persistAggregatedAlertState(
     monitorId: string,
-    monitorConfig: MonitorConfig | null | undefined,
     aggregatedAlertState: AggregatedAlertState,
+    options: { monotonicFailureCounter?: boolean } = {},
   ): Promise<void> {
     try {
-      const nextConfig: MonitorConfig = {
-        ...(monitorConfig ?? {}),
-        aggregatedAlertState,
-      };
-
       await this.dbService.db
         .update(schema.monitors)
         .set({
-          config: aggregatedAlertState.executionGroupId
-            ? sql`jsonb_set(coalesce(${schema.monitors.config}, '{}'::jsonb), '{aggregatedAlertState}', ${JSON.stringify(aggregatedAlertState)}::jsonb)`
-            : nextConfig,
+          config: options.monotonicFailureCounter
+            ? sql`jsonb_set(coalesce(${schema.monitors.config}, '{}'::jsonb), '{aggregatedAlertState}', ${JSON.stringify(aggregatedAlertState)}::jsonb || jsonb_build_object('alertsSentForFailure', GREATEST(coalesce((${schema.monitors.config}->'aggregatedAlertState'->>'alertsSentForFailure')::int, 0), ${aggregatedAlertState.alertsSentForFailure}::int)))`
+            : sql`jsonb_set(coalesce(${schema.monitors.config}, '{}'::jsonb), '{aggregatedAlertState}', ${JSON.stringify(aggregatedAlertState)}::jsonb)`,
         })
         .where(
           and(
@@ -244,6 +279,26 @@ export class MonitorEvaluator {
     }
   }
 
+  /** Single-location monitors keep the last alert count in `config.aggregatedAlertState` too. */
+  private async persistSingleLocationLastAlertCount(
+    monitorId: string,
+    count: number,
+    windows: number,
+  ): Promise<void> {
+    try {
+      await this.dbService.db
+        .update(schema.monitors)
+        .set({
+          config: sql`jsonb_set(coalesce(${schema.monitors.config}, '{}'::jsonb), '{aggregatedAlertState}', coalesce(${schema.monitors.config}->'aggregatedAlertState', '{}'::jsonb) || jsonb_build_object('lastAlertCount', ${count}::int, 'lastAlertWindows', ${windows}::int, 'alertCounterVersion', 2))`,
+        })
+        .where(eq(schema.monitors.id, monitorId));
+    } catch (error) {
+      this.logger.error(
+        `Failed to persist last alert count for monitor ${monitorId}: ${getErrorMessage(error)}`,
+      );
+    }
+  }
+
   /**
    * Evaluate and send alerts based on status transitions with threshold support.
    * Consolidated alert logic for both single and multi-location monitors.
@@ -252,7 +307,7 @@ export class MonitorEvaluator {
    * Threshold behavior:
    * - failureThreshold: Number of consecutive failures before first alert (default: 1)
    * - recoveryThreshold: Number of consecutive successes before recovery alert (default: 1)
-   * - Max 3 failure alerts with exponential reminders and one recovery alert
+   * - Max 3 failure alerts (first + 2 reminders, the gap doubling) and one recovery alert
    *
    * @returns Alert action metadata { alertSent: boolean, alertType?: string }
    */
@@ -339,6 +394,10 @@ export class MonitorEvaluator {
 
     // Determine alert type and whether thresholds are met
     let shouldSendAlert = false;
+    // Failure alerts: the window index this check's alert uses. A delivery consumes that window, so
+    // `alertsSentForFailure` stores the windows used (window + 1): an alert delivered late in window 1
+    // leaves window 2 as the next one, not the rest of window 1. At most 3 windows, so at most 3 alerts.
+    let currentWindow = alertsSentForFailure;
     let alertType: 'recovery' | 'failure' | null = null;
 
     if (currentStatus === 'down') {
@@ -346,37 +405,59 @@ export class MonitorEvaluator {
       const failureThreshold =
         (monitorAlertConfig?.failureThreshold as number) || 1;
 
-      if (
-        consecutiveFailureCount >= failureThreshold &&
-        // Bounded, so an undeliverable first alert is not retried for the whole outage.
-        consecutiveFailureCount <
-          failureThreshold + Math.max(5, failureThreshold * 2) &&
-        alertsSentForFailure === 0
-      ) {
-        // First alert: threshold reached (>= so a skipped pending observation cannot miss it)
-        shouldSendAlert =
-          incidentOnly ||
-          (monitorAlertConfig?.alertOnFailure as boolean) ||
-          false;
-      } else if (
-        consecutiveFailureCount > failureThreshold &&
-        alertsSentForFailure < 3
-      ) {
-        // Subsequent alerts: exponential intervals (max 3 total)
-        const subsequentInterval = Math.max(5, failureThreshold * 2);
-        const failuresAfterThreshold =
-          consecutiveFailureCount - failureThreshold;
-        const expectedAlerts = Math.floor(
-          failuresAfterThreshold / subsequentInterval,
-        );
-        shouldSendAlert =
-          (incidentOnly || (monitorAlertConfig?.alertOnFailure as boolean)) &&
-          expectedAlerts >= alertsSentForFailure &&
-          failuresAfterThreshold % subsequentInterval === 0;
+      const failureAlertWanted =
+        incidentOnly ||
+        (monitorAlertConfig?.alertOnFailure as boolean) ||
+        false;
+      // With N = max(5, 2 * threshold), alert window j (0, 1, 2) opens N * (2^j - 1) failures after the
+      // threshold and lasts N checks: the first alert, then reminders after gaps of N and 2N. An alert that
+      // failed to deliver stays due (the counter only moves after a delivery) until its window closes, and an
+      // alert still unsent may use any later window, so at most 3 are delivered. Consecutive deliveries are
+      // always more than N failures apart.
+      const windowSize = Math.max(5, failureThreshold * 2);
+      const failuresAfterThreshold = consecutiveFailureCount - failureThreshold;
+      // A delivered alert is followed by at least the scheduled gap N * 2^(k-1) (k = windows used), counted
+      // from the count it was actually delivered at, so a late alert cannot be followed by an immediate one.
+      const lastState = isMultiLocationEvaluation
+        ? aggregatedAlertState
+        : this.readAggregatedAlertState(monitorConfig);
+      // Only a count written with the current counter value (by a worker that knows windows) is trusted;
+      // otherwise the stored value is an older worker's delivered count, whose schedule is never earlier.
+      const lastAlertCount =
+        lastState?.alertCounterVersion === 2 &&
+        lastState.lastAlertWindows === alertsSentForFailure
+          ? lastState.lastAlertCount
+          : undefined;
+      const lastFailures =
+        alertsSentForFailure >= 1 &&
+        lastAlertCount !== undefined &&
+        lastAlertCount >= failureThreshold &&
+        lastAlertCount <= consecutiveFailureCount
+          ? lastAlertCount - failureThreshold
+          : undefined;
+      const earliestAfterLast =
+        lastFailures === undefined
+          ? 0
+          : lastFailures + windowSize * 2 ** (alertsSentForFailure - 1);
+      // The window this check falls in, if it is one an alert may still use.
+      for (let j = alertsSentForFailure; j < MAX_FAILURE_ALERTS; j++) {
+        const start = Math.max(windowSize * (2 ** j - 1), earliestAfterLast);
+        if (
+          failureAlertWanted &&
+          failuresAfterThreshold >= start &&
+          failuresAfterThreshold < start + windowSize
+        ) {
+          currentWindow = j;
+          shouldSendAlert = true;
+          break;
+        }
       }
 
       if (!shouldSendAlert) {
-        if (consecutiveFailureCount > 0 && alertsSentForFailure >= 3) {
+        if (
+          consecutiveFailureCount > 0 &&
+          alertsSentForFailure >= MAX_FAILURE_ALERTS
+        ) {
           this.logger.debug(
             `[ALERT] Skipping failure alert for monitor ${monitorId} - already sent 3 alerts for this failure sequence`,
           );
@@ -417,16 +498,16 @@ export class MonitorEvaluator {
           ((monitorAlertConfig?.failureThreshold as number) || 1)
       );
 
-      shouldSendAlert =
+      const recoveryDue =
         consecutiveSuccessCount >= recoveryThreshold &&
         // Bounded like the failure path, so an undeliverable recovery is not retried forever.
         consecutiveSuccessCount <
           recoveryThreshold + Math.max(5, recoveryThreshold * 2) &&
-        alertsSentForRecovery === 0 &&
         outageReachedThreshold &&
         // Nothing to notify without alerts: the recovery signal above already resolves the incident.
         !incidentOnly &&
         ((monitorAlertConfig?.alertOnRecovery as boolean) || false);
+      shouldSendAlert = recoveryDue && alertsSentForRecovery === 0;
 
       if (!shouldSendAlert) {
         if (
@@ -450,11 +531,7 @@ export class MonitorEvaluator {
         aggregatedAlertState &&
         !options.preparedAlertState
       ) {
-        await this.persistAggregatedAlertState(
-          monitorId,
-          monitorConfig,
-          aggregatedAlertState,
-        );
+        await this.persistAggregatedAlertState(monitorId, aggregatedAlertState);
       }
 
       return { alertSent: false };
@@ -518,8 +595,10 @@ export class MonitorEvaluator {
           alertType === 'failure'
             ? {
                 ...aggregatedAlertState,
-                alertsSentForFailure:
-                  aggregatedAlertState.alertsSentForFailure + 1,
+                alertsSentForFailure: currentWindow + 1,
+                lastAlertCount: consecutiveFailureCount,
+                lastAlertWindows: currentWindow + 1,
+                alertCounterVersion: 2 as const,
               }
             : {
                 ...aggregatedAlertState,
@@ -529,8 +608,14 @@ export class MonitorEvaluator {
 
         await this.persistAggregatedAlertState(
           monitorId,
-          monitorConfig,
           updatedAggregatedAlertState,
+          // Only a group-owned state is monotonic: a manual run has no prepared state, so an old outage's
+          // counter (left by a suppressed recovery) must not outlast a new outage.
+          {
+            monotonicFailureCounter:
+              alertType === 'failure' &&
+              Boolean(aggregatedAlertState.executionGroupId),
+          },
         );
       }
 
@@ -539,8 +624,16 @@ export class MonitorEvaluator {
         if (alertType === 'failure') {
           await this.dbService.db
             .update(schema.monitorResults)
-            .set({ alertsSentForFailure: alertsSentForFailure + 1 })
+            // GREATEST: a stale retry (or a changed threshold) must never lower the windows used.
+            .set({
+              alertsSentForFailure: sql`GREATEST(${schema.monitorResults.alertsSentForFailure}, ${currentWindow + 1})`,
+            })
             .where(eq(schema.monitorResults.id, latestResult.id));
+          await this.persistSingleLocationLastAlertCount(
+            monitorId,
+            consecutiveFailureCount,
+            currentWindow + 1,
+          );
         } else if (alertType === 'recovery') {
           await this.dbService.db
             .update(schema.monitorResults)
@@ -554,11 +647,7 @@ export class MonitorEvaluator {
       return suppressed ? { alertSent: false } : { alertSent: true, alertType };
     } catch (error) {
       if (isMultiLocationEvaluation && aggregatedAlertState) {
-        await this.persistAggregatedAlertState(
-          monitorId,
-          monitorConfig,
-          aggregatedAlertState,
-        );
+        await this.persistAggregatedAlertState(monitorId, aggregatedAlertState);
       }
 
       this.logger.error(
@@ -688,19 +777,31 @@ export class MonitorEvaluator {
       }
       // Removed debug log
 
-      // Check if SSL certificate info is available and has warning
+      // Alert from certificate data only: a probe that read no certificate (timeout,
+      // reset) is not an expiring certificate and must not send one.
       const sslCertificate = resultData.details?.sslCertificate;
-      const sslWarning =
-        resultData.details?.sslWarning || resultData.details?.warningMessage;
-
-      // Removed debug logs
-
-      if (!sslCertificate && !sslWarning) {
-        return; // No SSL info to check
-      }
-
       let shouldAlert = false;
       let alertReason = '';
+
+      if (!sslCertificate) {
+        // The site answers but the certificate probe keeps failing: after a day, say so.
+        // A site that is down already alerts as down; don't add an SSL warning to it.
+        if (!resultData.isUp) {
+          return;
+        }
+        const since = resultData.details?.sslProbeFailedSince;
+        const sinceMs = typeof since === 'string' ? Date.parse(since) : NaN;
+        if (
+          Number.isNaN(sinceMs) ||
+          Date.now() - sinceMs < SSL_PROBE_FAILURE_ALERT_MS
+        ) {
+          return;
+        }
+        shouldAlert = true;
+        alertReason = `SSL certificate could not be read for ${Math.floor(
+          (Date.now() - sinceMs) / 3_600_000,
+        )} hours`;
+      }
 
       // Check for SSL expiration warning
       if (sslCertificate?.daysRemaining !== undefined) {
@@ -724,12 +825,6 @@ export class MonitorEvaluator {
         }
       }
 
-      // Check for SSL warning messages
-      if (sslWarning && typeof sslWarning === 'string') {
-        shouldAlert = true;
-        alertReason = alertReason || sslWarning;
-      }
-
       if (shouldAlert) {
         // Check if we've already sent an SSL alert recently to avoid spam
         const lastSslAlert = await this.getLastSslAlert(resultData.monitorId);
@@ -748,6 +843,7 @@ export class MonitorEvaluator {
                 sslCertificate,
                 daysRemaining: sslCertificate?.daysRemaining,
                 responseTime: resultData.responseTimeMs,
+                observedAt: resultData.checkedAt,
               },
             );
 

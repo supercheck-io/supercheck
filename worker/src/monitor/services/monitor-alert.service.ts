@@ -15,6 +15,7 @@ import {
 import { decryptNotificationProviderConfig } from '../../common/notification-provider-crypto';
 import { SreAlertTriageQueueService } from './sre-alert-triage-queue.service';
 import { getErrorMessage } from '../../common/validation';
+import { redactUrlsInText } from '../../common/validation/data-sanitizer';
 
 type ProviderRow = {
   id: string;
@@ -23,8 +24,21 @@ type ProviderRow = {
   projectId: string | null;
 };
 
+/** Redacts URLs inside free text before it is persisted to alert history. */
+export function redactAlertText(text: string | undefined | null) {
+  return text ? redactUrlsInText(text) : undefined;
+}
+
+const SSL_ALERT_THROTTLE_MS = 24 * 60 * 60 * 1000;
+
 @Injectable()
 export class MonitorAlertService {
+  /**
+   * Last SSL alert delivered per monitor by this process. Backs the 24h throttle when the alert_history
+   * row could not be written (the evaluator throttles from that row). Per process: best effort.
+   */
+  private readonly sslAlertDeliveredAt = new Map<string, number>();
+
   private readonly logger = new Logger(MonitorAlertService.name);
 
   constructor(
@@ -290,7 +304,7 @@ export class MonitorAlertService {
       targetName: monitor.name,
       targetId: monitor.id,
       severity: severity,
-      timestamp: new Date(),
+      timestamp: observedAt ?? new Date(),
       projectId: monitor.projectId || undefined,
       projectName: projectName,
       metadata: {
@@ -309,6 +323,8 @@ export class MonitorAlertService {
           ? new Date(monitor.lastCheckAt).toISOString()
           : undefined,
         ...metadata,
+        // The check's own time, so the alert shows when the check ran, not when it was sent.
+        ...(observedAt ? { observedAt: observedAt.toISOString() } : {}),
       },
     };
 
@@ -334,7 +350,7 @@ export class MonitorAlertService {
       const sentAt = type === 'failure' && observedAt ? observedAt : new Date();
       const historyRecords = deliveryResults.results.map((result) => ({
         type: notificationType,
-        message: notificationPayload.message,
+        message: redactAlertText(notificationPayload.message) ?? '',
         target: monitor.name,
         targetType: 'monitor',
         monitorId: monitor.id,
@@ -343,7 +359,7 @@ export class MonitorAlertService {
           result.success || result.partial
             ? ('sent' as const)
             : ('failed' as const),
-        errorMessage: result.error,
+        errorMessage: redactAlertText(result.error),
         deliveryMetadata: result.deliveryMetadata,
         sentAt,
       }));
@@ -381,6 +397,11 @@ export class MonitorAlertService {
     this.logger.log(
       `[SSL-NOTIFY] SSL expiration notification for monitor ${monitorId}`,
     );
+
+    const deliveredAt = this.sslAlertDeliveredAt.get(monitorId);
+    if (deliveredAt && Date.now() - deliveredAt < SSL_ALERT_THROTTLE_MS) {
+      return false;
+    }
 
     const db = this.dbService.db;
 
@@ -473,6 +494,10 @@ export class MonitorAlertService {
     }
 
     const dashboardUrl = `${baseUrl}/monitors/${monitor.id}`;
+    const sslObserved = new Date(String(metadata.observedAt));
+    const sslObservedAt = Number.isNaN(sslObserved.getTime())
+      ? new Date()
+      : sslObserved;
 
     const notificationPayload: NotificationPayload = {
       type: 'ssl_expiring',
@@ -483,7 +508,7 @@ export class MonitorAlertService {
       targetName: monitor.name,
       targetId: monitor.id,
       severity: 'warning',
-      timestamp: new Date(),
+      timestamp: sslObservedAt,
       projectId: monitor.projectId || undefined,
       projectName: projectName,
       metadata: {
@@ -502,6 +527,7 @@ export class MonitorAlertService {
           ? new Date(monitor.lastCheckAt).toISOString()
           : undefined,
         ...metadata,
+        observedAt: sslObservedAt.toISOString(),
       },
     };
 
@@ -528,7 +554,7 @@ export class MonitorAlertService {
         typeof schema.alertHistory.$inferInsert
       >((result) => ({
         type: 'ssl_expiring',
-        message: notificationPayload.message,
+        message: redactAlertText(notificationPayload.message) ?? '',
         target: monitor.name,
         targetType: 'monitor',
         monitorId: monitor.id,
@@ -537,23 +563,40 @@ export class MonitorAlertService {
           result.success || result.partial
             ? ('sent' as const)
             : ('failed' as const),
-        errorMessage: result.error,
+        errorMessage: redactAlertText(result.error),
         deliveryMetadata: result.deliveryMetadata,
         sentAt,
       }));
 
-      const createdRows = await db
-        .insert(schema.alertHistory)
-        .values(historyRecords)
-        .returning({
-          id: schema.alertHistory.id,
-          status: schema.alertHistory.status,
-        });
-      await this.sreAlertTriageQueueService.enqueueAlertHistoryRows(
-        createdRows,
-      );
+      // Delivery already happened: a bookkeeping failure must not become an error or a resend.
+      try {
+        const createdRows = await db
+          .insert(schema.alertHistory)
+          .values(historyRecords)
+          .returning({
+            id: schema.alertHistory.id,
+            status: schema.alertHistory.status,
+          });
+        await this.sreAlertTriageQueueService.enqueueAlertHistoryRows(
+          createdRows,
+        );
+      } catch (error) {
+        this.logger.error(
+          `[SSL-NOTIFY] Failed to record alert history for monitor ${monitorId}: ${getErrorMessage(error)}`,
+        );
+      }
     }
     // A partial email delivery reached recipients, as in sendNotification.
-    return successCount > 0 || deliveryResults.results.some((r) => r.partial);
+    const delivered =
+      successCount > 0 || deliveryResults.results.some((r) => r.partial);
+    // Without its 'sent' row the 24h throttle in the evaluator cannot see this alert, so keep it here too.
+    if (delivered) {
+      const now = Date.now();
+      for (const [id, at] of this.sslAlertDeliveredAt)
+        if (now - at >= SSL_ALERT_THROTTLE_MS)
+          this.sslAlertDeliveredAt.delete(id);
+      this.sslAlertDeliveredAt.set(monitorId, now);
+    }
+    return delivered;
   }
 }
