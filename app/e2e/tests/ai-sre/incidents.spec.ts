@@ -59,10 +59,8 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
       await expect(
         page.getByRole("heading", { name: "Incidents", exact: true }),
       ).toBeVisible();
-      // Severity and Status headers carry info-tip text, so match prefixes in exact order.
-      await expect(page.getByRole("columnheader")).toHaveText([
-        /^#/, /^Title/, /^Severity/, /^Status/, /^Service/, /^Assignee/, /^Age/, /^Updated/, /^AI/,
-      ]);
+      // A project with no incidents shows the first-run state instead of the table.
+      await expect(page.getByText("No incidents", { exact: true })).toBeVisible();
       await page
         .getByRole("button", { name: "New incident", exact: true })
         .click();
@@ -191,6 +189,11 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
 
       await page.goto("/copilot/investigations");
       await expect(page).toHaveURL(/\/incidents$/);
+      // Severity and Status headers carry info-tip text, so match prefixes in exact order.
+      await expect(page.getByRole("columnheader")).toHaveText([
+        /^#/, /^Title/, /^Severity/, /^Status/, /^Service/, /^Assignee/, /^Alerts/, /^Age/, /^Updated/, /^AI/,
+      ]);
+      await expect(page.getByRole("row").filter({ hasText: incidentTitle })).toBeVisible();
     } finally {
       const restore = await page.request.post("/api/projects/switch", {
         data: { projectId: originalProjectId },
