@@ -338,6 +338,10 @@ export class MonitorEvaluator {
 
     // Determine alert type and whether thresholds are met
     let shouldSendAlert = false;
+    // Failure alerts: the window index this check's alert uses. A delivery consumes that window, so
+    // `alertsSentForFailure` stores the windows used (window + 1): an alert delivered late in window 1
+    // leaves window 2 as the next one, not the rest of window 1. At most 3 windows, so at most 3 alerts.
+    let currentWindow = alertsSentForFailure;
     let alertType: 'recovery' | 'failure' | null = null;
 
     if (currentStatus === 'down') {
@@ -356,18 +360,19 @@ export class MonitorEvaluator {
       // always more than N failures apart.
       const windowSize = Math.max(5, failureThreshold * 2);
       const failuresAfterThreshold = consecutiveFailureCount - failureThreshold;
-      shouldSendAlert =
-        failureAlertWanted &&
-        failuresAfterThreshold >= 0 &&
-        Array.from(
-          { length: MAX_FAILURE_ALERTS - alertsSentForFailure },
-          (_, offset) =>
-            windowSize * (2 ** (alertsSentForFailure + offset) - 1),
-        ).some(
-          (start) =>
-            failuresAfterThreshold >= start &&
-            failuresAfterThreshold < start + windowSize,
-        );
+      // The window this check falls in, if it is one an alert may still use.
+      for (let j = alertsSentForFailure; j < MAX_FAILURE_ALERTS; j++) {
+        const start = windowSize * (2 ** j - 1);
+        if (
+          failureAlertWanted &&
+          failuresAfterThreshold >= start &&
+          failuresAfterThreshold < start + windowSize
+        ) {
+          currentWindow = j;
+          shouldSendAlert = true;
+          break;
+        }
+      }
 
       if (!shouldSendAlert) {
         if (
@@ -511,8 +516,7 @@ export class MonitorEvaluator {
           alertType === 'failure'
             ? {
                 ...aggregatedAlertState,
-                alertsSentForFailure:
-                  aggregatedAlertState.alertsSentForFailure + 1,
+                alertsSentForFailure: currentWindow + 1,
               }
             : {
                 ...aggregatedAlertState,
@@ -531,7 +535,7 @@ export class MonitorEvaluator {
         if (alertType === 'failure') {
           await this.dbService.db
             .update(schema.monitorResults)
-            .set({ alertsSentForFailure: alertsSentForFailure + 1 })
+            .set({ alertsSentForFailure: currentWindow + 1 })
             .where(eq(schema.monitorResults.id, latestResult.id));
         } else if (alertType === 'recovery') {
           await this.dbService.db

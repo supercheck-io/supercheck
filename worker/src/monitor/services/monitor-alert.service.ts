@@ -29,9 +29,9 @@ type ProviderRow = {
  */
 export function redactUrlsInText(text: string | undefined | null) {
   if (!text) return undefined;
-  return text.replace(/https?:\/\/[^\s"'<>]+/gi, (match) => {
-    // Trailing punctuation belongs to the sentence, not the URL.
-    const trailing = /[)\]}.,;]+$/.exec(match)?.[0] ?? '';
+  return text.replace(/https?:\/\/[^\s"<>]+/gi, (match) => {
+    // Trailing punctuation and quotes belong to the sentence, not the URL.
+    const trailing = /[)\]}.,;'`]+$/.exec(match)?.[0] ?? '';
     const raw = match.slice(0, match.length - trailing.length);
     try {
       const url = new URL(raw);

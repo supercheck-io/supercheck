@@ -863,3 +863,68 @@ async function alertCountsWithFirstAt(
   }
   return fired;
 }
+
+describe('MonitorEvaluator late first alert consumes its window', () => {
+  it('threshold 1: first alert fails at 1-5, delivers at 6, next alert at 16 not 7', async () => {
+    const fired = await alertCountsDeliveringFrom(1, 6, 40);
+    expect(fired).toEqual([6, 16]);
+  });
+
+  it('threshold 1: an alert delivered in the last window caps the sequence', async () => {
+    const fired = await alertCountsDeliveringFrom(1, 16, 100);
+    expect(fired).toEqual([16]);
+  });
+});
+
+/** Failure counts that alerted when delivery only works from `deliverFrom` on; the counter stores windows used. */
+async function alertCountsDeliveringFrom(
+  threshold: number,
+  deliverFrom: number,
+  upTo: number,
+) {
+  const send = jest.fn();
+  const evaluator = new MonitorEvaluator(
+    { db: {} } as never,
+    { sendNotification: send } as never,
+  );
+  const writes: number[] = [];
+  jest
+    .spyOn(evaluator as never, 'persistAggregatedAlertState')
+    .mockImplementation((async (
+      _id: string,
+      state: { alertsSentForFailure: number },
+    ) => {
+      writes.push(state.alertsSentForFailure);
+    }) as never);
+  const fired: number[] = [];
+  let used = 0;
+  for (let count = threshold; count <= upTo; count++) {
+    send.mockResolvedValue({ delivered: count >= deliverFrom });
+    const res = await evaluator.evaluateAndSendAlert({
+      monitorId: 'm1',
+      monitor: {
+        alertConfig: {
+          enabled: true,
+          alertOnFailure: true,
+          failureThreshold: threshold,
+        },
+        config: {},
+      } as never,
+      previousStatus: 'down',
+      currentStatus: 'down',
+      reason: 'down',
+      metadata: { locationResults: [{}, {}] },
+      preparedAlertState: {
+        consecutiveFailureCount: count,
+        consecutiveSuccessCount: 0,
+        alertsSentForFailure: used,
+        alertsSentForRecovery: 0,
+      },
+    });
+    if (res.alertSent) {
+      fired.push(count);
+      used = writes[writes.length - 1];
+    }
+  }
+  return fired;
+}

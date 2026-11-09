@@ -421,6 +421,9 @@ describe('MonitorAlertService', () => {
       'GET https://example.com/health?token=REDACTED&page=REDACTED failed',
     );
     expect(redactUrlsInText(undefined)).toBeUndefined();
+    expect(
+      redactUrlsInText("failed 'https://u:p'w@h.example/x?token=a'b'"),
+    ).toBe("failed 'https://h.example/x?token=REDACTED'");
     expect(redactUrlsInText('GET http://[::1]:8080/x?token=abc failed')).toBe(
       'GET http://[::1]:8080/x?token=REDACTED failed',
     );
