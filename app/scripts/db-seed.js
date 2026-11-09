@@ -144,13 +144,22 @@ async function seedPlanLimits(client, { preserveExisting = true } = {}) {
     return false;
   }
 
+  // Upgrade tests and partially migrated databases may predate migration 0071's default cap.
+  const hasDefaultCap = await client`
+    SELECT EXISTS (
+      SELECT FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'plan_limits'
+      AND column_name = 'default_spending_limit_cents'
+    );
+  `.then((result) => result[0]?.exists);
+
   // Upsert each plan
   for (const plan of PLAN_LIMITS_SEED) {
     try {
       await client`
         INSERT INTO plan_limits (
           id, plan, max_monitors, min_check_interval_minutes,
-          playwright_minutes_included, k6_vu_minutes_included, ai_credits_included, sre_investigation_units_included, default_spending_limit_cents,
+          playwright_minutes_included, k6_vu_minutes_included, ai_credits_included, sre_investigation_units_included${hasDefaultCap ? client`, default_spending_limit_cents` : client``},
           running_capacity, queued_capacity, max_team_members,
           max_organizations, max_projects, max_status_pages, max_status_page_subscribers,
           custom_domains, data_retention_days, aggregated_data_retention_days, job_data_retention_days,
@@ -158,7 +167,7 @@ async function seedPlanLimits(client, { preserveExisting = true } = {}) {
         )
         VALUES (
           gen_random_uuid(), ${plan.plan}, ${plan.maxMonitors}, ${plan.minCheckIntervalMinutes},
-          ${plan.playwrightMinutesIncluded}, ${plan.k6VuMinutesIncluded}, ${plan.aiCreditsIncluded}, ${plan.sreInvestigationUnitsIncluded}, ${plan.defaultSpendingLimitCents ?? null},
+          ${plan.playwrightMinutesIncluded}, ${plan.k6VuMinutesIncluded}, ${plan.aiCreditsIncluded}, ${plan.sreInvestigationUnitsIncluded}${hasDefaultCap ? client`, ${plan.defaultSpendingLimitCents ?? null}` : client``},
           ${plan.runningCapacity}, ${plan.queuedCapacity}, ${plan.maxTeamMembers},
           ${plan.maxOrganizations}, ${plan.maxProjects}, ${plan.maxStatusPages}, ${plan.maxStatusPageSubscribers},
           ${plan.customDomains}, ${plan.dataRetentionDays}, ${plan.aggregatedDataRetentionDays}, ${plan.jobDataRetentionDays},
@@ -171,7 +180,7 @@ async function seedPlanLimits(client, { preserveExisting = true } = {}) {
           k6_vu_minutes_included = EXCLUDED.k6_vu_minutes_included,
           ai_credits_included = EXCLUDED.ai_credits_included,
           sre_investigation_units_included = EXCLUDED.sre_investigation_units_included,
-          default_spending_limit_cents = EXCLUDED.default_spending_limit_cents,
+          ${hasDefaultCap ? client`default_spending_limit_cents = EXCLUDED.default_spending_limit_cents,` : client``}
           running_capacity = EXCLUDED.running_capacity,
           queued_capacity = EXCLUDED.queued_capacity,
           max_team_members = EXCLUDED.max_team_members,
