@@ -9,7 +9,7 @@ ALTER TABLE "alert_history" ADD COLUMN "claim_attempts" smallint;--> statement-b
 CREATE UNIQUE INDEX "alert_history_monitor_claim_uidx" ON "alert_history" USING btree ("monitor_id","outage_key","type","alert_ordinal","provider") WHERE "alert_history"."outage_key" IS NOT NULL AND "alert_history"."alert_ordinal" IS NOT NULL;--> statement-breakpoint
 -- Adds the ssl_renewed alert type. NOT VALID (as in 0052) keeps the swap from scanning the table; old rows
 -- only use the previous types, so they satisfy the wider list.
--- migration-safety: allow-destructive issue=#999999
+-- migration-safety: allow-destructive issue=#852
 ALTER TABLE "alert_history" DROP CONSTRAINT IF EXISTS "alert_history_type_check";--> statement-breakpoint
 ALTER TABLE "alert_history" ADD CONSTRAINT "alert_history_type_check" CHECK ("alert_history"."type" IN ('monitor_failure', 'monitor_recovery', 'job_failed', 'job_success', 'job_timeout', 'ssl_expiring', 'ssl_renewed')) NOT VALID;
 -- monitors.muted_until is no longer in the Drizzle schema but is NOT dropped here: workers from the previous
