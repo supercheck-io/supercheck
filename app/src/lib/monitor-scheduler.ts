@@ -1,6 +1,6 @@
 import { db } from "@/utils/db";
 import { monitors as monitorSchemaDb, MonitorConfig } from "@/db/schema";
-import { eq, isNotNull, and, ne, inArray } from "drizzle-orm";
+import { eq, isNotNull, and, ne, inArray, gt } from "drizzle-orm";
 import { getQueues, MonitorJobData } from "./queue";
 import { SYNTHETIC_MIN_FREQUENCY_MINUTES } from "./monitor-write";
 import type { Redis } from "ioredis";
@@ -152,6 +152,8 @@ async function scheduleFromRow(monitor: MonitorRow, repeatables?: RepeatableJob[
 
 const REPAIR_BATCH = 100;
 const REPAIR_INTERVAL_MS = 5 * 60_000;
+const REPAIR_BUDGET_MS = 45_000;
+let repairCursor = ''; // last id handled, kept in memory so the next sweep starts after it
 const REPAIR_LOCK_KEY = 'monitor:scheduler:init:lock'; // shared with init so the two never interleave
 
 /**
@@ -171,22 +173,40 @@ export async function repairMonitorSchedules(): Promise<{ repaired: number; fail
     const active = await db
       .select({ id: monitorSchemaDb.id, scheduledJobId: monitorSchemaDb.scheduledJobId })
       .from(monitorSchemaDb)
-      .where(and(isNotNull(monitorSchemaDb.frequencyMinutes), eq(monitorSchemaDb.enabled, true), ne(monitorSchemaDb.status, 'paused')));
-    const missing = active.filter((row) => row.scheduledJobId == null || !scheduled.has(row.id)).slice(0, REPAIR_BATCH);
+      .where(and(gt(monitorSchemaDb.frequencyMinutes, 0), eq(monitorSchemaDb.enabled, true), ne(monitorSchemaDb.status, 'paused')))
+      .orderBy(monitorSchemaDb.id);
+    // Never-scheduled monitors first; within each group continue after the last id of the previous sweep,
+    // so rows that keep failing cannot starve the rest of the batch.
+    const needsRepair = active.filter((row) => row.scheduledJobId == null || !scheduled.has(row.id));
+    const rotate = (rows: typeof needsRepair) => {
+      const at = rows.findIndex((row) => row.id > repairCursor);
+      return at < 0 ? rows : [...rows.slice(at), ...rows.slice(0, at)];
+    };
+    const missing = [
+      ...rotate(needsRepair.filter((row) => row.scheduledJobId == null)),
+      ...rotate(needsRepair.filter((row) => row.scheduledJobId != null)),
+    ].slice(0, REPAIR_BATCH);
     let repaired = 0;
     let failed = 0;
+    const startedAt = Date.now();
+    let processed = 0;
     for (const { id } of missing) {
+      if (Date.now() - startedAt >= REPAIR_BUDGET_MS) break; // the lock TTL is 60s: stop well inside it
+      processed++;
+      repairCursor = id;
       try {
         // Re-read: an edit or pause since the list must win.
         const [monitor] = await db.select().from(monitorSchemaDb).where(eq(monitorSchemaDb.id, id));
         if (!monitor || !monitor.enabled || monitor.status === 'paused' || !monitor.frequencyMinutes) continue;
-        await scheduleFromRow(monitor);
+        await scheduleFromRow(monitor, repeatables);
         repaired++;
       } catch (error) {
         console.error(`[MonitorScheduler] Repair failed for monitor ${id}:`, error);
         failed++;
       }
     }
+    const left = needsRepair.length - processed;
+    if (left > 0) console.warn(`[MonitorScheduler] Repair sweep stopped with ${left} monitor(s) left for the next sweep`);
     if (repaired > 0 || failed > 0) console.log(`[MonitorScheduler] Repair sweep rescheduled ${repaired} monitor(s), ${failed} failed`);
     return { repaired, failed };
   } finally {

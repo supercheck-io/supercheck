@@ -14,9 +14,10 @@ jest.mock("@/utils/db", () => ({
   db: {
     select: () => ({
       from: () => ({
-        where: async () => {
+        where: () => {
           events.push("select");
-          return selects.shift() ?? [];
+          const rows = Promise.resolve(selects.shift() ?? []);
+          return Object.assign(rows, { orderBy: () => rows });
         },
       }),
     }),
@@ -25,7 +26,7 @@ jest.mock("@/utils/db", () => ({
 }));
 jest.mock("./queue", () => ({ getQueues: async () => ({ monitorSchedulerQueue: queue }) }));
 
-import { initializeMonitorSchedulers, repairMonitorSchedules } from "./monitor-scheduler";
+import { initializeMonitorSchedulers, repairMonitorSchedules, startMonitorScheduleRepair } from "./monitor-scheduler";
 
 const A = "11111111-1111-1111-1111-111111111111";
 const B = "22222222-2222-2222-2222-222222222222";
@@ -260,5 +261,69 @@ describe("periodic repair sweep", () => {
     selects.push(ids.map((id) => ({ id, scheduledJobId: null })), ...ids.slice(0, 100).map((id) => [activeRow(id)]));
     await expect(repairMonitorSchedules()).resolves.toEqual({ repaired: 100, failed: 0 });
     expect(redis.eval).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not call getRepeatableJobs again per repaired monitor", async () => {
+    queue.getRepeatableJobs.mockResolvedValue([]);
+    selects.push([{ id: A, scheduledJobId: null }, { id: B, scheduledJobId: null }], [activeRow(A)], [activeRow(B)]);
+    await repairMonitorSchedules();
+    expect(queue.getRepeatableJobs).toHaveBeenCalledTimes(1);
+  });
+
+  it("skips a monitor whose frequency became 0 by the re-read (the list query itself filters frequency > 0)", async () => {
+    queue.getRepeatableJobs.mockResolvedValue([]);
+    selects.push([{ id: A, scheduledJobId: null }], [{ ...activeRow(A), frequencyMinutes: 0 }]);
+    await expect(repairMonitorSchedules()).resolves.toEqual({ repaired: 0, failed: 0 });
+    expect(queue.add).not.toHaveBeenCalled();
+  });
+
+  it("skips a monitor deleted between the list and the re-read", async () => {
+    queue.getRepeatableJobs.mockResolvedValue([]);
+    selects.push([{ id: A, scheduledJobId: null }], []);
+    await expect(repairMonitorSchedules()).resolves.toEqual({ repaired: 0, failed: 0 });
+    expect(queue.add).not.toHaveBeenCalled();
+  });
+
+  it("stops the batch once the time budget is spent and says how many were left", async () => {
+    jest.useFakeTimers({ now: 0 });
+    try {
+      const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+      queue.getRepeatableJobs.mockResolvedValue([]);
+      queue.add.mockImplementation(async () => void jest.setSystemTime(Date.now() + 30_000));
+      selects.push([A, B, C].map((id) => ({ id, scheduledJobId: null })), [activeRow(A)], [activeRow(B)], [activeRow(C)]);
+      await expect(repairMonitorSchedules()).resolves.toEqual({ repaired: 2, failed: 0 });
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("1 monitor(s) left"));
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("rotates past rows that keep failing so they cannot starve the rest", async () => {
+    queue.getRepeatableJobs.mockResolvedValue([]);
+    const ids = Array.from({ length: 101 }, (_, n) => `00000000-0000-0000-0000-${String(n).padStart(12, "0")}`);
+    queue.add.mockRejectedValue(new Error("always fails"));
+    selects.push(ids.map((id) => ({ id, scheduledJobId: null })), ...ids.slice(0, 100).map((id) => [activeRow(id)]));
+    await repairMonitorSchedules(); // 100 fail; cursor now at ids[99]
+    queue.add.mockReset();
+    selects.push(ids.map((id) => ({ id, scheduledJobId: null })), [activeRow(ids[100])]);
+    await expect(repairMonitorSchedules()).resolves.toMatchObject({ repaired: 1 });
+    expect(queue.add.mock.calls[0][0]).toBe(`scheduled-monitor-${ids[100]}`);
+  });
+
+  it("starts the repair timer only once", () => {
+    jest.useFakeTimers();
+    try {
+      const g = globalThis as { __monitorRepairTimer?: unknown };
+      delete g.__monitorRepairTimer;
+      startMonitorScheduleRepair();
+      const first = g.__monitorRepairTimer;
+      startMonitorScheduleRepair();
+      expect(g.__monitorRepairTimer).toBe(first);
+      expect(jest.getTimerCount()).toBe(1);
+      clearInterval(first as ReturnType<typeof setInterval>);
+      delete g.__monitorRepairTimer;
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });
