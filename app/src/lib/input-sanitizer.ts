@@ -305,15 +305,10 @@ export function sanitizeMonitorFormData(data: MonitorFormData): MonitorFormData 
     sanitized.name = sanitizeString(sanitized.name);
   }
 
-  // Sanitize target based on type
-  if (sanitized.target) {
-    if (sanitized.type === 'http_request' || sanitized.type === 'website') {
-      sanitized.target = sanitizeUrl(sanitized.target);
-    } else if (sanitized.type === 'ping_host' || sanitized.type === 'port_check') {
-      sanitized.target = sanitizeHostname(sanitized.target);
-    } else {
-      sanitized.target = sanitizeString(sanitized.target);
-    }
+  // The target is trimmed, never rewritten: the form validates its shape and the API validates it again, so a
+  // query value such as `?token=ab${x}` or an IPv6 host reaches the check exactly as typed.
+  if (typeof sanitized.target === 'string') {
+    sanitized.target = sanitized.target.trim();
   }
 
   // Sanitize HTTP config
