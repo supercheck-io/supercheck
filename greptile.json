@@ -1,0 +1,34 @@
+{
+  "strictness": 3,
+  "commentTypes": [
+    "logic"
+  ],
+  "instructions": "Be direct and technical. Report only concrete correctness, security, tenant-isolation, and data-loss defects with a failure scenario. Skip formatting, naming, style, and anything lint or type checking already covers. CodeRabbit also reviews these PRs, so do not repeat walkthroughs or nits.",
+  "customContext": {
+    "files": [
+      {
+        "path": ".github/review-rules.md",
+        "description": "Supercheck review rules: scope, tenancy, auth, queues, client/server boundaries"
+      },
+      {
+        "path": ".github/copilot-instructions.md",
+        "description": "Supercheck architecture and coding conventions"
+      }
+    ]
+  },
+  "ignorePatterns": "**/node_modules/**\n**/dist/**\n**/.next/**\n**/out/**\n**/coverage/**\n**/graphify-out/**\nrecorder/playwright/**\n**/package-lock.json",
+  "autoReview": [
+    "open"
+  ],
+  "triggerOnDrafts": false,
+  "disabledLabels": [
+    "skip-ai-review"
+  ],
+  "ignoreKeywords": "skip-ai-review",
+  "summarySection": {
+    "included": false
+  },
+  "includeSequenceDiagram": false,
+  "statusCheck": true,
+  "effort": "base"
+}

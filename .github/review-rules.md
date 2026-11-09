@@ -1,6 +1,6 @@
 # Supercheck review rules
 
-CodeRabbit consumes this file through `.coderabbit.yaml`.
+CodeRabbit (`.coderabbit.yaml`) and Greptile (`greptile.json`) both consume this file.
 
 ## Evidence and scope
 Paths: **/*
