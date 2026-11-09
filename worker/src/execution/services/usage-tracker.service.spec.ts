@@ -7,6 +7,16 @@ import { UsageTrackerService } from './usage-tracker.service';
 // Cloud sync requires an explicit Polar server; there is no default.
 process.env.POLAR_SERVER = 'sandbox';
 
+// Settlement fires a background Polar sync. Without a stub it opens a real socket to the sandbox
+// API, which can still be in flight when the Jest worker finishes (an intermittent open handle).
+let fetchSpy: jest.SpyInstance;
+beforeEach(() => {
+  fetchSpy = jest
+    .spyOn(global, 'fetch')
+    .mockRejectedValue(new Error('network disabled in unit tests'));
+});
+afterEach(() => fetchSpy.mockRestore());
+
 describe('UsageTrackerService ledger settlement', () => {
   const originalSelfHosted = process.env.SELF_HOSTED;
   const originalToken = process.env.POLAR_ACCESS_TOKEN;
