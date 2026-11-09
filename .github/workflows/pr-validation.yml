@@ -50,14 +50,16 @@ jobs:
             printf 'core=true\ncli=true\ne2e=true\n' >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          changed="$(git diff --name-only "${BASE_SHA}...${HEAD_SHA}")"
+          # --no-renames counts both sides of a move, so the package losing a file is checked too.
+          changed="$(git diff --no-renames --name-only "${BASE_SHA}...${HEAD_SHA}")"
           shared='^(\.github/workflows/pr-validation\.yml|\.nvmrc)$'
           # area NAME PATTERN [FILES]: true when any changed file matches.
           area() {
             if grep -qE "$shared|$2" <<< "${3-$changed}"; then echo "$1=true"; else echo "$1=false"; fi
           }
           {
-            area core '^(app|worker)/' "$(grep -v '^app/e2e/' <<< "$changed" || true)"
+            # deploy/docker is covered by app/scripts/docker-compose-profiles.spec.js in the app job.
+            area core '^((app|worker)/|deploy/docker/)' "$(grep -v '^app/e2e/' <<< "$changed" || true)"
             area cli '^cli/'
             area e2e '^app/e2e/'
           } | tee -a "$GITHUB_OUTPUT"
