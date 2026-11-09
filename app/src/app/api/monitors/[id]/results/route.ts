@@ -14,7 +14,8 @@ const logger = createLogger({ module: "monitor-results-api" }) as {
   error: (data: unknown, msg?: string) => void;
 };
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
-import { isMonitoringLocation } from "@/lib/location-service";
+import { monitorAggregationService } from "@/lib/monitor-aggregation-service";
+import { excludeSupersededSyntheticResults } from "@/lib/monitor-result-filters";
 import type { MonitoringLocation } from "@/lib/location-service";
 import { buildMonitorResultsDateRange } from "./date-range";
 
@@ -62,12 +63,11 @@ export async function GET(
   const limit = parsePositiveInteger(searchParams.get('limit'), 10);
   const dateFilter = searchParams.get('date'); // YYYY-MM-DD format
   const timezoneOffset = parseTimezoneOffset(searchParams.get("timezoneOffset"));
+  // Offset at the end of the local day (differs on DST days); older clients omit it.
+  const timezoneOffsetEnd = parseTimezoneOffset(searchParams.get("timezoneOffsetEnd"));
   const locationParam = searchParams.get("location"); // Optional location filter
-  const locationFilter: MonitoringLocation | null = isMonitoringLocation(
-    locationParam
-  )
-    ? (locationParam as MonitoringLocation)
-    : null;
+  // "" and "all" mean no filter (older API clients send them).
+  const locationFilter = (locationParam === "" || locationParam === "all" ? null : locationParam) as MonitoringLocation | null;
 
   // Validate pagination parameters
   if (!Number.isInteger(page) || !Number.isInteger(limit) || page < 1 || limit < 1 || limit > 100) {
@@ -76,14 +76,16 @@ export async function GET(
     }, { status: 400 });
   }
 
-  if (Number.isNaN(timezoneOffset)) {
-    return NextResponse.json({
-      error: "Invalid timezoneOffset parameter. Must be an integer between -840 and 840 minutes"
-    }, { status: 400 });
+  for (const [name, value] of [["timezoneOffset", timezoneOffset], ["timezoneOffsetEnd", timezoneOffsetEnd]] as const) {
+    if (Number.isNaN(value)) {
+      return NextResponse.json({
+        error: `Invalid ${name} parameter. Must be an integer between -840 and 840 minutes`
+      }, { status: 400 });
+    }
   }
 
   const dateRange = dateFilter
-    ? buildMonitorResultsDateRange(dateFilter, timezoneOffset)
+    ? buildMonitorResultsDateRange(dateFilter, timezoneOffset, timezoneOffsetEnd ?? timezoneOffset)
     : null;
 
   if (dateFilter && !dateRange) {
@@ -117,11 +119,19 @@ export async function GET(
     }
 
 
+    if (locationFilter !== null) {
+      const configured = monitor.config?.locationConfig?.locations;
+      if (!(await monitorAggregationService.monitorHasLocation(id, configured, locationFilter))) {
+        return NextResponse.json({ error: "Unknown location" }, { status: 400 });
+      }
+    }
+
     // Calculate offset for pagination
     const offset = (page - 1) * limit;
 
     // Build where condition with optional date and location filters
-    const conditions = [eq(monitorResults.monitorId, id)];
+    // A late real result replaces its synthetic "missing region" row: list the check once.
+    const conditions = [eq(monitorResults.monitorId, id), excludeSupersededSyntheticResults];
 
     if (dateRange) {
       conditions.push(

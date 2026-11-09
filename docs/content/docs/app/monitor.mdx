@@ -71,7 +71,7 @@ Checks availability, status code, response time and body content of APIs and web
 | **Custom Headers** | Tokens, API keys, any header |
 | **Request Body** | JSON or form data for POST/PUT |
 | **Authentication** | Basic Auth or Bearer Token |
-| **Expected Status** | Specific codes or ranges |
+| **Expected Status** | Codes (`200`), ranges (`200-299`) or classes (`2xx`), comma-separated. Malformed entries are rejected when you save; a stored malformed entry never matches |
 | **Keyword Validation** | Text must be present or absent in the response |
 
 ![Create HTTP Monitor](/screenshots/create-http-monitor.png)
@@ -99,7 +99,7 @@ TCP reachability and connection latency for hosts without an HTTP endpoint, on p
 ![Create Ping Monitor](/screenshots/create-ping-monitor.png)
 
 <Callout type="warn">
-Ping monitors use TCP connectivity on ports 443 and 80 rather than ICMP. If the target host does not accept TCP connections on either port, the check fails.
+Ping monitors use TCP connectivity on ports 443 and 80 rather than ICMP. The check is up when either port accepts or refuses the connection (a refusal means the host answered), and down only when neither answers. The reported response time is that of the attempt that answered.
 </Callout>
 
 ## Port Monitor
@@ -108,7 +108,17 @@ Verifies that a TCP or UDP port accepts connections within the timeout, for exam
 
 ![Create Port Monitor](/screenshots/create-port-monitor.png)
 
-UDP checks send a packet; a passing result does not confirm that the application replied. Use TCP or an application-level check when you need response verification.
+**TCP:** with **Expect closed** a refused connection passes. A timeout also passes, because a firewalled port drops packets, but only if the host still answers on port 443 or 80; an unreachable host fails. A DNS failure is always down.
+
+**UDP:** UDP has no handshake. The worker sends one packet and waits up to two seconds. A reply proves the port open and a refusal proves it closed; only silence is ambiguous:
+
+| Outcome | Result |
+|---|---|
+| Service replies | Up (open) |
+| ICMP port-unreachable (connection refused) | Down, closed (passes with **Expect closed**) |
+| Silence | Up, reported as open or filtered; fails **Expect closed** |
+
+Many UDP services never reply, and a firewall that drops packets looks the same as an open port, so silence is not proof the service works. Use TCP or an application-level check when you need response verification. Firewalls that do not return ICMP errors make closed ports look open.
 
 ## Synthetic Monitor
 
@@ -228,10 +238,10 @@ Nine key metrics are displayed prominently below the header:
 | **Status** | Current monitor status (Up, Down, Paused, Pending, Maintenance, Error) |
 | **Interval** | How frequently checks run (e.g., 5m, 15m) |
 | **Resp Time** | Latest response time from the most recent check. Shown in ms below 1 s (for example `360 ms`) and in seconds above (`1.25 s`) |
-| **Uptime** (Last 24 hours) | Percentage of successful checks in the last 24 hours |
+| **Uptime** (Last 24 hours) | Percentage of successful checks in the last 24 hours. A multi-location check counts once, as up or down by the monitor's location rule, not once per region |
 | **Avg Resp** (Last 24 hours) | Average response time over the last 24 hours |
 | **P95 Resp** (Last 24 hours) | 95th percentile response time over the last 24 hours |
-| **Uptime** (Last 30 days) | Percentage of successful checks in the last 30 days |
+| **Uptime** (Last 30 days) | Percentage of successful checks in the last 30 days, counted the same way. The per-location breakdown counts each region on its own |
 | **Avg Resp** (Last 30 days) | Average response time over the last 30 days |
 | **P95 Resp** (Last 30 days) | 95th percentile response time (30d) — long-term performance indicator |
 

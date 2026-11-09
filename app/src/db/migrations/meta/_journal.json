@@ -463,6 +463,20 @@
       "when": 1794162418697,
       "tag": "0065_trial_budget_defaults",
       "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1794209135782,
+      "tag": "0066_monitor_cycle_publish_pending",
+      "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1794212458845,
+      "tag": "0067_monitor_aggregate_percentiles",
+      "breakpoints": true
     }
   ]
 }

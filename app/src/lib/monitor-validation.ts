@@ -72,7 +72,7 @@ function isValidStatusCodes(value: unknown): boolean {
     const range = /^([1-5]\d\d)\s*-\s*([1-5]\d\d)$/.exec(part);
     return range
       ? Number(range[1]) <= Number(range[2])
-      : /^[1-5]\d\d$/.test(part) || /^[1-5]xx$/.test(part);
+      : /^[1-5]\d\d$/.test(part) || /^[1-5]xx$/i.test(part);
   });
 }
 
