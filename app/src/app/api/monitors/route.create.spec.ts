@@ -370,6 +370,34 @@ describe("collection write paths", () => {
     expect(insertMonitorRecord).toHaveBeenCalledWith(expect.objectContaining({ config: expect.objectContaining({ auth }) }), expect.anything());
   });
 
+  it("POST links providers inside the insert transaction, and a failing link returns 400 with no monitor", async () => {
+    const PID = "00000000-0000-4000-8000-0000000000aa";
+    const values = jest.fn().mockReturnValue({ onConflictDoNothing: jest.fn() });
+    const makeTx = (providers: { id: string }[]) => ({
+      select: () => ({ from: () => ({ where: () => ({ for: async () => [{ id: "project-1" }], then: (r: (v: unknown) => void) => r(providers) }) }) }),
+      delete: () => ({ where: jest.fn() }),
+      insert: () => ({ values }),
+    });
+    insertMonitorRecord.mockResolvedValue({ newMonitor: { id: "new" }, enabled: true });
+    // Outside-project check before the transaction passes (dbSelect), the in-transaction sync decides.
+    dbSelect.mockReturnValue({ from: () => ({ where: async () => [{ id: PID }], innerJoin: () => ({ where: () => ({ limit: async () => [{ id: "new" }] }) }) }) });
+    insertWithinPlanLimit.mockImplementation(async (opts: { insert: (tx: unknown) => Promise<unknown> }) => ({
+      ok: true,
+      row: await opts.insert(makeTx([{ id: PID }])),
+    }));
+    const { scheduleCreatedMonitor } = jest.requireMock("@/lib/monitor-service") as { scheduleCreatedMonitor: jest.Mock };
+    scheduleCreatedMonitor.mockResolvedValue({ id: "new" });
+    const ok = await postBody({ name: "m", type: "http_request", target: "https://example.com", alertConfig: { enabled: true, notificationProviders: [PID.toUpperCase()] } });
+    expect(ok.status).toBe(201);
+    expect(values).toHaveBeenCalledWith([{ monitorId: "new", notificationProviderId: PID }]);
+    insertWithinPlanLimit.mockImplementation(async (opts: { insert: (tx: unknown) => Promise<unknown> }) => ({
+      ok: true,
+      row: await opts.insert(makeTx([])),
+    }));
+    const bad = await postBody({ name: "m", type: "http_request", target: "https://example.com", alertConfig: { enabled: true, notificationProviders: [PID] } });
+    expect(bad.status).toBe(400);
+  });
+
   it("GET rejects a non-numeric or fractional page or limit with 400 (B6)", async () => {
     for (const query of ["page=abc", "limit=x", "page=1.5", "page=0", "limit=0", "page=-1"]) {
       const res = await GET(new Request(`http://localhost/api/monitors?${query}`));

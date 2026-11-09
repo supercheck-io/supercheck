@@ -15,7 +15,7 @@ import {
 } from "@/lib/monitor-scheduler";
 import { eq } from "drizzle-orm";
 import { ResumeRefusedError, withResumeWithinPlan } from "@/lib/middleware/plan-enforcement";
-import { MonitorScheduleError, preserveWorkerConfigKeys, syncMonitorProviderRows, WORKER_OWNED_CONFIG_KEYS } from "@/lib/monitor-write";
+import { MonitorScheduleError, preserveWorkerConfigKeys, scheduleOutOfSync, syncMonitorProviderRows, WORKER_OWNED_CONFIG_KEYS } from "@/lib/monitor-write";
 import { reconcileMonitorSchedule } from "@/lib/monitor-schedule-reconcile";
 
 // This is a conceptual service layer, actual Next.js API routes would call these functions.
@@ -158,7 +158,7 @@ export async function updateMonitorHandler(
   monitorId: string,
   data: Partial<MonitorApiData>,
   /** Delivery rows to replace in the same transaction as the monitor row (alertConfig writes). */
-  options: { providerSync?: { ids: string[]; organizationId: string; projectId: string } } = {},
+  options: { providerSync?: { ids: string[]; organizationId: string; projectId: string; storedIds?: string[] } } = {},
 ) {
   // Fetch existing monitor to compare old frequency/enabled status
   const existingMonitor = await db.query.monitors.findFirst({
@@ -206,7 +206,15 @@ export async function updateMonitorHandler(
       .where(eq(monitorTable.id, monitorId))
       .returning();
     if (rows.length > 0 && providerSync) {
-      await syncMonitorProviderRows(executor, monitorId, providerSync.ids, providerSync.organizationId, providerSync.projectId);
+      const kept = await syncMonitorProviderRows(
+        executor, monitorId, providerSync.ids, providerSync.organizationId, providerSync.projectId, providerSync.storedIds,
+      );
+      // A stored provider deleted since is dropped from the JSON too, so the UI and the rows agree.
+      const written = rows[0].alertConfig;
+      if (written && written.notificationProviders.length !== kept.length) {
+        rows[0] = { ...rows[0], alertConfig: { ...written, notificationProviders: kept } };
+        await executor.update(monitorTable).set({ alertConfig: rows[0].alertConfig }).where(eq(monitorTable.id, monitorId));
+      }
     }
     return rows;
   };
@@ -238,7 +246,9 @@ export async function updateMonitorHandler(
     (data.enabled !== undefined && data.enabled !== existingMonitor.enabled) ||
     (data.type !== undefined && data.type !== existingMonitor.type) ||
     (data.target !== undefined && data.target !== existingMonitor.target) ||
-    (data.config !== undefined && !isDeepStrictEqual(executionConfig(data.config), executionConfig(existingMonitor.config)));
+    (data.config !== undefined && !isDeepStrictEqual(executionConfig(data.config), executionConfig(existingMonitor.config))) ||
+    // An identical retry after a failed reconcile (503) must repair the schedule.
+    scheduleOutOfSync(updatedMonitor);
 
   if (shouldReschedule) {
     // Under the per-monitor lock, from the committed row: a Redis failure throws MonitorScheduleError (the route answers 503).

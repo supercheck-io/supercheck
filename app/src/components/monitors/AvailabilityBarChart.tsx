@@ -143,6 +143,7 @@ export function AvailabilityBarChart({
           <CardDescription className="text-sm">
             Availability status for monitor checks.
           </CardDescription>
+          {headerActions ? <div className="pt-2">{headerActions}</div> : null}
         </CardHeader>
         <CardContent
           className="p-4 pt-2"

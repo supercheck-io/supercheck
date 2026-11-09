@@ -3,7 +3,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import {
   monitors,
-  monitorNotificationSettings,
   monitorTags,
   notificationProviders,
   projects,
@@ -46,6 +45,7 @@ import {
   providerIdsOutsideProject,
   SCHEDULE_FAILURE_MESSAGE,
   sanitizeMonitorFields,
+  syncMonitorProviderRows,
   scheduleFailureResponse,
   syntheticFrequencyError,
   thrownStatusResponse,
@@ -269,7 +269,7 @@ export async function POST(req: NextRequest) {
     );
 
     // Same name and target handling as the update paths; credentials in config are never rewritten.
-    sanitizeMonitorFields(rawData, rawData.type);
+    sanitizeMonitorFields(rawData, rawData.type, { target: true });
 
     // Special logging for heartbeat monitors
     if (rawData.type === "heartbeat") {
@@ -548,7 +548,13 @@ export async function POST(req: NextRequest) {
             .from(projects)
             .where(and(eq(projects.id, targetProjectId), ne(projects.status, "deleted")))
             .for("share");
-          return liveProject ? insertMonitorRecord(monitorData, tx) : null;
+          if (!liveProject) return null;
+          const record = await insertMonitorRecord(monitorData, tx);
+          // Same transaction as the monitor row: a failure here must not leave a monitor holding a plan slot without its channels.
+          if (alertConfig && alertConfig.notificationProviders.length > 0) {
+            await syncMonitorProviderRows(tx, record.newMonitor.id, alertConfig.notificationProviders, organizationId, targetProjectId);
+          }
+          return record;
         };
         return executor === db ? db.transaction(insertInLiveProject) : insertInLiveProject(executor);
       },
@@ -578,19 +584,7 @@ export async function POST(req: NextRequest) {
     if (!inserted.row) {
       return NextResponse.json({ error: "Project not found" }, { status: 404 });
     }
-    // Link the validated providers before scheduling, so a scheduling failure cannot leave a monitor without them.
     const createdMonitor = inserted.row.newMonitor;
-    if (alertConfig && alertConfig.notificationProviders.length > 0) {
-      await db
-        .insert(monitorNotificationSettings)
-        .values(
-          Array.from(new Set(alertConfig.notificationProviders)).map((providerId) => ({
-            monitorId: createdMonitor.id,
-            notificationProviderId: providerId,
-          })),
-        )
-        .onConflictDoNothing();
-    }
     let newMonitor;
     try {
       newMonitor = await scheduleCreatedMonitor(createdMonitor, inserted.row.enabled);
@@ -663,6 +657,9 @@ export async function POST(req: NextRequest) {
         { error: error.message, code: error.reason },
         { status: 402 },
       );
+    }
+    if (error instanceof InvalidNotificationProvidersError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
     }
     const thrown = thrownStatusResponse(error);
     if (thrown) return thrown;
@@ -948,8 +945,10 @@ export async function PUT(req: NextRequest) {
     // Provider ids are validated and rows synced only when the body carries the list (or null).
     const syncProviders = alertConfig !== undefined && alertProvidersSent(rawData.alertConfig);
     if (alertConfig && syncProviders) {
+      // Ids the monitor already stored may have been deleted since; only newly supplied ids must exist.
+      const storedIds = (monitorData[0].alertConfig?.notificationProviders ?? []).map((id) => id.toLowerCase());
       const invalidProviderIds = await providerIdsOutsideProject(
-        alertConfig.notificationProviders,
+        alertConfig.notificationProviders.filter((id) => !storedIds.includes(id)),
         organizationId,
         project.id,
       );
@@ -968,7 +967,7 @@ export async function PUT(req: NextRequest) {
         id,
         monitorUpdateData,
         syncProviders
-          ? { providerSync: { ids: alertConfig?.notificationProviders ?? [], organizationId, projectId: project.id } }
+          ? { providerSync: { ids: alertConfig?.notificationProviders ?? [], organizationId, projectId: project.id, storedIds: monitorData[0].alertConfig?.notificationProviders } }
           : {},
       );
     } catch (error) {

@@ -44,6 +44,7 @@ import {
   preserveWorkerConfigKeys,
   SCHEDULE_FAILURE_MESSAGE,
   sanitizeMonitorFields,
+  scheduleOutOfSync,
   scheduleFailureResponse,
   syncMonitorProviderRows,
   syntheticFrequencyError,
@@ -409,7 +410,14 @@ export async function PUT(
         }
 
         if (shouldSyncNotificationProviders) {
-          await syncMonitorProviderRows(tx, id, normalizedProviderIds, authCtx.organizationId, authCtx.project.id);
+          const kept = await syncMonitorProviderRows(
+            tx, id, normalizedProviderIds, authCtx.organizationId, authCtx.project.id, currentMonitor.alertConfig?.notificationProviders,
+          );
+          // A stored provider deleted since is dropped from the JSON as well.
+          if (updatePayload.alertConfig && updatePayload.alertConfig.notificationProviders.length !== kept.length) {
+            updated.alertConfig = { ...updatePayload.alertConfig, notificationProviders: kept };
+            await tx.update(monitors).set({ alertConfig: updated.alertConfig }).where(eq(monitors.id, id));
+          }
         }
 
         return updated;
@@ -465,7 +473,16 @@ export async function PUT(
 
     // Per-monitor lock and idempotent: a Redis failure leaves the saved row and answers 503 so a retry converges.
     let scheduleFailed = false;
-    if (oldStatus !== newStatus || oldFrequency !== newFrequency || configChanged || targetChanged || typeChanged) {
+    // Scheduling state only: paused membership, enabled, execution settings, or a schedule left out of sync by an earlier failure.
+    if (
+      (oldStatus === "paused") !== (newStatus === "paused") ||
+      currentMonitor.enabled !== updatedMonitor.enabled ||
+      oldFrequency !== newFrequency ||
+      configChanged ||
+      targetChanged ||
+      typeChanged ||
+      scheduleOutOfSync(updatedMonitor)
+    ) {
       try {
         await reconcileMonitorSchedule(id, authCtx.project.id);
       } catch (error) {
@@ -748,7 +765,7 @@ export async function PATCH(
         id,
         updatePayload,
         providerIdsToSync
-          ? { providerSync: { ids: providerIdsToSync, organizationId: authCtx.organizationId, projectId: authCtx.project.id } }
+          ? { providerSync: { ids: providerIdsToSync, organizationId: authCtx.organizationId, projectId: authCtx.project.id, storedIds: currentMonitor.alertConfig?.notificationProviders } }
           : {},
       );
     } catch (error) {

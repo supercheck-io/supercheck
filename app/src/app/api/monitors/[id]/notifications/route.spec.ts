@@ -23,6 +23,7 @@ const callOrder: string[] = [];
 const mirrorProviderRowsToAlertConfig = jest.fn();
 const lockMonitorRow = jest.fn();
 jest.mock("@/lib/monitor-write", () => ({
+  AlertConfigConflictError: class extends Error {},
   mirrorProviderRowsToAlertConfig: (...a: unknown[]) => {
     callOrder.push("mirror");
     return mirrorProviderRowsToAlertConfig(...a);
@@ -122,6 +123,12 @@ describe("POST /api/monitors/[id]/notifications channel cap", () => {
     expect((await unlink()).status).toBe(200);
     expect(callOrder).toEqual(["lock", "delete", "mirror"]);
     expect(mirrorProviderRowsToAlertConfig).toHaveBeenCalledWith(expect.anything(), MONITOR_ID);
+    mirrorProviderRowsToAlertConfig.mockClear();
+    // Removing the last channel of an enabled alert that cannot open incidents is refused (and rolled back).
+    deleteReturning.mockResolvedValueOnce([{ id: "link-1" }]);
+    mirrorProviderRowsToAlertConfig.mockRejectedValueOnce(new (jest.requireMock("@/lib/monitor-write").AlertConfigConflictError)("At least one notification channel must be selected when alerts are enabled"));
+    const refused = await unlink();
+    expect(refused.status).toBe(400);
     mirrorProviderRowsToAlertConfig.mockClear();
     deleteReturning.mockResolvedValueOnce([]);
     expect((await unlink()).status).toBe(404);

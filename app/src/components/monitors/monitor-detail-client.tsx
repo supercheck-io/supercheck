@@ -287,7 +287,8 @@ export function MonitorDetailClient({
 
   // Configured locations first, so a location with no result in the latest 100 checks can still be picked,
   // plus any location seen in the chart or paginated data (a removed location may still have history).
-  const configuredLocations = (monitor.config?.locationConfig as { locations?: string[] } | undefined)?.locations;
+  const configuredLocationList = (monitor.config?.locationConfig as { locations?: unknown } | undefined)?.locations;
+  const configuredLocations = Array.isArray(configuredLocationList) ? configuredLocationList : undefined;
   const availableLocations = useMemo(() => {
     const locationSet = new Set<string>();
     configuredLocations?.forEach((location) => {

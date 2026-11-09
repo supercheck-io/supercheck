@@ -2,6 +2,7 @@ jest.mock("@/utils/db", () => ({
   db: {
     query: { monitors: { findFirst: jest.fn() } },
     update: jest.fn(),
+    transaction: jest.fn(),
   },
 }));
 jest.mock("@/lib/monitor-schedule-reconcile", () => ({ reconcileMonitorSchedule: jest.fn().mockResolvedValue(undefined) }));
@@ -191,7 +192,7 @@ describe("updateMonitorHandler write safety", () => {
       delete: () => ({ where: txDeleteWhere }),
       insert: () => ({ values: txValues }),
     };
-    (db as unknown as { transaction: jest.Mock }).transaction = jest.fn(async (cb: (t: unknown) => unknown) => cb(tx));
+    (db.transaction as jest.Mock).mockImplementation(async (cb: (t: unknown) => unknown) => cb(tx));
     await updateMonitorHandler(existing.id, { alertConfig: null }, {
       providerSync: { ids: ["00000000-0000-4000-8000-0000000000aa"], organizationId: "org-1", projectId: "project-1" },
     });
@@ -207,7 +208,7 @@ describe("updateMonitorHandler write safety", () => {
       delete: jest.fn(),
       insert: jest.fn(),
     };
-    (db as unknown as { transaction: jest.Mock }).transaction = jest.fn(async (cb: (t: unknown) => unknown) => cb(tx));
+    (db.transaction as jest.Mock).mockImplementation(async (cb: (t: unknown) => unknown) => cb(tx));
     await expect(
       updateMonitorHandler(existing.id, {}, { providerSync: { ids: ["00000000-0000-4000-8000-0000000000bb"], organizationId: "org-1", projectId: "project-1" } }),
     ).rejects.toBeInstanceOf(InvalidNotificationProvidersError);

@@ -208,6 +208,7 @@ describe("monitor PUT reschedule policy", () => {
   const stored = {
     ...existing("http_request", { timeoutSeconds: 30, alertChannels: ["a"] }),
     status: "up",
+    enabled: true,
     frequencyMinutes: 5,
     scheduledJobId: "sched-1",
     alertConfig: null,
@@ -249,6 +250,25 @@ describe("monitor PUT reschedule policy", () => {
     const response = await call(PUT, "PUT", { config: { timeoutSeconds: 10, alertChannels: ["a"] } });
     expect(response.status).toBe(200);
     expect(reconcileMonitorSchedule).toHaveBeenCalledTimes(1);
+  });
+
+  it("repairs a schedule left unscheduled by an earlier failure even when nothing else changed", async () => {
+    findFirst.mockResolvedValue({ ...stored, scheduledJobId: null });
+    transaction.mockImplementation(async (callback: (tx: unknown) => unknown) =>
+      callback({ update: () => ({ set: () => ({ where: () => ({ returning: async () => [{ ...stored, scheduledJobId: null }] }) }) }) }),
+    );
+    const response = await call(PUT, "PUT", { name: "same" });
+    expect(response.status).toBe(200);
+    expect(reconcileMonitorSchedule).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not reconcile for an up to down status change alone", async () => {
+    findFirst.mockResolvedValue(stored);
+    transaction.mockImplementation(async (callback: (tx: unknown) => unknown) =>
+      callback({ update: () => ({ set: () => ({ where: () => ({ returning: async () => [{ ...stored, status: "down" }] }) }) }) }),
+    );
+    expect((await call(PUT, "PUT", { name: "renamed" })).status).toBe(200);
+    expect(reconcileMonitorSchedule).not.toHaveBeenCalled();
   });
 
   it("answers 503, keeping the saved row, when the schedule cannot be updated", async () => {

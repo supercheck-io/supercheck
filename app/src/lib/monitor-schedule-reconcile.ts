@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, ne, sql } from "drizzle-orm";
 import { db } from "@/utils/db";
 import { monitors } from "@/db/schema";
 import { removeScheduledMonitor, scheduleMonitor } from "@/lib/monitor-scheduler";
@@ -32,7 +32,7 @@ async function withDeadline<T>(deadline: number, call: (signal: AbortSignal) => 
  * remove also searches by monitor id when scheduledJobId is null), so the next reconcile repairs it.
  * All calls share one budget started when the row lock is taken, so the paused path's two calls cannot add up past it.
  */
-export async function reconcileMonitorSchedule(id: string, projectId: string): Promise<void> {
+async function reconcileOnce(id: string, projectId: string): Promise<void> {
   await db.transaction(async (tx) => {
     // A slow DB must not hold the row lock past the worker's wait: a timeout rolls back and the route answers 503.
     await tx.execute(sql`SET LOCAL lock_timeout = ${RECONCILE_DB_TIMEOUT}`);
@@ -67,4 +67,25 @@ export async function reconcileMonitorSchedule(id: string, projectId: string): P
     }, signal));
     await tx.update(monitors).set({ scheduledJobId: schedulerId }).where(eq(monitors.id, id));
   });
+}
+
+/**
+ * Reconcile, and on failure mark an active monitor as unscheduled (scheduledJobId null, best effort; the failed
+ * transaction rolled back). A retry of the same request then sees the schedule out of sync and repairs it, even
+ * though nothing else about the monitor changed.
+ */
+export async function reconcileMonitorSchedule(id: string, projectId: string): Promise<void> {
+  try {
+    await reconcileOnce(id, projectId);
+  } catch (error) {
+    try {
+      await db
+        .update(monitors)
+        .set({ scheduledJobId: null })
+        .where(and(eq(monitors.id, id), eq(monitors.enabled, true), ne(monitors.status, "paused")));
+    } catch {
+      // Best effort: the original failure is what the caller needs.
+    }
+    throw error;
+  }
 }

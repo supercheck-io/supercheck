@@ -6,7 +6,13 @@ const tx = {
   select: () => ({ from: () => ({ where: () => ({ for: async () => (row ? [row] : []) }) }) }),
   update: () => ({ set: (v: unknown) => { txUpdateSet(v); return { where: jest.fn() }; } }),
 };
-jest.mock("@/utils/db", () => ({ db: { transaction: async (cb: (t: unknown) => unknown) => cb(tx) } }));
+const dbUpdateSet = jest.fn();
+jest.mock("@/utils/db", () => ({
+  db: {
+    transaction: async (cb: (t: unknown) => unknown) => cb(tx),
+    update: () => ({ set: (v: unknown) => { dbUpdateSet(v); return { where: jest.fn().mockResolvedValue(undefined) }; } }),
+  },
+}));
 const scheduleMonitor = jest.fn();
 const removeScheduledMonitor = jest.fn();
 jest.mock("@/lib/monitor-scheduler", () => ({
@@ -65,6 +71,8 @@ it("throws, writing no scheduler id, when scheduling fails (the transaction roll
   scheduleMonitor.mockRejectedValue(new Error("redis down"));
   await expect(reconcileMonitorSchedule("m1", "p1")).rejects.toThrow("redis down");
   expect(txUpdateSet).not.toHaveBeenCalled();
+  // Marked unscheduled outside the rolled-back transaction, so an identical retry sees the schedule out of sync.
+  expect(dbUpdateSet).toHaveBeenCalledWith({ scheduledJobId: null });
 });
 
 it("throws when removing the job fails for a paused monitor, keeping scheduledJobId", async () => {

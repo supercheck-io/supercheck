@@ -1,5 +1,7 @@
 jest.mock("@/utils/db", () => ({ db: {} }));
 import {
+  AlertConfigConflictError,
+  scheduleOutOfSync,
   frequencyMinutesError,
   InvalidNotificationProvidersError,
   mergePatch,
@@ -155,5 +157,54 @@ describe("provider rows and alertConfig stay one source of truth", () => {
     } as never;
     await mirrorProviderRowsToAlertConfig(tx, "m1");
     expect(set).toHaveBeenCalledWith({ alertConfig: expect.objectContaining({ enabled: false, notificationProviders: [ID] }) });
+  });
+});
+
+describe("review fixes in monitor-write", () => {
+  const A = "00000000-0000-4000-8000-0000000000AA";
+  it("canonicalizes and de-duplicates provider ids", () => {
+    const r = normalizeMonitorAlertConfig({ notificationProviders: [A, A.toLowerCase()] });
+    expect(r).toMatchObject({ ok: true, value: { notificationProviders: [A.toLowerCase()] } });
+  });
+
+  it("scheduleOutOfSync flags an active monitor without a job and an inactive one with a job", () => {
+    const row = { enabled: true, status: "up", frequencyMinutes: 5, scheduledJobId: "j" };
+    expect(scheduleOutOfSync(row)).toBe(false);
+    expect(scheduleOutOfSync({ ...row, scheduledJobId: null })).toBe(true);
+    expect(scheduleOutOfSync({ ...row, status: "paused" })).toBe(true);
+    expect(scheduleOutOfSync({ ...row, status: "paused", scheduledJobId: null })).toBe(false);
+  });
+
+  it("sanitizeMonitorFields leaves the target alone on updates but cleans it on create", () => {
+    const url = "https://example.com/p?token=ab${x}&y=1";
+    const update: Record<string, unknown> = { target: url };
+    sanitizeMonitorFields(update, "website");
+    expect(update.target).toBe(url);
+    const v6: Record<string, unknown> = { target: "[2001:db8::1]" };
+    sanitizeMonitorFields(v6, "ping_host", { target: true });
+    expect(v6.target).toBe("2001:db8::1");
+    const bare: Record<string, unknown> = { target: "2001:db8::1" };
+    sanitizeMonitorFields(bare, "port_check", { target: true });
+    expect(bare.target).toBe("2001:db8::1");
+  });
+
+  it("syncMonitorProviderRows drops a stored provider that was deleted, but rejects a new unknown one", async () => {
+    const GONE = "00000000-0000-4000-8000-0000000000bb";
+    const OK = "00000000-0000-4000-8000-0000000000cc";
+    const make = () => {
+      const values = jest.fn().mockReturnValue({ onConflictDoNothing: jest.fn() });
+      return { values, tx: { select: () => ({ from: () => ({ where: async () => [{ id: OK }] }) }), delete: () => ({ where: jest.fn() }), insert: () => ({ values }) } as never };
+    };
+    const a = make();
+    await expect(syncMonitorProviderRows(a.tx, "m", [OK, GONE], "o", "p", [GONE])).resolves.toEqual([OK]);
+    expect(a.values).toHaveBeenCalledWith([{ monitorId: "m", notificationProviderId: OK }]);
+    const b = make();
+    await expect(syncMonitorProviderRows(b.tx, "m", [OK, GONE], "o", "p")).rejects.toBeInstanceOf(InvalidNotificationProvidersError);
+  });
+
+  it("mirrorProviderRowsToAlertConfig refuses to leave an enabled alert with no channel and no incidents", async () => {
+    const reads = [[], [{ alertConfig: { enabled: true, notificationProviders: ["x"], alertOnFailure: true, incidentEnabled: false } }]];
+    const tx = { select: () => ({ from: () => ({ where: async () => reads.shift() }) }), update: jest.fn() } as never;
+    await expect(mirrorProviderRowsToAlertConfig(tx, "m")).rejects.toBeInstanceOf(AlertConfigConflictError);
   });
 });

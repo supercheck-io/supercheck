@@ -53,11 +53,13 @@ export function normalizeMonitorAlertConfig(raw: Raw, existing?: Partial<AlertCo
   if (providers.some((id) => typeof id !== "string" || !isUuid(id))) {
     return { ok: false, error: "Notification provider IDs must be valid UUIDs" };
   }
+  // Canonical (lowercase, de-duplicated) so validation, storage and the delivery rows agree on one spelling.
+  const canonicalProviders = Array.from(new Set((providers as string[]).map((id) => id.toLowerCase())));
   return {
     ok: true,
     value: {
       enabled: flag("enabled", false),
-      notificationProviders: providers as string[],
+      notificationProviders: canonicalProviders,
       alertOnFailure: flag("alertOnFailure", true),
       alertOnRecovery: flag("alertOnRecovery", true),
       alertOnSslExpiration: flag("alertOnSslExpiration", false),
@@ -125,8 +127,10 @@ export async function syncMonitorProviderRows(
   ids: string[],
   organizationId: string,
   projectId: string,
-): Promise<void> {
-  const unique = Array.from(new Set(ids));
+  /** Ids the monitor already stored: if such a provider has since been deleted it is dropped, not an error. */
+  storedIds: string[] = [],
+): Promise<string[]> {
+  let unique = Array.from(new Set(ids.map((id) => id.toLowerCase())));
   if (unique.length > 0) {
     const rows = await tx
       .select({ id: notificationProviders.id })
@@ -138,7 +142,10 @@ export async function syncMonitorProviderRows(
           eq(notificationProviders.projectId, projectId),
         ),
       );
-    if (rows.length !== unique.length) throw new InvalidNotificationProvidersError();
+    const found = new Set(rows.map((row) => row.id));
+    const stored = new Set(storedIds.map((id) => id.toLowerCase()));
+    if (unique.some((id) => !found.has(id) && !stored.has(id))) throw new InvalidNotificationProvidersError();
+    unique = unique.filter((id) => found.has(id));
   }
   await tx.delete(monitorNotificationSettings).where(eq(monitorNotificationSettings.monitorId, monitorId));
   if (unique.length > 0) {
@@ -147,7 +154,11 @@ export async function syncMonitorProviderRows(
       .values(unique.map((notificationProviderId) => ({ monitorId, notificationProviderId })))
       .onConflictDoNothing();
   }
+  return unique;
 }
+
+/** Thrown inside a link/unlink transaction when the resulting alertConfig would be invalid; the route answers 400. */
+export class AlertConfigConflictError extends Error {}
 
 /**
  * Take the monitor row lock as the first statement of a link/unlink transaction, the same order updateMonitorHandler and
@@ -170,7 +181,11 @@ export async function mirrorProviderRowsToAlertConfig(tx: Pick<typeof db, "selec
   const [monitor] = await tx.select({ alertConfig: monitors.alertConfig }).from(monitors).where(eq(monitors.id, monitorId));
   if (!monitor) return;
   const normalized = normalizeMonitorAlertConfig({ notificationProviders: rows.map((row) => row.id) }, monitor.alertConfig);
-  if (normalized.ok) await tx.update(monitors).set({ alertConfig: normalized.value }).where(eq(monitors.id, monitorId));
+  if (!normalized.ok) return;
+  // Unlinking the last channel of an enabled alert that cannot open incidents would leave an alert that never delivers.
+  const invalid = enabledAlertConfigError(normalized.value);
+  if (invalid) throw new AlertConfigConflictError(invalid);
+  await tx.update(monitors).set({ alertConfig: normalized.value }).where(eq(monitors.id, monitorId));
 }
 
 /** True when the test belongs to this project and organization. */
@@ -242,9 +257,10 @@ export function timeoutFrequencyError(config: MonitorConfig | null | undefined, 
  * Name and target cleanup shared by create, both PUTs and PATCH. Credentials and other config are never rewritten:
  * a password such as `ab${x}` must reach the check exactly as typed.
  */
-export function sanitizeMonitorFields(body: Record<string, unknown>, effectiveType: unknown): void {
+export function sanitizeMonitorFields(body: Record<string, unknown>, effectiveType: unknown, options: { target?: boolean } = {}): void {
   if (typeof body.name === "string") body.name = sanitizeString(body.name);
-  if (typeof body.target === "string" && body.target) {
+  // Create has always cleaned the target; updates leave it as sent (the target policy validates it), so a query value such as `?token=ab${x}` is never cut.
+  if (options.target && typeof body.target === "string" && body.target) {
     if (effectiveType === "http_request" || effectiveType === "website") {
       // An unusable URL (ftp://, javascript:) is kept as sent so validation names the http(s) rule.
       body.target = sanitizeUrl(body.target) || body.target;
@@ -275,6 +291,12 @@ export function thrownStatusResponse(error: unknown): NextResponse | null {
 export function alertProvidersSent(alertConfig: unknown): boolean {
   if (alertConfig === null) return true;
   return typeof alertConfig === "object" && !Array.isArray(alertConfig) && Object.hasOwn(alertConfig as object, "notificationProviders");
+}
+
+/** True when the stored job state disagrees with the row: an active monitor with no job id, or an inactive one that still has one. */
+export function scheduleOutOfSync(row: { enabled: boolean; status: string; frequencyMinutes: number; scheduledJobId: string | null }): boolean {
+  const shouldRun = row.enabled && row.status !== "paused" && row.frequencyMinutes > 0;
+  return shouldRun !== Boolean(row.scheduledJobId);
 }
 
 export const SCHEDULE_FAILURE_MESSAGE = "Monitor saved, but updating the check schedule failed. Retry the request to reconcile it.";

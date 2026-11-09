@@ -131,3 +131,8 @@ it("offers every configured location in the filter, not only those seen in recen
   render(<MonitorDetailClient monitor={configured} />);
   await waitFor(() => expect(locationFilterProps?.availableLocations).toEqual(["eu-central", "us-east"]));
 });
+
+it("ignores a non-array locations value instead of crashing", async () => {
+  const bad = { ...(monitor as object), config: { locationConfig: { locations: "eu-central" } }, recentResults: [] } as never;
+  expect(() => render(<MonitorDetailClient monitor={bad} />)).not.toThrow();
+});

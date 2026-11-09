@@ -9,7 +9,7 @@ import {
 import { eq, and, count } from "drizzle-orm";
 import { hasPermissionForUser, forbiddenOrNotFound } from "@/lib/rbac/middleware";
 import { requireUserAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
-import { lockMonitorRow, mirrorProviderRowsToAlertConfig } from "@/lib/monitor-write";
+import { AlertConfigConflictError, lockMonitorRow, mirrorProviderRowsToAlertConfig } from "@/lib/monitor-write";
 import { createLogger } from "@/lib/logger/index";
 
 const logger = createLogger({ module: "monitor-notifications-api" }) as {
@@ -225,6 +225,9 @@ export async function POST(
         { status: authErrorStatus(error) }
       );
     }
+    if (error instanceof AlertConfigConflictError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
     logger.error({ err: error, monitorId: id }, "Error linking notification provider");
     return NextResponse.json(
       { error: "Failed to link notification provider" },
@@ -317,6 +320,9 @@ export async function DELETE(
         { error: error instanceof Error ? error.message : "Authentication required" },
         { status: authErrorStatus(error) }
       );
+    }
+    if (error instanceof AlertConfigConflictError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
     }
     logger.error({ err: error, monitorId: id }, "Error unlinking notification provider");
     return NextResponse.json(

@@ -155,6 +155,11 @@ export function sanitizeHostname(hostname: string | null | undefined): string {
 
   let sanitized = sanitizeString(hostname);
 
+  // An IPv6 literal keeps its colons (bare, as the checks expect); brackets from a URL-style entry are dropped.
+  const unbracketed = sanitized.replace(/^\[(.*)\]$/, '$1');
+  // Client code imports this file, so no node:net; the target policy validates the address itself.
+  if (/^[0-9a-fA-F:.]+$/.test(unbracketed) && (unbracketed.match(/:/g) ?? []).length >= 2) return unbracketed;
+
   // Remove any characters that aren't valid in hostnames/IPs
   // Allow: letters, numbers, dots, hyphens
   sanitized = sanitized.replace(/[^a-zA-Z0-9.\-]/g, '');
