@@ -1511,6 +1511,16 @@ describe('MonitorService', () => {
         },
       );
 
+      it('passes expectClosed when the host answers late, within the shared timeout', async () => {
+        netState.behavior = 'timeout';
+        netState.attempts.push({ outcome: 'connect', delayMs: 200 });
+        const result = await service.executeMonitor(
+          portJob({ expectClosed: true, timeoutSeconds: 10 }),
+        );
+        expect(result).toMatchObject({ status: 'up', isUp: true });
+        expect(result?.details).toMatchObject({ filtered: true });
+      });
+
       it('fails expectClosed on a timeout when the host itself is unreachable', async () => {
         netState.behavior = 'timeout';
         netState.attempts.push({ outcome: 'timeout' }, { outcome: 'timeout' });

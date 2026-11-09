@@ -1684,6 +1684,7 @@ export class MonitorService {
     target: string,
     lookup: LookupFunction,
     budgetMs: number,
+    signal: AbortSignal,
   ): Promise<boolean> {
     const { createConnection } = await import('net');
     const attempts = [443, 80].map(
@@ -1699,6 +1700,15 @@ export class MonitorService {
             socket.destroy();
             resolve(false);
           }, budgetMs);
+          signal.addEventListener(
+            'abort',
+            () => {
+              clearTimeout(timer);
+              socket.destroy();
+              resolve(false);
+            },
+            { once: true },
+          );
           socket.on('connect', () => {
             clearTimeout(timer);
             socket.destroy();
@@ -1759,12 +1769,21 @@ export class MonitorService {
     let isUp = false;
     let responseTimeMs: number | undefined;
 
-    let tcpLookup: LookupFunction | undefined;
+    // With expectClosed the liveness probe runs alongside the connect and shares its timeout.
+    let aliveProbe: Promise<boolean> | undefined;
+    const probeAbort = new AbortController();
     try {
       const allowInternal = allowInternalMonitorTargets();
       if (protocol === 'tcp') {
         const lookup = await vettedLookup(target, allowInternal);
-        tcpLookup = lookup;
+        if (expectClosed) {
+          aliveProbe = this.probeHostAlive(
+            target,
+            lookup,
+            timeout,
+            probeAbort.signal,
+          ).catch(() => false);
+        }
         // TCP port check using net module
         const net = await import('net');
 
@@ -1912,21 +1931,7 @@ export class MonitorService {
 
       if (isTimeoutError(error)) {
         // A filtered port drops the SYN, but so does a powered-off host: only pass if the host answers elsewhere.
-        // The probe reuses the vetted addresses (no re-resolution) and gets only what is left of the budget.
-        const hostAlive =
-          expectClosed && tcpLookup
-            ? await this.probeHostAlive(
-                target,
-                tcpLookup,
-                Math.max(
-                  1000,
-                  timeout -
-                    Math.round(
-                      Number(process.hrtime.bigint() - startTime) / 1000000,
-                    ),
-                ),
-              )
-            : false;
+        const hostAlive = aliveProbe ? await aliveProbe : false;
         responseTimeMs = Math.round(
           Number(process.hrtime.bigint() - startTime) / 1000000,
         );
@@ -1990,6 +1995,7 @@ export class MonitorService {
       details.responseTimeMs = responseTimeMs;
     }
 
+    probeAbort.abort();
     this.logger.debug(
       `Port Check completed: ${target}:${port} (${protocol}), Status: ${status}, Response Time: ${responseTimeMs}ms`,
     );
