@@ -1864,14 +1864,23 @@ export class MonitorService {
         (innerCodes.size === 1 ? [...innerCodes][0] : undefined);
 
       if (isTimeoutError(error)) {
-        if (expectClosed) {
-          // A filtered port drops the SYN, so silence is the usual way a port is "closed" to the internet.
+        // A filtered port drops the SYN, but so does a powered-off host: only pass if the host answers elsewhere.
+        const hostAlive =
+          expectClosed &&
+          protocol === 'tcp' &&
+          (await this.executePingHost(target, config)).isUp;
+        if (expectClosed && hostAlive) {
           status = 'up';
           isUp = true;
           details.filtered = true;
           details.expectClosed = true;
           details.note =
             'No response before the timeout: the port is filtered, which counts as closed';
+        } else if (expectClosed) {
+          status = 'down';
+          isUp = false;
+          details.errorMessage =
+            'Host unreachable: the port did not answer and the host did not respond on ports 443 or 80';
         } else {
           status = 'timeout';
           details.errorMessage = `Connection timeout after ${timeout}ms`;

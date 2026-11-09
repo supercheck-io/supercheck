@@ -106,7 +106,7 @@ Verifies that a TCP or UDP port accepts connections within the timeout, for exam
 
 ![Create Port Monitor](/screenshots/create-port-monitor.png)
 
-**TCP:** with **Expect closed** a refused connection passes, and so does a timeout, because a firewalled (filtered) port drops packets instead of refusing them. A DNS failure is always down.
+**TCP:** with **Expect closed** a refused connection passes. A timeout also passes, because a firewalled port drops packets, but only if the host still answers on port 443 or 80; an unreachable host fails. A DNS failure is always down.
 
 **UDP:** UDP has no handshake, so a check can prove a port closed but never open. The worker sends one packet on a connected socket and waits up to two seconds:
 

@@ -1482,10 +1482,21 @@ describe('MonitorService', () => {
         },
       );
 
+      it('fails expectClosed on a timeout when the host itself is unreachable', async () => {
+        netState.behavior = 'timeout';
+        netState.attempts.push({ outcome: 'timeout' }, { outcome: 'timeout' });
+        const result = await service.executeMonitor(
+          portJob({ expectClosed: true }),
+        );
+        expect(result).toMatchObject({ status: 'down', isUp: false });
+        expect(result?.details?.errorMessage).toContain('Host unreachable');
+      });
+
       it.each(['timeout', 'timeout-aggregate'])(
-        'treats %s as filtered and closed when expectClosed',
+        'treats %s as filtered and closed when expectClosed and the host is alive',
         async (behavior) => {
           netState.behavior = behavior;
+          netState.attempts.push({ outcome: 'connect' });
           const result = await service.executeMonitor(
             portJob({ expectClosed: true }),
           );
