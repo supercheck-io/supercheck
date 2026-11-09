@@ -9,6 +9,7 @@ import {
 } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
+import { fetchQueryAfterCancel } from "@/lib/fetch-query-after-cancel";
 import { TableBadge } from "@/components/ui/table-badge";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
@@ -389,8 +390,7 @@ function OrgAdminDashboardContent() {
     if (!SRE_SETUP_TABS.has(activeTab) || sreSetupLoaded) return;
 
     let isCancelled = false;
-    queryClient
-      .fetchQuery({
+    fetchQueryAfterCancel(queryClient, {
         queryKey: getSreAdminQueryKey(projectId, "setup"),
         queryFn: () =>
           fetchAdminSetupJson<SreSetupResponse>("/api/sre/onboarding"),
@@ -463,8 +463,7 @@ function OrgAdminDashboardContent() {
     let isCancelled = false;
     setIntegrationsLoading(true);
 
-    queryClient
-      .fetchQuery({
+    fetchQueryAfterCancel(queryClient, {
         queryKey: getSreAdminQueryKey(projectId, "integrations"),
         queryFn: () =>
           fetchAdminSetupJson<SreIntegrationsResponse>("/api/sre/integrations"),
@@ -504,8 +503,7 @@ function OrgAdminDashboardContent() {
 
     let isCancelled = false;
 
-    queryClient
-      .fetchQuery({
+    fetchQueryAfterCancel(queryClient, {
         queryKey: getSreAdminQueryKey(projectId, "diagnostic-recipes"),
         queryFn: () =>
           fetchAdminSetupJson<SreDiagnosticRecipesResponse>(
@@ -542,8 +540,7 @@ function OrgAdminDashboardContent() {
     let isCancelled = false;
     setPrivateAgentsLoading(true);
 
-    queryClient
-      .fetchQuery({
+    fetchQueryAfterCancel(queryClient, {
         queryKey: getSreAdminQueryKey(projectId, "private-agents"),
         queryFn: () =>
           fetchAdminSetupJson<SrePrivateAgentsResponse>(
