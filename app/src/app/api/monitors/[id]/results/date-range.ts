@@ -7,7 +7,10 @@ type DateRange = {
 
 export function buildMonitorResultsDateRange(
   dateFilter: string,
-  timezoneOffsetMinutes: number | null = null
+  timezoneOffsetMinutes: number | null = null,
+  // The offset in force at the end of the day. A DST change day has two, so one shared value is an hour off
+  // at one boundary; without it the start offset is used for both.
+  endTimezoneOffsetMinutes: number | null = timezoneOffsetMinutes
 ): DateRange | null {
   if (!DATE_FILTER_PATTERN.test(dateFilter)) {
     return null;
@@ -25,9 +28,8 @@ export function buildMonitorResultsDateRange(
     return null;
   }
 
-  const offsetMilliseconds = (timezoneOffsetMinutes ?? 0) * 60 * 1000;
-  const start = new Date(utcStart + offsetMilliseconds);
-  const end = new Date(Date.UTC(year, month - 1, day + 1) + offsetMilliseconds);
+  const start = new Date(utcStart + (timezoneOffsetMinutes ?? 0) * 60 * 1000);
+  const end = new Date(Date.UTC(year, month - 1, day + 1) + (endTimezoneOffsetMinutes ?? 0) * 60 * 1000);
 
   return { start, end };
 }

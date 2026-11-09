@@ -171,6 +171,201 @@ it.each(["hourly", "daily"] as const)("keeps entirely skipped cycles neutral in 
   expect(aggregates.find(row => row.location === null)).toMatchObject({ totalChecks: 2, successfulChecks: 1, failedChecks: 1 });
 });
 
+const at = (minutes: number) => new Date(day.getTime() + minutes * 60_000);
+
+it("counts a 3-region majority monitor with one region always down as 100% up, per-region rows stay per region", async () => {
+  await mockDatabase
+    .update(schema.monitors)
+    .set({ config: { locationConfig: { enabled: true, locations: ["a", "b", "c"], strategy: "majority", threshold: 50 } } })
+    .where(eq(schema.monitors.id, monitorId));
+  const rows = [0, 1, 2, 3].flatMap((i) =>
+    [["a", true], ["b", true], ["c", false]].map(([location, isUp]) => ({
+      monitorId, executionGroupId: `grp-${i}`, checkedAt: at(i * 5), location: location as string,
+      status: isUp ? ("up" as const) : ("down" as const), isUp: isUp as boolean, responseTimeMs: isUp ? 100 + i : null,
+    })),
+  );
+  await mockDatabase.insert(schema.monitorResults).values(rows);
+  expect((await monitorAggregationService.runDailyAggregation()).errors).toEqual([]);
+  const aggregates = await mockDatabase.select().from(schema.monitorAggregates).where(eq(schema.monitorAggregates.monitorId, monitorId));
+  expect(aggregates.find((r) => r.location === null)).toMatchObject({ totalChecks: 4, successfulChecks: 4, failedChecks: 0, responseSampleCount: 8 });
+  expect(aggregates.find((r) => r.location === "c")).toMatchObject({ totalChecks: 4, successfulChecks: 0, responseSampleCount: 0 });
+  expect(aggregates.find((r) => r.location === "a")).toMatchObject({ totalChecks: 4, successfulChecks: 4 });
+  const window = await monitorAggregationService.getWindowMetrics(monitorId, "daily", day, new Date(day.getTime() + 86_400_000), null);
+  expect(window).toMatchObject({ totalChecks: 4, successfulChecks: 4, uptimePercentage: 100 });
+  expect(window.p95ResponseMs).toBeGreaterThanOrEqual(100);
+});
+
+it("aggregates a monitor paused after a partial period, deletes a stale period, and never deletes periods older than the oldest raw row", async () => {
+  await mockDatabase.update(schema.monitors).set({ enabled: false }).where(eq(schema.monitors.id, monitorId));
+  const older = (days: number, minutes: number) => new Date(day.getTime() - days * 86_400_000 + minutes * 60_000);
+  await mockDatabase.insert(schema.monitorResults).values([
+    { monitorId, checkedAt: older(2, 10), location: "local", status: "up", isUp: true, responseTimeMs: 50 },
+    { monitorId, checkedAt: older(1, 10), location: "local", status: "up", isUp: true, responseTimeMs: 50 },
+    { monitorId, checkedAt: at(10), location: "local", status: "up", isUp: true, responseTimeMs: 50 },
+  ]);
+  expect((await monitorAggregationService.runDailyAggregation()).errors).toEqual([]);
+  const count = async () =>
+    (await mockDatabase.select().from(schema.monitorAggregates).where(eq(schema.monitorAggregates.monitorId, monitorId))).length;
+  expect(await count()).toBe(6);
+
+  // The middle day's rows disappear while older and newer raw rows remain: its aggregates are stale.
+  await mockDatabase.delete(schema.monitorResults).where(and(eq(schema.monitorResults.monitorId, monitorId), eq(schema.monitorResults.checkedAt, older(1, 10))));
+  expect((await monitorAggregationService.runDailyAggregation()).errors).toEqual([]);
+  expect(await count()).toBe(4);
+
+  // Raw retention purges the oldest rows: aggregates of purged days are kept, not deleted.
+  await mockDatabase.delete(schema.monitorResults).where(and(eq(schema.monitorResults.monitorId, monitorId), eq(schema.monitorResults.checkedAt, older(2, 10))));
+  expect((await monitorAggregationService.runDailyAggregation()).errors).toEqual([]);
+  expect(await count()).toBe(4);
+});
+
+it("counts raw rows of a period no aggregate covers in the window", async () => {
+  await mockDatabase.insert(schema.monitorResults).values([
+    { monitorId, checkedAt: at(10), location: "local", status: "up", isUp: true, responseTimeMs: 50 },
+    { monitorId, checkedAt: at(20), location: "local", status: "down", isUp: false },
+  ]);
+  const window = await monitorAggregationService.getWindowMetrics(monitorId, "daily", day, new Date(day.getTime() + 86_400_000), null);
+  expect(window).toMatchObject({ totalChecks: 2, successfulChecks: 1, uptimePercentage: 50, avgResponseMs: 50 });
+});
+
+it("summarises a window with no aggregates in SQL: cycle rule, missing region, in-flight cycle, snapshot, location filter, p95", async () => {
+  await mockDatabase
+    .update(schema.monitors)
+    .set({ config: { locationConfig: { enabled: true, locations: ["a", "b", "c"], strategy: "majority", threshold: 50 } } })
+    .where(eq(schema.monitors.id, monitorId));
+  const row = (group: string, location: string, isUp: boolean, minutes: number, ms: number | null = 100) => ({
+    monitorId, executionGroupId: group, checkedAt: at(minutes), location, status: isUp ? ("up" as const) : ("down" as const), isUp, responseTimeMs: isUp ? ms : null,
+  });
+  // g1: a,b up c down => up. g2: only a reported (old) => down. g3: snapshot "any", only a up => up.
+  await mockDatabase.insert(schema.monitorCycles).values({
+    id: "g3", monitorId, scheduledFor: at(30), deadlineAt: at(40), expectedLocations: ["a", "b", "c"], strategy: "any", threshold: 1, status: "closed",
+  });
+  await mockDatabase.insert(schema.monitorResults).values([
+    row("g1", "a", true, 0, 100), row("g1", "b", true, 0, 200), row("g1", "c", false, 0),
+    row("g2", "a", true, 10, 300),
+    row("g3", "a", true, 30, 400),
+  ]);
+  // In flight right now: a reported, b and c have not. Not counted until it settles.
+  await mockDatabase.insert(schema.monitorResults).values({
+    monitorId, executionGroupId: "g4", checkedAt: new Date(Date.now() - 60_000), location: "a", status: "up", isUp: true, responseTimeMs: 100,
+  });
+  const now = new Date();
+  const window = await monitorAggregationService.getWindowMetrics(monitorId, "daily", day, now, null);
+  expect(window).toMatchObject({ totalChecks: 3, successfulChecks: 2 });
+  // Samples: 100,200,300,400,100 -> p95 within the 5% bucket of 400.
+  expect(window.p95ResponseMs).toBeGreaterThan(380);
+  expect(window.p95ResponseMs).toBeLessThan(420);
+  const regional = await monitorAggregationService.getWindowMetrics(monitorId, "daily", day, now, "c" as never);
+  expect(regional).toMatchObject({ totalChecks: 1, successfulChecks: 0 });
+});
+
+it("lets the latest attempt of a retried region decide, the same in the aggregates and in the SQL tail", async () => {
+  await mockDatabase
+    .update(schema.monitors)
+    .set({ config: { locationConfig: { enabled: true, locations: ["a", "b"], strategy: "all", threshold: 100 } } })
+    .where(eq(schema.monitors.id, monitorId));
+  const row = (group: string, location: string, isUp: boolean, minutes: number) => ({
+    monitorId, executionGroupId: group, checkedAt: at(minutes), location, status: isUp ? ("up" as const) : ("down" as const), isUp, responseTimeMs: isUp ? 100 : null,
+  });
+  // r1: a up then down (retry failed), b up => "all" fails. r2: a down then up, b up => "all" holds.
+  await mockDatabase.insert(schema.monitorResults).values([
+    row("r1", "a", true, 0), row("r1", "a", false, 1), row("r1", "b", true, 0),
+    row("r2", "a", false, 10), row("r2", "a", true, 11), row("r2", "b", true, 10),
+  ]);
+  const end = new Date(day.getTime() + 86_400_000);
+  const tail = await monitorAggregationService.getWindowMetrics(monitorId, "daily", day, end, null);
+  expect(tail).toMatchObject({ totalChecks: 2, successfulChecks: 1 });
+  expect((await monitorAggregationService.runDailyAggregation()).errors).toEqual([]);
+  const aggregated = await monitorAggregationService.getWindowMetrics(monitorId, "daily", day, end, null);
+  expect(aggregated).toMatchObject({ totalChecks: 2, successfulChecks: 1 });
+});
+
+it("judges a cycle over the regions the worker enqueued when no cycle snapshot exists (flag off), in SQL and in the aggregates", async () => {
+  // Config says a,b,c with "all", but region c had no live worker and was skipped: the worker judged a,b only.
+  await mockDatabase
+    .update(schema.monitors)
+    .set({ config: { locationConfig: { enabled: true, locations: ["a", "b", "c"], strategy: "all", threshold: 100 } } })
+    .where(eq(schema.monitors.id, monitorId));
+  const rows: (typeof schema.monitorResults.$inferInsert)[] = [0, 10].flatMap((minutes, i) =>
+    ["a", "b"].map((location) => ({
+      monitorId, executionGroupId: `skip-${i}`, checkedAt: at(minutes), location, status: "up" as const, isUp: true, responseTimeMs: 100,
+      details: { expectedLocations: ["a", "b"] },
+    })),
+  );
+  // A third cycle also has a stray row from a region outside its expected set (down): it must not count.
+  rows.push(
+    ...["a", "b"].map((location) => ({ monitorId, executionGroupId: "skip-2", checkedAt: at(20), location, status: "up" as const, isUp: true, responseTimeMs: 100, details: { expectedLocations: ["a", "b"] } })),
+    { monitorId, executionGroupId: "skip-2", checkedAt: at(20), location: "z", status: "down" as const, isUp: false, details: { expectedLocations: ["a", "b"] } },
+  );
+  await mockDatabase.insert(schema.monitorResults).values(rows);
+  const end = new Date(day.getTime() + 86_400_000);
+  expect(await monitorAggregationService.getWindowMetrics(monitorId, "daily", day, end, null)).toMatchObject({ totalChecks: 3, successfulChecks: 3 });
+  expect((await monitorAggregationService.runDailyAggregation()).errors).toEqual([]);
+  expect(await monitorAggregationService.getWindowMetrics(monitorId, "daily", day, end, null)).toMatchObject({ totalChecks: 3, successfulChecks: 3 });
+});
+
+it("never rewrites a period older than ordinary raw history, even when status-change rows survive retention", async () => {
+  const older = new Date(day.getTime() - 3 * 86_400_000 + 60_000);
+  await mockDatabase.insert(schema.monitorResults).values([
+    { monitorId, checkedAt: older, location: "local", status: "down", isUp: false, isStatusChange: true },
+    { monitorId, checkedAt: at(10), location: "local", status: "up", isUp: true, responseTimeMs: 50 },
+  ]);
+  // A previous run aggregated the old day from rows that retention has since purged (only the status change stayed).
+  const oldDay = new Date(Date.UTC(older.getUTCFullYear(), older.getUTCMonth(), older.getUTCDate()));
+  await mockDatabase.insert(schema.monitorAggregates).values({ monitorId, periodType: "daily", periodStart: oldDay, location: null, totalChecks: 50, successfulChecks: 49, uptimePercentage: "98.00" });
+  expect((await monitorAggregationService.runDailyAggregation()).errors).toEqual([]);
+  const [kept] = await mockDatabase.select().from(schema.monitorAggregates).where(and(eq(schema.monitorAggregates.monitorId, monitorId), eq(schema.monitorAggregates.periodStart, oldDay)));
+  expect(kept).toMatchObject({ totalChecks: 50, successfulChecks: 49 });
+});
+
+it("never shrinks the aggregate of the period holding the oldest raw row (partly purged), but still grows it", async () => {
+  await mockDatabase.insert(schema.monitorResults).values(
+    Array.from({ length: 40 }, (_, i) => ({ monitorId, checkedAt: at(i), location: "local" as const, status: "up" as const, isUp: true, responseTimeMs: 10 })),
+  );
+  await mockDatabase.insert(schema.monitorAggregates).values([null, "local"].map((location) => ({
+    monitorId, periodType: "daily" as const, periodStart: day, location, totalChecks: 100, successfulChecks: 100, uptimePercentage: "100.00",
+  })));
+  expect((await monitorAggregationService.runDailyAggregation()).errors).toEqual([]);
+  const read = async () => (await mockDatabase.select().from(schema.monitorAggregates).where(eq(schema.monitorAggregates.monitorId, monitorId))).map((r) => r.totalChecks);
+  expect(await read()).toEqual([100, 100]);
+  // More raw rows than the stored aggregate: it is recomputed upwards.
+  await mockDatabase.insert(schema.monitorResults).values(
+    Array.from({ length: 70 }, (_, i) => ({ monitorId, checkedAt: at(100 + i), location: "local" as const, status: "up" as const, isUp: true, responseTimeMs: 10 })),
+  );
+  expect((await monitorAggregationService.runDailyAggregation()).errors).toEqual([]);
+  expect(await read()).toEqual([110, 110]);
+});
+
+it("counts today's checks for several monitors in one pass, matching getWindowMetrics (aggregated hours + raw tail)", async () => {
+  const [other] = await mockDatabase.insert(schema.monitors).values({
+    organizationId: (await mockDatabase.select().from(schema.monitors).where(eq(schema.monitors.id, monitorId)))[0].organizationId,
+    projectId: (await mockDatabase.select().from(schema.monitors).where(eq(schema.monitors.id, monitorId)))[0].projectId,
+    name: "Other", type: "http_request", target: "https://example.org", status: "up",
+  }).returning();
+  await mockDatabase.update(schema.monitors).set({ config: { locationConfig: { enabled: true, locations: ["a", "b", "c"], strategy: "majority", threshold: 50 } } }).where(eq(schema.monitors.id, monitorId));
+  const start = new Date(); start.setUTCHours(0, 0, 0, 0);
+  const now = new Date(start.getTime() + 5 * 3_600_000 + 20 * 60_000);
+  const at2 = (minutes: number) => new Date(start.getTime() + minutes * 60_000);
+  const rows = [
+    // monitor 1: a completed, aggregated hour (cycle g0) and one cycle in the raw tail hour (g1: a down, b up, c up)
+    ...["a", "b", "c"].map((l) => ({ monitorId, executionGroupId: "g0", checkedAt: at2(10), location: l, status: "up" as const, isUp: true, responseTimeMs: 10 })),
+    ...["a", "b", "c"].map((l) => ({ monitorId, executionGroupId: "g1", checkedAt: at2(5 * 60 + 5), location: l, status: l === "a" ? ("down" as const) : ("up" as const), isUp: l !== "a", responseTimeMs: l === "a" ? null : 10, details: { expectedLocations: ["a", "b", "c"] } })),
+    // monitor 2: solo rows in an aggregated hour and in the tail
+    { monitorId: other.id, checkedAt: at2(20), location: "local", status: "up" as const, isUp: true, responseTimeMs: 5 },
+    { monitorId: other.id, checkedAt: at2(5 * 60 + 10), location: "local", status: "down" as const, isUp: false },
+  ];
+  await mockDatabase.insert(schema.monitorResults).values(rows);
+  expect((await monitorAggregationService.runHourlyAggregation()).errors).toEqual([]);
+  // runHourlyAggregation only covers the last 24h up to the current hour; seed the aggregates for today's hours directly.
+  const batch = await monitorAggregationService.getCheckCountsForMonitors([monitorId, other.id], start, now);
+  for (const id of [monitorId, other.id]) {
+    const single = await monitorAggregationService.getWindowMetrics(id, "hourly", start, now, null);
+    expect(batch.get(id)).toEqual({ totalChecks: single.totalChecks, successfulChecks: single.successfulChecks });
+  }
+  expect(batch.get(monitorId)).toEqual({ totalChecks: 2, successfulChecks: 2 });
+  expect(batch.get(other.id)).toEqual({ totalChecks: 2, successfulChecks: 1 });
+});
+
 it("keeps the latest duplicate, archives superseded rows and cascades their deletion", async () => {
   await client`DROP INDEX monitor_aggregates_combined_unique_idx`;
   await client`DROP TABLE monitor_aggregate_dedup_audit`;
