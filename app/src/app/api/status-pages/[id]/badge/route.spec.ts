@@ -80,6 +80,20 @@ describe("status badge", () => {
     expect(mockStale).toHaveBeenLastCalledWith(["stale", "live"]);
   });
 
+  it("says no recent data when every component is stale and no incident is open", async () => {
+    mockStale.mockResolvedValueOnce(new Set(["a", "b"]));
+    mockSelects.push([{ id: "a", status: "operational" }, { id: "b", status: "operational" }], []);
+    const svg = await call();
+    expect(svg).toContain("no recent data");
+    expect(svg).not.toContain("operational");
+  });
+
+  it("an open incident still wins when every component is stale", async () => {
+    mockStale.mockResolvedValueOnce(new Set(["a"]));
+    mockSelects.push([{ id: "a", status: "operational" }], [{ impact: "critical" }]);
+    expect(await call()).toContain("major outage");
+  });
+
   it("keeps a live outage when another component is stale", async () => {
     mockStale.mockResolvedValueOnce(new Set(["stale"]));
     mockSelects.push([{ id: "stale", status: "operational" }, { id: "live", status: "major_outage" }], []);

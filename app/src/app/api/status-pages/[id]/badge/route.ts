@@ -111,6 +111,8 @@ function sanitizeColor(color: string | null | undefined, fallback: string): stri
 /**
  * Determine overall system status from component statuses
  */
+const NO_RECENT_DATA_COLOR = "#9ca3af";
+
 function calculateOverallStatus(
   componentStatuses: string[]
 ): { message: string; color: string } {
@@ -226,11 +228,13 @@ export async function GET(
         )
       );
 
-    const { message, color } = calculateOverallStatus([
-      // Stale components do not count, as on the public page.
-      ...pageComponents.filter((c) => !stale.has(c.id)).map((c) => c.status),
-      ...openIncidents.flatMap((i) => IMPACT_BANNER_STATUS[i.impact] ?? []),
-    ]);
+    const incidentStatuses = openIncidents.flatMap((i) => IMPACT_BANNER_STATUS[i.impact] ?? []);
+    const liveComponents = pageComponents.filter((c) => !stale.has(c.id));
+    // Stale components do not count, as on the public page; if every component is stale and no
+    // incident is open, say so instead of showing a healthy badge.
+    const { message, color } = pageComponents.length > 0 && liveComponents.length === 0 && incidentStatuses.length === 0
+      ? { message: "no recent data", color: NO_RECENT_DATA_COLOR }
+      : calculateOverallStatus([...liveComponents.map((c) => c.status), ...incidentStatuses]);
 
     // Use custom colors from the status page if available (validated)
     let badgeColor = color;
