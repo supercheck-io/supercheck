@@ -75,6 +75,8 @@ export type MonitorResultDetails = {
     validFrom?: string;
     validTo?: string;
     daysRemaining?: number;
+    // Host the certificate was read from; set on the copy stored in monitor config
+    host?: string;
   };
   [key: string]: unknown;
 };
@@ -117,6 +119,10 @@ export type MonitorConfig = {
   sslDaysUntilExpirationWarning?: number;
   sslCheckFrequencyHours?: number;
   sslLastCheckedAt?: string;
+  /** First failed certificate probe since the last successful read, for this host; worker-owned. */
+  sslProbeFailure?: { since: string; host: string | null };
+  /** Last certificate the worker read; written by the worker, not by clients. */
+  sslCertificate?: MonitorResultDetails["sslCertificate"];
   timeoutSeconds?: number;
   regions?: string[];
   locationConfig?: LocationConfig;

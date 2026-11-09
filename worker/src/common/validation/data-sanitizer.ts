@@ -29,36 +29,41 @@ export function sanitizeResponseBody(
 ): string {
   if (!body) return '';
 
-  // Remove potentially sensitive patterns
-  let sanitized = body
+  // Truncate first: regexes then run over at most maxLength chars, never the
+  // full (up to 10MB) body. Every pattern below is also length-bounded so a
+  // large maxLength cannot reintroduce quadratic backtracking.
+  const truncated = body.length > maxLength;
+  let head = body.substring(0, maxLength);
+  if (truncated) {
+    // Drop a token cut by the boundary: a partial key or email would no longer match its pattern.
+    let end = head.length;
+    while (end > 0 && !/[\s"'<>,;]/.test(head[end - 1])) end--;
+    head = head.substring(0, end);
+  }
+  const sanitized = head
     // Credit card numbers (basic pattern)
     .replace(/\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b/g, '[CARD-REDACTED]')
     // Social Security Numbers
     .replace(/\b\d{3}-?\d{2}-?\d{4}\b/g, '[SSN-REDACTED]')
-    // Email addresses
+    // Email addresses (RFC 5321 limits: 64 local part, 255 domain)
     .replace(
-      /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g,
+      /\b[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,255}\.[A-Za-z]{2,24}\b/g,
       '[EMAIL-REDACTED]',
     )
-    // API keys (common patterns)
-    .replace(/\b[A-Za-z0-9]{32,}\b/g, (match) => {
-      // Only redact if it looks like an API key (all alphanumeric, long)
-      if (/^[A-Za-z0-9]+$/.test(match) && match.length >= 32) {
-        return '[API-KEY-REDACTED]';
-      }
-      return match;
-    })
+    // API keys: long all-alphanumeric runs
+    .replace(/\b[A-Za-z0-9]{32,}\b/g, '[API-KEY-REDACTED]')
     // Bearer tokens in headers
-    .replace(/Bearer\s+[A-Za-z0-9\-._~+/]+/gi, 'Bearer [TOKEN-REDACTED]')
+    .replace(
+      /Bearer\s{1,64}[A-Za-z0-9\-._~+/]{1,2048}[A-Za-z0-9\-._~+/]*/gi,
+      'Bearer [TOKEN-REDACTED]',
+    )
     // Basic auth credentials
-    .replace(/Basic\s+[A-Za-z0-9+/=]+/gi, 'Basic [CREDENTIALS-REDACTED]');
+    .replace(
+      /Basic\s{1,64}[A-Za-z0-9+/=]{1,2048}[A-Za-z0-9+/=]*/gi,
+      'Basic [CREDENTIALS-REDACTED]',
+    );
 
-  // Truncate to prevent memory issues
-  if (sanitized.length > maxLength) {
-    sanitized = sanitized.substring(0, maxLength) + '... [TRUNCATED]';
-  }
-
-  return sanitized;
+  return truncated ? sanitized + '... [TRUNCATED]' : sanitized;
 }
 
 /**
@@ -187,4 +192,58 @@ export function sanitizeLogData(data: unknown, depth: number = 0): unknown {
   }
 
   return data;
+}
+
+// Mirrors SENSITIVE_QUERY_PARAM in app/src/lib/monitor-read-config.ts (keep in sync).
+const SENSITIVE_QUERY_PARAM =
+  /token|secret|passw|pwd|^pass$|api[-_]?key|app[-_]?key|access[-_]?key|private[-_]?key|client[-_]?key|[-_]key$|^key$|auth(?!or\b|ors\b|ority)|signature|^sig$|credential|session|jwt|^otp$|^sid$|ticket|^hash$|^code$|^pw$|^sk$/i;
+
+/**
+ * Redacts URL userinfo, sensitive query values and a fragment carrying values
+ * so a monitor target can be shown in notifications. Non-URL targets (hosts,
+ * ping/port targets) are returned unchanged.
+ */
+export function redactTargetUrl(target: string): string {
+  // Userinfo (user:pass@host) is masked for any scheme, or none (user:pass@host:5432).
+  const masked = target.replace(
+    /^(\s*(?:[a-z][a-z0-9+.-]*:)?\/\/|\s*)[^/?#\s]*@/i,
+    '$1REDACTED@',
+  );
+  let parsed: URL;
+  try {
+    parsed = new URL(masked.trim());
+  } catch {
+    // Fail closed: an unparseable http(s) string may still carry a secret query.
+    return /^\s*https?:/i.test(masked) ? masked.replace(/[?#].*$/, '') : masked;
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:')
+    return masked;
+  const names = [...new Set(parsed.searchParams.keys())].filter((n) =>
+    SENSITIVE_QUERY_PARAM.test(n),
+  );
+  const fragment = parsed.hash.includes('=');
+  if (
+    masked === target &&
+    !parsed.username &&
+    !parsed.password &&
+    names.length === 0 &&
+    !fragment
+  )
+    return target;
+  if (parsed.username || parsed.password) parsed.username = 'REDACTED';
+  parsed.password = '';
+  for (const n of names) parsed.searchParams.set(n, 'REDACTED');
+  if (fragment) parsed.hash = 'REDACTED';
+  return parsed.toString();
+}
+
+/** Redacts every http(s) URL embedded in free text (error messages echo target URLs). */
+export function redactUrlsInText(text: string): string {
+  // Apostrophes may appear inside a password or query value, so they stay in the match.
+  return text.replace(/https?:\/\/[^\s"<>]+/gi, (u) => {
+    // Trailing prose punctuation and quotes are not part of the URL; keep them outside the redaction.
+    let end = u.length;
+    while (end > 0 && ").,;'`".includes(u[end - 1])) end--;
+    return redactTargetUrl(u.slice(0, end)) + u.slice(end);
+  });
 }

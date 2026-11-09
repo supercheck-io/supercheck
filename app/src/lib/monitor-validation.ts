@@ -72,7 +72,7 @@ function isValidStatusCodes(value: unknown): boolean {
     const range = /^([1-5]\d\d)\s*-\s*([1-5]\d\d)$/.exec(part);
     return range
       ? Number(range[1]) <= Number(range[2])
-      : /^[1-5]\d\d$/.test(part) || /^[1-5]xx$/.test(part);
+      : /^[1-5]\d\d$/.test(part) || /^[1-5]xx$/i.test(part);
   });
 }
 
@@ -89,6 +89,9 @@ function validateLocationPolicy(config: Record<string, unknown>): MonitorValidat
   }
   return { success: true };
 }
+
+/** Matches the monitors.target varchar(2048) column. */
+export const MAX_TARGET_LENGTH = 2048;
 
 export function validateMonitorConfiguration({
   type,
@@ -108,6 +111,15 @@ export function validateMonitorConfiguration({
   const monitorConfig = config === undefined || config === null ? {} : config;
   if (!isRecord(monitorConfig)) {
     return invalid("Invalid monitor configuration", "config must be an object");
+  }
+
+  if (typeof target === "string") {
+    if (target.length > MAX_TARGET_LENGTH) {
+      return invalid("Invalid monitor target", `target must be at most ${MAX_TARGET_LENGTH} characters`);
+    }
+    if (/[\x00-\x1f\x7f]/.test(target)) {
+      return invalid("Invalid monitor target", "target must not contain control characters");
+    }
   }
 
   const timeoutResult = validateTimeout(monitorConfig);

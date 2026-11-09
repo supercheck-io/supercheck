@@ -27,6 +27,7 @@ describe("queue location refresh", () => {
   const flowClose = jest.fn();
   const persistMonitorCycle = jest.fn().mockResolvedValue({ created: true });
   const abortMonitorCycle = jest.fn().mockResolvedValue(undefined);
+  const markMonitorCyclePublished = jest.fn().mockResolvedValue(undefined);
   const MonitorCycleClosedError = class extends Error { cycleId = "c"; status = "closed"; };
   const set = jest.fn().mockResolvedValue("OK");
   const appShutdowns = {
@@ -149,6 +150,7 @@ describe("queue location refresh", () => {
       ...jest.requireActual("./monitor-cycles"),
       persistMonitorCycle,
       abortMonitorCycle,
+      markMonitorCyclePublished,
       MonitorCycleClosedError,
     }));
     jest.doMock("./execution/execution-policy", () => ({
@@ -438,10 +440,12 @@ describe("queue location refresh", () => {
       const { monitorExecutionQueue } = await queueModule.getQueues();
       const order: string[] = [];
       persistMonitorCycle.mockImplementation(async () => { order.push("persist"); return { created: true }; });
+      markMonitorCyclePublished.mockImplementation(async () => { order.push("mark"); });
       flowAddBulk.mockImplementation(async (flows: unknown[]) => { order.push("publish"); return flows.map(() => ({ job: { getState: async () => "waiting" } })); });
       const first = await queueModule.enqueueMonitorLocationJobs(monitorExecutionQueue, task, enabledCodes, { attempts: 3 }, cycle());
       const retry = await queueModule.enqueueMonitorLocationJobs(monitorExecutionQueue, task, enabledCodes, { attempts: 3 }, cycle());
-      expect(order.slice(0, 2)).toEqual(["persist", "publish"]);
+      // Published is confirmed only after addBulk, so a crash in between leaves the cycle flagged unpublished.
+      expect(order.slice(0, 3)).toEqual(["persist", "publish", "mark"]);
       expect(retry).toBe(first);
       expect(first).not.toContain(":");
       // enqueueMonitorLocationJobs persists exactly the configuredLocations it is given (callers pass enqueued regions only).
@@ -451,6 +455,33 @@ describe("queue location refresh", () => {
         configuredLocations: ["eu-central", "us-east", "ap-south"],
       }));
       for (const flow of flowAddBulk.mock.calls[0][0]) expect(flow.data.executionGroupId).toBe(first);
+    });
+
+    it("still returns the cycle id when marking it published fails", async () => {
+      jest.useRealTimers(); // the mark retry backs off on a real timer
+      process.env.MISSING_CYCLE_CLOSURE_ENABLED = "true";
+      enabledCodes = ["eu-central"];
+      const { monitorExecutionQueue } = await queueModule.getQueues();
+      markMonitorCyclePublished.mockRejectedValueOnce(new Error("database unavailable"));
+      flowAddBulk.mockImplementation(async (flows: unknown[]) => flows.map(() => ({ job: { getState: async () => "waiting" } })));
+      await expect(queueModule.enqueueMonitorLocationJobs(monitorExecutionQueue, task, enabledCodes, {}, cycle())).resolves.toEqual(expect.any(String));
+      expect(abortMonitorCycle).not.toHaveBeenCalled();
+    });
+
+    it("retries marking the cycle published and logs an error when all attempts fail", async () => {
+      jest.useRealTimers(); // the mark retry backs off on a real timer
+      process.env.MISSING_CYCLE_CLOSURE_ENABLED = "true";
+      enabledCodes = ["eu-central"];
+      const { monitorExecutionQueue } = await queueModule.getQueues();
+      flowAddBulk.mockImplementation(async (flows: unknown[]) => flows.map(() => ({ job: { getState: async () => "waiting" } })));
+      markMonitorCyclePublished.mockRejectedValueOnce(new Error("blip")).mockResolvedValueOnce(undefined);
+      await queueModule.enqueueMonitorLocationJobs(monitorExecutionQueue, task, enabledCodes, {}, cycle());
+      expect(markMonitorCyclePublished).toHaveBeenCalledTimes(2);
+      markMonitorCyclePublished.mockClear();
+      markMonitorCyclePublished.mockRejectedValue(new Error("down"));
+      await queueModule.enqueueMonitorLocationJobs(monitorExecutionQueue, task, enabledCodes, {}, cycle());
+      expect(markMonitorCyclePublished).toHaveBeenCalledTimes(3);
+      markMonitorCyclePublished.mockResolvedValue(undefined);
     });
 
     it("uses distinct cycles for different scheduled runs", async () => {
@@ -469,6 +500,7 @@ describe("queue location refresh", () => {
       flowAddBulk.mockResolvedValue([{ job: { getState: async () => "unknown" } }]);
       await expect(queueModule.enqueueMonitorLocationJobs(monitorExecutionQueue, task, enabledCodes, {}, cycle({ abortOnFailure: false }))).rejects.toThrow("incomplete cycle enqueue");
       expect(abortMonitorCycle).not.toHaveBeenCalled();
+      expect(markMonitorCyclePublished).not.toHaveBeenCalled();
       expect(set).not.toHaveBeenCalled();
     });
 

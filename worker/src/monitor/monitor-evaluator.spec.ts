@@ -1201,3 +1201,103 @@ describe('state carry-over across outages', () => {
     expect(q[1]).toContain('GREATEST');
   });
 });
+
+describe('MonitorEvaluator.checkSslExpirationAlert', () => {
+  const run = async (details: Record<string, unknown>, isUp = true) => {
+    const alertService = {
+      sendSslExpirationNotification: jest.fn(async () => true),
+    };
+    const evaluator = new MonitorEvaluator(
+      { db: {} } as never,
+      alertService as never,
+    );
+    jest.spyOn(evaluator, 'getLastSslAlert').mockResolvedValue(null);
+    await evaluator.checkSslExpirationAlert(
+      { monitorId: 'm1', details, responseTimeMs: 1, isUp } as never,
+      {
+        alertConfig: { enabled: true, alertOnSslExpiration: true },
+        config: { sslDaysUntilExpirationWarning: 30 },
+      } as never,
+    );
+    return alertService.sendSslExpirationNotification;
+  };
+
+  it('does not send an expiry alert for a probe that read no certificate', async () => {
+    const send = await run({
+      sslWarning: 'SSL check could not complete: SSL connection timeout',
+    });
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('alerts when the certificate probe has failed for a day while the site is up', async () => {
+    const send = await run({
+      sslWarning: 'SSL check could not complete: timeout',
+      sslProbeFailedSince: new Date(Date.now() - 25 * 3_600_000).toISOString(),
+    });
+    expect(send).toHaveBeenCalledWith(
+      'm1',
+      'SSL certificate could not be read for 25 hours',
+      expect.anything(),
+    );
+  });
+
+  it('does not add an SSL warning while the site itself is down', async () => {
+    const send = await run(
+      {
+        sslProbeFailedSince: new Date(
+          Date.now() - 72 * 3_600_000,
+        ).toISOString(),
+      },
+      false,
+    );
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('stays quiet while the probe has failed for less than a day', async () => {
+    const send = await run({
+      sslProbeFailedSince: new Date(Date.now() - 2 * 3_600_000).toISOString(),
+    });
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('passes the check time to the SSL alert', async () => {
+    const alertService = {
+      sendSslExpirationNotification: jest.fn(async () => true),
+    };
+    const evaluator = new MonitorEvaluator(
+      { db: {} } as never,
+      alertService as never,
+    );
+    jest.spyOn(evaluator, 'getLastSslAlert').mockResolvedValue(null);
+    const checkedAt = new Date('2026-11-09T10:00:00.000Z');
+    await evaluator.checkSslExpirationAlert(
+      {
+        monitorId: 'm1',
+        details: { sslCertificate: { valid: true, daysRemaining: 10 } },
+        responseTimeMs: 1,
+        isUp: true,
+        checkedAt,
+      } as never,
+      {
+        alertConfig: { enabled: true, alertOnSslExpiration: true },
+        config: { sslDaysUntilExpirationWarning: 30 },
+      } as never,
+    );
+    expect(alertService.sendSslExpirationNotification).toHaveBeenCalledWith(
+      'm1',
+      expect.any(String),
+      expect.objectContaining({ observedAt: checkedAt }),
+    );
+  });
+
+  it('alerts from a certificate inside the warning window', async () => {
+    const send = await run({
+      sslCertificate: { valid: true, daysRemaining: 10 },
+    });
+    expect(send).toHaveBeenCalledWith(
+      'm1',
+      'SSL certificate expires in 10 days',
+      expect.anything(),
+    );
+  });
+});

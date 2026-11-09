@@ -68,7 +68,14 @@ import {
   resolvePublicAddress,
   vettedLookup,
 } from '../common/utils/pinned-monitor-request';
+import type { LookupFunction } from 'node:net';
 import { allowInternalMonitorTargets } from '../common/utils/url-validator';
+import {
+  MonitorRedirectError,
+  isDnsError,
+  isTimeoutError,
+  networkErrorCodes,
+} from '../common/utils/network-error';
 import {
   MonitorEvaluator,
   type GroupAlertEvaluation,
@@ -80,6 +87,8 @@ type MonitorResult = z.infer<typeof monitorResultsSelectSchema>;
 
 const RESULT_SAVE_ATTEMPTS = 3;
 const RESULT_SAVE_BACKOFF_MS = 250;
+// How long a UDP probe waits for a reply or an ICMP port-unreachable before reporting open|filtered.
+const UDP_SILENCE_WAIT_MS = 2000;
 // The completed marker only guards late sibling completions within a job's lifetime (attempts x 15-min lock + backoff + busy retries, under ~80 min); later duplicates are still guarded by the persisted aggregationEvaluation in the DB.
 export const AGGREGATION_COMPLETED_TTL_SECONDS = 2 * 60 * 60;
 
@@ -224,15 +233,26 @@ export class MonitorService {
             await this.executeHttpRequest(jobData.target, websiteConfig));
 
           // SSL checking - check independently of website success for better monitoring
+          // SSL Check off or not HTTPS: drop a probe-failure marker left from an earlier run
+          if (
+            jobData.config?.sslProbeFailure &&
+            !(
+              jobData.config?.enableSslCheck &&
+              /^https:\/\//i.test(jobData.target)
+            )
+          ) {
+            await this.clearSslProbeFailure(jobData.monitorId);
+          }
           if (
             jobData.config?.enableSslCheck &&
-            jobData.target.startsWith('https://')
+            /^https:\/\//i.test(jobData.target)
           ) {
             let shouldCheckSsl = true;
             try {
               shouldCheckSsl = await this.shouldPerformSslCheck(
                 jobData.monitorId,
                 jobData.config,
+                jobData.target,
               );
             } catch (sslFreqError) {
               this.logger.warn(
@@ -253,13 +273,12 @@ export class MonitorService {
                     TIMEOUTS_SECONDS.SSL_CHECK_DEFAULT,
                 });
 
-                // Update SSL last checked timestamp (non-blocking)
-                try {
-                  await this.updateSslLastChecked(jobData.monitorId);
-                } catch (updateError) {
-                  this.logger.warn(
-                    `Failed to update SSL last checked timestamp for monitor ${jobData.monitorId}:`,
-                    updateError,
+                // Stamp only when a certificate was read, so a failed handshake is retried next check.
+                if (sslResult.details?.sslCertificate) {
+                  await this.recordSslCheck(
+                    jobData.monitorId,
+                    jobData.target,
+                    sslResult.details.sslCertificate,
                   );
                 }
 
@@ -268,31 +287,42 @@ export class MonitorService {
                   details.sslCertificate = sslResult.details.sslCertificate;
                 }
 
-                // Handle SSL check results more intelligently
-                if (!sslResult.isUp) {
+                if (sslResult.isUp) {
+                  // Expiring soon: warn, don't fail the website check
                   if (sslResult.details?.warningMessage) {
-                    // SSL warning (e.g., certificate expiring soon) - don't fail the website check
                     details.sslWarning = sslResult.details.warningMessage;
+                  }
+                } else if (!sslResult.details?.sslCertificate) {
+                  // No certificate read (timeout, reset): the probe failed, not the certificate.
+                  // Not stamped as checked, so it retries on the next run; the first failure time
+                  // is kept so a probe that never recovers still alerts (see checkSslExpirationAlert).
+                  const failedSince = await this.recordSslProbeFailure(
+                    jobData.monitorId,
+                    jobData.target,
+                  );
+                  if (failedSince) details.sslProbeFailedSince = failedSince;
+                  details.sslWarning = `SSL check could not complete: ${
+                    (sslResult.details?.errorMessage as string) ||
+                    'unknown error'
+                  }`;
+                } else {
+                  // Expired, not yet valid, untrusted chain or hostname mismatch: fail the check
+                  if (isUp) {
+                    // Website was up but SSL failed - combine the statuses
+                    status = 'down';
+                    isUp = false;
+                    const websiteStatus = details.statusCode
+                      ? ` (HTTP ${details.statusCode})`
+                      : '';
+                    details.errorMessage = `Website accessible${websiteStatus}, but SSL certificate check failed: ${
+                      (sslResult.details?.errorMessage as string) ||
+                      'SSL certificate invalid'
+                    }`;
                   } else {
-                    // SSL critical failure (e.g., expired certificate, invalid certificate)
-                    // This should fail the overall website check as it affects security
-                    if (isUp) {
-                      // Website was up but SSL failed - combine the statuses
-                      status = 'down';
-                      isUp = false;
-                      const websiteStatus = details.statusCode
-                        ? ` (HTTP ${details.statusCode})`
-                        : '';
-                      details.errorMessage = `Website accessible${websiteStatus}, but SSL certificate check failed: ${
-                        (sslResult.details?.errorMessage as string) ||
-                        'SSL certificate invalid'
-                      }`;
-                    } else {
-                      // Website was already down - just add SSL info
-                      details.sslError =
-                        sslResult.details?.errorMessage ||
-                        'SSL certificate check failed';
-                    }
+                    // Website was already down - just add SSL info
+                    details.sslError =
+                      sslResult.details?.errorMessage ||
+                      'SSL certificate check failed';
                   }
                 }
               } catch (sslError) {
@@ -1360,7 +1390,7 @@ export class MonitorService {
         statusText: response.statusText,
         // Session material (Set-Cookie, tokens) must not be persisted or shown to viewers
         responseHeaders: sanitizeResponseHeaders(response.headers),
-        responseSize: response.data ? JSON.stringify(response.data).length : 0,
+        responseSize: Buffer.byteLength(responseBody),
       };
 
       if (isExpectedStatus(response.status, config?.expectedStatusCodes)) {
@@ -1370,6 +1400,7 @@ export class MonitorService {
         if (config?.keywordInBody) {
           // Perform case-insensitive keyword matching for better reliability
           const keyword = config.keywordInBody;
+          // Keyword matching uses the full body; only the stored snippet is sanitized
           const keywordFound = responseBody
             .toLowerCase()
             .includes(keyword.toLowerCase());
@@ -1436,12 +1467,39 @@ export class MonitorService {
           error.code === 'ECONNABORTED' ||
           // The wall-clock AbortSignal.timeout set by requestPinnedMonitorTarget.
           error.code === 'ERR_CANCELED' ||
-          getErrorMessage(error).toLowerCase().includes('timeout')
+          isTimeoutError(error)
         ) {
           status = 'timeout';
           isUp = false;
           // Keep the actual measured time, don't override with timeout value
           // responseTimeMs already calculated above from startTime
+        } else if (
+          error.code === AxiosError.ERR_BAD_RESPONSE &&
+          /maxContentLength/.test(error.message)
+        ) {
+          // Axios aborts the download, so the status line is only on the underlying request.
+          const received = (
+            error.request as { res?: { statusCode?: number } } | undefined
+          )?.res?.statusCode;
+          const limitMb =
+            this.resourceManager.getResourceStats().limits.maxResponseSizeMB;
+          details.errorMessage = `Response too large: the body exceeded the ${limitMb} MB limit`;
+          details.responseTooLarge = true;
+          if (received !== undefined) details.statusCode = received;
+          if (received === undefined || config?.keywordInBody) {
+            // Without a status or the full body the check cannot be judged either way.
+            status = 'error';
+          } else if (received >= 300 && received < 400) {
+            // A redirect with an oversized body is not followed, so the destination was never checked.
+            status = 'error';
+            details.errorMessage = `Response too large to verify the redirect (status ${received})`;
+          } else if (isExpectedStatus(received, config?.expectedStatusCodes)) {
+            status = 'up';
+            isUp = true;
+          } else {
+            status = 'down';
+            details.errorMessage += `. Received status code: ${received}, expected: ${config?.expectedStatusCodes || '200-299'}`;
+          }
         } else {
           // Check if the received status is unexpected, even on an AxiosError path
           if (
@@ -1462,6 +1520,18 @@ export class MonitorService {
           }
           isUp = false;
         }
+      } else if (isTimeoutError(error)) {
+        details.errorMessage = getErrorMessage(error);
+        status = 'timeout';
+        isUp = false;
+      } else if (isDnsError(error)) {
+        details.errorMessage = `DNS lookup failed: could not resolve the host (${networkErrorCodes(error)[0]})`;
+        status = 'down';
+        isUp = false;
+      } else if (error instanceof MonitorRedirectError) {
+        details.errorMessage = error.message;
+        status = 'down';
+        isUp = false;
       } else {
         this.logger.error(
           `Unexpected error during HTTP Request to ${target}: ${getErrorMessage(error)}`,
@@ -1524,10 +1594,14 @@ export class MonitorService {
       const { createConnection } = await import('net');
 
       const tcpPorts = [443, 80];
-      let connected = false;
+      let answeredPort: number | undefined;
+      let refused = false;
+      let answerMs: number | undefined;
       let lastError: Error | null = null;
 
       for (const port of tcpPorts) {
+        // Timed per attempt: a 443 timeout must not inflate the latency of the 80 attempt that answers.
+        const attemptStart = process.hrtime.bigint();
         try {
           // Resolved per attempt so a lookup failure still reports the host as down.
           const lookup = await vettedLookup(
@@ -1551,7 +1625,6 @@ export class MonitorService {
             socket.on('connect', () => {
               clearTimeout(timeoutHandle);
               socket.destroy();
-              connected = true;
               resolve();
             });
 
@@ -1560,28 +1633,38 @@ export class MonitorService {
               reject(error);
             });
           });
-
-          // If connection successful, break out of loop
-          if (connected) {
-            break;
-          }
+          answeredPort = port;
         } catch (portError) {
           lastError = portError as Error;
-          // Try next port
-          continue;
+          // A refusal (RST) comes from the host itself, so the host is alive even though the port is closed.
+          // Any refusing address proves the host is up, even if another family is unreachable.
+          if (networkErrorCodes(portError).includes('ECONNREFUSED')) {
+            answeredPort = port;
+            refused = true;
+          }
+        }
+        if (answeredPort !== undefined) {
+          answerMs = Math.round(
+            Number(process.hrtime.bigint() - attemptStart) / 1000000,
+          );
+          break;
         }
       }
 
       const endTime = process.hrtime.bigint();
-      responseTimeMs = Math.round(Number(endTime - startTime) / 1000000);
+      responseTimeMs =
+        answerMs ?? Math.round(Number(endTime - startTime) / 1000000);
 
-      if (connected) {
+      if (answeredPort !== undefined) {
         status = 'up';
         isUp = true;
         details = {
           responseTimeMs: responseTimeMs,
           connectionMethod: 'tcp',
-          message: `Host is reachable via TCP on port 443 or 80`,
+          port: answeredPort,
+          message: refused
+            ? `Host is reachable: it refused the TCP connection on port ${answeredPort}, so it is alive but nothing listens there`
+            : `Host is reachable via TCP on port ${answeredPort}`,
         };
       } else {
         status = 'down';
@@ -1600,7 +1683,7 @@ export class MonitorService {
 
       this.logger.warn(`Ping to ${target} failed: ${getErrorMessage(error)}`);
 
-      if (getErrorMessage(error).includes('timeout')) {
+      if (isTimeoutError(error)) {
         status = 'timeout';
         details.errorMessage = `Host unreachable - timeout after ${timeout}ms`;
       } else {
@@ -1616,6 +1699,50 @@ export class MonitorService {
       `Ping completed: ${target}, Status: ${status}, Response Time: ${responseTimeMs}ms`,
     );
     return { status, details, responseTimeMs, isUp };
+  }
+
+  /** Is the host alive? A connect or a refusal on 443 or 80 says yes; both ports are tried in parallel. */
+  private async probeHostAlive(
+    target: string,
+    lookup: LookupFunction,
+    budgetMs: number,
+    signal: AbortSignal,
+  ): Promise<boolean> {
+    const { createConnection } = await import('net');
+    const attempts = [443, 80].map(
+      (port) =>
+        new Promise<boolean>((resolve) => {
+          const socket = createConnection({
+            host: target,
+            lookup,
+            autoSelectFamily: true,
+            port,
+          });
+          const timer = setTimeout(() => {
+            socket.destroy();
+            resolve(false);
+          }, budgetMs);
+          signal.addEventListener(
+            'abort',
+            () => {
+              clearTimeout(timer);
+              socket.destroy();
+              resolve(false);
+            },
+            { once: true },
+          );
+          socket.on('connect', () => {
+            clearTimeout(timer);
+            socket.destroy();
+            resolve(true);
+          });
+          socket.on('error', (error) => {
+            clearTimeout(timer);
+            resolve(networkErrorCodes(error).includes('ECONNREFUSED'));
+          });
+        }),
+    );
+    return (await Promise.all(attempts)).some(Boolean);
   }
 
   private async executePortCheck(
@@ -1664,10 +1791,21 @@ export class MonitorService {
     let isUp = false;
     let responseTimeMs: number | undefined;
 
+    // With expectClosed the liveness probe runs alongside the connect and shares its timeout.
+    let aliveProbe: Promise<boolean> | undefined;
+    const probeAbort = new AbortController();
     try {
       const allowInternal = allowInternalMonitorTargets();
       if (protocol === 'tcp') {
         const lookup = await vettedLookup(target, allowInternal);
+        if (expectClosed) {
+          aliveProbe = this.probeHostAlive(
+            target,
+            lookup,
+            timeout,
+            probeAbort.signal,
+          ).catch(() => false);
+        }
         // TCP port check using net module
         const net = await import('net');
 
@@ -1723,64 +1861,56 @@ export class MonitorService {
           };
         }
       } else if (protocol === 'udp') {
-        // UDP port check using dgram module
         const dgram = await import('dgram');
-        // UDP is connectionless, so there is no fallback: send to the first vetted address.
+        // UDP has no handshake, so there is no fallback: probe the first vetted address.
         const resolved = await resolvePublicAddress(target, allowInternal);
         const socketType = resolved.family === 6 ? 'udp6' : 'udp4';
-
-        await new Promise<void>((resolve, reject) => {
-          const client = dgram.createSocket(socketType);
-          let isResolved = false;
-
-          const timeoutHandle = setTimeout(() => {
-            if (!isResolved) {
-              isResolved = true;
-              client.close(() => {
-                // For UDP, timeout doesn't necessarily mean the port is closed
-                // UDP is connectionless, so we assume it's reachable if no ICMP error
-                // However, this is inherently unreliable for UDP
-                resolve();
-              });
-            }
-          }, timeout);
-
-          // Send a small test packet
-          const message = Buffer.from('ping');
-
-          client.send(message, port, resolved.address, (error) => {
-            if (!isResolved) {
-              isResolved = true;
+        // The kernel reports an ICMP port-unreachable only on a connected socket, as ECONNREFUSED on
+        // the next socket call. It arrives within a round trip, so silence is not worth the full timeout.
+        const waitMs = Math.min(timeout, UDP_SILENCE_WAIT_MS);
+        const reply = await new Promise<'answered' | 'silent'>(
+          (resolve, reject) => {
+            const client = dgram.createSocket(socketType);
+            let done = false;
+            const finish = (error?: Error, outcome?: 'answered' | 'silent') => {
+              if (done) return;
+              done = true;
               clearTimeout(timeoutHandle);
-              client.close(() => {
-                if (error) {
-                  reject(error);
-                } else {
-                  // For UDP, successful send usually means the port is reachable
-                  // (unless we get an ICMP port unreachable, which would trigger an error)
-                  resolve();
-                }
+              client.close(() => (error ? reject(error) : resolve(outcome!)));
+            };
+            const timeoutHandle = setTimeout(
+              () => finish(undefined, 'silent'),
+              waitMs,
+            );
+            client.on('error', (error) => finish(error));
+            client.on('message', () => finish(undefined, 'answered'));
+            // connect() reports failure through 'error'; send only on an established association.
+            client.once('connect', () => {
+              if (done) return;
+              client.send(Buffer.from('ping'), (error) => {
+                if (error) finish(error);
               });
+            });
+            try {
+              client.connect(port, resolved.address);
+            } catch (error) {
+              finish(error as Error);
             }
-          });
+          },
+        );
 
-          client.on('error', (error) => {
-            if (!isResolved) {
-              isResolved = true;
-              clearTimeout(timeoutHandle);
-              client.close(() => {
-                reject(error);
-              });
-            }
-          });
-        });
-
-        // If we reach here, UDP send was successful (port appears open)
         const endTime = process.hrtime.bigint();
         responseTimeMs = Math.round(Number(endTime - startTime) / 1000000);
+        const verdict =
+          reply === 'answered'
+            ? 'Port is open (the service replied)'
+            : 'Port is open or filtered (no reply and no ICMP port-unreachable)';
+        const note =
+          reply === 'answered'
+            ? undefined
+            : 'open|filtered: UDP services often stay silent, and a firewall that drops packets looks the same. Only an ICMP port-unreachable proves a port closed.';
 
         if (expectClosed) {
-          // Port was expected to be closed, but it appears open - this is a failure
           status = 'down';
           isUp = false;
           details = {
@@ -1789,11 +1919,10 @@ export class MonitorService {
             packetSent: true,
             responseTimeMs,
             expectClosed: true,
-            errorMessage: 'Port appears open but was expected to be closed',
-            note: 'UDP packet sent successfully. Note: UDP checks are inherently unreliable.',
+            errorMessage: `${verdict} but was expected to be closed`,
+            ...(note && { note }),
           };
         } else {
-          // Normal behavior - open port is success
           status = 'up';
           isUp = true;
           details = {
@@ -1801,9 +1930,8 @@ export class MonitorService {
             protocol,
             packetSent: true,
             responseTimeMs,
-            note: "UDP packet sent successfully. Note: UDP checks are inherently unreliable - no response doesn't guarantee the port is closed.",
-            warning:
-              'UDP monitoring has limitations - consider using TCP where possible',
+            message: verdict,
+            ...(note && { note }),
           };
         }
       }
@@ -1823,10 +1951,29 @@ export class MonitorService {
         (error as NodeJS.ErrnoException).code ??
         (innerCodes.size === 1 ? [...innerCodes][0] : undefined);
 
-      if (getErrorMessage(error).includes('timeout')) {
-        status = 'timeout';
-        details.errorMessage = `Connection timeout after ${timeout}ms`;
-        isUp = false; // Timeout is failure regardless of expectClosed
+      if (isTimeoutError(error)) {
+        // A filtered port drops the SYN, but so does a powered-off host: only pass if the host answers elsewhere.
+        const hostAlive = aliveProbe ? await aliveProbe : false;
+        responseTimeMs = Math.round(
+          Number(process.hrtime.bigint() - startTime) / 1000000,
+        );
+        if (expectClosed && hostAlive) {
+          status = 'up';
+          isUp = true;
+          details.filtered = true;
+          details.expectClosed = true;
+          details.note =
+            'No response before the timeout: the port is filtered, which counts as closed';
+        } else if (expectClosed) {
+          status = 'down';
+          isUp = false;
+          details.errorMessage =
+            'Host unreachable: the port did not answer and the host did not respond on ports 443 or 80';
+        } else {
+          status = 'timeout';
+          details.errorMessage = `Connection timeout after ${timeout}ms`;
+          isUp = false;
+        }
       } else if (errorCode === 'ECONNREFUSED') {
         if (expectClosed) {
           // Port is closed as expected - this is SUCCESS!
@@ -1843,6 +1990,10 @@ export class MonitorService {
           details.errorMessage =
             'Connection refused - port is closed or service not running';
         }
+      } else if (isDnsError(error)) {
+        status = 'down';
+        details.errorMessage = `DNS lookup failed: could not resolve the host (${networkErrorCodes(error)[0]})`;
+        isUp = false;
       } else if (errorCode === 'EHOSTUNREACH') {
         status = 'down';
         details.errorMessage = 'Host unreachable';
@@ -1864,8 +2015,9 @@ export class MonitorService {
       details.port = port;
       details.protocol = protocol;
       details.responseTimeMs = responseTimeMs;
+    } finally {
+      probeAbort.abort();
     }
-
     this.logger.debug(
       `Port Check completed: ${target}:${port} (${protocol}), Status: ${status}, Response Time: ${responseTimeMs}ms`,
     );
@@ -1908,7 +2060,7 @@ export class MonitorService {
       try {
         // Try to parse as URL first
         const url = new URL(
-          target.startsWith('http') ? target : `https://${target}`,
+          /^https?:\/\//i.test(target) ? target : `https://${target}`,
         );
         hostname = url.hostname;
         port = parseInt(url.port) || 443;
@@ -1985,6 +2137,14 @@ export class MonitorService {
       responseTimeMs = Math.round(Number(endTime - startTime) / 1000000);
 
       const cert = certificateInfo.certificate;
+      // Node reports a string code (e.g. ERR_TLS_CERT_ALTNAME_INVALID) here, not an Error.
+      const rawAuthError = certificateInfo.authorizationError as unknown;
+      const authErrorText =
+        rawAuthError instanceof Error
+          ? rawAuthError.message
+          : typeof rawAuthError === 'string' && rawAuthError
+            ? rawAuthError
+            : undefined;
 
       if (!cert || !cert.valid_from || !cert.valid_to) {
         status = 'error';
@@ -2017,8 +2177,8 @@ export class MonitorService {
           // Additional info for debugging (as part of details)
           ...(cert.issuerCertificate && { hasIssuerCert: true }),
           ...(cert.subjectaltname && { altNames: cert.subjectaltname }),
-          ...(certificateInfo.authorizationError && {
-            authError: certificateInfo.authorizationError.message,
+          ...(authErrorText && {
+            authError: authErrorText,
           }),
         };
 
@@ -2044,7 +2204,9 @@ export class MonitorService {
           isUp = false;
           details = {
             errorMessage:
-              certificateInfo.authorizationError?.message ||
+              (authErrorText === 'ERR_TLS_CERT_ALTNAME_INVALID'
+                ? 'Certificate does not match the hostname'
+                : authErrorText) ||
               'Certificate trust or hostname verification failed',
             sslCertificate,
             responseTimeMs,
@@ -2067,9 +2229,8 @@ export class MonitorService {
         }
 
         // Add authorization details
-        if (!certificateInfo.authorized && certificateInfo.authorizationError) {
-          details.authorizationError =
-            certificateInfo.authorizationError.message;
+        if (!certificateInfo.authorized && authErrorText) {
+          details.authorizationError = authErrorText;
         }
       }
     } catch (error) {
@@ -2141,6 +2302,7 @@ export class MonitorService {
   private async shouldPerformSslCheck(
     monitorId: string,
     config?: any,
+    target?: string,
   ): Promise<boolean> {
     try {
       // Get current monitor config from database to check SSL last checked timestamp
@@ -2180,6 +2342,17 @@ export class MonitorService {
         sslCertificate?.daysRemaining != null
           ? Number(sslCertificate.daysRemaining)
           : undefined;
+      // No stored certificate (older rows) or one read from another host after a target
+      // edit: check now. A failing certificate is re-checked every run so the monitor
+      // stays down until it is fixed.
+      if (
+        !sslCertificate ||
+        (target !== undefined && sslCertificate.host !== sslHost(target)) ||
+        sslCertificate.valid === false
+      ) {
+        return true;
+      }
+
       if (daysRemaining !== undefined) {
         // Smart frequency: check more often when approaching expiration
         if (daysRemaining <= sslDaysUntilExpirationWarning) {
@@ -2204,31 +2377,77 @@ export class MonitorService {
   }
 
   /**
-   * Updates the SSL last checked timestamp in monitor config
+   * Saves the certificate and check time on the monitor, so the detail page and the
+   * expiry-aware frequency see it between daily checks. A jsonb merge, not a
+   * read-modify-write, so a concurrent config edit is not overwritten.
    */
-  private async updateSslLastChecked(monitorId: string): Promise<void> {
+  private async recordSslCheck(
+    monitorId: string,
+    target: string,
+    sslCertificate: object,
+  ): Promise<void> {
+    const patch = JSON.stringify({
+      sslLastCheckedAt: new Date().toISOString(),
+      sslCertificate: { ...sslCertificate, host: sslHost(target) },
+    });
     try {
-      const monitor = await this.dbService.db.query.monitors.findFirst({
-        where: eq(schema.monitors.id, monitorId),
-      });
-
-      if (!monitor) {
-        return;
-      }
-
-      const updatedConfig = {
-        ...(monitor.config || {}),
-        sslLastCheckedAt: new Date().toISOString(),
-      } as typeof monitor.config;
-
       await this.dbService.db
         .update(schema.monitors)
-        .set({ config: updatedConfig })
+        .set({
+          config: sql`(coalesce(${schema.monitors.config}, '{}'::jsonb) - 'sslProbeFailure') || ${patch}::jsonb`,
+        })
         .where(eq(schema.monitors.id, monitorId));
     } catch (error) {
-      this.logger.error(
-        `Error updating SSL last checked for monitor ${monitorId}:`,
-        error,
+      this.logger.warn(
+        `Failed to record SSL check for monitor ${monitorId}: ${getErrorMessage(error)}`,
+      );
+    }
+  }
+
+  /**
+   * Keeps the time the certificate probe started failing (first failure since the last read).
+   * Returns that time, or undefined if it could not be recorded.
+   */
+  private async recordSslProbeFailure(
+    monitorId: string,
+    target: string,
+  ): Promise<string | undefined> {
+    const marker = JSON.stringify({
+      since: new Date().toISOString(),
+      host: sslHost(target) ?? null,
+    });
+    try {
+      // Keep the first failure time only while it belongs to the same host; a new host starts a new clock.
+      const [row] = await this.dbService.db
+        .update(schema.monitors)
+        .set({
+          config: sql`coalesce(${schema.monitors.config}, '{}'::jsonb) || jsonb_build_object('sslProbeFailure', CASE WHEN ${schema.monitors.config}->'sslProbeFailure'->>'host' IS NOT DISTINCT FROM (${marker}::jsonb->>'host') AND ${schema.monitors.config}->'sslProbeFailure'->>'since' IS NOT NULL THEN ${schema.monitors.config}->'sslProbeFailure' ELSE ${marker}::jsonb END)`,
+        })
+        .where(eq(schema.monitors.id, monitorId))
+        .returning({ config: schema.monitors.config });
+      const failure = (
+        row?.config as Record<string, unknown> | null | undefined
+      )?.sslProbeFailure as { since?: unknown } | undefined;
+      return typeof failure?.since === 'string' ? failure.since : undefined;
+    } catch (error) {
+      this.logger.warn(
+        `Failed to record SSL probe failure for monitor ${monitorId}: ${getErrorMessage(error)}`,
+      );
+      return undefined;
+    }
+  }
+
+  private async clearSslProbeFailure(monitorId: string): Promise<void> {
+    try {
+      await this.dbService.db
+        .update(schema.monitors)
+        .set({
+          config: sql`coalesce(${schema.monitors.config}, '{}'::jsonb) - 'sslProbeFailure'`,
+        })
+        .where(eq(schema.monitors.id, monitorId));
+    } catch (error) {
+      this.logger.warn(
+        `Failed to clear SSL probe failure for monitor ${monitorId}: ${getErrorMessage(error)}`,
       );
     }
   }
@@ -2562,11 +2781,21 @@ export class MonitorService {
             `[${monitorId}] Resolved ${Object.keys(resolvedVariables).length} variables, ${Object.keys(resolvedSecrets).length} secrets, and ${Object.keys(resolvedFiles).length} files`,
           );
         } catch (varError) {
-          // Log the error but continue with empty variables/secrets
-          // The function definitions will still be prepended (with empty objects)
-          this.logger.warn(
-            `[${monitorId}] Failed to resolve variables, continuing with empty variables: ${getErrorMessage(varError)}`,
+          // Running with empty secrets would fail the test and report a false
+          // "down" for a healthy target, so surface an error instead.
+          this.logger.error(
+            `[${monitorId}] Failed to resolve variables: ${getErrorMessage(varError)}`,
           );
+          return {
+            status: 'error',
+            details: {
+              errorMessage:
+                'Could not resolve project variables or secrets; the test was not run',
+              errorType: 'variable_resolution_error',
+            },
+            responseTimeMs: Date.now() - startTime,
+            isUp: false,
+          };
         }
       }
 
@@ -2714,5 +2943,14 @@ export class MonitorService {
         isUp: false,
       };
     }
+  }
+}
+
+/** Host the stored certificate belongs to; a target edit to another host makes it stale. */
+function sslHost(target: string): string | undefined {
+  try {
+    return new URL(target).hostname.toLowerCase();
+  } catch {
+    return undefined;
   }
 }

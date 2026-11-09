@@ -13,7 +13,7 @@ jest.mock("@/utils/db", () => ({
     return mockDatabase;
   },
 }));
-import { abortMonitorCycle, MonitorCycleClosedError, monitorCycleId, persistMonitorCycle } from "./monitor-cycles";
+import { abortMonitorCycle, MonitorCycleClosedError, markMonitorCyclePublished, monitorCycleId, persistMonitorCycle } from "./monitor-cycles";
 const execFileAsync = promisify(execFile);
 const name = `monitor_cycles_${randomUUID().replaceAll("-", "")}`;
 let maintenance: ReturnType<typeof postgres>;
@@ -150,6 +150,7 @@ it("persists a cycle idempotently and refreshes the snapshot on an untouched ret
     deadlineMs: 60_000,
   };
   const first = await persistMonitorCycle(input);
+  await markMonitorCyclePublished(id);
   const retry = await persistMonitorCycle({ ...input, configuredLocations: ["other"] });
   expect(first).toEqual({ created: true });
   expect(retry).toEqual({ created: false });
@@ -159,7 +160,18 @@ it("persists a cycle idempotently and refreshes the snapshot on an untouched ret
     .where(eq(schema.monitorCycles.id, id));
   expect(row.expectedLocations).toEqual(["other"]);
   expect(row.status).toBe("open");
+  expect(row.publishPending).toBe(false); // the retry leaves a published cycle published
   expect(row.deadlineAt.getTime()).toBeGreaterThan(row.scheduledFor.getTime());
+});
+
+it("flags a cycle unpublished at persist and clears it once the jobs are published", async () => {
+  const id = monitorCycleId(monitorId, "publish-flag");
+  await persistMonitorCycle({ id, monitorId, configuredLocations: ["eu"], policy: { strategy: "any" as const, threshold: 100 }, deadlineMs: 60_000 });
+  const publishPending = async () =>
+    (await mockDatabase.select().from(schema.monitorCycles).where(eq(schema.monitorCycles.id, id)))[0].publishPending;
+  expect(await publishPending()).toBe(true);
+  await markMonitorCyclePublished(id);
+  expect(await publishPending()).toBe(false);
 });
 
 it("freezes the snapshot once a result or arrival exists", async () => {

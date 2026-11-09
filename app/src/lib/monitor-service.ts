@@ -15,7 +15,8 @@ import {
 } from "@/lib/monitor-scheduler";
 import { eq } from "drizzle-orm";
 import { ResumeRefusedError, withResumeWithinPlan } from "@/lib/middleware/plan-enforcement";
-import { preserveWorkerConfigKeys, WORKER_OWNED_CONFIG_KEYS } from "@/lib/monitor-write";
+import { assertKeptProvidersValid, MonitorScheduleError, preserveWorkerConfigKeys, scheduleOutOfSync, syncMonitorProviderRows, WORKER_OWNED_CONFIG_KEYS } from "@/lib/monitor-write";
+import { reconcileMonitorSchedule } from "@/lib/monitor-schedule-reconcile";
 
 // This is a conceptual service layer, actual Next.js API routes would call these functions.
 // Updated to support dual scoping (organization + project) for multi-tenant architecture.
@@ -155,7 +156,9 @@ export function executionConfig(config: MonitorConfig | null | undefined) {
 
 export async function updateMonitorHandler(
   monitorId: string,
-  data: Partial<MonitorApiData>
+  data: Partial<MonitorApiData>,
+  /** Delivery rows to replace in the same transaction as the monitor row (alertConfig writes). */
+  options: { providerSync?: { ids: string[]; organizationId: string; projectId: string; storedIds?: string[] } } = {},
 ) {
   // Fetch existing monitor to compare old frequency/enabled status
   const existingMonitor = await db.query.monitors.findFirst({
@@ -195,12 +198,27 @@ export async function updateMonitorHandler(
 
   if (data.status !== undefined) updateData.status = data.status;
 
-  const writeUpdate = (executor: Pick<typeof db, "update">) =>
-    executor
+  const { providerSync } = options;
+  const writeUpdate = async (executor: Pick<typeof db, "update" | "select" | "delete" | "insert">) => {
+    const rows = await executor
       .update(monitorTable)
       .set(updateData) // Use the filtered updateData
       .where(eq(monitorTable.id, monitorId))
       .returning();
+    if (rows.length > 0 && providerSync) {
+      const kept = await syncMonitorProviderRows(
+        executor, monitorId, providerSync.ids, providerSync.organizationId, providerSync.projectId, providerSync.storedIds,
+      );
+      // A stored provider deleted since is dropped from the JSON too, so the UI and the rows agree.
+      const written = rows[0].alertConfig;
+      if (written && written.notificationProviders.length !== kept.length) {
+        assertKeptProvidersValid(written, kept);
+        rows[0] = { ...rows[0], alertConfig: { ...written, notificationProviders: kept } };
+        await executor.update(monitorTable).set({ alertConfig: rows[0].alertConfig }).where(eq(monitorTable.id, monitorId));
+      }
+    }
+    return rows;
+  };
   // Turning a paused monitor back on takes a plan slot: count and write under the plan-limit lock.
   // Any non-paused status write goes through the lock: the status read above may be stale, and the helper takes no slot for a monitor already on.
   const resuming = updateData.status !== undefined && updateData.status !== "paused";
@@ -210,7 +228,7 @@ export async function updateMonitorHandler(
     if (!outcome.ok) throw new ResumeRefusedError(outcome);
     updatedRows = outcome.value;
   } else {
-    updatedRows = await writeUpdate(db);
+    updatedRows = providerSync ? await db.transaction(writeUpdate) : await writeUpdate(db);
   }
   const [updatedMonitor] = updatedRows;
 
@@ -229,73 +247,23 @@ export async function updateMonitorHandler(
     (data.enabled !== undefined && data.enabled !== existingMonitor.enabled) ||
     (data.type !== undefined && data.type !== existingMonitor.type) ||
     (data.target !== undefined && data.target !== existingMonitor.target) ||
-    (data.config !== undefined && !isDeepStrictEqual(executionConfig(data.config), executionConfig(existingMonitor.config)));
+    (data.config !== undefined && !isDeepStrictEqual(executionConfig(data.config), executionConfig(existingMonitor.config))) ||
+    // An identical retry after a failed reconcile (503) must repair the schedule.
+    scheduleOutOfSync(updatedMonitor);
 
   if (shouldReschedule) {
-    // Remove existing schedule if any
-    if (existingMonitor.scheduledJobId) {
-      try {
-        await deleteScheduledMonitor(existingMonitor.scheduledJobId);
-      } catch (deleteError) {
-        console.error(
-          `Error deleting previous scheduler ${existingMonitor.scheduledJobId}:`,
-          deleteError
-        );
-      }
+    // Under the per-monitor lock, from the committed row: a Redis failure throws MonitorScheduleError (the route answers 503).
+    try {
+      await reconcileMonitorSchedule(updatedMonitor.id, updatedMonitor.projectId ?? "");
+    } catch (error) {
+      console.error(`Failed to re-schedule monitor ${updatedMonitor.id} after update:`, error);
+      throw new MonitorScheduleError(error, updatedMonitor);
     }
-
-    if (
-      updatedMonitor.enabled &&
-      updatedMonitor.status !== "paused" &&
-      updatedMonitor.frequencyMinutes > 0
-    ) {
-      const jobDataPayload: MonitorJobData = {
-        monitorId: updatedMonitor.id,
-        projectId: updatedMonitor.projectId ?? undefined,
-        type: updatedMonitor.type as MonitorJobData["type"],
-        target: updatedMonitor.target,
-        config: updatedMonitor.config as MonitorConfig,
-        frequencyMinutes: updatedMonitor.frequencyMinutes,
-      };
-      try {
-        const schedulerId = await scheduleMonitor({
-          monitorId: updatedMonitor.id,
-          frequencyMinutes: updatedMonitor.frequencyMinutes,
-          jobData: jobDataPayload,
-          retryLimit: 3,
-        });
-
-        // Update monitor with new scheduler ID
-        await db
-          .update(monitorTable)
-          .set({ scheduledJobId: schedulerId })
-          .where(eq(monitorTable.id, updatedMonitor.id));
-
-        // Trigger immediate execution for validation if monitor is enabled (non-blocking)
-        triggerImmediateMonitorExecution(updatedMonitor.id).catch((error) => {
-          console.error(
-            `Failed to trigger immediate execution for updated monitor ${updatedMonitor.id}:`,
-            error
-          );
-        });
-      } catch (scheduleError) {
-        console.error(
-          `Failed to re-schedule monitor ${updatedMonitor.id} after update:`,
-          scheduleError
-        );
-        // The old repeat job is gone: drop the stale id so the state is detectable, and tell the caller.
-        await db
-          .update(monitorTable)
-          .set({ scheduledJobId: null })
-          .where(eq(monitorTable.id, updatedMonitor.id));
-        throw scheduleError;
-      }
-    } else {
-      // Clear scheduler ID if disabled or frequency is 0
-      await db
-        .update(monitorTable)
-        .set({ scheduledJobId: null })
-        .where(eq(monitorTable.id, updatedMonitor.id));
+    if (updatedMonitor.enabled && updatedMonitor.status !== "paused" && updatedMonitor.frequencyMinutes > 0) {
+      // Trigger immediate execution for validation (non-blocking)
+      triggerImmediateMonitorExecution(updatedMonitor.id).catch((error) => {
+        console.error(`Failed to trigger immediate execution for updated monitor ${updatedMonitor.id}:`, error);
+      });
     }
   }
   return updatedMonitor;

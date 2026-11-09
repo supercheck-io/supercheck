@@ -93,10 +93,10 @@ describe("location policy and unsupported assertions", () => {
   it("accepts a spaced range the worker evaluates", () => {
     expect(site({ expectedStatusCodes: "200 - 299" }).success).toBe(true);
   });
-  it.each(["abc", "99", "600", "299-200", "2xx,abc", "20x", "2XX"])("rejects expectedStatusCodes %p", (expectedStatusCodes) => {
+  it.each(["abc", "99", "600", "299-200", "2xx,abc", "20x"])("rejects expectedStatusCodes %p", (expectedStatusCodes) => {
     expect(site({ expectedStatusCodes }).success).toBe(false);
   });
-  it.each(["200", "200-299", "2xx", "200-299, 301,4xx", ""])("accepts expectedStatusCodes %p", (expectedStatusCodes) => {
+  it.each(["200", "200-299", "2xx", "200-299, 301,4xx", "", "2XX", "4Xx"])("accepts expectedStatusCodes %p", (expectedStatusCodes) => {
     expect(site({ method: "POST", expectedStatusCodes }).success).toBe(true);
   });
   it("does not reject a stored legacy method when the client sent no config", () => {
@@ -112,5 +112,17 @@ describe("location policy and unsupported assertions", () => {
   });
   it("lets a client clear an unsupported key with null", () => {
     expect(site({ responseBodyJsonPath: null })).toEqual({ success: true });
+  });
+});
+
+describe("target length and control characters", () => {
+  const check = (target: string) => validateMonitorConfiguration({ type: "http_request", target, config: {} });
+  it("rejects a target over 2048 characters and one with control characters", () => {
+    expect(check(`https://example.com/${"a".repeat(2048)}`)).toMatchObject({ success: false });
+    expect(check("https://example.com/a\u0000b")).toMatchObject({ success: false });
+    expect(check("https://example.com/a\nb")).toMatchObject({ success: false });
+  });
+  it("accepts a target at the limit", () => {
+    expect(check(`https://example.com/${"a".repeat(2048 - 20)}`)).toEqual({ success: true });
   });
 });

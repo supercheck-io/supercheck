@@ -15,6 +15,7 @@ import {
 import { decryptNotificationProviderConfig } from '../../common/notification-provider-crypto';
 import { SreAlertTriageQueueService } from './sre-alert-triage-queue.service';
 import { getErrorMessage } from '../../common/validation';
+import { redactUrlsInText } from '../../common/validation/data-sanitizer';
 
 type ProviderRow = {
   id: string;
@@ -23,28 +24,9 @@ type ProviderRow = {
   projectId: string | null;
 };
 
-/**
- * Strips credentials and query values from URLs inside free text before it is persisted.
- * Local on purpose: the shared worker helper lands in a separate PR; swap to it after both merge.
- */
-export function redactUrlsInText(text: string | undefined | null) {
-  if (!text) return undefined;
-  return text.replace(/https?:\/\/[^\s"<>]+/gi, (match) => {
-    // Trailing punctuation and quotes belong to the sentence, not the URL.
-    const trailing = /[)\]}.,;'`]+$/.exec(match)?.[0] ?? '';
-    const raw = match.slice(0, match.length - trailing.length);
-    try {
-      const url = new URL(raw);
-      url.username = '';
-      url.password = '';
-      for (const key of [...url.searchParams.keys()])
-        url.searchParams.set(key, 'REDACTED');
-      url.hash = '';
-      return url.toString() + trailing;
-    } catch {
-      return '[redacted-url]';
-    }
-  });
+/** Redacts URLs inside free text before it is persisted to alert history. */
+export function redactAlertText(text: string | undefined | null) {
+  return text ? redactUrlsInText(text) : undefined;
 }
 
 const SSL_ALERT_THROTTLE_MS = 24 * 60 * 60 * 1000;
@@ -368,7 +350,7 @@ export class MonitorAlertService {
       const sentAt = type === 'failure' && observedAt ? observedAt : new Date();
       const historyRecords = deliveryResults.results.map((result) => ({
         type: notificationType,
-        message: redactUrlsInText(notificationPayload.message) ?? '',
+        message: redactAlertText(notificationPayload.message) ?? '',
         target: monitor.name,
         targetType: 'monitor',
         monitorId: monitor.id,
@@ -377,7 +359,7 @@ export class MonitorAlertService {
           result.success || result.partial
             ? ('sent' as const)
             : ('failed' as const),
-        errorMessage: redactUrlsInText(result.error),
+        errorMessage: redactAlertText(result.error),
         deliveryMetadata: result.deliveryMetadata,
         sentAt,
       }));
@@ -572,7 +554,7 @@ export class MonitorAlertService {
         typeof schema.alertHistory.$inferInsert
       >((result) => ({
         type: 'ssl_expiring',
-        message: redactUrlsInText(notificationPayload.message) ?? '',
+        message: redactAlertText(notificationPayload.message) ?? '',
         target: monitor.name,
         targetType: 'monitor',
         monitorId: monitor.id,
@@ -581,7 +563,7 @@ export class MonitorAlertService {
           result.success || result.partial
             ? ('sent' as const)
             : ('failed' as const),
-        errorMessage: redactUrlsInText(result.error),
+        errorMessage: redactAlertText(result.error),
         deliveryMetadata: result.deliveryMetadata,
         sentAt,
       }));

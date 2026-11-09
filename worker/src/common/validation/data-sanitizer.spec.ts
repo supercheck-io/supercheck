@@ -1,6 +1,8 @@
 import {
   maskCredentials,
   sanitizeResponseBody,
+  redactTargetUrl,
+  redactUrlsInText,
   sanitizeHeaders,
   sanitizeResponseHeaders,
   getErrorMessage,
@@ -463,5 +465,71 @@ describe('DataSanitizer', () => {
       expect(sanitizeResponseHeaders(undefined)).toBeUndefined();
       expect(sanitizeResponseHeaders(null)).toBeUndefined();
     });
+  });
+});
+
+describe('redactTargetUrl', () => {
+  it('redacts userinfo, sensitive query values and value fragments', () => {
+    const out = redactTargetUrl(
+      'https://u:p@h.com/x?api_key=1&q=2#access_token=3',
+    );
+    expect(out).not.toMatch(/u:p|=1|=3/);
+    expect(out).toContain('q=2');
+  });
+
+  it('fails closed on an unparseable URL and scrubs URLs in text', () => {
+    expect(redactTargetUrl('https://u:p@[bad?x=1')).not.toMatch(/u:p|x=1/);
+    expect(
+      redactUrlsInText('GET https://u:p@h.com/?token=zz failed'),
+    ).not.toMatch(/u:p|zz/);
+  });
+
+  it('does not leak a secret cut at the truncation boundary', () => {
+    const key = 'A'.repeat(40);
+    const out = sanitizeResponseBody(`id ${key} tail`, 20);
+    expect(out).not.toContain('AAAA');
+  });
+
+  it('redacts oversized Bearer tokens fully', () => {
+    const out = sanitizeResponseBody(`Bearer ${'a'.repeat(5000)}`, 10_000);
+    expect(out).not.toContain('aaaa');
+  });
+
+  it('masks userinfo for any scheme and sensitive code/pw/sk params', () => {
+    for (const t of [
+      'ws://u:p@h.com/x',
+      '//u:p@h.com/x',
+      'user:pass@db.host:5432',
+    ])
+      expect(redactTargetUrl(t)).not.toMatch(/u:p|user|pass/);
+    const out = redactTargetUrl('https://h.com/?code=1&pw=2&sk=3&q=4');
+    expect(out).not.toMatch(/=1|=2|=3/);
+    expect(out).toContain('q=4');
+  });
+
+  it('keeps apostrophes inside a URL so a quoted secret is not left behind', () => {
+    const out = redactUrlsInText(
+      "failed 'https://u:p'w@h.example/x?token=a'b'",
+    );
+    expect(out).not.toContain("p'w");
+    expect(out).not.toContain("a'b");
+    expect(out.endsWith("'")).toBe(true);
+  });
+
+  it('redacts URLs followed by prose punctuation or with parentheses', () => {
+    expect(redactUrlsInText('see https://h/?a=(x)&token=SECRET')).not.toContain(
+      'SECRET',
+    );
+    const out = redactUrlsInText(
+      'failed https://h/?token=S, and retried (https://h/?pw=Z).',
+    );
+    expect(out).not.toMatch(/=S|=Z/);
+    expect(out).toContain(', and retried (');
+    expect(out.endsWith(').')).toBe(true);
+  });
+
+  it('leaves clean URLs and non-URL targets unchanged', () => {
+    expect(redactTargetUrl('https://h.com/x?q=2')).toBe('https://h.com/x?q=2');
+    expect(redactTargetUrl('db.internal:5432')).toBe('db.internal:5432');
   });
 });

@@ -84,7 +84,7 @@ import {
 } from "@/lib/location-service";
 import type { MonitoringLocation } from "@/lib/location-service";
 import { resolveMonitorDetailStatus } from "@/lib/monitor-detail-status";
-import { useAppConfig } from "@/hooks/use-app-config";
+import { formatResponseTime } from "@/lib/format-response-time";
 import {
   useMonitorStats,
   useMonitorResults,
@@ -198,7 +198,6 @@ export function MonitorDetailClient({
 }: MonitorDetailClientProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { recentMonitorResultsLimit } = useAppConfig();
 
 
 
@@ -286,9 +285,15 @@ export function MonitorDetailClient({
     }
   }, [initialMonitor]);
 
-  // Compute available locations from chart + paginated data
+  // Configured locations first, so a location with no result in the latest 100 checks can still be picked,
+  // plus any location seen in the chart or paginated data (a removed location may still have history).
+  const configuredLocationList = (monitor.config?.locationConfig as { locations?: unknown } | undefined)?.locations;
+  const configuredLocations = Array.isArray(configuredLocationList) ? configuredLocationList : undefined;
   const availableLocations = useMemo(() => {
     const locationSet = new Set<string>();
+    configuredLocations?.forEach((location) => {
+      if (isMonitoringLocation(location)) locationSet.add(location as MonitoringLocation);
+    });
     if (monitor.recentResults && monitor.recentResults.length > 0) {
       monitor.recentResults.forEach((result) => {
         if (result.location && isMonitoringLocation(result.location)) {
@@ -304,7 +309,7 @@ export function MonitorDetailClient({
       });
     }
     return Array.from(locationSet).sort((a, b) => a.localeCompare(b));
-  }, [monitor.recentResults, paginatedTableResults]);
+  }, [configuredLocations, monitor.recentResults, paginatedTableResults]);
 
   // Reset location filter if selected location is no longer available
   useEffect(() => {
@@ -460,19 +465,19 @@ export function MonitorDetailClient({
           : "N/A",
       avgResponse24h:
         period24h.avgResponseTimeMs !== null
-          ? `${(period24h.avgResponseTimeMs / 1000).toFixed(2)} s`
+          ? formatResponseTime(period24h.avgResponseTimeMs)
           : "N/A",
       p95Response24h:
         period24h.p95ResponseTimeMs !== null
-          ? `${(period24h.p95ResponseTimeMs / 1000).toFixed(2)} s`
+          ? formatResponseTime(period24h.p95ResponseTimeMs)
           : "N/A",
       avgResponse30d:
         period30d.avgResponseTimeMs !== null
-          ? `${(period30d.avgResponseTimeMs / 1000).toFixed(2)} s`
+          ? formatResponseTime(period30d.avgResponseTimeMs)
           : "N/A",
       p95Response30d:
         period30d.p95ResponseTimeMs !== null
-          ? `${(period30d.p95ResponseTimeMs / 1000).toFixed(2)} s`
+          ? formatResponseTime(period30d.p95ResponseTimeMs)
           : "N/A",
     };
   }, [monitorStats]);
@@ -503,7 +508,7 @@ export function MonitorDetailClient({
     latestResult &&
       latestResult.responseTimeMs !== undefined &&
       latestResult.responseTimeMs !== null
-      ? `${(latestResult.responseTimeMs / 1000).toFixed(2)} s`
+      ? formatResponseTime(latestResult.responseTimeMs)
       : "N/A";
 
   // Prepare data for AvailabilityBarChart (single location or filtered)
@@ -551,6 +556,35 @@ export function MonitorDetailClient({
       return null;
     }
 
+    // The worker saves the last certificate on the monitor; the SSL check runs about daily,
+    // so recent results usually carry none. Results remain the fallback for older rows.
+    const storedCert = monitor.config?.sslCertificate;
+    let targetHost: string | undefined;
+    try {
+      targetHost = new URL(monitor.target || monitor.url || "").hostname.toLowerCase();
+    } catch {
+      targetHost = undefined;
+    }
+    // A certificate read before the target moved to another host is stale until the next check
+    if (storedCert && storedCert.daysRemaining !== undefined && storedCert.host === targetHost) {
+      // Count from validTo so the badge stays current between reads
+      const validToMs = storedCert.validTo ? Date.parse(storedCert.validTo) : NaN;
+      return {
+        validTo: storedCert.validTo,
+        daysRemaining: Number.isNaN(validToMs)
+          ? storedCert.daysRemaining
+          : Math.ceil((validToMs - Date.now()) / 86_400_000),
+        valid: storedCert.valid,
+        issuer: storedCert.issuer,
+        subject: storedCert.subject,
+      };
+    }
+
+    // Stored certificate is from another host: results are older still, so wait for the next read
+    if (storedCert?.host && storedCert.host !== targetHost) {
+      return null;
+    }
+
     if (!monitor.recentResults || monitor.recentResults.length === 0) {
       return null;
     }
@@ -587,7 +621,7 @@ export function MonitorDetailClient({
       issuer: sslCert.issuer,
       subject: sslCert.subject,
     };
-  }, [monitor.type, monitor.recentResults, monitor.config]);
+  }, [monitor.type, monitor.recentResults, monitor.config, monitor.target, monitor.url]);
 
   // Use pagination metadata from API
   const totalPages = paginationMeta?.totalPages || 0;
@@ -779,16 +813,16 @@ export function MonitorDetailClient({
                 sslCertificateInfo &&
                 sslCertificateInfo.daysRemaining !== undefined && (
                   <div
-                    className={`flex items-center px-2 py-2 rounded-md border ${sslCertificateInfo.daysRemaining <= 7
+                    className={`flex items-center px-2 py-2 rounded-md border ${sslCertificateInfo.daysRemaining <= 7 || sslCertificateInfo.valid === false
                       ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800"
                       : sslCertificateInfo.daysRemaining <= 30
                         ? "bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800"
                         : "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800"
                       }`}
-                    title="SSL enabled"
+                    title={sslCertificateInfo.validTo ? `Certificate valid until ${new Date(sslCertificateInfo.validTo).toLocaleDateString()}` : "SSL enabled"}
                   >
                     <Shield
-                      className={`h-4 w-4 mr-1 ${sslCertificateInfo.daysRemaining <= 7
+                      className={`h-4 w-4 mr-1 ${sslCertificateInfo.daysRemaining <= 7 || sslCertificateInfo.valid === false
                         ? "text-red-600 dark:text-red-400"
                         : sslCertificateInfo.daysRemaining <= 30
                           ? "text-yellow-600 dark:text-yellow-400"
@@ -796,14 +830,19 @@ export function MonitorDetailClient({
                         }`}
                     />
                     <span
-                      className={`text-xs ${sslCertificateInfo.daysRemaining <= 7
+                      className={`text-xs ${sslCertificateInfo.daysRemaining <= 7 || sslCertificateInfo.valid === false
                         ? "text-red-700 dark:text-red-300"
                         : sslCertificateInfo.daysRemaining <= 30
                           ? "text-yellow-700 dark:text-yellow-300"
                           : "text-green-700 dark:text-green-300"
                         }`}
                     >
-                      SSL: {sslCertificateInfo.daysRemaining}d remaining
+                      SSL:{" "}
+                      {sslCertificateInfo.daysRemaining <= 0
+                        ? "expired"
+                        : sslCertificateInfo.valid === false
+                          ? "invalid certificate"
+                          : `${sslCertificateInfo.daysRemaining}d remaining`}
                     </span>
                   </div>
                 )}
@@ -1069,11 +1108,7 @@ export function MonitorDetailClient({
                     selectedDate,
                     "MMMM dd, yyyy"
                   )}`
-                  : `Showing ${currentResultsCount} of ${totalResultsCount}${recentMonitorResultsLimit &&
-                    totalResultsCount >= recentMonitorResultsLimit
-                    ? "+"
-                    : ""
-                  } recent checks.`}
+                  : `Showing ${currentResultsCount} of ${totalResultsCount} recent checks.`}
               </CardDescription>
             </CardHeader>
             <CardContent className="p-0 flex-1 flex flex-col">
@@ -1240,7 +1275,7 @@ export function MonitorDetailClient({
                               <td className="px-4 py-[11.5px] whitespace-nowrap overflow-hidden text-ellipsis text-sm text-muted-foreground">
                                 {result.responseTimeMs !== null &&
                                   result.responseTimeMs !== undefined
-                                  ? `${(result.responseTimeMs / 1000).toFixed(2)} s`
+                                  ? formatResponseTime(result.responseTimeMs)
                                   : "N/A"}
                               </td>
                               <td className="px-4 py-[11.5px] overflow-hidden text-sm text-muted-foreground">

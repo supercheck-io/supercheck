@@ -52,10 +52,12 @@ describe("aggregate period precedence", () => {
         row("eu-central", 10, 8, 2),
         row("us-east", 10, 10, 2),
       ]);
-      expect(await read(location)).toEqual({
+      expect(await read(location)).toMatchObject({
         uptimePercentage: 95,
+        successfulChecks: 38,
         avgResponseMs: 100,
-        p95ResponseMs: 150,
+        // Rows without a stored histogram contribute their p95 point (bucket midpoint, within 2.5%).
+        p95ResponseMs: 149,
         totalChecks: 40,
         // Newest daily row starts 2026-10-02, so aggregates reach the end of that day.
         coveredTo: new Date("2026-10-03T00:00:00Z"),

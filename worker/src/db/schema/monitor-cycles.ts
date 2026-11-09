@@ -4,6 +4,7 @@ import {
   pgTable,
   text,
   integer,
+  boolean,
   timestamp,
   uuid,
   jsonb,
@@ -67,6 +68,7 @@ export const monitorCycles = pgTable(
     evaluation: jsonb('evaluation').$type<MonitorCycleEvaluation>(),
     notifiedAt: timestamp('notified_at', { withTimezone: true }),
     notifyAttempts: integer('notify_attempts').notNull().default(0),
+    publishPending: boolean('publish_pending').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true })
       .defaultNow()
       .notNull(),

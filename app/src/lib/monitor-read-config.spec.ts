@@ -42,6 +42,7 @@ describe('monitor configuration reads', () => {
       port: 443, protocol: 'tcp',
       expectClosed: true, enableSslCheck: true, sslDaysUntilExpirationWarning: 14, sslCheckFrequencyHours: 12,
       sslLastCheckedAt: '2026-01-01T00:00:00.000Z', timeoutSeconds: 10, regions: ['eu-central'],
+      sslCertificate: { valid: true, daysRemaining: 40, host: 'example.com' },
       locationConfig: { enabled: true, locations: ['eu-central'], threshold: 1, strategy: 'any' },
       retryStrategy: { maxRetries: 1, backoffFactor: 2 }, alertChannels: ['channel-1'],
       testId: '00000000-0000-4000-8000-000000000001', testTitle: 'Checkout',
@@ -95,8 +96,8 @@ describe('monitor target reads', () => {
       expect(monitorTargetForRead(target, false)).toBe(target);
     }
   });
-  it('keeps author, authority and code parameters visible', () => {
-    for (const name of ['author', 'authors', 'authority', 'code', 'page']) {
+  it('keeps author and authority parameters visible', () => {
+    for (const name of ['author', 'authors', 'authority', 'page']) {
       const target = `https://example.com/?${name}=visible`;
       expect(monitorTargetForRead(target, false)).toBe(target);
     }
@@ -152,5 +153,11 @@ describe('monitorResultForRead', () => {
     expect(JSON.stringify(result)).not.toContain('rustfs');
     const plain = { details: { statusCode: 200 }, testExecutionId: null, testReportS3Url: null };
     expect(monitorResultForRead(plain).details).toBe(plain.details);
+  });
+
+  it('masks code, pw and sk query values', () => {
+    const masked = monitorTargetForRead('https://h.example.com/cb?code=aaa&pw=bbb&sk=ccc&q=ok', false);
+    expect(masked).not.toMatch(/aaa|bbb|ccc/);
+    expect(masked).toContain('q=ok');
   });
 });

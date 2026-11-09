@@ -1,5 +1,5 @@
 import { ConfigService } from '@nestjs/config';
-import { MonitorAlertService, redactUrlsInText } from './monitor-alert.service';
+import { MonitorAlertService, redactAlertText } from './monitor-alert.service';
 import { SreAlertTriageQueueService } from './sre-alert-triage-queue.service';
 
 jest.mock('../../common/notification-provider-crypto', () => ({
@@ -412,24 +412,27 @@ describe('MonitorAlertService', () => {
     ).resolves.toBe(false);
   });
 
-  it('redacts URL credentials and query values before persisting', () => {
-    expect(
-      redactUrlsInText(
+  it('redacts URL credentials and secret query values before persisting', () => {
+    const cases = [
+      [
         'GET https://u:p@example.com/health?token=abc&page=2 failed',
-      ),
-    ).toBe(
-      'GET https://example.com/health?token=REDACTED&page=REDACTED failed',
+        ['u:p', 'abc'],
+      ],
+      ["failed 'https://u:p'w@h.example/x?token=a'b'", ["p'w", "a'b"]],
+      ['GET http://[::1]:8080/x?token=abc failed', ['abc']],
+      ['see (https://h.example/p?api_key=v).', ['=v)']],
+    ] as const;
+    for (const [text, secrets] of cases) {
+      const out = redactAlertText(text) ?? '';
+      for (const secret of secrets) expect(out).not.toContain(secret);
+    }
+    expect(redactAlertText('GET https://example.com/?page=2 failed')).toContain(
+      'page=2',
     );
-    expect(redactUrlsInText(undefined)).toBeUndefined();
-    expect(
-      redactUrlsInText("failed 'https://u:p'w@h.example/x?token=a'b'"),
-    ).toBe("failed 'https://h.example/x?token=REDACTED'");
-    expect(redactUrlsInText('GET http://[::1]:8080/x?token=abc failed')).toBe(
-      'GET http://[::1]:8080/x?token=REDACTED failed',
+    expect(redactAlertText('see (https://h.example/p?api_key=v).')).toMatch(
+      /\)\.$/,
     );
-    expect(redactUrlsInText('see (https://h.example/p?k=v).')).toBe(
-      'see (https://h.example/p?k=REDACTED).',
-    );
+    expect(redactAlertText(undefined)).toBeUndefined();
   });
 
   it('persists redacted errors and passes the check time to the payload', async () => {
