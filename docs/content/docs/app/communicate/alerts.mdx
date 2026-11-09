@@ -91,9 +91,11 @@ The number of consecutive failures required before sending the first failure ale
 
 **Recovery Threshold**
 
-The number of consecutive healthy checks required before sending a recovery alert after the monitor was down. Failure and recovery thresholds are 1–5. A monitor that was never down, or whose failures stayed below the failure threshold, sends no recovery alert.
+The number of consecutive healthy checks required before sending a recovery alert after the monitor was down. In the app, failure and recovery thresholds are 1–5; the API accepts 1–100. A monitor that was never down, or whose failures stayed below the failure threshold, sends no recovery alert.
 
 SSL warnings are separate from the monitor's up/down result. Turn on **SSL Check** on a website monitor; **Alert on SSL certificate expiration** is then switched on for you (you can switch it off) and uses the monitor's **Alert in _N_ days** window. A warning is sent at most once every 24 hours while the certificate stays inside the window. A single failed certificate read sends nothing. If the site stays up but its certificate can't be read for 24 hours, a warning is sent, repeated at most daily while the failure continues.
+
+Failure, recovery and SSL alerts are not sent while a scheduled maintenance window covers the monitor; checks still run and count toward uptime.
 
 **Alert limiting**
 

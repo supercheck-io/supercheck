@@ -3251,8 +3251,23 @@
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
+          "402": {
+            "description": "Subscription required"
+          },
           "403": {
             "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "Project or test not found"
+          },
+          "429": {
+            "description": "Rate limited; retry after the `Retry-After` interval"
+          },
+          "500": {
+            "description": "Failed to create the monitor. A monitor whose schedule cannot be set is removed, so retrying does not create a duplicate."
+          },
+          "503": {
+            "description": "Too many concurrent requests; retry after the `Retry-After` interval"
           }
         }
       },
@@ -3618,13 +3633,30 @@
               }
             }
           },
+          "400": {
+            "description": "Unknown location"
+          },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Insufficient permissions"
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
           }
-        }
+        },
+        "parameters": [
+          {
+            "name": "location",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Region code. `all` or empty means no filter."
+          }
+        ]
       }
     },
     "/api/variables": {
@@ -8308,7 +8340,7 @@
           "maximum": 100,
           "example": 20
         },
-        "description": "Items per page"
+        "description": "Items per page. Values above 100 are capped at 100."
       },
       "JobLimit": {
         "name": "limit",
@@ -8320,7 +8352,7 @@
           "maximum": 100,
           "example": 100
         },
-        "description": "Jobs per page"
+        "description": "Jobs per page. Values above 100 are capped at 100."
       },
       "MonitorLimit": {
         "name": "limit",
@@ -8332,7 +8364,7 @@
           "maximum": 100,
           "example": 50
         },
-        "description": "Monitors per page. Omitting both page and limit returns up to 200 monitors, with `pagination.hasMore` set when more may exist."
+        "description": "Monitors per page. Omitting both page and limit returns up to 200 monitors, with `pagination.hasMore` set when more may exist. Values above 100 are capped at 100."
       },
       "RunLimit": {
         "name": "limit",
@@ -9364,11 +9396,9 @@
               "source": {
                 "type": "string",
                 "enum": [
-                  "aggregates",
-                  "aggregates+raw_p95",
-                  "aggregates+raw",
-                  "raw"
-                ]
+                  "aggregates+raw"
+                ],
+                "description": "Always `aggregates+raw`."
               }
             }
           }
@@ -10214,7 +10244,8 @@
           "timeoutSeconds": {
             "type": "integer",
             "minimum": 1,
-            "description": "Per-check timeout in seconds. Must not exceed `frequencyMinutes` * 60; a save that raises the timeout above the interval, or shortens the interval below the timeout, returns 400 (an existing monitor already in that state still saves other changes)."
+            "description": "1-3600; must not exceed `frequencyMinutes` x 60. A save that raises the timeout above the interval, or shortens the interval below the timeout, returns 400; a monitor already in that state still saves other changes.",
+            "maximum": 3600
           },
           "regions": {
             "type": "array",
