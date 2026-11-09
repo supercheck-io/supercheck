@@ -71,7 +71,7 @@ Checks availability, status code, response time and body content of APIs and web
 | **Custom Headers** | Tokens, API keys, any header |
 | **Request Body** | JSON or form data for POST/PUT |
 | **Authentication** | Basic Auth or Bearer Token |
-| **Expected Status** | Specific codes or ranges |
+| **Expected Status** | Codes (`200`), ranges (`200-299`) or classes (`2xx`), comma-separated. Malformed entries are rejected when you save; a stored malformed entry never matches |
 | **Keyword Validation** | Text must be present or absent in the response |
 
 ![Create HTTP Monitor](/screenshots/create-http-monitor.png)
@@ -86,11 +86,13 @@ Web page availability with built-in SSL tracking, for marketing sites, landing p
 | **SSL** | Certificate is valid; expiration date |
 | **Keyword** | Optional text on the page |
 
+The **SSL Check** toggle appears only when the target starts with `https://` (an `http://` target has no certificate). A monitor that already has it on keeps showing it, so you can turn it off.
+
 With **SSL Check** on (HTTPS targets only):
 
 | Situation | What happens |
 |---|---|
-| Certificate is valid | Read about once a day; every 6 hours near the warning window; hourly inside it |
+| Certificate is valid | Read every 24 hours by default; every 6 hours near the warning window; hourly inside it |
 | Expired, not yet valid, untrusted or wrong hostname | Check is **down**; re-read on every check until fixed |
 | Certificate can't be read (timeout, reset) | Check stays up and retries next check; if the site stays up, an SSL alert is sent after 24 hours |
 | SSL Check just turned on, or target changed | Monitor page shows **No certificate data yet** until the next check |
@@ -106,7 +108,7 @@ TCP reachability and connection latency for hosts without an HTTP endpoint, on p
 ![Create Ping Monitor](/screenshots/create-ping-monitor.png)
 
 <Callout type="warn">
-Ping monitors use TCP connectivity on ports 443 and 80 rather than ICMP. If the target host does not accept TCP connections on either port, the check fails.
+Ping monitors use TCP connectivity on ports 443 and 80 rather than ICMP. The check is up when either port accepts or refuses the connection (a refusal means the host answered), and down only when neither answers. The reported response time is that of the attempt that answered.
 </Callout>
 
 ## Port Monitor
@@ -115,7 +117,17 @@ Verifies that a TCP or UDP port accepts connections within the timeout, for exam
 
 ![Create Port Monitor](/screenshots/create-port-monitor.png)
 
-UDP checks send a packet; a passing result does not confirm that the application replied. Use TCP or an application-level check when you need response verification.
+**TCP:** with **Expect closed** a refused connection passes. A timeout also passes, because a firewalled port drops packets, but only if the host still answers on port 443 or 80; an unreachable host fails. A DNS failure is always down.
+
+**UDP:** UDP has no handshake. The worker sends one packet and waits up to two seconds. A reply proves the port open and a refusal proves it closed; only silence is ambiguous:
+
+| Outcome | Result |
+|---|---|
+| Service replies | Up (open) |
+| ICMP port-unreachable (connection refused) | Down, closed (passes with **Expect closed**) |
+| Silence | Up, reported as open or filtered; fails **Expect closed** |
+
+Many UDP services never reply, and a firewall that drops packets looks the same as an open port, so silence is not proof the service works. Use TCP or an application-level check when you need response verification. Firewalls that do not return ICMP errors make closed ports look open.
 
 ## Synthetic Monitor
 
@@ -167,7 +179,7 @@ Configure when and how you receive notifications about monitor status changes.
 | **Failure Threshold** | Consecutive failures before the first alert (1–5) | 2–3 |
 | **Recovery Threshold** | Consecutive healthy checks before the recovery alert (1–5) | 2 |
 | **Alert on SSL certificate expiration** | Shown only for website monitors with **SSL Check** on. Warns when a certificate is within the days set in the monitor's **Alert in _N_ days** field (1–365, default 30), at most once per 24 hours | On |
-| **Notification Channels** | Where alerts are sent | More than one for critical services |
+| **Notification Channels** | Where alerts are sent. Channels linked through the notifications API appear here too, and linking or unlinking one through the API updates this list | More than one for critical services |
 
 **Incidents** (in the same Alert Settings):
 
@@ -234,11 +246,11 @@ Nine key metrics are displayed prominently below the header:
 |--------|-------------|
 | **Status** | Current monitor status (Up, Down, Paused, Pending, Maintenance, Error) |
 | **Interval** | How frequently checks run (e.g., 5m, 15m) |
-| **Resp Time** | Latest response time from the most recent check |
-| **Uptime** (Last 24 hours) | Percentage of successful checks in the last 24 hours |
+| **Resp Time** | Latest response time from the most recent check. Shown in ms below 1 s (for example `360 ms`) and in seconds above (`1.25 s`) |
+| **Uptime** (Last 24 hours) | Percentage of successful checks in the last 24 hours. A multi-location check counts once, as up or down by the monitor's location rule, not once per region |
 | **Avg Resp** (Last 24 hours) | Average response time over the last 24 hours |
 | **P95 Resp** (Last 24 hours) | 95th percentile response time over the last 24 hours |
-| **Uptime** (Last 30 days) | Percentage of successful checks in the last 30 days |
+| **Uptime** (Last 30 days) | Percentage of successful checks in the last 30 days, counted the same way. The per-location breakdown counts each region on its own |
 | **Avg Resp** (Last 30 days) | Average response time over the last 30 days |
 | **P95 Resp** (Last 30 days) | 95th percentile response time (30d) — long-term performance indicator |
 
@@ -311,6 +323,8 @@ A scheduled check that waits in a busy or returning worker's queue longer than t
 ## Check Intervals
 
 Available intervals: 1 minute, 5 minutes, 10 minutes, 15 minutes, 30 minutes, 1 hour, 3 hours, 12 hours, and 24 hours. Shorter intervals detect failures sooner and use more resources.
+
+A check's timeout must not exceed its interval, for example 60 seconds at a 1-minute interval. A save that raises the timeout above the interval, or shortens the interval below the timeout, is rejected; a monitor already in that state still saves other changes.
 
 <Callout type="info">
 Synthetic monitors start at 5 minutes. Set the interval longer than your test's run time so executions do not overlap: for a 2-minute test, use 5 minutes or more.

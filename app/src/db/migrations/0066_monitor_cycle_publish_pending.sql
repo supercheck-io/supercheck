@@ -1,0 +1,2 @@
+-- Forward-only, additive. Apply before deploying app or worker; older versions ignore the column (default false keeps their cycles on the legacy path).
+ALTER TABLE "monitor_cycles" ADD COLUMN "publish_pending" boolean DEFAULT false NOT NULL;

@@ -2,6 +2,7 @@ import { deleteMonitorWithContext } from "@/lib/resource-deletion/monitor";
 import { isInvalidUuidError, isUuid } from "@/lib/uuid";
 import { isDeepStrictEqual } from "node:util";
 import { executionConfig, updateMonitorHandler } from "@/lib/monitor-service";
+import { reconcileMonitorSchedule } from "@/lib/monitor-schedule-reconcile";
 import { resumeRefusalResponse, withResumeWithinPlan, ResumeRefusedError } from "@/lib/middleware/plan-enforcement";
 import { monitorResumeBlockedResponse, trialIntervalErrorResponse } from "@/lib/execution/trial-interval-response";
 import { monitorConfigForRead, monitorTargetForRead, monitorResultForRead } from "@/lib/monitor-read-config";
@@ -32,13 +33,25 @@ import { createLogger } from "@/lib/logger/index";
 import { validateMonitorConfiguration } from "@/lib/monitor-validation";
 import { validateMonitorTargetAddress } from "@/lib/monitor-target-policy";
 import {
+  alertProvidersSent,
+  AlertConfigConflictError,
+  assertKeptProvidersValid,
   enabledAlertConfigError,
+  frequencyMinutesError,
+  InvalidNotificationProvidersError,
+  MonitorScheduleError,
   mergePatch,
   monitorNameError,
   normalizeMonitorAlertConfig,
   preserveWorkerConfigKeys,
-  replaceMonitorProviders,
+  SCHEDULE_FAILURE_MESSAGE,
+  sanitizeMonitorFields,
+  scheduleOutOfSync,
+  scheduleFailureResponse,
+  syncMonitorProviderRows,
   syntheticFrequencyError,
+  thrownStatusResponse,
+  timeoutFrequencyError,
   testInProject,
 } from "@/lib/monitor-write";
 import {
@@ -200,8 +213,6 @@ export async function PUT(
     }
 
     const updateData = validationResult.data;
-    const nameError = monitorNameError(updateData.name);
-    if (nameError) return NextResponse.json({ error: nameError }, { status: 400 });
 
     if (!isUuid(id)) return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
 
@@ -216,6 +227,26 @@ export async function PUT(
 
     if (!currentMonitor) {
       return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
+    }
+
+    // Same name handling as create; the target and credentials are never rewritten.
+    sanitizeMonitorFields(updateData);
+    sanitizeMonitorFields({ alertConfig: rawData.alertConfig });
+    const nameError = monitorNameError(updateData.name);
+    if (nameError) return NextResponse.json({ error: nameError }, { status: 400 });
+
+    if (rawData.frequencyMinutes !== undefined) {
+      const frequencyError = frequencyMinutesError(rawData.frequencyMinutes);
+      if (frequencyError) {
+        return NextResponse.json({ error: "Invalid frequency", details: frequencyError }, { status: 400 });
+      }
+    }
+    {
+      const timeoutError = timeoutFrequencyError(currentMonitor, {
+        config: updateData.config ?? currentMonitor.config,
+        frequencyMinutes: updateData.frequencyMinutes ?? currentMonitor.frequencyMinutes,
+      });
+      if (timeoutError) return NextResponse.json({ error: "Invalid configuration", details: timeoutError }, { status: 400 });
     }
 
     // Only a change to type or frequency is checked, so legacy sub-5-minute monitors can still be paused or renamed.
@@ -299,27 +330,6 @@ export async function PUT(
       }
     }
 
-    // Validate frequency bounds (1 minute minimum, 1440 minutes = 24 hours maximum)
-    const MIN_FREQUENCY_MINUTES = 1;
-    const MAX_FREQUENCY_MINUTES = 1440; // 24 hours
-
-    if (rawData.frequencyMinutes !== undefined) {
-      const freq = Number(rawData.frequencyMinutes);
-      if (
-        isNaN(freq) ||
-        freq < MIN_FREQUENCY_MINUTES ||
-        freq > MAX_FREQUENCY_MINUTES
-      ) {
-        return NextResponse.json(
-          {
-            error: "Invalid frequency",
-            details: `frequencyMinutes must be between ${MIN_FREQUENCY_MINUTES} and ${MAX_FREQUENCY_MINUTES} minutes`,
-          },
-          { status: 400 },
-        );
-      }
-    }
-
     if (updateData.config === null) {
       return NextResponse.json({ error: "config cannot be null" }, { status: 400 });
     }
@@ -359,7 +369,11 @@ export async function PUT(
     let normalizedProviderIds: string[] = [];
     // Only update alertConfig if it's explicitly provided; otherwise existing alert settings are preserved
     if (rawData.hasOwnProperty("alertConfig")) {
-      if (rawData.alertConfig) {
+      if (rawData.alertConfig === null) {
+        updatePayload.alertConfig = null;
+      } else if (!isObject(rawData.alertConfig)) {
+        return NextResponse.json({ error: "alertConfig must be an object or null" }, { status: 400 });
+      } else {
         const normalized = normalizeMonitorAlertConfig(rawData.alertConfig, currentMonitor.alertConfig);
         if (!normalized.ok) {
           return NextResponse.json({ error: normalized.error }, { status: 400 });
@@ -370,17 +384,12 @@ export async function PUT(
         }
         updatePayload.alertConfig = normalized.value;
         normalizedProviderIds = Array.from(new Set(normalized.value.notificationProviders));
-      } else {
-        updatePayload.alertConfig = null;
       }
     }
 
-    const shouldSyncNotificationProviders = Boolean(
-      updatePayload.alertConfig?.enabled && rawData.alertConfig,
-    );
-
-    const NOTIFICATION_PROVIDER_VALIDATION_ERROR =
-      "NOTIFICATION_PROVIDER_VALIDATION_FAILED";
+    // The JSON column is what the UI shows and the rows are what the worker delivers to: an alertConfig write that
+    // carries notificationProviders (or null), enabled or not, validates the ids and replaces the rows in the same transaction.
+    const shouldSyncNotificationProviders = rawData.hasOwnProperty("alertConfig") && alertProvidersSent(rawData.alertConfig);
 
     let updatedMonitor;
     try {
@@ -402,41 +411,14 @@ export async function PUT(
         }
 
         if (shouldSyncNotificationProviders) {
-          // Validate notification providers inside the transaction to prevent TOCTOU race conditions
-          if (normalizedProviderIds.length > 0) {
-            const validProviders = await tx
-              .select({ id: notificationProviders.id })
-              .from(notificationProviders)
-              .where(
-                and(
-                  inArray(notificationProviders.id, normalizedProviderIds),
-                  eq(
-                    notificationProviders.organizationId,
-                    authCtx.organizationId,
-                  ),
-                  eq(notificationProviders.projectId, authCtx.project.id),
-                ),
-              );
-
-            if (validProviders.length !== normalizedProviderIds.length) {
-              throw new Error(NOTIFICATION_PROVIDER_VALIDATION_ERROR);
-            }
-          }
-
-          await tx
-            .delete(monitorNotificationSettings)
-            .where(eq(monitorNotificationSettings.monitorId, id));
-
-          if (normalizedProviderIds.length > 0) {
-            await tx
-              .insert(monitorNotificationSettings)
-              .values(
-                normalizedProviderIds.map((providerId: string) => ({
-                  monitorId: id,
-                  notificationProviderId: providerId,
-                })),
-              )
-              .onConflictDoNothing();
+          const kept = await syncMonitorProviderRows(
+            tx, id, normalizedProviderIds, authCtx.organizationId, authCtx.project.id, currentMonitor.alertConfig?.notificationProviders,
+          );
+          // A stored provider deleted since is dropped from the JSON as well.
+          if (updatePayload.alertConfig && updatePayload.alertConfig.notificationProviders.length !== kept.length) {
+            assertKeptProvidersValid(updatePayload.alertConfig, kept);
+            updated.alertConfig = { ...updatePayload.alertConfig, notificationProviders: kept };
+            await tx.update(monitors).set({ alertConfig: updated.alertConfig }).where(eq(monitors.id, id));
           }
         }
 
@@ -452,17 +434,8 @@ export async function PUT(
         updatedMonitor = await db.transaction(writeMonitor);
       }
     } catch (error) {
-      if (
-        error instanceof Error &&
-        error.message === NOTIFICATION_PROVIDER_VALIDATION_ERROR
-      ) {
-        return NextResponse.json(
-          {
-            error:
-              "One or more notification providers are invalid or not accessible in this project",
-          },
-          { status: 400 },
-        );
+      if (error instanceof InvalidNotificationProvidersError || error instanceof AlertConfigConflictError) {
+        return NextResponse.json({ error: error.message }, { status: 400 });
       }
       throw error;
     }
@@ -474,91 +447,11 @@ export async function PUT(
       );
     }
 
-    // Handle scheduling changes for frequency updates
     const oldFrequency = currentMonitor.frequencyMinutes;
     const newFrequency = updatedMonitor.frequencyMinutes;
     const oldStatus = currentMonitor.status;
     const newStatus = updatedMonitor.status;
 
-    const jobData: MonitorJobData = {
-      monitorId: updatedMonitor.id,
-      projectId: authCtx.project.id,
-      type: updatedMonitor.type as MonitorJobData["type"],
-      target: updatedMonitor.target,
-      config: updatedMonitor.config as Record<string, unknown>,
-      frequencyMinutes: newFrequency ?? undefined,
-    };
-
-    // Handle status changes (pause/resume)
-    if (oldStatus !== newStatus) {
-      logger.debug(
-        { monitorId: id, oldStatus, newStatus },
-        "Monitor status changed",
-      );
-
-      if (newStatus === "paused") {
-        // Pause monitor - remove from scheduler and clear scheduledJobId
-        logger.debug(
-          { monitorId: id },
-          "Pausing monitor - removing from scheduler",
-        );
-
-        // Try both the stored scheduledJobId and the monitor ID
-        let deleteSuccess = false;
-        if (currentMonitor.scheduledJobId) {
-          deleteSuccess = await deleteScheduledMonitor(
-            currentMonitor.scheduledJobId,
-          );
-        }
-
-        if (!deleteSuccess) {
-          deleteSuccess = await deleteScheduledMonitor(id);
-        }
-
-        // Clear the scheduled job ID from database
-        await db
-          .update(monitors)
-          .set({ scheduledJobId: null })
-          .where(
-            and(
-              eq(monitors.id, id),
-              eq(monitors.projectId, authCtx.project.id),
-              eq(monitors.organizationId, authCtx.organizationId),
-            ),
-          );
-      } else if (
-        oldStatus === "paused" &&
-        (newStatus === "up" || newStatus === "down" || newStatus === "pending")
-      ) {
-        // Resume monitor - add to scheduler if it has valid frequency
-        if (newFrequency && newFrequency > 0) {
-          logger.debug(
-            { monitorId: id, frequencyMinutes: newFrequency },
-            "Resuming monitor - adding to scheduler",
-          );
-          const schedulerId = await scheduleMonitor({
-            monitorId: id,
-            frequencyMinutes: newFrequency,
-            jobData,
-            retryLimit: 3,
-          });
-
-          // Update monitor with new scheduler ID
-          await db
-            .update(monitors)
-            .set({ scheduledJobId: schedulerId })
-            .where(
-              and(
-                eq(monitors.id, id),
-                eq(monitors.projectId, authCtx.project.id),
-                eq(monitors.organizationId, authCtx.organizationId),
-              ),
-            );
-        }
-      }
-    }
-
-    // Handle frequency changes for non-paused monitors OR config changes
     // Same comparison PATCH uses: editing alert channels or regions must not restart the cadence.
     const configChanged = !isDeepStrictEqual(
       executionConfig(currentMonitor.config),
@@ -580,66 +473,23 @@ export async function PUT(
       unknown
     > | null;
 
+    // Per-monitor lock and idempotent: a Redis failure leaves the saved row and answers 503 so a retry converges.
+    let scheduleFailed = false;
+    // Scheduling state only: paused membership, enabled, execution settings, or a schedule left out of sync by an earlier failure.
     if (
-      (oldFrequency !== newFrequency ||
-        configChanged ||
-        targetChanged ||
-        typeChanged) &&
-      newStatus !== "paused"
+      (oldStatus === "paused") !== (newStatus === "paused") ||
+      currentMonitor.enabled !== updatedMonitor.enabled ||
+      oldFrequency !== newFrequency ||
+      configChanged ||
+      targetChanged ||
+      typeChanged ||
+      scheduleOutOfSync(updatedMonitor)
     ) {
-      // Always remove the old schedule first
-      logger.debug(
-        {
-          monitorId: id,
-          oldFrequency,
-          newFrequency,
-          configChanged,
-          targetChanged,
-          typeChanged,
-        },
-        "Rescheduling monitor due to changes",
-      );
-      await deleteScheduledMonitor(id);
-
-      if (newFrequency && newFrequency > 0) {
-        logger.debug(
-          { monitorId: id },
-          "Scheduling monitor with updated configuration",
-        );
-        const schedulerId = await scheduleMonitor({
-          monitorId: id,
-          frequencyMinutes: newFrequency,
-          jobData,
-          retryLimit: 3,
-        });
-
-        // Update monitor with new scheduler ID
-        await db
-          .update(monitors)
-          .set({ scheduledJobId: schedulerId })
-          .where(
-            and(
-              eq(monitors.id, id),
-              eq(monitors.projectId, authCtx.project.id),
-              eq(monitors.organizationId, authCtx.organizationId),
-            ),
-          );
-      } else {
-        logger.debug(
-          { monitorId: id, frequency: newFrequency },
-          "Monitor frequency cleared, not scheduling",
-        );
-        // Clear scheduler ID if frequency is 0 or null
-        await db
-          .update(monitors)
-          .set({ scheduledJobId: null })
-          .where(
-            and(
-              eq(monitors.id, id),
-              eq(monitors.projectId, authCtx.project.id),
-              eq(monitors.organizationId, authCtx.organizationId),
-            ),
-          );
+      try {
+        await reconcileMonitorSchedule(id, authCtx.project.id);
+      } catch (error) {
+        scheduleFailed = true;
+        logger.error({ err: error, monitorId: id }, "Monitor saved but its schedule could not be updated");
       }
     }
 
@@ -695,6 +545,7 @@ export async function PUT(
       success: true,
     });
 
+    if (scheduleFailed) return NextResponse.json({ error: SCHEDULE_FAILURE_MESSAGE }, { status: 503 });
     return NextResponse.json(updatedMonitor);
   } catch (error) {
     if (isAuthError(error)) {
@@ -769,6 +620,9 @@ export async function PATCH(
       return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
     }
 
+    // Same name and target handling as create; credentials in config are never rewritten.
+    sanitizeMonitorFields(rawData);
+
     // Only a change to type or frequency is checked, so legacy sub-5-minute monitors can still be paused or renamed.
     const syntheticError = (rawData.type !== undefined || rawData.frequencyMinutes !== undefined) && syntheticFrequencyError(
       rawData.type ?? currentMonitor.type,
@@ -796,11 +650,8 @@ export async function PATCH(
     if (rawData.name !== undefined && (typeof rawData.name !== "string" || !rawData.name.trim() || [...rawData.name].length > 255)) {
       return NextResponse.json({ error: "name must be 1-255 characters" }, { status: 400 });
     }
-    if (rawData.frequencyMinutes !== undefined &&
-      (typeof rawData.frequencyMinutes !== "number" || !Number.isFinite(rawData.frequencyMinutes) ||
-       rawData.frequencyMinutes < 1 || rawData.frequencyMinutes > 1440)) {
-      return NextResponse.json({ error: "frequencyMinutes must be between 1 and 1440" }, { status: 400 });
-    }
+    const frequencyError = rawData.frequencyMinutes !== undefined ? frequencyMinutesError(rawData.frequencyMinutes) : null;
+    if (frequencyError) return NextResponse.json({ error: frequencyError }, { status: 400 });
     if (rawData.status !== undefined) {
       if (!["paused", "up", "down", "pending"].includes(rawData.status)) {
         return NextResponse.json({ error: "Invalid monitor status" }, { status: 400 });
@@ -819,6 +670,14 @@ export async function PATCH(
       updatePayload.config = isObject(rawData.config)
         ? mergePatch(currentMonitor.config ?? {}, rawData.config)
         : rawData.config;
+    }
+
+    {
+      const timeoutError = timeoutFrequencyError(currentMonitor, {
+        config: updatePayload.config ?? currentMonitor.config,
+        frequencyMinutes: updatePayload.frequencyMinutes ?? currentMonitor.frequencyMinutes,
+      });
+      if (timeoutError) return NextResponse.json({ error: "Invalid configuration", details: timeoutError }, { status: 400 });
     }
 
     const configurationValidation = validateMonitorConfiguration({
@@ -897,33 +756,36 @@ export async function PATCH(
         return NextResponse.json({ error: alertError }, { status: 400 });
       }
       updatePayload.alertConfig = normalized.value;
-      // null clears the list (merge-patch delete), so it must clear the delivery rows too.
-      const listSent =
-        Array.isArray(rawData.alertConfig.notificationProviders) ||
-        rawData.alertConfig.notificationProviders === null;
-      // Clearing the list must clear the delivery rows even while alerts are being disabled.
-      if (listSent && (normalized.value.enabled || normalized.value.notificationProviders.length === 0)) {
-        providerIdsToSync = normalized.value.notificationProviders;
-      }
-    }
-
-    // The worker delivers through monitor_notification_settings, not the JSON column.
-    if (
-      providerIdsToSync &&
-      !(await replaceMonitorProviders(id, providerIdsToSync, authCtx.organizationId, authCtx.project.id))
-    ) {
-      return NextResponse.json(
-        { error: "One or more notification providers are invalid or not accessible in this project" },
-        { status: 400 },
-      );
+      // A write that carries the provider list validates the ids and replaces the delivery rows in the same transaction as the row.
+      if (alertProvidersSent(rawData.alertConfig)) providerIdsToSync = normalized.value.notificationProviders;
     }
 
     let updatedMonitor;
+    let patchScheduleFailed = false;
     try {
-      updatedMonitor = await updateMonitorHandler(id, updatePayload);
+      updatedMonitor = await updateMonitorHandler(
+        id,
+        updatePayload,
+        providerIdsToSync
+          ? { providerSync: { ids: providerIdsToSync, organizationId: authCtx.organizationId, projectId: authCtx.project.id, storedIds: currentMonitor.alertConfig?.notificationProviders } }
+          : {},
+      );
     } catch (error) {
       if (error instanceof ResumeRefusedError) return resumeRefusalResponse(error.outcome)!;
-      throw error;
+      if (error instanceof InvalidNotificationProvidersError || error instanceof AlertConfigConflictError) {
+        return NextResponse.json({ error: error.message }, { status: 400 });
+      }
+      if (error instanceof MonitorScheduleError && error.monitor) {
+        // Saved but not rescheduled: audit the change, then answer 503.
+        updatedMonitor = error.monitor;
+        patchScheduleFailed = true;
+      } else {
+        const scheduleFailure = scheduleFailureResponse(error);
+        if (scheduleFailure) return scheduleFailure;
+        const thrown = thrownStatusResponse(error);
+        if (thrown) return thrown;
+        throw error;
+      }
     }
 
     // Log the audit event for monitor partial update
@@ -947,6 +809,7 @@ export async function PATCH(
       success: true,
     });
 
+    if (patchScheduleFailed) return NextResponse.json({ error: SCHEDULE_FAILURE_MESSAGE }, { status: 503 });
     return NextResponse.json(updatedMonitor);
   } catch (error) {
     if (isAuthError(error)) {

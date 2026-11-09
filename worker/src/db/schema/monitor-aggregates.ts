@@ -17,6 +17,7 @@ import {
   pgTable,
   text,
   integer,
+  jsonb,
   timestamp,
   uuid,
   numeric,
@@ -91,6 +92,13 @@ export const monitorAggregates = pgTable(
 
     // Sum of response times (for recalculating averages when merging)
     totalResponseMs: integer('total_response_ms').default(0),
+
+    // Number of up-check response times behind totalResponseMs (null on older rows).
+    responseSampleCount: integer('response_sample_count'),
+
+    // Log-bucketed up-check response-time histogram, daily rows only (written by the app).
+    responseHistogram:
+      jsonb('response_histogram').$type<Record<string, number>>(),
 
     // Status change count in this period
     statusChangeCount: integer('status_change_count').notNull().default(0),

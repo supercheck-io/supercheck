@@ -23,6 +23,7 @@ jest.mock("@/lib/auth-context", () => ({
 }));
 jest.mock("@/lib/rbac/middleware", () => ({ checkPermissionWithContext: jest.fn().mockReturnValue(true) }));
 jest.mock("@/lib/monitor-scheduler", () => ({ scheduleMonitor: jest.fn().mockResolvedValue("s"), deleteScheduledMonitor: jest.fn() }));
+jest.mock("@/lib/monitor-schedule-reconcile", () => ({ reconcileMonitorSchedule: jest.fn().mockResolvedValue(undefined) }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 // A resume writes under the plan-limit lock; here the write just runs on the mocked transaction.
 jest.mock("@/lib/middleware/plan-enforcement", () => ({
@@ -73,12 +74,14 @@ const call = (handler: typeof PUT | typeof PATCH, method: string, body: object) 
 
 let set: jest.Mock;
 let txInsertValues: jest.Mock;
+let txDeleteWhere: jest.Mock;
 let providerRows: { id: string }[];
 beforeEach(() => {
   jest.clearAllMocks();
   findFirst.mockResolvedValue(stored);
   testsFindFirst.mockResolvedValue({ id: "t", title: "T" });
   providerRows = [];
+  txDeleteWhere = jest.fn().mockResolvedValue(undefined);
   txInsertValues = jest.fn().mockReturnValue({ onConflictDoNothing: jest.fn() });
   set = jest.fn().mockReturnValue({ where: jest.fn().mockReturnValue({ returning: jest.fn().mockResolvedValue([stored]) }) });
   update.mockReturnValue({ set });
@@ -86,7 +89,7 @@ beforeEach(() => {
     cb({
       update: () => ({ set }),
       select: () => ({ from: () => ({ where: async () => providerRows }) }),
-      delete: () => ({ where: async () => undefined }),
+      delete: () => ({ where: txDeleteWhere }),
       insert: () => ({ values: txInsertValues }),
     }),
   );
@@ -331,3 +334,114 @@ describe("synthetic monitors keep the 5-minute minimum", () => {
     });
   });
 });
+
+describe("alertConfig, delivery rows, credentials, frequency and timeout on update", () => {
+  const PROVIDER = "00000000-0000-4000-8000-0000000000aa";
+
+  it("PUT alertConfig null clears the delivery rows in the same transaction (B2)", async () => {
+    expect((await call(PUT, "PUT", { alertConfig: null })).status).toBe(200);
+    expect(payload()).toMatchObject({ alertConfig: null });
+    expect(txDeleteWhere).toHaveBeenCalledTimes(1);
+    expect(txInsertValues).not.toHaveBeenCalled();
+  });
+
+  it("PUT with alerts disabled still validates the ids against the project and syncs the rows (B2)", async () => {
+    providerRows = [];
+    const rejected = await call(PUT, "PUT", { alertConfig: { enabled: false, notificationProviders: [PROVIDER] } });
+    expect(rejected.status).toBe(400);
+    providerRows = [{ id: PROVIDER }];
+    const ok = await call(PUT, "PUT", { alertConfig: { enabled: false, notificationProviders: [PROVIDER] } });
+    expect(ok.status).toBe(200);
+    expect(txInsertValues).toHaveBeenCalledWith([{ monitorId: ID, notificationProviderId: PROVIDER }]);
+  });
+
+  it("PATCH validates and syncs the provider rows with every alertConfig write, enabled or not (B2)", async () => {
+    providerRows = [];
+    const rejected = await call(PATCH, "PATCH", { alertConfig: { enabled: false, notificationProviders: [PROVIDER] } });
+    expect(rejected.status).toBe(400);
+    providerRows = [{ id: PROVIDER }];
+    const ok = await call(PATCH, "PATCH", { alertConfig: { enabled: false, notificationProviders: [PROVIDER] } });
+    expect(ok.status).toBe(200);
+    expect(txInsertValues).toHaveBeenCalledWith([{ monitorId: ID, notificationProviderId: PROVIDER }]);
+  });
+
+  it("PUT without alertConfig leaves the delivery rows alone (B2)", async () => {
+    await call(PUT, "PUT", { name: "x" });
+    expect(txDeleteWhere).not.toHaveBeenCalled();
+  });
+
+  it("PUT keeps credentials exactly as sent (B3)", async () => {
+    const auth = { type: "basic", username: "ab${x}", password: "p<b>w$" };
+    expect((await call(PUT, "PUT", { config: { timeoutSeconds: 30, auth } })).status).toBe(200);
+    expect((payload().config as { auth: unknown }).auth).toEqual(auth);
+  });
+
+  it.each([1.5, 0, 1441, "5", null])("PUT and PATCH reject frequencyMinutes %p (B5)", async (frequencyMinutes) => {
+    expect((await call(PUT, "PUT", { frequencyMinutes })).status).toBe(400);
+    expect((await call(PATCH, "PATCH", { frequencyMinutes })).status).toBe(400);
+    expect(set).not.toHaveBeenCalled();
+  });
+
+  it("rejects raising the timeout above, or the interval below, the other, on PUT and PATCH (B7)", async () => {
+    expect((await call(PUT, "PUT", { frequencyMinutes: 1, config: { timeoutSeconds: 90 } })).status).toBe(400);
+    expect((await call(PATCH, "PATCH", { frequencyMinutes: 1 })).status).toBe(200);
+    expect((await call(PATCH, "PATCH", { config: { timeoutSeconds: 301 } })).status).toBe(400);
+    findFirst.mockResolvedValue({ ...stored, frequencyMinutes: 10, config: { ...stored.config, timeoutSeconds: 590 } });
+    expect((await call(PATCH, "PATCH", { frequencyMinutes: 9 })).status).toBe(400);
+  });
+
+  it("a legacy monitor whose stored timeout exceeds the interval saves unrelated edits, including a UI-shaped full config (B7)", async () => {
+    const legacy = { ...stored, config: { ...stored.config, timeoutSeconds: 600 } };
+    findFirst.mockResolvedValue(legacy);
+    expect((await call(PUT, "PUT", { name: "renamed", frequencyMinutes: 5, config: legacy.config })).status).toBe(200);
+    expect((await call(PATCH, "PATCH", { name: "renamed" })).status).toBe(200);
+    expect((await call(PATCH, "PATCH", { config: { method: "GET" } })).status).toBe(200);
+    // Narrowing the gap is allowed, widening it is not.
+    expect((await call(PUT, "PUT", { config: { ...legacy.config, timeoutSeconds: 400 } })).status).toBe(200);
+    expect((await call(PUT, "PUT", { config: { ...legacy.config, timeoutSeconds: 700 } })).status).toBe(400);
+  });
+
+});
+
+describe("target limits on update paths", () => {
+  it.each([`https://example.com/${"a".repeat(2048)}`, "https://example.com/a\u0000b"])("PUT and PATCH answer 400 for an unstorable target", async (target) => {
+    expect((await call(PUT, "PUT", { target })).status).toBe(400);
+    expect((await call(PATCH, "PATCH", { target })).status).toBe(400);
+    expect(set).not.toHaveBeenCalled();
+  });
+});
+
+describe("review fixes: drifted rows, audit on schedule failure, alertConfig type", () => {
+  const { logAuditEvent } = jest.requireMock("@/lib/audit-logger") as { logAuditEvent: jest.Mock };
+  const { reconcileMonitorSchedule } = jest.requireMock("@/lib/monitor-schedule-reconcile") as { reconcileMonitorSchedule: jest.Mock };
+
+  it("PUT and PATCH leave delivery rows alone when alertConfig does not carry notificationProviders", async () => {
+    findFirst.mockResolvedValue({
+      ...stored,
+      alertConfig: { enabled: true, notificationProviders: [], alertOnFailure: true, alertOnRecovery: true, failureThreshold: 1, recoveryThreshold: 1 },
+    });
+    expect((await call(PUT, "PUT", { alertConfig: { failureThreshold: 3 } })).status).toBe(200);
+    expect((await call(PATCH, "PATCH", { alertConfig: { failureThreshold: 3 } })).status).toBe(200);
+    expect(txDeleteWhere).not.toHaveBeenCalled();
+    expect(txInsertValues).not.toHaveBeenCalled();
+  });
+
+  it("PATCH with notificationProviders: null clears the rows", async () => {
+    findFirst.mockResolvedValue({ ...stored, alertConfig: { enabled: false, notificationProviders: [PROVIDER_ID] } });
+    expect((await call(PATCH, "PATCH", { alertConfig: { notificationProviders: null } })).status).toBe(200);
+    expect(txDeleteWhere).toHaveBeenCalledTimes(1);
+  });
+
+  it("PATCH audits a saved change, then answers 503, when the schedule cannot be updated", async () => {
+    reconcileMonitorSchedule.mockRejectedValueOnce(new Error("redis down"));
+    const res = await call(PATCH, "PATCH", { frequencyMinutes: 10 });
+    expect(res.status).toBe(503);
+    expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ action: "monitor_updated" }));
+  });
+
+  it.each(["x", 5, true, false, 0, "", []])("PUT rejects alertConfig %j with 400", async (alertConfig) => {
+    expect((await call(PUT, "PUT", { alertConfig })).status).toBe(400);
+    expect(set).not.toHaveBeenCalled();
+  });
+});
+const PROVIDER_ID = "00000000-0000-4000-8000-0000000000aa";

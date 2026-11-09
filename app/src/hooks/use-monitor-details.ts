@@ -78,6 +78,7 @@ async function fetchMonitorResults(
     limit: number;
     date?: string;
     timezoneOffset?: number;
+    timezoneOffsetEnd?: number;
     location?: string;
   }
 ): Promise<MonitorResultsResponse> {
@@ -90,6 +91,9 @@ async function fetchMonitorResults(
     params.append("date", options.date);
     if (typeof options.timezoneOffset === "number") {
       params.append("timezoneOffset", options.timezoneOffset.toString());
+    }
+    if (typeof options.timezoneOffsetEnd === "number") {
+      params.append("timezoneOffsetEnd", options.timezoneOffsetEnd.toString());
     }
   }
   if (options.location && options.location !== "all") {
@@ -168,7 +172,13 @@ export function useMonitorResults(
   const queryClient = useQueryClient();
   const isRestoring = useIsRestoring();
   const dateString = options.date ? formatLocalDateParam(options.date) : undefined;
-  const timezoneOffset = options.date?.getTimezoneOffset();
+  // The offset at each local midnight: a DST change day starts and ends on different offsets.
+  const dayOffset = (days: number) =>
+    options.date
+      ? new Date(options.date.getFullYear(), options.date.getMonth(), options.date.getDate() + days).getTimezoneOffset()
+      : undefined;
+  const timezoneOffset = dayOffset(0);
+  const timezoneOffsetEnd = dayOffset(1);
 
   const query = useQuery({
     queryKey: [
@@ -185,6 +195,7 @@ export function useMonitorResults(
         limit: options.limit,
         date: dateString,
         timezoneOffset,
+        timezoneOffsetEnd,
         location: options.location,
       }),
     enabled: !!monitorId,

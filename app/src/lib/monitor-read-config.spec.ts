@@ -96,8 +96,8 @@ describe('monitor target reads', () => {
       expect(monitorTargetForRead(target, false)).toBe(target);
     }
   });
-  it('keeps author, authority and code parameters visible', () => {
-    for (const name of ['author', 'authors', 'authority', 'code', 'page']) {
+  it('keeps author and authority parameters visible', () => {
+    for (const name of ['author', 'authors', 'authority', 'page']) {
       const target = `https://example.com/?${name}=visible`;
       expect(monitorTargetForRead(target, false)).toBe(target);
     }
@@ -153,5 +153,11 @@ describe('monitorResultForRead', () => {
     expect(JSON.stringify(result)).not.toContain('rustfs');
     const plain = { details: { statusCode: 200 }, testExecutionId: null, testReportS3Url: null };
     expect(monitorResultForRead(plain).details).toBe(plain.details);
+  });
+
+  it('masks code, pw and sk query values', () => {
+    const masked = monitorTargetForRead('https://h.example.com/cb?code=aaa&pw=bbb&sk=ccc&q=ok', false);
+    expect(masked).not.toMatch(/aaa|bbb|ccc/);
+    expect(masked).toContain('q=ok');
   });
 });

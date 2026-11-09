@@ -199,7 +199,7 @@ describe('NotificationService', () => {
         );
       });
 
-      it('reports success without SMTP when every recipient is undeliverable', async () => {
+      it('fails without SMTP when every recipient is undeliverable', async () => {
         const nodemailer = require('nodemailer');
         (nodemailer.createTransport as jest.Mock).mockClear();
         const result = await service.sendNotification(
@@ -209,7 +209,7 @@ describe('NotificationService', () => {
           },
           basePayload,
         );
-        expect(result).toBe(true);
+        expect(result).toBe(false);
         expect(nodemailer.createTransport).not.toHaveBeenCalled();
       });
 
@@ -385,6 +385,96 @@ describe('NotificationService', () => {
   // ==========================================================================
   // SLACK NOTIFICATION TESTS
   // ==========================================================================
+
+  describe('Security hardening', () => {
+    type Detailed = {
+      sendNotificationDetailed: (
+        p: NotificationProvider,
+        pl: NotificationPayload,
+      ) => Promise<{ success: boolean; error?: string }>;
+    };
+    const detailed = (p: NotificationProvider, pl: NotificationPayload) =>
+      (service as unknown as Detailed).sendNotificationDetailed(p, pl);
+    const sensitiveTarget = 'https://user:pw@example.com/p?token=abc123&q=1';
+
+    it('redacts the monitor target in Slack and the webhook originalPayload', async () => {
+      const payload = {
+        ...basePayload,
+        metadata: { ...basePayload.metadata, target: sensitiveTarget },
+      };
+      await service.sendNotification(slackProvider, payload);
+      await service.sendNotification(webhookProvider, payload);
+      for (const call of mockFetch.mock.calls) {
+        expect(call[1].body).not.toContain('abc123');
+        expect(call[1].body).not.toContain('pw@');
+      }
+      expect(mockFetch.mock.calls[1][1].body).toContain('q=1');
+    });
+
+    it('routes webhook error bodies and fetch errors through safeSendError', async () => {
+      const provider: NotificationProvider = {
+        ...webhookProvider,
+        config: {
+          url: 'https://api.example.com/hook/SECRETPATHSEGMENT',
+          headers: { Authorization: 'Bearer topsecrettoken' },
+        },
+      };
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        statusText: 'Bad Request',
+        text: jest.fn().mockResolvedValue('echo Bearer topsecrettoken'),
+      });
+      const r1 = await detailed(provider, basePayload);
+      expect(r1.error).toMatch(/^Webhook delivery failed:/);
+      expect(r1.error).not.toContain('topsecrettoken');
+
+      mockFetch.mockRejectedValueOnce(
+        new Error(
+          'connect failed https://api.example.com/hook/SECRETPATHSEGMENT',
+        ),
+      );
+      const r2 = await detailed(provider, basePayload);
+      expect(r2.error).not.toContain('SECRETPATHSEGMENT');
+    });
+
+    it('escapes Slack control characters in title, message and fields', async () => {
+      await service.sendNotification(slackProvider, {
+        ...basePayload,
+        title: 'Down <!channel>',
+        message: 'see <http://evil|click> & more',
+        targetName: '<!here>',
+      });
+      const body = mockFetch.mock.calls[0][1].body as string;
+      expect(body).not.toContain('<!channel>');
+      expect(body).not.toContain('<!here>');
+      expect(body).not.toContain('<http://evil|click>');
+      expect(body).toContain('&lt;!channel&gt;');
+      expect(body).toContain('&amp; more');
+    });
+
+    it('clips long error messages in Slack and webhook payloads', async () => {
+      const payload = {
+        ...basePayload,
+        metadata: { ...basePayload.metadata, errorMessage: 'e'.repeat(5000) },
+      };
+      await service.sendNotification(slackProvider, payload);
+      await service.sendNotification(webhookProvider, payload);
+      for (const call of mockFetch.mock.calls)
+        expect(call[1].body.length).toBeLessThan(4000);
+    });
+
+    it('shows the observation time when the payload carries one', async () => {
+      await service.sendNotification(slackProvider, {
+        ...basePayload,
+        metadata: {
+          ...basePayload.metadata,
+          observedAt: '2020-01-02T03:04:05.000Z',
+        },
+      });
+      expect(mockFetch.mock.calls[0][1].body).toContain('02 Jan 2020 03:04:05');
+    });
+  });
 
   describe('Slack Notifications', () => {
     it('should send formatted Slack message', async () => {

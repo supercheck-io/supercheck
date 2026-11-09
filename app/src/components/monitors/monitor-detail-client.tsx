@@ -84,7 +84,7 @@ import {
 } from "@/lib/location-service";
 import type { MonitoringLocation } from "@/lib/location-service";
 import { resolveMonitorDetailStatus } from "@/lib/monitor-detail-status";
-import { useAppConfig } from "@/hooks/use-app-config";
+import { formatResponseTime } from "@/lib/format-response-time";
 import {
   useMonitorStats,
   useMonitorResults,
@@ -198,7 +198,6 @@ export function MonitorDetailClient({
 }: MonitorDetailClientProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { recentMonitorResultsLimit } = useAppConfig();
 
 
 
@@ -286,9 +285,15 @@ export function MonitorDetailClient({
     }
   }, [initialMonitor]);
 
-  // Compute available locations from chart + paginated data
+  // Configured locations first, so a location with no result in the latest 100 checks can still be picked,
+  // plus any location seen in the chart or paginated data (a removed location may still have history).
+  const configuredLocationList = (monitor.config?.locationConfig as { locations?: unknown } | undefined)?.locations;
+  const configuredLocations = Array.isArray(configuredLocationList) ? configuredLocationList : undefined;
   const availableLocations = useMemo(() => {
     const locationSet = new Set<string>();
+    configuredLocations?.forEach((location) => {
+      if (isMonitoringLocation(location)) locationSet.add(location as MonitoringLocation);
+    });
     if (monitor.recentResults && monitor.recentResults.length > 0) {
       monitor.recentResults.forEach((result) => {
         if (result.location && isMonitoringLocation(result.location)) {
@@ -304,7 +309,7 @@ export function MonitorDetailClient({
       });
     }
     return Array.from(locationSet).sort((a, b) => a.localeCompare(b));
-  }, [monitor.recentResults, paginatedTableResults]);
+  }, [configuredLocations, monitor.recentResults, paginatedTableResults]);
 
   // Reset location filter if selected location is no longer available
   useEffect(() => {
@@ -460,19 +465,19 @@ export function MonitorDetailClient({
           : "N/A",
       avgResponse24h:
         period24h.avgResponseTimeMs !== null
-          ? `${(period24h.avgResponseTimeMs / 1000).toFixed(2)} s`
+          ? formatResponseTime(period24h.avgResponseTimeMs)
           : "N/A",
       p95Response24h:
         period24h.p95ResponseTimeMs !== null
-          ? `${(period24h.p95ResponseTimeMs / 1000).toFixed(2)} s`
+          ? formatResponseTime(period24h.p95ResponseTimeMs)
           : "N/A",
       avgResponse30d:
         period30d.avgResponseTimeMs !== null
-          ? `${(period30d.avgResponseTimeMs / 1000).toFixed(2)} s`
+          ? formatResponseTime(period30d.avgResponseTimeMs)
           : "N/A",
       p95Response30d:
         period30d.p95ResponseTimeMs !== null
-          ? `${(period30d.p95ResponseTimeMs / 1000).toFixed(2)} s`
+          ? formatResponseTime(period30d.p95ResponseTimeMs)
           : "N/A",
     };
   }, [monitorStats]);
@@ -503,7 +508,7 @@ export function MonitorDetailClient({
     latestResult &&
       latestResult.responseTimeMs !== undefined &&
       latestResult.responseTimeMs !== null
-      ? `${(latestResult.responseTimeMs / 1000).toFixed(2)} s`
+      ? formatResponseTime(latestResult.responseTimeMs)
       : "N/A";
 
   // Prepare data for AvailabilityBarChart (single location or filtered)
@@ -1103,11 +1108,7 @@ export function MonitorDetailClient({
                     selectedDate,
                     "MMMM dd, yyyy"
                   )}`
-                  : `Showing ${currentResultsCount} of ${totalResultsCount}${recentMonitorResultsLimit &&
-                    totalResultsCount >= recentMonitorResultsLimit
-                    ? "+"
-                    : ""
-                  } recent checks.`}
+                  : `Showing ${currentResultsCount} of ${totalResultsCount} recent checks.`}
               </CardDescription>
             </CardHeader>
             <CardContent className="p-0 flex-1 flex flex-col">
@@ -1274,7 +1275,7 @@ export function MonitorDetailClient({
                               <td className="px-4 py-[11.5px] whitespace-nowrap overflow-hidden text-ellipsis text-sm text-muted-foreground">
                                 {result.responseTimeMs !== null &&
                                   result.responseTimeMs !== undefined
-                                  ? `${(result.responseTimeMs / 1000).toFixed(2)} s`
+                                  ? formatResponseTime(result.responseTimeMs)
                                   : "N/A"}
                               </td>
                               <td className="px-4 py-[11.5px] overflow-hidden text-sm text-muted-foreground">

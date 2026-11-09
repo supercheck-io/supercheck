@@ -185,9 +185,11 @@ describe("schedule is reconciled to the committed state", () => {
     } finally {
       jest.useRealTimers();
     }
-    expect(clears).toHaveLength(0); // scheduledJobId untouched
+    // A failed removal keeps the job id; a failed schedule marks the monitor unscheduled so a retry repairs it.
+    const afterFailure = fn === scheduleMonitor ? 1 : 0;
+    expect(clears).toHaveLength(afterFailure);
     expect((await patch(status)).status).toBe(200); // retry converges
-    expect(clears).toHaveLength(1);
+    expect(clears).toHaveLength(afterFailure + 1);
   });
 
   it("a hung fallback delete by monitor id (no job under scheduledJobId) also gives 503", async () => {

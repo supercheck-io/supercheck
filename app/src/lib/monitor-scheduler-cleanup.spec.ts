@@ -7,34 +7,38 @@ const queue = {
   client: Promise.resolve(redis),
 };
 const selects: unknown[][] = [];
+const updates: unknown[] = [];
 const events: string[] = [];
 
 jest.mock("@/utils/db", () => ({
   db: {
     select: () => ({
       from: () => ({
-        where: async () => {
+        where: () => {
           events.push("select");
-          return selects.shift() ?? [];
+          const rows = Promise.resolve(selects.shift() ?? []);
+          return Object.assign(rows, { orderBy: () => rows });
         },
       }),
     }),
-    update: () => ({ set: () => ({ where: async () => undefined }) }),
+    update: () => ({ set: (v: unknown) => ({ where: async () => void updates.push(v) }) }),
   },
 }));
 jest.mock("./queue", () => ({ getQueues: async () => ({ monitorSchedulerQueue: queue }) }));
 
-import { initializeMonitorSchedulers } from "./monitor-scheduler";
+import { initializeMonitorSchedulers, repairMonitorSchedules, startMonitorScheduleRepair } from "./monitor-scheduler";
 
 const A = "11111111-1111-1111-1111-111111111111";
 const B = "22222222-2222-2222-2222-222222222222";
 const C = "33333333-3333-3333-3333-333333333333";
 const D = "44444444-4444-4444-4444-444444444444";
-const repeatable = (id: string) => ({ name: `scheduled-monitor-${id}`, key: `key:${id}` });
+const activeRow = (id: string, frequencyMinutes = 1) => ({ id, projectId: "p", type: "http_request", target: "t", config: {}, frequencyMinutes, enabled: true, status: "up" });
+const repeatable = (id: string, minutes = 1, key = `key:${id}`) => ({ name: `scheduled-monitor-${id}`, key, every: String(minutes * 60_000), pattern: null });
 
 beforeEach(() => {
   jest.resetAllMocks();
   selects.length = 0;
+  updates.length = 0;
   events.length = 0;
   jest.spyOn(console, "log").mockImplementation(() => {});
   jest.spyOn(console, "error").mockImplementation(() => {});
@@ -42,12 +46,13 @@ beforeEach(() => {
   redis.set.mockResolvedValue("OK");
   redis.eval.mockResolvedValue(1);
   queue.removeRepeatableByKey.mockResolvedValue(true);
+queue.getRepeatableJobs.mockResolvedValue([]);
 });
 
 describe("orphaned repeatable cleanup", () => {
   it("keeps a repeatable for an enabled monitor whose scheduledJobId is not written yet", async () => {
     queue.getRepeatableJobs.mockResolvedValue([repeatable(A)]);
-    selects.push([{ id: A, enabled: true, status: "up", scheduledJobId: null }]);
+    selects.push([{ id: A, enabled: true, status: "up", scheduledJobId: null, type: "http_request", frequencyMinutes: 1 }]);
     await initializeMonitorSchedulers();
     expect(queue.removeRepeatableByKey).not.toHaveBeenCalled();
   });
@@ -55,9 +60,9 @@ describe("orphaned repeatable cleanup", () => {
   it("removes repeatables for deleted, disabled and differently scheduled monitors only", async () => {
     queue.getRepeatableJobs.mockResolvedValue([repeatable(A), repeatable(B), repeatable(C), repeatable(D)]);
     selects.push([
-      { id: A, enabled: true, status: "up", scheduledJobId: A }, // same id: keep
-      { id: B, enabled: false, status: "up", scheduledJobId: B }, // disabled
-      { id: C, enabled: true, status: "up", scheduledJobId: "other" }, // different id
+      { id: A, enabled: true, status: "up", scheduledJobId: A, type: "http_request", frequencyMinutes: 1 }, // same id: keep
+      { id: B, enabled: false, status: "up", scheduledJobId: B, type: "http_request", frequencyMinutes: 1 }, // disabled
+      { id: C, enabled: true, status: "up", scheduledJobId: "other", type: "http_request", frequencyMinutes: 1 }, // different id
       // D has no row: deleted
     ]);
     await initializeMonitorSchedulers();
@@ -79,10 +84,11 @@ describe("orphaned repeatable cleanup", () => {
     queue.add.mockImplementation(async () => void events.push("add"));
     selects.push(
       [{ id: A, enabled: true, status: "paused", scheduledJobId: A }], // cleanup saw it paused
-      [{ id: A, projectId: "p", type: "http_request", target: "t", config: {}, frequencyMinutes: 1 }], // resume committed
+      [activeRow(A)], // resume committed
+      [activeRow(A)], // per-monitor re-read
     );
     await initializeMonitorSchedulers();
-    expect(events).toEqual(["select", "remove", "select", "add"]);
+    expect(events).toEqual(["select", "remove", "select", "select", "add"]);
   });
 
   it("releases its tokenised lock with compare-and-delete, also when no monitor is active", async () => {
@@ -119,5 +125,205 @@ describe("orphaned repeatable cleanup", () => {
     await expect(initializeMonitorSchedulers()).resolves.toMatchObject({ success: true });
     expect(events.slice(0, 2)).toEqual(["lock", "getRepeatableJobs"]);
     expect(events).toContain("select"); // init continued to the active-monitor query
+  });
+
+  it("removes duplicate and stale-cadence repeatables of an enabled monitor, keeping one at its current cadence", async () => {
+    queue.getRepeatableJobs.mockResolvedValue([repeatable(A, 1), repeatable(A, 5, "key:A-old"), repeatable(A, 1, "key:A-dup")]);
+    selects.push([{ id: A, enabled: true, status: "up", scheduledJobId: A, type: "http_request", frequencyMinutes: 1 }]);
+    await initializeMonitorSchedulers();
+    expect(queue.removeRepeatableByKey.mock.calls.map(([key]) => key).sort()).toEqual(["key:A-dup", "key:A-old"]);
+  });
+
+  it("keeps a lone stale-cadence or pattern repeatable so a dying init cannot leave the monitor unscheduled", async () => {
+    queue.getRepeatableJobs.mockResolvedValue([repeatable(A, 5), { ...repeatable(B, 1), every: null, pattern: "*/1 * * * *" }]);
+    selects.push([
+      { id: A, enabled: true, status: "up", scheduledJobId: A, type: "http_request", frequencyMinutes: 1 },
+      { id: B, enabled: true, status: "up", scheduledJobId: B, type: "http_request", frequencyMinutes: 1 },
+    ]);
+    await initializeMonitorSchedulers();
+    expect(queue.removeRepeatableByKey).not.toHaveBeenCalled();
+  });
+
+  it("treats a pattern repeatable as a mismatch once a correct-cadence one exists", async () => {
+    queue.getRepeatableJobs.mockResolvedValue([{ ...repeatable(A, 1, "key:A-cron"), every: null, pattern: "*/1 * * * *" }, repeatable(A, 1)]);
+    selects.push([{ id: A, enabled: true, status: "up", scheduledJobId: A, type: "http_request", frequencyMinutes: 1 }]);
+    await initializeMonitorSchedulers();
+    expect(queue.removeRepeatableByKey.mock.calls).toEqual([["key:A-cron"]]);
+  });
+
+  it("matches BullMQ's string `every` against the cadence in milliseconds", async () => {
+    queue.getRepeatableJobs.mockResolvedValue([{ ...repeatable(A, 1), every: "60000" }, repeatable(A, 1, "key:A-dup")]);
+    selects.push([{ id: A, enabled: true, status: "up", scheduledJobId: A, type: "http_request", frequencyMinutes: 1 }]);
+    await initializeMonitorSchedulers();
+    expect(queue.removeRepeatableByKey.mock.calls).toEqual([["key:A-dup"]]);
+  });
+
+  it("applies the synthetic frequency floor when judging the cadence", async () => {
+    queue.getRepeatableJobs.mockResolvedValue([repeatable(A, 5)]);
+    selects.push([{ id: A, enabled: true, status: "up", scheduledJobId: A, type: "synthetic_test", frequencyMinutes: 1 }]);
+    await initializeMonitorSchedulers();
+    expect(queue.removeRepeatableByKey).not.toHaveBeenCalled();
+  });
+});
+
+describe("init sync against concurrent edits", () => {
+  it("schedules from the current row when the frequency changed after the active list was read", async () => {
+    selects.push([activeRow(A, 1)], [activeRow(A, 15)]);
+    await initializeMonitorSchedulers();
+    expect(queue.add).toHaveBeenCalledTimes(1);
+    expect(queue.add.mock.calls[0][2].repeat.every).toBe(15 * 60_000);
+  });
+
+  it("does not schedule a monitor paused, disabled or deleted after the list was read", async () => {
+    selects.push([activeRow(A), activeRow(B), activeRow(C)], [{ ...activeRow(A), status: "paused" }], [{ ...activeRow(B), enabled: false }], []);
+    await initializeMonitorSchedulers();
+    expect(queue.add).not.toHaveBeenCalled();
+  });
+
+  it("renews the init lock during a long sync and stops when it was lost", async () => {
+    jest.useFakeTimers({ now: 0 });
+    try {
+      selects.push([activeRow(A), activeRow(B)], [activeRow(A)], [activeRow(B)]);
+      queue.add.mockImplementation(async () => void jest.setSystemTime(Date.now() + 40_000));
+      await initializeMonitorSchedulers();
+      const renewal = redis.eval.mock.calls.find(([script]) => String(script).includes("expire"));
+      expect(renewal?.slice(2, 3)).toEqual(["monitor:scheduler:init:lock"]);
+      expect(renewal?.[4]).toBe(120);
+
+      jest.resetAllMocks();
+      redis.ping.mockResolvedValue("PONG");
+      redis.set.mockResolvedValue("OK");
+      redis.eval.mockResolvedValue(0); // lock lost
+      queue.removeRepeatableByKey.mockResolvedValue(true);
+      jest.spyOn(console, "warn").mockImplementation(() => {});
+      selects.push([activeRow(A), activeRow(B)], [activeRow(A)], [activeRow(B)]);
+      queue.getRepeatableJobs.mockResolvedValue([]);
+      queue.add.mockImplementation(async () => void jest.setSystemTime(Date.now() + 40_000));
+      const result = await initializeMonitorSchedulers();
+      expect(queue.add).toHaveBeenCalledTimes(1);
+      expect(result).toEqual({ success: false, scheduled: 1, failed: 1 });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("survives a renewal eval error by retrying the whole init", async () => {
+    jest.useFakeTimers({ now: 0 });
+    try {
+      selects.push([activeRow(A), activeRow(B)], [activeRow(A)]);
+      queue.add.mockImplementation(async () => void jest.setSystemTime(Date.now() + 40_000));
+      redis.eval.mockRejectedValueOnce(new Error("redis down")); // the renewal
+      redis.eval.mockResolvedValue(1);
+      const pending = initializeMonitorSchedulers();
+      await jest.advanceTimersByTimeAsync(10_000);
+      await expect(pending).resolves.toBeDefined();
+      expect(redis.set).toHaveBeenCalledTimes(2); // first attempt aborted, second re-acquired the lock
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+});
+
+describe("periodic repair sweep", () => {
+  it("reschedules enabled monitors with no scheduledJobId or no repeatable, and leaves healthy ones alone", async () => {
+    queue.getRepeatableJobs.mockResolvedValue([repeatable(A)]);
+    selects.push(
+      [{ id: A, scheduledJobId: A }, { id: B, scheduledJobId: null }, { id: C, scheduledJobId: C }], // active list
+      [activeRow(B)], // re-read of B (null scheduledJobId)
+      [activeRow(C)], // re-read of C (repeatable lost)
+    );
+    await expect(repairMonitorSchedules()).resolves.toEqual({ repaired: 2, failed: 0 });
+    expect(queue.add.mock.calls.map(([name]) => name).sort()).toEqual([`scheduled-monitor-${B}`, `scheduled-monitor-${C}`]);
+    expect(updates).toHaveLength(2);
+  });
+
+  it("skips a monitor paused between the list and the re-read, and counts a failing one without stopping", async () => {
+    queue.getRepeatableJobs.mockResolvedValue([]);
+    queue.add.mockRejectedValueOnce(new Error("redis down"));
+    selects.push(
+      [{ id: A, scheduledJobId: null }, { id: B, scheduledJobId: null }, { id: C, scheduledJobId: null }],
+      [activeRow(A)], // fails
+      [{ ...activeRow(B), status: "paused" }], // skipped
+      [activeRow(C)],
+    );
+    await expect(repairMonitorSchedules()).resolves.toEqual({ repaired: 1, failed: 1 });
+  });
+
+  it("does nothing while init or another sweep holds the lock", async () => {
+    redis.set.mockResolvedValue(null);
+    await expect(repairMonitorSchedules()).resolves.toEqual({ repaired: 0, failed: 0 });
+    expect(queue.getRepeatableJobs).not.toHaveBeenCalled();
+  });
+
+  it("repairs at most one bounded batch per sweep and releases the lock", async () => {
+    queue.getRepeatableJobs.mockResolvedValue([]);
+    const ids = Array.from({ length: 150 }, (_, n) => `00000000-0000-0000-0000-${String(n).padStart(12, "0")}`);
+    selects.push(ids.map((id) => ({ id, scheduledJobId: null })), ...ids.slice(0, 100).map((id) => [activeRow(id)]));
+    await expect(repairMonitorSchedules()).resolves.toEqual({ repaired: 100, failed: 0 });
+    expect(redis.eval).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not call getRepeatableJobs again per repaired monitor", async () => {
+    queue.getRepeatableJobs.mockResolvedValue([]);
+    selects.push([{ id: A, scheduledJobId: null }, { id: B, scheduledJobId: null }], [activeRow(A)], [activeRow(B)]);
+    await repairMonitorSchedules();
+    expect(queue.getRepeatableJobs).toHaveBeenCalledTimes(1);
+  });
+
+  it("skips a monitor whose frequency became 0 by the re-read (the list query itself filters frequency > 0)", async () => {
+    queue.getRepeatableJobs.mockResolvedValue([]);
+    selects.push([{ id: A, scheduledJobId: null }], [{ ...activeRow(A), frequencyMinutes: 0 }]);
+    await expect(repairMonitorSchedules()).resolves.toEqual({ repaired: 0, failed: 0 });
+    expect(queue.add).not.toHaveBeenCalled();
+  });
+
+  it("skips a monitor deleted between the list and the re-read", async () => {
+    queue.getRepeatableJobs.mockResolvedValue([]);
+    selects.push([{ id: A, scheduledJobId: null }], []);
+    await expect(repairMonitorSchedules()).resolves.toEqual({ repaired: 0, failed: 0 });
+    expect(queue.add).not.toHaveBeenCalled();
+  });
+
+  it("stops the batch once the time budget is spent and says how many were left", async () => {
+    jest.useFakeTimers({ now: 0 });
+    try {
+      const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+      queue.getRepeatableJobs.mockResolvedValue([]);
+      queue.add.mockImplementation(async () => void jest.setSystemTime(Date.now() + 30_000));
+      selects.push([A, B, C].map((id) => ({ id, scheduledJobId: null })), [activeRow(A)], [activeRow(B)], [activeRow(C)]);
+      await expect(repairMonitorSchedules()).resolves.toEqual({ repaired: 2, failed: 0 });
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("1 monitor(s) left"));
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("rotates past rows that keep failing so they cannot starve the rest", async () => {
+    queue.getRepeatableJobs.mockResolvedValue([]);
+    const ids = Array.from({ length: 101 }, (_, n) => `00000000-0000-0000-0000-${String(n).padStart(12, "0")}`);
+    queue.add.mockRejectedValue(new Error("always fails"));
+    selects.push(ids.map((id) => ({ id, scheduledJobId: null })), ...ids.slice(0, 100).map((id) => [activeRow(id)]));
+    await repairMonitorSchedules(); // 100 fail; cursor now at ids[99]
+    queue.add.mockReset();
+    selects.push(ids.map((id) => ({ id, scheduledJobId: null })), [activeRow(ids[100])]);
+    await expect(repairMonitorSchedules()).resolves.toMatchObject({ repaired: 1 });
+    expect(queue.add.mock.calls[0][0]).toBe(`scheduled-monitor-${ids[100]}`);
+  });
+
+  it("starts the repair timer only once", () => {
+    jest.useFakeTimers();
+    try {
+      const g = globalThis as { __monitorRepairTimer?: unknown };
+      delete g.__monitorRepairTimer;
+      startMonitorScheduleRepair();
+      const first = g.__monitorRepairTimer;
+      startMonitorScheduleRepair();
+      expect(g.__monitorRepairTimer).toBe(first);
+      expect(jest.getTimerCount()).toBe(1);
+      clearInterval(first as ReturnType<typeof setInterval>);
+      delete g.__monitorRepairTimer;
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

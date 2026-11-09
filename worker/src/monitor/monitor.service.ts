@@ -68,7 +68,14 @@ import {
   resolvePublicAddress,
   vettedLookup,
 } from '../common/utils/pinned-monitor-request';
+import type { LookupFunction } from 'node:net';
 import { allowInternalMonitorTargets } from '../common/utils/url-validator';
+import {
+  MonitorRedirectError,
+  isDnsError,
+  isTimeoutError,
+  networkErrorCodes,
+} from '../common/utils/network-error';
 import {
   MonitorEvaluator,
   type GroupAlertEvaluation,
@@ -80,6 +87,8 @@ type MonitorResult = z.infer<typeof monitorResultsSelectSchema>;
 
 const RESULT_SAVE_ATTEMPTS = 3;
 const RESULT_SAVE_BACKOFF_MS = 250;
+// How long a UDP probe waits for a reply or an ICMP port-unreachable before reporting open|filtered.
+const UDP_SILENCE_WAIT_MS = 2000;
 // The completed marker only guards late sibling completions within a job's lifetime (attempts x 15-min lock + backoff + busy retries, under ~80 min); later duplicates are still guarded by the persisted aggregationEvaluation in the DB.
 export const AGGREGATION_COMPLETED_TTL_SECONDS = 2 * 60 * 60;
 
@@ -1381,7 +1390,7 @@ export class MonitorService {
         statusText: response.statusText,
         // Session material (Set-Cookie, tokens) must not be persisted or shown to viewers
         responseHeaders: sanitizeResponseHeaders(response.headers),
-        responseSize: response.data ? JSON.stringify(response.data).length : 0,
+        responseSize: Buffer.byteLength(responseBody),
       };
 
       if (isExpectedStatus(response.status, config?.expectedStatusCodes)) {
@@ -1391,6 +1400,7 @@ export class MonitorService {
         if (config?.keywordInBody) {
           // Perform case-insensitive keyword matching for better reliability
           const keyword = config.keywordInBody;
+          // Keyword matching uses the full body; only the stored snippet is sanitized
           const keywordFound = responseBody
             .toLowerCase()
             .includes(keyword.toLowerCase());
@@ -1457,12 +1467,39 @@ export class MonitorService {
           error.code === 'ECONNABORTED' ||
           // The wall-clock AbortSignal.timeout set by requestPinnedMonitorTarget.
           error.code === 'ERR_CANCELED' ||
-          getErrorMessage(error).toLowerCase().includes('timeout')
+          isTimeoutError(error)
         ) {
           status = 'timeout';
           isUp = false;
           // Keep the actual measured time, don't override with timeout value
           // responseTimeMs already calculated above from startTime
+        } else if (
+          error.code === AxiosError.ERR_BAD_RESPONSE &&
+          /maxContentLength/.test(error.message)
+        ) {
+          // Axios aborts the download, so the status line is only on the underlying request.
+          const received = (
+            error.request as { res?: { statusCode?: number } } | undefined
+          )?.res?.statusCode;
+          const limitMb =
+            this.resourceManager.getResourceStats().limits.maxResponseSizeMB;
+          details.errorMessage = `Response too large: the body exceeded the ${limitMb} MB limit`;
+          details.responseTooLarge = true;
+          if (received !== undefined) details.statusCode = received;
+          if (received === undefined || config?.keywordInBody) {
+            // Without a status or the full body the check cannot be judged either way.
+            status = 'error';
+          } else if (received >= 300 && received < 400) {
+            // A redirect with an oversized body is not followed, so the destination was never checked.
+            status = 'error';
+            details.errorMessage = `Response too large to verify the redirect (status ${received})`;
+          } else if (isExpectedStatus(received, config?.expectedStatusCodes)) {
+            status = 'up';
+            isUp = true;
+          } else {
+            status = 'down';
+            details.errorMessage += `. Received status code: ${received}, expected: ${config?.expectedStatusCodes || '200-299'}`;
+          }
         } else {
           // Check if the received status is unexpected, even on an AxiosError path
           if (
@@ -1483,6 +1520,18 @@ export class MonitorService {
           }
           isUp = false;
         }
+      } else if (isTimeoutError(error)) {
+        details.errorMessage = getErrorMessage(error);
+        status = 'timeout';
+        isUp = false;
+      } else if (isDnsError(error)) {
+        details.errorMessage = `DNS lookup failed: could not resolve the host (${networkErrorCodes(error)[0]})`;
+        status = 'down';
+        isUp = false;
+      } else if (error instanceof MonitorRedirectError) {
+        details.errorMessage = error.message;
+        status = 'down';
+        isUp = false;
       } else {
         this.logger.error(
           `Unexpected error during HTTP Request to ${target}: ${getErrorMessage(error)}`,
@@ -1545,10 +1594,14 @@ export class MonitorService {
       const { createConnection } = await import('net');
 
       const tcpPorts = [443, 80];
-      let connected = false;
+      let answeredPort: number | undefined;
+      let refused = false;
+      let answerMs: number | undefined;
       let lastError: Error | null = null;
 
       for (const port of tcpPorts) {
+        // Timed per attempt: a 443 timeout must not inflate the latency of the 80 attempt that answers.
+        const attemptStart = process.hrtime.bigint();
         try {
           // Resolved per attempt so a lookup failure still reports the host as down.
           const lookup = await vettedLookup(
@@ -1572,7 +1625,6 @@ export class MonitorService {
             socket.on('connect', () => {
               clearTimeout(timeoutHandle);
               socket.destroy();
-              connected = true;
               resolve();
             });
 
@@ -1581,28 +1633,38 @@ export class MonitorService {
               reject(error);
             });
           });
-
-          // If connection successful, break out of loop
-          if (connected) {
-            break;
-          }
+          answeredPort = port;
         } catch (portError) {
           lastError = portError as Error;
-          // Try next port
-          continue;
+          // A refusal (RST) comes from the host itself, so the host is alive even though the port is closed.
+          // Any refusing address proves the host is up, even if another family is unreachable.
+          if (networkErrorCodes(portError).includes('ECONNREFUSED')) {
+            answeredPort = port;
+            refused = true;
+          }
+        }
+        if (answeredPort !== undefined) {
+          answerMs = Math.round(
+            Number(process.hrtime.bigint() - attemptStart) / 1000000,
+          );
+          break;
         }
       }
 
       const endTime = process.hrtime.bigint();
-      responseTimeMs = Math.round(Number(endTime - startTime) / 1000000);
+      responseTimeMs =
+        answerMs ?? Math.round(Number(endTime - startTime) / 1000000);
 
-      if (connected) {
+      if (answeredPort !== undefined) {
         status = 'up';
         isUp = true;
         details = {
           responseTimeMs: responseTimeMs,
           connectionMethod: 'tcp',
-          message: `Host is reachable via TCP on port 443 or 80`,
+          port: answeredPort,
+          message: refused
+            ? `Host is reachable: it refused the TCP connection on port ${answeredPort}, so it is alive but nothing listens there`
+            : `Host is reachable via TCP on port ${answeredPort}`,
         };
       } else {
         status = 'down';
@@ -1621,7 +1683,7 @@ export class MonitorService {
 
       this.logger.warn(`Ping to ${target} failed: ${getErrorMessage(error)}`);
 
-      if (getErrorMessage(error).includes('timeout')) {
+      if (isTimeoutError(error)) {
         status = 'timeout';
         details.errorMessage = `Host unreachable - timeout after ${timeout}ms`;
       } else {
@@ -1637,6 +1699,50 @@ export class MonitorService {
       `Ping completed: ${target}, Status: ${status}, Response Time: ${responseTimeMs}ms`,
     );
     return { status, details, responseTimeMs, isUp };
+  }
+
+  /** Is the host alive? A connect or a refusal on 443 or 80 says yes; both ports are tried in parallel. */
+  private async probeHostAlive(
+    target: string,
+    lookup: LookupFunction,
+    budgetMs: number,
+    signal: AbortSignal,
+  ): Promise<boolean> {
+    const { createConnection } = await import('net');
+    const attempts = [443, 80].map(
+      (port) =>
+        new Promise<boolean>((resolve) => {
+          const socket = createConnection({
+            host: target,
+            lookup,
+            autoSelectFamily: true,
+            port,
+          });
+          const timer = setTimeout(() => {
+            socket.destroy();
+            resolve(false);
+          }, budgetMs);
+          signal.addEventListener(
+            'abort',
+            () => {
+              clearTimeout(timer);
+              socket.destroy();
+              resolve(false);
+            },
+            { once: true },
+          );
+          socket.on('connect', () => {
+            clearTimeout(timer);
+            socket.destroy();
+            resolve(true);
+          });
+          socket.on('error', (error) => {
+            clearTimeout(timer);
+            resolve(networkErrorCodes(error).includes('ECONNREFUSED'));
+          });
+        }),
+    );
+    return (await Promise.all(attempts)).some(Boolean);
   }
 
   private async executePortCheck(
@@ -1685,10 +1791,21 @@ export class MonitorService {
     let isUp = false;
     let responseTimeMs: number | undefined;
 
+    // With expectClosed the liveness probe runs alongside the connect and shares its timeout.
+    let aliveProbe: Promise<boolean> | undefined;
+    const probeAbort = new AbortController();
     try {
       const allowInternal = allowInternalMonitorTargets();
       if (protocol === 'tcp') {
         const lookup = await vettedLookup(target, allowInternal);
+        if (expectClosed) {
+          aliveProbe = this.probeHostAlive(
+            target,
+            lookup,
+            timeout,
+            probeAbort.signal,
+          ).catch(() => false);
+        }
         // TCP port check using net module
         const net = await import('net');
 
@@ -1744,64 +1861,56 @@ export class MonitorService {
           };
         }
       } else if (protocol === 'udp') {
-        // UDP port check using dgram module
         const dgram = await import('dgram');
-        // UDP is connectionless, so there is no fallback: send to the first vetted address.
+        // UDP has no handshake, so there is no fallback: probe the first vetted address.
         const resolved = await resolvePublicAddress(target, allowInternal);
         const socketType = resolved.family === 6 ? 'udp6' : 'udp4';
-
-        await new Promise<void>((resolve, reject) => {
-          const client = dgram.createSocket(socketType);
-          let isResolved = false;
-
-          const timeoutHandle = setTimeout(() => {
-            if (!isResolved) {
-              isResolved = true;
-              client.close(() => {
-                // For UDP, timeout doesn't necessarily mean the port is closed
-                // UDP is connectionless, so we assume it's reachable if no ICMP error
-                // However, this is inherently unreliable for UDP
-                resolve();
-              });
-            }
-          }, timeout);
-
-          // Send a small test packet
-          const message = Buffer.from('ping');
-
-          client.send(message, port, resolved.address, (error) => {
-            if (!isResolved) {
-              isResolved = true;
+        // The kernel reports an ICMP port-unreachable only on a connected socket, as ECONNREFUSED on
+        // the next socket call. It arrives within a round trip, so silence is not worth the full timeout.
+        const waitMs = Math.min(timeout, UDP_SILENCE_WAIT_MS);
+        const reply = await new Promise<'answered' | 'silent'>(
+          (resolve, reject) => {
+            const client = dgram.createSocket(socketType);
+            let done = false;
+            const finish = (error?: Error, outcome?: 'answered' | 'silent') => {
+              if (done) return;
+              done = true;
               clearTimeout(timeoutHandle);
-              client.close(() => {
-                if (error) {
-                  reject(error);
-                } else {
-                  // For UDP, successful send usually means the port is reachable
-                  // (unless we get an ICMP port unreachable, which would trigger an error)
-                  resolve();
-                }
+              client.close(() => (error ? reject(error) : resolve(outcome!)));
+            };
+            const timeoutHandle = setTimeout(
+              () => finish(undefined, 'silent'),
+              waitMs,
+            );
+            client.on('error', (error) => finish(error));
+            client.on('message', () => finish(undefined, 'answered'));
+            // connect() reports failure through 'error'; send only on an established association.
+            client.once('connect', () => {
+              if (done) return;
+              client.send(Buffer.from('ping'), (error) => {
+                if (error) finish(error);
               });
+            });
+            try {
+              client.connect(port, resolved.address);
+            } catch (error) {
+              finish(error as Error);
             }
-          });
+          },
+        );
 
-          client.on('error', (error) => {
-            if (!isResolved) {
-              isResolved = true;
-              clearTimeout(timeoutHandle);
-              client.close(() => {
-                reject(error);
-              });
-            }
-          });
-        });
-
-        // If we reach here, UDP send was successful (port appears open)
         const endTime = process.hrtime.bigint();
         responseTimeMs = Math.round(Number(endTime - startTime) / 1000000);
+        const verdict =
+          reply === 'answered'
+            ? 'Port is open (the service replied)'
+            : 'Port is open or filtered (no reply and no ICMP port-unreachable)';
+        const note =
+          reply === 'answered'
+            ? undefined
+            : 'open|filtered: UDP services often stay silent, and a firewall that drops packets looks the same. Only an ICMP port-unreachable proves a port closed.';
 
         if (expectClosed) {
-          // Port was expected to be closed, but it appears open - this is a failure
           status = 'down';
           isUp = false;
           details = {
@@ -1810,11 +1919,10 @@ export class MonitorService {
             packetSent: true,
             responseTimeMs,
             expectClosed: true,
-            errorMessage: 'Port appears open but was expected to be closed',
-            note: 'UDP packet sent successfully. Note: UDP checks are inherently unreliable.',
+            errorMessage: `${verdict} but was expected to be closed`,
+            ...(note && { note }),
           };
         } else {
-          // Normal behavior - open port is success
           status = 'up';
           isUp = true;
           details = {
@@ -1822,9 +1930,8 @@ export class MonitorService {
             protocol,
             packetSent: true,
             responseTimeMs,
-            note: "UDP packet sent successfully. Note: UDP checks are inherently unreliable - no response doesn't guarantee the port is closed.",
-            warning:
-              'UDP monitoring has limitations - consider using TCP where possible',
+            message: verdict,
+            ...(note && { note }),
           };
         }
       }
@@ -1844,10 +1951,29 @@ export class MonitorService {
         (error as NodeJS.ErrnoException).code ??
         (innerCodes.size === 1 ? [...innerCodes][0] : undefined);
 
-      if (getErrorMessage(error).includes('timeout')) {
-        status = 'timeout';
-        details.errorMessage = `Connection timeout after ${timeout}ms`;
-        isUp = false; // Timeout is failure regardless of expectClosed
+      if (isTimeoutError(error)) {
+        // A filtered port drops the SYN, but so does a powered-off host: only pass if the host answers elsewhere.
+        const hostAlive = aliveProbe ? await aliveProbe : false;
+        responseTimeMs = Math.round(
+          Number(process.hrtime.bigint() - startTime) / 1000000,
+        );
+        if (expectClosed && hostAlive) {
+          status = 'up';
+          isUp = true;
+          details.filtered = true;
+          details.expectClosed = true;
+          details.note =
+            'No response before the timeout: the port is filtered, which counts as closed';
+        } else if (expectClosed) {
+          status = 'down';
+          isUp = false;
+          details.errorMessage =
+            'Host unreachable: the port did not answer and the host did not respond on ports 443 or 80';
+        } else {
+          status = 'timeout';
+          details.errorMessage = `Connection timeout after ${timeout}ms`;
+          isUp = false;
+        }
       } else if (errorCode === 'ECONNREFUSED') {
         if (expectClosed) {
           // Port is closed as expected - this is SUCCESS!
@@ -1864,6 +1990,10 @@ export class MonitorService {
           details.errorMessage =
             'Connection refused - port is closed or service not running';
         }
+      } else if (isDnsError(error)) {
+        status = 'down';
+        details.errorMessage = `DNS lookup failed: could not resolve the host (${networkErrorCodes(error)[0]})`;
+        isUp = false;
       } else if (errorCode === 'EHOSTUNREACH') {
         status = 'down';
         details.errorMessage = 'Host unreachable';
@@ -1885,8 +2015,9 @@ export class MonitorService {
       details.port = port;
       details.protocol = protocol;
       details.responseTimeMs = responseTimeMs;
+    } finally {
+      probeAbort.abort();
     }
-
     this.logger.debug(
       `Port Check completed: ${target}:${port} (${protocol}), Status: ${status}, Response Time: ${responseTimeMs}ms`,
     );
@@ -2650,11 +2781,21 @@ export class MonitorService {
             `[${monitorId}] Resolved ${Object.keys(resolvedVariables).length} variables, ${Object.keys(resolvedSecrets).length} secrets, and ${Object.keys(resolvedFiles).length} files`,
           );
         } catch (varError) {
-          // Log the error but continue with empty variables/secrets
-          // The function definitions will still be prepended (with empty objects)
-          this.logger.warn(
-            `[${monitorId}] Failed to resolve variables, continuing with empty variables: ${getErrorMessage(varError)}`,
+          // Running with empty secrets would fail the test and report a false
+          // "down" for a healthy target, so surface an error instead.
+          this.logger.error(
+            `[${monitorId}] Failed to resolve variables: ${getErrorMessage(varError)}`,
           );
+          return {
+            status: 'error',
+            details: {
+              errorMessage:
+                'Could not resolve project variables or secrets; the test was not run',
+              errorType: 'variable_resolution_error',
+            },
+            responseTimeMs: Date.now() - startTime,
+            isUp: false,
+          };
         }
       }
 

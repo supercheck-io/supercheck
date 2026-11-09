@@ -54,7 +54,7 @@ export function monitorConfigForRead(
   return visible;
 }
 
-const SENSITIVE_QUERY_PARAM = /token|secret|passw|pwd|^pass$|api[-_]?key|app[-_]?key|access[-_]?key|private[-_]?key|client[-_]?key|[-_]key$|^key$|auth(?!or\b|ors\b|ority)|signature|^sig$|credential|session|jwt|^otp$|^sid$|ticket|^hash$/i;
+const SENSITIVE_QUERY_PARAM = /token|secret|passw|pwd|^pass$|api[-_]?key|app[-_]?key|access[-_]?key|private[-_]?key|client[-_]?key|[-_]key$|^key$|auth(?!or\b|ors\b|ority)|signature|^sig$|credential|session|jwt|^otp$|^sid$|ticket|^hash$|^code$|^pw$|^sk$/i;
 
 /**
  * Credentials embedded in a monitor URL (user:pass@host, ?api_key=..., an

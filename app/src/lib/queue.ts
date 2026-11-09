@@ -34,6 +34,7 @@ async function assertEnqueueWorkload(
 }
 import {
   abortMonitorCycle,
+  markMonitorCyclePublished,
   MonitorCycleClosedError,
   missingCycleClosureEnabled,
   missingCycleDeadlineMs,
@@ -1904,6 +1905,19 @@ export async function enqueueMonitorLocationJobs(
     // BullMQ addBulk does not surface individual Redis script errors.
     if (!nodes || nodes.length !== locations.length || (await Promise.all(nodes.map(({ job }) => job.getState()))).includes("unknown")) {
       throw new Error(`Monitor ${task.monitorId}: incomplete cycle enqueue`);
+    }
+    if (closureCycle) {
+      // Retried: a flag left set is aborted at the deadline if every region is silent, hiding a real outage.
+      let marked = false;
+      for (let attempt = 1; attempt <= 3 && !marked; attempt++) {
+        try {
+          await markMonitorCyclePublished(executionGroupId);
+          marked = true;
+        } catch (markError) {
+          if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, 200 * attempt));
+          else queueLogger.error({ err: markError, executionGroupId }, "Unable to mark monitor cycle published after 3 attempts; if every region is silent the cycle will be aborted, not alerted");
+        }
+      }
     }
     return executionGroupId;
   } catch (error) {

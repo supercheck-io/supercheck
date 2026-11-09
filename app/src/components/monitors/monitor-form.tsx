@@ -75,6 +75,15 @@ import { invalidateMonitorCaches, mergeEditConfig, withCurrentInterval } from ".
 import { useTest } from "@/hooks/use-tests";
 
 // Define presets for Expected Status Codes
+/** Parsed like the form's URL validation, so what validates as https shows the SSL section. */
+function isHttpsTarget(target: unknown): boolean {
+  try {
+    return new URL(String(target ?? "").trim()).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 const statusCodePresets = [
   { label: "Any 2xx (Success)", value: "200-299" },
   { label: "Any 3xx (Redirection)", value: "300-399" },
@@ -301,8 +310,8 @@ const formSchema = z
       }
     }
 
-    // SSL warning days validation
-    if (data.websiteConfig_enableSslCheck && data.type === "website") {
+    // SSL warning days validation. The SSL section is hidden for a non-https target, so a hidden field must not block saving.
+    if (data.websiteConfig_enableSslCheck && data.type === "website" && isHttpsTarget(data.target)) {
       if (
         !data.websiteConfig_sslDaysUntilExpirationWarning ||
         data.websiteConfig_sslDaysUntilExpirationWarning < 1
@@ -532,6 +541,22 @@ export function MonitorForm({
         const { interval: _ignored, ...rest } = result.errors;
         void _ignored;
         return Object.keys(rest).length ? { values: {}, errors: rest } : { values, errors: {} };
+      }
+      // The form has no timeout field, so a stored timeout is kept; an interval shorter than it is shown at the interval field.
+      const storedTimeout = initialConfig?.timeoutSeconds;
+      const intervalSeconds = parseInt(values.interval, 10);
+      const priorSeconds = parseInt(initialData?.interval ?? "", 10);
+      if (
+        editMode && typeof storedTimeout === "number" && intervalSeconds < storedTimeout &&
+        !(intervalSeconds >= priorSeconds) && !Object.keys(result.errors).includes("interval")
+      ) {
+        return {
+          values: {},
+          errors: {
+            ...result.errors,
+            interval: { type: "custom", message: `The check interval must be at least this monitor's timeout (${storedTimeout} seconds).` },
+          },
+        } as ReturnType<Resolver<FormValues>> extends Promise<infer R> ? R : never;
       }
       return result;
     }) as Resolver<FormValues>,
@@ -2018,7 +2043,10 @@ export function MonitorForm({
                       }}
                     />
 
-                    {/* SSL Certificate Check Section - Compact and Inline for Website */}
+                    {/* SSL Certificate Check Section - Compact and Inline for Website.
+                        Only an https:// target has a certificate; an already-enabled check stays visible so it can be turned off. */}
+                    {(isHttpsTarget(form.watch("target")) ||
+                      form.watch("websiteConfig_enableSslCheck")) && (
                     <div className="p-3 border rounded-lg bg-muted/10">
                       <div className="space-y-3">
                         <div className="flex items-center justify-between">
@@ -2085,6 +2113,7 @@ export function MonitorForm({
                         )}
                       </div>
                     </div>
+                    )}
                   </div>
 
                   {/* HTTP Headers Section - Full width */}

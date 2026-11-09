@@ -2,18 +2,22 @@ jest.mock("@/utils/db", () => ({
   db: {
     query: { monitors: { findFirst: jest.fn() } },
     update: jest.fn(),
+    transaction: jest.fn(),
   },
 }));
+jest.mock("@/lib/monitor-schedule-reconcile", () => ({ reconcileMonitorSchedule: jest.fn().mockResolvedValue(undefined) }));
 jest.mock("@/lib/queue", () => ({ addMonitorExecutionJobToQueue: jest.fn() }));
 jest.mock("@/lib/monitor-scheduler", () => ({
   scheduleMonitor: jest.fn(),
   deleteScheduledMonitor: jest.fn(),
 }));
 import { db } from "@/utils/db";
+import { reconcileMonitorSchedule } from "@/lib/monitor-schedule-reconcile";
 import {
   scheduleMonitor,
   deleteScheduledMonitor,
 } from "@/lib/monitor-scheduler";
+import { InvalidNotificationProvidersError, MonitorScheduleError } from "@/lib/monitor-write";
 import { updateMonitorHandler, scheduleCreatedMonitor, insertMonitorRecord } from "./monitor-service";
 
 describe("updateMonitorHandler schedule synchronization", () => {
@@ -50,22 +54,14 @@ describe("updateMonitorHandler schedule synchronization", () => {
   ])("refreshes execution settings for %j", async (changes) => {
     const updated = mockUpdate(changes);
     await updateMonitorHandler(existing.id, changes);
-    expect(deleteScheduledMonitor).toHaveBeenCalledWith("old-schedule");
-    expect(scheduleMonitor).toHaveBeenCalledWith(
-      expect.objectContaining({
-        jobData: expect.objectContaining({
-          target: updated.target,
-          type: updated.type,
-          config: updated.config,
-        }),
-      }),
-    );
+    expect(updated).toMatchObject(changes);
+    expect(reconcileMonitorSchedule).toHaveBeenCalledWith(existing.id, "project-1");
   });
   it("does not reschedule an equivalent config with reordered keys", async () => {
     (db.query.monitors.findFirst as jest.Mock).mockResolvedValue({ ...existing, config: { method: "GET", timeout: 30 } });
     mockUpdate({ config: { timeout: 30, method: "GET" } });
     await updateMonitorHandler(existing.id, { config: { timeout: 30, method: "GET" } });
-    expect(scheduleMonitor).not.toHaveBeenCalled();
+    expect(reconcileMonitorSchedule).not.toHaveBeenCalled();
   });
   it.each([
     { alertChannels: ["new-channel"] },
@@ -76,27 +72,25 @@ describe("updateMonitorHandler schedule synchronization", () => {
   ])("does not reschedule a nonexecution config update %j", async (config) => {
     mockUpdate({ config });
     await updateMonitorHandler(existing.id, { config });
-    expect(scheduleMonitor).not.toHaveBeenCalled();
-    expect(deleteScheduledMonitor).not.toHaveBeenCalled();
+    expect(reconcileMonitorSchedule).not.toHaveBeenCalled();
   });
   it("preserves an explicit PATCH observed status", async () => {
     mockUpdate({status:"down"});
     await updateMonitorHandler(existing.id, {status:"down",enabled:true});
     expect((db.update as jest.Mock).mock.results[0].value.set).toHaveBeenCalledWith(expect.objectContaining({status:"down"}));
-    expect(scheduleMonitor).not.toHaveBeenCalled();
+    expect(reconcileMonitorSchedule).not.toHaveBeenCalled();
   });
   it("resumes with the explicitly requested status", async () => {
     (db.query.monitors.findFirst as jest.Mock).mockResolvedValue({...existing,status:"paused",enabled:false});
     mockUpdate({status:"up",enabled:true});
     await updateMonitorHandler(existing.id, {status:"up",enabled:true});
     expect((db.update as jest.Mock).mock.results[0].value.set).toHaveBeenCalledWith(expect.objectContaining({status:"up",enabled:true}));
-    expect(scheduleMonitor).toHaveBeenCalled();
+    expect(reconcileMonitorSchedule).toHaveBeenCalled();
   });
   it("does not reschedule a metadata-only update", async () => {
     mockUpdate({ name: "Renamed" });
     await updateMonitorHandler(existing.id, { name: "Renamed" });
-    expect(scheduleMonitor).not.toHaveBeenCalled();
-    expect(deleteScheduledMonitor).not.toHaveBeenCalled();
+    expect(reconcileMonitorSchedule).not.toHaveBeenCalled();
   });
   it("keeps paused monitors unscheduled after configuration changes", async () => {
     (db.query.monitors.findFirst as jest.Mock).mockResolvedValue({
@@ -111,7 +105,8 @@ describe("updateMonitorHandler schedule synchronization", () => {
       target: "https://example.org",
     });
     await updateMonitorHandler(existing.id, { target: "https://example.org" });
-    expect(scheduleMonitor).not.toHaveBeenCalled();
+    // Reconcile removes any stray job for a paused monitor and never adds one.
+    expect(reconcileMonitorSchedule).toHaveBeenCalledWith(existing.id, "project-1");
   });
   it.each([false, true])(
     "persists enabled=%s before reconciling the schedule",
@@ -162,16 +157,16 @@ describe("updateMonitorHandler write safety", () => {
   it("does not reschedule when only worker bookkeeping differs (c2)", async () => {
     (db.update as jest.Mock).mockReturnValue(chain({ ...existing }));
     await updateMonitorHandler(existing.id, { config: { timeoutSeconds: 30 } });
-    expect(scheduleMonitor).not.toHaveBeenCalled();
+    expect(reconcileMonitorSchedule).not.toHaveBeenCalled();
   });
 
   it("surfaces a scheduling failure instead of reporting success (c5)", async () => {
     const c = chain({ ...existing, frequencyMinutes: 10 });
     (db.update as jest.Mock).mockReturnValue(c);
-    (scheduleMonitor as jest.Mock).mockRejectedValue(new Error("redis down"));
-    await expect(updateMonitorHandler(existing.id, { frequencyMinutes: 10 })).rejects.toThrow("redis down");
-    // The stale schedule id must not survive the failed reschedule.
-    expect(c.set.mock.calls.map((call) => call[0])).toContainEqual({ scheduledJobId: null });
+    (reconcileMonitorSchedule as jest.Mock).mockRejectedValue(new Error("redis down"));
+    await expect(updateMonitorHandler(existing.id, { frequencyMinutes: 10 })).rejects.toBeInstanceOf(MonitorScheduleError);
+    // The row is saved; reconcile owns scheduledJobId, so a retry converges.
+    expect(c.set).toHaveBeenCalledWith(expect.objectContaining({ frequencyMinutes: 10 }));
   });
 
   it("surfaces a scheduling failure after create (c5)", async () => {
@@ -185,6 +180,39 @@ describe("updateMonitorHandler write safety", () => {
     (db.update as jest.Mock).mockReturnValue({ set: jest.fn().mockReturnThis(), where: jest.fn().mockRejectedValue(new Error("db down")) });
     await expect(scheduleCreatedMonitor({ ...existing, frequencyMinutes: 5 } as never, true)).rejects.toThrow("db down");
     expect(deleteScheduledMonitor).toHaveBeenCalledWith("new-schedule");
+  });
+
+  it("replaces the delivery rows in the same transaction as the row when asked to (alertConfig write)", async () => {
+    const c = chain({ ...existing });
+    const txDeleteWhere = jest.fn().mockResolvedValue(undefined);
+    const txValues = jest.fn().mockReturnValue({ onConflictDoNothing: jest.fn() });
+    const tx = {
+      update: jest.fn().mockReturnValue(c),
+      select: () => ({ from: () => ({ where: async () => [{ id: "00000000-0000-4000-8000-0000000000aa" }] }) }),
+      delete: () => ({ where: txDeleteWhere }),
+      insert: () => ({ values: txValues }),
+    };
+    (db.transaction as jest.Mock).mockImplementation(async (cb: (t: unknown) => unknown) => cb(tx));
+    await updateMonitorHandler(existing.id, { alertConfig: null }, {
+      providerSync: { ids: ["00000000-0000-4000-8000-0000000000aa"], organizationId: "org-1", projectId: "project-1" },
+    });
+    expect(tx.update).toHaveBeenCalled();
+    expect(txDeleteWhere).toHaveBeenCalled();
+    expect(txValues).toHaveBeenCalledWith([{ monitorId: existing.id, notificationProviderId: "00000000-0000-4000-8000-0000000000aa" }]);
+  });
+
+  it("writes nothing when a provider is outside the project", async () => {
+    const tx = {
+      update: jest.fn().mockReturnValue(chain({ ...existing })),
+      select: () => ({ from: () => ({ where: async () => [] }) }),
+      delete: jest.fn(),
+      insert: jest.fn(),
+    };
+    (db.transaction as jest.Mock).mockImplementation(async (cb: (t: unknown) => unknown) => cb(tx));
+    await expect(
+      updateMonitorHandler(existing.id, {}, { providerSync: { ids: ["00000000-0000-4000-8000-0000000000bb"], organizationId: "org-1", projectId: "project-1" } }),
+    ).rejects.toBeInstanceOf(InvalidNotificationProvidersError);
+    expect(tx.delete).not.toHaveBeenCalled();
   });
 
   it("rejects config null instead of wiping the stored config", async () => {
