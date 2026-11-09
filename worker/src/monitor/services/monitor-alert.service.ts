@@ -28,7 +28,7 @@ type ProviderRow = {
  * Local on purpose: the shared worker helper lands in a separate PR; swap to it after both merge.
  */
 export function redactUrlsInText(text: string | undefined | null) {
-  if (!text) return text ?? undefined;
+  if (!text) return undefined;
   return text.replace(/https?:\/\/[^\s"'<>)\]]+/gi, (raw) => {
     try {
       const url = new URL(raw);
@@ -53,6 +53,62 @@ export class MonitorAlertService {
    * row could not be written (the evaluator throttles from that row). Per process: best effort.
    */
   private readonly sslAlertDeliveredAt = new Map<string, number>();
+
+  /**
+   * History rows of delivered alerts whose insert failed, by `<monitorId>:<status|ssl>`. They are retried
+   * before the next alert of that kind, and a retry reads them to skip channels that already got the alert.
+   * Per process and bounded: best effort, lost on restart.
+   */
+  private readonly pendingHistory = new Map<
+    string,
+    Array<typeof schema.alertHistory.$inferInsert>
+  >();
+
+  /** Inserts the rows (plus any pending ones for `key`); on failure keeps them pending. */
+  private async recordHistory(
+    key: string,
+    rows: Array<typeof schema.alertHistory.$inferInsert>,
+    label: string,
+  ): Promise<void> {
+    const all = [...(this.pendingHistory.get(key) ?? []), ...rows];
+    if (all.length === 0) return;
+    let createdRows: Array<{
+      id: string;
+      status: 'pending' | 'sent' | 'failed';
+    }>;
+    try {
+      createdRows = await this.dbService.db
+        .insert(schema.alertHistory)
+        .values(all)
+        .returning({
+          id: schema.alertHistory.id,
+          status: schema.alertHistory.status,
+        });
+      this.pendingHistory.delete(key);
+    } catch (error) {
+      this.pendingHistory.delete(key);
+      this.pendingHistory.set(key, all.slice(-50));
+      if (this.pendingHistory.size > 200) {
+        for (const oldest of this.pendingHistory.keys()) {
+          this.pendingHistory.delete(oldest);
+          break;
+        }
+      }
+      this.logger.error(
+        `[${label}] Failed to record alert history (kept for retry): ${getErrorMessage(error)}`,
+      );
+      return;
+    }
+    try {
+      await this.sreAlertTriageQueueService.enqueueAlertHistoryRows(
+        createdRows,
+      );
+    } catch (error) {
+      this.logger.error(
+        `[${label}] Failed to queue alert history for triage: ${getErrorMessage(error)}`,
+      );
+    }
+  }
   private readonly logger = new Logger(MonitorAlertService.name);
 
   constructor(
@@ -344,7 +400,20 @@ export class MonitorAlertService {
 
     // A retry of the same alert (same observation time) skips channels that already got it.
     let recipients = decryptedProviders;
+    let alreadyDelivered = false;
     if (observedAt) {
+      const sentAtMs = observedAt.getTime();
+      const doneIds = new Set(
+        (this.pendingHistory.get(`${monitorId}:status`) ?? [])
+          .filter(
+            (row) =>
+              row.type === notificationType &&
+              row.status === 'sent' &&
+              row.sentAt instanceof Date &&
+              row.sentAt.getTime() === sentAtMs,
+          )
+          .map((row) => row.provider),
+      );
       try {
         const done = await db
           .select({ provider: schema.alertHistory.provider })
@@ -357,15 +426,18 @@ export class MonitorAlertService {
               eq(schema.alertHistory.sentAt, observedAt),
             ),
           );
-        const doneIds = new Set(done.map((row) => row.provider));
-        recipients = decryptedProviders.filter(
-          (provider) => !doneIds.has(provider.id),
-        );
+        for (const row of done) doneIds.add(row.provider);
       } catch (error) {
+        // Unknown which channels already got it: sending to all could repeat it, so defer (keep the slot).
         this.logger.error(
-          `[NOTIFY] Could not read delivered channels for monitor ${monitorId}, sending to all: ${getErrorMessage(error)}`,
+          `[NOTIFY] Could not read delivered channels for monitor ${monitorId}, deferring the retry: ${getErrorMessage(error)}`,
         );
+        return { delivered: true, retryFailedChannels: true };
       }
+      alreadyDelivered = doneIds.size > 0;
+      recipients = decryptedProviders.filter(
+        (provider) => !doneIds.has(provider.id),
+      );
       if (recipients.length === 0) return { delivered: true };
     }
 
@@ -406,26 +478,14 @@ export class MonitorAlertService {
       }));
 
       // Delivery already happened: a bookkeeping failure must not be reported as a failed delivery.
-      try {
-        const createdRows = await db
-          .insert(schema.alertHistory)
-          .values(historyRecords)
-          .returning({
-            id: schema.alertHistory.id,
-            status: schema.alertHistory.status,
-          });
-        await this.sreAlertTriageQueueService.enqueueAlertHistoryRows(
-          createdRows,
-        );
-      } catch (error) {
-        this.logger.error(
-          `[NOTIFY] Failed to record alert history for monitor ${monitorId}: ${getErrorMessage(error)}`,
-        );
-      }
+      await this.recordHistory(`${monitorId}:status`, historyRecords, 'NOTIFY');
     }
     // A provider that reached some recipients (partial email) counts as delivered: a retry would resend to them.
+    // Channels that got it on an earlier attempt count too, so a failing retry keeps the slot.
     const delivered =
-      successCount > 0 || deliveryResults.results.some((r) => r.partial);
+      successCount > 0 ||
+      deliveryResults.results.some((r) => r.partial) ||
+      alreadyDelivered;
     return {
       delivered,
       // Only with an observation time can a retry tell which channels already got the alert.
@@ -446,6 +506,8 @@ export class MonitorAlertService {
       `[SSL-NOTIFY] SSL expiration notification for monitor ${monitorId}`,
     );
 
+    // A delivered alert whose history row was not written must still open its incident: retry the insert.
+    await this.recordHistory(`${monitorId}:ssl`, [], 'SSL-NOTIFY');
     const deliveredAt = this.sslAlertDeliveredAt.get(monitorId);
     if (deliveredAt && Date.now() - deliveredAt < SSL_ALERT_THROTTLE_MS) {
       return false;
@@ -616,29 +678,24 @@ export class MonitorAlertService {
         sentAt,
       }));
 
-      // Delivery already happened: a bookkeeping failure must not become an error or a resend.
-      try {
-        const createdRows = await db
-          .insert(schema.alertHistory)
-          .values(historyRecords)
-          .returning({
-            id: schema.alertHistory.id,
-            status: schema.alertHistory.status,
-          });
-        await this.sreAlertTriageQueueService.enqueueAlertHistoryRows(
-          createdRows,
-        );
-      } catch (error) {
-        this.logger.error(
-          `[SSL-NOTIFY] Failed to record alert history for monitor ${monitorId}: ${getErrorMessage(error)}`,
-        );
-      }
+      // Delivery already happened: a bookkeeping failure is retried later, never an error or a resend.
+      await this.recordHistory(
+        `${monitorId}:ssl`,
+        historyRecords,
+        'SSL-NOTIFY',
+      );
     }
     // A partial email delivery reached recipients, as in sendNotification.
     const delivered =
       successCount > 0 || deliveryResults.results.some((r) => r.partial);
     // Without its 'sent' row the 24h throttle in the evaluator cannot see this alert, so keep it here too.
-    if (delivered) this.sslAlertDeliveredAt.set(monitorId, Date.now());
+    if (delivered) {
+      const now = Date.now();
+      for (const [id, at] of this.sslAlertDeliveredAt)
+        if (now - at >= SSL_ALERT_THROTTLE_MS)
+          this.sslAlertDeliveredAt.delete(id);
+      this.sslAlertDeliveredAt.set(monitorId, now);
+    }
     return delivered;
   }
 }

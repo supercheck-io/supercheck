@@ -9181,6 +9181,13 @@
             "format": "date-time",
             "nullable": true
           },
+          "mutedUntil": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "deprecated": true,
+            "description": "Deprecated and always null: monitors cannot be muted."
+          },
           "scheduledJobId": {
             "type": "string",
             "nullable": true

@@ -820,19 +820,29 @@ describe('MonitorEvaluator alert slot races and cadence', () => {
     expect(send).not.toHaveBeenCalled();
   });
 
-  it('skips the send for a superseded multi-location group', async () => {
-    const send = jest.fn();
-    const evaluator = new MonitorEvaluator(
-      {} as never,
-      {
-        sendNotification: send,
-      } as never,
-    );
-    jest
-      .spyOn(evaluator as never, 'writeAggregatedAlertState')
-      .mockResolvedValue(false as never);
-    await expect(
-      evaluator.evaluateAndSendAlert({
+  describe('superseded multi-location group', () => {
+    const superseded = async (ownerSent: number) => {
+      const send = jest.fn().mockResolvedValue({ delivered: true });
+      const evaluator = new MonitorEvaluator(
+        {
+          db: {
+            query: {
+              monitors: {
+                findFirst: jest.fn(async () => ({
+                  config: {
+                    aggregatedAlertState: { alertsSentForFailure: ownerSent },
+                  },
+                })),
+              },
+            },
+          },
+        } as never,
+        { sendNotification: send } as never,
+      );
+      jest
+        .spyOn(evaluator as never, 'writeAggregatedAlertState')
+        .mockResolvedValue(false as never);
+      const res = await evaluator.evaluateAndSendAlert({
         monitorId: 'm1',
         monitor: monitorFor(1),
         previousStatus: 'down',
@@ -846,9 +856,21 @@ describe('MonitorEvaluator alert slot races and cadence', () => {
           alertsSentForRecovery: 0,
           executionGroupId: 'old',
         },
-      }),
-    ).resolves.toEqual({ alertSent: false });
-    expect(send).not.toHaveBeenCalled();
+      });
+      return { res, send };
+    };
+
+    it('skips the send when the newer cycle already alerted', async () => {
+      const { res, send } = await superseded(1);
+      expect(res).toEqual({ alertSent: false });
+      expect(send).not.toHaveBeenCalled();
+    });
+
+    it('still sends a delayed alert the newer cycle did not send', async () => {
+      const { res, send } = await superseded(0);
+      expect(res).toEqual({ alertSent: true, alertType: 'failure' });
+      expect(send).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('releases the slot when the send throws, with a release that only matches its own record', async () => {
@@ -942,5 +964,65 @@ describe('MonitorEvaluator alert slot races and cadence', () => {
     }
     // Count 6 is the first reminder: undelivered, retried at 7, delivered there.
     expect(attempts).toEqual([6, 7]);
+  });
+});
+
+describe('MonitorEvaluator single-location retry of a partly delivered alert', () => {
+  const run = (retryDelivery: boolean, alertsSentForFailure: number) => {
+    const update = jest.fn();
+    const send = jest.fn().mockResolvedValue({ delivered: true });
+    const evaluator = new MonitorEvaluator(
+      {
+        db: {
+          query: {
+            monitorResults: {
+              findFirst: jest.fn(async () => ({
+                id: 'r1',
+                consecutiveFailureCount: 1,
+                alertsSentForFailure,
+              })),
+            },
+          },
+          update,
+        },
+      } as never,
+      { sendNotification: send } as never,
+    );
+    return {
+      send,
+      update,
+      result: evaluator.evaluateAndSendAlert({
+        monitorId: 'm1',
+        monitor: {
+          alertConfig: {
+            enabled: true,
+            alertOnFailure: true,
+            failureThreshold: 1,
+          },
+          config: {},
+        } as never,
+        previousStatus: 'down',
+        currentStatus: 'down',
+        reason: 'down',
+        metadata: {},
+        retryDelivery,
+      }),
+    };
+  };
+
+  it('re-sends to the failed channels without taking another slot', async () => {
+    const { send, update, result } = run(true, 1);
+    await expect(result).resolves.toEqual({
+      alertSent: true,
+      alertType: 'failure',
+    });
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('does not re-send a used slot when it is not a retry', async () => {
+    const { send, result } = run(false, 1);
+    await expect(result).resolves.toEqual({ alertSent: false });
+    expect(send).not.toHaveBeenCalled();
   });
 });

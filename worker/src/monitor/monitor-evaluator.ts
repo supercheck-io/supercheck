@@ -285,6 +285,12 @@ export class MonitorEvaluator {
     preparedAlertState?: AggregatedAlertState;
     /** When the failing cycle was observed. A delayed send keeps it, so a later recovery still reads as newer. */
     observedAt?: Date;
+    /**
+     * The caller is re-driving a cycle whose alert partly failed. A single-location alert whose slot this
+     * cycle already used stays due, so the failed channels are retried (channels that got it are skipped
+     * by observation time) without consuming another slot.
+     */
+    retryDelivery?: boolean;
   }): Promise<{
     alertSent: boolean;
     alertType?: string;
@@ -358,6 +364,8 @@ export class MonitorEvaluator {
 
     // Determine alert type and whether thresholds are met
     let shouldSendAlert = false;
+    // This call re-drives an alert whose slot an earlier attempt of the same cycle already took.
+    let resumedSlot = false;
     let alertType: 'recovery' | 'failure' | null = null;
 
     if (currentStatus === 'down') {
@@ -365,33 +373,42 @@ export class MonitorEvaluator {
       const failureThreshold =
         (monitorAlertConfig?.failureThreshold as number) || 1;
 
-      if (
+      const failureAlertWanted =
+        incidentOnly ||
+        (monitorAlertConfig?.alertOnFailure as boolean) ||
+        false;
+      // First alert: threshold reached (>= so a skipped pending observation cannot miss it), bounded so an
+      // undeliverable first alert is not retried for the whole outage.
+      const firstDue =
+        failureAlertWanted &&
         consecutiveFailureCount >= failureThreshold &&
-        // Bounded, so an undeliverable first alert is not retried for the whole outage.
         consecutiveFailureCount <
-          failureThreshold + Math.max(5, failureThreshold * 2) &&
-        alertsSentForFailure === 0
-      ) {
-        // First alert: threshold reached (>= so a skipped pending observation cannot miss it)
-        shouldSendAlert =
-          incidentOnly ||
-          (monitorAlertConfig?.alertOnFailure as boolean) ||
-          false;
-      } else if (
+          failureThreshold + Math.max(5, failureThreshold * 2);
+      // Reminder number k (1 or 2) is due once N * (2^k - 1) failures have passed the threshold, with
+      // N = max(5, 2 * threshold): gaps of N, then 2N. ">=" keeps an undelivered reminder due, so the
+      // next check retries it instead of losing it.
+      const reminderDue = (sent: number): boolean =>
+        failureAlertWanted &&
         consecutiveFailureCount > failureThreshold &&
+        sent >= 1 &&
+        sent < MAX_FAILURE_ALERTS &&
+        consecutiveFailureCount - failureThreshold >=
+          Math.max(5, failureThreshold * 2) * (2 ** sent - 1);
+
+      if (alertsSentForFailure === 0 && firstDue) {
+        shouldSendAlert = true;
+      } else if (reminderDue(alertsSentForFailure)) {
+        shouldSendAlert = true;
+      } else if (
+        options.retryDelivery &&
+        !isMultiLocationEvaluation &&
         alertsSentForFailure >= 1 &&
-        alertsSentForFailure < MAX_FAILURE_ALERTS
+        (alertsSentForFailure === 1
+          ? firstDue
+          : reminderDue(alertsSentForFailure - 1))
       ) {
-        // Reminder number k (1 or 2) is due once N * (2^k - 1) failures have passed the threshold, with
-        // N = max(5, 2 * threshold): gaps of N, then 2N. ">=" keeps an undelivered reminder due, so the
-        // next check retries it instead of losing it.
-        const reminderInterval = Math.max(5, failureThreshold * 2);
-        const failuresAfterThreshold =
-          consecutiveFailureCount - failureThreshold;
-        shouldSendAlert =
-          (incidentOnly || (monitorAlertConfig?.alertOnFailure as boolean)) &&
-          failuresAfterThreshold >=
-            reminderInterval * (2 ** alertsSentForFailure - 1);
+        shouldSendAlert = true;
+        resumedSlot = true;
       }
 
       if (!shouldSendAlert) {
@@ -439,16 +456,26 @@ export class MonitorEvaluator {
           ((monitorAlertConfig?.failureThreshold as number) || 1)
       );
 
-      shouldSendAlert =
+      const recoveryDue =
         consecutiveSuccessCount >= recoveryThreshold &&
         // Bounded like the failure path, so an undeliverable recovery is not retried forever.
         consecutiveSuccessCount <
           recoveryThreshold + Math.max(5, recoveryThreshold * 2) &&
-        alertsSentForRecovery === 0 &&
         outageReachedThreshold &&
         // Nothing to notify without alerts: the recovery signal above already resolves the incident.
         !incidentOnly &&
         ((monitorAlertConfig?.alertOnRecovery as boolean) || false);
+      shouldSendAlert = recoveryDue && alertsSentForRecovery === 0;
+      if (
+        !shouldSendAlert &&
+        recoveryDue &&
+        options.retryDelivery &&
+        !isMultiLocationEvaluation &&
+        alertsSentForRecovery === 1
+      ) {
+        shouldSendAlert = true;
+        resumedSlot = true;
+      }
 
       if (!shouldSendAlert) {
         if (
@@ -516,6 +543,8 @@ export class MonitorEvaluator {
       return rows.length > 0;
     };
     const releaseSent = async (): Promise<void> => {
+      // A resumed slot belongs to the earlier attempt that may already have delivered: never release it.
+      if (resumedSlot) return;
       try {
         await writeSent(previousSent, previousSent + 1);
       } catch (error) {
@@ -528,11 +557,24 @@ export class MonitorEvaluator {
     let recorded = false;
     let delivered = false;
     try {
-      if (!(await writeSent(previousSent + 1))) {
-        this.logger.warn(
-          `[ALERT] Skipping ${alertType} alert for monitor ${monitorId}: a newer check cycle owns the alert state`,
-        );
-        return { alertSent: false };
+      if (!resumedSlot && !(await writeSent(previousSent + 1))) {
+        // A newer cycle owns the state. If it already sent for this sequence, this is a stale retry whose
+        // alert would repeat it. Otherwise (e.g. a failure reported after a newer recovery cycle closed) the
+        // alert is still owed; it goes out unrecorded, as before.
+        if (!isMultiLocationEvaluation) return { alertSent: false };
+        const owner = await this.dbService.db.query.monitors.findFirst({
+          where: eq(schema.monitors.id, monitorId),
+          columns: { config: true },
+        });
+        if (
+          (this.readAggregatedAlertState(owner?.config)[field] ?? 0) >
+          previousSent
+        ) {
+          this.logger.warn(
+            `[ALERT] Skipping ${alertType} alert for monitor ${monitorId}: a newer check cycle already alerted`,
+          );
+          return { alertSent: false };
+        }
       }
       recorded = true;
 
