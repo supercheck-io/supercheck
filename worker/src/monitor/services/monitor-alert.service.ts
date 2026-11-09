@@ -29,7 +29,10 @@ type ProviderRow = {
  */
 export function redactUrlsInText(text: string | undefined | null) {
   if (!text) return undefined;
-  return text.replace(/https?:\/\/[^\s"'<>)\]]+/gi, (raw) => {
+  return text.replace(/https?:\/\/[^\s"'<>]+/gi, (match) => {
+    // Trailing punctuation belongs to the sentence, not the URL.
+    const trailing = /[)\]}.,;]+$/.exec(match)?.[0] ?? '';
+    const raw = match.slice(0, match.length - trailing.length);
     try {
       const url = new URL(raw);
       url.username = '';
@@ -37,7 +40,7 @@ export function redactUrlsInText(text: string | undefined | null) {
       for (const key of [...url.searchParams.keys()])
         url.searchParams.set(key, 'REDACTED');
       url.hash = '';
-      return url.toString();
+      return url.toString() + trailing;
     } catch {
       return '[redacted-url]';
     }

@@ -421,6 +421,12 @@ describe('MonitorAlertService', () => {
       'GET https://example.com/health?token=REDACTED&page=REDACTED failed',
     );
     expect(redactUrlsInText(undefined)).toBeUndefined();
+    expect(redactUrlsInText('GET http://[::1]:8080/x?token=abc failed')).toBe(
+      'GET http://[::1]:8080/x?token=REDACTED failed',
+    );
+    expect(redactUrlsInText('see (https://h.example/p?k=v).')).toBe(
+      'see (https://h.example/p?k=REDACTED).',
+    );
   });
 
   it('persists redacted errors and passes the check time to the payload', async () => {

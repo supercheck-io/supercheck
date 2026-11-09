@@ -78,8 +78,11 @@ describe('MonitorEvaluator failure alert cadence', () => {
     // delivered:false never increments the sent counter, so every attempt is a first alert.
     const attempted: number[] = [];
     await alertCounts(1, 1, 30, false, false, attempted);
-    // Only the first alert's bounded window: reminders need a delivered first alert.
-    expect(attempted).toEqual([1, 2, 3, 4, 5]);
+    // Each alert window is bounded; an unsent first alert may use the later windows too.
+    // The first-alert window (1-5), then the reminder windows (6-10, 16-20) while still unsent.
+    expect(attempted).toEqual([
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 16, 17, 18, 19, 20,
+    ]);
   });
 
   it.each([false, true])(
@@ -701,3 +704,162 @@ describe('MonitorEvaluator.persistAggregatedAlertState', () => {
       expect(new PgDialect().sqlToQuery(config).sql).toContain('jsonb_set');
   });
 });
+
+describe('MonitorEvaluator alert windows (thresholds 1, 3, 5)', () => {
+  // N = max(5, 2T): T=1 -> 5, T=3 -> 6, T=5 -> 10
+  const cases: Array<[number, number]> = [
+    [1, 5],
+    [3, 6],
+    [5, 10],
+  ];
+
+  it.each(cases)(
+    'threshold %s: an unsent first alert is delivered in the first reminder window',
+    async (threshold, n) => {
+      const attempted: number[] = [];
+      const fired: number[] = [];
+      // all channels fail through the first window, then delivery works
+      const evaluator = new MonitorEvaluator(
+        { db: {} } as never,
+        {
+          sendNotification: jest.fn(async () => ({ delivered: true })),
+        } as never,
+      );
+      jest
+        .spyOn(evaluator as never, 'persistAggregatedAlertState')
+        .mockResolvedValue(undefined as never);
+      let sent = 0;
+      for (let count = threshold; count <= threshold + 2 * n; count++) {
+        const send = (
+          evaluator['monitorAlertService'] as unknown as {
+            sendNotification: jest.Mock;
+          }
+        ).sendNotification;
+        send.mockImplementation(async () => {
+          attempted.push(count);
+          return { delivered: count >= threshold + n };
+        });
+        const res = await evaluator.evaluateAndSendAlert({
+          monitorId: 'm1',
+          monitor: {
+            alertConfig: {
+              enabled: true,
+              alertOnFailure: true,
+              failureThreshold: threshold,
+            },
+            config: {},
+          } as never,
+          previousStatus: 'down',
+          currentStatus: 'down',
+          reason: 'down',
+          metadata: { locationResults: [{}, {}] },
+          preparedAlertState: {
+            consecutiveFailureCount: count,
+            consecutiveSuccessCount: 0,
+            alertsSentForFailure: sent,
+            alertsSentForRecovery: 0,
+          },
+        });
+        if (res.alertSent) {
+          sent++;
+          fired.push(count);
+        }
+      }
+      expect(attempted.slice(0, n)).toEqual(
+        Array.from({ length: n }, (_, i) => threshold + i),
+      );
+      expect(fired[0]).toBe(threshold + n);
+    },
+  );
+
+  it.each(cases)(
+    'threshold %s: a late reminder 1 does not make reminder 2 fire on the next check',
+    async (threshold, n) => {
+      // reminder 1 delivered on the last count of its window
+      const lastOfWindow1 = threshold + n + (n - 1);
+      const fired = await alertCountsWithFirstAt(
+        threshold,
+        lastOfWindow1,
+        threshold + 10 * n,
+      );
+      expect(fired).toEqual([threshold, lastOfWindow1, threshold + 3 * n]);
+      expect(fired[2] - fired[1]).toBeGreaterThan(n);
+    },
+  );
+
+  it.each(cases)(
+    'threshold %s: no reminder is retried after its window closes',
+    async (threshold, n) => {
+      // reminder 1 never delivers; reminder 2 still waits for its own window
+      const attempted: number[] = [];
+      const fired = await alertCountsWithFirstAt(
+        threshold,
+        Infinity,
+        threshold + 10 * n,
+        attempted,
+      );
+      expect(fired).toEqual([threshold]);
+      expect(
+        attempted.filter(
+          (c) => c >= threshold + 2 * n && c < threshold + 3 * n,
+        ),
+      ).toEqual([]);
+    },
+  );
+});
+
+/** Failure counts that alerted when delivery works only at threshold and at `reminder1At` (reminder 1), and then always. */
+async function alertCountsWithFirstAt(
+  threshold: number,
+  reminder1At: number,
+  upTo: number,
+  attempted: number[] = [],
+) {
+  const evaluator = new MonitorEvaluator(
+    { db: {} } as never,
+    { sendNotification: jest.fn() } as never,
+  );
+  jest
+    .spyOn(evaluator as never, 'persistAggregatedAlertState')
+    .mockResolvedValue(undefined as never);
+  const send = (
+    evaluator['monitorAlertService'] as unknown as {
+      sendNotification: jest.Mock;
+    }
+  ).sendNotification;
+  const fired: number[] = [];
+  let sent = 0;
+  for (let count = threshold; count <= upTo; count++) {
+    send.mockImplementation(async () => {
+      attempted.push(count);
+      // reminder 1 (second alert) only delivers at reminder1At; others always deliver
+      return { delivered: sent !== 1 || count >= reminder1At };
+    });
+    const res = await evaluator.evaluateAndSendAlert({
+      monitorId: 'm1',
+      monitor: {
+        alertConfig: {
+          enabled: true,
+          alertOnFailure: true,
+          failureThreshold: threshold,
+        },
+        config: {},
+      } as never,
+      previousStatus: 'down',
+      currentStatus: 'down',
+      reason: 'down',
+      metadata: { locationResults: [{}, {}] },
+      preparedAlertState: {
+        consecutiveFailureCount: count,
+        consecutiveSuccessCount: 0,
+        alertsSentForFailure: sent,
+        alertsSentForRecovery: 0,
+      },
+    });
+    if (res.alertSent) {
+      sent++;
+      fired.push(count);
+    }
+  }
+  return fired;
+}

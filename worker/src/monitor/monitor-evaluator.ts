@@ -349,29 +349,25 @@ export class MonitorEvaluator {
         incidentOnly ||
         (monitorAlertConfig?.alertOnFailure as boolean) ||
         false;
-      // First alert: threshold reached (>= so a skipped pending observation cannot miss it), bounded so an
-      // undeliverable first alert is not retried for the whole outage.
-      const firstDue =
+      // With N = max(5, 2 * threshold), alert window j (0, 1, 2) opens N * (2^j - 1) failures after the
+      // threshold and lasts N checks: the first alert, then reminders after gaps of N and 2N. An alert that
+      // failed to deliver stays due (the counter only moves after a delivery) until its window closes, and an
+      // alert still unsent may use any later window, so at most 3 are delivered. Consecutive deliveries are
+      // always more than N failures apart.
+      const windowSize = Math.max(5, failureThreshold * 2);
+      const failuresAfterThreshold = consecutiveFailureCount - failureThreshold;
+      shouldSendAlert =
         failureAlertWanted &&
-        consecutiveFailureCount >= failureThreshold &&
-        consecutiveFailureCount <
-          failureThreshold + Math.max(5, failureThreshold * 2);
-      // Reminder number k (1 or 2) is due once N * (2^k - 1) failures have passed the threshold, with
-      // N = max(5, 2 * threshold): gaps of N, then 2N. ">=" keeps an undelivered reminder due, so the
-      // next check retries it instead of losing it.
-      const reminderDue = (sent: number): boolean =>
-        failureAlertWanted &&
-        consecutiveFailureCount > failureThreshold &&
-        sent >= 1 &&
-        sent < MAX_FAILURE_ALERTS &&
-        consecutiveFailureCount - failureThreshold >=
-          Math.max(5, failureThreshold * 2) * (2 ** sent - 1);
-
-      if (alertsSentForFailure === 0 && firstDue) {
-        shouldSendAlert = true;
-      } else if (reminderDue(alertsSentForFailure)) {
-        shouldSendAlert = true;
-      }
+        failuresAfterThreshold >= 0 &&
+        Array.from(
+          { length: MAX_FAILURE_ALERTS - alertsSentForFailure },
+          (_, offset) =>
+            windowSize * (2 ** (alertsSentForFailure + offset) - 1),
+        ).some(
+          (start) =>
+            failuresAfterThreshold >= start &&
+            failuresAfterThreshold < start + windowSize,
+        );
 
       if (!shouldSendAlert) {
         if (
