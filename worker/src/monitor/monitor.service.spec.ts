@@ -1511,6 +1511,35 @@ describe('MonitorService', () => {
         },
       );
 
+      it('does not start a liveness probe unless expectClosed is set', async () => {
+        const net = jest.requireMock('net');
+        net.createConnection.mockClear();
+        netState.behavior = 'timeout';
+        await service.executeMonitor(portJob());
+        expect(net.createConnection).not.toHaveBeenCalled();
+      });
+
+      it('destroys the probe sockets when the connect is refused first', async () => {
+        const net = jest.requireMock('net');
+        net.createConnection.mockClear();
+        netState.behavior = 'error'; // refused
+        netState.attempts.push(
+          { outcome: 'connect', delayMs: 60_000 },
+          { outcome: 'connect', delayMs: 60_000 },
+        );
+        const result = await service.executeMonitor(
+          portJob({ expectClosed: true }),
+        );
+        expect(result).toMatchObject({ status: 'up', isUp: true });
+        const sockets = net.createConnection.mock.results.map(
+          (r: { value: { destroy: jest.Mock } }) => r.value,
+        );
+        expect(sockets).toHaveLength(2);
+        sockets.forEach((socket: { destroy: jest.Mock }) =>
+          expect(socket.destroy).toHaveBeenCalled(),
+        );
+      });
+
       it('passes expectClosed when the host answers late, within the shared timeout', async () => {
         netState.behavior = 'timeout';
         netState.attempts.push({ outcome: 'connect', delayMs: 200 });

@@ -1993,9 +1993,9 @@ export class MonitorService {
       details.port = port;
       details.protocol = protocol;
       details.responseTimeMs = responseTimeMs;
+    } finally {
+      probeAbort.abort();
     }
-
-    probeAbort.abort();
     this.logger.debug(
       `Port Check completed: ${target}:${port} (${protocol}), Status: ${status}, Response Time: ${responseTimeMs}ms`,
     );
