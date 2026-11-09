@@ -134,7 +134,7 @@ test.describe("CLI project-config deployment @api @cli @critical", () => {
       id: providerId,
       name: providerName,
       type: "email",
-      config: { name: providerName, emails: [recipient] },
+      config: { name: providerName, emails: recipient },
     });
   });
 
