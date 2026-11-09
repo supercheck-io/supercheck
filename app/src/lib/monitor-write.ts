@@ -1,10 +1,12 @@
+import { NextResponse } from "next/server";
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/utils/db";
-import { monitorNotificationSettings, notificationProviders, tests } from "@/db/schema";
+import { monitorNotificationSettings, monitors, notificationProviders, tests } from "@/db/schema";
 import type { AlertConfig, MonitorConfig } from "@/db/schema";
 import { isUuid } from "@/lib/uuid";
 import { channelsOptional } from "@/lib/incident-settings";
 import { alertThresholdError } from "@/lib/alert-thresholds";
+import { sanitizeHostname, sanitizeString, sanitizeUrl } from "@/lib/input-sanitizer";
 import catalog from "@/lib/billing/plan-catalog.json";
 
 /** Config keys the worker writes. A client replacing `config` must not wipe or forge them. */
@@ -105,37 +107,61 @@ export async function providerIdsOutsideProject(ids: string[], organizationId: s
   return ids.filter((id) => !valid.has(id));
 }
 
-/** Replace the rows the worker delivers through. Returns false, writing nothing, when an id is not in the project. */
-export async function replaceMonitorProviders(
+export const INVALID_PROVIDERS_MESSAGE = "One or more notification providers are invalid or not accessible in this project";
+
+/** Thrown inside a write transaction when a provider id is not in the project; the route answers 400. */
+export class InvalidNotificationProvidersError extends Error {
+  constructor() {
+    super(INVALID_PROVIDERS_MESSAGE);
+  }
+}
+
+type Tx = Pick<typeof db, "select" | "delete" | "insert">;
+
+/** Replace the delivery rows inside the caller's transaction. Throws InvalidNotificationProvidersError, writing nothing. */
+export async function syncMonitorProviderRows(
+  tx: Tx,
   monitorId: string,
   ids: string[],
   organizationId: string,
   projectId: string,
-): Promise<boolean> {
+): Promise<void> {
   const unique = Array.from(new Set(ids));
-  return db.transaction(async (tx) => {
-    if (unique.length > 0) {
-      const rows = await tx
-        .select({ id: notificationProviders.id })
-        .from(notificationProviders)
-        .where(
-          and(
-            inArray(notificationProviders.id, unique),
-            eq(notificationProviders.organizationId, organizationId),
-            eq(notificationProviders.projectId, projectId),
-          ),
-        );
-      if (rows.length !== unique.length) return false;
-    }
-    await tx.delete(monitorNotificationSettings).where(eq(monitorNotificationSettings.monitorId, monitorId));
-    if (unique.length > 0) {
-      await tx
-        .insert(monitorNotificationSettings)
-        .values(unique.map((notificationProviderId) => ({ monitorId, notificationProviderId })))
-        .onConflictDoNothing();
-    }
-    return true;
-  });
+  if (unique.length > 0) {
+    const rows = await tx
+      .select({ id: notificationProviders.id })
+      .from(notificationProviders)
+      .where(
+        and(
+          inArray(notificationProviders.id, unique),
+          eq(notificationProviders.organizationId, organizationId),
+          eq(notificationProviders.projectId, projectId),
+        ),
+      );
+    if (rows.length !== unique.length) throw new InvalidNotificationProvidersError();
+  }
+  await tx.delete(monitorNotificationSettings).where(eq(monitorNotificationSettings.monitorId, monitorId));
+  if (unique.length > 0) {
+    await tx
+      .insert(monitorNotificationSettings)
+      .values(unique.map((notificationProviderId) => ({ monitorId, notificationProviderId })))
+      .onConflictDoNothing();
+  }
+}
+
+/**
+ * After a single link is added or removed, bring alertConfig.notificationProviders (what the UI shows) in line with
+ * the delivery rows (what the worker uses), in the caller's transaction. A monitor with no alertConfig gets the defaults.
+ */
+export async function mirrorProviderRowsToAlertConfig(tx: Pick<typeof db, "select" | "update">, monitorId: string): Promise<void> {
+  const rows = await tx
+    .select({ id: monitorNotificationSettings.notificationProviderId })
+    .from(monitorNotificationSettings)
+    .where(eq(monitorNotificationSettings.monitorId, monitorId));
+  const [monitor] = await tx.select({ alertConfig: monitors.alertConfig }).from(monitors).where(eq(monitors.id, monitorId));
+  if (!monitor) return;
+  const normalized = normalizeMonitorAlertConfig({ notificationProviders: rows.map((row) => row.id) }, monitor.alertConfig);
+  if (normalized.ok) await tx.update(monitors).set({ alertConfig: normalized.value }).where(eq(monitors.id, monitorId));
 }
 
 /** True when the test belongs to this project and organization. */
@@ -182,4 +208,69 @@ export function syntheticFrequencyError(type: unknown, frequencyMinutes: unknown
   return !Number.isFinite(minutes) || minutes < SYNTHETIC_MIN_FREQUENCY_MINUTES
     ? `Synthetic monitors can run no more often than every ${SYNTHETIC_MIN_FREQUENCY_MINUTES} minutes`
     : null;
+}
+
+export const MIN_FREQUENCY_MINUTES = 1;
+export const MAX_FREQUENCY_MINUTES = 1440;
+
+/** One frequency rule for every write path: a whole number of minutes, 1 to 1440. */
+export function frequencyMinutesError(value: unknown): string | null {
+  return typeof value === "number" && Number.isInteger(value) && value >= MIN_FREQUENCY_MINUTES && value <= MAX_FREQUENCY_MINUTES
+    ? null
+    : `frequencyMinutes must be a whole number between ${MIN_FREQUENCY_MINUTES} and ${MAX_FREQUENCY_MINUTES} minutes`;
+}
+
+/** A check that may run longer than the interval overlaps the next one. Callers pass the effective values, and only when either changed. */
+export function timeoutFrequencyError(config: MonitorConfig | null | undefined, frequencyMinutes: unknown): string | null {
+  const timeout = config?.timeoutSeconds;
+  if (typeof timeout !== "number" || typeof frequencyMinutes !== "number") return null;
+  return timeout > frequencyMinutes * 60
+    ? `config.timeoutSeconds (${timeout}) cannot exceed the check interval of ${frequencyMinutes * 60} seconds`
+    : null;
+}
+
+/**
+ * Name and target cleanup shared by create, both PUTs and PATCH. Credentials and other config are never rewritten:
+ * a password such as `ab${x}` must reach the check exactly as typed.
+ */
+export function sanitizeMonitorFields(body: Record<string, unknown>, effectiveType: unknown): void {
+  if (typeof body.name === "string") body.name = sanitizeString(body.name);
+  if (typeof body.target === "string" && body.target) {
+    if (effectiveType === "http_request" || effectiveType === "website") {
+      // An unusable URL (ftp://, javascript:) is kept as sent so validation names the http(s) rule.
+      body.target = sanitizeUrl(body.target) || body.target;
+    } else if (effectiveType === "ping_host" || effectiveType === "port_check") {
+      body.target = sanitizeHostname(body.target);
+    } else {
+      body.target = sanitizeString(body.target);
+    }
+  }
+  const alert = body.alertConfig as Record<string, unknown> | null | undefined;
+  if (alert && typeof alert.customMessage === "string" && alert.customMessage) {
+    alert.customMessage = sanitizeString(alert.customMessage);
+  }
+}
+
+/** Services throw plain `{ statusCode, message }` objects; map them to a response instead of a 500. */
+export function thrownStatusResponse(error: unknown): NextResponse | null {
+  if (!error || typeof error !== "object" || error instanceof Error) return null;
+  const { statusCode, message, errors } = error as { statusCode?: unknown; message?: unknown; errors?: unknown };
+  if (typeof statusCode !== "number" || statusCode < 400 || statusCode > 599) return null;
+  return NextResponse.json(
+    { error: typeof message === "string" ? message : "Request failed", ...(errors ? { details: errors } : {}) },
+    { status: statusCode },
+  );
+}
+
+export const SCHEDULE_FAILURE_MESSAGE = "Monitor saved, but updating the check schedule failed. Retry the request to reconcile it.";
+
+/** The row is saved but the repeatable job could not be brought in line; routes answer 503 so the client retries. */
+export class MonitorScheduleError extends Error {
+  constructor(cause: unknown) {
+    super(SCHEDULE_FAILURE_MESSAGE, { cause });
+  }
+}
+
+export function scheduleFailureResponse(error: unknown): NextResponse | null {
+  return error instanceof MonitorScheduleError ? NextResponse.json({ error: error.message }, { status: 503 }) : null;
 }

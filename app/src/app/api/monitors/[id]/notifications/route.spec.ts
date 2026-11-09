@@ -14,7 +14,14 @@ jest.mock("@/utils/db", () => ({
     },
     select: () => ({ from: () => ({ where: (...a: unknown[]) => countWhere(...a) }) }),
     insert: () => ({ values: () => ({ returning: (...a: unknown[]) => insertReturning(...a) }) }),
+    delete: () => ({ where: () => ({ returning: (...a: unknown[]) => deleteReturning(...a) }) }),
+    transaction: async (cb: (tx: unknown) => unknown) => cb(jest.requireMock("@/utils/db").db),
   },
+}));
+const deleteReturning = jest.fn();
+const mirrorProviderRowsToAlertConfig = jest.fn();
+jest.mock("@/lib/monitor-write", () => ({
+  mirrorProviderRowsToAlertConfig: (...a: unknown[]) => mirrorProviderRowsToAlertConfig(...a),
 }));
 jest.mock("@/db/schema", () => ({
   monitorNotificationSettings: {},
@@ -85,6 +92,26 @@ describe("POST /api/monitors/[id]/notifications channel cap", () => {
     countWhere.mockResolvedValue([{ value: 9 }]);
     const res = await call();
     expect(res.status).toBe(201);
+    // alertConfig.notificationProviders follows the rows, in the same transaction.
+    expect(mirrorProviderRowsToAlertConfig).toHaveBeenCalledWith(expect.anything(), MONITOR_ID);
+  });
+
+  it("mirrors an unlink into alertConfig, and skips it when no link was removed", async () => {
+    const unlink = () =>
+      DELETE(
+        new NextRequest("http://localhost/api/monitors/x/notifications", {
+          method: "DELETE",
+          body: JSON.stringify({ notificationProviderId: "4b8e7c62-2f1d-4e5a-9c3b-8a7d6e5f4c3b" }),
+        }),
+        { params: Promise.resolve({ id: MONITOR_ID }) },
+      );
+    deleteReturning.mockResolvedValueOnce([{ id: "link-1" }]);
+    expect((await unlink()).status).toBe(200);
+    expect(mirrorProviderRowsToAlertConfig).toHaveBeenCalledWith(expect.anything(), MONITOR_ID);
+    mirrorProviderRowsToAlertConfig.mockClear();
+    deleteReturning.mockResolvedValueOnce([]);
+    expect((await unlink()).status).toBe(404);
+    expect(mirrorProviderRowsToAlertConfig).not.toHaveBeenCalled();
   });
 });
 

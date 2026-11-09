@@ -23,6 +23,7 @@ jest.mock("@/lib/auth-context", () => ({
 }));
 jest.mock("@/lib/rbac/middleware", () => ({ checkPermissionWithContext: jest.fn().mockReturnValue(true) }));
 jest.mock("@/lib/monitor-scheduler", () => ({ scheduleMonitor: jest.fn().mockResolvedValue("s"), deleteScheduledMonitor: jest.fn() }));
+jest.mock("@/lib/monitor-schedule-reconcile", () => ({ reconcileMonitorSchedule: jest.fn().mockResolvedValue(undefined) }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 // A resume writes under the plan-limit lock; here the write just runs on the mocked transaction.
 jest.mock("@/lib/middleware/plan-enforcement", () => ({
@@ -73,12 +74,14 @@ const call = (handler: typeof PUT | typeof PATCH, method: string, body: object) 
 
 let set: jest.Mock;
 let txInsertValues: jest.Mock;
+let txDeleteWhere: jest.Mock;
 let providerRows: { id: string }[];
 beforeEach(() => {
   jest.clearAllMocks();
   findFirst.mockResolvedValue(stored);
   testsFindFirst.mockResolvedValue({ id: "t", title: "T" });
   providerRows = [];
+  txDeleteWhere = jest.fn().mockResolvedValue(undefined);
   txInsertValues = jest.fn().mockReturnValue({ onConflictDoNothing: jest.fn() });
   set = jest.fn().mockReturnValue({ where: jest.fn().mockReturnValue({ returning: jest.fn().mockResolvedValue([stored]) }) });
   update.mockReturnValue({ set });
@@ -86,7 +89,7 @@ beforeEach(() => {
     cb({
       update: () => ({ set }),
       select: () => ({ from: () => ({ where: async () => providerRows }) }),
-      delete: () => ({ where: async () => undefined }),
+      delete: () => ({ where: txDeleteWhere }),
       insert: () => ({ values: txInsertValues }),
     }),
   );
@@ -329,5 +332,64 @@ describe("synthetic monitors keep the 5-minute minimum", () => {
       expect(patch.status).toBe(200);
     expect(payload()).toMatchObject({ type: "http_request" });
     });
+  });
+});
+
+describe("alertConfig, delivery rows, credentials, frequency and timeout on update", () => {
+  const PROVIDER = "00000000-0000-4000-8000-0000000000aa";
+
+  it("PUT alertConfig null clears the delivery rows in the same transaction (B2)", async () => {
+    expect((await call(PUT, "PUT", { alertConfig: null })).status).toBe(200);
+    expect(payload()).toMatchObject({ alertConfig: null });
+    expect(txDeleteWhere).toHaveBeenCalledTimes(1);
+    expect(txInsertValues).not.toHaveBeenCalled();
+  });
+
+  it("PUT with alerts disabled still validates the ids against the project and syncs the rows (B2)", async () => {
+    providerRows = [];
+    const rejected = await call(PUT, "PUT", { alertConfig: { enabled: false, notificationProviders: [PROVIDER] } });
+    expect(rejected.status).toBe(400);
+    providerRows = [{ id: PROVIDER }];
+    const ok = await call(PUT, "PUT", { alertConfig: { enabled: false, notificationProviders: [PROVIDER] } });
+    expect(ok.status).toBe(200);
+    expect(txInsertValues).toHaveBeenCalledWith([{ monitorId: ID, notificationProviderId: PROVIDER }]);
+  });
+
+  it("PATCH validates and syncs the provider rows with every alertConfig write, enabled or not (B2)", async () => {
+    providerRows = [];
+    const rejected = await call(PATCH, "PATCH", { alertConfig: { enabled: false, notificationProviders: [PROVIDER] } });
+    expect(rejected.status).toBe(400);
+    providerRows = [{ id: PROVIDER }];
+    const ok = await call(PATCH, "PATCH", { alertConfig: { enabled: false, notificationProviders: [PROVIDER] } });
+    expect(ok.status).toBe(200);
+    expect(txInsertValues).toHaveBeenCalledWith([{ monitorId: ID, notificationProviderId: PROVIDER }]);
+  });
+
+  it("PUT without alertConfig leaves the delivery rows alone (B2)", async () => {
+    await call(PUT, "PUT", { name: "x" });
+    expect(txDeleteWhere).not.toHaveBeenCalled();
+  });
+
+  it("PUT keeps credentials exactly as sent (B3)", async () => {
+    const auth = { type: "basic", username: "ab${x}", password: "p<b>w$" };
+    expect((await call(PUT, "PUT", { config: { timeoutSeconds: 30, auth } })).status).toBe(200);
+    expect((payload().config as { auth: unknown }).auth).toEqual(auth);
+  });
+
+  it.each([1.5, 0, 1441, "5", null])("PUT and PATCH reject frequencyMinutes %p (B5)", async (frequencyMinutes) => {
+    expect((await call(PUT, "PUT", { frequencyMinutes })).status).toBe(400);
+    expect((await call(PATCH, "PATCH", { frequencyMinutes })).status).toBe(400);
+    expect(set).not.toHaveBeenCalled();
+  });
+
+  it("rejects a timeout longer than the interval when either is being changed, on PUT and PATCH (B7)", async () => {
+    expect((await call(PUT, "PUT", { frequencyMinutes: 1, config: { timeoutSeconds: 90 } })).status).toBe(400);
+    expect((await call(PATCH, "PATCH", { frequencyMinutes: 1 })).status).toBe(200);
+    expect((await call(PATCH, "PATCH", { config: { timeoutSeconds: 301 } })).status).toBe(400);
+  });
+
+  it("an unrelated edit still saves a row whose stored timeout already exceeds the interval (B7)", async () => {
+    findFirst.mockResolvedValue({ ...stored, config: { ...stored.config, timeoutSeconds: 3000 } });
+    expect((await call(PUT, "PUT", { name: "renamed" })).status).toBe(200);
   });
 });

@@ -2018,7 +2018,10 @@ export function MonitorForm({
                       }}
                     />
 
-                    {/* SSL Certificate Check Section - Compact and Inline for Website */}
+                    {/* SSL Certificate Check Section - Compact and Inline for Website.
+                        Only an https:// target has a certificate; an already-enabled check stays visible so it can be turned off. */}
+                    {(/^https:\/\//i.test((form.watch("target") ?? "").trim()) ||
+                      form.watch("websiteConfig_enableSslCheck")) && (
                     <div className="p-3 border rounded-lg bg-muted/10">
                       <div className="space-y-3">
                         <div className="flex items-center justify-between">
@@ -2085,6 +2088,7 @@ export function MonitorForm({
                         )}
                       </div>
                     </div>
+                    )}
                   </div>
 
                   {/* HTTP Headers Section - Full width */}

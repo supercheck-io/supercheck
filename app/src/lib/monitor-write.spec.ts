@@ -1,5 +1,16 @@
 jest.mock("@/utils/db", () => ({ db: {} }));
-import { mergePatch, monitorNameError, normalizeMonitorAlertConfig } from "./monitor-write";
+import {
+  frequencyMinutesError,
+  InvalidNotificationProvidersError,
+  mergePatch,
+  mirrorProviderRowsToAlertConfig,
+  monitorNameError,
+  normalizeMonitorAlertConfig,
+  sanitizeMonitorFields,
+  syncMonitorProviderRows,
+  thrownStatusResponse,
+  timeoutFrequencyError,
+} from "./monitor-write";
 
 describe("monitorNameError", () => {
   it("allows an omitted name and rejects a blank, non-string or over-long one", () => {
@@ -34,5 +45,115 @@ describe("mergePatch", () => {
   });
   it("replaces a scalar with an object patch", () => {
     expect(mergePatch({ o: "s" }, { o: { a: 1 } })).toEqual({ o: { a: 1 } });
+  });
+});
+
+describe("frequencyMinutesError", () => {
+  it("accepts whole minutes from 1 to 1440 only", () => {
+    for (const ok of [1, 5, 1440]) expect(frequencyMinutesError(ok)).toBeNull();
+    for (const bad of [0, 1441, 1.5, NaN, Infinity, "5", null, undefined]) expect(frequencyMinutesError(bad)).toContain("whole number");
+  });
+});
+
+describe("timeoutFrequencyError", () => {
+  it("rejects a timeout longer than the interval and ignores a missing value", () => {
+    expect(timeoutFrequencyError({ timeoutSeconds: 61 }, 1)).toContain("cannot exceed");
+    expect(timeoutFrequencyError({ timeoutSeconds: 60 }, 1)).toBeNull();
+    expect(timeoutFrequencyError({}, 1)).toBeNull();
+    expect(timeoutFrequencyError(null, 1)).toBeNull();
+  });
+});
+
+describe("sanitizeMonitorFields", () => {
+  it("cleans name, target and customMessage the same way for any caller, and never touches credentials", () => {
+    const auth = { type: "basic", username: "ab${x}", password: "p<b>w", token: "t$" };
+    const body: Record<string, unknown> = {
+      name: "My <script>alert(1)</script>monitor",
+      target: "https://example.com/x",
+      config: { auth },
+      alertConfig: { customMessage: "hi <script>x</script>" },
+    };
+    sanitizeMonitorFields(body, "http_request");
+    expect(body.name).not.toContain("<script>");
+    expect(body.target).toBe("https://example.com/x");
+    expect((body.alertConfig as { customMessage: string }).customMessage).not.toContain("<script>");
+    expect((body.config as { auth: unknown }).auth).toEqual({ type: "basic", username: "ab${x}", password: "p<b>w", token: "t$" });
+  });
+  it("leaves an omitted name or target omitted", () => {
+    const body: Record<string, unknown> = { enabled: true };
+    sanitizeMonitorFields(body, "website");
+    expect(body).toEqual({ enabled: true });
+  });
+});
+
+describe("thrownStatusResponse", () => {
+  it("maps a plain { statusCode } object and ignores real errors", async () => {
+    const res = thrownStatusResponse({ statusCode: 400, message: "Invalid monitor data", errors: { a: 1 } });
+    expect(res?.status).toBe(400);
+    await expect(res?.json()).resolves.toEqual({ error: "Invalid monitor data", details: { a: 1 } });
+    expect(thrownStatusResponse(new Error("boom"))).toBeNull();
+    expect(thrownStatusResponse({ statusCode: 200 })).toBeNull();
+    expect(thrownStatusResponse(null)).toBeNull();
+  });
+});
+
+describe("provider rows and alertConfig stay one source of truth", () => {
+  const ID = "00000000-0000-4000-8000-0000000000aa";
+  const fakeTx = (providerRows: { id: string }[]) => {
+    const deleteWhere = jest.fn().mockResolvedValue(undefined);
+    const values = jest.fn().mockReturnValue({ onConflictDoNothing: jest.fn() });
+    return {
+      deleteWhere,
+      values,
+      tx: {
+        select: () => ({ from: () => ({ where: async () => providerRows }) }),
+        delete: () => ({ where: deleteWhere }),
+        insert: () => ({ values }),
+      } as never,
+    };
+  };
+
+  it("syncMonitorProviderRows replaces the rows with the de-duplicated list", async () => {
+    const { tx, deleteWhere, values } = fakeTx([{ id: ID }]);
+    await syncMonitorProviderRows(tx, "m1", [ID, ID], "org", "proj");
+    expect(deleteWhere).toHaveBeenCalledTimes(1);
+    expect(values).toHaveBeenCalledWith([{ monitorId: "m1", notificationProviderId: ID }]);
+  });
+
+  it("syncMonitorProviderRows clears the rows for an empty list", async () => {
+    const { tx, deleteWhere, values } = fakeTx([]);
+    await syncMonitorProviderRows(tx, "m1", [], "org", "proj");
+    expect(deleteWhere).toHaveBeenCalledTimes(1);
+    expect(values).not.toHaveBeenCalled();
+  });
+
+  it("syncMonitorProviderRows throws and writes nothing when an id is outside the project", async () => {
+    const { tx, deleteWhere } = fakeTx([]);
+    await expect(syncMonitorProviderRows(tx, "m1", [ID], "org", "proj")).rejects.toBeInstanceOf(InvalidNotificationProvidersError);
+    expect(deleteWhere).not.toHaveBeenCalled();
+  });
+
+  it("mirrorProviderRowsToAlertConfig writes the row ids into alertConfig, keeping its other settings", async () => {
+    const set = jest.fn().mockReturnValue({ where: jest.fn() });
+    const reads = [[{ id: ID }], [{ alertConfig: { enabled: true, notificationProviders: [], alertOnFailure: false } }]];
+    const tx = {
+      select: () => ({ from: () => ({ where: async () => reads.shift() }) }),
+      update: () => ({ set }),
+    } as never;
+    await mirrorProviderRowsToAlertConfig(tx, "m1");
+    expect(set).toHaveBeenCalledWith({
+      alertConfig: expect.objectContaining({ enabled: true, alertOnFailure: false, notificationProviders: [ID] }),
+    });
+  });
+
+  it("mirrorProviderRowsToAlertConfig gives a monitor with no alertConfig the defaults", async () => {
+    const set = jest.fn().mockReturnValue({ where: jest.fn() });
+    const reads = [[{ id: ID }], [{ alertConfig: null }]];
+    const tx = {
+      select: () => ({ from: () => ({ where: async () => reads.shift() }) }),
+      update: () => ({ set }),
+    } as never;
+    await mirrorProviderRowsToAlertConfig(tx, "m1");
+    expect(set).toHaveBeenCalledWith({ alertConfig: expect.objectContaining({ enabled: false, notificationProviders: [ID] }) });
   });
 });

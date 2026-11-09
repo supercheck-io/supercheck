@@ -24,8 +24,8 @@ jest.mock("@/lib/execution/trial-interval-response", () => ({
 }));
 const insertWithinPlanLimit = jest.fn();
 jest.mock("@/lib/middleware/plan-limit-lock", () => ({ insertWithinPlanLimit: (...a: unknown[]) => insertWithinPlanLimit(...a) }));
-jest.mock("@/lib/middleware/plan-enforcement", () => ({ checkMonitorLimit: jest.fn() }));
-jest.mock("@/lib/monitor-service", () => ({ insertMonitorRecord: jest.fn(), scheduleCreatedMonitor: jest.fn() }));
+jest.mock("@/lib/middleware/plan-enforcement", () => ({ checkMonitorLimit: jest.fn(), ResumeRefusedError: class extends Error {}, resumeRefusalResponse: jest.fn() }));
+jest.mock("@/lib/monitor-service", () => ({ insertMonitorRecord: jest.fn(), scheduleCreatedMonitor: jest.fn(), updateMonitorHandler: jest.fn() }));
 jest.mock("@/lib/location-registry", () => ({
   getProjectAvailableLocationCodes: jest.fn().mockResolvedValue([]),
   getWorkloadCapableLocationCodes: jest.fn().mockResolvedValue([]),
@@ -36,14 +36,15 @@ jest.mock("@/lib/location-registry", () => ({
   PROJECT_RESTRICTED_LOCATIONS_DISABLED_ERROR: "restricted",
 }));
 jest.mock("@/lib/worker-registry", () => ({ getActiveWorkerQueueNames: jest.fn() }));
-const deleteScheduledMonitor = jest.fn(async () => true);
-jest.mock("@/lib/monitor-scheduler", () => ({ deleteScheduledMonitor }));
+const deleteScheduledMonitor = jest.fn(async (_id?: string) => true);
+jest.mock("@/lib/monitor-scheduler", () => ({ deleteScheduledMonitor: (id: string) => deleteScheduledMonitor(id) }));
 jest.mock("@/lib/creators", () => ({ loadCreators: jest.fn() }));
 
 jest.mock("@/lib/sre/connectors/endpoint-policy", () => ({
   lookupBounded: jest.fn(async () => [{ address: "93.184.216.34", family: 4 }]),
 }));
-import { POST, PUT } from "./route";
+import { GET, POST, PUT } from "./route";
+import { MonitorScheduleError } from "@/lib/monitor-write";
 
 const post = (alertConfig: object) =>
   POST(
@@ -236,4 +237,129 @@ it("removes the schedule and the row when the post-scheduling check fails", asyn
   expect(res.status).toBe(500);
   expect(deleteScheduledMonitor).toHaveBeenCalledWith("new-monitor");
   expect(dbDeleteWhere).toHaveBeenCalledTimes(1);
+});
+
+describe("collection write paths", () => {
+  const MONITOR = "00000000-0000-4000-8000-000000000002";
+  const { updateMonitorHandler, insertMonitorRecord } = jest.requireMock("@/lib/monitor-service") as {
+    updateMonitorHandler: jest.Mock;
+    insertMonitorRecord: jest.Mock;
+  };
+  const { checkPermissionWithContext } = jest.requireMock("@/lib/rbac/middleware") as { checkPermissionWithContext: jest.Mock };
+  const stored = { projectId: "project-1", organizationId: "org-1", type: "http_request", frequencyMinutes: 5, status: "up", alertConfig: null, target: "https://example.com", config: {} };
+  const put = (body: object) =>
+    PUT(new NextRequest("http://localhost/api/monitors", { method: "PUT", body: JSON.stringify({ id: MONITOR, ...body }) }));
+  const postBody = (body: object) =>
+    POST(new NextRequest("http://localhost/api/monitors", { method: "POST", body: JSON.stringify(body), headers: { "content-type": "application/json" } }));
+
+  beforeEach(() => {
+    dbSelect.mockReturnValue({ from: () => ({ where: () => ({ limit: async () => [stored] }) }) });
+    updateMonitorHandler.mockResolvedValue({ id: MONITOR });
+    monitorResumeBlockedResponse.mockResolvedValue(null);
+  });
+
+  it("PUT without alertConfig leaves alert settings and delivery rows alone (B1)", async () => {
+    const res = await put({ name: "renamed" });
+    expect(res.status).toBe(200);
+    expect(updateMonitorHandler).toHaveBeenCalledWith(MONITOR, expect.objectContaining({ alertConfig: undefined }), {});
+  });
+
+  it("PUT with alertConfig null clears the config and the delivery rows together (B1, B2)", async () => {
+    const res = await put({ alertConfig: null });
+    expect(res.status).toBe(200);
+    expect(updateMonitorHandler).toHaveBeenCalledWith(
+      MONITOR,
+      expect.objectContaining({ alertConfig: null }),
+      { providerSync: { ids: [], organizationId: "org-1", projectId: "project-1" } },
+    );
+  });
+
+  it("PUT validates provider ids even when alerts are disabled, then syncs the rows in the write (B2)", async () => {
+    const id = "00000000-0000-4000-8000-0000000000aa";
+    dbSelect
+      .mockReturnValueOnce({ from: () => ({ where: () => ({ limit: async () => [stored] }) }) })
+      .mockReturnValueOnce({ from: () => ({ where: async () => [] }) });
+    const res = await put({ alertConfig: { enabled: false, notificationProviders: [id] } });
+    expect(res.status).toBe(400);
+    expect(updateMonitorHandler).not.toHaveBeenCalled();
+  });
+
+  it("PUT passes the validated provider list to the write for a disabled config (B2)", async () => {
+    const id = "00000000-0000-4000-8000-0000000000aa";
+    dbSelect
+      .mockReturnValueOnce({ from: () => ({ where: () => ({ limit: async () => [stored] }) }) })
+      .mockReturnValueOnce({ from: () => ({ where: async () => [{ id }] }) });
+    const res = await put({ alertConfig: { enabled: false, notificationProviders: [id] } });
+    expect(res.status).toBe(200);
+    expect(updateMonitorHandler.mock.calls[0][2]).toEqual({ providerSync: { ids: [id], organizationId: "org-1", projectId: "project-1" } });
+  });
+
+  it("PUT checks permission before existence and with the update action (B8)", async () => {
+    checkPermissionWithContext.mockReturnValueOnce(false);
+    const res = await put({ name: "x" });
+    expect(res.status).toBe(403);
+    expect(dbSelect).not.toHaveBeenCalled();
+    expect(checkPermissionWithContext).toHaveBeenCalledWith("monitor", "update", expect.anything());
+  });
+
+  it.each([1.5, 0, 1441, "5"])("PUT rejects frequencyMinutes %p (B5)", async (frequencyMinutes) => {
+    expect((await put({ frequencyMinutes })).status).toBe(400);
+    expect(updateMonitorHandler).not.toHaveBeenCalled();
+  });
+
+  it("PUT rejects a timeout longer than the interval, only when the request changes one of them (B7)", async () => {
+    const res = await put({ frequencyMinutes: 1, config: { timeoutSeconds: 90 } });
+    expect(res.status).toBe(400);
+    dbSelect.mockReturnValue({ from: () => ({ where: () => ({ limit: async () => [{ ...stored, config: { timeoutSeconds: 3000 } }] }) }) });
+    expect((await put({ name: "legacy row still saves" })).status).toBe(200);
+  });
+
+  it("PUT answers 503 when the schedule cannot be updated after the save", async () => {
+    updateMonitorHandler.mockRejectedValue(new MonitorScheduleError(new Error("redis down")));
+    const res = await put({ frequencyMinutes: 10 });
+    expect(res.status).toBe(503);
+    await expect(res.json()).resolves.toEqual({ error: expect.stringContaining("Retry the request") });
+  });
+
+  it("PUT maps a thrown { statusCode } object to its status instead of a 500 (B5)", async () => {
+    updateMonitorHandler.mockRejectedValue({ statusCode: 404, message: "Monitor not found" });
+    expect((await put({ name: "x" })).status).toBe(404);
+  });
+
+  it("POST rejects a non-integer frequency with 400 (B5)", async () => {
+    const res = await postBody({ name: "m", type: "http_request", target: "https://example.com", frequencyMinutes: 2.5 });
+    expect(res.status).toBe(400);
+    expect(insertWithinPlanLimit).not.toHaveBeenCalled();
+  });
+
+  it("POST maps the service's thrown validation object to 400 (B5)", async () => {
+    insertWithinPlanLimit.mockRejectedValue({ statusCode: 400, message: "Invalid monitor data", errors: { fieldErrors: {} } });
+    const res = await postBody({ name: "m", type: "http_request", target: "https://example.com" });
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toMatchObject({ error: "Invalid monitor data" });
+  });
+
+  it("POST rejects a timeout longer than the interval (B7)", async () => {
+    const res = await postBody({ name: "m", type: "http_request", target: "https://example.com", frequencyMinutes: 1, config: { timeoutSeconds: 61 } });
+    expect(res.status).toBe(400);
+    expect(insertWithinPlanLimit).not.toHaveBeenCalled();
+  });
+
+  it("POST stores credentials exactly as typed (B3)", async () => {
+    const auth = { type: "basic", username: "ab${x}", password: "p<b>w$" };
+    insertWithinPlanLimit.mockImplementation(async (opts: { insert: (tx: unknown) => Promise<unknown> }) => {
+      const tx = { select: () => ({ from: () => ({ where: () => ({ for: async () => [{ id: "project-1" }] }) }) }) };
+      await opts.insert(tx);
+      return { ok: true, row: { newMonitor: { id: "new" }, enabled: true } };
+    });
+    await postBody({ name: "m", type: "http_request", target: "https://example.com", config: { auth } });
+    expect(insertMonitorRecord).toHaveBeenCalledWith(expect.objectContaining({ config: expect.objectContaining({ auth }) }), expect.anything());
+  });
+
+  it("GET rejects a non-numeric or fractional page or limit with 400 (B6)", async () => {
+    for (const query of ["page=abc", "limit=x", "page=1.5", "page=0", "limit=0", "page=-1"]) {
+      const res = await GET(new Request(`http://localhost/api/monitors?${query}`));
+      expect(res.status).toBe(400);
+    }
+  });
 });

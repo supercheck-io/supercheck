@@ -22,6 +22,7 @@ jest.mock("@/lib/monitor-scheduler", () => ({
   scheduleMonitor: jest.fn(),
   deleteScheduledMonitor: jest.fn(),
 }));
+jest.mock("@/lib/monitor-schedule-reconcile", () => ({ reconcileMonitorSchedule: jest.fn().mockResolvedValue(undefined) }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 const trialIntervalErrorResponse = jest.fn();
 const monitorResumeBlockedResponse = jest.fn();
@@ -53,7 +54,7 @@ jest.mock("@/lib/sre/connectors/endpoint-policy", () => ({
   lookupBounded: jest.fn(async () => [{ address: "93.184.216.34", family: 4 }]),
 }));
 import { DELETE, PATCH, PUT } from "./route";
-import { deleteScheduledMonitor, scheduleMonitor } from "@/lib/monitor-scheduler";
+import { reconcileMonitorSchedule } from "@/lib/monitor-schedule-reconcile";
 
 const locationConfig = (locations: string[], enabled = true) => ({
   enabled,
@@ -177,8 +178,7 @@ it("PATCH applies CLI fields and refreshes the scheduler payload", async () => {
   const response = await call(PATCH, "PATCH", changes);
   expect(response.status).toBe(200);
   expect(await response.json()).toMatchObject(saved);
-  const { scheduleMonitor } = await import("@/lib/monitor-scheduler");
-  expect(scheduleMonitor).toHaveBeenCalledWith(expect.objectContaining({ frequencyMinutes: 10, jobData: expect.objectContaining({ target: changes.target, config: saved.config }) }));
+  expect(reconcileMonitorSchedule).toHaveBeenCalledWith(original.id, "project-1");
 });
 
 describe("malformed monitor id versus permission", () => {
@@ -234,23 +234,30 @@ describe("monitor PUT reschedule policy", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     findFirst.mockResolvedValue(stored);
-    (scheduleMonitor as jest.Mock).mockResolvedValue("sched-2");
-    (deleteScheduledMonitor as jest.Mock).mockResolvedValue(true);
+    (reconcileMonitorSchedule as jest.Mock).mockResolvedValue(undefined);
   });
 
   it("keeps the schedule when only alert channels change", async () => {
     updateReturns({ timeoutSeconds: 30, alertChannels: ["a", "b"] });
     const response = await call(PUT, "PUT", { config: { timeoutSeconds: 30, alertChannels: ["a", "b"] } });
     expect(response.status).toBe(200);
-    expect(deleteScheduledMonitor).not.toHaveBeenCalled();
-    expect(scheduleMonitor).not.toHaveBeenCalled();
+    expect(reconcileMonitorSchedule).not.toHaveBeenCalled();
   });
 
   it("reschedules when a check setting changes", async () => {
     updateReturns({ timeoutSeconds: 10, alertChannels: ["a"] });
     const response = await call(PUT, "PUT", { config: { timeoutSeconds: 10, alertChannels: ["a"] } });
     expect(response.status).toBe(200);
-    expect(scheduleMonitor).toHaveBeenCalledTimes(1);
+    expect(reconcileMonitorSchedule).toHaveBeenCalledTimes(1);
+  });
+
+  it("answers 503, keeping the saved row, when the schedule cannot be updated", async () => {
+    updateReturns({ timeoutSeconds: 10 });
+    (reconcileMonitorSchedule as jest.Mock).mockRejectedValue(new Error("redis down"));
+    const response = await call(PUT, "PUT", { config: { timeoutSeconds: 10 } });
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toEqual({ error: expect.stringContaining("Retry the request") });
+    expect(transaction).toHaveBeenCalled();
   });
 });
 

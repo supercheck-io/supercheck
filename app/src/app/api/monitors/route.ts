@@ -19,11 +19,6 @@ import {
   updateMonitorHandler,
 } from "@/lib/monitor-service";
 import { logAuditEvent } from "@/lib/audit-logger";
-import {
-  sanitizeString,
-  sanitizeUrl,
-  sanitizeHostname,
-} from "@/lib/input-sanitizer";
 import { checkMonitorLimit, countPlanMonitors, resumeRefusalResponse, ResumeRefusedError } from "@/lib/middleware/plan-enforcement";
 import { monitorResumeBlockedResponse, trialIntervalErrorResponse } from "@/lib/execution/trial-interval-response";
 import { insertWithinPlanLimit, notInDeletedProject } from "@/lib/middleware/plan-limit-lock";
@@ -41,7 +36,19 @@ import { createLogger } from "@/lib/logger/index";
 import { channelsOptional } from "@/lib/incident-settings";
 import { validateMonitorConfiguration } from "@/lib/monitor-validation";
 import { validateMonitorTargetAddress } from "@/lib/monitor-target-policy";
-import { monitorNameError, normalizeMonitorAlertConfig, providerIdsOutsideProject, syntheticFrequencyError } from "@/lib/monitor-write";
+import {
+  frequencyMinutesError,
+  InvalidNotificationProvidersError,
+  monitorNameError,
+  normalizeMonitorAlertConfig,
+  providerIdsOutsideProject,
+  sanitizeMonitorFields,
+  scheduleFailureResponse,
+  syntheticFrequencyError,
+  thrownStatusResponse,
+  timeoutFrequencyError,
+} from "@/lib/monitor-write";
+import type { AlertConfig } from "@/db/schema";
 import { loadCreators } from "@/lib/creators";
 
 const logger = createLogger({ module: "monitors-api" }) as {
@@ -89,11 +96,14 @@ export async function GET(request: Request) {
 
     // Get URL parameters for pagination only (org/project comes from session)
     const url = new URL(request.url);
-    const page = parseInt(url.searchParams.get("page") || "1", 10);
-    const limit = Math.min(
-      parseInt(url.searchParams.get("limit") || "50", 10),
-      100,
-    );
+    // Strict integers only: "abc" or "1.5" would otherwise become NaN and fail the query with a 500.
+    const intParam = (name: string, fallback: number) => {
+      const raw = url.searchParams.get(name);
+      return raw === null || raw === "" ? fallback : /^\d+$/.test(raw) ? Number(raw) : NaN;
+    };
+    const page = intParam("page", 1);
+    const requestedLimit = intParam("limit", 50);
+    const limit = Math.min(requestedLimit, 100);
 
     // For backward compatibility, if no pagination params are provided, return all
     const usePagination =
@@ -107,7 +117,7 @@ export async function GET(request: Request) {
 
     if (usePagination) {
       // Validate pagination parameters
-      if (page < 1 || limit < 1) {
+      if (!Number.isSafeInteger(page) || !Number.isSafeInteger(limit) || page < 1 || limit < 1) {
         return NextResponse.json(
           {
             error: "Invalid pagination parameters. Page and limit must be >= 1",
@@ -255,47 +265,8 @@ export async function POST(req: NextRequest) {
       "[MONITOR_CREATE] Raw data received",
     );
 
-    // Sanitize input data
-    rawData.name = sanitizeString(rawData.name);
-    if (rawData.target) {
-      // Sanitize target based on type
-      if (rawData.type === "http_request" || rawData.type === "website") {
-        // An unusable URL (ftp://, javascript:) is kept as sent so validation names the http(s) rule
-        // instead of reporting the target as missing.
-        rawData.target = sanitizeUrl(rawData.target) || rawData.target;
-      } else if (
-        rawData.type === "ping_host" ||
-        rawData.type === "port_check"
-      ) {
-        rawData.target = sanitizeHostname(rawData.target);
-      } else {
-        rawData.target = sanitizeString(rawData.target);
-      }
-    }
-
-    // Sanitize auth credentials if present
-    if (rawData.config?.auth) {
-      if (rawData.config.auth.username) {
-        rawData.config.auth.username = sanitizeString(
-          rawData.config.auth.username,
-        );
-      }
-      if (rawData.config.auth.password) {
-        rawData.config.auth.password = sanitizeString(
-          rawData.config.auth.password,
-        );
-      }
-      if (rawData.config.auth.token) {
-        rawData.config.auth.token = sanitizeString(rawData.config.auth.token);
-      }
-    }
-
-    // Sanitize custom message in alertConfig
-    if (rawData.alertConfig?.customMessage) {
-      rawData.alertConfig.customMessage = sanitizeString(
-        rawData.alertConfig.customMessage,
-      );
-    }
+    // Same name and target handling as the update paths; credentials in config are never rewritten.
+    sanitizeMonitorFields(rawData, rawData.type);
 
     // Special logging for heartbeat monitors
     if (rawData.type === "heartbeat") {
@@ -324,26 +295,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Validate frequency bounds (1 minute minimum, 1440 minutes = 24 hours maximum)
-    // This prevents resource exhaustion from too-frequent checks and ensures reasonable monitoring intervals
-    const MIN_FREQUENCY_MINUTES = 1;
-    const MAX_FREQUENCY_MINUTES = 1440; // 24 hours
-
     if (rawData.frequencyMinutes !== undefined) {
-      const freq = Number(rawData.frequencyMinutes);
-      if (
-        isNaN(freq) ||
-        freq < MIN_FREQUENCY_MINUTES ||
-        freq > MAX_FREQUENCY_MINUTES
-      ) {
-        return NextResponse.json(
-          {
-            error: "Invalid frequency",
-            details: `frequencyMinutes must be between ${MIN_FREQUENCY_MINUTES} and ${MAX_FREQUENCY_MINUTES} minutes`,
-          },
-          { status: 400 },
-        );
+      const frequencyError = frequencyMinutesError(rawData.frequencyMinutes);
+      if (frequencyError) {
+        return NextResponse.json({ error: "Invalid frequency", details: frequencyError }, { status: 400 });
       }
+    }
+    const timeoutCreateError = timeoutFrequencyError(rawData.config, rawData.frequencyMinutes ?? 5);
+    if (timeoutCreateError) {
+      return NextResponse.json({ error: "Invalid configuration", details: timeoutCreateError }, { status: 400 });
     }
 
     const syntheticCreateError = syntheticFrequencyError(rawData.type, rawData.frequencyMinutes ?? 5);
@@ -553,9 +513,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // SECURITY: every provider must belong to this org and project; reject rather than create a monitor
-    // that shows alerts as enabled but has no delivery rows.
-    if (alertConfig?.enabled) {
+    // SECURITY: every provider must belong to this org and project, enabled or not; reject rather than create a
+    // monitor whose alertConfig lists channels that have no delivery rows.
+    if (alertConfig) {
       const invalidProviderIds = await providerIdsOutsideProject(
         alertConfig.notificationProviders,
         organizationId,
@@ -617,7 +577,7 @@ export async function POST(req: NextRequest) {
     }
     // Link the validated providers before scheduling, so a scheduling failure cannot leave a monitor without them.
     const createdMonitor = inserted.row.newMonitor;
-    if (alertConfig?.enabled && alertConfig.notificationProviders.length > 0) {
+    if (alertConfig && alertConfig.notificationProviders.length > 0) {
       await db
         .insert(monitorNotificationSettings)
         .values(
@@ -701,6 +661,8 @@ export async function POST(req: NextRequest) {
         { status: 402 },
       );
     }
+    const thrown = thrownStatusResponse(error);
+    if (thrown) return thrown;
     logger.error({ err: error }, "Error creating monitor");
     return NextResponse.json(
       { error: "Failed to create monitor" },
@@ -713,6 +675,11 @@ export async function PUT(req: NextRequest) {
   try {
     const putCtx = await requireAuthContext();
     const { userId, project, organizationId } = putCtx;
+
+    // Permission before existence, and the same action as PUT /api/monitors/[id], so a 404 never leaks to a caller who may not update.
+    if (!checkPermissionWithContext("monitor", "update", putCtx)) {
+      return NextResponse.json({ error: "Insufficient permissions to update monitors" }, { status: 403 });
+    }
 
     let rawData;
     try {
@@ -761,38 +728,23 @@ export async function PUT(req: NextRequest) {
       );
     }
 
-    // Check permission to manage monitors
-    const canManage = checkPermissionWithContext("monitor", "manage", putCtx);
-
-    if (!canManage) {
-      return NextResponse.json(
-        { error: "Insufficient permissions to update monitors" },
-        { status: 403 },
-      );
-    }
-
+    // Same name and target handling as create; credentials in config are never rewritten.
+    sanitizeMonitorFields(updateData, updateData.type ?? monitorData[0].type);
     const nameError = monitorNameError(updateData.name);
     if (nameError) return NextResponse.json({ error: nameError }, { status: 400 });
 
-    // Validate frequency bounds (1 minute minimum, 1440 minutes = 24 hours maximum)
-    const MIN_FREQUENCY_MINUTES = 1;
-    const MAX_FREQUENCY_MINUTES = 1440; // 24 hours
-
     if (rawData.frequencyMinutes !== undefined) {
-      const freq = Number(rawData.frequencyMinutes);
-      if (
-        isNaN(freq) ||
-        freq < MIN_FREQUENCY_MINUTES ||
-        freq > MAX_FREQUENCY_MINUTES
-      ) {
-        return NextResponse.json(
-          {
-            error: "Invalid frequency",
-            details: `frequencyMinutes must be between ${MIN_FREQUENCY_MINUTES} and ${MAX_FREQUENCY_MINUTES} minutes`,
-          },
-          { status: 400 },
-        );
+      const frequencyError = frequencyMinutesError(rawData.frequencyMinutes);
+      if (frequencyError) {
+        return NextResponse.json({ error: "Invalid frequency", details: frequencyError }, { status: 400 });
       }
+    }
+    if (updateData.config !== undefined || rawData.frequencyMinutes !== undefined) {
+      const timeoutError = timeoutFrequencyError(
+        updateData.config ?? monitorData[0].config,
+        rawData.frequencyMinutes ?? monitorData[0].frequencyMinutes,
+      );
+      if (timeoutError) return NextResponse.json({ error: "Invalid configuration", details: timeoutError }, { status: 400 });
     }
 
     // Only a change to type or frequency is checked, so legacy sub-5-minute monitors can still be paused or renamed.
@@ -880,14 +832,20 @@ export async function PUT(req: NextRequest) {
       );
     }
 
-    // Prepare alert configuration - ensure it's properly structured
-    let alertConfig = null;
-    if (rawData.alertConfig) {
-      const normalized = normalizeMonitorAlertConfig(rawData.alertConfig, monitorData[0].alertConfig);
-      if (!normalized.ok) {
-        return NextResponse.json({ error: normalized.error }, { status: 400 });
+    // Only apply alertConfig when the body has it; an explicit null clears it (and the delivery rows).
+    let alertConfig: AlertConfig | null | undefined;
+    if (Object.prototype.hasOwnProperty.call(rawData, "alertConfig")) {
+      if (rawData.alertConfig === null) {
+        alertConfig = null;
+      } else if (typeof rawData.alertConfig !== "object" || Array.isArray(rawData.alertConfig)) {
+        return NextResponse.json({ error: "alertConfig must be an object or null" }, { status: 400 });
+      } else {
+        const normalized = normalizeMonitorAlertConfig(rawData.alertConfig, monitorData[0].alertConfig);
+        if (!normalized.ok) {
+          return NextResponse.json({ error: normalized.error }, { status: 400 });
+        }
+        alertConfig = normalized.value;
       }
-      alertConfig = normalized.value;
     }
 
     // Use the monitor service to update the monitor
@@ -984,7 +942,7 @@ export async function PUT(req: NextRequest) {
       }
     }
 
-    if (alertConfig?.enabled) {
+    if (alertConfig) {
       const invalidProviderIds = await providerIdsOutsideProject(
         alertConfig.notificationProviders,
         organizationId,
@@ -1000,54 +958,23 @@ export async function PUT(req: NextRequest) {
 
     let updatedMonitor;
     try {
-      updatedMonitor = await updateMonitorHandler(id, monitorUpdateData);
+      updatedMonitor = await updateMonitorHandler(
+        id,
+        monitorUpdateData,
+        alertConfig !== undefined
+          ? { providerSync: { ids: alertConfig?.notificationProviders ?? [], organizationId, projectId: project.id } }
+          : {},
+      );
     } catch (error) {
       if (error instanceof ResumeRefusedError) return resumeRefusalResponse(error.outcome)!;
-      throw error;
-    }
-
-    // Update notification provider links if alert config is enabled
-    if (
-      updatedMonitor &&
-      alertConfig?.enabled &&
-      Array.isArray(alertConfig.notificationProviders)
-    ) {
-      // First, delete existing links
-      await db
-        .delete(monitorNotificationSettings)
-        .where(eq(monitorNotificationSettings.monitorId, id));
-
-      // SECURITY: Validate that all notification providers belong to the same org/project
-      if (alertConfig.notificationProviders.length > 0) {
-        const validProviders = await db
-          .select({ id: notificationProviders.id })
-          .from(notificationProviders)
-          .where(
-            and(
-              inArray(
-                notificationProviders.id,
-                alertConfig.notificationProviders,
-              ),
-              eq(notificationProviders.organizationId, organizationId),
-              eq(notificationProviders.projectId, project.id),
-            ),
-          );
-
-        const validProviderIds = validProviders.map((p) => p.id);
-
-        // Then, create new links only for validated providers
-        if (validProviderIds.length > 0) {
-          await db
-            .insert(monitorNotificationSettings)
-            .values(
-              validProviderIds.map((providerId) => ({
-                monitorId: id,
-                notificationProviderId: providerId,
-              })),
-            )
-            .onConflictDoNothing();
-        }
+      if (error instanceof InvalidNotificationProvidersError) {
+        return NextResponse.json({ error: error.message }, { status: 400 });
       }
+      const scheduleFailure = scheduleFailureResponse(error);
+      if (scheduleFailure) return scheduleFailure;
+      const thrown = thrownStatusResponse(error);
+      if (thrown) return thrown;
+      throw error;
     }
 
     // Log the audit event for monitor update
