@@ -227,8 +227,7 @@ export async function PUT(
       return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
     }
 
-    // Same name and target handling as create; credentials in config are never rewritten.
-    const sanitizeType = updateData.type ?? currentMonitor.type;
+    // Same name handling as create; the target and credentials are never rewritten.
     sanitizeMonitorFields(updateData);
     sanitizeMonitorFields({ alertConfig: rawData.alertConfig });
     const nameError = monitorNameError(updateData.name);
