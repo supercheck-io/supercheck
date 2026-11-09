@@ -131,7 +131,10 @@ test.describe('SRE API authenticated contracts @api @sre @critical', () => {
         for (const endpoint of ['/api/sre/integrations', '/api/sre/private-agents']) {
           const response = await request.get(endpoint);
           expect(response.status(), `${endpoint} in ${id === projectId ? 'new' : 'original'} project: ${await response.text()}`).toBe(200);
-          expect(await response.json()).toMatchObject({ success: true });
+          expect(await response.json()).toMatchObject({
+            success: true,
+            [endpoint === '/api/sre/integrations' ? 'connectors' : 'agents']: expect.any(Array),
+          });
         }
       }
     } finally {
