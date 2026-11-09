@@ -42,6 +42,7 @@ describe('monitor configuration reads', () => {
       port: 443, protocol: 'tcp',
       expectClosed: true, enableSslCheck: true, sslDaysUntilExpirationWarning: 14, sslCheckFrequencyHours: 12,
       sslLastCheckedAt: '2026-01-01T00:00:00.000Z', timeoutSeconds: 10, regions: ['eu-central'],
+      sslCertificate: { valid: true, daysRemaining: 40, host: 'example.com' },
       locationConfig: { enabled: true, locations: ['eu-central'], threshold: 1, strategy: 'any' },
       retryStrategy: { maxRetries: 1, backoffFactor: 2 }, alertChannels: ['channel-1'],
       testId: '00000000-0000-4000-8000-000000000001', testTitle: 'Checkout',

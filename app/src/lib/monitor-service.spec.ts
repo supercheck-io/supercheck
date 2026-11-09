@@ -132,7 +132,7 @@ describe("updateMonitorHandler schedule synchronization", () => {
 describe("updateMonitorHandler write safety", () => {
   const existing = {
     id: "monitor-1", projectId: "project-1", type: "http_request", target: "https://example.com",
-    config: { timeoutSeconds: 30, aggregatedAlertState: { n: 4 }, sslLastCheckedAt: "t" },
+    config: { timeoutSeconds: 30, aggregatedAlertState: { n: 4 }, sslLastCheckedAt: "t", sslCertificate: { valid: true } },
     frequencyMinutes: 5, enabled: true, status: "up", scheduledJobId: "old-schedule",
   };
   const chain = (row: object) => ({
@@ -150,7 +150,7 @@ describe("updateMonitorHandler write safety", () => {
     (db.update as jest.Mock).mockReturnValue(c);
     await updateMonitorHandler(existing.id, { config: { timeoutSeconds: 10 } });
     expect(c.set).toHaveBeenCalledWith(expect.objectContaining({
-      config: { timeoutSeconds: 10, aggregatedAlertState: { n: 4 }, sslLastCheckedAt: "t" },
+      config: { timeoutSeconds: 10, aggregatedAlertState: { n: 4 }, sslLastCheckedAt: "t", sslCertificate: { valid: true } },
     }));
   });
 

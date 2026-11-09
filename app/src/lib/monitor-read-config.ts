@@ -26,6 +26,8 @@ const VIEWER_VISIBLE_KEYS: Record<Exclude<DeclaredConfigKey, ProtectedConfigKey>
   sslDaysUntilExpirationWarning: true,
   sslCheckFrequencyHours: true,
   sslLastCheckedAt: true,
+  sslCertificate: true,
+  sslProbeFailure: true,
   timeoutSeconds: true,
   regions: true,
   locationConfig: true,
