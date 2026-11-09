@@ -6,13 +6,24 @@ import { test } from 'node:test';
 import {
   MARKER,
   MAX_BYTES,
+  MAX_HEIGHT,
+  MAX_WIDTH,
   collectScreenshots,
   escapeHtml,
   renderComment,
   renderGallery,
 } from './pr-screenshots.mjs';
 
-const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
+function png(width, height) {
+  const header = Buffer.alloc(24);
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(header);
+  header.writeUInt32BE(13, 8);
+  header.write('IHDR', 12, 'latin1');
+  header.writeUInt32BE(width, 16);
+  header.writeUInt32BE(height, 20);
+  return header;
+}
+const PNG = png(1440, 900);
 const SHA = 'a'.repeat(40);
 const RUN = 'https://github.com/o/r/actions/runs/1';
 
@@ -36,6 +47,9 @@ test('collects only valid kebab-case PNGs, sorted and de-duplicated', async () =
     'g/huge.png': Buffer.concat([PNG, Buffer.alloc(MAX_BYTES)]),
     'h/x"onerror=alert(1).png': PNG,
     'i/notes.txt': 'hi',
+    'j/wide.png': png(MAX_WIDTH + 1, 10),
+    'k/tall.png': png(10, MAX_HEIGHT + 1),
+    'l/truncated.png': PNG.subarray(0, 16),
   });
   await symlink('/etc/passwd', path.join(dir, 'linked.png'));
   const shots = await collectScreenshots(dir);

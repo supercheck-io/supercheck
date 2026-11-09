@@ -23,6 +23,10 @@ const MAX_DEPTH = 6;
 const THUMBNAILS = 6;
 const NAME = /^[a-z0-9][a-z0-9-]{0,99}\.png$/;
 const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+// A tiny compressed PNG can declare a huge canvas; bound it so the gallery can't hang a browser.
+// Tour frames are 1440 wide and split below 9,000 tall.
+export const MAX_WIDTH = 4_000;
+export const MAX_HEIGHT = 10_000;
 
 export function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -32,12 +36,18 @@ export function caption(file) {
   return file.replace(/\.png$/, '').replace(/-/g, ' ');
 }
 
-async function hasPngMagic(file) {
+/** True for a PNG whose IHDR declares dimensions within the gallery limits. */
+async function isAcceptablePng(file) {
   const handle = await open(file, 'r');
   try {
-    const buffer = Buffer.alloc(PNG_MAGIC.length);
+    // Signature (8) + IHDR length (4) + "IHDR" (4) + width (4) + height (4).
+    const buffer = Buffer.alloc(24);
     const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
-    return bytesRead === PNG_MAGIC.length && buffer.equals(PNG_MAGIC);
+    if (bytesRead < 24 || !buffer.subarray(0, 8).equals(PNG_MAGIC)) return false;
+    if (buffer.toString('latin1', 12, 16) !== 'IHDR') return false;
+    const width = buffer.readUInt32BE(16);
+    const height = buffer.readUInt32BE(20);
+    return width > 0 && height > 0 && width <= MAX_WIDTH && height <= MAX_HEIGHT;
   } finally {
     await handle.close();
   }
@@ -62,11 +72,11 @@ export async function collectScreenshots(dir) {
         stat.size > 0 &&
         stat.size <= MAX_BYTES &&
         !found.has(entry.name) &&
-        (await hasPngMagic(full))
+        (await isAcceptablePng(full))
       ) {
         found.set(entry.name, full);
       } else if (stat.isFile()) {
-        console.warn(`Skipped ${JSON.stringify(entry.name)}: not a unique kebab-case PNG under ${MAX_BYTES} bytes`);
+        console.warn(`Skipped ${JSON.stringify(entry.name)}: not a unique kebab-case PNG within ${MAX_BYTES} bytes and ${MAX_WIDTH}x${MAX_HEIGHT}px`);
       }
     }
   }

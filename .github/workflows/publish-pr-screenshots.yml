@@ -115,6 +115,12 @@ jobs:
           RESULT: ${{ github.event.workflow_run.conclusion }}
           GALLERY_BASE_URL: ${{ steps.upload.outputs.base_url }}
         run: |
+          # A newer push may have landed while this run was publishing; leave the comment to its run.
+          head="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq .head.sha)"
+          if [[ "$head" != "$SHA" ]]; then
+            echo "Pull request head moved to ${head}; not updating the comment for ${SHA}."
+            exit 0
+          fi
           body="$(node .github/scripts/pr-screenshots.mjs comment "$RUNNER_TEMP/gallery")"
           marker='<!-- supercheck-pr-screenshots -->'
           comment_id="$(gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments?per_page=100" \

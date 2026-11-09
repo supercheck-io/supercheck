@@ -9,7 +9,12 @@ import { createMonitor, createTest } from '../../utils/test-data';
 import { createStatusPageThroughUi } from '../../utils/status-page-test-data';
 import { SCREENSHOT_AUTH_STATE, SCREENSHOT_SEED, SCREENSHOT_USER } from '../../utils/screenshot';
 
-setup('sign up and seed screenshot data', async ({ page }) => {
+setup('sign up and seed screenshot data', async ({ page, baseURL }) => {
+  // The tour signs up a fixed account and never cleans up, so it only targets a throwaway local app.
+  const host = new URL(baseURL ?? '').hostname;
+  if (!['localhost', '127.0.0.1', '[::1]'].includes(host)) {
+    throw new Error(`Screenshot tour only runs against a disposable local app, not ${host}`);
+  }
   const signUp = new SignUpPage(page);
   await signUp.navigate();
   await signUp.signUpWithEmail(SCREENSHOT_USER.name, SCREENSHOT_USER.email, SCREENSHOT_USER.password);

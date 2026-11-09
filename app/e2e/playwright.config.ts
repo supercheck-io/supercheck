@@ -81,7 +81,13 @@ export default defineConfig({
       {
         name: 'screenshots-setup',
         testMatch: /tests\/screenshots\/screenshots\.setup\.ts$/,
-        use: { ...devices['Desktop Chrome'], screen: undefined, viewport: { width: 1440, height: 900 } },
+        use: {
+          ...devices['Desktop Chrome'],
+          screen: undefined,
+          viewport: { width: 1440, height: 900 },
+          // A failure screenshot here would be published as a tour frame.
+          screenshot: 'off' as const,
+        },
       },
       {
         name: 'screenshots',

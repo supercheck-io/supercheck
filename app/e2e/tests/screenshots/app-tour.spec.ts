@@ -44,8 +44,11 @@ for (const colorScheme of ['light', 'dark'] as const) {
     for (const entry of PAGES.filter((p) => colorScheme === 'light' || p.dark)) {
       const shot = colorScheme === 'dark' ? `${entry.name}-dark` : entry.name;
       test(shot, async ({ page }, testInfo) => {
-        const response = await page.goto(entry.path(seed()));
+        const target = entry.path(seed());
+        const response = await page.goto(target);
         expect(response?.status() ?? 0).toBeLessThan(400);
+        // A rejected session redirects to sign-in; never publish that under this page's name.
+        expect(new URL(page.url()).pathname).toBe(target);
         await waitForHydration(page);
         await captureScreenshot(page, testInfo, shot);
       });
