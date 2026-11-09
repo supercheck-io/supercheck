@@ -168,7 +168,8 @@ export type AlertType =
   | "job_failed"
   | "job_success"
   | "job_timeout"
-  | "ssl_expiring";
+  | "ssl_expiring"
+  | "ssl_renewed";
 
 export type AlertStatus = "sent" | "failed" | "pending";
 

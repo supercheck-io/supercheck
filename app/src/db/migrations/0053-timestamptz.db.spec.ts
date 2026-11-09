@@ -63,6 +63,9 @@ beforeAll(async () => {
   await maintenance.unsafe(`ALTER DATABASE "${names.empty}" SET TimeZone = 'America/New_York'`);
   for (const name of Object.values(names)) {
     await migrate(name);
+    // 0053 is re-applied below on a database that already ran every later migration, and it converts
+    // monitors.muted_until, which 0070 dropped: put the column back as a pre-0053 database had it.
+    await withDb(name, (db) => db`ALTER TABLE monitors ADD COLUMN IF NOT EXISTS muted_until timestamp`);
     if (name === names.empty) continue; // stays empty: the guard only protects existing data
     await withDb(name, (db) =>
       db`INSERT INTO organization (id, name, created_at) VALUES (${(orgIds[name] = randomUUID())}, 'o', '2026-01-01 12:00:00')`,

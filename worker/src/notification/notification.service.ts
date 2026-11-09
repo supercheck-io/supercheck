@@ -83,6 +83,23 @@ interface WebhookConfig {
   headers?: Record<string, string>;
 }
 
+/** Notifications about a monitor: its status alerts and its SSL notices. */
+function isMonitorNotificationType(type: AlertType): boolean {
+  return (
+    type.includes('monitor') ||
+    type === 'ssl_expiring' ||
+    type === 'ssl_renewed'
+  );
+}
+
+export interface ProviderDeliveryResult {
+  provider: NotificationProvider;
+  success: boolean;
+  partial?: boolean;
+  error?: string;
+  deliveryMetadata?: AlertDeliveryMetadata;
+}
+
 export interface NotificationPayload {
   type: AlertType;
   title: string;
@@ -506,7 +523,7 @@ export class NotificationService implements OnApplicationShutdown {
 
     // Generate dashboard URLs for easy navigation - use notification pages for clean view
     let dashboardUrl: string;
-    if (payload.type.includes('monitor') || payload.type === 'ssl_expiring') {
+    if (isMonitorNotificationType(payload.type)) {
       dashboardUrl = `${baseUrl}/notification-monitor/${payload.targetId}`;
     } else if (payload.type.includes('job')) {
       dashboardUrl = `${baseUrl}/jobs`;
@@ -547,8 +564,7 @@ export class NotificationService implements OnApplicationShutdown {
     payload: NotificationPayload,
   ): FormattedNotification {
     // Standardized formatting with professional appearance - no emojis for consistency
-    const isMonitor =
-      payload.type.includes('monitor') || payload.type === 'ssl_expiring';
+    const isMonitor = isMonitorNotificationType(payload.type);
     // const __isJob = payload.type.includes('job');
 
     // Consistent title format without emojis for professional appearance
@@ -630,12 +646,11 @@ export class NotificationService implements OnApplicationShutdown {
     // Dashboard link
     if (payload.metadata?.dashboardUrl) {
       // Determine the appropriate label based on the payload type
-      const dashboardLabel =
-        payload.type.includes('monitor') || payload.type === 'ssl_expiring'
-          ? '🔗 Monitor Details'
-          : payload.type.includes('job')
-            ? '🔗 Job Details'
-            : '🔗 Dashboard';
+      const dashboardLabel = isMonitorNotificationType(payload.type)
+        ? '🔗 Monitor Details'
+        : payload.type.includes('job')
+          ? '🔗 Job Details'
+          : '🔗 Dashboard';
 
       fields.push({
         title: dashboardLabel,
@@ -748,16 +763,15 @@ export class NotificationService implements OnApplicationShutdown {
   async sendNotificationToMultipleProviders(
     providers: NotificationProvider[],
     payload: NotificationPayload,
+    /**
+     * Called as each provider's own send settles, before the slower ones finish, so a caller can record a
+     * delivery without waiting for the others. A throwing callback is logged and does not affect delivery.
+     */
+    onSettled?: (entry: ProviderDeliveryResult) => Promise<void>,
   ): Promise<{
     success: number;
     failed: number;
-    results: Array<{
-      provider: NotificationProvider;
-      success: boolean;
-      partial?: boolean;
-      error?: string;
-      deliveryMetadata?: AlertDeliveryMetadata;
-    }>;
+    results: ProviderDeliveryResult[];
   }> {
     if (!providers || providers.length === 0) {
       this.logger.warn('No providers to send notifications to');
@@ -766,38 +780,44 @@ export class NotificationService implements OnApplicationShutdown {
 
     this.logger.log(`Sending notifications to ${providers.length} providers`);
 
-    const settledResults = await Promise.allSettled(
-      providers.map((provider) =>
-        this.sendNotificationDetailed(provider, payload),
-      ),
+    const detailedResults = await Promise.all(
+      providers.map(async (provider): Promise<ProviderDeliveryResult> => {
+        let entry: ProviderDeliveryResult;
+        try {
+          const value = await this.sendNotificationDetailed(provider, payload);
+          const success = value.success;
+          entry = {
+            provider,
+            success,
+            partial: value.partial,
+            error: success
+              ? undefined
+              : (value.error ?? 'Notification send returned false'),
+            deliveryMetadata: value.deliveryMetadata,
+          };
+        } catch (reason) {
+          entry = {
+            provider,
+            success: false,
+            error: getErrorMessage(reason),
+            deliveryMetadata: this.withDeliveryMetadata(provider, payload, {
+              success: false,
+              error: getErrorMessage(reason),
+            }).deliveryMetadata,
+          };
+        }
+        if (onSettled) {
+          try {
+            await onSettled(entry);
+          } catch (error) {
+            this.logger.error(
+              `Delivery callback failed for provider ${provider.id}: ${getErrorMessage(error)}`,
+            );
+          }
+        }
+        return entry;
+      }),
     );
-
-    const detailedResults = settledResults.map((result, index) => {
-      const provider = providers[index];
-
-      if (result.status === 'fulfilled') {
-        const success = result.value.success;
-        return {
-          provider,
-          success,
-          partial: result.value.partial,
-          error: success
-            ? undefined
-            : (result.value.error ?? 'Notification send returned false'),
-          deliveryMetadata: result.value.deliveryMetadata,
-        };
-      }
-
-      return {
-        provider,
-        success: false,
-        error: getErrorMessage(result.reason),
-        deliveryMetadata: this.withDeliveryMetadata(provider, payload, {
-          success: false,
-          error: getErrorMessage(result.reason),
-        }).deliveryMetadata,
-      };
-    });
 
     const success = detailedResults.filter((entry) => entry.success).length;
     const failed = detailedResults.length - success;
@@ -921,6 +941,8 @@ export class NotificationService implements OnApplicationShutdown {
     switch (payload.type) {
       case 'monitor_recovery':
         return 'recovery';
+      case 'ssl_renewed':
+        return 'success';
       case 'job_success':
         return 'success';
       case 'job_failed':
@@ -1345,7 +1367,9 @@ export class NotificationService implements OnApplicationShutdown {
     }
 
     switch (payload.type) {
+      // A renewed certificate closes the SSL warning (same dedup key, see getWebhookDedupScope).
       case 'monitor_recovery':
+      case 'ssl_renewed':
         return 'resolve';
       case 'monitor_failure':
       case 'job_failed':
@@ -1401,7 +1425,7 @@ export class NotificationService implements OnApplicationShutdown {
       return 'job';
     }
 
-    if (payload.type === 'ssl_expiring') {
+    if (payload.type === 'ssl_expiring' || payload.type === 'ssl_renewed') {
       return 'ssl';
     }
 

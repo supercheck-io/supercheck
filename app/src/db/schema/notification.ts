@@ -6,6 +6,7 @@
 
 import {
   integer,
+  smallint,
   pgTable,
   text,
   varchar,
@@ -90,6 +91,10 @@ export const alertHistory = pgTable(
     jobId: uuid("job_id").references(() => jobs.id, { onDelete: "cascade" }),
     // The run that raised a job alert. Deliberately not a foreign key: deleting a run must not scan this table.
     runId: uuid("run_id"),
+    // Monitor alert claims (see alertHistoryMonitorClaimUidx). NULL on job alerts, SSL notices and rows written by older workers.
+    outageKey: uuid("outage_key"),
+    alertOrdinal: smallint("alert_ordinal"),
+    claimAttempts: smallint("claim_attempts"),
     provider: varchar("provider", { length: 100 }).notNull(),
     status: varchar("status", { length: 50 })
       .$type<AlertStatus>()
@@ -107,9 +112,13 @@ export const alertHistory = pgTable(
     alertHistoryJobRunProviderUidx: uniqueIndex("alert_history_job_run_provider_uidx")
       .on(table.jobId, table.runId, table.provider)
       .where(sql`${table.type} IN ('job_failed', 'job_timeout') AND ${table.runId} IS NOT NULL`),
+    // One claim per monitor, outage, alert type, alert number and provider: concurrent evaluators and retries cannot send the same alert twice.
+    alertHistoryMonitorClaimUidx: uniqueIndex("alert_history_monitor_claim_uidx")
+      .on(table.monitorId, table.outageKey, table.type, table.alertOrdinal, table.provider)
+      .where(sql`${table.outageKey} IS NOT NULL AND ${table.alertOrdinal} IS NOT NULL`),
     alertHistoryMonitorSentIdx: index("alert_history_monitor_sent_idx").on(table.monitorId, table.sentAt.desc().nullsFirst()),
     alertHistoryTargetRequired: check("alert_history_target_required_check", sql`monitor_id IS NOT NULL OR job_id IS NOT NULL`),
-    alertHistoryTypeCheck: check("alert_history_type_check", sql`${table.type} IN ('monitor_failure', 'monitor_recovery', 'job_failed', 'job_success', 'job_timeout', 'ssl_expiring')`),
+    alertHistoryTypeCheck: check("alert_history_type_check", sql`${table.type} IN ('monitor_failure', 'monitor_recovery', 'job_failed', 'job_success', 'job_timeout', 'ssl_expiring', 'ssl_renewed')`),
     alertHistoryStatusCheck: check("alert_history_status_check", sql`${table.status} IN ('sent', 'failed', 'pending')`),
   })
 );

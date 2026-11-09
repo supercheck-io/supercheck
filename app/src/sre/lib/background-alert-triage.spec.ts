@@ -322,6 +322,12 @@ describe("processSreBackgroundAlertTriageJob", () => {
       expect(insertedIncident()).toBeUndefined();
     });
 
+    it("never opens or resolves an incident for the informational SSL renewed notice", async () => {
+      selectQueue.push([alertRow({ type: "ssl_renewed" })]);
+      expect(await processSreBackgroundAlertTriageJob(JOB)).toEqual({ success: true, skipped: true, reason: "informational_alert" });
+      expect(insertedIncident()).toBeUndefined();
+    });
+
     it("reopens a recently auto-resolved incident instead of creating one", async () => {
       (reopenRecentlyAutoResolved as jest.Mock).mockResolvedValue({ incidentId: "inc-old", assigneeUserId: "u1", alreadyTriaged: true });
       selectQueue.push([alertRow()]);

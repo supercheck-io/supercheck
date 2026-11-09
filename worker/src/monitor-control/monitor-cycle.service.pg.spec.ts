@@ -430,7 +430,20 @@ suite('MonitorCycleService (PostgreSQL)', () => {
       'failure',
       expect.stringContaining('no results from'),
       expect.anything(),
+      // The key was minted when the cycle closed and is the one committed with the counters.
+      { outageKey: expect.any(String), ordinal: 0 },
     );
+    const [stored] = await db
+      .select()
+      .from(schema.monitors)
+      .where(eq(schema.monitors.id, monitorId));
+    expect(
+      (
+        stored.config as {
+          aggregatedAlertState?: { outageKey?: string };
+        }
+      ).aggregatedAlertState?.outageKey,
+    ).toBe(sendNotification.mock.calls[0][4].outageKey);
   });
 
   it('can repair a notification after a crash between closure and delivery', async () => {
@@ -469,6 +482,7 @@ suite('MonitorCycleService (PostgreSQL)', () => {
       'failure',
       expect.any(String),
       expect.objectContaining({ observedAt }),
+      { outageKey: expect.any(String), ordinal: 0 },
     );
   });
 

@@ -203,6 +203,43 @@ describe('notification provider resources', () => {
     })
   })
 
+  it('drops worker-owned monitor state so it never shows up as drift', async () => {
+    const client = {
+      get: async (endpoint: string) => {
+        if (endpoint === '/api/monitors') {
+          return {
+            data: {
+              data: [
+                {
+                  id: '019efa02-c173-7608-9c9d-7e5bc3661fb9',
+                  name: 'Site',
+                  type: 'website',
+                  target: 'https://example.com',
+                  config: {
+                    timeoutSeconds: 30,
+                    sslLastCheckedAt: 't',
+                    sslCertificate: { valid: true },
+                    sslProbeFailure: { since: 't', host: 'example.com' },
+                    sslAlertState: { id: 'w', host: 'example.com', warnedAt: 't' },
+                    aggregatedAlertState: { consecutiveFailureCount: 1 },
+                  },
+                },
+              ],
+              pagination: { totalPages: 1 },
+            },
+          }
+        }
+        if (endpoint === '/api/notification-providers' || endpoint === '/api/variables' || endpoint === '/api/tags') {
+          return { data: [] }
+        }
+        return paginatedEmptyResponse()
+      },
+    } as unknown as ApiClient
+
+    const monitor = (await fetchRemoteResources(client)).find((r) => r.type === 'monitor')
+    expect(monitor?.raw.config).toEqual({ timeoutSeconds: 30 })
+  })
+
   it('maps notification providers to the provider API endpoint', () => {
     expect(getApiEndpoint('notificationProvider')).toBe('/api/notification-providers')
   })

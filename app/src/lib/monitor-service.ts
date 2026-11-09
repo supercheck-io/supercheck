@@ -15,7 +15,7 @@ import {
 } from "@/lib/monitor-scheduler";
 import { eq } from "drizzle-orm";
 import { ResumeRefusedError, withResumeWithinPlan } from "@/lib/middleware/plan-enforcement";
-import { assertKeptProvidersValid, MonitorScheduleError, preserveWorkerConfigKeys, scheduleOutOfSync, syncMonitorProviderRows, WORKER_OWNED_CONFIG_KEYS } from "@/lib/monitor-write";
+import { assertKeptProvidersValid, MonitorScheduleError, dropStaleSslAlertState, preserveWorkerConfigKeys, scheduleOutOfSync, syncMonitorProviderRows, WORKER_OWNED_CONFIG_KEYS } from "@/lib/monitor-write";
 import { reconcileMonitorSchedule } from "@/lib/monitor-schedule-reconcile";
 
 // This is a conceptual service layer, actual Next.js API routes would call these functions.
@@ -185,6 +185,14 @@ export async function updateMonitorHandler(
   }
   if (data.enabled !== undefined) updateData.enabled = data.enabled;
   if (data.alertConfig !== undefined) updateData.alertConfig = data.alertConfig;
+  // The saved settings decide whether a pending SSL renewed notice may still fire.
+  if (data.config !== undefined || data.alertConfig !== undefined) {
+    const effective = dropStaleSslAlertState(
+      updateData.config ?? existingMonitor.config,
+      updateData.alertConfig === undefined ? existingMonitor.alertConfig : updateData.alertConfig,
+    );
+    if (effective !== (updateData.config ?? existingMonitor.config)) updateData.config = effective;
+  }
   // Do not include organizationId or createdByUserId in updates usually, unless specifically intended
 
   updateData.updatedAt = new Date();

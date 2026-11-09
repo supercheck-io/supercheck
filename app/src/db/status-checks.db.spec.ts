@@ -85,7 +85,7 @@ const CHECKED: Array<[string, string, string[], boolean?]> = [
   ["monitors", "status", ["up", "down", "paused", "pending", "maintenance", "error"]],
   ["monitor_results", "status", ["up", "down", "error", "timeout"]],
   ["notification_providers", "type", ["email", "slack", "webhook", "telegram", "discord", "teams"]],
-  ["alert_history", "type", ["monitor_failure", "monitor_recovery", "job_failed", "job_success", "job_timeout", "ssl_expiring"]],
+  ["alert_history", "type", ["monitor_failure", "monitor_recovery", "job_failed", "job_success", "job_timeout", "ssl_expiring", "ssl_renewed"]],
   ["alert_history", "status", ["sent", "failed", "pending"]],
   ["organization", "subscription_plan", ["plus", "pro", "unlimited"], true],
   ["organization", "subscription_status", ["active", "canceled", "past_due", "none"], true],

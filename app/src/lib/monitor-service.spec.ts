@@ -154,6 +154,42 @@ describe("updateMonitorHandler write safety", () => {
     }));
   });
 
+  describe("pending SSL renewed state (worker-owned, deletion only)", () => {
+    const warned = { id: "w1", host: "example.com", warnedAt: "t" };
+    const sslOn = { enabled: true, alertOnSslExpiration: true };
+    const stored = { ...existing, config: { ...existing.config, enableSslCheck: true, sslAlertState: warned }, alertConfig: sslOn };
+    const written = async (changes: Record<string, unknown>) => {
+      (db.query.monitors.findFirst as jest.Mock).mockResolvedValue(stored);
+      const c = chain({ ...stored });
+      (db.update as jest.Mock).mockReturnValue(c);
+      await updateMonitorHandler(stored.id, changes as never);
+      return (c.set as jest.Mock).mock.calls[0][0] as { config?: Record<string, unknown> };
+    };
+
+    it("keeps it while SSL alerts stay on, even when config is replaced", async () => {
+      const set = await written({ config: { timeoutSeconds: 10, enableSslCheck: true } });
+      expect(set.config).toMatchObject({ sslAlertState: warned });
+    });
+
+    it.each([
+      ["SSL Check is turned off in config", { config: { timeoutSeconds: 10, enableSslCheck: false } }],
+      ["SSL alerts are turned off", { alertConfig: { ...sslOn, alertOnSslExpiration: false } }],
+      ["alerts are turned off", { alertConfig: { ...sslOn, enabled: false } }],
+      ["alerts are removed", { alertConfig: null }],
+    ])("drops it when %s, at write time", async (_name, changes) => {
+      const set = await written(changes);
+      expect(set.config).toBeDefined();
+      expect(set.config).not.toHaveProperty("sslAlertState");
+      // Everything else worker-owned is still kept.
+      expect(set.config).toMatchObject({ aggregatedAlertState: { n: 4 }, sslCertificate: { valid: true } });
+    });
+
+    it("never lets a client forge it", async () => {
+      const set = await written({ config: { enableSslCheck: true, sslAlertState: { id: "forged" } } });
+      expect(set.config).toMatchObject({ sslAlertState: warned });
+    });
+  });
+
   it("does not reschedule when only worker bookkeeping differs (c2)", async () => {
     (db.update as jest.Mock).mockReturnValue(chain({ ...existing }));
     await updateMonitorHandler(existing.id, { config: { timeoutSeconds: 30 } });

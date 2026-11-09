@@ -10,7 +10,7 @@ import { sanitizeString } from "@/lib/input-sanitizer";
 import catalog from "@/lib/billing/plan-catalog.json";
 
 /** Config keys the worker writes. A client replacing `config` must not wipe or forge them. */
-export const WORKER_OWNED_CONFIG_KEYS = ["aggregatedAlertState", "sslLastCheckedAt", "sslCertificate", "sslProbeFailure"] as const;
+export const WORKER_OWNED_CONFIG_KEYS = ["aggregatedAlertState", "sslLastCheckedAt", "sslCertificate", "sslProbeFailure", "sslAlertState"] as const;
 
 export function preserveWorkerConfigKeys<T extends MonitorConfig | null | undefined>(
   existing: MonitorConfig | null | undefined,
@@ -24,6 +24,24 @@ export function preserveWorkerConfigKeys<T extends MonitorConfig | null | undefi
     else merged[key] = stored;
   }
   return merged as T;
+}
+
+/**
+ * Drops the worker's pending "SSL certificate renewed" state when the saved settings no longer send SSL
+ * alerts (SSL Check or SSL alerts off, or alerts off). Deletion is the only client-side change to a worker-owned
+ * key, and it happens at write time so an old warning cannot fire a notice after the settings are turned back on.
+ */
+export function dropStaleSslAlertState<T extends MonitorConfig | null | undefined>(
+  config: T,
+  alertConfig: { enabled?: boolean; alertOnSslExpiration?: boolean } | null | undefined,
+): T {
+  const stored = (config as Record<string, unknown> | null | undefined)?.sslAlertState;
+  if (stored === undefined) return config;
+  const sslAlertsOn =
+    (config as MonitorConfig).enableSslCheck === true && alertConfig?.enabled === true && alertConfig.alertOnSslExpiration === true;
+  if (sslAlertsOn) return config;
+  const { sslAlertState: _dropped, ...rest } = config as Record<string, unknown>;
+  return rest as T;
 }
 
 type Raw = Record<string, unknown>;

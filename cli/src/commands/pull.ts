@@ -393,6 +393,7 @@ export function buildMonitorDefinitions(
       delete config.sslLastCheckedAt
       delete config.sslCertificate
       delete config.sslProbeFailure
+      delete config.sslAlertState
       delete config.aggregatedAlertState
       // Legacy keys no check evaluates; the server now rejects them on write, so a pulled config must not carry them.
       for (const key of UNEVALUATED_MONITOR_CONFIG_KEYS) delete config[key]

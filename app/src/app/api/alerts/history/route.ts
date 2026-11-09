@@ -344,7 +344,8 @@ export async function POST(request: NextRequest) {
       'job_failed',
       'job_success',
       'job_timeout',
-      'ssl_expiring'
+      'ssl_expiring',
+      'ssl_renewed'
     ];
     if (!validAlertTypes.includes(body.type)) {
       return NextResponse.json(

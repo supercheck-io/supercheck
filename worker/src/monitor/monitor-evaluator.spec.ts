@@ -524,6 +524,7 @@ describe('incident-only monitors (alerts off or no channel)', () => {
       'failure',
       'down',
       expect.objectContaining({ observedAt: observedAt.toISOString() }),
+      undefined, // no outage key on the stored result: sent unclaimed
     );
   });
 
@@ -1197,8 +1198,11 @@ describe('state carry-over across outages', () => {
       executionGroupId: 'g1',
     });
     const q = sets.map((c) => new PgDialect().sqlToQuery(c).sql);
+    // The manual run persists its freshly minted outage key before sending, then the counters after.
+    expect(q).toHaveLength(3);
     expect(q[0]).not.toContain('GREATEST');
-    expect(q[1]).toContain('GREATEST');
+    expect(q[1]).not.toContain('GREATEST');
+    expect(q[2]).toContain('GREATEST');
   });
 });
 
@@ -1216,7 +1220,7 @@ describe('MonitorEvaluator.checkSslExpirationAlert', () => {
       { monitorId: 'm1', details, responseTimeMs: 1, isUp } as never,
       {
         alertConfig: { enabled: true, alertOnSslExpiration: true },
-        config: { sslDaysUntilExpirationWarning: 30 },
+        config: { enableSslCheck: true, sslDaysUntilExpirationWarning: 30 },
       } as never,
     );
     return alertService.sendSslExpirationNotification;
@@ -1280,7 +1284,7 @@ describe('MonitorEvaluator.checkSslExpirationAlert', () => {
       } as never,
       {
         alertConfig: { enabled: true, alertOnSslExpiration: true },
-        config: { sslDaysUntilExpirationWarning: 30 },
+        config: { enableSslCheck: true, sslDaysUntilExpirationWarning: 30 },
       } as never,
     );
     expect(alertService.sendSslExpirationNotification).toHaveBeenCalledWith(
@@ -1299,5 +1303,535 @@ describe('MonitorEvaluator.checkSslExpirationAlert', () => {
       'SSL certificate expires in 10 days',
       expect.anything(),
     );
+  });
+});
+
+describe('outage key in aggregated alert state', () => {
+  const evaluator = new MonitorEvaluator({ db: {} } as never, {} as never);
+  const KEY = '0194a1c0-0000-7000-8000-000000000001';
+  const base = {
+    consecutiveFailureCount: 3,
+    consecutiveSuccessCount: 0,
+    alertsSentForFailure: 0,
+    alertsSentForRecovery: 0,
+  };
+
+  it('mints a key where a failure sequence starts and keeps it while it continues', () => {
+    const first = evaluator.getNextAggregatedAlertState(base, 'up', 'down');
+    expect(first.outageKey).toMatch(/^[0-9a-f-]{36}$/);
+    const second = evaluator.getNextAggregatedAlertState(first, 'down', 'down');
+    expect(second.outageKey).toBe(first.outageKey);
+    // A different outage never reuses the key, even from the same stored state.
+    expect(
+      evaluator.getNextAggregatedAlertState(first, 'up', 'down').outageKey,
+    ).not.toBe(first.outageKey);
+  });
+
+  it('a new outage never reuses the key of a recovered one, even from an up-state frozen with it', () => {
+    const k1 = evaluator.getNextAggregatedAlertState(
+      base,
+      'up',
+      'down',
+    ).outageKey;
+    const recovered = evaluator.getNextAggregatedAlertState(
+      { ...base, outageKey: k1, alertsSentForFailure: 1 },
+      'down',
+      'up',
+    );
+    expect(recovered.outageKey).toBe(k1);
+    // Status says down (e.g. counting was skipped after the recovery) but the state is the up-state.
+    const next = evaluator.getNextAggregatedAlertState(
+      recovered,
+      'down',
+      'down',
+    );
+    expect(next.consecutiveFailureCount).toBe(1);
+    expect(next.outageKey).toMatch(/^[0-9a-f-]{36}$/);
+    expect(next.outageKey).not.toBe(k1);
+  });
+
+  it('gives a sequence that has no key one when counting resumes mid-outage', () => {
+    const next = evaluator.getNextAggregatedAlertState(base, 'down', 'down');
+    expect(next.outageKey).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it('the recovery keeps the key of the outage it ends, until the next outage', () => {
+    const up = evaluator.getNextAggregatedAlertState(
+      { ...base, outageKey: KEY },
+      'down',
+      'up',
+    );
+    expect(up.outageKey).toBe(KEY);
+    expect(
+      evaluator.getNextAggregatedAlertState(up, 'up', 'up').outageKey,
+    ).toBe(KEY);
+    // No key to carry (older state): none is invented for a recovery.
+    expect(
+      evaluator.getNextAggregatedAlertState(base, 'down', 'up').outageKey,
+    ).toBeUndefined();
+  });
+
+  it('drops the key for cycles that were not counted, so a later outage cannot reuse it', () => {
+    const state = evaluator.advanceAggregatedAlertState(
+      false,
+      { aggregatedAlertState: { ...base, outageKey: KEY } },
+      'down',
+      'down',
+    );
+    expect(state.outageKey).toBeUndefined();
+    expect(state.failureCountUnknown).toBe(true);
+  });
+
+  it('reads only a well-formed key back from stored state', () => {
+    const read = (outageKey: unknown) =>
+      evaluator.readAggregatedAlertState({
+        aggregatedAlertState: { ...base, outageKey },
+      }).outageKey;
+    expect(read(KEY)).toBe(KEY);
+    expect(read('not-a-uuid')).toBeUndefined();
+    expect(read(7)).toBeUndefined();
+  });
+});
+
+describe('claims passed with alerts', () => {
+  const KEY = '0194a1c0-0000-7000-8000-000000000002';
+  const alertConfig = {
+    enabled: true,
+    alertOnFailure: true,
+    alertOnRecovery: true,
+    failureThreshold: 1,
+    recoveryThreshold: 1,
+  };
+
+  function setup(notification: Record<string, unknown>, ac = alertConfig) {
+    const latest = {
+      id: 'r1',
+      consecutiveFailureCount: 1,
+      consecutiveSuccessCount: 0,
+      alertsSentForFailure: 0,
+      alertsSentForRecovery: 0,
+      details: { outageKey: KEY } as Record<string, unknown>,
+    };
+    const dbService = {
+      db: {
+        query: { monitorResults: { findFirst: jest.fn(async () => latest) } },
+        update: jest.fn(() => ({
+          set: jest.fn(() => ({ where: jest.fn() })),
+        })),
+      },
+    };
+    const alertService = {
+      sendNotification: jest.fn(async () => notification),
+      signalFailure: jest.fn(async () => ({ delivered: false })),
+      signalRecovery: jest.fn(async () => true),
+    };
+    const evaluator = new MonitorEvaluator(
+      dbService as never,
+      alertService as never,
+    );
+    const persist = jest
+      .spyOn(evaluator, 'persistAggregatedAlertState')
+      .mockResolvedValue(true);
+    const call = (over: Record<string, unknown> = {}) =>
+      evaluator.evaluateAndSendAlert({
+        monitorId: 'm1',
+        monitor: { alertConfig: ac, config: {} } as never,
+        previousStatus: 'down',
+        currentStatus: 'down',
+        reason: 'down',
+        metadata: {},
+        ...over,
+      } as never);
+    return { latest, alertService, persist, call, dbService };
+  }
+
+  it('claims window j of the result row outage key for a failure alert', async () => {
+    const { alertService, call } = setup({ delivered: true });
+    await call();
+    expect(alertService.sendNotification).toHaveBeenCalledWith(
+      'm1',
+      'failure',
+      'down',
+      expect.anything(),
+      { outageKey: KEY, ordinal: 0 },
+    );
+  });
+
+  it('ignores a malformed key on the result row and sends unclaimed', async () => {
+    const { alertService, call, latest } = setup({ delivered: true });
+    latest.details.outageKey = 'nope';
+    await call();
+    expect(alertService.sendNotification).toHaveBeenCalledWith(
+      'm1',
+      'failure',
+      'down',
+      expect.anything(),
+      undefined,
+    );
+  });
+
+  it('claims ordinal 0 for the recovery alert', async () => {
+    const { alertService, call, latest } = setup({ delivered: true });
+    latest.consecutiveFailureCount = 0;
+    latest.consecutiveSuccessCount = 1;
+    await call({ previousStatus: 'down', currentStatus: 'up' });
+    expect(alertService.sendNotification).toHaveBeenCalledWith(
+      'm1',
+      'recovery',
+      'down',
+      expect.anything(),
+      { outageKey: KEY, ordinal: 0 },
+    );
+  });
+
+  it('makes no claim for an incident-only monitor', async () => {
+    const { alertService, call } = setup({}, {
+      enabled: false,
+      incidentEnabled: true,
+    } as never);
+    await call();
+    expect(alertService.signalFailure).toHaveBeenCalled();
+    expect(alertService.sendNotification).not.toHaveBeenCalled();
+  });
+
+  it('catches the counters up, without reporting a send, when every provider already had the alert', async () => {
+    const { call, dbService, alertService } = setup({
+      delivered: true,
+      alreadySent: true,
+    });
+    const res = await call();
+    expect(res).toEqual({ alertSent: false });
+    expect(alertService.sendNotification).toHaveBeenCalledTimes(1);
+    // The window is consumed on the result row (GREATEST) like a normal delivery.
+    expect(dbService.db.update).toHaveBeenCalled();
+  });
+
+  it('treats an alert every channel gave up on as terminal for its window: consumed, not retried, not reported sent', async () => {
+    const { call, dbService } = setup({ delivered: false, gaveUp: true });
+    expect(await call()).toEqual({ alertSent: false });
+    // The window is consumed on the result row like a delivery, so the next check moves on.
+    expect(dbService.db.update).toHaveBeenCalled();
+  });
+
+  it('consumes the recovery claim of an alert that was given up too', async () => {
+    const { call, latest, dbService } = setup({
+      delivered: false,
+      gaveUp: true,
+    });
+    latest.consecutiveFailureCount = 0;
+    latest.consecutiveSuccessCount = 1;
+    expect(await call({ previousStatus: 'down', currentStatus: 'up' })).toEqual(
+      {
+        alertSent: false,
+      },
+    );
+    expect(dbService.db.update).toHaveBeenCalled();
+  });
+
+  it('treats an alert another evaluator is sending as neither delivered nor failed', async () => {
+    const { call, dbService } = setup({
+      delivered: false,
+      suppressed: true,
+      reason: 'claimed',
+    });
+    expect(await call()).toEqual({ alertSent: false });
+    expect(dbService.db.update).not.toHaveBeenCalled();
+  });
+
+  it('retries a recovery held by another evaluator, since it has no later window to fall back on', async () => {
+    const { call, latest } = setup({
+      delivered: false,
+      suppressed: true,
+      reason: 'claimed',
+    });
+    latest.consecutiveFailureCount = 0;
+    latest.consecutiveSuccessCount = 1;
+    expect(await call({ previousStatus: 'down', currentStatus: 'up' })).toEqual(
+      {
+        alertSent: false,
+        deliveryFailed: true,
+      },
+    );
+  });
+
+  it('defers the alert, sending nothing, when the key it minted for a manual run cannot be persisted', async () => {
+    const { call, persist, alertService } = setup({ delivered: true });
+    persist.mockResolvedValueOnce(false);
+    expect(await call({ metadata: { locationResults: [{}, {}] } })).toEqual({
+      alertSent: false,
+      deliveryFailed: true,
+    });
+    expect(alertService.sendNotification).not.toHaveBeenCalled();
+  });
+
+  it('persists a key it minted for a manual multi-location run before sending under it', async () => {
+    const { call, persist, alertService } = setup({ delivered: true });
+    await call({ metadata: { locationResults: [{}, {}] } });
+    const order = [
+      persist.mock.invocationCallOrder[0],
+      alertService.sendNotification.mock.invocationCallOrder[0],
+    ];
+    expect(order[0]).toBeLessThan(order[1]);
+    expect(persist.mock.calls[0][1]).toMatchObject({
+      outageKey: expect.any(String),
+    });
+  });
+});
+
+describe('SSL renewed notice', () => {
+  const STATE_ID = '0194a1c0-0000-7000-8000-000000000003';
+  const warned = {
+    id: STATE_ID,
+    host: 'example.com',
+    validTo: '2026-12-01T00:00:00.000Z',
+    warnedAt: '2026-11-20T00:00:00.000Z',
+  };
+  const healthy = {
+    valid: true,
+    daysRemaining: 80,
+    validTo: '2027-02-01T00:00:00.000Z',
+  };
+
+  function setup(
+    opts: { delivered?: boolean; gaveUp?: boolean; dbFails?: boolean } = {},
+  ) {
+    const sets: SQL[] = [];
+    const update = jest.fn(() => ({
+      set: jest.fn((v: { config: SQL }) => {
+        sets.push(v.config);
+        return {
+          where: opts.dbFails
+            ? jest.fn(async () => {
+                throw new Error('db down');
+              })
+            : jest.fn(),
+        };
+      }),
+    }));
+    const alertService = {
+      sendSslExpirationNotification: jest.fn(async () => true),
+      sendSslRenewedNotification: jest.fn(async () => ({
+        delivered: opts.delivered ?? true,
+        ...(opts.gaveUp ? { gaveUp: true } : {}),
+      })),
+    };
+    const evaluator = new MonitorEvaluator(
+      { db: { update } } as never,
+      alertService as never,
+    );
+    jest.spyOn(evaluator, 'getLastSslAlert').mockResolvedValue(null);
+    const check = (
+      certificate: Record<string, unknown> | undefined,
+      config: Record<string, unknown> = { sslAlertState: warned },
+      target = 'https://example.com/health',
+      alertConfig: Record<string, unknown> = {
+        enabled: true,
+        alertOnSslExpiration: true,
+      },
+    ) =>
+      evaluator.checkSslExpirationAlert(
+        {
+          monitorId: 'm1',
+          details: certificate ? { sslCertificate: certificate } : {},
+          responseTimeMs: 1,
+          isUp: true,
+          checkedAt: new Date('2026-12-05T00:00:00Z'),
+        } as never,
+        {
+          id: 'm1',
+          target,
+          alertConfig,
+          config: {
+            enableSslCheck: true,
+            sslDaysUntilExpirationWarning: 30,
+            ...config,
+          },
+        } as never,
+      );
+    return { alertService, check, sets, update };
+  }
+
+  it('sends one notice with the new expiry date, claimed under the warning id, and closes the warning', async () => {
+    const { alertService, check, sets } = setup();
+    await check(healthy);
+    expect(alertService.sendSslRenewedNotification).toHaveBeenCalledWith(
+      'm1',
+      'SSL certificate renewed (valid until 2027-02-01)',
+      expect.objectContaining({ daysRemaining: 80 }),
+      { outageKey: STATE_ID, ordinal: 0 },
+    );
+    // The renewal consumed this read: no warning goes out beside it.
+    expect(alertService.sendSslExpirationNotification).not.toHaveBeenCalled();
+    expect(new PgDialect().sqlToQuery(sets[0]).sql).toContain(
+      "- 'sslAlertState'",
+    );
+  });
+
+  it('counts a later expiry as renewed even while still inside the warning window', async () => {
+    const { alertService, check } = setup();
+    await check({
+      valid: true,
+      daysRemaining: 20,
+      validTo: '2026-12-25T00:00:00.000Z',
+    });
+    expect(alertService.sendSslRenewedNotification).toHaveBeenCalled();
+  });
+
+  it('does not call it renewed while the warned certificate is still the one in use', async () => {
+    const { alertService, check } = setup();
+    await check({ valid: true, daysRemaining: 10, validTo: warned.validTo });
+    expect(alertService.sendSslRenewedNotification).not.toHaveBeenCalled();
+    // The warning itself still goes out.
+    expect(alertService.sendSslExpirationNotification).toHaveBeenCalled();
+  });
+
+  it('does not call a read renewed when it cannot show the expiry moved later than the warned one', async () => {
+    const { alertService, check } = setup();
+    await check({ valid: true, daysRemaining: 80, validTo: undefined });
+    await check({ valid: true, daysRemaining: 80, validTo: 'garbage' });
+    expect(alertService.sendSslRenewedNotification).not.toHaveBeenCalled();
+  });
+
+  it('does not call the warned certificate renewed because the warning window was lowered', async () => {
+    const { alertService, check } = setup();
+    await check(
+      { valid: true, daysRemaining: 40, validTo: warned.validTo },
+      { sslAlertState: warned, sslDaysUntilExpirationWarning: 7 },
+    );
+    expect(alertService.sendSslRenewedNotification).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['an untrusted certificate', { ...healthy, valid: false }],
+    ['an expired certificate', { ...healthy, daysRemaining: 0 }],
+    ['a read with no day count', { valid: true, validTo: healthy.validTo }],
+  ])('does not call %s renewed', async (_name, certificate) => {
+    const { alertService, check } = setup();
+    await check(certificate);
+    expect(alertService.sendSslRenewedNotification).not.toHaveBeenCalled();
+  });
+
+  it('sends no SSL alert at all once SSL Check is off, for a read that was already in flight', async () => {
+    const { alertService, check } = setup();
+    await check(
+      { valid: true, daysRemaining: 5, validTo: warned.validTo },
+      { sslAlertState: undefined, enableSslCheck: false },
+    );
+    await check(
+      { valid: true, daysRemaining: 5, validTo: warned.validTo },
+      { enableSslCheck: false },
+    );
+    expect(alertService.sendSslExpirationNotification).not.toHaveBeenCalled();
+    expect(alertService.sendSslRenewedNotification).not.toHaveBeenCalled();
+  });
+
+  it('sends nothing when no warning was ever sent, or the read has no certificate', async () => {
+    const { alertService, check } = setup();
+    await check(healthy, {});
+    await check(undefined);
+    expect(alertService.sendSslRenewedNotification).not.toHaveBeenCalled();
+  });
+
+  it('ignores a stored state with a malformed id', async () => {
+    const { alertService, check } = setup();
+    await check(healthy, { sslAlertState: { ...warned, id: 'x' } });
+    expect(alertService.sendSslRenewedNotification).not.toHaveBeenCalled();
+  });
+
+  it('drops the warning of another host instead of announcing a renewal for it', async () => {
+    const { alertService, check, sets } = setup();
+    await check(healthy, undefined, 'https://other.example.org');
+    expect(alertService.sendSslRenewedNotification).not.toHaveBeenCalled();
+    expect(new PgDialect().sqlToQuery(sets[0]).sql).toContain(
+      "- 'sslAlertState'",
+    );
+  });
+
+  it('keeps the warning open when the notice was not delivered, so the next read retries', async () => {
+    const { check, update } = setup({ delivered: false });
+    await check(healthy);
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('words the notice as readable again when the warning was that no certificate could be read', async () => {
+    const { alertService, check } = setup();
+    await check(healthy, {
+      sslAlertState: { ...warned, validTo: undefined },
+    });
+    expect(alertService.sendSslRenewedNotification).toHaveBeenCalledWith(
+      'm1',
+      'SSL certificate readable again (valid until 2027-02-01)',
+      expect.objectContaining({ readableAgain: true }),
+      { outageKey: STATE_ID, ordinal: 0 },
+    );
+  });
+
+  it('words the notice without a date when the certificate has none', async () => {
+    const { alertService, check } = setup();
+    await check(
+      { valid: true, daysRemaining: 80, validTo: undefined },
+      { sslAlertState: { ...warned, validTo: undefined } },
+    );
+    expect(alertService.sendSslRenewedNotification).toHaveBeenCalledWith(
+      'm1',
+      'SSL certificate readable again',
+      expect.anything(),
+      expect.anything(),
+    );
+  });
+
+  it('clears the warning when the notice was given up, so it is not claimed on every check', async () => {
+    const { check, sets } = setup({ delivered: false, gaveUp: true });
+    await check(healthy);
+    expect(sets).toHaveLength(1);
+    expect(new PgDialect().sqlToQuery(sets[0]).sql).toContain(
+      "- 'sslAlertState'",
+    );
+  });
+
+  it.each([
+    [
+      'SSL alerts are turned off',
+      { enabled: true, alertOnSslExpiration: false },
+      { sslAlertState: warned, enableSslCheck: true },
+    ],
+    [
+      'alerts are turned off',
+      { enabled: false, alertOnSslExpiration: true },
+      { sslAlertState: warned, enableSslCheck: true },
+    ],
+    [
+      'SSL Check is turned off',
+      { enabled: true, alertOnSslExpiration: true },
+      { sslAlertState: warned, enableSslCheck: false },
+    ],
+  ])(
+    'drops the stored warning when %s, so a stale notice cannot fire later',
+    async (_name, alertConfig, config) => {
+      const { alertService, check, sets } = setup();
+      await check(healthy, config, undefined, alertConfig);
+      expect(alertService.sendSslRenewedNotification).not.toHaveBeenCalled();
+      expect(sets).toHaveLength(1);
+      expect(new PgDialect().sqlToQuery(sets[0]).sql).toContain(
+        "- 'sslAlertState'",
+      );
+    },
+  );
+
+  it('records the warning once delivered: same host keeps the first episode, a new host starts one', async () => {
+    const { check, sets } = setup();
+    await check({ valid: true, daysRemaining: 5, validTo: warned.validTo }, {});
+    const q = new PgDialect().sqlToQuery(sets[0]);
+    expect(q.sql).toContain("jsonb_build_object('sslAlertState'");
+    expect(q.params).toEqual(expect.arrayContaining(['example.com']));
+    expect(q.params.join(' ')).toContain(warned.validTo);
+  });
+
+  it('survives database errors while recording or clearing the warning state', async () => {
+    const { alertService, check } = setup({ dbFails: true });
+    await check(healthy);
+    await check({ valid: true, daysRemaining: 5, validTo: warned.validTo }, {});
+    expect(alertService.sendSslRenewedNotification).toHaveBeenCalled();
+    expect(alertService.sendSslExpirationNotification).toHaveBeenCalled();
   });
 });

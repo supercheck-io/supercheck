@@ -26,6 +26,7 @@ const typeTones: Record<string, TableBadgeTone> = {
   monitor_failure: "danger",
   monitor_recovery: "success",
   ssl_expiring: "warning",
+  ssl_renewed: "success",
 };
 
 // Separate component for notification provider cell to fix React hooks issue

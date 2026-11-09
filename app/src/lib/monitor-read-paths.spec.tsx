@@ -37,7 +37,7 @@ const stored = {
   projectId: 'project-1', organizationId: 'org-1', status: 'up',
   createdAt: null, updatedAt: null, description: null, createdByUserId: null,
   frequencyMinutes: 5, enabled: true, alertConfig: null, lastCheckAt: null,
-  lastStatusChangeAt: null, mutedUntil: null, scheduledJobId: null,
+  lastStatusChangeAt: null, scheduledJobId: null,
   config: { method: 'POST', auth: { type: 'bearer', token: 'private-token' }, headers: { 'X-Key': 'private-key' }, body: 'private-body' },
 } satisfies typeof monitors.$inferSelect;
 const storedResult = {
