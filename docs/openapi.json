@@ -9181,11 +9181,6 @@
             "format": "date-time",
             "nullable": true
           },
-          "mutedUntil": {
-            "type": "string",
-            "format": "date-time",
-            "nullable": true
-          },
           "scheduledJobId": {
             "type": "string",
             "nullable": true

@@ -411,4 +411,62 @@ describe('MonitorAlertService', () => {
       service.sendSslExpirationNotification('monitor-1', 'expiring'),
     ).resolves.toBe(false);
   });
+
+  /** Makes the "already delivered channels" lookup (one selected column, `provider`) return rows. */
+  function mockDeliveredChannels(db: { select: jest.Mock }, ids: string[]) {
+    const original = db.select.getMockImplementation()!;
+    db.select.mockImplementation((fields: Record<string, unknown>) =>
+      'provider' in fields && Object.keys(fields).length === 1
+        ? {
+            from: () => ({
+              where: jest
+                .fn()
+                .mockResolvedValue(ids.map((p) => ({ provider: p }))),
+            }),
+          }
+        : original(fields),
+    );
+  }
+
+  it('asks the caller to retry when only some channels failed, and retries only those', async () => {
+    const { service, db, notificationService } = createService();
+    const observedAt = new Date('2026-06-23T00:01:00Z').toISOString();
+    await expect(
+      service.sendNotification('monitor-1', 'failure', 'down', { observedAt }),
+    ).resolves.toEqual({ delivered: true, retryFailedChannels: true });
+
+    // Retry: provider-1 already has a 'sent' row for this observation time.
+    mockDeliveredChannels(db, ['provider-1']);
+    notificationService.sendNotificationToMultipleProviders.mockClear();
+    await expect(
+      service.sendNotification('monitor-1', 'failure', 'down', { observedAt }),
+    ).resolves.toEqual({ delivered: true });
+    expect(
+      notificationService.sendNotificationToMultipleProviders,
+    ).not.toHaveBeenCalled();
+  });
+
+  it('does not ask for a retry without an observation time', async () => {
+    const { service } = createService();
+    await expect(
+      service.sendNotification('monitor-1', 'failure', 'down'),
+    ).resolves.toEqual({ delivered: true });
+  });
+
+  it('still throttles an SSL alert whose history row could not be written', async () => {
+    const { service, db, notificationService } = createService();
+    db.insert.mockImplementation(() => {
+      throw new Error('db down');
+    });
+    await expect(
+      service.sendSslExpirationNotification('monitor-1', 'expiring'),
+    ).resolves.toBe(true);
+    notificationService.sendNotificationToMultipleProviders.mockClear();
+    await expect(
+      service.sendSslExpirationNotification('monitor-1', 'expiring'),
+    ).resolves.toBe(false);
+    expect(
+      notificationService.sendNotificationToMultipleProviders,
+    ).not.toHaveBeenCalled();
+  });
 });

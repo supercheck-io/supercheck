@@ -78,21 +78,21 @@ describe('MonitorEvaluator failure alert cadence', () => {
     // delivered:false never increments the sent counter, so every attempt is a first alert.
     const attempted: number[] = [];
     await alertCounts(1, 1, 30, false, false, attempted);
-    // Every check up to the first reminder slot, then only the reminder boundaries.
-    expect(attempted).toEqual([1, 2, 3, 4, 5, 6, 11, 16, 21, 26]);
+    // Only the first alert's bounded window: reminders need a delivered first alert.
+    expect(attempted).toEqual([1, 2, 3, 4, 5]);
   });
 
   it.each([false, true])(
-    'threshold 1: alerts at 1, then reminders, capped at 3 (multi=%s)',
+    'threshold 1: alerts at 1, then doubling reminders, capped at 3 (multi=%s)',
     async (multi) => {
-      expect(await alertCounts(1, 1, 30, multi)).toEqual([1, 6, 11]);
+      expect(await alertCounts(1, 1, 30, multi)).toEqual([1, 6, 16]);
     },
   );
 
   it.each([false, true])(
-    'threshold 3: alerts at 3, then reminders, capped at 3 (multi=%s)',
+    'threshold 3: alerts at 3, then doubling reminders, capped at 3 (multi=%s)',
     async (multi) => {
-      expect(await alertCounts(3, 1, 40, multi)).toEqual([3, 9, 15]);
+      expect(await alertCounts(3, 1, 40, multi)).toEqual([3, 9, 21]);
     },
   );
 
@@ -295,7 +295,8 @@ describe('MonitorEvaluator recovery alert retries', () => {
       details: { recoverySequence: true },
     };
     const set = jest.fn((values: { alertsSentForRecovery?: number }) => {
-      if (values.alertsSentForRecovery !== undefined) recoveriesRecorded++;
+      if (values.alertsSentForRecovery !== undefined)
+        recoveriesRecorded = values.alertsSentForRecovery;
       return { where: jest.fn() };
     });
     const dbService = {
@@ -316,14 +317,14 @@ describe('MonitorEvaluator recovery alert retries', () => {
       dbService as never,
       alertService as never,
     );
+    // The slot is recorded before the send and released when nothing was delivered.
     const persist = jest
-      .spyOn(evaluator as never, 'persistAggregatedAlertState')
+      .spyOn(evaluator as never, 'writeAggregatedAlertState')
       .mockImplementation((async (
         _id: string,
-        _config: unknown,
         state: { alertsSentForRecovery: number },
       ) => {
-        if (state.alertsSentForRecovery > 0) recoveriesRecorded++;
+        recoveriesRecorded = state.alertsSentForRecovery;
       }) as never);
 
     for (let count = 1; count <= upTo; count++) {
@@ -616,5 +617,126 @@ describe('incident-only monitors (alerts off or no channel)', () => {
     expect(res).toEqual({ alertSent: true, alertType: 'recovery' });
     expect(alertService.sendNotification).toHaveBeenCalledTimes(1);
     expect(alertService.signalRecovery).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('MonitorEvaluator delivered-alert bookkeeping', () => {
+  const monitor = {
+    alertConfig: { enabled: true, alertOnFailure: true, failureThreshold: 1 },
+    config: { locationConfig: { enabled: true, locations: ['a', 'b'] } },
+  } as never;
+  const run = (evaluator: MonitorEvaluator, multi: boolean) =>
+    evaluator.evaluateAndSendAlert({
+      monitorId: 'm1',
+      monitor,
+      previousStatus: 'down',
+      currentStatus: 'down',
+      reason: 'down',
+      metadata: multi ? { locationResults: [{}, {}] } : {},
+      preparedAlertState: multi
+        ? {
+            consecutiveFailureCount: 1,
+            consecutiveSuccessCount: 0,
+            alertsSentForFailure: 0,
+            alertsSentForRecovery: 0,
+          }
+        : undefined,
+    });
+
+  it.each([false, true])(
+    'sends nothing when the alert counter cannot be recorded first (multi=%s)',
+    async (multi) => {
+      const dbService = {
+        db: {
+          query: {
+            monitorResults: {
+              findFirst: jest.fn(async () => ({
+                id: 'r1',
+                consecutiveFailureCount: 1,
+                alertsSentForFailure: 0,
+              })),
+            },
+          },
+          update: jest.fn(() => {
+            throw new Error('db down');
+          }),
+        },
+      };
+      const alertService = { sendNotification: jest.fn() };
+      const evaluator = new MonitorEvaluator(
+        dbService as never,
+        alertService as never,
+      );
+      await expect(run(evaluator, multi)).resolves.toEqual({
+        alertSent: false,
+        deliveryFailed: true,
+      });
+      expect(alertService.sendNotification).not.toHaveBeenCalled();
+    },
+  );
+
+  it('keeps the slot used and reports a retry when only some channels failed', async () => {
+    const writes: number[] = [];
+    const dbService = {
+      db: {
+        update: jest.fn(() => ({ set: jest.fn(() => ({ where: jest.fn() })) })),
+      },
+    };
+    const alertService = {
+      sendNotification: jest.fn(async () => ({
+        delivered: true,
+        retryFailedChannels: true,
+      })),
+    };
+    const evaluator = new MonitorEvaluator(
+      dbService as never,
+      alertService as never,
+    );
+    jest
+      .spyOn(evaluator as never, 'writeAggregatedAlertState')
+      .mockImplementation((async (
+        _id: string,
+        state: { alertsSentForFailure: number },
+      ) => {
+        writes.push(state.alertsSentForFailure);
+      }) as never);
+    await expect(run(evaluator, true)).resolves.toEqual({
+      alertSent: true,
+      alertType: 'failure',
+      deliveryFailed: true,
+    });
+    expect(writes).toEqual([1]);
+  });
+
+  it('writes only aggregatedAlertState, atomically, with or without a group id', async () => {
+    const sets: unknown[] = [];
+    const dbService = {
+      db: {
+        update: jest.fn(() => ({
+          set: jest.fn((values: { config: SQL }) => {
+            sets.push(values.config);
+            return { where: jest.fn() };
+          }),
+        })),
+      },
+    };
+    const evaluator = new MonitorEvaluator(dbService as never, {} as never);
+    const state = {
+      consecutiveFailureCount: 1,
+      consecutiveSuccessCount: 0,
+      alertsSentForFailure: 0,
+      alertsSentForRecovery: 0,
+    };
+    await evaluator.persistAggregatedAlertState('m1', state);
+    await evaluator.persistAggregatedAlertState('m1', {
+      ...state,
+      executionGroupId: 'g1',
+    });
+    for (const config of sets) {
+      expect(new PgDialect().sqlToQuery(config as SQL).sql).toContain(
+        'jsonb_set',
+      );
+    }
+    expect(sets).toHaveLength(2);
   });
 });

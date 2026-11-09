@@ -165,6 +165,13 @@ import { VariableResolverService } from '../common/services/variable-resolver.se
 import * as schema from '../db/schema';
 
 describe('MonitorService', () => {
+  /** The aggregatedAlertState JSON of the first monitors.config write (a jsonb_set statement). */
+  const firstWrittenAlertState = (): unknown => {
+    const config =
+      mockDbService.db.update.mock.results[0].value.set.mock.calls[0][0].config;
+    return JSON.parse(new PgDialect().sqlToQuery(config).params[0] as string);
+  };
+
   // Deterministic network fakes installed by the jest.mock('net'|'tls') factories.
   const netState = jest.requireMock('net').__state;
   const tlsState = jest.requireMock('tls').__state;
@@ -1477,7 +1484,8 @@ describe('MonitorService', () => {
           alertSent: false,
           deliveryFailed: true,
         });
-        expect(mockDbService.db.update).not.toHaveBeenCalled();
+        // The slot is recorded before the send and released after the failed one.
+        expect(mockDbService.db.update).toHaveBeenCalledTimes(2);
         expect(await evaluate(3, 0)).toEqual({
           alertSent: true,
           alertType: 'recovery',
@@ -1760,15 +1768,10 @@ describe('MonitorService', () => {
       ).not.toHaveBeenCalled();
       expect(mockDbService.db.update).toHaveBeenCalled();
 
-      const firstUpdateCall = mockDbService.db.update.mock.results[0]?.value;
-      expect(firstUpdateCall?.set).toHaveBeenCalledWith(
+      expect(firstWrittenAlertState()).toEqual(
         expect.objectContaining({
-          config: expect.objectContaining({
-            aggregatedAlertState: expect.objectContaining({
-              consecutiveFailureCount: 2,
-              alertsSentForFailure: 0,
-            }),
-          }),
+          consecutiveFailureCount: 2,
+          alertsSentForFailure: 0,
         }),
       );
     });
@@ -1953,7 +1956,14 @@ describe('MonitorService', () => {
       metadata: {},
     });
     expect(result.alertSent).toBe(false);
-    expect(mockDbService.db.update).not.toHaveBeenCalled();
+    // Recorded before the send, then released: the attempt is not consumed.
+    const sets = mockDbService.db.update.mock.results.map(
+      (r) => (r.value as { set: jest.Mock }).set.mock.calls[0][0],
+    );
+    expect(sets).toEqual([
+      { alertsSentForFailure: 1 },
+      { alertsSentForFailure: 0 },
+    ]);
   });
 
   it('keeps aggregate failure thresholds when only one of two configured locations reports', async () => {
@@ -1994,16 +2004,8 @@ describe('MonitorService', () => {
     expect(
       mockDbService.db.query.monitorResults.findFirst,
     ).not.toHaveBeenCalled();
-    expect(
-      mockDbService.db.update.mock.results[0].value.set,
-    ).toHaveBeenCalledWith(
-      expect.objectContaining({
-        config: expect.objectContaining({
-          aggregatedAlertState: expect.objectContaining({
-            consecutiveFailureCount: 2,
-          }),
-        }),
-      }),
+    expect(firstWrittenAlertState()).toEqual(
+      expect.objectContaining({ consecutiveFailureCount: 2 }),
     );
   });
 

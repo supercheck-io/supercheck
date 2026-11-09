@@ -38,7 +38,6 @@ export const monitorSchema = z.object({
   }).optional(),
   lastCheckAt: z.string().nullable().optional(),
   lastStatusChangeAt: z.string().nullable().optional(),
-  mutedUntil: z.string().nullable().optional(),
   createdAt: z.string().optional(),
   updatedAt: z.string().optional(),
   projectName: z.string().optional(),

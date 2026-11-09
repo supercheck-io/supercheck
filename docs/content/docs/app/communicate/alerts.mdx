@@ -97,7 +97,7 @@ SSL expiration warnings are evaluated independently of the monitor's up/down res
 
 **Alert limiting**
 
-At most **3 failure alerts** go out per failure streak, for monitors and jobs: the first when the threshold is reached, then reminders after every further `max(5, 2 × threshold)` failures. A passing run resets the streak, and each recovery sends one alert. The interval is not configurable.
+At most **3 failure alerts** go out per failure streak, for monitors and jobs: the first when the threshold is reached, then reminders. For jobs a reminder follows every further `max(5, 2 × threshold)` failures. For monitors the gap doubles: with `N = max(5, 2 × threshold)`, the first reminder comes `N` failures after the threshold and the second `3N` after it. A reminder that could not be delivered is retried on the next check, and when only some channels fail, only those are retried. A passing run resets the streak, and each recovery sends one alert. The interval is not configurable.
 
 </Tab>
 <Tab value="Example">

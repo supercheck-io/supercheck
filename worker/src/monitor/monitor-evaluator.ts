@@ -16,6 +16,9 @@ import { MonitorExecutionResult } from './types/monitor-result.type';
 type Monitor = z.infer<typeof monitorsSelectSchema>;
 type MonitorResult = z.infer<typeof monitorResultsSelectSchema>;
 
+/** First failure alert plus two reminders per failure sequence. */
+const MAX_FAILURE_ALERTS = 3;
+
 export type AggregatedAlertState = {
   consecutiveFailureCount: number;
   consecutiveSuccessCount: number;
@@ -209,34 +212,38 @@ export class MonitorEvaluator {
         { ...previousState, failureCountUnknown: true };
   }
 
+  /**
+   * Writes only `aggregatedAlertState`, atomically (jsonb_set), so worker-owned config keys written
+   * concurrently (SSL check times, certificate) are never overwritten by a stale read of the config.
+   * Throws when the write fails.
+   */
+  private async writeAggregatedAlertState(
+    monitorId: string,
+    aggregatedAlertState: AggregatedAlertState,
+  ): Promise<void> {
+    await this.dbService.db
+      .update(schema.monitors)
+      .set({
+        config: sql`jsonb_set(coalesce(${schema.monitors.config}, '{}'::jsonb), '{aggregatedAlertState}', ${JSON.stringify(aggregatedAlertState)}::jsonb)`,
+      })
+      .where(
+        and(
+          eq(schema.monitors.id, monitorId),
+          ...(aggregatedAlertState.executionGroupId
+            ? [
+                sql`${schema.monitors.config}->'aggregatedAlertState'->>'executionGroupId' = ${aggregatedAlertState.executionGroupId}`,
+              ]
+            : []),
+        ),
+      );
+  }
+
   async persistAggregatedAlertState(
     monitorId: string,
-    monitorConfig: MonitorConfig | null | undefined,
     aggregatedAlertState: AggregatedAlertState,
   ): Promise<void> {
     try {
-      const nextConfig: MonitorConfig = {
-        ...(monitorConfig ?? {}),
-        aggregatedAlertState,
-      };
-
-      await this.dbService.db
-        .update(schema.monitors)
-        .set({
-          config: aggregatedAlertState.executionGroupId
-            ? sql`jsonb_set(coalesce(${schema.monitors.config}, '{}'::jsonb), '{aggregatedAlertState}', ${JSON.stringify(aggregatedAlertState)}::jsonb)`
-            : nextConfig,
-        })
-        .where(
-          and(
-            eq(schema.monitors.id, monitorId),
-            ...(aggregatedAlertState.executionGroupId
-              ? [
-                  sql`${schema.monitors.config}->'aggregatedAlertState'->>'executionGroupId' = ${aggregatedAlertState.executionGroupId}`,
-                ]
-              : []),
-          ),
-        );
+      await this.writeAggregatedAlertState(monitorId, aggregatedAlertState);
     } catch (error) {
       this.logger.error(
         `Failed to persist aggregated alert state for monitor ${monitorId}: ${getErrorMessage(error)}`,
@@ -252,7 +259,7 @@ export class MonitorEvaluator {
    * Threshold behavior:
    * - failureThreshold: Number of consecutive failures before first alert (default: 1)
    * - recoveryThreshold: Number of consecutive successes before recovery alert (default: 1)
-   * - Max 3 failure alerts with exponential reminders and one recovery alert
+   * - Max 3 failure alerts (first + 2 reminders, the gap doubling) and one recovery alert
    *
    * @returns Alert action metadata { alertSent: boolean, alertType?: string }
    */
@@ -269,7 +276,7 @@ export class MonitorEvaluator {
   }): Promise<{
     alertSent: boolean;
     alertType?: string;
-    /** An alert was due and attempted but no channel accepted it (not the same as suppressed). */
+    /** An alert was due and attempted but no channel accepted it, or some channel failed and must be retried. */
     deliveryFailed?: boolean;
   }> {
     const { monitorId, previousStatus, currentStatus, reason, metadata } =
@@ -360,23 +367,26 @@ export class MonitorEvaluator {
           false;
       } else if (
         consecutiveFailureCount > failureThreshold &&
-        alertsSentForFailure < 3
+        alertsSentForFailure >= 1 &&
+        alertsSentForFailure < MAX_FAILURE_ALERTS
       ) {
-        // Subsequent alerts: exponential intervals (max 3 total)
-        const subsequentInterval = Math.max(5, failureThreshold * 2);
+        // Reminder number k (1 or 2) is due once N * (2^k - 1) failures have passed the threshold, with
+        // N = max(5, 2 * threshold): gaps of N, then 2N. ">=" keeps an undelivered reminder due, so the
+        // next check retries it instead of losing it.
+        const reminderInterval = Math.max(5, failureThreshold * 2);
         const failuresAfterThreshold =
           consecutiveFailureCount - failureThreshold;
-        const expectedAlerts = Math.floor(
-          failuresAfterThreshold / subsequentInterval,
-        );
         shouldSendAlert =
           (incidentOnly || (monitorAlertConfig?.alertOnFailure as boolean)) &&
-          expectedAlerts >= alertsSentForFailure &&
-          failuresAfterThreshold % subsequentInterval === 0;
+          failuresAfterThreshold >=
+            reminderInterval * (2 ** alertsSentForFailure - 1);
       }
 
       if (!shouldSendAlert) {
-        if (consecutiveFailureCount > 0 && alertsSentForFailure >= 3) {
+        if (
+          consecutiveFailureCount > 0 &&
+          alertsSentForFailure >= MAX_FAILURE_ALERTS
+        ) {
           this.logger.debug(
             `[ALERT] Skipping failure alert for monitor ${monitorId} - already sent 3 alerts for this failure sequence`,
           );
@@ -450,19 +460,52 @@ export class MonitorEvaluator {
         aggregatedAlertState &&
         !options.preparedAlertState
       ) {
-        await this.persistAggregatedAlertState(
-          monitorId,
-          monitorConfig,
-          aggregatedAlertState,
-        );
+        await this.persistAggregatedAlertState(monitorId, aggregatedAlertState);
       }
 
       return { alertSent: false };
     }
 
-    // Set once the provider accepted the alert: later persistence errors are not delivery failures.
+    // The counter is recorded BEFORE the send and rolled back when nothing was delivered, so a delivered
+    // alert can never go unrecorded and repeat. If recording fails nothing is sent (the cycle retries). A
+    // crash between record and send costs one alert but never adds one, like the job alert slots.
+    const previousSent =
+      alertType === 'failure' ? alertsSentForFailure : alertsSentForRecovery;
+    const recordSent = async (sent: number): Promise<void> => {
+      if (isMultiLocationEvaluation && aggregatedAlertState) {
+        await this.writeAggregatedAlertState(monitorId, {
+          ...aggregatedAlertState,
+          ...(alertType === 'failure'
+            ? { alertsSentForFailure: sent }
+            : { alertsSentForRecovery: sent }),
+        });
+      } else if (latestResult) {
+        await this.dbService.db
+          .update(schema.monitorResults)
+          .set(
+            alertType === 'failure'
+              ? { alertsSentForFailure: sent }
+              : { alertsSentForRecovery: sent },
+          )
+          .where(eq(schema.monitorResults.id, latestResult.id));
+      }
+    };
+    const releaseSent = async (): Promise<void> => {
+      try {
+        await recordSent(previousSent);
+      } catch (error) {
+        this.logger.error(
+          `Failed to release the ${alertType} alert slot for monitor ${monitorId}: ${getErrorMessage(error)}`,
+        );
+      }
+    };
+
+    let recorded = false;
     let delivered = false;
     try {
+      await recordSent(previousSent + 1);
+      recorded = true;
+
       this.logger.log(
         `Sending ${alertType} notification for monitor ${monitorId}`,
       );
@@ -503,63 +546,31 @@ export class MonitorEvaluator {
         notification?.suppressed === true &&
         alertType === 'failure' &&
         (notification as { reason?: string }).reason === 'incident_only';
-      if (!suppressed && !incidentSignalled && notification?.suppressed)
+      if (!suppressed && !incidentSignalled && notification?.suppressed) {
+        await releaseSent();
         return { alertSent: false };
+      }
       if (
         !suppressed &&
         !incidentSignalled &&
         notification?.delivered === false
-      )
+      ) {
+        await releaseSent();
         return { alertSent: false, deliveryFailed: true };
+      }
       delivered = true;
 
-      if (isMultiLocationEvaluation && aggregatedAlertState) {
-        const updatedAggregatedAlertState =
-          alertType === 'failure'
-            ? {
-                ...aggregatedAlertState,
-                alertsSentForFailure:
-                  aggregatedAlertState.alertsSentForFailure + 1,
-              }
-            : {
-                ...aggregatedAlertState,
-                alertsSentForRecovery:
-                  aggregatedAlertState.alertsSentForRecovery + 1,
-              };
-
-        await this.persistAggregatedAlertState(
-          monitorId,
-          monitorConfig,
-          updatedAggregatedAlertState,
-        );
-      }
-
-      // Preserve existing single-location behavior
-      if (!isMultiLocationEvaluation && latestResult) {
-        if (alertType === 'failure') {
-          await this.dbService.db
-            .update(schema.monitorResults)
-            .set({ alertsSentForFailure: alertsSentForFailure + 1 })
-            .where(eq(schema.monitorResults.id, latestResult.id));
-        } else if (alertType === 'recovery') {
-          await this.dbService.db
-            .update(schema.monitorResults)
-            .set({
-              alertsSentForRecovery: alertsSentForRecovery + 1,
-            })
-            .where(eq(schema.monitorResults.id, latestResult.id));
-        }
-      }
-
-      return suppressed ? { alertSent: false } : { alertSent: true, alertType };
+      if (suppressed) return { alertSent: false };
+      // Some channel still failed: the slot stays used (the others got the alert) and the caller retries
+      // only the failed channels, which sendNotification finds from alert_history.
+      const retryFailedChannels =
+        (notification as { retryFailedChannels?: boolean })
+          .retryFailedChannels === true;
+      return retryFailedChannels
+        ? { alertSent: true, alertType, deliveryFailed: true }
+        : { alertSent: true, alertType };
     } catch (error) {
-      if (isMultiLocationEvaluation && aggregatedAlertState) {
-        await this.persistAggregatedAlertState(
-          monitorId,
-          monitorConfig,
-          aggregatedAlertState,
-        );
-      }
+      if (recorded && !delivered) await releaseSent();
 
       this.logger.error(
         `Failed to send ${alertType} alert for monitor ${monitorId}: ${getErrorMessage(error)}`,
