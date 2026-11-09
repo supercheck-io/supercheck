@@ -49,7 +49,7 @@ Know when something breaks before your users tell you.
 
 ### [Respond](https://supercheck.io/docs/app/investigate)
 
-Monitor and job alerts open an incident you can work from, with AI SRE investigations that cite their evidence.
+Failing monitors and jobs open an incident you can work from (on by default, per check), with AI SRE investigations that cite their evidence.
 
 <img src="docs/public/screenshots/site/incident-workspace-overview.webp" alt="Incident workspace for a Checkout API outage with an AI summary" width="100%">
 
