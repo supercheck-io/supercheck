@@ -229,8 +229,8 @@ export async function PUT(
 
     // Same name and target handling as create; credentials in config are never rewritten.
     const sanitizeType = updateData.type ?? currentMonitor.type;
-    sanitizeMonitorFields(updateData, sanitizeType);
-    sanitizeMonitorFields({ alertConfig: rawData.alertConfig }, sanitizeType);
+    sanitizeMonitorFields(updateData);
+    sanitizeMonitorFields({ alertConfig: rawData.alertConfig });
     const nameError = monitorNameError(updateData.name);
     if (nameError) return NextResponse.json({ error: nameError }, { status: 400 });
 
@@ -619,7 +619,7 @@ export async function PATCH(
     }
 
     // Same name and target handling as create; credentials in config are never rewritten.
-    sanitizeMonitorFields(rawData, rawData.type ?? currentMonitor.type);
+    sanitizeMonitorFields(rawData);
 
     // Only a change to type or frequency is checked, so legacy sub-5-minute monitors can still be paused or renamed.
     const syntheticError = (rawData.type !== undefined || rawData.frequencyMinutes !== undefined) && syntheticFrequencyError(

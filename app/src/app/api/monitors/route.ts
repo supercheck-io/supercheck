@@ -39,6 +39,7 @@ import {
   alertProvidersSent,
   frequencyMinutesError,
   InvalidNotificationProvidersError,
+  MAX_TARGET_LENGTH,
   MonitorScheduleError,
   monitorNameError,
   normalizeMonitorAlertConfig,
@@ -269,7 +270,13 @@ export async function POST(req: NextRequest) {
     );
 
     // Same name and target handling as the update paths; credentials in config are never rewritten.
-    sanitizeMonitorFields(rawData, rawData.type, { target: true });
+    sanitizeMonitorFields(rawData);
+    if (typeof rawData.target === "string") {
+      rawData.target = rawData.target.trim();
+      if (rawData.target.length > MAX_TARGET_LENGTH) {
+        return NextResponse.json({ error: "Invalid target", details: `target must be at most ${MAX_TARGET_LENGTH} characters` }, { status: 400 });
+      }
+    }
 
     // Special logging for heartbeat monitors
     if (rawData.type === "heartbeat") {
@@ -729,7 +736,7 @@ export async function PUT(req: NextRequest) {
     }
 
     // Same name and target handling as create; credentials in config are never rewritten.
-    sanitizeMonitorFields(updateData, updateData.type ?? monitorData[0].type);
+    sanitizeMonitorFields(updateData);
     const nameError = monitorNameError(updateData.name);
     if (nameError) return NextResponse.json({ error: nameError }, { status: 400 });
 

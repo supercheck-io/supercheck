@@ -398,6 +398,31 @@ describe("collection write paths", () => {
     expect(bad.status).toBe(400);
   });
 
+  it.each([
+    ["http_request", "https://example.com/check?token=ab${x}&y=1"],
+    ["ping_host", "2606:4700:4700::1111"],
+    ["port_check", "2606:4700:4700::1111"],
+  ])("POST keeps a %s target exactly as sent (%s)", async (type, target) => {
+    insertWithinPlanLimit.mockImplementation(async (opts: { insert: (tx: unknown) => Promise<unknown> }) => {
+      const tx = { select: () => ({ from: () => ({ where: () => ({ for: async () => [{ id: "project-1" }] }) }) }) };
+      await opts.insert(tx);
+      return { ok: true, row: { newMonitor: { id: "new" }, enabled: true } };
+    });
+    dbSelect.mockReturnValue({ from: () => ({ where: async () => [], innerJoin: () => ({ where: () => ({ limit: async () => [{ id: "new" }] }) }) }) });
+    const { scheduleCreatedMonitor } = jest.requireMock("@/lib/monitor-service") as { scheduleCreatedMonitor: jest.Mock };
+    scheduleCreatedMonitor.mockResolvedValue({ id: "new" });
+    const config = type === "port_check" ? { port: 443, protocol: "tcp" } : {};
+    const res = await postBody({ name: "m", type, target, config });
+    expect(res.status).toBe(201);
+    expect(insertMonitorRecord).toHaveBeenCalledWith(expect.objectContaining({ target }), expect.anything());
+  });
+
+  it("POST rejects a target longer than the column", async () => {
+    const res = await postBody({ name: "m", type: "http_request", target: `https://example.com/${"a".repeat(2048)}` });
+    expect(res.status).toBe(400);
+    expect(insertWithinPlanLimit).not.toHaveBeenCalled();
+  });
+
   it("GET rejects a non-numeric or fractional page or limit with 400 (B6)", async () => {
     for (const query of ["page=abc", "limit=x", "page=1.5", "page=0", "limit=0", "page=-1"]) {
       const res = await GET(new Request(`http://localhost/api/monitors?${query}`));

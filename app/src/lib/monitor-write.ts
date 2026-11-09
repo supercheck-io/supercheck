@@ -6,7 +6,7 @@ import type { AlertConfig, MonitorConfig } from "@/db/schema";
 import { isUuid } from "@/lib/uuid";
 import { channelsOptional } from "@/lib/incident-settings";
 import { alertThresholdError } from "@/lib/alert-thresholds";
-import { sanitizeHostname, sanitizeString, sanitizeUrl } from "@/lib/input-sanitizer";
+import { sanitizeString } from "@/lib/input-sanitizer";
 import catalog from "@/lib/billing/plan-catalog.json";
 
 /** Config keys the worker writes. A client replacing `config` must not wipe or forge them. */
@@ -254,22 +254,12 @@ export function timeoutFrequencyError(config: MonitorConfig | null | undefined, 
 }
 
 /**
- * Name and target cleanup shared by create, both PUTs and PATCH. Credentials and other config are never rewritten:
- * a password such as `ab${x}` must reach the check exactly as typed.
+ * Name and customMessage cleanup shared by create, both PUTs and PATCH. The target and credentials are never rewritten
+ * (a password such as `ab${x}` or a `?token=ab${x}` query must reach the check as typed); the target is validated instead
+ * (URL shape, target policy, length). It is only ever rendered as escaped React text, and a link is only built from a validated http(s) URL.
  */
-export function sanitizeMonitorFields(body: Record<string, unknown>, effectiveType: unknown, options: { target?: boolean } = {}): void {
+export function sanitizeMonitorFields(body: Record<string, unknown>): void {
   if (typeof body.name === "string") body.name = sanitizeString(body.name);
-  // Create has always cleaned the target; updates leave it as sent (the target policy validates it), so a query value such as `?token=ab${x}` is never cut.
-  if (options.target && typeof body.target === "string" && body.target) {
-    if (effectiveType === "http_request" || effectiveType === "website") {
-      // An unusable URL (ftp://, javascript:) is kept as sent so validation names the http(s) rule.
-      body.target = sanitizeUrl(body.target) || body.target;
-    } else if (effectiveType === "ping_host" || effectiveType === "port_check") {
-      body.target = sanitizeHostname(body.target);
-    } else {
-      body.target = sanitizeString(body.target);
-    }
-  }
   const alert = body.alertConfig as Record<string, unknown> | null | undefined;
   if (alert && typeof alert.customMessage === "string" && alert.customMessage) {
     alert.customMessage = sanitizeString(alert.customMessage);
@@ -312,3 +302,6 @@ export class MonitorScheduleError extends Error {
 export function scheduleFailureResponse(error: unknown): NextResponse | null {
   return error instanceof MonitorScheduleError ? NextResponse.json({ error: error.message }, { status: 503 }) : null;
 }
+
+/** Matches the monitors.target varchar(2048) column. */
+export const MAX_TARGET_LENGTH = 2048;

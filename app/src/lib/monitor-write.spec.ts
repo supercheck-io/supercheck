@@ -75,7 +75,7 @@ describe("sanitizeMonitorFields", () => {
       config: { auth },
       alertConfig: { customMessage: "hi <script>x</script>" },
     };
-    sanitizeMonitorFields(body, "http_request");
+    sanitizeMonitorFields(body);
     expect(body.name).not.toContain("<script>");
     expect(body.target).toBe("https://example.com/x");
     expect((body.alertConfig as { customMessage: string }).customMessage).not.toContain("<script>");
@@ -83,7 +83,7 @@ describe("sanitizeMonitorFields", () => {
   });
   it("leaves an omitted name or target omitted", () => {
     const body: Record<string, unknown> = { enabled: true };
-    sanitizeMonitorFields(body, "website");
+    sanitizeMonitorFields(body);
     expect(body).toEqual({ enabled: true });
   });
 });
@@ -175,17 +175,12 @@ describe("review fixes in monitor-write", () => {
     expect(scheduleOutOfSync({ ...row, status: "paused", scheduledJobId: null })).toBe(false);
   });
 
-  it("sanitizeMonitorFields leaves the target alone on updates but cleans it on create", () => {
-    const url = "https://example.com/p?token=ab${x}&y=1";
-    const update: Record<string, unknown> = { target: url };
-    sanitizeMonitorFields(update, "website");
-    expect(update.target).toBe(url);
-    const v6: Record<string, unknown> = { target: "[2001:db8::1]" };
-    sanitizeMonitorFields(v6, "ping_host", { target: true });
-    expect(v6.target).toBe("2001:db8::1");
-    const bare: Record<string, unknown> = { target: "2001:db8::1" };
-    sanitizeMonitorFields(bare, "port_check", { target: true });
-    expect(bare.target).toBe("2001:db8::1");
+  it("sanitizeMonitorFields never rewrites the target, on any path", () => {
+    for (const target of ["https://example.com/p?token=ab${x}&y=1", "2001:db8::1", "[2001:db8::1]"]) {
+      const body: Record<string, unknown> = { target };
+      sanitizeMonitorFields(body);
+      expect(body.target).toBe(target);
+    }
   });
 
   it("syncMonitorProviderRows drops a stored provider that was deleted, but rejects a new unknown one", async () => {
