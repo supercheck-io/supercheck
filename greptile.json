@@ -30,5 +30,8 @@
   },
   "includeSequenceDiagram": false,
   "statusCheck": true,
-  "effort": "base"
+  "effort": "base",
+  "excludeAuthors": [
+    "dependabot[bot]"
+  ]
 }

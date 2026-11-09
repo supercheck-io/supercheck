@@ -16,12 +16,12 @@ reviews:
   auto_review:
     enabled: true
     drafts: false
-    auto_incremental_review: true
-    # Also review stacked PRs whose base is another feature branch, not only main.
-    base_branches:
-      - ".*"
-    # Keep reviewing active PRs throughout the trial; provider limits still apply.
-    auto_pause_after_reviewed_commits: 0
+    # One review per PR (on open). The OSS plan's hourly limit is shared by every
+    # PR from one author, so per-push and stacked-branch reviews exhaust it.
+    # Comment "@coderabbitai review" to re-review after changes.
+    auto_incremental_review: false
+    ignore_usernames:
+      - "dependabot[bot]"
     ignore_title_keywords:
       - "skip-ai-review"
     labels:
