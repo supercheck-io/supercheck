@@ -542,6 +542,22 @@ export function MonitorForm({
         void _ignored;
         return Object.keys(rest).length ? { values: {}, errors: rest } : { values, errors: {} };
       }
+      // The form has no timeout field, so a stored timeout is kept; an interval shorter than it is shown at the interval field.
+      const storedTimeout = initialConfig?.timeoutSeconds;
+      const intervalSeconds = parseInt(values.interval, 10);
+      const priorSeconds = parseInt(initialData?.interval ?? "", 10);
+      if (
+        editMode && typeof storedTimeout === "number" && intervalSeconds < storedTimeout &&
+        !(intervalSeconds >= priorSeconds) && !Object.keys(result.errors).includes("interval")
+      ) {
+        return {
+          values: {},
+          errors: {
+            ...result.errors,
+            interval: { type: "custom", message: `The check interval must be at least this monitor's timeout (${storedTimeout} seconds).` },
+          },
+        } as ReturnType<Resolver<FormValues>> extends Promise<infer R> ? R : never;
+      }
       return result;
     }) as Resolver<FormValues>,
     mode: "onSubmit", // Only validate on submit, not on every change

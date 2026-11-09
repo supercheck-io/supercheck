@@ -58,11 +58,24 @@ describe("frequencyMinutesError", () => {
 });
 
 describe("timeoutFrequencyError", () => {
-  it("rejects a timeout longer than the interval and ignores a missing value", () => {
-    expect(timeoutFrequencyError({ timeoutSeconds: 61 }, 1)).toContain("cannot exceed");
-    expect(timeoutFrequencyError({ timeoutSeconds: 60 }, 1)).toBeNull();
-    expect(timeoutFrequencyError({}, 1)).toBeNull();
-    expect(timeoutFrequencyError(null, 1)).toBeNull();
+  const legacy = { config: { timeoutSeconds: 600 }, frequencyMinutes: 5 };
+  it("rejects a pair that is invalid on create and ignores a missing timeout", () => {
+    expect(timeoutFrequencyError(null, { config: { timeoutSeconds: 61 }, frequencyMinutes: 1 })).toContain("cannot exceed");
+    expect(timeoutFrequencyError(null, { config: { timeoutSeconds: 60 }, frequencyMinutes: 1 })).toBeNull();
+    expect(timeoutFrequencyError(null, { config: {}, frequencyMinutes: 1 })).toBeNull();
+    expect(timeoutFrequencyError(null, { config: null, frequencyMinutes: 1 })).toBeNull();
+  });
+  it("lets a stored invalid pair save unchanged, and any change that narrows the gap", () => {
+    expect(timeoutFrequencyError(legacy, { config: { timeoutSeconds: 600 }, frequencyMinutes: 5 })).toBeNull();
+    expect(timeoutFrequencyError(legacy, { config: { timeoutSeconds: 400 }, frequencyMinutes: 5 })).toBeNull();
+    expect(timeoutFrequencyError(legacy, { config: { timeoutSeconds: 600 }, frequencyMinutes: 8 })).toBeNull();
+  });
+  it("rejects raising the timeout or lowering the interval into or further into invalid", () => {
+    const valid = { config: { timeoutSeconds: 30 }, frequencyMinutes: 5 };
+    expect(timeoutFrequencyError(valid, { config: { timeoutSeconds: 301 }, frequencyMinutes: 5 })).toContain("cannot exceed");
+    expect(timeoutFrequencyError(valid, { config: { timeoutSeconds: 30 }, frequencyMinutes: 0.4 })).toContain("cannot exceed");
+    expect(timeoutFrequencyError(legacy, { config: { timeoutSeconds: 700 }, frequencyMinutes: 5 })).toContain("cannot exceed");
+    expect(timeoutFrequencyError(legacy, { config: { timeoutSeconds: 600 }, frequencyMinutes: 4 })).toContain("cannot exceed");
   });
 });
 

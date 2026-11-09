@@ -382,16 +382,25 @@ describe("alertConfig, delivery rows, credentials, frequency and timeout on upda
     expect(set).not.toHaveBeenCalled();
   });
 
-  it("rejects a timeout longer than the interval when either is being changed, on PUT and PATCH (B7)", async () => {
+  it("rejects raising the timeout above, or the interval below, the other, on PUT and PATCH (B7)", async () => {
     expect((await call(PUT, "PUT", { frequencyMinutes: 1, config: { timeoutSeconds: 90 } })).status).toBe(400);
     expect((await call(PATCH, "PATCH", { frequencyMinutes: 1 })).status).toBe(200);
     expect((await call(PATCH, "PATCH", { config: { timeoutSeconds: 301 } })).status).toBe(400);
+    findFirst.mockResolvedValue({ ...stored, frequencyMinutes: 10, config: { ...stored.config, timeoutSeconds: 590 } });
+    expect((await call(PATCH, "PATCH", { frequencyMinutes: 9 })).status).toBe(400);
   });
 
-  it("an unrelated edit still saves a row whose stored timeout already exceeds the interval (B7)", async () => {
-    findFirst.mockResolvedValue({ ...stored, config: { ...stored.config, timeoutSeconds: 3000 } });
-    expect((await call(PUT, "PUT", { name: "renamed" })).status).toBe(200);
+  it("a legacy monitor whose stored timeout exceeds the interval saves unrelated edits, including a UI-shaped full config (B7)", async () => {
+    const legacy = { ...stored, config: { ...stored.config, timeoutSeconds: 600 } };
+    findFirst.mockResolvedValue(legacy);
+    expect((await call(PUT, "PUT", { name: "renamed", frequencyMinutes: 5, config: legacy.config })).status).toBe(200);
+    expect((await call(PATCH, "PATCH", { name: "renamed" })).status).toBe(200);
+    expect((await call(PATCH, "PATCH", { config: { method: "GET" } })).status).toBe(200);
+    // Narrowing the gap is allowed, widening it is not.
+    expect((await call(PUT, "PUT", { config: { ...legacy.config, timeoutSeconds: 400 } })).status).toBe(200);
+    expect((await call(PUT, "PUT", { config: { ...legacy.config, timeoutSeconds: 700 } })).status).toBe(400);
   });
+
 });
 
 describe("review fixes: drifted rows, audit on schedule failure, alertConfig type", () => {

@@ -10187,7 +10187,7 @@
           "timeoutSeconds": {
             "type": "integer",
             "minimum": 1,
-            "description": "Per-check timeout in seconds. Must not exceed `frequencyMinutes` * 60; a write that changes the config or the interval is rejected with 400 otherwise."
+            "description": "Per-check timeout in seconds. Must not exceed `frequencyMinutes` * 60; a save that raises the timeout above the interval, or shortens the interval below the timeout, returns 400 (an existing monitor already in that state still saves other changes)."
           },
           "regions": {
             "type": "array",

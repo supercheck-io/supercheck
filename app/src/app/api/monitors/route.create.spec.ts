@@ -321,11 +321,12 @@ describe("collection write paths", () => {
     expect(updateMonitorHandler).not.toHaveBeenCalled();
   });
 
-  it("PUT rejects a timeout longer than the interval, only when the request changes one of them (B7)", async () => {
-    const res = await put({ frequencyMinutes: 1, config: { timeoutSeconds: 90 } });
-    expect(res.status).toBe(400);
+  it("PUT rejects raising the timeout above, or the interval below, the other; a legacy invalid row keeps saving with a full config (B7)", async () => {
+    expect((await put({ config: { timeoutSeconds: 301 } })).status).toBe(400);
+    expect((await put({ frequencyMinutes: 1, config: { timeoutSeconds: 90 } })).status).toBe(400);
     dbSelect.mockReturnValue({ from: () => ({ where: () => ({ limit: async () => [{ ...stored, config: { timeoutSeconds: 3000 } }] }) }) });
-    expect((await put({ name: "legacy row still saves" })).status).toBe(200);
+    expect((await put({ name: "legacy row still saves", config: { timeoutSeconds: 3000 } })).status).toBe(200);
+    expect((await put({ config: { timeoutSeconds: 3500 } })).status).toBe(400);
   });
 
   it("PUT answers 503 when the schedule cannot be updated after the save", async () => {

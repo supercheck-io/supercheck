@@ -239,11 +239,11 @@ export async function PUT(
         return NextResponse.json({ error: "Invalid frequency", details: frequencyError }, { status: 400 });
       }
     }
-    if (rawData.config !== undefined || rawData.frequencyMinutes !== undefined) {
-      const timeoutError = timeoutFrequencyError(
-        updateData.config ?? currentMonitor.config,
-        updateData.frequencyMinutes ?? currentMonitor.frequencyMinutes,
-      );
+    {
+      const timeoutError = timeoutFrequencyError(currentMonitor, {
+        config: updateData.config ?? currentMonitor.config,
+        frequencyMinutes: updateData.frequencyMinutes ?? currentMonitor.frequencyMinutes,
+      });
       if (timeoutError) return NextResponse.json({ error: "Invalid configuration", details: timeoutError }, { status: 400 });
     }
 
@@ -669,11 +669,11 @@ export async function PATCH(
         : rawData.config;
     }
 
-    if (rawData.config !== undefined || rawData.frequencyMinutes !== undefined) {
-      const timeoutError = timeoutFrequencyError(
-        updatePayload.config ?? currentMonitor.config,
-        updatePayload.frequencyMinutes ?? currentMonitor.frequencyMinutes,
-      );
+    {
+      const timeoutError = timeoutFrequencyError(currentMonitor, {
+        config: updatePayload.config ?? currentMonitor.config,
+        frequencyMinutes: updatePayload.frequencyMinutes ?? currentMonitor.frequencyMinutes,
+      });
       if (timeoutError) return NextResponse.json({ error: "Invalid configuration", details: timeoutError }, { status: 400 });
     }
 

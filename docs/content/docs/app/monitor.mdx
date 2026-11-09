@@ -305,7 +305,7 @@ A scheduled check that waits in a busy or returning worker's queue longer than t
 
 Available intervals: 1 minute, 5 minutes, 10 minutes, 15 minutes, 30 minutes, 1 hour, 3 hours, 12 hours, and 24 hours. Shorter intervals detect failures sooner and use more resources.
 
-A check's timeout (`timeoutSeconds`) must not exceed its interval: a monitor checked every minute cannot have a timeout above 60 seconds. Saving a change to the timeout or the interval that breaks this is rejected; existing monitors keep working until you edit one of the two.
+A check's timeout must not exceed its interval, for example 60 seconds at a 1-minute interval. A save that raises the timeout above the interval, or shortens the interval below the timeout, is rejected; a monitor already in that state still saves other changes.
 
 <Callout type="info">
 Synthetic monitors start at 5 minutes. Set the interval longer than your test's run time so executions do not overlap: for a 2-minute test, use 5 minutes or more.

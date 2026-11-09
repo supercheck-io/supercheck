@@ -244,13 +244,23 @@ export function frequencyMinutesError(value: unknown): string | null {
     : `frequencyMinutes must be a whole number between ${MIN_FREQUENCY_MINUTES} and ${MAX_FREQUENCY_MINUTES} minutes`;
 }
 
-/** A check that may run longer than the interval overlaps the next one. Callers pass the effective values, and only when either changed. */
-export function timeoutFrequencyError(config: MonitorConfig | null | undefined, frequencyMinutes: unknown): string | null {
-  const timeout = config?.timeoutSeconds;
-  if (typeof timeout !== "number" || typeof frequencyMinutes !== "number") return null;
-  return timeout > frequencyMinutes * 60
-    ? `config.timeoutSeconds (${timeout}) cannot exceed the check interval of ${frequencyMinutes * 60} seconds`
-    : null;
+/**
+ * A check that may run longer than the interval overlaps the next one. Only a change that makes the pair worse is
+ * rejected, so a stored monitor whose timeout already exceeds its interval keeps saving unrelated edits (the form
+ * always sends the full config) and any change that narrows the gap is allowed. `previous` is null on create.
+ */
+export function timeoutFrequencyError(
+  previous: { config: MonitorConfig | null | undefined; frequencyMinutes: number } | null,
+  next: { config: MonitorConfig | null | undefined; frequencyMinutes: unknown },
+): string | null {
+  const timeout = next.config?.timeoutSeconds;
+  if (typeof timeout !== "number" || typeof next.frequencyMinutes !== "number") return null;
+  const excess = timeout - next.frequencyMinutes * 60;
+  if (excess <= 0) return null;
+  const priorTimeout = previous?.config?.timeoutSeconds;
+  const priorExcess = typeof priorTimeout === "number" && previous ? priorTimeout - previous.frequencyMinutes * 60 : 0;
+  if (excess <= priorExcess) return null;
+  return `config.timeoutSeconds (${timeout}) cannot exceed the check interval of ${next.frequencyMinutes * 60} seconds`;
 }
 
 /**

@@ -29,7 +29,7 @@ Select **Test Connection**, then save.
 Test sends are rate limited per user: email tests allow 5 per 10 minutes and may only target your own address or members of your organization (at most 5 recipients); other channel types allow 20 tests per 10 minutes. A channel used by a monitor or job cannot be deleted until you remove it from them.
 </Step>
 <Step>
-Select the channel in a monitor's or job's **Alert Settings**. A channel linked to a monitor through `POST /api/monitors/{id}/notifications` appears in that monitor's **Alert Settings** and stays in sync: saving the monitor's alert settings replaces its linked channels with the selection, even while alerts are turned off.
+Select the channel in a monitor's or job's **Alert Settings**. Channels linked through the API appear in the monitor's **Alert Settings**. Saving the settings replaces the linked channels with your selection.
 </Step>
 </Steps>
 
