@@ -10176,7 +10176,9 @@
           "sslLastCheckedAt": {
             "type": "string",
             "format": "date-time",
-            "nullable": true
+            "nullable": true,
+            "readOnly": true,
+            "description": "When the worker last read the certificate. Written by the worker; ignored on create and update."
           },
           "sslCertificate": {
             "type": "object",

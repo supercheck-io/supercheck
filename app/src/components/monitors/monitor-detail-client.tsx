@@ -575,6 +575,11 @@ export function MonitorDetailClient({
       };
     }
 
+    // Stored certificate is from another host: results are older still, so wait for the next read
+    if (storedCert?.host && storedCert.host !== targetHost) {
+      return null;
+    }
+
     if (!monitor.recentResults || monitor.recentResults.length === 0) {
       return null;
     }
