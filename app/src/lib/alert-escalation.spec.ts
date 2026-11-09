@@ -7,6 +7,8 @@ describe("isActionableAlertForIncident", () => {
     // A failure that quotes an earlier successful run is still a failure.
     ["sent", "job_failed", "Step 2 failed; step 1 completed successfully", true],
     ["sent", "monitor_recovery", "Back up", false],
+    // Informational notice: never opens an incident.
+    ["sent", "ssl_renewed", "SSL certificate renewed (valid until 2027-02-01)", false],
     ["sent", "job_success", "Done", false],
     // A failed delivery still opens an incident, like the background path.
     ["failed", "monitor_failure", "Down", true],

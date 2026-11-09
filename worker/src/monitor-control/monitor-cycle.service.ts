@@ -11,7 +11,7 @@ import {
 import type { MonitorExecutionResult } from '../monitor/types/monitor-result.type';
 import { BillingHoldService } from './billing-hold.service';
 import { decideMonitorCycle } from './cycle-policy';
-import { nextSequenceCounters } from './sequence-counters';
+import { nextOutageKey, nextSequenceCounters } from './sequence-counters';
 
 /** Bounded redelivery: repair backs off by one minute per failed attempt. */
 export const MAX_NOTIFY_ATTEMPTS = 5;
@@ -218,6 +218,7 @@ export class MonitorCycleService {
             errorMessage: `No result from ${location} before the cycle deadline`,
             executionGroupId: cycle.id,
             recoverySequence: false,
+            outageKey: nextOutageKey(previous, false),
           },
           isStatusChange: counters.isStatusChange,
           consecutiveFailureCount: counters.consecutiveFailureCount,

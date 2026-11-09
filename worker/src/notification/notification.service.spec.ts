@@ -1229,6 +1229,27 @@ describe('NotificationService', () => {
       expect(recoveryBody.dedup_key).toBe('monitor:monitor-123');
     });
 
+    it('resolves the SSL event when the certificate is renewed', async () => {
+      const templateProvider: NotificationProvider = {
+        ...webhookProvider,
+        config: {
+          ...webhookProvider.config,
+          bodyTemplate: JSON.stringify({
+            event_action: '{{pagerDutyEventAction}}',
+            dedup_key: '{{dedupKey}}',
+          }),
+        },
+      };
+      await service.sendNotification(templateProvider, {
+        ...basePayload,
+        type: 'ssl_renewed',
+        severity: 'success',
+      });
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(body.event_action).toBe('resolve');
+      expect(body.dedup_key).toBe('ssl:monitor-123');
+    });
+
     it('should send job success as trigger unless explicitly overridden', async () => {
       const templateProvider: NotificationProvider = {
         ...webhookProvider,
@@ -1473,6 +1494,7 @@ describe('NotificationService', () => {
       ['job_success', 'success', 'success'],
       ['job_timeout', 'warning', 'warning'],
       ['monitor_recovery', 'success', 'recovery'],
+      ['ssl_renewed', 'success', 'success'],
       ['monitor_failure', 'info', 'info'],
     ] as const)(
       'maps %s (%s) to email tone %s',
@@ -2168,6 +2190,17 @@ describe('NotificationService', () => {
 
       expect(body.originalPayload.metadata.dashboardUrl).toContain(
         'notification-run',
+      );
+    });
+
+    it('should generate the monitor URL for ssl_renewed', async () => {
+      await service.sendNotification(webhookProvider, {
+        ...basePayload,
+        type: 'ssl_renewed',
+      });
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(body.originalPayload.metadata.dashboardUrl).toContain(
+        'notification-monitor',
       );
     });
 

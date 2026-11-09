@@ -64,7 +64,7 @@ const stored = {
   enabled: true,
   status: "up",
   scheduledJobId: "s",
-  config: { timeoutSeconds: 30, aggregatedAlertState: { n: 4 }, sslLastCheckedAt: "t", sslCertificate: { valid: true } },
+  config: { timeoutSeconds: 30, aggregatedAlertState: { n: 4 }, sslLastCheckedAt: "t", sslCertificate: { valid: true }, sslAlertState: { id: "w" } },
   alertConfig: null,
 };
 const call = (handler: typeof PUT | typeof PATCH, method: string, body: object) =>
@@ -117,9 +117,19 @@ describe("monitor PUT write boundary", () => {
     expect(set).not.toHaveBeenCalled();
   });
 
+  it("keeps worker-owned config keys when a patch nulls or forges them", async () => {
+    await call(PATCH, "PATCH", { config: { timeoutSeconds: 10, sslAlertState: null, aggregatedAlertState: { n: 99 }, sslCertificate: null } });
+    expect(payload().config as Record<string, unknown>).toMatchObject({
+      timeoutSeconds: 10,
+      aggregatedAlertState: { n: 4 },
+      sslAlertState: { id: "w" },
+      sslCertificate: { valid: true },
+    });
+  });
+
   it("keeps worker-owned config keys when config is replaced (c2)", async () => {
     await call(PUT, "PUT", { config: { timeoutSeconds: 10 } });
-    expect((payload().config as Record<string, unknown>)).toMatchObject({ timeoutSeconds: 10, aggregatedAlertState: { n: 4 }, sslLastCheckedAt: "t", sslCertificate: { valid: true } });
+    expect((payload().config as Record<string, unknown>)).toMatchObject({ timeoutSeconds: 10, aggregatedAlertState: { n: 4 }, sslLastCheckedAt: "t", sslCertificate: { valid: true }, sslAlertState: { id: "w" } });
   });
 
   it("resuming with status alone also re-enables the monitor (c6)", async () => {

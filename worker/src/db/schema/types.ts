@@ -116,6 +116,16 @@ export type MonitorConfig = {
   sslLastCheckedAt?: string;
   /** First failed certificate probe since the last successful read, for this host; worker-owned. */
   sslProbeFailure?: { since: string; host: string | null };
+  /**
+   * An SSL warning was delivered for this host and the certificate has not been seen healthy since; worker-owned.
+   * `id` keys the one "renewed" notice owed for it; `validTo` is the warned certificate's expiry, when one was read.
+   */
+  sslAlertState?: {
+    id: string;
+    host: string | null;
+    validTo?: string;
+    warnedAt: string;
+  };
   sslCertificate?: MonitorResultDetails['sslCertificate'];
   sslCheckOnStatusChange?: boolean;
   checkExpiration?: boolean;
@@ -166,7 +176,8 @@ export type AlertType =
   | 'job_failed'
   | 'job_success'
   | 'job_timeout'
-  | 'ssl_expiring';
+  | 'ssl_expiring'
+  | 'ssl_renewed';
 
 export type AlertStatus = 'sent' | 'failed' | 'pending';
 

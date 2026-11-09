@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 export type LastResult = {
   isUp: boolean;
   consecutiveFailureCount: number | null;
@@ -45,4 +47,27 @@ export function nextSequenceCounters(
         (last?.details as { recoverySequence?: boolean } | null | undefined)
           ?.recoverySequence === true),
   };
+}
+
+/**
+ * Id of the outage a result row belongs to, kept in its details like the counters: a failing row starts one
+ * (or continues the previous failing row's) and an up row keeps the key of the outage it recovers from, so a
+ * recovery alert is claimed under the same key as the failure alerts. A legacy failing row without a key gets
+ * one here, mid-outage. Used by single-location evaluation; multi-location keeps it in aggregatedAlertState.
+ */
+export function nextOutageKey(
+  last: LastResult | undefined,
+  isUp: boolean,
+): string | undefined {
+  const stored = (last?.details as { outageKey?: unknown } | null | undefined)
+    ?.outageKey;
+  const carried = typeof stored === 'string' ? stored : undefined;
+  if (!isUp)
+    return last && !last.isUp ? (carried ?? randomUUID()) : randomUUID();
+  const recovering =
+    last &&
+    (!last.isUp ||
+      (last.details as { recoverySequence?: boolean } | null | undefined)
+        ?.recoverySequence === true);
+  return recovering ? carried : undefined;
 }

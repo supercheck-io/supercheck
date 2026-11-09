@@ -255,6 +255,7 @@ function normalizeMonitorConfig(config: Record<string, unknown>): Record<string,
   delete normalized.sslLastCheckedAt
   delete normalized.sslCertificate
   delete normalized.sslProbeFailure
+  delete normalized.sslAlertState
   delete normalized.aggregatedAlertState
   for (const key of UNEVALUATED_MONITOR_CONFIG_KEYS) delete normalized[key]
 

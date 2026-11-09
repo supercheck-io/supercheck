@@ -5,6 +5,7 @@ const ALERT_TYPE_LABELS: Record<string, string> = {
   job_success: "Job passed",
   job_timeout: "Job timed out",
   ssl_expiring: "SSL expiring",
+  ssl_renewed: "SSL renewed",
 };
 
 /** Human label for an alert type, e.g. "monitor_failure" -> "Monitor down". */

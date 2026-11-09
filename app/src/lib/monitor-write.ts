@@ -10,7 +10,7 @@ import { sanitizeString } from "@/lib/input-sanitizer";
 import catalog from "@/lib/billing/plan-catalog.json";
 
 /** Config keys the worker writes. A client replacing `config` must not wipe or forge them. */
-export const WORKER_OWNED_CONFIG_KEYS = ["aggregatedAlertState", "sslLastCheckedAt", "sslCertificate", "sslProbeFailure"] as const;
+export const WORKER_OWNED_CONFIG_KEYS = ["aggregatedAlertState", "sslLastCheckedAt", "sslCertificate", "sslProbeFailure", "sslAlertState"] as const;
 
 export function preserveWorkerConfigKeys<T extends MonitorConfig | null | undefined>(
   existing: MonitorConfig | null | undefined,

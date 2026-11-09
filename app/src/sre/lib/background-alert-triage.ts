@@ -97,6 +97,7 @@ export type SreBackgroundAlertTriageResult =
         | "disabled"
         | "invalid_job"
         | "alert_not_found"
+        | "informational_alert"
         | "non_sent_alert"
         | "resolved_alert"
         | "already_triaged"
@@ -336,6 +337,11 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string, failur
   // Failed deliveries still open an incident; only undelivered (pending) rows wait.
   if (!isAttemptedAlertStatus(alert.status)) {
     return { skipped: true as const, reason: "non_sent_alert" as const };
+  }
+
+  // Informational notices (SSL renewed) never open or resolve an incident.
+  if (alert.type === "ssl_renewed") {
+    return { skipped: true as const, reason: "informational_alert" as const };
   }
 
   const alertStatus = deriveAlertStatus(alert.type);

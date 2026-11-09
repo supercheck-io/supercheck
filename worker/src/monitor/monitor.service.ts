@@ -78,8 +78,10 @@ import {
 } from '../common/utils/network-error';
 import {
   MonitorEvaluator,
+  sslHost,
   type GroupAlertEvaluation,
 } from './monitor-evaluator';
+import { nextOutageKey } from '../monitor-control/sequence-counters';
 
 // Use the Monitor type from schema
 // Use the MonitorResult type from schema
@@ -2541,6 +2543,8 @@ export class MonitorService {
         alertsSentForFailure = 0;
       }
 
+      const outageKey = nextOutageKey(lastResult, resultData.isUp);
+
       // Determine if this is a status change
       const isStatusChange = lastResult
         ? lastResult.isUp !== resultData.isUp
@@ -2566,6 +2570,8 @@ export class MonitorService {
             resultData.isUp &&
             (lastResult?.isUp === false ||
               lastResult?.details?.recoverySequence === true),
+          // Id of this outage, so its alerts are claimed once whichever worker evaluates them.
+          ...(outageKey ? { outageKey } : {}),
           // Length of an outage that sent no failure alert; gates the recovery alert on the failure threshold.
           ...(resultData.isUp && lastResult
             ? lastResult.isUp
@@ -2943,14 +2949,5 @@ export class MonitorService {
         isUp: false,
       };
     }
-  }
-}
-
-/** Host the stored certificate belongs to; a target edit to another host makes it stale. */
-function sslHost(target: string): string | undefined {
-  try {
-    return new URL(target).hostname.toLowerCase();
-  } catch {
-    return undefined;
   }
 }

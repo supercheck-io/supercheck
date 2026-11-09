@@ -489,4 +489,341 @@ describe('MonitorAlertService', () => {
     expect(map.has('old-monitor')).toBe(false);
     expect(map.has('monitor-1')).toBe(true);
   });
+
+  describe('claimed delivery', () => {
+    const claim = { outageKey: 'key-1', ordinal: 0 };
+
+    /** Adds the claim statements to the shared mock db: the upsert result and what other claims look like. */
+    function withClaims(
+      ctx: ReturnType<typeof createService>,
+      options: {
+        claimed?: Array<{ id: string; provider: string; attempts: number }>;
+        existing?: Array<{ status: string }>;
+        claimFails?: boolean;
+        updateFailures?: number;
+      } = {},
+    ) {
+      const { db, valuesMock } = ctx;
+      const conflict = jest.fn(() => ({
+        returning: options.claimFails
+          ? jest.fn().mockRejectedValue(new Error('claim failed'))
+          : jest.fn().mockResolvedValue(
+              (options.claimed ?? []).map((row) => ({
+                ...row,
+              })),
+            ),
+      }));
+      const insertRows = valuesMock.getMockImplementation()!;
+      valuesMock.mockImplementation(((rows: unknown) => ({
+        ...insertRows(),
+        onConflictDoUpdate: conflict,
+        rows,
+      })) as never);
+      const baseSelect = (db.select as jest.Mock).getMockImplementation()!;
+      (db.select as jest.Mock).mockImplementation((fields) =>
+        fields && Object.keys(fields).join() === 'status'
+          ? { from: () => ({ where: async () => options.existing ?? [] }) }
+          : baseSelect(fields),
+      );
+      let failures = options.updateFailures ?? 0;
+      const where = jest.fn(async () => {
+        if (failures-- > 0) throw new Error('update failed');
+      });
+      const set = jest.fn(() => ({ where }));
+      (db as unknown as { update: jest.Mock }).update = jest.fn(() => ({
+        set,
+      }));
+      return { conflict, set, where };
+    }
+
+    const both = [
+      { id: 'row-1', provider: 'provider-1', attempts: 1 },
+      { id: 'row-2', provider: 'provider-2', attempts: 1 },
+    ];
+    const twoProviders = (ctx: ReturnType<typeof createService>) => {
+      // createService returns one provider; fan out to two for these cases.
+      (ctx.db.select as jest.Mock).mockImplementation((fields) =>
+        Object.keys(fields).length === 1
+          ? {
+              from: jest.fn().mockReturnThis(),
+              innerJoin: jest.fn().mockReturnThis(),
+              where: jest.fn().mockReturnThis(),
+              limit: jest.fn().mockResolvedValue([]),
+            }
+          : {
+              from: () => ({
+                innerJoin: () => ({
+                  where: jest.fn().mockResolvedValue(
+                    ['provider-1', 'provider-2'].map((id) => ({
+                      id,
+                      type: 'webhook',
+                      config: { url: 'https://example.com/hook' },
+                      projectId: 'project-1',
+                    })),
+                  ),
+                }),
+              }),
+            },
+      );
+    };
+
+    it('sends to the claimed providers and finishes their rows; a failed one stays owed', async () => {
+      const ctx = createService();
+      twoProviders(ctx);
+      const { set } = withClaims(ctx, { claimed: both });
+      const result = await ctx.service.sendNotification(
+        'monitor-1',
+        'failure',
+        'Down',
+        {},
+        claim,
+      );
+      // provider-1 delivered, provider-2 failed with attempts left: the alert is still owed.
+      expect(result).toEqual({ delivered: false });
+      expect(set).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'sent' }),
+      );
+      expect(set).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'failed', errorMessage: 'failed' }),
+      );
+      expect(
+        ctx.sreAlertTriageQueueService.enqueueAlertHistoryRows,
+      ).toHaveBeenCalledWith([
+        { id: 'row-1', status: 'sent' },
+        { id: 'row-2', status: 'failed' },
+      ]);
+    });
+
+    it('counts a failed provider whose attempts are used up as given up', async () => {
+      const ctx = createService();
+      twoProviders(ctx);
+      withClaims(ctx, {
+        claimed: [
+          both[0],
+          { id: 'row-2', provider: 'provider-2', attempts: 5 },
+        ],
+      });
+      expect(
+        await ctx.service.sendNotification(
+          'monitor-1',
+          'failure',
+          'Down',
+          {},
+          claim,
+        ),
+      ).toEqual({ delivered: true });
+    });
+
+    it('sends nothing and reports delivered when every provider already has the alert', async () => {
+      const ctx = createService();
+      twoProviders(ctx);
+      withClaims(ctx, { existing: [{ status: 'sent' }, { status: 'sent' }] });
+      expect(
+        await ctx.service.sendNotification(
+          'monitor-1',
+          'failure',
+          'Down',
+          {},
+          claim,
+        ),
+      ).toEqual({ delivered: true, alreadySent: true });
+      expect(
+        ctx.notificationService.sendNotificationToMultipleProviders,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('reports nothing delivered when the other providers are out of attempts and none ever sent', async () => {
+      const ctx = createService();
+      twoProviders(ctx);
+      withClaims(ctx, {
+        existing: [{ status: 'failed' }, { status: 'failed' }],
+      });
+      expect(
+        await ctx.service.sendNotification(
+          'monitor-1',
+          'failure',
+          'Down',
+          {},
+          claim,
+        ),
+      ).toEqual({ delivered: false, alreadySent: false });
+    });
+
+    it('leaves an alert another evaluator is sending to it', async () => {
+      const ctx = createService();
+      twoProviders(ctx);
+      withClaims(ctx, {
+        existing: [{ status: 'pending' }, { status: 'sent' }],
+      });
+      expect(
+        await ctx.service.sendNotification(
+          'monitor-1',
+          'failure',
+          'Down',
+          {},
+          claim,
+        ),
+      ).toEqual({ delivered: false, suppressed: true, reason: 'claimed' });
+    });
+
+    it('stays in flight when it sent to some providers and another evaluator holds the rest', async () => {
+      const ctx = createService();
+      twoProviders(ctx);
+      withClaims(ctx, {
+        claimed: [both[0]],
+        existing: [{ status: 'pending' }],
+      });
+      expect(
+        await ctx.service.sendNotification(
+          'monitor-1',
+          'failure',
+          'Down',
+          {},
+          claim,
+        ),
+      ).toMatchObject({ suppressed: true, reason: 'claimed' });
+    });
+
+    it('keeps the rows it claimed when reading the other claims fails, and does not send unreserved', async () => {
+      const ctx = createService();
+      twoProviders(ctx);
+      withClaims(ctx, { claimed: [both[0]] });
+      const select = (ctx.db.select as jest.Mock).getMockImplementation()!;
+      (ctx.db.select as jest.Mock).mockImplementation((fields) =>
+        fields && Object.keys(fields).join() === 'status'
+          ? {
+              from: () => ({
+                where: async () => {
+                  throw new Error('read failed');
+                },
+              }),
+            }
+          : select(fields),
+      );
+      const result = await ctx.service.sendNotification(
+        'monitor-1',
+        'failure',
+        'Down',
+        {},
+        claim,
+      );
+      // It sent to the provider it claimed and finished that row; the unknown one is left held.
+      expect(result).toMatchObject({ suppressed: true, reason: 'claimed' });
+      expect(
+        ctx.notificationService.sendNotificationToMultipleProviders,
+      ).toHaveBeenCalledTimes(1);
+      expect(
+        ctx.sreAlertTriageQueueService.enqueueAlertHistoryRows,
+      ).toHaveBeenCalledWith([{ id: 'row-1', status: 'sent' }]);
+    });
+
+    it('sends unreserved and records history afterwards when the claim cannot be made', async () => {
+      const ctx = createService();
+      withClaims(ctx, { claimFails: true });
+      const result = await ctx.service.sendNotification(
+        'monitor-1',
+        'failure',
+        'Down',
+        {},
+        claim,
+      );
+      expect(result).toEqual({ delivered: true });
+      expect(
+        ctx.sreAlertTriageQueueService.enqueueAlertHistoryRows,
+      ).toHaveBeenCalled();
+    });
+
+    it('retries a row update that fails, and does not report a delivered alert as failed when it keeps failing', async () => {
+      const retried = createService();
+      const { where } = withClaims(retried, {
+        claimed: [both[0]],
+        updateFailures: 1,
+      });
+      expect(
+        (
+          await retried.service.sendNotification(
+            'monitor-1',
+            'recovery',
+            'Up',
+            {},
+            claim,
+          )
+        ).delivered,
+      ).toBe(true);
+      expect(where).toHaveBeenCalledTimes(2);
+
+      const broken = createService();
+      withClaims(broken, { claimed: [both[0]], updateFailures: 99 });
+      expect(
+        (
+          await broken.service.sendNotification(
+            'monitor-1',
+            'recovery',
+            'Up',
+            {},
+            claim,
+          )
+        ).delivered,
+      ).toBe(true);
+    });
+
+    it('sends the SSL renewed notice as informational, claimed under its warning id, and never queues it for triage', async () => {
+      const ctx = createService();
+      const { conflict } = withClaims(ctx, {
+        claimed: [both[0]],
+        existing: [],
+      });
+      ctx.notificationService.sendNotificationToMultipleProviders.mockResolvedValueOnce(
+        {
+          success: 1,
+          failed: 0,
+          results: [{ provider: { id: 'provider-1' }, success: true }],
+        },
+      );
+      await expect(
+        ctx.service.sendSslRenewedNotification(
+          'monitor-1',
+          'SSL certificate renewed (valid until 2027-02-01)',
+          { observedAt: new Date('2026-12-05T00:00:00Z') },
+          { outageKey: 'warning-1', ordinal: 0 },
+        ),
+      ).resolves.toBe(true);
+      expect(conflict).toHaveBeenCalled();
+      expect(
+        ctx.notificationService.sendNotificationToMultipleProviders,
+      ).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          type: 'ssl_renewed',
+          severity: 'success',
+          title: 'SSL Certificate Renewed - Checkout API',
+          message: 'SSL certificate renewed (valid until 2027-02-01)',
+        }),
+      );
+      expect(
+        ctx.sreAlertTriageQueueService.enqueueAlertHistoryRows,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('does not throttle the renewed notice with the warning throttle', async () => {
+      const ctx = createService();
+      await ctx.service.sendSslExpirationNotification('monitor-1', 'expiring');
+      withClaims(ctx, { claimed: [both[0]] });
+      ctx.notificationService.sendNotificationToMultipleProviders.mockResolvedValueOnce(
+        {
+          success: 1,
+          failed: 0,
+          results: [{ provider: { id: 'provider-1' }, success: true }],
+        },
+      );
+      await expect(
+        ctx.service.sendSslRenewedNotification(
+          'monitor-1',
+          'renewed',
+          {},
+          { outageKey: 'warning-1', ordinal: 0 },
+        ),
+      ).resolves.toBe(true);
+    });
+  });
 });

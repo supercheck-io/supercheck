@@ -76,6 +76,12 @@ export const alertTypes = [
     icon: AlertCircle,
     color: "text-orange-500",
   },
+  {
+    value: "ssl_renewed",
+    label: "SSL Renewed",
+    icon: CheckCircle,
+    color: "text-green-500",
+  },
 ];
 
 export const notificationProviders = [

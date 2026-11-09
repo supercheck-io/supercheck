@@ -2053,6 +2053,17 @@ export class CredentialRevocationRetryStrategy implements ICleanupStrategy {
 }
 
 /**
+ * Alert history past retention. Claim rows (outage_key set) of a monitor that is still failing are kept: they
+ * are what stops a retried alert of the open outage from sending again, so they outlive the retention window.
+ */
+function expiredAlertHistory(cutoffDate: Date) {
+  return and(
+    lt(alertHistory.sentAt, cutoffDate),
+    sql`NOT (${alertHistory.outageKey} IS NOT NULL AND EXISTS (SELECT 1 FROM monitors WHERE monitors.id = ${alertHistory.monitorId} AND monitors.status IN ('down', 'error')))`,
+  );
+}
+
+/**
  * Alert History Cleanup Strategy
  *
  * Manages cleanup of old alert history records to prevent unbounded table growth.
@@ -2092,7 +2103,7 @@ export class AlertHistoryCleanupStrategy implements ICleanupStrategy {
         db
           .select({ count: sql<number>`count(*)` })
           .from(alertHistory)
-          .where(lt(alertHistory.sentAt, cutoffDate)),
+          .where(expiredAlertHistory(cutoffDate)),
       ]);
 
       return {
@@ -2144,7 +2155,7 @@ export class AlertHistoryCleanupStrategy implements ICleanupStrategy {
         const countResult = await db
           .select({ count: sql<number>`count(*)` })
           .from(alertHistory)
-          .where(lt(alertHistory.sentAt, cutoffDate));
+          .where(expiredAlertHistory(cutoffDate));
 
         const count = Math.min(
           Number(countResult[0]?.count || 0),
@@ -2161,7 +2172,7 @@ export class AlertHistoryCleanupStrategy implements ICleanupStrategy {
           const idsToDelete = await db
             .select({ id: alertHistory.id })
             .from(alertHistory)
-            .where(lt(alertHistory.sentAt, cutoffDate))
+            .where(expiredAlertHistory(cutoffDate))
             .limit(batchSize);
 
           if (idsToDelete.length === 0) break;

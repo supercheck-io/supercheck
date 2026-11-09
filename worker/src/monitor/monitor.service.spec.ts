@@ -2067,6 +2067,37 @@ describe('MonitorService', () => {
       mockDbService.db.query.monitorResults.findFirst.mockReset();
     });
 
+    it('keys each outage on its result rows: new on a new failure, shared through the failure and its recovery', async () => {
+      let lastResult: Record<string, unknown> | undefined;
+      const values = jest
+        .fn()
+        .mockImplementation(async (value: Record<string, unknown>) => {
+          lastResult = value;
+        });
+      mockDbService.db.insert.mockReturnValue({ values });
+      mockDbService.db.query.monitorResults.findFirst.mockImplementation(
+        async () => lastResult,
+      );
+      const keys: Array<string | undefined> = [];
+      for (const isUp of [false, false, true, true, false]) {
+        await service['saveMonitorResultToDb']({
+          monitorId: mockMonitor.id,
+          location: 'eu',
+          checkedAt: new Date(),
+          status: isUp ? 'up' : 'down',
+          isUp,
+        });
+        keys.push((lastResult?.details as { outageKey?: string }).outageKey);
+      }
+      expect(keys[0]).toEqual(expect.any(String));
+      expect(keys[1]).toBe(keys[0]); // same outage
+      expect(keys[2]).toBe(keys[0]); // its recovery
+      expect(keys[3]).toBe(keys[0]);
+      expect(keys[4]).toEqual(expect.any(String));
+      expect(keys[4]).not.toBe(keys[0]); // a new outage
+      mockDbService.db.query.monitorResults.findFirst.mockReset();
+    });
+
     it('records the outage length on the up streak that follows it', async () => {
       let lastResult: Record<string, unknown> | undefined;
       const values = jest

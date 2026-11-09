@@ -98,6 +98,14 @@ describe("POST /api/alerts/history", () => {
     expect(enqueueSreAlertTriageJob).toHaveBeenCalledWith({ alertHistoryId: "h1" });
   });
 
+  it("accepts the SSL renewed type and rejects an unknown one", async () => {
+    mockSourceLookup([{ id: MONITOR_ID }]);
+    const values = mockInsert();
+    expect((await post({ monitorId: MONITOR_ID, type: "ssl_renewed" })).status).toBe(200);
+    expect(values).toHaveBeenCalledWith(expect.objectContaining({ type: "ssl_renewed" }));
+    expect((await post({ monitorId: MONITOR_ID, type: "made_up" })).status).toBe(400);
+  });
+
   it("rejects oversized text fields before writing", async () => {
     const values = mockInsert();
     expect((await post({ monitorId: MONITOR_ID, message: "x".repeat(2001) })).status).toBe(400);

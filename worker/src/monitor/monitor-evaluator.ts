@@ -1,4 +1,5 @@
 import { Logger } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import type { z } from 'zod';
 import { DbService } from '../db/db.service';
@@ -15,6 +16,18 @@ import { MonitorExecutionResult } from './types/monitor-result.type';
 
 /** A certificate probe failing this long while the site is up raises an SSL alert. */
 const SSL_PROBE_FAILURE_ALERT_MS = 24 * 60 * 60 * 1000;
+
+/** Host the stored certificate belongs to; a target edit to another host makes it stale. */
+export function sslHost(target: string): string | undefined {
+  try {
+    return new URL(target).hostname.toLowerCase();
+  } catch {
+    return undefined;
+  }
+}
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type Monitor = z.infer<typeof monitorsSelectSchema>;
 type MonitorResult = z.infer<typeof monitorResultsSelectSchema>;
@@ -42,6 +55,12 @@ export type AggregatedAlertState = {
   /** Some cycles of the current failure sequence were not counted (alerts off or paused). */
   failureCountUnknown?: boolean;
   executionGroupId?: string;
+  /**
+   * Id of the current failure sequence (and of the recovery that follows it), minted where the sequence starts.
+   * Alert claims in alert_history are keyed by it, so every evaluator of the same alert shares one claim.
+   * Absent on state written before claims existed or by an older worker: such alerts are sent unclaimed.
+   */
+  outageKey?: string;
 };
 
 /**
@@ -160,6 +179,10 @@ export class MonitorEvaluator {
       ...(rawAlertState?.failureCountUnknown === true
         ? { failureCountUnknown: true }
         : {}),
+      ...(typeof rawAlertState?.outageKey === 'string' &&
+      UUID_PATTERN.test(rawAlertState.outageKey)
+        ? { outageKey: rawAlertState.outageKey }
+        : {}),
     };
   }
 
@@ -196,6 +219,11 @@ export class MonitorEvaluator {
         ...(continuingFailureSequence && previousState.failureCountUnknown
           ? { failureCountUnknown: true }
           : {}),
+        // A sequence without a key (older state, or counting resumed mid-outage) gets one here, where the
+        // counters are committed; a new sequence always starts a new key.
+        outageKey: continuingFailureSequence
+          ? (previousState.outageKey ?? randomUUID())
+          : randomUUID(),
       };
     }
 
@@ -223,6 +251,11 @@ export class MonitorEvaluator {
             previousState.priorFailureCount !== undefined
           ? { priorFailureCount: previousState.priorFailureCount }
           : {}),
+      // The recovery is claimed under the key of the outage it ends.
+      ...((previousStatus === 'down' || continuingRecoverySequence) &&
+      previousState.outageKey
+        ? { outageKey: previousState.outageKey }
+        : {}),
     };
   }
 
@@ -241,8 +274,9 @@ export class MonitorEvaluator {
           previousStatus,
           currentStatus,
         )
-      : // Uncounted cycles leave the outage length unknown, so a later recovery is not gated on it.
-        { ...previousState, failureCountUnknown: true };
+      : // Uncounted cycles leave the outage length unknown, so a later recovery is not gated on it. The key
+        // goes too: counting may resume in a later outage, which must not reuse this one's claims.
+        { ...previousState, outageKey: undefined, failureCountUnknown: true };
   }
 
   /**
@@ -537,6 +571,36 @@ export class MonitorEvaluator {
       return { alertSent: false };
     }
 
+    // The key of the outage this alert belongs to: from the counters' own state (aggregated state, or the
+    // result row for a single location). Without one the alert is sent unclaimed, as before claims existed.
+    const storedOutageKey = (
+      latestResult?.details as { outageKey?: unknown } | null | undefined
+    )?.outageKey;
+    const outageKey = isMultiLocationEvaluation
+      ? aggregatedAlertState?.outageKey
+      : typeof storedOutageKey === 'string' &&
+          UUID_PATTERN.test(storedOutageKey)
+        ? storedOutageKey
+        : undefined;
+    const claim =
+      outageKey && !incidentOnly
+        ? {
+            outageKey,
+            ordinal: alertType === 'failure' ? currentWindow : 0,
+          }
+        : undefined;
+    // A key minted by this evaluation (manual run: no group-owned state) must be durable before anything is
+    // sent under it, or a second evaluation would mint another and claim the same alert again.
+    if (
+      claim &&
+      isMultiLocationEvaluation &&
+      aggregatedAlertState &&
+      !options.preparedAlertState &&
+      this.readAggregatedAlertState(monitorConfig).outageKey !== outageKey
+    ) {
+      await this.persistAggregatedAlertState(monitorId, aggregatedAlertState);
+    }
+
     // Set once the provider accepted the alert: later persistence errors are not delivery failures.
     let delivered = false;
     try {
@@ -567,6 +631,7 @@ export class MonitorEvaluator {
             alertType,
             reason,
             alertMetadata,
+            claim,
           );
 
       // Only a maintenance-suppressed recovery is consumed; anything else (no providers) retries within
@@ -580,8 +645,14 @@ export class MonitorEvaluator {
         notification?.suppressed === true &&
         alertType === 'failure' &&
         (notification as { reason?: string }).reason === 'incident_only';
-      if (!suppressed && !incidentSignalled && notification?.suppressed)
-        return { alertSent: false };
+      if (!suppressed && !incidentSignalled && notification?.suppressed) {
+        // A recovery has one claim and no later window to fall back on, so one held by an evaluator that may
+        // have died is retried (the claim goes stale); a failure alert is retried by the next window anyway.
+        return (notification as { reason?: string }).reason === 'claimed' &&
+          alertType === 'recovery'
+          ? { alertSent: false, deliveryFailed: true }
+          : { alertSent: false };
+      }
       if (
         !suppressed &&
         !incidentSignalled &&
@@ -589,6 +660,11 @@ export class MonitorEvaluator {
       )
         return { alertSent: false, deliveryFailed: true };
       delivered = true;
+      // Every provider already had this alert (an earlier evaluation sent it and its counter write was lost):
+      // the counters below catch up, nothing was sent now.
+      const alreadySent =
+        (notification as { alreadySent?: boolean } | undefined)?.alreadySent ===
+        true;
 
       if (isMultiLocationEvaluation && aggregatedAlertState) {
         const updatedAggregatedAlertState =
@@ -644,7 +720,9 @@ export class MonitorEvaluator {
         }
       }
 
-      return suppressed ? { alertSent: false } : { alertSent: true, alertType };
+      return suppressed || alreadySent
+        ? { alertSent: false }
+        : { alertSent: true, alertType };
     } catch (error) {
       if (isMultiLocationEvaluation && aggregatedAlertState) {
         await this.persistAggregatedAlertState(monitorId, aggregatedAlertState);
@@ -783,6 +861,9 @@ export class MonitorEvaluator {
       let shouldAlert = false;
       let alertReason = '';
 
+      // A certificate that was warned about is healthy again: say so once, instead of leaving the warning open.
+      if (await this.notifySslRenewed(resultData, monitor)) return;
+
       if (!sslCertificate) {
         // The site answers but the certificate probe keeps failing: after a day, say so.
         // A site that is down already alerts as down; don't add an SSL warning to it.
@@ -848,10 +929,16 @@ export class MonitorEvaluator {
             );
 
           // Only log important SSL alerts
-          if (sent)
+          if (sent) {
             this.logger.log(
               `Sent SSL expiration alert for monitor ${resultData.monitorId}: ${alertReason}`,
             );
+            await this.recordSslWarning(
+              resultData.monitorId,
+              monitor.target,
+              sslCertificate?.validTo,
+            );
+          }
         }
         // Removed debug log for skipped alerts
       }
@@ -861,6 +948,127 @@ export class MonitorEvaluator {
         error,
       );
     }
+  }
+
+  /**
+   * Remembers that an SSL warning was delivered for this host, until the renewed notice is sent. Keeps the
+   * first warning's id and certificate expiry while the host stays the same (daily repeats are the same episode).
+   */
+  private async recordSslWarning(
+    monitorId: string,
+    target: string,
+    validTo: string | undefined,
+  ): Promise<void> {
+    const host = sslHost(target) ?? null;
+    const state = JSON.stringify({
+      id: randomUUID(),
+      host,
+      ...(validTo ? { validTo } : {}),
+      warnedAt: new Date().toISOString(),
+    });
+    try {
+      await this.dbService.db
+        .update(schema.monitors)
+        .set({
+          config: sql`coalesce(${schema.monitors.config}, '{}'::jsonb) || jsonb_build_object('sslAlertState', CASE WHEN ${schema.monitors.config}->'sslAlertState'->>'id' IS NOT NULL AND ${schema.monitors.config}->'sslAlertState'->>'host' IS NOT DISTINCT FROM ${host}::text THEN ${schema.monitors.config}->'sslAlertState' ELSE ${state}::jsonb END)`,
+        })
+        .where(eq(schema.monitors.id, monitorId));
+    } catch (error) {
+      this.logger.warn(
+        `Failed to record SSL warning state for monitor ${monitorId}: ${getErrorMessage(error)}`,
+      );
+    }
+  }
+
+  private async clearSslWarning(
+    monitorId: string,
+    warningId: string,
+  ): Promise<void> {
+    try {
+      await this.dbService.db
+        .update(schema.monitors)
+        .set({
+          config: sql`coalesce(${schema.monitors.config}, '{}'::jsonb) - 'sslAlertState'`,
+        })
+        .where(
+          and(
+            eq(schema.monitors.id, monitorId),
+            // Only the episode being closed: a newer warning keeps its own state.
+            sql`${schema.monitors.config}->'sslAlertState'->>'id' = ${warningId}`,
+          ),
+        );
+    } catch (error) {
+      this.logger.warn(
+        `Failed to clear SSL warning state for monitor ${monitorId}: ${getErrorMessage(error)}`,
+      );
+    }
+  }
+
+  /**
+   * Sends "SSL certificate renewed" when a warning was delivered for this host and a later read shows a valid
+   * certificate with more days left than the warning window, or a later expiry than the warned one. Once per
+   * warning episode: the notice is claimed under the episode's id, so regions, retries and workers share it.
+   * Returns true when this read was consumed by the renewal (sent, or already sent earlier).
+   */
+  private async notifySslRenewed(
+    resultData: MonitorExecutionResult,
+    monitor: Monitor,
+  ): Promise<boolean> {
+    const state = monitor.config?.sslAlertState;
+    const certificate = resultData.details?.sslCertificate;
+    if (
+      !state ||
+      typeof state.id !== 'string' ||
+      !UUID_PATTERN.test(state.id) ||
+      !certificate
+    ) {
+      return false;
+    }
+    if (state.host !== (sslHost(monitor.target) ?? null)) {
+      // The target moved to another host: that warning is about a certificate we no longer watch.
+      await this.clearSslWarning(monitor.id, state.id);
+      return false;
+    }
+    const days = certificate.daysRemaining;
+    const validToMs = certificate.validTo
+      ? Date.parse(certificate.validTo)
+      : NaN;
+    const warnedToMs = state.validTo ? Date.parse(state.validTo) : NaN;
+    const warningDays =
+      monitor.config?.sslDaysUntilExpirationWarning ??
+      SECURITY.SSL_DEFAULT_WARNING_DAYS;
+    // The warned certificate itself (same expiry) is not renewed, however the warning window was edited since.
+    const sameCertificate = validToMs <= warnedToMs;
+    const healthy =
+      certificate.valid !== false &&
+      days !== undefined &&
+      days > 0 &&
+      !sameCertificate &&
+      (days > warningDays || validToMs > warnedToMs);
+    if (!healthy) return false;
+
+    const validUntil = Number.isNaN(validToMs)
+      ? undefined
+      : new Date(validToMs).toISOString().slice(0, 10);
+    const delivered = await this.monitorAlertService.sendSslRenewedNotification(
+      monitor.id,
+      validUntil
+        ? `SSL certificate renewed (valid until ${validUntil})`
+        : 'SSL certificate renewed',
+      {
+        sslCertificate: certificate,
+        daysRemaining: days,
+        observedAt: resultData.checkedAt,
+      },
+      { outageKey: state.id, ordinal: 0 },
+    );
+    if (delivered) {
+      this.logger.log(
+        `Sent SSL renewed notice for monitor ${monitor.id}${validUntil ? ` (valid until ${validUntil})` : ''}`,
+      );
+      await this.clearSslWarning(monitor.id, state.id);
+    }
+    return delivered;
   }
 
   /**

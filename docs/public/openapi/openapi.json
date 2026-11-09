@@ -4449,7 +4449,8 @@
                       "job_failed",
                       "job_success",
                       "job_timeout",
-                      "ssl_expiring"
+                      "ssl_expiring",
+                      "ssl_renewed"
                     ]
                   },
                   "message": {
@@ -9218,13 +9219,6 @@
             "type": "string",
             "format": "date-time",
             "nullable": true
-          },
-          "mutedUntil": {
-            "type": "string",
-            "format": "date-time",
-            "nullable": true,
-            "deprecated": true,
-            "description": "Deprecated and unused: monitors cannot be muted. May hold a stale value from older data."
           },
           "scheduledJobId": {
             "type": "string",

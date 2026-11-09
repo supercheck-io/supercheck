@@ -17,6 +17,7 @@ export function isActionableAlertForIncident(
     normalizedType.includes("recovery") ||
     normalizedType.includes("success") ||
     normalizedType.includes("resolved") ||
+    normalizedType.includes("renewed") ||
     message.toLowerCase().includes("completed successfully")
   );
 }

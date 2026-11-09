@@ -477,6 +477,13 @@
       "when": 1794212458845,
       "tag": "0067_monitor_aggregate_percentiles",
       "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1794226451934,
+      "tag": "0068_monitor_alert_claims",
+      "breakpoints": true
     }
   ]
 }

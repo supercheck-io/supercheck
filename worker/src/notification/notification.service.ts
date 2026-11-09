@@ -83,6 +83,15 @@ interface WebhookConfig {
   headers?: Record<string, string>;
 }
 
+/** Notifications about a monitor: its status alerts and its SSL notices. */
+function isMonitorNotificationType(type: AlertType): boolean {
+  return (
+    type.includes('monitor') ||
+    type === 'ssl_expiring' ||
+    type === 'ssl_renewed'
+  );
+}
+
 export interface NotificationPayload {
   type: AlertType;
   title: string;
@@ -506,7 +515,7 @@ export class NotificationService implements OnApplicationShutdown {
 
     // Generate dashboard URLs for easy navigation - use notification pages for clean view
     let dashboardUrl: string;
-    if (payload.type.includes('monitor') || payload.type === 'ssl_expiring') {
+    if (isMonitorNotificationType(payload.type)) {
       dashboardUrl = `${baseUrl}/notification-monitor/${payload.targetId}`;
     } else if (payload.type.includes('job')) {
       dashboardUrl = `${baseUrl}/jobs`;
@@ -547,8 +556,7 @@ export class NotificationService implements OnApplicationShutdown {
     payload: NotificationPayload,
   ): FormattedNotification {
     // Standardized formatting with professional appearance - no emojis for consistency
-    const isMonitor =
-      payload.type.includes('monitor') || payload.type === 'ssl_expiring';
+    const isMonitor = isMonitorNotificationType(payload.type);
     // const __isJob = payload.type.includes('job');
 
     // Consistent title format without emojis for professional appearance
@@ -630,12 +638,11 @@ export class NotificationService implements OnApplicationShutdown {
     // Dashboard link
     if (payload.metadata?.dashboardUrl) {
       // Determine the appropriate label based on the payload type
-      const dashboardLabel =
-        payload.type.includes('monitor') || payload.type === 'ssl_expiring'
-          ? '🔗 Monitor Details'
-          : payload.type.includes('job')
-            ? '🔗 Job Details'
-            : '🔗 Dashboard';
+      const dashboardLabel = isMonitorNotificationType(payload.type)
+        ? '🔗 Monitor Details'
+        : payload.type.includes('job')
+          ? '🔗 Job Details'
+          : '🔗 Dashboard';
 
       fields.push({
         title: dashboardLabel,
@@ -921,6 +928,8 @@ export class NotificationService implements OnApplicationShutdown {
     switch (payload.type) {
       case 'monitor_recovery':
         return 'recovery';
+      case 'ssl_renewed':
+        return 'success';
       case 'job_success':
         return 'success';
       case 'job_failed':
@@ -1345,7 +1354,9 @@ export class NotificationService implements OnApplicationShutdown {
     }
 
     switch (payload.type) {
+      // A renewed certificate closes the SSL warning (same dedup key, see getWebhookDedupScope).
       case 'monitor_recovery':
+      case 'ssl_renewed':
         return 'resolve';
       case 'monitor_failure':
       case 'job_failed':
@@ -1401,7 +1412,7 @@ export class NotificationService implements OnApplicationShutdown {
       return 'job';
     }
 
-    if (payload.type === 'ssl_expiring') {
+    if (payload.type === 'ssl_expiring' || payload.type === 'ssl_renewed') {
       return 'ssl';
     }
 
