@@ -122,7 +122,7 @@ Prefix each path with your Supercheck URL. `[id]` is the status page UUID from t
 ![Status](https://yourdomain.com/api/status-pages/YOUR_PAGE_ID/badge?label=API&style=flat-square)
 ```
 
-Badge colors follow the page's **Status Colors** setting.
+Badge colors follow the page's **Status Colors** setting. When every showcased component has no recent data and no incident is open, the badge shows `no recent data` in grey.
 
 </Accordion>
 </Accordions>
@@ -140,7 +140,7 @@ Components are the public services on your page. A component can link to an inte
 | **Publish outage and recovery incidents automatically** | Optional, off by default |
 | **Visibility** | Show on the public page, show only while degraded, and link an internal service (never published) |
 
-When every running monitor linked to a component has missed three checks in a row (at least 15 minutes), the component shows **No recent data** instead of its last status, and it does not count toward the overall page status. This happens, for example, while synthetic checks are paused at your overage cap. Paused monitors keep their last status.
+When every running monitor linked to a component has missed three checks in a row (at least 15 minutes), the component shows **No recent data** instead of its last status, and it does not count toward the page banner or badge. This happens, for example, while synthetic checks are paused at your overage cap. Paused monitors keep their last status.
 
 ![Add Component](/screenshots/status-page-add-component.png)
 
