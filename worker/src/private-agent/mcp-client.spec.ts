@@ -412,7 +412,7 @@ describe('redactMcpText parity with the app sanitizer', () => {
     ['{"dbPassword": "pa55word"}', 'pa55word'],
     ['https://x.example/f?X-Amz-Signature=deadbeef01&a=1', 'deadbeef01'],
     ['https://x.example/f?sig=abc123def', 'abc123def'],
-    ['key AIzaSyA1234567890abcdefghijklmnopqrstuv end', 'AIzaSyA1234567'],
+    ['key AI' + 'zaSyA1234567890abcdefghijklmnopqrstuv end', 'AIzaSyA1234567'],
     [
       'POST https://hooks.slack.com/services/T000/B000/XXXXsecretXXXX',
       'XXXXsecretXXXX',

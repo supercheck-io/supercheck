@@ -251,7 +251,7 @@ function isHttpUrl(value: string) {
  * ("Job NameRhona McleanStatusSuccess"); render it as aligned columns instead.
  */
 export const PLAIN_TEXT_RENDER_OPTIONS = {
-  plainText: true,
+  plainText: true as const,
   htmlToTextOptions: {
     // Custom selectors replace react-email's defaults (skip images and preview padding, plain links), so keep them.
     selectors: [

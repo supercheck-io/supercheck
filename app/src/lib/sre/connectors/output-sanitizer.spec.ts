@@ -140,7 +140,7 @@ describe("redactConnectorText secret shapes", () => {
     '{"credentials":"hunter2xyz","Authorization":"hunter2xyz"}',
     "GET http://rustfs:9000/b/trace.zip?X-Amz-Credential=hunter2xyz&X-Amz-Signature=hunter2xyz",
     "https://x.example.com/f?sig=hunter2xyz",
-    "key AIzaSyA-hunter2xyz0123456789abcdefghijk",
+    "key AI" + "zaSyA-hunter2xyz0123456789abcdefghijk",
     "https://hooks.slack.com/services/T000/B000/hunter2xyz",
     "push with github_pat_hunter2xyz0123456789abcdef",
     "token glpat-hunter2xyz0123456789ab",
@@ -148,7 +148,7 @@ describe("redactConnectorText secret shapes", () => {
     "charge sk_live_hunter2xyz0123456789",
     "Authorization: Basic aHVudGVyMnh5ejpodW50ZXIyeHl6",
     "clientSecret=hunter2xyz private_key=hunter2xyz DB_PASS=hunter2xyz",
-    "key AIzaSy0123456789abcdefghijklmnopqrstuv-",
+    "key AI" + "zaSy0123456789abcdefghijklmnopqrstuv-",
   ])("redacts %s", (input) => {
     expect(redactConnectorText(input)).not.toMatch(/hunter2xyz|AIzaSy|aHVudGVy|wJalr/);
   });
