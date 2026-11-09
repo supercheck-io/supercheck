@@ -1,6 +1,7 @@
 /** @jest-environment node */
 import {
   addToHistogram,
+  cycleUpFromCounts,
   groupChecks,
   histogramPercentile,
   isCycleUp,
@@ -14,9 +15,10 @@ type Rows = unknown[];
 const queue: Rows[] = [];
 jest.mock("@/utils/db", () => ({
   db: {
+    execute: jest.fn(() => Promise.resolve(queue.shift() ?? [])),
     select: jest.fn(() => {
       const chain: Record<string, unknown> = {};
-      for (const key of ["from", "where", "orderBy", "limit"]) chain[key] = () => chain;
+      for (const key of ["from", "where", "orderBy", "limit", "groupBy"]) chain[key] = () => chain;
       chain.then = (resolve: (rows: Rows) => unknown) => Promise.resolve(queue.shift() ?? []).then(resolve);
       return chain;
     }),
@@ -32,6 +34,14 @@ const row = (location: string, isUp: boolean, offsetMs = 0, group: string | null
   responseTimeMs: isUp ? ms : null,
   isStatusChange: false,
   executionGroupId: group,
+});
+
+describe("cycleUpFromCounts", () => {
+  it("agrees with isCycleUp", () => {
+    expect(cycleUpFromCounts({ strategy: "majority", threshold: 50, expected: 3 }, 3, 2)).toBe(true);
+    expect(cycleUpFromCounts({ strategy: "all", threshold: 50, expected: 3 }, 2, 2)).toBe(false);
+    expect(cycleUpFromCounts(null, 1, 0)).toBe(false);
+  });
 });
 
 describe("isCycleUp (same rule as the worker's cycle policy)", () => {
@@ -135,40 +145,43 @@ describe("getWindowMetrics tail", () => {
     updatedAt: now,
   });
 
-  it("counts raw rows in periods the aggregator never wrote, not only the window edges", async () => {
-    // Aggregates exist for 2 days; the day after them (paused monitor's last partial day) has raw rows only.
+  // Query order for an all-locations window: aggregates, monitor config, cycle shapes, solo rows, response buckets.
+  const shape = (over: Record<string, unknown> = {}) => ({
+    observed: 1, up: 1, recent: false, strategy: null, threshold: null, expected: null, cycles: 1, ...over,
+  });
+  const multiRegion = [{ config: { locationConfig: { enabled: true, locations: ["a", "b", "c"], strategy: "majority", threshold: 50 } } }];
+  const run = (...results: Rows[]) => {
     queue.length = 0;
-    queue.push([aggregate(0), aggregate(1)]);
-    queue.push([{ ...row("local", false, 0, null), checkedAt: new Date(dayStart + 86_400_000 + 5 * 3_600_000) }]);
-    const result = await monitorAggregationService.getWindowMetrics("m", "daily", windowStart, now, null);
+    queue.push(...results);
+    return monitorAggregationService.getWindowMetrics("m", "daily", windowStart, now, null);
+  };
+
+  it("counts rows in periods the aggregator never wrote, summarised in SQL rather than loaded", async () => {
+    const result = await run([aggregate(0), aggregate(1)], [], [], [{ total: 1, up: 0 }], [{ bucket: 100, n: 4, sum: 400 }]);
     expect(result.totalChecks).toBe(21);
     expect(result.successfulChecks).toBe(20);
     expect(result.uptimePercentage).toBeCloseTo((20 / 21) * 100);
+    expect(result.avgResponseMs).toBe(100);
+    // Every query after the aggregate read is an aggregate: no per-row result set can reach the process.
+    expect(queue).toHaveLength(0);
   });
 
   it("counts a lone row of a multi-region monitor as down (missing regions are down), not up", async () => {
-    queue.length = 0;
-    queue.push([]); // no aggregates: the whole window is read raw
-    queue.push([row("a", true, -3 * 3_600_000, "g1")].map((r) => ({ ...r, checkedAt: new Date(dayStart + 86_400_000 + 3_600_000) })));
-    queue.push([{ config: { locationConfig: { enabled: true, locations: ["a", "b", "c"], strategy: "majority", threshold: 50 } } }]);
-    queue.push([]); // no persisted cycle snapshot
-    const result = await monitorAggregationService.getWindowMetrics("m", "daily", windowStart, now, null);
-    expect(result).toMatchObject({ totalChecks: 1, successfulChecks: 0 });
+    expect(await run([], multiRegion, [shape()], [], [])).toMatchObject({ totalChecks: 1, successfulChecks: 0 });
   });
 
   it("prefers the persisted cycle snapshot over the monitor's current config", async () => {
-    queue.length = 0;
-    queue.push([]);
-    queue.push([row("a", true, 0, "g1")].map((r) => ({ ...r, checkedAt: new Date(dayStart + 86_400_000 + 3_600_000) })));
-    queue.push([{ config: { locationConfig: { enabled: true, locations: ["a", "b", "c"], strategy: "majority", threshold: 50 } } }]);
-    queue.push([{ id: "g1", strategy: "any", threshold: 100, expectedLocations: ["a", "b", "c"] }]);
-    const result = await monitorAggregationService.getWindowMetrics("m", "daily", windowStart, now, null);
-    expect(result).toMatchObject({ totalChecks: 1, successfulChecks: 1 });
+    const snapshot = shape({ strategy: "any", threshold: 100, expected: 3 });
+    expect(await run([], multiRegion, [snapshot], [], [])).toMatchObject({ totalChecks: 1, successfulChecks: 1 });
+  });
+
+  it("leaves a recent cycle that still misses a region out of the window", async () => {
+    expect(await run([], multiRegion, [shape({ recent: true })], [], [])).toMatchObject({ totalChecks: 0 });
+    expect(await run([], multiRegion, [shape({ recent: true, observed: 3, up: 3 })], [], [])).toMatchObject({ totalChecks: 1, successfulChecks: 1 });
   });
 
   it("returns null uptime for an empty window", async () => {
-    queue.length = 0;
-    const result = await monitorAggregationService.getWindowMetrics("m", "daily", windowStart, now, null);
+    const result = await run();
     expect(result).toMatchObject({ totalChecks: 0, uptimePercentage: null, avgResponseMs: null, p95ResponseMs: null });
   });
 });

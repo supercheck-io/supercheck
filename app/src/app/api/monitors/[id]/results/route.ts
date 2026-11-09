@@ -66,7 +66,8 @@ export async function GET(
   // Offset at the end of the local day (differs on DST days); older clients omit it.
   const timezoneOffsetEnd = parseTimezoneOffset(searchParams.get("timezoneOffsetEnd"));
   const locationParam = searchParams.get("location"); // Optional location filter
-  const locationFilter = locationParam as MonitoringLocation | null;
+  // "" and "all" mean no filter (older API clients send them).
+  const locationFilter = (locationParam === "" || locationParam === "all" ? null : locationParam) as MonitoringLocation | null;
 
   // Validate pagination parameters
   if (!Number.isInteger(page) || !Number.isInteger(limit) || page < 1 || limit < 1 || limit > 100) {

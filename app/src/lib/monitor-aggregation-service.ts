@@ -33,7 +33,7 @@ import {
   type MonitorAggregateInsert,
   type AggregationPeriod,
 } from "@/db/schema";
-import { sql, and, eq, gte, lt, lte, or, inArray, desc } from "drizzle-orm";
+import { sql, and, eq, gte, lt, lte, or, inArray, desc, type SQL } from "drizzle-orm";
 import type { MonitoringLocation } from "@/db/schema/types";
 import { excludeSupersededSyntheticResults } from "@/lib/monitor-result-filters";
 import { monitorCyclePolicy } from "@/lib/monitor-cycles";
@@ -258,18 +258,30 @@ export function isCycleUp(
   policy: CyclePolicy | null,
   results: Record<string, boolean>,
 ): boolean {
-  const observed = Object.keys(results);
-  if (!policy) return observed.some((location) => results[location]);
+  if (!policy) return Object.values(results).some(Boolean);
   const expected = [...new Set(policy.expected)];
   const seen = expected.filter((location) => location in results);
   const up = seen.filter((location) => results[location]).length;
+  return cycleUpFromCounts({ ...policy, expected: expected.length }, seen.length, up);
+}
+
+/**
+ * The same rule from counts alone (regions expected / reported / up), for the SQL-summarised tail.
+ * `null` policy = one region: up when it is up.
+ */
+export function cycleUpFromCounts(
+  policy: { strategy: CyclePolicy["strategy"]; threshold: number; expected: number } | null,
+  observed: number,
+  up: number,
+): boolean {
+  if (!policy) return up > 0;
   const required =
     policy.strategy === "all"
-      ? expected.length
+      ? policy.expected
       : policy.strategy === "any"
         ? 1
-        : Math.ceil((expected.length * policy.threshold) / 100);
-  return seen.length > 0 && up >= required;
+        : Math.ceil((policy.expected * policy.threshold) / 100);
+  return observed > 0 && up >= required;
 }
 
 /**
@@ -307,6 +319,21 @@ export function groupChecks(
     checks.push({ start, isUp: isCycleUp(policy, results) });
   }
   return checks;
+}
+
+/** The monitor's current multi-region rule, or null for a single-region monitor. */
+async function loadConfiguredPolicy(
+  monitorId: string,
+): Promise<{ strategy: CyclePolicy["strategy"]; threshold: number; expected: number } | null> {
+  const [monitor] = await db
+    .select({ config: monitors.config })
+    .from(monitors)
+    .where(eq(monitors.id, monitorId))
+    .limit(1);
+  const locationConfig = monitor?.config?.locationConfig;
+  if (!locationConfig?.enabled || !locationConfig.locations?.length) return null;
+  const { strategy, threshold } = monitorCyclePolicy(locationConfig);
+  return { strategy, threshold, expected: new Set(locationConfig.locations).size };
 }
 
 /**
@@ -961,6 +988,9 @@ export class MonitorAggregationService {
    * period, the in-progress one, and any period the aggregator missed or skipped), so a pause or an aggregator
    * outage does not hide checks. Without a location filter uptime counts checks (cycles), with one it counts
    * that region's rows.
+   *
+   * The gaps are summarised in the database (one row per distinct cycle shape, one per response bucket), never
+   * loaded as rows, so a window with no aggregates at all costs the same memory as a full one.
    */
   async getWindowMetrics(
     monitorId: string,
@@ -1002,36 +1032,100 @@ export class MonitorAggregationService {
     const histogram: ResponseHistogram = { ...agg.histogram };
 
     if (gaps.length > 0) {
-      // Cycles are judged on whole rows, so also read the margin around each gap.
-      const rows = await fetchCheckRows(
-        monitorId,
-        location
-          ? gaps
-          : gaps.map(([a, b]) => [a - CYCLE_MARGIN_MS, b + CYCLE_MARGIN_MS]),
-        location,
+      const inRanges = (column: SQL | typeof monitorResults.checkedAt, ranges: [number, number][]) =>
+        sql.join(
+          ranges.map(
+            ([a, b]) =>
+              sql`(${column} >= ${new Date(a).toISOString()}::timestamptz AND ${column} < ${new Date(b).toISOString()}::timestamptz)`,
+          ),
+          sql` OR `,
+        );
+      const base = and(
+        eq(monitorResults.monitorId, monitorId),
+        excludeSupersededSyntheticResults,
+        location ? eq(monitorResults.location, location) : undefined,
       );
-      const resolve = location
-        ? () => null
-        : await loadPolicyResolver(monitorId, rows);
-      const checks = location ? [] : groupChecks(rows, resolve, now.getTime());
-      for (const [gapFrom, gapTo] of gaps) {
-        const within = (ms: number) => ms >= gapFrom && ms < gapTo;
-        const gapRows = rows.filter((row) => within(row.checkedAt.getTime()));
-        if (location) {
-          totalChecks += gapRows.length;
-          successfulChecks += gapRows.filter((row) => row.isUp).length;
-        } else {
-          for (const check of checks) {
-            if (!within(check.start)) continue;
-            totalChecks++;
-            if (check.isUp) successfulChecks++;
-          }
+
+      if (location) {
+        const [counts] = await db
+          .select({
+            total: sql<number>`count(*)::int`,
+            up: sql<number>`(count(*) filter (where ${monitorResults.isUp}))::int`,
+          })
+          .from(monitorResults)
+          .where(and(base, sql`(${inRanges(monitorResults.checkedAt, gaps)})`));
+        totalChecks += counts?.total ?? 0;
+        successfulChecks += counts?.up ?? 0;
+      } else {
+        const configured = await loadConfiguredPolicy(monitorId);
+        const margin = gaps.map(([a, b]): [number, number] => [a - CYCLE_MARGIN_MS, b + CYCLE_MARGIN_MS]);
+        const cutoff = new Date(now.getTime() - CYCLE_SETTLE_MS).toISOString();
+        // One row per cycle shape: how many regions reported / were up, and the cycle's own rule if persisted.
+        const shapes = await db.execute<{
+          observed: number;
+          up: number;
+          recent: boolean;
+          strategy: CyclePolicy["strategy"] | null;
+          threshold: number | null;
+          expected: number | null;
+          cycles: number;
+        }>(sql`
+          WITH g AS (
+            SELECT ${monitorResults.executionGroupId} AS gid,
+              min(${monitorResults.checkedAt}) AS first_at,
+              count(DISTINCT ${monitorResults.location})::int AS observed,
+              (count(DISTINCT ${monitorResults.location}) FILTER (WHERE ${monitorResults.isUp}))::int AS up
+            FROM ${monitorResults}
+            WHERE ${base} AND ${monitorResults.executionGroupId} IS NOT NULL AND (${inRanges(monitorResults.checkedAt, margin)})
+            GROUP BY ${monitorResults.executionGroupId}
+            HAVING ${inRanges(sql`min(${monitorResults.checkedAt})`, gaps)}
+          )
+          SELECT g.observed, g.up, (g.first_at > ${cutoff}::timestamptz) AS recent,
+            c.strategy, c.threshold, jsonb_array_length(c.expected_locations)::int AS expected,
+            count(*)::int AS cycles
+          FROM g LEFT JOIN ${monitorCycles} c ON c.id = g.gid AND c.monitor_id = ${monitorId}
+          GROUP BY 1, 2, 3, 4, 5, 6`);
+        for (const shape of shapes) {
+          const policy = shape.strategy
+            ? { strategy: shape.strategy, threshold: shape.threshold ?? 50, expected: shape.expected ?? 0 }
+            : configured && { ...configured, expected: Math.max(configured.expected, shape.observed) };
+          if (policy && shape.recent && shape.observed < policy.expected) continue; // still in flight
+          totalChecks += shape.cycles;
+          if (cycleUpFromCounts(policy || null, shape.observed, shape.up)) successfulChecks += shape.cycles;
         }
-        for (const row of gapRows.filter(isUpSample)) {
-          totalResponseMs += row.responseTimeMs!;
-          responseSampleCount++;
-          addToHistogram(histogram, row.responseTimeMs!);
-        }
+        const [solo] = await db
+          .select({
+            total: sql<number>`count(*)::int`,
+            up: sql<number>`(count(*) filter (where ${monitorResults.isUp}))::int`,
+          })
+          .from(monitorResults)
+          .where(and(base, sql`${monitorResults.executionGroupId} IS NULL`, sql`(${inRanges(monitorResults.checkedAt, gaps)})`));
+        totalChecks += solo?.total ?? 0;
+        successfulChecks += solo?.up ?? 0;
+      }
+
+      const bucket = sql<number>`floor(ln(${monitorResults.responseTimeMs}) / ${HISTOGRAM_LN})::int`;
+      const samples = await db
+        .select({
+          bucket,
+          n: sql<number>`count(*)::int`,
+          sum: sql<number>`sum(${monitorResults.responseTimeMs})::bigint`,
+        })
+        .from(monitorResults)
+        .where(
+          and(
+            base,
+            eq(monitorResults.isUp, true),
+            sql`${monitorResults.responseTimeMs} > 0`,
+            sql`(${inRanges(monitorResults.checkedAt, gaps)})`,
+          ),
+        )
+        .groupBy(sql`1`);
+      for (const sample of samples) {
+        responseSampleCount += Number(sample.n);
+        totalResponseMs += Number(sample.sum);
+        const key = String(sample.bucket);
+        histogram[key] = (histogram[key] ?? 0) + Number(sample.n);
       }
     }
 

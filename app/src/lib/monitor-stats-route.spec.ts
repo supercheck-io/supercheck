@@ -89,3 +89,11 @@ it("answers 400 for an unknown location and passes a known one to every query", 
   expect(mockWindow).toHaveBeenCalledWith(expect.any(String), "hourly", expect.any(Date), expect.any(Date), "eu");
   expect(mockRawP95).toHaveBeenCalledWith(expect.any(String), expect.any(Date), "eu");
 });
+
+it.each(["", "all"])("treats location=%j as no filter", async (value) => {
+  mockWindow.mockResolvedValue({ totalChecks: 0, successfulChecks: 0, uptimePercentage: null, avgResponseMs: null, p95ResponseMs: null });
+  mockRawP95.mockResolvedValue(null);
+  expect((await call(`?location=${value}`)).status).toBe(200);
+  expect(mockHasLocation).not.toHaveBeenCalled();
+  expect(mockWindow).toHaveBeenCalledWith(expect.any(String), "hourly", expect.any(Date), expect.any(Date), null);
+});

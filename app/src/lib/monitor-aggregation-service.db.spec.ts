@@ -228,6 +228,37 @@ it("counts raw rows of a period no aggregate covers in the window", async () => 
   expect(window).toMatchObject({ totalChecks: 2, successfulChecks: 1, uptimePercentage: 50, avgResponseMs: 50 });
 });
 
+it("summarises a window with no aggregates in SQL: cycle rule, missing region, in-flight cycle, snapshot, location filter, p95", async () => {
+  await mockDatabase
+    .update(schema.monitors)
+    .set({ config: { locationConfig: { enabled: true, locations: ["a", "b", "c"], strategy: "majority", threshold: 50 } } })
+    .where(eq(schema.monitors.id, monitorId));
+  const row = (group: string, location: string, isUp: boolean, minutes: number, ms: number | null = 100) => ({
+    monitorId, executionGroupId: group, checkedAt: at(minutes), location, status: isUp ? ("up" as const) : ("down" as const), isUp, responseTimeMs: isUp ? ms : null,
+  });
+  // g1: a,b up c down => up. g2: only a reported (old) => down. g3: snapshot "any", only a up => up.
+  await mockDatabase.insert(schema.monitorCycles).values({
+    id: "g3", monitorId, scheduledFor: at(30), deadlineAt: at(40), expectedLocations: ["a", "b", "c"], strategy: "any", threshold: 1, status: "closed",
+  });
+  await mockDatabase.insert(schema.monitorResults).values([
+    row("g1", "a", true, 0, 100), row("g1", "b", true, 0, 200), row("g1", "c", false, 0),
+    row("g2", "a", true, 10, 300),
+    row("g3", "a", true, 30, 400),
+  ]);
+  // In flight right now: a reported, b and c have not. Not counted until it settles.
+  await mockDatabase.insert(schema.monitorResults).values({
+    monitorId, executionGroupId: "g4", checkedAt: new Date(Date.now() - 60_000), location: "a", status: "up", isUp: true, responseTimeMs: 100,
+  });
+  const now = new Date();
+  const window = await monitorAggregationService.getWindowMetrics(monitorId, "daily", day, now, null);
+  expect(window).toMatchObject({ totalChecks: 3, successfulChecks: 2 });
+  // Samples: 100,200,300,400,100 -> p95 within the 5% bucket of 400.
+  expect(window.p95ResponseMs).toBeGreaterThan(380);
+  expect(window.p95ResponseMs).toBeLessThan(420);
+  const regional = await monitorAggregationService.getWindowMetrics(monitorId, "daily", day, now, "c" as never);
+  expect(regional).toMatchObject({ totalChecks: 1, successfulChecks: 0 });
+});
+
 it("keeps the latest duplicate, archives superseded rows and cascades their deletion", async () => {
   await client`DROP INDEX monitor_aggregates_combined_unique_idx`;
   await client`DROP TABLE monitor_aggregate_dedup_audit`;

@@ -467,8 +467,15 @@
     {
       "idx": 66,
       "version": "7",
-      "when": 1794209639740,
-      "tag": "0066_monitor_aggregate_percentiles",
+      "when": 1794209135782,
+      "tag": "0066_monitor_cycle_publish_pending",
+      "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1794212458845,
+      "tag": "0067_monitor_aggregate_percentiles",
       "breakpoints": true
     }
   ]

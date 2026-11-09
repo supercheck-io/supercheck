@@ -97,7 +97,8 @@ export const monitorAggregates = pgTable(
     responseSampleCount: integer('response_sample_count'),
 
     // Log-bucketed up-check response-time histogram, daily rows only (written by the app).
-    responseHistogram: jsonb('response_histogram').$type<Record<string, number>>(),
+    responseHistogram:
+      jsonb('response_histogram').$type<Record<string, number>>(),
 
     // Status change count in this period
     statusChangeCount: integer('status_change_count').notNull().default(0),

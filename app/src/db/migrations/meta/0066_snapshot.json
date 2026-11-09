@@ -1,5 +1,5 @@
 {
-  "id": "45daca87-4068-48c0-a2e8-187585326b88",
+  "id": "2ef096a5-ae89-4eac-a703-b7947e8c6d5c",
   "prevId": "429253d4-9bb1-4030-82bb-5eb7b1cd12a6",
   "version": "7",
   "dialect": "postgresql",
@@ -7310,18 +7310,6 @@
           "notNull": false,
           "default": 0
         },
-        "response_sample_count": {
-          "name": "response_sample_count",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "response_histogram": {
-          "name": "response_histogram",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
         "status_change_count": {
           "name": "status_change_count",
           "type": "integer",
@@ -7679,6 +7667,13 @@
           "primaryKey": false,
           "notNull": true,
           "default": 0
+        },
+        "publish_pending": {
+          "name": "publish_pending",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
         },
         "created_at": {
           "name": "created_at",

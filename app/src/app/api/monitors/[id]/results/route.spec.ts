@@ -161,10 +161,26 @@ describe("GET /api/monitors/[id]/results validation", () => {
     expect(response.status).toBe(400);
   });
 
-  it("uses the end offset for the end-of-day boundary on a DST day", async () => {
-    // America/New_York 2026-03-08 spring forward: 23-hour day.
-    const range = buildMonitorResultsDateRange("2026-03-08", 300, 240);
-    expect(range?.end.toISOString()).toBe("2026-03-09T04:00:00.000Z");
+  it("queries the DST day with the start offset at its start and the end offset at its end", async () => {
+    const wheres: unknown[] = [];
+    const chain = (rows: unknown[]) => {
+      const c: Record<string, unknown> = {};
+      for (const key of ["from", "orderBy", "limit", "offset"]) c[key] = () => c;
+      c.where = (w: unknown) => (wheres.push(w), c);
+      c.then = (resolve: (v: unknown) => unknown) => Promise.resolve(rows).then(resolve);
+      return c;
+    };
+    mockDb.select.mockReturnValueOnce(chain([{ count: 0 }])).mockReturnValueOnce(chain([]));
+    const response = await GET(
+      new NextRequest("http://localhost/api/monitors/00000000-0000-4000-8000-000000000001/results?date=2026-03-08&timezoneOffset=300&timezoneOffsetEnd=240"),
+      { params: Promise.resolve({ id: "00000000-0000-4000-8000-000000000001" }) },
+    );
+    expect(response.status).toBe(200);
+    const { PgDialect } = await import("drizzle-orm/pg-core");
+    const { params } = new PgDialect().sqlToQuery(wheres[0] as never);
+    const times = params.map((p) => (p instanceof Date ? p.toISOString() : p));
+    expect(times).toContain("2026-03-08T05:00:00.000Z");
+    expect(times).toContain("2026-03-09T04:00:00.000Z");
   });
 
   describe("location filter", () => {
@@ -190,15 +206,21 @@ describe("GET /api/monitors/[id]/results validation", () => {
       expect((await response.json()).error).toBe("Unknown location");
     });
 
-    it.each([
-      ["results", GET],
-      ["stats", getStats],
-    ] as const)("%s answers 400 for an empty location instead of ignoring it", async (endpoint, handler) => {
-      const response = await handler(
-        new NextRequest(`http://localhost/api/monitors/${monitorUuid}/${endpoint}?location=`),
+    it.each(["", "all"])("results treats location=%j as no filter", async (value) => {
+      const chain = (rows: unknown[]) => {
+        const c: Record<string, unknown> = {};
+        for (const key of ["from", "where", "orderBy", "limit", "offset"]) c[key] = () => c;
+        c.then = (resolve: (v: unknown) => unknown) => Promise.resolve(rows).then(resolve);
+        return c;
+      };
+      mockDb.select.mockReturnValueOnce(chain([{ count: 0 }])).mockReturnValueOnce(chain([]));
+      const response = await GET(
+        new NextRequest(`http://localhost/api/monitors/${monitorUuid}/results?location=${value}`),
         ctx,
       );
-      expect(response.status).toBe(400);
+      expect(response.status).toBe(200);
+      // Only the count and page queries ran: no location existence lookup.
+      expect(mockDb.select).toHaveBeenCalledTimes(2);
     });
   });
 });

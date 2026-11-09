@@ -136,7 +136,7 @@ export async function GET(
           responseTimeMs: monitorResults.responseTimeMs,
         })
         .from(monitorResults)
-        .where(and(eq(monitorResults.monitorId, id), gte(monitorResults.checkedAt, startDate)))
+        .where(and(eq(monitorResults.monitorId, id), gte(monitorResults.checkedAt, startDate), excludeSupersededSyntheticResults))
         .orderBy(desc(monitorResults.location), desc(monitorResults.checkedAt)),
     ]);
 

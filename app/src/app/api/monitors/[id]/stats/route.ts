@@ -27,7 +27,7 @@ const logger = createLogger({ module: "monitor-stats-api" }) as {
  * - Response times are up checks only.
  *
  * Query params:
- *  - location: optional region filter; unknown regions get 400
+ *  - location: optional region filter; "" and "all" mean no filter; unknown regions get 400
  */
 export async function GET(
   request: NextRequest,
@@ -44,7 +44,9 @@ export async function GET(
   }
 
   const { searchParams } = new URL(request.url);
-  const locationFilter = searchParams.get("location");
+  const rawLocation = searchParams.get("location");
+  // "" and "all" mean no filter (older API clients send them).
+  const locationFilter = rawLocation === "" || rawLocation === "all" ? null : rawLocation;
 
   try {
     const authContext = await requireAuthContext();
