@@ -32,7 +32,7 @@ async function withDeadline<T>(deadline: number, call: (signal: AbortSignal) => 
  * remove also searches by monitor id when scheduledJobId is null), so the next reconcile repairs it.
  * All calls share one budget started when the row lock is taken, so the paused path's two calls cannot add up past it.
  */
-async function reconcileOnce(id: string, projectId: string): Promise<void> {
+async function reconcileOnce(id: string, projectId: string, state: { active: boolean }): Promise<void> {
   await db.transaction(async (tx) => {
     // A slow DB must not hold the row lock past the worker's wait: a timeout rolls back and the route answers 503.
     await tx.execute(sql`SET LOCAL lock_timeout = ${RECONCILE_DB_TIMEOUT}`);
@@ -52,6 +52,7 @@ async function reconcileOnce(id: string, projectId: string): Promise<void> {
       await tx.update(monitors).set({ scheduledJobId: null }).where(eq(monitors.id, id));
       return;
     }
+    state.active = true;
     const schedulerId = await withDeadline(deadline, (signal) => scheduleMonitor({
       monitorId: id,
       frequencyMinutes: row.frequencyMinutes,
@@ -75,14 +76,21 @@ async function reconcileOnce(id: string, projectId: string): Promise<void> {
  * though nothing else about the monitor changed.
  */
 export async function reconcileMonitorSchedule(id: string, projectId: string): Promise<void> {
+  const state = { active: false };
   try {
-    await reconcileOnce(id, projectId);
+    await reconcileOnce(id, projectId, state);
   } catch (error) {
+    // A paused or disabled monitor keeps its job id, so the removal is retried; only a failed (re)schedule leaves it unscheduled.
+    if (!state.active) throw error;
     try {
-      await db
-        .update(monitors)
-        .set({ scheduledJobId: null })
-        .where(and(eq(monitors.id, id), eq(monitors.enabled, true), ne(monitors.status, "paused")));
+      // Short lock wait so a held row lock cannot stall the error response.
+      await db.transaction(async (tx) => {
+        await tx.execute(sql`SET LOCAL lock_timeout = '1s'`);
+        await tx
+          .update(monitors)
+          .set({ scheduledJobId: null })
+          .where(and(eq(monitors.id, id), eq(monitors.enabled, true), ne(monitors.status, "paused")));
+      });
     } catch {
       // Best effort: the original failure is what the caller needs.
     }

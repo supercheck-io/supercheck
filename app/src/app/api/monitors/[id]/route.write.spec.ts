@@ -403,6 +403,14 @@ describe("alertConfig, delivery rows, credentials, frequency and timeout on upda
 
 });
 
+describe("target limits on update paths", () => {
+  it.each([`https://example.com/${"a".repeat(2048)}`, "https://example.com/a\u0000b"])("PUT and PATCH answer 400 for an unstorable target", async (target) => {
+    expect((await call(PUT, "PUT", { target })).status).toBe(400);
+    expect((await call(PATCH, "PATCH", { target })).status).toBe(400);
+    expect(set).not.toHaveBeenCalled();
+  });
+});
+
 describe("review fixes: drifted rows, audit on schedule failure, alertConfig type", () => {
   const { logAuditEvent } = jest.requireMock("@/lib/audit-logger") as { logAuditEvent: jest.Mock };
   const { reconcileMonitorSchedule } = jest.requireMock("@/lib/monitor-schedule-reconcile") as { reconcileMonitorSchedule: jest.Mock };

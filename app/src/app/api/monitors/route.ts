@@ -36,10 +36,10 @@ import { channelsOptional } from "@/lib/incident-settings";
 import { validateMonitorConfiguration } from "@/lib/monitor-validation";
 import { validateMonitorTargetAddress } from "@/lib/monitor-target-policy";
 import {
+  AlertConfigConflictError,
   alertProvidersSent,
   frequencyMinutesError,
   InvalidNotificationProvidersError,
-  MAX_TARGET_LENGTH,
   MonitorScheduleError,
   monitorNameError,
   normalizeMonitorAlertConfig,
@@ -271,12 +271,7 @@ export async function POST(req: NextRequest) {
 
     // Same name and target handling as the update paths; credentials in config are never rewritten.
     sanitizeMonitorFields(rawData);
-    if (typeof rawData.target === "string") {
-      rawData.target = rawData.target.trim();
-      if (rawData.target.length > MAX_TARGET_LENGTH) {
-        return NextResponse.json({ error: "Invalid target", details: `target must be at most ${MAX_TARGET_LENGTH} characters` }, { status: 400 });
-      }
-    }
+
 
     // Special logging for heartbeat monitors
     if (rawData.type === "heartbeat") {
@@ -665,7 +660,7 @@ export async function POST(req: NextRequest) {
         { status: 402 },
       );
     }
-    if (error instanceof InvalidNotificationProvidersError) {
+    if (error instanceof InvalidNotificationProvidersError || error instanceof AlertConfigConflictError) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
     const thrown = thrownStatusResponse(error);
@@ -979,7 +974,7 @@ export async function PUT(req: NextRequest) {
       );
     } catch (error) {
       if (error instanceof ResumeRefusedError) return resumeRefusalResponse(error.outcome)!;
-      if (error instanceof InvalidNotificationProvidersError) {
+      if (error instanceof InvalidNotificationProvidersError || error instanceof AlertConfigConflictError) {
         return NextResponse.json({ error: error.message }, { status: 400 });
       }
       if (error instanceof MonitorScheduleError && error.monitor) {

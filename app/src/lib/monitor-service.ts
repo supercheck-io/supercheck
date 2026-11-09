@@ -15,7 +15,7 @@ import {
 } from "@/lib/monitor-scheduler";
 import { eq } from "drizzle-orm";
 import { ResumeRefusedError, withResumeWithinPlan } from "@/lib/middleware/plan-enforcement";
-import { MonitorScheduleError, preserveWorkerConfigKeys, scheduleOutOfSync, syncMonitorProviderRows, WORKER_OWNED_CONFIG_KEYS } from "@/lib/monitor-write";
+import { assertKeptProvidersValid, MonitorScheduleError, preserveWorkerConfigKeys, scheduleOutOfSync, syncMonitorProviderRows, WORKER_OWNED_CONFIG_KEYS } from "@/lib/monitor-write";
 import { reconcileMonitorSchedule } from "@/lib/monitor-schedule-reconcile";
 
 // This is a conceptual service layer, actual Next.js API routes would call these functions.
@@ -212,6 +212,7 @@ export async function updateMonitorHandler(
       // A stored provider deleted since is dropped from the JSON too, so the UI and the rows agree.
       const written = rows[0].alertConfig;
       if (written && written.notificationProviders.length !== kept.length) {
+        assertKeptProvidersValid(written, kept);
         rows[0] = { ...rows[0], alertConfig: { ...written, notificationProviders: kept } };
         await executor.update(monitorTable).set({ alertConfig: rows[0].alertConfig }).where(eq(monitorTable.id, monitorId));
       }

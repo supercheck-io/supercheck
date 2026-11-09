@@ -6,11 +6,9 @@ const tx = {
   select: () => ({ from: () => ({ where: () => ({ for: async () => (row ? [row] : []) }) }) }),
   update: () => ({ set: (v: unknown) => { txUpdateSet(v); return { where: jest.fn() }; } }),
 };
-const dbUpdateSet = jest.fn();
 jest.mock("@/utils/db", () => ({
   db: {
     transaction: async (cb: (t: unknown) => unknown) => cb(tx),
-    update: () => ({ set: (v: unknown) => { dbUpdateSet(v); return { where: jest.fn().mockResolvedValue(undefined) }; } }),
   },
 }));
 const scheduleMonitor = jest.fn();
@@ -70,14 +68,15 @@ it("also searches by monitor id when the stored job id is not found", async () =
 it("throws, writing no scheduler id, when scheduling fails (the transaction rolls back)", async () => {
   scheduleMonitor.mockRejectedValue(new Error("redis down"));
   await expect(reconcileMonitorSchedule("m1", "p1")).rejects.toThrow("redis down");
-  expect(txUpdateSet).not.toHaveBeenCalled();
-  // Marked unscheduled outside the rolled-back transaction, so an identical retry sees the schedule out of sync.
-  expect(dbUpdateSet).toHaveBeenCalledWith({ scheduledJobId: null });
+  // Only the cleanup runs: marked unscheduled in its own short transaction, so an identical retry sees the schedule out of sync.
+  expect(txUpdateSet).toHaveBeenCalledTimes(1);
+  expect(txUpdateSet).toHaveBeenCalledWith({ scheduledJobId: null });
+  expect(execute).toHaveBeenCalledWith(expect.anything());
 });
 
 it("throws when removing the job fails for a paused monitor, keeping scheduledJobId", async () => {
   row = { ...active, status: "paused" };
   removeScheduledMonitor.mockRejectedValue(new Error("redis down"));
   await expect(reconcileMonitorSchedule("m1", "p1")).rejects.toThrow("redis down");
-  expect(txUpdateSet).not.toHaveBeenCalled();
+  expect(txUpdateSet).not.toHaveBeenCalledWith({ scheduledJobId: "sched-1" });
 });

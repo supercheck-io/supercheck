@@ -34,6 +34,8 @@ import { validateMonitorConfiguration } from "@/lib/monitor-validation";
 import { validateMonitorTargetAddress } from "@/lib/monitor-target-policy";
 import {
   alertProvidersSent,
+  AlertConfigConflictError,
+  assertKeptProvidersValid,
   enabledAlertConfigError,
   frequencyMinutesError,
   InvalidNotificationProvidersError,
@@ -414,6 +416,7 @@ export async function PUT(
           );
           // A stored provider deleted since is dropped from the JSON as well.
           if (updatePayload.alertConfig && updatePayload.alertConfig.notificationProviders.length !== kept.length) {
+            assertKeptProvidersValid(updatePayload.alertConfig, kept);
             updated.alertConfig = { ...updatePayload.alertConfig, notificationProviders: kept };
             await tx.update(monitors).set({ alertConfig: updated.alertConfig }).where(eq(monitors.id, id));
           }
@@ -431,7 +434,7 @@ export async function PUT(
         updatedMonitor = await db.transaction(writeMonitor);
       }
     } catch (error) {
-      if (error instanceof InvalidNotificationProvidersError) {
+      if (error instanceof InvalidNotificationProvidersError || error instanceof AlertConfigConflictError) {
         return NextResponse.json({ error: error.message }, { status: 400 });
       }
       throw error;
@@ -769,7 +772,7 @@ export async function PATCH(
       );
     } catch (error) {
       if (error instanceof ResumeRefusedError) return resumeRefusalResponse(error.outcome)!;
-      if (error instanceof InvalidNotificationProvidersError) {
+      if (error instanceof InvalidNotificationProvidersError || error instanceof AlertConfigConflictError) {
         return NextResponse.json({ error: error.message }, { status: 400 });
       }
       if (error instanceof MonitorScheduleError && error.monitor) {

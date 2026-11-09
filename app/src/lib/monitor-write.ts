@@ -269,6 +269,8 @@ export function timeoutFrequencyError(
  * (URL shape, target policy, length). It is only ever rendered as escaped React text, and a link is only built from a validated http(s) URL.
  */
 export function sanitizeMonitorFields(body: Record<string, unknown>): void {
+  // Trim only: the target is validated (length, control characters, shape, policy), never rewritten.
+  if (typeof body.target === "string") body.target = body.target.trim();
   if (typeof body.name === "string") body.name = sanitizeString(body.name);
   const alert = body.alertConfig as Record<string, unknown> | null | undefined;
   if (alert && typeof alert.customMessage === "string" && alert.customMessage) {
@@ -299,6 +301,12 @@ export function scheduleOutOfSync(row: { enabled: boolean; status: string; frequ
   return shouldRun !== Boolean(row.scheduledJobId);
 }
 
+/** After stale provider ids are dropped, the alert must still be valid (a channel unless incidents are on). */
+export function assertKeptProvidersValid(config: AlertConfig, kept: string[]): void {
+  const error = enabledAlertConfigError({ ...config, notificationProviders: kept });
+  if (error) throw new AlertConfigConflictError(error);
+}
+
 export const SCHEDULE_FAILURE_MESSAGE = "Monitor saved, but updating the check schedule failed. Retry the request to reconcile it.";
 
 /** The row is saved but the repeatable job could not be brought in line; routes answer 503 so the client retries. */
@@ -312,6 +320,3 @@ export class MonitorScheduleError extends Error {
 export function scheduleFailureResponse(error: unknown): NextResponse | null {
   return error instanceof MonitorScheduleError ? NextResponse.json({ error: error.message }, { status: 503 }) : null;
 }
-
-/** Matches the monitors.target varchar(2048) column. */
-export const MAX_TARGET_LENGTH = 2048;

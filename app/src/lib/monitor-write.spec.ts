@@ -1,6 +1,7 @@
 jest.mock("@/utils/db", () => ({ db: {} }));
 import {
   AlertConfigConflictError,
+  assertKeptProvidersValid,
   scheduleOutOfSync,
   frequencyMinutesError,
   InvalidNotificationProvidersError,
@@ -186,6 +187,18 @@ describe("review fixes in monitor-write", () => {
     expect(scheduleOutOfSync({ ...row, scheduledJobId: null })).toBe(true);
     expect(scheduleOutOfSync({ ...row, status: "paused" })).toBe(true);
     expect(scheduleOutOfSync({ ...row, status: "paused", scheduledJobId: null })).toBe(false);
+  });
+
+  it("sanitizeMonitorFields trims the target and nothing else", () => {
+    const body: Record<string, unknown> = { target: "  https://example.com/?t=ab${x}  " };
+    sanitizeMonitorFields(body);
+    expect(body.target).toBe("https://example.com/?t=ab${x}");
+  });
+
+  it("assertKeptProvidersValid refuses an enabled alert left with no channel and incidents off", () => {
+    const config = { enabled: true, notificationProviders: ["a"], alertOnFailure: true, alertOnRecovery: true, alertOnSslExpiration: false, failureThreshold: 1, recoveryThreshold: 1, customMessage: "", incidentEnabled: false } as never;
+    expect(() => assertKeptProvidersValid(config, [])).toThrow(AlertConfigConflictError);
+    expect(() => assertKeptProvidersValid(config, ["a"])).not.toThrow();
   });
 
   it("sanitizeMonitorFields never rewrites the target, on any path", () => {

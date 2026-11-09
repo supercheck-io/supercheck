@@ -114,3 +114,15 @@ describe("location policy and unsupported assertions", () => {
     expect(site({ responseBodyJsonPath: null })).toEqual({ success: true });
   });
 });
+
+describe("target length and control characters", () => {
+  const check = (target: string) => validateMonitorConfiguration({ type: "http_request", target, config: {} });
+  it("rejects a target over 2048 characters and one with control characters", () => {
+    expect(check(`https://example.com/${"a".repeat(2048)}`)).toMatchObject({ success: false });
+    expect(check("https://example.com/a\u0000b")).toMatchObject({ success: false });
+    expect(check("https://example.com/a\nb")).toMatchObject({ success: false });
+  });
+  it("accepts a target at the limit", () => {
+    expect(check(`https://example.com/${"a".repeat(2048 - 20)}`)).toEqual({ success: true });
+  });
+});
