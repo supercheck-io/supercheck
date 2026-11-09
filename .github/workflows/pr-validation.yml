@@ -20,6 +20,50 @@ permissions:
   actions: read
 
 jobs:
+  changes:
+    name: Changed Areas
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      core: ${{ steps.areas.outputs.core }}
+      cli: ${{ steps.areas.outputs.cli }}
+      e2e: ${{ steps.areas.outputs.e2e }}
+
+    steps:
+      - name: Checkout code with comparison history
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Skips package jobs a pull request cannot affect. App and worker share the
+      # schema contract and migrations, so they always run together. Pushes and
+      # manual runs check everything.
+      - name: Detect changed areas
+        id: areas
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -Eeuo pipefail
+          if [ "$GITHUB_EVENT_NAME" != "pull_request" ]; then
+            printf 'core=true\ncli=true\ne2e=true\n' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # --no-renames counts both sides of a move, so the package losing a file is checked too.
+          changed="$(git diff --no-renames --name-only "${BASE_SHA}...${HEAD_SHA}")"
+          shared='^(\.github/workflows/pr-validation\.yml|\.nvmrc)$'
+          # area NAME PATTERN [FILES]: true when any changed file matches.
+          area() {
+            if grep -qE "$shared|$2" <<< "${3-$changed}"; then echo "$1=true"; else echo "$1=false"; fi
+          }
+          {
+            # deploy/docker is covered by app/scripts/docker-compose-profiles.spec.js in the app job.
+            area core '^((app|worker)/|deploy/docker/)' "$(grep -v '^app/e2e/' <<< "$changed" || true)"
+            area cli '^cli/'
+            area e2e '^app/e2e/'
+          } | tee -a "$GITHUB_OUTPUT"
+
   migration-safety:
     name: Migration Safety
     runs-on: ubuntu-latest
@@ -30,6 +74,7 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
@@ -87,6 +132,8 @@ jobs:
 
   app-quality-checks:
     name: App Quality Checks
+    needs: changes
+    if: needs.changes.outputs.core == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -117,6 +164,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
@@ -160,7 +209,7 @@ jobs:
 
       - name: Upload coverage
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
-        if: always()
+        if: ${{ !cancelled() }}
         with:
           name: app-coverage
           path: app/coverage
@@ -181,6 +230,8 @@ jobs:
 
   worker-quality-checks:
     name: Worker Quality Checks
+    needs: changes
+    if: needs.changes.outputs.core == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -211,6 +262,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
@@ -274,7 +327,7 @@ jobs:
 
       - name: Upload coverage
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
-        if: always()
+        if: ${{ !cancelled() }}
         with:
           name: worker-coverage
           path: worker/coverage
@@ -286,12 +339,16 @@ jobs:
 
   cli-quality-checks:
     name: CLI Quality Checks
+    needs: changes
+    if: needs.changes.outputs.cli == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
     steps:
       - name: Checkout code
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
@@ -318,7 +375,7 @@ jobs:
 
       - name: Upload coverage
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
-        if: always()
+        if: ${{ !cancelled() }}
         with:
           name: cli-coverage
           path: cli/coverage
@@ -334,12 +391,16 @@ jobs:
 
   e2e-quality-checks:
     name: E2E Suite Quality Checks
+    needs: changes
+    if: needs.changes.outputs.e2e == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
     steps:
       - name: Checkout code
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
@@ -368,6 +429,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
 
       - name: Verify licenses and distribution notices
         run: node .github/scripts/check-licenses.mjs
@@ -430,21 +493,34 @@ jobs:
     name: Quality Checks Summary
     timeout-minutes: 5
     runs-on: ubuntu-latest
-    needs: [migration-safety, app-quality-checks, worker-quality-checks, cli-quality-checks, e2e-quality-checks, deploy-validation]
+    needs: [changes, migration-safety, app-quality-checks, worker-quality-checks, cli-quality-checks, e2e-quality-checks, deploy-validation]
     if: always()
 
     steps:
+      # A job skipped because its area did not change is a pass; anything else must succeed.
       - name: Check results
+        env:
+          RESULTS: >-
+            changes=${{ needs.changes.result }}
+            migration-safety=${{ needs.migration-safety.result }}
+            app=${{ needs.app-quality-checks.result }}
+            worker=${{ needs.worker-quality-checks.result }}
+            cli=${{ needs.cli-quality-checks.result }}
+            e2e=${{ needs.e2e-quality-checks.result }}
+            deploy-validation=${{ needs.deploy-validation.result }}
         run: |
-          if [ "${{ needs.migration-safety.result }}" != "success" ] || [ "${{ needs.app-quality-checks.result }}" != "success" ] || [ "${{ needs.worker-quality-checks.result }}" != "success" ] || [ "${{ needs.cli-quality-checks.result }}" != "success" ] || [ "${{ needs.e2e-quality-checks.result }}" != "success" ] || [ "${{ needs.deploy-validation.result }}" != "success" ]; then
+          failed=0
+          for entry in $RESULTS; do
+            echo "$entry"
+            case "$entry" in
+              changes=success|migration-safety=success|deploy-validation=success) ;;
+              changes=*|migration-safety=*|deploy-validation=*) failed=1 ;;
+              *=success|*=skipped) ;;
+              *) failed=1 ;;
+            esac
+          done
+          if [ "$failed" -ne 0 ]; then
             echo "❌ Quality checks failed"
-            echo "Migration safety: ${{ needs.migration-safety.result }}"
-            echo "App checks: ${{ needs.app-quality-checks.result }}"
-            echo "Worker checks: ${{ needs.worker-quality-checks.result }}"
-            echo "CLI checks: ${{ needs.cli-quality-checks.result }}"
-            echo "E2E suite checks: ${{ needs.e2e-quality-checks.result }}"
-            echo "Deploy validation: ${{ needs.deploy-validation.result }}"
             exit 1
-          else
-            echo "✅ All quality checks passed"
           fi
+          echo "✅ All quality checks passed"

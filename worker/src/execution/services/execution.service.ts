@@ -182,7 +182,7 @@ export class ExecutionService implements OnModuleDestroy {
     }
   > = new Map();
   private memoryCleanupInterval: NodeJS.Timeout;
-  private readonly gcInterval: NodeJS.Timeout;
+  private gcInterval: NodeJS.Timeout | undefined;
 
   /**
    * Refreshes requirement coverage once the run's terminal status is committed, so the
@@ -315,7 +315,7 @@ export class ExecutionService implements OnModuleDestroy {
 
     // Less aggressive garbage collection
     if (global.gc) {
-      setInterval(() => {
+      this.gcInterval = setInterval(() => {
         const memUsage = process.memoryUsage();
         const memUsageMB = Math.round(memUsage.heapUsed / 1024 / 1024);
 
