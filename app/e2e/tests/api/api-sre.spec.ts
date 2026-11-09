@@ -113,4 +113,35 @@ test.describe('SRE API authenticated contracts @api @sre @critical', () => {
       expect.objectContaining({ success: true }),
     );
   });
+
+  // The org-admin Integrations and Private Agents tabs load these as the org owner, also in a project they just
+  // created; on failure the assertion message carries the server's error body.
+  test('integrations and private agents load for the org owner in a new project', async ({ orgOwnerPage }) => {
+    const request = orgOwnerPage.request;
+    const projects = await request.get('/api/projects');
+    expect(projects.status(), await projects.text()).toBe(200);
+    const originalProjectId = ((await projects.json()) as { currentProject: { id: string } }).currentProject.id;
+    const created = await request.post('/api/projects', { data: { name: `E2E SRE API ${Date.now()}` } });
+    expect(created.status(), await created.text()).toBe(201);
+    const projectId = ((await created.json()) as { data: { id: string } }).data.id;
+    try {
+      for (const id of [originalProjectId, projectId]) {
+        const switched = await request.post('/api/projects/switch', { data: { projectId: id } });
+        expect(switched.status(), await switched.text()).toBe(200);
+        for (const endpoint of ['/api/sre/integrations', '/api/sre/private-agents']) {
+          const response = await request.get(endpoint);
+          expect(response.status(), `${endpoint} in ${id === projectId ? 'new' : 'original'} project: ${await response.text()}`).toBe(200);
+          expect(await response.json()).toMatchObject({
+            success: true,
+            [endpoint === '/api/sre/integrations' ? 'connectors' : 'agents']: expect.any(Array),
+          });
+        }
+      }
+    } finally {
+      const restore = await request.post('/api/projects/switch', { data: { projectId: originalProjectId } });
+      expect(restore.status(), await restore.text()).toBe(200);
+      const remove = await request.delete(`/api/projects/${projectId}`);
+      expect([200, 404]).toContain(remove.status());
+    }
+  });
 });
