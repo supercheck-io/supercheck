@@ -113,21 +113,12 @@ export async function withDailyMetrics<T extends ComponentForMetrics>(
           .from(statusPageComponentMonitors)
           .where(inArray(statusPageComponentMonitors.componentId, componentIds));
   const now = new Date();
-  // Hourly windows: completed hours come from the aggregates, only the partial hours read raw rows.
-  // Concurrency is bounded so one anonymous page view cannot fan out into dozens of parallel queries.
-  const monitorIds = [...new Set(links.map((link) => link.monitorId))];
-  const todayByMonitor = new Map<string, Awaited<ReturnType<typeof monitorAggregationService.getWindowMetrics>>>();
-  let next = 0;
-  await Promise.all(
-    Array.from({ length: Math.min(5, monitorIds.length) }, async () => {
-      while (next < monitorIds.length) {
-        const monitorId = monitorIds[next++];
-        todayByMonitor.set(
-          monitorId,
-          await monitorAggregationService.getWindowMetrics(monitorId, "hourly", today, now, null),
-        );
-      }
-    }),
+  // Completed hours come from the hourly aggregates; the rest is summarised in SQL. A constant number of
+  // queries however many monitors the page links.
+  const todayByMonitor = await monitorAggregationService.getCheckCountsForMonitors(
+    [...new Set(links.map((link) => link.monitorId))],
+    today,
+    now,
   );
   const todayKey = today.toISOString().slice(0, 10);
   const current = links.flatMap((link) => {

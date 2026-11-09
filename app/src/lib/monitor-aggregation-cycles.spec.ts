@@ -205,3 +205,36 @@ describe("getWindowMetrics tail", () => {
     expect(result).toMatchObject({ totalChecks: 0, uptimePercentage: null, avgResponseMs: null, p95ResponseMs: null });
   });
 });
+
+describe("getCheckCountsForMonitors", () => {
+  it("runs a constant number of queries however many monitors it covers", async () => {
+    const { db } = jest.requireMock("@/utils/db") as { db: { select: jest.Mock; execute: jest.Mock } };
+    const calls = async (count: number) => {
+      db.select.mockClear();
+      db.execute.mockClear();
+      queue.length = 0;
+      const ids = Array.from({ length: count }, (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`);
+      await monitorAggregationService.getCheckCountsForMonitors(ids, new Date("2026-10-10T00:00:00Z"), new Date("2026-10-10T05:30:00Z"));
+      return db.select.mock.calls.length + db.execute.mock.calls.length;
+    };
+    const few = await calls(2);
+    expect(few).toBeLessThanOrEqual(5);
+    expect(await calls(60)).toBe(few);
+  });
+
+  it("sums completed-hour aggregates and the SQL cycle summary per monitor", async () => {
+    queue.length = 0;
+    const hour = (h: number) => new Date(Date.UTC(2026, 9, 10, h));
+    queue.push(
+      [
+        { monitorId: "m1", periodStart: hour(0), location: null, totalChecks: 10, successfulChecks: 9 },
+        { monitorId: "m1", periodStart: hour(0), location: "a", totalChecks: 30, successfulChecks: 1 },
+      ],
+      [{ id: "m1", config: { locationConfig: { enabled: true, locations: ["a", "b", "c"], strategy: "majority", threshold: 50 } } }],
+      [{ monitor_id: "m1", observed: 3, up: 2, recent: false, strategy: null, threshold: null, expected: null, cycles: 4 }],
+      [{ monitorId: "m1", total: 2, up: 1 }],
+    );
+    const result = await monitorAggregationService.getCheckCountsForMonitors(["m1"], hour(0), new Date(hour(5).getTime() + 30 * 60_000));
+    expect(result.get("m1")).toEqual({ totalChecks: 16, successfulChecks: 14 });
+  });
+});

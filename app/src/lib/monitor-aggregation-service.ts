@@ -346,6 +346,83 @@ async function loadConfiguredPolicy(
   return { strategy, threshold, expected: new Set(locationConfig.locations).size };
 }
 
+/** One row per distinct cycle shape of a monitor. */
+type CycleShape = {
+  monitor_id: string;
+  observed: number;
+  up: number;
+  recent: boolean;
+  strategy: CyclePolicy["strategy"] | null;
+  threshold: number | null;
+  expected: number | null;
+  cycles: number;
+};
+
+/**
+ * Summarise cycles in the database: per monitor and shape, how many regions reported / were up (restricted to
+ * the cycle's expected set, latest attempt per region), the expected-set size, and the persisted rule if any.
+ * `base` selects the monitor rows, `margin` the raw time ranges read, `firstAtFilter` (a HAVING on
+ * min(first_at) per group) which cycles, by their earliest row, are counted.
+ */
+async function cycleShapes(input: {
+  monitorIds: string[];
+  base: SQL;
+  margin: [number, number][];
+  firstAtFilter: SQL;
+  nowIso: string;
+}): Promise<CycleShape[]> {
+  const ranges = sql.join(
+    input.margin.map(
+      ([a, b]) =>
+        sql`(${monitorResults.checkedAt} >= ${new Date(a).toISOString()}::timestamptz AND ${monitorResults.checkedAt} < ${new Date(b).toISOString()}::timestamptz)`,
+    ),
+    sql` OR `,
+  );
+  return db.execute<CycleShape>(sql`
+    WITH b AS (
+      SELECT ${monitorResults.id} AS id, ${monitorResults.monitorId} AS mid, ${monitorResults.executionGroupId} AS gid,
+        ${monitorResults.location} AS location, ${monitorResults.isUp} AS is_up,
+        ${monitorResults.checkedAt} AS checked_at,
+        CASE WHEN jsonb_typeof(${monitorResults.details}->'expectedLocations') = 'array'
+          THEN ${monitorResults.details}->'expectedLocations' END AS e
+      FROM ${monitorResults}
+      WHERE ${input.base} AND ${monitorResults.executionGroupId} IS NOT NULL AND (${ranges})
+    ),
+    ex AS (
+      SELECT b.mid, b.gid, array_agg(DISTINCT x) AS arr
+      FROM b, LATERAL jsonb_array_elements_text(b.e) AS x
+      WHERE b.e IS NOT NULL
+      GROUP BY b.mid, b.gid
+    ),
+    r AS (
+      SELECT b.mid, b.gid, b.location, b.is_up,
+        min(b.checked_at) OVER (PARTITION BY b.mid, b.gid) AS first_at,
+        -- the latest attempt of a region decides, as in groupChecks
+        row_number() OVER (PARTITION BY b.mid, b.gid, b.location ORDER BY b.checked_at DESC, b.id DESC) AS rn,
+        c.strategy, c.threshold, c.deadline_at,
+        -- expected regions: the persisted snapshot, else what the worker enqueued, else unknown
+        CASE WHEN c.id IS NOT NULL THEN ARRAY(SELECT jsonb_array_elements_text(c.expected_locations))
+             ELSE ex.arr END AS exp
+      FROM b
+      LEFT JOIN ex ON ex.mid = b.mid AND ex.gid = b.gid
+      LEFT JOIN ${monitorCycles} c ON c.id = b.gid AND c.monitor_id = b.mid
+    ),
+    g AS (
+      SELECT mid, gid, min(first_at) AS first_at, max(deadline_at) AS deadline_at,
+        (count(*) FILTER (WHERE exp IS NULL OR location = ANY(exp)))::int AS observed,
+        (count(*) FILTER (WHERE is_up AND (exp IS NULL OR location = ANY(exp))))::int AS up,
+        max(strategy) AS strategy, max(threshold) AS threshold, max(cardinality(exp)) AS expected
+      FROM r WHERE rn = 1
+      GROUP BY mid, gid
+      HAVING ${input.firstAtFilter}
+    )
+    SELECT mid AS monitor_id, observed, up,
+      (${input.nowIso}::timestamptz < COALESCE(deadline_at, first_at + interval '60 minutes')) AS recent,
+      strategy, threshold, expected, count(*)::int AS cycles
+    FROM g
+    GROUP BY 1, 2, 3, 4, 5, 6, 7`);
+}
+
 /**
  * Policy lookup for a monitor's rows: the persisted monitor_cycles snapshot where one exists, otherwise the
  * monitor's current region config (history keeps today's rule; legacy grouped rows have no snapshot).
@@ -1093,60 +1170,13 @@ export class MonitorAggregationService {
       } else {
         const configured = await loadConfiguredPolicy(monitorId);
         const margin = gaps.map(([a, b]): [number, number] => [a - CYCLE_MARGIN_MS, b + CYCLE_MARGIN_MS]);
-        const nowIso = now.toISOString();
-        // One row per cycle shape: regions reported / up (restricted to the cycle's expected set, latest attempt
-        // per region), the expected-set size, and the cycle's own rule if persisted.
-        const shapes = await db.execute<{
-          observed: number;
-          up: number;
-          recent: boolean;
-          strategy: CyclePolicy["strategy"] | null;
-          threshold: number | null;
-          expected: number | null;
-          cycles: number;
-        }>(sql`
-          WITH b AS (
-            SELECT ${monitorResults.id} AS id, ${monitorResults.executionGroupId} AS gid,
-              ${monitorResults.location} AS location, ${monitorResults.isUp} AS is_up,
-              ${monitorResults.checkedAt} AS checked_at,
-              CASE WHEN jsonb_typeof(${monitorResults.details}->'expectedLocations') = 'array'
-                THEN ${monitorResults.details}->'expectedLocations' END AS e
-            FROM ${monitorResults}
-            WHERE ${base} AND ${monitorResults.executionGroupId} IS NOT NULL AND (${inRanges(monitorResults.checkedAt, margin)})
-          ),
-          ex AS (
-            SELECT b.gid, array_agg(DISTINCT x) AS arr
-            FROM b, LATERAL jsonb_array_elements_text(b.e) AS x
-            WHERE b.e IS NOT NULL
-            GROUP BY b.gid
-          ),
-          r AS (
-            SELECT b.gid, b.location, b.is_up,
-              min(b.checked_at) OVER (PARTITION BY b.gid) AS first_at,
-              -- the latest attempt of a region decides, as in groupChecks
-              row_number() OVER (PARTITION BY b.gid, b.location ORDER BY b.checked_at DESC, b.id DESC) AS rn,
-              c.strategy, c.threshold, c.deadline_at,
-              -- expected regions: the persisted snapshot, else what the worker enqueued, else unknown
-              CASE WHEN c.id IS NOT NULL THEN ARRAY(SELECT jsonb_array_elements_text(c.expected_locations))
-                   ELSE ex.arr END AS exp
-            FROM b
-            LEFT JOIN ex ON ex.gid = b.gid
-            LEFT JOIN ${monitorCycles} c ON c.id = b.gid AND c.monitor_id = ${monitorId}
-          ),
-          g AS (
-            SELECT gid, min(first_at) AS first_at, max(deadline_at) AS deadline_at,
-              (count(*) FILTER (WHERE exp IS NULL OR location = ANY(exp)))::int AS observed,
-              (count(*) FILTER (WHERE is_up AND (exp IS NULL OR location = ANY(exp))))::int AS up,
-              max(strategy) AS strategy, max(threshold) AS threshold, max(cardinality(exp)) AS expected
-            FROM r WHERE rn = 1
-            GROUP BY gid
-            HAVING ${inRanges(sql`min(first_at)`, gaps)}
-          )
-          SELECT observed, up,
-            (${nowIso}::timestamptz < COALESCE(deadline_at, first_at + interval '60 minutes')) AS recent,
-            strategy, threshold, expected, count(*)::int AS cycles
-          FROM g
-          GROUP BY 1, 2, 3, 4, 5, 6`);
+        const shapes = await cycleShapes({
+          monitorIds: [monitorId],
+          base: base!,
+          margin,
+          firstAtFilter: inRanges(sql`min(first_at)`, gaps),
+          nowIso: now.toISOString(),
+        });
         for (const shape of shapes) {
           const policy = shape.strategy
             ? { strategy: shape.strategy, threshold: shape.threshold ?? 50, expected: shape.expected ?? 0 }
@@ -1200,6 +1230,120 @@ export class MonitorAggregationService {
       p95ResponseMs:
         responseSampleCount >= MIN_P95_SAMPLES ? histogramPercentile(histogram, 95) : null,
     };
+  }
+
+  /**
+   * Check counts of [from, now] for many monitors in a constant number of queries (aggregates, monitor config,
+   * cycle summary, solo rows), for the public status page. Completed hours come from the hourly aggregates;
+   * hours without an aggregate row and the in-progress hour are summarised from raw rows with the same cycle
+   * rule as getWindowMetrics.
+   */
+  async getCheckCountsForMonitors(
+    monitorIds: string[],
+    from: Date,
+    now: Date,
+  ): Promise<Map<string, { totalChecks: number; successfulChecks: number }>> {
+    const out = new Map<string, { totalChecks: number; successfulChecks: number }>();
+    if (monitorIds.length === 0) return out;
+    const add = (id: string, total: number, up: number) => {
+      const current = out.get(id) ?? { totalChecks: 0, successfulChecks: 0 };
+      current.totalChecks += total;
+      current.successfulChecks += up;
+      out.set(id, current);
+    };
+    const lastHour = Math.floor(now.getTime() / HOUR_MS) * HOUR_MS;
+    const aggregateRows = await db
+      .select({
+        monitorId: monitorAggregates.monitorId,
+        periodStart: monitorAggregates.periodStart,
+        location: monitorAggregates.location,
+        totalChecks: monitorAggregates.totalChecks,
+        successfulChecks: monitorAggregates.successfulChecks,
+      })
+      .from(monitorAggregates)
+      .where(
+        and(
+          inArray(monitorAggregates.monitorId, monitorIds),
+          eq(monitorAggregates.periodType, "hourly"),
+          gte(monitorAggregates.periodStart, from),
+          lt(monitorAggregates.periodStart, new Date(lastHour)),
+        ),
+      );
+    // One logical row per (monitor, hour): the combined row, else the location rollups.
+    const combined = new Set(
+      aggregateRows.filter((r) => r.location === null).map((r) => `${r.monitorId}|${r.periodStart.getTime()}`),
+    );
+    const covered: { ids: string[]; hours: string[] } = { ids: [], hours: [] };
+    const seen = new Set<string>();
+    for (const row of aggregateRows) {
+      const key = `${row.monitorId}|${row.periodStart.getTime()}`;
+      if (row.location !== null && combined.has(key)) continue;
+      add(row.monitorId, row.totalChecks, row.successfulChecks);
+      if (!seen.has(key)) {
+        seen.add(key);
+        covered.ids.push(row.monitorId);
+        covered.hours.push(row.periodStart.toISOString());
+      }
+    }
+
+    const configs = await db
+      .select({ id: monitors.id, config: monitors.config })
+      .from(monitors)
+      .where(inArray(monitors.id, monitorIds));
+    const configured = new Map(
+      configs.map((m) => {
+        const lc = m.config?.locationConfig;
+        if (!lc?.enabled || !lc.locations?.length) return [m.id, null] as const;
+        const { strategy, threshold } = monitorCyclePolicy(lc);
+        return [m.id, { strategy, threshold, expected: new Set(lc.locations).size }] as const;
+      }),
+    );
+
+    // (monitor, hour) pairs already counted from aggregates, passed as JSON (array params do not bind reliably).
+    const coveredJson = JSON.stringify(covered.ids.map((m, i) => ({ m, h: covered.hours[i] })));
+    const notCovered = (mid: SQL, at: SQL) =>
+      covered.ids.length === 0
+        ? sql`true`
+        : sql`NOT ((${mid}, to_timestamp(floor(extract(epoch from ${at}) / 3600) * 3600)) IN (
+            SELECT c.m, c.h FROM jsonb_to_recordset(${coveredJson}::jsonb) AS c(m uuid, h timestamptz)))`;
+    const fromIso = from.toISOString();
+    const toIso = new Date(now.getTime() + 1).toISOString();
+    const shapes = await cycleShapes({
+      monitorIds,
+      base: and(inArray(monitorResults.monitorId, monitorIds), excludeSupersededSyntheticResults)!,
+      margin: [[from.getTime() - CYCLE_MARGIN_MS, now.getTime() + 1]],
+      firstAtFilter: sql`min(first_at) >= ${fromIso}::timestamptz AND min(first_at) < ${toIso}::timestamptz AND ${notCovered(sql`mid`, sql`min(first_at)`)}`,
+      nowIso: now.toISOString(),
+    });
+    for (const shape of shapes) {
+      const base = configured.get(shape.monitor_id) ?? null;
+      const policy = shape.strategy
+        ? { strategy: shape.strategy, threshold: shape.threshold ?? 50, expected: shape.expected ?? 0 }
+        : base && { ...base, expected: shape.expected ?? Math.max(base.expected, shape.observed) };
+      if (policy && shape.recent && shape.observed < policy.expected) continue;
+      add(shape.monitor_id, shape.cycles, cycleUpFromCounts(policy || null, shape.observed, shape.up) ? shape.cycles : 0);
+    }
+
+    const solo = await db
+      .select({
+        monitorId: monitorResults.monitorId,
+        total: sql<number>`count(*)::int`,
+        up: sql<number>`(count(*) filter (where ${monitorResults.isUp}))::int`,
+      })
+      .from(monitorResults)
+      .where(
+        and(
+          inArray(monitorResults.monitorId, monitorIds),
+          excludeSupersededSyntheticResults,
+          sql`${monitorResults.executionGroupId} IS NULL`,
+          gte(monitorResults.checkedAt, from),
+          lt(monitorResults.checkedAt, new Date(now.getTime() + 1)),
+          notCovered(sql`${monitorResults.monitorId}`, sql`${monitorResults.checkedAt}`),
+        ),
+      )
+      .groupBy(monitorResults.monitorId);
+    for (const row of solo) add(row.monitorId, row.total, row.up);
+    return out;
   }
 
   /**

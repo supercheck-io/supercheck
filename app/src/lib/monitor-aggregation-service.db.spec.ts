@@ -336,6 +336,36 @@ it("never shrinks the aggregate of the period holding the oldest raw row (partly
   expect(await read()).toEqual([110, 110]);
 });
 
+it("counts today's checks for several monitors in one pass, matching getWindowMetrics (aggregated hours + raw tail)", async () => {
+  const [other] = await mockDatabase.insert(schema.monitors).values({
+    organizationId: (await mockDatabase.select().from(schema.monitors).where(eq(schema.monitors.id, monitorId)))[0].organizationId,
+    projectId: (await mockDatabase.select().from(schema.monitors).where(eq(schema.monitors.id, monitorId)))[0].projectId,
+    name: "Other", type: "http_request", target: "https://example.org", status: "up",
+  }).returning();
+  await mockDatabase.update(schema.monitors).set({ config: { locationConfig: { enabled: true, locations: ["a", "b", "c"], strategy: "majority", threshold: 50 } } }).where(eq(schema.monitors.id, monitorId));
+  const start = new Date(); start.setUTCHours(0, 0, 0, 0);
+  const now = new Date(start.getTime() + 5 * 3_600_000 + 20 * 60_000);
+  const at2 = (minutes: number) => new Date(start.getTime() + minutes * 60_000);
+  const rows = [
+    // monitor 1: a completed, aggregated hour (cycle g0) and one cycle in the raw tail hour (g1: a down, b up, c up)
+    ...["a", "b", "c"].map((l) => ({ monitorId, executionGroupId: "g0", checkedAt: at2(10), location: l, status: "up" as const, isUp: true, responseTimeMs: 10 })),
+    ...["a", "b", "c"].map((l) => ({ monitorId, executionGroupId: "g1", checkedAt: at2(5 * 60 + 5), location: l, status: l === "a" ? ("down" as const) : ("up" as const), isUp: l !== "a", responseTimeMs: l === "a" ? null : 10, details: { expectedLocations: ["a", "b", "c"] } })),
+    // monitor 2: solo rows in an aggregated hour and in the tail
+    { monitorId: other.id, checkedAt: at2(20), location: "local", status: "up" as const, isUp: true, responseTimeMs: 5 },
+    { monitorId: other.id, checkedAt: at2(5 * 60 + 10), location: "local", status: "down" as const, isUp: false },
+  ];
+  await mockDatabase.insert(schema.monitorResults).values(rows);
+  expect((await monitorAggregationService.runHourlyAggregation()).errors).toEqual([]);
+  // runHourlyAggregation only covers the last 24h up to the current hour; seed the aggregates for today's hours directly.
+  const batch = await monitorAggregationService.getCheckCountsForMonitors([monitorId, other.id], start, now);
+  for (const id of [monitorId, other.id]) {
+    const single = await monitorAggregationService.getWindowMetrics(id, "hourly", start, now, null);
+    expect(batch.get(id)).toEqual({ totalChecks: single.totalChecks, successfulChecks: single.successfulChecks });
+  }
+  expect(batch.get(monitorId)).toEqual({ totalChecks: 2, successfulChecks: 2 });
+  expect(batch.get(other.id)).toEqual({ totalChecks: 2, successfulChecks: 1 });
+});
+
 it("keeps the latest duplicate, archives superseded rows and cascades their deletion", async () => {
   await client`DROP INDEX monitor_aggregates_combined_unique_idx`;
   await client`DROP TABLE monitor_aggregate_dedup_audit`;
