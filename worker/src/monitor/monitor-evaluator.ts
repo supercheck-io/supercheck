@@ -606,7 +606,13 @@ export class MonitorEvaluator {
         await this.persistAggregatedAlertState(
           monitorId,
           updatedAggregatedAlertState,
-          { monotonicFailureCounter: alertType === 'failure' },
+          // Only a group-owned state is monotonic: a manual run has no prepared state, so an old outage's
+          // counter (left by a suppressed recovery) must not outlast a new outage.
+          {
+            monotonicFailureCounter:
+              alertType === 'failure' &&
+              Boolean(aggregatedAlertState.executionGroupId),
+          },
         );
       }
 

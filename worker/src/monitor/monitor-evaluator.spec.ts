@@ -1084,3 +1084,120 @@ describe('alert counter versioning and monotonic writes', () => {
     expect(sql).toContain('alertCounterVersion');
   });
 });
+
+describe('state carry-over across outages', () => {
+  const evaluator = new MonitorEvaluator({ db: {} } as never, {} as never);
+  const alerted = {
+    consecutiveFailureCount: 12,
+    consecutiveSuccessCount: 0,
+    alertsSentForFailure: 2,
+    alertsSentForRecovery: 0,
+    lastAlertCount: 11,
+    lastAlertWindows: 2,
+    alertCounterVersion: 2 as const,
+  };
+
+  it('drops the alert markers when the sequence goes up and starts a new outage', () => {
+    const up = evaluator.getNextAggregatedAlertState(alerted, 'down', 'up');
+    expect(up).not.toHaveProperty('lastAlertCount');
+    expect(up).not.toHaveProperty('lastAlertWindows');
+    expect(up).not.toHaveProperty('alertCounterVersion');
+    expect(up.alertsSentForFailure).toBe(0);
+    const down = evaluator.getNextAggregatedAlertState(up, 'up', 'down');
+    expect(down).toMatchObject({
+      consecutiveFailureCount: 1,
+      alertsSentForFailure: 0,
+    });
+    expect(down).not.toHaveProperty('lastAlertCount');
+  });
+
+  it('keeps the markers while the same outage continues', () => {
+    const next = evaluator.getNextAggregatedAlertState(alerted, 'down', 'down');
+    expect(next).toMatchObject({
+      lastAlertCount: 11,
+      lastAlertWindows: 2,
+      alertCounterVersion: 2,
+    });
+  });
+
+  it('outage, recovery and a new outage: the new first alert is not suppressed', async () => {
+    const send = jest.fn(async () => ({ delivered: true }));
+    const ev = new MonitorEvaluator(
+      { db: {} } as never,
+      { sendNotification: send, signalRecovery: jest.fn() } as never,
+    );
+    const monitor = {
+      alertConfig: {
+        enabled: true,
+        alertOnFailure: true,
+        alertOnRecovery: true,
+        failureThreshold: 1,
+        recoveryThreshold: 1,
+      },
+      config: {},
+    } as never;
+    jest
+      .spyOn(ev as never, 'persistAggregatedAlertState')
+      .mockResolvedValue(undefined as never);
+    // recovery of the old outage, then a new outage whose state is derived from it
+    const recovered = ev.getNextAggregatedAlertState(alerted, 'down', 'up');
+    const fresh = ev.getNextAggregatedAlertState(recovered, 'up', 'down');
+    const res = await ev.evaluateAndSendAlert({
+      monitorId: 'm1',
+      monitor,
+      previousStatus: 'up',
+      currentStatus: 'down',
+      reason: 'down',
+      metadata: { locationResults: [{}, {}] },
+      preparedAlertState: fresh,
+    });
+    expect(res).toEqual({ alertSent: true, alertType: 'failure' });
+  });
+
+  it('a manual run (no group id) writes the counter without GREATEST', async () => {
+    const sets: SQL[] = [];
+    const ev = new MonitorEvaluator(
+      {
+        db: {
+          update: jest.fn(() => ({
+            set: jest.fn((v: { config: SQL }) => {
+              sets.push(v.config);
+              return { where: jest.fn() };
+            }),
+          })),
+        },
+      } as never,
+      {
+        sendNotification: jest.fn(async () => ({ delivered: true })),
+      } as never,
+    );
+    const call = (preparedAlertState?: object) =>
+      ev.evaluateAndSendAlert({
+        monitorId: 'm1',
+        monitor: {
+          alertConfig: {
+            enabled: true,
+            alertOnFailure: true,
+            failureThreshold: 1,
+          },
+          config: {},
+        } as never,
+        previousStatus: 'up',
+        currentStatus: 'down',
+        reason: 'down',
+        metadata: { locationResults: [{}, {}] },
+        preparedAlertState: preparedAlertState as never,
+      });
+    await call();
+    await call({
+      consecutiveFailureCount: 1,
+      consecutiveSuccessCount: 0,
+      alertsSentForFailure: 0,
+      alertsSentForRecovery: 0,
+      executionGroupId: 'g1',
+    });
+    const q = sets.map((c) => new PgDialect().sqlToQuery(c).sql);
+    expect(q[0]).not.toContain('GREATEST');
+    expect(q[1]).toContain('GREATEST');
+  });
+});
