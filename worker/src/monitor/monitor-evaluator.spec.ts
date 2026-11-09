@@ -1220,7 +1220,7 @@ describe('MonitorEvaluator.checkSslExpirationAlert', () => {
       { monitorId: 'm1', details, responseTimeMs: 1, isUp } as never,
       {
         alertConfig: { enabled: true, alertOnSslExpiration: true },
-        config: { sslDaysUntilExpirationWarning: 30 },
+        config: { enableSslCheck: true, sslDaysUntilExpirationWarning: 30 },
       } as never,
     );
     return alertService.sendSslExpirationNotification;
@@ -1284,7 +1284,7 @@ describe('MonitorEvaluator.checkSslExpirationAlert', () => {
       } as never,
       {
         alertConfig: { enabled: true, alertOnSslExpiration: true },
-        config: { sslDaysUntilExpirationWarning: 30 },
+        config: { enableSslCheck: true, sslDaysUntilExpirationWarning: 30 },
       } as never,
     );
     expect(alertService.sendSslExpirationNotification).toHaveBeenCalledWith(
@@ -1506,6 +1506,28 @@ describe('claims passed with alerts', () => {
     expect(dbService.db.update).toHaveBeenCalled();
   });
 
+  it('treats an alert every channel gave up on as terminal for its window: consumed, not retried, not reported sent', async () => {
+    const { call, dbService } = setup({ delivered: false, gaveUp: true });
+    expect(await call()).toEqual({ alertSent: false });
+    // The window is consumed on the result row like a delivery, so the next check moves on.
+    expect(dbService.db.update).toHaveBeenCalled();
+  });
+
+  it('consumes the recovery claim of an alert that was given up too', async () => {
+    const { call, latest, dbService } = setup({
+      delivered: false,
+      gaveUp: true,
+    });
+    latest.consecutiveFailureCount = 0;
+    latest.consecutiveSuccessCount = 1;
+    expect(await call({ previousStatus: 'down', currentStatus: 'up' })).toEqual(
+      {
+        alertSent: false,
+      },
+    );
+    expect(dbService.db.update).toHaveBeenCalled();
+  });
+
   it('treats an alert another evaluator is sending as neither delivered nor failed', async () => {
     const { call, dbService } = setup({
       delivered: false,
@@ -1686,6 +1708,20 @@ describe('SSL renewed notice', () => {
   ])('does not call %s renewed', async (_name, certificate) => {
     const { alertService, check } = setup();
     await check(certificate);
+    expect(alertService.sendSslRenewedNotification).not.toHaveBeenCalled();
+  });
+
+  it('sends no SSL alert at all once SSL Check is off, for a read that was already in flight', async () => {
+    const { alertService, check } = setup();
+    await check(
+      { valid: true, daysRemaining: 5, validTo: warned.validTo },
+      { sslAlertState: undefined, enableSslCheck: false },
+    );
+    await check(
+      { valid: true, daysRemaining: 5, validTo: warned.validTo },
+      { enableSslCheck: false },
+    );
+    expect(alertService.sendSslExpirationNotification).not.toHaveBeenCalled();
     expect(alertService.sendSslRenewedNotification).not.toHaveBeenCalled();
   });
 

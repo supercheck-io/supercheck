@@ -118,6 +118,11 @@ describe("monitor PUT write boundary", () => {
   });
 
   it("keeps worker-owned config keys when a patch nulls or forges them", async () => {
+    findFirst.mockResolvedValue({
+      ...stored,
+      config: { ...stored.config, enableSslCheck: true },
+      alertConfig: { enabled: true, alertOnSslExpiration: true },
+    });
     await call(PATCH, "PATCH", { config: { timeoutSeconds: 10, sslAlertState: null, aggregatedAlertState: { n: 99 }, sslCertificate: null } });
     expect(payload().config as Record<string, unknown>).toMatchObject({
       timeoutSeconds: 10,

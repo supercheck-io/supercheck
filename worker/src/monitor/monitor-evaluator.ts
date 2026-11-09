@@ -666,9 +666,14 @@ export class MonitorEvaluator {
           ? { alertSent: false, deliveryFailed: true }
           : { alertSent: false };
       }
+      // Every channel used up its attempts: terminal for this window. The window is consumed below like a
+      // delivery, so later checks stop re-reading the same dead claims, but it is not reported as sent.
+      const gaveUp =
+        (notification as { gaveUp?: boolean } | undefined)?.gaveUp === true;
       if (
         !suppressed &&
         !incidentSignalled &&
+        !gaveUp &&
         notification?.delivered === false
       )
         return { alertSent: false, deliveryFailed: true };
@@ -733,7 +738,7 @@ export class MonitorEvaluator {
         }
       }
 
-      return suppressed || alreadySent
+      return suppressed || alreadySent || gaveUp
         ? { alertSent: false }
         : { alertSent: true, alertType };
     } catch (error) {
@@ -873,10 +878,9 @@ export class MonitorEvaluator {
         (alertsOff || sslCheckOff)
       ) {
         await this.clearSslWarning(monitor.id, warnedId);
-        // The state read above is stale now: it must not drive a renewed notice.
-        if (!alertsOff) return;
       }
-      if (alertsOff) {
+      // SSL Check off: an in-flight read from before it was disabled must not send any SSL alert either.
+      if (alertsOff || sslCheckOff) {
         return;
       }
       // Removed debug log

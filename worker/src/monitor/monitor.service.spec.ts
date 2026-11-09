@@ -1187,6 +1187,7 @@ describe('MonitorService', () => {
     it('checks SSL expiration on the live result path and throttles daily', async () => {
       const monitor = {
         ...mockMonitor,
+        config: { ...mockMonitor.config, enableSslCheck: true },
         alertConfig: { enabled: true, alertOnSslExpiration: true },
       };
       mockDbService.db.query.monitors.findFirst.mockResolvedValue(monitor);
