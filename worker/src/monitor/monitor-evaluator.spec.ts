@@ -834,15 +834,10 @@ async function alertCountsWhere(
     { db: {} } as never,
     { sendNotification: send } as never,
   );
-  let persisted: { alertsSentForFailure: number; lastAlertCount?: number } = {
-    alertsSentForFailure: 0,
-  };
+  let persisted: Record<string, number> = { alertsSentForFailure: 0 };
   jest
     .spyOn(evaluator as never, 'persistAggregatedAlertState')
-    .mockImplementation((async (
-      _id: string,
-      state: { alertsSentForFailure: number; lastAlertCount?: number },
-    ) => {
+    .mockImplementation((async (_id: string, state: Record<string, number>) => {
       persisted = state;
     }) as never);
   const fired: number[] = [];
@@ -866,13 +861,11 @@ async function alertCountsWhere(
       reason: 'down',
       metadata: { locationResults: [{}, {}] },
       preparedAlertState: {
+        alertsSentForRecovery: 0,
+        ...persisted,
         consecutiveFailureCount: count,
         consecutiveSuccessCount: 0,
         alertsSentForFailure: persisted.alertsSentForFailure,
-        alertsSentForRecovery: 0,
-        ...(persisted.lastAlertCount !== undefined
-          ? { lastAlertCount: persisted.lastAlertCount }
-          : {}),
       },
     });
     if (res.alertSent) fired.push(count);
@@ -938,7 +931,13 @@ describe('single-location last alert count', () => {
         config:
           lastAlertCount === undefined
             ? {}
-            : { aggregatedAlertState: { lastAlertCount } },
+            : {
+                aggregatedAlertState: {
+                  lastAlertCount,
+                  lastAlertWindows: 1,
+                  alertCounterVersion: 2,
+                },
+              },
       } as never,
       previousStatus: 'down',
       currentStatus: 'down',
@@ -961,5 +960,127 @@ describe('single-location last alert count', () => {
     // reminder 1 (window 1, count 10) was delivered at count 9: reminder 2 waits 2N after that
     const { res } = await run(9);
     expect(res.alertSent).toBe(false);
+  });
+});
+
+describe('alert counter versioning and monotonic writes', () => {
+  const state = (extra: object, sent = 1) => ({
+    consecutiveFailureCount: 9,
+    consecutiveSuccessCount: 0,
+    alertsSentForFailure: sent,
+    alertsSentForRecovery: 0,
+    ...extra,
+  });
+  const decide = async (preparedAlertState: object) => {
+    const send = jest.fn(async () => ({ delivered: true }));
+    const evaluator = new MonitorEvaluator(
+      { db: {} } as never,
+      { sendNotification: send } as never,
+    );
+    jest
+      .spyOn(evaluator as never, 'persistAggregatedAlertState')
+      .mockResolvedValue(undefined as never);
+    await evaluator.evaluateAndSendAlert({
+      monitorId: 'm1',
+      monitor: {
+        alertConfig: {
+          enabled: true,
+          alertOnFailure: true,
+          failureThreshold: 1,
+        },
+        config: {},
+      } as never,
+      previousStatus: 'down',
+      currentStatus: 'down',
+      reason: 'down',
+      metadata: { locationResults: [{}, {}] },
+      preparedAlertState: preparedAlertState as never,
+    });
+    return send.mock.calls.length;
+  };
+
+  it('treats an unversioned counter as an older worker count and ignores a stale lastAlertCount', async () => {
+    // count 9 is inside window 1 (5..9 after threshold 1); a stale lastAlertCount of 8 would hold it back,
+    // an unversioned state ignores it and follows the older schedule.
+    expect(await decide(state({ lastAlertCount: 8 }))).toBe(1);
+  });
+
+  it('trusts lastAlertCount only with the current version and matching counter', async () => {
+    const v2 = {
+      alertCounterVersion: 2,
+      lastAlertCount: 8,
+      lastAlertWindows: 1,
+    };
+    expect(await decide(state(v2))).toBe(0);
+    // an older worker bumped the counter since: the marker no longer matches
+    expect(await decide(state(v2, 2))).toBe(0); // window 2 starts later
+    expect(await decide(state({ ...v2, lastAlertWindows: 0 }))).toBe(1);
+  });
+
+  it('writes the failure counter monotonically', async () => {
+    const sets: SQL[] = [];
+    const evaluator = new MonitorEvaluator(
+      {
+        db: {
+          update: jest.fn(() => ({
+            set: jest.fn((v: { config: SQL }) => {
+              sets.push(v.config);
+              return { where: jest.fn() };
+            }),
+          })),
+        },
+      } as never,
+      {} as never,
+    );
+    await evaluator.persistAggregatedAlertState('m1', state({}), {
+      monotonicFailureCounter: true,
+    });
+    await evaluator.persistAggregatedAlertState('m1', state({}));
+    expect(new PgDialect().sqlToQuery(sets[0]).sql).toContain('GREATEST');
+    expect(new PgDialect().sqlToQuery(sets[1]).sql).not.toContain('GREATEST');
+  });
+
+  it('single-location counter write uses GREATEST and records the version', async () => {
+    const writes: SQL[] = [];
+    const evaluator = new MonitorEvaluator(
+      {
+        db: {
+          query: {
+            monitorResults: {
+              findFirst: jest.fn(async () => ({
+                id: 'r1',
+                consecutiveFailureCount: 1,
+                alertsSentForFailure: 0,
+              })),
+            },
+          },
+          update: jest.fn(() => ({
+            set: jest.fn((v: Record<string, SQL>) => {
+              for (const value of Object.values(v)) writes.push(value);
+              return { where: jest.fn() };
+            }),
+          })),
+        },
+      } as never,
+      { sendNotification: jest.fn(async () => ({ delivered: true })) } as never,
+    );
+    await evaluator.evaluateAndSendAlert({
+      monitorId: 'm1',
+      monitor: {
+        alertConfig: {
+          enabled: true,
+          alertOnFailure: true,
+          failureThreshold: 1,
+        },
+        config: {},
+      } as never,
+      previousStatus: 'down',
+      currentStatus: 'down',
+      reason: 'down',
+      metadata: {},
+    });
+    const sql = writes.map((w) => new PgDialect().sqlToQuery(w).sql).join(' ');
+    expect(sql).toContain('GREATEST');
+    expect(sql).toContain('alertCounterVersion');
   });
 });

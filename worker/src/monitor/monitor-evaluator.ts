@@ -26,6 +26,13 @@ export type AggregatedAlertState = {
   alertsSentForRecovery: number;
   /** `consecutiveFailureCount` at the last delivered failure alert of this sequence; keeps reminder gaps. */
   lastAlertCount?: number;
+  /**
+   * 2 = `alertsSentForFailure` counts alert windows used (see evaluateAndSendAlert); absent = an older
+   * worker's delivered count. `lastAlertCount` is trusted only together with `lastAlertWindows`, the counter
+   * value it was written with, so an older worker bumping the counter invalidates it.
+   */
+  alertCounterVersion?: 2;
+  lastAlertWindows?: number;
   recoverySequence?: boolean;
   /** Failure count of the outage this recovery follows, when that outage sent no failure alert. */
   priorFailureCount?: number;
@@ -138,6 +145,12 @@ export class MonitorEvaluator {
       ...(typeof rawAlertState?.lastAlertCount === 'number'
         ? { lastAlertCount: toSafeCounter(rawAlertState.lastAlertCount) }
         : {}),
+      ...(rawAlertState?.alertCounterVersion === 2
+        ? { alertCounterVersion: 2 as const }
+        : {}),
+      ...(typeof rawAlertState?.lastAlertWindows === 'number'
+        ? { lastAlertWindows: toSafeCounter(rawAlertState.lastAlertWindows) }
+        : {}),
       ...(typeof rawAlertState?.priorFailureCount === 'number'
         ? { priorFailureCount: toSafeCounter(rawAlertState.priorFailureCount) }
         : {}),
@@ -167,7 +180,15 @@ export class MonitorEvaluator {
         recoverySequence: false,
         ...(continuingFailureSequence &&
         previousState.lastAlertCount !== undefined
-          ? { lastAlertCount: previousState.lastAlertCount }
+          ? {
+              lastAlertCount: previousState.lastAlertCount,
+              ...(previousState.alertCounterVersion
+                ? { alertCounterVersion: previousState.alertCounterVersion }
+                : {}),
+              ...(previousState.lastAlertWindows !== undefined
+                ? { lastAlertWindows: previousState.lastAlertWindows }
+                : {}),
+            }
           : {}),
         ...(continuingFailureSequence && previousState.failureCountUnknown
           ? { failureCountUnknown: true }
@@ -228,12 +249,15 @@ export class MonitorEvaluator {
   async persistAggregatedAlertState(
     monitorId: string,
     aggregatedAlertState: AggregatedAlertState,
+    options: { monotonicFailureCounter?: boolean } = {},
   ): Promise<void> {
     try {
       await this.dbService.db
         .update(schema.monitors)
         .set({
-          config: sql`jsonb_set(coalesce(${schema.monitors.config}, '{}'::jsonb), '{aggregatedAlertState}', ${JSON.stringify(aggregatedAlertState)}::jsonb)`,
+          config: options.monotonicFailureCounter
+            ? sql`jsonb_set(coalesce(${schema.monitors.config}, '{}'::jsonb), '{aggregatedAlertState}', ${JSON.stringify(aggregatedAlertState)}::jsonb || jsonb_build_object('alertsSentForFailure', GREATEST(coalesce((${schema.monitors.config}->'aggregatedAlertState'->>'alertsSentForFailure')::int, 0), ${aggregatedAlertState.alertsSentForFailure}::int)))`
+            : sql`jsonb_set(coalesce(${schema.monitors.config}, '{}'::jsonb), '{aggregatedAlertState}', ${JSON.stringify(aggregatedAlertState)}::jsonb)`,
         })
         .where(
           and(
@@ -256,12 +280,13 @@ export class MonitorEvaluator {
   private async persistSingleLocationLastAlertCount(
     monitorId: string,
     count: number,
+    windows: number,
   ): Promise<void> {
     try {
       await this.dbService.db
         .update(schema.monitors)
         .set({
-          config: sql`jsonb_set(coalesce(${schema.monitors.config}, '{}'::jsonb), '{aggregatedAlertState}', coalesce(${schema.monitors.config}->'aggregatedAlertState', '{}'::jsonb) || jsonb_build_object('lastAlertCount', ${count}::int))`,
+          config: sql`jsonb_set(coalesce(${schema.monitors.config}, '{}'::jsonb), '{aggregatedAlertState}', coalesce(${schema.monitors.config}->'aggregatedAlertState', '{}'::jsonb) || jsonb_build_object('lastAlertCount', ${count}::int, 'lastAlertWindows', ${windows}::int, 'alertCounterVersion', 2))`,
         })
         .where(eq(schema.monitors.id, monitorId));
     } catch (error) {
@@ -390,9 +415,16 @@ export class MonitorEvaluator {
       const failuresAfterThreshold = consecutiveFailureCount - failureThreshold;
       // A delivered alert is followed by at least the scheduled gap N * 2^(k-1) (k = windows used), counted
       // from the count it was actually delivered at, so a late alert cannot be followed by an immediate one.
-      const lastAlertCount = isMultiLocationEvaluation
-        ? aggregatedAlertState?.lastAlertCount
-        : this.readAggregatedAlertState(monitorConfig).lastAlertCount;
+      const lastState = isMultiLocationEvaluation
+        ? aggregatedAlertState
+        : this.readAggregatedAlertState(monitorConfig);
+      // Only a count written with the current counter value (by a worker that knows windows) is trusted;
+      // otherwise the stored value is an older worker's delivered count, whose schedule is never earlier.
+      const lastAlertCount =
+        lastState?.alertCounterVersion === 2 &&
+        lastState.lastAlertWindows === alertsSentForFailure
+          ? lastState.lastAlertCount
+          : undefined;
       const lastFailures =
         alertsSentForFailure >= 1 &&
         lastAlertCount !== undefined &&
@@ -562,6 +594,8 @@ export class MonitorEvaluator {
                 ...aggregatedAlertState,
                 alertsSentForFailure: currentWindow + 1,
                 lastAlertCount: consecutiveFailureCount,
+                lastAlertWindows: currentWindow + 1,
+                alertCounterVersion: 2 as const,
               }
             : {
                 ...aggregatedAlertState,
@@ -572,6 +606,7 @@ export class MonitorEvaluator {
         await this.persistAggregatedAlertState(
           monitorId,
           updatedAggregatedAlertState,
+          { monotonicFailureCounter: alertType === 'failure' },
         );
       }
 
@@ -580,11 +615,15 @@ export class MonitorEvaluator {
         if (alertType === 'failure') {
           await this.dbService.db
             .update(schema.monitorResults)
-            .set({ alertsSentForFailure: currentWindow + 1 })
+            // GREATEST: a stale retry (or a changed threshold) must never lower the windows used.
+            .set({
+              alertsSentForFailure: sql`GREATEST(${schema.monitorResults.alertsSentForFailure}, ${currentWindow + 1})`,
+            })
             .where(eq(schema.monitorResults.id, latestResult.id));
           await this.persistSingleLocationLastAlertCount(
             monitorId,
             consecutiveFailureCount,
+            currentWindow + 1,
           );
         } else if (alertType === 'recovery') {
           await this.dbService.db
