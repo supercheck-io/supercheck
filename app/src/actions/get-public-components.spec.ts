@@ -61,3 +61,28 @@ it("honours the component aggregation method when combining monitor uptime", asy
   const result = await getPublicComponents("00000000-0000-4000-8000-000000000001");
   expect(result.components[0].dailyMetrics).toEqual([{ date: "2030-01-01", totalChecks: 100, successfulChecks: 100 }]);
 });
+
+it("shows no recent data when every linked monitor stopped reporting", async () => {
+  const { db } = jest.requireMock("@/utils/db");
+  (db.query.statusPageComponents.findMany as jest.Mock).mockResolvedValueOnce([
+    { id: "browser", name: "Checkout", status: "operational", monitors: [] },
+    { id: "api", name: "API", status: "operational", monitors: [] },
+  ]);
+  const old = new Date(Date.now() - 60 * 60_000);
+  const links = [
+    { componentId: "browser", enabled: true, status: "up", frequencyMinutes: 5, lastCheckAt: old },
+    { componentId: "api", enabled: true, status: "up", frequencyMinutes: 5, lastCheckAt: new Date() },
+  ];
+  db.select = (columns: Record<string, unknown>) => {
+    const c: Record<string, unknown> = {};
+    for (const m of ["from", "innerJoin", "where", "groupBy"]) c[m] = () => c;
+    // Only the freshness lookup selects lastCheckAt; daily metrics see no rows.
+    const rows = columns && "lastCheckAt" in columns ? links : [];
+    c.then = (r: (v: unknown) => unknown) => Promise.resolve(rows).then(r);
+    return c;
+  };
+  const result = await getPublicComponents("00000000-0000-4000-8000-000000000001");
+  const byId = Object.fromEntries(result.components.map((component: { id: string; noRecentData?: boolean }) => [component.id, component.noRecentData]));
+  expect(byId).toEqual({ browser: true, api: false });
+  expect(JSON.stringify(result.components)).not.toContain("lastCheckAt");
+});

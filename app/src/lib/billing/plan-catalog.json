@@ -3,14 +3,15 @@
   "plus": {
     "name": "Plus",
     "description": "For startups and small teams",
-    "monthlyPriceCents": 4900,
+    "monthlyPriceCents": 2900,
     "limits": {
       "maxMonitors": 50,
       "minCheckIntervalMinutes": 1,
       "playwrightMinutesIncluded": 3000,
       "k6VuMinutesIncluded": 30000,
-      "aiCreditsIncluded": 1000,
-      "sreInvestigationUnitsIncluded": "200.0000",
+      "aiCreditsIncluded": 500,
+      "sreInvestigationUnitsIncluded": "100.0000",
+      "defaultSpendingLimitCents": 7000,
       "runningCapacity": 5,
       "queuedCapacity": 50,
       "maxTeamMembers": 5,
@@ -27,20 +28,21 @@
       "playwrightMinutes": 1,
       "k6VuMinutes": 0.2,
       "aiCredits": 0,
-      "sreInvestigationUnits": 10
+      "sreInvestigationUnits": 25
     }
   },
   "pro": {
     "name": "Pro",
     "description": "For growing teams",
-    "monthlyPriceCents": 14900,
+    "monthlyPriceCents": 9900,
     "limits": {
       "maxMonitors": 200,
       "minCheckIntervalMinutes": 1,
       "playwrightMinutesIncluded": 10000,
       "k6VuMinutesIncluded": 100000,
-      "aiCreditsIncluded": 5000,
-      "sreInvestigationUnitsIncluded": "1000.0000",
+      "aiCreditsIncluded": 3000,
+      "sreInvestigationUnitsIncluded": "500.0000",
+      "defaultSpendingLimitCents": 30000,
       "runningCapacity": 10,
       "queuedCapacity": 100,
       "maxTeamMembers": 25,
@@ -57,7 +59,7 @@
       "playwrightMinutes": 0.5,
       "k6VuMinutes": 0.1,
       "aiCredits": 0,
-      "sreInvestigationUnits": 10
+      "sreInvestigationUnits": 25
     }
   },
   "trial": {

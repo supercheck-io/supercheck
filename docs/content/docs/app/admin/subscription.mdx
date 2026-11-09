@@ -35,7 +35,9 @@ Review your plan price and measured overages in **Subscription**. Discounts, cre
 <Step>
 ### Set spending controls
 
-Configure overage alerts and an optional spending limit. Owners and organization admins can review usage and update billing settings.
+Every paid plan starts with a monthly overage cap and a hard stop. The default is $70 on Plus and $300 on Pro, so with the default cap and hard stop a month costs about $99 on Plus or $399 on Pro at most before taxes. Raising the cap or turning off the hard stop allows more overage. Plus with a full cap costs the same as Pro, so a team that often reaches the Plus cap should compare it with Pro.
+
+Owners and organization admins can open **Subscription → spending controls** to raise or lower the cap, turn the hard stop off so usage keeps billing past the cap, reset to the plan default, and choose alert thresholds and billing contacts.
 </Step>
 <Step>
 ### Open the billing portal
@@ -44,6 +46,6 @@ The **organization owner** selects **Manage Subscription** to view invoices, upd
 </Step>
 </Steps>
 
-<Callout type="warn" title="Spending limits cover overages">
-The subscription fee is separate. Optional blocking stops new billable executions and full investigations after the limit is reached; basic uptime checks continue. Work already admitted or running can still accrue usage. The limit is not a guaranteed cap on your final invoice.
+<Callout type="warn" title="What happens at the cap">
+With the hard stop on, new browser (Playwright) checks, test and job runs, k6 load tests, and full AI SRE investigations pause when the cap is reached. They resume when you raise the cap or your billing period resets. HTTP, website, ping, and port monitors keep running. Emails go out at 80% of the cap (and 90% when the hard stop is on) and at 100%. The subscription fee is separate. Work already admitted or running can still accrue usage, so the cap is not an exact limit on your final invoice.
 </Callout>

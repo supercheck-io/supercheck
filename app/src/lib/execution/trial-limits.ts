@@ -112,6 +112,7 @@ export function trialPlanLimits(entitlement: Entitlement): PlanLimits {
     k6VuMinutesIncluded: 0,
     aiCreditsIncluded: entitlement.aiCredits,
     sreInvestigationUnitsIncluded: String(entitlement.sreInvestigationUnits),
+    defaultSpendingLimitCents: null,
     runningCapacity: entitlement.runningCapacity,
     queuedCapacity: entitlement.queuedCapacity,
     maxTeamMembers: entitlement.maxTeamMembers,

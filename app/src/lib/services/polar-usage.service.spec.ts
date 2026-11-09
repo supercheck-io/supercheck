@@ -123,7 +123,7 @@ describe("PolarUsageService retry idempotency", () => {
       organization: { findFirst: jest.fn().mockResolvedValue({ subscriptionPlan: "plus", sreInvestigationUnitsUsed: "9", playwrightMinutesUsed: 105 }) },
       planLimits: { findFirst: jest.fn().mockResolvedValue({ playwrightMinutesIncluded: 100, k6VuMinutesIncluded: 100, aiCreditsIncluded: 10, sreInvestigationUnitsIncluded: "10" }) },
       overagePricing: { findFirst: jest.fn().mockResolvedValue({ playwrightMinutePriceCents: 2, sreInvestigationUnitPriceCents: 75 }) },
-      billingSettings: { findFirst: jest.fn().mockResolvedValue({ enableSpendingLimit: true, hardStopOnLimit: true, monthlySpendingLimitCents: 84 }) },
+      billingSettings: { findFirst: jest.fn().mockResolvedValue({ spendingLimitSource: "custom", enableSpendingLimit: true, hardStopOnLimit: true, monthlySpendingLimitCents: 84 }) },
     } } as unknown as Pick<typeof db, "query">;
     const metrics = await polarUsageService.getUsageMetrics("org-1", { database, additionalSreUnits: 2 });
     expect(metrics.sreInvestigations).toMatchObject({ used: 11, included: 10, overageCostCents: 75 });
@@ -207,7 +207,7 @@ describe("PolarUsageService retry idempotency", () => {
       organization: { findFirst: jest.fn().mockResolvedValue({ subscriptionPlan: "plus", sreInvestigationUnitsUsed: "26" }) },
       planLimits: { findFirst: jest.fn().mockResolvedValue({ playwrightMinutesIncluded: 3000, k6VuMinutesIncluded: 20000, aiCreditsIncluded: 100, sreInvestigationUnitsIncluded: "25.86" }) },
       overagePricing: { findFirst: jest.fn().mockResolvedValue({ sreInvestigationUnitPriceCents: 50 }) },
-      billingSettings: { findFirst: jest.fn().mockResolvedValue({ enableSpendingLimit: true, hardStopOnLimit: true, monthlySpendingLimitCents: 8 }) },
+      billingSettings: { findFirst: jest.fn().mockResolvedValue({ spendingLimitSource: "custom", enableSpendingLimit: true, hardStopOnLimit: true, monthlySpendingLimitCents: 8 }) },
     } } as unknown as Pick<typeof db, "query">;
     const spending = await polarUsageService.getSpendingStatus("org-1", { database, additionalSreUnits: 0 });
     expect(spending).toMatchObject({ currentSpendingCents: 7, isAtLimit: false });
@@ -215,10 +215,26 @@ describe("PolarUsageService retry idempotency", () => {
 
   it("does not report 100% spending before the limit is reached", async () => {
     const spy = jest.spyOn(polarUsageService, "getUsageMetrics").mockResolvedValue({ totalOverageCostCents: 996 } as never);
-    const database = { query: { billingSettings: { findFirst: jest.fn().mockResolvedValue({ enableSpendingLimit: true, hardStopOnLimit: true, monthlySpendingLimitCents: 1000 }) } } } as unknown as Pick<typeof db, "query">;
+    const database = { query: {
+      billingSettings: { findFirst: jest.fn().mockResolvedValue({ spendingLimitSource: "custom", enableSpendingLimit: true, hardStopOnLimit: true, monthlySpendingLimitCents: 1000 }) },
+      organization: { findFirst: jest.fn().mockResolvedValue({ subscriptionPlan: "plus" }) },
+      planLimits: { findFirst: jest.fn().mockResolvedValue({ defaultSpendingLimitCents: 7000 }) },
+    } } as unknown as Pick<typeof db, "query">;
     const spending = await polarUsageService.getSpendingStatus("org-1", { database, additionalSreUnits: 0 });
     spy.mockRestore();
     expect(spending).toMatchObject({ percentageUsed: 99, isAtLimit: false });
+  });
+
+  it("applies the plan default cap when the owner has not set one", async () => {
+    const spy = jest.spyOn(polarUsageService, "getUsageMetrics").mockResolvedValue({ totalOverageCostCents: 7000 } as never);
+    const database = { query: {
+      billingSettings: { findFirst: jest.fn().mockResolvedValue(undefined) },
+      organization: { findFirst: jest.fn().mockResolvedValue({ subscriptionPlan: "plus" }) },
+      planLimits: { findFirst: jest.fn().mockResolvedValue({ defaultSpendingLimitCents: 7000 }) },
+    } } as unknown as Pick<typeof db, "query">;
+    const spending = await polarUsageService.getSpendingStatus("org-1", { database, additionalSreUnits: 0 });
+    spy.mockRestore();
+    expect(spending).toMatchObject({ limitEnabled: true, hardStopEnabled: true, limitCents: 7000, isAtLimit: true });
   });
 
   it("reuses the usage ledger ID as external_id after a failed ingestion", async () => {

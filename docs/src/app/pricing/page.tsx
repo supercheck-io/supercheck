@@ -34,6 +34,7 @@ const enterpriseHref = mailtoHref(
 );
 
 const fmt = (value: number | string) => Number(value).toLocaleString("en-US");
+const usd = (cents: number) => `$${fmt(cents / 100)}`;
 
 function planFeatures(id: 'plus' | 'pro', support: string): Feature[] {
     const limits = catalog[id].limits;
@@ -46,6 +47,7 @@ function planFeatures(id: 'plus' | 'pro', support: string): Feature[] {
         `${fmt(limits.k6VuMinutesIncluded)} k6 VU-minutes/month`,
         `${fmt(limits.aiCreditsIncluded)} AI credits/month, fair use`,
         `${fmt(limits.sreInvestigationUnitsIncluded)} AI SRE investigations/month`,
+        { text: `${usd(limits.defaultSpendingLimitCents)} default overage cap`, hint: 'Monthly cap with a hard stop. Owners can change it.' },
         `${fmt(limits.runningCapacity)} concurrent runs`,
         `${fmt(limits.maxTeamMembers)} team members, ${fmt(limits.maxProjects)} projects`,
         `${fmt(limits.maxStatusPages)} status pages with custom domains, ${fmt(limits.maxStatusPageSubscribers)} subscribers each`,
@@ -107,6 +109,7 @@ const overagePricing = [
     { metric: 'k6 VU-minute', plus: `$${(catalog.plus.overageCents.k6VuMinutes / 100).toFixed(3)} ($${(catalog.plus.overageCents.k6VuMinutes * 10).toLocaleString("en-US")} per 1,000)`, pro: `$${(catalog.pro.overageCents.k6VuMinutes / 100).toFixed(3)} ($${(catalog.pro.overageCents.k6VuMinutes * 10).toLocaleString("en-US")} per 1,000)` },
     { metric: 'AI SRE investigation (completed)', plus: `$${(catalog.plus.overageCents.sreInvestigationUnits / 100).toFixed(2)}`, pro: `$${(catalog.pro.overageCents.sreInvestigationUnits / 100).toFixed(2)}` },
     { metric: 'AI credits', plus: 'No overage', pro: 'No overage' },
+    { metric: 'Default monthly overage cap (hard stop)', plus: usd(catalog.plus.limits.defaultSpendingLimitCents), pro: usd(catalog.pro.limits.defaultSpendingLimitCents) },
 ];
 
 const CHECK = '✓';
@@ -129,6 +132,7 @@ const comparisonFeatures: { category: string; items: ComparisonItem[] }[] = [
             { name: 'k6 VU minutes/month', plus: `${Number(catalog.plus.limits.k6VuMinutesIncluded).toLocaleString("en-US")}`, pro: `${Number(catalog.pro.limits.k6VuMinutesIncluded).toLocaleString("en-US")}`, enterprise: CUSTOM },
             { name: 'AI credits/month', hint: 'Included, subject to fair use. No overage charges.', plus: `${Number(catalog.plus.limits.aiCreditsIncluded).toLocaleString("en-US")}`, pro: `${Number(catalog.pro.limits.aiCreditsIncluded).toLocaleString("en-US")}`, enterprise: CUSTOM },
             { name: 'AI SRE investigations/month', hint: 'Only completed investigation reports count', plus: `${Number(catalog.plus.limits.sreInvestigationUnitsIncluded).toLocaleString("en-US")}`, pro: `${Number(catalog.pro.limits.sreInvestigationUnitsIncluded).toLocaleString("en-US")}`, enterprise: CUSTOM },
+            { name: 'Default overage cap', hint: 'Monthly cap with a hard stop. Owners can raise, lower or turn it off.', plus: usd(catalog.plus.limits.defaultSpendingLimitCents), pro: usd(catalog.pro.limits.defaultSpendingLimitCents), enterprise: CUSTOM },
             { name: 'Read-only evidence connectors', hint: 'AI SRE reads logs, metrics, traces and deploys from GitHub, Kubernetes, Prometheus, Grafana, Sentry, Datadog and more', plus: 'Included', pro: 'Included', enterprise: CUSTOM },
             { name: 'Private Agent support', hint: 'Run connectors inside your own network without opening inbound access', plus: 'Included', pro: 'Included', enterprise: CUSTOM },
             { name: 'Concurrent runs', hint: 'Tests and jobs that run at once. Extra runs wait in the queue, up to the queued-runs limit.', plus: `${Number(catalog.plus.limits.runningCapacity).toLocaleString("en-US")}`, pro: `${Number(catalog.pro.limits.runningCapacity).toLocaleString("en-US")}`, enterprise: CUSTOM },
@@ -481,7 +485,7 @@ export default function PricingPage() {
                     <div className="mx-auto mb-8 max-w-2xl text-center">
                         <h2 id="overage-heading" className={sectionHeading}>Overage rates</h2>
                         <p className="mt-3 text-fd-muted-foreground">
-                            Charged only for usage beyond your monthly allowance. Owners can set spending limits and alerts; in-flight usage can still exceed a limit.
+                            Charged only for usage beyond your monthly allowance. Every paid plan starts with an overage cap and a hard stop, so with the default cap a month costs about {usd(catalog.plus.monthlyPriceCents + catalog.plus.limits.defaultSpendingLimitCents)} on Plus or {usd(catalog.pro.monthlyPriceCents + catalog.pro.limits.defaultSpendingLimitCents)} on Pro at most before taxes. Raising the cap or turning off the hard stop allows more overage. At the cap, new browser checks, test and job runs, k6 load tests and full AI SRE investigations pause. HTTP, website, ping and port monitors keep running. In-flight usage can run slightly past the cap.
                         </p>
                     </div>
                     <div className="relative mx-auto max-w-3xl overflow-x-auto rounded-xl border border-fd-border" role="region" aria-label="Usage overage pricing" tabIndex={0}>

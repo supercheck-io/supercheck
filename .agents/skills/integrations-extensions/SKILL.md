@@ -79,6 +79,8 @@ flowchart LR
 - Polling stops on success, terminal failure, cancellation/navigation, and timeout.
 - Never automatically mutate live products/prices, attach overage prices, migrate customers, or make paid actions without explicit authorization and invoice/recovery analysis.
 - Provider product IDs, prices, tax settings, limits, and UI are drift-prone; verify them in the provider environment.
+- Overage caps: `billing_settings.spending_limit_source` is `plan_default` (hard stop at `plan_limits.default_spending_limit_cents`) or `custom` (the stored fields, possibly off). Resolve the enforced cap only with `resolveSpendingLimit` (`app/src/lib/billing/spending-limit.ts`; the worker copy must stay identical, a parity test checks it). A row with a stored cap but no `custom` marker counts as custom. Any cap edit makes the cap custom; `resetSpendingLimitToPlanDefault` hands it back.
+- Workers can roll out before the app pod runs migrations. The worker reads new billing columns outside its Drizzle schema with a narrow `42703` fallback, so its other queries keep working; other errors fail closed.
 
 ### Billing acceptance
 

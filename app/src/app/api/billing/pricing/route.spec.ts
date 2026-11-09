@@ -70,8 +70,8 @@ describe("Billing pricing configuration", () => {
   });
   it("exposes the revised allowances while retaining affordable overage", async () => {
     const plans = [
-      { plan: "plus", sreInvestigationUnitsIncluded: "200.0000" },
-      { plan: "pro", sreInvestigationUnitsIncluded: "1000.0000" },
+      { plan: "plus", sreInvestigationUnitsIncluded: "100.0000" },
+      { plan: "pro", sreInvestigationUnitsIncluded: "500.0000" },
     ];
     (db.select as jest.Mock)
       .mockReturnValueOnce({ from: () => ({ where: async () => plans }) })
@@ -79,7 +79,7 @@ describe("Billing pricing configuration", () => {
     const body = await (await GET()).json();
     expect(body.plans.map((plan: { price: number; features: { sreInvestigationUnits: number }; overagePricing: { sreInvestigationUnits: number } }) => [
       plan.price, plan.features.sreInvestigationUnits, plan.overagePricing.sreInvestigationUnits,
-    ])).toEqual([[49, 200, 0.1], [149, 1000, 0.1]]);
+    ])).toEqual([[29, 100, 0.25], [99, 500, 0.25]]);
     expect(body.plans.map((plan: { overagePricing: { k6VuMinutes: number } }) => plan.overagePricing.k6VuMinutes))
       .toEqual([0.002, 0.001]);
     expect(body).not.toHaveProperty("enterpriseStartingPrice");

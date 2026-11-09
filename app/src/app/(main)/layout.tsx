@@ -25,7 +25,9 @@ import { getCurrentProjectContext } from "@/lib/project-context";
 import { isSelfHosted } from "@/lib/feature-flags";
 import { getTrialSummary } from "@/lib/execution/trial-limits";
 import { TrialBanner } from "@/components/trial-banner";
-import { checkPermissionWithContext } from "@/lib/rbac/middleware";
+import { SpendingCapBanner } from "@/components/spending-cap-banner";
+import { checkPermissionWithContext, getUserOrgRole } from "@/lib/rbac/middleware";
+import { Role } from "@/lib/rbac/permissions";
 
 function deriveInitialSubscriptionStatus(
   org: NonNullable<Awaited<ReturnType<typeof getActiveOrganization>>>,
@@ -83,6 +85,7 @@ export default async function MainLayout({
     canConfigureSre: false,
   };
   const initialIsSelfHosted = isSelfHosted();
+  let showSpendingCap = false;
 
   if (user && org) {
     // Derive subscription status from org data already fetched (avoids client-side API call)
@@ -92,6 +95,11 @@ export default async function MainLayout({
     );
     // A free trial is separate from a paid subscription; without it an
     // unsubscribed organization would be sent to the subscribe page.
+    // Only paying org admins can see or change the cap, so only they poll it.
+    if (!initialIsSelfHosted && initialSubscriptionStatus.isActive) {
+      const role = await getUserOrgRole(user.id, org.id).catch(() => null);
+      showSpendingCap = role === Role.ORG_ADMIN || role === Role.ORG_OWNER;
+    }
     if (!initialIsSelfHosted && !initialSubscriptionStatus.isActive) {
       const trial = await getTrialSummary(org.id).catch(() => undefined);
       initialSubscriptionStatus = { ...initialSubscriptionStatus, trial: trial ?? null };
@@ -202,6 +210,7 @@ export default async function MainLayout({
                 </header>
                 <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">
                   <TrialBanner initialTrial={initialSubscriptionStatus?.trial ?? null} />
+                  <SpendingCapBanner enabled={showSpendingCap} />
                   <SubscriptionGuard
                     initialSubscriptionStatus={initialSubscriptionStatus}
                     initialIsSelfHosted={initialIsSelfHosted}

@@ -1,7 +1,7 @@
 import catalog from "../../../app/src/lib/billing/plan-catalog.json";
 
 // Competitor figures are reviewed separately from the shared Supercheck catalog.
-export const COMPETITOR_AS_OF = 'October 2026';
+export const COMPETITOR_AS_OF = 'November 2026';
 
 export const MINUTES_PER_MONTH = 30 * 24 * 60;
 

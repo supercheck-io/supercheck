@@ -31,8 +31,8 @@ describe("pricing defaults and copy", () => {
   it("offers a lower browser rate on Pro without billing AI actions", () => {
     expect(DEFAULT_OVERAGE_PRICING.plus.playwrightMinutes).toBe(0.01);
     expect(DEFAULT_OVERAGE_PRICING.pro.playwrightMinutes).toBe(0.005);
-    expect(DEFAULT_OVERAGE_PRICING.plus.sreInvestigationUnits).toBe(0.1);
-    expect(DEFAULT_OVERAGE_PRICING.pro.sreInvestigationUnits).toBe(0.1);
+    expect(DEFAULT_OVERAGE_PRICING.plus.sreInvestigationUnits).toBe(0.25);
+    expect(DEFAULT_OVERAGE_PRICING.pro.sreInvestigationUnits).toBe(0.25);
     expect(DEFAULT_OVERAGE_PRICING.plus.aiCredits).toBe(0);
     expect(DEFAULT_OVERAGE_PRICING.pro.aiCredits).toBe(0);
   });

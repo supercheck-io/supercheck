@@ -339,7 +339,7 @@ export const overagePricing = pgTable('overage_pricing', {
   aiCreditPriceCents: integer('ai_credit_price_cents').notNull().default(5), // e.g., 5 = $0.05 per AI credit
   sreInvestigationUnitPriceCents: integer('sre_investigation_unit_price_cents')
     .notNull()
-    .default(10), // $0.10 per completed full investigation
+    .default(10), // cents per completed full investigation; plan rows carry the live rate
 
   // Metadata
   createdAt: timestamp('created_at', { withTimezone: true })

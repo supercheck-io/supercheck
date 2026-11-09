@@ -297,7 +297,7 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
   const isHardStopActive = spending?.hardStopEnabled && spending?.isAtLimit;
 
   // Calculate current period estimate using API-provided pricing
-  // basePriceCents comes from API: Plus = 4900 ($49), Pro = 14900 ($149)
+  // basePriceCents comes from the API (the plan price in cents, from the plan catalog)
   const basePrice = (data.subscription.basePriceCents ?? 0) / 100;
   const currentOverage = spending?.currentDollars;
   const estimatedTotal =

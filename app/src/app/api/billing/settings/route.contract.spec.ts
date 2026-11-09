@@ -15,10 +15,12 @@ jest.mock("@/lib/rbac/permissions", () => ({
 }));
 const mockGet = jest.fn();
 const mockUpdate = jest.fn();
+const mockEffective = { source: "plan_default", enabled: true, limitCents: 7000, hardStop: true, planDefaultCents: 7000 };
 jest.mock("@/lib/services/billing-settings.service", () => ({
   billingSettingsService: {
     getSettings: (...a: unknown[]) => mockGet(...a),
     updateSettings: (...a: unknown[]) => mockUpdate(...a),
+    getEffectiveSpendingLimit: () => Promise.resolve(mockEffective),
   },
 }));
 const mockAudit = jest.fn();
@@ -70,7 +72,7 @@ describe("GET /api/billing/settings", () => {
       mockRole.mockResolvedValue(role);
       const response = await GET();
       expect(response.status).toBe(200);
-      expect(await response.json()).toEqual({ enableSpendingLimit: true });
+      expect(await response.json()).toEqual({ enableSpendingLimit: true, effectiveSpendingLimit: mockEffective });
     }
     mockRole.mockResolvedValue("project_editor");
     expect((await GET()).status).toBe(403);
@@ -175,6 +177,7 @@ describe("PATCH /api/billing/settings", () => {
     expect((await PATCH(patch("{broken"))).status).toBe(400);
   });
   it("requires a positive limit whenever limits are enabled", async () => {
+    mockGet.mockResolvedValue({ spendingLimitSource: "custom", enableSpendingLimit: false, monthlySpendingLimitDollars: null });
     expect((await PATCH(patch({ enableSpendingLimit: true }))).status).toBe(
       400,
     );
@@ -212,6 +215,22 @@ describe("PATCH /api/billing/settings", () => {
       enableSpendingLimit: false,
       monthlySpendingLimitCents: null,
     });
+  });
+  it("lets a plan-default org change hard stop alone; the service fills the plan amount", async () => {
+    mockGet.mockResolvedValue({ spendingLimitSource: "plan_default", enableSpendingLimit: false, monthlySpendingLimitDollars: null });
+    expect((await PATCH(patch({ hardStopOnLimit: false }))).status).toBe(200);
+    expect(mockUpdate).toHaveBeenCalledWith(ORG, { hardStopOnLimit: false });
+  });
+  it("resets the cap to the plan default", async () => {
+    const response = await PATCH(patch({ resetSpendingLimitToPlanDefault: true }));
+    expect(response.status).toBe(200);
+    expect(mockUpdate).toHaveBeenCalledWith(ORG, { spendingLimitSource: "plan_default" });
+    expect((await response.json()).effectiveSpendingLimit).toEqual(mockEffective);
+  });
+  it("rejects a reset combined with cap changes", async () => {
+    const response = await PATCH(patch({ resetSpendingLimitToPlanDefault: true, hardStopOnLimit: false }));
+    expect(response.status).toBe(400);
+    expect(mockUpdate).not.toHaveBeenCalled();
   });
   it("normalises and de-duplicates notification emails", async () => {
     await PATCH(

@@ -14,6 +14,7 @@ jest.mock("@/db/schema", () => ({
     organizationId: "billingSettings.organizationId",
   },
   organization: { id: "organization.id", usagePeriodStart: "organization.usagePeriodStart" },
+  planLimits: { plan: "planLimits.plan" },
 }));
 
 jest.mock("drizzle-orm", () => ({
@@ -81,8 +82,8 @@ describe("BillingSettingsService notification keys", () => {
   });
 
   it.each([
-    { current: { enableSpendingLimit: true, monthlySpendingLimitCents: 1000 }, updates: { monthlySpendingLimitCents: null } },
-    { current: { enableSpendingLimit: false, monthlySpendingLimitCents: null }, updates: { enableSpendingLimit: true } },
+    { current: { spendingLimitSource: "custom", enableSpendingLimit: true, monthlySpendingLimitCents: 1000 }, updates: { monthlySpendingLimitCents: null } },
+    { current: { spendingLimitSource: "custom", enableSpendingLimit: false, monthlySpendingLimitCents: null }, updates: { enableSpendingLimit: true } },
   ])("rejects invalid partial saves after a concurrent change", async ({ current, updates }) => {
     (db.query.billingSettings.findFirst as jest.Mock).mockResolvedValue({
       enableSpendingLimit: false, monthlySpendingLimitCents: 1000,
@@ -99,7 +100,7 @@ describe("BillingSettingsService notification keys", () => {
   });
 
   it("saves a valid cap and alert preferences together under the row lock", async () => {
-    const current = { enableSpendingLimit: false, monthlySpendingLimitCents: null };
+    const current = { spendingLimitSource: "custom", enableSpendingLimit: false, monthlySpendingLimitCents: null };
     (db.query.billingSettings.findFirst as jest.Mock).mockResolvedValue(current);
     const returning = jest.fn().mockResolvedValue([{ ...current, enableSpendingLimit: true, monthlySpendingLimitCents: 1234 }]);
     const set = jest.fn(() => ({ where: () => ({ returning }) }));
@@ -110,7 +111,45 @@ describe("BillingSettingsService notification keys", () => {
     await expect(billingSettingsService.updateSettings("org_123", {
       enableSpendingLimit: true, monthlySpendingLimitCents: 1234, notifyAt50Percent: true,
     })).resolves.toMatchObject({ monthlySpendingLimitDollars: 12.34, enableSpendingLimit: true });
-    expect(set).toHaveBeenCalledWith(expect.objectContaining({ notifyAt50Percent: true }));
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({ notifyAt50Percent: true, spendingLimitSource: "custom" }));
+  });
+
+  it("starts a partial edit of a plan-default cap from the plan default", async () => {
+    const current = { spendingLimitSource: "plan_default", enableSpendingLimit: false, monthlySpendingLimitCents: null, hardStopOnLimit: false };
+    (db.query.billingSettings.findFirst as jest.Mock).mockResolvedValue(current);
+    const set = jest.fn(() => ({ where: () => ({ returning: async () => [current] }) }));
+    (db.transaction as jest.Mock).mockImplementation(async (callback) => callback({
+      select: () => ({ from: () => ({ where: () => ({ for: async () => [current] }) }) }),
+      update: () => ({ set }),
+      query: {
+        billingSettings: { findFirst: async () => current },
+        organization: { findFirst: async () => ({ subscriptionPlan: "plus" }) },
+        planLimits: { findFirst: async () => ({ defaultSpendingLimitCents: 7000 }) },
+      },
+    }));
+    await billingSettingsService.updateSettings("org_123", { hardStopOnLimit: false });
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({
+      spendingLimitSource: "custom", enableSpendingLimit: true, monthlySpendingLimitCents: 7000, hardStopOnLimit: false,
+    }));
+  });
+
+  it.each([
+    [{ notifyAt50Percent: true }, {}],
+    [{ spendingLimitSource: "plan_default" as const }, {
+      spendingLimitSource: "plan_default", enableSpendingLimit: false, monthlySpendingLimitCents: null, hardStopOnLimit: false,
+    }],
+  ])("only cap edits make the cap custom; a reset clears it (%j)", async (updates, expected) => {
+    const current = { enableSpendingLimit: true, monthlySpendingLimitCents: 5000, spendingLimitSource: "custom" };
+    (db.query.billingSettings.findFirst as jest.Mock).mockResolvedValue(current);
+    const set = jest.fn(() => ({ where: () => ({ returning: async () => [current] }) }));
+    (db.transaction as jest.Mock).mockImplementation(async (callback) => callback({
+      select: () => ({ from: () => ({ where: () => ({ for: async () => [current] }) }) }),
+      update: () => ({ set }),
+    }));
+    await billingSettingsService.updateSettings("org_123", updates);
+    const written = (set.mock.calls[0] as unknown[])[0] as Record<string, unknown>;
+    if (Object.keys(expected).length) expect(written).toMatchObject(expected);
+    else expect(written).not.toHaveProperty("spendingLimitSource");
   });
 
   it("does not let a Playwright threshold suppress K6, AI or SRE alerts", async () => {
