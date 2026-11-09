@@ -4,6 +4,8 @@ import { NextRequest } from "next/server";
 const mockFindFirst = jest.fn();
 const mockSelects: unknown[][] = [];
 const mockWheres: unknown[] = [];
+const mockStale = jest.fn(async (): Promise<Set<string>> => new Set());
+jest.mock("@/lib/status-pages/component-freshness", () => ({ loadStaleComponentIds: () => mockStale() }));
 jest.mock("@/utils/db", () => ({
   db: {
     query: { statusPages: { findFirst: (...a: unknown[]) => mockFindFirst(...a) } },
@@ -67,6 +69,12 @@ describe("status badge", () => {
   it("a critical incident outranks a degraded component", async () => {
     mockSelects.push([{ status: "degraded_performance" }], [{ impact: "critical" }]);
     expect(await call()).toContain("major outage");
+  });
+
+  it("ignores components whose monitors stopped reporting, like the public page", async () => {
+    mockStale.mockResolvedValueOnce(new Set(["stale"]));
+    mockSelects.push([{ id: "stale", status: "major_outage" }, { id: "live", status: "operational" }], []);
+    expect(await call()).toContain("operational");
   });
 
   it("filters incidents to this page, open statuses and non-maintenance", async () => {

@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { SpendingCapBanner } from "./spending-cap-banner";
+import { act } from "@testing-library/react";
+import { BILLING_SETTINGS_SAVED_EVENT, SpendingCapBanner } from "./spending-cap-banner";
 
 const renderBanner = (enabled: boolean) =>
   render(
@@ -36,5 +37,15 @@ describe("SpendingCapBanner", () => {
     fetchMock.mockClear();
     renderBanner(false);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("clears as soon as the cap is raised", async () => {
+    const spending = { limitEnabled: true, hardStopEnabled: true, isAtLimit: true };
+    global.fetch = jest.fn().mockImplementation(async () => ({ ok: true, json: async () => ({ spending: { ...spending } }) }));
+    renderBanner(true);
+    expect(await screen.findByRole("status")).toBeInTheDocument();
+    spending.isAtLimit = false;
+    act(() => { window.dispatchEvent(new Event(BILLING_SETTINGS_SAVED_EVENT)); });
+    await waitFor(() => expect(screen.queryByRole("status")).not.toBeInTheDocument());
   });
 });

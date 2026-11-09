@@ -68,11 +68,11 @@ afterAll(async () => {
   }
 });
 
-it("moves stock Plus to the new allowances and leaves a custom Pro contract alone", async () => {
+it("moves stock Plus to the new allowances, leaves a custom Pro contract's prices alone, and caps both", async () => {
   await replay();
   expect(await plans()).toEqual([
     { plan: "plus", ai_credits_included: 500, sre: 100, default_spending_limit_cents: 7000, sre_price: 25 },
-    { plan: "pro", ai_credits_included: 1234, sre: 1000, default_spending_limit_cents: null, sre_price: 10 },
+    { plan: "pro", ai_credits_included: 1234, sre: 1000, default_spending_limit_cents: 30000, sre_price: 10 },
   ]);
 }, 180_000);
 

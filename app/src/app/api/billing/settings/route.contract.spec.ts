@@ -177,6 +177,7 @@ describe("PATCH /api/billing/settings", () => {
     expect((await PATCH(patch("{broken"))).status).toBe(400);
   });
   it("requires a positive limit whenever limits are enabled", async () => {
+    mockGet.mockResolvedValue({ spendingLimitSource: "custom", enableSpendingLimit: false, monthlySpendingLimitDollars: null });
     expect((await PATCH(patch({ enableSpendingLimit: true }))).status).toBe(
       400,
     );
@@ -214,6 +215,11 @@ describe("PATCH /api/billing/settings", () => {
       enableSpendingLimit: false,
       monthlySpendingLimitCents: null,
     });
+  });
+  it("lets a plan-default org change hard stop alone; the service fills the plan amount", async () => {
+    mockGet.mockResolvedValue({ spendingLimitSource: "plan_default", enableSpendingLimit: false, monthlySpendingLimitDollars: null });
+    expect((await PATCH(patch({ hardStopOnLimit: false }))).status).toBe(200);
+    expect(mockUpdate).toHaveBeenCalledWith(ORG, { hardStopOnLimit: false });
   });
   it("resets the cap to the plan default", async () => {
     const response = await PATCH(patch({ resetSpendingLimitToPlanDefault: true }));

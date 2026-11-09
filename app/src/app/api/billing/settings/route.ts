@@ -175,8 +175,12 @@ export async function PATCH(request: NextRequest) {
         ? data.enableSpendingLimit
         : previousSettings.enableSpendingLimit;
 
+    // Leaving the plan default without an amount takes the plan's amount (filled by the service).
+    const amountFromPlan = previousSettings.spendingLimitSource !== "custom" &&
+      data.monthlySpendingLimitDollars === undefined;
     if (
       !reset &&
+      !amountFromPlan &&
       effectiveLimitEnabled &&
       (effectiveLimitDollars === null || effectiveLimitDollars <= 0)
     ) {

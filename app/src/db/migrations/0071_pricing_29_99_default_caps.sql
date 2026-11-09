@@ -25,4 +25,10 @@ UPDATE plan_limits p SET
   default_spending_limit_cents = CASE stock.plan WHEN 'plus' THEN 7000 ELSE 30000 END,
   updated_at = now()
 FROM stock WHERE p.id = stock.plan_id
-  AND EXISTS (SELECT 1 FROM prices WHERE prices.id = stock.price_id);
+  AND EXISTS (SELECT 1 FROM prices WHERE prices.id = stock.price_id);--> statement-breakpoint
+-- The default cap does not depend on the price move: set it for any Plus/Pro row that has none,
+-- so a customised row is still capped. Owners can raise or turn it off.
+UPDATE plan_limits SET
+  default_spending_limit_cents = CASE plan WHEN 'plus' THEN 7000 ELSE 30000 END,
+  updated_at = now()
+WHERE plan IN ('plus', 'pro') AND default_spending_limit_cents IS NULL;

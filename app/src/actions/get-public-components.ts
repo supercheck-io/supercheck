@@ -1,9 +1,9 @@
 "use server";
 
 import { db } from "@/utils/db";
-import { monitors, statusPageComponentMonitors, statusPageComponents, statusPages } from "@/db/schema";
-import { eq, and, inArray } from "drizzle-orm";
-import { staleComponentIds } from "@/lib/status-pages/stale-components";
+import { statusPageComponents, statusPages } from "@/db/schema";
+import { eq, and } from "drizzle-orm";
+import { loadStaleComponentIds } from "@/lib/status-pages/component-freshness";
 import { z } from "zod";
 import { withDailyMetrics } from "@/lib/status-page-daily-metrics";
 
@@ -86,19 +86,7 @@ export async function getPublicComponents(statusPageId: string) {
     const publicComponents = await withDailyMetrics(components);
 
     // When every linked monitor has stopped reporting, the stored status is stale: show "no recent data".
-    const stale = components.length
-      ? staleComponentIds(await db
-        .select({
-          componentId: statusPageComponentMonitors.componentId,
-          enabled: monitors.enabled,
-          status: monitors.status,
-          frequencyMinutes: monitors.frequencyMinutes,
-          lastCheckAt: monitors.lastCheckAt,
-        })
-        .from(statusPageComponentMonitors)
-        .innerJoin(monitors, eq(monitors.id, statusPageComponentMonitors.monitorId))
-        .where(inArray(statusPageComponentMonitors.componentId, components.map((component) => component.id))))
-      : new Set<string>();
+    const stale = await loadStaleComponentIds(components.map((component) => component.id));
 
     return {
       success: true,

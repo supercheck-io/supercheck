@@ -1,8 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { PauseCircle } from "lucide-react";
+
+export const BILLING_SETTINGS_SAVED_EVENT = "supercheck:billing-settings-saved";
 
 type UsageResponse = { spending?: { isAtLimit?: boolean; hardStopEnabled?: boolean; limitEnabled?: boolean } };
 
@@ -13,7 +16,7 @@ async function fetchSpending(): Promise<UsageResponse | null> {
 
 /** Tells org admins which work is paused while the hard-stop overage cap is reached. */
 export function SpendingCapBanner({ enabled }: { enabled: boolean }) {
-  const { data } = useQuery({
+  const { data, refetch } = useQuery({
     queryKey: ["billing-usage", "spending-cap-banner"],
     queryFn: fetchSpending,
     enabled,
@@ -21,6 +24,13 @@ export function SpendingCapBanner({ enabled }: { enabled: boolean }) {
     retry: false,
     refetchOnWindowFocus: false,
   });
+  // The spending controls announce a save, so a raised cap clears the banner at once.
+  useEffect(() => {
+    if (!enabled) return;
+    const onSaved = () => void refetch();
+    window.addEventListener(BILLING_SETTINGS_SAVED_EVENT, onSaved);
+    return () => window.removeEventListener(BILLING_SETTINGS_SAVED_EVENT, onSaved);
+  }, [enabled, refetch]);
   const spending = data?.spending;
   if (!enabled || !spending?.limitEnabled || !spending.hardStopEnabled || !spending.isAtLimit) return null;
   return (

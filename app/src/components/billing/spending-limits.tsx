@@ -9,6 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { DollarSign, Bell, Save, Loader2, Mail, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { BILLING_SETTINGS_SAVED_EVENT } from "@/components/spending-cap-banner";
 
 // Matches the server-side cap in PATCH /api/billing/settings.
 const MAX_NOTIFICATION_EMAILS = 10;
@@ -182,6 +183,7 @@ export function SpendingLimits({ organizationId, className, onSaved }: SpendingL
       const updatedSettings: BillingSettings = await response.json();
       setSettings(updatedSettings);
       applyCap(updatedSettings);
+      window.dispatchEvent(new Event(BILLING_SETTINGS_SAVED_EVENT));
       setSpending(null);
       // Saving succeeded even if the subsequent status refresh is unavailable.
       await Promise.allSettled([
