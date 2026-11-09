@@ -33,7 +33,7 @@ const PAGES: Array<{ name: string; path: (s: Seed) => string; dark?: boolean }> 
   { name: 'monitor-detail', path: (s) => `/monitors/${s.monitor}` },
   { name: 'status-pages-list', path: () => '/status-pages' },
   { name: 'status-page-detail', path: (s) => `/status-pages/${s.statusPage}` },
-  { name: 'alerts', path: () => '/alerts' },
+  { name: 'notifications', path: () => '/notifications' },
   { name: 'variables', path: () => '/variables' },
   { name: 'org-admin', path: () => '/org-admin' },
 ];
