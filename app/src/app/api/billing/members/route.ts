@@ -131,8 +131,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Bound to the subscription we changed, so a replacement written meanwhile by a webhook is not overwritten.
-    await db.update(organization).set({ memberUnits: units })
-      .where(and(eq(organization.id, organizationId), eq(organization.subscriptionId, org.subscriptionId)));
+    const stored = await db.update(organization).set({ memberUnits: units })
+      .where(and(eq(organization.id, organizationId), eq(organization.subscriptionId, org.subscriptionId)))
+      .returning({ id: organization.id });
+    if (stored.length === 0) {
+      return NextResponse.json({ error: "Your subscription changed while saving. Refresh the page to see your member seats." }, { status: 409 });
+    }
     await createAuditLog({
       organizationId,
       userId,

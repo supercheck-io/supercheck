@@ -236,6 +236,38 @@ describe("2026-10 webhook payloads through the real handlers", () => {
       expect((await org()).memberUnits).toBe(40);
     });
 
+    it("drops seats on revocation and does not carry them into a new subscription", async () => {
+      await deliver(handleSubscriptionActive, "subscription.active", subscription({ units: 50 }), "2026-10-01T00:00:01Z");
+      await deliver(handleSubscriptionRevoked, "subscription.revoked", subscription({ status: "canceled", ended_at: "2026-10-02T00:00:00Z", units: 50 }), "2026-10-02T00:00:00Z");
+      expect((await org()).memberUnits).toBeNull();
+      await mockDatabase.update(schema.organization).set({ memberUnits: 50 }).where(eq(schema.organization.id, orgId));
+      await deliver(handleSubscriptionActive, "subscription.active", subscription({ id: "sub_2", current_period_start: "2026-10-03T00:00:00Z" }), "2026-10-03T00:00:00Z");
+      expect(await org()).toMatchObject({ subscriptionId: "sub_2", memberUnits: null });
+    });
+
+    it("drops seats when a cancellation ends access immediately", async () => {
+      await deliver(handleSubscriptionActive, "subscription.active", subscription({ units: 40 }), "2026-10-01T00:00:01Z");
+      await deliver(handleSubscriptionCanceled, "subscription.canceled", subscription({ status: "canceled", ended_at: "2026-10-02T00:00:00Z" }), "2026-10-02T00:00:00Z");
+      expect(await org()).toMatchObject({ subscriptionStatus: "none", memberUnits: null });
+    });
+
+    it("syncs seats a missed webhook would have carried during reconciliation", async () => {
+      await deliver(handleSubscriptionActive, "subscription.active", subscription({ units: 25 }), "2026-10-01T00:00:01Z");
+      const savedFetch = global.fetch;
+      const savedEnv = { SELF_HOSTED: process.env.SELF_HOSTED, POLAR_ACCESS_TOKEN: process.env.POLAR_ACCESS_TOKEN, POLAR_WEBHOOK_SECRET: process.env.POLAR_WEBHOOK_SECRET, POLAR_SERVER: process.env.POLAR_SERVER };
+      Object.assign(process.env, { SELF_HOSTED: "false", POLAR_ACCESS_TOKEN: "test", POLAR_WEBHOOK_SECRET: "test", POLAR_SERVER: "sandbox" });
+      global.fetch = jest.fn(async () => new Response(JSON.stringify({ ...subscription({ units: 40 }), created_at: "2026-10-01T00:00:00Z", modified_at: "2026-10-25T00:00:00Z" })));
+      try {
+        expect(await reconcilePolarSubscription(orgId)).toBe(true);
+        expect((await org()).memberUnits).toBe(40);
+      } finally {
+        global.fetch = savedFetch;
+        for (const [key, value] of Object.entries(savedEnv)) {
+          if (value === undefined) delete process.env[key]; else process.env[key] = value;
+        }
+      }
+    });
+
     it("never writes seats to another organization", async () => {
       await deliver(handleSubscriptionActive, "subscription.active", subscription({ units: 25 }), "2026-10-01T00:00:01Z");
       await expect(deliver(handleSubscriptionUpdated, "subscription.updated", subscription({

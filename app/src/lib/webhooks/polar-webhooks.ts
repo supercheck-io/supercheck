@@ -953,7 +953,10 @@ async function processSubscriptionActive(payload: PolarWebhookPayload) {
     return;
   }
   const status = getSubscriptionStatusFromPayload(payload) ?? "active";
-  const seats = getMemberUnitsFromPayload(payload);
+  // A new subscription never inherits the seats of the one it replaces.
+  const reported = getMemberUnitsFromPayload(payload);
+  const seats = reported.memberUnits === undefined && org.subscriptionId !== subscriptionId
+    ? { memberUnits: null } : reported;
   if (
     (seats.memberUnits === undefined || seats.memberUnits === org.memberUnits) &&
     org.subscriptionStatus === status &&
@@ -1259,7 +1262,7 @@ async function processSubscriptionCanceled(payload: PolarWebhookPayload) {
     org.id,
     {
       subscriptionStatus: canceledStatus,
-      ...(canceledStatus === "none" ? { subscriptionPlan: null } : {}),
+      ...(canceledStatus === "none" ? { subscriptionPlan: null, memberUnits: null } : {}),
       // Preserve the end date - access continues until this date
       ...(subscriptionDates.endsAt
         ? { subscriptionEndsAt: subscriptionDates.endsAt }
@@ -1447,6 +1450,7 @@ async function processSubscriptionRevoked(payload: PolarWebhookPayload) {
     {
       subscriptionStatus: "none",
       subscriptionPlan: null, // Clear plan on revocation
+      memberUnits: null, // Seats belong to the ended subscription
     },
     getPolarWebhookDb(org.id),
   );
@@ -1896,6 +1900,7 @@ async function processCustomerDeleted(payload: PolarWebhookPayload) {
     .set({
       subscriptionStatus: "none",
       subscriptionPlan: null, // Clear plan on customer deletion (matches revocation behavior)
+      memberUnits: null, // Seats belong to the ended subscription
       // Keep polarCustomerId for audit trail
       // The validatePolarCustomer check will also fail since customer doesn't exist in Polar
     })

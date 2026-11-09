@@ -5,7 +5,7 @@ import { POLAR_API_VERSION } from "@/lib/billing/polar-client";
 import { getPolarConfig, isPolarEnabled } from "@/lib/feature-flags";
 import { restoreTrialSuspensions } from "@/lib/execution/trial-lifecycle";
 import { createLogger } from "@/lib/logger/index";
-import { getPlanFromProductId, getSubscriptionStatusFromPayload } from "@/lib/webhooks/polar-webhooks";
+import { getMemberUnitsFromPayload, getPlanFromProductId, getSubscriptionStatusFromPayload } from "@/lib/webhooks/polar-webhooks";
 import { db } from "@/utils/db";
 import { billingSettingsService } from "./billing-settings.service";
 import { subscriptionService } from "./subscription-service";
@@ -17,6 +17,7 @@ const snapshotSchema = z.object({
   cancel_at_period_end: z.boolean(), created_at: date, modified_at: date.nullable(),
   current_period_start: date, current_period_end: date,
   pending_update: z.object({ product_id: z.string().nullable(), applies_at: date.nullable() }).nullish(),
+  units: z.number().nullish(),
 });
 const logger = createLogger({ module: "subscription-reconciliation" }) as {
   error: (data: unknown, message: string) => void;
@@ -94,9 +95,12 @@ export async function reconcilePolarSubscription(organizationId: string): Promis
     }
     const replacing = org.subscriptionId && org.subscriptionId !== snapshot.id;
     if (replacing && status === "none") throw new Error("A replacement subscription must grant paid access");
+    // Same rules as the webhooks; ended or replaced subscriptions never keep their seats.
+    const reported = getMemberUnitsFromPayload({ data: snapshot });
+    const seats = status === "none" || (replacing && reported.memberUnits === undefined) ? { memberUnits: null } : reported;
     await subscriptionService.updateSubscription(organizationId, {
       subscriptionId: snapshot.id, subscriptionPlan: status === "none" ? null : plan, subscriptionStatus: status,
-      subscriptionStartedAt: periodStart, subscriptionEndsAt: periodEnd,
+      subscriptionStartedAt: periodStart, subscriptionEndsAt: periodEnd, ...seats,
     }, tx);
     // The existing monotonic period predicate prevents duplicate or old snapshots erasing usage.
     if (await subscriptionService.resetUsageCountersWithDates(organizationId, periodStart, periodEnd, tx)) {

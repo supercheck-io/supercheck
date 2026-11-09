@@ -19,7 +19,8 @@ jest.mock("@/lib/billing/member-seats", () => ({
   countSeatsInUse: () => mockCountSeats(),
 }));
 jest.mock("@/lib/audit-log", () => ({ createAuditLog: jest.fn() }));
-const mockSet = jest.fn(() => ({ where: jest.fn() }));
+const mockReturning = jest.fn(async () => [{ id: "org" }]);
+const mockSet = jest.fn(() => ({ where: jest.fn(() => ({ returning: mockReturning })) }));
 jest.mock("@/utils/db", () => ({
   db: { query: { organization: { findFirst: jest.fn() } }, update: jest.fn(() => ({ set: mockSet })) },
 }));
@@ -148,6 +149,13 @@ describe("POST /api/billing/members", () => {
     const response = await post({ organizationId: ORG, totalMembers: 30 });
     expect(response.status).toBe(409);
     expect(mockSet).not.toHaveBeenCalled();
+  });
+
+  it("does not report success when the subscription was replaced while saving", async () => {
+    mockReturning.mockResolvedValueOnce([]);
+    const response = await post({ organizationId: ORG, totalMembers: 30 });
+    expect(response.status).toBe(409);
+    expect(createAuditLog).not.toHaveBeenCalled();
   });
 
   it("refuses an organization without a bound subscription", async () => {
