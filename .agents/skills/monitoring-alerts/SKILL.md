@@ -64,6 +64,7 @@ flowchart LR
 - Provider definitions (email, Slack, webhook, Telegram, Discord, Teams; webhook presets for PagerDuty, Opsgenie, Splunk On-Call, Better Stack, and incident.io) are scoped to their owning tenant and secrets remain encrypted/redacted.
 - Render messages from bounded, escaped data. Do not leak headers, variables, tokens, raw response bodies, or internal errors.
 - Delivery uses bounded timeouts with provider-appropriate retry behavior (Slack, Telegram, Discord, and Teams retry; webhook and email are single-attempt today).
+- Notification text is sanitized centrally: monitor targets and URLs inside messages have userinfo and sensitive query values redacted, Slack text escapes `&`, `<`, `>`, webhook delivery errors go through `safeSendError`, an email with no deliverable recipient is a failure, and a synthetic monitor whose variables or secrets cannot be resolved reports `error` without running the test. `sanitizeResponseBody` truncates before redacting and uses bounded regexes.
 - Webhook destinations use SSRF protection (allowlisted hosts, DNS pinning). Notification delivery is strictly outbound; no inbound callback route exists.
 - Record delivery outcome and safe provider diagnostics without blocking the monitor’s terminal persistence indefinitely.
 

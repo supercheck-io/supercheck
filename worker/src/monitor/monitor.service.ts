@@ -1370,6 +1370,7 @@ export class MonitorService {
         if (config?.keywordInBody) {
           // Perform case-insensitive keyword matching for better reliability
           const keyword = config.keywordInBody;
+          // Keyword matching uses the full body; only the stored snippet is sanitized
           const keywordFound = responseBody
             .toLowerCase()
             .includes(keyword.toLowerCase());
@@ -2562,11 +2563,21 @@ export class MonitorService {
             `[${monitorId}] Resolved ${Object.keys(resolvedVariables).length} variables, ${Object.keys(resolvedSecrets).length} secrets, and ${Object.keys(resolvedFiles).length} files`,
           );
         } catch (varError) {
-          // Log the error but continue with empty variables/secrets
-          // The function definitions will still be prepended (with empty objects)
-          this.logger.warn(
-            `[${monitorId}] Failed to resolve variables, continuing with empty variables: ${getErrorMessage(varError)}`,
+          // Running with empty secrets would fail the test and report a false
+          // "down" for a healthy target, so surface an error instead.
+          this.logger.error(
+            `[${monitorId}] Failed to resolve variables: ${getErrorMessage(varError)}`,
           );
+          return {
+            status: 'error',
+            details: {
+              errorMessage:
+                'Could not resolve project variables or secrets; the test was not run',
+              errorType: 'variable_resolution_error',
+            },
+            responseTimeMs: Date.now() - startTime,
+            isUp: false,
+          };
         }
       }
 

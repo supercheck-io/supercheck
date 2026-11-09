@@ -1,6 +1,8 @@
 import {
   maskCredentials,
   sanitizeResponseBody,
+  redactTargetUrl,
+  redactUrlsInText,
   sanitizeHeaders,
   sanitizeResponseHeaders,
   getErrorMessage,
@@ -463,5 +465,38 @@ describe('DataSanitizer', () => {
       expect(sanitizeResponseHeaders(undefined)).toBeUndefined();
       expect(sanitizeResponseHeaders(null)).toBeUndefined();
     });
+  });
+});
+
+describe('redactTargetUrl', () => {
+  it('redacts userinfo, sensitive query values and value fragments', () => {
+    const out = redactTargetUrl(
+      'https://u:p@h.com/x?api_key=1&q=2#access_token=3',
+    );
+    expect(out).not.toMatch(/u:p|=1|=3/);
+    expect(out).toContain('q=2');
+  });
+
+  it('fails closed on an unparseable URL and scrubs URLs in text', () => {
+    expect(redactTargetUrl('https://u:p@[bad?x=1')).not.toMatch(/u:p|x=1/);
+    expect(
+      redactUrlsInText('GET https://u:p@h.com/?token=zz failed'),
+    ).not.toMatch(/u:p|zz/);
+  });
+
+  it('does not leak a secret cut at the truncation boundary', () => {
+    const key = 'A'.repeat(40);
+    const out = sanitizeResponseBody(`id ${key} tail`, 20);
+    expect(out).not.toContain('AAAA');
+  });
+
+  it('redacts oversized Bearer tokens fully', () => {
+    const out = sanitizeResponseBody(`Bearer ${'a'.repeat(5000)}`, 10_000);
+    expect(out).not.toContain('aaaa');
+  });
+
+  it('leaves clean URLs and non-URL targets unchanged', () => {
+    expect(redactTargetUrl('https://h.com/x?q=2')).toBe('https://h.com/x?q=2');
+    expect(redactTargetUrl('db.internal:5432')).toBe('db.internal:5432');
   });
 });
