@@ -6,6 +6,12 @@ import {
   tracksAlertState,
 } from './monitor-evaluator';
 
+/** An update().where() result: awaitable, and `.returning()` reports one matched row. */
+const matched = () =>
+  Object.assign(Promise.resolve(undefined), {
+    returning: jest.fn(async () => [{ id: 'row' }]),
+  });
+
 /** Drives evaluateAndSendAlert through consecutive failures and returns the counts that alerted. */
 async function alertCounts(
   failureThreshold: number,
@@ -24,7 +30,9 @@ async function alertCounts(
   const dbService = {
     db: {
       query: { monitorResults: { findFirst: jest.fn(async () => latest) } },
-      update: jest.fn(() => ({ set: jest.fn(() => ({ where: jest.fn() })) })),
+      update: jest.fn(() => ({
+        set: jest.fn(() => ({ where: jest.fn(matched) })),
+      })),
     },
   };
   const alertService = {
@@ -129,7 +137,9 @@ describe('MonitorEvaluator recovery alert after a short blip', () => {
             })),
           },
         },
-        update: jest.fn(() => ({ set: jest.fn(() => ({ where: jest.fn() })) })),
+        update: jest.fn(() => ({
+          set: jest.fn(() => ({ where: jest.fn(matched) })),
+        })),
       },
     };
     const alertService = {
@@ -297,7 +307,7 @@ describe('MonitorEvaluator recovery alert retries', () => {
     const set = jest.fn((values: { alertsSentForRecovery?: number }) => {
       if (values.alertsSentForRecovery !== undefined)
         recoveriesRecorded = values.alertsSentForRecovery;
-      return { where: jest.fn() };
+      return { where: jest.fn(matched) };
     });
     const dbService = {
       db: {
@@ -325,6 +335,7 @@ describe('MonitorEvaluator recovery alert retries', () => {
         state: { alertsSentForRecovery: number },
       ) => {
         recoveriesRecorded = state.alertsSentForRecovery;
+        return true;
       }) as never);
 
     for (let count = 1; count <= upTo; count++) {
@@ -461,7 +472,9 @@ describe('incident-only monitors (alerts off or no channel)', () => {
     const dbService = {
       db: {
         query: { monitorResults: { findFirst: jest.fn(async () => latest) } },
-        update: jest.fn(() => ({ set: jest.fn(() => ({ where: jest.fn() })) })),
+        update: jest.fn(() => ({
+          set: jest.fn(() => ({ where: jest.fn(matched) })),
+        })),
       },
     };
     const alertService = {
@@ -597,7 +610,7 @@ describe('incident-only monitors (alerts off or no channel)', () => {
         db: {
           query: { monitorResults: { findFirst: jest.fn(async () => latest) } },
           update: jest.fn(() => ({
-            set: jest.fn(() => ({ where: jest.fn() })),
+            set: jest.fn(() => ({ where: jest.fn(matched) })),
           })),
         },
       } as never,
@@ -679,7 +692,9 @@ describe('MonitorEvaluator delivered-alert bookkeeping', () => {
     const writes: number[] = [];
     const dbService = {
       db: {
-        update: jest.fn(() => ({ set: jest.fn(() => ({ where: jest.fn() })) })),
+        update: jest.fn(() => ({
+          set: jest.fn(() => ({ where: jest.fn(matched) })),
+        })),
       },
     };
     const alertService = {
@@ -699,6 +714,7 @@ describe('MonitorEvaluator delivered-alert bookkeeping', () => {
         state: { alertsSentForFailure: number },
       ) => {
         writes.push(state.alertsSentForFailure);
+        return true;
       }) as never);
     await expect(run(evaluator, true)).resolves.toEqual({
       alertSent: true,
@@ -715,7 +731,7 @@ describe('MonitorEvaluator delivered-alert bookkeeping', () => {
         update: jest.fn(() => ({
           set: jest.fn((values: { config: SQL }) => {
             sets.push(values.config);
-            return { where: jest.fn() };
+            return { where: jest.fn(matched) };
           }),
         })),
       },
@@ -738,5 +754,193 @@ describe('MonitorEvaluator delivered-alert bookkeeping', () => {
       );
     }
     expect(sets).toHaveLength(2);
+  });
+});
+
+describe('MonitorEvaluator alert slot races and cadence', () => {
+  const monitorFor = (failureThreshold: number) =>
+    ({
+      alertConfig: { enabled: true, alertOnFailure: true, failureThreshold },
+      config: {},
+    }) as never;
+
+  /** Single-location harness: `updates` records each write; `rowsFor` sets how many rows each write matches. */
+  function single(
+    send: jest.Mock,
+    rowsFor: (call: number) => number | Error = () => 1,
+  ) {
+    const updates: { set: unknown; where: SQL }[] = [];
+    const dbService = {
+      db: {
+        query: {
+          monitorResults: {
+            findFirst: jest.fn(async () => ({
+              id: 'r1',
+              consecutiveFailureCount: 1,
+              alertsSentForFailure: 0,
+            })),
+          },
+        },
+        update: jest.fn(() => ({
+          set: (set: unknown) => ({
+            where: (where: SQL) => ({
+              returning: async () => {
+                updates.push({ set, where });
+                const rows = rowsFor(updates.length);
+                if (rows instanceof Error) throw rows;
+                return Array.from({ length: rows }, () => ({ id: 'r1' }));
+              },
+            }),
+          }),
+        })),
+      },
+    };
+    const evaluator = new MonitorEvaluator(
+      dbService as never,
+      {
+        sendNotification: send,
+      } as never,
+    );
+    const run = () =>
+      evaluator.evaluateAndSendAlert({
+        monitorId: 'm1',
+        monitor: monitorFor(1),
+        previousStatus: 'down',
+        currentStatus: 'down',
+        reason: 'down',
+        metadata: {},
+      });
+    return { run, updates, evaluator };
+  }
+
+  it('skips the send when a newer cycle owns the counter (record matched no row)', async () => {
+    const send = jest.fn();
+    const { run } = single(send, () => 0);
+    await expect(run()).resolves.toEqual({ alertSent: false });
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('skips the send for a superseded multi-location group', async () => {
+    const send = jest.fn();
+    const evaluator = new MonitorEvaluator(
+      {} as never,
+      {
+        sendNotification: send,
+      } as never,
+    );
+    jest
+      .spyOn(evaluator as never, 'writeAggregatedAlertState')
+      .mockResolvedValue(false as never);
+    await expect(
+      evaluator.evaluateAndSendAlert({
+        monitorId: 'm1',
+        monitor: monitorFor(1),
+        previousStatus: 'down',
+        currentStatus: 'down',
+        reason: 'down',
+        metadata: { locationResults: [{}, {}] },
+        preparedAlertState: {
+          consecutiveFailureCount: 1,
+          consecutiveSuccessCount: 0,
+          alertsSentForFailure: 0,
+          alertsSentForRecovery: 0,
+          executionGroupId: 'old',
+        },
+      }),
+    ).resolves.toEqual({ alertSent: false });
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('releases the slot when the send throws, with a release that only matches its own record', async () => {
+    const send = jest.fn().mockRejectedValue(new Error('boom'));
+    const { run, updates } = single(send);
+    await expect(run()).resolves.toEqual({
+      alertSent: false,
+      deliveryFailed: true,
+    });
+    expect(updates.map((u) => u.set)).toEqual([
+      { alertsSentForFailure: 1 },
+      { alertsSentForFailure: 0 },
+    ]);
+    const release = new PgDialect().sqlToQuery(updates[1].where);
+    expect(release.sql).toContain('"alerts_sent_for_failure" =');
+    expect(release.params).toEqual(['r1', 1]);
+  });
+
+  it('still reports a failed delivery when the release itself throws', async () => {
+    const send = jest.fn().mockResolvedValue({ delivered: false });
+    const { run } = single(send, (call) =>
+      call === 2 ? new Error('db down') : 1,
+    );
+    await expect(run()).resolves.toEqual({
+      alertSent: false,
+      deliveryFailed: true,
+    });
+  });
+
+  it.each([
+    [{ delivered: false, suppressed: true, reason: 'no_providers' }, false],
+    [{ delivered: false, suppressed: true, reason: 'maintenance' }, false],
+  ])('releases the slot for %j', async (outcome) => {
+    const { run, updates } = single(jest.fn().mockResolvedValue(outcome));
+    await expect(run()).resolves.toEqual({ alertSent: false });
+    expect(updates.map((u) => u.set)).toEqual([
+      { alertsSentForFailure: 1 },
+      { alertsSentForFailure: 0 },
+    ]);
+  });
+
+  it('keeps the slot after a delivered alert', async () => {
+    const { run, updates } = single(
+      jest.fn().mockResolvedValue({ delivered: true }),
+    );
+    await expect(run()).resolves.toEqual({
+      alertSent: true,
+      alertType: 'failure',
+    });
+    expect(updates).toHaveLength(1);
+  });
+
+  it('threshold 5: alerts at 5, 15, 35', async () => {
+    expect(await alertCounts(5, 1, 100, true)).toEqual([5, 15, 35]);
+  });
+
+  it('never sends a 4th alert in a failure sequence', async () => {
+    expect(await alertCounts(1, 1, 300, true)).toHaveLength(3);
+  });
+
+  it('keeps an undelivered reminder due on the next count', async () => {
+    const attempts: number[] = [];
+    const outcomes = [false, true];
+    const send = jest.fn(async () => ({ delivered: outcomes.shift() ?? true }));
+    const evaluator = new MonitorEvaluator(
+      {} as never,
+      {
+        sendNotification: send,
+      } as never,
+    );
+    jest
+      .spyOn(evaluator as never, 'writeAggregatedAlertState')
+      .mockResolvedValue(true as never);
+    for (const count of [6, 7, 8]) {
+      const res = await evaluator.evaluateAndSendAlert({
+        monitorId: 'm1',
+        monitor: monitorFor(1),
+        previousStatus: 'down',
+        currentStatus: 'down',
+        reason: 'down',
+        metadata: { locationResults: [{}, {}] },
+        preparedAlertState: {
+          consecutiveFailureCount: count,
+          consecutiveSuccessCount: 0,
+          alertsSentForFailure: 1,
+          alertsSentForRecovery: 0,
+        },
+      });
+      if (send.mock.calls.length > attempts.length) attempts.push(count);
+      if (res.alertSent) break;
+    }
+    // Count 6 is the first reminder: undelivered, retried at 7, delivered there.
+    expect(attempts).toEqual([6, 7]);
   });
 });

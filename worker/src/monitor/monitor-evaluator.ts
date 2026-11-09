@@ -215,13 +215,18 @@ export class MonitorEvaluator {
   /**
    * Writes only `aggregatedAlertState`, atomically (jsonb_set), so worker-owned config keys written
    * concurrently (SSL check times, certificate) are never overwritten by a stale read of the config.
-   * Throws when the write fails.
+   * Throws when the write fails; returns false when no row matched (a newer cycle owns the config, or,
+   * with `onlyIfSent`, the counter is no longer the value the caller wrote).
    */
   private async writeAggregatedAlertState(
     monitorId: string,
     aggregatedAlertState: AggregatedAlertState,
-  ): Promise<void> {
-    await this.dbService.db
+    onlyIfSent?: {
+      field: 'alertsSentForFailure' | 'alertsSentForRecovery';
+      value: number;
+    },
+  ): Promise<boolean> {
+    const rows = await this.dbService.db
       .update(schema.monitors)
       .set({
         config: sql`jsonb_set(coalesce(${schema.monitors.config}, '{}'::jsonb), '{aggregatedAlertState}', ${JSON.stringify(aggregatedAlertState)}::jsonb)`,
@@ -234,8 +239,15 @@ export class MonitorEvaluator {
                 sql`${schema.monitors.config}->'aggregatedAlertState'->>'executionGroupId' = ${aggregatedAlertState.executionGroupId}`,
               ]
             : []),
+          ...(onlyIfSent
+            ? [
+                sql`(${schema.monitors.config}->'aggregatedAlertState'->>${onlyIfSent.field})::int = ${onlyIfSent.value}`,
+              ]
+            : []),
         ),
-      );
+      )
+      .returning({ id: schema.monitors.id });
+    return rows.length > 0;
   }
 
   async persistAggregatedAlertState(
@@ -471,28 +483,41 @@ export class MonitorEvaluator {
     // crash between record and send costs one alert but never adds one, like the job alert slots.
     const previousSent =
       alertType === 'failure' ? alertsSentForFailure : alertsSentForRecovery;
-    const recordSent = async (sent: number): Promise<void> => {
+    const field =
+      alertType === 'failure'
+        ? ('alertsSentForFailure' as const)
+        : ('alertsSentForRecovery' as const);
+    // Returns false when nothing matched: a newer cycle owns the counter, so this attempt is stale.
+    // `onlyIfSent` makes a release compare-and-set: it never wipes a record a later attempt wrote.
+    const writeSent = async (
+      sent: number,
+      onlyIfSent?: number,
+    ): Promise<boolean> => {
       if (isMultiLocationEvaluation && aggregatedAlertState) {
-        await this.writeAggregatedAlertState(monitorId, {
-          ...aggregatedAlertState,
-          ...(alertType === 'failure'
-            ? { alertsSentForFailure: sent }
-            : { alertsSentForRecovery: sent }),
-        });
-      } else if (latestResult) {
-        await this.dbService.db
-          .update(schema.monitorResults)
-          .set(
-            alertType === 'failure'
-              ? { alertsSentForFailure: sent }
-              : { alertsSentForRecovery: sent },
-          )
-          .where(eq(schema.monitorResults.id, latestResult.id));
+        return this.writeAggregatedAlertState(
+          monitorId,
+          { ...aggregatedAlertState, [field]: sent },
+          onlyIfSent === undefined ? undefined : { field, value: onlyIfSent },
+        );
       }
+      if (!latestResult) return true;
+      const rows = await this.dbService.db
+        .update(schema.monitorResults)
+        .set({ [field]: sent })
+        .where(
+          and(
+            eq(schema.monitorResults.id, latestResult.id),
+            ...(onlyIfSent === undefined
+              ? []
+              : [sql`${schema.monitorResults[field]} = ${onlyIfSent}`]),
+          ),
+        )
+        .returning({ id: schema.monitorResults.id });
+      return rows.length > 0;
     };
     const releaseSent = async (): Promise<void> => {
       try {
-        await recordSent(previousSent);
+        await writeSent(previousSent, previousSent + 1);
       } catch (error) {
         this.logger.error(
           `Failed to release the ${alertType} alert slot for monitor ${monitorId}: ${getErrorMessage(error)}`,
@@ -503,7 +528,12 @@ export class MonitorEvaluator {
     let recorded = false;
     let delivered = false;
     try {
-      await recordSent(previousSent + 1);
+      if (!(await writeSent(previousSent + 1))) {
+        this.logger.warn(
+          `[ALERT] Skipping ${alertType} alert for monitor ${monitorId}: a newer check cycle owns the alert state`,
+        );
+        return { alertSent: false };
+      }
       recorded = true;
 
       this.logger.log(

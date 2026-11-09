@@ -204,7 +204,11 @@ describe('MonitorService', () => {
       }),
       update: jest.fn().mockReturnValue({
         set: jest.fn().mockReturnThis(),
-        where: jest.fn().mockResolvedValue(undefined),
+        where: jest.fn(() =>
+          Object.assign(Promise.resolve(undefined), {
+            returning: jest.fn().mockResolvedValue([{ id: 'row' }]),
+          }),
+        ),
       }),
       select: jest.fn().mockReturnValue({
         from: jest.fn().mockReturnThis(),
@@ -1853,14 +1857,20 @@ describe('MonitorService', () => {
       let failMarker = true;
       mockDbService.db.update.mockImplementation((table: unknown) => ({
         set: jest.fn(() => ({
-          where: async () => {
-            if (table === schema.monitorResults) {
-              if (failMarker) {
-                failMarker = false;
-                throw new Error('marker write failed');
+          where: () => {
+            const done = (async () => {
+              if (table === schema.monitorResults) {
+                if (failMarker) {
+                  failMarker = false;
+                  throw new Error('marker write failed');
+                }
+                rows[activeGroup].details.aggregationNotificationProcessed =
+                  true;
               }
-              rows[activeGroup].details.aggregationNotificationProcessed = true;
-            }
+            })();
+            return Object.assign(done, {
+              returning: async () => [{ id: 'row' }],
+            });
           },
         })),
       }));
@@ -1957,13 +1967,15 @@ describe('MonitorService', () => {
     });
     expect(result.alertSent).toBe(false);
     // Recorded before the send, then released: the attempt is not consumed.
-    const sets = mockDbService.db.update.mock.results.map(
-      (r) => (r.value as { set: jest.Mock }).set.mock.calls[0][0],
+    const sets = mockDbService.db.update.mock.results.flatMap((r) =>
+      (r.value as { set: jest.Mock }).set.mock.calls.map((call) => call[0]),
     );
-    expect(sets).toEqual([
-      { alertsSentForFailure: 1 },
-      { alertsSentForFailure: 0 },
-    ]);
+    // Shared mock objects can repeat a call; only the order of distinct writes matters.
+    expect(
+      [...new Set(sets.map((v) => JSON.stringify(v)))].map((v) =>
+        JSON.parse(v),
+      ),
+    ).toEqual([{ alertsSentForFailure: 1 }, { alertsSentForFailure: 0 }]);
   });
 
   it('keeps aggregate failure thresholds when only one of two configured locations reports', async () => {
