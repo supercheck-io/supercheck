@@ -81,7 +81,7 @@ type StatusPage = {
 
 type Component = {
   dailyMetrics?: DailyCheckCounts[];
-  /** Its checks are paused, so the stored status is stale; it does not count toward the page status. */
+  /** Every linked monitor stopped reporting, so the stored status is stale; it does not count toward the page status. */
   noRecentData?: boolean;
   id: string;
   name: string;

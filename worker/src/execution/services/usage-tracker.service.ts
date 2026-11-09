@@ -63,6 +63,8 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
   private lastMigrationWarningAt = Number.NEGATIVE_INFINITY;
 
   private readonly logger = new Logger(UsageTrackerService.name);
+  // Plans already reported as missing a default cap, so the log is not flooded per execution.
+  private readonly uncappedPlansWarned = new Set<string>();
   private recoveryTimer?: ReturnType<typeof setInterval>;
   private recovering = false;
 
@@ -716,6 +718,16 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
       plan,
       limits.defaultSpendingLimitCents,
     );
+    if (
+      cap.source === 'plan_default' &&
+      cap.planDefaultCents === null &&
+      !this.uncappedPlansWarned.has(plan)
+    ) {
+      this.uncappedPlansWarned.add(plan);
+      this.logger.warn(
+        `[Usage] plan_limits.${plan} has no default spending cap; orgs on the plan default run uncapped`,
+      );
+    }
     if (!cap.enabled || !cap.hardStop) return { blocked: false };
     if (!cap.limitCents || cap.limitCents <= 0) {
       throw new Error('Invalid spending limit configuration');

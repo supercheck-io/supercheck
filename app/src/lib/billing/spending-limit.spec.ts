@@ -39,3 +39,15 @@ describe("resolveSpendingLimit", () => {
     expect(resolveSpendingLimit(undefined, plan, cents)).toMatchObject({ enabled: false, limitCents: null, hardStop: false });
   });
 });
+
+describe("worker copy", () => {
+  it("keeps the same rules as the worker", () => {
+    const { readFileSync } = jest.requireActual<typeof import("node:fs")>("node:fs");
+    const { join } = jest.requireActual<typeof import("node:path")>("node:path");
+    // Formatting differs between packages (prettier); compare tokens only.
+    const body = (file: string) => readFileSync(file, "utf8").split("\n").slice(1).join("\n")
+      .replaceAll("'", '"').replace(/\s+/g, "").replace(/,([)\]}])/g, "$1");
+    expect(body(join(__dirname, "../../../../worker/src/execution/services/spending-limit.ts")))
+      .toBe(body(join(__dirname, "spending-limit.ts")));
+  });
+});

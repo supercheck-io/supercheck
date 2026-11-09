@@ -3,7 +3,7 @@
 import { db } from "@/utils/db";
 import { monitors, statusPageComponentMonitors, statusPageComponents, statusPages } from "@/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
-import { heldComponentIds, isSyntheticBillingHold } from "@/lib/billing/billing-hold";
+import { staleComponentIds } from "@/lib/status-pages/stale-components";
 import { z } from "zod";
 import { withDailyMetrics } from "@/lib/status-page-daily-metrics";
 
@@ -46,7 +46,7 @@ export async function getPublicComponents(statusPageId: string) {
         eq(statusPages.id, statusPageId),
         eq(statusPages.status, "published"),
       ),
-      columns: { id: true, organizationId: true },
+      columns: { id: true }, // Only need to verify existence
     });
 
     if (!statusPage) {
@@ -85,21 +85,24 @@ export async function getPublicComponents(statusPageId: string) {
 
     const publicComponents = await withDailyMetrics(components);
 
-    // Browser checks paused by the owner's spending cap leave a stale status; show "no recent data"
-    // instead, for components built only from those checks. Billing is never named on the public page.
-    let held = new Set<string>();
-    if (components.length && await isSyntheticBillingHold(statusPage.organizationId)) {
-      const links = await db
-        .select({ componentId: statusPageComponentMonitors.componentId, monitorType: monitors.type })
+    // When every linked monitor has stopped reporting, the stored status is stale: show "no recent data".
+    const stale = components.length
+      ? staleComponentIds(await db
+        .select({
+          componentId: statusPageComponentMonitors.componentId,
+          enabled: monitors.enabled,
+          status: monitors.status,
+          frequencyMinutes: monitors.frequencyMinutes,
+          lastCheckAt: monitors.lastCheckAt,
+        })
         .from(statusPageComponentMonitors)
         .innerJoin(monitors, eq(monitors.id, statusPageComponentMonitors.monitorId))
-        .where(inArray(statusPageComponentMonitors.componentId, components.map((component) => component.id)));
-      held = heldComponentIds(links);
-    }
+        .where(inArray(statusPageComponentMonitors.componentId, components.map((component) => component.id))))
+      : new Set<string>();
 
     return {
       success: true,
-      components: publicComponents.map((component) => ({ ...component, noRecentData: held.has(component.id) })),
+      components: publicComponents.map((component) => ({ ...component, noRecentData: stale.has(component.id) })),
     };
   } catch (error) {
     console.error("Error fetching public components:", error);
