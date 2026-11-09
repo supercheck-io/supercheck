@@ -167,8 +167,8 @@ Configure when and how you receive notifications about monitor status changes.
 | **Enable Alerts** | Turns notifications on or off for this monitor | On for production |
 | **Alert on Failure** | At most 3 failure alerts per failure streak: the first when the failure threshold is reached, then reminders | On |
 | **Alert on Recovery** | One alert per outage once the recovery threshold is reached | On for critical services |
-| **Failure Threshold** | Consecutive failures before the first alert (1–5) | 2–3 |
-| **Recovery Threshold** | Consecutive healthy checks before the recovery alert (1–5) | 2 |
+| **Failure Threshold** | Consecutive failures before the first alert (1–5 in the app; API: 1–100) | 2–3 |
+| **Recovery Threshold** | Consecutive healthy checks before the recovery alert (1–5 in the app; API: 1–100) | 2 |
 | **Alert on SSL certificate expiration** | Shown only for website monitors with **SSL Check** on. Warns when a certificate is within the days set in the monitor's **Alert in _N_ days** field (1–365, default 30), at most once per 24 hours | On |
 | **Notification Channels** | Where alerts are sent. Channels linked through the notifications API appear here too, and linking or unlinking one through the API updates this list | More than one for critical services |
 
@@ -231,13 +231,13 @@ Self-hosted: an administrator must [configure an AI provider](/docs/app/deployme
 <Accordions>
 <Accordion title="Key metrics" id="key-metrics">
 
-Nine key metrics are displayed prominently below the header:
+Nine key metrics are displayed prominently below the header. Response times are shown in ms below 1 s (`360 ms`) and in seconds above (`1.25 s`). **P95 Resp** shows N/A until at least 5 successful checks are in the window.
 
 | Metric | Description |
 |--------|-------------|
-| **Status** | Current monitor status (Up, Down, Paused, Pending, Maintenance, Error) |
+| **Status** | Current monitor status (Up, Down, Paused, Pending, Error). Maintenance is reserved: monitors keep checking during a scheduled maintenance window |
 | **Interval** | How frequently checks run (e.g., 5m, 15m) |
-| **Resp Time** | Latest response time from the most recent check. Shown in ms below 1 s (for example `360 ms`) and in seconds above (`1.25 s`) |
+| **Resp Time** | Latest response time from the most recent check |
 | **Uptime** (Last 24 hours) | Percentage of successful checks in the last 24 hours. A multi-location check counts once, as up or down by the monitor's location rule, not once per region |
 | **Avg Resp** (Last 24 hours) | Average response time over the last 24 hours |
 | **P95 Resp** (Last 24 hours) | 95th percentile response time over the last 24 hours |
@@ -302,20 +302,16 @@ Use **Copy Prompt** to copy error details for AI-assisted debugging.
 | **Down** | Latest aggregated check failed | Review results; notifications follow your alert thresholds |
 | **Paused** | Monitoring disabled | Re-enable when ready |
 | **Pending** | Initial check in progress | Wait for first result |
-| **Maintenance** | Under maintenance | Monitor temporarily disabled |
+| **Maintenance** | Reserved status; monitors keep checking during a scheduled maintenance window, and only alerts are held back (see [Status Pages](/docs/app/communicate/status-pages)) | None |
 | **Error** | Configuration or system error | Fix monitor configuration |
 
-A check cycle is skipped, not recorded as Down, when none of the monitor's locations has a live worker (for example during a deployment rollout that restarts workers). No result is stored and the failure count is unchanged. Because a location that permanently has no workers never turns Down this way, alert on worker health in your infrastructure monitoring to catch sustained worker absence.
-
-When some, but not all, of a multi-location monitor's locations have a live worker, the check runs in the locations that do. Status and thresholds are judged over those locations only; locations that were not run never count as down. A location that was started but returned no result still counts as down.
-
-A scheduled check that waits in a busy or returning worker's queue longer than the larger of three times the monitor's scheduling interval (at least five minutes for synthetic monitors) and three minutes is skipped if a newer real check from the same location has already recorded a result, or if that run of the monitor has already been closed. Otherwise, including when that lookup fails, it runs late, so a queue backlog does not by itself freeze a monitor's status. A check whose run was already closed is also skipped quietly before this limit. Skipping never changes that run's verdict: if the run closed with this location counted as down, that result and any alert stand. A skipped check records no result, downtime or alert. Like a location with no live worker, the skipped location is left out of that check, and the other locations are judged without it. Manual runs and retries are never skipped this way. A burst of these skips (the worker logs an aggregated warning at most once a minute) means worker clock skew or queue saturation.
+If a monitor's locations have no live worker, that check is skipped and not counted as down. With several locations, only the locations that ran are judged. A scheduled check that waited in a busy queue for more than three times the interval (at least 3 minutes) may be skipped when a newer result already exists; skipped checks record no result, downtime or alert.
 
 ## Check Intervals
 
 Available intervals: 1 minute, 5 minutes, 10 minutes, 15 minutes, 30 minutes, 1 hour, 3 hours, 12 hours, and 24 hours. Shorter intervals detect failures sooner and use more resources.
 
-A check's timeout must not exceed its interval, for example 60 seconds at a 1-minute interval. A save that raises the timeout above the interval, or shortens the interval below the timeout, is rejected; a monitor already in that state still saves other changes.
+The timeout is set through the API or CLI (the form keeps the stored value). It must not exceed the interval, for example 60 s at 1 minute; the form rejects an interval shorter than the stored timeout.
 
 <Callout type="info">
 Synthetic monitors start at 5 minutes. Set the interval longer than your test's run time so executions do not overlap: for a 2-minute test, use 5 minutes or more.
