@@ -786,6 +786,7 @@ export class MonitorAggregationService {
         id: monitorAggregates.id,
         periodStart: monitorAggregates.periodStart,
         location: monitorAggregates.location,
+        totalChecks: monitorAggregates.totalChecks,
       })
       .from(monitorAggregates)
       .where(
@@ -843,7 +844,18 @@ export class MonitorAggregationService {
         }
       }
     };
-    const writable = (row: MonitorAggregateInsert) => !frozen.has(row.periodStart.getTime());
+    // The period holding the oldest raw row may be partly purged: never shrink its existing aggregate.
+    const existingChecks = new Map(
+      existing.map((row) => [`${row.periodStart.getTime()}|${row.location ?? ""}`, row.totalChecks]),
+    );
+    const boundary = periodOf(rawFloor);
+    const writable = (row: MonitorAggregateInsert) => {
+      const t = row.periodStart.getTime();
+      if (frozen.has(t)) return false;
+      if (t !== boundary) return true;
+      const previous = existingChecks.get(`${t}|${row.location ?? ""}`);
+      return previous === undefined || (row.totalChecks ?? 0) >= previous;
+    };
     await upsert(located.filter(writable), true);
     await upsert(combined.filter(writable), false);
 

@@ -318,6 +318,24 @@ it("never rewrites a period older than ordinary raw history, even when status-ch
   expect(kept).toMatchObject({ totalChecks: 50, successfulChecks: 49 });
 });
 
+it("never shrinks the aggregate of the period holding the oldest raw row (partly purged), but still grows it", async () => {
+  await mockDatabase.insert(schema.monitorResults).values(
+    Array.from({ length: 40 }, (_, i) => ({ monitorId, checkedAt: at(i), location: "local" as const, status: "up" as const, isUp: true, responseTimeMs: 10 })),
+  );
+  await mockDatabase.insert(schema.monitorAggregates).values([null, "local"].map((location) => ({
+    monitorId, periodType: "daily" as const, periodStart: day, location, totalChecks: 100, successfulChecks: 100, uptimePercentage: "100.00",
+  })));
+  expect((await monitorAggregationService.runDailyAggregation()).errors).toEqual([]);
+  const read = async () => (await mockDatabase.select().from(schema.monitorAggregates).where(eq(schema.monitorAggregates.monitorId, monitorId))).map((r) => r.totalChecks);
+  expect(await read()).toEqual([100, 100]);
+  // More raw rows than the stored aggregate: it is recomputed upwards.
+  await mockDatabase.insert(schema.monitorResults).values(
+    Array.from({ length: 70 }, (_, i) => ({ monitorId, checkedAt: at(100 + i), location: "local" as const, status: "up" as const, isUp: true, responseTimeMs: 10 })),
+  );
+  expect((await monitorAggregationService.runDailyAggregation()).errors).toEqual([]);
+  expect(await read()).toEqual([110, 110]);
+});
+
 it("keeps the latest duplicate, archives superseded rows and cascades their deletion", async () => {
   await client`DROP INDEX monitor_aggregates_combined_unique_idx`;
   await client`DROP TABLE monitor_aggregate_dedup_audit`;
