@@ -130,13 +130,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: POLAR_ERRORS[422].error }, { status: 409 });
     }
 
-    // Bound to the subscription we changed, so a replacement written meanwhile by a webhook is not overwritten.
-    const stored = await db.update(organization).set({ memberUnits: units })
-      .where(and(eq(organization.id, organizationId), eq(organization.subscriptionId, org.subscriptionId)))
-      .returning({ id: organization.id });
-    if (stored.length === 0) {
-      return NextResponse.json({ error: "Your subscription changed while saving. Refresh the page to see your member seats." }, { status: 409 });
-    }
+    // The provider has changed (and may have charged) the subscription: record that before anything else can fail.
     await createAuditLog({
       organizationId,
       userId,
@@ -146,6 +140,21 @@ export async function POST(request: NextRequest) {
         changes: { memberSeats: { before: effectiveMemberLimit(plan, org.memberUnits), after: units } },
       },
     });
+    // Bound to the subscription we changed, so a replacement written meanwhile by a webhook is not overwritten.
+    // If this write fails, the provider's subscription.updated webhook stores the same seats shortly.
+    const stored = await db.update(organization).set({ memberUnits: units })
+      .where(and(eq(organization.id, organizationId), eq(organization.subscriptionId, org.subscriptionId)))
+      .returning({ id: organization.id })
+      .catch((error) => {
+        console.error("[Billing] Member seats changed but not stored yet:", error);
+        return null;
+      });
+    if (stored === null) {
+      return NextResponse.json({ ...summary(units), pending: true });
+    }
+    if (stored.length === 0) {
+      return NextResponse.json({ error: "Your subscription changed while saving. Refresh the page to see your member seats." }, { status: 409 });
+    }
 
     return NextResponse.json(summary(units));
   } catch (error) {

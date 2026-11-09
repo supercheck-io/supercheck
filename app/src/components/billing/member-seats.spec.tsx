@@ -55,6 +55,27 @@ describe("MemberSeats", () => {
     }));
   });
 
+  it("keeps the dialog open and shows the error when the change fails", async () => {
+    const { toast } = jest.requireMock("sonner");
+    global.fetch = jest.fn(async () => ({ ok: false, json: async () => ({ error: "A subscription change is already pending." }) })) as unknown as typeof fetch;
+    const onSaved = jest.fn();
+    render(<MemberSeats organizationId="org_1" plan="pro" seats={proSeats} canManage onSaved={onSaved} />);
+    fireEvent.click(screen.getByRole("button", { name: "Change member seats" }));
+    fireEvent.change(screen.getByLabelText("Total members"), { target: { value: "27" } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Could not change member seats", { description: "A subscription change is already pending." }));
+    expect(onSaved).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Total members")).toBeInTheDocument();
+  });
+
+  it.each([
+    ["unlimited", proSeats],
+    ["pro", { current: 3, limit: 25 }],
+  ] as const)("renders nothing for %s without seat details", (plan, seats) => {
+    const { container } = render(<MemberSeats plan={plan} seats={seats} canManage onSaved={jest.fn()} />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
   it("will not go below the members in use", () => {
     render(<MemberSeats organizationId="org_1" plan="pro" seats={{ ...proSeats, current: 31, limit: 32 }} canManage onSaved={jest.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: "Change member seats" }));

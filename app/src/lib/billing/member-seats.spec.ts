@@ -1,4 +1,4 @@
-import { effectiveMemberLimit, EXTRA_MEMBER_PRICE_CENTS, PRO_INCLUDED_MEMBERS } from "./member-seats";
+import { countSeatsInUse, effectiveMemberLimit, EXTRA_MEMBER_PRICE_CENTS, PRO_INCLUDED_MEMBERS } from "./member-seats";
 
 describe("effectiveMemberLimit", () => {
   const pro = { plan: "pro", maxTeamMembers: 25 };
@@ -17,5 +17,18 @@ describe("effectiveMemberLimit", () => {
   it("reads the catalog price and included members", () => {
     expect(EXTRA_MEMBER_PRICE_CENTS).toBe(800);
     expect(PRO_INCLUDED_MEMBERS).toBe(25);
+  });
+});
+
+describe("countSeatsInUse", () => {
+  it("adds members and unexpired pending invitations", async () => {
+    const counts = [[{ count: "4" }], [{ count: 2 }]];
+    const executor = { select: () => ({ from: () => ({ where: async () => counts.shift() }) }) };
+    expect(await countSeatsInUse(executor as never, "org-1")).toBe(6);
+  });
+
+  it("treats missing rows as zero", async () => {
+    const executor = { select: () => ({ from: () => ({ where: async () => [] }) }) };
+    expect(await countSeatsInUse(executor as never, "org-1")).toBe(0);
   });
 });

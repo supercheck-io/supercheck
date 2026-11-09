@@ -32,7 +32,6 @@ export function seatChangePreview(seats: Required<Pick<TeamMemberSeats, "limit" 
   const deltaSeats = extra(next) - extra(seats.limit);
   const deltaCents = deltaSeats * seats.extraMemberPriceCents;
   if (next === seats.limit) return "No change.";
-  if (deltaSeats === 0) return `${next} members are included in Pro at no extra cost.`;
   return deltaSeats > 0
     ? `Add ${deltaSeats} ${deltaSeats === 1 ? "member" : "members"}: +${dollars(deltaCents)}/month. The prorated charge for the rest of this billing period is invoiced now.`
     : `Remove ${-deltaSeats} ${deltaSeats === -1 ? "seat" : "seats"}: -${dollars(-deltaCents)}/month. The unused time is credited to your next invoice.`;
@@ -84,7 +83,7 @@ export function MemberSeats({
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body?.error || "Could not change member seats");
-      toast.success("Member seats updated");
+      toast.success("Member seats updated", body?.pending ? { description: "The new limit can take a minute to show." } : undefined);
       setOpen(false);
       await onSaved();
     } catch (error) {

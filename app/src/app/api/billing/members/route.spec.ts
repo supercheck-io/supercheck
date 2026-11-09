@@ -1,7 +1,7 @@
 /** @jest-environment node */
 import { NextRequest } from "next/server";
 
-jest.mock("@/lib/auth-context", () => ({ requireUserAuthContext: jest.fn(), isAuthError: jest.fn(() => false) }));
+jest.mock("@/lib/auth-context", () => ({ requireUserAuthContext: jest.fn(), isAuthError: jest.fn(() => false), authErrorStatus: jest.fn(() => 401) }));
 jest.mock("@/lib/feature-flags", () => ({
   isPolarEnabled: jest.fn(() => true),
   getPolarConfig: jest.fn(() => ({ accessToken: "tok", server: "sandbox" })),
@@ -155,7 +155,39 @@ describe("POST /api/billing/members", () => {
     mockReturning.mockResolvedValueOnce([]);
     const response = await post({ organizationId: ORG, totalMembers: 30 });
     expect(response.status).toBe(409);
-    expect(createAuditLog).not.toHaveBeenCalled();
+    // The provider already changed the subscription, so the change is still audited.
+    expect(createAuditLog).toHaveBeenCalled();
+  });
+
+  it("reports success when the provider changed seats but the local write failed", async () => {
+    mockReturning.mockRejectedValueOnce(new Error("db down"));
+    const response = await post({ organizationId: ORG, totalMembers: 30 });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ purchasedSeats: 30, pending: true });
+    expect(createAuditLog).toHaveBeenCalled();
+  });
+
+  it("requires an active organization", async () => {
+    (requireUserAuthContext as jest.Mock).mockResolvedValueOnce({ userId: "user-1", organizationId: null, isCliAuth: false });
+    expect((await post({ organizationId: ORG, totalMembers: 30 })).status).toBe(400);
+  });
+
+  it("refuses seat changes when cloud billing is off", async () => {
+    const { isPolarEnabled } = jest.requireMock("@/lib/feature-flags");
+    isPolarEnabled.mockReturnValueOnce(false);
+    expect((await post({ organizationId: ORG, totalMembers: 30 })).status).toBe(400);
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it("maps auth failures and unexpected errors", async () => {
+    const { isAuthError } = jest.requireMock("@/lib/auth-context");
+    (requireUserAuthContext as jest.Mock).mockRejectedValueOnce(new Error("Authentication required"));
+    isAuthError.mockReturnValueOnce(true);
+    expect((await post({ organizationId: ORG, totalMembers: 30 })).status).toBe(401);
+    (requireUserAuthContext as jest.Mock).mockRejectedValueOnce(new Error("boom"));
+    const response = await post({ organizationId: ORG, totalMembers: 30 });
+    expect(response.status).toBe(500);
+    expect((await response.json()).error).toBe("Failed to change member seats");
   });
 
   it("refuses an organization without a bound subscription", async () => {

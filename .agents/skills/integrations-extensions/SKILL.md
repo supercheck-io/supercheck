@@ -75,6 +75,7 @@ flowchart LR
 - Subscription status, plan, period, cancellation, and entitlement behavior come from durable server state synchronized from verified provider events.
 - Entitlements and limits are enforced server-side. UI labels/buttons are not authorization.
 - Usage is durably recorded server-side before or atomically with provider delivery and retried safely without duplicate billing.
+- Pro member seats are subscription units that count total members (the included members cost nothing). `organization.member_units` mirrors the last value the provider reported; the subscription webhooks and reconciliation sync it, `null` means the subscription has no seat price, and an ended or replaced subscription clears it. `POST /api/billing/members` (org owners and admins) is the only writer; keep the customer portal's own unit changes off. Every member-limit check uses `effectiveMemberLimit` from `app/src/lib/billing/member-seats.ts`.
 - Use whole-cent currency arithmetic and explicit units. Never rely on floating-point money or silently mix credits/events/cents.
 - Polling stops on success, terminal failure, cancellation/navigation, and timeout.
 - Never automatically mutate live products/prices, attach overage prices, migrate customers, or make paid actions without explicit authorization and invoice/recovery analysis.
