@@ -226,10 +226,10 @@ Nine key metrics are displayed prominently below the header:
 | **Status** | Current monitor status (Up, Down, Paused, Pending, Maintenance, Error) |
 | **Interval** | How frequently checks run (e.g., 5m, 15m) |
 | **Resp Time** | Latest response time from the most recent check |
-| **Uptime** (Last 24 hours) | Percentage of successful checks in the last 24 hours |
+| **Uptime** (Last 24 hours) | Percentage of successful checks in the last 24 hours. A multi-location check counts once, as up or down by the monitor's location rule, not once per region |
 | **Avg Resp** (Last 24 hours) | Average response time over the last 24 hours |
 | **P95 Resp** (Last 24 hours) | 95th percentile response time over the last 24 hours |
-| **Uptime** (Last 30 days) | Percentage of successful checks in the last 30 days |
+| **Uptime** (Last 30 days) | Percentage of successful checks in the last 30 days, counted the same way. The per-location breakdown counts each region on its own |
 | **Avg Resp** (Last 30 days) | Average response time over the last 30 days |
 | **P95 Resp** (Last 30 days) | 95th percentile response time (30d) — long-term performance indicator |
 

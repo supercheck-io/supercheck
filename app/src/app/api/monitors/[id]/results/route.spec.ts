@@ -152,4 +152,53 @@ describe("GET /api/monitors/[id]/results validation", () => {
     expect(body.error).toContain("Invalid timezoneOffset parameter");
     expect(mockRequireAuthContext).not.toHaveBeenCalled();
   });
+
+  it("rejects an out-of-range end-of-day timezone offset", async () => {
+    const response = await GET(
+      new NextRequest("http://localhost/api/monitors/monitor-1/results?date=2026-03-08&timezoneOffset=300&timezoneOffsetEnd=9999"),
+      routeContext,
+    );
+    expect(response.status).toBe(400);
+  });
+
+  it("uses the end offset for the end-of-day boundary on a DST day", async () => {
+    // America/New_York 2026-03-08 spring forward: 23-hour day.
+    const range = buildMonitorResultsDateRange("2026-03-08", 300, 240);
+    expect(range?.end.toISOString()).toBe("2026-03-09T04:00:00.000Z");
+  });
+
+  describe("location filter", () => {
+    const monitorUuid = "00000000-0000-4000-8000-000000000001";
+    const ctx = { params: Promise.resolve({ id: monitorUuid }) };
+    const knownRows = (rows: unknown[]) => {
+      const chain: Record<string, unknown> = {};
+      for (const key of ["from", "where", "limit"]) chain[key] = () => chain;
+      chain.then = (resolve: (value: unknown) => unknown) => Promise.resolve(rows).then(resolve);
+      mockDb.select.mockReturnValueOnce(chain);
+    };
+
+    it.each([
+      ["results", GET],
+      ["stats", getStats],
+    ] as const)("%s answers 400 for a location the monitor has never used", async (endpoint, handler) => {
+      knownRows([]);
+      const response = await handler(
+        new NextRequest(`http://localhost/api/monitors/${monitorUuid}/${endpoint}?location=nowhere`),
+        ctx,
+      );
+      expect(response.status).toBe(400);
+      expect((await response.json()).error).toBe("Unknown location");
+    });
+
+    it.each([
+      ["results", GET],
+      ["stats", getStats],
+    ] as const)("%s answers 400 for an empty location instead of ignoring it", async (endpoint, handler) => {
+      const response = await handler(
+        new NextRequest(`http://localhost/api/monitors/${monitorUuid}/${endpoint}?location=`),
+        ctx,
+      );
+      expect(response.status).toBe(400);
+    });
+  });
 });

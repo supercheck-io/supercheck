@@ -110,9 +110,10 @@ export async function GET(
           location: monitorResults.location,
           totalChecks: sql<number>`count(*)`,
           upChecks: sql<number>`sum(case when ${monitorResults.isUp} then 1 else 0 end)`,
-          avgResponseTime: sql<number>`avg(${monitorResults.responseTimeMs})`,
-          minResponseTime: sql<number>`min(${monitorResults.responseTimeMs})`,
-          maxResponseTime: sql<number>`max(${monitorResults.responseTimeMs})`,
+          // Up checks only, like /stats: failed checks' timings (timeouts, error pages) are not latency.
+          avgResponseTime: sql<number>`avg(${monitorResults.responseTimeMs}) filter (where ${monitorResults.isUp} and ${monitorResults.responseTimeMs} > 0)`,
+          minResponseTime: sql<number>`min(${monitorResults.responseTimeMs}) filter (where ${monitorResults.isUp} and ${monitorResults.responseTimeMs} > 0)`,
+          maxResponseTime: sql<number>`max(${monitorResults.responseTimeMs}) filter (where ${monitorResults.isUp} and ${monitorResults.responseTimeMs} > 0)`,
         })
         .from(monitorResults)
         .where(

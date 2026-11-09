@@ -171,6 +171,63 @@ it.each(["hourly", "daily"] as const)("keeps entirely skipped cycles neutral in 
   expect(aggregates.find(row => row.location === null)).toMatchObject({ totalChecks: 2, successfulChecks: 1, failedChecks: 1 });
 });
 
+const at = (minutes: number) => new Date(day.getTime() + minutes * 60_000);
+
+it("counts a 3-region majority monitor with one region always down as 100% up, per-region rows stay per region", async () => {
+  await mockDatabase
+    .update(schema.monitors)
+    .set({ config: { locationConfig: { enabled: true, locations: ["a", "b", "c"], strategy: "majority", threshold: 50 } } })
+    .where(eq(schema.monitors.id, monitorId));
+  const rows = [0, 1, 2, 3].flatMap((i) =>
+    [["a", true], ["b", true], ["c", false]].map(([location, isUp]) => ({
+      monitorId, executionGroupId: `grp-${i}`, checkedAt: at(i * 5), location: location as string,
+      status: isUp ? ("up" as const) : ("down" as const), isUp: isUp as boolean, responseTimeMs: isUp ? 100 + i : null,
+    })),
+  );
+  await mockDatabase.insert(schema.monitorResults).values(rows);
+  expect((await monitorAggregationService.runDailyAggregation()).errors).toEqual([]);
+  const aggregates = await mockDatabase.select().from(schema.monitorAggregates).where(eq(schema.monitorAggregates.monitorId, monitorId));
+  expect(aggregates.find((r) => r.location === null)).toMatchObject({ totalChecks: 4, successfulChecks: 4, failedChecks: 0, responseSampleCount: 8 });
+  expect(aggregates.find((r) => r.location === "c")).toMatchObject({ totalChecks: 4, successfulChecks: 0, responseSampleCount: 0 });
+  expect(aggregates.find((r) => r.location === "a")).toMatchObject({ totalChecks: 4, successfulChecks: 4 });
+  const window = await monitorAggregationService.getWindowMetrics(monitorId, "daily", day, new Date(day.getTime() + 86_400_000), null);
+  expect(window).toMatchObject({ totalChecks: 4, successfulChecks: 4, uptimePercentage: 100 });
+  expect(window.p95ResponseMs).toBeGreaterThanOrEqual(100);
+});
+
+it("aggregates a monitor paused after a partial period, deletes a stale period, and never deletes periods older than the oldest raw row", async () => {
+  await mockDatabase.update(schema.monitors).set({ enabled: false }).where(eq(schema.monitors.id, monitorId));
+  const older = (days: number, minutes: number) => new Date(day.getTime() - days * 86_400_000 + minutes * 60_000);
+  await mockDatabase.insert(schema.monitorResults).values([
+    { monitorId, checkedAt: older(2, 10), location: "local", status: "up", isUp: true, responseTimeMs: 50 },
+    { monitorId, checkedAt: older(1, 10), location: "local", status: "up", isUp: true, responseTimeMs: 50 },
+    { monitorId, checkedAt: at(10), location: "local", status: "up", isUp: true, responseTimeMs: 50 },
+  ]);
+  expect((await monitorAggregationService.runDailyAggregation()).errors).toEqual([]);
+  const count = async () =>
+    (await mockDatabase.select().from(schema.monitorAggregates).where(eq(schema.monitorAggregates.monitorId, monitorId))).length;
+  expect(await count()).toBe(6);
+
+  // The middle day's rows disappear while older and newer raw rows remain: its aggregates are stale.
+  await mockDatabase.delete(schema.monitorResults).where(and(eq(schema.monitorResults.monitorId, monitorId), eq(schema.monitorResults.checkedAt, older(1, 10))));
+  expect((await monitorAggregationService.runDailyAggregation()).errors).toEqual([]);
+  expect(await count()).toBe(4);
+
+  // Raw retention purges the oldest rows: aggregates of purged days are kept, not deleted.
+  await mockDatabase.delete(schema.monitorResults).where(and(eq(schema.monitorResults.monitorId, monitorId), eq(schema.monitorResults.checkedAt, older(2, 10))));
+  expect((await monitorAggregationService.runDailyAggregation()).errors).toEqual([]);
+  expect(await count()).toBe(4);
+});
+
+it("counts raw rows of a period no aggregate covers in the window", async () => {
+  await mockDatabase.insert(schema.monitorResults).values([
+    { monitorId, checkedAt: at(10), location: "local", status: "up", isUp: true, responseTimeMs: 50 },
+    { monitorId, checkedAt: at(20), location: "local", status: "down", isUp: false },
+  ]);
+  const window = await monitorAggregationService.getWindowMetrics(monitorId, "daily", day, new Date(day.getTime() + 86_400_000), null);
+  expect(window).toMatchObject({ totalChecks: 2, successfulChecks: 1, uptimePercentage: 50, avgResponseMs: 50 });
+});
+
 it("keeps the latest duplicate, archives superseded rows and cascades their deletion", async () => {
   await client`DROP INDEX monitor_aggregates_combined_unique_idx`;
   await client`DROP TABLE monitor_aggregate_dedup_audit`;

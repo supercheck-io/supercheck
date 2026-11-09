@@ -1,16 +1,12 @@
 import { isUuid } from "@/lib/uuid";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
-import { monitors, monitorResults, MonitoringLocation } from "@/db/schema";
-import { eq, and, gte, lt, or, sql } from "drizzle-orm";
+import { monitors, MonitoringLocation } from "@/db/schema";
+import { eq } from "drizzle-orm";
 import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
-import {
-  monitorAggregationService,
-  calculatePercentile,
-} from "@/lib/monitor-aggregation-service";
+import { monitorAggregationService } from "@/lib/monitor-aggregation-service";
 import { createLogger } from "@/lib/logger/index";
-import { excludeSupersededSyntheticResults } from "@/lib/monitor-result-filters";
 
 const logger = createLogger({ module: "monitor-stats-api" }) as {
   debug: (data: unknown, msg?: string) => void;
@@ -19,73 +15,19 @@ const logger = createLogger({ module: "monitor-stats-api" }) as {
   error: (data: unknown, msg?: string) => void;
 };
 
-type Aggregated = Awaited<ReturnType<typeof monitorAggregationService.getAggregatedMetrics>>;
-
-/**
- * Aggregates only hold complete hours/days. Add the raw results the window contains outside them (the oldest
- * partial period and the in-progress one), so a fresh outage is not hidden. The p95 stays the aggregates' value.
- */
-async function withUnaggregatedTail(
-  monitorId: string,
-  aggregated: Aggregated,
-  windowStart: Date,
-  coveredFrom: Date,
-  coveredTo: Date,
-  location: string | null,
-): Promise<Aggregated> {
-  if (aggregated.totalChecks === 0) return aggregated;
-  const [row] = await db
-    .select({
-      totalChecks: sql<number>`count(*)`,
-      upChecks: sql<number>`sum(case when ${monitorResults.isUp} then 1 else 0 end)`,
-      avgResponseTime: sql<number>`avg(case when ${monitorResults.isUp} then ${monitorResults.responseTimeMs} else null end)`,
-    })
-    .from(monitorResults)
-    .where(
-      and(
-        eq(monitorResults.monitorId, monitorId),
-        gte(monitorResults.checkedAt, windowStart),
-        or(lt(monitorResults.checkedAt, coveredFrom), gte(monitorResults.checkedAt, coveredTo)),
-        excludeSupersededSyntheticResults,
-        location ? eq(monitorResults.location, location as MonitoringLocation) : undefined,
-      ),
-    );
-  const tailTotal = Number(row?.totalChecks ?? 0);
-  if (tailTotal === 0) return aggregated;
-  const tailUp = Number(row?.upChecks ?? 0);
-  const totalChecks = aggregated.totalChecks + tailTotal;
-  const upChecks = Math.round((aggregated.uptimePercentage / 100) * aggregated.totalChecks) + tailUp;
-  const tailAvg = row?.avgResponseTime == null ? null : Number(row.avgResponseTime);
-  const parts: [number, number][] = [];
-  if (aggregated.avgResponseMs !== null) parts.push([aggregated.avgResponseMs, aggregated.totalChecks]);
-  if (tailAvg !== null) parts.push([tailAvg, tailTotal]);
-  const weight = parts.reduce((sum, [, w]) => sum + w, 0);
-  return {
-    totalChecks,
-    uptimePercentage: (upChecks / totalChecks) * 100,
-    // Weighted by check count: close enough, since the aggregate does not expose its response-time sample size.
-    avgResponseMs: weight === 0 ? null : Math.round(parts.reduce((sum, [v, w]) => sum + v * w, 0) / weight),
-    p95ResponseMs: aggregated.p95ResponseMs,
-    coveredTo: aggregated.coveredTo,
-  };
-}
-
-const ceilToHour = (d: Date) => new Date(Math.ceil(d.getTime() / 3_600_000) * 3_600_000);
-const floorToHour = (d: Date) => new Date(Math.floor(d.getTime() / 3_600_000) * 3_600_000);
-const ceilToDay = (d: Date) => new Date(Math.ceil(d.getTime() / 86_400_000) * 86_400_000);
-const floorToDay = (d: Date) => new Date(Math.floor(d.getTime() / 86_400_000) * 86_400_000);
-
 /**
  * GET /api/monitors/[id]/stats
- * Returns aggregated statistics for 24h and 30d periods.
- * 
- * PERFORMANCE OPTIMIZATION:
- * - For 30d stats: Uses pre-computed daily aggregates from `monitor_aggregates` table
- * - For 24h stats: Uses pre-computed hourly aggregates from `monitor_aggregates` table
- * - Falls back to raw query only if aggregates don't exist (new monitors)
- * 
+ * Returns statistics for the last 24h and 30d.
+ *
+ * - Uptime counts checks (cycles), judged by the monitor's region rule; with `location` it counts that region.
+ * - Windows are read from the hourly (24h) / daily (30d) aggregates plus the raw rows no aggregate covers
+ *   (partial edges, the in-progress period, and periods the aggregator missed).
+ * - 24h p95 is an exact percentile_cont over raw up-check response times; 30d p95 merges the daily
+ *   response-time histograms (within ~2.5% of the exact value).
+ * - Response times are up checks only.
+ *
  * Query params:
- *  - location: optional location filter
+ *  - location: optional region filter; unknown regions get 400
  */
 export async function GET(
   request: NextRequest,
@@ -130,264 +72,43 @@ export async function GET(
     }
 
 
-    // Calculate date boundaries
+    if (locationFilter !== null) {
+      const configured = monitor.config?.locationConfig?.locations;
+      if (!(await monitorAggregationService.monitorHasLocation(id, configured, locationFilter))) {
+        return NextResponse.json({ error: "Unknown location" }, { status: 400 });
+      }
+    }
+
     const now = new Date();
     const last24Hours = new Date(now.getTime() - 24 * 60 * 60 * 1000);
     const last30Days = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-
-    // Convert location filter for aggregate queries
     const locationParam = locationFilter as MonitoringLocation | null;
 
-    // Try to use pre-computed aggregates first (O(1) performance)
-    // This is the performance-optimized path for monitors with aggregated data
-    const [aggregates24h, aggregates30d] = await Promise.all([
-      monitorAggregationService
-        .getAggregatedMetrics(id, "hourly", last24Hours, now, locationParam)
-        .then((agg) =>
-          withUnaggregatedTail(id, agg, last24Hours, ceilToHour(last24Hours), agg.coveredTo ?? floorToHour(now), locationFilter),
-        ),
-      monitorAggregationService
-        .getAggregatedMetrics(id, "daily", last30Days, now, locationParam)
-        .then((agg) =>
-          withUnaggregatedTail(id, agg, last30Days, ceilToDay(last30Days), agg.coveredTo ?? floorToDay(now), locationFilter),
-        ),
+    const [window24h, window30d, p95Raw24h] = await Promise.all([
+      monitorAggregationService.getWindowMetrics(id, "hourly", last24Hours, now, locationParam),
+      monitorAggregationService.getWindowMetrics(id, "daily", last30Days, now, locationParam),
+      monitorAggregationService.getRawP95(id, last24Hours, locationParam),
     ]);
 
-    // Check if we have valid aggregated data
-    const hasAggregates24h = aggregates24h.totalChecks > 0;
-    const hasAggregates30d = aggregates30d.totalChecks > 0;
-
-    // If aggregates exist, use them directly (fast path)
-    // However, if P95 is null in aggregates but we have enough checks,
-    // compute P95 from raw data (individual hourly aggregates may have had < 5 checks each)
-    if (hasAggregates24h && hasAggregates30d) {
-      let p95_24h = aggregates24h.p95ResponseMs;
-      let p95_30d = aggregates30d.p95ResponseMs;
-
-      // Compute P95 from raw data if aggregate P95 is null but we have sufficient checks
-      // This handles the case where individual hourly/daily aggregates each had < 5 checks
-      // but the total across all periods is sufficient for a meaningful P95
-      if (p95_24h === null && aggregates24h.totalChecks >= 5) {
-        const responseTimes24h = await db
-          .select({ responseTimeMs: monitorResults.responseTimeMs })
-          .from(monitorResults)
-          .where(
-            and(
-              eq(monitorResults.monitorId, id),
-              gte(monitorResults.checkedAt, last24Hours),
-              eq(monitorResults.isUp, true),
-              sql`${monitorResults.responseTimeMs} is not null`,
-              locationFilter
-                ? eq(monitorResults.location, locationFilter as MonitoringLocation)
-                : sql`1=1`
-            )
-          );
-        const sortedTimes = responseTimes24h
-          .map((r) => r.responseTimeMs!)
-          .sort((a, b) => a - b);
-        p95_24h = calculatePercentile(sortedTimes, 95);
-      }
-
-      if (p95_30d === null && aggregates30d.totalChecks >= 5) {
-        const responseTimes30d = await db
-          .select({ responseTimeMs: monitorResults.responseTimeMs })
-          .from(monitorResults)
-          .where(
-            and(
-              eq(monitorResults.monitorId, id),
-              gte(monitorResults.checkedAt, last30Days),
-              eq(monitorResults.isUp, true),
-              sql`${monitorResults.responseTimeMs} is not null`,
-              locationFilter
-                ? eq(monitorResults.location, locationFilter as MonitoringLocation)
-                : sql`1=1`
-            )
-          );
-        const sortedTimes = responseTimes30d
-          .map((r) => r.responseTimeMs!)
-          .sort((a, b) => a - b);
-        p95_30d = calculatePercentile(sortedTimes, 95);
-      }
-
-      return NextResponse.json({
-        success: true,
-        data: {
-          period24h: {
-            totalChecks: aggregates24h.totalChecks,
-            upChecks: Math.round(
-              (aggregates24h.uptimePercentage / 100) * aggregates24h.totalChecks
-            ),
-            uptimePercentage: aggregates24h.uptimePercentage,
-            avgResponseTimeMs: aggregates24h.avgResponseMs,
-            p95ResponseTimeMs: p95_24h !== null ? Math.round(p95_24h) : null,
-          },
-          period30d: {
-            totalChecks: aggregates30d.totalChecks,
-            upChecks: Math.round(
-              (aggregates30d.uptimePercentage / 100) * aggregates30d.totalChecks
-            ),
-            uptimePercentage: aggregates30d.uptimePercentage,
-            avgResponseTimeMs: aggregates30d.avgResponseMs,
-            p95ResponseTimeMs: p95_30d !== null ? Math.round(p95_30d) : null,
-          },
-        },
-        meta: {
-          monitorId: id,
-          location: locationFilter || "all",
-          calculatedAt: now.toISOString(),
-          source: p95_24h !== aggregates24h.p95ResponseMs || p95_30d !== aggregates30d.p95ResponseMs
-            ? "aggregates+raw_p95" // Indicates P95 was computed from raw data
-            : "aggregates",
-        },
-      });
-    }
-
-    // Fallback: Query raw data for new monitors without aggregates
-    // This ensures new monitors still show stats before the first aggregation run
-    logger.debug({ monitorId: id }, "Some aggregate windows missing, falling back to raw query");
-
-    // Build base conditions for raw queries
-    const baseConditions24h = locationFilter
-      ? and(
-          eq(monitorResults.monitorId, id),
-          gte(monitorResults.checkedAt, last24Hours),
-          excludeSupersededSyntheticResults,
-          eq(monitorResults.location, locationFilter as MonitoringLocation)
-        )
-      : and(
-          eq(monitorResults.monitorId, id),
-          gte(monitorResults.checkedAt, last24Hours),
-          excludeSupersededSyntheticResults
-        );
-
-    const baseConditions30d = locationFilter
-      ? and(
-          eq(monitorResults.monitorId, id),
-          gte(monitorResults.checkedAt, last30Days),
-          excludeSupersededSyntheticResults,
-          eq(monitorResults.location, locationFilter as MonitoringLocation)
-        )
-      : and(
-          eq(monitorResults.monitorId, id),
-          gte(monitorResults.checkedAt, last30Days),
-          excludeSupersededSyntheticResults
-        );
-
-    // Run all 4 statistics queries in parallel for better performance
-    const [stats24h, stats30d, responseTimes24h, responseTimes30d] =
-      await Promise.all([
-        // Get 24h statistics
-        db
-          .select({
-            totalChecks: sql<number>`count(*)`,
-            upChecks: sql<number>`sum(case when ${monitorResults.isUp} then 1 else 0 end)`,
-            avgResponseTime: sql<number>`avg(case when ${monitorResults.isUp} then ${monitorResults.responseTimeMs} else null end)`,
-          })
-          .from(monitorResults)
-          .where(baseConditions24h),
-
-        // Get 30d statistics
-        db
-          .select({
-            totalChecks: sql<number>`count(*)`,
-            upChecks: sql<number>`sum(case when ${monitorResults.isUp} then 1 else 0 end)`,
-            avgResponseTime: sql<number>`avg(case when ${monitorResults.isUp} then ${monitorResults.responseTimeMs} else null end)`,
-          })
-          .from(monitorResults)
-          .where(baseConditions30d),
-
-        // Get all response times for P95 calculation (24h)
-        db
-          .select({
-            responseTimeMs: monitorResults.responseTimeMs,
-          })
-          .from(monitorResults)
-          .where(
-            and(
-              baseConditions24h,
-              eq(monitorResults.isUp, true),
-              sql`${monitorResults.responseTimeMs} is not null`
-            )
-          ),
-
-        // Get all response times for P95 calculation (30d)
-        db
-          .select({
-            responseTimeMs: monitorResults.responseTimeMs,
-          })
-          .from(monitorResults)
-          .where(
-            and(
-              baseConditions30d,
-              eq(monitorResults.isUp, true),
-              sql`${monitorResults.responseTimeMs} is not null`
-            )
-          ),
-      ]);
-
-    // Calculate P95 for 24h using shared utility
-    const sortedTimes24h = responseTimes24h
-      .map((r) => r.responseTimeMs!)
-      .sort((a, b) => a - b);
-    const p95Response24h = calculatePercentile(sortedTimes24h, 95);
-
-    // Calculate P95 for 30d using shared utility
-    const sortedTimes30d = responseTimes30d
-      .map((r) => r.responseTimeMs!)
-      .sort((a, b) => a - b);
-    const p95Response30d = calculatePercentile(sortedTimes30d, 95);
-
-    // Calculate uptime percentages
-    const total24h = Number(stats24h[0]?.totalChecks || 0);
-    const up24h = Number(stats24h[0]?.upChecks || 0);
-    const uptime24h = total24h > 0 ? (up24h / total24h) * 100 : null;
-
-    const total30d = Number(stats30d[0]?.totalChecks || 0);
-    const up30d = Number(stats30d[0]?.upChecks || 0);
-    const uptime30d = total30d > 0 ? (up30d / total30d) * 100 : null;
-
-    const avgResponse24h = stats24h[0]?.avgResponseTime
-      ? Number(stats24h[0].avgResponseTime)
-      : null;
-    const avgResponse30d = stats30d[0]?.avgResponseTime
-      ? Number(stats30d[0].avgResponseTime)
-      : null;
+    const period = (w: typeof window24h, p95: number | null) => ({
+      totalChecks: w.totalChecks,
+      upChecks: w.successfulChecks,
+      uptimePercentage: w.uptimePercentage,
+      avgResponseTimeMs: w.avgResponseMs,
+      p95ResponseTimeMs: p95,
+    });
 
     return NextResponse.json({
       success: true,
       data: {
-        period24h: hasAggregates24h ? {
-          totalChecks: aggregates24h.totalChecks,
-          upChecks: Math.round((aggregates24h.uptimePercentage / 100) * aggregates24h.totalChecks),
-          uptimePercentage: aggregates24h.uptimePercentage,
-          avgResponseTimeMs: aggregates24h.avgResponseMs,
-          p95ResponseTimeMs: aggregates24h.p95ResponseMs ?? (aggregates24h.totalChecks >= 5 ? p95Response24h : null),
-        } : {
-          totalChecks: total24h,
-          upChecks: up24h,
-          uptimePercentage: uptime24h,
-          avgResponseTimeMs: avgResponse24h ? Math.round(avgResponse24h) : null,
-          p95ResponseTimeMs: p95Response24h ? Math.round(p95Response24h) : null,
-        },
-        period30d: hasAggregates30d ? {
-          totalChecks: aggregates30d.totalChecks,
-          upChecks: Math.round((aggregates30d.uptimePercentage / 100) * aggregates30d.totalChecks),
-          uptimePercentage: aggregates30d.uptimePercentage,
-          avgResponseTimeMs: aggregates30d.avgResponseMs,
-          p95ResponseTimeMs: aggregates30d.p95ResponseMs ?? (aggregates30d.totalChecks >= 5 ? p95Response30d : null),
-        } : {
-          totalChecks: total30d,
-          upChecks: up30d,
-          uptimePercentage: uptime30d,
-          avgResponseTimeMs: avgResponse30d ? Math.round(avgResponse30d) : null,
-          p95ResponseTimeMs: p95Response30d ? Math.round(p95Response30d) : null,
-        },
+        period24h: period(window24h, p95Raw24h),
+        period30d: period(window30d, window30d.p95ResponseMs),
       },
       meta: {
         monitorId: id,
         location: locationFilter || "all",
         calculatedAt: now.toISOString(),
-        source: hasAggregates24h || hasAggregates30d ? "aggregates+raw" : "raw",
+        source: "aggregates+raw",
       },
     });
   } catch (error) {

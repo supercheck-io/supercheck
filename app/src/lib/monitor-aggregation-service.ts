@@ -7,6 +7,12 @@
  * - Raw check data: Short retention (7-30 days)
  * - Aggregated metrics: Long retention (30 days - 12+ months)
  *
+ * Uptime definition: one CHECK (cycle) counts once. Rows that share an execution_group_id are one
+ * cycle, judged up or down by the monitor's own region rule (strategy/threshold), the same decision as the
+ * monitor status. Single-region monitors and rows without a group count once per row. The combined
+ * (location = null) aggregate row holds these cycle counts; per-location rows count regional checks.
+ * Response times are up checks only (> 0 ms) everywhere.
+ *
  * Features:
  * - Hourly aggregations: P95, avg, uptime computed hourly for 30-day visibility
  * - Daily aggregations: Same metrics for 12+ month historical trends
@@ -22,13 +28,15 @@ import { db } from "@/utils/db";
 import {
   monitorResults,
   monitors,
+  monitorCycles,
   monitorAggregates,
   type MonitorAggregateInsert,
   type AggregationPeriod,
 } from "@/db/schema";
-import { sql, and, eq, gte, lt, inArray, desc } from "drizzle-orm";
+import { sql, and, eq, gte, lt, lte, or, inArray, desc } from "drizzle-orm";
 import type { MonitoringLocation } from "@/db/schema/types";
 import { excludeSupersededSyntheticResults } from "@/lib/monitor-result-filters";
+import { monitorCyclePolicy } from "@/lib/monitor-cycles";
 
 // ============================================================================
 // CONFIGURATION
@@ -68,6 +76,7 @@ interface RawMetrics {
   totalChecks: number;
   successfulChecks: number;
   failedChecks: number;
+  /** Response times of up checks only. */
   responseTimes: number[];
   statusChangeCount: number;
 }
@@ -87,6 +96,7 @@ interface ComputedMetrics {
   p95ResponseMs: number | null;
   p99ResponseMs: number | null;
   totalResponseMs: number;
+  responseSampleCount: number;
   statusChangeCount: number;
 }
 
@@ -171,6 +181,7 @@ function computeMetrics(raw: RawMetrics): ComputedMetrics {
   let p95ResponseMs: number | null = null;
   let p99ResponseMs: number | null = null;
   let totalResponseMs = 0;
+  const responseSampleCount = validTimes.length;
 
   if (validTimes.length > 0) {
     totalResponseMs = validTimes.reduce((sum, t) => sum + t, 0);
@@ -198,13 +209,296 @@ function computeMetrics(raw: RawMetrics): ComputedMetrics {
     p95ResponseMs,
     p99ResponseMs,
     totalResponseMs,
+    responseSampleCount,
     statusChangeCount,
   };
 }
 
 // ============================================================================
+// CHECK (CYCLE) HELPERS
+// ============================================================================
+
+const HOUR_MS = 3_600_000;
+const PERIOD_MS: Record<AggregationPeriod, number> = {
+  hourly: HOUR_MS,
+  daily: 86_400_000,
+};
+/** Regions of one cycle report within the cycle deadline (<= 30 min), so an hour of context finds them all. */
+const CYCLE_MARGIN_MS = HOUR_MS;
+/** Longest cycle deadline (MAX_DEADLINE 1800 s + two check timeouts is capped by the worker's own timeout). */
+const CYCLE_SETTLE_MS = 35 * 60_000;
+
+/** A raw check as the aggregates and the stats tail read it. */
+export interface CheckRow {
+  checkedAt: Date;
+  location: string;
+  isUp: boolean;
+  responseTimeMs: number | null;
+  isStatusChange: boolean;
+  executionGroupId: string | null;
+}
+
+/** Region rule of one cycle: the persisted cycle snapshot, or the monitor's current config. */
+export interface CyclePolicy {
+  strategy: "all" | "any" | "majority";
+  threshold: number;
+  expected: string[];
+}
+
+type PolicyResolver = (
+  executionGroupId: string,
+  observed: string[],
+) => CyclePolicy | null;
+
+/**
+ * Same decision as the worker's decideMonitorCycle once a cycle is over (deadline elapsed):
+ * a region that never reported counts as down. `null` policy = one region, up when it is up.
+ */
+export function isCycleUp(
+  policy: CyclePolicy | null,
+  results: Record<string, boolean>,
+): boolean {
+  const observed = Object.keys(results);
+  if (!policy) return observed.some((location) => results[location]);
+  const expected = [...new Set(policy.expected)];
+  const seen = expected.filter((location) => location in results);
+  const up = seen.filter((location) => results[location]).length;
+  const required =
+    policy.strategy === "all"
+      ? expected.length
+      : policy.strategy === "any"
+        ? 1
+        : Math.ceil((expected.length * policy.threshold) / 100);
+  return seen.length > 0 && up >= required;
+}
+
+/**
+ * Collapse raw rows into checks. A cycle is attributed to the time of its earliest row, so it is
+ * counted once even when its regions straddle an hour or day boundary. Rows without an
+ * execution group are one check each. A cycle still waiting for a region (not every expected region
+ * reported and it began less than CYCLE_SETTLE_MS ago) is left out until it settles, so a check in
+ * flight is not shown as down.
+ */
+export function groupChecks(
+  rows: CheckRow[],
+  resolve: PolicyResolver,
+  nowMs: number = Date.now(),
+): { start: number; isUp: boolean }[] {
+  const checks: { start: number; isUp: boolean }[] = [];
+  const groups = new Map<string, CheckRow[]>();
+  for (const row of rows) {
+    if (!row.executionGroupId) {
+      checks.push({ start: row.checkedAt.getTime(), isUp: row.isUp });
+      continue;
+    }
+    const group = groups.get(row.executionGroupId);
+    if (group) group.push(row);
+    else groups.set(row.executionGroupId, [row]);
+  }
+  for (const [groupId, group] of groups) {
+    group.sort((a, b) => a.checkedAt.getTime() - b.checkedAt.getTime());
+    const results: Record<string, boolean> = {};
+    // Latest row per region wins (a retried region replaces its earlier attempt).
+    for (const row of group) results[row.location] = row.isUp;
+    const policy = resolve(groupId, Object.keys(results));
+    const start = group[0].checkedAt.getTime();
+    const waiting = policy?.expected.some((location) => !(location in results));
+    if (waiting && start > nowMs - CYCLE_SETTLE_MS) continue;
+    checks.push({ start, isUp: isCycleUp(policy, results) });
+  }
+  return checks;
+}
+
+/**
+ * Policy lookup for a monitor's rows: the persisted monitor_cycles snapshot where one exists, otherwise the
+ * monitor's current region config (history keeps today's rule; legacy grouped rows have no snapshot).
+ */
+async function loadPolicyResolver(
+  monitorId: string,
+  rows: CheckRow[],
+): Promise<PolicyResolver> {
+  if (!rows.some((row) => row.executionGroupId)) return () => null;
+  const [monitor] = await db
+    .select({ config: monitors.config })
+    .from(monitors)
+    .where(eq(monitors.id, monitorId))
+    .limit(1);
+  const current = monitorCyclePolicy(monitor?.config?.locationConfig);
+  const configured =
+    monitor?.config?.locationConfig?.enabled &&
+    monitor.config.locationConfig.locations?.length
+      ? monitor.config.locationConfig.locations
+      : null;
+
+  let oldest = Infinity;
+  let newest = -Infinity;
+  for (const row of rows) {
+    const t = row.checkedAt.getTime();
+    if (t < oldest) oldest = t;
+    if (t > newest) newest = t;
+  }
+  const cycles = await db
+    .select({
+      id: monitorCycles.id,
+      strategy: monitorCycles.strategy,
+      threshold: monitorCycles.threshold,
+      expectedLocations: monitorCycles.expectedLocations,
+    })
+    .from(monitorCycles)
+    .where(
+      and(
+        eq(monitorCycles.monitorId, monitorId),
+        gte(monitorCycles.scheduledFor, new Date(oldest - CYCLE_MARGIN_MS)),
+        lte(monitorCycles.scheduledFor, new Date(newest)),
+      ),
+    );
+  const snapshots = new Map(cycles.map((cycle) => [cycle.id, cycle]));
+
+  return (groupId, observed) => {
+    const snapshot = snapshots.get(groupId);
+    if (snapshot) {
+      return {
+        strategy: snapshot.strategy,
+        threshold: snapshot.threshold,
+        expected: snapshot.expectedLocations,
+      };
+    }
+    if (!configured) return null;
+    return {
+      ...current,
+      expected: [...new Set([...configured, ...observed])],
+    };
+  };
+}
+
+// ============================================================================
+// RESPONSE-TIME HISTOGRAM
+// ============================================================================
+
+/**
+ * Daily rows keep a log-bucketed histogram of up-check response times (bucket width 5%, so a percentile read
+ * from merged buckets is within ~2.5% of the true value). Sparse JSON, typically 20-40 entries (< 1 KB).
+ * It makes a real 30-day p95 possible without scanning 30 days of raw rows or averaging per-day p95s.
+ */
+export type ResponseHistogram = Record<string, number>;
+const HISTOGRAM_GAMMA = 1.05;
+const HISTOGRAM_LN = Math.log(HISTOGRAM_GAMMA);
+
+export function addToHistogram(histogram: ResponseHistogram, ms: number, count = 1): void {
+  if (!(ms > 0)) return;
+  const bucket = String(Math.floor(Math.log(ms) / HISTOGRAM_LN));
+  histogram[bucket] = (histogram[bucket] ?? 0) + count;
+}
+
+export function histogramPercentile(
+  histogram: ResponseHistogram,
+  percentile: number,
+): number | null {
+  const buckets = Object.entries(histogram)
+    .map(([bucket, count]) => [Number(bucket), count] as const)
+    .sort((a, b) => a[0] - b[0]);
+  const total = buckets.reduce((sum, [, count]) => sum + count, 0);
+  if (total === 0) return null;
+  const rank = Math.max(1, Math.ceil((percentile / 100) * total));
+  let cumulative = 0;
+  for (const [bucket, count] of buckets) {
+    cumulative += count;
+    if (cumulative >= rank) return Math.round(HISTOGRAM_GAMMA ** (bucket + 0.5));
+  }
+  return null;
+}
+
+type AggregateRow = typeof monitorAggregates.$inferSelect;
+
+/**
+ * Rows written before histograms existed only carry p50/p95/p99/max: spread the row's samples over
+ * those points (50% / 45% / 4% / 1%) so its tail still weighs into a merged percentile.
+ */
+function histogramOfRow(row: AggregateRow): { histogram: ResponseHistogram; samples: number } {
+  const samples = sampleCountOfRow(row);
+  if (row.responseHistogram) return { histogram: row.responseHistogram, samples };
+  const histogram: ResponseHistogram = {};
+  const points: [number | null, number][] = [
+    [row.p50ResponseMs, 0.5],
+    [row.p95ResponseMs, 0.45],
+    [row.p99ResponseMs, 0.04],
+    [row.maxResponseMs, 0.01],
+  ];
+  const known = points.filter(([value]) => value !== null && value > 0);
+  if (known.length === 0 || samples === 0) return { histogram, samples };
+  const weight = known.reduce((sum, [, w]) => sum + w, 0);
+  for (const [value, w] of known) {
+    addToHistogram(histogram, value!, Math.max(1, Math.round((samples * w) / weight)));
+  }
+  return { histogram, samples };
+}
+
+/** Exact count where persisted; older rows derive it from sum / rounded average (the previous behaviour). */
+function sampleCountOfRow(row: AggregateRow): number {
+  if (row.responseSampleCount !== null && row.responseSampleCount !== undefined) {
+    return row.responseSampleCount;
+  }
+  if (!row.totalResponseMs) return 0;
+  if (row.avgResponseMs && row.avgResponseMs > 0) {
+    return Math.round(row.totalResponseMs / row.avgResponseMs);
+  }
+  return row.successfulChecks;
+}
+
+// ============================================================================
 // MAIN AGGREGATION SERVICE
 // ============================================================================
+
+/** Totals of a window, from aggregates plus the raw rows aggregates do not cover. */
+export interface WindowMetrics {
+  totalChecks: number;
+  successfulChecks: number;
+  /** Null when the window holds no checks. */
+  uptimePercentage: number | null;
+  avgResponseMs: number | null;
+  /** Real percentile over up-check response times (histogram-merged, within ~2.5%). Null below 5 samples. */
+  p95ResponseMs: number | null;
+}
+
+const MIN_P95_SAMPLES = AGGREGATION_CONFIG.MIN_CHECKS_FOR_P95;
+const INSERT_CHUNK = 200;
+
+const isUpSample = (row: CheckRow) =>
+  row.isUp && row.responseTimeMs !== null && row.responseTimeMs > 0;
+
+/** Read the raw checks of the given [from, to) ranges (excluding superseded synthetic rows). */
+async function fetchCheckRows(
+  monitorId: string,
+  ranges: [number, number][],
+  location?: string | null,
+): Promise<CheckRow[]> {
+  if (ranges.length === 0) return [];
+  return db
+    .select({
+      checkedAt: monitorResults.checkedAt,
+      location: monitorResults.location,
+      isUp: monitorResults.isUp,
+      responseTimeMs: monitorResults.responseTimeMs,
+      isStatusChange: monitorResults.isStatusChange,
+      executionGroupId: monitorResults.executionGroupId,
+    })
+    .from(monitorResults)
+    .where(
+      and(
+        eq(monitorResults.monitorId, monitorId),
+        or(
+          ...ranges.map(([from, to]) =>
+            and(
+              gte(monitorResults.checkedAt, new Date(from)),
+              lt(monitorResults.checkedAt, new Date(to)),
+            ),
+          ),
+        ),
+        excludeSupersededSyntheticResults,
+        location ? eq(monitorResults.location, location as MonitoringLocation) : undefined,
+      ),
+    );
+}
 
 /**
  * Monitor Aggregation Service
@@ -217,105 +511,42 @@ export class MonitorAggregationService {
    * Computes metrics for the previous complete hour(s)
    */
   async runHourlyAggregation(): Promise<AggregationResult> {
-    const startTime = Date.now();
-    const result: AggregationResult = {
-      success: true,
-      periodType: "hourly",
-      monitorsProcessed: 0,
-      aggregatesCreated: 0,
-      aggregatesUpdated: 0,
-      duration: 0,
-      errors: [],
-    };
-
-    try {
-      const now = new Date();
-      const currentHour = truncateToHour(now);
-
-      // Calculate lookback period (process any missed hours)
-      const lookbackStart = new Date(currentHour);
-      lookbackStart.setUTCHours(
-        lookbackStart.getUTCHours() - AGGREGATION_CONFIG.HOURLY_LOOKBACK_HOURS,
-      );
-
-      // Get all active monitors in batches
-      let offset = 0;
-      let hasMore = true;
-
-      while (hasMore) {
-        const monitorBatch = await db
-          .select({ id: monitors.id, organizationId: monitors.organizationId })
-          .from(monitors)
-          .where(eq(monitors.enabled, true))
-          // Stable order, or offset paging can skip or repeat monitors between batches.
-          .orderBy(monitors.id)
-          .limit(AGGREGATION_CONFIG.MONITOR_BATCH_SIZE)
-          .offset(offset);
-
-        if (monitorBatch.length === 0) {
-          hasMore = false;
-          break;
-        }
-
-        // Process each monitor
-        for (const monitor of monitorBatch) {
-          try {
-            const { created, updated } = await this.aggregateMonitorHourly(
-              monitor.id,
-              lookbackStart,
-              currentHour,
-            );
-            result.aggregatesCreated += created;
-            result.aggregatesUpdated += updated;
-            result.monitorsProcessed++;
-          } catch (error) {
-            const errorMsg =
-              error instanceof Error ? error.message : String(error);
-            result.errors.push(
-              `Monitor ${monitor.id.substring(0, 8)}: ${errorMsg}`,
-            );
-          }
-        }
-
-        offset += AGGREGATION_CONFIG.MONITOR_BATCH_SIZE;
-        if (monitorBatch.length < AGGREGATION_CONFIG.MONITOR_BATCH_SIZE) {
-          hasMore = false;
-        }
-      }
-
-      result.duration = Date.now() - startTime;
-
-      if (result.errors.length > 0) {
-        console.warn(
-          `[AGGREGATION] Hourly completed with ${result.errors.length} errors`,
-        );
-      } else {
-        console.log(
-          `[AGGREGATION] Hourly completed: ${result.monitorsProcessed} monitors, ` +
-            `${result.aggregatesCreated} created, ${result.aggregatesUpdated} updated`,
-        );
-      }
-    } catch (error) {
-      result.success = false;
-      result.errors.push(
-        error instanceof Error ? error.message : String(error),
-      );
-      result.duration = Date.now() - startTime;
-      console.error("[AGGREGATION] Hourly aggregation failed:", error);
-    }
-
-    return result;
+    const currentHour = truncateToHour(new Date());
+    const lookbackStart = new Date(currentHour);
+    lookbackStart.setUTCHours(
+      lookbackStart.getUTCHours() - AGGREGATION_CONFIG.HOURLY_LOOKBACK_HOURS,
+    );
+    return this.runAggregation("hourly", lookbackStart, currentHour);
   }
 
   /**
    * Run daily aggregation for all monitors
-   * Computes metrics for the previous complete day(s)
+   * Computes metrics for the previous complete day(s).
+   * `lookbackDays` lets an operator rebuild further back once (bounded by raw retention).
    */
-  async runDailyAggregation(): Promise<AggregationResult> {
+  async runDailyAggregation(
+    lookbackDays: number = AGGREGATION_CONFIG.DAILY_LOOKBACK_DAYS,
+  ): Promise<AggregationResult> {
+    const currentDay = truncateToDay(new Date());
+    const lookbackStart = new Date(currentDay);
+    lookbackStart.setUTCDate(lookbackStart.getUTCDate() - lookbackDays);
+    return this.runAggregation("daily", lookbackStart, currentDay);
+  }
+
+  /**
+   * Aggregate every monitor that is enabled or has raw rows in the lookback. A monitor paused (or an
+   * aggregator outage) mid-period would otherwise lose its last partial hour/day for good.
+   */
+  private async runAggregation(
+    periodType: AggregationPeriod,
+    lookbackStart: Date,
+    end: Date,
+  ): Promise<AggregationResult> {
     const startTime = Date.now();
+    const label = periodType === "hourly" ? "Hourly" : "Daily";
     const result: AggregationResult = {
       success: true,
-      periodType: "daily",
+      periodType,
       monitorsProcessed: 0,
       aggregatesCreated: 0,
       aggregatesUpdated: 0,
@@ -324,16 +555,11 @@ export class MonitorAggregationService {
     };
 
     try {
-      const now = new Date();
-      const currentDay = truncateToDay(now);
-
-      // Calculate lookback period
-      const lookbackStart = new Date(currentDay);
-      lookbackStart.setUTCDate(
-        lookbackStart.getUTCDate() - AGGREGATION_CONFIG.DAILY_LOOKBACK_DAYS,
-      );
-
-      // Get all active monitors in batches
+      const hasRecentRows = sql`exists (
+        select 1 from monitor_results r
+        where r.monitor_id = ${monitors.id}
+          and r.checked_at >= ${lookbackStart.toISOString()}::timestamptz
+      )`;
       let offset = 0;
       let hasMore = true;
 
@@ -341,24 +567,19 @@ export class MonitorAggregationService {
         const monitorBatch = await db
           .select({ id: monitors.id, organizationId: monitors.organizationId })
           .from(monitors)
-          .where(eq(monitors.enabled, true))
+          .where(or(eq(monitors.enabled, true), hasRecentRows))
           // Stable order, or offset paging can skip or repeat monitors between batches.
           .orderBy(monitors.id)
           .limit(AGGREGATION_CONFIG.MONITOR_BATCH_SIZE)
           .offset(offset);
 
-        if (monitorBatch.length === 0) {
-          hasMore = false;
-          break;
-        }
-
-        // Process each monitor
         for (const monitor of monitorBatch) {
           try {
-            const { created, updated } = await this.aggregateMonitorDaily(
+            const { created, updated } = await this.aggregateMonitor(
               monitor.id,
+              periodType,
               lookbackStart,
-              currentDay,
+              end,
             );
             result.aggregatesCreated += created;
             result.aggregatesUpdated += updated;
@@ -373,20 +594,18 @@ export class MonitorAggregationService {
         }
 
         offset += AGGREGATION_CONFIG.MONITOR_BATCH_SIZE;
-        if (monitorBatch.length < AGGREGATION_CONFIG.MONITOR_BATCH_SIZE) {
-          hasMore = false;
-        }
+        hasMore = monitorBatch.length === AGGREGATION_CONFIG.MONITOR_BATCH_SIZE;
       }
 
       result.duration = Date.now() - startTime;
 
       if (result.errors.length > 0) {
         console.warn(
-          `[AGGREGATION] Daily completed with ${result.errors.length} errors`,
+          `[AGGREGATION] ${label} completed with ${result.errors.length} errors`,
         );
       } else {
         console.log(
-          `[AGGREGATION] Daily completed: ${result.monitorsProcessed} monitors, ` +
+          `[AGGREGATION] ${label} completed: ${result.monitorsProcessed} monitors, ` +
             `${result.aggregatesCreated} created, ${result.aggregatesUpdated} updated`,
         );
       }
@@ -396,258 +615,222 @@ export class MonitorAggregationService {
         error instanceof Error ? error.message : String(error),
       );
       result.duration = Date.now() - startTime;
-      console.error("[AGGREGATION] Daily aggregation failed:", error);
+      console.error(`[AGGREGATION] ${label} aggregation failed:`, error);
     }
 
     return result;
   }
 
   /**
-   * Aggregate hourly metrics for a specific monitor
+   * Recompute every period of [start, end) for one monitor from a single scan of its raw rows
+   * (plus a margin so cycles that straddle a boundary are seen whole). Idempotent: upserts the
+   * periods that have rows and deletes stale rows of periods that no longer do.
    */
-  private async aggregateMonitorHourly(
-    monitorId: string,
-    startTime: Date,
-    endTime: Date,
-  ): Promise<{ created: number; updated: number }> {
-    let created = 0;
-    let updated = 0;
-
-    // Iterate through each hour in the range
-    let currentHour = new Date(startTime);
-    while (currentHour < endTime) {
-      const nextHour = new Date(currentHour);
-      nextHour.setUTCHours(nextHour.getUTCHours() + 1);
-
-      // Get unique locations for this monitor in this hour
-      const locations = await this.getLocationsForPeriod(
-        monitorId,
-        currentHour,
-        nextHour,
-      );
-
-      // Aggregate for each location
-      for (const location of locations) {
-        const result = await this.aggregatePeriod(
-          monitorId,
-          "hourly",
-          currentHour,
-          nextHour,
-          location,
-        );
-        if (result === "created") created++;
-        else if (result === "updated") updated++;
-      }
-
-      // Also create combined aggregate (all locations)
-      if (locations.length > 0) {
-        const result = await this.aggregatePeriod(
-          monitorId,
-          "hourly",
-          currentHour,
-          nextHour,
-          null, // null = combined
-        );
-        if (result === "created") created++;
-        else if (result === "updated") updated++;
-      }
-
-      currentHour = nextHour;
-    }
-
-    return { created, updated };
-  }
-
-  /**
-   * Aggregate daily metrics for a specific monitor
-   */
-  private async aggregateMonitorDaily(
-    monitorId: string,
-    startTime: Date,
-    endTime: Date,
-  ): Promise<{ created: number; updated: number }> {
-    let created = 0;
-    let updated = 0;
-
-    // Iterate through each day in the range
-    let currentDay = new Date(startTime);
-    while (currentDay < endTime) {
-      const nextDay = new Date(currentDay);
-      nextDay.setUTCDate(nextDay.getUTCDate() + 1);
-
-      // Get unique locations for this monitor on this day
-      const locations = await this.getLocationsForPeriod(
-        monitorId,
-        currentDay,
-        nextDay,
-      );
-
-      // Aggregate for each location
-      for (const location of locations) {
-        const result = await this.aggregatePeriod(
-          monitorId,
-          "daily",
-          currentDay,
-          nextDay,
-          location,
-        );
-        if (result === "created") created++;
-        else if (result === "updated") updated++;
-      }
-
-      // Also create combined aggregate (all locations)
-      if (locations.length > 0) {
-        const result = await this.aggregatePeriod(
-          monitorId,
-          "daily",
-          currentDay,
-          nextDay,
-          null, // null = combined
-        );
-        if (result === "created") created++;
-        else if (result === "updated") updated++;
-      }
-
-      currentDay = nextDay;
-    }
-
-    return { created, updated };
-  }
-
-  /**
-   * Get unique locations for a monitor in a time period
-   */
-  private async getLocationsForPeriod(
-    monitorId: string,
-    startTime: Date,
-    endTime: Date,
-  ): Promise<MonitoringLocation[]> {
-    const result = await db
-      .selectDistinct({ location: monitorResults.location })
-      .from(monitorResults)
-      .where(
-        and(
-          eq(monitorResults.monitorId, monitorId),
-          gte(monitorResults.checkedAt, startTime),
-          lt(monitorResults.checkedAt, endTime),
-        ),
-      );
-
-    return result
-      .map((r) => r.location)
-      .filter(Boolean) as MonitoringLocation[];
-  }
-
-  /**
-   * Aggregate a single period (hour or day) for a monitor/location combo
-   * Uses upsert for idempotency
-   */
-  private async aggregatePeriod(
+  private async aggregateMonitor(
     monitorId: string,
     periodType: AggregationPeriod,
-    periodStart: Date,
-    periodEnd: Date,
-    location: MonitoringLocation | null,
-  ): Promise<"created" | "updated" | "skipped"> {
-    // Build query conditions
-    const conditions = [
-      eq(monitorResults.monitorId, monitorId),
-      gte(monitorResults.checkedAt, periodStart),
-      lt(monitorResults.checkedAt, periodEnd),
-      excludeSupersededSyntheticResults,
-    ];
+    start: Date,
+    end: Date,
+  ): Promise<{ created: number; updated: number }> {
+    const unit = PERIOD_MS[periodType];
+    const from = start.getTime();
+    const to = end.getTime();
+    const rows = await fetchCheckRows(monitorId, [
+      [from - CYCLE_MARGIN_MS, to + CYCLE_MARGIN_MS],
+    ]);
+    const resolve = await loadPolicyResolver(monitorId, rows);
+    const periodOf = (ms: number) => Math.floor(ms / unit) * unit;
 
-    if (location) {
-      conditions.push(eq(monitorResults.location, location));
+    const inRange = rows.filter((row) => {
+      const t = row.checkedAt.getTime();
+      return t >= from && t < to;
+    });
+    const byPeriod = new Map<number, CheckRow[]>();
+    for (const row of inRange) {
+      const key = periodOf(row.checkedAt.getTime());
+      const list = byPeriod.get(key);
+      if (list) list.push(row);
+      else byPeriod.set(key, [row]);
+    }
+    const checksByPeriod = new Map<number, { total: number; up: number }>();
+    for (const check of groupChecks(rows, resolve)) {
+      if (check.start < from || check.start >= to) continue;
+      const key = periodOf(check.start);
+      const counts = checksByPeriod.get(key) ?? { total: 0, up: 0 };
+      counts.total++;
+      if (check.isUp) counts.up++;
+      checksByPeriod.set(key, counts);
     }
 
-    // Fetch raw results for this period
-    const results = await db
-      .select({
-        isUp: monitorResults.isUp,
-        responseTimeMs: monitorResults.responseTimeMs,
-        isStatusChange: monitorResults.isStatusChange,
-      })
-      .from(monitorResults)
-      .where(and(...conditions));
+    const now = new Date();
+    const build = (
+      periodStart: number,
+      location: MonitoringLocation | null,
+      periodRows: CheckRow[],
+      counts: { total: number; up: number },
+    ): MonitorAggregateInsert => {
+      const samples = periodRows.filter(isUpSample).map((row) => row.responseTimeMs!);
+      const metrics = computeMetrics({
+        totalChecks: counts.total,
+        successfulChecks: counts.up,
+        failedChecks: counts.total - counts.up,
+        responseTimes: samples,
+        statusChangeCount: periodRows.filter((row) => row.isStatusChange).length,
+      });
+      let responseHistogram: ResponseHistogram | null = null;
+      if (periodType === "daily" && samples.length > 0) {
+        responseHistogram = {};
+        for (const ms of samples) addToHistogram(responseHistogram, ms);
+      }
+      return {
+        monitorId,
+        periodType,
+        periodStart: new Date(periodStart),
+        location,
+        totalChecks: metrics.totalChecks,
+        successfulChecks: metrics.successfulChecks,
+        failedChecks: metrics.failedChecks,
+        uptimePercentage: metrics.uptimePercentage,
+        avgResponseMs: metrics.avgResponseMs,
+        minResponseMs: metrics.minResponseMs,
+        maxResponseMs: metrics.maxResponseMs,
+        p50ResponseMs: metrics.p50ResponseMs,
+        p95ResponseMs: metrics.p95ResponseMs,
+        p99ResponseMs: metrics.p99ResponseMs,
+        totalResponseMs: metrics.totalResponseMs,
+        responseSampleCount: metrics.responseSampleCount,
+        responseHistogram,
+        statusChangeCount: metrics.statusChangeCount,
+        updatedAt: now,
+      };
+    };
 
-    if (results.length === 0) {
-      return "skipped";
+    const located: MonitorAggregateInsert[] = [];
+    const combined: MonitorAggregateInsert[] = [];
+    for (const [periodStart, periodRows] of byPeriod) {
+      const byLocation = new Map<string, CheckRow[]>();
+      for (const row of periodRows) {
+        const list = byLocation.get(row.location);
+        if (list) list.push(row);
+        else byLocation.set(row.location, [row]);
+      }
+      for (const [location, locationRows] of byLocation) {
+        const up = locationRows.filter((row) => row.isUp).length;
+        located.push(
+          build(periodStart, location as MonitoringLocation, locationRows, {
+            total: locationRows.length,
+            up,
+          }),
+        );
+      }
+      // Always write the combined row: a period whose cycles all started in the previous period has rows but
+      // no checks of its own, and without a combined row readers would fall back to summing regional rows.
+      const counts = checksByPeriod.get(periodStart) ?? { total: 0, up: 0 };
+      combined.push(build(periodStart, null, periodRows, counts));
     }
 
-    // Compute raw metrics
-    const raw: RawMetrics = {
-      totalChecks: results.length,
-      successfulChecks: results.filter((r) => r.isUp).length,
-      failedChecks: results.filter((r) => !r.isUp).length,
-      responseTimes: results
-        .filter((r) => r.responseTimeMs !== null)
-        .map((r) => r.responseTimeMs!),
-      statusChangeCount: results.filter((r) => r.isStatusChange).length,
-    };
-
-    // Compute aggregate metrics
-    const metrics = computeMetrics(raw);
-
-    // Prepare the aggregate record
-    const aggregateData: MonitorAggregateInsert = {
-      monitorId,
-      periodType,
-      periodStart,
-      location,
-      totalChecks: metrics.totalChecks,
-      successfulChecks: metrics.successfulChecks,
-      failedChecks: metrics.failedChecks,
-      uptimePercentage: metrics.uptimePercentage,
-      avgResponseMs: metrics.avgResponseMs,
-      minResponseMs: metrics.minResponseMs,
-      maxResponseMs: metrics.maxResponseMs,
-      p50ResponseMs: metrics.p50ResponseMs,
-      p95ResponseMs: metrics.p95ResponseMs,
-      p99ResponseMs: metrics.p99ResponseMs,
-      totalResponseMs: metrics.totalResponseMs,
-      statusChangeCount: metrics.statusChangeCount,
-      updatedAt: new Date(),
-    };
-
+    let created = 0;
+    let updated = 0;
     const target = [
       monitorAggregates.monitorId,
       monitorAggregates.periodType,
       monitorAggregates.periodStart,
     ];
-    // PostgreSQL's ordinary unique index treats NULL locations as distinct.
-    const [written] = await db
-      .insert(monitorAggregates)
-      .values(aggregateData)
-      .onConflictDoUpdate({
-        target: location ? [...target, monitorAggregates.location] : target,
-        ...(location
-          ? {}
-          : { targetWhere: sql`${monitorAggregates.location} IS NULL` }),
-        set: aggregateData,
+    const upsert = async (batch: MonitorAggregateInsert[], withLocation: boolean) => {
+      for (let i = 0; i < batch.length; i += INSERT_CHUNK) {
+        const written = await db
+          .insert(monitorAggregates)
+          .values(batch.slice(i, i + INSERT_CHUNK))
+          .onConflictDoUpdate({
+            target: withLocation ? [...target, monitorAggregates.location] : target,
+            // PostgreSQL's ordinary unique index treats NULL locations as distinct.
+            ...(withLocation
+              ? {}
+              : { targetWhere: sql`${monitorAggregates.location} IS NULL` }),
+            set: {
+              totalChecks: sql`excluded.total_checks`,
+              successfulChecks: sql`excluded.successful_checks`,
+              failedChecks: sql`excluded.failed_checks`,
+              uptimePercentage: sql`excluded.uptime_percentage`,
+              avgResponseMs: sql`excluded.avg_response_ms`,
+              minResponseMs: sql`excluded.min_response_ms`,
+              maxResponseMs: sql`excluded.max_response_ms`,
+              p50ResponseMs: sql`excluded.p50_response_ms`,
+              p95ResponseMs: sql`excluded.p95_response_ms`,
+              p99ResponseMs: sql`excluded.p99_response_ms`,
+              totalResponseMs: sql`excluded.total_response_ms`,
+              responseSampleCount: sql`excluded.response_sample_count`,
+              responseHistogram: sql`excluded.response_histogram`,
+              statusChangeCount: sql`excluded.status_change_count`,
+              updatedAt: sql`excluded.updated_at`,
+            },
+          })
+          .returning({ inserted: sql<boolean>`xmax = 0` });
+        for (const { inserted } of written) {
+          if (inserted) created++;
+          else updated++;
+        }
+      }
+    };
+    await upsert(located, true);
+    await upsert(combined, false);
+
+    // Delete rows of this range that the data no longer supports (e.g. the last raw rows of a period were
+    // removed, or a superseded synthetic row was replaced), instead of keeping a stale aggregate forever.
+    const keep = new Set(
+      [...located, ...combined].map(
+        (row) => `${row.periodStart.getTime()}|${row.location ?? ""}`,
+      ),
+    );
+    const existing = await db
+      .select({
+        id: monitorAggregates.id,
+        periodStart: monitorAggregates.periodStart,
+        location: monitorAggregates.location,
       })
-      .returning({ inserted: sql<boolean>`xmax = 0` });
-    return written.inserted ? "created" : "updated";
+      .from(monitorAggregates)
+      .where(
+        and(
+          eq(monitorAggregates.monitorId, monitorId),
+          eq(monitorAggregates.periodType, periodType),
+          gte(monitorAggregates.periodStart, start),
+          lt(monitorAggregates.periodStart, end),
+        ),
+      );
+    // Raw rows are purged by retention (shorter than aggregate retention). A period with no rows is only
+    // "stale" when raw history reaches back before it; otherwise its rows may simply have been purged.
+    const [oldestRaw] = await db
+      .select({ checkedAt: monitorResults.checkedAt })
+      .from(monitorResults)
+      .where(eq(monitorResults.monitorId, monitorId))
+      .orderBy(monitorResults.checkedAt)
+      .limit(1);
+    const rawReachesBack = oldestRaw ? periodOf(oldestRaw.checkedAt.getTime()) : Infinity;
+    const stale = existing
+      .filter(
+        (row) =>
+          row.periodStart.getTime() > rawReachesBack &&
+          !keep.has(`${row.periodStart.getTime()}|${row.location ?? ""}`),
+      )
+      .map((row) => row.id);
+    if (stale.length > 0) {
+      await db.delete(monitorAggregates).where(inArray(monitorAggregates.id, stale));
+    }
+
+    return { created, updated };
   }
 
   /**
-   * Get aggregated metrics for a monitor within a time range
-   * Used by the UI to display 30d/90d/1yr metrics
+   * Aggregated rows of a window, one logical row per period: the combined row, or the location rollups when
+   * an older period has no combined row. A location filter reads that location's rows.
    */
-  async getAggregatedMetrics(
+  private async loadAggregateRows(
     monitorId: string,
     periodType: AggregationPeriod,
     startTime: Date,
     endTime: Date,
     location?: MonitoringLocation | null,
-  ): Promise<{
-    uptimePercentage: number;
-    avgResponseMs: number | null;
-    p95ResponseMs: number | null;
-    totalChecks: number;
-    /** End of the newest aggregated period; raw results from there on are not yet aggregated. Null when there are none. */
-    coveredTo: Date | null;
-  }> {
+  ): Promise<AggregateRow[]> {
     const conditions = [
       eq(monitorAggregates.monitorId, monitorId),
       eq(monitorAggregates.periodType, periodType),
@@ -671,13 +854,49 @@ export class MonitorAggregationService {
         .filter((row) => row.location === null)
         .map((row) => row.periodStart.getTime()),
     );
-    const aggregates = location
+    return location
       ? rows
       : rows.filter(
           (row) =>
             row.location === null ||
             !combinedPeriods.has(row.periodStart.getTime()),
         );
+  }
+
+  /**
+   * Get aggregated metrics for a monitor within a time range
+   * Used by the UI to display 30d/90d/1yr metrics
+   */
+  async getAggregatedMetrics(
+    monitorId: string,
+    periodType: AggregationPeriod,
+    startTime: Date,
+    endTime: Date,
+    location?: MonitoringLocation | null,
+  ): Promise<{
+    uptimePercentage: number;
+    avgResponseMs: number | null;
+    p95ResponseMs: number | null;
+    totalChecks: number;
+    /** Exact count of up checks (no rebuilding from the rounded percentage). */
+    successfulChecks: number;
+    /** Sum and count of the up-check response times behind avgResponseMs. */
+    totalResponseMs: number;
+    responseSampleCount: number;
+    /** Merged response-time histogram of the window (see ResponseHistogram). */
+    histogram: ResponseHistogram;
+    /** Start times (ms) of the periods that have aggregate rows. */
+    periodStarts: number[];
+    /** End of the newest aggregated period; raw results from there on are not yet aggregated. Null when there are none. */
+    coveredTo: Date | null;
+  }> {
+    const aggregates = await this.loadAggregateRows(
+      monitorId,
+      periodType,
+      startTime,
+      endTime,
+      location,
+    );
 
     if (aggregates.length === 0) {
       return {
@@ -685,70 +904,196 @@ export class MonitorAggregationService {
         avgResponseMs: null,
         p95ResponseMs: null,
         totalChecks: 0,
+        successfulChecks: 0,
+        totalResponseMs: 0,
+        responseSampleCount: 0,
+        histogram: {},
+        periodStarts: [],
         coveredTo: null,
       };
     }
 
-    // Combine metrics across periods
     let totalChecks = 0;
     let successfulChecks = 0;
     let totalResponseMs = 0;
-    let validResponseCount = 0;
-    const allP95Values: number[] = [];
+    let responseSampleCount = 0;
+    const histogram: ResponseHistogram = {};
 
     for (const agg of aggregates) {
       totalChecks += agg.totalChecks;
       successfulChecks += agg.successfulChecks;
-
-      if (agg.totalResponseMs && agg.totalChecks > 0) {
-        totalResponseMs += agg.totalResponseMs;
-        // Derive the actual valid response sample count from stored metrics.
-        // totalResponseMs is the sum of only valid (> 0) response times,
-        // and avgResponseMs = totalResponseMs / validSampleCount.
-        // Therefore validSampleCount = totalResponseMs / avgResponseMs.
-        if (agg.avgResponseMs && agg.avgResponseMs > 0) {
-          validResponseCount += Math.round(
-            agg.totalResponseMs / agg.avgResponseMs,
-          );
-        } else {
-          // Fallback: if avgResponseMs is 0/null but totalResponseMs > 0,
-          // use successfulChecks as a reasonable approximation
-          validResponseCount += agg.successfulChecks;
-        }
-      }
-
-      if (agg.p95ResponseMs !== null) {
-        allP95Values.push(agg.p95ResponseMs);
+      const part = histogramOfRow(agg);
+      totalResponseMs += agg.totalResponseMs ?? 0;
+      responseSampleCount += part.samples;
+      for (const [bucket, count] of Object.entries(part.histogram)) {
+        histogram[bucket] = (histogram[bucket] ?? 0) + count;
       }
     }
 
-    const uptimePercentage =
-      totalChecks > 0 ? (successfulChecks / totalChecks) * 100 : 0;
-
-    const avgResponseMs =
-      validResponseCount > 0
-        ? Math.round(totalResponseMs / validResponseCount)
-        : null;
-
-    // Use median of P95 values for combined P95
-    const p95ResponseMs =
-      allP95Values.length > 0
-        ? calculatePercentile(
-            allP95Values.sort((a, b) => a - b),
-            50,
-          )
-        : null;
-
     return {
-      uptimePercentage: Number(uptimePercentage.toFixed(2)),
-      avgResponseMs,
-      p95ResponseMs,
+      uptimePercentage: Number(
+        (totalChecks > 0 ? (successfulChecks / totalChecks) * 100 : 0).toFixed(2),
+      ),
+      avgResponseMs:
+        responseSampleCount > 0
+          ? Math.round(totalResponseMs / responseSampleCount)
+          : null,
+      p95ResponseMs:
+        responseSampleCount >= MIN_P95_SAMPLES
+          ? histogramPercentile(histogram, 95)
+          : null,
       totalChecks,
+      successfulChecks,
+      totalResponseMs,
+      responseSampleCount,
+      histogram,
+      periodStarts: aggregates.map((agg) => agg.periodStart.getTime()),
       coveredTo: new Date(
         Math.max(...aggregates.map((agg) => agg.periodStart.getTime())) +
-          (periodType === "hourly" ? 3_600_000 : 86_400_000),
+          PERIOD_MS[periodType],
       ),
     };
+  }
+
+  /**
+   * Metrics of [windowStart, now]: the aggregate rows plus the raw checks of every part of the window the
+   * aggregates do not cover. The gaps are found from the periods that actually have rows (the oldest partial
+   * period, the in-progress one, and any period the aggregator missed or skipped), so a pause or an aggregator
+   * outage does not hide checks. Without a location filter uptime counts checks (cycles), with one it counts
+   * that region's rows.
+   */
+  async getWindowMetrics(
+    monitorId: string,
+    periodType: AggregationPeriod,
+    windowStart: Date,
+    now: Date,
+    location?: MonitoringLocation | null,
+  ): Promise<WindowMetrics> {
+    const unit = PERIOD_MS[periodType];
+    const first = Math.ceil(windowStart.getTime() / unit) * unit;
+    const last = Math.floor(now.getTime() / unit) * unit;
+    // The in-progress period is always read raw, so never also from an aggregate row.
+    const agg = await this.getAggregatedMetrics(
+      monitorId,
+      periodType,
+      windowStart,
+      new Date(last),
+      location,
+    );
+    const covered = new Set(agg.periodStarts);
+
+    const gaps: [number, number][] = [];
+    const addGap = (gapFrom: number, gapTo: number) => {
+      if (gapTo <= gapFrom) return;
+      const previous = gaps[gaps.length - 1];
+      if (previous && previous[1] === gapFrom) previous[1] = gapTo;
+      else gaps.push([gapFrom, gapTo]);
+    };
+    addGap(windowStart.getTime(), Math.min(first, now.getTime() + 1));
+    for (let p = first; p < last; p += unit) {
+      if (!covered.has(p)) addGap(p, p + unit);
+    }
+    addGap(Math.max(last, first), now.getTime() + 1);
+
+    let totalChecks = agg.totalChecks;
+    let successfulChecks = agg.successfulChecks;
+    let totalResponseMs = agg.totalResponseMs;
+    let responseSampleCount = agg.responseSampleCount;
+    const histogram: ResponseHistogram = { ...agg.histogram };
+
+    if (gaps.length > 0) {
+      // Cycles are judged on whole rows, so also read the margin around each gap.
+      const rows = await fetchCheckRows(
+        monitorId,
+        location
+          ? gaps
+          : gaps.map(([a, b]) => [a - CYCLE_MARGIN_MS, b + CYCLE_MARGIN_MS]),
+        location,
+      );
+      const resolve = location
+        ? () => null
+        : await loadPolicyResolver(monitorId, rows);
+      const checks = location ? [] : groupChecks(rows, resolve, now.getTime());
+      for (const [gapFrom, gapTo] of gaps) {
+        const within = (ms: number) => ms >= gapFrom && ms < gapTo;
+        const gapRows = rows.filter((row) => within(row.checkedAt.getTime()));
+        if (location) {
+          totalChecks += gapRows.length;
+          successfulChecks += gapRows.filter((row) => row.isUp).length;
+        } else {
+          for (const check of checks) {
+            if (!within(check.start)) continue;
+            totalChecks++;
+            if (check.isUp) successfulChecks++;
+          }
+        }
+        for (const row of gapRows.filter(isUpSample)) {
+          totalResponseMs += row.responseTimeMs!;
+          responseSampleCount++;
+          addToHistogram(histogram, row.responseTimeMs!);
+        }
+      }
+    }
+
+    return {
+      totalChecks,
+      successfulChecks,
+      uptimePercentage: totalChecks > 0 ? (successfulChecks / totalChecks) * 100 : null,
+      avgResponseMs:
+        responseSampleCount > 0 ? Math.round(totalResponseMs / responseSampleCount) : null,
+      p95ResponseMs:
+        responseSampleCount >= MIN_P95_SAMPLES ? histogramPercentile(histogram, 95) : null,
+    };
+  }
+
+  /**
+   * Exact p95 of up-check response times since `since` from raw rows (percentile_cont). Used for the 24h
+   * window where raw is a few thousand rows; null below the minimum sample count.
+   */
+  async getRawP95(
+    monitorId: string,
+    since: Date,
+    location?: MonitoringLocation | null,
+  ): Promise<number | null> {
+    const [row] = await db
+      .select({
+        samples: sql<number>`count(*)`,
+        p95: sql<number | null>`percentile_cont(0.95) within group (order by ${monitorResults.responseTimeMs})`,
+      })
+      .from(monitorResults)
+      .where(
+        and(
+          eq(monitorResults.monitorId, monitorId),
+          gte(monitorResults.checkedAt, since),
+          eq(monitorResults.isUp, true),
+          sql`${monitorResults.responseTimeMs} > 0`,
+          location ? eq(monitorResults.location, location) : undefined,
+        ),
+      );
+    if (!row || Number(row.samples) < MIN_P95_SAMPLES || row.p95 === null) return null;
+    return Math.round(Number(row.p95));
+  }
+
+  /** True when the monitor is configured for the location or has ever recorded a result there. */
+  async monitorHasLocation(
+    monitorId: string,
+    configuredLocations: readonly string[] | undefined,
+    location: string,
+  ): Promise<boolean> {
+    // Location codes are varchar(50) text; anything else cannot match a row.
+    if (location.length === 0 || location.length > 50) return false;
+    if (configuredLocations?.includes(location)) return true;
+    const [row] = await db
+      .select({ id: monitorResults.id })
+      .from(monitorResults)
+      .where(
+        and(
+          eq(monitorResults.monitorId, monitorId),
+          eq(monitorResults.location, location as MonitoringLocation),
+        ),
+      )
+      .limit(1);
+    return Boolean(row);
   }
 
   /**

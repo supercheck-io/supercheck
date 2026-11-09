@@ -2,7 +2,6 @@ import { db } from "@/utils/db";
 import {
   statusPageComponentMonitors,
   monitorAggregates,
-  monitorResults,
 } from "@/db/schema";
 import {
   and,
@@ -20,7 +19,7 @@ import {
   combineMonitorDay,
   type MonitorDayCounts,
 } from "@/lib/status-page-uptime";
-import { excludeSupersededSyntheticResults } from "@/lib/monitor-result-filters";
+import { monitorAggregationService } from "@/lib/monitor-aggregation-service";
 
 type ComponentForMetrics = {
   id: string;
@@ -100,7 +99,9 @@ export async function withDailyMetrics<T extends ComponentForMetrics>(
             statusPageComponentMonitors.weight,
             monitorAggregates.periodStart,
           );
-  const current =
+  // Today is not aggregated yet. Read it through the same check (cycle) counting as the aggregates, so a
+  // 3-region monitor with one region down does not read 67% today and 100% on every earlier day.
+  const links =
     componentIds.length === 0
       ? []
       : await db
@@ -108,28 +109,28 @@ export async function withDailyMetrics<T extends ComponentForMetrics>(
             componentId: statusPageComponentMonitors.componentId,
             monitorId: statusPageComponentMonitors.monitorId,
             weight: statusPageComponentMonitors.weight,
-            date: sql<string>`to_char(${monitorResults.checkedAt}, 'YYYY-MM-DD')`,
-            totalChecks: sql<number>`count(*)::integer`,
-            successfulChecks: sql<number>`count(*) filter (where ${monitorResults.isUp})::integer`,
           })
           .from(statusPageComponentMonitors)
-          .innerJoin(
-            monitorResults,
-            eq(monitorResults.monitorId, statusPageComponentMonitors.monitorId),
-          )
-          .where(
-            and(
-              inArray(statusPageComponentMonitors.componentId, componentIds),
-              gte(monitorResults.checkedAt, today),
-              excludeSupersededSyntheticResults,
-            ),
-          )
-          .groupBy(
-            statusPageComponentMonitors.componentId,
-            statusPageComponentMonitors.monitorId,
-            statusPageComponentMonitors.weight,
-            sql`to_char(${monitorResults.checkedAt}, 'YYYY-MM-DD')`,
-          );
+          .where(inArray(statusPageComponentMonitors.componentId, componentIds));
+  const now = new Date();
+  const todayByMonitor = new Map(
+    await Promise.all(
+      [...new Set(links.map((link) => link.monitorId))].map(
+        async (monitorId) =>
+          [
+            monitorId,
+            await monitorAggregationService.getWindowMetrics(monitorId, "daily", today, now, null),
+          ] as const,
+      ),
+    ),
+  );
+  const todayKey = today.toISOString().slice(0, 10);
+  const current = links.flatMap((link) => {
+    const metrics = todayByMonitor.get(link.monitorId);
+    return metrics && metrics.totalChecks > 0
+      ? [{ ...link, date: todayKey, totalChecks: metrics.totalChecks, successfulChecks: metrics.successfulChecks }]
+      : [];
+  });
   const dailyMetrics = [...historical, ...current];
 
   // Linked monitor names/ids/status are internal; only the aggregated metrics are public.
