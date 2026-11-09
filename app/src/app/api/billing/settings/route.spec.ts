@@ -20,6 +20,7 @@ jest.mock("@/lib/services/billing-settings.service", () => ({
   billingSettingsService: {
     getSettings: jest.fn(),
     updateSettings: jest.fn(),
+    getEffectiveSpendingLimit: jest.fn().mockResolvedValue({ source: "plan_default", enabled: true, limitCents: 7000, hardStop: true, planDefaultCents: 7000 }),
   },
 }));
 

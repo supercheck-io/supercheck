@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { formatOveragePrice } from "@/lib/billing/pricing-defaults";
+import catalog from "@/lib/billing/plan-catalog.json";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -23,6 +24,8 @@ import {
   CreditCard,
   Mail,
 } from "lucide-react";
+
+const usd = (cents: number) => `$${(cents / 100).toLocaleString("en-US")}`;
 
 // Every trial FAQ except the last one ("What happens when the free trial ends?") offers the trial.
 const TRIAL_OFFER_QUESTIONS = new Set(trialFaqs().slice(0, -1).map((faq) => faq.question));
@@ -529,7 +532,7 @@ export default function SubscribePage() {
           <p className="mt-5 text-center text-xs leading-relaxed text-muted-foreground">
             Billed monthly per organization, not per seat, in USD before tax. Cancel anytime.
             <br />
-            Usage overages are shown above. Review your total at checkout.
+            Usage overages are shown above. Each plan starts with a monthly overage cap and hard stop (Plus {usd(catalog.plus.limits.defaultSpendingLimitCents)}, Pro {usd(catalog.pro.limits.defaultSpendingLimitCents)}) that you can change later. Review your total at checkout.
           </p>
           <p className="mt-6 text-center text-sm text-muted-foreground">
             <a

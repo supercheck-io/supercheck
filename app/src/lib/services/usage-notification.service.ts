@@ -137,13 +137,15 @@ class UsageNotificationService {
       );
       if (sreResult) results.push(sreResult);
 
-      // Check spending limit
-      if (settings.enableSpendingLimit && settings.monthlySpendingLimitCents) {
+      // Check the enforced cap: the owner's custom cap or the plan default.
+      const cap = await billingSettingsService.getEffectiveSpendingLimit(organizationId);
+      if (cap.enabled && cap.limitCents) {
         const spendingResult = await this.checkSpendingThreshold(
           organizationId,
           org.name,
           metrics.totalOverageCostCents,
-          settings.monthlySpendingLimitCents,
+          cap.limitCents,
+          cap.hardStop,
           settings,
           org.usagePeriodStart,
           org.usagePeriodEnd
@@ -231,6 +233,7 @@ class UsageNotificationService {
     organizationName: string,
     currentSpendingCents: number,
     limitCents: number,
+    hardStop: boolean,
     settings: Awaited<ReturnType<typeof billingSettingsService.getSettings>>,
     periodStart: Date | null,
     periodEnd: Date | null
@@ -243,7 +246,7 @@ class UsageNotificationService {
     if (percentage >= 100) {
       notificationType = "spending_limit_reached";
       thresholdKey = "spending_limit";
-    } else if (percentage >= 90 && settings.hardStopOnLimit && settings.notifyAt90Percent) {
+    } else if (percentage >= 90 && hardStop && settings.notifyAt90Percent) {
       // PROACTIVE WARNING: Alert at 90% when hard-stop is enabled
       // This gives users advance notice before their executions get blocked
       notificationType = "spending_limit_warning";
@@ -281,7 +284,8 @@ class UsageNotificationService {
       settings.notificationEmails,
       currentSpendingCents / 100,
       limitCents / 100,
-      thresholdKey
+      thresholdKey,
+      hardStop,
     );
   }
 
@@ -301,7 +305,8 @@ class UsageNotificationService {
     customEmails: string[],
     currentSpendingDollars?: number,
     spendingLimitDollars?: number,
-    notificationThresholdKey?: NotificationThresholdKey
+    notificationThresholdKey?: NotificationThresholdKey,
+    hardStop?: boolean,
   ): Promise<NotificationResult> {
     try {
       // Get recipients
@@ -334,6 +339,7 @@ class UsageNotificationService {
         usagePercentage,
         currentSpendingDollars,
         spendingLimitDollars,
+        hardStop,
         billingPageUrl,
         periodEndDate,
       });

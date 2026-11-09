@@ -364,6 +364,7 @@ describe('UsageTrackerService execution blocking', () => {
       },
       billingSettings: {
         findFirst: jest.fn().mockResolvedValue({
+          spendingLimitSource: 'custom',
           enableSpendingLimit: true,
           hardStopOnLimit: true,
           monthlySpendingLimitCents: 100,
@@ -384,7 +385,24 @@ describe('UsageTrackerService execution blocking', () => {
         }),
       },
     };
-    return { org, query, service: new UsageTrackerService({ query } as never) };
+    const execute = jest.fn(async () => {
+      const settings = (await query.billingSettings.findFirst()) as
+        { spendingLimitSource?: string } | undefined;
+      const plan = (await query.planLimits.findFirst()) as
+        { defaultSpendingLimitCents?: number | null } | undefined;
+      return [
+        {
+          source: settings?.spendingLimitSource ?? null,
+          default_cents: plan?.defaultSpendingLimitCents ?? null,
+        },
+      ];
+    });
+    return {
+      org,
+      query,
+      execute,
+      service: new UsageTrackerService({ query, execute } as never),
+    };
   }
 
   it('enforces the current monitor quota deterministically and resumes on upgrade', async () => {
@@ -434,6 +452,83 @@ describe('UsageTrackerService execution blocking', () => {
     });
   });
 
+  it('applies the plan default cap with hard stop when no custom cap is set', async () => {
+    const f = admissionFixture();
+    f.query.billingSettings.findFirst.mockResolvedValue(undefined);
+    f.query.planLimits.findFirst.mockResolvedValue({
+      playwrightMinutesIncluded: 3000,
+      k6VuMinutesIncluded: 20000,
+      sreInvestigationUnitsIncluded: '25',
+      defaultSpendingLimitCents: 100,
+    });
+    await expect(
+      f.service.shouldBlockExecution('org-1'),
+    ).resolves.toMatchObject({
+      blocked: true,
+      reason: expect.stringContaining('$1.00 reached'),
+    });
+    f.query.planLimits.findFirst.mockResolvedValue({
+      playwrightMinutesIncluded: 3000,
+      k6VuMinutesIncluded: 20000,
+      sreInvestigationUnitsIncluded: '25',
+      defaultSpendingLimitCents: 101,
+    });
+    await expect(f.service.shouldBlockExecution('org-1')).resolves.toEqual({
+      blocked: false,
+    });
+  });
+
+  it('lets an owner turn the cap off', async () => {
+    const f = admissionFixture();
+    f.query.billingSettings.findFirst.mockResolvedValue({
+      spendingLimitSource: 'custom',
+      enableSpendingLimit: false,
+      hardStopOnLimit: false,
+      monthlySpendingLimitCents: null,
+    });
+    await expect(f.service.shouldBlockExecution('org-1')).resolves.toEqual({
+      blocked: false,
+    });
+  });
+
+  it('keeps the stored cap while migration 0071 is pending, and fails closed on other errors', async () => {
+    const f = admissionFixture();
+    f.query.billingSettings.findFirst.mockResolvedValue({
+      enableSpendingLimit: true,
+      hardStopOnLimit: true,
+      monthlySpendingLimitCents: 100,
+    });
+    const warning = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => {});
+    try {
+      f.execute.mockRejectedValueOnce(
+        Object.assign(
+          new Error('column "spending_limit_source" does not exist'),
+          { code: '42703' },
+        ),
+      );
+      await expect(
+        f.service.shouldBlockExecution('org-1'),
+      ).resolves.toMatchObject({
+        blocked: true,
+        reason: expect.stringContaining('$1.00 reached'),
+      });
+      expect(warning).toHaveBeenCalledWith(
+        expect.stringContaining('Migration 0071 is pending'),
+      );
+      f.execute.mockRejectedValueOnce(new Error('connection reset'));
+      await expect(
+        f.service.shouldBlockExecution('org-1'),
+      ).resolves.toMatchObject({
+        blocked: true,
+        reason: expect.stringContaining('Unable to verify'),
+      });
+    } finally {
+      warning.mockRestore();
+    }
+  });
+
   it('does not block early at an exact fractional SRE overage boundary', async () => {
     const f = admissionFixture();
     f.org.sreInvestigationUnitsUsed = '26';
@@ -443,6 +538,7 @@ describe('UsageTrackerService execution blocking', () => {
       sreInvestigationUnitsIncluded: '25.86',
     });
     f.query.billingSettings.findFirst.mockResolvedValue({
+      spendingLimitSource: 'custom',
       enableSpendingLimit: true,
       hardStopOnLimit: true,
       monthlySpendingLimitCents: 8,
@@ -480,6 +576,7 @@ describe('UsageTrackerService execution blocking', () => {
     f.org.k6VuMinutesUsed = 20400;
     f.org.sreInvestigationUnitsUsed = '25';
     f.query.billingSettings.findFirst.mockResolvedValue({
+      spendingLimitSource: 'custom',
       enableSpendingLimit: true,
       hardStopOnLimit: true,
       monthlySpendingLimitCents: 8,

@@ -4,6 +4,10 @@ import { NextRequest } from "next/server";
 const mockFindFirst = jest.fn();
 const mockSelects: unknown[][] = [];
 const mockWheres: unknown[] = [];
+const mockStale = jest.fn(async (_ids: string[]): Promise<Set<string>> => new Set());
+jest.mock("@/lib/status-pages/component-freshness", () => ({
+  loadStaleComponentIds: (ids: string[]) => mockStale(ids),
+}));
 jest.mock("@/utils/db", () => ({
   db: {
     query: { statusPages: { findFirst: (...a: unknown[]) => mockFindFirst(...a) } },
@@ -66,6 +70,33 @@ describe("status badge", () => {
 
   it("a critical incident outranks a degraded component", async () => {
     mockSelects.push([{ status: "degraded_performance" }], [{ impact: "critical" }]);
+    expect(await call()).toContain("major outage");
+  });
+
+  it("ignores components whose monitors stopped reporting, like the public page", async () => {
+    mockStale.mockResolvedValueOnce(new Set(["stale"]));
+    mockSelects.push([{ id: "stale", status: "major_outage" }, { id: "live", status: "operational" }], []);
+    expect(await call()).toContain("operational");
+    expect(mockStale).toHaveBeenLastCalledWith(["stale", "live"]);
+  });
+
+  it("says no recent data when every component is stale and no incident is open", async () => {
+    mockStale.mockResolvedValueOnce(new Set(["a", "b"]));
+    mockSelects.push([{ id: "a", status: "operational" }, { id: "b", status: "operational" }], []);
+    const svg = await call();
+    expect(svg).toContain("no recent data");
+    expect(svg).not.toContain("operational");
+  });
+
+  it("an open incident still wins when every component is stale", async () => {
+    mockStale.mockResolvedValueOnce(new Set(["a"]));
+    mockSelects.push([{ id: "a", status: "operational" }], [{ impact: "critical" }]);
+    expect(await call()).toContain("major outage");
+  });
+
+  it("keeps a live outage when another component is stale", async () => {
+    mockStale.mockResolvedValueOnce(new Set(["stale"]));
+    mockSelects.push([{ id: "stale", status: "operational" }, { id: "live", status: "major_outage" }], []);
     expect(await call()).toContain("major outage");
   });
 

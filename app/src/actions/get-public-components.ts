@@ -3,6 +3,7 @@
 import { db } from "@/utils/db";
 import { statusPageComponents, statusPages } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
+import { loadStaleComponentIds } from "@/lib/status-pages/component-freshness";
 import { z } from "zod";
 import { withDailyMetrics } from "@/lib/status-page-daily-metrics";
 
@@ -84,9 +85,12 @@ export async function getPublicComponents(statusPageId: string) {
 
     const publicComponents = await withDailyMetrics(components);
 
+    // When every linked monitor has stopped reporting, the stored status is stale: show "no recent data".
+    const stale = await loadStaleComponentIds(components.map((component) => component.id));
+
     return {
       success: true,
-      components: publicComponents,
+      components: publicComponents.map((component) => ({ ...component, noRecentData: stale.has(component.id) })),
     };
   } catch (error) {
     console.error("Error fetching public components:", error);

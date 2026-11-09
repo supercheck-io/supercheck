@@ -10,15 +10,15 @@ const pricing = {
   plans: ["plus", "pro"].map((id) => ({
     id,
     name: id === "plus" ? "Plus" : "Pro",
-    price: id === "plus" ? 49 : 149,
+    price: id === "plus" ? 29 : 99,
     interval: "month",
     description: "Managed testing and monitoring",
     features: {
       monitors: 50,
       playwrightMinutes: 3000,
       k6VuMinutes: 30000,
-      aiCredits: 1000,
-      sreInvestigationUnits: 200,
+      aiCredits: 500,
+      sreInvestigationUnits: 100,
       concurrentExecutions: 5,
       teamMembers: 5,
       projects: 10,
@@ -33,7 +33,7 @@ const pricing = {
       playwrightMinutes: 0.01,
       k6VuMinutes: 0.002,
       aiCredits: 0,
-      sreInvestigationUnits: 0.1,
+      sreInvestigationUnits: 0.25,
     },
   })),
   featureComparison: [],
@@ -123,10 +123,10 @@ describe("signup plan selection", () => {
       screen.getByRole("heading", { name: "Plus", level: 2 }),
     ).toBeVisible();
     expect(
-      screen.getAllByText("1,000 AI credits/month · fair use"),
+      screen.getAllByText("500 AI credits/month · fair use"),
     ).toHaveLength(2);
     expect(
-      screen.getAllByText("200 completed AI SRE investigations/month"),
+      screen.getAllByText("100 completed AI SRE investigations/month"),
     ).toHaveLength(2);
     expect(screen.queryByText("Most Popular")).not.toBeInTheDocument();
     expect(screen.getByText("Recommended")).toBeVisible();
@@ -134,6 +134,7 @@ describe("signup plan selection", () => {
     expect(screen.getAllByText("5 concurrent runs")).toHaveLength(2);
     expect(screen.getAllByText("Monitor data: 7 days raw / 30 days metrics")).toHaveLength(2);
     expect(screen.getByText(/per organization, not per seat/)).toBeVisible();
+    expect(screen.getByText(/Plus \$70, Pro \$300\) that you can change later/)).toBeVisible();
     expect(
       screen.queryByRole("heading", { name: "Compare plans in detail" }),
     ).not.toBeInTheDocument();

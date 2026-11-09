@@ -317,6 +317,8 @@ Use **Copy Prompt** to copy error details for AI-assisted debugging.
 
 If a monitor's locations have no live worker, that check is skipped and not counted as down. With several locations, only the locations that ran are judged. A scheduled check that waited in a busy queue for more than three times the interval (at least 3 minutes) may be skipped when a newer result already exists; skipped checks record no result, downtime or alert.
 
+When your organization reaches its overage cap with hard stop on, synthetic monitor checks pause until the cap is raised or the billing period resets. They record no result, downtime or alert, and org admins see a banner in the app. HTTP, website, ping and port monitors keep running. See [Subscription](/docs/app/admin/subscription).
+
 ## Check Intervals
 
 Available intervals: 1 minute, 5 minutes, 10 minutes, 15 minutes, 30 minutes, 1 hour, 3 hours, 12 hours, and 24 hours. Shorter intervals detect failures sooner and use more resources.

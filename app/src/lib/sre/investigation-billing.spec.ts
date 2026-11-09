@@ -98,6 +98,7 @@ const planFixture = {
   k6VuMinutesIncluded: 100,
   aiCreditsIncluded: 10,
   sreInvestigationUnitsIncluded: "10.0000",
+  defaultSpendingLimitCents: null,
   runningCapacity: 1,
   queuedCapacity: 10,
   maxTeamMembers: 3,

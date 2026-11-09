@@ -28,7 +28,7 @@ Object.defineProperty(global, "ResizeObserver", {
 const meter = { used: 0, included: 100, overage: 0, percentage: 0 };
 const resource = { current: 1, limit: 5, remaining: 4, percentage: 20 };
 const subscription = {
-  plan: "plus", status: "active", basePriceCents: 4900,
+  plan: "plus", status: "active", basePriceCents: 2900,
   currentPeriodStart: null, currentPeriodEnd: null, hasBillingCustomer: true,
 };
 const billing = {
@@ -39,7 +39,7 @@ const billing = {
   planFeatures: { dataRetentionDays: 7, aggregatedDataRetentionDays: 30 },
 };
 const pricing = { plans: [{
-  id: "pro", name: "Pro", price: 149,
+  id: "pro", name: "Pro", price: 99,
   features: { playwrightMinutes: 10000, k6VuMinutes: 75000, sreInvestigationUnits: 100 },
   overagePricing: { playwrightMinutes: 0.02, k6VuMinutes: 0.0025, sreInvestigationUnits: 0.5 },
 }] };
@@ -79,7 +79,7 @@ describe("SubscriptionTab", () => {
 
   it("shows fractional minutes, real period availability, and an owner portal action", async () => {
     render(<SubscriptionTab currentUserRole="org_owner" />);
-    expect(await screen.findByText("$50.25")).toBeInTheDocument();
+    expect(await screen.findByText("$30.25")).toBeInTheDocument();
     expect(screen.getByText("Billing period unavailable")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Manage Subscription" })).toBeEnabled();
     expect(screen.getByRole("progressbar", { name: "Playwright Execution Minutes" }))
@@ -130,42 +130,42 @@ describe("SubscriptionTab", () => {
     }));
     render(<SubscriptionTab currentUserRole="org_owner" />);
     expect(await screen.findByText("Usage estimate unavailable")).toBeInTheDocument();
-    expect(screen.queryByText("$349.00")).not.toBeInTheDocument();
+    expect(screen.queryByText("$329.00")).not.toBeInTheDocument();
     expect(screen.queryByText("Hard Stop Active")).not.toBeInTheDocument();
   });
 
   it("clears a stale estimate when usage cannot be refreshed", async () => {
     render(<SubscriptionTab currentUserRole="org_owner" />);
-    await screen.findByText("$50.25");
+    await screen.findByText("$30.25");
     fetchMock.mockImplementation(async (url: string) => ({
       ok: url.endsWith("/current"), json: async () => billing,
     }));
     fireEvent.click(screen.getByRole("button", { name: "Refresh after save" }));
     expect(await screen.findByText("Usage estimate unavailable")).toBeInTheDocument();
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(6));
-    expect(screen.queryByText("$50.25")).not.toBeInTheDocument();
+    expect(screen.queryByText("$30.25")).not.toBeInTheDocument();
   });
 
   it("retains the estimate while refreshing and clears it if subscription refresh fails", async () => {
     render(<SubscriptionTab currentUserRole="org_owner" />);
-    await screen.findByText("$50.25");
+    await screen.findByText("$30.25");
     let resolveCurrent!: (response: { ok: boolean; json: () => Promise<object> }) => void;
     const pendingCurrent = new Promise((resolve) => { resolveCurrent = resolve; });
     fetchMock.mockImplementation(async (url: string) => url.endsWith("/current")
       ? pendingCurrent
       : { ok: true, json: async () => ({ organizationId: "org_1", spending: { currentDollars: 5 } }) });
     fireEvent.click(screen.getByRole("button", { name: "Refresh after save" }));
-    expect(screen.getByText("$50.25")).toBeInTheDocument();
+    expect(screen.getByText("$30.25")).toBeInTheDocument();
     expect(screen.queryByText("Usage estimate unavailable")).not.toBeInTheDocument();
     await act(async () => { resolveCurrent({ ok: false, json: async () => ({ error: "Unavailable" }) }); });
     expect(await screen.findByText("Unable to load subscription data")).toBeInTheDocument();
     expect(screen.queryByText("Plus Plan")).not.toBeInTheDocument();
-    expect(screen.queryByText("$54.00")).not.toBeInTheDocument();
+    expect(screen.queryByText("$34.00")).not.toBeInTheDocument();
   });
 
   it("ignores an older refresh failure after a newer refresh succeeds", async () => {
     render(<SubscriptionTab currentUserRole="org_owner" />);
-    await screen.findByText("$50.25");
+    await screen.findByText("$30.25");
     let failEarlier!: (error: Error) => void;
     const earlier = new Promise((_, reject) => { failEarlier = reject; });
     fetchMock.mockImplementation(async (url: string) => url.endsWith("/current")
@@ -175,9 +175,9 @@ describe("SubscriptionTab", () => {
       json: async () => url.endsWith("/current") ? billing : { organizationId: "org_1", spending: { currentDollars: 2 } },
     }));
     fireEvent.click(screen.getByRole("button", { name: "Refresh after save" }));
-    await screen.findByText("$51.00");
+    await screen.findByText("$31.00");
     await act(async () => { failEarlier(new Error("Older request failed")); });
-    expect(screen.getByText("$51.00")).toBeInTheDocument();
+    expect(screen.getByText("$31.00")).toBeInTheDocument();
     expect(screen.queryByText("Usage estimate unavailable")).not.toBeInTheDocument();
   });
 
@@ -192,7 +192,7 @@ describe("SubscriptionTab", () => {
     await screen.findByText("No active plan");
     expect(screen.getByRole("link", { name: "Resubscribe" })).toHaveAttribute("href", "/subscribe");
     expect(screen.getByRole("button", { name: "Manage Subscription" })).toBeEnabled();
-    expect(screen.queryByText("$49.00")).not.toBeInTheDocument();
+    expect(screen.queryByText("$29.00")).not.toBeInTheDocument();
   });
 
   it("compares all billable meters before suggesting Pro", async () => {
@@ -204,8 +204,8 @@ describe("SubscriptionTab", () => {
       } } : url.endsWith("/pricing") ? pricing : { organizationId: "org_1", spending: { currentDollars: 300 } },
     }));
     render(<SubscriptionTab currentUserRole="org_owner" />);
-    await screen.findByText("$349.00");
-    expect(await screen.findByText(/Pro would cost about \$172.50/)).toHaveTextContent("$176.50 less");
+    await screen.findByText("$329.00");
+    expect(await screen.findByText(/Pro would cost about \$122.50/)).toHaveTextContent("$206.50 less");
     expect(screen.getByRole("link", { name: "Compare plans" })).toHaveAttribute("href", "/subscribe");
     // A click is what a touch tap dispatches; hover/focus-only UI fails here.
     fireEvent.click(screen.getByRole("button", { name: "How billing works" }));
@@ -219,7 +219,7 @@ describe("SubscriptionTab", () => {
       } } : url.endsWith("/pricing") ? pricing : { organizationId: "org_1", spending: { currentDollars: 300 } },
     }));
     render(<SubscriptionTab currentUserRole="org_owner" />);
-    expect(await screen.findByText(/Pro would cost about \$149.07/)).toHaveTextContent("$199.93 less");
+    expect(await screen.findByText(/Pro would cost about \$99.07/)).toHaveTextContent("$229.93 less");
   });
 
   it("keeps billing available when the optional plan comparison fails", async () => {
@@ -228,7 +228,7 @@ describe("SubscriptionTab", () => {
       return { ok: true, json: async () => url.endsWith("/current") ? billing : { organizationId: "org_1", spending: { currentDollars: 300 } } };
     });
     render(<SubscriptionTab currentUserRole="org_owner" />);
-    await screen.findByText("$349.00");
+    await screen.findByText("$329.00");
     expect(screen.queryByRole("link", { name: "Compare plans" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Manage Subscription" })).toBeEnabled();
   });

@@ -12,6 +12,12 @@ import { getEnabledLocations } from "@/lib/location-registry";
 
 const PLAN_LIMIT_FALLBACKS = { plus: catalog.plus.limits, pro: catalog.pro.limits };
 
+// The catalog stands in only for a missing plan row; a row with no default cap is uncapped.
+function formatDefaultCap(row: { defaultSpendingLimitCents: number | null } | undefined, fallbackCents: number) {
+  const cents = row ? row.defaultSpendingLimitCents : fallbackCents;
+  return cents ? `$${cents / 100}/month` : "None";
+}
+
 /**
  * GET /api/billing/pricing
  * Get available subscription plans and pricing information from database
@@ -173,6 +179,13 @@ export async function GET() {
             pro: `${Number(plans.find((p) => p.plan === "pro")?.sreInvestigationUnitsIncluded ?? PLAN_LIMIT_FALLBACKS.pro.sreInvestigationUnitsIncluded)}/month`,
             enterprise: "Custom",
           },
+          {
+            name: "Default overage cap (hard stop)",
+            plus: formatDefaultCap(plans.find((p) => p.plan === "plus"), PLAN_LIMIT_FALLBACKS.plus.defaultSpendingLimitCents),
+            pro: formatDefaultCap(plans.find((p) => p.plan === "pro"), PLAN_LIMIT_FALLBACKS.pro.defaultSpendingLimitCents),
+            enterprise: "Custom",
+          },
+
           {
             name: "Concurrent Executions",
             plus: plans.find((p) => p.plan === "plus")?.runningCapacity ?? PLAN_LIMIT_FALLBACKS.plus.runningCapacity,

@@ -6,7 +6,7 @@ jest.mock("@/lib/services/subscription-service", () => ({ subscriptionService: {
 } }));
 jest.mock("@/lib/feature-flags", () => ({
   isCloudHosted: jest.fn(() => true),
-  getPlanPricing: jest.fn(() => ({ monthlyPriceCents: 4900, name: "Plus" })),
+  getPlanPricing: jest.fn(() => ({ monthlyPriceCents: 2900, name: "Plus" })),
 }));
 const getUserOrgRole = jest.fn();
 jest.mock("@/lib/rbac/middleware", () => ({ getUserOrgRole: (...args: unknown[]) => getUserOrgRole(...args) }));
@@ -76,7 +76,7 @@ describe("current billing subscription display", () => {
     });
     const response = await GET();
     expect((await response.json()).subscription).toMatchObject({
-      plan: "plus", status: "past_due", basePriceCents: 4900,
+      plan: "plus", status: "past_due", basePriceCents: 2900,
     });
   });
 
