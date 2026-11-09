@@ -618,3 +618,42 @@ describe('incident-only monitors (alerts off or no channel)', () => {
     expect(alertService.signalRecovery).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('MonitorEvaluator.checkSslExpirationAlert', () => {
+  const run = async (details: Record<string, unknown>) => {
+    const alertService = {
+      sendSslExpirationNotification: jest.fn(async () => true),
+    };
+    const evaluator = new MonitorEvaluator(
+      { db: {} } as never,
+      alertService as never,
+    );
+    jest.spyOn(evaluator, 'getLastSslAlert').mockResolvedValue(null);
+    await evaluator.checkSslExpirationAlert(
+      { monitorId: 'm1', details, responseTimeMs: 1 } as never,
+      {
+        alertConfig: { enabled: true, alertOnSslExpiration: true },
+        config: { sslDaysUntilExpirationWarning: 30 },
+      } as never,
+    );
+    return alertService.sendSslExpirationNotification;
+  };
+
+  it('does not send an expiry alert for a probe that read no certificate', async () => {
+    const send = await run({
+      sslWarning: 'SSL check could not complete: SSL connection timeout',
+    });
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('alerts from a certificate inside the warning window', async () => {
+    const send = await run({
+      sslCertificate: { valid: true, daysRemaining: 10 },
+    });
+    expect(send).toHaveBeenCalledWith(
+      'm1',
+      'SSL certificate expires in 10 days',
+      expect.anything(),
+    );
+  });
+});

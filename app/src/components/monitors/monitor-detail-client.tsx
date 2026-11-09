@@ -551,6 +551,30 @@ export function MonitorDetailClient({
       return null;
     }
 
+    // The worker saves the last certificate on the monitor; the SSL check runs about daily,
+    // so recent results usually carry none. Results remain the fallback for older rows.
+    const storedCert = monitor.config?.sslCertificate;
+    let targetHost: string | undefined;
+    try {
+      targetHost = new URL(monitor.target || monitor.url || "").hostname.toLowerCase();
+    } catch {
+      targetHost = undefined;
+    }
+    // A certificate read before the target moved to another host is stale until the next check
+    if (storedCert && storedCert.daysRemaining !== undefined && storedCert.host === targetHost) {
+      // Count from validTo so the badge stays current between reads
+      const validToMs = storedCert.validTo ? Date.parse(storedCert.validTo) : NaN;
+      return {
+        validTo: storedCert.validTo,
+        daysRemaining: Number.isNaN(validToMs)
+          ? storedCert.daysRemaining
+          : Math.ceil((validToMs - Date.now()) / 86_400_000),
+        valid: storedCert.valid,
+        issuer: storedCert.issuer,
+        subject: storedCert.subject,
+      };
+    }
+
     if (!monitor.recentResults || monitor.recentResults.length === 0) {
       return null;
     }
@@ -587,7 +611,7 @@ export function MonitorDetailClient({
       issuer: sslCert.issuer,
       subject: sslCert.subject,
     };
-  }, [monitor.type, monitor.recentResults, monitor.config]);
+  }, [monitor.type, monitor.recentResults, monitor.config, monitor.target, monitor.url]);
 
   // Use pagination metadata from API
   const totalPages = paginationMeta?.totalPages || 0;
@@ -779,16 +803,16 @@ export function MonitorDetailClient({
                 sslCertificateInfo &&
                 sslCertificateInfo.daysRemaining !== undefined && (
                   <div
-                    className={`flex items-center px-2 py-2 rounded-md border ${sslCertificateInfo.daysRemaining <= 7
+                    className={`flex items-center px-2 py-2 rounded-md border ${sslCertificateInfo.daysRemaining <= 7 || sslCertificateInfo.valid === false
                       ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800"
                       : sslCertificateInfo.daysRemaining <= 30
                         ? "bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800"
                         : "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800"
                       }`}
-                    title="SSL enabled"
+                    title={sslCertificateInfo.validTo ? `Certificate valid until ${new Date(sslCertificateInfo.validTo).toLocaleDateString()}` : "SSL enabled"}
                   >
                     <Shield
-                      className={`h-4 w-4 mr-1 ${sslCertificateInfo.daysRemaining <= 7
+                      className={`h-4 w-4 mr-1 ${sslCertificateInfo.daysRemaining <= 7 || sslCertificateInfo.valid === false
                         ? "text-red-600 dark:text-red-400"
                         : sslCertificateInfo.daysRemaining <= 30
                           ? "text-yellow-600 dark:text-yellow-400"
@@ -796,14 +820,19 @@ export function MonitorDetailClient({
                         }`}
                     />
                     <span
-                      className={`text-xs ${sslCertificateInfo.daysRemaining <= 7
+                      className={`text-xs ${sslCertificateInfo.daysRemaining <= 7 || sslCertificateInfo.valid === false
                         ? "text-red-700 dark:text-red-300"
                         : sslCertificateInfo.daysRemaining <= 30
                           ? "text-yellow-700 dark:text-yellow-300"
                           : "text-green-700 dark:text-green-300"
                         }`}
                     >
-                      SSL: {sslCertificateInfo.daysRemaining}d remaining
+                      SSL:{" "}
+                      {sslCertificateInfo.daysRemaining <= 0
+                        ? "expired"
+                        : sslCertificateInfo.valid === false
+                          ? "invalid certificate"
+                          : `${sslCertificateInfo.daysRemaining}d remaining`}
                     </span>
                   </div>
                 )}

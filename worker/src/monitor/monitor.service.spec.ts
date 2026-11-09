@@ -119,7 +119,7 @@ jest.mock('tls', () => {
     socket.authorized = state.authorized;
     socket.authorizationError = state.authorized
       ? null
-      : new Error('self signed certificate');
+      : 'DEPTH_ZERO_SELF_SIGNED_CERT'; // Node gives a string code here
     socket.getPeerCertificate = () => ({
       valid_from: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
       valid_to: new Date(
@@ -1012,7 +1012,13 @@ describe('MonitorService', () => {
       expect(result).toMatchObject({
         status: 'down',
         isUp: false,
-        details: { sslCertificate: { valid: false } },
+        details: {
+          sslCertificate: {
+            valid: false,
+            authError: 'DEPTH_ZERO_SELF_SIGNED_CERT',
+          },
+          authorizationError: 'DEPTH_ZERO_SELF_SIGNED_CERT',
+        },
       });
     });
 
@@ -1169,13 +1175,87 @@ describe('MonitorService', () => {
       expect(result?.details?.sslCertificate).toMatchObject({
         daysRemaining: 10,
       });
-      // KNOWN GAP: executeSslCheck reports a near-expiry certificate as
-      // `isUp: true` with `details.warningMessage`, but the website branch only
-      // copies that message into `details.sslWarning` when `!sslResult.isUp`, so
-      // the warning text never reaches the caller. The daysRemaining value above
-      // is what operators can act on today; surfacing the warning needs a change
-      // in monitor.service.ts, not in this test.
-      expect(result?.details?.sslWarning).toBeUndefined();
+      expect(result?.details?.sslWarning).toBe(
+        'Certificate expires in 10 days',
+      );
+    });
+
+    describe('SSL check cadence', () => {
+      const due = (sslCertificate?: Record<string, unknown>) => {
+        mockDbService.db.query.monitors.findFirst.mockResolvedValueOnce({
+          config: {
+            sslLastCheckedAt: new Date().toISOString(),
+            sslCertificate,
+          },
+        });
+        return service['shouldPerformSslCheck'](
+          'monitor-123',
+          {},
+          'https://Example.com/health',
+        );
+      };
+
+      it('waits for the next window after a good check on the same host', async () => {
+        await expect(
+          due({ valid: true, daysRemaining: 90, host: 'example.com' }),
+        ).resolves.toBe(false);
+      });
+
+      it('re-checks a failing certificate on every run', async () => {
+        await expect(
+          due({ valid: false, daysRemaining: 90, host: 'example.com' }),
+        ).resolves.toBe(true);
+      });
+
+      it('checks now when the target moved to another host', async () => {
+        await expect(
+          due({ valid: true, daysRemaining: 90, host: 'old.example.com' }),
+        ).resolves.toBe(true);
+      });
+
+      it('checks now when no certificate is stored yet (rows from before this was saved)', async () => {
+        await expect(due(undefined)).resolves.toBe(true);
+      });
+    });
+
+    const sslWebsiteJob = () => ({
+      ...mockJobData,
+      type: 'website' as const,
+      target: 'https://example.com',
+      config: { ...mockJobData.config, enableSslCheck: true },
+    });
+
+    it('saves the certificate on the monitor so it outlives the recent results', async () => {
+      tlsState.daysUntilExpiry = 90;
+      tlsState.authorized = true;
+      mockDbService.db.update.mockClear();
+
+      await service.executeMonitor(sslWebsiteJob());
+
+      expect(mockDbService.db.update).toHaveBeenCalledWith(schema.monitors);
+      const set = mockDbService.db.update.mock.results[0].value
+        .set as jest.Mock;
+      expect(set).toHaveBeenCalledWith(
+        expect.objectContaining({ config: expect.anything() }),
+      );
+    });
+
+    it('does not fail the site or stamp the check when the probe reads no certificate', async () => {
+      mockDbService.db.update.mockClear();
+      jest.spyOn(service as any, 'executeSslCheck').mockResolvedValueOnce({
+        status: 'timeout',
+        isUp: false,
+        responseTimeMs: 10000,
+        details: { errorMessage: 'SSL connection timeout after 10000ms' },
+      });
+
+      const result = await service.executeMonitor(sslWebsiteJob());
+
+      expect(result?.status).toBe('up');
+      expect(result?.details?.sslWarning).toBe(
+        'SSL check could not complete: SSL connection timeout after 10000ms',
+      );
+      expect(mockDbService.db.update).not.toHaveBeenCalledWith(schema.monitors);
     });
 
     it('should not check SSL for http targets', async () => {

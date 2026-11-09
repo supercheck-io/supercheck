@@ -7037,6 +7037,28 @@ components:
           type: string
           format: date-time
           nullable: true
+        sslCertificate:
+          type: object
+          readOnly: true
+          description: Last certificate the worker read for a website monitor with SSL
+            checks on. Written by the worker; ignored on create and update.
+          properties:
+            valid:
+              type: boolean
+            issuer:
+              type: string
+            subject:
+              type: string
+            validFrom:
+              type: string
+              format: date-time
+            validTo:
+              type: string
+              format: date-time
+            daysRemaining:
+              type: integer
+            host:
+              type: string
         timeoutSeconds:
           type: integer
           minimum: 1

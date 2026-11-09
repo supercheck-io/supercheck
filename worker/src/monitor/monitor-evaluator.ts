@@ -688,15 +688,11 @@ export class MonitorEvaluator {
       }
       // Removed debug log
 
-      // Check if SSL certificate info is available and has warning
+      // Alert from certificate data only: a probe that read no certificate (timeout,
+      // reset) is not an expiring certificate and must not send one.
       const sslCertificate = resultData.details?.sslCertificate;
-      const sslWarning =
-        resultData.details?.sslWarning || resultData.details?.warningMessage;
-
-      // Removed debug logs
-
-      if (!sslCertificate && !sslWarning) {
-        return; // No SSL info to check
+      if (!sslCertificate) {
+        return;
       }
 
       let shouldAlert = false;
@@ -722,12 +718,6 @@ export class MonitorEvaluator {
           shouldAlert = true;
           alertReason = 'SSL certificate has expired';
         }
-      }
-
-      // Check for SSL warning messages
-      if (sslWarning && typeof sslWarning === 'string') {
-        shouldAlert = true;
-        alertReason = alertReason || sslWarning;
       }
 
       if (shouldAlert) {

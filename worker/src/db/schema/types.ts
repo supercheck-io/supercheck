@@ -69,6 +69,8 @@ export type MonitorResultDetails = {
     validFrom?: string;
     validTo?: string;
     daysRemaining?: number;
+    // Host the certificate was read from; set on the copy stored in monitor config
+    host?: string;
   };
   [key: string]: unknown;
 };
@@ -112,6 +114,7 @@ export type MonitorConfig = {
   sslDaysUntilExpirationWarning?: number;
   sslCheckFrequencyHours?: number;
   sslLastCheckedAt?: string;
+  sslCertificate?: MonitorResultDetails['sslCertificate'];
   sslCheckOnStatusChange?: boolean;
   checkExpiration?: boolean;
   daysUntilExpirationWarning?: number;

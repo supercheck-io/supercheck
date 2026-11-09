@@ -226,13 +226,14 @@ export class MonitorService {
           // SSL checking - check independently of website success for better monitoring
           if (
             jobData.config?.enableSslCheck &&
-            jobData.target.startsWith('https://')
+            /^https:\/\//i.test(jobData.target)
           ) {
             let shouldCheckSsl = true;
             try {
               shouldCheckSsl = await this.shouldPerformSslCheck(
                 jobData.monitorId,
                 jobData.config,
+                jobData.target,
               );
             } catch (sslFreqError) {
               this.logger.warn(
@@ -253,13 +254,12 @@ export class MonitorService {
                     TIMEOUTS_SECONDS.SSL_CHECK_DEFAULT,
                 });
 
-                // Update SSL last checked timestamp (non-blocking)
-                try {
-                  await this.updateSslLastChecked(jobData.monitorId);
-                } catch (updateError) {
-                  this.logger.warn(
-                    `Failed to update SSL last checked timestamp for monitor ${jobData.monitorId}:`,
-                    updateError,
+                // Stamp only when a certificate was read, so a failed handshake is retried next check.
+                if (sslResult.details?.sslCertificate) {
+                  await this.recordSslCheck(
+                    jobData.monitorId,
+                    jobData.target,
+                    sslResult.details.sslCertificate,
                   );
                 }
 
@@ -268,31 +268,36 @@ export class MonitorService {
                   details.sslCertificate = sslResult.details.sslCertificate;
                 }
 
-                // Handle SSL check results more intelligently
-                if (!sslResult.isUp) {
+                if (sslResult.isUp) {
+                  // Expiring soon: warn, don't fail the website check
                   if (sslResult.details?.warningMessage) {
-                    // SSL warning (e.g., certificate expiring soon) - don't fail the website check
                     details.sslWarning = sslResult.details.warningMessage;
+                  }
+                } else if (!sslResult.details?.sslCertificate) {
+                  // No certificate read (timeout, reset): the probe failed, not the certificate.
+                  // Not stamped as checked, so it retries on the next run.
+                  details.sslWarning = `SSL check could not complete: ${
+                    (sslResult.details?.errorMessage as string) ||
+                    'unknown error'
+                  }`;
+                } else {
+                  // Expired, not yet valid, untrusted chain or hostname mismatch: fail the check
+                  if (isUp) {
+                    // Website was up but SSL failed - combine the statuses
+                    status = 'down';
+                    isUp = false;
+                    const websiteStatus = details.statusCode
+                      ? ` (HTTP ${details.statusCode})`
+                      : '';
+                    details.errorMessage = `Website accessible${websiteStatus}, but SSL certificate check failed: ${
+                      (sslResult.details?.errorMessage as string) ||
+                      'SSL certificate invalid'
+                    }`;
                   } else {
-                    // SSL critical failure (e.g., expired certificate, invalid certificate)
-                    // This should fail the overall website check as it affects security
-                    if (isUp) {
-                      // Website was up but SSL failed - combine the statuses
-                      status = 'down';
-                      isUp = false;
-                      const websiteStatus = details.statusCode
-                        ? ` (HTTP ${details.statusCode})`
-                        : '';
-                      details.errorMessage = `Website accessible${websiteStatus}, but SSL certificate check failed: ${
-                        (sslResult.details?.errorMessage as string) ||
-                        'SSL certificate invalid'
-                      }`;
-                    } else {
-                      // Website was already down - just add SSL info
-                      details.sslError =
-                        sslResult.details?.errorMessage ||
-                        'SSL certificate check failed';
-                    }
+                    // Website was already down - just add SSL info
+                    details.sslError =
+                      sslResult.details?.errorMessage ||
+                      'SSL certificate check failed';
                   }
                 }
               } catch (sslError) {
@@ -1908,7 +1913,7 @@ export class MonitorService {
       try {
         // Try to parse as URL first
         const url = new URL(
-          target.startsWith('http') ? target : `https://${target}`,
+          /^https?:\/\//i.test(target) ? target : `https://${target}`,
         );
         hostname = url.hostname;
         port = parseInt(url.port) || 443;
@@ -1985,6 +1990,14 @@ export class MonitorService {
       responseTimeMs = Math.round(Number(endTime - startTime) / 1000000);
 
       const cert = certificateInfo.certificate;
+      // Node reports a string code (e.g. ERR_TLS_CERT_ALTNAME_INVALID) here, not an Error.
+      const rawAuthError = certificateInfo.authorizationError as unknown;
+      const authErrorText =
+        rawAuthError instanceof Error
+          ? rawAuthError.message
+          : typeof rawAuthError === 'string' && rawAuthError
+            ? rawAuthError
+            : undefined;
 
       if (!cert || !cert.valid_from || !cert.valid_to) {
         status = 'error';
@@ -2017,8 +2030,8 @@ export class MonitorService {
           // Additional info for debugging (as part of details)
           ...(cert.issuerCertificate && { hasIssuerCert: true }),
           ...(cert.subjectaltname && { altNames: cert.subjectaltname }),
-          ...(certificateInfo.authorizationError && {
-            authError: certificateInfo.authorizationError.message,
+          ...(authErrorText && {
+            authError: authErrorText,
           }),
         };
 
@@ -2044,7 +2057,9 @@ export class MonitorService {
           isUp = false;
           details = {
             errorMessage:
-              certificateInfo.authorizationError?.message ||
+              (authErrorText === 'ERR_TLS_CERT_ALTNAME_INVALID'
+                ? 'Certificate does not match the hostname'
+                : authErrorText) ||
               'Certificate trust or hostname verification failed',
             sslCertificate,
             responseTimeMs,
@@ -2067,9 +2082,8 @@ export class MonitorService {
         }
 
         // Add authorization details
-        if (!certificateInfo.authorized && certificateInfo.authorizationError) {
-          details.authorizationError =
-            certificateInfo.authorizationError.message;
+        if (!certificateInfo.authorized && authErrorText) {
+          details.authorizationError = authErrorText;
         }
       }
     } catch (error) {
@@ -2141,6 +2155,7 @@ export class MonitorService {
   private async shouldPerformSslCheck(
     monitorId: string,
     config?: any,
+    target?: string,
   ): Promise<boolean> {
     try {
       // Get current monitor config from database to check SSL last checked timestamp
@@ -2180,6 +2195,17 @@ export class MonitorService {
         sslCertificate?.daysRemaining != null
           ? Number(sslCertificate.daysRemaining)
           : undefined;
+      // No stored certificate (older rows) or one read from another host after a target
+      // edit: check now. A failing certificate is re-checked every run so the monitor
+      // stays down until it is fixed.
+      if (
+        !sslCertificate ||
+        (target !== undefined && sslCertificate.host !== sslHost(target)) ||
+        sslCertificate.valid === false
+      ) {
+        return true;
+      }
+
       if (daysRemaining !== undefined) {
         // Smart frequency: check more often when approaching expiration
         if (daysRemaining <= sslDaysUntilExpirationWarning) {
@@ -2204,31 +2230,29 @@ export class MonitorService {
   }
 
   /**
-   * Updates the SSL last checked timestamp in monitor config
+   * Saves the certificate and check time on the monitor, so the detail page and the
+   * expiry-aware frequency see it between daily checks. A jsonb merge, not a
+   * read-modify-write, so a concurrent config edit is not overwritten.
    */
-  private async updateSslLastChecked(monitorId: string): Promise<void> {
+  private async recordSslCheck(
+    monitorId: string,
+    target: string,
+    sslCertificate: object,
+  ): Promise<void> {
+    const patch = JSON.stringify({
+      sslLastCheckedAt: new Date().toISOString(),
+      sslCertificate: { ...sslCertificate, host: sslHost(target) },
+    });
     try {
-      const monitor = await this.dbService.db.query.monitors.findFirst({
-        where: eq(schema.monitors.id, monitorId),
-      });
-
-      if (!monitor) {
-        return;
-      }
-
-      const updatedConfig = {
-        ...(monitor.config || {}),
-        sslLastCheckedAt: new Date().toISOString(),
-      } as typeof monitor.config;
-
       await this.dbService.db
         .update(schema.monitors)
-        .set({ config: updatedConfig })
+        .set({
+          config: sql`coalesce(${schema.monitors.config}, '{}'::jsonb) || ${patch}::jsonb`,
+        })
         .where(eq(schema.monitors.id, monitorId));
     } catch (error) {
-      this.logger.error(
-        `Error updating SSL last checked for monitor ${monitorId}:`,
-        error,
+      this.logger.warn(
+        `Failed to record SSL check for monitor ${monitorId}: ${getErrorMessage(error)}`,
       );
     }
   }
@@ -2714,5 +2738,14 @@ export class MonitorService {
         isUp: false,
       };
     }
+  }
+}
+
+/** Host the stored certificate belongs to; a target edit to another host makes it stale. */
+function sslHost(target: string): string | undefined {
+  try {
+    return new URL(target).hostname.toLowerCase();
+  } catch {
+    return undefined;
   }
 }

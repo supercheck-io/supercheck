@@ -63,7 +63,7 @@ const stored = {
   enabled: true,
   status: "up",
   scheduledJobId: "s",
-  config: { timeoutSeconds: 30, aggregatedAlertState: { n: 4 }, sslLastCheckedAt: "t" },
+  config: { timeoutSeconds: 30, aggregatedAlertState: { n: 4 }, sslLastCheckedAt: "t", sslCertificate: { valid: true } },
   alertConfig: null,
 };
 const call = (handler: typeof PUT | typeof PATCH, method: string, body: object) =>
@@ -116,7 +116,7 @@ describe("monitor PUT write boundary", () => {
 
   it("keeps worker-owned config keys when config is replaced (c2)", async () => {
     await call(PUT, "PUT", { config: { timeoutSeconds: 10 } });
-    expect((payload().config as Record<string, unknown>)).toMatchObject({ timeoutSeconds: 10, aggregatedAlertState: { n: 4 }, sslLastCheckedAt: "t" });
+    expect((payload().config as Record<string, unknown>)).toMatchObject({ timeoutSeconds: 10, aggregatedAlertState: { n: 4 }, sslLastCheckedAt: "t", sslCertificate: { valid: true } });
   });
 
   it("resuming with status alone also re-enables the monitor (c6)", async () => {

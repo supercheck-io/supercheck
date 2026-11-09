@@ -41,7 +41,7 @@ import { createLogger } from "@/lib/logger/index";
 import { channelsOptional } from "@/lib/incident-settings";
 import { validateMonitorConfiguration } from "@/lib/monitor-validation";
 import { validateMonitorTargetAddress } from "@/lib/monitor-target-policy";
-import { monitorNameError, normalizeMonitorAlertConfig, providerIdsOutsideProject, syntheticFrequencyError } from "@/lib/monitor-write";
+import { monitorNameError, normalizeMonitorAlertConfig, preserveWorkerConfigKeys, providerIdsOutsideProject, syntheticFrequencyError } from "@/lib/monitor-write";
 import { loadCreators } from "@/lib/creators";
 
 const logger = createLogger({ module: "monitors-api" }) as {
@@ -456,7 +456,8 @@ export async function POST(req: NextRequest) {
     }
 
     // Construct the config object (for monitor-specific settings, not alerts)
-    const finalConfig = rawData.config || {};
+    // A new monitor has no worker state; a client must not forge it (e.g. a stored certificate).
+    const finalConfig = preserveWorkerConfigKeys(null, rawData.config || {});
 
     // Validate locationConfig.locations against enabled locations in DB
     if (finalConfig.locationConfig?.locations?.length > 0) {
