@@ -1248,7 +1248,9 @@ describe('MonitorService', () => {
         where: jest.fn().mockReturnValue({
           returning: jest
             .fn()
-            .mockResolvedValue([{ config: { sslProbeFailedSince: since } }]),
+            .mockResolvedValue([
+              { config: { sslProbeFailure: { since, host: 'example.com' } } },
+            ]),
         }),
       });
       jest.spyOn(service as any, 'executeSslCheck').mockResolvedValueOnce({
@@ -1269,7 +1271,7 @@ describe('MonitorService', () => {
       const set = mockDbService.db.update.mock.results[0].value
         .set as jest.Mock;
       const written = new PgDialect().sqlToQuery(set.mock.calls[0][0].config);
-      expect(written.sql).toContain('sslProbeFailedSince');
+      expect(written.sql).toContain('sslProbeFailure');
       expect(written.sql).not.toContain('sslLastCheckedAt');
       expect(result?.details?.sslProbeFailedSince).toBe(since);
     });

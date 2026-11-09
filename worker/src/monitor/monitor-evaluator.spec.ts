@@ -620,7 +620,7 @@ describe('incident-only monitors (alerts off or no channel)', () => {
 });
 
 describe('MonitorEvaluator.checkSslExpirationAlert', () => {
-  const run = async (details: Record<string, unknown>) => {
+  const run = async (details: Record<string, unknown>, isUp = true) => {
     const alertService = {
       sendSslExpirationNotification: jest.fn(async () => true),
     };
@@ -630,7 +630,7 @@ describe('MonitorEvaluator.checkSslExpirationAlert', () => {
     );
     jest.spyOn(evaluator, 'getLastSslAlert').mockResolvedValue(null);
     await evaluator.checkSslExpirationAlert(
-      { monitorId: 'm1', details, responseTimeMs: 1 } as never,
+      { monitorId: 'm1', details, responseTimeMs: 1, isUp } as never,
       {
         alertConfig: { enabled: true, alertOnSslExpiration: true },
         config: { sslDaysUntilExpirationWarning: 30 },
@@ -656,6 +656,18 @@ describe('MonitorEvaluator.checkSslExpirationAlert', () => {
       'SSL certificate could not be read for 25 hours',
       expect.anything(),
     );
+  });
+
+  it('does not add an SSL warning while the site itself is down', async () => {
+    const send = await run(
+      {
+        sslProbeFailedSince: new Date(
+          Date.now() - 72 * 3_600_000,
+        ).toISOString(),
+      },
+      false,
+    );
+    expect(send).not.toHaveBeenCalled();
   });
 
   it('stays quiet while the probe has failed for less than a day', async () => {

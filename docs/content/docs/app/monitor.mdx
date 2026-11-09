@@ -92,7 +92,7 @@ With **SSL Check** on (HTTPS targets only):
 |---|---|
 | Certificate is valid | Read about once a day; every 6 hours near the warning window; hourly inside it |
 | Expired, not yet valid, untrusted or wrong hostname | Check is **down**; re-read on every check until fixed |
-| Certificate can't be read (timeout, reset) | Check stays up and retries next check; after 24 hours of failures an SSL alert is sent |
+| Certificate can't be read (timeout, reset) | Check stays up and retries next check; if the site stays up, an SSL alert is sent after 24 hours |
 | SSL Check just turned on, or target changed | Monitor page shows **No certificate data yet** until the next check |
 
 Website monitors accept custom headers and Basic or Bearer authentication. The form always sends `GET` with no request body; use an HTTP monitor to send another method or a body.

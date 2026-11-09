@@ -699,6 +699,10 @@ export class MonitorEvaluator {
 
       if (!sslCertificate) {
         // The site answers but the certificate probe keeps failing: after a day, say so.
+        // A site that is down already alerts as down; don't add an SSL warning to it.
+        if (!resultData.isUp) {
+          return;
+        }
         const since = resultData.details?.sslProbeFailedSince;
         const sinceMs = typeof since === 'string' ? Date.parse(since) : NaN;
         if (

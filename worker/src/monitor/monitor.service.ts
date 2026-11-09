@@ -224,6 +224,17 @@ export class MonitorService {
             await this.executeHttpRequest(jobData.target, websiteConfig));
 
           // SSL checking - check independently of website success for better monitoring
+          // SSL Check off or not HTTPS: drop a probe-failure marker left from an earlier run
+          if (
+            (jobData.config as Record<string, unknown> | undefined)
+              ?.sslProbeFailure &&
+            !(
+              jobData.config?.enableSslCheck &&
+              /^https:\/\//i.test(jobData.target)
+            )
+          ) {
+            await this.clearSslProbeFailure(jobData.monitorId);
+          }
           if (
             jobData.config?.enableSslCheck &&
             /^https:\/\//i.test(jobData.target)
@@ -279,6 +290,7 @@ export class MonitorService {
                   // is kept so a probe that never recovers still alerts (see checkSslExpirationAlert).
                   const failedSince = await this.recordSslProbeFailure(
                     jobData.monitorId,
+                    jobData.target,
                   );
                   if (failedSince) details.sslProbeFailedSince = failedSince;
                   details.sslWarning = `SSL check could not complete: ${
@@ -2252,7 +2264,7 @@ export class MonitorService {
       await this.dbService.db
         .update(schema.monitors)
         .set({
-          config: sql`(coalesce(${schema.monitors.config}, '{}'::jsonb) - 'sslProbeFailedSince') || ${patch}::jsonb`,
+          config: sql`(coalesce(${schema.monitors.config}, '{}'::jsonb) - 'sslProbeFailure') || ${patch}::jsonb`,
         })
         .where(eq(schema.monitors.id, monitorId));
     } catch (error) {
@@ -2268,24 +2280,45 @@ export class MonitorService {
    */
   private async recordSslProbeFailure(
     monitorId: string,
+    target: string,
   ): Promise<string | undefined> {
-    const now = new Date().toISOString();
+    const marker = JSON.stringify({
+      since: new Date().toISOString(),
+      host: sslHost(target) ?? null,
+    });
     try {
+      // Keep the first failure time only while it belongs to the same host; a new host starts a new clock.
       const [row] = await this.dbService.db
         .update(schema.monitors)
         .set({
-          config: sql`coalesce(${schema.monitors.config}, '{}'::jsonb) || jsonb_build_object('sslProbeFailedSince', coalesce(${schema.monitors.config}->'sslProbeFailedSince', to_jsonb(${now}::text)))`,
+          config: sql`coalesce(${schema.monitors.config}, '{}'::jsonb) || jsonb_build_object('sslProbeFailure', CASE WHEN ${schema.monitors.config}->'sslProbeFailure'->>'host' IS NOT DISTINCT FROM (${marker}::jsonb->>'host') AND ${schema.monitors.config}->'sslProbeFailure'->>'since' IS NOT NULL THEN ${schema.monitors.config}->'sslProbeFailure' ELSE ${marker}::jsonb END)`,
         })
         .where(eq(schema.monitors.id, monitorId))
         .returning({ config: schema.monitors.config });
-      const since = (row?.config as Record<string, unknown> | null | undefined)
-        ?.sslProbeFailedSince;
-      return typeof since === 'string' ? since : undefined;
+      const failure = (
+        row?.config as Record<string, unknown> | null | undefined
+      )?.sslProbeFailure as { since?: unknown } | undefined;
+      return typeof failure?.since === 'string' ? failure.since : undefined;
     } catch (error) {
       this.logger.warn(
         `Failed to record SSL probe failure for monitor ${monitorId}: ${getErrorMessage(error)}`,
       );
       return undefined;
+    }
+  }
+
+  private async clearSslProbeFailure(monitorId: string): Promise<void> {
+    try {
+      await this.dbService.db
+        .update(schema.monitors)
+        .set({
+          config: sql`coalesce(${schema.monitors.config}, '{}'::jsonb) - 'sslProbeFailure'`,
+        })
+        .where(eq(schema.monitors.id, monitorId));
+    } catch (error) {
+      this.logger.warn(
+        `Failed to clear SSL probe failure for monitor ${monitorId}: ${getErrorMessage(error)}`,
+      );
     }
   }
 
