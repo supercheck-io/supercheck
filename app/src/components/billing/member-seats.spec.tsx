@@ -52,7 +52,7 @@ describe("MemberSeats", () => {
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
     expect(fetchMock).toHaveBeenCalledWith("/api/billing/members", expect.objectContaining({
       method: "POST",
-      body: JSON.stringify({ organizationId: "org_1", totalMembers: 28 }),
+      body: JSON.stringify({ organizationId: "org_1", totalMembers: 28, expectedCurrentMembers: 25 }),
     }));
   });
 
@@ -100,6 +100,22 @@ describe("MemberSeats", () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+
+  it("closes the dialog and refreshes when the seats changed since the preview", async () => {
+    const { toast } = jest.requireMock("sonner");
+    global.fetch = jest.fn(async () => ({
+      ok: false,
+      json: async () => ({ code: "seats_changed", error: "Member seats changed since you opened this. Refresh and try again." }),
+    })) as unknown as typeof fetch;
+    const onSaved = jest.fn();
+    render(<MemberSeats organizationId="org_1" plan="pro" seats={proSeats} canManage onSaved={onSaved} />);
+    fireEvent.click(screen.getByRole("button", { name: "Change member seats" }));
+    fireEvent.change(screen.getByLabelText("Total members"), { target: { value: "27" } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
+    expect(toast.error).toHaveBeenCalledWith("Could not change member seats", { description: expect.stringContaining("Refresh") });
+    await waitFor(() => expect(screen.queryByLabelText("Total members")).not.toBeInTheDocument());
   });
 
   it("will not go below the members in use", () => {

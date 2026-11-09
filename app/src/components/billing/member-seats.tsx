@@ -81,10 +81,17 @@ export function MemberSeats({
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ organizationId, totalMembers: next }),
+        body: JSON.stringify({ organizationId, totalMembers: next, expectedCurrentMembers: seats.limit }),
       });
       const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body?.error || "Could not change member seats");
+      if (!response.ok) {
+        // The preview was based on an outdated seat count: show the current one before asking again.
+        if (body?.code === "seats_changed") {
+          setOpen(false);
+          await onSaved();
+        }
+        throw new Error(body?.error || "Could not change member seats");
+      }
       toast.success("Member seats updated", body?.pending ? { description: "The new limit can take a minute to show." } : undefined);
       setOpen(false);
       await onSaved();

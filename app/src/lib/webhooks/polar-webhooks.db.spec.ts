@@ -268,6 +268,36 @@ describe("2026-10 webhook payloads through the real handlers", () => {
       }
     });
 
+    it("keeps a seat change against older subscription events and stale reconciliation", async () => {
+      await deliver(handleSubscriptionActive, "subscription.active", subscription({ units: 40 }), "2026-10-01T00:00:01Z");
+      // What the seat route stores after lowering seats to 25 at subscription version 2026-10-10.
+      await mockDatabase.update(schema.organization).set({
+        memberUnits: 25,
+        polarWebhookTimestamp: new Date("2026-10-10T00:00:00Z"),
+        polarWebhookEventKey: "seats:sub_1:2026-10-10T00:00:00.000Z",
+      }).where(eq(schema.organization.id, orgId));
+      // A delayed event from before the change still carries 40 seats.
+      await deliver(handleSubscriptionUpdated, "subscription.updated", subscription({ units: 40 }), "2026-10-05T00:00:00Z");
+      expect((await org()).memberUnits).toBe(25);
+
+      const savedFetch = global.fetch;
+      const savedEnv = { SELF_HOSTED: process.env.SELF_HOSTED, POLAR_ACCESS_TOKEN: process.env.POLAR_ACCESS_TOKEN, POLAR_WEBHOOK_SECRET: process.env.POLAR_WEBHOOK_SECRET, POLAR_SERVER: process.env.POLAR_SERVER };
+      Object.assign(process.env, { SELF_HOSTED: "false", POLAR_ACCESS_TOKEN: "test", POLAR_WEBHOOK_SECRET: "test", POLAR_SERVER: "sandbox" });
+      global.fetch = jest.fn(async () => new Response(JSON.stringify({ ...subscription({ units: 40 }), created_at: "2026-10-01T00:00:00Z", modified_at: "2026-10-05T00:00:00Z" })));
+      try {
+        await reconcilePolarSubscription(orgId).catch(() => false);
+        expect((await org()).memberUnits).toBe(25);
+      } finally {
+        global.fetch = savedFetch;
+        for (const [key, value] of Object.entries(savedEnv)) {
+          if (value === undefined) delete process.env[key]; else process.env[key] = value;
+        }
+      }
+      // The change's own, newer event still applies.
+      await deliver(handleSubscriptionUpdated, "subscription.updated", subscription({ units: 25 }), "2026-10-10T00:00:01Z");
+      expect((await org()).memberUnits).toBe(25);
+    });
+
     it("never writes seats to another organization", async () => {
       await deliver(handleSubscriptionActive, "subscription.active", subscription({ units: 25 }), "2026-10-01T00:00:01Z");
       await expect(deliver(handleSubscriptionUpdated, "subscription.updated", subscription({

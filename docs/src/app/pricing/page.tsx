@@ -306,7 +306,7 @@ export default function PricingPage() {
                         Run the open-source core on your own servers at no cost, or preview the Cloud plans and join the waitlist. Cloud signups are not open yet.
                     </p>
                     <p className="mt-3 text-sm text-fd-muted-foreground">
-                        Priced per organization, not per seat; only extra {catalog.pro.name} members above the included ones are billed per member. Prices in USD per month, before taxes. Playwright minutes, k6 VU-minutes, and completed AI SRE investigations beyond the included allowance are billed at the{' '}
+                        Priced per organization, not per seat; only extra {catalog.pro.name} seats you buy above the included members are billed per seat, even when unfilled. Prices in USD per month, before taxes. Playwright minutes, k6 VU-minutes, and completed AI SRE investigations beyond the included allowance are billed at the{' '}
                         <a href="#overage" className="underline underline-offset-4 hover:text-fd-foreground">overage rates</a>.
                     </p>
                     <nav aria-label="Pricing sections" className="mt-6 flex flex-wrap justify-center gap-x-6 gap-y-3 text-sm font-medium text-fd-primary">
@@ -388,11 +388,11 @@ export default function PricingPage() {
                 <CopyEmail email={WAITLIST_EMAIL} />
 
                 <p className="mt-4 text-center text-sm text-fd-muted-foreground">
-                    Not sure which plan? {catalog.pro.name} costs less than {catalog.plus.name} above about {CROSSOVER_MINUTES.toLocaleString('en-US')} browser minutes a month. Choose {catalog.pro.name} if you need more than {fmt(catalog.plus.limits.maxMonitors)} monitors or {fmt(catalog.plus.limits.maxTeamMembers)} team members.
+                    Not sure which plan? {catalog.pro.name} costs less than {catalog.plus.name} above about {CROSSOVER_MINUTES.toLocaleString('en-US')} browser minutes a month, not counting extra member seats. Choose {catalog.pro.name} if you need more than {fmt(catalog.plus.limits.maxMonitors)} monitors or {fmt(catalog.plus.limits.maxTeamMembers)} team members.
                 </p>
 
                 <ul aria-label="Plan basics" className="mt-6 flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm text-fd-muted-foreground">
-                    {['Open-source core (AGPLv3)', 'Priced per organization, not per seat', 'Spending limits and usage alerts', 'Cancel anytime'].map((item) => (
+                    {['Open-source core (AGPLv3)', `Priced per organization; extra ${catalog.pro.name} seats billed per seat`, 'Spending limits and usage alerts', 'Cancel anytime'].map((item) => (
                         <li key={item} className="flex items-center gap-2">
                             <Check aria-hidden="true" className="size-4 text-fd-primary" />
                             {item}

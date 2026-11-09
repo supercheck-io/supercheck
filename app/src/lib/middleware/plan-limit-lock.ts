@@ -87,7 +87,12 @@ export async function withPlanLimitLock<T>(
   });
 }
 
-type LimitCheck = { allowed: boolean; limit?: number };
+type LimitCheck = {
+  allowed: boolean;
+  limit?: number;
+  /** Re-reads a limit that can change concurrently (e.g. purchased seats), inside the lock. */
+  limitInLock?: (tx: PlanLimitTransaction) => Promise<number>;
+};
 
 export type InsertWithinLimitResult<TRow, TCheck extends LimitCheck> =
   | { ok: true; row: TRow }
@@ -127,7 +132,8 @@ export async function insertWithinPlanLimit<TRow, TCheck extends LimitCheck>(opt
   try {
     outcome = await withPlanLimitLock(lockKey, resource, async (tx) => {
       const count = await countRows(tx);
-      if (count >= limit) return { atLimit: true as const, count };
+      const lockedLimit = plan.limitInLock ? await plan.limitInLock(tx) : limit;
+      if (count >= lockedLimit) return { atLimit: true as const, count };
       return { atLimit: false as const, row: await insert(tx) };
     });
   } catch (error) {

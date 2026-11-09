@@ -78,7 +78,7 @@ export async function reconcilePolarSubscription(organizationId: string): Promis
     const [org] = await tx.select().from(organization).where(eq(organization.id, organizationId)).for("update");
     // Never let a slow provider read overwrite a webhook or a changed tenant binding.
     if (!org || org.polarCustomerId !== before.polarCustomerId || org.subscriptionId !== before.subscriptionId ||
-      org.polarWebhookEventKey !== before.polarWebhookEventKey ||
+      org.polarWebhookEventKey !== before.polarWebhookEventKey || org.memberUnits !== before.memberUnits ||
       org.polarWebhookTimestamp?.getTime() !== before.polarWebhookTimestamp?.getTime()) {
       throw new Error("Polar subscription changed during reconciliation; retry");
     }

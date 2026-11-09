@@ -22,6 +22,8 @@ import { PlanLimitBusyError, withPlanLimitLock } from "@/lib/middleware/plan-lim
 const bodySchema = z.object({
   organizationId: z.string().uuid(),
   totalMembers: z.number().int().min(PRO_INCLUDED_MEMBERS).max(MAX_MEMBER_SEATS),
+  // The seat total the owner saw when previewing the change; the charge direction depends on it.
+  expectedCurrentMembers: z.number().int().min(1).max(10_000),
 }).strict();
 
 /** Safe messages for the provider's documented subscription-update failures. */
@@ -84,7 +86,7 @@ export async function POST(request: NextRequest) {
     if (parsed.data.organizationId !== organizationId) {
       return NextResponse.json({ error: "Selected organization changed. Refresh before changing member seats." }, { status: 409 });
     }
-    const { totalMembers } = parsed.data;
+    const { totalMembers, expectedCurrentMembers } = parsed.data;
 
     if (!isPolarEnabled()) {
       return NextResponse.json({ error: "Member seats are only sold on Supercheck Cloud" }, { status: 400 });
@@ -111,7 +113,11 @@ export async function POST(request: NextRequest) {
     let outcome: NextResponse;
     try {
       outcome = await withPlanLimitLock(organizationId, "members", async (tx) => {
-        const [org] = await tx.select({ subscriptionId: organization.subscriptionId, memberUnits: organization.memberUnits })
+        const [org] = await tx.select({
+          subscriptionId: organization.subscriptionId,
+          memberUnits: organization.memberUnits,
+          polarWebhookTimestamp: organization.polarWebhookTimestamp,
+        })
           .from(organization).where(eq(organization.id, organizationId)).for("update");
         if (!org?.subscriptionId) {
           return NextResponse.json({ error: "Subscription not found. Refresh the page and try again." }, { status: 409 });
@@ -127,8 +133,11 @@ export async function POST(request: NextRequest) {
 
         // Compare with the provider's live seats, not the local copy, which can lag a change.
         let live: number | null;
+        let version: string | null;
         try {
-          live = (await polar.subscriptions.get(org.subscriptionId)).units ?? null;
+          const subscription = await polar.subscriptions.get(org.subscriptionId);
+          live = subscription.units ?? null;
+          version = subscription.modified_at ?? null;
         } catch (error) {
           return providerError(error);
         }
@@ -137,21 +146,37 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ error: POLAR_ERRORS[422].error }, { status: 409 });
         }
         const currentLimit = effectiveMemberLimit(plan, live);
+        if (currentLimit !== expectedCurrentMembers) {
+          // Another tab or a sync changed the seats since the preview: a previewed credit could become a charge.
+          return NextResponse.json(
+            { error: "Member seats changed since you opened this. Refresh and try again.", code: "seats_changed" },
+            { status: 409 },
+          );
+        }
         let units = live;
         if (totalMembers !== currentLimit) {
           try {
-            units = (await polar.subscriptions.update(org.subscriptionId, {
+            const updated = await polar.subscriptions.update(org.subscriptionId, {
               units: totalMembers,
               // An increase is charged now; a decrease is credited on the next invoice.
               proration_behavior: totalMembers > currentLimit ? "invoice" : "prorate",
-            })).units ?? live;
+            });
+            units = updated.units ?? live;
+            version = updated.modified_at ?? new Date().toISOString();
           } catch (error) {
             return providerError(error);
           }
           applied = { before: currentLimit, units };
         }
         if (units !== org.memberUnits) {
-          await tx.update(organization).set({ memberUnits: units })
+          // Advance the webhook ordering marker to this subscription version, so a delayed older
+          // subscription event (or a stale reconciliation snapshot) cannot restore the previous seats.
+          const at = version ? new Date(version) : null;
+          const ordering = at && Number.isFinite(at.getTime()) &&
+            (!org.polarWebhookTimestamp || at > org.polarWebhookTimestamp)
+            ? { polarWebhookTimestamp: at, polarWebhookEventKey: `seats:${org.subscriptionId}:${at.toISOString()}` }
+            : {};
+          await tx.update(organization).set({ memberUnits: units, ...ordering })
             .where(and(eq(organization.id, organizationId), eq(organization.subscriptionId, org.subscriptionId)));
         }
         return NextResponse.json(summary(units, inUse));

@@ -50,11 +50,14 @@ import { createAuditLog } from "@/lib/audit-log";
 const ORG = "0190a6a0-0000-7000-8000-000000000001";
 const OTHER_ORG = "0190a6a0-0000-7000-8000-000000000002";
 
+// The seat total the dialog previewed from; tests whose live seats differ pass it explicitly.
 function post(body: unknown, origin = "https://app.supercheck.io") {
+  const withExpected = body && typeof body === "object" && !("expectedCurrentMembers" in body)
+    ? { ...body, expectedCurrentMembers: 25 } : body;
   return POST(new NextRequest("https://app.supercheck.io/api/billing/members", {
     method: "POST",
     headers: { origin, "content-type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify(withExpected),
   }));
 }
 
@@ -67,11 +70,11 @@ describe("POST /api/billing/members", () => {
     (subscriptionService.getSubscriptionAccessStatus as jest.Mock).mockResolvedValue({ isActive: true, plan: "pro", status: "active" });
     (subscriptionService.getPlanLimits as jest.Mock).mockResolvedValue({ plan: "pro", maxTeamMembers: 25 });
     mockOrgRow.mockResolvedValue([{ subscriptionId: "sub_1", memberUnits: 25 }]);
-    mockGet.mockResolvedValue({ id: "sub_1", units: 25 });
+    mockGet.mockResolvedValue({ id: "sub_1", units: 25, modified_at: "2026-11-01T00:00:00Z" });
     mockWhere.mockResolvedValue(undefined);
     mockLock.mockImplementation(async (_org: string, _resource: string, fn: (tx: unknown) => Promise<unknown>) => fn(mockTx));
     mockCountSeats.mockResolvedValue(20);
-    mockUpdate.mockImplementation(async (_id: string, body: { units: number }) => ({ id: "sub_1", units: body.units }));
+    mockUpdate.mockImplementation(async (_id: string, body: { units: number }) => ({ id: "sub_1", units: body.units, modified_at: "2026-11-09T10:00:00Z" }));
   });
 
   it("buys seats under the members lock, stores what the provider reports, and audits the change", async () => {
@@ -80,7 +83,12 @@ describe("POST /api/billing/members", () => {
     expect(await response.json()).toEqual({ included: 25, purchasedSeats: 28, limit: 28, used: 20, extraMemberPriceCents: 800 });
     expect(mockLock).toHaveBeenCalledWith(ORG, "members", expect.any(Function));
     expect(mockUpdate).toHaveBeenCalledWith("sub_1", { units: 28, proration_behavior: "invoice" });
-    expect(mockSet).toHaveBeenCalledWith({ memberUnits: 28 });
+    // The ordering marker moves to the changed subscription version, so older events can't restore the old seats.
+    expect(mockSet).toHaveBeenCalledWith({
+      memberUnits: 28,
+      polarWebhookTimestamp: new Date("2026-11-09T10:00:00Z"),
+      polarWebhookEventKey: "seats:sub_1:2026-11-09T10:00:00.000Z",
+    });
     // The write stays bound to the subscription that was changed.
     expect(mockWhere).toHaveBeenCalledWith({ and: [{ eq: ["id", ORG] }, { eq: ["subscription_id", "sub_1"] }] });
     expect(createAuditLog).toHaveBeenCalledWith(expect.objectContaining({
@@ -92,7 +100,7 @@ describe("POST /api/billing/members", () => {
   it("lowers seats down to the members in use, crediting the next invoice", async () => {
     mockGet.mockResolvedValue({ id: "sub_1", units: 40 });
     mockCountSeats.mockResolvedValue(30);
-    expect((await post({ organizationId: ORG, totalMembers: 30 })).status).toBe(200);
+    expect((await post({ organizationId: ORG, totalMembers: 30, expectedCurrentMembers: 40 })).status).toBe(200);
     expect(mockUpdate).toHaveBeenCalledWith("sub_1", { units: 30, proration_behavior: "prorate" });
   });
 
@@ -105,8 +113,24 @@ describe("POST /api/billing/members", () => {
   it("compares with the provider's live seats, not a stale local copy", async () => {
     // A previous increase reached the provider, but the local copy still says 25.
     mockGet.mockResolvedValue({ id: "sub_1", units: 30 });
-    expect((await post({ organizationId: ORG, totalMembers: 25 })).status).toBe(200);
+    expect((await post({ organizationId: ORG, totalMembers: 25, expectedCurrentMembers: 30 })).status).toBe(200);
     expect(mockUpdate).toHaveBeenCalledWith("sub_1", { units: 25, proration_behavior: "prorate" });
+  });
+
+  it("refuses a change previewed from a seat count that is no longer current", async () => {
+    // The dialog showed 40 seats and previewed 30 as a credit, but another change already lowered them to 25.
+    mockGet.mockResolvedValue({ id: "sub_1", units: 25 });
+    const response = await post({ organizationId: ORG, totalMembers: 30, expectedCurrentMembers: 40 });
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ code: "seats_changed" });
+    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(createAuditLog).not.toHaveBeenCalled();
+  });
+
+  it("does not move the ordering marker backwards", async () => {
+    mockOrgRow.mockResolvedValue([{ subscriptionId: "sub_1", memberUnits: 25, polarWebhookTimestamp: new Date("2026-12-01T00:00:00Z") }]);
+    expect((await post({ organizationId: ORG, totalMembers: 28 })).status).toBe(200);
+    expect(mockSet).toHaveBeenCalledWith({ memberUnits: 28 });
   });
 
   it("does not change the provider when the seats are unchanged, but repairs a stale local copy", async () => {
@@ -114,7 +138,7 @@ describe("POST /api/billing/members", () => {
     const response = await post({ organizationId: ORG, totalMembers: 25 });
     expect(response.status).toBe(200);
     expect(mockUpdate).not.toHaveBeenCalled();
-    expect(mockSet).toHaveBeenCalledWith({ memberUnits: 25 });
+    expect(mockSet).toHaveBeenCalledWith(expect.objectContaining({ memberUnits: 25 }));
     expect(createAuditLog).not.toHaveBeenCalled();
   });
 

@@ -311,6 +311,12 @@ export async function checkTeamMemberLimit(
       limit,
       currentCount,
       remaining: limit - currentCount,
+      // Seats can be lowered while an invitation waits for the members lock; read them again under it.
+      limitInLock: plan.plan !== "pro" ? undefined : async (tx: PlanLimitTransaction) => {
+        const [locked] = await tx.select({ memberUnits: organization.memberUnits }).from(organization)
+          .where(eq(organization.id, organizationId)).limit(1);
+        return effectiveMemberLimit(plan, locked?.memberUnits);
+      },
     };
   } catch (error) {
     return {

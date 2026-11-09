@@ -354,6 +354,20 @@ describe("Plan Enforcement Middleware", () => {
         expect(result).toMatchObject({ allowed: true, limit: 30, remaining: 3 });
       });
 
+      it("re-reads Pro seats inside the members lock", async () => {
+        (subscriptionService.getOrganizationPlan as jest.Mock).mockResolvedValue({ plan: "pro", maxTeamMembers: 25 });
+        mockCountWhere.mockReturnValueOnce({ limit: async () => [{ memberUnits: 30 }] });
+        const result = await checkTeamMemberLimit("org-1", 25);
+        expect(result).toMatchObject({ allowed: true, limit: 30 });
+        const tx = { select: () => ({ from: () => ({ where: () => ({ limit: async () => [{ memberUnits: null }] }) }) }) };
+        await expect(result.limitInLock!(tx as never)).resolves.toBe(25);
+      });
+
+      it("has no in-lock re-read off Pro", async () => {
+        (subscriptionService.getOrganizationPlan as jest.Mock).mockResolvedValue({ plan: "plus", maxTeamMembers: 5 });
+        expect((await checkTeamMemberLimit("org-1", 1)).limitInLock).toBeUndefined();
+      });
+
       it("points Pro admins at buying seats when the Pro limit is reached", async () => {
         (subscriptionService.getOrganizationPlan as jest.Mock).mockResolvedValue({ plan: "pro", maxTeamMembers: 25 });
         mockCountWhere.mockReturnValueOnce({ limit: async () => [{ memberUnits: 30 }] });
