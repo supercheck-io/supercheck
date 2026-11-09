@@ -393,3 +393,38 @@ describe("alertConfig, delivery rows, credentials, frequency and timeout on upda
     expect((await call(PUT, "PUT", { name: "renamed" })).status).toBe(200);
   });
 });
+
+describe("review fixes: drifted rows, audit on schedule failure, alertConfig type", () => {
+  const { logAuditEvent } = jest.requireMock("@/lib/audit-logger") as { logAuditEvent: jest.Mock };
+  const { reconcileMonitorSchedule } = jest.requireMock("@/lib/monitor-schedule-reconcile") as { reconcileMonitorSchedule: jest.Mock };
+
+  it("PUT and PATCH leave delivery rows alone when alertConfig does not carry notificationProviders", async () => {
+    findFirst.mockResolvedValue({
+      ...stored,
+      alertConfig: { enabled: true, notificationProviders: [], alertOnFailure: true, alertOnRecovery: true, failureThreshold: 1, recoveryThreshold: 1 },
+    });
+    expect((await call(PUT, "PUT", { alertConfig: { failureThreshold: 3 } })).status).toBe(200);
+    expect((await call(PATCH, "PATCH", { alertConfig: { failureThreshold: 3 } })).status).toBe(200);
+    expect(txDeleteWhere).not.toHaveBeenCalled();
+    expect(txInsertValues).not.toHaveBeenCalled();
+  });
+
+  it("PATCH with notificationProviders: null clears the rows", async () => {
+    findFirst.mockResolvedValue({ ...stored, alertConfig: { enabled: false, notificationProviders: [PROVIDER_ID] } });
+    expect((await call(PATCH, "PATCH", { alertConfig: { notificationProviders: null } })).status).toBe(200);
+    expect(txDeleteWhere).toHaveBeenCalledTimes(1);
+  });
+
+  it("PATCH audits a saved change, then answers 503, when the schedule cannot be updated", async () => {
+    reconcileMonitorSchedule.mockRejectedValueOnce(new Error("redis down"));
+    const res = await call(PATCH, "PATCH", { frequencyMinutes: 10 });
+    expect(res.status).toBe(503);
+    expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ action: "monitor_updated" }));
+  });
+
+  it.each(["x", 5, true, false, 0, "", []])("PUT rejects alertConfig %j with 400", async (alertConfig) => {
+    expect((await call(PUT, "PUT", { alertConfig })).status).toBe(400);
+    expect(set).not.toHaveBeenCalled();
+  });
+});
+const PROVIDER_ID = "00000000-0000-4000-8000-0000000000aa";

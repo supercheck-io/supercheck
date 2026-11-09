@@ -33,9 +33,11 @@ import { createLogger } from "@/lib/logger/index";
 import { validateMonitorConfiguration } from "@/lib/monitor-validation";
 import { validateMonitorTargetAddress } from "@/lib/monitor-target-policy";
 import {
+  alertProvidersSent,
   enabledAlertConfigError,
   frequencyMinutesError,
   InvalidNotificationProvidersError,
+  MonitorScheduleError,
   mergePatch,
   monitorNameError,
   normalizeMonitorAlertConfig,
@@ -365,7 +367,11 @@ export async function PUT(
     let normalizedProviderIds: string[] = [];
     // Only update alertConfig if it's explicitly provided; otherwise existing alert settings are preserved
     if (rawData.hasOwnProperty("alertConfig")) {
-      if (rawData.alertConfig) {
+      if (rawData.alertConfig === null) {
+        updatePayload.alertConfig = null;
+      } else if (!isObject(rawData.alertConfig)) {
+        return NextResponse.json({ error: "alertConfig must be an object or null" }, { status: 400 });
+      } else {
         const normalized = normalizeMonitorAlertConfig(rawData.alertConfig, currentMonitor.alertConfig);
         if (!normalized.ok) {
           return NextResponse.json({ error: normalized.error }, { status: 400 });
@@ -376,14 +382,12 @@ export async function PUT(
         }
         updatePayload.alertConfig = normalized.value;
         normalizedProviderIds = Array.from(new Set(normalized.value.notificationProviders));
-      } else {
-        updatePayload.alertConfig = null;
       }
     }
 
-    // The JSON column is what the UI shows and the rows are what the worker delivers to: every alertConfig write
-    // (including null and a disabled config) validates the ids and replaces the rows in the same transaction.
-    const shouldSyncNotificationProviders = rawData.hasOwnProperty("alertConfig");
+    // The JSON column is what the UI shows and the rows are what the worker delivers to: an alertConfig write that
+    // carries notificationProviders (or null), enabled or not, validates the ids and replaces the rows in the same transaction.
+    const shouldSyncNotificationProviders = rawData.hasOwnProperty("alertConfig") && alertProvidersSent(rawData.alertConfig);
 
     let updatedMonitor;
     try {
@@ -733,11 +737,12 @@ export async function PATCH(
         return NextResponse.json({ error: alertError }, { status: 400 });
       }
       updatePayload.alertConfig = normalized.value;
-      // Every alertConfig write validates the ids and replaces the delivery rows in the same transaction as the row.
-      providerIdsToSync = normalized.value.notificationProviders;
+      // A write that carries the provider list validates the ids and replaces the delivery rows in the same transaction as the row.
+      if (alertProvidersSent(rawData.alertConfig)) providerIdsToSync = normalized.value.notificationProviders;
     }
 
     let updatedMonitor;
+    let patchScheduleFailed = false;
     try {
       updatedMonitor = await updateMonitorHandler(
         id,
@@ -751,11 +756,17 @@ export async function PATCH(
       if (error instanceof InvalidNotificationProvidersError) {
         return NextResponse.json({ error: error.message }, { status: 400 });
       }
-      const scheduleFailure = scheduleFailureResponse(error);
-      if (scheduleFailure) return scheduleFailure;
-      const thrown = thrownStatusResponse(error);
-      if (thrown) return thrown;
-      throw error;
+      if (error instanceof MonitorScheduleError && error.monitor) {
+        // Saved but not rescheduled: audit the change, then answer 503.
+        updatedMonitor = error.monitor;
+        patchScheduleFailed = true;
+      } else {
+        const scheduleFailure = scheduleFailureResponse(error);
+        if (scheduleFailure) return scheduleFailure;
+        const thrown = thrownStatusResponse(error);
+        if (thrown) return thrown;
+        throw error;
+      }
     }
 
     // Log the audit event for monitor partial update
@@ -779,6 +790,7 @@ export async function PATCH(
       success: true,
     });
 
+    if (patchScheduleFailed) return NextResponse.json({ error: SCHEDULE_FAILURE_MESSAGE }, { status: 503 });
     return NextResponse.json(updatedMonitor);
   } catch (error) {
     if (isAuthError(error)) {

@@ -37,11 +37,14 @@ import { channelsOptional } from "@/lib/incident-settings";
 import { validateMonitorConfiguration } from "@/lib/monitor-validation";
 import { validateMonitorTargetAddress } from "@/lib/monitor-target-policy";
 import {
+  alertProvidersSent,
   frequencyMinutesError,
   InvalidNotificationProvidersError,
+  MonitorScheduleError,
   monitorNameError,
   normalizeMonitorAlertConfig,
   providerIdsOutsideProject,
+  SCHEDULE_FAILURE_MESSAGE,
   sanitizeMonitorFields,
   scheduleFailureResponse,
   syntheticFrequencyError,
@@ -942,7 +945,9 @@ export async function PUT(req: NextRequest) {
       }
     }
 
-    if (alertConfig) {
+    // Provider ids are validated and rows synced only when the body carries the list (or null).
+    const syncProviders = alertConfig !== undefined && alertProvidersSent(rawData.alertConfig);
+    if (alertConfig && syncProviders) {
       const invalidProviderIds = await providerIdsOutsideProject(
         alertConfig.notificationProviders,
         organizationId,
@@ -957,11 +962,12 @@ export async function PUT(req: NextRequest) {
     }
 
     let updatedMonitor;
+    let scheduleFailed = false;
     try {
       updatedMonitor = await updateMonitorHandler(
         id,
         monitorUpdateData,
-        alertConfig !== undefined
+        syncProviders
           ? { providerSync: { ids: alertConfig?.notificationProviders ?? [], organizationId, projectId: project.id } }
           : {},
       );
@@ -970,11 +976,17 @@ export async function PUT(req: NextRequest) {
       if (error instanceof InvalidNotificationProvidersError) {
         return NextResponse.json({ error: error.message }, { status: 400 });
       }
-      const scheduleFailure = scheduleFailureResponse(error);
-      if (scheduleFailure) return scheduleFailure;
-      const thrown = thrownStatusResponse(error);
-      if (thrown) return thrown;
-      throw error;
+      if (error instanceof MonitorScheduleError && error.monitor) {
+        // Saved but not rescheduled: audit the change, then answer 503.
+        updatedMonitor = error.monitor;
+        scheduleFailed = true;
+      } else {
+        const scheduleFailure = scheduleFailureResponse(error);
+        if (scheduleFailure) return scheduleFailure;
+        const thrown = thrownStatusResponse(error);
+        if (thrown) return thrown;
+        throw error;
+      }
     }
 
     // Log the audit event for monitor update
@@ -999,6 +1011,7 @@ export async function PUT(req: NextRequest) {
       success: true,
     });
 
+    if (scheduleFailed) return NextResponse.json({ error: SCHEDULE_FAILURE_MESSAGE }, { status: 503 });
     return NextResponse.json(updatedMonitor);
   } catch (error) {
     if (isAuthError(error)) {

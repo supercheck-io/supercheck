@@ -294,6 +294,20 @@ describe("collection write paths", () => {
     expect(updateMonitorHandler.mock.calls[0][2]).toEqual({ providerSync: { ids: [id], organizationId: "org-1", projectId: "project-1" } });
   });
 
+  it("PUT leaves rows alone when alertConfig has no notificationProviders", async () => {
+    const res = await put({ alertConfig: { failureThreshold: 3 } });
+    expect(res.status).toBe(200);
+    expect(updateMonitorHandler.mock.calls[0][2]).toEqual({});
+  });
+
+  it("PUT audits a saved change, then answers 503, when the schedule cannot be updated", async () => {
+    const { logAuditEvent } = jest.requireMock("@/lib/audit-logger") as { logAuditEvent: jest.Mock };
+    updateMonitorHandler.mockRejectedValue(new MonitorScheduleError(new Error("redis down"), { id: MONITOR } as never));
+    const res = await put({ frequencyMinutes: 10 });
+    expect(res.status).toBe(503);
+    expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ action: "monitor_updated", resourceId: MONITOR }));
+  });
+
   it("PUT checks permission before existence and with the update action (B8)", async () => {
     checkPermissionWithContext.mockReturnValueOnce(false);
     const res = await put({ name: "x" });

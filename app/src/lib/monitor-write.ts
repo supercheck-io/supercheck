@@ -150,6 +150,15 @@ export async function syncMonitorProviderRows(
 }
 
 /**
+ * Take the monitor row lock as the first statement of a link/unlink transaction, the same order updateMonitorHandler and
+ * PUT use (monitor row, then delivery rows): concurrent links would otherwise each mirror a partial list, and a link
+ * racing a PUT/PATCH could deadlock.
+ */
+export async function lockMonitorRow(tx: Pick<typeof db, "select">, monitorId: string): Promise<void> {
+  await tx.select({ id: monitors.id }).from(monitors).where(eq(monitors.id, monitorId)).for("update");
+}
+
+/**
  * After a single link is added or removed, bring alertConfig.notificationProviders (what the UI shows) in line with
  * the delivery rows (what the worker uses), in the caller's transaction. A monitor with no alertConfig gets the defaults.
  */
@@ -262,11 +271,18 @@ export function thrownStatusResponse(error: unknown): NextResponse | null {
   );
 }
 
+/** Rows are synced only when the write carries the provider list (or clears alertConfig), so drifted rows are not deleted by an unrelated threshold edit. */
+export function alertProvidersSent(alertConfig: unknown): boolean {
+  if (alertConfig === null) return true;
+  return typeof alertConfig === "object" && !Array.isArray(alertConfig) && Object.hasOwn(alertConfig as object, "notificationProviders");
+}
+
 export const SCHEDULE_FAILURE_MESSAGE = "Monitor saved, but updating the check schedule failed. Retry the request to reconcile it.";
 
 /** The row is saved but the repeatable job could not be brought in line; routes answer 503 so the client retries. */
 export class MonitorScheduleError extends Error {
-  constructor(cause: unknown) {
+  /** The committed row, so the route can still audit the change. */
+  constructor(cause: unknown, readonly monitor?: typeof monitors.$inferSelect) {
     super(SCHEDULE_FAILURE_MESSAGE, { cause });
   }
 }

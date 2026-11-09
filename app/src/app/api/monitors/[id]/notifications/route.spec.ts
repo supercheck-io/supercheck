@@ -13,15 +13,24 @@ jest.mock("@/utils/db", () => ({
       monitorNotificationSettings: { findFirst: (...a: unknown[]) => linkFindFirst(...a) },
     },
     select: () => ({ from: () => ({ where: (...a: unknown[]) => countWhere(...a) }) }),
-    insert: () => ({ values: () => ({ returning: (...a: unknown[]) => insertReturning(...a) }) }),
-    delete: () => ({ where: () => ({ returning: (...a: unknown[]) => deleteReturning(...a) }) }),
+    insert: () => ({ values: () => ({ returning: (...a: unknown[]) => { callOrder.push("insert"); return insertReturning(...a); } }) }),
+    delete: () => ({ where: () => ({ returning: (...a: unknown[]) => { callOrder.push("delete"); return deleteReturning(...a); } }) }),
     transaction: async (cb: (tx: unknown) => unknown) => cb(jest.requireMock("@/utils/db").db),
   },
 }));
 const deleteReturning = jest.fn();
+const callOrder: string[] = [];
 const mirrorProviderRowsToAlertConfig = jest.fn();
+const lockMonitorRow = jest.fn();
 jest.mock("@/lib/monitor-write", () => ({
-  mirrorProviderRowsToAlertConfig: (...a: unknown[]) => mirrorProviderRowsToAlertConfig(...a),
+  mirrorProviderRowsToAlertConfig: (...a: unknown[]) => {
+    callOrder.push("mirror");
+    return mirrorProviderRowsToAlertConfig(...a);
+  },
+  lockMonitorRow: (...a: unknown[]) => {
+    callOrder.push("lock");
+    return lockMonitorRow(...a);
+  },
 }));
 jest.mock("@/db/schema", () => ({
   monitorNotificationSettings: {},
@@ -65,6 +74,7 @@ const call = () =>
 describe("POST /api/monitors/[id]/notifications channel cap", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    callOrder.length = 0;
     delete process.env.MAX_MONITOR_NOTIFICATION_CHANNELS;
     monitorFindFirst.mockResolvedValue({ organizationId: "o1", projectId: "p1" });
     providerFindFirst.mockResolvedValue({ id: "prov-1" });
@@ -94,6 +104,8 @@ describe("POST /api/monitors/[id]/notifications channel cap", () => {
     expect(res.status).toBe(201);
     // alertConfig.notificationProviders follows the rows, in the same transaction.
     expect(mirrorProviderRowsToAlertConfig).toHaveBeenCalledWith(expect.anything(), MONITOR_ID);
+    // Monitor row lock first, so concurrent links serialize and cannot deadlock with PUT/PATCH.
+    expect(callOrder).toEqual(["lock", "insert", "mirror"]);
   });
 
   it("mirrors an unlink into alertConfig, and skips it when no link was removed", async () => {
@@ -106,7 +118,9 @@ describe("POST /api/monitors/[id]/notifications channel cap", () => {
         { params: Promise.resolve({ id: MONITOR_ID }) },
       );
     deleteReturning.mockResolvedValueOnce([{ id: "link-1" }]);
+    callOrder.length = 0;
     expect((await unlink()).status).toBe(200);
+    expect(callOrder).toEqual(["lock", "delete", "mirror"]);
     expect(mirrorProviderRowsToAlertConfig).toHaveBeenCalledWith(expect.anything(), MONITOR_ID);
     mirrorProviderRowsToAlertConfig.mockClear();
     deleteReturning.mockResolvedValueOnce([]);

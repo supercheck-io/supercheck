@@ -246,7 +246,7 @@ export async function updateMonitorHandler(
       await reconcileMonitorSchedule(updatedMonitor.id, updatedMonitor.projectId ?? "");
     } catch (error) {
       console.error(`Failed to re-schedule monitor ${updatedMonitor.id} after update:`, error);
-      throw new MonitorScheduleError(error);
+      throw new MonitorScheduleError(error, updatedMonitor);
     }
     if (updatedMonitor.enabled && updatedMonitor.status !== "paused" && updatedMonitor.frequencyMinutes > 0) {
       // Trigger immediate execution for validation (non-blocking)

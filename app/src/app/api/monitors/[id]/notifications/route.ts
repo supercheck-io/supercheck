@@ -9,7 +9,7 @@ import {
 import { eq, and, count } from "drizzle-orm";
 import { hasPermissionForUser, forbiddenOrNotFound } from "@/lib/rbac/middleware";
 import { requireUserAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
-import { mirrorProviderRowsToAlertConfig } from "@/lib/monitor-write";
+import { lockMonitorRow, mirrorProviderRowsToAlertConfig } from "@/lib/monitor-write";
 import { createLogger } from "@/lib/logger/index";
 
 const logger = createLogger({ module: "monitor-notifications-api" }) as {
@@ -208,6 +208,7 @@ export async function POST(
 
     // Create the link and mirror the list into alertConfig in one transaction, so the UI and the worker agree.
     const newLink = await db.transaction(async (tx) => {
+      await lockMonitorRow(tx, id);
       const [link] = await tx
         .insert(monitorNotificationSettings)
         .values({ monitorId: id, notificationProviderId })
@@ -291,6 +292,7 @@ export async function DELETE(
 
     // Remove the link and mirror the list into alertConfig in one transaction.
     const deletedLink = await db.transaction(async (tx) => {
+      await lockMonitorRow(tx, id);
       const [deleted] = await tx
         .delete(monitorNotificationSettings)
         .where(
