@@ -205,6 +205,8 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: write
+      id-token: write # sigstore signing for the provenance attestation
+      attestations: write
     steps:
       - name: Download package artifact
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
@@ -217,11 +219,24 @@ jobs:
       - name: Generate checksums
         run: cd release-assets && sha256sum ./*.zip > SHA256SUMS.txt
 
+      # Signed SLSA provenance; the bundle ships with the release so `gh attestation verify` works offline.
+      - name: Attest build provenance
+        id: attest
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: release-assets/*.zip
+
+      - name: Stage provenance bundle
+        run: cp "$BUNDLE_PATH" release-assets/supercheck-recorder.intoto.sigstore.json
+        env:
+          BUNDLE_PATH: ${{ steps.attest.outputs.bundle-path }}
+
       - name: Publish GitHub release
         run: |
           gh release create "${GITHUB_REF_NAME}" \
             release-assets/*.zip \
             release-assets/SHA256SUMS.txt \
+            release-assets/supercheck-recorder.intoto.sigstore.json \
             --title "Supercheck Recorder v${GITHUB_REF_NAME#recorder-v}" \
             --generate-notes \
             --verify-tag \
