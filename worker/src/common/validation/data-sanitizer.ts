@@ -196,7 +196,7 @@ export function sanitizeLogData(data: unknown, depth: number = 0): unknown {
 
 // Mirrors SENSITIVE_QUERY_PARAM in app/src/lib/monitor-read-config.ts (keep in sync).
 const SENSITIVE_QUERY_PARAM =
-  /token|secret|passw|pwd|^pass$|api[-_]?key|app[-_]?key|access[-_]?key|private[-_]?key|client[-_]?key|[-_]key$|^key$|auth(?!or\b|ors\b|ority)|signature|^sig$|credential|session|jwt|^otp$|^sid$|ticket|^hash$/i;
+  /token|secret|passw|pwd|^pass$|api[-_]?key|app[-_]?key|access[-_]?key|private[-_]?key|client[-_]?key|[-_]key$|^key$|auth(?!or\b|ors\b|ority)|signature|^sig$|credential|session|jwt|^otp$|^sid$|ticket|^hash$|^code$|^pw$|^sk$/i;
 
 /**
  * Redacts URL userinfo, sensitive query values and a fragment carrying values
@@ -204,22 +204,31 @@ const SENSITIVE_QUERY_PARAM =
  * ping/port targets) are returned unchanged.
  */
 export function redactTargetUrl(target: string): string {
+  // Userinfo (user:pass@host) is masked for any scheme, or none (user:pass@host:5432).
+  const masked = target.replace(
+    /^(\s*(?:[a-z][a-z0-9+.-]*:)?\/\/|\s*)[^/?#\s]*@/i,
+    '$1REDACTED@',
+  );
   let parsed: URL;
   try {
-    parsed = new URL(target.trim());
+    parsed = new URL(masked.trim());
   } catch {
-    // Fail closed: an unparseable http(s) string may still carry userinfo or a secret query.
-    return /^\s*https?:/i.test(target)
-      ? target.replace(/\/\/[^/?#@]*@/, '//REDACTED@').replace(/[?#].*$/, '')
-      : target;
+    // Fail closed: an unparseable http(s) string may still carry a secret query.
+    return /^\s*https?:/i.test(masked) ? masked.replace(/[?#].*$/, '') : masked;
   }
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:')
-    return target;
+    return masked;
   const names = [...new Set(parsed.searchParams.keys())].filter((n) =>
     SENSITIVE_QUERY_PARAM.test(n),
   );
   const fragment = parsed.hash.includes('=');
-  if (!parsed.username && !parsed.password && names.length === 0 && !fragment)
+  if (
+    masked === target &&
+    !parsed.username &&
+    !parsed.password &&
+    names.length === 0 &&
+    !fragment
+  )
     return target;
   if (parsed.username || parsed.password) parsed.username = 'REDACTED';
   parsed.password = '';
@@ -230,5 +239,10 @@ export function redactTargetUrl(target: string): string {
 
 /** Redacts every http(s) URL embedded in free text (error messages echo target URLs). */
 export function redactUrlsInText(text: string): string {
-  return text.replace(/https?:\/\/[^\s"'<>)]+/gi, (u) => redactTargetUrl(u));
+  return text.replace(/https?:\/\/[^\s"'<>]+/gi, (u) => {
+    // Trailing prose punctuation is not part of the URL; keep it outside the redaction.
+    let end = u.length;
+    while (end > 0 && ').,;'.includes(u[end - 1])) end--;
+    return redactTargetUrl(u.slice(0, end)) + u.slice(end);
+  });
 }

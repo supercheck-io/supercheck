@@ -495,6 +495,30 @@ describe('redactTargetUrl', () => {
     expect(out).not.toContain('aaaa');
   });
 
+  it('masks userinfo for any scheme and sensitive code/pw/sk params', () => {
+    for (const t of [
+      'ws://u:p@h.com/x',
+      '//u:p@h.com/x',
+      'user:pass@db.host:5432',
+    ])
+      expect(redactTargetUrl(t)).not.toMatch(/u:p|user|pass/);
+    const out = redactTargetUrl('https://h.com/?code=1&pw=2&sk=3&q=4');
+    expect(out).not.toMatch(/=1|=2|=3/);
+    expect(out).toContain('q=4');
+  });
+
+  it('redacts URLs followed by prose punctuation or with parentheses', () => {
+    expect(redactUrlsInText('see https://h/?a=(x)&token=SECRET')).not.toContain(
+      'SECRET',
+    );
+    const out = redactUrlsInText(
+      'failed https://h/?token=S, and retried (https://h/?pw=Z).',
+    );
+    expect(out).not.toMatch(/=S|=Z/);
+    expect(out).toContain(', and retried (');
+    expect(out.endsWith(').')).toBe(true);
+  });
+
   it('leaves clean URLs and non-URL targets unchanged', () => {
     expect(redactTargetUrl('https://h.com/x?q=2')).toBe('https://h.com/x?q=2');
     expect(redactTargetUrl('db.internal:5432')).toBe('db.internal:5432');

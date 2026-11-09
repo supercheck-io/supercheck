@@ -1049,7 +1049,7 @@ export class NotificationService implements OnApplicationShutdown {
       }
 
       this.logger.error(
-        `Failed to send Slack notification after ${result.attempts} attempts: ${result.error}`,
+        `Failed to send Slack notification after ${result.attempts} attempts: ${this.safeSendError('Slack', result.error, secrets)}`,
       );
       return {
         success: false,
@@ -1057,7 +1057,7 @@ export class NotificationService implements OnApplicationShutdown {
       };
     } catch (error) {
       this.logger.error(
-        `Failed to send Slack notification: ${getErrorMessage(error)}`,
+        `Failed to send Slack notification: ${this.safeSendError('Slack', getErrorMessage(error), secrets)}`,
       );
       return {
         success: false,
@@ -1520,7 +1520,7 @@ export class NotificationService implements OnApplicationShutdown {
       }
 
       this.logger.error(
-        `Failed to send Telegram notification after ${result.attempts} attempts: ${result.error}`,
+        `Failed to send Telegram notification after ${result.attempts} attempts: ${this.safeSendError('Telegram', result.error, secrets)}`,
       );
       return {
         success: false,
@@ -1528,7 +1528,7 @@ export class NotificationService implements OnApplicationShutdown {
       };
     } catch (error) {
       this.logger.error(
-        `Failed to send Telegram notification: ${getErrorMessage(error)}`,
+        `Failed to send Telegram notification: ${this.safeSendError('Telegram', getErrorMessage(error), secrets)}`,
         getErrorStack(error),
       );
       return {
@@ -1605,7 +1605,7 @@ export class NotificationService implements OnApplicationShutdown {
       }
 
       this.logger.error(
-        `Failed to send Discord notification after ${result.attempts} attempts: ${result.error}`,
+        `Failed to send Discord notification after ${result.attempts} attempts: ${this.safeSendError('Discord', result.error, secrets)}`,
       );
       return {
         success: false,
@@ -1613,7 +1613,7 @@ export class NotificationService implements OnApplicationShutdown {
       };
     } catch (error) {
       this.logger.error(
-        `Failed to send Discord notification: ${getErrorMessage(error)}`,
+        `Failed to send Discord notification: ${this.safeSendError('Discord', getErrorMessage(error), secrets)}`,
       );
       return {
         success: false,
@@ -1774,7 +1774,7 @@ export class NotificationService implements OnApplicationShutdown {
       }
 
       this.logger.error(
-        `Failed to send Teams notification after ${result.attempts} attempts: ${result.error}`,
+        `Failed to send Teams notification after ${result.attempts} attempts: ${this.safeSendError('Teams', result.error, secrets)}`,
       );
       return {
         success: false,
@@ -1782,7 +1782,7 @@ export class NotificationService implements OnApplicationShutdown {
       };
     } catch (error) {
       this.logger.error(
-        `Failed to send Teams notification: ${getErrorMessage(error)}`,
+        `Failed to send Teams notification: ${this.safeSendError('Teams', getErrorMessage(error), secrets)}`,
       );
       return {
         success: false,
