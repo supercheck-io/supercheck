@@ -187,4 +187,24 @@ describe("SpendingLimits loading recovery", () => {
     expect(reset).toMatchObject({ resetSpendingLimitToPlanDefault: true });
     expect(reset).not.toHaveProperty("monthlySpendingLimitDollars");
   });
+
+  it("resets a saved custom cap to the plan default without sending the custom amount", async () => {
+    const saved = {
+      organizationId: "org_1", enableSpendingLimit: true, monthlySpendingLimitDollars: 150,
+      monthlySpendingLimitCents: 15000, hardStopOnLimit: false, notifyAt80Percent: true, notificationEmails: [],
+      effectiveSpendingLimit: { source: "custom", enabled: true, limitCents: 15000, hardStop: false, planDefaultCents: 7000 },
+    };
+    const fetchMock = jest.fn().mockImplementation(async (url: string) => ({
+      ok: true, json: async () => url.endsWith("/settings") ? saved : { organizationId: "org_1", spending: null },
+    }));
+    global.fetch = fetchMock;
+    render(<SpendingLimits organizationId="org_1" />);
+    expect(await screen.findByText("Custom")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Use plan default ($70.00, hard stop)" }));
+    await waitFor(() => expect(fetchMock.mock.calls.some((call) => call[1]?.method === "PATCH")).toBe(true));
+    const body = JSON.parse(fetchMock.mock.calls.find((call) => call[1]?.method === "PATCH")?.[1].body);
+    expect(body).toMatchObject({ resetSpendingLimitToPlanDefault: true });
+    expect(body).not.toHaveProperty("monthlySpendingLimitDollars");
+    expect(body).not.toHaveProperty("hardStopOnLimit");
+  });
 });

@@ -4,8 +4,10 @@ import { NextRequest } from "next/server";
 const mockFindFirst = jest.fn();
 const mockSelects: unknown[][] = [];
 const mockWheres: unknown[] = [];
-const mockStale = jest.fn(async (): Promise<Set<string>> => new Set());
-jest.mock("@/lib/status-pages/component-freshness", () => ({ loadStaleComponentIds: () => mockStale() }));
+const mockStale = jest.fn(async (_ids: string[]): Promise<Set<string>> => new Set());
+jest.mock("@/lib/status-pages/component-freshness", () => ({
+  loadStaleComponentIds: (ids: string[]) => mockStale(ids),
+}));
 jest.mock("@/utils/db", () => ({
   db: {
     query: { statusPages: { findFirst: (...a: unknown[]) => mockFindFirst(...a) } },
@@ -75,6 +77,13 @@ describe("status badge", () => {
     mockStale.mockResolvedValueOnce(new Set(["stale"]));
     mockSelects.push([{ id: "stale", status: "major_outage" }, { id: "live", status: "operational" }], []);
     expect(await call()).toContain("operational");
+    expect(mockStale).toHaveBeenLastCalledWith(["stale", "live"]);
+  });
+
+  it("keeps a live outage when another component is stale", async () => {
+    mockStale.mockResolvedValueOnce(new Set(["stale"]));
+    mockSelects.push([{ id: "stale", status: "operational" }, { id: "live", status: "major_outage" }], []);
+    expect(await call()).toContain("major outage");
   });
 
   it("filters incidents to this page, open statuses and non-maintenance", async () => {

@@ -171,6 +171,20 @@ describe("UsageNotificationService", () => {
     );
   });
 
+  it("alerts on the plan default cap when the stored cap fields are off", async () => {
+    (billingSettingsService.getSettings as jest.Mock).mockResolvedValue({
+      enableSpendingLimit: false, monthlySpendingLimitCents: null, hardStopOnLimit: false,
+      notifyAt80Percent: true, notifyAt90Percent: true, notifyAt100Percent: true, notificationEmails: [],
+    });
+    (billingSettingsService.getEffectiveSpendingLimit as jest.Mock).mockResolvedValueOnce({
+      source: "plan_default", enabled: true, limitCents: 10_000, hardStop: true, planDefaultCents: 10_000,
+    });
+    await usageNotificationService.checkAndNotify("org_123");
+    expect(billingSettingsService.markNotificationSent).toHaveBeenCalledWith(
+      "org_123", "spending_90", undefined, expect.any(Date),
+    );
+  });
+
   it("does not send the limit-reached alert before the limit is reached", async () => {
     (polarUsageService.getUsageMetrics as jest.Mock).mockResolvedValueOnce({
       ...(await (polarUsageService.getUsageMetrics as jest.Mock)()),
