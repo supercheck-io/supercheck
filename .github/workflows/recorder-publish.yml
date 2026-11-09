@@ -219,7 +219,9 @@ jobs:
       - name: Generate checksums
         run: cd release-assets && sha256sum ./*.zip > SHA256SUMS.txt
 
-      # Signed SLSA provenance; the bundle ships with the release so `gh attestation verify` works offline.
+      # Signed SLSA provenance, also shipped as a release asset. Verify with
+      # `gh attestation verify <zip> --repo supercheck-io/supercheck`; offline use also needs
+      # `--bundle` plus a trusted root saved beforehand (`--custom-trusted-root`).
       - name: Attest build provenance
         id: attest
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
