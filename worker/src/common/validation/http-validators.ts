@@ -20,26 +20,29 @@ export function isExpectedStatus(
     return actualStatus >= 200 && actualStatus < 300;
   }
 
-  const parts = expectedCodesString.split(',').map((part) => part.trim());
-
-  for (const part of parts) {
-    // Handle patterns like "2xx", "3xx", "4xx", "5xx"
-    if (part.endsWith('xx')) {
-      const prefix = parseInt(part.charAt(0));
-      const actualPrefix = Math.floor(actualStatus / 100);
-      if (actualPrefix === prefix) {
+  // Malformed entries never match (a typo must not widen what counts as up); the API rejects them on write.
+  for (const part of expectedCodesString.toLowerCase().split(',')) {
+    const entry = part.trim();
+    const wildcard = /^([1-5])xx$/.exec(entry);
+    if (wildcard) {
+      if (Math.floor(actualStatus / 100) === Number(wildcard[1])) return true;
+      continue;
+    }
+    const range = /^(\d{3})\s*-\s*(\d{3})$/.exec(entry);
+    if (range) {
+      const [min, max] = [Number(range[1]), Number(range[2])];
+      if (
+        min >= 100 &&
+        max <= 599 &&
+        min <= max &&
+        actualStatus >= min &&
+        actualStatus <= max
+      ) {
         return true;
       }
+      continue;
     }
-    // Handle ranges like "200-299"
-    else if (part.includes('-')) {
-      const [min, max] = part.split('-').map(Number);
-      if (actualStatus >= min && actualStatus <= max) {
-        return true;
-      }
-    }
-    // Handle specific status codes like "200", "404"
-    else if (Number(part) === actualStatus) {
+    if (/^[1-5]\d\d$/.test(entry) && Number(entry) === actualStatus) {
       return true;
     }
   }

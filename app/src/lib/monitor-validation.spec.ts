@@ -93,10 +93,10 @@ describe("location policy and unsupported assertions", () => {
   it("accepts a spaced range the worker evaluates", () => {
     expect(site({ expectedStatusCodes: "200 - 299" }).success).toBe(true);
   });
-  it.each(["abc", "99", "600", "299-200", "2xx,abc", "20x", "2XX"])("rejects expectedStatusCodes %p", (expectedStatusCodes) => {
+  it.each(["abc", "99", "600", "299-200", "2xx,abc", "20x"])("rejects expectedStatusCodes %p", (expectedStatusCodes) => {
     expect(site({ expectedStatusCodes }).success).toBe(false);
   });
-  it.each(["200", "200-299", "2xx", "200-299, 301,4xx", ""])("accepts expectedStatusCodes %p", (expectedStatusCodes) => {
+  it.each(["200", "200-299", "2xx", "200-299, 301,4xx", "", "2XX", "4Xx"])("accepts expectedStatusCodes %p", (expectedStatusCodes) => {
     expect(site({ method: "POST", expectedStatusCodes }).success).toBe(true);
   });
   it("does not reject a stored legacy method when the client sent no config", () => {

@@ -182,3 +182,41 @@ describe('http-validators', () => {
     });
   });
 });
+
+describe('isExpectedStatus strict grammar', () => {
+  it.each([
+    [200, '2XX'],
+    [404, ' 4Xx '],
+    [301, '200-299, 3XX'],
+    [250, '200 - 299'],
+  ])('matches %s against "%s" case-insensitively', (status, pattern) => {
+    expect(isExpectedStatus(status, pattern)).toBe(true);
+  });
+
+  it.each([
+    // "9xx" and "20xx" used to match on their first digit only
+    [200, '20xx'],
+    [900, '9xx'],
+    [200, '2xxx'],
+    [200, 'xx'],
+    // open, reversed or out-of-range ranges never match
+    [200, '200-'],
+    [250, '-299'],
+    [250, '299-200'],
+    [200, '200-299-399'],
+    [600, '500-699'],
+    [99, '0-199'],
+    // single codes must be real status codes
+    [200, '2000'],
+    [200, '20'],
+    [0, '0'],
+    [200, 'abc'],
+  ])('does not match %s against malformed "%s"', (status, pattern) => {
+    expect(isExpectedStatus(status, pattern)).toBe(false);
+  });
+
+  it('ignores a malformed entry but still honours valid siblings', () => {
+    expect(isExpectedStatus(200, '200-,200')).toBe(true);
+    expect(isExpectedStatus(404, '200-,200')).toBe(false);
+  });
+});

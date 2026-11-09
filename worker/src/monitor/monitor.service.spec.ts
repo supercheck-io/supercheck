@@ -54,7 +54,20 @@ jest.mock('net', () => {
   const actual = jest.requireActual('net');
   const { EventEmitter } = jest.requireActual('events');
   const state = {
-    behavior: 'error' as 'connect' | 'error' | 'aggregate' | 'mixed' | 'empty',
+    behavior: 'error' as
+      | 'connect'
+      | 'error'
+      | 'aggregate'
+      | 'mixed'
+      | 'empty'
+      | 'timeout'
+      | 'timeout-aggregate'
+      | 'enotfound',
+    // Per-attempt outcomes for createConnection (ping), consumed in order before `behavior`.
+    attempts: [] as Array<{
+      outcome: 'connect' | 'refused' | 'mixed' | 'timeout' | 'enotfound';
+      delayMs?: number;
+    }>,
   };
 
   class FakeSocket extends EventEmitter {
@@ -81,6 +94,29 @@ jest.mock('net', () => {
             ]),
           );
         else if (state.behavior === 'empty') this.emit('error', new Error(''));
+        else if (state.behavior === 'timeout')
+          this.emit(
+            'error',
+            Object.assign(new Error('connect ETIMEDOUT 203.0.113.9:5432'), {
+              code: 'ETIMEDOUT',
+            }),
+          );
+        else if (state.behavior === 'timeout-aggregate')
+          this.emit(
+            'error',
+            new AggregateError([
+              Object.assign(new Error('connect ETIMEDOUT'), {
+                code: 'ETIMEDOUT',
+              }),
+            ]),
+          );
+        else if (state.behavior === 'enotfound')
+          this.emit(
+            'error',
+            Object.assign(new Error('getaddrinfo ENOTFOUND db.example.com'), {
+              code: 'ENOTFOUND',
+            }),
+          );
         else
           this.emit(
             'error',
@@ -96,17 +132,90 @@ jest.mock('net', () => {
     Socket: FakeSocket,
     createConnection: jest.fn(() => {
       const socket = new FakeSocket();
-      process.nextTick(() => {
-        if (state.behavior === 'connect') socket.emit('connect');
+      const attempt = state.attempts.shift();
+      const outcome =
+        attempt?.outcome ??
+        (state.behavior === 'connect' ? 'connect' : 'enotfound');
+      setTimeout(() => {
+        if (outcome === 'connect') socket.emit('connect');
+        else if (outcome === 'refused')
+          socket.emit(
+            'error',
+            Object.assign(new Error('connect ECONNREFUSED'), {
+              code: 'ECONNREFUSED',
+            }),
+          );
+        else if (outcome === 'mixed')
+          socket.emit(
+            'error',
+            new AggregateError([
+              Object.assign(new Error('refused'), { code: 'ECONNREFUSED' }),
+              Object.assign(new Error('unreachable'), {
+                code: 'ENETUNREACH',
+              }),
+            ]),
+          );
+        else if (outcome === 'timeout')
+          socket.emit(
+            'error',
+            Object.assign(new Error('connect ETIMEDOUT'), {
+              code: 'ETIMEDOUT',
+            }),
+          );
         else
           socket.emit(
             'error',
             Object.assign(new Error('ENOTFOUND'), { code: 'ENOTFOUND' }),
           );
-      });
+      }, attempt?.delayMs ?? 0);
       return socket;
     }),
   };
+});
+
+// UDP probes: a connected socket either errors (ICMP port-unreachable), gets a reply, or stays silent.
+jest.mock('dgram', () => {
+  const { EventEmitter } = jest.requireActual('events');
+  const state = {
+    behavior: 'silent' as 'silent' | 'refused' | 'reply' | 'connect-fail',
+    connectedTo: undefined as unknown[] | undefined,
+    sentUnconnected: false,
+  };
+
+  class FakeUdpSocket extends EventEmitter {
+    connect = jest.fn((...args: unknown[]) => {
+      state.connectedTo = args;
+      process.nextTick(() => {
+        if (state.behavior === 'connect-fail')
+          this.emit(
+            'error',
+            Object.assign(new Error('connect EINVAL'), { code: 'EINVAL' }),
+          );
+        else this.emit('connect');
+      });
+    });
+    send = jest.fn((...args: unknown[]) => {
+      // send(msg, port, host) is the old unconnected form: ICMP errors never reach it.
+      if (args.length > 2) state.sentUnconnected = true;
+      const callback = args.find((a) => typeof a === 'function') as
+        ((error?: Error) => void) | undefined;
+      process.nextTick(() => {
+        callback?.();
+        if (state.behavior === 'refused')
+          this.emit(
+            'error',
+            Object.assign(new Error('recv ECONNREFUSED'), {
+              code: 'ECONNREFUSED',
+            }),
+          );
+        else if (state.behavior === 'reply')
+          this.emit('message', Buffer.from('x'));
+      });
+    });
+    close = jest.fn((callback?: () => void) => callback?.());
+  }
+
+  return { __state: state, createSocket: jest.fn(() => new FakeUdpSocket()) };
 });
 
 jest.mock('tls', () => {
@@ -143,7 +252,11 @@ import {
   MonitorAggregationBusyError,
   AGGREGATION_COMPLETED_TTL_SECONDS,
 } from './monitor.service';
-import { vettedLookup } from '../common/utils/pinned-monitor-request';
+import {
+  requestPinnedMonitorTarget,
+  vettedLookup,
+} from '../common/utils/pinned-monitor-request';
+import { MonitorRedirectError } from '../common/utils/network-error';
 import type { MonitorEvaluator } from './monitor-evaluator';
 import type { MonitorExecutionResult } from './types/monitor-result.type';
 import { DbService } from '../db/db.service';
@@ -167,6 +280,7 @@ import * as schema from '../db/schema';
 describe('MonitorService', () => {
   // Deterministic network fakes installed by the jest.mock('net'|'tls') factories.
   const netState = jest.requireMock('net').__state;
+  const udpState = jest.requireMock('dgram').__state;
   const tlsState = jest.requireMock('tls').__state;
   let service: MonitorService;
   let _httpService: HttpService;
@@ -322,6 +436,9 @@ describe('MonitorService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    netState.attempts.length = 0;
+    udpState.behavior = 'silent';
+    udpState.sentUnconnected = false;
     mockRedisService.getClient().get.mockReset().mockResolvedValue(null);
     mockRedisService.getClient().set.mockReset().mockResolvedValue('OK');
     mockRedisService.getClient().eval.mockReset().mockResolvedValue(1);
@@ -1218,6 +1335,314 @@ describe('MonitorService', () => {
   // ==========================================================================
   // STATUS CODES TESTS
   // ==========================================================================
+
+  describe('check status classification', () => {
+    const portJob = (config: Record<string, unknown> = {}) => ({
+      ...mockJobData,
+      type: 'port_check' as const,
+      target: 'db.example.com',
+      config: { ...mockJobData.config, port: 5432, ...config },
+    });
+    const pingJob = {
+      ...mockJobData,
+      type: 'ping_host' as const,
+      target: 'host.example.com',
+    };
+    const http = (config: Record<string, unknown> = {}) =>
+      service['executeHttpRequest']('https://example.com', config);
+
+    describe('HTTP', () => {
+      it('reports ETIMEDOUT (code only, any case) as a timeout', async () => {
+        const error = new AxiosError('connect ETIMEDOUT 1.2.3.4:443');
+        error.code = 'ETIMEDOUT';
+        (service['httpService'].request as jest.Mock).mockImplementationOnce(
+          () => throwError(() => error),
+        );
+        expect((await http({ timeoutSeconds: 1 })).status).toBe('timeout');
+      });
+
+      it('reports a DNS failure as down with a clear message', async () => {
+        jest.mocked(requestPinnedMonitorTarget).mockRejectedValueOnce(
+          Object.assign(new Error('getaddrinfo ENOTFOUND nope.example'), {
+            code: 'ENOTFOUND',
+          }),
+        );
+        const result = await http();
+        expect(result).toMatchObject({ status: 'down', isUp: false });
+        expect(result.details.errorMessage).toContain('DNS lookup failed');
+        expect(result.details.errorMessage).toContain('ENOTFOUND');
+      });
+
+      it.each(['EAI_AGAIN', 'ETIMEDOUT'])(
+        'classifies a lookup error %s without calling it unexpected',
+        async (code) => {
+          jest
+            .mocked(requestPinnedMonitorTarget)
+            .mockRejectedValueOnce(
+              Object.assign(new Error(`lookup ${code}`), { code }),
+            );
+          const result = await http();
+          expect(result.status).toBe(code === 'ETIMEDOUT' ? 'timeout' : 'down');
+        },
+      );
+
+      it('reports a redirect limit or invalid redirect as down', async () => {
+        jest
+          .mocked(requestPinnedMonitorTarget)
+          .mockRejectedValueOnce(
+            new MonitorRedirectError(
+              'Monitor target exceeded the redirect limit of 5',
+            ),
+          );
+        const result = await http();
+        expect(result).toMatchObject({ status: 'down', isUp: false });
+        expect(result.details.errorMessage).toContain('redirect limit');
+      });
+
+      it('keeps error for a validation fault', async () => {
+        jest
+          .mocked(requestPinnedMonitorTarget)
+          .mockRejectedValueOnce(
+            new Error('Access to private or reserved networks is not allowed'),
+          );
+        expect((await http()).status).toBe('error');
+      });
+
+      it('measures responseSize in bytes, not characters', async () => {
+        (service['httpService'].request as jest.Mock).mockImplementationOnce(
+          () =>
+            of({ status: 200, statusText: 'OK', headers: {}, data: 'é€😀' }),
+        );
+        const result = await http();
+        // 2 + 3 + 4 bytes; a string-length count would say 4
+        expect(result.details.responseSize).toBe(9);
+      });
+
+      it('does not count an oversized redirect as up', async () => {
+        tooLarge(301);
+        const result = await http({ expectedStatusCodes: '3xx' });
+        expect(result.status).toBe('error');
+        expect(result.isUp).toBe(false);
+        expect(result.details.errorMessage).toContain('verify the redirect');
+      });
+
+      const tooLarge = (statusCode?: number) => {
+        const error = new AxiosError(
+          'maxContentLength size of 10485760 exceeded',
+          'ERR_BAD_RESPONSE',
+          undefined,
+          statusCode === undefined ? undefined : { res: { statusCode } },
+        );
+        (service['httpService'].request as jest.Mock).mockImplementationOnce(
+          () => throwError(() => error),
+        );
+      };
+
+      it('reports an oversized body with an expected status as up and says why', async () => {
+        tooLarge(200);
+        const result = await http();
+        expect(result).toMatchObject({ status: 'up', isUp: true });
+        expect(result.details).toMatchObject({
+          statusCode: 200,
+          responseTooLarge: true,
+        });
+        expect(result.details.errorMessage).toContain('Response too large');
+      });
+
+      it('reports an oversized body with an unexpected status as down', async () => {
+        tooLarge(503);
+        const result = await http();
+        expect(result).toMatchObject({ status: 'down', isUp: false });
+        expect(result.details.errorMessage).toContain('Response too large');
+        expect(result.details.errorMessage).toContain('503');
+      });
+
+      it('cannot judge an oversized body without a status or against a keyword', async () => {
+        tooLarge();
+        expect((await http()).status).toBe('error');
+        tooLarge(200);
+        expect((await http({ keywordInBody: 'ok' })).status).toBe('error');
+      });
+    });
+
+    describe('ping', () => {
+      it('treats a refused connection as proof the host is alive', async () => {
+        netState.attempts.push({ outcome: 'refused' });
+        const result = await service.executeMonitor(pingJob);
+        expect(result).toMatchObject({ status: 'up', isUp: true });
+        expect(result?.details).toMatchObject({ port: 443 });
+        expect(result?.details?.message).toContain('refused');
+      });
+
+      it('counts a refusal on one address as alive even if another is unreachable', async () => {
+        netState.attempts.push({ outcome: 'mixed' });
+        const result = await service.executeMonitor(pingJob);
+        expect(result).toMatchObject({ status: 'up', isUp: true });
+      });
+
+      it('still reports down when the host cannot be resolved', async () => {
+        netState.attempts.push(
+          { outcome: 'enotfound' },
+          { outcome: 'enotfound' },
+        );
+        const result = await service.executeMonitor(pingJob);
+        expect(result).toMatchObject({ status: 'down', isUp: false });
+      });
+
+      it('times only the attempt that answered', async () => {
+        netState.attempts.push(
+          { outcome: 'timeout', delayMs: 300 },
+          { outcome: 'connect' },
+        );
+        const result = await service.executeMonitor(pingJob);
+        expect(result).toMatchObject({ status: 'up', isUp: true });
+        expect(result?.details).toMatchObject({ port: 80 });
+        expect(result?.responseTimeMs).toBeLessThan(250);
+      });
+    });
+
+    describe('TCP port check', () => {
+      it.each(['timeout', 'timeout-aggregate'])(
+        'reports %s as a timeout',
+        async (behavior) => {
+          netState.behavior = behavior;
+          const result = await service.executeMonitor(portJob());
+          expect(result).toMatchObject({ status: 'timeout', isUp: false });
+        },
+      );
+
+      it('does not start a liveness probe unless expectClosed is set', async () => {
+        const net = jest.requireMock('net');
+        net.createConnection.mockClear();
+        netState.behavior = 'timeout';
+        await service.executeMonitor(portJob());
+        expect(net.createConnection).not.toHaveBeenCalled();
+      });
+
+      it('destroys the probe sockets when the connect is refused first', async () => {
+        const net = jest.requireMock('net');
+        net.createConnection.mockClear();
+        netState.behavior = 'error'; // refused
+        netState.attempts.push(
+          { outcome: 'connect', delayMs: 60_000 },
+          { outcome: 'connect', delayMs: 60_000 },
+        );
+        const result = await service.executeMonitor(
+          portJob({ expectClosed: true }),
+        );
+        expect(result).toMatchObject({ status: 'up', isUp: true });
+        const sockets = net.createConnection.mock.results.map(
+          (r: { value: { destroy: jest.Mock } }) => r.value,
+        );
+        expect(sockets).toHaveLength(2);
+        sockets.forEach((socket: { destroy: jest.Mock }) =>
+          expect(socket.destroy).toHaveBeenCalled(),
+        );
+      });
+
+      it('passes expectClosed when the host answers late, within the shared timeout', async () => {
+        netState.behavior = 'timeout';
+        netState.attempts.push({ outcome: 'connect', delayMs: 200 });
+        const result = await service.executeMonitor(
+          portJob({ expectClosed: true, timeoutSeconds: 10 }),
+        );
+        expect(result).toMatchObject({ status: 'up', isUp: true });
+        expect(result?.details).toMatchObject({ filtered: true });
+      });
+
+      it('fails expectClosed on a timeout when the host itself is unreachable', async () => {
+        netState.behavior = 'timeout';
+        netState.attempts.push({ outcome: 'timeout' }, { outcome: 'timeout' });
+        const result = await service.executeMonitor(
+          portJob({ expectClosed: true }),
+        );
+        expect(result).toMatchObject({ status: 'down', isUp: false });
+        expect(result?.details?.errorMessage).toContain('Host unreachable');
+      });
+
+      it.each(['timeout', 'timeout-aggregate'])(
+        'treats %s as filtered and closed when expectClosed and the host is alive',
+        async (behavior) => {
+          netState.behavior = behavior;
+          netState.attempts.push({ outcome: 'connect' });
+          const result = await service.executeMonitor(
+            portJob({ expectClosed: true }),
+          );
+          expect(result).toMatchObject({ status: 'up', isUp: true });
+          expect(result?.details).toMatchObject({ filtered: true });
+          // The liveness probe reuses the vetted lookup instead of resolving again.
+          expect(vettedLookup).toHaveBeenCalledTimes(1);
+        },
+      );
+
+      it('reports a DNS failure as down, even with expectClosed', async () => {
+        netState.behavior = 'enotfound';
+        for (const expectClosed of [false, true]) {
+          const result = await service.executeMonitor(
+            portJob({ expectClosed }),
+          );
+          expect(result).toMatchObject({ status: 'down', isUp: false });
+          expect(result?.details?.errorMessage).toContain('DNS lookup failed');
+        }
+      });
+    });
+
+    describe('UDP port check', () => {
+      const udp = (config: Record<string, unknown> = {}) =>
+        service.executeMonitor(portJob({ protocol: 'udp', ...config }));
+
+      it('sends on a connected socket so ICMP refusal surfaces as closed', async () => {
+        udpState.behavior = 'refused';
+        const result = await udp();
+        expect(udpState.connectedTo?.slice(0, 2)).toEqual([
+          5432,
+          '93.184.216.34',
+        ]);
+        expect(udpState.sentUnconnected).toBe(false);
+        expect(result).toMatchObject({ status: 'down', isUp: false });
+        expect(result?.details?.errorMessage).toContain('refused');
+      });
+
+      it('reports a failed connect() as an error without sending', async () => {
+        udpState.behavior = 'connect-fail';
+        const result = await udp();
+        expect(result).toMatchObject({ isUp: false });
+        expect(result?.status).toBe('error');
+      });
+
+      it('treats a refusal as success when the port is expected to be closed', async () => {
+        udpState.behavior = 'refused';
+        const result = await udp({ expectClosed: true });
+        expect(result).toMatchObject({ status: 'up', isUp: true });
+        expect(result?.details).toMatchObject({ connectionRefused: true });
+      });
+
+      it('reports silence as open|filtered and up, with the note', async () => {
+        const result = await udp({ timeoutSeconds: 1 });
+        expect(result).toMatchObject({ status: 'up', isUp: true });
+        expect(result?.details?.message).toContain('open or filtered');
+        expect(result?.details?.note).toContain('open|filtered');
+      });
+
+      it('fails expectClosed on silence because the port is not proven closed', async () => {
+        const result = await udp({ timeoutSeconds: 1, expectClosed: true });
+        expect(result).toMatchObject({ status: 'down', isUp: false });
+        expect(result?.details?.errorMessage).toContain(
+          'expected to be closed',
+        );
+      });
+
+      it('reports a reply as plainly open', async () => {
+        udpState.behavior = 'reply';
+        const result = await udp();
+        expect(result).toMatchObject({ status: 'up', isUp: true });
+        expect(result?.details?.message).toBe(
+          'Port is open (the service replied)',
+        );
+        expect(result?.details?.note).toBeUndefined();
+      });
+    });
+  });
 
   describe('Status Code Handling', () => {
     const successCodes = [200, 201, 202, 204, 299];
