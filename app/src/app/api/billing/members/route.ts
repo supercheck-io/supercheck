@@ -145,9 +145,24 @@ export async function POST(request: NextRequest) {
           // The subscription carries no seat price, so seats cannot be changed.
           return NextResponse.json({ error: POLAR_ERRORS[422].error }, { status: 409 });
         }
+        // Store the provider's seats locally, advancing the webhook ordering marker to that subscription
+        // version, so a delayed older subscription event (or a stale reconciliation snapshot) cannot restore
+        // the previous seats.
+        const subscriptionId = org.subscriptionId;
+        const store = async (units: number, at: Date | null) => {
+          if (units === org.memberUnits) return;
+          const ordering = at && Number.isFinite(at.getTime()) &&
+            (!org.polarWebhookTimestamp || at > org.polarWebhookTimestamp)
+            ? { polarWebhookTimestamp: at, polarWebhookEventKey: `seats:${subscriptionId}:${at.toISOString()}` }
+            : {};
+          await tx.update(organization).set({ memberUnits: units, ...ordering })
+            .where(and(eq(organization.id, organizationId), eq(organization.subscriptionId, subscriptionId)));
+        };
         const currentLimit = effectiveMemberLimit(plan, live);
         if (currentLimit !== expectedCurrentMembers) {
           // Another tab or a sync changed the seats since the preview: a previewed credit could become a charge.
+          // Store the live count first, so the refresh shows it and the next confirmation previews from it.
+          await store(live, version ? new Date(version) : null);
           return NextResponse.json(
             { error: "Member seats changed since you opened this. Refresh and try again.", code: "seats_changed" },
             { status: 409 },
@@ -168,17 +183,7 @@ export async function POST(request: NextRequest) {
           }
           applied = { before: currentLimit, units };
         }
-        if (units !== org.memberUnits) {
-          // Advance the webhook ordering marker to this subscription version, so a delayed older
-          // subscription event (or a stale reconciliation snapshot) cannot restore the previous seats.
-          const at = version ? new Date(version) : null;
-          const ordering = at && Number.isFinite(at.getTime()) &&
-            (!org.polarWebhookTimestamp || at > org.polarWebhookTimestamp)
-            ? { polarWebhookTimestamp: at, polarWebhookEventKey: `seats:${org.subscriptionId}:${at.toISOString()}` }
-            : {};
-          await tx.update(organization).set({ memberUnits: units, ...ordering })
-            .where(and(eq(organization.id, organizationId), eq(organization.subscriptionId, org.subscriptionId)));
-        }
+        await store(units, version ? new Date(version) : null);
         return NextResponse.json(summary(units, inUse));
       });
     } catch (error) {

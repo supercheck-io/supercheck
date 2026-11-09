@@ -127,6 +127,19 @@ describe("POST /api/billing/members", () => {
     expect(createAuditLog).not.toHaveBeenCalled();
   });
 
+  it("stores the live seats when refusing a stale preview, so the refresh shows them", async () => {
+    // A change reached the provider (30 seats) but its local write failed; the dialog still shows 25.
+    mockGet.mockResolvedValue({ id: "sub_1", units: 30, modified_at: "2026-11-05T00:00:00Z" });
+    const response = await post({ organizationId: ORG, totalMembers: 28, expectedCurrentMembers: 25 });
+    expect(response.status).toBe(409);
+    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(mockSet).toHaveBeenCalledWith({
+      memberUnits: 30,
+      polarWebhookTimestamp: new Date("2026-11-05T00:00:00Z"),
+      polarWebhookEventKey: "seats:sub_1:2026-11-05T00:00:00.000Z",
+    });
+  });
+
   it("does not move the ordering marker backwards", async () => {
     mockOrgRow.mockResolvedValue([{ subscriptionId: "sub_1", memberUnits: 25, polarWebhookTimestamp: new Date("2026-12-01T00:00:00Z") }]);
     expect((await post({ organizationId: ORG, totalMembers: 28 })).status).toBe(200);
