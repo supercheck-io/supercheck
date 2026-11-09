@@ -207,6 +207,109 @@ describe("2026-10 webhook payloads through the real handlers", () => {
     );
   });
 
+  describe("Pro member seats", () => {
+    it("stores seats from subscription.active and a later seats-only subscription.updated", async () => {
+      await deliver(handleSubscriptionActive, "subscription.active", subscription({ units: 25 }), "2026-10-01T00:00:01Z");
+      expect((await org()).memberUnits).toBe(25);
+      await deliver(handleSubscriptionUpdated, "subscription.updated", subscription({ units: 30 }), "2026-10-05T00:00:00Z");
+      expect((await org()).memberUnits).toBe(30);
+      // Redelivering the activation with the current state but new seats is not skipped as "already active".
+      await deliver(handleSubscriptionActive, "subscription.active", subscription({ units: 32 }), "2026-10-06T00:00:00Z");
+      expect((await org()).memberUnits).toBe(32);
+    });
+
+    it("keeps seats when a payload omits units, clears them on null, and ignores invalid values", async () => {
+      await deliver(handleSubscriptionActive, "subscription.active", subscription({ units: 30 }), "2026-10-01T00:00:01Z");
+      await deliver(handleSubscriptionUpdated, "subscription.updated", subscription(), "2026-10-02T00:00:00Z");
+      expect((await org()).memberUnits).toBe(30);
+      await deliver(handleSubscriptionUpdated, "subscription.updated", subscription({ units: -4 }), "2026-10-03T00:00:00Z");
+      expect((await org()).memberUnits).toBe(30);
+      // A Pro subscription without a seat price reports null: no purchased seats, and the webhook still succeeds.
+      await deliver(handleSubscriptionUpdated, "subscription.updated", subscription({ units: null }), "2026-10-04T00:00:00Z");
+      expect(await org()).toMatchObject({ memberUnits: null, subscriptionPlan: "pro", subscriptionStatus: "active" });
+    });
+
+    it("does not apply an older event's seats over newer ones", async () => {
+      await deliver(handleSubscriptionActive, "subscription.active", subscription({ units: 25 }), "2026-10-01T00:00:01Z");
+      await deliver(handleSubscriptionUpdated, "subscription.updated", subscription({ units: 40 }), "2026-10-05T00:00:00Z");
+      await deliver(handleSubscriptionUpdated, "subscription.updated", subscription({ units: 28 }), "2026-10-04T00:00:00Z");
+      expect((await org()).memberUnits).toBe(40);
+    });
+
+    it("drops seats on revocation and does not carry them into a new subscription", async () => {
+      await deliver(handleSubscriptionActive, "subscription.active", subscription({ units: 50 }), "2026-10-01T00:00:01Z");
+      await deliver(handleSubscriptionRevoked, "subscription.revoked", subscription({ status: "canceled", ended_at: "2026-10-02T00:00:00Z", units: 50 }), "2026-10-02T00:00:00Z");
+      expect((await org()).memberUnits).toBeNull();
+      await mockDatabase.update(schema.organization).set({ memberUnits: 50 }).where(eq(schema.organization.id, orgId));
+      await deliver(handleSubscriptionActive, "subscription.active", subscription({ id: "sub_2", current_period_start: "2026-10-03T00:00:00Z" }), "2026-10-03T00:00:00Z");
+      expect(await org()).toMatchObject({ subscriptionId: "sub_2", memberUnits: null });
+    });
+
+    it("drops seats when a cancellation ends access immediately", async () => {
+      await deliver(handleSubscriptionActive, "subscription.active", subscription({ units: 40 }), "2026-10-01T00:00:01Z");
+      await deliver(handleSubscriptionCanceled, "subscription.canceled", subscription({ status: "canceled", ended_at: "2026-10-02T00:00:00Z" }), "2026-10-02T00:00:00Z");
+      expect(await org()).toMatchObject({ subscriptionStatus: "none", memberUnits: null });
+    });
+
+    it("syncs seats a missed webhook would have carried during reconciliation", async () => {
+      await deliver(handleSubscriptionActive, "subscription.active", subscription({ units: 25 }), "2026-10-01T00:00:01Z");
+      const savedFetch = global.fetch;
+      const savedEnv = { SELF_HOSTED: process.env.SELF_HOSTED, POLAR_ACCESS_TOKEN: process.env.POLAR_ACCESS_TOKEN, POLAR_WEBHOOK_SECRET: process.env.POLAR_WEBHOOK_SECRET, POLAR_SERVER: process.env.POLAR_SERVER };
+      Object.assign(process.env, { SELF_HOSTED: "false", POLAR_ACCESS_TOKEN: "test", POLAR_WEBHOOK_SECRET: "test", POLAR_SERVER: "sandbox" });
+      global.fetch = jest.fn(async () => new Response(JSON.stringify({ ...subscription({ units: 40 }), created_at: "2026-10-01T00:00:00Z", modified_at: "2026-10-25T00:00:00Z" })));
+      try {
+        expect(await reconcilePolarSubscription(orgId)).toBe(true);
+        expect((await org()).memberUnits).toBe(40);
+      } finally {
+        global.fetch = savedFetch;
+        for (const [key, value] of Object.entries(savedEnv)) {
+          if (value === undefined) delete process.env[key]; else process.env[key] = value;
+        }
+      }
+    });
+
+    it("keeps a seat change against older subscription events and stale reconciliation", async () => {
+      await deliver(handleSubscriptionActive, "subscription.active", subscription({ units: 40 }), "2026-10-01T00:00:01Z");
+      // What the seat route stores after lowering seats to 25 at subscription version 2026-10-10.
+      await mockDatabase.update(schema.organization).set({
+        memberUnits: 25,
+        polarWebhookTimestamp: new Date("2026-10-10T00:00:00Z"),
+        polarWebhookEventKey: "seats:sub_1:2026-10-10T00:00:00.000Z",
+      }).where(eq(schema.organization.id, orgId));
+      // A delayed event from before the change still carries 40 seats.
+      await deliver(handleSubscriptionUpdated, "subscription.updated", subscription({ units: 40 }), "2026-10-05T00:00:00Z");
+      expect((await org()).memberUnits).toBe(25);
+
+      const savedFetch = global.fetch;
+      const savedEnv = { SELF_HOSTED: process.env.SELF_HOSTED, POLAR_ACCESS_TOKEN: process.env.POLAR_ACCESS_TOKEN, POLAR_WEBHOOK_SECRET: process.env.POLAR_WEBHOOK_SECRET, POLAR_SERVER: process.env.POLAR_SERVER };
+      Object.assign(process.env, { SELF_HOSTED: "false", POLAR_ACCESS_TOKEN: "test", POLAR_WEBHOOK_SECRET: "test", POLAR_SERVER: "sandbox" });
+      global.fetch = jest.fn(async () => new Response(JSON.stringify({ ...subscription({ units: 40 }), created_at: "2026-10-01T00:00:00Z", modified_at: "2026-10-05T00:00:00Z" })));
+      try {
+        await reconcilePolarSubscription(orgId).catch(() => false);
+        expect((await org()).memberUnits).toBe(25);
+      } finally {
+        global.fetch = savedFetch;
+        for (const [key, value] of Object.entries(savedEnv)) {
+          if (value === undefined) delete process.env[key]; else process.env[key] = value;
+        }
+      }
+      // The change's own, newer event still applies.
+      await deliver(handleSubscriptionUpdated, "subscription.updated", subscription({ units: 25 }), "2026-10-10T00:00:01Z");
+      expect((await org()).memberUnits).toBe(25);
+    });
+
+    it("never writes seats to another organization", async () => {
+      await deliver(handleSubscriptionActive, "subscription.active", subscription({ units: 25 }), "2026-10-01T00:00:01Z");
+      await expect(deliver(handleSubscriptionUpdated, "subscription.updated", subscription({
+        units: 99,
+        customer_id: "cus_attacker",
+        customer: { id: "cus_attacker", external_id: "x", metadata: {} },
+      }), "2026-10-02T00:00:00Z")).rejects.toThrow();
+      expect((await org()).memberUnits).toBe(25);
+      expect((await org(otherOrgId)).memberUnits).toBeNull();
+    });
+  });
+
   it("maps the second product to its plan", async () => {
     await deliver(
       handleSubscriptionActive,

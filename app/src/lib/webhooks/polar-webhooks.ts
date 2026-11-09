@@ -330,6 +330,7 @@ function getWebhookEventKey(
     // Distinguish same-instant events that differ in plan or cancellation state.
     String(data.productId || data.product_id || ""),
     String(data.cancelAtPeriodEnd ?? data.cancel_at_period_end ?? ""),
+    String(data.units ?? ""),
     String(
       asRecord(data.pendingUpdate ?? data.pending_update)?.productId ??
         asRecord(data.pendingUpdate ?? data.pending_update)?.product_id ??
@@ -554,6 +555,17 @@ export function getPlanFromProductId(
     `[Polar] Unknown product ID: ${productId}, refusing to map subscription plan`,
   );
   return null;
+}
+
+/**
+ * Pro member seats from a subscription payload. Only a present field is applied: a payload without
+ * `units` leaves the stored value alone, and `null` (no seat price on the subscription) clears it.
+ */
+export function getMemberUnitsFromPayload(payload: PolarWebhookPayload): { memberUnits?: number | null } {
+  if (!("units" in payload.data)) return {};
+  const units = payload.data.units;
+  if (units === null) return { memberUnits: null };
+  return typeof units === "number" && Number.isSafeInteger(units) && units > 0 ? { memberUnits: units } : {};
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -941,7 +953,12 @@ async function processSubscriptionActive(payload: PolarWebhookPayload) {
     return;
   }
   const status = getSubscriptionStatusFromPayload(payload) ?? "active";
+  // A new subscription never inherits the seats of the one it replaces.
+  const reported = getMemberUnitsFromPayload(payload);
+  const seats = reported.memberUnits === undefined && org.subscriptionId !== subscriptionId
+    ? { memberUnits: null } : reported;
   if (
+    (seats.memberUnits === undefined || seats.memberUnits === org.memberUnits) &&
     org.subscriptionStatus === status &&
     org.subscriptionPlan === plan &&
     org.subscriptionId === subscriptionId &&
@@ -967,6 +984,7 @@ async function processSubscriptionActive(payload: PolarWebhookPayload) {
       subscriptionStatus: status,
       subscriptionId,
       polarCustomerId: customerId,
+      ...seats,
       // Pass Polar subscription dates for accurate billing period
       subscriptionStartedAt: subscriptionDates.startsAt,
       subscriptionEndsAt: subscriptionDates.endsAt,
@@ -1164,6 +1182,7 @@ async function processSubscriptionUpdated(payload: PolarWebhookPayload) {
       ...(status ? { subscriptionStatus: status } : {}),
       subscriptionId,
       ...(customerId ? { polarCustomerId: customerId } : {}),
+      ...getMemberUnitsFromPayload(payload),
       ...(subscriptionDates.startsAt
         ? { subscriptionStartedAt: subscriptionDates.startsAt }
         : {}),
@@ -1243,7 +1262,7 @@ async function processSubscriptionCanceled(payload: PolarWebhookPayload) {
     org.id,
     {
       subscriptionStatus: canceledStatus,
-      ...(canceledStatus === "none" ? { subscriptionPlan: null } : {}),
+      ...(canceledStatus === "none" ? { subscriptionPlan: null, memberUnits: null } : {}),
       // Preserve the end date - access continues until this date
       ...(subscriptionDates.endsAt
         ? { subscriptionEndsAt: subscriptionDates.endsAt }
@@ -1355,6 +1374,7 @@ async function processSubscriptionPastDue(payload: PolarWebhookPayload) {
       subscriptionStatus: "past_due",
       subscriptionId,
       ...(customerId ? { polarCustomerId: customerId } : {}),
+      ...getMemberUnitsFromPayload(payload),
       ...(subscriptionDates.startsAt
         ? { subscriptionStartedAt: subscriptionDates.startsAt }
         : {}),
@@ -1430,6 +1450,7 @@ async function processSubscriptionRevoked(payload: PolarWebhookPayload) {
     {
       subscriptionStatus: "none",
       subscriptionPlan: null, // Clear plan on revocation
+      memberUnits: null, // Seats belong to the ended subscription
     },
     getPolarWebhookDb(org.id),
   );
@@ -1879,6 +1900,7 @@ async function processCustomerDeleted(payload: PolarWebhookPayload) {
     .set({
       subscriptionStatus: "none",
       subscriptionPlan: null, // Clear plan on customer deletion (matches revocation behavior)
+      memberUnits: null, // Seats belong to the ended subscription
       // Keep polarCustomerId for audit trail
       // The validatePolarCustomer check will also fail since customer doesn't exist in Polar
     })

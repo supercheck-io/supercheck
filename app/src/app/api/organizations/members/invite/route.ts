@@ -13,6 +13,7 @@ import { logAuditEvent } from "@/lib/audit-logger";
 import { renderOrganizationInvitationEmail } from "@/lib/email-renderer";
 import { checkTeamMemberLimit } from "@/lib/middleware/plan-enforcement";
 import { insertWithinPlanLimit } from "@/lib/middleware/plan-limit-lock";
+import { countSeatsInUse } from "@/lib/billing/member-seats";
 import { getRedisConnection } from "@/lib/queue";
 import { withRedisDeadline } from "@/lib/security/redis-deadline";
 
@@ -305,24 +306,8 @@ export async function POST(request: NextRequest) {
       organizationId,
       resource: "members",
       check: checkTeamMemberLimit,
-      countRows: async (tx) => {
-        const [memberRow] = await tx
-          .select({ count: sql<number>`count(*)` })
-          .from(member)
-          .where(eq(member.organizationId, organizationId));
-        // On purpose: an invite to a platform-admin email still reserves a seat; hiding which addresses are platform admins matters more.
-        const [pendingRow] = await tx
-          .select({ count: sql<number>`count(*)` })
-          .from(invitation)
-          .where(
-            and(
-              eq(invitation.organizationId, organizationId),
-              eq(invitation.status, "pending"),
-              gte(invitation.expiresAt, new Date()),
-            ),
-          );
-        return Number(memberRow?.count || 0) + Number(pendingRow?.count || 0);
-      },
+      // On purpose: an invite to a platform-admin email still reserves a seat; hiding which addresses are platform admins matters more.
+      countRows: (tx) => countSeatsInUse(tx, organizationId),
       insert: async (executor) => {
         // An expired invite stays "pending" in the table; supersede it (status "cancelled", like the cancel
         // route, so the list hides it) so the one-pending-per-address unique index lets the new one in.

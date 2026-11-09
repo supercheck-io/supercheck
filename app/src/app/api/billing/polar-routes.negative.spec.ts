@@ -55,6 +55,12 @@ jest.mock("@/lib/rbac/middleware", () => ({
   getImpersonationState: () => mockImpersonationState(),
 }));
 
+const mockCountSeatsInUse = jest.fn(async () => 3);
+jest.mock("@/lib/billing/member-seats", () => ({
+  PRO_INCLUDED_MEMBERS: 25,
+  countSeatsInUse: () => mockCountSeatsInUse(),
+}));
+
 jest.mock("@/utils/db", () => ({
   db: {
     query: {

@@ -330,6 +330,7 @@ describe("Plan Enforcement Middleware", () => {
         const result = await checkTeamMemberLimit("org-1", 5);
         expect(result.allowed).toBe(false);
         expect(result.error).toContain("Team member limit reached");
+        expect(result.error).not.toContain("extra member");
       });
 
       it("should allow more members on Pro plan", async () => {
@@ -340,9 +341,50 @@ describe("Plan Enforcement Middleware", () => {
           maxTeamMembers: 25,
         });
 
+        mockCountWhere.mockReturnValueOnce({ limit: async () => [{ memberUnits: null }] });
         const result = await checkTeamMemberLimit("org-1", 20);
         expect(result.allowed).toBe(true);
         expect(result.remaining).toBe(5);
+      });
+
+      it("raises the Pro limit to the purchased seats", async () => {
+        (subscriptionService.getOrganizationPlan as jest.Mock).mockResolvedValue({ plan: "pro", maxTeamMembers: 25 });
+        mockCountWhere.mockReturnValueOnce({ limit: async () => [{ memberUnits: 30 }] });
+        const result = await checkTeamMemberLimit("org-1", 27);
+        expect(result).toMatchObject({ allowed: true, limit: 30, remaining: 3 });
+      });
+
+      it("re-reads Pro seats inside the members lock", async () => {
+        (subscriptionService.getOrganizationPlan as jest.Mock).mockResolvedValue({ plan: "pro", maxTeamMembers: 25 });
+        mockCountWhere.mockReturnValueOnce({ limit: async () => [{ memberUnits: 30 }] });
+        const result = await checkTeamMemberLimit("org-1", 25);
+        expect(result).toMatchObject({ allowed: true, limit: 30 });
+        const tx = { select: () => ({ from: () => ({ where: () => ({ limit: async () => [{ memberUnits: null }] }) }) }) };
+        await expect(result.limitInLock!(tx as never)).resolves.toBe(25);
+      });
+
+      it("has no in-lock re-read off Pro", async () => {
+        (subscriptionService.getOrganizationPlan as jest.Mock).mockResolvedValue({ plan: "plus", maxTeamMembers: 5 });
+        expect((await checkTeamMemberLimit("org-1", 1)).limitInLock).toBeUndefined();
+      });
+
+      it("points Pro admins at buying seats when the Pro limit is reached", async () => {
+        (subscriptionService.getOrganizationPlan as jest.Mock).mockResolvedValue({ plan: "pro", maxTeamMembers: 25 });
+        mockCountWhere.mockReturnValueOnce({ limit: async () => [{ memberUnits: 30 }] });
+        const result = await checkTeamMemberLimit("org-1", 30);
+        expect(result.allowed).toBe(false);
+        expect(result.error).toContain("allows 30 team members");
+        expect(result.error).toContain("$8 per extra member per month");
+        expect(result.error).toContain("organization owner");
+      });
+
+      it("points to contact once Pro is at the member maximum", async () => {
+        (subscriptionService.getOrganizationPlan as jest.Mock).mockResolvedValue({ plan: "pro", maxTeamMembers: 25 });
+        mockCountWhere.mockReturnValueOnce({ limit: async () => [{ memberUnits: 100 }] });
+        const result = await checkTeamMemberLimit("org-1", 100);
+        expect(result.allowed).toBe(false);
+        expect(result.error).toContain("Need more than 100 members? Contact us");
+        expect(result.error).not.toContain("can add member seats");
       });
     });
   });

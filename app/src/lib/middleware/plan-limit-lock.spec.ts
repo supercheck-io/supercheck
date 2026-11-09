@@ -184,6 +184,26 @@ describe("insertWithinPlanLimit", () => {
     expect(check).toHaveBeenLastCalledWith("org-1", 3);
     expect(insert).not.toHaveBeenCalled();
   });
+
+  it("uses a limit re-read inside the lock when the check provides one", async () => {
+    // The limit was 30 when checked, but seats were lowered to 25 before the lock was taken.
+    const limitInLock = jest.fn().mockResolvedValue(25);
+    const denied = { allowed: false, error: "Team member limit reached", limit: 25 };
+    const check = jest.fn()
+      .mockResolvedValueOnce({ allowed: true, limit: 30, limitInLock })
+      .mockResolvedValueOnce(denied);
+    const insert = jest.fn();
+    const result = await insertWithinPlanLimit({
+      organizationId: "org-1",
+      resource: "members",
+      check,
+      countRows: jest.fn().mockResolvedValue(25),
+      insert,
+    });
+    expect(limitInLock).toHaveBeenCalledWith(mockTx);
+    expect(result).toEqual({ ok: false, check: denied });
+    expect(insert).not.toHaveBeenCalled();
+  });
 });
 
 describe("notInDeletedProject", () => {

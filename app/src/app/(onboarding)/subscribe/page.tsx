@@ -506,7 +506,7 @@ export default function SubscribePage() {
                   `${Number(plan.features.aiCredits).toLocaleString("en-US")} AI credits/month · fair use`,
                   `${Number(plan.features.sreInvestigationUnits).toLocaleString("en-US")} completed AI SRE investigations/month`,
                   `${Number(plan.features.concurrentExecutions).toLocaleString("en-US")} concurrent runs`,
-                  `${plan.features.teamMembers} team members · ${plan.features.projects} projects`,
+                  `${plan.features.teamMembers} team members${plan.id === "pro" ? ` (then ${usd(catalog.pro.extraMemberPriceCents)}/month per extra member, up to ${catalog.pro.maxTotalMembers})` : ""} · ${plan.features.projects} projects`,
                   plan.features.statusPageSubscribers === undefined
                     ? `${plan.features.statusPages} status pages`
                     : `${plan.features.statusPages} status pages · ${Number(plan.features.statusPageSubscribers).toLocaleString("en-US")} subscribers each`,
@@ -530,7 +530,7 @@ export default function SubscribePage() {
             ))}
           </div>
           <p className="mt-5 text-center text-xs leading-relaxed text-muted-foreground">
-            Billed monthly per organization, not per seat, in USD before tax. Cancel anytime.
+            Billed monthly per organization, not per seat, in USD before tax; only extra Pro seats you buy above the included members are billed per seat, even when unfilled. Cancel anytime.
             <br />
             Usage overages are shown above. Each plan starts with a monthly overage cap and hard stop (Plus {usd(catalog.plus.limits.defaultSpendingLimitCents)}, Pro {usd(catalog.pro.limits.defaultSpendingLimitCents)}) that you can change later. Review your total at checkout.
           </p>

@@ -7,6 +7,7 @@ import { eq, and, inArray, desc, asc, gt, sql } from 'drizzle-orm';
 import { requireUserAuthContext, isAuthError, authErrorStatus, authErrorResponse } from '@/lib/auth-context';
 import { getCurrentUser } from '@/lib/session';
 import { withPlanLimitLock } from "@/lib/middleware/plan-limit-lock";
+import { effectiveMemberLimit } from "@/lib/billing/member-seats";
 import { isCloudHosted, isPolarEnabled } from '@/lib/feature-flags';
 
 export async function GET(
@@ -241,6 +242,7 @@ export async function POST(
         const [org] = await tx.select({
           subscriptionPlan: organization.subscriptionPlan, polarCustomerId: organization.polarCustomerId,
           subscriptionStatus: organization.subscriptionStatus, subscriptionEndsAt: organization.subscriptionEndsAt,
+          memberUnits: organization.memberUnits,
         }).from(organization)
           .where(eq(organization.id, invite.organizationId)).limit(1).for("update");
         const [existingMember] = await tx.select({ id: member.id }).from(member)
@@ -252,7 +254,9 @@ export async function POST(
           if (hasPaidAccess(org, new Date())) {
             const [limits] = await tx.select({ max: planLimits.maxTeamMembers }).from(planLimits)
               .where(eq(planLimits.plan, org.subscriptionPlan as "plus" | "pro")).limit(1);
-            maxMembers = limits?.max;
+            maxMembers = limits
+              ? effectiveMemberLimit({ plan: org.subscriptionPlan ?? "", maxTeamMembers: limits.max }, org.memberUnits)
+              : undefined;
           } else {
             maxMembers = (await getActiveTrial(invite.organizationId, tx))?.maxTeamMembers;
           }

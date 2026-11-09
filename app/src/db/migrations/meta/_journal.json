@@ -505,6 +505,13 @@
       "when": 1794234254339,
       "tag": "0071_pricing_29_99_default_caps",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1794236234948,
+      "tag": "0072_pro_member_units",
+      "breakpoints": true
     }
   ]
 }

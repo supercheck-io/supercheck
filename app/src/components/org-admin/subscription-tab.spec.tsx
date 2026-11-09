@@ -87,6 +87,23 @@ describe("SubscriptionTab", () => {
     expect(screen.getByText("0.0833 / 100")).toBeInTheDocument();
   });
 
+  it("adds paid Pro member seats to the estimate and its breakdown", async () => {
+    const pro = {
+      ...billing,
+      subscription: { ...subscription, plan: "pro", basePriceCents: 9900 },
+      limits: { ...billing.limits, teamMembers: { current: 27, limit: 30, remaining: 3, percentage: 90, included: 25, purchasedSeats: 30, extraMemberPriceCents: 800 } },
+    };
+    fetchMock.mockImplementation(async (url: string) => ({
+      ok: true,
+      json: async () => url.endsWith("/current") ? pro
+        : url.endsWith("/pricing") ? pricing : { organizationId: "org_1", spending: { currentDollars: 1.25 } },
+    }));
+    render(<SubscriptionTab currentUserRole="org_owner" />);
+    // $99 plan + 5 extra members at $8 + $1.25 overage.
+    expect(await screen.findByText("$140.25")).toBeInTheDocument();
+    expect(screen.getByText(/\$99\.00 plan \+ \$40\.00 extra members/)).toBeInTheDocument();
+  });
+
   it.each([true, false])("keeps the portal for an existing customer without a plan (active trial: %s)", async (active) => {
     fetchMock.mockImplementation(async (url: string) => ({
       ok: true, json: async () => url.endsWith("/current")

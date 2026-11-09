@@ -79,6 +79,40 @@ describe("Polar SDK wire format (2026-10)", () => {
     expect(checkout.url).toBe("https://x/checkout");
   });
 
+  it("sends a seat change as PATCH with units and invoice proration, and reads units back", async () => {
+    fetchMock.mockResolvedValue(ok({ id: "sub_1", units: 30 }));
+    const subscription = await createPolarClient({ accessToken: "t", server: "sandbox" })
+      .subscriptions.update("sub_1", { units: 30, proration_behavior: "invoice" });
+    const { request, url, body } = await sent();
+    expect(request.method).toBe("PATCH");
+    expect(url.pathname).toBe("/v1/subscriptions/sub_1");
+    expect(body).toEqual({ units: 30, proration_behavior: "invoice" });
+    expect(subscription.units).toBe(30);
+  });
+
+  it("reads a subscription's live seats with GET", async () => {
+    fetchMock.mockResolvedValue(ok({ id: "sub_1", units: 30 }));
+    const subscription = await createPolarClient({ accessToken: "t", server: "sandbox" }).subscriptions.get("sub_1");
+    const { request, url } = await sent();
+    expect(request.method).toBe("GET");
+    expect(url.pathname).toBe("/v1/subscriptions/sub_1");
+    expect(subscription.units).toBe(30);
+  });
+
+  it("surfaces a rejected seat change with its statusCode", async () => {
+    fetchMock.mockResolvedValue(ok({ detail: [{ msg: "no unit price" }] }, 422));
+    await expect(
+      createPolarClient({ accessToken: "t", server: "sandbox" }).subscriptions.update("sub_1", { units: 30 }),
+    ).rejects.toMatchObject({ statusCode: 422 });
+  });
+
+  it("passes units on checkout creation", async () => {
+    fetchMock.mockResolvedValue(ok({ id: "co", url: "https://x/checkout" }));
+    await createPolarClient({ accessToken: "t", server: "sandbox" })
+      .checkouts.create({ products: ["prod_pro"], units: 25 });
+    expect((await sent()).body).toMatchObject({ products: ["prod_pro"], units: 25 });
+  });
+
   it("sends portal sessions as snake_case and reads customer_portal_url", async () => {
     fetchMock.mockResolvedValue(
       ok({ id: "s", customer_portal_url: "https://x/portal" }),

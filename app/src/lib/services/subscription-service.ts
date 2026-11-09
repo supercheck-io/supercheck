@@ -643,6 +643,7 @@ export class SubscriptionService {
       subscriptionStatus?: "active" | "canceled" | "past_due" | "none";
       subscriptionId?: string;
       polarCustomerId?: string;
+      memberUnits?: number | null;
       // Polar subscription billing period dates
       subscriptionStartedAt?: Date | null;
       subscriptionEndsAt?: Date | null;

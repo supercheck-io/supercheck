@@ -117,6 +117,18 @@ describe("current billing subscription display", () => {
     expect(body.limits.teamMembers).toMatchObject({ current: 5, remaining: 1 });
   });
 
+  it.each([
+    ["pro", 30, { limit: 30, included: 25, purchasedSeats: 30, extraMemberPriceCents: 800 }],
+    ["pro", null, { limit: 25, included: 25, purchasedSeats: null }],
+    ["plus", 30, { limit: 5, included: 5, purchasedSeats: null }],
+  ] as const)("reports %s member seats (stored %s)", async (plan, memberUnits, expected) => {
+    (db.query.organization.findFirst as jest.Mock).mockResolvedValue({ id: "org-1", polarCustomerId: "customer-1", memberUnits });
+    (subscriptionService.getOrganizationPlanSafe as jest.Mock).mockResolvedValue({ plan, maxTeamMembers: plan === "pro" ? 25 : 5 });
+    (subscriptionService.getSubscriptionAccessStatus as jest.Mock).mockResolvedValue({ isActive: true, plan, status: "active" });
+    const body = await (await GET()).json();
+    expect(body.limits.teamMembers).toMatchObject(expected);
+  });
+
   it("never rounds a nearly exhausted allowance up to 100 percent", async () => {
     (subscriptionService.getSubscriptionAccessStatus as jest.Mock).mockResolvedValue({ isActive: true, plan: "plus", status: "active" });
     (subscriptionService.getUsageSafe as jest.Mock).mockResolvedValue({

@@ -49,7 +49,9 @@ function planFeatures(id: 'plus' | 'pro', support: string): Feature[] {
         `${fmt(limits.sreInvestigationUnitsIncluded)} AI SRE investigations/month`,
         { text: `${usd(limits.defaultSpendingLimitCents)} default overage cap`, hint: 'Monthly cap with a hard stop. Owners can change it.' },
         `${fmt(limits.runningCapacity)} concurrent runs`,
-        `${fmt(limits.maxTeamMembers)} team members, ${fmt(limits.maxProjects)} projects`,
+        id === 'pro'
+            ? { text: `${fmt(limits.maxTeamMembers)} team members, ${fmt(limits.maxProjects)} projects`, hint: `Then ${usd(catalog.pro.extraMemberPriceCents)} per extra member per month, prorated, up to ${fmt(catalog.pro.maxTotalMembers)} members` }
+            : `${fmt(limits.maxTeamMembers)} team members, ${fmt(limits.maxProjects)} projects`,
         `${fmt(limits.maxStatusPages)} status pages with custom domains, ${fmt(limits.maxStatusPageSubscribers)} subscribers each`,
         support,
     ];
@@ -154,7 +156,7 @@ const comparisonFeatures: { category: string; items: ComparisonItem[] }[] = [
     },
     {
         category: 'Team and projects', items: [
-            { name: 'Team members', plus: `${Number(catalog.plus.limits.maxTeamMembers).toLocaleString("en-US")}`, pro: `${Number(catalog.pro.limits.maxTeamMembers).toLocaleString("en-US")}`, enterprise: CUSTOM },
+            { name: 'Team members', plus: `${Number(catalog.plus.limits.maxTeamMembers).toLocaleString("en-US")}`, pro: `${Number(catalog.pro.limits.maxTeamMembers).toLocaleString("en-US")}, then ${usd(catalog.pro.extraMemberPriceCents)}/member/month up to ${fmt(catalog.pro.maxTotalMembers)}`, enterprise: CUSTOM },
             { name: 'Projects', plus: `${Number(catalog.plus.limits.maxProjects).toLocaleString("en-US")}`, pro: `${Number(catalog.pro.limits.maxProjects).toLocaleString("en-US")}`, enterprise: CUSTOM },
             { name: 'Status pages', plus: `${Number(catalog.plus.limits.maxStatusPages).toLocaleString("en-US")}`, pro: `${Number(catalog.pro.limits.maxStatusPages).toLocaleString("en-US")}`, enterprise: CUSTOM },
             { name: 'Subscribers per status page', plus: `${Number(catalog.plus.limits.maxStatusPageSubscribers).toLocaleString("en-US")}`, pro: `${Number(catalog.pro.limits.maxStatusPageSubscribers).toLocaleString("en-US")}`, enterprise: CUSTOM },
@@ -304,7 +306,7 @@ export default function PricingPage() {
                         Run the open-source core on your own servers at no cost, or preview the Cloud plans and join the waitlist. Cloud signups are not open yet.
                     </p>
                     <p className="mt-3 text-sm text-fd-muted-foreground">
-                        Priced per organization, not per seat. Prices in USD per month, before taxes. Playwright minutes, k6 VU-minutes, and completed AI SRE investigations beyond the included allowance are billed at the{' '}
+                        Priced per organization, not per seat; only extra {catalog.pro.name} seats you buy above the included members are billed per seat, even when unfilled. Prices in USD per month, before taxes. Playwright minutes, k6 VU-minutes, and completed AI SRE investigations beyond the included allowance are billed at the{' '}
                         <a href="#overage" className="underline underline-offset-4 hover:text-fd-foreground">overage rates</a>.
                     </p>
                     <nav aria-label="Pricing sections" className="mt-6 flex flex-wrap justify-center gap-x-6 gap-y-3 text-sm font-medium text-fd-primary">
@@ -386,11 +388,11 @@ export default function PricingPage() {
                 <CopyEmail email={WAITLIST_EMAIL} />
 
                 <p className="mt-4 text-center text-sm text-fd-muted-foreground">
-                    Not sure which plan? {catalog.pro.name} costs less than {catalog.plus.name} above about {CROSSOVER_MINUTES.toLocaleString('en-US')} browser minutes a month. Choose {catalog.pro.name} if you need more than {fmt(catalog.plus.limits.maxMonitors)} monitors or {fmt(catalog.plus.limits.maxTeamMembers)} team members.
+                    Not sure which plan? {catalog.pro.name} costs less than {catalog.plus.name} above about {CROSSOVER_MINUTES.toLocaleString('en-US')} browser minutes a month, not counting extra member seats. Choose {catalog.pro.name} if you need more than {fmt(catalog.plus.limits.maxMonitors)} monitors or {fmt(catalog.plus.limits.maxTeamMembers)} team members.
                 </p>
 
                 <ul aria-label="Plan basics" className="mt-6 flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm text-fd-muted-foreground">
-                    {['Open-source core (AGPLv3)', 'Priced per organization, not per seat', 'Spending limits and usage alerts', 'Cancel anytime'].map((item) => (
+                    {['Open-source core (AGPLv3)', `Priced per organization; extra ${catalog.pro.name} seats billed per seat`, 'Spending limits and usage alerts', 'Cancel anytime'].map((item) => (
                         <li key={item} className="flex items-center gap-2">
                             <Check aria-hidden="true" className="size-4 text-fd-primary" />
                             {item}
@@ -485,7 +487,7 @@ export default function PricingPage() {
                     <div className="mx-auto mb-8 max-w-2xl text-center">
                         <h2 id="overage-heading" className={sectionHeading}>Overage rates</h2>
                         <p className="mt-3 text-fd-muted-foreground">
-                            Charged only for usage beyond your monthly allowance. Every paid plan starts with an overage cap and a hard stop, so with the default cap a month costs about {usd(catalog.plus.monthlyPriceCents + catalog.plus.limits.defaultSpendingLimitCents)} on Plus or {usd(catalog.pro.monthlyPriceCents + catalog.pro.limits.defaultSpendingLimitCents)} on Pro at most before taxes. Raising the cap or turning off the hard stop allows more overage. At the cap, new browser checks, test and job runs, k6 load tests and full AI SRE investigations pause. HTTP, website, ping and port monitors keep running. In-flight usage can run slightly past the cap.
+                            Charged only for usage beyond your monthly allowance. Every paid plan starts with an overage cap and a hard stop, so with the default cap a month costs about {usd(catalog.plus.monthlyPriceCents + catalog.plus.limits.defaultSpendingLimitCents)} on Plus or {usd(catalog.pro.monthlyPriceCents + catalog.pro.limits.defaultSpendingLimitCents)} on Pro at most before taxes, plus any extra {catalog.pro.name} member seats. Raising the cap or turning off the hard stop allows more overage. At the cap, new browser checks, test and job runs, k6 load tests and full AI SRE investigations pause. HTTP, website, ping and port monitors keep running. In-flight usage can run slightly past the cap.
                         </p>
                     </div>
                     <div className="relative mx-auto max-w-3xl overflow-x-auto rounded-xl border border-fd-border" role="region" aria-label="Usage overage pricing" tabIndex={0}>
