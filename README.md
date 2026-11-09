@@ -51,7 +51,7 @@ Know when something breaks before your users tell you.
 
 Failing monitors and jobs open an incident you can work from (on by default, per check), with AI SRE investigations that cite their evidence.
 
-<img src="docs/public/screenshots/site/incident-workspace-overview.webp" alt="Incident workspace for a Checkout API outage with an AI summary" width="100%">
+<img src="docs/public/screenshots/incident-evidence-brief.png" alt="AI SRE investigation with a cited conclusion, next steps and validated and ruled-out hypotheses" width="100%">
 
 </td>
 <td width="50%" valign="top">
@@ -61,6 +61,46 @@ Failing monitors and jobs open an incident you can work from (on by default, per
 Tell your team first, then tell your users.
 
 <img src="docs/public/screenshots/site/status-page-public.webp" alt="Public status page with a partial outage banner and 90 days of uptime per component" width="100%">
+
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+### [Load testing](https://supercheck.io/docs/app/automate/performance-test)
+
+Run k6 load tests and compare two runs side by side.
+
+<img src="docs/public/screenshots/site/dashboard-k6-report-comparison.webp" alt="Comparison of two k6 run reports side by side" width="100%">
+
+</td>
+<td width="50%" valign="top">
+
+### [AI test creation](https://supercheck.io/docs/app/automate/playground)
+
+Describe what to test and get a Playwright or k6 script to review.
+
+<img src="docs/public/screenshots/ai-create-prompt.png" alt="Supercheck AI create-test dialog with a plain-language test description" width="100%">
+
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+### [Requirements traceability](https://supercheck.io/docs/app/automate/requirements)
+
+Link requirements to tests and track which ones are covered.
+
+<img src="docs/public/screenshots/site/requirements-list.webp" alt="Requirements list with coverage status, priority, tags and Export button" width="100%">
+
+</td>
+<td width="50%" valign="top">
+
+### [Dashboard](https://supercheck.io/docs/app/communicate/dashboard)
+
+See test, job and monitor health for a project in one place.
+
+<img src="docs/public/screenshots/site/dashboard.webp" alt="Project dashboard with test, job and monitor metrics and charts" width="100%">
 
 </td>
 </tr>
