@@ -10,6 +10,4 @@ ALTER TABLE "alert_history" ADD COLUMN "claim_attempts" smallint;--> statement-b
 -- migration-safety: allow-destructive issue=#852
 ALTER TABLE "alert_history" DROP CONSTRAINT IF EXISTS "alert_history_type_check";--> statement-breakpoint
 ALTER TABLE "alert_history" ADD CONSTRAINT "alert_history_type_check" CHECK ("alert_history"."type" IN ('monitor_failure', 'monitor_recovery', 'job_failed', 'job_success', 'job_timeout', 'ssl_expiring', 'ssl_renewed')) NOT VALID;
--- monitors.muted_until is no longer in the Drizzle schema but is NOT dropped here: workers from the previous
--- release still select it. The column drop ships in the next release as a hand-written migration, because the
--- snapshot no longer lists the column and drizzle-kit will not generate it.
+-- monitors.muted_until leaves the Drizzle schema in this release; the column itself is dropped in 0070.

@@ -172,12 +172,7 @@ describe("schema drift", () => {
 
       const fromMigrations = await signatures(databaseUrlFor(migratedDb));
       const fromSchema = await signatures(databaseUrlFor(declaredDb));
-      // Columns removed from the schema but still in the database, until the migration that drops them ships
-      // (workers of the previous release still select them). Delete the entry with that migration.
-      const PENDING_DROP = ["COL monitors.muted_until timestamp with time zone null=YES def=-"];
-      const onlyInMigrations = difference(fromMigrations, fromSchema)
-        .filter((signature) => !PENDING_DROP.includes(signature))
-        .sort();
+      const onlyInMigrations = difference(fromMigrations, fromSchema).sort();
       const onlyInSchema = difference(fromSchema, fromMigrations).sort();
 
       // On failure, the lists name exactly what to add to a migration or to src/db/schema.
