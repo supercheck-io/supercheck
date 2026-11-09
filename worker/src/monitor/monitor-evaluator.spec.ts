@@ -777,13 +777,15 @@ describe('MonitorEvaluator alert windows (thresholds 1, 3, 5)', () => {
     async (threshold, n) => {
       // reminder 1 delivered on the last count of its window
       const lastOfWindow1 = threshold + n + (n - 1);
-      const fired = await alertCountsWithFirstAt(
+      const fired = await alertCountsWhere(
         threshold,
-        lastOfWindow1,
+        (c, sent) => sent !== 1 || c >= lastOfWindow1,
         threshold + 10 * n,
       );
-      expect(fired).toEqual([threshold, lastOfWindow1, threshold + 3 * n]);
-      expect(fired[2] - fired[1]).toBeGreaterThan(n);
+      // the next alert keeps the full 2N gap after the actual delivery
+      expect(fired).toEqual([threshold, lastOfWindow1, lastOfWindow1 + 2 * n]);
+      expect(fired[1] - fired[0]).toBeGreaterThanOrEqual(n);
+      expect(fired[2] - fired[1]).toBeGreaterThanOrEqual(2 * n);
     },
   );
 
@@ -792,9 +794,9 @@ describe('MonitorEvaluator alert windows (thresholds 1, 3, 5)', () => {
     async (threshold, n) => {
       // reminder 1 never delivers; reminder 2 still waits for its own window
       const attempted: number[] = [];
-      const fired = await alertCountsWithFirstAt(
+      const fired = await alertCountsWhere(
         threshold,
-        Infinity,
+        (_c, sent) => sent !== 1,
         threshold + 10 * n,
         attempted,
       );
@@ -808,98 +810,47 @@ describe('MonitorEvaluator alert windows (thresholds 1, 3, 5)', () => {
   );
 });
 
-/** Failure counts that alerted when delivery works only at threshold and at `reminder1At` (reminder 1), and then always. */
-async function alertCountsWithFirstAt(
-  threshold: number,
-  reminder1At: number,
-  upTo: number,
-  attempted: number[] = [],
-) {
-  const evaluator = new MonitorEvaluator(
-    { db: {} } as never,
-    { sendNotification: jest.fn() } as never,
-  );
-  jest
-    .spyOn(evaluator as never, 'persistAggregatedAlertState')
-    .mockResolvedValue(undefined as never);
-  const send = (
-    evaluator['monitorAlertService'] as unknown as {
-      sendNotification: jest.Mock;
-    }
-  ).sendNotification;
-  const fired: number[] = [];
-  let sent = 0;
-  for (let count = threshold; count <= upTo; count++) {
-    send.mockImplementation(async () => {
-      attempted.push(count);
-      // reminder 1 (second alert) only delivers at reminder1At; others always deliver
-      return { delivered: sent !== 1 || count >= reminder1At };
-    });
-    const res = await evaluator.evaluateAndSendAlert({
-      monitorId: 'm1',
-      monitor: {
-        alertConfig: {
-          enabled: true,
-          alertOnFailure: true,
-          failureThreshold: threshold,
-        },
-        config: {},
-      } as never,
-      previousStatus: 'down',
-      currentStatus: 'down',
-      reason: 'down',
-      metadata: { locationResults: [{}, {}] },
-      preparedAlertState: {
-        consecutiveFailureCount: count,
-        consecutiveSuccessCount: 0,
-        alertsSentForFailure: sent,
-        alertsSentForRecovery: 0,
-      },
-    });
-    if (res.alertSent) {
-      sent++;
-      fired.push(count);
-    }
-  }
-  return fired;
-}
-
 describe('MonitorEvaluator late first alert consumes its window', () => {
   it('threshold 1: first alert fails at 1-5, delivers at 6, next alert at 16 not 7', async () => {
-    const fired = await alertCountsDeliveringFrom(1, 6, 40);
+    const fired = await alertCountsWhere(1, (c) => c >= 6, 40);
     expect(fired).toEqual([6, 16]);
   });
 
   it('threshold 1: an alert delivered in the last window caps the sequence', async () => {
-    const fired = await alertCountsDeliveringFrom(1, 16, 100);
+    const fired = await alertCountsWhere(1, (c) => c >= 16, 100);
     expect(fired).toEqual([16]);
   });
 });
 
-/** Failure counts that alerted when delivery only works from `deliverFrom` on; the counter stores windows used. */
-async function alertCountsDeliveringFrom(
+/** Failure counts that alerted (multi-location, carrying the persisted state), given which counts can deliver. */
+async function alertCountsWhere(
   threshold: number,
-  deliverFrom: number,
+  deliversAt: (count: number, alertsSoFar: number) => boolean,
   upTo: number,
+  attempted: number[] = [],
 ) {
   const send = jest.fn();
   const evaluator = new MonitorEvaluator(
     { db: {} } as never,
     { sendNotification: send } as never,
   );
-  const writes: number[] = [];
+  let persisted: { alertsSentForFailure: number; lastAlertCount?: number } = {
+    alertsSentForFailure: 0,
+  };
   jest
     .spyOn(evaluator as never, 'persistAggregatedAlertState')
     .mockImplementation((async (
       _id: string,
-      state: { alertsSentForFailure: number },
+      state: { alertsSentForFailure: number; lastAlertCount?: number },
     ) => {
-      writes.push(state.alertsSentForFailure);
+      persisted = state;
     }) as never);
   const fired: number[] = [];
-  let used = 0;
   for (let count = threshold; count <= upTo; count++) {
-    send.mockResolvedValue({ delivered: count >= deliverFrom });
+    send.mockImplementation(async () => {
+      attempted.push(count);
+      return { delivered: deliversAt(count, fired.length) };
+    });
     const res = await evaluator.evaluateAndSendAlert({
       monitorId: 'm1',
       monitor: {
@@ -917,14 +868,98 @@ async function alertCountsDeliveringFrom(
       preparedAlertState: {
         consecutiveFailureCount: count,
         consecutiveSuccessCount: 0,
-        alertsSentForFailure: used,
+        alertsSentForFailure: persisted.alertsSentForFailure,
         alertsSentForRecovery: 0,
+        ...(persisted.lastAlertCount !== undefined
+          ? { lastAlertCount: persisted.lastAlertCount }
+          : {}),
       },
     });
-    if (res.alertSent) {
-      fired.push(count);
-      used = writes[writes.length - 1];
-    }
+    if (res.alertSent) fired.push(count);
   }
   return fired;
 }
+
+describe('MonitorEvaluator keeps the scheduled gap after a late delivery', () => {
+  it.each([
+    [1, 5],
+    [3, 6],
+    [5, 10],
+  ])(
+    'threshold %s: first alert delivered on the last count of window 0 is followed by one at least N later',
+    async (threshold, n) => {
+      const last = threshold + n - 1;
+      const fired = await alertCountsWhere(
+        threshold,
+        (c, sent) => sent !== 0 || c >= last,
+        threshold + 12 * n,
+      );
+      expect(fired[0]).toBe(last);
+      expect(fired[1]).toBeGreaterThanOrEqual(last + n);
+      expect(fired[2] - fired[1]).toBeGreaterThanOrEqual(2 * n);
+      expect(fired).toHaveLength(3);
+    },
+  );
+});
+
+describe('single-location last alert count', () => {
+  const run = async (lastAlertCount?: number) => {
+    const configWrites: SQL[] = [];
+    const evaluator = new MonitorEvaluator(
+      {
+        db: {
+          query: {
+            monitorResults: {
+              findFirst: jest.fn(async () => ({
+                id: 'r1',
+                consecutiveFailureCount: 10,
+                alertsSentForFailure: 1,
+              })),
+            },
+          },
+          update: jest.fn((table: unknown) => ({
+            set: jest.fn((values: { config?: SQL }) => {
+              if (values.config) configWrites.push(values.config);
+              return { where: jest.fn() };
+            }),
+          })),
+        },
+      } as never,
+      { sendNotification: jest.fn(async () => ({ delivered: true })) } as never,
+    );
+    const res = await evaluator.evaluateAndSendAlert({
+      monitorId: 'm1',
+      monitor: {
+        alertConfig: {
+          enabled: true,
+          alertOnFailure: true,
+          failureThreshold: 1,
+        },
+        config:
+          lastAlertCount === undefined
+            ? {}
+            : { aggregatedAlertState: { lastAlertCount } },
+      } as never,
+      previousStatus: 'down',
+      currentStatus: 'down',
+      reason: 'down',
+      metadata: {},
+    });
+    return { res, configWrites };
+  };
+
+  it('stores the delivery count in config.aggregatedAlertState', async () => {
+    const { res, configWrites } = await run();
+    expect(res.alertSent).toBe(true);
+    expect(configWrites).toHaveLength(1);
+    const q = new PgDialect().sqlToQuery(configWrites[0]);
+    expect(q.sql).toContain('jsonb_build_object');
+    expect(q.params).toContain(10);
+  });
+
+  it('holds the next alert back when the last one was delivered late', async () => {
+    // reminder 1 (window 1, count 10) was delivered at count 9: reminder 2 waits 2N after that
+    const { res } = await run(9);
+    expect(res.alertSent).toBe(false);
+  });
+});
