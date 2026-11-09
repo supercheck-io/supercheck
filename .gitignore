@@ -227,3 +227,6 @@ supercheck.state.json.lock
 # Local install-script markers
 .app-install
 .worker-install
+
+# Agent and contributor git worktrees
+.worktrees/

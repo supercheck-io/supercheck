@@ -7,15 +7,17 @@ on:
     types: [opened, reopened, closed, synchronize]
 
 # pull_request_target runs with write access; this workflow never checks out PR code.
-permissions:
-  actions: write
-  contents: write
-  pull-requests: write
-  statuses: write
+permissions: {}
 
 jobs:
   cla:
     name: CLA
+    # Write scopes stay on the job so the workflow token has none by default.
+    permissions:
+      actions: write
+      contents: write
+      pull-requests: write
+      statuses: write
     timeout-minutes: 5
     runs-on: ubuntu-latest
     if: >-

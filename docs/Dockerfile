@@ -10,7 +10,7 @@ COPY app/src/lib/billing/plan-catalog.json /app/app/src/lib/billing/plan-catalog
 RUN npm run build -- --webpack
 
 # Next.js exports this site as static files; next start cannot serve it.
-FROM nginx:stable-alpine AS runner
+FROM nginx:stable-alpine@sha256:583b7f2fce1cdb8da5ad5c39ebd3c33b98b87d493190e548bdee1fa8c619c311 AS runner
 COPY docs/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=builder /app/docs/out /usr/share/nginx/html
 EXPOSE 3000
