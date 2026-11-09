@@ -1,5 +1,5 @@
 import { ConfigService } from '@nestjs/config';
-import { MonitorAlertService } from './monitor-alert.service';
+import { MonitorAlertService, redactUrlsInText } from './monitor-alert.service';
 import { SreAlertTriageQueueService } from './sre-alert-triage-queue.service';
 
 jest.mock('../../common/notification-provider-crypto', () => ({
@@ -468,5 +468,45 @@ describe('MonitorAlertService', () => {
     expect(
       notificationService.sendNotificationToMultipleProviders,
     ).not.toHaveBeenCalled();
+  });
+
+  it('redacts URL credentials and query values before persisting', () => {
+    expect(
+      redactUrlsInText(
+        'GET https://u:p@example.com/health?token=abc&page=2 failed',
+      ),
+    ).toBe(
+      'GET https://example.com/health?token=REDACTED&page=REDACTED failed',
+    );
+    expect(redactUrlsInText(undefined)).toBeUndefined();
+  });
+
+  it('persists redacted errors and passes the check time to the payload', async () => {
+    const { service, valuesMock, notificationService } = createService();
+    notificationService.sendNotificationToMultipleProviders.mockResolvedValueOnce(
+      {
+        success: 0,
+        failed: 1,
+        results: [
+          {
+            provider: { id: 'provider-1' },
+            success: false,
+            error: 'POST https://a:b@hook.example.com/x?token=s3cret 500',
+          },
+        ],
+      },
+    );
+    const observedAt = '2026-06-23T00:01:00.000Z';
+    await service.sendNotification('monitor-1', 'failure', 'down', {
+      observedAt,
+    });
+    const payload =
+      notificationService.sendNotificationToMultipleProviders.mock.calls[0][1];
+    expect(payload.metadata.observedAt).toBe(observedAt);
+    expect(payload.timestamp.toISOString()).toBe(observedAt);
+    const rows = (valuesMock.mock.calls[0] as unknown[])[0] as {
+      errorMessage: string;
+    }[];
+    expect(rows[0].errorMessage).not.toMatch(/s3cret|a:b/);
   });
 });

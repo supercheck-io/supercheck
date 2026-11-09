@@ -23,6 +23,27 @@ type ProviderRow = {
   projectId: string | null;
 };
 
+/**
+ * Strips credentials and query values from URLs inside free text before it is persisted.
+ * Local on purpose: the shared worker helper lands in a separate PR; swap to it after both merge.
+ */
+export function redactUrlsInText(text: string | undefined | null) {
+  if (!text) return text ?? undefined;
+  return text.replace(/https?:\/\/[^\s"'<>)\]]+/gi, (raw) => {
+    try {
+      const url = new URL(raw);
+      url.username = '';
+      url.password = '';
+      for (const key of [...url.searchParams.keys()])
+        url.searchParams.set(key, 'REDACTED');
+      url.hash = '';
+      return url.toString();
+    } catch {
+      return '[redacted-url]';
+    }
+  });
+}
+
 const SSL_ALERT_THROTTLE_MS = 24 * 60 * 60 * 1000;
 
 @Injectable()
@@ -297,7 +318,7 @@ export class MonitorAlertService {
       targetName: monitor.name,
       targetId: monitor.id,
       severity: severity,
-      timestamp: new Date(),
+      timestamp: observedAt ?? new Date(),
       projectId: monitor.projectId || undefined,
       projectName: projectName,
       metadata: {
@@ -316,6 +337,8 @@ export class MonitorAlertService {
           ? new Date(monitor.lastCheckAt).toISOString()
           : undefined,
         ...metadata,
+        // The check's own time, so the alert shows when the check ran, not when it was sent.
+        ...(observedAt ? { observedAt: observedAt.toISOString() } : {}),
       },
     };
 
@@ -368,7 +391,7 @@ export class MonitorAlertService {
       const sentAt = observedAt ?? new Date();
       const historyRecords = deliveryResults.results.map((result) => ({
         type: notificationType,
-        message: notificationPayload.message,
+        message: redactUrlsInText(notificationPayload.message) ?? '',
         target: monitor.name,
         targetType: 'monitor',
         monitorId: monitor.id,
@@ -377,7 +400,7 @@ export class MonitorAlertService {
           result.success || result.partial
             ? ('sent' as const)
             : ('failed' as const),
-        errorMessage: result.error,
+        errorMessage: redactUrlsInText(result.error),
         deliveryMetadata: result.deliveryMetadata,
         sentAt,
       }));
@@ -519,6 +542,10 @@ export class MonitorAlertService {
     }
 
     const dashboardUrl = `${baseUrl}/monitors/${monitor.id}`;
+    const sslObserved = new Date(String(metadata.observedAt));
+    const sslObservedAt = Number.isNaN(sslObserved.getTime())
+      ? new Date()
+      : sslObserved;
 
     const notificationPayload: NotificationPayload = {
       type: 'ssl_expiring',
@@ -529,7 +556,7 @@ export class MonitorAlertService {
       targetName: monitor.name,
       targetId: monitor.id,
       severity: 'warning',
-      timestamp: new Date(),
+      timestamp: sslObservedAt,
       projectId: monitor.projectId || undefined,
       projectName: projectName,
       metadata: {
@@ -548,6 +575,7 @@ export class MonitorAlertService {
           ? new Date(monitor.lastCheckAt).toISOString()
           : undefined,
         ...metadata,
+        observedAt: sslObservedAt.toISOString(),
       },
     };
 
@@ -574,7 +602,7 @@ export class MonitorAlertService {
         typeof schema.alertHistory.$inferInsert
       >((result) => ({
         type: 'ssl_expiring',
-        message: notificationPayload.message,
+        message: redactUrlsInText(notificationPayload.message) ?? '',
         target: monitor.name,
         targetType: 'monitor',
         monitorId: monitor.id,
@@ -583,7 +611,7 @@ export class MonitorAlertService {
           result.success || result.partial
             ? ('sent' as const)
             : ('failed' as const),
-        errorMessage: result.error,
+        errorMessage: redactUrlsInText(result.error),
         deliveryMetadata: result.deliveryMetadata,
         sentAt,
       }));
