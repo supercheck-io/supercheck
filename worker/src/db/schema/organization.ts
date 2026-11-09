@@ -49,7 +49,6 @@ export const organization = pgTable('organization', {
     .$type<'active' | 'canceled' | 'past_due' | 'none'>()
     .default('none'),
   subscriptionId: text('subscription_id'), // Polar subscription ID
-  memberUnits: integer('member_units'), // Pro member seats Polar last reported
 
   // Subscription period dates (from Polar webhook)
   // These track the actual subscription billing cycle dates
