@@ -69,11 +69,7 @@ describe('MonitorAlertService', () => {
     };
     const selectProviders = db.select.getMockImplementation()!;
     (db.select as jest.Mock).mockImplementation((fields) =>
-      'provider' in fields && Object.keys(fields).length === 1
-        ? { from: () => ({ where: jest.fn().mockResolvedValue([]) }) }
-        : Object.keys(fields).length === 1
-          ? maintenanceQuery
-          : selectProviders(),
+      Object.keys(fields).length === 1 ? maintenanceQuery : selectProviders(),
     );
     const dbService = { db };
     const configService = {
@@ -416,64 +412,6 @@ describe('MonitorAlertService', () => {
     ).resolves.toBe(false);
   });
 
-  /** Makes the "already delivered channels" lookup (one selected column, `provider`) return rows. */
-  function mockDeliveredChannels(db: { select: jest.Mock }, ids: string[]) {
-    const original = db.select.getMockImplementation()!;
-    db.select.mockImplementation((fields: Record<string, unknown>) =>
-      'provider' in fields && Object.keys(fields).length === 1
-        ? {
-            from: () => ({
-              where: jest
-                .fn()
-                .mockResolvedValue(ids.map((p) => ({ provider: p }))),
-            }),
-          }
-        : original(fields),
-    );
-  }
-
-  it('asks the caller to retry when only some channels failed, and retries only those', async () => {
-    const { service, db, notificationService } = createService();
-    const observedAt = new Date('2026-06-23T00:01:00Z').toISOString();
-    await expect(
-      service.sendNotification('monitor-1', 'failure', 'down', { observedAt }),
-    ).resolves.toEqual({ delivered: true, retryFailedChannels: true });
-
-    // Retry: provider-1 already has a 'sent' row for this observation time.
-    mockDeliveredChannels(db, ['provider-1']);
-    notificationService.sendNotificationToMultipleProviders.mockClear();
-    await expect(
-      service.sendNotification('monitor-1', 'failure', 'down', { observedAt }),
-    ).resolves.toEqual({ delivered: true });
-    expect(
-      notificationService.sendNotificationToMultipleProviders,
-    ).not.toHaveBeenCalled();
-  });
-
-  it('does not ask for a retry without an observation time', async () => {
-    const { service } = createService();
-    await expect(
-      service.sendNotification('monitor-1', 'failure', 'down'),
-    ).resolves.toEqual({ delivered: true });
-  });
-
-  it('still throttles an SSL alert whose history row could not be written', async () => {
-    const { service, db, notificationService } = createService();
-    db.insert.mockImplementation(() => {
-      throw new Error('db down');
-    });
-    await expect(
-      service.sendSslExpirationNotification('monitor-1', 'expiring'),
-    ).resolves.toBe(true);
-    notificationService.sendNotificationToMultipleProviders.mockClear();
-    await expect(
-      service.sendSslExpirationNotification('monitor-1', 'expiring'),
-    ).resolves.toBe(false);
-    expect(
-      notificationService.sendNotificationToMultipleProviders,
-    ).not.toHaveBeenCalled();
-  });
-
   it('redacts URL credentials and query values before persisting', () => {
     expect(
       redactUrlsInText(
@@ -514,77 +452,29 @@ describe('MonitorAlertService', () => {
     expect(rows[0].errorMessage).not.toMatch(/s3cret|a:b/);
   });
 
-  it('defers a retry (keeps the slot) when the delivered-channels lookup fails', async () => {
+  it('still throttles an SSL alert whose history row could not be written', async () => {
     const { service, db, notificationService } = createService();
-    const select = db.select as jest.Mock;
-    const original = select.getMockImplementation()!;
-    select.mockImplementation((fields: Record<string, unknown>) =>
-      'provider' in fields && Object.keys(fields).length === 1
-        ? {
-            from: () => ({
-              where: jest.fn().mockRejectedValue(new Error('db down')),
-            }),
-          }
-        : original(fields),
-    );
-    await expect(
-      service.sendNotification('monitor-1', 'failure', 'down', {
-        observedAt: '2026-06-23T00:01:00.000Z',
-      }),
-    ).resolves.toEqual({ delivered: true, retryFailedChannels: true });
-    expect(
-      notificationService.sendNotificationToMultipleProviders,
-    ).not.toHaveBeenCalled();
-  });
-
-  it('keeps the slot when a retry fails again but another channel already got the alert', async () => {
-    const { service, db, notificationService } = createService();
-    mockDeliveredChannels(db, ['provider-0']);
-    notificationService.sendNotificationToMultipleProviders.mockResolvedValueOnce(
-      {
-        success: 0,
-        failed: 1,
-        results: [
-          { provider: { id: 'provider-1' }, success: false, error: 'x' },
-        ],
-      },
-    );
-    await expect(
-      service.sendNotification('monitor-1', 'failure', 'down', {
-        observedAt: '2026-06-23T00:01:00.000Z',
-      }),
-    ).resolves.toEqual({ delivered: true, retryFailedChannels: true });
-  });
-
-  it('keeps history rows whose insert failed and skips those channels on the retry', async () => {
-    const { service, db, notificationService } = createService();
-    const observedAt = '2026-06-23T00:01:00.000Z';
-    db.insert.mockImplementationOnce(() => {
+    db.insert.mockImplementation(() => {
       throw new Error('db down');
     });
-    await service.sendNotification('monitor-1', 'failure', 'down', {
-      observedAt,
-    });
+    await expect(
+      service.sendSslExpirationNotification('monitor-1', 'expiring'),
+    ).resolves.toBe(true);
     notificationService.sendNotificationToMultipleProviders.mockClear();
-    // provider-1 got the first alert (its history row is pending), so nothing is re-sent
-    await expect(
-      service.sendNotification('monitor-1', 'failure', 'down', { observedAt }),
-    ).resolves.toEqual({ delivered: true });
-    expect(
-      notificationService.sendNotificationToMultipleProviders,
-    ).not.toHaveBeenCalled();
-  });
-
-  it('retries a pending SSL history insert on the next check', async () => {
-    const { service, db, valuesMock } = createService();
-    db.insert.mockImplementationOnce(() => {
-      throw new Error('db down');
-    });
-    await service.sendSslExpirationNotification('monitor-1', 'expiring');
-    valuesMock.mockClear();
     await expect(
       service.sendSslExpirationNotification('monitor-1', 'expiring'),
     ).resolves.toBe(false);
-    expect(valuesMock).toHaveBeenCalledTimes(1);
+    expect(
+      notificationService.sendNotificationToMultipleProviders,
+    ).not.toHaveBeenCalled();
+  });
+
+  it('prunes expired SSL throttle entries', async () => {
+    const { service } = createService();
+    const map = service['sslAlertDeliveredAt'];
+    map.set('old-monitor', Date.now() - 25 * 60 * 60 * 1000);
+    await service.sendSslExpirationNotification('monitor-1', 'expiring');
+    expect(map.has('old-monitor')).toBe(false);
+    expect(map.has('monitor-1')).toBe(true);
   });
 });

@@ -215,47 +215,27 @@ export class MonitorEvaluator {
   /**
    * Writes only `aggregatedAlertState`, atomically (jsonb_set), so worker-owned config keys written
    * concurrently (SSL check times, certificate) are never overwritten by a stale read of the config.
-   * Throws when the write fails; returns false when no row matched (a newer cycle owns the config, or,
-   * with `onlyIfSent`, the counter is no longer the value the caller wrote).
    */
-  private async writeAggregatedAlertState(
-    monitorId: string,
-    aggregatedAlertState: AggregatedAlertState,
-    onlyIfSent?: {
-      field: 'alertsSentForFailure' | 'alertsSentForRecovery';
-      value: number;
-    },
-  ): Promise<boolean> {
-    const rows = await this.dbService.db
-      .update(schema.monitors)
-      .set({
-        config: sql`jsonb_set(coalesce(${schema.monitors.config}, '{}'::jsonb), '{aggregatedAlertState}', ${JSON.stringify(aggregatedAlertState)}::jsonb)`,
-      })
-      .where(
-        and(
-          eq(schema.monitors.id, monitorId),
-          ...(aggregatedAlertState.executionGroupId
-            ? [
-                sql`${schema.monitors.config}->'aggregatedAlertState'->>'executionGroupId' = ${aggregatedAlertState.executionGroupId}`,
-              ]
-            : []),
-          ...(onlyIfSent
-            ? [
-                sql`(${schema.monitors.config}->'aggregatedAlertState'->>${onlyIfSent.field})::int = ${onlyIfSent.value}`,
-              ]
-            : []),
-        ),
-      )
-      .returning({ id: schema.monitors.id });
-    return rows.length > 0;
-  }
-
   async persistAggregatedAlertState(
     monitorId: string,
     aggregatedAlertState: AggregatedAlertState,
   ): Promise<void> {
     try {
-      await this.writeAggregatedAlertState(monitorId, aggregatedAlertState);
+      await this.dbService.db
+        .update(schema.monitors)
+        .set({
+          config: sql`jsonb_set(coalesce(${schema.monitors.config}, '{}'::jsonb), '{aggregatedAlertState}', ${JSON.stringify(aggregatedAlertState)}::jsonb)`,
+        })
+        .where(
+          and(
+            eq(schema.monitors.id, monitorId),
+            ...(aggregatedAlertState.executionGroupId
+              ? [
+                  sql`${schema.monitors.config}->'aggregatedAlertState'->>'executionGroupId' = ${aggregatedAlertState.executionGroupId}`,
+                ]
+              : []),
+          ),
+        );
     } catch (error) {
       this.logger.error(
         `Failed to persist aggregated alert state for monitor ${monitorId}: ${getErrorMessage(error)}`,
@@ -285,16 +265,10 @@ export class MonitorEvaluator {
     preparedAlertState?: AggregatedAlertState;
     /** When the failing cycle was observed. A delayed send keeps it, so a later recovery still reads as newer. */
     observedAt?: Date;
-    /**
-     * The caller is re-driving a cycle whose alert partly failed. A single-location alert whose slot this
-     * cycle already used stays due, so the failed channels are retried (channels that got it are skipped
-     * by observation time) without consuming another slot.
-     */
-    retryDelivery?: boolean;
   }): Promise<{
     alertSent: boolean;
     alertType?: string;
-    /** An alert was due and attempted but no channel accepted it, or some channel failed and must be retried. */
+    /** An alert was due and attempted but no channel accepted it (not the same as suppressed). */
     deliveryFailed?: boolean;
   }> {
     const { monitorId, previousStatus, currentStatus, reason, metadata } =
@@ -364,8 +338,6 @@ export class MonitorEvaluator {
 
     // Determine alert type and whether thresholds are met
     let shouldSendAlert = false;
-    // This call re-drives an alert whose slot an earlier attempt of the same cycle already took.
-    let resumedSlot = false;
     let alertType: 'recovery' | 'failure' | null = null;
 
     if (currentStatus === 'down') {
@@ -399,16 +371,6 @@ export class MonitorEvaluator {
         shouldSendAlert = true;
       } else if (reminderDue(alertsSentForFailure)) {
         shouldSendAlert = true;
-      } else if (
-        options.retryDelivery &&
-        !isMultiLocationEvaluation &&
-        alertsSentForFailure >= 1 &&
-        (alertsSentForFailure === 1
-          ? firstDue
-          : reminderDue(alertsSentForFailure - 1))
-      ) {
-        shouldSendAlert = true;
-        resumedSlot = true;
       }
 
       if (!shouldSendAlert) {
@@ -466,16 +428,6 @@ export class MonitorEvaluator {
         !incidentOnly &&
         ((monitorAlertConfig?.alertOnRecovery as boolean) || false);
       shouldSendAlert = recoveryDue && alertsSentForRecovery === 0;
-      if (
-        !shouldSendAlert &&
-        recoveryDue &&
-        options.retryDelivery &&
-        !isMultiLocationEvaluation &&
-        alertsSentForRecovery === 1
-      ) {
-        shouldSendAlert = true;
-        resumedSlot = true;
-      }
 
       if (!shouldSendAlert) {
         if (
@@ -505,79 +457,9 @@ export class MonitorEvaluator {
       return { alertSent: false };
     }
 
-    // The counter is recorded BEFORE the send and rolled back when nothing was delivered, so a delivered
-    // alert can never go unrecorded and repeat. If recording fails nothing is sent (the cycle retries). A
-    // crash between record and send costs one alert but never adds one, like the job alert slots.
-    const previousSent =
-      alertType === 'failure' ? alertsSentForFailure : alertsSentForRecovery;
-    const field =
-      alertType === 'failure'
-        ? ('alertsSentForFailure' as const)
-        : ('alertsSentForRecovery' as const);
-    // Returns false when nothing matched: a newer cycle owns the counter, so this attempt is stale.
-    // `onlyIfSent` makes a release compare-and-set: it never wipes a record a later attempt wrote.
-    const writeSent = async (
-      sent: number,
-      onlyIfSent?: number,
-    ): Promise<boolean> => {
-      if (isMultiLocationEvaluation && aggregatedAlertState) {
-        return this.writeAggregatedAlertState(
-          monitorId,
-          { ...aggregatedAlertState, [field]: sent },
-          onlyIfSent === undefined ? undefined : { field, value: onlyIfSent },
-        );
-      }
-      if (!latestResult) return true;
-      const rows = await this.dbService.db
-        .update(schema.monitorResults)
-        .set({ [field]: sent })
-        .where(
-          and(
-            eq(schema.monitorResults.id, latestResult.id),
-            ...(onlyIfSent === undefined
-              ? []
-              : [sql`${schema.monitorResults[field]} = ${onlyIfSent}`]),
-          ),
-        )
-        .returning({ id: schema.monitorResults.id });
-      return rows.length > 0;
-    };
-    const releaseSent = async (): Promise<void> => {
-      // A resumed slot belongs to the earlier attempt that may already have delivered: never release it.
-      if (resumedSlot) return;
-      try {
-        await writeSent(previousSent, previousSent + 1);
-      } catch (error) {
-        this.logger.error(
-          `Failed to release the ${alertType} alert slot for monitor ${monitorId}: ${getErrorMessage(error)}`,
-        );
-      }
-    };
-
-    let recorded = false;
+    // Set once the provider accepted the alert: later persistence errors are not delivery failures.
     let delivered = false;
     try {
-      if (!resumedSlot && !(await writeSent(previousSent + 1))) {
-        // A newer cycle owns the state. If it already sent for this sequence, this is a stale retry whose
-        // alert would repeat it. Otherwise (e.g. a failure reported after a newer recovery cycle closed) the
-        // alert is still owed; it goes out unrecorded, as before.
-        if (!isMultiLocationEvaluation) return { alertSent: false };
-        const owner = await this.dbService.db.query.monitors.findFirst({
-          where: eq(schema.monitors.id, monitorId),
-          columns: { config: true },
-        });
-        if (
-          (this.readAggregatedAlertState(owner?.config)[field] ?? 0) >
-          previousSent
-        ) {
-          this.logger.warn(
-            `[ALERT] Skipping ${alertType} alert for monitor ${monitorId}: a newer check cycle already alerted`,
-          );
-          return { alertSent: false };
-        }
-      }
-      recorded = true;
-
       this.logger.log(
         `Sending ${alertType} notification for monitor ${monitorId}`,
       );
@@ -618,31 +500,58 @@ export class MonitorEvaluator {
         notification?.suppressed === true &&
         alertType === 'failure' &&
         (notification as { reason?: string }).reason === 'incident_only';
-      if (!suppressed && !incidentSignalled && notification?.suppressed) {
-        await releaseSent();
+      if (!suppressed && !incidentSignalled && notification?.suppressed)
         return { alertSent: false };
-      }
       if (
         !suppressed &&
         !incidentSignalled &&
         notification?.delivered === false
-      ) {
-        await releaseSent();
+      )
         return { alertSent: false, deliveryFailed: true };
-      }
       delivered = true;
 
-      if (suppressed) return { alertSent: false };
-      // Some channel still failed: the slot stays used (the others got the alert) and the caller retries
-      // only the failed channels, which sendNotification finds from alert_history.
-      const retryFailedChannels =
-        (notification as { retryFailedChannels?: boolean })
-          .retryFailedChannels === true;
-      return retryFailedChannels
-        ? { alertSent: true, alertType, deliveryFailed: true }
-        : { alertSent: true, alertType };
+      if (isMultiLocationEvaluation && aggregatedAlertState) {
+        const updatedAggregatedAlertState =
+          alertType === 'failure'
+            ? {
+                ...aggregatedAlertState,
+                alertsSentForFailure:
+                  aggregatedAlertState.alertsSentForFailure + 1,
+              }
+            : {
+                ...aggregatedAlertState,
+                alertsSentForRecovery:
+                  aggregatedAlertState.alertsSentForRecovery + 1,
+              };
+
+        await this.persistAggregatedAlertState(
+          monitorId,
+          updatedAggregatedAlertState,
+        );
+      }
+
+      // Preserve existing single-location behavior
+      if (!isMultiLocationEvaluation && latestResult) {
+        if (alertType === 'failure') {
+          await this.dbService.db
+            .update(schema.monitorResults)
+            .set({ alertsSentForFailure: alertsSentForFailure + 1 })
+            .where(eq(schema.monitorResults.id, latestResult.id));
+        } else if (alertType === 'recovery') {
+          await this.dbService.db
+            .update(schema.monitorResults)
+            .set({
+              alertsSentForRecovery: alertsSentForRecovery + 1,
+            })
+            .where(eq(schema.monitorResults.id, latestResult.id));
+        }
+      }
+
+      return suppressed ? { alertSent: false } : { alertSent: true, alertType };
     } catch (error) {
-      if (recorded && !delivered) await releaseSent();
+      if (isMultiLocationEvaluation && aggregatedAlertState) {
+        await this.persistAggregatedAlertState(monitorId, aggregatedAlertState);
+      }
 
       this.logger.error(
         `Failed to send ${alertType} alert for monitor ${monitorId}: ${getErrorMessage(error)}`,

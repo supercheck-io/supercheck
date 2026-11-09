@@ -338,7 +338,6 @@ export class MonitorCycleService {
       currentStatus: evaluation.currentStatus,
       reason: evaluation.reason,
       preparedAlertState: evaluation.alertState,
-      retryDelivery: cycle.notifyAttempts > 0,
       // Stored when the cycle closed; a late result or a newer cycle cannot move it. Older rows fall back to the latest result.
       observedAt: evaluation.observedAt
         ? new Date(evaluation.observedAt)
