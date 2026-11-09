@@ -17,7 +17,7 @@ import {
   PRO_INCLUDED_MEMBERS,
 } from "@/lib/billing/member-seats";
 import { createAuditLog } from "@/lib/audit-log";
-import { db } from "@/utils/db";
+import { PlanLimitBusyError, withPlanLimitLock } from "@/lib/middleware/plan-limit-lock";
 
 const bodySchema = z.object({
   organizationId: z.string().uuid(),
@@ -32,6 +32,16 @@ const POLAR_ERRORS: Record<number, { status: number; error: string }> = {
   409: { status: 409, error: "A subscription change is already pending. Try again in a few minutes." },
   422: { status: 409, error: "Member seats aren't available on this subscription yet. Contact support to add seats." },
 };
+
+function providerError(error: unknown) {
+  const statusCode = (error as { statusCode?: unknown })?.statusCode;
+  const mapped = typeof statusCode === "number" ? POLAR_ERRORS[statusCode] : undefined;
+  console.error(`[Billing] Member seat request to the billing provider failed (status ${String(statusCode ?? "unknown")})`);
+  return NextResponse.json(
+    { error: mapped?.error ?? "Could not change member seats. Try again later." },
+    { status: mapped?.status ?? 502 },
+  );
+}
 
 /**
  * POST /api/billing/members
@@ -83,86 +93,93 @@ export async function POST(request: NextRequest) {
     if (!access.isActive || access.plan !== "pro") {
       return NextResponse.json({ error: "Extra member seats are available on the Pro plan. Upgrade to Pro to add members." }, { status: 400 });
     }
-    const org = await db.query.organization.findFirst({ where: eq(organization.id, organizationId) });
-    if (!org?.subscriptionId) {
-      return NextResponse.json({ error: "Subscription not found. Refresh the page and try again." }, { status: 409 });
-    }
-
     const plan = await subscriptionService.getPlanLimits("pro");
-    const inUse = await countSeatsInUse(db, organizationId);
-    const floor = Math.max(plan.maxTeamMembers, inUse);
-    if (totalMembers < floor) {
-      return NextResponse.json(
-        { error: `You have ${inUse} members and pending invitations, and Pro includes ${plan.maxTeamMembers}. Choose at least ${floor} seats, or remove members first.` },
-        { status: 400 },
-      );
-    }
-
-    const summary = (memberUnits: number | null) => ({
+    const summary = (memberUnits: number | null, used: number | null) => ({
       included: plan.maxTeamMembers,
       purchasedSeats: memberUnits,
       limit: effectiveMemberLimit(plan, memberUnits),
-      used: inUse,
+      used,
       extraMemberPriceCents: EXTRA_MEMBER_PRICE_CENTS,
     });
-    const currentLimit = effectiveMemberLimit(plan, org.memberUnits);
-    if (totalMembers === currentLimit) {
-      return NextResponse.json(summary(org.memberUnits));
-    }
-
-    // Outside any transaction: the provider call can take seconds. An invite accepted meanwhile can leave
-    // the organization one member over a lowered limit, which only blocks further invites.
     const config = getPolarConfig()!;
-    let units: number | null;
+    const polar = createPolarClient({ accessToken: config.accessToken, server: config.server });
+
+    // One seat change at a time per organization, serialized with invitations and acceptances (same lock),
+    // so the floor below and the seats written stay consistent. The org row lock also holds off webhooks
+    // for this organization until the change is stored.
+    let applied: { before: number; units: number } | null = null;
+    let outcome: NextResponse;
     try {
-      const subscription = await createPolarClient({ accessToken: config.accessToken, server: config.server })
-        .subscriptions.update(org.subscriptionId, {
-          units: totalMembers,
-          // An increase is charged now; a decrease is credited on the next invoice.
-          proration_behavior: totalMembers > currentLimit ? "invoice" : "prorate",
-        });
-      units = subscription.units ?? null;
-    } catch (error) {
-      const statusCode = (error as { statusCode?: unknown })?.statusCode;
-      const mapped = typeof statusCode === "number" ? POLAR_ERRORS[statusCode] : undefined;
-      console.error(`[Billing] Member seat update failed (status ${String(statusCode ?? "unknown")})`);
-      return NextResponse.json(
-        { error: mapped?.error ?? "Could not change member seats. Try again later." },
-        { status: mapped?.status ?? 502 },
-      );
-    }
-    if (units === null) {
-      // The subscription carries no seat price, so the change did not apply.
-      return NextResponse.json({ error: POLAR_ERRORS[422].error }, { status: 409 });
-    }
+      outcome = await withPlanLimitLock(organizationId, "members", async (tx) => {
+        const [org] = await tx.select({ subscriptionId: organization.subscriptionId, memberUnits: organization.memberUnits })
+          .from(organization).where(eq(organization.id, organizationId)).for("update");
+        if (!org?.subscriptionId) {
+          return NextResponse.json({ error: "Subscription not found. Refresh the page and try again." }, { status: 409 });
+        }
+        const inUse = await countSeatsInUse(tx, organizationId);
+        const floor = Math.max(plan.maxTeamMembers, inUse);
+        if (totalMembers < floor) {
+          return NextResponse.json(
+            { error: `You have ${inUse} members and pending invitations, and Pro includes ${plan.maxTeamMembers}. Choose at least ${floor} seats, or remove members first.` },
+            { status: 400 },
+          );
+        }
 
-    // The provider has changed (and may have charged) the subscription: record that before anything else can fail.
-    await createAuditLog({
-      organizationId,
-      userId,
-      action: "billing_member_seats_updated",
-      details: {
-        resource: "billing_member_seats",
-        changes: { memberSeats: { before: currentLimit, after: units } },
-      },
-    });
-    // Bound to the subscription we changed, so a replacement written meanwhile by a webhook is not overwritten.
-    // If this write fails, the provider's subscription.updated webhook stores the same seats shortly.
-    const stored = await db.update(organization).set({ memberUnits: units })
-      .where(and(eq(organization.id, organizationId), eq(organization.subscriptionId, org.subscriptionId)))
-      .returning({ id: organization.id })
-      .catch((error) => {
-        console.error("[Billing] Member seats changed but not stored yet:", error);
-        return null;
+        // Compare with the provider's live seats, not the local copy, which can lag a change.
+        let live: number | null;
+        try {
+          live = (await polar.subscriptions.get(org.subscriptionId)).units ?? null;
+        } catch (error) {
+          return providerError(error);
+        }
+        if (live === null) {
+          // The subscription carries no seat price, so seats cannot be changed.
+          return NextResponse.json({ error: POLAR_ERRORS[422].error }, { status: 409 });
+        }
+        const currentLimit = effectiveMemberLimit(plan, live);
+        let units = live;
+        if (totalMembers !== currentLimit) {
+          try {
+            units = (await polar.subscriptions.update(org.subscriptionId, {
+              units: totalMembers,
+              // An increase is charged now; a decrease is credited on the next invoice.
+              proration_behavior: totalMembers > currentLimit ? "invoice" : "prorate",
+            })).units ?? live;
+          } catch (error) {
+            return providerError(error);
+          }
+          applied = { before: currentLimit, units };
+        }
+        if (units !== org.memberUnits) {
+          await tx.update(organization).set({ memberUnits: units })
+            .where(and(eq(organization.id, organizationId), eq(organization.subscriptionId, org.subscriptionId)));
+        }
+        return NextResponse.json(summary(units, inUse));
       });
-    if (stored === null) {
-      return NextResponse.json({ ...summary(units), pending: true });
-    }
-    if (stored.length === 0) {
-      return NextResponse.json({ error: "Your subscription changed while saving. Refresh the page to see your member seats." }, { status: 409 });
+    } catch (error) {
+      if (error instanceof PlanLimitBusyError) {
+        return NextResponse.json({ error: "Another member change is in progress. Try again in a moment." }, { status: 409 });
+      }
+      if (!applied) throw error;
+      // The provider already changed the subscription; its webhook stores the same seats shortly.
+      console.error("[Billing] Member seats changed but not stored yet:", error);
+      const changed: { before: number; units: number } = applied;
+      outcome = NextResponse.json({ ...summary(changed.units, null), pending: true });
     }
 
-    return NextResponse.json(summary(units));
+    if (applied) {
+      const changed: { before: number; units: number } = applied;
+      await createAuditLog({
+        organizationId,
+        userId,
+        action: "billing_member_seats_updated",
+        details: {
+          resource: "billing_member_seats",
+          changes: { memberSeats: { before: changed.before, after: changed.units } },
+        },
+      });
+    }
+    return outcome;
   } catch (error) {
     if (isAuthError(error)) {
       return NextResponse.json(

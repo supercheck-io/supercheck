@@ -12,21 +12,36 @@ jest.mock("@/lib/services/subscription-service", () => ({
   subscriptionService: { getSubscriptionAccessStatus: jest.fn(), getPlanLimits: jest.fn() },
 }));
 const mockUpdate = jest.fn();
-jest.mock("@/lib/billing/polar-client", () => ({ createPolarClient: () => ({ subscriptions: { update: mockUpdate } }) }));
+const mockGet = jest.fn();
+jest.mock("@/lib/billing/polar-client", () => ({ createPolarClient: () => ({ subscriptions: { update: mockUpdate, get: mockGet } }) }));
 const mockCountSeats = jest.fn();
 jest.mock("@/lib/billing/member-seats", () => ({
   ...jest.requireActual("@/lib/billing/member-seats"),
   countSeatsInUse: () => mockCountSeats(),
 }));
 jest.mock("@/lib/audit-log", () => ({ createAuditLog: jest.fn() }));
-const mockReturning = jest.fn(async () => [{ id: "org" }]);
-const mockSet = jest.fn(() => ({ where: jest.fn(() => ({ returning: mockReturning })) }));
-jest.mock("@/utils/db", () => ({
-  db: { query: { organization: { findFirst: jest.fn() } }, update: jest.fn(() => ({ set: mockSet })) },
+jest.mock("drizzle-orm", () => ({
+  ...jest.requireActual("drizzle-orm"),
+  eq: (column: { name?: string }, value: unknown) => ({ eq: [column?.name, value] }),
+  and: (...conditions: unknown[]) => ({ and: conditions }),
 }));
+const mockOrgRow = jest.fn();
+const mockWhere = jest.fn();
+const mockSet = jest.fn(() => ({ where: mockWhere }));
+const mockTx = {
+  select: () => ({ from: () => ({ where: () => ({ for: () => mockOrgRow() }) }) }),
+  update: () => ({ set: mockSet }),
+};
+const mockLock = jest.fn();
+jest.mock("@/lib/middleware/plan-limit-lock", () => {
+  class PlanLimitBusyError extends Error {}
+  return {
+    PlanLimitBusyError,
+    withPlanLimitLock: (...args: unknown[]) => mockLock(...args),
+  };
+});
 
 import { POST } from "./route";
-import { db } from "@/utils/db";
 import { requireUserAuthContext } from "@/lib/auth-context";
 import { getUserOrgRole } from "@/lib/rbac/middleware";
 import { subscriptionService } from "@/lib/services/subscription-service";
@@ -51,17 +66,23 @@ describe("POST /api/billing/members", () => {
     (getUserOrgRole as jest.Mock).mockResolvedValue("org_owner");
     (subscriptionService.getSubscriptionAccessStatus as jest.Mock).mockResolvedValue({ isActive: true, plan: "pro", status: "active" });
     (subscriptionService.getPlanLimits as jest.Mock).mockResolvedValue({ plan: "pro", maxTeamMembers: 25 });
-    (db.query.organization.findFirst as jest.Mock).mockResolvedValue({ id: ORG, subscriptionId: "sub_1", memberUnits: 25 });
+    mockOrgRow.mockResolvedValue([{ subscriptionId: "sub_1", memberUnits: 25 }]);
+    mockGet.mockResolvedValue({ id: "sub_1", units: 25 });
+    mockWhere.mockResolvedValue(undefined);
+    mockLock.mockImplementation(async (_org: string, _resource: string, fn: (tx: unknown) => Promise<unknown>) => fn(mockTx));
     mockCountSeats.mockResolvedValue(20);
     mockUpdate.mockImplementation(async (_id: string, body: { units: number }) => ({ id: "sub_1", units: body.units }));
   });
 
-  it("buys seats through the provider, stores what it reports, and audits the change", async () => {
+  it("buys seats under the members lock, stores what the provider reports, and audits the change", async () => {
     const response = await post({ organizationId: ORG, totalMembers: 28 });
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ included: 25, purchasedSeats: 28, limit: 28, used: 20, extraMemberPriceCents: 800 });
+    expect(mockLock).toHaveBeenCalledWith(ORG, "members", expect.any(Function));
     expect(mockUpdate).toHaveBeenCalledWith("sub_1", { units: 28, proration_behavior: "invoice" });
     expect(mockSet).toHaveBeenCalledWith({ memberUnits: 28 });
+    // The write stays bound to the subscription that was changed.
+    expect(mockWhere).toHaveBeenCalledWith({ and: [{ eq: ["id", ORG] }, { eq: ["subscription_id", "sub_1"] }] });
     expect(createAuditLog).toHaveBeenCalledWith(expect.objectContaining({
       organizationId: ORG, userId: "user-1", action: "billing_member_seats_updated",
       details: expect.objectContaining({ changes: { memberSeats: { before: 25, after: 28 } } }),
@@ -69,22 +90,32 @@ describe("POST /api/billing/members", () => {
   });
 
   it("lowers seats down to the members in use, crediting the next invoice", async () => {
-    (db.query.organization.findFirst as jest.Mock).mockResolvedValue({ id: ORG, subscriptionId: "sub_1", memberUnits: 40 });
+    mockGet.mockResolvedValue({ id: "sub_1", units: 40 });
     mockCountSeats.mockResolvedValue(30);
     expect((await post({ organizationId: ORG, totalMembers: 30 })).status).toBe(200);
     expect(mockUpdate).toHaveBeenCalledWith("sub_1", { units: 30, proration_behavior: "prorate" });
   });
 
-  it("accepts the member maximum and charges an increase from no purchased seats now", async () => {
-    (db.query.organization.findFirst as jest.Mock).mockResolvedValue({ id: ORG, subscriptionId: "sub_1", memberUnits: null });
+  it("accepts the member maximum and charges an increase now even when no seats were stored locally", async () => {
+    mockOrgRow.mockResolvedValue([{ subscriptionId: "sub_1", memberUnits: null }]);
     expect((await post({ organizationId: ORG, totalMembers: 100 })).status).toBe(200);
     expect(mockUpdate).toHaveBeenCalledWith("sub_1", { units: 100, proration_behavior: "invoice" });
   });
 
-  it("does not call the provider when the seats are unchanged", async () => {
+  it("compares with the provider's live seats, not a stale local copy", async () => {
+    // A previous increase reached the provider, but the local copy still says 25.
+    mockGet.mockResolvedValue({ id: "sub_1", units: 30 });
+    expect((await post({ organizationId: ORG, totalMembers: 25 })).status).toBe(200);
+    expect(mockUpdate).toHaveBeenCalledWith("sub_1", { units: 25, proration_behavior: "prorate" });
+  });
+
+  it("does not change the provider when the seats are unchanged, but repairs a stale local copy", async () => {
+    mockOrgRow.mockResolvedValue([{ subscriptionId: "sub_1", memberUnits: null }]);
     const response = await post({ organizationId: ORG, totalMembers: 25 });
     expect(response.status).toBe(200);
     expect(mockUpdate).not.toHaveBeenCalled();
+    expect(mockSet).toHaveBeenCalledWith({ memberUnits: 25 });
+    expect(createAuditLog).not.toHaveBeenCalled();
   });
 
   it.each(["org_admin", "project_admin", "project_editor", "project_viewer", null])("refuses role %s", async (role) => {
@@ -149,29 +180,44 @@ describe("POST /api/billing/members", () => {
     expect(body.error).toContain(message);
     expect(body.error).not.toContain("provider detail");
     expect(mockSet).not.toHaveBeenCalled();
+    expect(createAuditLog).not.toHaveBeenCalled();
   });
 
-  it("fails cleanly when the subscription has no seat price", async () => {
-    mockUpdate.mockResolvedValue({ id: "sub_1", units: null });
+  it("maps a failed lookup of the live seats without changing anything", async () => {
+    mockGet.mockRejectedValue(Object.assign(new Error("provider detail"), { statusCode: 404 }));
+    expect((await post({ organizationId: ORG, totalMembers: 30 })).status).toBe(409);
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it("fails cleanly before charging when the subscription has no seat price", async () => {
+    mockGet.mockResolvedValue({ id: "sub_1", units: null });
     const response = await post({ organizationId: ORG, totalMembers: 30 });
     expect(response.status).toBe(409);
+    expect((await response.json()).error).toContain("Contact support");
+    expect(mockUpdate).not.toHaveBeenCalled();
     expect(mockSet).not.toHaveBeenCalled();
   });
 
-  it("does not report success when the subscription was replaced while saving", async () => {
-    mockReturning.mockResolvedValueOnce([]);
+  it("asks to retry while another member change holds the lock", async () => {
+    const { PlanLimitBusyError } = jest.requireMock("@/lib/middleware/plan-limit-lock");
+    mockLock.mockRejectedValueOnce(new PlanLimitBusyError());
     const response = await post({ organizationId: ORG, totalMembers: 30 });
     expect(response.status).toBe(409);
-    // The provider already changed the subscription, so the change is still audited.
-    expect(createAuditLog).toHaveBeenCalled();
+    expect((await response.json()).error).toContain("in progress");
   });
 
-  it("reports success when the provider changed seats but the local write failed", async () => {
-    mockReturning.mockRejectedValueOnce(new Error("db down"));
+  it("reports a pending success and audits when the provider changed seats but the local write failed", async () => {
+    mockWhere.mockRejectedValueOnce(new Error("db down"));
     const response = await post({ organizationId: ORG, totalMembers: 30 });
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ purchasedSeats: 30, pending: true });
     expect(createAuditLog).toHaveBeenCalled();
+  });
+
+  it("rethrows a failure before the provider changed anything", async () => {
+    mockOrgRow.mockRejectedValueOnce(new Error("db down"));
+    expect((await post({ organizationId: ORG, totalMembers: 30 })).status).toBe(500);
+    expect(createAuditLog).not.toHaveBeenCalled();
   });
 
   it("requires an active organization", async () => {
@@ -198,7 +244,7 @@ describe("POST /api/billing/members", () => {
   });
 
   it("refuses an organization without a bound subscription", async () => {
-    (db.query.organization.findFirst as jest.Mock).mockResolvedValue({ id: ORG, subscriptionId: null, memberUnits: null });
+    mockOrgRow.mockResolvedValue([{ subscriptionId: null, memberUnits: null }]);
     expect((await post({ organizationId: ORG, totalMembers: 30 })).status).toBe(409);
     expect(mockUpdate).not.toHaveBeenCalled();
   });

@@ -306,7 +306,7 @@ export default function PricingPage() {
                         Run the open-source core on your own servers at no cost, or preview the Cloud plans and join the waitlist. Cloud signups are not open yet.
                     </p>
                     <p className="mt-3 text-sm text-fd-muted-foreground">
-                        Priced per organization, not per seat. Prices in USD per month, before taxes. Playwright minutes, k6 VU-minutes, and completed AI SRE investigations beyond the included allowance are billed at the{' '}
+                        Priced per organization, not per seat; only extra {catalog.pro.name} members above the included ones are billed per member. Prices in USD per month, before taxes. Playwright minutes, k6 VU-minutes, and completed AI SRE investigations beyond the included allowance are billed at the{' '}
                         <a href="#overage" className="underline underline-offset-4 hover:text-fd-foreground">overage rates</a>.
                     </p>
                     <nav aria-label="Pricing sections" className="mt-6 flex flex-wrap justify-center gap-x-6 gap-y-3 text-sm font-medium text-fd-primary">
@@ -487,7 +487,7 @@ export default function PricingPage() {
                     <div className="mx-auto mb-8 max-w-2xl text-center">
                         <h2 id="overage-heading" className={sectionHeading}>Overage rates</h2>
                         <p className="mt-3 text-fd-muted-foreground">
-                            Charged only for usage beyond your monthly allowance. Every paid plan starts with an overage cap and a hard stop, so with the default cap a month costs about {usd(catalog.plus.monthlyPriceCents + catalog.plus.limits.defaultSpendingLimitCents)} on Plus or {usd(catalog.pro.monthlyPriceCents + catalog.pro.limits.defaultSpendingLimitCents)} on Pro at most before taxes. Raising the cap or turning off the hard stop allows more overage. At the cap, new browser checks, test and job runs, k6 load tests and full AI SRE investigations pause. HTTP, website, ping and port monitors keep running. In-flight usage can run slightly past the cap.
+                            Charged only for usage beyond your monthly allowance. Every paid plan starts with an overage cap and a hard stop, so with the default cap a month costs about {usd(catalog.plus.monthlyPriceCents + catalog.plus.limits.defaultSpendingLimitCents)} on Plus or {usd(catalog.pro.monthlyPriceCents + catalog.pro.limits.defaultSpendingLimitCents)} on Pro at most before taxes, plus any extra {catalog.pro.name} member seats. Raising the cap or turning off the hard stop allows more overage. At the cap, new browser checks, test and job runs, k6 load tests and full AI SRE investigations pause. HTTP, website, ping and port monitors keep running. In-flight usage can run slightly past the cap.
                         </p>
                     </div>
                     <div className="relative mx-auto max-w-3xl overflow-x-auto rounded-xl border border-fd-border" role="region" aria-label="Usage overage pricing" tabIndex={0}>

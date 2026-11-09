@@ -90,6 +90,15 @@ describe("Polar SDK wire format (2026-10)", () => {
     expect(subscription.units).toBe(30);
   });
 
+  it("reads a subscription's live seats with GET", async () => {
+    fetchMock.mockResolvedValue(ok({ id: "sub_1", units: 30 }));
+    const subscription = await createPolarClient({ accessToken: "t", server: "sandbox" }).subscriptions.get("sub_1");
+    const { request, url } = await sent();
+    expect(request.method).toBe("GET");
+    expect(url.pathname).toBe("/v1/subscriptions/sub_1");
+    expect(subscription.units).toBe(30);
+  });
+
   it("surfaces a rejected seat change with its statusCode", async () => {
     fetchMock.mockResolvedValue(ok({ detail: [{ msg: "no unit price" }] }, 422));
     await expect(

@@ -530,7 +530,7 @@ export default function SubscribePage() {
             ))}
           </div>
           <p className="mt-5 text-center text-xs leading-relaxed text-muted-foreground">
-            Billed monthly per organization, not per seat, in USD before tax. Cancel anytime.
+            Billed monthly per organization, not per seat, in USD before tax; only extra Pro members above the included ones are billed per member. Cancel anytime.
             <br />
             Usage overages are shown above. Each plan starts with a monthly overage cap and hard stop (Plus {usd(catalog.plus.limits.defaultSpendingLimitCents)}, Pro {usd(catalog.pro.limits.defaultSpendingLimitCents)}) that you can change later. Review your total at checkout.
           </p>

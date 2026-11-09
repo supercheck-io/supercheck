@@ -297,7 +297,12 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
 
   // Calculate current period estimate using API-provided pricing
   // basePriceCents comes from the API (the plan price in cents, from the plan catalog)
-  const basePrice = (data.subscription.basePriceCents ?? 0) / 100;
+  const planPrice = (data.subscription.basePriceCents ?? 0) / 100;
+  // Pro member seats above the included members are part of the recurring price.
+  const seats = data.limits.teamMembers;
+  const seatPrice = data.subscription.plan === "pro" && seats.included !== undefined && seats.extraMemberPriceCents !== undefined
+    ? (Math.max(0, seats.limit - seats.included) * seats.extraMemberPriceCents) / 100 : 0;
+  const basePrice = planPrice + seatPrice;
   const currentOverage = spending?.currentDollars;
   const estimatedTotal =
     currentOverage === undefined ? null : basePrice + currentOverage;
@@ -398,9 +403,10 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
                 {estimatedTotal === null
                   ? "Usage estimate unavailable"
                   : `$${estimatedTotal.toFixed(2)}`}
-                {currentOverage !== undefined && currentOverage > 0 && (
+                {currentOverage !== undefined && (currentOverage > 0 || seatPrice > 0) && (
                   <span className="text-xs font-normal text-muted-foreground ml-1">
-                    (${basePrice.toFixed(2)} + ${currentOverage.toFixed(2)} overage)
+                    (${planPrice.toFixed(2)} plan{seatPrice > 0 ? ` + $${seatPrice.toFixed(2)} extra members` : ""}
+                    {currentOverage > 0 ? ` + $${currentOverage.toFixed(2)} overage` : ""})
                   </span>
                 )}
               </p>

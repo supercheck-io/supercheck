@@ -24,6 +24,7 @@ export interface TeamMemberSeats {
 }
 
 const MAX_MEMBERS = catalog.pro.maxTotalMembers;
+export const PENDING_REFRESH_MS = 10_000;
 const dollars = (cents: number) =>
   `$${(cents / 100).toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
 
@@ -87,6 +88,8 @@ export function MemberSeats({
       toast.success("Member seats updated", body?.pending ? { description: "The new limit can take a minute to show." } : undefined);
       setOpen(false);
       await onSaved();
+      // The provider applied the change but it is not stored yet; read it again once it has synced.
+      if (body?.pending) setTimeout(() => void onSaved(), PENDING_REFRESH_MS);
     } catch (error) {
       toast.error("Could not change member seats", {
         description: error instanceof Error ? error.message : undefined,

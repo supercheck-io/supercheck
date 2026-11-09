@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemberSeats, seatChangePreview } from "./member-seats";
+import { MemberSeats, PENDING_REFRESH_MS, seatChangePreview } from "./member-seats";
 
 jest.mock("sonner", () => ({ toast: { error: jest.fn(), success: jest.fn() } }));
 
@@ -83,6 +83,23 @@ describe("MemberSeats", () => {
     fireEvent.change(screen.getByLabelText("Total members"), { target: { value: "101" } });
     expect(screen.getByText(/Need more than 100 members\? Contact us/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Confirm" })).toBeDisabled();
+  });
+
+  it("reads the seats again once a pending change has synced", async () => {
+    jest.useFakeTimers();
+    try {
+      global.fetch = jest.fn(async () => ({ ok: true, json: async () => ({ pending: true }) })) as unknown as typeof fetch;
+      const onSaved = jest.fn();
+      render(<MemberSeats organizationId="org_1" plan="pro" seats={proSeats} canManage onSaved={onSaved} />);
+      fireEvent.click(screen.getByRole("button", { name: "Change member seats" }));
+      fireEvent.change(screen.getByLabelText("Total members"), { target: { value: "27" } });
+      fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+      await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
+      jest.advanceTimersByTime(PENDING_REFRESH_MS);
+      expect(onSaved).toHaveBeenCalledTimes(2);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it("will not go below the members in use", () => {
