@@ -226,8 +226,7 @@ export class MonitorService {
           // SSL checking - check independently of website success for better monitoring
           // SSL Check off or not HTTPS: drop a probe-failure marker left from an earlier run
           if (
-            (jobData.config as Record<string, unknown> | undefined)
-              ?.sslProbeFailure &&
+            jobData.config?.sslProbeFailure &&
             !(
               jobData.config?.enableSslCheck &&
               /^https:\/\//i.test(jobData.target)
