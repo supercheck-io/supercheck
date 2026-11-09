@@ -34,6 +34,9 @@ import { formatMaintenanceWindow } from "@/lib/incident-schedule";
 import { resolveBranding } from "@/lib/status-page-branding";
 import { IMPACT_BANNER_STATUS } from "@/lib/incident-impact";
 
+// Hex, because component colors get a hex alpha suffix below.
+const NO_DATA_COLOR = "#9ca3af";
+
 type ComponentStatus =
   | "operational"
   | "degraded_performance"
@@ -184,6 +187,9 @@ export function PublicStatusPage({
     if (statuses.includes("degraded_performance"))
       return "degraded_performance";
     if (statuses.includes("under_maintenance")) return "under_maintenance";
+    // Every showcased component is stale and nothing else is reported: do not claim all is well.
+    const showcased = components.filter((c) => c.showcase);
+    if (showcased.length > 0 && showcased.every((c) => c.noRecentData)) return "no_recent_data";
 
     return "operational";
   };
@@ -238,6 +244,13 @@ export function PublicStatusPage({
           text: t.scheduledMaintenance,
           subtext: t.servicesUnderMaintenance,
           bgColor: colors.blue,
+        };
+      case "no_recent_data":
+        return {
+          icon: CircleDashed,
+          text: t.noRecentData,
+          subtext: "",
+          bgColor: NO_DATA_COLOR,
         };
       default:
         return {
@@ -634,7 +647,7 @@ export function PublicStatusPage({
             <div className="space-y-0 sp-card bg-white dark:bg-gray-900 sp-border border dark:border-gray-800 rounded-xl divide-y dark:divide-gray-800 sp-divide shadow-sm">
               {visibleComponents.map((component) => {
                 const componentStatus = component.noRecentData
-                  ? { icon: CircleDashed, text: t.noRecentData, color: "#9ca3af" }
+                  ? { icon: CircleDashed, text: t.noRecentData, color: NO_DATA_COLOR }
                   : getComponentStatusDisplay(component.status);
                 // Generate uptime data specific to this component
                 const uptimeData = generateUptimeData(component.id);

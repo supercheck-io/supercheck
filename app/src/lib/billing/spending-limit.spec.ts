@@ -18,9 +18,14 @@ describe("resolveSpendingLimit", () => {
     });
   });
 
-  it("plan_default rows ignore stale stored fields", () => {
-    const row = custom({ spendingLimitSource: "plan_default", enableSpendingLimit: false });
-    expect(resolveSpendingLimit(row, "plus", 7000)).toMatchObject({ enabled: true, limitCents: 7000, hardStop: true });
+  it("plan_default rows without a stored cap follow the plan", () => {
+    const row = custom({ spendingLimitSource: "plan_default", enableSpendingLimit: false, monthlySpendingLimitCents: null, hardStopOnLimit: true });
+    expect(resolveSpendingLimit(row, "plus", 7000)).toMatchObject({ source: "plan_default", enabled: true, limitCents: 7000, hardStop: true });
+  });
+
+  it("a cap saved by an older app version without the marker stays the owner's cap", () => {
+    const row = custom({ spendingLimitSource: "plan_default", monthlySpendingLimitCents: 1000 });
+    expect(resolveSpendingLimit(row, "plus", 7000)).toMatchObject({ source: "custom", limitCents: 1000 });
   });
 
   it("custom caps win, including a disabled one", () => {

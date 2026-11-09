@@ -122,7 +122,7 @@ class BillingSettingsService {
       updates.enableSpendingLimit !== undefined || updates.hardStopOnLimit !== undefined;
     if (updates.spendingLimitSource === "plan_default") {
       updateData.spendingLimitSource = "plan_default";
-    } else if (touchesCap) {
+    } else if (updates.spendingLimitSource === "custom" || touchesCap) {
       updateData.spendingLimitSource = "custom";
     }
 

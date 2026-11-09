@@ -644,6 +644,54 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * The 0071 cap columns are read here, outside the worker's Drizzle schema, so every other
+   * plan and settings query keeps working while workers roll out before the app migrates.
+   * Until then the stored cap fields apply as before (source "custom", no plan default).
+   */
+  private async getCapConfig(
+    organizationId: string,
+    plan: 'plus' | 'pro',
+  ): Promise<{ source: string; defaultCents: number | null }> {
+    try {
+      const [row] = await this.db.execute<{
+        source: string | null;
+        default_cents: number | null;
+      }>(sql`
+        SELECT
+          (SELECT spending_limit_source FROM billing_settings WHERE organization_id = ${organizationId}) AS source,
+          (SELECT default_spending_limit_cents FROM plan_limits WHERE plan = ${plan}) AS default_cents`);
+      return {
+        source: row?.source ?? 'plan_default',
+        defaultCents: row?.default_cents ?? null,
+      };
+    } catch (error) {
+      const cause: unknown =
+        error instanceof Error && error.cause ? error.cause : error;
+      if (
+        !cause ||
+        typeof cause !== 'object' ||
+        !('code' in cause) ||
+        cause.code !== '42703' ||
+        !('message' in cause) ||
+        typeof cause.message !== 'string' ||
+        !/\b(spending_limit_source|default_spending_limit_cents)\b/.test(
+          cause.message,
+        )
+      ) {
+        throw error;
+      }
+      const now = Date.now();
+      if (now - this.lastMigrationWarningAt >= 60_000) {
+        this.lastMigrationWarningAt = now;
+        this.logger.warn(
+          '[Usage] Migration 0071 is pending; admission uses the stored spending cap',
+        );
+      }
+      return { source: 'custom', defaultCents: null };
+    }
+  }
+
+  /**
    * Read pricing during the worker-first additive migration window.
    */
   private async getAdmissionPricing(plan: 'plus' | 'pro') {
@@ -692,13 +740,6 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
     const settings = await this.db.query.billingSettings.findFirst({
       where: eq(schema.billingSettings.organizationId, organizationId),
     });
-    // A custom cap that is off or soft never blocks, whatever the plan.
-    if (
-      settings?.spendingLimitSource === 'custom' &&
-      (!settings.enableSpendingLimit || !settings.hardStopOnLimit)
-    ) {
-      return { blocked: false };
-    }
 
     const plan = org.subscriptionPlan;
     if (plan !== 'plus' && plan !== 'pro') {
@@ -713,10 +754,12 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
     if (!limits || !prices) {
       throw new Error('Billing plan or pricing is unavailable');
     }
+    // shouldBlockExecution reaches here only for plus/pro orgs with an active plan.
+    const capConfig = await this.getCapConfig(organizationId, plan);
     const cap = resolveSpendingLimit(
-      settings,
+      settings ? { ...settings, spendingLimitSource: capConfig.source } : null,
       plan,
-      limits.defaultSpendingLimitCents,
+      capConfig.defaultCents,
     );
     if (
       cap.source === 'plan_default' &&

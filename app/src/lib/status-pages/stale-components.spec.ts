@@ -3,7 +3,7 @@ import { staleComponentIds } from "./stale-components";
 const now = Date.parse("2026-11-09T12:00:00Z");
 const ago = (minutes: number) => new Date(now - minutes * 60_000);
 const link = (componentId: string, over: Partial<Parameters<typeof staleComponentIds>[0][number]> = {}) => ({
-  componentId, enabled: true, status: "up", frequencyMinutes: 1, lastCheckAt: ago(1), ...over,
+  componentId, enabled: true, status: "up", frequencyMinutes: 1, lastCheckAt: ago(1), createdAt: ago(10_000), ...over,
 });
 
 describe("staleComponentIds", () => {
@@ -23,11 +23,19 @@ describe("staleComponentIds", () => {
     expect(staleComponentIds([link("c", { frequencyMinutes: 10, lastCheckAt: ago(31) })], now)).toEqual(new Set(["c"]));
   });
 
-  it("keeps the stored status for paused, disabled and never-checked monitors", () => {
+  it("ignores paused and disabled monitors, even next to an overdue one", () => {
     expect(staleComponentIds([
       link("paused", { status: "paused", lastCheckAt: ago(600) }),
       link("disabled", { enabled: false, lastCheckAt: ago(600) }),
-      link("new", { lastCheckAt: null }),
-    ], now).size).toBe(0);
+      link("mixed", { lastCheckAt: ago(600) }),
+      link("mixed", { status: "paused", lastCheckAt: ago(1) }),
+    ], now)).toEqual(new Set(["mixed"]));
+  });
+
+  it("ages a never-checked monitor from its creation", () => {
+    expect(staleComponentIds([
+      link("new", { lastCheckAt: null, createdAt: ago(5) }),
+      link("stuck", { lastCheckAt: null, createdAt: ago(600) }),
+    ], now)).toEqual(new Set(["stuck"]));
   });
 });

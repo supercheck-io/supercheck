@@ -102,3 +102,15 @@ describe("branding colours", () => {
     expect(container.firstChild).not.toHaveAttribute("data-sp-branded");
   });
 });
+
+it("does not claim all systems operational when every component stopped reporting", () => {
+  render(<PublicStatusPage statusPage={page} components={[{ ...component, noRecentData: true }]} incidents={[]} idOrSubdomain="page" />);
+  expect(screen.queryByText(t.allSystemsOperational)).not.toBeInTheDocument();
+  expect(screen.getAllByText(t.noRecentData).length).toBeGreaterThan(0);
+});
+
+it("an open incident still outranks stale components", () => {
+  render(<PublicStatusPage statusPage={page} components={[{ ...component, noRecentData: true }]}
+    incidents={[incident({ impact: "critical", status: "investigating" })]} idOrSubdomain="page" />);
+  expect(screen.getByText(t.majorOutage)).toBeInTheDocument();
+});

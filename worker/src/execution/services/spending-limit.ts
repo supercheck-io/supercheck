@@ -32,7 +32,13 @@ export function resolveSpendingLimit(
     (planDefaultCents as number) > 0
       ? (planDefaultCents as number)
       : null;
-  if (settings?.spendingLimitSource === 'custom') {
+  // A stored cap without the custom marker was saved by an app version older than this rule.
+  const custom =
+    settings?.spendingLimitSource === 'custom' ||
+    (!!settings &&
+      (settings.enableSpendingLimit ||
+        settings.monthlySpendingLimitCents !== null));
+  if (settings && custom) {
     return {
       source: 'custom',
       enabled: settings.enableSpendingLimit,

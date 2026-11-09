@@ -20,9 +20,11 @@ export function SpendingCapBanner({ enabled }: { enabled: boolean }) {
     queryKey: ["billing-usage", "spending-cap-banner"],
     queryFn: fetchSpending,
     enabled,
-    staleTime: 5 * 60_000,
+    staleTime: 60_000,
+    // Picks up a cap raised elsewhere or a billing period reset while the app stays open.
+    refetchInterval: 5 * 60_000,
     retry: false,
-    refetchOnWindowFocus: false,
+    refetchOnWindowFocus: true,
   });
   // The spending controls announce a save, so a raised cap clears the banner at once.
   useEffect(() => {

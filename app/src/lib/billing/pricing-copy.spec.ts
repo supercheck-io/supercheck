@@ -56,7 +56,8 @@ describe("PRICING_FAQS", () => {
   it("states the default overage caps and what pauses at the cap", () => {
     const control = PRICING_FAQS.find((item) => item.question === "How can I control overage spending?")?.answer;
     expect(control).toContain("\$70 on Plus and \$300 on Pro");
-    expect(control).toContain("at most \$99 on Plus or \$399 on Pro");
+    expect(control).toContain("about $99 on Plus or $399 on Pro at most");
+    expect(control).toContain("turning off the hard stop allows more overage");
     const paused = PRICING_FAQS.find((item) => item.question === "What pauses when I reach my overage cap?")?.answer;
     expect(paused).toContain("k6 load tests");
     expect(paused).toContain("HTTP, website, ping, and port monitors keep running");

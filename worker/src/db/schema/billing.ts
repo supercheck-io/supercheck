@@ -123,11 +123,6 @@ export const billingSettings = pgTable('billing_settings', {
 
   // Hard stop when limit reached (vs soft warning)
   hardStopOnLimit: boolean('hard_stop_on_limit').default(false).notNull(),
-  // plan_default: the cap follows plan_limits.default_spending_limit_cents with hard stop; custom: the fields above
-  spendingLimitSource: text('spending_limit_source')
-    .$type<'plan_default' | 'custom'>()
-    .default('plan_default')
-    .notNull(),
 
   // Usage notification thresholds (percentages)
   notifyAt50Percent: boolean('notify_at_50_percent').default(false).notNull(),
