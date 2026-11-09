@@ -15,6 +15,7 @@ import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { and, asc, eq, isNull, lte, sql } from 'drizzle-orm';
 import * as schema from '../../db/schema';
 import { DB_PROVIDER_TOKEN } from './db.service';
+import { resolveSpendingLimit } from './spending-limit';
 import {
   ExecutionUsageCompletion,
   ExecutionUsageTransaction,
@@ -689,14 +690,12 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
     const settings = await this.db.query.billingSettings.findFirst({
       where: eq(schema.billingSettings.organizationId, organizationId),
     });
-    if (!settings?.enableSpendingLimit || !settings.hardStopOnLimit) {
-      return { blocked: false };
-    }
+    // A custom cap that is off or soft never blocks, whatever the plan.
     if (
-      !settings.monthlySpendingLimitCents ||
-      settings.monthlySpendingLimitCents <= 0
+      settings?.spendingLimitSource === 'custom' &&
+      (!settings.enableSpendingLimit || !settings.hardStopOnLimit)
     ) {
-      throw new Error('Invalid spending limit configuration');
+      return { blocked: false };
     }
 
     const plan = org.subscriptionPlan;
@@ -711,6 +710,15 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
     ]);
     if (!limits || !prices) {
       throw new Error('Billing plan or pricing is unavailable');
+    }
+    const cap = resolveSpendingLimit(
+      settings,
+      plan,
+      limits.defaultSpendingLimitCents,
+    );
+    if (!cap.enabled || !cap.hardStop) return { blocked: false };
+    if (!cap.limitCents || cap.limitCents <= 0) {
+      throw new Error('Invalid spending limit configuration');
     }
 
     // Match the app's estimate: the cap covers all billable meters, including
@@ -739,11 +747,11 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
       throw new Error('Invalid usage or pricing configuration');
     }
 
-    if (totalOverageCents >= settings.monthlySpendingLimitCents) {
+    if (totalOverageCents >= cap.limitCents) {
       return {
         blocked: true,
         reason:
-          `Monthly spending limit of $${(settings.monthlySpendingLimitCents / 100).toFixed(2)} reached. ` +
+          `Monthly spending limit of $${(cap.limitCents / 100).toFixed(2)} reached. ` +
           `Current spending: $${(totalOverageCents / 100).toFixed(2)}.`,
       };
     }

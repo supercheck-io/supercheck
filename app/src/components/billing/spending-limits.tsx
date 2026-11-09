@@ -27,11 +27,20 @@ interface BillingSettings {
   monthlySpendingLimitDollars: number | null;
   enableSpendingLimit: boolean;
   hardStopOnLimit: boolean;
+  effectiveSpendingLimit?: EffectiveSpendingLimit;
   notifyAt50Percent: boolean;
   notifyAt80Percent: boolean;
   notifyAt90Percent: boolean;
   notifyAt100Percent: boolean;
   notificationEmails: string[];
+}
+
+interface EffectiveSpendingLimit {
+  source: "plan_default" | "custom";
+  enabled: boolean;
+  limitCents: number | null;
+  hardStop: boolean;
+  planDefaultCents: number | null;
 }
 
 interface SpendingStatus {
@@ -55,8 +64,13 @@ export function SpendingLimits({ organizationId, className, onSaved }: SpendingL
   const [enableLimit, setEnableLimit] = useState(false);
   const [limitAmount, setLimitAmount] = useState("");
   const [hardStop, setHardStop] = useState(true);
+  // A plan-default cap is sent only when edited, so saving alerts never turns it into a custom cap.
+  const [capEdited, setCapEdited] = useState(false);
   const [thresholds, setThresholds] = useState([80, 90, 100]);
   const enableNotifications = thresholds.length > 0;
+  const capSource = settings?.effectiveSpendingLimit?.source ?? null;
+  const planDefaultCents = settings?.effectiveSpendingLimit?.planDefaultCents ?? null;
+  const planDefaultDollars = planDefaultCents !== null ? planDefaultCents / 100 : null;
   const [emails, setEmails] = useState<string[]>([]);
   const [newEmail, setNewEmail] = useState("");
 
@@ -70,6 +84,15 @@ export function SpendingLimits({ organizationId, className, onSaved }: SpendingL
       parsedLimitAmount <= 0 ||
       parsedLimitAmount > 21474836.47 ||
       Math.abs(parsedLimitAmount * 100 - Math.round(parsedLimitAmount * 100)) > 0.000001);
+
+  const applyCap = (data: BillingSettings) => {
+    const cap = data.effectiveSpendingLimit;
+    setEnableLimit(cap ? cap.enabled : data.enableSpendingLimit);
+    const dollars = cap ? (cap.limitCents ? cap.limitCents / 100 : null) : data.monthlySpendingLimitDollars;
+    setLimitAmount(dollars?.toString() || "");
+    setHardStop(cap ? cap.hardStop : (data.hardStopOnLimit ?? true));
+    setCapEdited(false);
+  };
 
   const fetchSettings = useCallback(async () => {
     try {
@@ -88,9 +111,7 @@ export function SpendingLimits({ organizationId, className, onSaved }: SpendingL
         throw new Error("Selected organization changed");
       }
       setSettings(settingsData);
-      setEnableLimit(settingsData.enableSpendingLimit);
-      setLimitAmount(settingsData.monthlySpendingLimitDollars?.toString() || "");
-      setHardStop(settingsData.hardStopOnLimit ?? true);
+      applyCap(settingsData);
       setThresholds(([50, 80, 90, 100] as const).filter(
         (threshold) => settingsData[`notifyAt${threshold}Percent`],
       ));
@@ -113,7 +134,7 @@ export function SpendingLimits({ organizationId, className, onSaved }: SpendingL
     fetchSettings();
   }, [fetchSettings]);
 
-  const handleSave = async () => {
+  const handleSave = async (resetCap = false) => {
     if (loading || loadError || saving || !settings) return;
     if (tooManyEmails) {
       toast.error("Too many alert recipients", {
@@ -122,7 +143,7 @@ export function SpendingLimits({ organizationId, className, onSaved }: SpendingL
       });
       return;
     }
-    if (limitAmountInvalid) {
+    if (!resetCap && (capEdited || capSource !== "plan_default") && limitAmountInvalid) {
       toast.error("Spending limit is required", {
         description: "Enter a positive monthly overage cap before saving.",
         duration: 4000,
@@ -138,9 +159,13 @@ export function SpendingLimits({ organizationId, className, onSaved }: SpendingL
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           organizationId: settings.organizationId,
-          enableSpendingLimit: enableLimit,
-          monthlySpendingLimitDollars: enableLimit ? parsedLimitAmount : null,
-          hardStopOnLimit: hardStop,
+          ...(resetCap
+            ? { resetSpendingLimitToPlanDefault: true }
+            : (capEdited || capSource !== "plan_default") && {
+              enableSpendingLimit: enableLimit,
+              monthlySpendingLimitDollars: enableLimit ? parsedLimitAmount : null,
+              hardStopOnLimit: hardStop,
+            }),
           notifyAt50Percent: thresholds.includes(50),
           notifyAt80Percent: thresholds.includes(80),
           notifyAt90Percent: thresholds.includes(90),
@@ -154,8 +179,9 @@ export function SpendingLimits({ organizationId, className, onSaved }: SpendingL
         throw new Error(errorData.error || "Failed to save billing settings");
       }
 
-      const updatedSettings = await response.json();
+      const updatedSettings: BillingSettings = await response.json();
       setSettings(updatedSettings);
+      applyCap(updatedSettings);
       setSpending(null);
       // Saving succeeded even if the subsequent status refresh is unavailable.
       await Promise.allSettled([
@@ -270,7 +296,7 @@ export function SpendingLimits({ organizationId, className, onSaved }: SpendingL
             </p>
           </div>
           <Button
-            onClick={handleSave}
+            onClick={() => void handleSave()}
             disabled={saving || limitAmountInvalid || tooManyEmails}
             size="sm"
           >
@@ -303,11 +329,23 @@ export function SpendingLimits({ organizationId, className, onSaved }: SpendingL
                     <p className="text-xs text-muted-foreground">
                       Set an overage budget for this billing period
                     </p>
+                    {capSource && !capEdited && (
+                      <Badge variant="secondary" className="mt-1 text-[10px]">
+                        {capSource === "plan_default" ? "Plan default" : "Custom"}
+                      </Badge>
+                    )}
+                    {planDefaultDollars !== null && (capSource === "custom" || capEdited) && (
+                      <Button type="button" variant="link" size="sm" className="block h-auto p-0 text-xs"
+                        disabled={saving || loading || loadError}
+                        onClick={() => void handleSave(true)}>
+                        Use plan default (${planDefaultDollars.toFixed(2)}, hard stop)
+                      </Button>
+                    )}
                   </div>
                   <Switch
                     aria-label="Enable overage spending limit"
                     checked={enableLimit}
-                    onCheckedChange={setEnableLimit}
+                    onCheckedChange={(checked) => { setEnableLimit(checked); setCapEdited(true); }}
                   />
                 </div>
 
@@ -324,7 +362,7 @@ export function SpendingLimits({ organizationId, className, onSaved }: SpendingL
                           step="0.01"
                           placeholder="100"
                           value={limitAmount}
-                          onChange={(e) => setLimitAmount(e.target.value)}
+                          onChange={(e) => { setLimitAmount(e.target.value); setCapEdited(true); }}
                           aria-invalid={limitAmountInvalid}
                           className={cn(
                             "h-8 pl-7 text-sm",
@@ -348,7 +386,7 @@ export function SpendingLimits({ organizationId, className, onSaved }: SpendingL
 
                     <label className="flex items-center justify-between gap-3 text-xs">
                       Stop new billable executions and full investigations at the limit
-                      <Switch checked={hardStop} onCheckedChange={setHardStop}
+                      <Switch checked={hardStop} onCheckedChange={(checked) => { setHardStop(checked); setCapEdited(true); }}
                         aria-label="Stop execution at spending limit" />
                     </label>
                     {spending && spending.limitEnabled && (

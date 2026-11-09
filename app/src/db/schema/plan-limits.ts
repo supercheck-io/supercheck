@@ -44,6 +44,9 @@ export const planLimits = pgTable("plan_limits", {
     .notNull()
     .default("0"),
 
+  // Hard-stop overage cap applied while billing settings follow the plan default; null = no default cap
+  defaultSpendingLimitCents: integer("default_spending_limit_cents"),
+
   // Capacity limits - concurrent and queued
   runningCapacity: integer("running_capacity").notNull(), // concurrent executions
   queuedCapacity: integer("queued_capacity").notNull(), // queued jobs

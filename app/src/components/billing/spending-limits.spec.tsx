@@ -159,4 +159,32 @@ describe("SpendingLimits loading recovery", () => {
     await waitFor(() => expect(screen.queryByText("$5.00 remaining")).not.toBeInTheDocument());
   });
 
+  it("keeps the plan default cap when saving alerts and can reset a custom cap", async () => {
+    const planDefault = {
+      organizationId: "org_1", enableSpendingLimit: false, monthlySpendingLimitDollars: null,
+      hardStopOnLimit: false, notifyAt80Percent: true, notificationEmails: [],
+      effectiveSpendingLimit: { source: "plan_default", enabled: true, limitCents: 7000, hardStop: true, planDefaultCents: 7000 },
+    };
+    const fetchMock = jest.fn().mockImplementation(async (url: string) => ({
+      ok: true, json: async () => url.endsWith("/settings") ? planDefault : { organizationId: "org_1", spending: null },
+    }));
+    global.fetch = fetchMock;
+    render(<SpendingLimits organizationId="org_1" />);
+    expect(await screen.findByText("Plan default")).toBeInTheDocument();
+    expect(screen.getByRole("spinbutton", { name: "Monthly overage limit in USD" })).toHaveValue(70);
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(fetchMock.mock.calls.some((call) => call[1]?.method === "PATCH")).toBe(true));
+    const body = JSON.parse(fetchMock.mock.calls.find((call) => call[1]?.method === "PATCH")?.[1].body);
+    expect(body).not.toHaveProperty("enableSpendingLimit");
+    expect(body).not.toHaveProperty("monthlySpendingLimitDollars");
+    expect(body).not.toHaveProperty("hardStopOnLimit");
+
+    fetchMock.mockClear();
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Monthly overage limit in USD" }), { target: { value: "150" } });
+    fireEvent.click(screen.getByRole("button", { name: "Use plan default ($70.00, hard stop)" }));
+    await waitFor(() => expect(fetchMock.mock.calls.some((call) => call[1]?.method === "PATCH")).toBe(true));
+    const reset = JSON.parse(fetchMock.mock.calls.find((call) => call[1]?.method === "PATCH")?.[1].body);
+    expect(reset).toMatchObject({ resetSpendingLimitToPlanDefault: true });
+    expect(reset).not.toHaveProperty("monthlySpendingLimitDollars");
+  });
 });

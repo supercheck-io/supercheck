@@ -1,4 +1,12 @@
+import catalog from "./plan-catalog.json";
 import { trialFaqs } from "./trial-copy";
+
+const usd = (cents: number) => `$${(cents / 100).toLocaleString("en-US")}`;
+const plusCap = usd(catalog.plus.limits.defaultSpendingLimitCents);
+const proCap = usd(catalog.pro.limits.defaultSpendingLimitCents);
+const plusMax = usd(catalog.plus.monthlyPriceCents + catalog.plus.limits.defaultSpendingLimitCents);
+const proMax = usd(catalog.pro.monthlyPriceCents + catalog.pro.limits.defaultSpendingLimitCents);
+const proPrice = usd(catalog.pro.monthlyPriceCents);
 
 /** Usage and billing answers shown on both the in-app plan picker and the marketing pricing page. */
 export const SHARED_PRICING_FAQS = [
@@ -40,12 +48,17 @@ export const SHARED_PRICING_FAQS = [
   {
     question: "What happens if I exceed my limits?",
     answer:
-      "Playwright minutes, K6 VU-minutes, and completed full AI SRE reports use the overage rates shown above. AI credits are included, subject to fair use, with no overages. Monitor, member, project, and status-page limits require an upgrade rather than an overage payment.",
+      "Playwright minutes, K6 VU-minutes, and completed full AI SRE reports use the overage rates shown above, up to your monthly overage cap. AI credits are included, subject to fair use, with no overages. Monitor, member, project, and status-page limits require an upgrade rather than an overage payment.",
   },
   {
     question: "How can I control overage spending?",
     answer:
-      "Organization owners and admins can configure a monthly spending limit, billing contacts, threshold alerts, and optional blocking of new billable executions and full investigations. Basic uptime checks continue at the spending limit. Only the owner can manage the paid subscription. Limits apply to usage overages in addition to the base subscription. In-flight execution usage can exceed a configured limit, so it is not a guaranteed invoice cap.",
+      `Every paid plan starts with a monthly overage cap and a hard stop: ${plusCap} on Plus and ${proCap} on Pro. A month costs at most ${plusMax} on Plus or ${proMax} on Pro before taxes, unless the owner raises the cap. Owners and admins can raise or lower the cap, turn off the hard stop, or reset to the plan default in Organization admin, Subscription, spending controls. Only the owner can manage the paid subscription. Alert emails go out at 80% of the cap (and at 90% when the hard stop is on) and at 100%. In-flight execution usage can run slightly past the cap, so it is not an exact invoice cap. Plus with a full cap costs ${plusMax}, the same as the Pro price of ${proPrice}, so a team that regularly reaches the Plus cap should compare it with Pro.`,
+  },
+  {
+    question: "What pauses when I reach my overage cap?",
+    answer:
+      "With the hard stop on, new browser (Playwright) checks, test and job runs, k6 load tests, and full AI SRE investigations pause until the owner raises the cap or your billing period resets. HTTP, website, ping, and port monitors keep running. With the hard stop off, usage keeps billing at the overage rates and alerts still go out.",
   },
   {
     question: "Do unused allowances roll over?",

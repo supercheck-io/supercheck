@@ -1,8 +1,9 @@
 "use server";
 
 import { db } from "@/utils/db";
-import { statusPageComponents, statusPages } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { monitors, statusPageComponentMonitors, statusPageComponents, statusPages } from "@/db/schema";
+import { eq, and, inArray } from "drizzle-orm";
+import { heldComponentIds, isSyntheticBillingHold } from "@/lib/billing/billing-hold";
 import { z } from "zod";
 import { withDailyMetrics } from "@/lib/status-page-daily-metrics";
 
@@ -45,7 +46,7 @@ export async function getPublicComponents(statusPageId: string) {
         eq(statusPages.id, statusPageId),
         eq(statusPages.status, "published"),
       ),
-      columns: { id: true }, // Only need to verify existence
+      columns: { id: true, organizationId: true },
     });
 
     if (!statusPage) {
@@ -84,9 +85,21 @@ export async function getPublicComponents(statusPageId: string) {
 
     const publicComponents = await withDailyMetrics(components);
 
+    // Browser checks paused by the owner's spending cap leave a stale status; show "no recent data"
+    // instead, for components built only from those checks. Billing is never named on the public page.
+    let held = new Set<string>();
+    if (components.length && await isSyntheticBillingHold(statusPage.organizationId)) {
+      const links = await db
+        .select({ componentId: statusPageComponentMonitors.componentId, monitorType: monitors.type })
+        .from(statusPageComponentMonitors)
+        .innerJoin(monitors, eq(monitors.id, statusPageComponentMonitors.monitorId))
+        .where(inArray(statusPageComponentMonitors.componentId, components.map((component) => component.id)));
+      held = heldComponentIds(links);
+    }
+
     return {
       success: true,
-      components: publicComponents,
+      components: publicComponents.map((component) => ({ ...component, noRecentData: held.has(component.id) })),
     };
   } catch (error) {
     console.error("Error fetching public components:", error);

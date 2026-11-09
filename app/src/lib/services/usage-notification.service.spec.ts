@@ -51,13 +51,27 @@ jest.mock("@/lib/email-renderer", () => ({
   }),
 }));
 
-jest.mock("./billing-settings.service", () => ({
-  billingSettingsService: {
-    getSettings: jest.fn(),
-    hasNotificationBeenSent: jest.fn(),
-    markNotificationSent: jest.fn(),
-  },
-}));
+jest.mock("./billing-settings.service", () => {
+  const getSettings = jest.fn();
+  return {
+    billingSettingsService: {
+      getSettings,
+      // Mirrors a custom cap: the enforced cap equals the stored fields.
+      getEffectiveSpendingLimit: jest.fn(async (organizationId: string) => {
+        const settings = await getSettings(organizationId);
+        return {
+          source: "custom",
+          enabled: settings.enableSpendingLimit,
+          limitCents: settings.monthlySpendingLimitCents,
+          hardStop: settings.hardStopOnLimit,
+          planDefaultCents: null,
+        };
+      }),
+      hasNotificationBeenSent: jest.fn(),
+      markNotificationSent: jest.fn(),
+    },
+  };
+});
 
 jest.mock("./polar-usage.service", () => ({
   polarUsageService: {

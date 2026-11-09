@@ -37,9 +37,12 @@ export async function GET() {
       );
     }
 
-    const settings = await billingSettingsService.getSettings(organizationId);
+    const [settings, effectiveSpendingLimit] = await Promise.all([
+      billingSettingsService.getSettings(organizationId),
+      billingSettingsService.getEffectiveSpendingLimit(organizationId),
+    ]);
 
-    return NextResponse.json(settings);
+    return NextResponse.json({ ...settings, effectiveSpendingLimit });
   } catch (error) {
     if (isAuthError(error)) {
       return NextResponse.json(
@@ -73,6 +76,8 @@ const updateSettingsSchema = z.object({
     .optional(),
   enableSpendingLimit: z.boolean().optional(),
   hardStopOnLimit: z.boolean().optional(),
+  // Drop the owner's cap and follow the plan default again; cannot be combined with cap fields.
+  resetSpendingLimitToPlanDefault: z.literal(true).optional(),
   notifyAt50Percent: z.boolean().optional(),
   notifyAt80Percent: z.boolean().optional(),
   notifyAt90Percent: z.boolean().optional(),
@@ -148,6 +153,15 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
+    const reset = data.resetSpendingLimitToPlanDefault === true;
+    if (reset && (data.monthlySpendingLimitDollars !== undefined ||
+      data.enableSpendingLimit !== undefined || data.hardStopOnLimit !== undefined)) {
+      return NextResponse.json(
+        { error: "Resetting to the plan default cannot be combined with spending limit changes" },
+        { status: 400 },
+      );
+    }
+
     // Get current settings for audit logging
     const previousSettings =
       await billingSettingsService.getSettings(organizationId);
@@ -162,6 +176,7 @@ export async function PATCH(request: NextRequest) {
         : previousSettings.enableSpendingLimit;
 
     if (
+      !reset &&
       effectiveLimitEnabled &&
       (effectiveLimitDollars === null || effectiveLimitDollars <= 0)
     ) {
@@ -192,6 +207,8 @@ export async function PATCH(request: NextRequest) {
     if (data.hardStopOnLimit !== undefined) {
       updates.hardStopOnLimit = data.hardStopOnLimit;
     }
+
+    if (reset) updates.spendingLimitSource = "plan_default";
 
     if (data.notifyAt50Percent !== undefined) {
       updates.notifyAt50Percent = data.notifyAt50Percent;
@@ -228,7 +245,8 @@ export async function PATCH(request: NextRequest) {
       console.error("[Audit] Failed to log billing settings change:", err),
     );
 
-    return NextResponse.json(settings);
+    const effectiveSpendingLimit = await billingSettingsService.getEffectiveSpendingLimit(organizationId);
+    return NextResponse.json({ ...settings, effectiveSpendingLimit });
   } catch (error) {
     if (isAuthError(error)) {
       return NextResponse.json(

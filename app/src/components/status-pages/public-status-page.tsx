@@ -11,6 +11,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Bell,
+  CircleDashed,
 } from "lucide-react";
 import { format, subDays, isSameDay, differenceInCalendarDays } from "date-fns";
 import { SubscribeDialog } from "./subscribe-dialog";
@@ -80,6 +81,8 @@ type StatusPage = {
 
 type Component = {
   dailyMetrics?: DailyCheckCounts[];
+  /** Its checks are paused, so the stored status is stale; it does not count toward the page status. */
+  noRecentData?: boolean;
   id: string;
   name: string;
   description: string | null;
@@ -172,7 +175,7 @@ export function PublicStatusPage({
 
   const calculateSystemStatus = () => {
     const statuses = [
-      ...components.filter((c) => c.showcase).map((c) => c.status),
+      ...components.filter((c) => c.showcase && !c.noRecentData).map((c) => c.status),
       ...openIssueStatuses,
     ];
 
@@ -630,9 +633,9 @@ export function PublicStatusPage({
           ) : (
             <div className="space-y-0 sp-card bg-white dark:bg-gray-900 sp-border border dark:border-gray-800 rounded-xl divide-y dark:divide-gray-800 sp-divide shadow-sm">
               {visibleComponents.map((component) => {
-                const componentStatus = getComponentStatusDisplay(
-                  component.status,
-                );
+                const componentStatus = component.noRecentData
+                  ? { icon: CircleDashed, text: t.noRecentData, color: "#9ca3af" }
+                  : getComponentStatusDisplay(component.status);
                 // Generate uptime data specific to this component
                 const uptimeData = generateUptimeData(component.id);
                 const uptimePercentage = checkUptimePercentage(

@@ -23,6 +23,8 @@ interface UsageNotificationEmailProps {
   usagePercentage: number;
   currentSpendingDollars?: number;
   spendingLimitDollars?: number;
+  /** The cap stops billable work at 100%; the email says what pauses. */
+  hardStop?: boolean;
   billingPageUrl: string;
   periodEndDate: string;
 }
@@ -36,6 +38,7 @@ export const UsageNotificationEmail = ({
   usagePercentage = 80,
   currentSpendingDollars,
   spendingLimitDollars,
+  hardStop,
   billingPageUrl = "https://app.supercheck.io/billing",
   periodEndDate = "December 1, 2026",
 }: UsageNotificationEmailProps) => {
@@ -140,11 +143,18 @@ export const UsageNotificationEmail = ({
               <strong>${spendingLimitDollars?.toFixed(2)}</strong> monthly limit.
             </Text>
 
-            {notificationType === "spending_limit_reached" && (
+            {hardStop ? (
               <Text style={warningText}>
-                ⚠️ Your spending limit has been reached. If you have hard stop enabled,
-                new executions will be blocked until you increase your limit or the
-                billing period resets.
+                {notificationType === "spending_limit_reached"
+                  ? "⚠️ Your cap has been reached. New browser checks, test and job runs, k6 load tests and full AI SRE investigations are paused"
+                  : "⚠️ At the cap, new browser checks, test and job runs, k6 load tests and full AI SRE investigations will pause"}{" "}
+                until you raise the cap or the billing period resets ({periodEndDate}). HTTP, website, ping and port
+                monitors keep running.
+              </Text>
+            ) : notificationType === "spending_limit_reached" && (
+              <Text style={warningText}>
+                ⚠️ Your spending limit has been reached. Hard stop is off, so usage
+                continues and is billed as overage.
               </Text>
             )}
           </>

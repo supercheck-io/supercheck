@@ -498,6 +498,13 @@
       "when": 1794226453934,
       "tag": "0070_drop_monitor_muted_until",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1794234254339,
+      "tag": "0071_pricing_29_99_default_caps",
+      "breakpoints": true
     }
   ]
 }

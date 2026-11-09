@@ -209,6 +209,7 @@ export async function renderUsageNotificationEmail(params: {
   usagePercentage: number;
   currentSpendingDollars?: number;
   spendingLimitDollars?: number;
+  hardStop?: boolean;
   billingPageUrl: string;
   periodEndDate: string;
 }): Promise<RenderedEmail> {

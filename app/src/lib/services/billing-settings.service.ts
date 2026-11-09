@@ -11,11 +11,17 @@ import { db } from "@/utils/db";
 import {
   billingSettings,
   organization,
+  planLimits,
   type BillingSettings,
   type BillingSettingsInsert,
 } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { BillingSettingsValidationError } from "@/lib/billing-errors";
+import {
+  resolveSpendingLimit,
+  type EffectiveSpendingLimit,
+  type SpendingLimitSource,
+} from "@/lib/billing/spending-limit";
 
 export interface BillingSettingsUpdate {
   monthlySpendingLimitCents?: number | null;
@@ -26,6 +32,8 @@ export interface BillingSettingsUpdate {
   notifyAt90Percent?: boolean;
   notifyAt100Percent?: boolean;
   notificationEmails?: string[];
+  /** "plan_default" drops the owner's cap and follows the plan default again. */
+  spendingLimitSource?: SpendingLimitSource;
 }
 
 export interface BillingSettingsResponse {
@@ -35,6 +43,7 @@ export interface BillingSettingsResponse {
   monthlySpendingLimitDollars: number | null;
   enableSpendingLimit: boolean;
   hardStopOnLimit: boolean;
+  spendingLimitSource: SpendingLimitSource;
   notifyAt50Percent: boolean;
   notifyAt80Percent: boolean;
   notifyAt90Percent: boolean;
@@ -108,6 +117,15 @@ class BillingSettingsService {
       updateData.monthlySpendingLimitCents = updates.monthlySpendingLimitCents;
     }
 
+    // Any cap edit is the owner's choice from now on; an explicit reset hands the cap back to the plan.
+    const touchesCap = updates.monthlySpendingLimitCents !== undefined ||
+      updates.enableSpendingLimit !== undefined || updates.hardStopOnLimit !== undefined;
+    if (updates.spendingLimitSource === "plan_default") {
+      updateData.spendingLimitSource = "plan_default";
+    } else if (touchesCap) {
+      updateData.spendingLimitSource = "custom";
+    }
+
     if (updates.enableSpendingLimit !== undefined) {
       updateData.enableSpendingLimit = updates.enableSpendingLimit;
     }
@@ -136,15 +154,28 @@ class BillingSettingsService {
       updateData.notificationEmails = updates.notificationEmails;
     }
 
+    if (updates.spendingLimitSource === "plan_default") {
+      Object.assign(updateData, { enableSpendingLimit: false, monthlySpendingLimitCents: null, hardStopOnLimit: false });
+    }
+
     return db.transaction(async (tx) => {
       // Validate partial updates against the locked row, so concurrent saves
       // cannot leave a limit enabled with a null or nonpositive amount.
       const [current] = await tx.select().from(billingSettings)
         .where(eq(billingSettings.organizationId, organizationId)).for("update");
       if (!current) throw new Error("Billing settings are unavailable");
-      const enabled = updates.enableSpendingLimit ?? current.enableSpendingLimit;
-      const cents = updates.monthlySpendingLimitCents !== undefined
-        ? updates.monthlySpendingLimitCents : current.monthlySpendingLimitCents;
+      // Leaving the plan default with a partial edit starts from the plan default, never from "off".
+      if (current.spendingLimitSource !== "custom" && updateData.spendingLimitSource === "custom") {
+        const planCap = await this.getEffectiveSpendingLimit(organizationId, tx);
+        if (planCap.limitCents !== null) {
+          updateData.enableSpendingLimit ??= true;
+          if (updateData.monthlySpendingLimitCents === undefined) updateData.monthlySpendingLimitCents = planCap.limitCents;
+          updateData.hardStopOnLimit ??= true;
+        }
+      }
+      const enabled = updateData.enableSpendingLimit ?? current.enableSpendingLimit;
+      const cents = updateData.monthlySpendingLimitCents !== undefined
+        ? updateData.monthlySpendingLimitCents : current.monthlySpendingLimitCents;
       if (cents !== null && (!Number.isInteger(cents) || cents < 0 || cents > 2147483647)) {
         throw new BillingSettingsValidationError("Spending limits must be representable as whole cents");
       }
@@ -155,6 +186,31 @@ class BillingSettingsService {
         .where(eq(billingSettings.organizationId, organizationId)).returning();
       return this.formatSettings(updated);
     });
+  }
+
+  /**
+   * The cap that is actually enforced: the owner's custom cap, or the plan default.
+   * Reads only, so it is safe inside a caller's transaction and needs no settings row.
+   */
+  async getEffectiveSpendingLimit(
+    organizationId: string,
+    database: Pick<typeof db, "query"> = db,
+  ): Promise<EffectiveSpendingLimit> {
+    const [settings, org] = await Promise.all([
+      database.query.billingSettings.findFirst({ where: eq(billingSettings.organizationId, organizationId) }),
+      database.query.organization.findFirst({
+        where: eq(organization.id, organizationId),
+        columns: { subscriptionPlan: true },
+      }),
+    ]);
+    const plan = org?.subscriptionPlan ?? null;
+    const limits = plan === "plus" || plan === "pro"
+      ? await database.query.planLimits.findFirst({
+        where: eq(planLimits.plan, plan),
+        columns: { defaultSpendingLimitCents: true },
+      })
+      : undefined;
+    return resolveSpendingLimit(settings, plan, limits?.defaultSpendingLimitCents);
   }
 
   /**
@@ -310,6 +366,7 @@ class BillingSettingsService {
         : null,
       enableSpendingLimit: settings.enableSpendingLimit,
       hardStopOnLimit: settings.hardStopOnLimit,
+      spendingLimitSource: settings.spendingLimitSource === "custom" ? "custom" : "plan_default",
       notifyAt50Percent: settings.notifyAt50Percent,
       notifyAt80Percent: settings.notifyAt80Percent,
       notifyAt90Percent: settings.notifyAt90Percent,

@@ -140,6 +140,8 @@ Components are the public services on your page. A component can link to an inte
 | **Publish outage and recovery incidents automatically** | Optional, off by default |
 | **Visibility** | Show on the public page, show only while degraded, and link an internal service (never published) |
 
+A component whose linked monitors are all synthetic monitors shows **No recent data** while those checks are paused at your overage cap, instead of its last status. It does not count toward the overall page status.
+
 ![Add Component](/screenshots/status-page-add-component.png)
 
 ```mermaid

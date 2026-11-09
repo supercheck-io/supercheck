@@ -150,7 +150,7 @@ async function seedPlanLimits(client, { preserveExisting = true } = {}) {
       await client`
         INSERT INTO plan_limits (
           id, plan, max_monitors, min_check_interval_minutes,
-          playwright_minutes_included, k6_vu_minutes_included, ai_credits_included, sre_investigation_units_included,
+          playwright_minutes_included, k6_vu_minutes_included, ai_credits_included, sre_investigation_units_included, default_spending_limit_cents,
           running_capacity, queued_capacity, max_team_members,
           max_organizations, max_projects, max_status_pages, max_status_page_subscribers,
           custom_domains, data_retention_days, aggregated_data_retention_days, job_data_retention_days,
@@ -158,7 +158,7 @@ async function seedPlanLimits(client, { preserveExisting = true } = {}) {
         )
         VALUES (
           gen_random_uuid(), ${plan.plan}, ${plan.maxMonitors}, ${plan.minCheckIntervalMinutes},
-          ${plan.playwrightMinutesIncluded}, ${plan.k6VuMinutesIncluded}, ${plan.aiCreditsIncluded}, ${plan.sreInvestigationUnitsIncluded},
+          ${plan.playwrightMinutesIncluded}, ${plan.k6VuMinutesIncluded}, ${plan.aiCreditsIncluded}, ${plan.sreInvestigationUnitsIncluded}, ${plan.defaultSpendingLimitCents ?? null},
           ${plan.runningCapacity}, ${plan.queuedCapacity}, ${plan.maxTeamMembers},
           ${plan.maxOrganizations}, ${plan.maxProjects}, ${plan.maxStatusPages}, ${plan.maxStatusPageSubscribers},
           ${plan.customDomains}, ${plan.dataRetentionDays}, ${plan.aggregatedDataRetentionDays}, ${plan.jobDataRetentionDays},
@@ -171,6 +171,7 @@ async function seedPlanLimits(client, { preserveExisting = true } = {}) {
           k6_vu_minutes_included = EXCLUDED.k6_vu_minutes_included,
           ai_credits_included = EXCLUDED.ai_credits_included,
           sre_investigation_units_included = EXCLUDED.sre_investigation_units_included,
+          default_spending_limit_cents = EXCLUDED.default_spending_limit_cents,
           running_capacity = EXCLUDED.running_capacity,
           queued_capacity = EXCLUDED.queued_capacity,
           max_team_members = EXCLUDED.max_team_members,

@@ -174,6 +174,13 @@ export async function GET() {
             enterprise: "Custom",
           },
           {
+            name: "Default overage cap (hard stop)",
+            plus: `$${(plans.find((p) => p.plan === "plus")?.defaultSpendingLimitCents ?? PLAN_LIMIT_FALLBACKS.plus.defaultSpendingLimitCents) / 100}/month`,
+            pro: `$${(plans.find((p) => p.plan === "pro")?.defaultSpendingLimitCents ?? PLAN_LIMIT_FALLBACKS.pro.defaultSpendingLimitCents) / 100}/month`,
+            enterprise: "Custom",
+          },
+
+          {
             name: "Concurrent Executions",
             plus: plans.find((p) => p.plan === "plus")?.runningCapacity ?? PLAN_LIMIT_FALLBACKS.plus.runningCapacity,
             pro: plans.find((p) => p.plan === "pro")?.runningCapacity ?? PLAN_LIMIT_FALLBACKS.pro.runningCapacity,

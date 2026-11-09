@@ -22,7 +22,6 @@ import { db } from "@/utils/db";
 import {
   organization,
   usageEvents,
-  billingSettings,
   overagePricing,
   planLimits,
 } from "@/db/schema";
@@ -34,6 +33,7 @@ import {
   POLAR_API_VERSION,
   type PolarClient,
 } from "@/lib/billing/polar-client";
+import { billingSettingsService } from "./billing-settings.service";
 
 const logger = createLogger({ module: "polar-usage" }) as {
   info: (data: unknown, message?: string) => void;
@@ -466,17 +466,15 @@ class PolarUsageService {
    */
   async getSpendingStatus(organizationId: string, projection?: { database: Pick<typeof db, "query">; additionalSreUnits: number }): Promise<SpendingStatus> {
     // Get billing settings
-    const settings = await (projection?.database ?? db).query.billingSettings.findFirst({
-      where: eq(billingSettings.organizationId, organizationId),
-    });
+    const cap = await billingSettingsService.getEffectiveSpendingLimit(organizationId, projection?.database ?? db);
 
     // Get current usage metrics
     const metrics = await this.getUsageMetrics(organizationId, projection);
     const currentSpendingCents = metrics.totalOverageCostCents;
 
-    const limitEnabled = settings?.enableSpendingLimit || false;
-    const limitCents = settings?.monthlySpendingLimitCents || null;
-    const hardStopEnabled = settings?.hardStopOnLimit || false;
+    const limitEnabled = cap.enabled;
+    const limitCents = cap.limitCents || null;
+    const hardStopEnabled = cap.hardStop;
 
     let percentageUsed = 0;
     let isAtLimit = false;
