@@ -254,7 +254,7 @@ test.describe("Security - Session Management @auth @security", () => {
 });
 
 test.describe("Security - Information Disclosure @auth @security", () => {
-  test("Login errors are generic (no user enumeration) @high @security", async ({
+  test("Login errors are generic (no user enumeration) @high @security @negative", async ({
     page,
   }) => {
     if (!env.securityTestUser.email || !env.securityTestUser.password) {

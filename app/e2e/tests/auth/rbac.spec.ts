@@ -71,7 +71,7 @@ test.describe('RBAC - Viewer Restrictions @auth @rbac', () => {
    * @priority critical
    * @type rbac
    */
-  test('AUTH-020: Viewer cannot access admin panel @critical @rbac', async ({ viewerPage: page }) => {
+  test('AUTH-020: Viewer cannot access admin panel @critical @rbac @negative', async ({ viewerPage: page }) => {
     await page.goto('/super-admin');
     await page.waitForLoadState('domcontentloaded');
 
@@ -84,7 +84,7 @@ test.describe('RBAC - Viewer Restrictions @auth @rbac', () => {
    * @priority critical
    * @type rbac
    */
-  test('AUTH-021: Viewer cannot create tests @critical @rbac', async ({ viewerPage: page }) => {
+  test('AUTH-021: Viewer cannot create tests @critical @rbac @negative', async ({ viewerPage: page }) => {
     await page.goto('/tests');
     await page.waitForLoadState('domcontentloaded');
 
@@ -121,7 +121,7 @@ test.describe('RBAC - Viewer Restrictions @auth @rbac', () => {
     await expect(page.getByRole('heading', { name: 'Runs', exact: true })).toBeVisible();
   });
 
-  test('Viewer cannot add variables @high @rbac', async ({ viewerPage: page }) => {
+  test('Viewer cannot add variables @high @rbac @negative', async ({ viewerPage: page }) => {
     const permissions = page.waitForResponse((response) =>
       /\/api\/projects\/[^/]+\/variables$/.test(new URL(response.url()).pathname) &&
       response.request().method() === 'GET',
@@ -170,7 +170,7 @@ test.describe('RBAC - Editor Capabilities @auth @rbac', () => {
    * @priority critical
    * @type rbac
    */
-  test('AUTH-025: Editor cannot access admin panel @critical @rbac', async ({ editorPage: page }) => {
+  test('AUTH-025: Editor cannot access admin panel @critical @rbac @negative', async ({ editorPage: page }) => {
     await page.goto('/super-admin');
     await page.waitForLoadState('domcontentloaded');
 

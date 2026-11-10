@@ -47,7 +47,14 @@ async function save(page: Page, testInfo: TestInfo, step: string, failed: boolea
   const spec = path.relative(TESTS_DIR, testInfo.file);
   await writeFile(
     testInfo.outputPath(`${name}.checkpoint.json`),
-    JSON.stringify({ title: testInfo.titlePath.slice(1).join(' › '), step, spec, area: spec.split(path.sep)[0] }),
+    JSON.stringify({
+      // Title tags such as `@high` are noise on a card; `@negative` marks a test of refused input or access.
+      title: testInfo.titlePath.slice(1).join(' › ').replace(/(\s+@[\w-]+)+(?= ›|$)/g, ''),
+      step,
+      spec,
+      area: spec.split(path.sep)[0],
+      negative: testInfo.tags.includes('@negative'),
+    }),
   );
 }
 
