@@ -24,9 +24,10 @@ const VOLATILE_IMAGES = '[data-slot="avatar"]';
 async function normalizeVolatileText(page: Page): Promise<void> {
   await page.evaluate(() => {
     const MONTH = '(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*';
+    const WEEKDAY = '(?:(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)[a-z]*,? )?';
     const rules: Array<[RegExp, string | ((m: string) => string)]> = [
-      // "Nov 10, 2026, 10:27 AM", "Nov 9 7:54 PM", "Nov 10, 2026"
-      [new RegExp(`\\b${MONTH} \\d{1,2}(?:, \\d{4})?(?:,? (?:at )?\\d{1,2}:\\d{2}(?::\\d{2})?(?: ?[AP]M)?)?`, 'g'), 'Jan 1, 2026 12:00 PM'],
+      // "Tuesday, Nov 10, 2026", "Nov 10, 2026, 10:27 AM", "Nov 9 7:54 PM"
+      [new RegExp(`\\b${WEEKDAY}${MONTH} \\d{1,2}(?:, \\d{4})?(?:,? (?:at )?\\d{1,2}:\\d{2}(?::\\d{2})?(?: ?[AP]M)?)?`, 'g'), 'Jan 1, 2026 12:00 PM'],
       [/\b\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?Z?)?/g, '2026-01-01 12:00'],
       [/\b\d{1,2}:\d{2}(?::\d{2})? ?[AP]M\b/g, '12:00 PM'],
       [/\b\d+ (?:second|minute|hour|day)s? ago\b/g, '5 minutes ago'],
