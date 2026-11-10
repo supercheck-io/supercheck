@@ -106,9 +106,12 @@ class PolarIngestError extends Error {
   }
 }
 
-/** A 4xx that a retry cannot fix, except the ones that signal a temporary condition. */
+/**
+ * Rejections specific to one event that a retry cannot fix. Other 4xx (401/403 credentials, 402, 408,
+ * 409, 425, 429) are about the account or a temporary condition, so they stay retryable.
+ */
 export function isNonRetryableIngestStatus(status: number): boolean {
-  return status >= 400 && status < 500 && ![408, 409, 425, 429].includes(status);
+  return [400, 404, 410, 413, 422].includes(status);
 }
 
 type UsageSyncResult = {

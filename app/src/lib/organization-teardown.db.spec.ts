@@ -141,6 +141,16 @@ describe("final usage before the immediate cancellation", () => {
     expect(await mockDatabase.select().from(schema.usageEvents).where(eq(schema.usageEvents.organizationId, organization.id))).toHaveLength(1);
   });
 
+  it("refuses to delete while a Polar-rejected usage event is parked", async () => {
+    const { organization } = await seed({ subscriptionId: `sub-${randomUUID()}`, subscriptionStatus: "active" });
+    await mockDatabase.update(schema.organization).set({ polarCustomerId: `cus-${randomUUID()}` }).where(eq(schema.organization.id, organization.id));
+    await mockDatabase.insert(schema.usageEvents).values({ ...usageEvent(organization.id, new Date(Date.now() + 86_400_000)), syncError: "Rejected by Polar; manual reconciliation required" });
+
+    await expect(deleteOrganizationCompletely(organization.id, { noMembers: true }, adminId)).rejects.toThrow(BillingCancellationError);
+    expect(revoke).not.toHaveBeenCalled();
+    expect(await mockDatabase.select().from(schema.usageEvents).where(eq(schema.usageEvents.organizationId, organization.id))).toHaveLength(1);
+  });
+
   it("refuses to delete while an execution receipt is unsettled, and deletes once it is settled", async () => {
     const { organization } = await seed({ subscriptionId: `sub-${randomUUID()}`, subscriptionStatus: "active" });
     await mockDatabase.update(schema.organization).set({ polarCustomerId: `cus-${randomUUID()}` }).where(eq(schema.organization.id, organization.id));

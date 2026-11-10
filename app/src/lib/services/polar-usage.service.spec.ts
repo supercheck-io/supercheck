@@ -432,6 +432,9 @@ describe("PolarUsageService retry idempotency", () => {
   it.each([
     [422, true],
     [404, true],
+    [400, true],
+    [401, false],
+    [403, false],
     [408, false],
     [409, false],
     [425, false],
