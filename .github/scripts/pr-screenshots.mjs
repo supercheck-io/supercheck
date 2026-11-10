@@ -84,6 +84,7 @@ export function parseMeta(text) {
     title: str(data.title, 300),
     spec: /^[A-Za-z0-9_./-]+$/.test(spec) && !spec.split('/').includes('..') ? spec : '',
     area: /^[a-z0-9][a-z0-9-]*$/.test(area) ? area : '',
+    negative: data.negative === true,
   };
 }
 
@@ -139,6 +140,7 @@ export async function collectScreenshots(dir) {
 const SHA256 = /^[0-9a-f]{64}$/;
 const COMMIT = /^[0-9a-f]{40}$/;
 const FAILURE_PREFIX = 'failed-';
+const NEGATIVE_FLOW_PREFIX = 'flow-invalid-';
 // Frames that need a reviewer's eye come first, in this order.
 const ORDER = { failed: 0, changed: 1, new: 2, unchanged: 3, unknown: 4 };
 
@@ -189,7 +191,9 @@ export function classify(hashed, baseline) {
     if (kind === 'failure') status = 'failed';
     else if (baseline) status = !baseline.shots.has(name) ? 'new' : baseline.shots.get(name) === hash ? 'unchanged' : 'changed';
     // Tour frames have no sidecar; E2E frames name their spec folder as the area.
-    return { name, kind, sha256: hash, status, width, height, title: meta?.title || '', spec: meta?.spec || '', area: meta?.area || (name.startsWith('flow-') ? 'flows' : 'tour') };
+    // @negative tests and `flow-invalid-` flows check that the app refuses bad input or access.
+    const negative = kind === 'checkpoint' && (meta?.negative === true || name.startsWith(NEGATIVE_FLOW_PREFIX));
+    return { name, kind, sha256: hash, status, width, height, title: meta?.title || '', spec: meta?.spec || '', area: meta?.area || (name.startsWith('flow-') ? 'flows' : 'tour'), negative };
   });
   shots.sort((a, b) => ORDER[a.status] - ORDER[b.status] || a.name.localeCompare(b.name));
   const present = new Set(hashed.map((s) => s.name));
@@ -213,6 +217,7 @@ const TAG = {
   changed: 'Changed',
   unchanged: 'Unchanged',
   failed: 'Failed',
+  expected: 'Negative test',
 };
 
 /**
@@ -388,7 +393,7 @@ article[hidden]{display:none}
 .tags{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px}
 .tag{padding:2px 8px;border-radius:999px;font-size:12px;font-weight:800;letter-spacing:.1em;text-transform:uppercase}
 .t-checkpoint{background:#1e3a5f;color:#bfdbfe}.t-failure,.t-failed{background:#5c1d24;color:#fecaca}
-.t-changed{background:#5a3d0f;color:#fcd34d}.t-new{background:var(--accent-soft);color:var(--accent-fg)}.t-unchanged{background:#27272a;color:var(--muted)}
+.t-expected{background:#3f3f46;color:#e4e4e7}.t-changed{background:#5a3d0f;color:#fcd34d}.t-new{background:var(--accent-soft);color:var(--accent-fg)}.t-unchanged{background:#27272a;color:var(--muted)}
 h2{margin:0 0 4px;font-size:19px;line-height:1.25}
 .mono{margin:0;color:var(--muted);font:13px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mono a{color:#86efac}
@@ -428,11 +433,15 @@ export function renderGallery(gallery) {
     .map((shot, i) => {
       const src = `images/${encodeURIComponent(shot.name)}`;
       const label = escapeHtml(shot.title || title(shot.name));
-      const tags = [shot.kind, shot.status === 'failed' || shot.status === 'unknown' ? '' : shot.status]
+      const tags = [shot.kind, shot.negative ? 'expected' : '', shot.status === 'failed' || shot.status === 'unknown' ? '' : shot.status]
         .filter(Boolean)
         .map((t) => `<span class="tag t-${t}">${TAG[t]}</span>`)
         .join('');
-      const what = shot.kind === 'failure' ? 'Captured when the test failed' : shot.spec ? 'E2E checkpoint' : 'Page tour';
+      const what = shot.kind === 'failure'
+        ? 'Captured when the test failed'
+        : shot.negative
+          ? 'Negative test: the app is meant to refuse or show an error here'
+          : shot.spec ? 'E2E checkpoint' : shot.name.startsWith('flow-') ? 'Flow' : 'Page tour';
       const source = shot.spec ? `tests/${shot.spec}` : shot.name;
       const mainSrc = shot.status === 'changed' && baseline?.imagesUrl ? `${baseline.imagesUrl}/${encodeURIComponent(shot.name)}` : '';
       const main = mainSrc ? `<p class="mono"><a href="${escapeHtml(mainSrc)}">Open main version</a></p>` : '';

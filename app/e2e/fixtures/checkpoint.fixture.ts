@@ -11,7 +11,7 @@ import { createHash } from 'node:crypto';
 import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { test as base, type Page, type TestInfo } from '@playwright/test';
-import { normalizeVolatileText, restoreVolatileText, VOLATILE_IMAGES } from '../utils/screenshot';
+import { normalizeVolatileText, restoreVolatileText, settle, VOLATILE_IMAGES } from '../utils/screenshot';
 
 const ENABLED = process.env.E2E_CHECKPOINTS === '1';
 const TESTS_DIR = path.resolve(__dirname, '../tests');
@@ -36,7 +36,7 @@ async function save(page: Page, testInfo: TestInfo, step: string, failed: boolea
   const file = testInfo.outputPath(`${name}.png`);
   if (!failed) {
     // Let the page settle and swap run-specific text, so unchanged screens hash the same.
-    await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => undefined);
+    await settle(page);
     await normalizeVolatileText(page).catch(() => undefined);
   }
   const saved = await page
@@ -47,7 +47,14 @@ async function save(page: Page, testInfo: TestInfo, step: string, failed: boolea
   const spec = path.relative(TESTS_DIR, testInfo.file);
   await writeFile(
     testInfo.outputPath(`${name}.checkpoint.json`),
-    JSON.stringify({ title: testInfo.titlePath.slice(1).join(' › '), step, spec, area: spec.split(path.sep)[0] }),
+    JSON.stringify({
+      // Title tags such as `@high` are noise on a card; `@negative` marks a test of refused input or access.
+      title: testInfo.titlePath.slice(1).join(' › ').replace(/(\s+@[\w-]+)+(?= ›|$)/g, ''),
+      step,
+      spec,
+      area: spec.split(path.sep)[0],
+      negative: testInfo.tags.includes('@negative'),
+    }),
   );
 }
 

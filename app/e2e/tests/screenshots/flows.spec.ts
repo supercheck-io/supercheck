@@ -3,6 +3,7 @@
  * throwaway app and saves a numbered frame at each important step (`flow-<flow>-<n>-<step>`).
  * Dialogs are opened and filled but left unsubmitted where submitting would change data the
  * page tour relies on. A broken step fails the test and saves `failed-<test>.png`.
+ * `invalid-…` flows end on an error screen on purpose; the gallery tags them "Negative test".
  */
 import { readFileSync } from 'node:fs';
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
@@ -92,6 +93,44 @@ test('playground templates', async ({ page }, testInfo) => {
   await page.getByRole('button', { name: 'Templates', exact: true }).click();
   await expect(page.getByRole('dialog')).toBeVisible();
   await frame('templates');
+});
+
+test('create status page', async ({ page }, testInfo) => {
+  const frame = frames(page, testInfo, 'create-status-page');
+  await open(page, '/status-pages');
+  await page.getByTestId('create-status-page-button').click();
+  const dialog = page.getByRole('dialog', { name: 'Create Status Page' });
+  await dialog.getByPlaceholder('My Service Status').fill('Checkout status');
+  await dialog.getByPlaceholder('Service Status Dashboard').fill('Checkout and payments');
+  await frame('dialog');
+});
+
+// Error paths: each submits bad input, which the app must reject without saving anything.
+test('invalid monitor URL', async ({ page }, testInfo) => {
+  const frame = frames(page, testInfo, 'invalid-monitor-url');
+  await open(page, '/monitors/create?type=http_request');
+  await page.getByLabel(/^(Monitor )?Name/).first().fill('Checkout API');
+  await page.getByLabel(/^(URL|Target)/).first().fill('not-a-url');
+  await page.getByRole('button', { name: /^Next:/ }).click();
+  await expect(page.getByText(/Target must be a valid http/)).toBeVisible();
+  await frame('error');
+});
+
+test('invalid status page', async ({ page }, testInfo) => {
+  const frame = frames(page, testInfo, 'invalid-status-page');
+  await open(page, '/status-pages');
+  await page.getByTestId('create-status-page-button').click();
+  const dialog = page.getByRole('dialog', { name: 'Create Status Page' });
+  await dialog.getByRole('button', { name: 'Create Status Page' }).click();
+  await expect(dialog.getByText('Name is required')).toBeVisible();
+  await frame('error');
+});
+
+test('invalid monitor id', async ({ page }, testInfo) => {
+  const frame = frames(page, testInfo, 'invalid-monitor-id');
+  await open(page, '/monitors/00000000-0000-4000-8000-000000000000');
+  await expect(page.getByRole('heading', { name: 'Page Not Found' })).toBeVisible();
+  await frame('not-found');
 });
 
 test('incident lifecycle', async ({ page }, testInfo) => {

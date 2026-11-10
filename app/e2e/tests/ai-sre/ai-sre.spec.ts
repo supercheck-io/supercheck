@@ -210,7 +210,7 @@ test.describe("AI SRE investigation surfaces @aisre @critical", () => {
     await expect(savedSession).toHaveCount(0);
   });
 
-  test("stops an in-flight Copilot stream and restores the composer", async ({
+  test("stops an in-flight Copilot stream and restores the composer @negative", async ({
     page,
   }) => {
     let releaseChatRequest!: () => void;
@@ -272,7 +272,7 @@ test.describe("AI SRE investigation surfaces @aisre @critical", () => {
     "incident=",
     "incident=invalid&incident=invalid",
   ]) {
-    test(`rejects an invalid incident context (${query})`, async ({ page }) => {
+    test(`rejects an invalid incident context (${query}) @negative`, async ({ page }) => {
       await page.goto(`/copilot?${query}`);
       // Next.js can return HTTP 200 when notFound() follows streamed headers.
       await expect(
