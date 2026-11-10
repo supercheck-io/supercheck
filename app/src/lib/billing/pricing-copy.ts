@@ -19,12 +19,12 @@ export const SHARED_PRICING_FAQS = [
   {
     question: "Where do Cloud checks run?",
     answer:
-      "HTTP, SSL, ping, and port monitors can run from Europe, North America, and Asia Pacific. Browser synthetic monitors, Playwright tests, and k6 load tests run in Europe. Enterprise can use custom locations, and self-hosted deployments can run checks wherever you deploy.",
+      "HTTP, SSL, ping, and port monitors can run from Europe, North America, and Asia Pacific. Browser synthetic monitors, Playwright tests, and k6 load tests run in Europe. Enterprise can use custom locations.",
   },
   {
     question: "Why do browser checks and k6 tests run only in Europe?",
     answer:
-      "At launch, browser and k6 execution is available in Europe only. They can still test any public URL worldwide, and each run currently uses your browser minutes or VU-minutes once. If browser execution is enabled in more locations later, each location counts separately. Enterprise and self-hosted deployments can use other locations.",
+      "At launch, browser and k6 execution is available in Europe only. They can still test any public URL worldwide, and each run currently uses your browser minutes or VU-minutes once. If browser execution is enabled in more locations later, each location counts separately. Enterprise can use other locations.",
   },
   {
     question: "How are browser execution minutes measured?",
@@ -90,10 +90,5 @@ export const PRICING_FAQS = [
     question: "Do you offer enterprise plans?",
     answer:
       "Get in touch at hello@supercheck.io to discuss your requirements, usage allowances, support, SLA, and onboarding.",
-  },
-  {
-    question: "Can I self-host Supercheck?",
-    answer:
-      "Yes. Supercheck core is open source under AGPLv3. Self-host on your infrastructure with unlimited Supercheck usage at no license cost, and with no trial or usage limits. You still pay your own infrastructure and AI provider costs. See the self-hosting guide at supercheck.io/docs/app/deployment/self-hosted.",
   },
 ];

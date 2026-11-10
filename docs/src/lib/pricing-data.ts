@@ -199,20 +199,4 @@ export const CAPABILITY_ROWS: readonly CapabilityRow[] = [
     betterstack: 'Billed per token',
     browserstack: 'Not listed',
   },
-  {
-    name: 'Self-hostable',
-    supercheck: 'Yes',
-    checkly: 'SaaS only',
-    datadog: 'SaaS only',
-    betterstack: 'SaaS only',
-    browserstack: 'Not listed',
-  },
-  {
-    name: 'Open-source platform',
-    supercheck: 'Yes, AGPLv3',
-    checkly: 'No',
-    datadog: 'No',
-    betterstack: 'No',
-    browserstack: 'No',
-  },
 ];

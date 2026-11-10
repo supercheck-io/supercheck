@@ -188,7 +188,7 @@ export function VendorComparison() {
         </h2>
         <p className="text-fd-muted-foreground">
           Describe your browser checks to estimate the monthly cost, then compare what each
-          vendor includes: load testing, status pages, AI investigation, and self-hosting.*
+          vendor includes: load testing, status pages, AI investigation.*
         </p>
       </div>
 

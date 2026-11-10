@@ -102,15 +102,9 @@ const runOptions = [
   {
     title: "Isolated by default",
     body: "Tests run in isolated Kubernetes workloads sandboxed with gVisor. Private networks, mail ports and cluster control ports are blocked; public addresses stay reachable.",
-    link: { href: "/docs/app/deployment/self-hosted", label: "How execution is isolated" },
   },
   {
-    title: "Self-host for free",
-    body: "The core is open source under AGPLv3. Run it on your own servers with Docker Compose and K3s, with no license fee and no usage limits.",
-    link: { href: "/docs/app/deployment/self-hosted", label: "Self-hosting guide" },
-  },
-  {
-    title: "Or let us run it",
+    title: "Managed by us",
     body: "Supercheck Cloud is a managed service with monitoring locations in Europe, North America and Asia Pacific. It is coming soon; the waitlist is open.",
     link: { href: "/pricing", label: "See Cloud plans" },
   },
@@ -124,16 +118,8 @@ export default async function HomePage() {
       <main>
         {/* Hero */}
         <section className="mx-auto max-w-6xl px-4 pt-16 pb-12 sm:px-6 md:pt-24">
-          <a
-            href="https://github.com/supercheck-io/supercheck"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-sm text-fd-muted-foreground transition-colors hover:text-fd-foreground"
-          >
-            Open source under AGPLv3 · View on GitHub
-          </a>
           <h1 className="mt-4 max-w-5xl text-balance text-4xl font-semibold tracking-tight sm:text-5xl md:text-6xl md:leading-[1.05]">
-            Open-source testing, monitoring, and AI SRE{" "}
+            Testing, monitoring, and AI SRE{" "}
             <span className="whitespace-nowrap">
               – <span className="hero-accent">as code</span>
             </span>
@@ -141,7 +127,7 @@ export default async function HomePage() {
           <p className="mt-6 max-w-2xl text-lg leading-relaxed text-fd-muted-foreground">
             Test with Playwright and k6 and monitor your sites and APIs. When a check fails,
             Supercheck opens an incident, lets you investigate it with AI that cites its evidence,
-            and keeps your users informed on a status page. Self-host today, or join the Cloud waitlist.
+            and keeps your users informed on a status page. Join the Cloud waitlist.
           </p>
           <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
             <a href={DEMO_URL} target="_blank" rel="noopener noreferrer" className={primaryButton}>
@@ -283,7 +269,7 @@ export default async function HomePage() {
                 <p className="text-sm font-medium">Ask your AI tools about it</p>
                 <p className="mt-1 text-sm text-fd-muted-foreground">
                   An MCP server, read-only by default, lets Claude, Cursor, VS Code and other MCP clients look at
-                  a project&apos;s tests, runs, monitors and incidents. Off by default when self-hosting.
+                  a project&apos;s tests, runs, monitors and incidents.
                 </p>
               </div>
               <div className="mt-6 flex flex-wrap gap-x-6 gap-y-2">
@@ -305,15 +291,17 @@ export default async function HomePage() {
         <section className="border-t border-fd-border">
           <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6 md:py-24">
             <SectionHeading eyebrow="Deployment" title="Run it on your servers or ours" />
-            <div className="mt-12 grid gap-px overflow-hidden rounded-xl border border-fd-border bg-fd-border md:grid-cols-3">
+            <div className="mt-12 grid gap-px overflow-hidden rounded-xl border border-fd-border bg-fd-border md:grid-cols-2">
               {runOptions.map((option) => (
                 <div key={option.title} className="flex flex-col bg-fd-background p-6 sm:p-8">
                   <h3 className="font-semibold">{option.title}</h3>
                   <p className="mt-2 flex-1 text-sm leading-relaxed text-fd-muted-foreground">{option.body}</p>
-                  <Link href={option.link.href} className={`${textLink} mt-6`}>
+                  {option.link && (
+                    <Link href={option.link.href} className={`${textLink} mt-6`}>
                     {option.link.label}
                     <ArrowRight className="size-3.5" aria-hidden="true" />
                   </Link>
+                  )}
                 </div>
               ))}
             </div>
@@ -334,9 +322,6 @@ export default async function HomePage() {
                 Open the live demo
                 <ArrowRight className="size-4" aria-hidden="true" />
               </a>
-              <Link href="/docs/app/deployment/self-hosted" className={secondaryButton}>
-                Self-host Supercheck
-              </Link>
             </div>
           </div>
         </section>

@@ -5,7 +5,7 @@ import { SiteHeader } from '../../lib/layout.shared';
 export const metadata: Metadata = {
     title: { absolute: 'Terms of Service | Supercheck' },
     alternates: { canonical: '/terms' },
-    description: 'Terms of Service for Supercheck - Open-source testing, monitoring, and AI SRE — as code.',
+    description: 'Terms of Service for Supercheck - Testing, monitoring, and AI SRE — as code.',
 };
 
 export default function TermsPage() {
@@ -29,7 +29,7 @@ export default function TermsPage() {
                     <section className="mb-10">
                         <h2 className="text-2xl font-semibold mb-4">2. Description of Service</h2>
                         <p className="mb-4">
-                            Supercheck is an open-source testing, monitoring, and AI SRE platform that provides:
+                            Supercheck is a testing, monitoring, and AI SRE platform that provides:
                         </p>
                         <ul className="mb-4 list-disc space-y-2 pl-6">
                             <li>Browser test automation using Playwright</li>
@@ -41,8 +41,7 @@ export default function TermsPage() {
                             <li>Alert notifications via email, Slack, Discord, Telegram, and webhooks</li>
                         </ul>
                         <p className="mb-4">
-                            Supercheck is available to self-host on your own infrastructure. Supercheck Cloud is
-                            coming soon; Cloud signups and paid subscriptions are not open yet.
+                            Supercheck Cloud is coming soon; Cloud signups and paid subscriptions are not open yet.
                         </p>
                     </section>
 
