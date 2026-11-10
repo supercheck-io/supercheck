@@ -64,7 +64,7 @@ test.describe('Dashboard contracts @dashboard', () => {
 
 test.describe('Dashboard authentication @dashboard @security', () => {
   test.use({ storageState: { cookies: [], origins: [] } });
-  test('rejects dashboard API and redirects dashboard UI @critical @security', async ({ page, request }) => {
+  test('rejects dashboard API and redirects dashboard UI @critical @security @negative', async ({ page, request }) => {
     const response = await request.get('/api/dashboard');
     expect(response.status()).toBe(401);
     expect(await response.json()).toMatchObject({ error: expect.any(String) });

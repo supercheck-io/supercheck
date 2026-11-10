@@ -17,7 +17,9 @@ const matchesDomain = (domain: string, blocked: string) =>
 
 /** True when the address is on a domain that cannot (or must not) receive mail. */
 export function isUndeliverableRecipient(email: string): boolean {
-  const domain = email.trim().toLowerCase().split("@").pop()?.replace(/\.$/, "") ?? "";
+  // "Name <a@b.io>": judge the mailbox SMTP will use, not the display form.
+  const address = /<([^<>]*)>\s*$/.exec(email)?.[1] ?? email;
+  const domain = address.trim().toLowerCase().split("@").pop()?.replace(/\.$/, "") ?? "";
   if (!domain) return true;
   // Dotless hosts (an internal relay on a self-hosted install) are allowed, except the reserved names.
   const tld = domain.slice(domain.lastIndexOf(".") + 1);

@@ -12,11 +12,13 @@ describe("isUndeliverableRecipient", () => {
     "a@host.invalid",
     "a@foo.test",
     "a@localhost",
+    "Name <a@example.com>",
+    "Name <a@host.invalid> ",
   ])("blocks %s", (email) => {
     expect(isUndeliverableRecipient(email)).toBe(true);
   });
 
-  it.each(["a@gmail.com", "a@supercheck.io", "a@notexample.com", "a@example.co", "ops@corp", "a@printer.local"])(
+  it.each(["a@gmail.com", "a@supercheck.io", "a@notexample.com", "a@example.co", "ops@corp", "a@printer.local", "Ops <ops@supercheck.io>"])(
     "allows %s",
     (email) => {
       expect(isUndeliverableRecipient(email)).toBe(false);
