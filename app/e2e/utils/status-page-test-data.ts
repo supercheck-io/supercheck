@@ -14,8 +14,9 @@ export async function createStatusPageThroughUi(
   page: Page,
   request: APIRequestContext,
   cleanup: CleanupRegistry,
+  // The screenshot tour passes a fixed suffix so its frames are identical between runs.
+  suffix = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
 ): Promise<SeededStatusPage> {
-  const suffix = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const name = `E2E Status Page ${suffix}`;
   const headline = `Public headline ${suffix}`;
 

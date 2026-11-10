@@ -44,7 +44,8 @@ export async function captureScreenshot(page: Page, testInfo: TestInfo, name: st
       fullPage: true,
       scale: 'css',
       clip: { x: 0, y, width, height: Math.min(MAX_SCREENSHOT_HEIGHT, height - y) },
-      mask: [page.locator(VOLATILE)],
+      // Status page URLs carry a generated id.
+      mask: [page.locator(VOLATILE), page.getByText(/\/status\/[0-9a-f]{8}/)],
       maskColor: '#9ca3af',
     });
   }

@@ -200,8 +200,17 @@ jobs:
           if aws s3 cp "$uri" "$RUNNER_TEMP/current.json" --endpoint-url "$R2_ENDPOINT" --only-show-errors 2>"$RUNNER_TEMP/current.err"; then
             current="$(jq -r '.sha // empty' "$RUNNER_TEMP/current.json" 2>/dev/null || true)"
             if [[ "$current" =~ ^[0-9a-f]{40}$ && "$current" != "$SHA" ]]; then
-              # A baseline commit GitHub no longer knows (for example after a force-push) is replaced.
-              status="$(gh api "repos/${GITHUB_REPOSITORY}/compare/${current}...${SHA}" --jq .status 2>/dev/null || echo missing)"
+              # A baseline commit GitHub no longer knows (404, for example after a force-push) is
+              # replaced; any other API failure keeps the baseline and fails the step.
+              if ! status="$(gh api "repos/${GITHUB_REPOSITORY}/compare/${current}...${SHA}" --jq .status 2>"$RUNNER_TEMP/compare.err")"; then
+                if grep -q "HTTP 404" "$RUNNER_TEMP/compare.err"; then
+                  status="missing"
+                else
+                  cat "$RUNNER_TEMP/compare.err"
+                  echo "::error::Could not compare ${current:0:7} with ${SHA:0:7}; keeping the baseline."
+                  exit 1
+                fi
+              fi
               if [[ "$status" != "ahead" && "$status" != "missing" ]]; then
                 echo "Baseline ${current:0:7} is not older than ${SHA:0:7} (compare: ${status}); keeping it."
                 exit 0

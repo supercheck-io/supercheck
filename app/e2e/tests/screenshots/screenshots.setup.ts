@@ -33,7 +33,7 @@ setup('sign up and seed screenshot data', async ({ page, baseURL }) => {
     test: (await createTest(page.request, { title: 'Checkout flow' })).id,
     monitor: (await createMonitor(page.request, { name: 'Marketing site' })).id,
     // The tour keeps its data; the database is discarded with the CI job.
-    statusPage: (await createStatusPageThroughUi(page, page.request, { add() {} })).id,
+    statusPage: (await createStatusPageThroughUi(page, page.request, { add() {} }, 'Demo')).id,
   };
 
   await writeFile(SCREENSHOT_SEED, JSON.stringify(seed));

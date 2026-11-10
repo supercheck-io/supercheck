@@ -132,14 +132,14 @@ test('gallery escapes everything it prints and pins its script by hash', () => {
   assert.match(html, /Review changes \(2\)/);
   assert.match(html, /Compared with latest successful main run \(bbbbbbb\)/);
   assert.match(html, /main\/9-1\/images\/dashboard-dark\.png">Open main version/);
-  const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+  const script = html.slice(html.indexOf('<script>') + 8, html.lastIndexOf('</script>'));
   const hash = createHash('sha256').update(script).digest('base64');
   assert.ok(html.includes(`script-src 'sha256-${hash}'`));
 
   // The renderer must escape on its own, even for names that skipped collectScreenshots.
   const hostile = '<img src=x onerror=alert(1)>.png';
   const page = renderGallery(gallery([shot(hostile)], { runUrl: `${RUN}?"><script>`, prNumber: '7"><b>' }));
-  assert.doesNotMatch(page, /<img src=x|<script>alert|"><b>/);
+  assert.doesNotMatch(page, /<img src=x|<script>alert|"><b>/i);
   assert.match(page, /<h2>&#60;Img Src=X Onerror=Alert\(1\)&#62;<\/h2>/);
   assert.match(page, /href="https:\/\/github\.com\/o\/r\/actions\/runs\/1\?&#34;&#62;&#60;script&#62;"/);
 });
