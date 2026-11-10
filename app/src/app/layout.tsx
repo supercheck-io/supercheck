@@ -15,7 +15,7 @@ const systemFonts = {
 
 export const metadata: Metadata = {
   title: "Dashboard | Supercheck",
-  description: "Testing, monitoring, and AI SRE — as code",
+  description: "Open-source testing, monitoring, and AI SRE — as code",
   // The app has its own dark theme; this stops Dark Reader rewriting SVGs before hydration.
   other: { "darkreader-lock": "true" },
 };

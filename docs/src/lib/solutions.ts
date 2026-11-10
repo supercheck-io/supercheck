@@ -105,7 +105,7 @@ supercheck ci init --github`,
         bullets: [
           "supercheck agent install for Claude, Cursor, Codex and OpenCode",
           "MCP clients sign in with your Supercheck account",
-          "Read-only by default",
+          "Read-only by default, and off by default when self-hosting",
         ],
         href: "/docs/mcp/connect",
         linkLabel: "Connect an MCP client",
@@ -132,7 +132,7 @@ claude mcp add --transport http supercheck \\
     role: "For SRE and platform teams",
     metaTitle: "Supercheck for SRE and platform teams",
     metaDescription:
-      "Uptime and synthetic monitoring, alert routing, status pages and read-only AI incident investigation.",
+      "Uptime and synthetic monitoring, alert routing, status pages and read-only AI incident investigation, open source and self-hostable.",
     title: "Uptime, alerts and incident evidence in one place",
     intro:
       "Check sites, APIs and hosts from several regions. Send alerts where your team already works, keep users informed on a status page, and investigate incidents with the evidence in front of you.",
@@ -154,7 +154,7 @@ claude mcp add --transport http supercheck \\
     steps: [
       {
         title: "Monitor from several regions",
-        body: "Run HTTP, website, ping and port monitors with check intervals down to one minute. Supercheck Cloud will check from Europe, North America and Asia Pacific.",
+        body: "Run HTTP, website, ping and port monitors with check intervals down to one minute. Supercheck Cloud will check from Europe, North America and Asia Pacific; self-hosted installs check from wherever you run workers.",
         bullets: [
           "Website monitors track SSL certificate expiry",
           "Failure and recovery thresholds from 1 to 5 consecutive checks",
@@ -203,7 +203,7 @@ claude mcp add --transport http supercheck \\
     ],
     closing: {
       title: "Run it next to the systems it watches",
-      body: "Explore the live demo first, then see how Supercheck Cloud fits your team.",
+      body: "Self-host Supercheck on your own Linux servers with Docker Compose, or explore the live demo first.",
     },
   },
   {
@@ -348,6 +348,27 @@ claude mcp add --transport http supercheck \\
           "org-admin-member-invite-dialog",
           "Invite Member dialog with Viewer, Editor, Project Admin and Org Admin access levels and project permissions",
         ),
+      },
+      {
+        title: "Keep your data where you choose",
+        body: "Supercheck core is open source under AGPLv3. Self-host it with no license fee and use your own AI provider, or join the waitlist for Supercheck Cloud.",
+        bullets: [
+          "Docker Compose on one Linux server, or several servers",
+          "Tests run in a gVisor sandbox",
+          "No usage limits when self-hosted",
+        ],
+        href: "/docs/app/deployment/self-hosted",
+        linkLabel: "Self-hosting guide",
+        visual: {
+          kind: "code",
+          filename: "terminal",
+          lang: "bash",
+          code: `# Download the installer for a release
+curl -fsSL https://raw.githubusercontent.com/supercheck-io/supercheck/v1.6.0/deploy/docker/install.sh -o install.sh
+
+# Install on a Linux server with your domain and HTTPS
+sudo bash install.sh --version 1.6.0 --domain app.example.com --email you@example.com --yes`,
+        },
       },
     ],
     closing: {

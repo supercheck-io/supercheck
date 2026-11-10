@@ -105,8 +105,13 @@ export const products: Product[] = [
         answer: "Email, Slack, Discord, Telegram, Microsoft Teams and webhooks.",
       },
       {
+        question: "Can I run it on my own servers?",
+        answer:
+          "Yes. Supercheck core is open source under AGPLv3 and can be self-hosted. Supercheck Cloud is waitlist-only.",
+      },
+      {
         question: "Does AI Analyze need extra setup?",
-        answer: "No. On Supercheck Cloud the AI provider is managed for you, so there is nothing to configure.",
+        answer: "On a self-hosted install, an administrator must configure an AI provider first.",
       },
     ],
     closing: {
@@ -185,7 +190,7 @@ export const products: Product[] = [
       {
         question: "Can I check from several regions?",
         answer:
-          "Not on Supercheck Cloud at launch: it is waitlist-only and runs browser, Playwright and k6 execution in Europe.",
+          "Not on Supercheck Cloud at launch: it is waitlist-only and runs browser, Playwright and k6 execution in Europe. On a self-hosted install, checks run from wherever you run workers.",
       },
       {
         question: "Does it work with tests I already have?",
@@ -296,7 +301,7 @@ export const products: Product[] = [
       {
         question: "Which AI provider does it use?",
         answer:
-          "Supercheck Cloud uses a managed AI provider, so there is nothing to configure. Cloud is waitlist-only.",
+          "Self-hosted installs use an AI provider that an administrator configures. Supercheck Cloud is waitlist-only.",
       },
       {
         question: "Who can run investigations?",
@@ -381,7 +386,7 @@ export const products: Product[] = [
       {
         question: "Can I use my own domain?",
         answer:
-          "Yes, as a subdomain such as status.example.net. Apex domains are not supported.",
+          "Yes, as a subdomain such as status.example.net. Apex domains are not supported. Self-hosted installs supply their own certificate.",
       },
       {
         question: "Is uptime a time-weighted SLA?",

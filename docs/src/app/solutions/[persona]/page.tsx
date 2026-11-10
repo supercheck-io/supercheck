@@ -118,8 +118,8 @@ export default async function SolutionPage({ params }: { params: Promise<{ perso
                 Open the live demo
                 <ArrowRight className="size-4" aria-hidden="true" />
               </a>
-              <Link href="/pricing" className={secondaryButton}>
-                See pricing
+              <Link href="/docs/app/deployment/self-hosted" className={secondaryButton}>
+                Self-host Supercheck
               </Link>
             </div>
           </div>

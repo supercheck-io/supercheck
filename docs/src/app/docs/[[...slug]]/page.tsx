@@ -104,7 +104,7 @@ export async function generateMetadata(
   if (isDocsEntry(params.slug)) {
     return {
       title: 'Supercheck Documentation',
-      description: 'AI-Powered Test Automation & Monitoring Platform',
+      description: 'Open Source AI-Powered Test Automation & Monitoring Platform',
     };
   }
   const page = source.getPage(params.slug);
