@@ -83,6 +83,29 @@ describe('smtp-transport', () => {
     expect(r.errors['c@x.io']).toBe('connect ETIMEDOUT');
   });
 
+  it('never hands reserved or blocked domains to SMTP', async () => {
+    const sendMail = jest.fn().mockResolvedValue({});
+    createTransport.mockReturnValue(transport(sendMail));
+    process.env.SMTP_BLOCKED_RECIPIENT_DOMAINS = 'blocked.io';
+    const warn = jest.fn();
+    const r = await sendMailToRecipients(
+      ['a@x.io', 'b@example.com', 'c@e2e.invalid', 'd@sub.blocked.io'],
+      message,
+      warn,
+    );
+    expect(sendMail.mock.calls.map((c) => c[0].to)).toEqual(['a@x.io']);
+    expect(r).toEqual({ sentCount: 1, failedRecipients: [], errors: {} });
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('Skipped 3'));
+    sendMail.mockClear();
+    expect(await sendMailToRecipients(['z@example.org'], message)).toEqual({
+      sentCount: 0,
+      failedRecipients: [],
+      errors: {},
+    });
+    expect(sendMail).not.toHaveBeenCalled();
+    delete process.env.SMTP_BLOCKED_RECIPIENT_DOMAINS;
+  });
+
   it('keeps going after a per-recipient rejection', async () => {
     const sendMail = jest
       .fn()
