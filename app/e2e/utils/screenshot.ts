@@ -32,6 +32,21 @@ const MAX_SCREENSHOT_HEIGHT = 9_000;
 // The id-seeded default avatar differs per sign-up; mask it.
 export const VOLATILE_IMAGES = '[data-slot="avatar"]';
 
+/** Chart time axes are labelled with the run's clock time; hidden (layout kept) while capturing. */
+export const VOLATILE_STYLE = '.recharts-xAxis .recharts-cartesian-axis-tick-value { visibility: hidden !important; }';
+
+/**
+ * Waits until the page has settled: network quiet and every chart drawn. Both waits are
+ * capped, since pages with live updates never go fully idle.
+ */
+export async function settle(page: Page): Promise<void> {
+  await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => undefined);
+  await page
+    .waitForFunction(() => Array.from(document.querySelectorAll('.recharts-responsive-container')).every((c) => c.querySelector('svg')), null, { timeout: 5_000 })
+    .catch(() => undefined);
+  await page.evaluate(() => document.fonts.ready).catch(() => undefined);
+}
+
 /**
  * Rewrites text that differs on every run (dates, times, generated IDs) to fixed values,
  * so the gallery's SHA-256 comparison only flags real UI changes. Rewriting keeps column
@@ -55,6 +70,8 @@ export async function normalizeVolatileText(page: Page): Promise<void> {
       [/\b1\d{12}_[a-z0-9]{6,10}\b/g, '1700000000000_demo'],
       // Tables show IDs cut short in the DOM, like "019a1c50f…".
       [/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b|\b[0-9a-f]{16,}\b|\b[0-9a-f-]{6,}(?=…|\.\.\.)/g, (m) => m.replace(/[0-9a-f]/g, '0')],
+      // React renders `{id.substring(0, 12)}...` as its own text node, without the ellipsis.
+      [/^(?=[^]*\d)(?=[^]*[a-f])[0-9a-f-]{8,}$/, (m) => m.replace(/[0-9a-f]/g, '0')],
     ];
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
@@ -85,10 +102,8 @@ export async function captureScreenshot(page: Page, testInfo: TestInfo, name: st
   if (!/^[a-z0-9][a-z0-9-]*$/.test(name)) {
     throw new Error(`Screenshot name must be kebab-case: ${name}`);
   }
-  // Let fonts, images and client data settle so frames are comparable between runs.
-  // Pages with live updates never go fully idle, so cap the wait instead of failing.
-  await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => undefined);
-  await page.evaluate(() => document.fonts.ready);
+  // Let fonts, charts and client data settle so frames are comparable between runs.
+  await settle(page);
   await normalizeVolatileText(page);
 
   const { width, height } = await page.evaluate(() => ({
@@ -107,6 +122,7 @@ export async function captureScreenshot(page: Page, testInfo: TestInfo, name: st
       clip: { x: 0, y, width, height: Math.min(MAX_SCREENSHOT_HEIGHT, height - y) },
       mask: [page.locator(VOLATILE_IMAGES)],
       maskColor: '#9ca3af',
+      style: VOLATILE_STYLE,
     });
   }
 }

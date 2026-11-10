@@ -11,7 +11,7 @@ import { createHash } from 'node:crypto';
 import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { test as base, type Page, type TestInfo } from '@playwright/test';
-import { normalizeVolatileText, restoreVolatileText, VOLATILE_IMAGES } from '../utils/screenshot';
+import { normalizeVolatileText, restoreVolatileText, settle, VOLATILE_IMAGES, VOLATILE_STYLE } from '../utils/screenshot';
 
 const ENABLED = process.env.E2E_CHECKPOINTS === '1';
 const TESTS_DIR = path.resolve(__dirname, '../tests');
@@ -36,11 +36,11 @@ async function save(page: Page, testInfo: TestInfo, step: string, failed: boolea
   const file = testInfo.outputPath(`${name}.png`);
   if (!failed) {
     // Let the page settle and swap run-specific text, so unchanged screens hash the same.
-    await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => undefined);
+    await settle(page);
     await normalizeVolatileText(page).catch(() => undefined);
   }
   const saved = await page
-    .screenshot({ path: file, animations: 'disabled', caret: 'hide', timeout: 10_000, mask: [page.locator(VOLATILE_IMAGES)], maskColor: '#9ca3af' })
+    .screenshot({ path: file, animations: 'disabled', caret: 'hide', timeout: 10_000, mask: [page.locator(VOLATILE_IMAGES)], maskColor: '#9ca3af', style: VOLATILE_STYLE })
     .then(() => true, () => false);
   if (!failed) await restoreVolatileText(page).catch(() => undefined);
   if (!saved) return;
