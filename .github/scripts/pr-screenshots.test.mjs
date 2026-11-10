@@ -12,6 +12,7 @@ import {
   collectScreenshots,
   escapeHtml,
   parseBaseline,
+  parsePullRequest,
   renderComment,
   renderGallery,
   title,
@@ -107,7 +108,7 @@ test('baseline manifests are validated as untrusted input', () => {
     manifest(ok, { sha: 'nope' }),
     manifest([{ name: '../x.png', sha256: H('a') }]),
     manifest([{ name: 'a.png', sha256: 'short' }]),
-    manifest(Array.from({ length: 41 }, (_, i) => ({ name: `p-${i}.png`, sha256: H('a') }))),
+    manifest(Array.from({ length: 101 }, (_, i) => ({ name: `p-${i}.png`, sha256: H('a') }))),
   ]) {
     assert.equal(parseBaseline(bad, { publicUrl: PUBLIC }), null, bad.slice(0, 40));
   }
@@ -194,4 +195,20 @@ test('prepare writes a checkpoint-only manifest and compares against a baseline 
   // A failed run may not have reached every page, so nothing is reported as removed.
   run(path.join(dir, 'out2'), 'failure');
   assert.deepEqual(JSON.parse(await readFile(path.join(dir, 'out2', 'shots.json'), 'utf8')).removed, []);
+});
+
+test('pull request details are bounded, validated and escaped', () => {
+  const pr = parsePullRequest(JSON.stringify({ title: 'Fix <script>alert(1)</script> & co', author: 'octo-cat', head: 'fork:feat/x"><b>', base: 'main' }));
+  assert.deepEqual(pr, { title: 'Fix <script>alert(1)</script> & co', author: 'octo-cat', head: 'fork:feat/x"><b>', base: 'main' });
+  assert.equal(parsePullRequest(JSON.stringify({ title: 'x'.repeat(301), author: 'bad user<' })).title, '');
+  assert.equal(parsePullRequest(JSON.stringify({ author: 'bad user<' })).author, '');
+  assert.equal(parsePullRequest(JSON.stringify({ author: 'dependabot[bot]' })).author, 'dependabot[bot]');
+  assert.equal(parsePullRequest('nope'), null);
+  const html = renderGallery(gallery([shot('a.png', 'changed')], { pr }));
+  assert.match(html, /<p class="pr-title">Fix &#60;script&#62;alert\(1\)&#60;\/script&#62; &#38; co<\/p>/);
+  assert.match(html, /<code>fork:feat\/x&#34;&#62;&#60;b&#62;<\/code> → <code>main<\/code>/);
+  assert.doesNotMatch(html, /<script>alert|"><b>/i);
+  // The viewer is part of the page, and the Supercheck brand is shown.
+  assert.match(html, /<dialog id="viewer"/);
+  assert.match(html, /<b>Supercheck<\/b>/);
 });

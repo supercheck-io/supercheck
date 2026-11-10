@@ -3,14 +3,16 @@
  *
  * Runs only in the `screenshots` project against a throwaway self-hosted app booted
  * inside the pull request job (.github/workflows/pr-screenshots.yml). Saves one PNG
- * per page for the gallery. No content assertions beyond reaching each page.
+ * per app route for the gallery, and fails if a route is neither toured nor skipped.
+ * No content assertions beyond reaching each page.
  */
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
+import path from 'node:path';
 import { expect, test } from '@playwright/test';
 import { captureFailure, captureScreenshot, SCREENSHOT_SEED } from '../../utils/screenshot';
 import { waitForHydration } from '../../utils/hydration';
 
-type Seed = { test: string; monitor: string; statusPage: string };
+type Seed = { test: string; job: string; monitor: string; statusPage: string };
 const seed = (): Seed => JSON.parse(readFileSync(SCREENSHOT_SEED, 'utf8')) as Seed;
 
 test.afterEach(async ({ page }, testInfo) => captureFailure(page, testInfo));
@@ -26,19 +28,77 @@ test.describe('public pages', () => {
   }
 });
 
-const PAGES: Array<{ name: string; path: (s: Seed) => string; dark?: boolean }> = [
-  { name: 'dashboard', path: () => '/', dark: true },
-  { name: 'tests-list', path: () => '/tests' },
-  { name: 'test-editor', path: (s) => `/playground/${s.test}` },
-  { name: 'jobs-list', path: () => '/jobs' },
-  { name: 'monitors-list', path: () => '/monitors', dark: true },
-  { name: 'monitor-detail', path: (s) => `/monitors/${s.monitor}` },
-  { name: 'status-pages-list', path: () => '/status-pages' },
-  { name: 'status-page-detail', path: (s) => `/status-pages/${s.statusPage}` },
-  { name: 'notifications', path: () => '/notifications' },
-  { name: 'variables', path: () => '/variables' },
-  { name: 'org-admin', path: () => '/org-admin' },
+/**
+ * One frame per app route, keyed by its folder under app/src/app/(main). `dark` adds a
+ * dark-theme frame for the pages people look at most. Every route must appear here or in
+ * SKIPPED, so a new page cannot silently miss the review gallery.
+ */
+const PAGES: Array<{ route: string; name: string; path?: (s: Seed) => string; dark?: boolean }> = [
+  { route: '/', name: 'dashboard', dark: true },
+  { route: '/alerts', name: 'alerts' },
+  { route: '/connected-apps', name: 'connected-apps' },
+  { route: '/copilot', name: 'copilot' },
+  { route: '/copilot/investigations', name: 'copilot-investigations' },
+  { route: '/create', name: 'create' },
+  { route: '/incidents', name: 'incidents' },
+  { route: '/incidents/analytics', name: 'incidents-analytics' },
+  { route: '/jobs', name: 'jobs-list' },
+  { route: '/jobs/create', name: 'job-create' },
+  { route: '/jobs/create/k6', name: 'job-create-k6' },
+  { route: '/jobs/create/playwright', name: 'job-create-playwright' },
+  { route: '/jobs/edit/[id]', name: 'job-edit', path: (s) => `/jobs/edit/${s.job}` },
+  { route: '/monitors', name: 'monitors-list', dark: true },
+  { route: '/monitors/create', name: 'monitor-create' },
+  { route: '/monitors/[id]', name: 'monitor-detail', path: (s) => `/monitors/${s.monitor}` },
+  { route: '/monitors/[id]/edit', name: 'monitor-edit', path: (s) => `/monitors/${s.monitor}/edit` },
+  { route: '/notifications', name: 'notifications' },
+  { route: '/org-admin', name: 'org-admin' },
+  { route: '/org-admin/integrations', name: 'org-admin-integrations' },
+  { route: '/org-admin/private-agents', name: 'org-admin-private-agents' },
+  { route: '/org-admin/runbooks', name: 'org-admin-runbooks' },
+  { route: '/playground', name: 'playground' },
+  { route: '/playground/[id]', name: 'test-editor', path: (s) => `/playground/${s.test}` },
+  { route: '/requirements', name: 'requirements' },
+  { route: '/requirements/new', name: 'requirement-new' },
+  { route: '/runs', name: 'runs' },
+  { route: '/services', name: 'services' },
+  { route: '/status-pages', name: 'status-pages-list' },
+  { route: '/status-pages/[id]', name: 'status-page-detail', path: (s) => `/status-pages/${s.statusPage}` },
+  { route: '/status-pages/[id]/public', name: 'status-page-public', path: (s) => `/status-pages/${s.statusPage}/public` },
+  { route: '/tests', name: 'tests-list' },
+  { route: '/tests/create', name: 'test-create' },
+  { route: '/variables', name: 'variables' },
 ];
+
+/** Routes left out on purpose, with the reason. */
+const SKIPPED: Record<string, string> = {
+  '/billing': 'cloud billing only; the self-hosted tour app has no billing',
+  '/billing/success': 'cloud billing only; the self-hosted tour app has no billing',
+  '/incidents/[id]': 'needs an incident, which the seed does not create',
+  '/requirements/[id]': 'needs a requirement, which the seed does not create',
+  '/requirements/edit/[id]': 'needs a requirement, which the seed does not create',
+  '/runs/[id]': 'needs a finished run; the tour app has no worker',
+  '/services/[serviceId]': 'needs a service, which the seed does not create',
+  '/status-pages/[id]/public/incidents/[incidentId]': 'needs a status page incident, which the seed does not create',
+};
+
+const APP_ROUTES = path.resolve(__dirname, '../../../src/app/(main)');
+function appRoutes(dir = APP_ROUTES, prefix = ''): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    if (!entry.isDirectory()) return entry.name === 'page.tsx' ? [prefix || '/'] : [];
+    // Route groups like (settings) don't add a URL segment.
+    const segment = /^\(.*\)$/.test(entry.name) ? '' : `/${entry.name}`;
+    return appRoutes(path.join(dir, entry.name), prefix + segment);
+  });
+}
+
+test('every app route is in the tour or skipped with a reason', () => {
+  const covered = new Set([...PAGES.map((p) => p.route), ...Object.keys(SKIPPED)]);
+  const routes = appRoutes();
+  expect(routes.length).toBeGreaterThan(10);
+  expect(routes.filter((route) => !covered.has(route)), 'Add these routes to PAGES or SKIPPED in app-tour.spec.ts').toEqual([]);
+  expect([...covered].filter((route) => !routes.includes(route)), 'These routes no longer exist').toEqual([]);
+});
 
 for (const colorScheme of ['light', 'dark'] as const) {
   test.describe(`${colorScheme} theme`, () => {
@@ -46,11 +106,11 @@ for (const colorScheme of ['light', 'dark'] as const) {
     for (const entry of PAGES.filter((p) => colorScheme === 'light' || p.dark)) {
       const shot = colorScheme === 'dark' ? `${entry.name}-dark` : entry.name;
       test(shot, async ({ page }, testInfo) => {
-        const target = entry.path(seed());
+        const target = entry.path ? entry.path(seed()) : entry.route;
         const response = await page.goto(target);
         expect(response?.status() ?? 0).toBeLessThan(400);
         // A rejected session redirects to sign-in; never publish that under this page's name.
-        expect(new URL(page.url()).pathname).toBe(target);
+        expect(new URL(page.url()).pathname).not.toMatch(/^\/(sign-in|sign-up)\b/);
         await waitForHydration(page);
         await captureScreenshot(page, testInfo, shot);
       });

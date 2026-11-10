@@ -74,12 +74,16 @@ jobs:
           HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
-          number="$(gh api --method GET "repos/${GITHUB_REPOSITORY}/pulls" \
+          gh api --method GET "repos/${GITHUB_REPOSITORY}/pulls" \
             -f state=open -f head="${HEAD_OWNER}:${HEAD_BRANCH}" -f per_page=100 \
-            | jq -r --arg sha "$HEAD_SHA" '[.[] | select(.head.sha == $sha)] | if length == 1 then .[0].number else empty end')"
+            | jq --arg sha "$HEAD_SHA" '[.[] | select(.head.sha == $sha)]' > "$RUNNER_TEMP/pulls.json"
+          number="$(jq -r 'if length == 1 then .[0].number else empty end' "$RUNNER_TEMP/pulls.json")"
           if [[ ! "$number" =~ ^[1-9][0-9]*$ ]]; then
             echo "No open pull request has head ${HEAD_SHA}; skipping."
             number=""
+          else
+            # Author-controlled text goes to a file the gallery script validates, never to GITHUB_OUTPUT.
+            jq '.[0] | {title, author: .user.login, head: (if .head.repo.full_name == .base.repo.full_name then .head.ref else .head.label end), base: .base.ref}' "$RUNNER_TEMP/pulls.json" > "$RUNNER_TEMP/pr.json"
           fi
           echo "number=$number" >> "$GITHUB_OUTPUT"
 
@@ -145,6 +149,7 @@ jobs:
           GALLERY_BASE_URL: ${{ steps.dest.outputs.base_url }}
           PUBLIC_URL: ${{ vars.PR_SCREENSHOTS_PUBLIC_URL }}
         run: |
+          [[ -f "$RUNNER_TEMP/pr.json" ]] && export PR_INFO="$RUNNER_TEMP/pr.json"
           mkdir -p "$RUNNER_TEMP/artifact"
           baseline=()
           [[ -f "$RUNNER_TEMP/baseline.json" ]] && baseline=("$RUNNER_TEMP/baseline.json")

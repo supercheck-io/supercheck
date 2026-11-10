@@ -56,7 +56,8 @@ export async function captureScreenshot(page: Page, testInfo: TestInfo, name: st
  * The gallery lists these under "Failed", apart from intentional checkpoints.
  */
 export async function captureFailure(page: Page, testInfo: TestInfo): Promise<void> {
-  if (testInfo.status === testInfo.expectedStatus) return;
+  // about:blank means the test never navigated (for example the route coverage check).
+  if (testInfo.status === testInfo.expectedStatus || page.url() === 'about:blank') return;
   // The gallery accepts at most 100 characters before `.png`.
   const slug = testInfo.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 93);
   const name = `failed-${slug || 'test'}`;

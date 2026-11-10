@@ -5,7 +5,7 @@
 import { writeFile } from 'node:fs/promises';
 import { expect, test as setup } from '@playwright/test';
 import { SignUpPage } from '../../pages/auth';
-import { createMonitor, createTest } from '../../utils/test-data';
+import { createJob, createMonitor, createTest } from '../../utils/test-data';
 import { createStatusPageThroughUi } from '../../utils/status-page-test-data';
 import { SCREENSHOT_AUTH_STATE, SCREENSHOT_SEED, SCREENSHOT_USER } from '../../utils/screenshot';
 
@@ -29,8 +29,11 @@ setup('sign up and seed screenshot data', async ({ page, baseURL }) => {
     }, { timeout: 60_000 })
     .toBeTruthy();
 
+  const testId = (await createTest(page.request, { title: 'Checkout flow' })).id;
   const seed = {
-    test: (await createTest(page.request, { title: 'Checkout flow' })).id,
+    test: testId,
+    // No cron schedule: the throwaway app has no worker, so the job never runs.
+    job: (await createJob(page.request, { name: 'Nightly regression', testId })).id,
     monitor: (await createMonitor(page.request, { name: 'Marketing site' })).id,
     // The tour keeps its data; the database is discarded with the CI job.
     statusPage: (await createStatusPageThroughUi(page, page.request, { add() {} }, 'Demo')).id,
