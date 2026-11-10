@@ -1,4 +1,5 @@
-import { test as base, Page, BrowserContext } from '@playwright/test';
+import type { Page, BrowserContext } from '@playwright/test';
+import { test as base } from './checkpoint.fixture';
 import { SignInPage, SignUpPage, ForgotPasswordPage, InvitePage } from '../pages/auth';
 import { env } from '../utils/env';
 import { newAuthenticatedPage } from '../utils/api-auth';

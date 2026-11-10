@@ -6,6 +6,7 @@
 
 import dotenv from "dotenv";
 import path from "path";
+import { SCREENSHOT_USER } from "./screenshot";
 
 // Load environment variables
 dotenv.config({ path: path.resolve(__dirname, "../.env") });
@@ -32,9 +33,10 @@ export const env = {
   isCI: !!process.env.CI,
 
   /** Test user credentials (must be an invited user with email/password) */
+  // The PR gallery's checkpoint run signs in as the throwaway tour user.
   testUser: {
-    email: process.env.E2E_TEST_USER_EMAIL || "",
-    password: process.env.E2E_TEST_USER_PASSWORD || "",
+    email: process.env.E2E_TEST_USER_EMAIL || (process.env.E2E_CHECKPOINTS === "1" ? SCREENSHOT_USER.email : ""),
+    password: process.env.E2E_TEST_USER_PASSWORD || (process.env.E2E_CHECKPOINTS === "1" ? SCREENSHOT_USER.password : ""),
   } as UserCredentials,
 
   /** Existing non-admin user kept outside the target organization for invitation acceptance tests. */

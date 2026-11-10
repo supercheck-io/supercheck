@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from '../../fixtures/checkpoint.fixture';
 
 test.describe('Health, CLI and automation API contracts @api @critical', () => {
   test('deep health endpoint reports required dependency health', async ({ request }) => {

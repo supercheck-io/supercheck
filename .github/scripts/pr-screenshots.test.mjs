@@ -108,7 +108,7 @@ test('baseline manifests are validated as untrusted input', () => {
     manifest(ok, { sha: 'nope' }),
     manifest([{ name: '../x.png', sha256: H('a') }]),
     manifest([{ name: 'a.png', sha256: 'short' }]),
-    manifest(Array.from({ length: 101 }, (_, i) => ({ name: `p-${i}.png`, sha256: H('a') }))),
+    manifest(Array.from({ length: 401 }, (_, i) => ({ name: `p-${i}.png`, sha256: H('a') }))),
   ]) {
     assert.equal(parseBaseline(bad, { publicUrl: PUBLIC }), null, bad.slice(0, 40));
   }

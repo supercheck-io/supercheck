@@ -35,7 +35,7 @@ jobs:
     # Dependabot runs get a read-only token, so the publisher could not comment anyway.
     if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 50
 
     services:
       postgres:
@@ -142,7 +142,7 @@ jobs:
           tail -100 "$RUNNER_TEMP/app.log"
           exit 1
 
-      - name: Capture screenshots
+      - name: Capture page tour
         working-directory: ./app/e2e
         run: npx playwright test --project=screenshots
         env:
@@ -150,16 +150,31 @@ jobs:
           E2E_SCREENSHOTS: "1"
           E2E_BASE_URL: http://localhost:3000
 
+      # The regular E2E suite against this throwaway app, signed in as the tour's demo user.
+      # Every browser test leaves an end-of-test checkpoint (failed-… when it fails); see
+      # app/e2e/fixtures/checkpoint.fixture.ts. Runs after the tour, which needs clean data.
+      - name: Capture E2E checkpoints
+        if: ${{ !cancelled() }}
+        working-directory: ./app/e2e
+        run: npx playwright test --project=chromium
+        env:
+          CI: true
+          E2E_CHECKPOINTS: "1"
+          E2E_BASE_URL: http://localhost:3000
+
       - name: Show app log on failure
         if: failure()
         run: tail -200 "$RUNNER_TEMP/app.log" || true
 
-      # Only PNGs leave this job: test-results can hold traces or request bodies.
+      # Only PNGs and their checkpoint sidecars leave this job: test-results can hold
+      # traces or request bodies.
       - name: Upload screenshots
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: pr-screenshots
-          path: app/e2e/test-results/**/*.png
+          path: |
+            app/e2e/test-results/**/*.png
+            app/e2e/test-results/**/*.checkpoint.json
           retention-days: 7
           if-no-files-found: warn

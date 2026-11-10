@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from '../../fixtures/checkpoint.fixture';
 
 import { env } from '../../utils/env';
 

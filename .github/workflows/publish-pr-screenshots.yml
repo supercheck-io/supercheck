@@ -37,6 +37,8 @@ jobs:
       actions: read
       contents: read
       pull-requests: write
+      # The "Visual review" commit status links the gallery from the PR's checks list.
+      statuses: write
 
     steps:
       - name: Checkout trusted default branch
@@ -106,11 +108,15 @@ jobs:
           [[ "$R2_BUCKET" =~ ^[a-z0-9.-]+$ ]] || { echo "::error::Invalid bucket name"; exit 1; }
           [[ "$R2_ENDPOINT" == https://* && "$PUBLIC_URL" == https://* ]] || { echo "::error::R2 endpoint and public URL must be https"; exit 1; }
           # Keyed by run attempt, so immutable caching never serves stale bytes after a re-run.
-          if [[ "$MODE" == "pr" ]]; then prefix="prs/${PR_NUMBER}/${RUN_KEY}"; else prefix="main/${RUN_KEY}"; fi
+          if [[ "$MODE" == "pr" ]]; then root="prs/${PR_NUMBER}"; else root="main"; fi
+          prefix="${root}/${RUN_KEY}"
           {
             echo "hosted=true"
             echo "prefix=$prefix"
             echo "base_url=${PUBLIC_URL%/}/${prefix}"
+            # A stable page that always forwards to the newest gallery for this PR or for main.
+            echo "latest_key=${root}/index.html"
+            echo "latest_url=${PUBLIC_URL%/}/${root}/index.html"
           } >> "$GITHUB_OUTPUT"
 
       - name: Download screenshots
@@ -229,6 +235,68 @@ jobs:
           aws s3 cp "$RUNNER_TEMP/gallery/manifest.json" "$uri" --endpoint-url "$R2_ENDPOINT" \
             --content-type application/json --cache-control "no-cache"
           echo "Main screenshot baseline is now ${SHA:0:7}."
+
+      # Only the run for the current head moves the stable link, so a slow older run can't win.
+      - name: Point the latest link at this gallery
+        if: steps.upload.outcome == 'success'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.PR_SCREENSHOTS_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.PR_SCREENSHOTS_R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          AWS_EC2_METADATA_DISABLED: "true"
+          R2_ENDPOINT: ${{ vars.PR_SCREENSHOTS_R2_ENDPOINT }}
+          R2_BUCKET: ${{ vars.PR_SCREENSHOTS_R2_BUCKET }}
+          MODE: ${{ steps.run.outputs.mode }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+          BASE_URL: ${{ steps.dest.outputs.base_url }}
+          LATEST_KEY: ${{ steps.dest.outputs.latest_key }}
+        run: |
+          if [[ "$MODE" == "pr" ]]; then
+            head="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq .head.sha)"
+          else
+            head="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${DEFAULT_BRANCH}" --jq .sha)"
+          fi
+          if [[ "$head" != "$SHA" ]]; then
+            echo "Head moved to ${head:0:7}; leaving the latest link alone."
+            exit 0
+          fi
+          node .github/scripts/pr-screenshots.mjs latest "$RUNNER_TEMP/latest.html" "${BASE_URL}/index.html"
+          aws s3 cp "$RUNNER_TEMP/latest.html" "s3://${R2_BUCKET}/${LATEST_KEY}" --endpoint-url "$R2_ENDPOINT" \
+            --content-type "text/html; charset=utf-8" --cache-control "no-cache"
+
+      - name: Write job summary
+        if: steps.dest.outputs.publish == 'true'
+        env:
+          GALLERY_BASE_URL: ${{ steps.upload.outcome == 'success' && steps.dest.outputs.base_url || '' }}
+          LATEST_URL: ${{ steps.upload.outcome == 'success' && steps.dest.outputs.latest_url || '' }}
+        run: node .github/scripts/pr-screenshots.mjs summary "$RUNNER_TEMP/gallery" >> "$GITHUB_STEP_SUMMARY"
+
+      # Shows up as "Visual review" in the PR's checks list and on the commit, linking the gallery.
+      - name: Set Visual review commit status
+        if: steps.dest.outputs.publish == 'true'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+          RESULT: ${{ github.event.workflow_run.conclusion }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          GALLERY_BASE_URL: ${{ steps.upload.outcome == 'success' && steps.dest.outputs.base_url || '' }}
+        run: |
+          description="$(jq -r '
+            [.shots[].status] as $s
+            | ($s | map(select(. == "failed")) | length) as $failed
+            | if .baseline then "\($s | map(select(. == "changed")) | length) changed · \($s | map(select(. == "new")) | length) new · \($failed) failed"
+              else "\($s | length) screenshots · \($failed) failed" end' "$RUNNER_TEMP/gallery/shots.json")"
+          state="success"
+          [[ "$RESULT" == "success" ]] || state="failure"
+          target="${GALLERY_BASE_URL:+${GALLERY_BASE_URL}/index.html}"
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${SHA}" \
+            -f state="$state" -f context="Visual review" -f description="${description:0:140}" \
+            -f target_url="${target:-$RUN_URL}" > /dev/null
 
       - name: Comment on pull request
         if: steps.run.outputs.mode == 'pr' && steps.pr.outputs.number != ''

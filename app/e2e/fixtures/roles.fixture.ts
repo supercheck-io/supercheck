@@ -1,4 +1,5 @@
-import { test as base, Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { test as base } from "./checkpoint.fixture";
 import type { APIRequest } from "playwright-core";
 import { env } from "../utils/env";
 import { newAuthenticatedPage } from "../utils/api-auth";

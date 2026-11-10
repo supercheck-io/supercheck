@@ -1,4 +1,4 @@
-import { test as base } from '@playwright/test';
+import { test as base } from './checkpoint.fixture';
 
 type SmokeFixtures = {
   smokePage: import('@playwright/test').Page;

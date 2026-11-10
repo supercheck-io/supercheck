@@ -1,4 +1,4 @@
-import { test as base } from '@playwright/test';
+import { test as base } from './checkpoint.fixture';
 
 type CleanupCallback = () => Promise<void>;
 

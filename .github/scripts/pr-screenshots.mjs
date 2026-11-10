@@ -22,8 +22,12 @@ import { fileURLToPath } from 'node:url';
 
 export const MARKER = '<!-- supercheck-pr-screenshots -->';
 // Real frames are ~150 KB; tight caps limit what a hostile PR can host on the gallery.
-export const MAX_SHOTS = 100;
+// The tour plus one E2E checkpoint per test stays well under these.
+export const MAX_SHOTS = 400;
 export const MAX_BYTES = 2 * 1024 * 1024;
+export const MAX_TOTAL_BYTES = 200 * 1024 * 1024;
+const MAX_META_BYTES = 4 * 1024;
+const META_SUFFIX = '.checkpoint.json';
 const MAX_ENTRIES = 2_000;
 const MAX_DEPTH = 6;
 const THUMBNAILS = 6;
@@ -59,9 +63,34 @@ async function pngSize(file) {
   }
 }
 
-/** Valid screenshots under dir, sorted by name, as [{ name, source }]. */
+/**
+ * Parses a frame's `<name>.checkpoint.json` sidecar from the E2E checkpoint fixture.
+ * It comes from pull request code, so every field is bounded and shape-checked; text is
+ * escaped later when rendered. Returns null for anything unusable.
+ */
+export function parseMeta(text) {
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (!data || typeof data !== 'object') return null;
+  const str = (v, max) => (typeof v === 'string' && v.length <= max ? v.replace(/[\u0000-\u001f\u007f]/g, ' ').trim() : '');
+  const spec = str(data.spec, 200);
+  const area = str(data.area, 40);
+  return {
+    title: str(data.title, 300),
+    spec: /^[A-Za-z0-9_./-]+$/.test(spec) && !spec.split('/').includes('..') ? spec : '',
+    area: /^[a-z0-9][a-z0-9-]*$/.test(area) ? area : '',
+  };
+}
+
+/** Valid screenshots under dir, sorted by name, as [{ name, source, width, height, meta }]. */
 export async function collectScreenshots(dir) {
   const found = new Map();
+  const metas = new Map();
+  let total = 0;
   let entries = 0;
   async function walk(current, depth) {
     if (depth > MAX_DEPTH) return;
@@ -73,15 +102,23 @@ export async function collectScreenshots(dir) {
       if (stat.isSymbolicLink()) continue;
       if (stat.isDirectory()) {
         await walk(full, depth + 1);
+      } else if (stat.isFile() && entry.name.endsWith(META_SUFFIX)) {
+        const name = `${entry.name.slice(0, -META_SUFFIX.length)}.png`;
+        if (NAME.test(name) && stat.size <= MAX_META_BYTES && !metas.has(name)) {
+          const meta = parseMeta(await readFile(full, 'utf8'));
+          if (meta) metas.set(name, meta);
+        }
       } else if (
         stat.isFile() &&
         NAME.test(entry.name) &&
         stat.size > 0 &&
         stat.size <= MAX_BYTES &&
+        total + stat.size <= MAX_TOTAL_BYTES &&
         !found.has(entry.name) &&
         (size = await pngSize(full))
       ) {
         found.set(entry.name, { full, ...size });
+        total += stat.size;
       } else if (stat.isFile()) {
         console.warn(`Skipped ${JSON.stringify(entry.name)}: not a unique kebab-case PNG within ${MAX_BYTES} bytes and ${MAX_WIDTH}x${MAX_HEIGHT}px`);
       }
@@ -92,7 +129,10 @@ export async function collectScreenshots(dir) {
   return [...found.keys()]
     .sort()
     .slice(0, MAX_SHOTS)
-    .map((name) => ({ name, source: found.get(name).full, width: found.get(name).width, height: found.get(name).height }));
+    .map((name) => {
+      const { full, width, height } = found.get(name);
+      return { name, source: full, width, height, meta: metas.get(name) ?? null };
+    });
 }
 
 const SHA256 = /^[0-9a-f]{64}$/;
@@ -142,12 +182,13 @@ export function parseBaseline(text, { publicUrl = '' } = {}) {
 
 /** Labels each frame against the baseline: checkpoint or failure, and new / changed / unchanged. */
 export function classify(hashed, baseline) {
-  const shots = hashed.map(({ name, sha256: hash, width = 0, height = 0 }) => {
+  const shots = hashed.map(({ name, sha256: hash, width = 0, height = 0, meta = null }) => {
     const kind = name.startsWith(FAILURE_PREFIX) ? 'failure' : 'checkpoint';
     let status = 'unknown';
     if (kind === 'failure') status = 'failed';
     else if (baseline) status = !baseline.shots.has(name) ? 'new' : baseline.shots.get(name) === hash ? 'unchanged' : 'changed';
-    return { name, kind, sha256: hash, status, width, height };
+    // Tour frames have no sidecar; E2E frames name their spec folder as the area.
+    return { name, kind, sha256: hash, status, width, height, title: meta?.title || '', spec: meta?.spec || '', area: meta?.area || 'tour' };
   });
   shots.sort((a, b) => ORDER[a.status] - ORDER[b.status] || a.name.localeCompare(b.name));
   const present = new Set(hashed.map((s) => s.name));
@@ -205,14 +246,25 @@ const SCRIPT = `(() => {
   const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
   const REVIEW = new Set(['new', 'changed', 'failed']);
   const $ = (id) => document.getElementById(id);
+  let status = 'all';
   function filter(value) {
-    for (const b of document.querySelectorAll('[data-filter]')) b.setAttribute('aria-pressed', String(b.dataset.filter === value));
+    if (value) status = value;
+    for (const b of document.querySelectorAll('[data-filter]')) b.setAttribute('aria-pressed', String(b.dataset.filter === status));
+    const area = $('area').value;
+    const words = $('search').value.toLowerCase().split(/\\s+/).filter(Boolean);
+    let shown = 0;
     for (const card of cards) {
       const s = card.dataset.status;
-      card.hidden = !(value === 'all' || s === value || (value === 'review' && REVIEW.has(s)));
+      const text = (card.dataset.title + ' ' + card.dataset.name + ' ' + card.dataset.spec).toLowerCase();
+      card.hidden = !((status === 'all' || s === status || (status === 'review' && REVIEW.has(s))) &&
+        (!area || card.dataset.area === area) && words.every((w) => text.includes(w)));
+      if (!card.hidden) shown += 1;
     }
-    $('empty').hidden = cards.some((c) => !c.hidden);
+    $('empty').hidden = shown > 0;
+    $('shown').textContent = shown === cards.length ? '' : shown + ' of ' + cards.length + ' shown';
   }
+  $('area').addEventListener('change', () => filter());
+  $('search').addEventListener('input', () => filter());
   function density(value) {
     for (const b of document.querySelectorAll('[data-cols]')) b.setAttribute('aria-pressed', String(b.dataset.cols === value));
     grid.style.setProperty('--cols', value);
@@ -313,7 +365,12 @@ button:disabled{opacity:.35;cursor:default}
 a:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .pill.ok{color:#86efac}.pill.bad{color:#fca5a5}
 .meta{margin-top:36px;justify-content:space-between}
-.filters{margin:20px 0 28px}
+.filters{margin:20px 0 28px;justify-content:space-between}
+.field{display:inline-flex;align-items:center;gap:8px;color:var(--muted);font-size:14px}
+select,input[type=search]{min-height:40px;padding:6px 14px;border:1px solid var(--line);border-radius:999px;background:var(--card);color:var(--fg);font:inherit}
+input[type=search]{width:min(260px,70vw)}
+#shown{color:var(--muted);font-size:14px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 [aria-pressed=true]{background:var(--accent)!important;border-color:var(--accent)!important;color:#fff!important}
 .density{gap:4px;padding:4px;border:1px solid var(--line);border-radius:12px}
 .density button{min-height:36px;padding:0 10px;border:0;border-radius:8px;background:none}
@@ -363,20 +420,24 @@ export function renderGallery(gallery) {
   const { shots, removed = [], sha, runUrl, result, prNumber = '', prUrl = '', pr = null, baseline = null, generatedAt } = gallery;
   const c = counts(shots);
   const heading = prNumber ? `PR #${prNumber} screenshots` : 'main screenshots';
+  const areaCounts = new Map();
+  for (const shot of shots) areaCounts.set(shot.area || 'tour', (areaCounts.get(shot.area || 'tour') ?? 0) + 1);
+  const areas = [...areaCounts].sort(([x], [y]) => x.localeCompare(y));
   const cards = shots
     .map((shot, i) => {
       const src = `images/${encodeURIComponent(shot.name)}`;
-      const label = escapeHtml(title(shot.name));
+      const label = escapeHtml(shot.title || title(shot.name));
       const tags = [shot.kind, shot.status === 'failed' || shot.status === 'unknown' ? '' : shot.status]
         .filter(Boolean)
         .map((t) => `<span class="tag t-${t}">${TAG[t]}</span>`)
         .join('');
-      const what = shot.kind === 'failure' ? 'Captured when the test failed' : 'Intentional test checkpoint';
+      const what = shot.kind === 'failure' ? 'Captured when the test failed' : shot.spec ? 'E2E checkpoint' : 'Page tour';
+      const source = shot.spec ? `tests/${shot.spec}` : shot.name;
       const mainSrc = shot.status === 'changed' && baseline?.imagesUrl ? `${baseline.imagesUrl}/${encodeURIComponent(shot.name)}` : '';
       const main = mainSrc ? `<p class="mono"><a href="${escapeHtml(mainSrc)}">Open main version</a></p>` : '';
-      return `<article data-status="${shot.status}" data-name="${escapeHtml(shot.name)}" data-src="${escapeHtml(src)}" data-title="${label}" data-main="${escapeHtml(mainSrc)}"><a class="shot" href="${src}" aria-label="View ${label}"><img src="${src}" alt="${label}" loading="lazy"></a>
+      return `<article data-status="${shot.status}" data-name="${escapeHtml(shot.name)}" data-src="${escapeHtml(src)}" data-title="${label}" data-spec="${escapeHtml(shot.spec || '')}" data-area="${escapeHtml(shot.area || 'tour')}" data-main="${escapeHtml(mainSrc)}"><a class="shot" href="${src}" aria-label="View ${label}"><img src="${src}" alt="${label}" loading="lazy"></a>
 <div class="body"><span class="num">${String(i + 1).padStart(2, '0')}</span><div class="info"><div class="tags">${tags}</div><h2>${label}</h2>
-<p class="mono" title="${escapeHtml(shot.name)}">${what} · ${escapeHtml(shot.name)}</p><p class="mono">SHA-256 ${shot.sha256.slice(0, 12)}</p>${main}</div></div></article>`;
+<p class="mono" title="${escapeHtml(source)}">${what} · ${escapeHtml(source)}</p><p class="mono">SHA-256 ${shot.sha256.slice(0, 12)}</p>${main}</div></div></article>`;
     })
     .join('\n');
   const compared = !prNumber
@@ -415,7 +476,9 @@ ${removed.length ? `<span class="pill" title="${escapeHtml(removed.join(', '))}"
 <span class="pill">${escapeHtml(new Date(generatedAt).toLocaleString('en-US', { timeZone: 'UTC', dateStyle: 'medium', timeStyle: 'medium' }))} UTC</span>
 </div>
 <div class="row density" role="group" aria-label="Columns">${ICONS.map((d, i) => `<button type="button" data-cols="${i + 1}" aria-pressed="false" aria-label="${i + 1} column${i ? 's' : ''}"><svg viewBox="0 0 20 16" aria-hidden="true"><path d="${d}"/></svg></button>`).join('')}</div></div>
-<div class="row filters" role="group" aria-label="Filter">${filter('all', 'All')}${filter('review', 'Review changes')}${filter('new', 'New')}${filter('changed', 'Changed')}${filter('failed', 'Failed')}</div>
+<div class="row filters"><div class="row" role="group" aria-label="Filter">${filter('all', 'All')}${filter('review', 'Review changes')}${filter('new', 'New')}${filter('changed', 'Changed')}${filter('failed', 'Failed')}</div>
+<div class="row"><label class="field"><span>Area</span><select id="area"><option value="">All areas</option>${areas.map(([a, n]) => `<option value="${escapeHtml(a)}">${escapeHtml(a)} (${n})</option>`).join('')}</select></label>
+<label class="field"><span class="sr">Search</span><input id="search" type="search" placeholder="Search screenshots" autocomplete="off"></label><span id="shown" aria-live="polite"></span></div></div>
 <main id="grid">
 ${cards}
 </main><p id="empty" hidden>No screenshots match this filter.</p>
@@ -466,6 +529,45 @@ export function renderComment(gallery, { runUrl, galleryBaseUrl }) {
   return lines.join('\n');
 }
 
+/** Short summary for the publisher's GitHub Actions job summary page. */
+export function renderSummary(gallery, { galleryUrl, latestUrl }) {
+  const { shots, removed = [], baseline = null, prNumber = '', result } = gallery;
+  const c = counts(shots);
+  const lines = [`## ${prNumber ? `PR #${prNumber}` : 'main'} visual review`, ''];
+  if (galleryUrl) {
+    lines.push(`**[Open the visual review](${galleryUrl})**${latestUrl ? ` · [always-latest link](${latestUrl})` : ''}`, '');
+  } else {
+    lines.push('Hosting is not configured; the screenshots are attached to the capture run as the `pr-screenshots` artifact.', '');
+  }
+  lines.push(
+    '| Result | Screenshots | Changed | New | Failed | Removed |',
+    '| --- | --- | --- | --- | --- | --- |',
+    `| ${result === 'success' ? '✅ passed' : '❌ failed'} | ${c.all} | ${baseline ? c.changed : '–'} | ${baseline ? c.new : '–'} | ${c.failed} | ${baseline ? removed.length : '–'} |`,
+    '',
+    baseline ? `Compared with main \`${baseline.sha.slice(0, 7)}\`.` : prNumber ? 'No main baseline to compare with yet.' : 'Main branch run.',
+  );
+  const review = shots.filter((s) => s.status === 'failed' || s.status === 'changed' || s.status === 'new').slice(0, 30);
+  if (review.length) {
+    lines.push('', '### Needs review', '');
+    for (const shot of review) {
+      // Names are kebab-case by validation; titles are free text, so keep them out of markdown links.
+      const label = `\`${shot.status}\` ${(shot.title || title(shot.name)).replace(/[[\]()`<>|*_\\]/g, ' ')}`;
+      lines.push(galleryUrl ? `- ${label} – [view](${galleryUrl}#${encodeURIComponent(shot.name)})` : `- ${label}`);
+    }
+  }
+  return lines.join('\n');
+}
+
+/** A tiny page at a stable URL that forwards to the newest gallery for a PR or for main. */
+export function renderLatest(target) {
+  const href = escapeHtml(target);
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'">
+<meta name="robots" content="noindex"><meta http-equiv="refresh" content="0; url=${href}">
+<title>Latest visual review · Supercheck</title></head><body><p><a href="${href}">Open the latest visual review</a></p></body></html>
+`;
+}
+
 function requireHttps(name, value, optional = false) {
   if (!value && optional) return '';
   if (!value || !URL.canParse(value) || new URL(value).protocol !== 'https:') {
@@ -498,10 +600,10 @@ async function main([command, ...args]) {
     const found = await collectScreenshots(artifactDir);
     await mkdir(path.join(outDir, 'images'), { recursive: true });
     const hashed = [];
-    for (const { name, source, width, height } of found) {
+    for (const { name, source, width, height, meta } of found) {
       const target = path.join(outDir, 'images', name);
       await copyFile(source, target);
-      hashed.push({ name, sha256: await sha256(target), width, height });
+      hashed.push({ name, sha256: await sha256(target), width, height, meta });
     }
     const result = process.env.RESULT ?? 'failure';
     const { shots, removed: missing } = classify(hashed, baseline);
@@ -542,7 +644,20 @@ async function main([command, ...args]) {
     );
     return;
   }
-  throw new Error('Usage: pr-screenshots.mjs prepare ARTIFACT_DIR OUT_DIR [BASELINE_MANIFEST] | comment OUT_DIR');
+  if (command === 'summary' && args.length === 1) {
+    const gallery = JSON.parse(await readFile(path.join(args[0], 'shots.json'), 'utf8'));
+    const base = requireHttps('GALLERY_BASE_URL', process.env.GALLERY_BASE_URL, true).replace(/\/$/, '');
+    process.stdout.write(`${renderSummary(gallery, {
+      galleryUrl: base ? `${base}/index.html` : '',
+      latestUrl: requireHttps('LATEST_URL', process.env.LATEST_URL, true),
+    })}\n`);
+    return;
+  }
+  if (command === 'latest' && args.length === 2) {
+    await writeFile(args[0], renderLatest(requireHttps('TARGET', args[1])));
+    return;
+  }
+  throw new Error('Usage: pr-screenshots.mjs prepare ARTIFACT_DIR OUT_DIR [BASELINE_MANIFEST] | comment OUT_DIR | summary OUT_DIR | latest OUT_FILE TARGET_URL');
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

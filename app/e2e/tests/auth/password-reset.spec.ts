@@ -11,7 +11,7 @@
  * Test IDs: AUTH-009, AUTH-010, AUTH-011, AUTH-046
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../../fixtures/checkpoint.fixture';
 
 test.use({ storageState: { cookies: [], origins: [] } });
 
