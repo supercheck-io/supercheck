@@ -551,7 +551,8 @@ export function renderSummary(gallery, { galleryUrl, latestUrl }) {
     lines.push('', '### Needs review', '');
     for (const shot of review) {
       // Names are kebab-case by validation; titles are free text, so keep them out of markdown links.
-      const label = `\`${shot.status}\` ${(shot.title || title(shot.name)).replace(/[[\]()`<>|*_\\]/g, ' ')}`;
+      // `:` `@` `.` too, so a title can't become a GFM autolink like www.evil.example.
+      const label = `\`${shot.status}\` ${(shot.title || title(shot.name)).replace(/[[\]()`<>|*_~#!:@.\\]/g, ' ')}`;
       lines.push(galleryUrl ? `- ${label} – [view](${galleryUrl}#${encodeURIComponent(shot.name)})` : `- ${label}`);
     }
   }

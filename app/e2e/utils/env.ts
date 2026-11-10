@@ -8,13 +8,21 @@ import dotenv from "dotenv";
 import path from "path";
 import { SCREENSHOT_IDENTITIES, SCREENSHOT_USER } from "./screenshot";
 
-// The PR gallery's checkpoint run uses the throwaway identities its seed created.
+// The PR gallery's checkpoint run uses the throwaway identities its seed created. Their
+// passwords are public, so they are only ever tried against a local throwaway app.
 const CHECKPOINTS = process.env.E2E_CHECKPOINTS === "1";
+if (CHECKPOINTS) {
+  const host = new URL(process.env.E2E_BASE_URL || "http://localhost:3000").hostname;
+  if (!["localhost", "127.0.0.1", "[::1]"].includes(host)) {
+    throw new Error(`E2E_CHECKPOINTS only runs against a local throwaway app, not ${host}`);
+  }
+}
 function creds(prefix: string, fallback: UserCredentials): UserCredentials {
-  return {
-    email: process.env[`${prefix}_EMAIL`] || (CHECKPOINTS ? fallback.email : ""),
-    password: process.env[`${prefix}_PASSWORD`] || (CHECKPOINTS ? fallback.password : ""),
-  };
+  const email = process.env[`${prefix}_EMAIL`] || "";
+  const password = process.env[`${prefix}_PASSWORD`] || "";
+  // All or nothing: never pair a real address with a throwaway password.
+  if (CHECKPOINTS && !email && !password) return { email: fallback.email, password: fallback.password };
+  return { email, password };
 }
 
 // Load environment variables

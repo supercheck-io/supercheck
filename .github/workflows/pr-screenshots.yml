@@ -74,7 +74,8 @@ jobs:
       STATUS_PAGE_DOMAIN: localhost
       # No outbound mail: the app's only sender (lib/email-service.ts) needs SMTP_HOST, which
       # stays empty, and every seeded or E2E address is on the reserved example.com domain.
-      # The "Refuse outbound email" step fails the job if that ever changes.
+      # The "Refuse outbound email" step is a tripwire for edits to this file; the real
+      # safeguard is that this job has no mail credentials (no secrets at all).
       SMTP_HOST: ""
       SMTP_BLOCKED_RECIPIENT_DOMAINS: example.com
       # AI features talk to a local stand-in (app/e2e/scripts/mock-ai.mjs), never a real provider.

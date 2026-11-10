@@ -14,7 +14,11 @@ BEGIN;
 -- Refuse to touch a database with any account the tour didn't create.
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM "user" WHERE email NOT LIKE '%@example.com') THEN
+  -- The CI database is the job's own service named supercheck, holding only the tour's
+  -- accounts. (No server-address check: the service container sees a Docker bridge IP.)
+  IF current_database() <> 'supercheck'
+     OR NOT EXISTS (SELECT 1 FROM "user" WHERE email = 'reviewer@example.com')
+     OR EXISTS (SELECT 1 FROM "user" WHERE email NOT LIKE '%@example.com') THEN
     RAISE EXCEPTION 'seed-history.sql only runs against the throwaway screenshot database';
   END IF;
 END $$;

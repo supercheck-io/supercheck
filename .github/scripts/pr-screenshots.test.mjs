@@ -259,7 +259,7 @@ test('job summary links the gallery and lists frames that need review', () => {
   const md = renderSummary(gallery(shots, { baseline: { sha: 'b'.repeat(40) } }), { galleryUrl: 'https://x.example/g/index.html', latestUrl: 'https://x.example/prs/7/index.html' });
   assert.match(md, /\[Open the visual review\]\(https:\/\/x\.example\/g\/index\.html\)/);
   assert.match(md, /\| ✅ passed \| 2 \| 1 \| 0 \| 0 \| 0 \|/);
-  assert.match(md, /- `changed` Pay  now  javascript:x  – \[view\]\(https:\/\/x\.example\/g\/index\.html#a\.png\)/);
+  assert.match(md, /- `changed` Pay  now  javascript x  – \[view\]\(https:\/\/x\.example\/g\/index\.html#a\.png\)/);
   assert.doesNotMatch(md, /b\.png/);
   assert.match(renderSummary(gallery([]), { galleryUrl: '' }), /pr-screenshots/);
 });
