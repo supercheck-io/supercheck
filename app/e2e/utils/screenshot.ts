@@ -13,6 +13,10 @@ export const SCREENSHOT_SEED = path.resolve(__dirname, '../screenshots-seed.json
 // The PR gallery rejects very tall images, so long pages are split into parts.
 const MAX_SCREENSHOT_HEIGHT = 9_000;
 
+// Values that differ on every run (timestamps, generated IDs, the id-seeded default avatar)
+// are masked so the gallery's SHA-256 comparison only flags real UI changes.
+const VOLATILE = ['time', '[data-slot="avatar"]', ':has(> [aria-label="Copy ID"]) > code'].join(', ');
+
 /**
  * Save a full-page PNG into the test's output folder for the PR screenshot gallery.
  * File names become gallery captions, so use kebab-case like `monitors-list`.
@@ -40,6 +44,21 @@ export async function captureScreenshot(page: Page, testInfo: TestInfo, name: st
       fullPage: true,
       scale: 'css',
       clip: { x: 0, y, width, height: Math.min(MAX_SCREENSHOT_HEIGHT, height - y) },
+      mask: [page.locator(VOLATILE)],
+      maskColor: '#9ca3af',
     });
   }
+}
+
+/**
+ * Save what the page showed when a tour test failed, as `failed-<test>.png`.
+ * The gallery lists these under "Failed", apart from intentional checkpoints.
+ */
+export async function captureFailure(page: Page, testInfo: TestInfo): Promise<void> {
+  if (testInfo.status === testInfo.expectedStatus) return;
+  const name = `failed-${testInfo.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`.slice(0, 96);
+  // Viewport only: a broken page may have no sensible full-page height.
+  await page
+    .screenshot({ path: testInfo.outputPath(`${name}.png`), animations: 'disabled', caret: 'hide', timeout: 10_000 })
+    .catch(() => undefined);
 }

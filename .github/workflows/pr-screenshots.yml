@@ -4,17 +4,25 @@ name: PR Screenshots
 # pull request's code, runs the screenshot tour in app/e2e/tests/screenshots, and
 # uploads the PNGs. This job gets no secrets; publish-pr-screenshots.yml hosts the
 # images and comments on the PR from trusted default-branch code.
+# Runs on main (and on demand) too: a passing main run becomes the baseline that PR
+# galleries compare against to label frames New or Changed.
 on:
   pull_request:
     paths:
       - "app/**"
       - ".github/workflows/pr-screenshots.yml"
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - ".github/workflows/pr-screenshots.yml"
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: pr-screenshots-${{ github.event.pull_request.number }}
+  group: pr-screenshots-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 env:

@@ -7,11 +7,13 @@
  */
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
-import { captureScreenshot, SCREENSHOT_SEED } from '../../utils/screenshot';
+import { captureFailure, captureScreenshot, SCREENSHOT_SEED } from '../../utils/screenshot';
 import { waitForHydration } from '../../utils/hydration';
 
 type Seed = { test: string; monitor: string; statusPage: string };
 const seed = (): Seed => JSON.parse(readFileSync(SCREENSHOT_SEED, 'utf8')) as Seed;
+
+test.afterEach(async ({ page }, testInfo) => captureFailure(page, testInfo));
 
 test.describe('public pages', () => {
   test.use({ storageState: { cookies: [], origins: [] } });

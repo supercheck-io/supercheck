@@ -4,6 +4,10 @@ name: Publish PR Screenshots
 # default-branch code and treats the downloaded artifact as untrusted data
 # (.github/scripts/pr-screenshots.mjs validates every file).
 #
+# Pull request runs get a visual review page compared against the main baseline and a
+# sticky PR comment. Default-branch runs (push or manual) publish their own page and, when
+# they pass, replace baselines/main/manifest.json, unless a newer commit already owns it.
+#
 # Hosting is optional. With the R2 secrets and variables below unset, the comment
 # links the run artifact instead of showing thumbnails.
 #   secrets: PR_SCREENSHOTS_R2_ACCESS_KEY_ID, PR_SCREENSHOTS_R2_SECRET_ACCESS_KEY
@@ -23,7 +27,7 @@ jobs:
   publish:
     name: Publish PR Screenshots
     if: >-
-      github.event.workflow_run.event == 'pull_request' &&
+      contains(fromJSON('["pull_request","push","workflow_dispatch"]'), github.event.workflow_run.event) &&
       github.event.workflow_run.actor.login != 'dependabot[bot]' &&
       (github.event.workflow_run.conclusion == 'success' ||
        github.event.workflow_run.conclusion == 'failure')
@@ -41,10 +45,29 @@ jobs:
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
 
+      # A fork can name its branch "main", so a baseline run must also come from this repository.
+      - name: Classify run
+        id: run
+        env:
+          EVENT: ${{ github.event.workflow_run.event }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          HEAD_REPO: ${{ github.event.workflow_run.head_repository.full_name }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          mode="skip"
+          if [[ "$EVENT" == "pull_request" ]]; then
+            mode="pr"
+          elif [[ "$HEAD_REPO" == "$GITHUB_REPOSITORY" && "$HEAD_BRANCH" == "$DEFAULT_BRANCH" ]]; then
+            mode="main"
+          fi
+          echo "Publishing as: $mode"
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+
       # Fork PRs leave workflow_run.pull_requests empty, so match by head branch and SHA.
       # A run for an older commit matches no open PR head and is skipped.
       - name: Resolve pull request
         id: pr
+        if: steps.run.outputs.mode == 'pr'
         env:
           GH_TOKEN: ${{ github.token }}
           HEAD_OWNER: ${{ github.event.workflow_run.head_repository.owner.login }}
@@ -60,8 +83,34 @@ jobs:
           fi
           echo "number=$number" >> "$GITHUB_OUTPUT"
 
+      - name: Decide destination
+        id: dest
+        if: steps.run.outputs.mode == 'main' || steps.pr.outputs.number != ''
+        env:
+          MODE: ${{ steps.run.outputs.mode }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          R2_ENDPOINT: ${{ vars.PR_SCREENSHOTS_R2_ENDPOINT }}
+          R2_BUCKET: ${{ vars.PR_SCREENSHOTS_R2_BUCKET }}
+          PUBLIC_URL: ${{ vars.PR_SCREENSHOTS_PUBLIC_URL }}
+          RUN_KEY: ${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
+        run: |
+          echo "publish=true" >> "$GITHUB_OUTPUT"
+          if [[ -z "$R2_BUCKET" ]]; then
+            echo "R2 is not configured; the comment will link the run artifact."
+            exit 0
+          fi
+          [[ "$R2_BUCKET" =~ ^[a-z0-9.-]+$ ]] || { echo "::error::Invalid bucket name"; exit 1; }
+          [[ "$R2_ENDPOINT" == https://* && "$PUBLIC_URL" == https://* ]] || { echo "::error::R2 endpoint and public URL must be https"; exit 1; }
+          # Keyed by run attempt, so immutable caching never serves stale bytes after a re-run.
+          if [[ "$MODE" == "pr" ]]; then prefix="prs/${PR_NUMBER}/${RUN_KEY}"; else prefix="main/${RUN_KEY}"; fi
+          {
+            echo "hosted=true"
+            echo "prefix=$prefix"
+            echo "base_url=${PUBLIC_URL%/}/${prefix}"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Download screenshots
-        if: steps.pr.outputs.number != ''
+        if: steps.dest.outputs.publish == 'true'
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         continue-on-error: true
         with:
@@ -70,19 +119,41 @@ jobs:
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ github.token }}
 
+      # Missing or unreadable means no comparison labels, never a failed publish.
+      - name: Download main baseline
+        if: steps.run.outputs.mode == 'pr' && steps.dest.outputs.hosted == 'true'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.PR_SCREENSHOTS_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.PR_SCREENSHOTS_R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          AWS_EC2_METADATA_DISABLED: "true"
+          R2_ENDPOINT: ${{ vars.PR_SCREENSHOTS_R2_ENDPOINT }}
+          R2_BUCKET: ${{ vars.PR_SCREENSHOTS_R2_BUCKET }}
+        run: |
+          aws s3 cp "s3://${R2_BUCKET}/baselines/main/manifest.json" "$RUNNER_TEMP/baseline.json" \
+            --endpoint-url "$R2_ENDPOINT" --only-show-errors \
+            || { echo "::notice::No main screenshot baseline yet; frames will not be labelled New or Changed."; rm -f "$RUNNER_TEMP/baseline.json"; }
+
       - name: Prepare gallery
-        if: steps.pr.outputs.number != ''
+        if: steps.dest.outputs.publish == 'true'
         env:
           SHA: ${{ github.event.workflow_run.head_sha }}
           RUN_URL: ${{ github.event.workflow_run.html_url }}
+          RESULT: ${{ github.event.workflow_run.conclusion }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          PR_URL: ${{ steps.pr.outputs.number && format('{0}/{1}/pull/{2}', github.server_url, github.repository, steps.pr.outputs.number) || '' }}
+          GALLERY_BASE_URL: ${{ steps.dest.outputs.base_url }}
+          PUBLIC_URL: ${{ vars.PR_SCREENSHOTS_PUBLIC_URL }}
         run: |
           mkdir -p "$RUNNER_TEMP/artifact"
-          node .github/scripts/pr-screenshots.mjs prepare "$RUNNER_TEMP/artifact" "$RUNNER_TEMP/gallery"
+          baseline=()
+          [[ -f "$RUNNER_TEMP/baseline.json" ]] && baseline=("$RUNNER_TEMP/baseline.json")
+          node .github/scripts/pr-screenshots.mjs prepare "$RUNNER_TEMP/artifact" "$RUNNER_TEMP/gallery" "${baseline[@]}"
 
       # On failure the comment falls back to linking the run artifact.
       - name: Upload gallery to R2
         id: upload
-        if: steps.pr.outputs.number != '' && vars.PR_SCREENSHOTS_R2_BUCKET != ''
+        if: steps.dest.outputs.hosted == 'true'
         continue-on-error: true
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.PR_SCREENSHOTS_R2_ACCESS_KEY_ID }}
@@ -91,29 +162,61 @@ jobs:
           AWS_EC2_METADATA_DISABLED: "true"
           R2_ENDPOINT: ${{ vars.PR_SCREENSHOTS_R2_ENDPOINT }}
           R2_BUCKET: ${{ vars.PR_SCREENSHOTS_R2_BUCKET }}
-          PUBLIC_URL: ${{ vars.PR_SCREENSHOTS_PUBLIC_URL }}
-          PR_NUMBER: ${{ steps.pr.outputs.number }}
-          RUN_KEY: ${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
+          PREFIX: ${{ steps.dest.outputs.prefix }}
+          BASE_URL: ${{ steps.dest.outputs.base_url }}
         run: |
-          [[ "$R2_BUCKET" =~ ^[a-z0-9.-]+$ ]] || { echo "::error::Invalid bucket name"; exit 1; }
-          [[ "$R2_ENDPOINT" == https://* && "$PUBLIC_URL" == https://* ]] || { echo "::error::R2 endpoint and public URL must be https"; exit 1; }
-          # Keyed by run attempt, so immutable caching never serves stale bytes after a re-run.
-          prefix="prs/${PR_NUMBER}/${RUN_KEY}"
-          aws s3 cp "$RUNNER_TEMP/gallery/images/" "s3://${R2_BUCKET}/${prefix}/images/" --recursive \
-            --endpoint-url "$R2_ENDPOINT" --content-type image/png --cache-control "public,max-age=31536000,immutable"
-          aws s3 cp "$RUNNER_TEMP/gallery/index.html" "s3://${R2_BUCKET}/${prefix}/index.html" \
+          if compgen -G "$RUNNER_TEMP/gallery/images/*.png" > /dev/null; then
+            aws s3 cp "$RUNNER_TEMP/gallery/images/" "s3://${R2_BUCKET}/${PREFIX}/images/" --recursive \
+              --endpoint-url "$R2_ENDPOINT" --content-type image/png --cache-control "public,max-age=31536000,immutable"
+          fi
+          aws s3 cp "$RUNNER_TEMP/gallery/index.html" "s3://${R2_BUCKET}/${PREFIX}/index.html" \
             --endpoint-url "$R2_ENDPOINT" --content-type "text/html; charset=utf-8" --cache-control "public,max-age=300"
-          echo "base_url=${PUBLIC_URL%/}/${prefix}" >> "$GITHUB_OUTPUT"
+          echo "Published ${BASE_URL}/index.html"
+
+      # Only a passing default-branch run whose images were uploaded becomes the baseline,
+      # and never over a baseline from a newer commit (for example after re-running an old run).
+      - name: Update main baseline
+        if: >-
+          steps.run.outputs.mode == 'main' &&
+          github.event.workflow_run.conclusion == 'success' &&
+          steps.upload.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.PR_SCREENSHOTS_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.PR_SCREENSHOTS_R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          AWS_EC2_METADATA_DISABLED: "true"
+          R2_ENDPOINT: ${{ vars.PR_SCREENSHOTS_R2_ENDPOINT }}
+          R2_BUCKET: ${{ vars.PR_SCREENSHOTS_R2_BUCKET }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          if [[ "$(jq '.shots | length' "$RUNNER_TEMP/gallery/manifest.json")" == "0" ]]; then
+            echo "::warning::No checkpoints captured; keeping the current baseline."
+            exit 0
+          fi
+          uri="s3://${R2_BUCKET}/baselines/main/manifest.json"
+          if aws s3 cp "$uri" "$RUNNER_TEMP/current.json" --endpoint-url "$R2_ENDPOINT" --only-show-errors 2>/dev/null; then
+            current="$(jq -r '.sha // empty' "$RUNNER_TEMP/current.json" 2>/dev/null || true)"
+            if [[ "$current" =~ ^[0-9a-f]{40}$ && "$current" != "$SHA" ]]; then
+              status="$(gh api "repos/${GITHUB_REPOSITORY}/compare/${current}...${SHA}" --jq .status 2>/dev/null || echo unknown)"
+              if [[ "$status" != "ahead" ]]; then
+                echo "Baseline ${current:0:7} is not older than ${SHA:0:7} (compare: ${status}); keeping it."
+                exit 0
+              fi
+            fi
+          fi
+          aws s3 cp "$RUNNER_TEMP/gallery/manifest.json" "$uri" --endpoint-url "$R2_ENDPOINT" \
+            --content-type application/json --cache-control "no-cache"
+          echo "Main screenshot baseline is now ${SHA:0:7}."
 
       - name: Comment on pull request
-        if: steps.pr.outputs.number != ''
+        if: steps.run.outputs.mode == 'pr' && steps.pr.outputs.number != ''
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ steps.pr.outputs.number }}
           SHA: ${{ github.event.workflow_run.head_sha }}
           RUN_URL: ${{ github.event.workflow_run.html_url }}
-          RESULT: ${{ github.event.workflow_run.conclusion }}
-          GALLERY_BASE_URL: ${{ steps.upload.outputs.base_url }}
+          GALLERY_BASE_URL: ${{ steps.upload.outcome == 'success' && steps.dest.outputs.base_url || '' }}
         run: |
           # A newer push may have landed while this run was publishing; leave the comment to its run.
           head="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq .head.sha)"

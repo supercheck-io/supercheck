@@ -8,11 +8,15 @@ import {
   MAX_BYTES,
   MAX_HEIGHT,
   MAX_WIDTH,
+  classify,
   collectScreenshots,
   escapeHtml,
+  parseBaseline,
   renderComment,
   renderGallery,
+  title,
 } from './pr-screenshots.mjs';
+import { createHash } from 'node:crypto';
 
 function png(width, height) {
   const header = Buffer.alloc(24);
@@ -56,47 +60,113 @@ test('collects only valid kebab-case PNGs, sorted and de-duplicated', async () =
   assert.deepEqual(shots.map((s) => s.name), ['dashboard.png', 'monitors-list.png']);
 });
 
-test('gallery and comment escape everything they print', () => {
-  assert.equal(escapeHtml('<a href="x">\'&'), '&#60;a href=&#34;x&#34;&#62;&#39;&#38;');
-  const html = renderGallery(['dashboard-dark.png'], { sha: SHA, runUrl: RUN });
-  assert.match(html, /images\/dashboard-dark\.png/);
-  assert.match(html, /<figcaption>dashboard dark<\/figcaption>/);
+const H = (c) => c.repeat(64);
+const shot = (name, status = 'unknown', kind = name.startsWith('failed-') ? 'failure' : 'checkpoint') => ({ name, kind, sha256: H('a'), status });
+function gallery(shots, extra = {}) {
+  return { shots, removed: [], sha: SHA, runUrl: RUN, result: 'success', prNumber: '7', prUrl: 'https://github.com/o/r/pull/7', baseline: null, generatedAt: '2026-11-10T00:00:00Z', ...extra };
+}
+const PUBLIC = 'https://shots.example.com';
+const manifest = (shots, extra = {}) => JSON.stringify({ version: 1, sha: 'b'.repeat(40), runUrl: 'https://github.com/o/r/actions/runs/9', imagesUrl: `${PUBLIC}/main/9-1/images`, shots, ...extra });
 
-  // The renderers must escape on their own, even for names that skipped collectScreenshots.
-  const hostile = '<img src=x onerror=alert(1)>.png';
-  const gallery = renderGallery([hostile], { sha: SHA, runUrl: `${RUN}?"><script>` });
-  assert.ok(!gallery.includes('<img src=x') && !gallery.includes('<script>'));
-  assert.match(gallery, /&#60;img src=x onerror=alert\(1\)&#62;/);
-  assert.match(gallery, /href="https:\/\/github\.com\/o\/r\/actions\/runs\/1\?&#34;&#62;&#60;script&#62;"/);
-  const comment = renderComment([hostile], {
-    sha: SHA,
-    runUrl: RUN,
-    result: 'success',
-    galleryBaseUrl: 'https://shots.example.com/x',
-  });
-  assert.ok(!comment.includes('<img src=x'));
-  assert.match(comment, /alt="&#60;img src=x onerror=alert\(1\)&#62;"/);
-  assert.match(comment, /images\/%3Cimg%20src%3Dx%20onerror%3Dalert\(1\)%3E\.png/);
+test('classify labels frames against the baseline and sorts review-worthy ones first', () => {
+  const baseline = parseBaseline(
+    manifest([
+      { name: 'dashboard.png', sha256: H('a') },
+      { name: 'jobs-list.png', sha256: H('b') },
+      { name: 'gone.png', sha256: H('c') },
+    ]),
+    { publicUrl: PUBLIC },
+  );
+  const { shots, removed } = classify(
+    [
+      { name: 'dashboard.png', sha256: H('a') },
+      { name: 'jobs-list.png', sha256: H('d') },
+      { name: 'monitors-list.png', sha256: H('e') },
+      { name: 'failed-variables.png', sha256: H('f') },
+    ],
+    baseline,
+  );
+  assert.deepEqual(
+    shots.map((s) => `${s.kind}:${s.status}:${s.name}`),
+    ['failure:failed:failed-variables.png', 'checkpoint:changed:jobs-list.png', 'checkpoint:new:monitors-list.png', 'checkpoint:unchanged:dashboard.png'],
+  );
+  assert.deepEqual(removed, ['gone.png']);
+  // Without a baseline nothing is claimed as new or changed.
+  assert.deepEqual(classify([{ name: 'a.png', sha256: H('a') }], null).shots.map((s) => s.status), ['unknown']);
+  assert.equal(title('failed-org-admin.png'), 'Org Admin');
 });
 
-test('comment links the gallery with thumbnails when hosted', () => {
-  const names = Array.from({ length: 8 }, (_, i) => `page-${i}.png`);
-  const body = renderComment(names, {
-    sha: SHA,
+test('baseline manifests are validated as untrusted input', () => {
+  const ok = [{ name: 'dashboard.png', sha256: H('a') }];
+  assert.ok(parseBaseline(manifest(ok), { publicUrl: PUBLIC }));
+  assert.equal(parseBaseline(manifest(ok), { publicUrl: PUBLIC }).imagesUrl, `${PUBLIC}/main/9-1/images`);
+  for (const bad of [
+    'not json',
+    'null',
+    manifest(ok, { version: 2 }),
+    manifest(ok, { sha: 'nope' }),
+    manifest([{ name: '../x.png', sha256: H('a') }]),
+    manifest([{ name: 'a.png', sha256: 'short' }]),
+    manifest(Array.from({ length: 41 }, (_, i) => ({ name: `p-${i}.png`, sha256: H('a') }))),
+  ]) {
+    assert.equal(parseBaseline(bad, { publicUrl: PUBLIC }), null, bad.slice(0, 40));
+  }
+  // URLs outside our bucket or GitHub are dropped, not trusted.
+  const foreign = parseBaseline(manifest(ok, { imagesUrl: 'https://evil.example/x', runUrl: 'javascript:alert(1)' }), { publicUrl: PUBLIC });
+  assert.equal(foreign.imagesUrl, '');
+  assert.equal(foreign.runUrl, '');
+  assert.equal(parseBaseline(manifest(ok, { imagesUrl: `${PUBLIC}.evil.example/x` }), { publicUrl: PUBLIC }).imagesUrl, '');
+});
+
+test('gallery escapes everything it prints and pins its script by hash', () => {
+  assert.equal(escapeHtml('<a href="x">\'&'), '&#60;a href=&#34;x&#34;&#62;&#39;&#38;');
+  const html = renderGallery(gallery([shot('dashboard-dark.png', 'changed'), shot('failed-sign-in.png', 'failed')], {
+    baseline: { sha: 'b'.repeat(40), imagesUrl: `${PUBLIC}/main/9-1/images`, runUrl: 'https://github.com/o/r/actions/runs/9' },
+  }));
+  assert.match(html, /images\/dashboard-dark\.png/);
+  assert.match(html, /<h2>Dashboard Dark<\/h2>/);
+  assert.match(html, /data-status="changed"/);
+  assert.match(html, /class="tag t-failure">Failure/);
+  assert.match(html, /Changed \(1\)/);
+  assert.match(html, /Review changes \(2\)/);
+  assert.match(html, /Compared with latest successful main run \(bbbbbbb\)/);
+  assert.match(html, /main\/9-1\/images\/dashboard-dark\.png">Open main version/);
+  const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+  const hash = createHash('sha256').update(script).digest('base64');
+  assert.ok(html.includes(`script-src 'sha256-${hash}'`));
+
+  // The renderer must escape on its own, even for names that skipped collectScreenshots.
+  const hostile = '<img src=x onerror=alert(1)>.png';
+  const page = renderGallery(gallery([shot(hostile)], { runUrl: `${RUN}?"><script>`, prNumber: '7"><b>' }));
+  assert.doesNotMatch(page, /<img src=x|<script>alert|"><b>/);
+  assert.match(page, /<h2>&#60;Img Src=X Onerror=Alert\(1\)&#62;<\/h2>/);
+  assert.match(page, /href="https:\/\/github\.com\/o\/r\/actions\/runs\/1\?&#34;&#62;&#60;script&#62;"/);
+});
+
+test('comment summarises changes and previews review-worthy frames first', () => {
+  const shots = [shot('failed-a.png', 'failed'), shot('b.png', 'changed'), shot('c.png', 'new'), ...Array.from({ length: 8 }, (_, i) => shot(`u-${i}.png`, 'unchanged'))];
+  const body = renderComment(gallery(shots, { baseline: { sha: 'b'.repeat(40) }, removed: ['gone.png'] }), {
     runUrl: RUN,
-    result: 'success',
     galleryBaseUrl: 'https://shots.example.com/prs/1/abc/',
   });
   assert.ok(body.startsWith(MARKER));
-  assert.equal((body.match(/<img /g) ?? []).length, 6);
-  assert.match(body, /\[Open all 8 screenshots\]\(https:\/\/shots\.example\.com\/prs\/1\/abc\/index\.html\)/);
+  assert.match(body, /\*\*1 changed · 1 new · 1 failed\*\* · 1 removed vs main `bbbbbbb`/);
+  assert.equal((body.match(/<img /g) ?? []).length, 3);
+  assert.match(body, /\[Open visual review \(11 screenshots\)\]\(https:\/\/shots\.example\.com\/prs\/1\/abc\/index\.html\)/);
   assert.doesNotMatch(body, /did not pass/);
+
+  const hostile = '<img src=x onerror=alert(1)>.png';
+  const escaped = renderComment(gallery([shot(hostile, 'new')], { baseline: { sha: 'b'.repeat(40) } }), { runUrl: RUN, galleryBaseUrl: 'https://shots.example.com/x' });
+  assert.doesNotMatch(escaped, /<img src=x/);
+  assert.match(escaped, /alt="&#60;img src=x onerror=alert\(1\)&#62;"/);
+  assert.match(escaped, /images\/%3Cimg%20src%3Dx%20onerror%3Dalert\(1\)%3E\.png/);
 });
 
 test('comment falls back to the run artifact and flags failed runs', () => {
-  const body = renderComment(['dashboard.png'], { sha: SHA, runUrl: RUN, result: 'failure', galleryBaseUrl: '' });
+  const body = renderComment(gallery([shot('dashboard.png')], { result: 'failure' }), { runUrl: RUN, galleryBaseUrl: '' });
   assert.match(body, /did not pass/);
+  assert.match(body, /no main baseline to compare yet/);
   assert.match(body, /`pr-screenshots` artifact/);
   assert.doesNotMatch(body, /<img /);
-  assert.match(renderComment([], { sha: SHA, runUrl: RUN, result: 'success' }), /No screenshots were captured/);
+  assert.match(renderComment(gallery([]), { runUrl: RUN }), /No screenshots were captured/);
 });
