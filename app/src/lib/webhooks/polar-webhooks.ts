@@ -1857,8 +1857,9 @@ export async function handleCustomerStateChanged(payload: PolarWebhookPayload) {
 /**
  * Handle refunds (`order.refunded` and `refund.created`; one refund may arrive as both). A refund
  * alone never changes the plan: Polar revokes or cancels the subscription separately and those events
- * drive access. Record it and reconcile so local state converges with Polar. Idempotent (a read-only
- * reconcile, so a repeat is harmless) and a no-op for unknown customers.
+ * drive access. Record it and reconcile so local state converges with Polar. Reconciliation reads
+ * from Polar but can update local subscription state and reset usage when it advances a billing
+ * period; a repeated event just reconciles again. Unknown customers are ignored.
  */
 export async function handleRefund(payload: PolarWebhookPayload, eventType: "order.refunded" | "refund.created") {
   const data = payload.data as Record<string, unknown>;

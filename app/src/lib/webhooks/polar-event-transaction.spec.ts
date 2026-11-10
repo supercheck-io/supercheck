@@ -161,7 +161,7 @@ describe("Polar event transactions", () => {
     await runOrderedPolarEvent({ ...input, subscriptionId: "new-subscription-id" }, async () => {});
     const { __logger } = loggerModule as unknown as { __logger: { error: jest.Mock } };
     expect(__logger.error).toHaveBeenCalledWith(
-      { organizationId: "org-1", replacedSubscriptionId: "old-subs", newSubscriptionId: "new-subs" },
+      { organizationId: "org-1".slice(-8), replacedSubscriptionId: "old-subs", newSubscriptionId: "new-subs" },
       "Active subscription replaced another active subscription; check for duplicate billing",
     );
   });

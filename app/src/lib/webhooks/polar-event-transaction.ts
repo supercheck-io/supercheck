@@ -150,7 +150,8 @@ export async function runOrderedPolarEvent(
       if (org.subscriptionStatus === "active" || org.subscriptionStatus === "past_due") {
         logger.error(
           {
-            organizationId: org.id.slice(0, 8),
+            // UUIDv7 prefixes are timestamp bits, so the suffix identifies the organization.
+            organizationId: org.id.slice(-8),
             replacedSubscriptionId: org.subscriptionId?.slice(0, 8),
             newSubscriptionId: input.subscriptionId?.slice(0, 8),
           },
