@@ -89,7 +89,7 @@ describe('smtp-transport', () => {
     process.env.SMTP_BLOCKED_RECIPIENT_DOMAINS = 'blocked.io';
     const warn = jest.fn();
     const r = await sendMailToRecipients(
-      ['a@x.io', 'b@example.com', 'c@e2e.invalid', 'd@sub.blocked.io'],
+      ['a@x.io', 'b@example.com', 'c@e2e.invalid', 'Name <d@sub.blocked.io>'],
       message,
       warn,
     );
