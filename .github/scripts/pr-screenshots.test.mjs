@@ -12,6 +12,9 @@ import {
   collectScreenshots,
   escapeHtml,
   parseBaseline,
+  parseMeta,
+  renderLatest,
+  renderSummary,
   parsePullRequest,
   renderComment,
   renderGallery,
@@ -219,4 +222,50 @@ test('comment previews skip tall full-page frames that break GitHub layout', () 
   const body = renderComment(gallery([tall, normal], { baseline: { sha: 'b'.repeat(40) } }), { runUrl: RUN, galleryBaseUrl: 'https://shots.example.com/x' });
   assert.match(body, /images\/dashboard\.png/);
   assert.doesNotMatch(body, /images\/create\.png/);
+});
+
+test('checkpoint sidecars are validated and attached to their frames', async () => {
+  const dir = await artifact({
+    'a/login-works-abc123.png': PNG,
+    'a/login-works-abc123.checkpoint.json': JSON.stringify({ title: 'auth › Login\u0007 works', spec: 'auth/sign-in.spec.ts', area: 'auth' }),
+    'b/evil-abc123.png': PNG,
+    'b/evil-abc123.checkpoint.json': JSON.stringify({ title: 'x', spec: '../../etc/passwd', area: 'Bad Area' }),
+    'c/huge-abc123.checkpoint.json': 'x'.repeat(5000),
+  });
+  const shots = await collectScreenshots(dir);
+  const byName = Object.fromEntries(shots.map((s) => [s.name, s.meta]));
+  assert.deepEqual(byName['login-works-abc123.png'], { title: 'auth › Login  works', spec: 'auth/sign-in.spec.ts', area: 'auth' });
+  assert.deepEqual(byName['evil-abc123.png'], { title: 'x', spec: '', area: '' });
+  assert.equal(parseMeta('nope'), null);
+  assert.equal(parseMeta(JSON.stringify({ title: 'y'.repeat(301) })).title, '');
+
+  const { shots: classified } = classify(shots.map((s) => ({ ...s, sha256: H('a') })), null);
+  assert.equal(classified.find((s) => s.name === 'login-works-abc123.png').area, 'auth');
+  assert.equal(classify([{ name: 'flow-x-1-open.png', sha256: H('a') }], null).shots[0].area, 'flows');
+  assert.equal(classify([{ name: 'dashboard.png', sha256: H('a') }], null).shots[0].area, 'tour');
+});
+
+test('gallery shows test names, spec paths and an area filter', () => {
+  const s = { ...shot('login-works-abc123.png', 'changed'), title: 'Login <works>', spec: 'auth/sign-in.spec.ts', area: 'auth' };
+  const html = renderGallery(gallery([s, { ...shot('dashboard.png'), area: 'tour' }]));
+  assert.match(html, /<h2>Login &#60;works&#62;<\/h2>/);
+  assert.match(html, /tests\/auth\/sign-in\.spec\.ts/);
+  assert.match(html, /<option value="auth">auth \(1\)<\/option>/);
+  assert.match(html, /id="search"/);
+});
+
+test('job summary links the gallery and lists frames that need review', () => {
+  const shots = [{ ...shot('a.png', 'changed'), title: 'Pay [now](javascript:x)' }, shot('b.png', 'unchanged')];
+  const md = renderSummary(gallery(shots, { baseline: { sha: 'b'.repeat(40) } }), { galleryUrl: 'https://x.example/g/index.html', latestUrl: 'https://x.example/prs/7/index.html' });
+  assert.match(md, /\[Open the visual review\]\(https:\/\/x\.example\/g\/index\.html\)/);
+  assert.match(md, /\| ✅ passed \| 2 \| 1 \| 0 \| 0 \| 0 \|/);
+  assert.match(md, /- `changed` Pay  now  javascript:x  – \[view\]\(https:\/\/x\.example\/g\/index\.html#a\.png\)/);
+  assert.doesNotMatch(md, /b\.png/);
+  assert.match(renderSummary(gallery([]), { galleryUrl: '' }), /pr-screenshots/);
+});
+
+test('latest page forwards to the gallery with an escaped URL', () => {
+  const html = renderLatest('https://x.example/prs/7/1-1/index.html?"><script>');
+  assert.match(html, /http-equiv="refresh" content="0; url=https:\/\/x\.example\/prs\/7\/1-1\/index\.html\?&#34;&#62;&#60;script&#62;"/);
+  assert.doesNotMatch(html, /<script>/i);
 });

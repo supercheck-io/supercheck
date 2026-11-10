@@ -188,7 +188,7 @@ export function classify(hashed, baseline) {
     if (kind === 'failure') status = 'failed';
     else if (baseline) status = !baseline.shots.has(name) ? 'new' : baseline.shots.get(name) === hash ? 'unchanged' : 'changed';
     // Tour frames have no sidecar; E2E frames name their spec folder as the area.
-    return { name, kind, sha256: hash, status, width, height, title: meta?.title || '', spec: meta?.spec || '', area: meta?.area || 'tour' };
+    return { name, kind, sha256: hash, status, width, height, title: meta?.title || '', spec: meta?.spec || '', area: meta?.area || (name.startsWith('flow-') ? 'flows' : 'tour') };
   });
   shots.sort((a, b) => ORDER[a.status] - ORDER[b.status] || a.name.localeCompare(b.name));
   const present = new Set(hashed.map((s) => s.name));

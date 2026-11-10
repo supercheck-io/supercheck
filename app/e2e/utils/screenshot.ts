@@ -7,6 +7,22 @@ export const SCREENSHOT_USER = {
   email: 'reviewer@example.com',
   password: 'Screenshot-Tour-2026!',
 };
+/**
+ * Throwaway role accounts for the E2E checkpoint run. screenshots.setup.ts signs them up and
+ * seed-history.sql makes the role accounts members of the demo user's organization, matching
+ * how the real E2E deployment invites them. The demo user is the organization owner.
+ */
+const ROLE_PASSWORD = 'Screenshot-Role-2026!';
+export const SCREENSHOT_IDENTITIES = {
+  superAdmin: { name: 'Sam Superadmin', email: 'super-admin@example.com', password: ROLE_PASSWORD },
+  orgAdmin: { name: 'Ola Orgadmin', email: 'org-admin@example.com', password: ROLE_PASSWORD },
+  projectAdmin: { name: 'Pat Projectadmin', email: 'project-admin@example.com', password: ROLE_PASSWORD },
+  editor: { name: 'Eddie Editor', email: 'editor@example.com', password: ROLE_PASSWORD },
+  viewer: { name: 'Vic Viewer', email: 'viewer@example.com', password: ROLE_PASSWORD },
+  invitee: { name: 'Ivy Invitee', email: 'invitee@example.com', password: ROLE_PASSWORD },
+  session: { name: 'Sid Session', email: 'session@example.com', password: ROLE_PASSWORD },
+  security: { name: 'Sec Security', email: 'security@example.com', password: ROLE_PASSWORD },
+};
 export const SCREENSHOT_AUTH_STATE = path.resolve(__dirname, '../screenshots-auth-state.json');
 export const SCREENSHOT_SEED = path.resolve(__dirname, '../screenshots-seed.json');
 

@@ -142,9 +142,21 @@ jobs:
           tail -100 "$RUNNER_TEMP/app.log"
           exit 1
 
-      - name: Capture page tour
+      # Signs up the demo user and creates records through the app's API and UI, then adds
+      # the run and check history only a worker would create (tests/screenshots/).
+      - name: Seed demo data
         working-directory: ./app/e2e
-        run: npx playwright test --project=screenshots
+        run: |
+          npx playwright test --project=screenshots-setup
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -q -f tests/screenshots/seed-history.sql
+        env:
+          CI: true
+          E2E_SCREENSHOTS: "1"
+          E2E_BASE_URL: http://localhost:3000
+
+      - name: Capture page tour and flows
+        working-directory: ./app/e2e
+        run: npx playwright test --project=screenshots --no-deps
         env:
           CI: true
           E2E_SCREENSHOTS: "1"

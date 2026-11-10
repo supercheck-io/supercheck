@@ -6,7 +6,16 @@
 
 import dotenv from "dotenv";
 import path from "path";
-import { SCREENSHOT_USER } from "./screenshot";
+import { SCREENSHOT_IDENTITIES, SCREENSHOT_USER } from "./screenshot";
+
+// The PR gallery's checkpoint run uses the throwaway identities its seed created.
+const CHECKPOINTS = process.env.E2E_CHECKPOINTS === "1";
+function creds(prefix: string, fallback: UserCredentials): UserCredentials {
+  return {
+    email: process.env[`${prefix}_EMAIL`] || (CHECKPOINTS ? fallback.email : ""),
+    password: process.env[`${prefix}_PASSWORD`] || (CHECKPOINTS ? fallback.password : ""),
+  };
+}
 
 // Load environment variables
 dotenv.config({ path: path.resolve(__dirname, "../.env") });
@@ -33,67 +42,36 @@ export const env = {
   isCI: !!process.env.CI,
 
   /** Test user credentials (must be an invited user with email/password) */
-  // The PR gallery's checkpoint run signs in as the throwaway tour user.
-  testUser: {
-    email: process.env.E2E_TEST_USER_EMAIL || (process.env.E2E_CHECKPOINTS === "1" ? SCREENSHOT_USER.email : ""),
-    password: process.env.E2E_TEST_USER_PASSWORD || (process.env.E2E_CHECKPOINTS === "1" ? SCREENSHOT_USER.password : ""),
-  } as UserCredentials,
+  testUser: creds("E2E_TEST_USER", SCREENSHOT_USER),
 
   /** Existing non-admin user kept outside the target organization for invitation acceptance tests. */
-  inviteeUser: {
-    email: process.env.E2E_INVITEE_EMAIL || "",
-    password: process.env.E2E_INVITEE_PASSWORD || "",
-  } as UserCredentials,
+  inviteeUser: creds("E2E_INVITEE", SCREENSHOT_IDENTITIES.invitee),
 
   /** Dedicated identity whose sessions may be destructively invalidated without affecting other tests. */
-  sessionTestUser: {
-    email: process.env.E2E_SESSION_USER_EMAIL || "",
-    password: process.env.E2E_SESSION_USER_PASSWORD || "",
-  } as UserCredentials,
+  sessionTestUser: creds("E2E_SESSION_USER", SCREENSHOT_IDENTITIES.session),
 
   /** Dedicated identity for destructive failed-login and rate-limit security tests. */
-  securityTestUser: {
-    email: process.env.E2E_SECURITY_USER_EMAIL || "",
-    password: process.env.E2E_SECURITY_USER_PASSWORD || "",
-  } as UserCredentials,
+  securityTestUser: creds("E2E_SECURITY_USER", SCREENSHOT_IDENTITIES.security),
 
   /** RBAC test users for role-based access control tests */
   rbacUsers: {
     /** Super Admin - platform-wide access */
-    superAdmin: {
-      email: process.env.E2E_SUPER_ADMIN_EMAIL || "",
-      password: process.env.E2E_SUPER_ADMIN_PASSWORD || "",
-    } as UserCredentials,
+    superAdmin: creds("E2E_SUPER_ADMIN", SCREENSHOT_IDENTITIES.superAdmin),
 
     /** Organization Owner - full org access including billing */
-    orgOwner: {
-      email: process.env.E2E_ORG_OWNER_EMAIL || "",
-      password: process.env.E2E_ORG_OWNER_PASSWORD || "",
-    } as UserCredentials,
+    orgOwner: creds("E2E_ORG_OWNER", SCREENSHOT_USER),
 
     /** Organization Admin - org administration, no billing */
-    orgAdmin: {
-      email: process.env.E2E_ORG_ADMIN_EMAIL || "",
-      password: process.env.E2E_ORG_ADMIN_PASSWORD || "",
-    } as UserCredentials,
+    orgAdmin: creds("E2E_ORG_ADMIN", SCREENSHOT_IDENTITIES.orgAdmin),
 
     /** Project Admin - project-level administration */
-    projectAdmin: {
-      email: process.env.E2E_PROJECT_ADMIN_EMAIL || "",
-      password: process.env.E2E_PROJECT_ADMIN_PASSWORD || "",
-    } as UserCredentials,
+    projectAdmin: creds("E2E_PROJECT_ADMIN", SCREENSHOT_IDENTITIES.projectAdmin),
 
     /** Editor - can create and modify resources */
-    editor: {
-      email: process.env.E2E_EDITOR_EMAIL || "",
-      password: process.env.E2E_EDITOR_PASSWORD || "",
-    } as UserCredentials,
+    editor: creds("E2E_EDITOR", SCREENSHOT_IDENTITIES.editor),
 
     /** Viewer - read-only access */
-    viewer: {
-      email: process.env.E2E_VIEWER_EMAIL || "",
-      password: process.env.E2E_VIEWER_PASSWORD || "",
-    } as UserCredentials,
+    viewer: creds("E2E_VIEWER", SCREENSHOT_IDENTITIES.viewer),
   },
 
   /** Test data configuration */
