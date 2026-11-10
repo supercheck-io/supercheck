@@ -71,7 +71,9 @@ export async function normalizeVolatileText(page: Page): Promise<void> {
     const WEEKDAY = '(?:(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)[a-z]*,? )?';
     const rules: Array<[RegExp, string | ((m: string) => string)]> = [
       // "Tuesday, Nov 10, 2026", "Nov 10, 2026, 10:27 AM", "Nov 9 7:54 PM"
-      [new RegExp(`\\b${WEEKDAY}${MONTH} \\d{1,2}(?:, \\d{4})?(?:,? (?:at )?\\d{1,2}:\\d{2}(?::\\d{2})?(?: ?[AP]M)?)?`, 'g'), 'Jan 1, 2026 12:00 PM'],
+      [new RegExp(`\\b${WEEKDAY}${MONTH} \\d{1,2}(?:, \\d{4})?(?:,? (?:at )?\\d{1,2}:\\d{2}(?::\\d{2})?(?: ?[AP]M)?)?`, 'g'),
+        // Keep the shape, so a short chart tick like "Oct 12" stays short.
+        (m) => `Jan 1${/\d{4}/.test(m) ? ', 2026' : ''}${/:/.test(m) ? ' 12:00 PM' : ''}`],
       [/\b\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?Z?)?/g, '2026-01-01 12:00'],
       [/\b\d{1,2}:\d{2}(?::\d{2})? ?[AP]M\b/g, '12:00 PM'],
       // 24-hour clock times, such as chart time-axis ticks.
