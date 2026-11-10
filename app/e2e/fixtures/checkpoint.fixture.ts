@@ -76,7 +76,8 @@ export const test = base.extend<{ _checkpoint: void }>({
       const failed = testInfo.status !== testInfo.expectedStatus;
       await save(page, testInfo, failed ? 'failure' : 'end', failed);
     },
-    { auto: true },
+    // Only automatic when on, so suites against real deployments open no extra page.
+    { auto: ENABLED },
   ],
 });
 

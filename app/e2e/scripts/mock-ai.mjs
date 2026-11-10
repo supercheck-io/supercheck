@@ -44,7 +44,8 @@ export function sample(schema, defs = {}, key = '', depth = 0) {
       return out;
     }
     case 'array': {
-      const n = Math.min(Math.max(schema.minItems ?? 2, 1), schema.maxItems ?? 2);
+      // Two items by default, but always within minItems..maxItems.
+      const n = Math.min(Math.max(schema.minItems ?? 2, 1, Math.min(2, schema.maxItems ?? 2)), schema.maxItems ?? Infinity);
       return Array.from({ length: n }, () => sample(schema.items, all, key, depth + 1));
     }
     case 'integer':

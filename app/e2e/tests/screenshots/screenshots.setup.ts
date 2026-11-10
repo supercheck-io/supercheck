@@ -7,6 +7,8 @@
 import { writeFile } from 'node:fs/promises';
 import { expect, test as setup, type APIRequestContext, type Page } from '@playwright/test';
 import { SignUpPage } from '../../pages/auth';
+import { getAuthRetryDelayMs } from '../../utils/api-auth';
+import { waitForHydration } from '../../utils/hydration';
 import { createJob, createMonitor, createTest } from '../../utils/test-data';
 import { createStatusPageThroughUi } from '../../utils/status-page-test-data';
 import { SCREENSHOT_AUTH_STATE, SCREENSHOT_IDENTITIES, SCREENSHOT_SEED, SCREENSHOT_USER } from '../../utils/screenshot';
@@ -27,6 +29,7 @@ function idOf(body: unknown): string {
 
 async function createService(page: Page, name: string, environment: string): Promise<void> {
   await page.goto('/services');
+  await waitForHydration(page);
   await page.getByTestId('add-service-btn').click();
   const dialog = page.getByRole('dialog', { name: /add service/i });
   await dialog.getByLabel('Service name *').fill(name);
@@ -36,7 +39,7 @@ async function createService(page: Page, name: string, environment: string): Pro
 }
 
 setup('sign up and seed screenshot data', async ({ page, baseURL, playwright }) => {
-  setup.setTimeout(180_000);
+  setup.setTimeout(420_000);
   // The tour signs up a fixed account and never cleans up, so it only targets a throwaway local app.
   const host = new URL(baseURL ?? '').hostname;
   if (!['localhost', '127.0.0.1', '[::1]'].includes(host)) {
@@ -116,6 +119,7 @@ setup('sign up and seed screenshot data', async ({ page, baseURL, playwright }) 
   await createService(page, 'checkout-api', 'production');
   await createService(page, 'payments-worker', 'production');
   await page.goto('/incidents');
+  await waitForHydration(page);
   await page.getByRole('button', { name: 'New incident' }).click();
   const incidentDialog = page.getByRole('dialog', { name: 'Create incident' });
   await incidentDialog.getByLabel('Title').fill('Checkout latency above 2s');
@@ -132,7 +136,13 @@ setup('sign up and seed screenshot data', async ({ page, baseURL, playwright }) 
   const members = new Set(['orgAdmin', 'projectAdmin', 'editor', 'viewer']);
   for (const [key, identity] of Object.entries(SCREENSHOT_IDENTITIES)) {
     const context = await playwright.request.newContext({ baseURL, extraHTTPHeaders: { origin: baseURL ?? '' } });
-    await ok(`sign-up ${identity.email}`, await context.post('/api/auth/sign-up/email', { data: identity }));
+    // Auth rate-limits sign-ups per address; wait out each window instead of failing the seed.
+    let signUp = await context.post('/api/auth/sign-up/email', { data: identity });
+    for (let attempt = 1; signUp.status() === 429 && attempt <= 8; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, getAuthRetryDelayMs(signUp, attempt)));
+      signUp = await context.post('/api/auth/sign-up/email', { data: identity });
+    }
+    await ok(`sign-up ${identity.email}`, signUp);
     if (!members.has(key)) {
       await ok(`workspace ${identity.email}`, await context.post('/api/auth/setup-defaults'));
       await expect

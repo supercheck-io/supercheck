@@ -72,6 +72,11 @@ jobs:
       NEXT_PUBLIC_APP_URL: http://localhost:3000
       BETTER_AUTH_URL: http://localhost:3000
       STATUS_PAGE_DOMAIN: localhost
+      # No outbound mail: the app's only sender (lib/email-service.ts) needs SMTP_HOST, which
+      # stays empty, and every seeded or E2E address is on the reserved example.com domain.
+      # The "Refuse outbound email" step fails the job if that ever changes.
+      SMTP_HOST: ""
+      SMTP_BLOCKED_RECIPIENT_DOMAINS: example.com
       # AI features talk to a local stand-in (app/e2e/scripts/mock-ai.mjs), never a real provider.
       AI_PROVIDER: openai
       OPENAI_API_KEY: sk-demo-not-a-real-key
@@ -111,6 +116,13 @@ jobs:
         working-directory: ./app/e2e
         run: npx playwright install --with-deps chromium
 
+      - name: Refuse outbound email
+        run: |
+          if [[ -n "${SMTP_HOST:-}" || -n "${SMTP_USER:-}" || -n "${SMTP_PASSWORD:-}" ]]; then
+            echo "::error::The screenshot app must not be able to send email"
+            exit 1
+          fi
+
       - name: Generate throwaway app secrets
         run: |
           auth_secret="$(openssl rand -hex 32)"
@@ -133,7 +145,16 @@ jobs:
           SKIP_ENV_VALIDATION: true
 
       - name: Start stand-in AI provider
-        run: nohup node app/e2e/scripts/mock-ai.mjs 4010 > "$RUNNER_TEMP/mock-ai.log" 2>&1 &
+        run: |
+          nohup node app/e2e/scripts/mock-ai.mjs 4010 > "$RUNNER_TEMP/mock-ai.log" 2>&1 &
+          # Any HTTP answer (the mock 404s on GET /) means it is listening.
+          for _ in $(seq 1 30); do
+            if curl -s -o /dev/null http://127.0.0.1:4010/; then exit 0; fi
+            sleep 1
+          done
+          echo "::error::Stand-in AI provider did not start"
+          cat "$RUNNER_TEMP/mock-ai.log"
+          exit 1
 
       - name: Start app
         working-directory: ./app
@@ -152,6 +173,7 @@ jobs:
       # Signs up the demo user and creates records through the app's API and UI, then adds
       # the run and check history only a worker would create (tests/screenshots/).
       - name: Seed demo data
+        id: seed
         working-directory: ./app/e2e
         run: |
           npx playwright test --project=screenshots-setup
@@ -173,7 +195,8 @@ jobs:
       # Every browser test leaves an end-of-test checkpoint (failed-… when it fails); see
       # app/e2e/fixtures/checkpoint.fixture.ts. Runs after the tour, which needs clean data.
       - name: Capture E2E checkpoints
-        if: ${{ !cancelled() }}
+        # Without the seeded accounts most specs would only time out.
+        if: ${{ !cancelled() && steps.seed.outcome == 'success' }}
         working-directory: ./app/e2e
         # A separate output folder: each Playwright run clears its own, which would erase the tour.
         run: npx playwright test --project=chromium --output=checkpoint-results

@@ -130,12 +130,13 @@ test('incident lifecycle', async ({ page }, testInfo) => {
   await expect(resolve).toBeHidden({ timeout: 30_000 });
   await frame('resolved');
 
+  // The tab appears once the resolved incident refetches.
+  await page.getByRole('tab', { name: 'Post-mortem', exact: true }).click();
   const draft = page.getByRole('button', { name: 'Generate post-mortem draft' });
-  if (await draft.isVisible()) {
-    await draft.click();
-    await expect(page.getByText('No post-mortem yet')).toBeHidden({ timeout: 60_000 });
-    await frame('post-mortem');
-  }
+  await expect(draft).toBeVisible();
+  await draft.click();
+  await expect(page.getByText('No post-mortem yet')).toBeHidden({ timeout: 60_000 });
+  await frame('post-mortem');
 });
 
 test('copilot answer', async ({ page }, testInfo) => {

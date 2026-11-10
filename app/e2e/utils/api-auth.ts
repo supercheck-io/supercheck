@@ -78,7 +78,7 @@ export async function waitForSignInUnlocked(
   }
 }
 
-function getAuthRetryDelayMs(response: APIResponse, attempt: number) {
+export function getAuthRetryDelayMs(response: APIResponse, attempt: number) {
   const retryAfterHeader =
     response.headers()['retry-after'] ?? response.headers()['x-retry-after'];
   const retryAfterSeconds = Number.parseInt(retryAfterHeader ?? '', 10);
