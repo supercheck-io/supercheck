@@ -132,7 +132,9 @@ export function parseBaseline(text, { publicUrl = '' } = {}) {
   }
   const base = publicUrl.replace(/\/$/, '');
   // Only link main's images when they live under our own public bucket URL.
-  const imagesUrl = base && isHttps(data.imagesUrl) && data.imagesUrl.startsWith(`${base}/`) ? data.imagesUrl.replace(/\/$/, '') : '';
+  // Compare the normalised URL so `..` segments cannot climb out of the bucket prefix.
+  const images = isHttps(data.imagesUrl) ? new URL(data.imagesUrl).href : '';
+  const imagesUrl = base && images.startsWith(`${base}/`) ? images.replace(/\/$/, '') : '';
   const runUrl = isHttps(data.runUrl) && data.runUrl.startsWith('https://github.com/') ? data.runUrl : '';
   return { sha: data.sha, imagesUrl, runUrl, shots };
 }
@@ -320,7 +322,7 @@ export function renderComment(gallery, { runUrl, galleryBaseUrl }) {
       const preview = shots.filter((s) => s.status !== 'unchanged').slice(0, THUMBNAILS);
       const cells = preview.map(({ name }) => {
         const src = `${base}/images/${encodeURIComponent(name)}`;
-        return `<a href="${src}"><img src="${src}" width="280" alt="${escapeHtml(caption(name))}"></a>`;
+        return `<a href="${escapeHtml(src)}"><img src="${escapeHtml(src)}" width="280" alt="${escapeHtml(caption(name))}"></a>`;
       });
       if (cells.length) lines.push(cells.join(' '), '');
       lines.push(`[Open visual review (${c.all} screenshots)](${base}/index.html) · [CI run](${runUrl})`);
@@ -367,13 +369,16 @@ async function main([command, ...args]) {
       await copyFile(source, target);
       hashed.push({ name, sha256: await sha256(target) });
     }
-    const { shots, removed } = classify(hashed, baseline);
+    const result = process.env.RESULT ?? 'failure';
+    const { shots, removed: missing } = classify(hashed, baseline);
+    // A failed run may simply not have reached some pages; don't report those as removed.
+    const removed = result === 'success' ? missing : [];
     const gallery = {
       shots,
       removed,
       sha,
       runUrl,
-      result: process.env.RESULT ?? 'failure',
+      result,
       prNumber,
       prUrl,
       baseline: baseline && { sha: baseline.sha, imagesUrl: baseline.imagesUrl, runUrl: baseline.runUrl },

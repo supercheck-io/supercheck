@@ -56,7 +56,9 @@ export async function captureScreenshot(page: Page, testInfo: TestInfo, name: st
  */
 export async function captureFailure(page: Page, testInfo: TestInfo): Promise<void> {
   if (testInfo.status === testInfo.expectedStatus) return;
-  const name = `failed-${testInfo.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`.slice(0, 96);
+  // The gallery accepts at most 100 characters before `.png`.
+  const slug = testInfo.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 93);
+  const name = `failed-${slug || 'test'}`;
   // Viewport only: a broken page may have no sensible full-page height.
   await page
     .screenshot({ path: testInfo.outputPath(`${name}.png`), animations: 'disabled', caret: 'hide', timeout: 10_000 })

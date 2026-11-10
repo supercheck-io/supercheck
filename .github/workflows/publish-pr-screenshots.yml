@@ -195,15 +195,22 @@ jobs:
             exit 0
           fi
           uri="s3://${R2_BUCKET}/baselines/main/manifest.json"
-          if aws s3 cp "$uri" "$RUNNER_TEMP/current.json" --endpoint-url "$R2_ENDPOINT" --only-show-errors 2>/dev/null; then
+          # Only a missing object means "no baseline yet"; any other read error must not
+          # let an older run overwrite a newer baseline.
+          if aws s3 cp "$uri" "$RUNNER_TEMP/current.json" --endpoint-url "$R2_ENDPOINT" --only-show-errors 2>"$RUNNER_TEMP/current.err"; then
             current="$(jq -r '.sha // empty' "$RUNNER_TEMP/current.json" 2>/dev/null || true)"
             if [[ "$current" =~ ^[0-9a-f]{40}$ && "$current" != "$SHA" ]]; then
-              status="$(gh api "repos/${GITHUB_REPOSITORY}/compare/${current}...${SHA}" --jq .status 2>/dev/null || echo unknown)"
-              if [[ "$status" != "ahead" ]]; then
+              # A baseline commit GitHub no longer knows (for example after a force-push) is replaced.
+              status="$(gh api "repos/${GITHUB_REPOSITORY}/compare/${current}...${SHA}" --jq .status 2>/dev/null || echo missing)"
+              if [[ "$status" != "ahead" && "$status" != "missing" ]]; then
                 echo "Baseline ${current:0:7} is not older than ${SHA:0:7} (compare: ${status}); keeping it."
                 exit 0
               fi
             fi
+          elif ! grep -Eq "404|NoSuchKey|Not Found" "$RUNNER_TEMP/current.err"; then
+            cat "$RUNNER_TEMP/current.err"
+            echo "::error::Could not read the current baseline; not replacing it."
+            exit 1
           fi
           aws s3 cp "$RUNNER_TEMP/gallery/manifest.json" "$uri" --endpoint-url "$R2_ENDPOINT" \
             --content-type application/json --cache-control "no-cache"

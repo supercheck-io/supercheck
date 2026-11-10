@@ -116,6 +116,7 @@ test('baseline manifests are validated as untrusted input', () => {
   assert.equal(foreign.imagesUrl, '');
   assert.equal(foreign.runUrl, '');
   assert.equal(parseBaseline(manifest(ok, { imagesUrl: `${PUBLIC}.evil.example/x` }), { publicUrl: PUBLIC }).imagesUrl, '');
+  assert.equal(parseBaseline(manifest(ok, { imagesUrl: `${PUBLIC}/main/../../other.example/x` }), { publicUrl: `${PUBLIC}/main` }).imagesUrl, '');
 });
 
 test('gallery escapes everything it prints and pins its script by hash', () => {
@@ -169,4 +170,28 @@ test('comment falls back to the run artifact and flags failed runs', () => {
   assert.match(body, /`pr-screenshots` artifact/);
   assert.doesNotMatch(body, /<img /);
   assert.match(renderComment(gallery([]), { runUrl: RUN }), /No screenshots were captured/);
+});
+
+test('prepare writes a checkpoint-only manifest and compares against a baseline file', async () => {
+  const { execFileSync } = await import('node:child_process');
+  const { readFile } = await import('node:fs/promises');
+  const script = new URL('./pr-screenshots.mjs', import.meta.url).pathname;
+  const dir = await artifact({ 'shots/a/dashboard.png': PNG, 'shots/b/failed-jobs-list.png': PNG });
+  const baseline = path.join(dir, 'baseline.json');
+  await writeFile(baseline, manifest([{ name: 'dashboard.png', sha256: H('0') }, { name: 'gone.png', sha256: H('1') }]));
+  const run = (out, result) =>
+    execFileSync(process.execPath, [script, 'prepare', path.join(dir, 'shots'), out, baseline], {
+      env: { ...process.env, SHA, RUN_URL: RUN, RESULT: result, PR_NUMBER: '7', GALLERY_BASE_URL: `${PUBLIC}/prs/7/1-1/`, PUBLIC_URL: PUBLIC },
+    });
+  const out = path.join(dir, 'out');
+  run(out, 'success');
+  const written = JSON.parse(await readFile(path.join(out, 'manifest.json'), 'utf8'));
+  assert.equal(written.imagesUrl, `${PUBLIC}/prs/7/1-1/images`);
+  assert.deepEqual(written.shots.map((s) => s.name), ['dashboard.png']);
+  const shots = JSON.parse(await readFile(path.join(out, 'shots.json'), 'utf8'));
+  assert.deepEqual(shots.shots.map((s) => s.status), ['failed', 'changed']);
+  assert.deepEqual(shots.removed, ['gone.png']);
+  // A failed run may not have reached every page, so nothing is reported as removed.
+  run(path.join(dir, 'out2'), 'failure');
+  assert.deepEqual(JSON.parse(await readFile(path.join(dir, 'out2', 'shots.json'), 'utf8')).removed, []);
 });

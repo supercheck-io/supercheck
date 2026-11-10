@@ -23,7 +23,8 @@ permissions:
 
 concurrency:
   group: pr-screenshots-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # Superseded PR runs are cancelled; main runs queue so each can refresh the baseline.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   NODE_VERSION: "24"
