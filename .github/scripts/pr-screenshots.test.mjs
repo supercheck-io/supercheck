@@ -212,3 +212,11 @@ test('pull request details are bounded, validated and escaped', () => {
   assert.match(html, /<dialog id="viewer"/);
   assert.match(html, /<b>Supercheck<\/b>/);
 });
+
+test('comment previews skip tall full-page frames that break GitHub layout', () => {
+  const tall = { ...shot('create.png', 'new'), width: 1440, height: 3000 };
+  const normal = { ...shot('dashboard.png', 'new'), width: 1440, height: 900 };
+  const body = renderComment(gallery([tall, normal], { baseline: { sha: 'b'.repeat(40) } }), { runUrl: RUN, galleryBaseUrl: 'https://shots.example.com/x' });
+  assert.match(body, /images\/dashboard\.png/);
+  assert.doesNotMatch(body, /images\/create\.png/);
+});

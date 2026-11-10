@@ -31,7 +31,8 @@ async function normalizeVolatileText(page: Page): Promise<void> {
       [/\b\d{1,2}:\d{2}(?::\d{2})? ?[AP]M\b/g, '12:00 PM'],
       [/\b\d+ (?:second|minute|hour|day)s? ago\b/g, '5 minutes ago'],
       // UUIDs and long hex ids keep their shape so truncation looks the same.
-      [/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b|\b[0-9a-f]{16,}\b/g, (m) => m.replace(/[0-9a-f]/g, '0')],
+      // Tables show IDs cut short in the DOM, like "019a1c50f…".
+      [/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b|\b[0-9a-f]{16,}\b|\b[0-9a-f-]{6,}(?=…|\.\.\.)/g, (m) => m.replace(/[0-9a-f]/g, '0')],
     ];
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {

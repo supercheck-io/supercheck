@@ -42,18 +42,18 @@ export function caption(file) {
   return file.replace(/\.png$/, '').replace(/-/g, ' ');
 }
 
-/** True for a PNG whose IHDR declares dimensions within the gallery limits. */
-async function isAcceptablePng(file) {
+/** The PNG's { width, height } when its IHDR declares dimensions within the gallery limits, else null. */
+async function pngSize(file) {
   const handle = await open(file, 'r');
   try {
     // Signature (8) + IHDR length (4) + "IHDR" (4) + width (4) + height (4).
     const buffer = Buffer.alloc(24);
     const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
-    if (bytesRead < 24 || !buffer.subarray(0, 8).equals(PNG_MAGIC)) return false;
-    if (buffer.toString('latin1', 12, 16) !== 'IHDR') return false;
+    if (bytesRead < 24 || !buffer.subarray(0, 8).equals(PNG_MAGIC)) return null;
+    if (buffer.toString('latin1', 12, 16) !== 'IHDR') return null;
     const width = buffer.readUInt32BE(16);
     const height = buffer.readUInt32BE(20);
-    return width > 0 && height > 0 && width <= MAX_WIDTH && height <= MAX_HEIGHT;
+    return width > 0 && height > 0 && width <= MAX_WIDTH && height <= MAX_HEIGHT ? { width, height } : null;
   } finally {
     await handle.close();
   }
@@ -69,6 +69,7 @@ export async function collectScreenshots(dir) {
       if (++entries > MAX_ENTRIES) throw new Error(`Artifact has more than ${MAX_ENTRIES} entries`);
       const full = path.join(current, entry.name);
       const stat = await lstat(full);
+      let size = null;
       if (stat.isSymbolicLink()) continue;
       if (stat.isDirectory()) {
         await walk(full, depth + 1);
@@ -78,9 +79,9 @@ export async function collectScreenshots(dir) {
         stat.size > 0 &&
         stat.size <= MAX_BYTES &&
         !found.has(entry.name) &&
-        (await isAcceptablePng(full))
+        (size = await pngSize(full))
       ) {
-        found.set(entry.name, full);
+        found.set(entry.name, { full, ...size });
       } else if (stat.isFile()) {
         console.warn(`Skipped ${JSON.stringify(entry.name)}: not a unique kebab-case PNG within ${MAX_BYTES} bytes and ${MAX_WIDTH}x${MAX_HEIGHT}px`);
       }
@@ -91,7 +92,7 @@ export async function collectScreenshots(dir) {
   return [...found.keys()]
     .sort()
     .slice(0, MAX_SHOTS)
-    .map((name) => ({ name, source: found.get(name) }));
+    .map((name) => ({ name, source: found.get(name).full, width: found.get(name).width, height: found.get(name).height }));
 }
 
 const SHA256 = /^[0-9a-f]{64}$/;
@@ -141,12 +142,12 @@ export function parseBaseline(text, { publicUrl = '' } = {}) {
 
 /** Labels each frame against the baseline: checkpoint or failure, and new / changed / unchanged. */
 export function classify(hashed, baseline) {
-  const shots = hashed.map(({ name, sha256: hash }) => {
+  const shots = hashed.map(({ name, sha256: hash, width = 0, height = 0 }) => {
     const kind = name.startsWith(FAILURE_PREFIX) ? 'failure' : 'checkpoint';
     let status = 'unknown';
     if (kind === 'failure') status = 'failed';
     else if (baseline) status = !baseline.shots.has(name) ? 'new' : baseline.shots.get(name) === hash ? 'unchanged' : 'changed';
-    return { name, kind, sha256: hash, status };
+    return { name, kind, sha256: hash, status, width, height };
   });
   shots.sort((a, b) => ORDER[a.status] - ORDER[b.status] || a.name.localeCompare(b.name));
   const present = new Set(hashed.map((s) => s.name));
@@ -448,7 +449,9 @@ export function renderComment(gallery, { runUrl, galleryBaseUrl }) {
     if (galleryBaseUrl) {
       const base = galleryBaseUrl.replace(/\/$/, '');
       // Review-worthy frames sort first; with no changes there is nothing to preview.
-      const preview = shots.filter((s) => s.status !== 'unchanged').slice(0, THUMBNAILS);
+      // GitHub aligns inline images on their bottom edge, so one tall full-page frame leaves
+      // gaps beside it. Preview frames of normal proportions; the page shows the rest.
+      const preview = shots.filter((s) => s.status !== 'unchanged' && !(s.height > s.width * 1.2)).slice(0, THUMBNAILS);
       const cells = preview.map(({ name }) => {
         const src = `${base}/images/${encodeURIComponent(name)}`;
         return `<a href="${escapeHtml(src)}"><img src="${escapeHtml(src)}" width="280" alt="${escapeHtml(caption(name))}"></a>`;
@@ -495,10 +498,10 @@ async function main([command, ...args]) {
     const found = await collectScreenshots(artifactDir);
     await mkdir(path.join(outDir, 'images'), { recursive: true });
     const hashed = [];
-    for (const { name, source } of found) {
+    for (const { name, source, width, height } of found) {
       const target = path.join(outDir, 'images', name);
       await copyFile(source, target);
-      hashed.push({ name, sha256: await sha256(target) });
+      hashed.push({ name, sha256: await sha256(target), width, height });
     }
     const result = process.env.RESULT ?? 'failure';
     const { shots, removed: missing } = classify(hashed, baseline);
