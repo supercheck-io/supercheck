@@ -35,7 +35,7 @@ jobs:
     # Dependabot runs get a read-only token, so the publisher could not comment anyway.
     if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 60
 
     services:
       postgres:
@@ -198,6 +198,8 @@ jobs:
       - name: Capture E2E checkpoints
         # Without the seeded accounts most specs would only time out.
         if: ${{ !cancelled() && steps.seed.outcome == 'success' }}
+        # A step timeout still lets the upload run; a job timeout would cancel it.
+        timeout-minutes: 35
         working-directory: ./app/e2e
         # A separate output folder: each Playwright run clears its own, which would erase the tour.
         run: npx playwright test --project=chromium --output=checkpoint-results

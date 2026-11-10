@@ -39,6 +39,9 @@ export const VOLATILE_IMAGES = '[data-slot="avatar"]';
  */
 export async function normalizeVolatileText(page: Page): Promise<void> {
   await page.evaluate(() => {
+    // Kept so restoreVolatileText can put the page back for a test that keeps running.
+    const saved: Array<[Node, string | null]> = [];
+    (window as unknown as { __volatileText?: typeof saved }).__volatileText = saved;
     const MONTH = '(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*';
     const WEEKDAY = '(?:(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)[a-z]*,? )?';
     const rules: Array<[RegExp, string | ((m: string) => string)]> = [
@@ -57,8 +60,20 @@ export async function normalizeVolatileText(page: Page): Promise<void> {
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
       let text = node.nodeValue ?? '';
       for (const [pattern, value] of rules) text = text.replace(pattern, value as string);
-      if (text !== node.nodeValue) node.nodeValue = text;
+      if (text !== node.nodeValue) {
+        saved.push([node, node.nodeValue]);
+        node.nodeValue = text;
+      }
     }
+  });
+}
+
+/** Undoes normalizeVolatileText, so a mid-flow checkpoint leaves the page as the test saw it. */
+export async function restoreVolatileText(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const holder = window as unknown as { __volatileText?: Array<[Node, string | null]> };
+    for (const [node, value] of holder.__volatileText ?? []) node.nodeValue = value;
+    delete holder.__volatileText;
   });
 }
 

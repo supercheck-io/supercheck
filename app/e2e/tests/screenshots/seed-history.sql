@@ -84,6 +84,13 @@ FROM member m JOIN "user" u ON u.id = m.user_id
 WHERE u.email = 'reviewer@example.com' AND m.role = 'org_owner'
 LIMIT 1;
 
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM seed_org) THEN
+    RAISE EXCEPTION 'reviewer@example.com owns no organization; screenshots.setup.ts did not finish';
+  END IF;
+END $$;
+
 INSERT INTO member (id, organization_id, user_id, role, created_at)
 SELECT uuidv7(), o.id, u.id, r.role, now()
 FROM seed_roles r JOIN "user" u ON u.email = r.email CROSS JOIN seed_org o;

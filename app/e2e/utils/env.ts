@@ -12,7 +12,8 @@ import { SCREENSHOT_IDENTITIES, SCREENSHOT_USER } from "./screenshot";
 // passwords are public, so they are only ever tried against a local throwaway app.
 const CHECKPOINTS = process.env.E2E_CHECKPOINTS === "1";
 if (CHECKPOINTS) {
-  const host = new URL(process.env.E2E_BASE_URL || "http://localhost:3000").hostname;
+  // Same default as playwright.config.ts, so an unset base URL is refused, not assumed local.
+  const host = new URL(process.env.E2E_BASE_URL || "https://demo.supercheck.dev").hostname;
   if (!["localhost", "127.0.0.1", "[::1]"].includes(host)) {
     throw new Error(`E2E_CHECKPOINTS only runs against a local throwaway app, not ${host}`);
   }

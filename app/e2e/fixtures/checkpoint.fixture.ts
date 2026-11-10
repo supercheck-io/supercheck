@@ -11,7 +11,7 @@ import { createHash } from 'node:crypto';
 import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { test as base, type Page, type TestInfo } from '@playwright/test';
-import { normalizeVolatileText, VOLATILE_IMAGES } from '../utils/screenshot';
+import { normalizeVolatileText, restoreVolatileText, VOLATILE_IMAGES } from '../utils/screenshot';
 
 const ENABLED = process.env.E2E_CHECKPOINTS === '1';
 const TESTS_DIR = path.resolve(__dirname, '../tests');
@@ -42,6 +42,7 @@ async function save(page: Page, testInfo: TestInfo, step: string, failed: boolea
   const saved = await page
     .screenshot({ path: file, animations: 'disabled', caret: 'hide', timeout: 10_000, mask: [page.locator(VOLATILE_IMAGES)], maskColor: '#9ca3af' })
     .then(() => true, () => false);
+  if (!failed) await restoreVolatileText(page).catch(() => undefined);
   if (!saved) return;
   const spec = path.relative(TESTS_DIR, testInfo.file);
   await writeFile(
@@ -62,6 +63,13 @@ export async function captureFixturePage(page: Page, label: string): Promise<voi
   const failed = info.status !== info.expectedStatus;
   await save(page, info, failed ? `${label} failure` : label, failed);
 }
+
+/**
+ * True in the screenshot app, which runs without a worker: specs that need a run to
+ * execute skip there with `test.skip(NO_WORKER, NO_WORKER_REASON)` and still run everywhere else.
+ */
+export const NO_WORKER = ENABLED;
+export const NO_WORKER_REASON = 'the PR screenshot app has no worker to execute runs';
 
 /** Saves a named mid-flow frame. A no-op unless checkpoints are on. */
 export async function checkpoint(page: Page, step: string): Promise<void> {

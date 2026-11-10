@@ -69,11 +69,22 @@ export function sample(schema, defs = {}, key = '', depth = 0) {
   }
 }
 
+// The post-mortem drafter (app/src/lib/sre/postmortem.ts) asks for these keys as JSON text.
+const POSTMORTEM = {
+  summary: 'Card payments failed for about 8% of EU customers for 40 minutes after a payment client release.',
+  impact: 'EU customers paying by card saw declined payments; other regions and payment methods were unaffected.',
+  timeline: '09:10 errors start · 09:18 incident opened · 09:31 acknowledged · 09:50 rollback · 09:52 recovered',
+  root_cause: 'The new payment client sent an unsupported 3-D Secure version to the EU acquirer.',
+  contributing_factors: 'No canary for EU traffic; the payment client change shipped without an acquirer contract test.',
+  follow_ups: '- Add an EU acquirer contract test\n- Canary payment client releases by region',
+};
+
 /** The text a request should get: JSON for structured output, the canned answer otherwise. */
 export function answerFor(body) {
   const format = body?.text?.format;
   if (format?.type === 'json_schema' && format.schema) return JSON.stringify(sample(format.schema));
   if (format?.type === 'json_object') return JSON.stringify({ summary: TEXT });
+  if (/post-mortem/i.test(JSON.stringify(body?.instructions ?? body?.input ?? ''))) return JSON.stringify(POSTMORTEM);
   return ANSWER;
 }
 

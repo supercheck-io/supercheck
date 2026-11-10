@@ -22,13 +22,14 @@ import { fileURLToPath } from 'node:url';
 
 export const MARKER = '<!-- supercheck-pr-screenshots -->';
 // Real frames are ~150 KB; tight caps limit what a hostile PR can host on the gallery.
-// The tour plus one E2E checkpoint per test stays well under these.
-export const MAX_SHOTS = 400;
+// The tour and flows (~120 frames) plus one or two E2E frames per test (~270 tests).
+export const MAX_SHOTS = 800;
 export const MAX_BYTES = 2 * 1024 * 1024;
 export const MAX_TOTAL_BYTES = 200 * 1024 * 1024;
 const MAX_META_BYTES = 4 * 1024;
 const META_SUFFIX = '.checkpoint.json';
-const MAX_ENTRIES = 2_000;
+// Each E2E frame brings a folder and a sidecar along with its PNG.
+const MAX_ENTRIES = 5_000;
 const MAX_DEPTH = 6;
 const THUMBNAILS = 6;
 const NAME = /^[a-z0-9][a-z0-9-]{0,99}\.png$/;

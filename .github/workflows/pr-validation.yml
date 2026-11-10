@@ -436,7 +436,7 @@ jobs:
         run: node .github/scripts/check-licenses.mjs
 
       - name: Test PR screenshot publisher
-        run: node --test .github/scripts/pr-screenshots.test.mjs
+        run: node --test .github/scripts/pr-screenshots.test.mjs app/e2e/scripts/mock-ai.test.mjs
 
       - name: Validate Compose files and deploy scripts
         run: ./deploy/docker/validate.sh
