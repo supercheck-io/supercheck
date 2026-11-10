@@ -32,23 +32,29 @@ const MAX_SCREENSHOT_HEIGHT = 9_000;
 // The id-seeded default avatar differs per sign-up; mask it.
 export const VOLATILE_IMAGES = '[data-slot="avatar"]';
 
-/** Chart time axes are labelled with the run's clock time; hidden (layout kept) while capturing. */
-export const VOLATILE_STYLE = '.recharts-xAxis .recharts-cartesian-axis-tick-value { visibility: hidden !important; }';
-
 /**
- * Waits until the page has settled: network quiet, loading skeletons gone and every chart
- * drawn. Each wait is capped, since pages with live updates never go fully idle.
+ * Waits until the page has settled: network quiet, loading skeletons gone and every visible
+ * chart drawn. Each wait is capped (about 10s in all), since live pages never go fully idle.
  */
 export async function settle(page: Page): Promise<void> {
   await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => undefined);
-  // Skeletons pulse (ui/skeleton.tsx); a frame taken while they show is all placeholders.
   await page
-    .waitForFunction(() => Array.from(document.querySelectorAll<HTMLElement>('.animate-pulse')).every((el) => el.offsetParent === null), null, { timeout: 5_000 })
+    .waitForFunction(
+      () => {
+        const shown = (el: Element) => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
+        // Skeletons are `animate-pulse bg-muted` (ui/skeleton.tsx); charts draw an svg once sized.
+        return (
+          !Array.from(document.querySelectorAll('.animate-pulse.bg-muted')).some(shown) &&
+          Array.from(document.querySelectorAll('.recharts-responsive-container')).filter(shown).every((c) => c.querySelector('svg'))
+        );
+      },
+      null,
+      { timeout: 3_000 },
+    )
     .catch(() => undefined);
   await page
-    .waitForFunction(() => Array.from(document.querySelectorAll('.recharts-responsive-container')).every((c) => c.querySelector('svg')), null, { timeout: 5_000 })
+    .evaluate(() => Promise.race([document.fonts.ready, new Promise((resolve) => setTimeout(resolve, 2_000))]))
     .catch(() => undefined);
-  await page.evaluate(() => document.fonts.ready).catch(() => undefined);
 }
 
 /**
@@ -68,6 +74,8 @@ export async function normalizeVolatileText(page: Page): Promise<void> {
       [new RegExp(`\\b${WEEKDAY}${MONTH} \\d{1,2}(?:, \\d{4})?(?:,? (?:at )?\\d{1,2}:\\d{2}(?::\\d{2})?(?: ?[AP]M)?)?`, 'g'), 'Jan 1, 2026 12:00 PM'],
       [/\b\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?Z?)?/g, '2026-01-01 12:00'],
       [/\b\d{1,2}:\d{2}(?::\d{2})? ?[AP]M\b/g, '12:00 PM'],
+      // 24-hour clock times, such as chart time-axis ticks.
+      [/\b\d{1,2}:\d{2}(?::\d{2})?\b/g, '12:00'],
       [/\b\d+ (?:second|minute|hour|day)s? ago\b/g, '5 minutes ago'],
       // UUIDs and long hex ids keep their shape so truncation looks the same.
       // E2E data names end in Date.now() plus a random suffix (see test-data.ts uniqueName).
@@ -126,7 +134,6 @@ export async function captureScreenshot(page: Page, testInfo: TestInfo, name: st
       clip: { x: 0, y, width, height: Math.min(MAX_SCREENSHOT_HEIGHT, height - y) },
       mask: [page.locator(VOLATILE_IMAGES)],
       maskColor: '#9ca3af',
-      style: VOLATILE_STYLE,
     });
   }
 }

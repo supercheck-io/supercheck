@@ -11,7 +11,7 @@ import { createHash } from 'node:crypto';
 import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { test as base, type Page, type TestInfo } from '@playwright/test';
-import { normalizeVolatileText, restoreVolatileText, settle, VOLATILE_IMAGES, VOLATILE_STYLE } from '../utils/screenshot';
+import { normalizeVolatileText, restoreVolatileText, settle, VOLATILE_IMAGES } from '../utils/screenshot';
 
 const ENABLED = process.env.E2E_CHECKPOINTS === '1';
 const TESTS_DIR = path.resolve(__dirname, '../tests');
@@ -40,7 +40,7 @@ async function save(page: Page, testInfo: TestInfo, step: string, failed: boolea
     await normalizeVolatileText(page).catch(() => undefined);
   }
   const saved = await page
-    .screenshot({ path: file, animations: 'disabled', caret: 'hide', timeout: 10_000, mask: [page.locator(VOLATILE_IMAGES)], maskColor: '#9ca3af', style: VOLATILE_STYLE })
+    .screenshot({ path: file, animations: 'disabled', caret: 'hide', timeout: 10_000, mask: [page.locator(VOLATILE_IMAGES)], maskColor: '#9ca3af' })
     .then(() => true, () => false);
   if (!failed) await restoreVolatileText(page).catch(() => undefined);
   if (!saved) return;
