@@ -230,18 +230,21 @@ const SCRIPT = `(() => {
   function show() {
     const card = list[index];
     const main = card.dataset.main || '';
-    if (!main) view = 'pr';
-    const src = view === 'main' ? main : card.dataset.src;
+    // Keep the reader's Main/PR choice for the next changed frame.
+    const shown = main ? view : 'pr';
+    const src = shown === 'main' ? main : card.dataset.src;
     $('v-img').src = src;
-    $('v-img').alt = card.dataset.title + (view === 'main' ? ' (main)' : '');
+    $('v-img').alt = card.dataset.title + (shown === 'main' ? ' (main)' : '');
     $('v-open').href = src;
     $('v-title').textContent = card.dataset.title;
     $('v-count').textContent = (index + 1) + ' / ' + list.length;
     $('v-tags').replaceChildren(card.querySelector('.tags').cloneNode(true));
     $('v-compare').hidden = !main;
-    for (const b of document.querySelectorAll('[data-view]')) b.setAttribute('aria-pressed', String(b.dataset.view === view));
+    for (const b of document.querySelectorAll('[data-view]')) b.setAttribute('aria-pressed', String(b.dataset.view === shown));
     $('v-prev').disabled = index === 0;
     $('v-next').disabled = index === list.length - 1;
+    // A focused button that becomes disabled drops focus; keep it inside the dialog.
+    if (document.activeElement && document.activeElement.disabled) $('v-stage').focus();
     $('v-stage').scrollTop = 0;
     history.replaceState(null, '', '#' + encodeURIComponent(card.dataset.name));
   }
@@ -272,7 +275,8 @@ const SCRIPT = `(() => {
   for (const b of document.querySelectorAll('[data-view]')) b.addEventListener('click', () => { view = b.dataset.view; show(); });
   viewer.addEventListener('click', (event) => { if (event.target === viewer) viewer.close(); });
   viewer.addEventListener('close', () => history.replaceState(null, '', location.pathname + location.search));
-  viewer.addEventListener('keydown', (event) => {
+  document.addEventListener('keydown', (event) => {
+    if (!viewer.open || event.altKey || event.ctrlKey || event.metaKey) return;
     if (event.key === 'ArrowLeft') { event.preventDefault(); move(-1); }
     else if (event.key === 'ArrowRight') { event.preventDefault(); move(1); }
     else if ((event.key === 'm' || event.key === 'M') && list[index].dataset.main) { view = view === 'main' ? 'pr' : 'main'; show(); }
@@ -287,6 +291,7 @@ const SCRIPT_HASH = createHash('sha256').update(SCRIPT).digest('base64');
 const STYLE = `
 :root{color-scheme:dark;--bg:#09090b;--fg:#f4f4f5;--muted:#a1a1aa;--line:#27272a;--card:#111113;--well:#18181b;--accent:#16a34a;--accent-soft:#14532d;--accent-fg:#bbf7d0}
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 body{margin:0;background:var(--bg) radial-gradient(1200px 480px at 50% -140px,#123d24 0%,transparent 70%) no-repeat;color:var(--fg);font:15px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
 .wrap{max-width:1760px;margin:0 auto;padding:40px 16px 64px}
 @media (min-width:720px){.wrap{padding:56px 48px 80px}}
@@ -419,7 +424,7 @@ ${cards}
 <div class="v-bar"><div class="v-head"><span id="v-count"></span><h2 id="v-title"></h2><div id="v-tags"></div></div>
 <div class="row"><div class="row compare" id="v-compare" role="group" aria-label="Version" hidden><button type="button" data-view="pr" aria-pressed="true">This PR</button><button type="button" data-view="main" aria-pressed="false">Main</button></div>
 <a class="btn" id="v-open" target="_blank" rel="noopener">Open image</a><button type="button" id="v-close" aria-label="Close viewer">✕</button></div></div>
-<div class="v-body"><button type="button" class="v-nav" id="v-prev" aria-label="Previous screenshot">‹</button><div id="v-stage"><img id="v-img" alt=""></div><button type="button" class="v-nav" id="v-next" aria-label="Next screenshot">›</button></div>
+<div class="v-body"><button type="button" class="v-nav" id="v-prev" aria-label="Previous screenshot">‹</button><div id="v-stage" tabindex="-1"><img id="v-img" alt=""></div><button type="button" class="v-nav" id="v-next" aria-label="Next screenshot">›</button></div>
 <p class="v-hint">← → move · M toggles main · Esc closes</p>
 </dialog>
 <script>${SCRIPT}</script></body></html>

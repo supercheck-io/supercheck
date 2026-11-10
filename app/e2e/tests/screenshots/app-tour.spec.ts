@@ -34,11 +34,10 @@ test.describe('public pages', () => {
  * SKIPPED, so a new page cannot silently miss the review gallery.
  */
 const PAGES: Array<{ route: string; name: string; path?: (s: Seed) => string; dark?: boolean }> = [
+  // Old URLs that redirect to a tab are toured at the tab itself.
   { route: '/', name: 'dashboard', dark: true },
-  { route: '/alerts', name: 'alerts' },
   { route: '/connected-apps', name: 'connected-apps' },
   { route: '/copilot', name: 'copilot' },
-  { route: '/copilot/investigations', name: 'copilot-investigations' },
   { route: '/create', name: 'create' },
   { route: '/incidents', name: 'incidents' },
   { route: '/incidents/analytics', name: 'incidents-analytics' },
@@ -52,10 +51,11 @@ const PAGES: Array<{ route: string; name: string; path?: (s: Seed) => string; da
   { route: '/monitors/[id]', name: 'monitor-detail', path: (s) => `/monitors/${s.monitor}` },
   { route: '/monitors/[id]/edit', name: 'monitor-edit', path: (s) => `/monitors/${s.monitor}/edit` },
   { route: '/notifications', name: 'notifications' },
+  { route: '/alerts', name: 'notifications-history', path: () => '/notifications?tab=history' },
   { route: '/org-admin', name: 'org-admin' },
-  { route: '/org-admin/integrations', name: 'org-admin-integrations' },
-  { route: '/org-admin/private-agents', name: 'org-admin-private-agents' },
-  { route: '/org-admin/runbooks', name: 'org-admin-runbooks' },
+  { route: '/org-admin/integrations', name: 'org-admin-integrations', path: () => '/org-admin?tab=integrations' },
+  { route: '/org-admin/private-agents', name: 'org-admin-private-agents', path: () => '/org-admin?tab=private-agents' },
+  { route: '/org-admin/runbooks', name: 'org-admin-saved-queries', path: () => '/org-admin?tab=integrations&section=saved-queries' },
   { route: '/playground', name: 'playground' },
   { route: '/playground/[id]', name: 'test-editor', path: (s) => `/playground/${s.test}` },
   { route: '/requirements', name: 'requirements' },
@@ -74,6 +74,7 @@ const PAGES: Array<{ route: string; name: string; path?: (s: Seed) => string; da
 const SKIPPED: Record<string, string> = {
   '/billing': 'cloud billing only; the self-hosted tour app has no billing',
   '/billing/success': 'cloud billing only; the self-hosted tour app has no billing',
+  '/copilot/investigations': 'redirects to /incidents, which is toured',
   '/incidents/[id]': 'needs an incident, which the seed does not create',
   '/requirements/[id]': 'needs a requirement, which the seed does not create',
   '/requirements/edit/[id]': 'needs a requirement, which the seed does not create',
@@ -85,8 +86,11 @@ const SKIPPED: Record<string, string> = {
 const APP_ROUTES = path.resolve(__dirname, '../../../src/app/(main)');
 function appRoutes(dir = APP_ROUTES, prefix = ''): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-    if (!entry.isDirectory()) return entry.name === 'page.tsx' ? [prefix || '/'] : [];
-    // Route groups like (settings) don't add a URL segment.
+    if (!entry.isDirectory()) return /^page\.(tsx?|jsx?|mdx)$/.test(entry.name) ? [prefix || '/'] : [];
+    // Private folders and parallel-route slots are not URL segments of their own pages.
+    if (/^[_@]/.test(entry.name)) return [];
+    // Route groups like (settings) add no URL segment; intercepting routes like (.)x are not pages.
+    if (/^\(\.+\)/.test(entry.name)) return [];
     const segment = /^\(.*\)$/.test(entry.name) ? '' : `/${entry.name}`;
     return appRoutes(path.join(dir, entry.name), prefix + segment);
   });
@@ -109,8 +113,10 @@ for (const colorScheme of ['light', 'dark'] as const) {
         const target = entry.path ? entry.path(seed()) : entry.route;
         const response = await page.goto(target);
         expect(response?.status() ?? 0).toBeLessThan(400);
-        // A rejected session redirects to sign-in; never publish that under this page's name.
-        expect(new URL(page.url()).pathname).not.toMatch(/^\/(sign-in|sign-up)\b/);
+        // Any redirect (to sign-in, or a list page after a failed lookup) would publish the
+        // wrong page under this name, so the browser must land exactly where the tour asked.
+        const landed = new URL(page.url());
+        expect(landed.pathname + landed.search).toBe(target);
         await waitForHydration(page);
         await captureScreenshot(page, testInfo, shot);
       });
