@@ -93,3 +93,72 @@ test('playground templates', async ({ page }, testInfo) => {
   await expect(page.getByRole('dialog')).toBeVisible();
   await frame('templates');
 });
+
+test('incident lifecycle', async ({ page }, testInfo) => {
+  test.setTimeout(180_000);
+  const frame = frames(page, testInfo, 'incident-lifecycle');
+  await open(page, '/incidents');
+  await page.getByRole('button', { name: 'New incident' }).click();
+  const create = page.getByRole('dialog', { name: 'Create incident' });
+  await create.getByLabel('Title').fill('Card payments failing for EU customers');
+  await create.getByLabel('Initial notes').fill('Stripe returns 402 for about 8% of EU card payments since 09:10.');
+  await create.getByRole('button', { name: 'Create incident', exact: true }).click();
+  await page.waitForURL(/\/incidents\/[0-9a-f-]{36}$/);
+  await waitForHydration(page);
+  await frame('triggered');
+
+  // The brief comes from the stand-in AI provider (app/e2e/scripts/mock-ai.mjs).
+  // A first click can land before nested panels hydrate, so retry until the tab shows.
+  await expect(async () => {
+    await page.getByRole('tab', { name: 'Investigation', exact: true }).click();
+    await expect(page).toHaveURL(/[?&]tab=investigation/, { timeout: 2_000 });
+  }).toPass({ timeout: 30_000 });
+  await page.getByRole('button', { name: 'Generate brief', exact: true }).first().click();
+  await expect(page.getByRole('button', { name: 'Regenerate brief', exact: true }).first()).toBeVisible({ timeout: 90_000 });
+  await frame('brief');
+
+  await page.getByRole('tab', { name: 'Overview', exact: true }).click();
+  await page.getByRole('button', { name: 'Acknowledge', exact: true }).first().click();
+  await expect(page.getByRole('button', { name: 'Resolve incident' }).first()).toBeVisible({ timeout: 30_000 });
+  await frame('acknowledged');
+
+  await page.getByRole('button', { name: 'Resolve incident' }).first().click();
+  const resolve = page.getByRole('dialog', { name: 'Resolve incident' });
+  await resolve.getByLabel('What confirmed recovery?').fill('Rolled back the payment client; EU card success rate is back to 99.6%.');
+  await frame('resolve-dialog');
+  await resolve.getByRole('button', { name: /resolve/i }).last().click();
+  await expect(resolve).toBeHidden({ timeout: 30_000 });
+  await frame('resolved');
+
+  const draft = page.getByRole('button', { name: 'Generate post-mortem draft' });
+  if (await draft.isVisible()) {
+    await draft.click();
+    await expect(page.getByText('No post-mortem yet')).toBeHidden({ timeout: 60_000 });
+    await frame('post-mortem');
+  }
+});
+
+test('copilot answer', async ({ page }, testInfo) => {
+  const frame = frames(page, testInfo, 'copilot');
+  await open(page, '/copilot');
+  await page.getByRole('button', { name: 'New chat', exact: true }).click();
+  await page.getByRole('textbox').last().fill('Why is checkout slow since the last deploy?');
+  await frame('prompt');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(page.getByText('Likely cause:')).toBeVisible({ timeout: 60_000 });
+  await frame('answer');
+});
+
+// The connector form for each kind of source a reviewer is likely to touch. Nothing is saved.
+for (const connector of ['GitHub', 'Kubernetes', 'Prometheus', 'Grafana', 'Datadog', 'Sentry', 'PagerDuty', 'MCP']) {
+  test(`connector ${connector}`, async ({ page }, testInfo) => {
+    const frame = frames(page, testInfo, `connector-${connector.toLowerCase()}`);
+    await open(page, '/org-admin?tab=integrations');
+    await page.getByRole('button', { name: 'Add connector', exact: true }).first().click();
+    const dialog = page.getByRole('dialog', { name: 'Add connector' });
+    await dialog.getByLabel('Connector type').click();
+    if (connector === 'GitHub') await frame('catalog');
+    await page.getByRole('option', { name: connector, exact: true }).click();
+    await frame('form');
+  });
+}

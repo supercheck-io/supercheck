@@ -1,4 +1,5 @@
 import { expect, test } from "../../fixtures/roles.fixture";
+import { checkpoint } from "../../fixtures/checkpoint.fixture";
 import { requireRbacUser } from "../../utils/env";
 import { waitForHydration } from "../../utils/hydration";
 
@@ -49,6 +50,7 @@ test.describe("AI SRE service catalog @aisre @critical", () => {
       await dialog.getByLabel("Service name *").fill(name);
       await dialog.getByLabel("Environment").fill("staging");
       await dialog.getByLabel("Description").fill(`Created service ${suffix}`);
+      await checkpoint(page, "add service dialog");
       await dialog.getByTestId("submit-service-btn").click();
       await expect(dialog).toBeHidden();
 
@@ -172,6 +174,7 @@ test.describe("AI SRE investigation surfaces @aisre @critical", () => {
       .locator('[aria-label="Copilot message"]:not(textarea)')
       .last();
     await expect(assistantMessage).toBeVisible({ timeout: 60_000 });
+    await checkpoint(page, "copilot answer");
     await expect(assistantMessage).not.toBeEmpty();
     // The console only adds the session to its in-memory history once the
     // thread finishes and resolves the conversation. New chat unmounts the

@@ -125,17 +125,23 @@ setup('sign up and seed screenshot data', async ({ page, baseURL, playwright }) 
   const incident = new URL(page.url()).pathname.split('/').pop() ?? '';
   await ok('incident acknowledge', await api.post(`/api/sre/incidents/${incident}/acknowledge`, { headers }));
 
-  // Role accounts for the E2E checkpoint run; seed-history.sql adds them to this organization.
-  // Wait for each sign-up's own organization, so the SQL can remove it afterwards.
-  for (const identity of Object.values(SCREENSHOT_IDENTITIES)) {
+  // Accounts for the E2E checkpoint run. API sign-up creates only the user; the browser flow
+  // provisions a workspace through setup-defaults. The four role accounts skip that and join
+  // this organization in seed-history.sql instead, like invited members; the others get
+  // their own workspace.
+  const members = new Set(['orgAdmin', 'projectAdmin', 'editor', 'viewer']);
+  for (const [key, identity] of Object.entries(SCREENSHOT_IDENTITIES)) {
     const context = await playwright.request.newContext({ baseURL, extraHTTPHeaders: { origin: baseURL ?? '' } });
     await ok(`sign-up ${identity.email}`, await context.post('/api/auth/sign-up/email', { data: identity }));
-    await expect
-      .poll(async () => {
-        const res = await context.get('/api/projects');
-        return res.ok() ? ((await res.json()) as { currentProject?: { id?: string } }).currentProject?.id : undefined;
-      }, { timeout: 60_000 })
-      .toBeTruthy();
+    if (!members.has(key)) {
+      await ok(`workspace ${identity.email}`, await context.post('/api/auth/setup-defaults'));
+      await expect
+        .poll(async () => {
+          const res = await context.get('/api/projects');
+          return res.ok() ? ((await res.json()) as { currentProject?: { id?: string } }).currentProject?.id : undefined;
+        }, { timeout: 60_000 })
+        .toBeTruthy();
+    }
     await context.dispose();
   }
 

@@ -65,8 +65,8 @@ CROSS JOIN generate_series(1, 7) AS d;
 UPDATE jobs SET status = 'passed', last_run_at = now() - interval '1 day';
 
 -- Role accounts (utils/screenshot.ts SCREENSHOT_IDENTITIES) join the demo organization the
--- way the real E2E deployment invites them. Their own sign-up organizations go first, so the
--- demo organization is the only one they belong to.
+-- way the real E2E deployment invites them. screenshots.setup.ts gives them no workspace of
+-- their own, so the demo organization is the only one they belong to.
 CREATE TEMP TABLE seed_roles (email text, role text) ON COMMIT DROP;
 INSERT INTO seed_roles VALUES
   ('org-admin@example.com', 'org_admin'),
@@ -79,10 +79,6 @@ SELECT m.organization_id AS id
 FROM member m JOIN "user" u ON u.id = m.user_id
 WHERE u.email = 'reviewer@example.com' AND m.role = 'org_owner'
 LIMIT 1;
-
-DELETE FROM organization
-WHERE id IN (SELECT m.organization_id FROM member m JOIN "user" u ON u.id = m.user_id JOIN seed_roles r ON r.email = u.email)
-  AND id NOT IN (SELECT id FROM seed_org);
 
 INSERT INTO member (id, organization_id, user_id, role, created_at)
 SELECT uuidv7(), o.id, u.id, r.role, now()

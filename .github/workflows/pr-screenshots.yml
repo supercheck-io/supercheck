@@ -72,6 +72,10 @@ jobs:
       NEXT_PUBLIC_APP_URL: http://localhost:3000
       BETTER_AUTH_URL: http://localhost:3000
       STATUS_PAGE_DOMAIN: localhost
+      # AI features talk to a local stand-in (app/e2e/scripts/mock-ai.mjs), never a real provider.
+      AI_PROVIDER: openai
+      OPENAI_API_KEY: sk-demo-not-a-real-key
+      OPENAI_BASE_URL: http://127.0.0.1:4010/v1
 
     steps:
       - name: Checkout code
@@ -128,6 +132,9 @@ jobs:
         env:
           SKIP_ENV_VALIDATION: true
 
+      - name: Start stand-in AI provider
+        run: nohup node app/e2e/scripts/mock-ai.mjs 4010 > "$RUNNER_TEMP/mock-ai.log" 2>&1 &
+
       - name: Start app
         working-directory: ./app
         run: |
@@ -168,7 +175,8 @@ jobs:
       - name: Capture E2E checkpoints
         if: ${{ !cancelled() }}
         working-directory: ./app/e2e
-        run: npx playwright test --project=chromium
+        # A separate output folder: each Playwright run clears its own, which would erase the tour.
+        run: npx playwright test --project=chromium --output=checkpoint-results
         env:
           CI: true
           E2E_CHECKPOINTS: "1"
@@ -187,6 +195,7 @@ jobs:
           name: pr-screenshots
           path: |
             app/e2e/test-results/**/*.png
-            app/e2e/test-results/**/*.checkpoint.json
+            app/e2e/checkpoint-results/**/*.png
+            app/e2e/checkpoint-results/**/*.checkpoint.json
           retention-days: 7
           if-no-files-found: warn

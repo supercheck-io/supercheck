@@ -50,6 +50,19 @@ async function save(page: Page, testInfo: TestInfo, step: string, failed: boolea
   );
 }
 
+/**
+ * Saves the end (or failure) frame of a page a fixture opened itself, such as a role's
+ * signed-in page. Call it before the fixture closes that page's context; the automatic
+ * checkpoint only sees the default `page`.
+ */
+export async function captureFixturePage(page: Page, label: string): Promise<void> {
+  if (!ENABLED) return;
+  const info = base.info();
+  if (info.status === 'skipped') return;
+  const failed = info.status !== info.expectedStatus;
+  await save(page, info, failed ? `${label} failure` : label, failed);
+}
+
 /** Saves a named mid-flow frame. A no-op unless checkpoints are on. */
 export async function checkpoint(page: Page, step: string): Promise<void> {
   if (ENABLED) await save(page, base.info(), step, false);
