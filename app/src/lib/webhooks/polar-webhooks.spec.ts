@@ -165,6 +165,14 @@ describe("Polar webhook helpers", () => {
       warn.mockRestore();
     });
 
+    it("omits a currency that is not a three-letter code", async () => {
+      const warn = jest.spyOn(console, "warn").mockImplementation(() => undefined);
+      (db.query.organization.findFirst as jest.Mock).mockResolvedValue(undefined);
+      await handleRefund({ data: { id: "r1", customer_id: "c1", amount: 5, currency: "usd\ninjected" } }, "refund.created");
+      expect(warn).toHaveBeenCalledWith("[Polar] refund.created: r1 customer c1 refunded 5");
+      warn.mockRestore();
+    });
+
     it("is a safe no-op for an unknown customer", async () => {
       const warn = jest.spyOn(console, "warn").mockImplementation(() => undefined);
       (db.query.organization.findFirst as jest.Mock).mockResolvedValue(undefined);

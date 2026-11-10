@@ -344,6 +344,7 @@ class PolarUsageService {
       logger.error({ message, eventId }, "Failed to sync usage event to Polar");
       const rejected = error instanceof PolarIngestError && isNonRetryableIngestStatus(error.status);
 
+      // shortcut: syncAttempts is cumulative, so earlier transient failures count toward parking; fine for a safety net, count rejections separately if it parks too eagerly.
       // Update sync status with error; a repeatedly rejected event is parked instead of retried forever
       await database
         .update(usageEvents)

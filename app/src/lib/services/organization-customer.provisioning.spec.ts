@@ -218,6 +218,33 @@ describe("ensurePolarCustomerAndLink against the provider API", () => {
       expect(update.body.metadata).toEqual({ referenceId: ORG, userId: "user-1", source: "legacy-user-customer" });
     });
 
+    it("does not write Polar metadata when the database link is lost to another organization", async () => {
+      conflict()
+        .mockResolvedValueOnce(list(legacy()))
+        .mockResolvedValueOnce(json({ id: "cus_legacy", active_subscriptions: [] }));
+      mockFindFirst.mockResolvedValueOnce({ polarCustomerId: null }).mockResolvedValueOnce(undefined)
+        .mockResolvedValueOnce({ polarCustomerId: "cus_other" });
+      mockReturning.mockResolvedValue([]);
+
+      await expect(provision({ throwOnError: true })).resolves.toBe("cus_other");
+      for (let i = 0; i < fetchMock.mock.calls.length; i++) {
+        expect((await request(i)).method).not.toBe("PATCH");
+      }
+    });
+
+    it("does not write Polar metadata when the database link throws", async () => {
+      conflict()
+        .mockResolvedValueOnce(list(legacy()))
+        .mockResolvedValueOnce(json({ id: "cus_legacy", active_subscriptions: [] }));
+      mockFindFirst.mockResolvedValueOnce({ polarCustomerId: null }).mockResolvedValueOnce(undefined);
+      mockReturning.mockRejectedValue(new Error("unique violation"));
+
+      await expect(provision({ throwOnError: true })).rejects.toThrow("unique violation");
+      for (let i = 0; i < fetchMock.mock.calls.length; i++) {
+        expect((await request(i)).method).not.toBe("PATCH");
+      }
+    });
+
     it.each([
       ["another organization holds it", [legacy()], { id: "org-other" }, []],
       ["it has an active subscription", [legacy()], undefined, [{ id: "sub_1" }]],

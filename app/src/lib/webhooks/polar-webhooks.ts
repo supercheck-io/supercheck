@@ -1867,7 +1867,7 @@ export async function handleRefund(payload: PolarWebhookPayload, eventType: "ord
   const org = customerId ? await findOrganizationByCustomerId(customerId) : undefined;
   const amount = data.refundedAmount ?? data.refunded_amount ?? data.amount;
   console.warn(
-    `[Polar] ${eventType}: ${truncateId(typeof data.id === "string" ? data.id : undefined)} customer ${truncateId(customerId)} refunded ${typeof amount === "number" ? amount : "unknown"} ${typeof data.currency === "string" ? data.currency : ""}`.trim(),
+    `[Polar] ${eventType}: ${truncateId(typeof data.id === "string" ? data.id : undefined)} customer ${truncateId(customerId)} refunded ${typeof amount === "number" ? amount : "unknown"} ${typeof data.currency === "string" && /^[a-z]{3}$/i.test(data.currency) ? data.currency : ""}`.trim(),
   );
   if (!org) return;
   const { reconcilePolarSubscription } = await import("@/lib/services/subscription-reconciliation");
