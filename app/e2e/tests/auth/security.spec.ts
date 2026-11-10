@@ -13,7 +13,8 @@
  * Test IDs: AUTH-042 through AUTH-055
  */
 
-import { test, expect, type BrowserContext, type Page } from "@playwright/test";
+import { type BrowserContext, type Page } from "@playwright/test";
+import { test, expect } from "../../fixtures/checkpoint.fixture";
 
 test.use({ storageState: { cookies: [], origins: [] } });
 

@@ -1,4 +1,5 @@
 import { expect, test } from "../../fixtures/roles.fixture";
+import { checkpoint } from "../../fixtures/checkpoint.fixture";
 
 import { requireRbacUser } from "../../utils/env";
 
@@ -78,6 +79,7 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
       ).toBeVisible();
 
       await expect(page.getByTestId("incident-ai-summary")).toBeVisible();
+      await checkpoint(page, "incident created");
       const sheet = await openInvestigationTab(page);
       // One report; live-source options sit behind the Run options control.
       await expect(page).toHaveURL(/[?&]tab=investigation/);
@@ -96,6 +98,7 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
         sheet.getByRole("button", { name: "Regenerate brief", exact: true }),
       ).toBeVisible({ timeout: 90_000 });
       await expect(sheet.getByText(/^Confidence:/)).toHaveCount(0);
+      await checkpoint(page, "brief generated");
 
       await page.reload();
       const reloadedSheet = await openInvestigationTab(page);
@@ -122,6 +125,7 @@ test.describe("AI SRE incident, brief, and investigation lifecycle @aisre @criti
         .click({ timeout: 120_000 });
       await page.getByRole("menuitem", { name: "Save report snapshot", exact: true }).click();
       await expect(reloadedSheet.getByText(/Snapshot saved/)).toBeVisible();
+      await checkpoint(page, "investigation report");
       await page.keyboard.press("Escape");
 
       // Feedback lives on the Overview tab's summary card as Right/Wrong plus a note.

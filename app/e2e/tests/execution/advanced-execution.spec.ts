@@ -1,5 +1,6 @@
 import { expect } from '@playwright/test';
 import { test } from '../../fixtures';
+import { NO_WORKER, NO_WORKER_REASON } from '../../fixtures/checkpoint.fixture';
 import { createTest, deleteTest } from '../../utils/test-data';
 
 type ExecutionStart = {
@@ -149,6 +150,7 @@ test.describe('Advanced execution contracts @execution', () => {
     projectAdminPage,
     cleanup,
   }) => {
+    test.skip(NO_WORKER, NO_WORKER_REASON);
     const request = projectAdminPage.request;
     const projectsResponse = await request.get('/api/projects');
     expect(projectsResponse.status()).toBe(200);

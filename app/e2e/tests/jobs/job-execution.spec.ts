@@ -1,6 +1,7 @@
 import { expect } from '@playwright/test';
 
 import { test } from '../../fixtures';
+import { NO_WORKER, NO_WORKER_REASON } from '../../fixtures/checkpoint.fixture';
 import { JobCreatePage, JobsPage } from '../../pages/jobs.page';
 import { createJob, deleteJob, deleteTest } from '../../utils/test-data';
 
@@ -27,6 +28,7 @@ test.describe('Job execution @jobs @execution', () => {
     projectAdminPage,
     cleanup,
   }) => {
+    test.skip(NO_WORKER, NO_WORKER_REASON);
     const page = projectAdminPage;
     const request = projectAdminPage.request;
     // The two polls below can use 75s combined, above the 60s default.

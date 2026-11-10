@@ -1,4 +1,5 @@
-import { test as base, Page, BrowserContext } from '@playwright/test';
+import type { Page, BrowserContext } from '@playwright/test';
+import { captureFixturePage, test as base } from './checkpoint.fixture';
 import { SignInPage, SignUpPage, ForgotPasswordPage, InvitePage } from '../pages/auth';
 import { env } from '../utils/env';
 import { newAuthenticatedPage } from '../utils/api-auth';
@@ -70,6 +71,7 @@ export const test = base.extend<AuthFixtures>({
 
     await use(page);
 
+    await captureFixturePage(page, 'authenticatedPage');
     await page.context().close();
   },
 

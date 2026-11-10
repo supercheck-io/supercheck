@@ -7,6 +7,22 @@ export const SCREENSHOT_USER = {
   email: 'reviewer@example.com',
   password: 'Screenshot-Tour-2026!',
 };
+/**
+ * Throwaway role accounts for the E2E checkpoint run. screenshots.setup.ts signs them up and
+ * seed-history.sql makes the role accounts members of the demo user's organization, matching
+ * how the real E2E deployment invites them. The demo user is the organization owner.
+ */
+const ROLE_PASSWORD = 'Screenshot-Role-2026!';
+export const SCREENSHOT_IDENTITIES = {
+  superAdmin: { name: 'Sam Superadmin', email: 'super-admin@example.com', password: ROLE_PASSWORD },
+  orgAdmin: { name: 'Ola Orgadmin', email: 'org-admin@example.com', password: ROLE_PASSWORD },
+  projectAdmin: { name: 'Pat Projectadmin', email: 'project-admin@example.com', password: ROLE_PASSWORD },
+  editor: { name: 'Eddie Editor', email: 'editor@example.com', password: ROLE_PASSWORD },
+  viewer: { name: 'Vic Viewer', email: 'viewer@example.com', password: ROLE_PASSWORD },
+  invitee: { name: 'Ivy Invitee', email: 'invitee@example.com', password: ROLE_PASSWORD },
+  session: { name: 'Sid Session', email: 'session@example.com', password: ROLE_PASSWORD },
+  security: { name: 'Sec Security', email: 'security@example.com', password: ROLE_PASSWORD },
+};
 export const SCREENSHOT_AUTH_STATE = path.resolve(__dirname, '../screenshots-auth-state.json');
 export const SCREENSHOT_SEED = path.resolve(__dirname, '../screenshots-seed.json');
 
@@ -14,15 +30,18 @@ export const SCREENSHOT_SEED = path.resolve(__dirname, '../screenshots-seed.json
 const MAX_SCREENSHOT_HEIGHT = 9_000;
 
 // The id-seeded default avatar differs per sign-up; mask it.
-const VOLATILE_IMAGES = '[data-slot="avatar"]';
+export const VOLATILE_IMAGES = '[data-slot="avatar"]';
 
 /**
  * Rewrites text that differs on every run (dates, times, generated IDs) to fixed values,
  * so the gallery's SHA-256 comparison only flags real UI changes. Rewriting keeps column
  * widths stable, which a mask drawn over varying text does not.
  */
-async function normalizeVolatileText(page: Page): Promise<void> {
+export async function normalizeVolatileText(page: Page): Promise<void> {
   await page.evaluate(() => {
+    // Kept so restoreVolatileText can put the page back for a test that keeps running.
+    const saved: Array<[Node, string | null]> = [];
+    (window as unknown as { __volatileText?: typeof saved }).__volatileText = saved;
     const MONTH = '(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*';
     const WEEKDAY = '(?:(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)[a-z]*,? )?';
     const rules: Array<[RegExp, string | ((m: string) => string)]> = [
@@ -32,6 +51,8 @@ async function normalizeVolatileText(page: Page): Promise<void> {
       [/\b\d{1,2}:\d{2}(?::\d{2})? ?[AP]M\b/g, '12:00 PM'],
       [/\b\d+ (?:second|minute|hour|day)s? ago\b/g, '5 minutes ago'],
       // UUIDs and long hex ids keep their shape so truncation looks the same.
+      // E2E data names end in Date.now() plus a random suffix (see test-data.ts uniqueName).
+      [/\b1\d{12}_[a-z0-9]{6,10}\b/g, '1700000000000_demo'],
       // Tables show IDs cut short in the DOM, like "019a1c50f…".
       [/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b|\b[0-9a-f]{16,}\b|\b[0-9a-f-]{6,}(?=…|\.\.\.)/g, (m) => m.replace(/[0-9a-f]/g, '0')],
     ];
@@ -39,8 +60,20 @@ async function normalizeVolatileText(page: Page): Promise<void> {
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
       let text = node.nodeValue ?? '';
       for (const [pattern, value] of rules) text = text.replace(pattern, value as string);
-      if (text !== node.nodeValue) node.nodeValue = text;
+      if (text !== node.nodeValue) {
+        saved.push([node, node.nodeValue]);
+        node.nodeValue = text;
+      }
     }
+  });
+}
+
+/** Undoes normalizeVolatileText, so a mid-flow checkpoint leaves the page as the test saw it. */
+export async function restoreVolatileText(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const holder = window as unknown as { __volatileText?: Array<[Node, string | null]> };
+    for (const [node, value] of holder.__volatileText ?? []) node.nodeValue = value;
+    delete holder.__volatileText;
   });
 }
 

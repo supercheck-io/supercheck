@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from '../../fixtures/checkpoint.fixture';
 import { waitForHydration } from '../../utils/hydration';
 
 test.describe('Cross-cutting UI behavior @core', () => {

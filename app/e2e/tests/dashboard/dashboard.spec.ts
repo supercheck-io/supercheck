@@ -49,6 +49,8 @@ test.describe('Dashboard contracts @dashboard', () => {
     await expect(page.getByTestId('metric-browser-minutes')).toContainText('Browser minutes');
     await expect(page.getByTestId('metric-k6-vu-minutes')).toContainText('k6 VU-minutes');
     await expect(page.getByTestId('panel-needs-attention')).toBeVisible();
+    // Open incidents take the panel first, so pick the Runs tab before reading it.
+    await page.getByTestId('panel-needs-attention').getByRole('tab', { name: 'Runs' }).click();
     await expect(page.getByTestId('panel-needs-attention')).toContainText('by trigger, last 7 days');
     await expect(page.getByRole('tab', { name: /Alerts/ })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Learn how project status is calculated' })).toBeVisible();

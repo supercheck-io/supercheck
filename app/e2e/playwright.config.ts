@@ -44,7 +44,8 @@ export default defineConfig({
     // artifacts on this public repository are world-readable, so traces must
     // stay off. Failure screenshots and error context still document failures.
     trace: 'off',
-    screenshot: 'only-on-failure',
+    // The PR gallery's checkpoint fixture saves its own named failure frames.
+    screenshot: process.env.E2E_CHECKPOINTS === '1' ? 'off' : 'only-on-failure',
     video: 'off',
     actionTimeout: 15000,
     navigationTimeout: 45000,
@@ -73,6 +74,8 @@ export default defineConfig({
         // 1.64 forwards screen from device descriptors; pinned for parity, revisit deliberately.
         screen: undefined,
         storageState: 'user-auth-state.json',
+        // Gallery frames use the same viewport as the screenshot tour.
+        ...(process.env.E2E_CHECKPOINTS === '1' ? { viewport: { width: 1440, height: 900 } } : {}),
       },
       dependencies: ['setup'],
     },

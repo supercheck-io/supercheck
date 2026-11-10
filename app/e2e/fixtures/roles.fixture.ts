@@ -1,4 +1,5 @@
-import { test as base, Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { captureFixturePage, test as base } from "./checkpoint.fixture";
 import type { APIRequest } from "playwright-core";
 import { env } from "../utils/env";
 import { newAuthenticatedPage } from "../utils/api-auth";
@@ -84,6 +85,7 @@ export const test = base.extend<RoleFixtures>({
     );
 
     await use(page);
+    await captureFixturePage(page, 'superAdminPage');
     await page.context().close();
   },
 
@@ -105,6 +107,7 @@ export const test = base.extend<RoleFixtures>({
     );
 
     await use(page);
+    await captureFixturePage(page, 'orgOwnerPage');
     await page.context().close();
   },
 
@@ -126,6 +129,7 @@ export const test = base.extend<RoleFixtures>({
     );
 
     await use(page);
+    await captureFixturePage(page, 'orgAdminPage');
     await page.context().close();
   },
 
@@ -147,6 +151,7 @@ export const test = base.extend<RoleFixtures>({
     );
 
     await use(page);
+    await captureFixturePage(page, 'projectAdminPage');
     await page.context().close();
   },
 
@@ -168,6 +173,7 @@ export const test = base.extend<RoleFixtures>({
     );
 
     await use(page);
+    await captureFixturePage(page, 'editorPage');
     await page.context().close();
   },
 
@@ -189,6 +195,7 @@ export const test = base.extend<RoleFixtures>({
     );
 
     await use(page);
+    await captureFixturePage(page, 'viewerPage');
     await page.context().close();
   },
 
@@ -245,7 +252,8 @@ export const test = base.extend<RoleFixtures>({
     await use(getPage);
 
     // Cleanup all pages
-    for (const page of pages.values()) {
+    for (const [role, page] of pages) {
+      await captureFixturePage(page, String(role));
       await page.context().close();
     }
   },

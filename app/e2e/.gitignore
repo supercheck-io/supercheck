@@ -3,6 +3,7 @@ node_modules/
 
 # Test outputs
 test-results/
+checkpoint-results/
 playwright-report/
 test-results-*/
 playwright-report-*/
