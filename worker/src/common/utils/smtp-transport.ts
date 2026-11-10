@@ -1,6 +1,7 @@
 import * as nodemailer from 'nodemailer';
 import type { Transporter } from 'nodemailer';
 import type SMTPPool from 'nodemailer/lib/smtp-pool';
+import { isUndeliverableRecipient } from './email-recipient-policy';
 
 /**
  * One pooled SMTP transporter shared by every worker email sender. It is rebuilt
@@ -114,12 +115,22 @@ export function closeSmtpTransport(): void {
  * Sends one message to each recipient in turn. After the first connection-level
  * failure the remaining recipients fail immediately with the same error, so an
  * unreachable server costs one timeout per notification, not one per recipient.
+ * Addresses on reserved or blocked domains are dropped first: they can only bounce, and
+ * bounces get the SMTP account blocked. They count as neither sent nor failed.
  */
 export async function sendMailToRecipients(
-  recipients: string[],
+  allRecipients: string[],
   message: { subject: string; html: string; text: string },
   onWarn?: (msg: string) => void,
 ): Promise<SmtpDeliveryResult> {
+  const recipients = allRecipients.filter((r) => !isUndeliverableRecipient(r));
+  if (recipients.length < allRecipients.length) {
+    onWarn?.(
+      `Skipped ${allRecipients.length - recipients.length} recipient(s) on domains that do not accept email`,
+    );
+  }
+  if (recipients.length === 0)
+    return { sentCount: 0, failedRecipients: [], errors: {} };
   const setup = buildSmtpSetup();
   if ('error' in setup) {
     return {
