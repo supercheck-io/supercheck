@@ -13,9 +13,34 @@ export const SCREENSHOT_SEED = path.resolve(__dirname, '../screenshots-seed.json
 // The PR gallery rejects very tall images, so long pages are split into parts.
 const MAX_SCREENSHOT_HEIGHT = 9_000;
 
-// Values that differ on every run (timestamps, generated IDs, the id-seeded default avatar)
-// are masked so the gallery's SHA-256 comparison only flags real UI changes.
-const VOLATILE = ['time', '[data-slot="avatar"]', ':has(> [aria-label="Copy ID"]) > code'].join(', ');
+// The id-seeded default avatar differs per sign-up; mask it.
+const VOLATILE_IMAGES = '[data-slot="avatar"]';
+
+/**
+ * Rewrites text that differs on every run (dates, times, generated IDs) to fixed values,
+ * so the gallery's SHA-256 comparison only flags real UI changes. Rewriting keeps column
+ * widths stable, which a mask drawn over varying text does not.
+ */
+async function normalizeVolatileText(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const MONTH = '(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*';
+    const rules: Array<[RegExp, string | ((m: string) => string)]> = [
+      // "Nov 10, 2026, 10:27 AM", "Nov 9 7:54 PM", "Nov 10, 2026"
+      [new RegExp(`\\b${MONTH} \\d{1,2}(?:, \\d{4})?(?:,? (?:at )?\\d{1,2}:\\d{2}(?::\\d{2})?(?: ?[AP]M)?)?`, 'g'), 'Jan 1, 2026 12:00 PM'],
+      [/\b\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?Z?)?/g, '2026-01-01 12:00'],
+      [/\b\d{1,2}:\d{2}(?::\d{2})? ?[AP]M\b/g, '12:00 PM'],
+      [/\b\d+ (?:second|minute|hour|day)s? ago\b/g, '5 minutes ago'],
+      // UUIDs and long hex ids keep their shape so truncation looks the same.
+      [/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b|\b[0-9a-f]{16,}\b/g, (m) => m.replace(/[0-9a-f]/g, '0')],
+    ];
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      let text = node.nodeValue ?? '';
+      for (const [pattern, value] of rules) text = text.replace(pattern, value as string);
+      if (text !== node.nodeValue) node.nodeValue = text;
+    }
+  });
+}
 
 /**
  * Save a full-page PNG into the test's output folder for the PR screenshot gallery.
@@ -29,6 +54,7 @@ export async function captureScreenshot(page: Page, testInfo: TestInfo, name: st
   // Pages with live updates never go fully idle, so cap the wait instead of failing.
   await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => undefined);
   await page.evaluate(() => document.fonts.ready);
+  await normalizeVolatileText(page);
 
   const { width, height } = await page.evaluate(() => ({
     width: document.documentElement.clientWidth,
@@ -44,8 +70,7 @@ export async function captureScreenshot(page: Page, testInfo: TestInfo, name: st
       fullPage: true,
       scale: 'css',
       clip: { x: 0, y, width, height: Math.min(MAX_SCREENSHOT_HEIGHT, height - y) },
-      // Status page URLs carry a generated id.
-      mask: [page.locator(VOLATILE), page.getByText(/\/status\/[0-9a-f]{8}/)],
+      mask: [page.locator(VOLATILE_IMAGES)],
       maskColor: '#9ca3af',
     });
   }
