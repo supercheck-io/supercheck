@@ -36,11 +36,15 @@ export const VOLATILE_IMAGES = '[data-slot="avatar"]';
 export const VOLATILE_STYLE = '.recharts-xAxis .recharts-cartesian-axis-tick-value { visibility: hidden !important; }';
 
 /**
- * Waits until the page has settled: network quiet and every chart drawn. Both waits are
- * capped, since pages with live updates never go fully idle.
+ * Waits until the page has settled: network quiet, loading skeletons gone and every chart
+ * drawn. Each wait is capped, since pages with live updates never go fully idle.
  */
 export async function settle(page: Page): Promise<void> {
   await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => undefined);
+  // Skeletons pulse (ui/skeleton.tsx); a frame taken while they show is all placeholders.
+  await page
+    .waitForFunction(() => Array.from(document.querySelectorAll<HTMLElement>('.animate-pulse')).every((el) => el.offsetParent === null), null, { timeout: 5_000 })
+    .catch(() => undefined);
   await page
     .waitForFunction(() => Array.from(document.querySelectorAll('.recharts-responsive-container')).every((c) => c.querySelector('svg')), null, { timeout: 5_000 })
     .catch(() => undefined);
