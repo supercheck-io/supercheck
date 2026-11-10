@@ -210,13 +210,9 @@ const trial = catalog.trial;
 const faqs = [
     {
         question: 'Can I try Supercheck before Cloud launches?',
-        answer: 'Yes. Explore the free live demo without signing up, or self-host the open-source core today. Cloud plans are coming soon; signups are not open yet. Join the waitlist from a plan above and we will reply when they open.',
+        answer: 'Yes. Explore the free live demo without signing up. Cloud plans are coming soon; signups are not open yet. Join the waitlist from a plan above and we will reply when they open.',
     },
     ...trialFaqs(),
-    {
-        question: 'Can I self-host Supercheck?',
-        answer: 'Yes. Supercheck core is open source under AGPLv3. Self-host it on your own infrastructure with no Supercheck license cost; you pay for your own infrastructure and AI provider usage. The Cloud plans on this page are for teams that prefer a managed service. Self-hosted deployments have no trial and no usage limits.',
-    },
     ...SHARED_PRICING_FAQS,
     {
         question: 'Can I change plans?',
@@ -300,10 +296,10 @@ export default function PricingPage() {
                 <div className="mx-auto mb-10 max-w-2xl text-center">
                     <p className="text-sm font-medium text-fd-primary">Supercheck Cloud is coming soon</p>
                     <h1 className="mt-3 text-balance text-4xl font-semibold tracking-tight sm:text-5xl">
-                        Free to self-host. Simple plans for Cloud.
+                        Simple plans for Cloud.
                     </h1>
                     <p className="mt-4 text-pretty text-lg text-fd-muted-foreground">
-                        Run the open-source core on your own servers at no cost, or preview the Cloud plans and join the waitlist. Cloud signups are not open yet.
+                        Preview the Cloud plans and join the waitlist. Cloud signups are not open yet.
                     </p>
                     <p className="mt-3 text-sm text-fd-muted-foreground">
                         Priced per organization, not per seat; only extra {catalog.pro.name} seats you buy above the included members are billed per seat, even when unfilled. Prices in USD per month, before taxes. Playwright minutes, k6 VU-minutes, and completed AI SRE investigations beyond the included allowance are billed at the{' '}
@@ -315,27 +311,6 @@ export default function PricingPage() {
                         <Link href="/docs/app/admin/subscription" className="underline underline-offset-4">How billing works</Link>
                     </nav>
                 </div>
-
-                <section aria-labelledby="self-host-heading" className="mb-6 flex flex-col gap-6 rounded-xl border border-fd-border bg-fd-card p-6 sm:p-8 md:flex-row md:items-center md:justify-between">
-                    <div className="max-w-2xl">
-                        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                            <h2 id="self-host-heading" className="text-lg font-semibold">Self-hosted</h2>
-                            <span className="text-2xl font-semibold tracking-tight">$0</span>
-                            <span className="text-sm text-fd-muted-foreground">open source, AGPLv3</span>
-                        </div>
-                        <p className="mt-2 text-sm text-fd-muted-foreground">
-                            Run the open-source core with no license fee and no usage limits. You pay only for your servers and AI provider.
-                        </p>
-                    </div>
-                    <div className="flex shrink-0 flex-wrap gap-3">
-                        <Link href="/docs/app/deployment/self-hosted" className="rounded-md bg-fd-primary px-4 py-2 text-sm font-medium text-fd-primary-foreground transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fd-primary">
-                            Self-hosting guide
-                        </Link>
-                        <Link href="https://github.com/supercheck-io/supercheck" target="_blank" rel="noopener noreferrer" className="rounded-md border border-fd-border px-4 py-2 text-sm font-medium transition-colors hover:bg-fd-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fd-primary">
-                            View on GitHub
-                        </Link>
-                    </div>
-                </section>
 
                 <div id="waitlist" className="grid scroll-mt-20 gap-6 md:grid-cols-2 lg:grid-cols-3">
                     {plans.map((plan) => (
@@ -392,7 +367,7 @@ export default function PricingPage() {
                 </p>
 
                 <ul aria-label="Plan basics" className="mt-6 flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm text-fd-muted-foreground">
-                    {['Open-source core (AGPLv3)', `Priced per organization; extra ${catalog.pro.name} seats billed per seat`, 'Spending limits and usage alerts', 'Cancel anytime'].map((item) => (
+                    {[`Priced per organization; extra ${catalog.pro.name} seats billed per seat`, 'Spending limits and usage alerts', 'Cancel anytime'].map((item) => (
                         <li key={item} className="flex items-center gap-2">
                             <Check aria-hidden="true" className="size-4 text-fd-primary" />
                             {item}
