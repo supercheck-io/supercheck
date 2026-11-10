@@ -234,8 +234,10 @@ test('checkpoint sidecars are validated and attached to their frames', async () 
   });
   const shots = await collectScreenshots(dir);
   const byName = Object.fromEntries(shots.map((s) => [s.name, s.meta]));
-  assert.deepEqual(byName['login-works-abc123.png'], { title: 'auth › Login  works', spec: 'auth/sign-in.spec.ts', area: 'auth' });
-  assert.deepEqual(byName['evil-abc123.png'], { title: 'x', spec: '', area: '' });
+  assert.deepEqual(byName['login-works-abc123.png'], { title: 'auth › Login  works', spec: 'auth/sign-in.spec.ts', area: 'auth', negative: false });
+  assert.deepEqual(byName['evil-abc123.png'], { title: 'x', spec: '', area: '', negative: false });
+  assert.equal(parseMeta(JSON.stringify({ negative: true })).negative, true);
+  assert.equal(parseMeta(JSON.stringify({ negative: 'yes' })).negative, false);
   assert.equal(parseMeta('nope'), null);
   assert.equal(parseMeta(JSON.stringify({ title: 'y'.repeat(301) })).title, '');
 
@@ -252,6 +254,28 @@ test('gallery shows test names, spec paths and an area filter', () => {
   assert.match(html, /tests\/auth\/sign-in\.spec\.ts/);
   assert.match(html, /<option value="auth">auth \(1\)<\/option>/);
   assert.match(html, /id="search"/);
+});
+
+test('frames from negative tests are labelled, failures never are', () => {
+  const { shots } = classify(
+    [
+      { name: 'rejects-bad-input-abc123.png', sha256: H('a'), meta: { title: 'x', spec: 'a/b.spec.ts', area: 'a', negative: true } },
+      { name: 'flow-invalid-monitor-url-1-error.png', sha256: H('b') },
+      { name: 'failed-rejects-bad-input-abc123.png', sha256: H('c'), meta: { negative: true } },
+      { name: 'flow-create-monitor-1-filled.png', sha256: H('d') },
+    ],
+    null,
+  );
+  const by = Object.fromEntries(shots.map((s) => [s.name, s.negative]));
+  assert.deepEqual(by, {
+    'rejects-bad-input-abc123.png': true,
+    'flow-invalid-monitor-url-1-error.png': true,
+    'failed-rejects-bad-input-abc123.png': false,
+    'flow-create-monitor-1-filled.png': false,
+  });
+  const html = renderGallery(gallery(shots));
+  assert.equal(html.match(/<span class="tag t-expected">Negative test<\/span>/g).length, 2);
+  assert.match(html, /Negative test: the app is meant to refuse or show an error here/);
 });
 
 test('job summary links the gallery and lists frames that need review', () => {

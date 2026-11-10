@@ -33,6 +33,31 @@ const MAX_SCREENSHOT_HEIGHT = 9_000;
 export const VOLATILE_IMAGES = '[data-slot="avatar"]';
 
 /**
+ * Waits until the page has settled: network quiet, loading skeletons gone and every visible
+ * chart drawn. Each wait is capped (about 10s in all), since live pages never go fully idle.
+ */
+export async function settle(page: Page): Promise<void> {
+  await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => undefined);
+  await page
+    .waitForFunction(
+      () => {
+        const shown = (el: Element) => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
+        // Skeletons are `animate-pulse bg-muted` (ui/skeleton.tsx); charts draw an svg once sized.
+        return (
+          !Array.from(document.querySelectorAll('.animate-pulse.bg-muted')).some(shown) &&
+          Array.from(document.querySelectorAll('.recharts-responsive-container')).filter(shown).every((c) => c.querySelector('svg'))
+        );
+      },
+      null,
+      { timeout: 3_000 },
+    )
+    .catch(() => undefined);
+  await page
+    .evaluate(() => Promise.race([document.fonts.ready, new Promise((resolve) => setTimeout(resolve, 2_000))]))
+    .catch(() => undefined);
+}
+
+/**
  * Rewrites text that differs on every run (dates, times, generated IDs) to fixed values,
  * so the gallery's SHA-256 comparison only flags real UI changes. Rewriting keeps column
  * widths stable, which a mask drawn over varying text does not.
@@ -46,15 +71,21 @@ export async function normalizeVolatileText(page: Page): Promise<void> {
     const WEEKDAY = '(?:(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)[a-z]*,? )?';
     const rules: Array<[RegExp, string | ((m: string) => string)]> = [
       // "Tuesday, Nov 10, 2026", "Nov 10, 2026, 10:27 AM", "Nov 9 7:54 PM"
-      [new RegExp(`\\b${WEEKDAY}${MONTH} \\d{1,2}(?:, \\d{4})?(?:,? (?:at )?\\d{1,2}:\\d{2}(?::\\d{2})?(?: ?[AP]M)?)?`, 'g'), 'Jan 1, 2026 12:00 PM'],
+      [new RegExp(`\\b${WEEKDAY}${MONTH} \\d{1,2}(?:, \\d{4})?(?:,? (?:at )?\\d{1,2}:\\d{2}(?::\\d{2})?(?: ?[AP]M)?)?`, 'g'),
+        // Keep the shape, so a short chart tick like "Oct 12" stays short.
+        (m) => `Jan 1${/\d{4}/.test(m) ? ', 2026' : ''}${/:/.test(m) ? ' 12:00 PM' : ''}`],
       [/\b\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?Z?)?/g, '2026-01-01 12:00'],
       [/\b\d{1,2}:\d{2}(?::\d{2})? ?[AP]M\b/g, '12:00 PM'],
+      // 24-hour clock times, such as chart time-axis ticks.
+      [/\b\d{1,2}:\d{2}(?::\d{2})?\b/g, '12:00'],
       [/\b\d+ (?:second|minute|hour|day)s? ago\b/g, '5 minutes ago'],
       // UUIDs and long hex ids keep their shape so truncation looks the same.
       // E2E data names end in Date.now() plus a random suffix (see test-data.ts uniqueName).
       [/\b1\d{12}_[a-z0-9]{6,10}\b/g, '1700000000000_demo'],
       // Tables show IDs cut short in the DOM, like "019a1c50f…".
       [/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b|\b[0-9a-f]{16,}\b|\b[0-9a-f-]{6,}(?=…|\.\.\.)/g, (m) => m.replace(/[0-9a-f]/g, '0')],
+      // React renders `{id.substring(0, 12)}...` as its own text node, without the ellipsis.
+      [/^(?=[^]*\d)(?=[^]*[a-f])[0-9a-f-]{8,}$/, (m) => m.replace(/[0-9a-f]/g, '0')],
     ];
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
@@ -85,10 +116,8 @@ export async function captureScreenshot(page: Page, testInfo: TestInfo, name: st
   if (!/^[a-z0-9][a-z0-9-]*$/.test(name)) {
     throw new Error(`Screenshot name must be kebab-case: ${name}`);
   }
-  // Let fonts, images and client data settle so frames are comparable between runs.
-  // Pages with live updates never go fully idle, so cap the wait instead of failing.
-  await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => undefined);
-  await page.evaluate(() => document.fonts.ready);
+  // Let fonts, charts and client data settle so frames are comparable between runs.
+  await settle(page);
   await normalizeVolatileText(page);
 
   const { width, height } = await page.evaluate(() => ({
