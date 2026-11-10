@@ -195,6 +195,47 @@ describe("ensurePolarCustomerAndLink against the provider API", () => {
     });
   });
 
+  describe("an email kept by a legacy customer whose external_id is the user id", () => {
+    const conflict = () => fetchMock
+      .mockResolvedValueOnce(json({ detail: "Not found" }, 404))
+      .mockResolvedValueOnce(json({ detail: [{ loc: ["body", "email"], msg: "exists" }] }, 422))
+      .mockResolvedValueOnce(json({ detail: "Not found" }, 404));
+    const legacy = (externalId = "user-1", email = "owner@example.com") => ({ id: "cus_legacy", email, external_id: externalId, metadata: {} });
+    const list = (...items: unknown[]) => json({ items, pagination: { total_count: items.length, max_page: 1 } });
+
+    it("reuses it when no organization holds it and nothing is active", async () => {
+      conflict()
+        .mockResolvedValueOnce(list(legacy()))
+        .mockResolvedValueOnce(json({ id: "cus_legacy", active_subscriptions: [] }))
+        .mockResolvedValueOnce(json({ id: "cus_legacy" }));
+      mockFindFirst.mockResolvedValueOnce({ polarCustomerId: null }).mockResolvedValueOnce(undefined);
+      mockReturning.mockResolvedValue([{ polarCustomerId: "cus_legacy" }]);
+      jest.spyOn(console, "warn").mockImplementation(() => undefined);
+
+      await expect(provision({ throwOnError: true })).resolves.toBe("cus_legacy");
+      const update = await request(5);
+      expect(update.method).toBe("PATCH");
+      expect(update.body.metadata).toEqual({ referenceId: ORG, userId: "user-1", source: "legacy-user-customer" });
+    });
+
+    it.each([
+      ["another organization holds it", [legacy()], { id: "org-other" }, []],
+      ["it has an active subscription", [legacy()], undefined, [{ id: "sub_1" }]],
+      ["the external id belongs to another user", [legacy("user-2")], undefined, []],
+      ["several customers share the email", [legacy(), legacy("other", "OWNER@example.com")], undefined, []],
+    ])("refuses with a clear conflict when %s", async (_case, items, holder, active) => {
+      conflict()
+        .mockResolvedValueOnce(list(...items))
+        .mockResolvedValueOnce(json({ id: "cus_legacy", active_subscriptions: active }));
+      mockFindFirst.mockResolvedValueOnce({ polarCustomerId: null }).mockResolvedValueOnce(holder);
+
+      await expect(provision({ throwOnError: true })).rejects.toThrow("Contact support at hello@supercheck.io");
+      for (let i = 0; i < fetchMock.mock.calls.length; i++) {
+        expect((await request(i)).method).not.toBe("PATCH");
+      }
+    });
+  });
+
   it("surfaces a rejected create unchanged when no customer has the email", async () => {
     fetchMock
       .mockResolvedValueOnce(json({ detail: "Not found" }, 404))

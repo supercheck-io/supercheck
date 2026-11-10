@@ -1,7 +1,12 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { eq } from "drizzle-orm";
 import { organization } from "@/db/schema";
+import { createLogger } from "@/lib/logger/index";
 import { db } from "@/utils/db";
+
+const logger = createLogger({ module: "polar-webhooks" }) as {
+  error: (data: unknown, message?: string) => void;
+};
 
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 const context = new AsyncLocalStorage<{
@@ -139,6 +144,17 @@ export async function runOrderedPolarEvent(
       ) {
         throw new Error(
           "Replacement subscription requires a current billing period",
+        );
+      }
+      // Binding is kept, but two paid subscriptions may now exist: surface it for log alerting.
+      if (org.subscriptionStatus === "active" || org.subscriptionStatus === "past_due") {
+        logger.error(
+          {
+            organizationId: org.id.slice(0, 8),
+            replacedSubscriptionId: org.subscriptionId?.slice(0, 8),
+            newSubscriptionId: input.subscriptionId?.slice(0, 8),
+          },
+          "Active subscription replaced another active subscription; check for duplicate billing",
         );
       }
     }

@@ -1855,6 +1855,25 @@ export async function handleCustomerStateChanged(payload: PolarWebhookPayload) {
 }
 
 /**
+ * Handle refunds (`order.refunded` and `refund.created`; one refund may arrive as both). A refund
+ * alone never changes the plan: Polar revokes or cancels the subscription separately and those events
+ * drive access. Record it and reconcile so local state converges with Polar. Idempotent (a read-only
+ * reconcile, so a repeat is harmless) and a no-op for unknown customers.
+ */
+export async function handleRefund(payload: PolarWebhookPayload, eventType: "order.refunded" | "refund.created") {
+  const data = payload.data as Record<string, unknown>;
+  const customerId = getCustomerIdFromPayload(payload);
+  const org = customerId ? await findOrganizationByCustomerId(customerId) : undefined;
+  const amount = data.refundedAmount ?? data.refunded_amount ?? data.amount;
+  console.warn(
+    `[Polar] ${eventType}: ${truncateId(typeof data.id === "string" ? data.id : undefined)} customer ${truncateId(customerId)} refunded ${typeof amount === "number" ? amount : "unknown"} ${typeof data.currency === "string" ? data.currency : ""}`.trim(),
+  );
+  if (!org) return;
+  const { reconcilePolarSubscription } = await import("@/lib/services/subscription-reconciliation");
+  await reconcilePolarSubscription(org.id);
+}
+
+/**
  * Handle customer deletion
  * CRITICAL: Revokes subscription when customer is deleted from Polar
  * This prevents users from accessing resources after being deleted from Polar

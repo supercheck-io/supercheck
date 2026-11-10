@@ -116,6 +116,22 @@ export function getPolarPlugin() {
         );
         await handleOrderPaid(normalizePolarPayload(payload));
       },
+      onOrderRefunded: async (payload: any) => {
+        console.log("[Polar] Webhook: order.refunded");
+        const { handleRefund } = await import(
+          "@/lib/webhooks/polar-webhooks"
+        );
+        await handleRefund(normalizePolarPayload(payload), "order.refunded");
+      },
+
+      onRefundCreated: async (payload: any) => {
+        console.log("[Polar] Webhook: refund.created");
+        const { handleRefund } = await import(
+          "@/lib/webhooks/polar-webhooks"
+        );
+        await handleRefund(normalizePolarPayload(payload), "refund.created");
+      },
+
       onCustomerStateChanged: async (payload: any) => {
         console.log("[Polar] Webhook: customer.state_changed");
         const { handleCustomerStateChanged } = await import(

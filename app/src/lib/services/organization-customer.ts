@@ -10,7 +10,7 @@ const ORGANIZATION_EXTERNAL_ID = /^organization:(.+)$/;
 /** The owner's email already belongs to a billing customer that cannot be reused safely. */
 export class BillingCustomerConflictError extends Error {
   constructor() {
-    super("This email is already linked to another billing account. Contact support to continue.");
+    super("This email already has a Supercheck billing account. Contact support at hello@supercheck.io and we'll link it.");
     this.name = "BillingCustomerConflictError";
   }
 }
@@ -42,12 +42,16 @@ async function reuseDeletedOrganizationCustomer(
   const formerOrganizationId = matches.length === 1
     ? ORGANIZATION_EXTERNAL_ID.exec(customer.external_id ?? "")?.[1]
     : undefined;
+  // Legacy customers were created with the bare user ID as external_id: the same person by construction.
+  const legacy = matches.length === 1 && customer.external_id === userId;
   // The same person, not just the same address: an address can be reassigned to someone else.
-  if (!isUuid(formerOrganizationId) || formerOrganizationId === organizationId || customer.metadata?.userId !== userId) {
+  if (!legacy && (!isUuid(formerOrganizationId) || formerOrganizationId === organizationId || customer.metadata?.userId !== userId)) {
     throw new BillingCustomerConflictError();
   }
   const [formerOrganization, holder] = await Promise.all([
-    db.query.organization.findFirst({ where: eq(orgTable.id, formerOrganizationId), columns: { id: true } }),
+    formerOrganizationId && !legacy
+      ? db.query.organization.findFirst({ where: eq(orgTable.id, formerOrganizationId), columns: { id: true } })
+      : undefined,
     db.query.organization.findFirst({ where: eq(orgTable.polarCustomerId, customer.id), columns: { id: true } }),
   ]);
   if (formerOrganization || holder) throw new BillingCustomerConflictError();
@@ -55,9 +59,9 @@ async function reuseDeletedOrganizationCustomer(
     throw new BillingCustomerConflictError();
   }
   await polarClient.customers.update(customer.id, {
-    metadata: { userId, referenceId: organizationId, source: "supercheck-reused-after-organization-deletion" },
+    metadata: { userId, referenceId: organizationId, source: legacy ? "legacy-user-customer" : "supercheck-reused-after-organization-deletion" },
   });
-  console.warn(`[Polar] Reused the billing customer of deleted organization ${formerOrganizationId} for ${organizationId}`);
+  console.warn(`[Polar] Reused the billing customer of ${legacy ? "a legacy user" : `deleted organization ${formerOrganizationId}`} for ${organizationId}`);
   return customer.id;
 }
 

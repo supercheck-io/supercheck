@@ -85,6 +85,7 @@ import {
   handleSubscriptionCanceled,
   handleSubscriptionUpdated,
   handleOrderPaid,
+  handleRefund,
   handleCustomerCreated,
 } from "./polar-webhooks";
 import { runOrderedPolarEvent } from "./polar-event-transaction";
@@ -131,6 +132,46 @@ describe("Polar webhook helpers", () => {
       ] },
     }));
     expect(set).toHaveBeenCalledWith({ polarCustomerId: "customer-a" });
+  });
+
+  describe("handleRefund", () => {
+    const reconcile = jest.fn().mockResolvedValue(true);
+    beforeEach(() => {
+      reconcile.mockClear();
+      jest.doMock("@/lib/services/subscription-reconciliation", () => ({ reconcilePolarSubscription: reconcile }));
+    });
+    afterAll(() => jest.dontMock("@/lib/services/subscription-reconciliation"));
+
+    it("logs with truncated ids and reconciles the organization without changing the plan", async () => {
+      const warn = jest.spyOn(console, "warn").mockImplementation(() => undefined);
+      (db.query.organization.findFirst as jest.Mock).mockResolvedValue({ id: "org-a" });
+      await handleRefund({ data: { id: "order-1234567890", customerId: "customer-1234567890", refundedAmount: 500, currency: "usd" } }, "order.refunded");
+      expect(warn).toHaveBeenCalledWith("[Polar] order.refunded: order-12... customer customer... refunded 500 usd");
+      expect(reconcile).toHaveBeenCalledWith("org-a");
+      expect(subscriptionService.updateSubscription).not.toHaveBeenCalled();
+      expect(db.update).not.toHaveBeenCalled();
+      warn.mockRestore();
+    });
+
+    it("handles refund.created for the same refund by reconciling again harmlessly", async () => {
+      const warn = jest.spyOn(console, "warn").mockImplementation(() => undefined);
+      (db.query.organization.findFirst as jest.Mock).mockResolvedValue({ id: "org-a" });
+      const refund = { data: { id: "refund-1234567890", customer_id: "customer-1234567890", amount: 500, currency: "usd" } };
+      await handleRefund(refund, "refund.created");
+      await handleRefund(refund, "refund.created");
+      expect(warn).toHaveBeenCalledWith("[Polar] refund.created: refund-1... customer customer... refunded 500 usd");
+      expect(reconcile).toHaveBeenCalledTimes(2);
+      expect(db.update).not.toHaveBeenCalled();
+      warn.mockRestore();
+    });
+
+    it("is a safe no-op for an unknown customer", async () => {
+      const warn = jest.spyOn(console, "warn").mockImplementation(() => undefined);
+      (db.query.organization.findFirst as jest.Mock).mockResolvedValue(undefined);
+      await expect(handleRefund({ data: { id: "order-1", customer_id: "unknown-customer" } }, "order.refunded")).resolves.toBeUndefined();
+      expect(reconcile).not.toHaveBeenCalled();
+      warn.mockRestore();
+    });
   });
 
   it("does not guess an organization for a legacy customer owned by a multi-organization user", async () => {

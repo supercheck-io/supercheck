@@ -147,6 +147,7 @@ export async function POST(request: NextRequest) {
       server: config.server,
     });
     // Webhooks can lag a completed payment; ask Polar so a second tab cannot open a duplicate subscription.
+    // A race between two simultaneous tabs is closed by Polar's allow_multiple_subscriptions=false on the organization.
     const customerState = await polar.customers.getState(org.polarCustomerId);
     // Legacy orgs can share a customer: skip subscriptions tagged to another org, block untagged ones (fail closed).
     const ownsActiveSubscription = customerState.active_subscriptions.some((subscription) => {

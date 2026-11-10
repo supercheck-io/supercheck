@@ -6,7 +6,7 @@ const mockEnsureCustomer = jest.fn();
 jest.mock("@/lib/services/organization-customer", () => ({
   ensurePolarCustomerAndLink: (...args: unknown[]) => mockEnsureCustomer(...args),
   BillingCustomerConflictError: class BillingCustomerConflictError extends Error {
-    constructor() { super("This email is already linked to another billing account. Contact support to continue."); }
+    constructor() { super("This email already has a Supercheck billing account. Contact support at hello@supercheck.io and we'll link it."); }
   },
 }));
 jest.mock("@/lib/session", () => ({ getCurrentUser: jest.fn(async () => ({ id: "user_owner", email: "owner@example.com", name: "Owner" })) }));
