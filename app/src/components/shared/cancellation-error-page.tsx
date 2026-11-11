@@ -32,7 +32,7 @@ export function CancellationErrorPage({
         <div className="flex flex-col items-center text-center max-w-2xl w-full">
           {/* Main Error Icon and Title */}
           <div className="flex items-center justify-center w-20 h-20 rounded-full bg-gray-100 dark:bg-gray-800 mb-6">
-            <XCircle className="h-10 w-10 text-orange-500" />
+            <XCircle className="h-10 w-10 text-warning" />
           </div>
 
           <h1 className="text-3xl font-bold mb-3 text-foreground">
@@ -44,10 +44,10 @@ export function CancellationErrorPage({
           </p>
 
           {/* Info Card */}
-          <Card className="w-full mb-6 bg-orange-50 dark:bg-orange-900/10 border-orange-200 dark:border-orange-800">
+          <Card className="w-full mb-6 bg-warning/10 border-warning/30">
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-lg">
-                <XCircle className="h-5 w-5 text-orange-500" />
+                <XCircle className="h-5 w-5 text-warning" />
                 What happened?
               </CardTitle>
             </CardHeader>

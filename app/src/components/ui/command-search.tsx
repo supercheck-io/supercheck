@@ -185,47 +185,47 @@ export function CommandSearch({
 
               <CommandGroup heading="Navigation">
                 <CommandItem onSelect={() => handleCommand("home")}>
-                  <ChartColumn className="mr-2 h-4 w-4 !text-slate-400" />
+                  <ChartColumn className="mr-2 h-4 w-4 !text-muted-foreground" />
                   <span>Dashboard</span>
                 </CommandItem>
                 <CommandItem onSelect={() => handleCommand("alerts")}>
-                  <BellRing className="mr-2 h-4 w-4 !text-amber-600" />
+                  <BellRing className="mr-2 h-4 w-4 !text-communicate" />
                   <span>Delivery history</span>
                 </CommandItem>
                 <CommandItem onSelect={() => handleCommand("incidents")}>
-                  <Siren className="mr-2 h-4 w-4 !text-rose-500" />
+                  <Siren className="mr-2 h-4 w-4 !text-respond" />
                   <span>Incidents</span>
                 </CommandItem>
                 <CommandItem onSelect={() => handleCommand("notifications")}>
-                  <BellRing className="mr-2 h-4 w-4 !text-slate-400" />
+                  <BellRing className="mr-2 h-4 w-4 !text-communicate" />
                   <span>Notifications</span>
                 </CommandItem>
                 <CommandItem onSelect={() => handleCommand("status-pages")}>
-                  <Tally4 className="mr-2 h-4 w-4 !text-green-600" />
+                  <Tally4 className="mr-2 h-4 w-4 !text-communicate" />
                   <span>Status Pages</span>
                 </CommandItem>
                 <CommandItem onSelect={() => handleCommand("requirements")}>
-                  <Target className="mr-2 h-4 w-4 !text-indigo-500" />
+                  <Target className="mr-2 h-4 w-4 !text-automate" />
                   <span>Requirements</span>
                 </CommandItem>
                 <CommandItem onSelect={() => handleCommand("tests")}>
-                  <Code className="mr-2 h-4 w-4 !text-blue-600" />
+                  <Code className="mr-2 h-4 w-4 !text-automate" />
                   <span>Tests</span>
                 </CommandItem>
                 <CommandItem onSelect={() => handleCommand("jobs")}>
-                  <CalendarClock className="mr-2 h-4 w-4 !text-violet-600" />
+                  <CalendarClock className="mr-2 h-4 w-4 !text-automate" />
                   <span>Jobs</span>
                 </CommandItem>
                 <CommandItem onSelect={() => handleCommand("runs")}>
-                  <ClipboardList className="mr-2 h-4 w-4 !text-teal-600" />
+                  <ClipboardList className="mr-2 h-4 w-4 !text-automate" />
                   <span>Runs</span>
                 </CommandItem>
                 <CommandItem onSelect={() => handleCommand("variables")}>
-                  <Variable className="mr-2 h-4 w-4 !text-zinc-400" />
+                  <Variable className="mr-2 h-4 w-4 !text-automate" />
                   <span>Variables</span>
                 </CommandItem>
                 <CommandItem onSelect={() => handleCommand("monitors")}>
-                  <Globe className="mr-2 h-4 w-4 !text-cyan-600" />
+                  <Globe className="mr-2 h-4 w-4 !text-monitor" />
                   <span>Monitors</span>
                 </CommandItem>
               </CommandGroup>
@@ -238,7 +238,7 @@ export function CommandSearch({
                     <CommandItem
                       onSelect={() => handleCommand("investigation-chat")}
                     >
-                      <Bot className="mr-2 h-4 w-4 !text-zinc-400" />
+                      <Bot className="mr-2 h-4 w-4 !text-ai" />
                       <span>Copilot</span>
                     </CommandItem>
                   </CommandGroup>
@@ -249,7 +249,7 @@ export function CommandSearch({
 
               <CommandGroup heading="Admin">
                 <CommandItem onSelect={() => handleCommand("admin")}>
-                  <UserCog className="mr-2 h-4 w-4 !text-zinc-400" />
+                  <UserCog className="mr-2 h-4 w-4 !text-muted-foreground" />
                   <span>Organization</span>
                 </CommandItem>
                 {canConfigureSre && (
@@ -257,25 +257,25 @@ export function CommandSearch({
                     <CommandItem
                       onSelect={() => handleCommand("admin-services")}
                     >
-                      <Boxes className="mr-2 h-4 w-4 !text-sky-600" />
+                      <Boxes className="mr-2 h-4 w-4 !text-respond" />
                       <span>Services</span>
                     </CommandItem>
                     <CommandItem
                       onSelect={() => handleCommand("admin-integrations")}
                     >
-                      <Network className="mr-2 h-4 w-4 !text-emerald-500" />
+                      <Network className="mr-2 h-4 w-4 !text-respond" />
                       <span>Integrations</span>
                     </CommandItem>
                     <CommandItem
                       onSelect={() => handleCommand("admin-diagnostic-recipes")}
                     >
-                      <SquareLibrary className="mr-2 h-4 w-4 !text-cyan-600" />
+                      <SquareLibrary className="mr-2 h-4 w-4 !text-respond" />
                       <span>Saved queries</span>
                     </CommandItem>
                     <CommandItem
                       onSelect={() => handleCommand("admin-private-agents")}
                     >
-                      <RadioTower className="mr-2 h-4 w-4 !text-violet-500" />
+                      <RadioTower className="mr-2 h-4 w-4 !text-respond" />
                       <span>Private Agents</span>
                     </CommandItem>
                   </>
@@ -288,23 +288,23 @@ export function CommandSearch({
                 <CommandItem
                   onSelect={() => handleCommand("create-test-browser")}
                 >
-                  <Chrome className="mr-2 h-4 w-4 !text-sky-600" />
+                  <Chrome className="mr-2 h-4 w-4 !text-automate" />
                   <span>Browser Test</span>
                 </CommandItem>
                 <CommandItem onSelect={() => handleCommand("create-test-api")}>
-                  <ArrowLeftRight className="mr-2 h-4 w-4 !text-teal-600" />
+                  <ArrowLeftRight className="mr-2 h-4 w-4 !text-automate" />
                   <span>API Test</span>
                 </CommandItem>
                 <CommandItem
                   onSelect={() => handleCommand("create-test-database")}
                 >
-                  <Database className="mr-2 h-4 w-4 !text-cyan-600" />
+                  <Database className="mr-2 h-4 w-4 !text-automate" />
                   <span>Database Test</span>
                 </CommandItem>
                 <CommandItem
                   onSelect={() => handleCommand("create-test-custom")}
                 >
-                  <SquareFunction className="mr-2 h-4 w-4 !text-blue-600" />
+                  <SquareFunction className="mr-2 h-4 w-4 !text-automate" />
                   <span>Custom Test</span>
                 </CommandItem>
                 <CommandItem
@@ -321,31 +321,31 @@ export function CommandSearch({
                 <CommandItem
                   onSelect={() => handleCommand("create-monitor-http")}
                 >
-                  <ArrowLeftRight className="mr-2 h-4 w-4 !text-teal-600" />
+                  <ArrowLeftRight className="mr-2 h-4 w-4 !text-monitor" />
                   <span>HTTP Monitor</span>
                 </CommandItem>
                 <CommandItem
                   onSelect={() => handleCommand("create-monitor-website")}
                 >
-                  <LaptopMinimal className="mr-2 h-4 w-4 !text-sky-600" />
+                  <LaptopMinimal className="mr-2 h-4 w-4 !text-monitor" />
                   <span>Website Monitor</span>
                 </CommandItem>
                 <CommandItem
                   onSelect={() => handleCommand("create-monitor-ping")}
                 >
-                  <ChevronsLeftRightEllipsis className="mr-2 h-4 w-4 !text-cyan-600" />
+                  <ChevronsLeftRightEllipsis className="mr-2 h-4 w-4 !text-monitor" />
                   <span>Ping Monitor</span>
                 </CommandItem>
                 <CommandItem
                   onSelect={() => handleCommand("create-monitor-port")}
                 >
-                  <EthernetPort className="mr-2 h-4 w-4 !text-blue-600" />
+                  <EthernetPort className="mr-2 h-4 w-4 !text-monitor" />
                   <span>Port Monitor</span>
                 </CommandItem>
                 <CommandItem
                   onSelect={() => handleCommand("create-monitor-synthetic")}
                 >
-                  <PlaywrightLogo className="mr-2 h-4 w-4 !text-purple-600" />
+                  <PlaywrightLogo className="mr-2 h-4 w-4 !text-monitor" />
                   <span>Synthetic Monitor</span>
                 </CommandItem>
               </CommandGroup>

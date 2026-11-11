@@ -26,7 +26,7 @@ export function DataTable<TData, TValue>(props: DataTableProps<TData, TValue>) {
     <GenericDataTable
       {...props}
       entityLabel="tests"
-      initialColumnVisibility={{ updatedAt: false }}
+      initialColumnVisibility={{ id: false, updatedAt: false }}
       meta={{
         globalFilterColumns: [
           "id",

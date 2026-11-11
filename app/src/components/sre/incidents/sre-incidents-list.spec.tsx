@@ -177,10 +177,10 @@ describe("SreIncidentsList", () => {
     expect(within(group).getByRole("button", { name: "Active" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByText("Total 3 incidents")).toBeInTheDocument();
     fireEvent.click(within(group).getByRole("button", { name: "Assigned to me" }));
-    expect(screen.getByText("Total 1 incidents")).toBeInTheDocument();
+    expect(screen.getByText("Total 1 incident")).toBeInTheDocument();
     expect(screen.getByText("Checkout incident 1")).toBeInTheDocument();
     fireEvent.click(within(group).getByRole("button", { name: "Unassigned" }));
-    expect(screen.getByText("Total 1 incidents")).toBeInTheDocument();
+    expect(screen.getByText("Total 1 incident")).toBeInTheDocument();
     expect(screen.getByText("Checkout incident 3")).toBeInTheDocument();
     fireEvent.click(within(group).getByRole("button", { name: "All" }));
     expect(screen.getByText("Total 4 incidents")).toBeInTheDocument();
@@ -202,7 +202,7 @@ describe("SreIncidentsList", () => {
     fireEvent.click(within(statusHeader!).getAllByRole("button")[0]);
     expect(firstTitle()).toContain("Checkout incident 3");
     fireEvent.change(screen.getByPlaceholderText(/Search/), { target: { value: "monitoring" } });
-    expect(screen.getByText("Total 1 incidents")).toBeInTheDocument();
+    expect(screen.getByText("Total 1 incident")).toBeInTheDocument();
     expect(screen.getByText("Checkout incident 1")).toBeInTheDocument();
   });
 
@@ -227,7 +227,7 @@ describe("SreIncidentsList", () => {
     );
     fireEvent.click(within(screen.getByTestId("incident-toolbar")).getByRole("button", { name: /Status/ }));
     fireEvent.click(screen.getByRole("option", { name: "Resolved" }));
-    expect(screen.getByText("Total 1 incidents")).toBeInTheDocument();
+    expect(screen.getByText("Total 1 incident")).toBeInTheDocument();
     expect(screen.getByText("Checkout incident 3")).toBeInTheDocument();
     // The Active chip no longer claims to be the view once a status is picked.
     const group = screen.getByRole("group", { name: "Quick filters" });
@@ -328,7 +328,7 @@ describe("SreIncidentsList", () => {
       ),
     );
     fireEvent.click(screen.getByRole("option", { name: "SEV2" }));
-    expect(screen.getByText("Total 1 incidents")).toBeInTheDocument();
+    expect(screen.getByText("Total 1 incident")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("option", { name: "SEV3" }));
     expect(screen.getByText("Total 2 incidents")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("option", { name: "Clear filters" }));
@@ -352,7 +352,7 @@ describe("SreIncidentsList", () => {
       ),
     );
     fireEvent.click(screen.getByRole("option", { name: "Resolved" }));
-    expect(screen.getByText("Total 1 incidents")).toBeInTheDocument();
+    expect(screen.getByText("Total 1 incident")).toBeInTheDocument();
     expect(screen.getByText("Checkout incident 3")).toBeInTheDocument();
   });
 
@@ -427,7 +427,7 @@ describe("SreIncidentsList", () => {
       target: { value: "Checkout incident 13" },
     });
 
-    expect(screen.getByText("Total 1 incidents")).toBeInTheDocument();
+    expect(screen.getByText("Total 1 incident")).toBeInTheDocument();
     expect(screen.getByText("Checkout incident 13")).toBeInTheDocument();
     expect(
       screen.queryByText("Checkout incident 12"),
@@ -453,14 +453,14 @@ describe("SreIncidentsList display-status facet", () => {
   it("maps Acknowledged to triggered incidents with acknowledgedAt", () => {
     render(<SreIncidentsList incidents={incidents} loadError={null} />);
     pick("Acknowledged");
-    expect(screen.getByText("Total 1 incidents")).toBeInTheDocument();
+    expect(screen.getByText("Total 1 incident")).toBeInTheDocument();
     expect(screen.getByText("Acked")).toBeInTheDocument();
   });
 
   it("keeps unacknowledged triggered incidents under Triggered only", () => {
     render(<SreIncidentsList incidents={incidents} loadError={null} />);
     pick("Triggered");
-    expect(screen.getByText("Total 1 incidents")).toBeInTheDocument();
+    expect(screen.getByText("Total 1 incident")).toBeInTheDocument();
     expect(screen.getByText("Fresh")).toBeInTheDocument();
   });
 

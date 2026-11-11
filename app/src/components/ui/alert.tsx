@@ -11,6 +11,11 @@ const alertVariants = cva(
         default: "bg-background text-foreground",
         destructive:
           "border-destructive/50 text-destructive dark:border-destructive [&>svg]:text-destructive",
+        // Status callouts (DESIGN.md): tinted background, tokenised border and icon, readable body text.
+        info: "border-blue-500/30 bg-blue-500/10 text-foreground [&>svg]:text-blue-700 dark:[&>svg]:text-blue-300",
+        success: "border-success/30 bg-success/10 text-foreground [&>svg]:text-success",
+        warning: "border-warning/40 bg-warning/10 text-foreground [&>svg]:text-warning",
+        error: "border-failure/30 bg-failure/10 text-foreground [&>svg]:text-failure",
       },
     },
     defaultVariants: {

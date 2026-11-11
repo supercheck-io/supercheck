@@ -25,6 +25,12 @@ interface ListPaginationProps {
   onPageSizeChange: (pageSize: number) => void;
 }
 
+/** "incidents (from the latest 500)" -> "incident (from the latest 500)", "saved queries" -> "saved query". */
+export function singularize(itemName: string): string {
+  if (/ies(?=\s*\(|$)/.test(itemName)) return itemName.replace(/ies(?=\s*\(|$)/, "y");
+  return itemName.replace(/s(?=\s*\(|$)/, "");
+}
+
 /** Shared table footer (see DESIGN.md): total, rows-per-page menu and page controls. */
 export function ListPagination({
   total,
@@ -40,7 +46,7 @@ export function ListPagination({
   return (
     <div className="flex flex-wrap items-center justify-between gap-y-2 px-2">
       <div className="flex-1 text-sm text-muted-foreground">
-        Total {total} {itemName}
+        Total {total} {total === 1 ? singularize(itemName) : itemName}
       </div>
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2 lg:gap-x-8">
         <div className="flex items-center space-x-2">

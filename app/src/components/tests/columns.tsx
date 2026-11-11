@@ -204,7 +204,6 @@ export const columns: ColumnDef<Test>[] = [
       );
     },
     enableSorting: false,
-    enableHiding: false,
   },
   {
     accessorKey: "title",

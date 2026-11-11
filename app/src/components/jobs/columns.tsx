@@ -451,7 +451,6 @@ export const columns: ColumnDef<Job>[] = [
       );
     },
     enableSorting: false,
-    enableHiding: false,
   },
   {
     accessorKey: "name",

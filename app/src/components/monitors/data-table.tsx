@@ -71,6 +71,7 @@ export function DataTable<TData, TValue>({
   const { bodyRef, pagination, onPaginationChange } = useFitPagination(data.length, pageSize);
   const [rowSelection, setRowSelection] = React.useState({});
   const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({
+    id: false,
     updatedAt: false,
   });
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
