@@ -96,7 +96,10 @@ export async function deleteMonitorWithContext(
       const cleaned = new Set<string>(); // keyed by id and location, so a moved report is cleaned again
       const key = (...parts: Array<string | null>) => JSON.stringify(parts);
       // Every result seen so far: result rows are deleted as they are cleaned, but their report rows must still be found.
-      const seen = new Map<string, { executionId: string | null; url: string | null }>();
+      // `legacy` is decided once, when the result is first seen, so later passes and the locked final
+      // transaction never fall back to the unindexed s3_url lookup for rows already matched by execution id.
+      const seen = new Map<string, { executionId: string | null; url: string | null; legacy: boolean | null }>();
+      const reportedResults = new Set<string>();
       let deletedResults = 0;
       for (let attempt = 1; ; attempt++) {
       const resultsWithReports = await tx
@@ -108,7 +111,10 @@ export async function deleteMonitorWithContext(
         .from(monitorResults)
         .where(eq(monitorResults.monitorId, monitorId));
 
-      for (const result of resultsWithReports) seen.set(result.id, { executionId: result.testExecutionId, url: result.testReportS3Url });
+      for (const result of resultsWithReports) {
+        if (!seen.has(result.id)) seen.set(result.id, { executionId: result.testExecutionId, url: result.testReportS3Url, legacy: null });
+        if (result.testReportS3Url) reportedResults.add(result.id);
+      }
       // Match by the indexed (entity_type, entity_id) key; s3_url (unindexed) only finds legacy rows.
       const ownedReports = async (reader: Pick<typeof db, "select">, lock: boolean) => {
         const find = (column: typeof reports.entityId | typeof reports.s3Url) => (values: string[]) => {
@@ -121,7 +127,8 @@ export async function deleteMonitorWithContext(
         const byEntity = await selectInChunks([...new Set([...seen.values()].flatMap(r => r.executionId ? [r.executionId] : []))], find(reports.entityId));
         const matched = new Set(byEntity.map(row => row.entityId));
         // Unindexed s3_url lookups only for results whose execution id found no report (legacy rows).
-        const legacyUrls = [...new Set([...seen.values()].flatMap(r => r.url && !(r.executionId && matched.has(r.executionId)) ? [r.url] : []))];
+        for (const entry of seen.values()) entry.legacy ??= !!entry.url && !(entry.executionId && matched.has(entry.executionId));
+        const legacyUrls = [...new Set([...seen.values()].flatMap(r => r.legacy && r.url ? [r.url] : []))];
         for (const row of [...byEntity, ...await selectInChunks(legacyUrls, find(reports.s3Url))]) rows.set(row.id, row);
         return [...rows.values()].sort((a, b) => a.id.localeCompare(b.id));
       };
@@ -207,7 +214,7 @@ export async function deleteMonitorWithContext(
       return {
         success: true as const,
         monitorData,
-        reportsToDelete,
+        reportsDeleted: reportedResults.size,
         deletedResults,
       };
       });
@@ -252,7 +259,7 @@ export async function deleteMonitorWithContext(
           projectId: project.id,
           projectName: project.name,
           resultsDeleted: transactionResult.deletedResults,
-          reportsDeleted: transactionResult.reportsToDelete?.length || 0,
+          reportsDeleted: transactionResult.reportsDeleted,
         },
         success: true as const,
       }).catch((_auditError) => {
@@ -278,7 +285,7 @@ export async function deleteMonitorWithContext(
       console.log(
         `[DELETE_MONITOR] Successfully deleted monitor ${monitorId} with ${
           transactionResult.deletedResults
-        } results and ${transactionResult.reportsToDelete?.length || 0} reports`
+        } results and ${transactionResult.reportsDeleted} reports`
       );
 
       return {
