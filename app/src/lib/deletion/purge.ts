@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/utils/db";
 import { jobs, jobTests, monitorResults, monitors, reports, runs } from "@/db/schema";
 import { createS3CleanupService, type ReportDeletionInput } from "@/lib/s3-cleanup";

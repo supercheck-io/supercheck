@@ -19,8 +19,9 @@ async function getQueue(): Promise<Queue> {
 /** Wake a purge. Duplicate triggers are harmless: the claim in the database admits one runner. */
 export async function triggerDeletion(id: string, delayMs = 0): Promise<void> {
   try {
-    // A deterministic id keeps one pending trigger per purge however many callers wake it.
-    await (await getQueue()).add("purge", { id }, { delay: delayMs, jobId: `purge-${id}` });
+    // No custom job id: a follow-up is added while the current job is still active, and a repeated id would be dropped as a duplicate.
+    // Extra triggers are harmless (the claim admits one runner and pushes blocked rows out), and the sweep is the backstop.
+    await (await getQueue()).add("purge", { id }, { delay: delayMs });
   } catch (error) {
     // The table is the source of truth: the sweep re-triggers anything this misses.
     console.error("[DELETION] Could not queue purge trigger; the sweep will pick it up:", error);

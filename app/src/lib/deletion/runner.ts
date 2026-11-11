@@ -36,7 +36,7 @@ export async function runDeletion(id: string): Promise<RunOutcome> {
       }
       const cursor = result.progress ?? row.cursor;
       await heartbeat(row, { phase: result.phase, cursor, progressed: !!result.progress });
-      row = { ...row, phase: result.phase, cursor };
+      row = { ...row, phase: result.phase, cursor, ...(result.progress ? { attempts: 0 } : {}) }; // mirrors the reset in heartbeat()
       if (result.delayMs) {
         await releaseDeletion(row, result.delayMs);
         return { retryInMs: result.delayMs };

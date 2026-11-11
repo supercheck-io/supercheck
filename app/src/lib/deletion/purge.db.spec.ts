@@ -283,6 +283,17 @@ describe("claims, retries and the sweep", () => {
     expect(done.attempts).toBe(0);
   });
 
+  it("restarts the attempt count after progress even when the claim started at the limit", async () => {
+    const seeded = await seedJob(1100);
+    await requestJobDeletion(scope(seeded));
+    await client`UPDATE deletion_jobs SET attempts = ${MAX_ATTEMPTS - 1} WHERE target_id = ${seeded.jobId}`;
+    mockDeleteReports.mockResolvedValueOnce({ success: true }).mockResolvedValueOnce({ success: false, failedObjects: [] });
+    await runDeletion((await deletionRow(seeded.jobId)).id);
+    const row = await deletionRow(seeded.jobId);
+    expect(row.state).toBe("queued"); // not failed: a batch succeeded, so this is attempt 1 again
+    expect(row.attempts).toBe(1);
+  });
+
   it("returns a retry delay for a purge that is not due yet instead of dropping the trigger", async () => {
     const seeded = await seedJob(1);
     await requestJobDeletion(scope(seeded));
