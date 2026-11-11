@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { desc, ne } from "drizzle-orm";
-import { isAdminAccessDeniedError, requireAdmin } from "@/lib/admin";
+import { requireAdmin } from "@/lib/admin";
 import { getCurrentUser } from "@/lib/session";
 import { adminDeniedResponse } from "@/lib/admin-errors";
 import { db } from "@/utils/db";
@@ -21,7 +21,8 @@ export async function GET() {
     }).from(deletionJobs).where(ne(deletionJobs.state, "completed")).orderBy(desc(deletionJobs.createdAt)).limit(200);
     return NextResponse.json({ data: rows });
   } catch (error) {
-    if (isAdminAccessDeniedError(error)) return adminDeniedResponse(error);
+    const denied = adminDeniedResponse(error);
+    if (denied) return denied;
     console.error("[ADMIN] deletion jobs list failed:", error);
     return NextResponse.json({ error: "Failed to list deletion jobs" }, { status: 500 });
   }
@@ -40,7 +41,8 @@ export async function POST(request: NextRequest) {
     await triggerDeletion(body.id);
     return NextResponse.json({ success: true });
   } catch (error) {
-    if (isAdminAccessDeniedError(error)) return adminDeniedResponse(error);
+    const denied = adminDeniedResponse(error);
+    if (denied) return denied;
     console.error("[ADMIN] deletion job retry failed:", error);
     return NextResponse.json({ error: "Failed to retry deletion job" }, { status: 500 });
   }
