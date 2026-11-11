@@ -12,8 +12,8 @@ if (( BASH_VERSINFO[0] < 4 )); then
   exit 69
 fi
 
-if (( $# != 4 )); then
-  echo "Usage: deploy-demo.sh <image-tag> <app-digest> <worker-digest> <deploy-directory>" >&2
+if (( $# != 5 )); then
+  echo "Usage: deploy-demo.sh <image-tag> <app-digest> <worker-digest> <deploy-directory> <k3s-setup-script>" >&2
   exit 64
 fi
 
@@ -21,6 +21,7 @@ readonly IMAGE_TAG="$1"
 readonly APP_DIGEST="$2"
 readonly WORKER_DIGEST="$3"
 readonly DEPLOY_DIRECTORY="$4"
+readonly K3S_SETUP_SCRIPT="$5"
 readonly EXPECTED_APP_IMAGE="${APP_IMAGE_REPOSITORY}:${IMAGE_TAG}"
 readonly EXPECTED_WORKER_IMAGE="${WORKER_IMAGE_REPOSITORY}:${IMAGE_TAG}"
 
@@ -39,6 +40,11 @@ done
 if [[ "$DEPLOY_DIRECTORY" != /* ]]; then
   echo "The demo deployment directory must be an absolute path" >&2
   exit 64
+fi
+
+if [[ "$K3S_SETUP_SCRIPT" != /* || ! -f "$K3S_SETUP_SCRIPT" ]]; then
+  echo "The K3s setup script must be an absolute path to an existing file: ${K3S_SETUP_SCRIPT}" >&2
+  exit 66
 fi
 
 for command_name in docker flock awk grep mktemp stat; do
@@ -263,6 +269,16 @@ pull_exact_digest() {
   fi
 }
 
+# Re-applies only the execution-plane manifests (NetworkPolicy, RBAC, quota, ...) so the
+# demo's isolation policy always matches this release. Never reinstalls K3s or gVisor.
+refresh_execution_plane() {
+  if (( EUID == 0 )); then
+    bash "$K3S_SETUP_SCRIPT" --execution-plane-only </dev/null
+  else
+    sudo -n bash "$K3S_SETUP_SCRIPT" --execution-plane-only </dev/null
+  fi
+}
+
 persist_release_version() {
   local env_file=".env"
   local temporary_file
@@ -304,6 +320,11 @@ trap 'echo "Demo deploy failed near ${BASH_SOURCE[0]}:${LINENO} (exit $?)" >&2' 
 
 pull_exact_digest "$APP_IMAGE_REPOSITORY" "$IMAGE_TAG" "$APP_DIGEST"
 pull_exact_digest "$WORKER_IMAGE_REPOSITORY" "$IMAGE_TAG" "$WORKER_DIGEST"
+
+if ! refresh_execution_plane; then
+  echo "Failed to refresh the execution-plane policy; the worker was not updated" >&2
+  exit 1
+fi
 
 # --pull never keeps Compose from re-fetching mutable tags after digest pin.
 if ! compose_up_app_worker never; then

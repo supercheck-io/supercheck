@@ -10,6 +10,10 @@
 #   # or
 #   chmod +x setup-k3s.sh && sudo ./setup-k3s.sh
 #
+# Upgrades: re-run this script. It is idempotent and refreshes the execution
+# policy (NetworkPolicy, quota, RBAC). To refresh only those manifests without
+# touching K3s or gVisor, run: sudo bash setup-k3s.sh --execution-plane-only
+#
 # Prerequisites:
 #   - Ubuntu 22.04+ or Debian 12+ (amd64/arm64)
 #   - Root/sudo access
@@ -91,6 +95,318 @@ ensure_api_tls_san() {
   exit 1
 }
 
+# ─── Execution-plane manifests (idempotent; also run alone by --execution-plane-only) ───
+
+apply_runtimeclass() {
+  log "Creating gVisor RuntimeClass..."
+  k3s kubectl apply -f - <<'YAML'
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: gvisor
+handler: runsc
+overhead:
+  podFixed:
+    memory: "64Mi"
+    cpu: "50m"
+scheduling:
+  nodeSelector:
+    gvisor.io/enabled: "true"
+  tolerations:
+    - key: workload
+      operator: Equal
+      value: worker
+      effect: NoSchedule
+YAML
+}
+
+apply_execution_namespace() {
+  log "Creating supercheck-execution namespace, LimitRange, ResourceQuota, and NetworkPolicy..."
+  k3s kubectl apply -f - <<'YAML'
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: supercheck-execution
+  labels:
+    app.kubernetes.io/name: supercheck-execution
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+# Zero-permission ServiceAccount mounted by execution Jobs. The worker creates
+# the per-run payload Secrets; this SA only runs the Job pod itself.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: execution-runner
+  namespace: supercheck-execution
+  labels:
+    app.kubernetes.io/part-of: supercheck
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: execution-limits
+  namespace: supercheck-execution
+  labels:
+    app.kubernetes.io/part-of: supercheck
+spec:
+  hard:
+    requests.cpu: "4"
+    requests.memory: "8Gi"
+    limits.cpu: "8"
+    limits.memory: "16Gi"
+    count/jobs.batch: "10"
+    pods: "10"
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: execution-guardrails
+  namespace: supercheck-execution
+  labels:
+    app.kubernetes.io/part-of: supercheck
+spec:
+  limits:
+    - type: Container
+      min:
+        cpu: "100m"
+        memory: "128Mi"
+      defaultRequest:
+        cpu: "250m"
+        memory: "768Mi"
+      default:
+        cpu: "1500m"
+        memory: "2Gi"
+      max:
+        cpu: "4"
+        memory: "9Gi"
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: execution-egress
+  namespace: supercheck-execution
+  labels:
+    app.kubernetes.io/part-of: supercheck
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress: []
+  egress:
+    # DNS only through the cluster resolver, so pods cannot query private resolvers.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 169.254.169.254/32
+              - 100.100.100.200/32
+              - 100.64.0.0/10
+              - 169.254.0.0/16
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      # Any public port except mail (25, 465, 587, 2525) and this host's control plane
+      # (6443 API, 2379-2380 etcd, 9100 node metrics, 9253 node-local-dns metrics, 9345 supervisor,
+      # 10250 kubelet, 10255 kubelet read-only, 10256 kube-proxy health), which public node IPs expose.
+      ports:
+        - protocol: TCP
+          port: 1
+          endPort: 24
+        - protocol: TCP
+          port: 26
+          endPort: 464
+        - protocol: TCP
+          port: 466
+          endPort: 586
+        - protocol: TCP
+          port: 588
+          endPort: 2378
+        - protocol: TCP
+          port: 2381
+          endPort: 2524
+        - protocol: TCP
+          port: 2526
+          endPort: 6442
+        - protocol: TCP
+          port: 6444
+          endPort: 9099
+        - protocol: TCP
+          port: 9101
+          endPort: 9252
+        - protocol: TCP
+          port: 9254
+          endPort: 9344
+        - protocol: TCP
+          port: 9346
+          endPort: 10249
+        - protocol: TCP
+          port: 10251
+          endPort: 10254
+        - protocol: TCP
+          port: 10257
+          endPort: 65535
+        # Redundant with the ranges above, for a CNI that ignores endPort.
+        - protocol: TCP
+          port: 80
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 8443
+YAML
+}
+
+apply_worker_rbac() {
+  log "Creating restricted worker RBAC for external Docker Compose workers..."
+  k3s kubectl apply -f - <<'YAML'
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: supercheck-workers
+  labels:
+    app.kubernetes.io/name: supercheck-workers
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: supercheck-worker
+  namespace: supercheck-workers
+  labels:
+    app.kubernetes.io/name: supercheck-worker
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: execution-manager
+  namespace: supercheck-execution
+  labels:
+    app.kubernetes.io/part-of: supercheck
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "get", "list", "watch", "delete", "deletecollection"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch", "delete"]
+  # Lets the worker see why the cluster rejected a Job's pod (admission denial) and fail fast.
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["get", "create"]
+  # Ephemeral, Job-owned payload/runtime Secrets. The execution pod only mounts
+  # these objects; the zero-permission execution-runner SA cannot read them.
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: worker-execution-manager
+  namespace: supercheck-execution
+  labels:
+    app.kubernetes.io/part-of: supercheck
+subjects:
+  - kind: ServiceAccount
+    name: supercheck-worker
+    namespace: supercheck-workers
+roleRef:
+  kind: Role
+  name: execution-manager
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: supercheck-worker-token
+  namespace: supercheck-workers
+  annotations:
+    kubernetes.io/service-account.name: supercheck-worker
+type: kubernetes.io/service-account-token
+YAML
+}
+
+apply_execution_plane() {
+  apply_runtimeclass
+  apply_execution_namespace
+  apply_worker_rbac
+}
+
+EXECUTION_PLANE_ONLY=false
+for arg in "$@"; do
+  case "$arg" in
+    --execution-plane-only) EXECUTION_PLANE_ONLY=true ;;
+    *)
+      error "Unknown argument: $arg (supported: --execution-plane-only)"
+      exit 64
+      ;;
+  esac
+done
+
+# Drops pod traffic to the cloud instance-metadata address in the raw table, before
+# conntrack and before K3s starts, so a cloud-hosted node never exposes it to pods in the
+# pod-start window. Only PREROUTING (traffic arriving from pods) is matched: the host's own
+# OUTPUT traffic to metadata keeps working. The rule is re-applied at every boot, ahead of k3s.
+install_metadata_block() {
+  if ! command -v iptables &>/dev/null; then
+    warn "iptables not found; skipping the host metadata block (the NetworkPolicy still blocks 169.254.169.254)"
+    return 0
+  fi
+  local unit=/etc/systemd/system/supercheck-metadata-block.service unit_tmp
+  unit_tmp="$(mktemp)"
+  cat >"$unit_tmp" <<'UNIT'
+[Unit]
+Description=Block pod access to the cloud instance metadata address
+Before=k3s.service
+After=network-pre.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c 'iptables -w -t raw -C PREROUTING -d 169.254.169.254/32 -j DROP 2>/dev/null || iptables -w -t raw -I PREROUTING -d 169.254.169.254/32 -j DROP'
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+  install -d -m 755 "$(dirname "$unit")"
+  if ! cmp -s "$unit" "$unit_tmp"; then
+    install -m 644 "$unit_tmp" "$unit"
+    systemctl daemon-reload
+  fi
+  rm -f "$unit_tmp"
+  # Restart (not just start): an already-active oneshot would not re-run ExecStart, so a
+  # rule lost to a firewall reload would stay missing.
+  systemctl enable supercheck-metadata-block.service
+  systemctl restart supercheck-metadata-block.service
+  log "Host rule dropping pod traffic to 169.254.169.254 installed"
+}
+
 # ─── Preflight checks ────────────────────────────────────────────────────────
 
 if [[ $EUID -ne 0 ]]; then
@@ -120,6 +436,23 @@ fi
 
 if command -v k3s &>/dev/null; then
   secure_kubeconfig /etc/systemd/system/k3s.service /etc/rancher/k3s/k3s.yaml
+fi
+
+if [[ "$EXECUTION_PLANE_ONLY" == true ]]; then
+  if ! command -v k3s &>/dev/null; then
+    error "K3s is not installed; run this script without --execution-plane-only first"
+    exit 1
+  fi
+  export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+  if ! k3s kubectl get nodes &>/dev/null; then
+    error "The K3s API is not reachable; check: systemctl status k3s"
+    exit 1
+  fi
+  info "Refreshing execution-plane manifests only (K3s and gVisor are left untouched)"
+  install_metadata_block
+  apply_execution_plane
+  log "Execution plane refreshed (namespaces, RuntimeClass, RBAC, NetworkPolicy, LimitRange, ResourceQuota, Pod Security labels)"
+  exit 0
 fi
 
 if ! command -v sha512sum &>/dev/null; then
@@ -160,6 +493,10 @@ GVISOR_RELEASE="${GVISOR_RELEASE:-20261005.0}"
 TMP_DIR="$(mktemp -d)"
 WORKER_KUBECONFIG_TMP=""
 trap 'rm -rf "$TMP_DIR"; if [[ -n "${WORKER_KUBECONFIG_TMP:-}" ]]; then rm -f "$WORKER_KUBECONFIG_TMP"; fi' EXIT
+
+# ─── Step 0: Host rule blocking pod access to instance metadata ──────────────
+
+install_metadata_block
 
 # ─── Step 1: Install K3s (containerd, no Docker) ─────────────────────────────
 
@@ -312,250 +649,15 @@ log "K3s restarted successfully"
 
 # ─── Step 5: Create gVisor RuntimeClass ───────────────────────────────────────
 
-log "Creating gVisor RuntimeClass..."
-k3s kubectl apply -f - <<'YAML'
-apiVersion: node.k8s.io/v1
-kind: RuntimeClass
-metadata:
-  name: gvisor
-handler: runsc
-overhead:
-  podFixed:
-    memory: "64Mi"
-    cpu: "50m"
-scheduling:
-  nodeSelector:
-    gvisor.io/enabled: "true"
-  tolerations:
-    - key: workload
-      operator: Equal
-      value: worker
-      effect: NoSchedule
-YAML
+apply_runtimeclass
 
 # ─── Step 6: Create execution namespace + guardrails ─────────────────────────
 
-log "Creating supercheck-execution namespace, LimitRange, ResourceQuota, and NetworkPolicy..."
-k3s kubectl apply -f - <<'YAML'
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: supercheck-execution
-  labels:
-    app.kubernetes.io/name: supercheck-execution
-    pod-security.kubernetes.io/enforce: restricted
-    pod-security.kubernetes.io/audit: restricted
-    pod-security.kubernetes.io/warn: restricted
----
-# Zero-permission ServiceAccount mounted by execution Jobs. The worker creates
-# the per-run payload Secrets; this SA only runs the Job pod itself.
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: execution-runner
-  namespace: supercheck-execution
-  labels:
-    app.kubernetes.io/part-of: supercheck
-automountServiceAccountToken: false
----
-apiVersion: v1
-kind: ResourceQuota
-metadata:
-  name: execution-limits
-  namespace: supercheck-execution
-  labels:
-    app.kubernetes.io/part-of: supercheck
-spec:
-  hard:
-    requests.cpu: "4"
-    requests.memory: "8Gi"
-    limits.cpu: "8"
-    limits.memory: "16Gi"
-    count/jobs.batch: "10"
-    pods: "10"
----
-apiVersion: v1
-kind: LimitRange
-metadata:
-  name: execution-guardrails
-  namespace: supercheck-execution
-  labels:
-    app.kubernetes.io/part-of: supercheck
-spec:
-  limits:
-    - type: Container
-      min:
-        cpu: "100m"
-        memory: "128Mi"
-      defaultRequest:
-        cpu: "250m"
-        memory: "768Mi"
-      default:
-        cpu: "1500m"
-        memory: "2Gi"
-      max:
-        cpu: "4"
-        memory: "9Gi"
----
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: execution-egress
-  namespace: supercheck-execution
-  labels:
-    app.kubernetes.io/part-of: supercheck
-spec:
-  podSelector: {}
-  policyTypes:
-    - Ingress
-    - Egress
-  ingress: []
-  egress:
-    # DNS only through the cluster resolver, so pods cannot query private resolvers.
-    - to:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: kube-system
-          podSelector:
-            matchLabels:
-              k8s-app: kube-dns
-      ports:
-        - protocol: UDP
-          port: 53
-        - protocol: TCP
-          port: 53
-    - to:
-        - ipBlock:
-            cidr: 0.0.0.0/0
-            except:
-              - 169.254.169.254/32
-              - 100.100.100.200/32
-              - 100.64.0.0/10
-              - 169.254.0.0/16
-              - 10.0.0.0/8
-              - 172.16.0.0/12
-              - 192.168.0.0/16
-      # Any public port except mail (25, 465, 587, 2525) and this host's control plane
-      # (6443 API, 2379-2380 etcd, 9100, 9345, 10250, 10255), which public node IPs expose.
-      ports:
-        - protocol: TCP
-          port: 1
-          endPort: 24
-        - protocol: TCP
-          port: 26
-          endPort: 464
-        - protocol: TCP
-          port: 466
-          endPort: 586
-        - protocol: TCP
-          port: 588
-          endPort: 2378
-        - protocol: TCP
-          port: 2381
-          endPort: 2524
-        - protocol: TCP
-          port: 2526
-          endPort: 6442
-        - protocol: TCP
-          port: 6444
-          endPort: 9099
-        - protocol: TCP
-          port: 9101
-          endPort: 9344
-        - protocol: TCP
-          port: 9346
-          endPort: 10249
-        - protocol: TCP
-          port: 10251
-          endPort: 10254
-        - protocol: TCP
-          port: 10256
-          endPort: 65535
-        # Redundant with the ranges above, for a CNI that ignores endPort.
-        - protocol: TCP
-          port: 80
-        - protocol: TCP
-          port: 443
-        - protocol: TCP
-          port: 8080
-        - protocol: TCP
-          port: 8443
-YAML
+apply_execution_namespace
 
 # ─── Step 7: Create restricted worker RBAC + kubeconfig ──────────────────────
 
-log "Creating restricted worker RBAC for external Docker Compose workers..."
-k3s kubectl apply -f - <<'YAML'
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: supercheck-workers
-  labels:
-    app.kubernetes.io/name: supercheck-workers
-    pod-security.kubernetes.io/enforce: restricted
-    pod-security.kubernetes.io/audit: restricted
-    pod-security.kubernetes.io/warn: restricted
----
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: supercheck-worker
-  namespace: supercheck-workers
-  labels:
-    app.kubernetes.io/name: supercheck-worker
-automountServiceAccountToken: false
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  name: execution-manager
-  namespace: supercheck-execution
-  labels:
-    app.kubernetes.io/part-of: supercheck
-rules:
-  - apiGroups: ["batch"]
-    resources: ["jobs"]
-    verbs: ["create", "get", "list", "watch", "delete", "deletecollection"]
-  - apiGroups: [""]
-    resources: ["pods"]
-    verbs: ["get", "list", "watch", "delete"]
-  - apiGroups: [""]
-    resources: ["pods/log"]
-    verbs: ["get"]
-  - apiGroups: [""]
-    resources: ["pods/exec"]
-    verbs: ["get", "create"]
-  # Ephemeral, Job-owned payload/runtime Secrets. The execution pod only mounts
-  # these objects; the zero-permission execution-runner SA cannot read them.
-  - apiGroups: [""]
-    resources: ["secrets"]
-    verbs: ["create"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: worker-execution-manager
-  namespace: supercheck-execution
-  labels:
-    app.kubernetes.io/part-of: supercheck
-subjects:
-  - kind: ServiceAccount
-    name: supercheck-worker
-    namespace: supercheck-workers
-roleRef:
-  kind: Role
-  name: execution-manager
-  apiGroup: rbac.authorization.k8s.io
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: supercheck-worker-token
-  namespace: supercheck-workers
-  annotations:
-    kubernetes.io/service-account.name: supercheck-worker
-type: kubernetes.io/service-account-token
-YAML
+apply_worker_rbac
 
 WORKER_KUBECONFIG="/etc/rancher/k3s/supercheck-worker.kubeconfig"
 API_SERVER=$(k3s kubectl config view --raw -o jsonpath='{.clusters[0].cluster.server}')

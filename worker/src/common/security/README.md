@@ -27,14 +27,26 @@ Execution pods are hardened in multiple layers:
 - `automountServiceAccountToken: false`
 - `enableServiceLinks: false`
 
-The worker ServiceAccount has namespace-scoped RBAC only for:
+The worker ServiceAccount has a namespace-scoped `execution-manager` Role in `supercheck-execution` only (defined in `deploy/docker/setup-k3s.sh`):
 
-- `jobs`
-- `pods`
-- `pods/log`
-- `pods/exec`
+| Resource | Verbs | Why |
+|----------|-------|-----|
+| `jobs` (batch) | create, get, list, watch, delete, deletecollection | Run and clean up execution Jobs |
+| `pods` | get, list, watch, delete | Find and watch the Job's pod |
+| `pods/log` | get | Stream and snapshot output |
+| `pods/exec` | get, create | Poll the exit file and extract reports |
+| `events` | get, list | Fail fast when the cluster rejects the Job's pod (`FailedCreate`); optional, a 403 only delays that failure to the 120 s pod timeout |
+| `secrets` | create | Ephemeral Job-owned payload/runtime Secrets (not readable by the worker) |
 
 Execution pods do not receive Kubernetes credentials.
+
+### Network isolation check (fail closed)
+
+Every execution Job has an `egress-wait` init container that probes the Kubernetes API Service. If it stays reachable for 20 s the NetworkPolicy is not being enforced, so the pod exits 78 and user code never starts. The run is reported as `Infrastructure error: execution network isolation not enforced; the run was not started`, is not billed and is not a test failure. If admission control rejects the pod instead (for example a policy that denies init containers), the worker reads the Job's `FailedCreate` events and fails the run immediately with `Infrastructure error: Execution pod was rejected by the cluster: <reason>`.
+
+### Log collectors
+
+Execution pod templates carry `supercheck.io/scrape-logs: "false"`. The worker streams pod output itself and redacts secrets before storing it, so a cluster log collector (Promtail, Vector, Fluent Bit, ...) must not also ship the raw lines. Supercheck does not install a collector; if you run one, configure it to drop pods with this annotation (it is a convention, not enforced by Kubernetes) or exclude the `supercheck-execution` namespace.
 
 ## Workspace Isolation
 
@@ -118,5 +130,5 @@ Network access is enforced by Kubernetes `NetworkPolicy`, not by Docker flags:
 - `container-executor.service.ts`: Job creation, log streaming, extraction, cleanup
 - `container-executor.service.spec.ts`: Unit tests for pod spec generation and validation
 - `path-validator.ts`: Reusable path and argument validation helpers
-- `execution-rbac.yaml`: Worker-to-execution namespace permissions
-- `gvisor-runtimeclass.yaml`: RuntimeClass scheduling and overhead
+- `egress-guard.ts`: Init-container script behind the fail-closed isolation check
+- `deploy/docker/setup-k3s.sh`: RBAC, RuntimeClass, NetworkPolicy, quota and host metadata rule (`--execution-plane-only` re-applies the manifests alone)

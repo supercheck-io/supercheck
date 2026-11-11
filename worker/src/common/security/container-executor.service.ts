@@ -217,6 +217,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       { name: 'attempts', value: '3' },
     ]);
   private static readonly SLOW_POD_STARTUP_WARN_MS = 5_000;
+  private static readonly POD_EVENT_CHECK_MS = 5_000;
   /** Consecutive unverifiable activity checks (10s apart) before failing loudly. */
   private static readonly MAX_UNCERTAIN_EXECUTION_CHECKS = 30;
   private static readonly OUTCOME_POLL_FAST_UNTIL_MS = 15_000;
@@ -277,6 +278,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
   private kubeConfig: k8s.KubeConfig | null = null;
   private batchApi: k8s.BatchV1Api | null = null;
   private coreApi: k8s.CoreV1Api | null = null;
+  private podEventsUnavailableLogged = false;
   private logClient: k8s.Log | null = null;
   private execClient: k8s.Exec | null = null;
   // Runs whose Job the shutdown drain deleted; their pod disappearing is not a user cancellation.
@@ -1342,6 +1344,8 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
         activeDeadlineSeconds: deadlineSeconds,
         template: {
           metadata: {
+            // The worker redacts output itself; log collectors would store it raw.
+            annotations: { 'supercheck.io/scrape-logs': 'false' },
             labels: {
               'app.kubernetes.io/managed-by': 'supercheck-worker',
               'app.kubernetes.io/component': 'execution',
@@ -1704,6 +1708,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
   ): Promise<string> {
     const timeoutAt = Date.now() + 120_000;
     const labelSelector = `job-name=${jobName}`;
+    let lastEventCheck = 0;
 
     while (Date.now() < timeoutAt) {
       // Shutdown deleted the Job before its pod was listed: no pod will ever appear.
@@ -1724,12 +1729,76 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
         // this early return no longer races the container start.
         return pod.metadata.name;
       }
+      if (
+        Date.now() - lastEventCheck >=
+        ContainerExecutorService.POD_EVENT_CHECK_MS
+      ) {
+        lastEventCheck = Date.now();
+        await this.failIfPodRejected(jobName);
+      }
       await this.sleep(1000);
     }
 
     throw new Error(
       `Execution pod for job ${jobName} did not appear within 120s`,
     );
+  }
+
+  /**
+   * Throws when the cluster's admission control rejected the Job's pod, so the
+   * run fails at once as an infrastructure error instead of waiting out the
+   * 120s pod timeout. Quota exhaustion is transient and not treated as a
+   * rejection. Any event-read failure (e.g. 403 on older RBAC) falls back to
+   * waiting for the pod.
+   */
+  private async failIfPodRejected(jobName: string): Promise<void> {
+    let items: k8s.CoreV1Event[];
+    try {
+      // Bounded so a stalled events call cannot block pod polling or its 120s deadline.
+      const request = this.coreApi!.listNamespacedEvent({
+        namespace: this.executionNamespace,
+        fieldSelector: `involvedObject.name=${jobName},reason=FailedCreate`,
+      });
+      request.catch(() => undefined);
+      let timer: NodeJS.Timeout | undefined;
+      try {
+        ({ items } = await Promise.race([
+          request,
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(
+              () => reject(new Error('events request timed out')),
+              ContainerExecutorService.POD_EVENT_CHECK_MS,
+            );
+          }),
+        ]));
+      } finally {
+        clearTimeout(timer);
+      }
+    } catch (error) {
+      if (!this.podEventsUnavailableLogged) {
+        this.podEventsUnavailableLogged = true;
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.warn(
+          `Cannot read execution events (${message}); pod admission failures will surface as a pod timeout. Grant "events" get/list in the execution namespace to fail fast.`,
+        );
+      }
+      return;
+    }
+    const denied = items.find(
+      (event) =>
+        /forbidden|denied|admission/i.test(event.message ?? '') &&
+        !/quota|error looking up service account/i.test(event.message ?? ''),
+    );
+    if (denied) {
+      // Control characters stripped and length capped: the text comes from the cluster.
+      const reason = (denied.message ?? '')
+        // eslint-disable-next-line no-control-regex
+        .replace(/[\u0000-\u001f\u007f]+/g, ' ')
+        .slice(0, 300);
+      throw new Error(
+        `Infrastructure error: Execution pod was rejected by the cluster: ${reason}`,
+      );
+    }
   }
 
   private createLogCollector(options: ContainerExecutionOptions): {

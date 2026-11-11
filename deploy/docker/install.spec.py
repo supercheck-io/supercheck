@@ -32,12 +32,32 @@ class InstallerTests(unittest.TestCase):
         allowed = set()
         for start, end in re.findall(r'port: (\d+)(?:\n\s+endPort: (\d+))?', public_rule):
             allowed.update(range(int(start), int(end or start) + 1))
-        for port in (25, 465, 587, 2525, 2379, 2380, 6443, 9100, 9345, 10250, 10255):
+        for port in (25, 465, 587, 2525, 2379, 2380, 6443, 9100, 9253, 9345, 10250, 10255, 10256):
             with self.subTest(blocked=port):
                 self.assertNotIn(port, allowed)
         for port in (1, 22, 80, 443, 3306, 5432, 8080, 8443, 65535):
             with self.subTest(allowed=port):
                 self.assertIn(port, allowed)
+
+    def test_execution_plane_refresh_and_metadata_block_are_wired(self):
+        source = (DEPLOY / 'setup-k3s.sh').read_text()
+        self.assertIn('--execution-plane-only', source)
+        # The refresh branch must exit before any K3s/gVisor install step.
+        refresh = source.split('if [[ "$EXECUTION_PLANE_ONLY" == true ]]; then', 1)[1].split('\nfi\n', 1)[0]
+        self.assertIn('apply_execution_plane', refresh)
+        self.assertIn('install_metadata_block', refresh)
+        self.assertIn('exit 0', refresh)
+        self.assertNotIn('get.k3s.io', refresh)
+        self.assertLess(source.index('install_metadata_block\n\n# ─── Step 1'), source.index('get.k3s.io'))
+        self.assertIn('iptables -w -t raw -C PREROUTING -d 169.254.169.254/32 -j DROP', source)
+        self.assertIn('Before=k3s.service', source)
+        self.assertNotIn('-t raw -I OUTPUT', source)
+        self.assertIn('resources: ["events"]', source)
+
+    def test_demo_deploy_refreshes_execution_plane_before_rolling_the_worker(self):
+        source = (DEPLOY.parent.parent / '.github/scripts/deploy-demo.sh').read_text()
+        self.assertIn('--execution-plane-only', source)
+        self.assertLess(source.index('\nif ! refresh_execution_plane; then'), source.index('\nif ! compose_up_app_worker never; then'))
 
     def test_execution_dns_only_reaches_the_cluster_resolver(self):
         dns_rule = self._execution_policy().split('egress:', 1)[1].split('ipBlock:', 1)[0]

@@ -169,6 +169,8 @@ All services should be healthy and the health endpoint should return `{"status":
 | `rustfs` | S3-compatible artifact storage | `127.0.0.1:9000` (`RUSTFS_BIND_ADDR`, `RUSTFS_HOST_PORT`) |
 | `traefik` | HTTPS reverse proxy (HTTPS profile only) | `80`, `443` |
 
+Never publish Postgres, Redis or RustFS on a public IP: keep the default `127.0.0.1` binds (or a private interface) and firewall their ports. Cloud-hosted installs also get a host rule that stops pods reaching the instance-metadata address `169.254.169.254` (this also applies to the Compose containers on that host, so they cannot use instance-role credentials).
+
 Test runs can reach public addresses but not private networks (RFC1918, link-local, CGNAT, tailnet), mail ports (25, 465, 587, 2525) or the host's Kubernetes control ports. By default, monitors also refuse hosts that resolve to a private address. Use a [Private Agent](/docs/app/deployment/private-agent) for services inside another network.
 
 </Accordion>
@@ -275,7 +277,7 @@ sudo bash install.sh --upgrade
 Upgrading from a release before 1.6.0 runs migration `0056`, which drops columns the previous release still reads. Upgrade in a short maintenance window and don't roll back the image afterwards; restore the pre-upgrade backup instead. Keep the same `SECRET_ENCRYPTION_KEY`: older webhook secrets are encrypted with it during the upgrade. Unsubscribe links in emails sent before the upgrade stop working.
 </Callout>
 
-Replace `v1.6.0` with the target release. The upgrade dumps the database to `/var/backups/supercheck/` first, applies migrations, and checks health; expect a few minutes of downtime. Keep your changes in `.env`: the upgrade stops if tracked files were edited. Then [upgrade remote workers](/docs/app/deployment/multi-server#upgrade-workers).
+Replace `v1.6.0` with the target release. Every upgrade must re-run `setup-k3s.sh` (`--upgrade` does this for you; with a manual update run it yourself): it refreshes the execution policy (NetworkPolicy, RBAC, quota) that keeps test runs off your host and private networks. To refresh only those manifests without touching K3s or gVisor, run `sudo bash setup-k3s.sh --execution-plane-only`. An outdated policy is not harmless: each run first checks that it cannot reach the Kubernetes API and refuses to start otherwise. The upgrade dumps the database to `/var/backups/supercheck/` first, applies migrations, and checks health; expect a few minutes of downtime. Keep your changes in `.env`: the upgrade stops if tracked files were edited. Then [upgrade remote workers](/docs/app/deployment/multi-server#upgrade-workers).
 
 <Callout type="warn">
 Never run `docker compose down -v`: it deletes the database, stored artifacts, and the queue.
@@ -376,6 +378,13 @@ sudo journalctl -u k3s -n 100 --no-pager
 ```
 
 Re-running `sudo bash setup-k3s.sh` is safe. If the server's IP address changed since installation, the re-run adds the new address to the k3s API certificate and rewrites the worker kubeconfig; then run `sudo docker compose up -d --force-recreate worker`.
+
+</Accordion>
+<Accordion title="Run fails with an infrastructure error" id="isolation-check">
+
+`Infrastructure error: execution network isolation not enforced; the run was not started` means the pod could still reach the Kubernetes API, so the run was refused before any test code ran. It is not billed and not a test failure. The usual cause is an outdated `execution-egress` NetworkPolicy or a CNI that does not enforce it. Re-run `sudo bash setup-k3s.sh --execution-plane-only`, then retry the run.
+
+`Infrastructure error: Execution pod was rejected by the cluster: ...` means Kubernetes admission control denied the execution pod; the message names the policy. Fix or relax that policy for the `supercheck-execution` namespace.
 
 </Accordion>
 <Accordion title="gVisor sandbox check fails" id="gvisor-check">
