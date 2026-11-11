@@ -1333,6 +1333,11 @@ describe('ContainerExecutorService', () => {
 
       expect(podSpec.serviceAccountName).toBe('execution-runner');
       expect(podSpec.automountServiceAccountToken).toBe(false);
+      expect(bootstrapScript.startsWith('node -e ')).toBe(true);
+      expect(bootstrapScript.indexOf('|| exit 1\n')).toBeGreaterThan(0);
+      expect(bootstrapScript.indexOf('|| exit 1\n')).toBeLessThan(
+        bootstrapScript.indexOf('/supercheck-payload-0/chunk'),
+      );
       expect(container.env).toEqual(
         expect.arrayContaining([
           expect.objectContaining({ name: 'PUBLIC_SETTING', value: 'visible' }),

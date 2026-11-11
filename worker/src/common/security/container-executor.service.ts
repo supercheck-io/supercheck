@@ -32,6 +32,7 @@ import {
   isMutableImageReference,
   parseImagePullPolicyOverride,
 } from '../utils/image-reference';
+import { EGRESS_GUARD_SCRIPT } from './egress-guard';
 
 /** Recorded for a run whose execution Job the shutdown drain deleted. */
 export const WORKER_INTERRUPTED_ERROR = 'Interrupted by worker restart';
@@ -1273,7 +1274,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     const payloadPaths = payloadSecretNames.map(
       (_name, index) => `/supercheck-payload-${index}/chunk`,
     );
-    const bootstrapScript =
+    const userBootstrapScript =
       payloadSecretNames.length > 0
         ? [
             `mkdir -p ${this.escapeShellArg(workspace)}`,
@@ -1290,6 +1291,8 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
             this.getWorkspaceExitCodeFile(workspace),
             this.getWorkspaceExitSignalFile(workspace),
           );
+    // Newline, not &&: the wrapper script can be multi-line.
+    const bootstrapScript = `node -e ${this.escapeShellArg(EGRESS_GUARD_SCRIPT)} || exit 1\n${userBootstrapScript}`;
     const secretVolumeMounts: k8s.V1VolumeMount[] = [
       ...payloadSecretNames.map((_name, index) => ({
         name: `payload-${index}`,
