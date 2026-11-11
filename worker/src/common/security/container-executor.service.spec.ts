@@ -1104,6 +1104,49 @@ describe('ContainerExecutorService', () => {
       }
     });
 
+    it.each([
+      // [execution start offset ms or null, expected loop end ms]
+      [1_000, 6_000], // started: exactly timeoutMs from its own start
+      [null, 25_000], // never started: guard allowance still applies
+    ])(
+      'bounds the script by its own timeout once it starts (start=%p)',
+      async (startOffset, expectedEnd) => {
+        const base = Date.UTC(2024, 0, 1);
+        let now = base;
+        const clock = jest.spyOn(Date, 'now').mockImplementation(() => now);
+        service['coreApi'] = {
+          readNamespacedPod: jest.fn().mockImplementation(() => {
+            const state =
+              startOffset !== null && now - base >= startOffset
+                ? { running: { startedAt: new Date(base + startOffset) } }
+                : { waiting: {} };
+            return Promise.resolve({
+              status: { containerStatuses: [{ name: 'execution', state }] },
+            });
+          }),
+        } as unknown as NonNullable<(typeof service)['coreApi']>;
+        service['readExecutionExitCode'] = jest.fn().mockResolvedValue(null);
+        service['sleep'] = jest.fn().mockImplementation(() => {
+          now += 1_000;
+          return Promise.resolve();
+        });
+        try {
+          const outcome = await service['waitForExecutionOutcome'](
+            'pod',
+            '/tmp/run',
+            5_000,
+            { startedAtMs: null, finishedAtMs: null },
+            jest.fn(),
+            20_000,
+          );
+          expect(outcome.timedOut).toBe(true);
+          expect(now - base).toBe(expectedEnd);
+        } finally {
+          clock.mockRestore();
+        }
+      },
+    );
+
     it('uses Kubernetes exit status even when the tenant writes a successful marker', async () => {
       const statuses = [
         { name: 'execution', state: { running: {} } },

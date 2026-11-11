@@ -1079,8 +1079,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       const outcome = await this.waitForExecutionOutcome(
         podName,
         workspace,
-        // Headroom for the egress wait that precedes the script.
-        limits.timeoutMs + EGRESS_GUARD_MAX_WAIT_MS,
+        limits.timeoutMs,
         startEvidence,
         async () => {
           if (options.extractFromContainer && options.extractToHost) {
@@ -1128,6 +1127,8 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
             );
           }
         },
+        // The egress wait runs before the script; it must not extend script time.
+        EGRESS_GUARD_MAX_WAIT_MS,
       );
       timedOut = outcome.timedOut;
       // The deleted Job's pod is seen either gone (404) or killed (137/143) first.
@@ -2059,6 +2060,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     timeoutMs: number,
     startEvidence: ContainerStartEvidence,
     collectArtifacts: () => Promise<void>,
+    startAllowanceMs = 0,
   ): Promise<{
     exitCode: number;
     timedOut: boolean;
@@ -2066,7 +2068,10 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     message?: string;
   }> {
     const startedAt = Date.now();
-    let timeoutAt = Date.now() + timeoutMs;
+    // Before the execution container starts, allow for the egress wait. Once it
+    // starts, the script gets exactly timeoutMs from its own start.
+    let timeoutAt = startedAt + timeoutMs + startAllowanceMs;
+    let executionDeadlineSet = false;
     const exitCodeFile = this.getWorkspaceExitCodeFile(workspace);
     let artifactsCollected = false;
 
@@ -2132,6 +2137,14 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
           startEvidence.startedAtMs = parsed;
         }
       }
+      if (!executionDeadlineSet && startEvidence.startedAtMs !== null) {
+        executionDeadlineSet = true;
+        // Never earlier than our own poll start, so node clock skew cannot cut it short.
+        timeoutAt = Math.min(
+          timeoutAt,
+          Math.max(startEvidence.startedAtMs, startedAt) + timeoutMs,
+        );
+      }
       if (terminated) {
         if (terminated.finishedAt) {
           const finished = new Date(terminated.finishedAt).getTime();
@@ -2169,7 +2182,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
             timeoutAt + Date.now() - extractionStartedAt,
             Date.now() + 30_000,
           ),
-          startedAt + timeoutMs + 90_000,
+          startedAt + startAllowanceMs + timeoutMs + 90_000,
         );
       }
 
