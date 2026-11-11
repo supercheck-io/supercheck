@@ -155,6 +155,15 @@ describe("POST /approve", () => {
     expect(mockApprove).not.toHaveBeenCalled();
   });
 
+  it("mints no CLI key for a project of an organization pending deletion", async () => {
+    const { isProjectOrgPending } = jest.requireMock("@/lib/deletion/org-state");
+    isProjectOrgPending.mockResolvedValueOnce(true);
+    const res = await approveRoute.POST(post("/a", body));
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toBe("organization_pending_deletion");
+    expect(mockApprove).not.toHaveBeenCalled();
+  });
+
   it("requires a browser session", async () => {
     mockRequireAuth.mockRejectedValue(new Error("Authentication required"));
     const res = await approveRoute.POST(post("/a", body));

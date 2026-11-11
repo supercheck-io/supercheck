@@ -124,6 +124,16 @@ it("prevents an org admin from granting another admin", async () => {
   expect((await POST(request("org_admin", []))).status).toBe(403); expect(mockInsert).not.toHaveBeenCalled();
 });
 
+it("refuses to invite into an organization pending deletion (fresh database read) and writes nothing", async () => {
+  const { isOrgPendingDeletion } = jest.requireMock("@/lib/deletion/org-state");
+  isOrgPendingDeletion.mockResolvedValueOnce(true);
+  const response = await POST(request());
+  expect(response.status).toBe(403);
+  expect((await response.json()).code).toBe("ORG_PENDING_DELETION");
+  expect(isOrgPendingDeletion).toHaveBeenCalledWith("host", { fresh: true });
+  expect(mockInsert).not.toHaveBeenCalled();
+});
+
 describe("seat limit", () => {
   function useTransaction(execute = jest.fn().mockResolvedValue([{ value: "0" }])) {
     (db.transaction as jest.Mock).mockImplementation((cb: (tx: unknown) => unknown) =>
