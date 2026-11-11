@@ -10,6 +10,7 @@ import { and, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import * as schema from '../../db/schema';
 import { DB_PROVIDER_TOKEN } from '../../db/db.constants';
+import { TIMEOUTS } from '../../common/constants/timeouts.constants';
 import { isSelfHostedEnvironment } from '../../common/runtime-mode';
 import { getBillableMs } from '../../common/billable-ms';
 import { ContainerExecutorService } from '../../common/security/container-executor.service';
@@ -46,6 +47,12 @@ export class ExecutionEntitlementError extends Error {}
  * allowance is still charged for the reserved time only.
  */
 export const LIMITED_RUN_OVERHEAD_MS = 90_000;
+/**
+ * Longest run time a limited reservation may hold: the overhead above must still fit
+ * inside the executor's hard cap, or the run is refused before it starts.
+ */
+export const MAX_LIMITED_RUN_MS =
+  TIMEOUTS.EXECUTION_MAX_MS - LIMITED_RUN_OVERHEAD_MS;
 /** Smallest run the executor accepts (see container resource validation). */
 export const MIN_RESERVED_RUN_MS = 5_000;
 /**
@@ -179,6 +186,7 @@ export class ExecutionAdmissionService implements OnApplicationShutdown {
           Math.floor(
             Math.min(
               requestedMs,
+              MAX_LIMITED_RUN_MS,
               remaining,
               entitlement.expiresAt.getTime() - Date.now(),
             ) / 1000,
