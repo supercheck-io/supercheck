@@ -1,4 +1,5 @@
 /** @jest-environment node */
+jest.mock("@/lib/deletion/org-state");
 // Stateful fake queues: a job fires once per queue that holds a repeatable for it,
 // so "exactly one repeatable across both queues" means "exactly one firing per tick".
 type Repeatable = { key: string; name: string; pattern: string; tz: string | null; data: Record<string, unknown> };

@@ -1,3 +1,4 @@
+jest.mock("@/lib/deletion/org-state");
 import { getExecutionPolicy } from "@/lib/execution/execution-policy";
 jest.mock("@/lib/execution/execution-policy", () => ({
   ...jest.requireActual("@/lib/execution/execution-policy"),

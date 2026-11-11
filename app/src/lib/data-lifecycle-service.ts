@@ -63,6 +63,7 @@ import { isPolarEnabled } from "@/lib/feature-flags";
 import { removeK6RunLinks } from "@/lib/resource-deletion/linked-records";
 import { monitorAggregationService } from "./monitor-aggregation-service";
 import { endExpiredTrials, reconcilePaidTrialSuspensions, sendTrialReminders, suspendLapsedOrganizations } from "@/lib/execution/trial-lifecycle";
+import { AUDIT_EMAIL_SCRUB_DAYS, AUDIT_RETENTION_DAYS, scrubAuditEmails } from "@/lib/audit-scrub";
 import { deliverTrialReminder } from "@/lib/execution/trial-reminder-delivery";
 
 const QUEUE_EVENTS_READY_TIMEOUT_MS = 10_000;
@@ -2398,29 +2399,21 @@ function getAuditActionRetentionDays(
   action: string,
   fallbackRetentionDays: number
 ): number {
-  const category = getAuditActionCategory(action);
-  switch (category) {
-    case "resource":
-    case "execution":
-      return 30;
-    case "authentication":
-    case "authorization":
-    case "configuration":
-      return 90;
-    case "security":
-      return 365;
-    default:
-      return fallbackRetentionDays;
-  }
+  // Owner decision: every audit record is kept for 12 months (emails removed after AUDIT_EMAIL_SCRUB_DAYS), then purged.
+  void action;
+  void fallbackRetentionDays;
+  return AUDIT_RETENTION_DAYS;
 }
 
 /**
  * Audit Logs Cleanup Strategy
  *
- * Category-aware retention aligned with 06-data audit spec:
- * - Resource management / Execution: 30 days
- * - Authentication / Authorization / Configuration: 90 days
- * - Security: 365 days
+ * Every record is kept for 12 months. After AUDIT_EMAIL_SCRUB_DAYS (default 30) email addresses in the details are
+ * replaced by a stable hash, then the record is purged at 12 months.
+ */
+/**
+ * Replace email addresses in audit details older than AUDIT_EMAIL_SCRUB_DAYS and mark the row, so each row is rewritten once.
+ * Keyset-batched over the created_at index; the marker keeps finished rows out of later runs.
  */
 export class AuditLogsCleanupStrategy implements ICleanupStrategy {
   entityType: CleanupEntityType = "audit_logs";
@@ -2479,7 +2472,8 @@ export class AuditLogsCleanupStrategy implements ICleanupStrategy {
     const batchSize = this.config.batchSize || 1000;
     const maxRecords = this.config.maxRecordsPerRun || 100000;
 
-    const minRetentionDays = 30;
+    // Candidates are everything past the shortest age any step acts on; the per-row rule below decides what is deleted.
+    const minRetentionDays = Math.min(AUDIT_EMAIL_SCRUB_DAYS, AUDIT_RETENTION_DAYS);
     const minCutoffDate = new Date(
       Date.now() - minRetentionDays * 24 * 60 * 60 * 1000
     );
@@ -2498,6 +2492,7 @@ export class AuditLogsCleanupStrategy implements ICleanupStrategy {
     };
 
     try {
+      result.details.emailsScrubbed = await scrubAuditEmails({ dryRun, batchSize, maxRecords });
       let totalDeleted = 0;
       let scannedRecords = 0;
       let iterations = 0;
@@ -3354,7 +3349,7 @@ export function createDataLifecycleService(): DataLifecycleService {
         process.env.AUDIT_LOGS_CLEANUP_CRON,
         "0 1 * * *"
       ),
-      retentionDays: parseInt(process.env.AUDIT_LOGS_RETENTION_DAYS || "90", 10),
+      retentionDays: parseInt(process.env.AUDIT_LOGS_RETENTION_DAYS || "365", 10),
       batchSize: parseInt(process.env.AUDIT_LOGS_CLEANUP_BATCH_SIZE || "1000", 10),
       maxRecordsPerRun: parseInt(
         process.env.AUDIT_LOGS_CLEANUP_SAFETY_LIMIT || "100000",

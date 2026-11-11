@@ -35,8 +35,8 @@ export async function submitSreInvestigationFeedback(
     const parsed = feedbackSchema.safeParse(input);
     if (!parsed.success) return { success: false, error: "Invalid feedback" };
 
-    const { userId, organizationId, project } = await requireProjectContext();
-    if (!checkPermissionWithContext("sre_incident", "update", { userId, organizationId, project })) {
+    const { userId, organizationId, orgPendingDeletion, project } = await requireProjectContext();
+    if (!checkPermissionWithContext("sre_incident", "update", { userId, organizationId, orgPendingDeletion, project })) {
       return { success: false, error: "Insufficient permissions to give feedback" };
     }
 

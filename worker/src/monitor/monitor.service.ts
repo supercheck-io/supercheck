@@ -143,6 +143,33 @@ export class MonitorService {
     this.evaluator = new MonitorEvaluator(dbService, monitorAlertService);
   }
 
+  // Skipping work for a pending organization tolerates a few seconds of staleness in either direction (one extra
+  // or one skipped check), so a short per-process cache keeps this off the per-check query path.
+  private readonly pendingOrganizationCache = new Map<
+    string,
+    { pending: boolean; at: number }
+  >();
+
+  private async isOrganizationPendingDeletion(
+    organizationId: string,
+  ): Promise<boolean> {
+    const hit = this.pendingOrganizationCache.get(organizationId);
+    if (hit && Date.now() - hit.at < 10_000) return hit.pending;
+    const [row] = await this.dbService.db
+      .select({ at: schema.organization.deletionRequestedAt })
+      .from(schema.organization)
+      .where(eq(schema.organization.id, organizationId))
+      .limit(1);
+    if (this.pendingOrganizationCache.size > 5000)
+      this.pendingOrganizationCache.clear();
+    const pending = !!row?.at;
+    this.pendingOrganizationCache.set(organizationId, {
+      pending,
+      at: Date.now(),
+    });
+    return pending;
+  }
+
   async executeMonitor(
     jobData: MonitorJobDataDto,
     location: MonitoringLocation = process.env.WORKER_LOCATION?.toLowerCase() ||
@@ -174,6 +201,13 @@ export class MonitorService {
 
       if (monitor.status === 'paused' || monitor.deletingAt) {
         // Paused or being deleted: not an error, and no result (a deleting monitor must not grow its history or alert)
+        return null;
+      }
+      // Pending organization deletion is read-only: no new checks, no results, no alerts.
+      if (
+        monitor.organizationId &&
+        (await this.isOrganizationPendingDeletion(monitor.organizationId))
+      ) {
         return null;
       }
       if (!monitor.organizationId && !isSelfHostedEnvironment()) {

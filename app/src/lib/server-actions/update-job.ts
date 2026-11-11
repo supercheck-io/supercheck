@@ -71,6 +71,7 @@ export type UpdateJobData = z.infer<typeof updateJobSchema>;
 type UpdateJobContext = {
   userId: string;
   organizationId: string;
+  orgPendingDeletion: boolean;
   project: { id: string; name: string; userRole: string };
   /** Fields the caller filled from the stored job. Stored values accepted earlier are not re-validated, so an unrelated edit still works. */
   inherited?: { cronSchedule?: boolean; alertConfig?: boolean; description?: boolean };
@@ -81,12 +82,13 @@ export async function updateJob(data: UpdateJobData, contextOverride?: UpdateJob
 
   try {
     // Get current project context (includes auth verification)
-    const { userId, project, organizationId } = contextOverride ?? await requireProjectContext();
+    const { userId, project, organizationId, orgPendingDeletion } = contextOverride ?? await requireProjectContext();
 
     // Check EDIT_JOBS permission (optimized - reuses context from requireProjectContext)
     const canEditJobs = checkPermissionWithContext("job", "update", {
       userId,
       organizationId,
+      orgPendingDeletion,
       project,
     });
 

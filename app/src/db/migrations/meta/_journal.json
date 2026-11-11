@@ -547,6 +547,13 @@
       "when": 1794424913395,
       "tag": "0077_org_project_deletion_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1794427341783,
+      "tag": "0078_audit_logs_unscrubbed_index",
+      "breakpoints": true
     }
   ]
 }

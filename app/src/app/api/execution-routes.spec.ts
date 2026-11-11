@@ -1,4 +1,5 @@
 /** @jest-environment node */
+jest.mock("@/lib/deletion/org-state");
 
 import { NextRequest } from "next/server";
 import { PgDialect } from "drizzle-orm/pg-core";

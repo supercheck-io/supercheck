@@ -22,11 +22,12 @@ export type RequirementDocument = typeof requirementDocuments.$inferSelect & {
  */
 export async function getDocuments(): Promise<{ success: boolean; documents?: RequirementDocument[]; error?: string }> {
   try {
-    const { userId, project, organizationId } = await requireProjectContext();
+    const { userId, project, organizationId, orgPendingDeletion } = await requireProjectContext();
 
     const canView = checkPermissionWithContext("requirement", "view", {
       userId,
       organizationId,
+      orgPendingDeletion,
       project,
     });
 
@@ -69,11 +70,12 @@ export async function getDocuments(): Promise<{ success: boolean; documents?: Re
  */
 export async function getDocument(documentId: string): Promise<{ success: boolean; document?: RequirementDocument; error?: string }> {
   try {
-    const { userId, project, organizationId } = await requireProjectContext();
+    const { userId, project, organizationId, orgPendingDeletion } = await requireProjectContext();
 
     const canView = checkPermissionWithContext("requirement", "view", {
       userId,
       organizationId,
+      orgPendingDeletion,
       project,
     });
 
@@ -128,11 +130,12 @@ export async function getDocumentRequirements(documentId: string): Promise<{
   error?: string 
 }> {
   try {
-    const { userId, project, organizationId } = await requireProjectContext();
+    const { userId, project, organizationId, orgPendingDeletion } = await requireProjectContext();
 
     const canView = checkPermissionWithContext("requirement", "view", {
       userId,
       organizationId,
+      orgPendingDeletion,
       project,
     });
 
@@ -168,11 +171,12 @@ export async function getDocumentRequirements(documentId: string): Promise<{
  */
 export async function getDocumentDownloadUrl(documentId: string): Promise<{ success: boolean; url?: string; filename?: string; error?: string }> {
   try {
-    const { userId, project, organizationId } = await requireProjectContext();
+    const { userId, project, organizationId, orgPendingDeletion } = await requireProjectContext();
 
     const canView = checkPermissionWithContext("requirement", "view", {
       userId,
       organizationId,
+      orgPendingDeletion,
       project,
     });
 
@@ -218,11 +222,12 @@ export async function getDocumentDownloadUrl(documentId: string): Promise<{ succ
  */
 export async function deleteDocument(documentId: string): Promise<{ success: boolean; error?: string }> {
   try {
-    const { project, organizationId, userId } = await requireProjectContext();
+    const { project, organizationId, userId, orgPendingDeletion } = await requireProjectContext();
 
     const canDelete = checkPermissionWithContext("requirement", "delete", {
       userId,
       organizationId,
+      orgPendingDeletion,
       project,
     });
 

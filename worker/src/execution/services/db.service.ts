@@ -682,7 +682,26 @@ export class DbService implements OnModuleInit {
       .where(eq(alertHistory.id, id));
   }
 
+  /**
+   * A run of an organization that is pending deletion (or of a deleted project) must not start. Marks it cancelled so the
+   * claim below refuses it and the caller finalizes it. A DB predicate, not a cache: this admits work, and a stale
+   * "pending" would otherwise cancel a run of an organization whose deletion was just cancelled.
+   */
+  private async cancelRunOfPendingTenant(runId: string): Promise<void> {
+    await this.db
+      .update(runs)
+      .set({ errorDetails: RUN_CANCELLATION_MARKER })
+      .where(
+        and(
+          eq(runs.id, runId),
+          inArray(runs.status, ['queued', 'running']),
+          sql`EXISTS (SELECT 1 FROM projects p JOIN organization o ON o.id = p.organization_id WHERE p.id = ${runs.projectId} AND (o.deletion_requested_at IS NOT NULL OR p.status = 'deleted'))`,
+        ),
+      );
+  }
+
   async claimRunExecution(runId: string): Promise<boolean> {
+    await this.cancelRunOfPendingTenant(runId);
     const [claimed] = await this.db
       .update(runs)
       .set({

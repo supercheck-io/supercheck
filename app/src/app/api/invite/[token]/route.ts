@@ -9,6 +9,7 @@ import { getCurrentUser } from '@/lib/session';
 import { withPlanLimitLock } from "@/lib/middleware/plan-limit-lock";
 import { effectiveMemberLimit } from "@/lib/billing/member-seats";
 import { isCloudHosted, isPolarEnabled } from '@/lib/feature-flags';
+import { isOrgPendingDeletion, pendingDeletionResponse } from "@/lib/deletion/org-state";
 
 export async function GET(
   request: NextRequest,
@@ -155,6 +156,7 @@ export async function POST(
     }
 
     const invite = inviteDetails[0];
+    if (await isOrgPendingDeletion(invite.organizationId, { fresh: true })) return pendingDeletionResponse();
 
     // Check if invitation is expired
     if (new Date() > invite.expiresAt) {

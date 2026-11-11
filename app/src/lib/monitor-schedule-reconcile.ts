@@ -1,4 +1,5 @@
 import { and, eq, ne, sql } from "drizzle-orm";
+import { isOrgPendingDeletion } from "@/lib/deletion/org-state";
 import { db } from "@/utils/db";
 import { monitors } from "@/db/schema";
 import { removeScheduledMonitor, scheduleMonitor } from "@/lib/monitor-scheduler";
@@ -45,7 +46,9 @@ async function reconcileOnce(id: string, projectId: string, state: { active: boo
       .for("update");
     if (!row) return;
     const deadline = Date.now() + RECONCILE_BUDGET_MS;
-    if (row.status === "paused" || !row.enabled || row.deletingAt || row.frequencyMinutes <= 0) {
+    // A pending organization's monitors are stopped; the cancel path restores them through this same reconcile.
+    const pendingOrganization = await isOrgPendingDeletion(row.organizationId, { fresh: true });
+    if (row.status === "paused" || !row.enabled || row.deletingAt || pendingOrganization || row.frequencyMinutes <= 0) {
       // A scheduler failure throws (rolling back, so scheduledJobId stays and a retry converges); an absent job is fine.
       const removed = row.scheduledJobId ? await withDeadline(deadline, (signal) => removeScheduledMonitor(row.scheduledJobId!, signal)) : false;
       if (!removed) await withDeadline(deadline, (signal) => removeScheduledMonitor(id, signal));

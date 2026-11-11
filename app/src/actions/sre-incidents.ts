@@ -368,10 +368,11 @@ export async function getSreIncidentAnalytics(): Promise<
   | { success: false; error: string; analytics: null }
 > {
   try {
-    const { userId, organizationId, project } = await requireProjectContext();
+    const { userId, organizationId, orgPendingDeletion, project } = await requireProjectContext();
     const canView = checkPermissionWithContext("sre_incident", "view", {
       userId,
       organizationId,
+      orgPendingDeletion,
       project,
     });
     if (!canView) {
@@ -611,10 +612,11 @@ export async function getSreIncidents(
 > {
   const scope = options.scope ?? "all";
   try {
-    const { userId, organizationId, project } = await requireProjectContext();
+    const { userId, organizationId, orgPendingDeletion, project } = await requireProjectContext();
     const canView = checkPermissionWithContext("sre_incident", "view", {
       userId,
       organizationId,
+      orgPendingDeletion,
       project,
     });
 
@@ -820,26 +822,30 @@ export async function getSreIncidentDetails(
   | { success: false; error: string; detail: null }
 > {
   try {
-    const { userId, organizationId, project } = await requireProjectContext();
+    const { userId, organizationId, orgPendingDeletion, project } = await requireProjectContext();
     const canView = checkPermissionWithContext("sre_incident", "view", {
       userId,
       organizationId,
+      orgPendingDeletion,
       project,
     });
     const canUpdate = checkPermissionWithContext("sre_incident", "update", {
       userId,
       organizationId,
+      orgPendingDeletion,
       project,
     });
     const canInvestigate =
       checkPermissionWithContext("sre_incident", "investigate", {
         userId,
         organizationId,
+        orgPendingDeletion,
         project,
       }) &&
       checkPermissionWithContext("sre_investigation", "investigate", {
         userId,
         organizationId,
+        orgPendingDeletion,
         project,
       });
     const canUseLiveConnectors =
@@ -847,12 +853,14 @@ export async function getSreIncidentDetails(
       checkPermissionWithContext("sre_connector", "investigate", {
         userId,
         organizationId,
+        orgPendingDeletion,
         project,
       });
 
     const canPostToStatusPage = checkPermissionWithContext("status_page", "update", {
       userId,
       organizationId,
+      orgPendingDeletion,
       project,
     });
 
@@ -1238,10 +1246,11 @@ export async function createManualSreIncident(
       };
     }
 
-    const { userId, organizationId, project } = await requireProjectContext();
+    const { userId, organizationId, orgPendingDeletion, project } = await requireProjectContext();
     const canCreate = checkPermissionWithContext("sre_incident", "create", {
       userId,
       organizationId,
+      orgPendingDeletion,
       project,
     });
 
@@ -1362,10 +1371,11 @@ export async function updateSreIncident(
       };
     }
 
-    const { userId, organizationId, project } = await requireProjectContext();
+    const { userId, organizationId, orgPendingDeletion, project } = await requireProjectContext();
     const canUpdate = checkPermissionWithContext("sre_incident", "update", {
       userId,
       organizationId,
+      orgPendingDeletion,
       project,
     });
 
@@ -1591,10 +1601,11 @@ export async function createSreIncidentFromAlert(
       return { success: false, error: "Invalid alert ID" };
     }
 
-    const { userId, organizationId, project } = await requireProjectContext();
+    const { userId, organizationId, orgPendingDeletion, project } = await requireProjectContext();
     const canCreate = checkPermissionWithContext("sre_incident", "create", {
       userId,
       organizationId,
+      orgPendingDeletion,
       project,
     });
 

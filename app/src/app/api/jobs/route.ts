@@ -892,7 +892,7 @@ export async function PUT(request: Request) {
           ? { ...jobData.alertConfig, notificationProviders: validatedUpdateProviderIds }
           : undefined,
       },
-      { userId: context.userId, project, organizationId, inherited: { cronSchedule: scheduleOmitted, description: descriptionOmitted } },
+      { userId: context.userId, project, organizationId, orgPendingDeletion: context.orgPendingDeletion, inherited: { cronSchedule: scheduleOmitted, description: descriptionOmitted } },
     );
     if (!result.success) {
       return NextResponse.json(

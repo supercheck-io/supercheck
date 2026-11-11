@@ -564,11 +564,12 @@ export async function getSreConnectors(
   | { success: false; error: string; connectors: [] }
 > {
   try {
-    const { userId, organizationId, project } =
+    const { userId, organizationId, orgPendingDeletion, project } =
       requestContext ?? (await requireProjectContext());
     const canView = checkPermissionWithContext("sre_connector", "view", {
       userId,
       organizationId,
+      orgPendingDeletion,
       project,
     });
 
@@ -726,10 +727,11 @@ export async function getPrivateAgentConnectorJobResult(
       };
     }
 
-    const { userId, organizationId, project } = await requireProjectContext();
+    const { userId, organizationId, orgPendingDeletion, project } = await requireProjectContext();
     const canView = checkPermissionWithContext("sre_connector", "view", {
       userId,
       organizationId,
+      orgPendingDeletion,
       project,
     });
 
@@ -815,11 +817,12 @@ export async function getSreConnectorSetupOptions(
   };
 
   try {
-    const { userId, organizationId, project } =
+    const { userId, organizationId, orgPendingDeletion, project } =
       requestContext ?? (await requireProjectContext());
     const canView = checkPermissionWithContext("sre_connector", "view", {
       userId,
       organizationId,
+      orgPendingDeletion,
       project,
     });
 
@@ -896,11 +899,11 @@ export async function createSreConnector(
       };
     }
 
-    const { userId, organizationId, project } = await requireProjectContext();
+    const { userId, organizationId, orgPendingDeletion, project } = await requireProjectContext();
     const canConfigure = checkPermissionWithContext(
       "sre_connector",
       "configure",
-      { userId, organizationId, project },
+      { userId, organizationId, orgPendingDeletion, project },
     );
 
     if (!canConfigure) {
@@ -1130,11 +1133,11 @@ export async function validateSreConnector(
       return { success: false, error: "Invalid connector ID" };
     }
 
-    const { userId, organizationId, project } = await requireProjectContext();
+    const { userId, organizationId, orgPendingDeletion, project } = await requireProjectContext();
     const canConfigure = checkPermissionWithContext(
       "sre_connector",
       "configure",
-      { userId, organizationId, project },
+      { userId, organizationId, orgPendingDeletion, project },
     );
 
     if (!canConfigure) {
@@ -1368,11 +1371,11 @@ export async function rotateSreConnectorCredential(
       };
     }
 
-    const { userId, organizationId, project } = await requireProjectContext();
+    const { userId, organizationId, orgPendingDeletion, project } = await requireProjectContext();
     const canConfigure = checkPermissionWithContext(
       "sre_connector",
       "configure",
-      { userId, organizationId, project },
+      { userId, organizationId, orgPendingDeletion, project },
     );
 
     if (!canConfigure) {
@@ -1538,11 +1541,11 @@ export async function searchSreConnectorEvidence(
       };
     }
 
-    const { userId, organizationId, project } = await requireProjectContext();
+    const { userId, organizationId, orgPendingDeletion, project } = await requireProjectContext();
     const canInvestigate = checkPermissionWithContext(
       "sre_connector",
       "investigate",
-      { userId, organizationId, project },
+      { userId, organizationId, orgPendingDeletion, project },
     );
 
     if (!canInvestigate) {
@@ -1918,11 +1921,11 @@ export async function disableSreConnector(
       return { success: false, error: "Invalid connector ID" };
     }
 
-    const { userId, organizationId, project } = await requireProjectContext();
+    const { userId, organizationId, orgPendingDeletion, project } = await requireProjectContext();
     const canConfigure = checkPermissionWithContext(
       "sre_connector",
       "configure",
-      { userId, organizationId, project },
+      { userId, organizationId, orgPendingDeletion, project },
     );
 
     if (!canConfigure) {

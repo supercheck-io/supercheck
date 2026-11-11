@@ -7,13 +7,12 @@ import { organization, member, projects, session } from '@/db/schema';
 import { eq, and, count } from 'drizzle-orm';
 import { Role } from '@/lib/rbac/permissions';
 import { z } from 'zod';
-import { BillingCancellationError, OrganizationMembershipChangedError, StorageCleanupError, deleteOrganizationCompletely } from '@/lib/organization-teardown';
+import { OrganizationMembershipChangedError, requestOrganizationDeletion } from '@/lib/deletion/organization';
+import { isFreshSession, reauthRequiredResponse } from '@/lib/deletion/reauth';
 import { isImpersonatedSession } from '@/lib/rbac/middleware';
 import { checkAdminRateLimit } from '@/lib/session-security';
 import { requireSameOriginRequest } from '@/lib/security/same-origin';
-class OrganizationDeletionError extends Error {
-  constructor(message: string, readonly status: 403 | 404 | 409 | 502) { super(message); }
-}
+import { isOrgPendingDeletion, pendingDeletionResponse } from "@/lib/deletion/org-state";
 
 /**
  * Validation schema for organization name updates.
@@ -134,6 +133,7 @@ export async function PUT(
         { status: 404 }
       );
     }
+    if (await isOrgPendingDeletion(organizationId, { fresh: true })) return pendingDeletionResponse();
     // Only ORG_ADMIN and ORG_OWNER can update organizations
     const canUpdate = orgRole === Role.ORG_ADMIN || orgRole === Role.ORG_OWNER;
     if (!canUpdate) {
@@ -227,7 +227,9 @@ export async function PUT(
 
 /**
  * DELETE /api/organizations/[id]
- * Delete organization (owner only)
+ * Request deletion (owner only). Never immediate: the organization turns read-only for a grace window (default 14 days,
+ * ORG_DELETION_GRACE_DAYS) during which the owner can cancel; only then is it purged. Body: { confirmName } = the exact
+ * organization name. Requires a session created within the last few minutes (403 REAUTH_REQUIRED otherwise).
  */
 export async function DELETE(
   request: NextRequest,
@@ -242,25 +244,17 @@ export async function DELETE(
     const originError = requireSameOriginRequest(request, { allowMissing: isCliAuth });
     if (originError) return originError;
     const organizationId = resolvedParams.id;
-    
-    // Check permission - only owners can delete organizations
-    // Uses getUserOrgRole which works for both CLI tokens and session cookies
-    if (!isUuid((await params).id)) return NextResponse.json({ error: "Organization not found" }, { status: 404 });
+
+    if (!isUuid(organizationId)) return NextResponse.json({ error: "Organization not found" }, { status: 404 });
     const orgRole = await getUserOrgRole(userId, organizationId);
     if (!orgRole) {
-      return NextResponse.json(
-        { error: 'Organization not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
     }
     if (orgRole !== Role.ORG_OWNER) {
-      return NextResponse.json(
-        { error: 'Only organization owners can delete organizations' },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: 'Only organization owners can delete organizations' }, { status: 403 });
     }
-    
-    // Irreversible: never from an impersonated session, rate limited, and the caller must name the org.
+
+    // Never from an impersonated session (an impersonation session is always "fresh"), rate limited.
     if (await isImpersonatedSession()) {
       return NextResponse.json({ error: 'Stop impersonating before deleting an organization' }, { status: 403 });
     }
@@ -268,53 +262,43 @@ export async function DELETE(
     if (!limit.allowed) {
       return NextResponse.json({ error: 'Too many attempts. Try again later.' }, { status: 429 });
     }
-    const body = ((await request.json().catch(() => null)) ?? {}) as { confirmOrganizationId?: unknown };
-    if (body.confirmOrganizationId !== organizationId) {
-      return NextResponse.json({ error: 'Confirm the organization to delete (confirmOrganizationId)' }, { status: 400 });
+    const body = ((await request.json().catch(() => null)) ?? {}) as { confirmName?: unknown };
+    const [org] = await db.select({ name: organization.name }).from(organization).where(eq(organization.id, organizationId)).limit(1);
+    if (!org) return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
+    if (typeof body.confirmName !== 'string' || body.confirmName.trim() !== org.name.trim()) {
+      return NextResponse.json({ error: 'Type the organization name exactly to confirm', code: 'CONFIRM_NAME_MISMATCH' }, { status: 400 });
     }
+    if (!(await isFreshSession())) return reauthRequiredResponse();
 
-    // Full teardown: ends the subscription, removes every project, its data and stored files.
-    // The owner check is repeated under the organization row lock.
     try {
-      const deleted = await deleteOrganizationCompletely(organizationId, { ownerUserId: userId }, userId);
-      if (!deleted) throw new OrganizationDeletionError('Organization not found', 404);
+      const result = await requestOrganizationDeletion({ organizationId, actorUserId: userId, guard: { ownerUserId: userId }, reason: 'owner' });
+      if (!result) return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
+      return NextResponse.json({
+        success: true,
+        status: result.status,
+        purgeAfter: result.purgeAfter,
+        // "retry": the subscription cancellation at the provider failed and is retried automatically.
+        billing: result.billing,
+        message: 'Organization scheduled for deletion',
+      });
     } catch (error) {
       if (error instanceof OrganizationMembershipChangedError) {
-        throw new OrganizationDeletionError('Only organization owners can delete organizations', 403);
-      }
-      if (error instanceof BillingCancellationError || error instanceof StorageCleanupError) {
-        throw new OrganizationDeletionError(error.message, 502);
+        return NextResponse.json({ error: 'Only organization owners can delete organizations' }, { status: 403 });
       }
       const code = (error as { code?: string; cause?: { code?: string } } | null);
       if (code?.code === '55P03' || code?.cause?.code === '55P03') {
-        throw new OrganizationDeletionError('The organization is busy. Try again in a moment.', 409);
+        return NextResponse.json({ error: 'The organization is busy. Try again in a moment.' }, { status: 409 });
       }
       throw error;
     }
-
-    return NextResponse.json({
-      success: true,
-      message: 'Organization deleted successfully'
-    });
-    
   } catch (error) {
-    if (error instanceof OrganizationDeletionError) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
-    }
-    const databaseError = error as { code?: string; cause?: { code?: string } } | null;
-    if (databaseError?.code === '23503' || databaseError?.cause?.code === '23503') {
-      return NextResponse.json({ error: 'Related data prevents organization deletion. Contact your administrator or support for data removal.' }, { status: 409 });
-    }
     if (isAuthError(error)) {
       return NextResponse.json(
         { error: error instanceof Error ? error.message : 'Authentication required' },
         { status: authErrorStatus(error) }
       );
     }
-    console.error('Failed to delete organization:', error);
-    return NextResponse.json(
-      { error: 'Failed to delete organization' },
-      { status: 500 }
-    );
+    console.error('Failed to request organization deletion:', error);
+    return NextResponse.json({ error: 'Failed to request organization deletion' }, { status: 500 });
   }
 }

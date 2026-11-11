@@ -75,8 +75,8 @@ function toState(config: Record<string, unknown> | null | undefined): SreMcpTool
 }
 
 async function loadMcpConnector(id: string) {
-  const { userId, organizationId, project } = await requireProjectContext();
-  if (!checkPermissionWithContext("sre_connector", "configure", { userId, organizationId, project })) {
+  const { userId, organizationId, orgPendingDeletion, project } = await requireProjectContext();
+  if (!checkPermissionWithContext("sre_connector", "configure", { userId, organizationId, orgPendingDeletion, project })) {
     return { ok: false as const, error: "Insufficient permissions to configure connectors" as const };
   }
   const connector = await db.query.externalConnectors.findFirst({
@@ -92,7 +92,7 @@ async function loadMcpConnector(id: string) {
   if (!connector.privateAgentId) {
     return { ok: false as const, error: "MCP connectors can only run through a Private Agent" as const };
   }
-  return { ok: true as const, userId, organizationId, project, connector };
+  return { ok: true as const, userId, organizationId, orgPendingDeletion, project, connector };
 }
 
 export async function getSreMcpToolState(
@@ -118,7 +118,7 @@ export async function discoverSreMcpTools(
     if (!parsed.success) return { success: false, error: "Invalid connector ID" };
     const loaded = await loadMcpConnector(parsed.data.id);
     if (!loaded.ok) return { success: false, error: loaded.error };
-    const { userId, organizationId, project, connector } = loaded;
+    const { userId, organizationId, orgPendingDeletion, project, connector } = loaded;
 
     const rateLimit = await checkSreConnectorValidationRateLimit(userId, connector.id);
     if (!rateLimit.allowed) {
@@ -264,7 +264,7 @@ export async function saveSreMcpToolAllowlist(
     if (!parsed.success) return { success: false, error: "Invalid allowlist" };
     const loaded = await loadMcpConnector(parsed.data.id);
     if (!loaded.ok) return { success: false, error: loaded.error };
-    const { userId, organizationId, project, connector } = loaded;
+    const { userId, organizationId, orgPendingDeletion, project, connector } = loaded;
 
     // Lock the row and merge only the mcp allowlist into the freshly read config.
     const saved = await db.transaction(async (tx) => {

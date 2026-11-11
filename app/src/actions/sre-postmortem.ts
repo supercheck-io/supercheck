@@ -39,8 +39,8 @@ export type SrePostmortemActionResult =
   | { success: false; error: string };
 
 async function guard() {
-  const { userId, organizationId, project } = await requireProjectContext();
-  const allowed = checkPermissionWithContext("sre_incident", "update", { userId, organizationId, project });
+  const { userId, organizationId, orgPendingDeletion, project } = await requireProjectContext();
+  const allowed = checkPermissionWithContext("sre_incident", "update", { userId, organizationId, orgPendingDeletion, project });
   return allowed ? { userId, organizationId, projectId: project.id } : null;
 }
 

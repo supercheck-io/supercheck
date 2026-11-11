@@ -223,6 +223,7 @@ function hasServicePermission(
   return checkPermissionWithContext("sre_service", action, {
     userId: context.userId,
     organizationId: context.organizationId,
+    orgPendingDeletion: context.orgPendingDeletion,
     project: context.project,
   });
 }
@@ -312,10 +313,11 @@ export async function getSreServices(): Promise<{
   services: SreServiceListItem[];
 } | { success: false; error: string; services: [] }> {
   try {
-    const { userId, organizationId, project } = await requireProjectContext();
+    const { userId, organizationId, orgPendingDeletion, project } = await requireProjectContext();
     const canView = checkPermissionWithContext("sre_service", "view", {
       userId,
       organizationId,
+      orgPendingDeletion,
       project,
     });
 
@@ -353,10 +355,11 @@ export async function createSreService(input: z.infer<typeof serviceInputSchema>
       };
     }
 
-    const { userId, organizationId, project } = await requireProjectContext();
+    const { userId, organizationId, orgPendingDeletion, project } = await requireProjectContext();
     const canCreate = checkPermissionWithContext("sre_service", "create", {
       userId,
       organizationId,
+      orgPendingDeletion,
       project,
     });
 
@@ -432,10 +435,11 @@ export async function updateSreService(input: z.infer<typeof updateServiceInputS
       };
     }
 
-    const { userId, organizationId, project } = await requireProjectContext();
+    const { userId, organizationId, orgPendingDeletion, project } = await requireProjectContext();
     const canUpdate = checkPermissionWithContext("sre_service", "update", {
       userId,
       organizationId,
+      orgPendingDeletion,
       project,
     });
 
@@ -529,10 +533,11 @@ export async function archiveSreService(input: z.infer<typeof archiveServiceInpu
       return { success: false, error: "Invalid service ID" };
     }
 
-    const { userId, organizationId, project } = await requireProjectContext();
+    const { userId, organizationId, orgPendingDeletion, project } = await requireProjectContext();
     const canDelete = checkPermissionWithContext("sre_service", "delete", {
       userId,
       organizationId,
+      orgPendingDeletion,
       project,
     });
 

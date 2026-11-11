@@ -58,6 +58,13 @@ export async function isProjectDeleted(projectId: string | null | undefined, opt
   return deleted;
 }
 
+/** The organization behind a project is pending deletion (one join, for routes that only hold a project id). */
+export async function isProjectOrgPending(projectId: string): Promise<boolean> {
+  const [row] = await db.select({ at: organization.deletionRequestedAt }).from(projects)
+    .innerJoin(organization, eq(organization.id, projects.organizationId)).where(eq(projects.id, projectId)).limit(1);
+  return !!row?.at;
+}
+
 /** Throws OrgPendingDeletionError; for server actions and routes that mutate organization-owned data. */
 export async function assertOrgWritable(organizationId: string | null | undefined, options: { fresh?: boolean } = {}): Promise<void> {
   if (await isOrgPendingDeletion(organizationId, options)) throw new OrgPendingDeletionError();

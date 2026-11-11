@@ -16,6 +16,8 @@ export interface McpCallContext {
   organizationId: string;
   projectId: string;
   role: string;
+  /** The organization is pending deletion: tools stay read-only. */
+  orgPendingDeletion: boolean;
   /** Scopes this call may use: what the consent covers and the token carries. Always includes mcp:read. */
   scopes: string[];
 }
@@ -86,6 +88,7 @@ export async function resolveMcpCallContext(claims: JWTPayload): Promise<McpCall
     organizationId: permission.organizationId,
     projectId,
     role: permission.project.userRole,
+    orgPendingDeletion: permission.orgPendingDeletion,
     scopes,
   };
 }
@@ -113,6 +116,7 @@ export function assertCanView(
   const allowed = checkPermissionWithContext(resource, "view", {
     userId: context.userId,
     organizationId: context.organizationId,
+    orgPendingDeletion: context.orgPendingDeletion,
     project: { id: context.projectId, userRole: context.role },
   });
   if (!allowed) throw new McpAccessDeniedError(`forbidden_${resource}`);
@@ -129,6 +133,7 @@ export function assertCan(
   const allowed = checkPermissionWithContext(resource, action, {
     userId: context.userId,
     organizationId: context.organizationId,
+    orgPendingDeletion: context.orgPendingDeletion,
     project: { id: context.projectId, userRole: context.role },
   });
   if (!allowed) throw new McpAccessDeniedError(`forbidden_${resource}_${action}`);

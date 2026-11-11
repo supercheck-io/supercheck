@@ -14,11 +14,12 @@ import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 export async function getLinkedTestRequirement(testId: string) {
   try {
     // RBAC: Require project context and permission check (optimized)
-    const { userId, project, organizationId } = await requireProjectContext();
+    const { userId, project, organizationId, orgPendingDeletion } = await requireProjectContext();
 
     const canView = checkPermissionWithContext("requirement", "view", {
       userId,
       organizationId,
+      orgPendingDeletion,
       project,
     });
 

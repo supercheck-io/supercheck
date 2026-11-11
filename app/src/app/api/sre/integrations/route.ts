@@ -25,6 +25,7 @@ export async function GET() {
     const canViewNotifications = checkPermissionWithContext("notification", "view", {
       userId: context.userId,
       organizationId: context.organizationId,
+      orgPendingDeletion: context.orgPendingDeletion,
       project: context.project,
     });
 

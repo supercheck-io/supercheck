@@ -1,3 +1,4 @@
+jest.mock("@/lib/deletion/org-state");
 /**
  * Job Scheduler Tests
  *

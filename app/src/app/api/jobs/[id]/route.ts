@@ -201,6 +201,7 @@ export async function PATCH(
 
     const result = await updateJob(updateData, {
       userId,
+      orgPendingDeletion: context.orgPendingDeletion,
       project,
       organizationId,
       inherited: { cronSchedule: rawData.cronSchedule === undefined, alertConfig: rawData.alertConfig === undefined, description: rawData.description === undefined },
@@ -270,6 +271,7 @@ export async function PUT(
       jobId: params.id,
     }, {
       userId: context.userId,
+      orgPendingDeletion: context.orgPendingDeletion,
       project: context.project,
       organizationId: context.organizationId,
     });

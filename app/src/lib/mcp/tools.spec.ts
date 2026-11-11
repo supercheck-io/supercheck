@@ -25,7 +25,7 @@ import type { McpCallContext } from "./context";
 type Handler = (args: Record<string, unknown>) => Promise<{ isError?: boolean; structuredContent: Record<string, unknown> }>;
 const handlers = new Map<string, Handler>();
 const schemas = new Map<string, Record<string, { safeParse: (v: unknown) => { success: boolean } }>>();
-const ctx: McpCallContext = { userId: "u", clientId: "c", organizationId: "o", projectId: "p", role: "project_viewer", scopes: ["mcp:read"] };
+const ctx: McpCallContext = { userId: "u", clientId: "c", organizationId: "o", projectId: "p", role: "project_viewer", orgPendingDeletion: false, scopes: ["mcp:read"] };
 
 beforeAll(() => {
   const server = { registerTool: (n: string, c: { inputSchema: Record<string, never> }, h: Handler) => (handlers.set(n, h), schemas.set(n, c.inputSchema)) } as unknown as McpServer;

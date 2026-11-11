@@ -1,4 +1,5 @@
 /** @jest-environment node */
+jest.mock("@/lib/deletion/org-state");
 import { NextRequest } from "next/server";
 
 jest.mock("@/lib/auth-context", () => ({ requireUserAuthContext: jest.fn(), isAuthError: jest.fn(() => false), authErrorStatus: jest.fn(() => 401) }));

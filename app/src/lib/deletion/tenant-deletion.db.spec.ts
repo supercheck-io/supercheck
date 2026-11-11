@@ -100,7 +100,7 @@ beforeEach(async () => {
   mockSend.mockResolvedValue({ sentCount: 1, skippedAddresses: [] });
   mockEmailConfigured = false;
   process.env.SELF_HOSTED = "true";
-  delete process.env.POLAR_ACCESS_TOKEN;
+  Reflect.deleteProperty(process.env, "POLAR_ACCESS_TOKEN");
   clearDeletionStateCache();
   queries.length = 0;
 });

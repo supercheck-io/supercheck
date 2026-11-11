@@ -126,6 +126,7 @@ export default async function MainLayout({
         const permissionContext = {
           userId: user.id,
           organizationId: currentProjectResult.organizationId,
+          orgPendingDeletion: !!org?.deletionRequestedAt,
           project: {
             id: currentProjectResult.id,
             userRole: currentProjectResult.userRole,
