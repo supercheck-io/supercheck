@@ -134,11 +134,9 @@ export function calculateLocationHealth(
  * Determine the color class for a location based on its health.
  */
 export function getLocationHealthColor(healthPercentage: number): string {
-  if (healthPercentage >= 99) return "text-green-600 bg-green-100";
-  if (healthPercentage >= 95) return "text-green-600 bg-green-50";
-  if (healthPercentage >= 90) return "text-yellow-600 bg-yellow-100";
-  if (healthPercentage >= 80) return "text-orange-600 bg-orange-100";
-  return "text-red-600 bg-red-100";
+  if (healthPercentage >= 95) return "text-success";
+  if (healthPercentage >= 80) return "text-warning";
+  return "text-failure";
 }
 
 /** Unknown historical codes remain readable without inventing geography or status. */

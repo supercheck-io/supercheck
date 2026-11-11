@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { Spinner } from "@/components/ui/spinner";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { deleteMonitor } from "@/actions/delete-monitor";
 import {
   ChevronLeft,
@@ -133,9 +133,9 @@ const formatDateTime = (dateTimeInput?: string | Date): string => {
 // Simple status icon component to replace the bar chart
 const SimpleStatusIcon = ({ isUp }: { isUp: boolean }) => {
   return isUp ? (
-    <CheckCircle className="h-4 w-4 text-green-500" />
+    <CheckCircle className="h-4 w-4 text-success" />
   ) : (
-    <XCircle className="h-4 w-4 text-red-500" />
+    <XCircle className="h-4 w-4 text-failure" />
   );
 };
 
@@ -143,13 +143,13 @@ const SimpleStatusIcon = ({ isUp }: { isUp: boolean }) => {
 const StatusHeaderIcon = ({ status }: { status: string }) => {
   switch (status) {
     case "up":
-      return <CheckCircle className="h-4 w-4 text-green-500" />;
+      return <CheckCircle className="h-4 w-4 text-success" />;
     case "down":
-      return <XCircle className="h-4 w-4 text-red-500" />;
+      return <XCircle className="h-4 w-4 text-failure" />;
     case "paused":
-      return <Pause className="h-4 w-4 text-gray-500" />;
+      return <Pause className="h-4 w-4 text-muted-foreground" />;
     default:
-      return <AlertCircle className="h-4 w-4 text-yellow-500" />;
+      return <AlertCircle className="h-4 w-4 text-warning" />;
   }
 };
 
@@ -745,9 +745,9 @@ export function MonitorDetailClient({
 
             <div className="flex flex-wrap items-center gap-2">
               {monitor.status === "paused" && (
-                <div className="flex items-center px-2 py-1 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
-                  <AlertCircle className="h-4 w-4 text-yellow-600 dark:text-yellow-400 mr-1" />
-                  <span className="text-xs text-yellow-700 dark:text-yellow-300">
+                <div className="flex items-center px-2 py-1 bg-warning/10 border border-warning/30 rounded-md">
+                  <AlertCircle className="h-4 w-4 text-warning mr-1" />
+                  <span className="text-xs text-warning">
                     Monitoring paused
                   </span>
                 </div>
@@ -759,12 +759,12 @@ export function MonitorDetailClient({
                 <div className="relative group mr-1">
                   <div
                     className={`flex items-center justify-center h-10 w-10 rounded-full ${monitor.alertConfig?.enabled
-                      ? "bg-green-100 dark:bg-green-900/30"
+                      ? "bg-success/10"
                       : "bg-gray-100 dark:bg-gray-700/30"
                       }`}
                   >
                     {monitor.alertConfig?.enabled ? (
-                      <Bell className="h-5 w-5 text-green-600 dark:text-green-400" />
+                      <Bell className="h-5 w-5 text-success" />
                     ) : (
                       <BellOff className="h-5 w-5 text-gray-600 dark:text-gray-400" />
                     )}
@@ -780,7 +780,7 @@ export function MonitorDetailClient({
                   <div className="flex items-center space-x-2 text-xs text-muted-foreground">
                     {monitor.alertConfig.alertOnFailure && (
                       <div className="relative group">
-                        <XCircle className="h-4 w-4 text-red-600 dark:text-red-500" />
+                        <XCircle className="h-4 w-4 text-failure" />
                         <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 text-xs text-white bg-gray-900 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-10">
                           Monitor failure alert
                         </div>
@@ -788,7 +788,7 @@ export function MonitorDetailClient({
                     )}
                     {monitor.alertConfig.alertOnRecovery && (
                       <div className="relative group">
-                        <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-500" />
+                        <CheckCircle className="h-4 w-4 text-success" />
                         <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 text-xs text-white bg-gray-900 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-10">
                           Monitor recovery alert
                         </div>
@@ -814,27 +814,27 @@ export function MonitorDetailClient({
                 sslCertificateInfo.daysRemaining !== undefined && (
                   <div
                     className={`flex items-center px-2 py-2 rounded-md border ${sslCertificateInfo.daysRemaining <= 7 || sslCertificateInfo.valid === false
-                      ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800"
+                      ? "bg-failure/10 border-failure/30"
                       : sslCertificateInfo.daysRemaining <= 30
-                        ? "bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800"
-                        : "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800"
+                        ? "bg-warning/10 border-warning/30"
+                        : "bg-success/10 border-success/30"
                       }`}
                     title={sslCertificateInfo.validTo ? `Certificate valid until ${new Date(sslCertificateInfo.validTo).toLocaleDateString()}` : "SSL enabled"}
                   >
                     <Shield
                       className={`h-4 w-4 mr-1 ${sslCertificateInfo.daysRemaining <= 7 || sslCertificateInfo.valid === false
-                        ? "text-red-600 dark:text-red-400"
+                        ? "text-failure"
                         : sslCertificateInfo.daysRemaining <= 30
-                          ? "text-yellow-600 dark:text-yellow-400"
-                          : "text-green-600 dark:text-green-400"
+                          ? "text-warning"
+                          : "text-success"
                         }`}
                     />
                     <span
                       className={`text-xs ${sslCertificateInfo.daysRemaining <= 7 || sslCertificateInfo.valid === false
-                        ? "text-red-700 dark:text-red-300"
+                        ? "text-failure"
                         : sslCertificateInfo.daysRemaining <= 30
-                          ? "text-yellow-700 dark:text-yellow-300"
-                          : "text-green-700 dark:text-green-300"
+                          ? "text-warning"
+                          : "text-success"
                         }`}
                     >
                       SSL:{" "}
@@ -929,7 +929,7 @@ export function MonitorDetailClient({
                     className={`flex items-center ${
                       !permissionsReady || !canDeleteMonitor
                         ? "opacity-50 cursor-not-allowed text-muted-foreground"
-                        : "text-red-600 dark:text-red-400 border-red-500/30 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-500/10"
+                        : "text-failure border-failure/30 hover:text-failure hover:bg-failure/10"
                     }`}
                     title={
                       !permissionsReady
@@ -994,7 +994,7 @@ export function MonitorDetailClient({
 
             <MetricGroup title="Last 24 hours">
               <MetricStat
-                icon={<TrendingUp className="h-4 w-4 text-green-400" />}
+                icon={<TrendingUp className="h-4 w-4 text-success" />}
                 label="Uptime"
                 value={naToNull(calculatedMetrics.uptime24h)}
               />
@@ -1012,7 +1012,7 @@ export function MonitorDetailClient({
 
             <MetricGroup title="Last 30 days">
               <MetricStat
-                icon={<TrendingUp className="h-4 w-4 text-green-400" />}
+                icon={<TrendingUp className="h-4 w-4 text-success" />}
                 label="Uptime"
                 value={naToNull(calculatedMetrics.uptime30d)}
               />
@@ -1438,7 +1438,7 @@ export function MonitorDetailClient({
               <AlertDialogAction
                 onClick={handleDelete}
                 disabled={isDeleting}
-                className="bg-red-600 hover:bg-red-700"
+                className={buttonVariants({ variant: "destructive" })}
               >
                 {isDeleting ? (
                   <div className="flex items-center gap-2">

@@ -394,12 +394,12 @@ export default function Jobs() {
                     <div className="relative group">
                       <div
                         className={`flex items-center justify-center h-10 w-10 rounded-full ${selectedJob.alertConfig?.enabled
-                          ? 'bg-green-100 dark:bg-green-900/30'
+                          ? 'bg-success/10'
                           : 'bg-gray-100 dark:bg-gray-700/30'
                           }`}
                       >
                         {selectedJob.alertConfig?.enabled ? (
-                          <Bell className="h-5 w-5 text-green-600 dark:text-green-400" />
+                          <Bell className="h-5 w-5 text-success" />
                         ) : (
                           <BellOff className="h-5 w-5 text-gray-600 dark:text-gray-400" />
                         )}
@@ -412,7 +412,7 @@ export default function Jobs() {
                       <div className="flex items-center space-x-1 text-xs text-muted-foreground">
                         {selectedJob.alertConfig.alertOnSuccess && (
                           <div className="relative group">
-                            <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-500" />
+                            <CheckCircle className="h-4 w-4 text-success" />
                             <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 text-xs text-white bg-gray-900 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-10">
                               Job success alert
                             </div>
