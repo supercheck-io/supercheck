@@ -169,7 +169,7 @@ All services should be healthy and the health endpoint should return `{"status":
 | `rustfs` | S3-compatible artifact storage | `127.0.0.1:9000` (`RUSTFS_BIND_ADDR`, `RUSTFS_HOST_PORT`) |
 | `traefik` | HTTPS reverse proxy (HTTPS profile only) | `80`, `443` |
 
-Never publish Postgres, Redis or RustFS on a public IP: keep the default `127.0.0.1` binds (or a private interface) and firewall their ports. Cloud-hosted installs also get a host rule that stops pods reaching the instance-metadata address `169.254.169.254`.
+Never publish Postgres, Redis or RustFS on a public IP: keep the default `127.0.0.1` binds (or a private interface) and firewall their ports. Cloud-hosted installs also get a host rule that stops pods reaching the instance-metadata address `169.254.169.254` (this also applies to the Compose containers on that host, so they cannot use instance-role credentials).
 
 Test runs can reach public addresses but not private networks (RFC1918, link-local, CGNAT, tailnet), mail ports (25, 465, 587, 2525) or the host's Kubernetes control ports. By default, monitors also refuse hosts that resolve to a private address. Use a [Private Agent](/docs/app/deployment/private-agent) for services inside another network.
 

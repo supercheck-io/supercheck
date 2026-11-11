@@ -45,6 +45,7 @@ class InstallerTests(unittest.TestCase):
         # The refresh branch must exit before any K3s/gVisor install step.
         refresh = source.split('if [[ "$EXECUTION_PLANE_ONLY" == true ]]; then', 1)[1].split('\nfi\n', 1)[0]
         self.assertIn('apply_execution_plane', refresh)
+        self.assertIn('install_metadata_block', refresh)
         self.assertIn('exit 0', refresh)
         self.assertNotIn('get.k3s.io', refresh)
         self.assertLess(source.index('install_metadata_block\n\n# ─── Step 1'), source.index('get.k3s.io'))

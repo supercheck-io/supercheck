@@ -446,6 +446,7 @@ if [[ "$EXECUTION_PLANE_ONLY" == true ]]; then
     exit 1
   fi
   info "Refreshing execution-plane manifests only (K3s and gVisor are left untouched)"
+  install_metadata_block
   apply_execution_plane
   log "Execution plane refreshed (namespaces, RuntimeClass, RBAC, NetworkPolicy, LimitRange, ResourceQuota, Pod Security labels)"
   exit 0
