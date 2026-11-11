@@ -2137,7 +2137,13 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
           startEvidence.startedAtMs = parsed;
         }
       }
-      if (!executionDeadlineSet && startEvidence.startedAtMs !== null) {
+      // Skip once artifacts are collected: their extension must hold even if
+      // kubelet reports the start late.
+      if (
+        !executionDeadlineSet &&
+        !artifactsCollected &&
+        startEvidence.startedAtMs !== null
+      ) {
         executionDeadlineSet = true;
         // Never earlier than our own poll start, so node clock skew cannot cut it short.
         timeoutAt = Math.min(

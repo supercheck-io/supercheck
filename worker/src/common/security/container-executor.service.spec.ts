@@ -1147,6 +1147,46 @@ describe('ContainerExecutorService', () => {
       },
     );
 
+    it('keeps the artifact-extraction extension when the start is reported late', async () => {
+      const base = Date.UTC(2024, 0, 1);
+      let now = base;
+      const clock = jest.spyOn(Date, 'now').mockImplementation(() => now);
+      let polls = 0;
+      service['coreApi'] = {
+        readNamespacedPod: jest.fn().mockImplementation(() => {
+          polls += 1;
+          // Status lags: still waiting while the marker is already written.
+          const state =
+            polls === 1
+              ? { waiting: {} }
+              : polls < 20
+                ? { running: { startedAt: new Date(base) } }
+                : { terminated: { exitCode: 0, startedAt: new Date(base) } };
+          return Promise.resolve({
+            status: { containerStatuses: [{ name: 'execution', state }] },
+          });
+        }),
+      } as unknown as NonNullable<(typeof service)['coreApi']>;
+      service['readExecutionExitCode'] = jest.fn().mockResolvedValue(0);
+      service['sleep'] = jest.fn().mockImplementation(() => {
+        now += 1_000;
+        return Promise.resolve();
+      });
+      try {
+        const outcome = await service['waitForExecutionOutcome'](
+          'pod',
+          '/tmp/run',
+          5_000,
+          { startedAtMs: null, finishedAtMs: null },
+          jest.fn().mockResolvedValue(undefined),
+          20_000,
+        );
+        expect(outcome).toMatchObject({ exitCode: 0, timedOut: false });
+      } finally {
+        clock.mockRestore();
+      }
+    });
+
     it('uses Kubernetes exit status even when the tenant writes a successful marker', async () => {
       const statuses = [
         { name: 'execution', state: { running: {} } },
