@@ -45,6 +45,7 @@ sequenceDiagram
 - Bind return/callback URLs to the verified sender origin and restrict navigated/recorded target protocols.
 - Inject the page API only on trusted Supercheck pages. Do not add broad `externally_connectable` access.
 - Keep extension permissions/host permissions minimal and validate all background/content/page boundaries independently.
+- For general Manifest V3 API pitfalls (service worker lifetime, messaging, permissions, offscreen, side panel) and store review checklists, see the vendored `chrome-extensions` skill. The rules in this skill win where they differ.
 - Retry only idempotent API methods and preserve authentication/error behavior without exposing tokens.
 
 ### Licensing and release

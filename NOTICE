@@ -12,6 +12,8 @@ Other contributors retain copyright in their contributions.
 Third-party components retain their original licenses and copyright notices.
 The recorder includes Playwright-derived code; see recorder/NOTICE and
 recorder/playwright/NOTICE for its upstream attributions.
+The agent skill in .agents/skills/chrome-extensions is vendored from
+GoogleChrome/modern-web-guidance under Apache-2.0; see its LICENSE file.
 
 Corresponding source, dependency lockfiles, and build instructions:
 https://github.com/supercheck-io/supercheck
