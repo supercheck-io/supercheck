@@ -11,7 +11,7 @@ import {
   jobNotificationSettings,
   JobType,
 } from "@/db/schema";
-import { desc, eq, inArray, and, asc, sql } from "drizzle-orm";
+import { desc, eq, inArray, and, asc, sql, isNull } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { z } from "zod";
 import { updateJob, JOB_CONFLICT_ERROR, jobNameSchema, jobDescriptionSchema, MAX_JOB_TESTS } from "@/lib/server-actions/update-job";
@@ -114,7 +114,8 @@ export async function GET(request: Request) {
     // PERFORMANCE: Run count and paginated queries in parallel
     const whereCondition = and(
       eq(jobs.projectId, targetProjectId),
-      eq(jobs.organizationId, context.organizationId)
+      eq(jobs.organizationId, context.organizationId),
+      isNull(jobs.deletingAt)
     );
 
     const [countResult, jobsResult] = await Promise.all([

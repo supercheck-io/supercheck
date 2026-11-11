@@ -514,6 +514,8 @@ export class MonitorAlertService {
       this.logger.error(`[NOTIFY] Monitor not found: ${monitorId}`);
       return { delivered: false, suppressed: true };
     }
+    // Being deleted: no notifications for a monitor the user already removed.
+    if (monitor.deletingAt) return { delivered: false, suppressed: true };
 
     // Get project information
     let projectName: string | undefined;

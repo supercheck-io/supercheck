@@ -45,7 +45,7 @@ async function reconcileOnce(id: string, projectId: string, state: { active: boo
       .for("update");
     if (!row) return;
     const deadline = Date.now() + RECONCILE_BUDGET_MS;
-    if (row.status === "paused" || !row.enabled || row.frequencyMinutes <= 0) {
+    if (row.status === "paused" || !row.enabled || row.deletingAt || row.frequencyMinutes <= 0) {
       // A scheduler failure throws (rolling back, so scheduledJobId stays and a retry converges); an absent job is fine.
       const removed = row.scheduledJobId ? await withDeadline(deadline, (signal) => removeScheduledMonitor(row.scheduledJobId!, signal)) : false;
       if (!removed) await withDeadline(deadline, (signal) => removeScheduledMonitor(id, signal));

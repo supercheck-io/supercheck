@@ -172,9 +172,8 @@ export class MonitorService {
         };
       }
 
-      if (monitor.status === 'paused') {
-        // Removed log - paused execution is not an error
-        // Return null instead of a failed result - paused monitors shouldn't create results
+      if (monitor.status === 'paused' || monitor.deletingAt) {
+        // Paused or being deleted: not an error, and no result (a deleting monitor must not grow its history or alert)
         return null;
       }
       if (!monitor.organizationId && !isSelfHostedEnvironment()) {
@@ -475,7 +474,7 @@ export class MonitorService {
       ),
     );
 
-    // Filter out null results (paused monitors)
+    // Filter out null results (paused or deleting monitors)
     return results.filter((r) => r !== null);
   }
 

@@ -215,7 +215,7 @@ export function registerMcpTools(server: McpServer, ctx: McpCallContext): void {
     const rows = await db
       .select({ id: jobs.id, name: jobs.name, jobType: jobs.jobType, status: jobs.status, cronSchedule: jobs.cronSchedule, lastRunAt: jobs.lastRunAt, nextRunAt: jobs.nextRunAt })
       .from(jobs)
-      .where(scope(jobs, [cursor ? lt(jobs.id, cursor) : undefined]))
+      .where(scope(jobs, [isNull(jobs.deletingAt), cursor ? lt(jobs.id, cursor) : undefined]))
       .orderBy(desc(jobs.id))
       .limit(limit + 1);
     const { items, nextCursor } = paged(rows, limit);
@@ -287,7 +287,7 @@ export function registerMcpTools(server: McpServer, ctx: McpCallContext): void {
     const rows = await db
       .select({ id: monitors.id, name: monitors.name, type: monitors.type, target: monitors.target, status: monitors.status, lastCheckAt: monitors.lastCheckAt })
       .from(monitors)
-      .where(scope(monitors, [cursor ? lt(monitors.id, cursor) : undefined]))
+      .where(scope(monitors, [isNull(monitors.deletingAt), cursor ? lt(monitors.id, cursor) : undefined]))
       .orderBy(desc(monitors.id))
       .limit(limit + 1);
     const { items, nextCursor } = paged(rows, limit);
@@ -340,7 +340,7 @@ export function registerMcpTools(server: McpServer, ctx: McpCallContext): void {
     const [j] = await db
       .select({ id: jobs.id, name: jobs.name, description: jobs.description, jobType: jobs.jobType, status: jobs.status, cronSchedule: jobs.cronSchedule, lastRunAt: jobs.lastRunAt, nextRunAt: jobs.nextRunAt, alertConfig: jobs.alertConfig })
       .from(jobs)
-      .where(scope(jobs, [eq(jobs.id, id)]))
+      .where(scope(jobs, [isNull(jobs.deletingAt), eq(jobs.id, id)]))
       .limit(1);
     if (!j) throw new NotFoundError("Job not found");
     // Only tests of this project, so a stray cross-project link can never surface.
@@ -378,7 +378,7 @@ export function registerMcpTools(server: McpServer, ctx: McpCallContext): void {
     const [m] = await db
       .select({ id: monitors.id, name: monitors.name, description: monitors.description, type: monitors.type, target: monitors.target, status: monitors.status, enabled: monitors.enabled, frequencyMinutes: monitors.frequencyMinutes, lastCheckAt: monitors.lastCheckAt, config: monitors.config, alertConfig: monitors.alertConfig })
       .from(monitors)
-      .where(scope(monitors, [eq(monitors.id, id)]))
+      .where(scope(monitors, [isNull(monitors.deletingAt), eq(monitors.id, id)]))
       .limit(1);
     if (!m) throw new NotFoundError("Monitor not found");
     // Allow-list of scalar settings; everything else in the config (headers, auth, body, keywords) is omitted.

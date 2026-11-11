@@ -3,7 +3,7 @@ import { randomUUID } from "crypto";
 import type { Redis } from "ioredis";
 import { db } from "@/utils/db";
 import { jobs } from "@/db/schema";
-import { eq, isNotNull, and } from "drizzle-orm";
+import { eq, isNotNull, isNull, and } from "drizzle-orm";
 import { getQueues } from "./queue";
 import { getNextRunDate } from "@/lib/cron-utils";
 import {
@@ -93,6 +93,8 @@ export async function scheduleJob(
     }
 
     const job = jobData[0];
+    // A job being deleted must never get a schedule back (reconcile and update paths call this).
+    if (job.deletingAt) throw new Error(`Job ${options.jobId} is being deleted`);
 
     // IMPORTANT: Only store identifiers in the repeatable payload.
     // Test scripts and variables are fetched at trigger time by processScheduledJob
@@ -258,7 +260,7 @@ export async function initializeJobSchedulers() {
         const jobsWithSchedules = await db
           .select()
           .from(jobs)
-          .where(isNotNull(jobs.cronSchedule));
+          .where(and(isNotNull(jobs.cronSchedule), isNull(jobs.deletingAt)));
 
         if (jobsWithSchedules.length === 0) {
           return { success: true, initialized: 0, failed: 0 };
@@ -404,7 +406,7 @@ export async function cleanupJobScheduler() {
       const jobsWithSchedules = await db
         .select({ id: jobs.id, scheduledJobId: jobs.scheduledJobId })
         .from(jobs)
-        .where(isNotNull(jobs.scheduledJobId));
+        .where(and(isNotNull(jobs.scheduledJobId), isNull(jobs.deletingAt)));
 
       const validJobIds = new Set(
         jobsWithSchedules.map(

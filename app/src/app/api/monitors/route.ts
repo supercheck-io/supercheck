@@ -8,7 +8,7 @@ import {
   projects,
   tags,
 } from "@/db/schema";
-import { eq, desc, and, sql, inArray, ne } from "drizzle-orm";
+import { eq, desc, and, sql, inArray, ne, isNull } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { isUuid } from "@/lib/uuid";
@@ -118,6 +118,7 @@ export async function GET(request: Request) {
     const whereCondition = and(
       eq(monitors.projectId, context.project.id),
       eq(monitors.organizationId, context.organizationId),
+      isNull(monitors.deletingAt),
     );
 
     if (usePagination) {

@@ -3,7 +3,7 @@ import { notInDeletedProject } from "@/lib/middleware/plan-limit-lock";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { monitors, projects } from "@/db/schema";
-import { and, eq, ne, sql } from "drizzle-orm";
+import { and, eq, ne, sql, isNull } from "drizzle-orm";
 import { isAuthError, requireUserAuthContext, authErrorStatus } from "@/lib/auth-context";
 import { resumeRefusalResponse, withResumeWithinPlan } from "@/lib/middleware/plan-enforcement";
 import { ensureSubscribedForResume, monitorResumeBlockedResponse, subscriptionDeniedResponse } from "@/lib/execution/trial-interval-response";
@@ -47,7 +47,7 @@ export async function PATCH(
     if (!isUuid((await context.params).id)) return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
     // A soft-deleted project's monitors are gone for the user; they must not be resumable here.
     const currentMonitor = await db.query.monitors.findFirst({
-      where: and(eq(monitors.id, id), notInDeletedProject(monitors.projectId)),
+      where: and(eq(monitors.id, id), isNull(monitors.deletingAt), notInDeletedProject(monitors.projectId)),
     });
 
     if (!currentMonitor) {

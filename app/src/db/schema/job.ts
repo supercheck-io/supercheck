@@ -65,10 +65,14 @@ export const jobs = pgTable(
     lastRunAt: timestamp("last_run_at", { withTimezone: true }),
     nextRunAt: timestamp("next_run_at", { withTimezone: true }),
     scheduledJobId: varchar("scheduled_job_id", { length: 255 }),
+    // Set when deletion is requested: the job is hidden, unscheduled and refuses new runs while the purge worker removes it.
+    deletingAt: timestamp("deleting_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }),
   },
   (table) => ({
+    // Partial: only rows being deleted, so the sweeper finds them without scanning the table.
+    deletingIdx: index("jobs_deleting_idx").on(table.id).where(sql`deleting_at IS NOT NULL`),
     // Index on organization_id for listing organization jobs
     organizationIdIdx: index("jobs_organization_id_idx").on(
       table.organizationId

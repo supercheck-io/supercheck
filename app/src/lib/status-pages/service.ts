@@ -10,7 +10,7 @@
 import { randomUUID } from "crypto";
 import { z } from "zod";
 import { HEX_COLOR_REGEX, normalizeHexColor } from "@/lib/status-page-branding";
-import { and, asc, eq, inArray, lt, ne, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, lt, ne, sql, isNull } from "drizzle-orm";
 import { db } from "@/utils/db";
 import {
   monitors,
@@ -307,7 +307,7 @@ async function verifyComponentReferences(
     const validMonitors = await db
       .select({ id: monitors.id })
       .from(monitors)
-      .where(and(inArray(monitors.id, monitorIds), eq(monitors.projectId, ctx.projectId)));
+      .where(and(inArray(monitors.id, monitorIds), eq(monitors.projectId, ctx.projectId), isNull(monitors.deletingAt)));
 
     if (validMonitors.length !== monitorIds.length) {
       return fail("validation", "One or more monitors not found or access denied");

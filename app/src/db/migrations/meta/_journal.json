@@ -519,6 +519,20 @@
       "when": 1794415761056,
       "tag": "0073_monitor_results_test_execution_idx",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1794421388058,
+      "tag": "0074_deletion_jobs_and_deleting_flags",
+      "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1794421389058,
+      "tag": "0075_deleting_flag_indexes",
+      "breakpoints": true
     }
   ]
 }

@@ -10,7 +10,7 @@ import {
   reports,
   k6PerformanceRuns,
 } from "@/db/schema";
-import { eq, gte, and, count, sql, sum, inArray } from "drizzle-orm";
+import { eq, gte, and, count, sql, sum, inArray, isNull } from "drizzle-orm";
 import { subDays, subHours } from "date-fns";
 import { getQueueStats } from "@/lib/queue-stats";
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
@@ -53,7 +53,8 @@ export async function GET() {
     // OPTIMIZED: Consolidated 4 separate count queries into 1 using PostgreSQL FILTER clause
     const monitorBaseCondition = and(
       eq(monitors.projectId, targetProjectId),
-      eq(monitors.organizationId, context.organizationId)
+      eq(monitors.organizationId, context.organizationId),
+      isNull(monitors.deletingAt)
     );
     
     const [
@@ -103,7 +104,7 @@ export async function GET() {
         status: monitors.status,
         lastCheckAt: monitors.lastCheckAt
       }).from(monitors)
-        .where(and(eq(monitors.status, "down"), eq(monitors.projectId, targetProjectId), eq(monitors.organizationId, context.organizationId)))
+        .where(and(eq(monitors.status, "down"), eq(monitors.projectId, targetProjectId), eq(monitors.organizationId, context.organizationId), isNull(monitors.deletingAt)))
         .limit(5)
     ]);
 
@@ -111,7 +112,8 @@ export async function GET() {
     // OPTIMIZED: Consolidated count queries using PostgreSQL FILTER clause
     const jobBaseCondition = and(
       eq(jobs.projectId, targetProjectId),
-      eq(jobs.organizationId, context.organizationId)
+      eq(jobs.organizationId, context.organizationId),
+      isNull(jobs.deletingAt)
     );
     
     // Run-based cards are Playwright-only; k6 runs are read from k6_performance_runs.

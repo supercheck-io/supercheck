@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { updateJob, JOB_CONFLICT_ERROR } from "@/lib/server-actions/update-job";
 import { db } from "@/utils/db";
 import { jobs, jobTests, tests as testsTable, testTags, tags } from "@/db/schema";
-import { eq, inArray, asc, and } from "drizzle-orm";
+import { eq, inArray, asc, and, isNull } from "drizzle-orm";
 import { requireAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-context';
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { loadCreators } from '@/lib/creators';
@@ -51,7 +51,8 @@ export async function GET(
         and(
           eq(jobs.id, jobId),
           eq(jobs.projectId, context.project.id),
-          eq(jobs.organizationId, context.organizationId)
+          eq(jobs.organizationId, context.organizationId),
+          isNull(jobs.deletingAt)
         )
       )
       .limit(1);
@@ -178,7 +179,8 @@ export async function PATCH(
       where: and(
         eq(jobs.id, jobId),
         eq(jobs.projectId, project.id),
-        eq(jobs.organizationId, organizationId)
+        eq(jobs.organizationId, organizationId),
+        isNull(jobs.deletingAt)
       ),
     });
 

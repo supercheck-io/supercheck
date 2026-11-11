@@ -239,7 +239,7 @@ export async function POST(
       .from(jobs)
       // Jobs keep their trigger keys after project deletion; only active projects may run (as for CLI tokens).
       .leftJoin(projects, eq(projects.id, jobs.projectId))
-      .where(and(eq(jobs.id, jobId), or(isNull(jobs.projectId), eq(projects.status, "active"))))
+      .where(and(eq(jobs.id, jobId), isNull(jobs.deletingAt), or(isNull(jobs.projectId), eq(projects.status, "active"))))
       .limit(1);
 
     if (jobResult.length === 0) {
@@ -691,7 +691,8 @@ export async function GET(
         and(
           eq(jobs.id, jobId),
           eq(jobs.projectId, project.id),
-          eq(jobs.organizationId, organizationId)
+          eq(jobs.organizationId, organizationId),
+          isNull(jobs.deletingAt)
         )
       )
       .limit(1);

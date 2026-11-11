@@ -135,6 +135,11 @@ export async function processScheduledJob(
     }
 
     const jobRecord = jobData[0];
+    // Deletion in progress: a late tick does nothing and drops its own schedule (the purge also removes it).
+    if (jobRecord.deletingAt) {
+      await removeOrphanedSchedule(jobId, 'job_deleting');
+      return { success: true };
+    }
     const jobType = jobRecord.jobType ?? 'playwright';
     const isK6Job = jobType === 'k6';
 

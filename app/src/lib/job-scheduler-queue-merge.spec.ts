@@ -37,7 +37,7 @@ jest.mock("@/utils/db", () => ({
     update: () => ({ set: () => ({ where: async () => undefined }) }),
   },
 }));
-jest.mock("drizzle-orm", () => ({ eq: jest.fn(), and: jest.fn(), isNotNull: jest.fn() }));
+jest.mock("drizzle-orm", () => ({ eq: jest.fn(), and: jest.fn(), isNotNull: jest.fn(), isNull: jest.fn() }));
 jest.mock("@/db/schema", () => ({ jobs: {} }));
 jest.mock("@/lib/cron-utils", () => ({ getNextRunDate: () => new Date("2030-01-01T00:00:00Z") }));
 jest.mock("./data-lifecycle-service", () => ({ createDataLifecycleService: jest.fn(), setDataLifecycleInstance: jest.fn() }));

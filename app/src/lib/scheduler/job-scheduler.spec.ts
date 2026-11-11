@@ -113,6 +113,17 @@ describe("scheduled execution admission", () => {
     ).mockResolvedValue(undefined);
   });
 
+  it("does nothing and drops its schedule for a job being deleted", async () => {
+    (db.select as jest.Mock).mockReturnValueOnce(
+      selectRows([{ id: "job-1", projectId: "project-1", organizationId: "org-1", jobType: "playwright", cronSchedule: "*/5 * * * *", deletingAt: new Date() }]),
+    );
+    const values = jest.fn();
+    (db.insert as jest.Mock).mockReturnValue({ values });
+    await expect(processScheduledJob(scheduledJob)).resolves.toEqual({ success: true });
+    expect(values).not.toHaveBeenCalled();
+    expect(db.select).toHaveBeenCalledTimes(1);
+  });
+
   it("records only one blocked run while the job stays blocked for the same reason", async () => {
     (db.select as jest.Mock)
       .mockReturnValueOnce(

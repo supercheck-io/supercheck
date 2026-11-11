@@ -83,6 +83,7 @@ const QUEUE_EVENTS_READY_TIMEOUT_MS = 10_000;
  * - "playground_artifacts": Temporary test runs from playground
  * - "webhook_idempotency": Webhook deduplication keys with TTL
  * - "credential_revocation_retry": Finishes credential revocations that failed after a password reset
+ * - "deletion_sweep": Re-triggers stuck, due and orphaned background purges (jobs, monitors)
  * - "alert_history": Alert notification history records
  * - "audit_logs": User/system/security audit records
  * - "telemetry_retention": Agent heartbeats, finished private agent jobs, SRE health snapshots/observations/alert events, notification outbox events
@@ -102,6 +103,7 @@ export type CleanupEntityType =
   | "playground_artifacts"
   | "webhook_idempotency"
   | "credential_revocation_retry"
+  | "deletion_sweep"
   | "alert_history"
   | "audit_logs"
   | "telemetry_retention"
@@ -2053,6 +2055,44 @@ export class CredentialRevocationRetryStrategy implements ICleanupStrategy {
 }
 
 /**
+ * Safety net for background purges: BullMQ is only the trigger, so a lost message, a crashed pod or a missed
+ * retry is re-triggered here from the deletion_jobs table. Reads partial indexes over unfinished rows only.
+ */
+export class DeletionSweepStrategy implements ICleanupStrategy {
+  entityType: CleanupEntityType = "deletion_sweep";
+  config: CleanupStrategyConfig;
+
+  constructor(config: CleanupStrategyConfig) {
+    this.config = config;
+  }
+
+  validate(): void {}
+
+  async getStats(): Promise<{ totalRecords: number; oldRecords: number }> {
+    return { totalRecords: 0, oldRecords: 0 };
+  }
+
+  async execute(dryRun = false): Promise<CleanupOperationResult> {
+    const startTime = Date.now();
+    const result: CleanupOperationResult = {
+      success: true, entityType: this.entityType, recordsDeleted: 0, duration: 0, errors: [], details: { dryRun },
+    };
+    if (!dryRun) {
+      try {
+        const { sweepDeletions } = await import("@/lib/deletion/queue");
+        result.details = { ...result.details, ...(await sweepDeletions()) };
+      } catch (error) {
+        result.success = false;
+        result.errors.push(error instanceof Error ? error.message : String(error));
+        console.error("[DATA_LIFECYCLE] [deletion_sweep] Sweep failed:", error);
+      }
+    }
+    result.duration = Date.now() - startTime;
+    return result;
+  }
+}
+
+/**
  * Alert history past retention. Claim rows (outage_key set) of a monitor that is still failing are kept: they
  * are what stops a retried alert of the open outage from sending again, so they outlive the retention window.
  */
@@ -2700,6 +2740,9 @@ export class DataLifecycleService {
         case "credential_revocation_retry":
           strategy = new CredentialRevocationRetryStrategy(config);
           break;
+        case "deletion_sweep":
+          strategy = new DeletionSweepStrategy(config);
+          break;
         case "alert_history":
           strategy = new AlertHistoryCleanupStrategy(config);
           break;
@@ -3269,6 +3312,13 @@ export function createDataLifecycleService(): DataLifecycleService {
         process.env.CREDENTIAL_REVOCATION_RETRY_CRON,
         "20 * * * *" // hourly
       ),
+    },
+
+    // Background purge sweep: re-triggers stuck, due and orphaned deletions (cheap indexed reads)
+    {
+      entityType: "deletion_sweep",
+      enabled: parseBooleanEnv(process.env.DELETION_SWEEP_ENABLED, true),
+      cronSchedule: parseCronSchedule(process.env.DELETION_SWEEP_CRON, "*/2 * * * *"),
     },
 
     // Alert History Cleanup

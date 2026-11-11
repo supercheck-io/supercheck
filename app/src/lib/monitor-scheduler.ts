@@ -1,6 +1,6 @@
 import { db } from "@/utils/db";
 import { monitors as monitorSchemaDb, MonitorConfig } from "@/db/schema";
-import { eq, isNotNull, and, ne, inArray, gt } from "drizzle-orm";
+import { eq, isNotNull, isNull, and, ne, inArray, gt } from "drizzle-orm";
 import { getQueues, MonitorJobData } from "./queue";
 import { SYNTHETIC_MIN_FREQUENCY_MINUTES } from "./monitor-write";
 import type { Redis } from "ioredis";
@@ -271,7 +271,8 @@ export async function initializeMonitorSchedulers(): Promise<{ success: boolean;
           .where(and(
             isNotNull(monitorSchemaDb.frequencyMinutes),
             eq(monitorSchemaDb.enabled, true),
-            ne(monitorSchemaDb.status, 'paused')
+            ne(monitorSchemaDb.status, 'paused'),
+            isNull(monitorSchemaDb.deletingAt)
           ));
 
         if (activeMonitors.length === 0) {
