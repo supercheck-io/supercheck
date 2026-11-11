@@ -8,6 +8,7 @@ import {
 describe("sanitizeNextPath", () => {
   it.each([
     ["/device", "/device"],
+    ["/org-admin", "/org-admin"],
     ["/device?code=BCDF-GHJK", "/device?code=BCDF-GHJK"],
     [encodeURIComponent("/device?code=BCDF-GHJK"), "/device?code=BCDF-GHJK"],
   ])("accepts %s", (input, expected) => {

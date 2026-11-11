@@ -8,7 +8,10 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 
 ### Upgrade notes
 
-- **Database migrations.** Apply migrations `0059` to `0063` before you update the app and the worker. They add an index and a waiter count on private agent jobs, an origin on investigation runs, an index for trial key lookups and incident alert counts.
+- **Database migrations.** Apply migrations `0074` to `0078` before you update the app and the worker. They add the background deletion job table and `deleting_at` flags on jobs and monitors (`0074`, `0075`), pending-deletion columns on organizations and soft-delete columns on projects (`0076`), and partial indexes for the purge sweep and the audit-log scrub (`0077`, `0078`). `0077` and `0078` build indexes concurrently and run outside a transaction.
+- **Organization deletion changed.** Deleting an organization no longer removes it immediately. The owner requests it (typing the organization name, after a recent sign-in), the organization is read-only for 14 days, and only then is it purged. `ORG_DELETION_GRACE_DAYS` changes the window (`0` purges at once and is honored on self-hosted installations only). Without SMTP no email is sent and the app confirms the date instead.
+- **New optional settings.** `ORG_DELETION_GRACE_DAYS`, `ORG_DELETION_REAUTH_MINUTES` (default 10), `AUDIT_EMAIL_SCRUB_DAYS` (default 30), and `DELETION_PURGE_CONCURRENCY`, `DELETION_BATCH_SIZE`, `DELETION_BATCH_PAUSE_MS` and `DELETION_MAX_ATTEMPTS` for the background purge are documented in `app/.env.example`.
+- **Database migrations (earlier).** Apply migrations `0059` to `0063` before you update the app and the worker. They add an index and a waiter count on private agent jobs, an origin on investigation runs, an index for trial key lookups and incident alert counts.
 - **New optional settings.** `PRIVATE_AGENT_JOB_RETENTION_DAYS` (default 30) sets how long finished private agent jobs are kept; each connector's newest job always stays. `SMTP_FROM_NAME` and `SMTP_REPLY_TO` set a display name and a Reply-To address on every email. `SENTRY_DSN`, `SENTRY_ENVIRONMENT` and `SENTRY_RELEASE` are documented in `app/.env.example`.
 - **Rate limiters fail closed.** Invitations and API key verification now return `503` with a `Retry-After` header when Redis is unavailable, instead of letting requests through unthrottled.
 - **Re-run `setup-k3s.sh` (required for self-hosted).** Every test run now first checks that the sandbox network policy blocks the Kubernetes API, and refuses to run user code if it does not. Installs whose execution policy predates 1.5.0 (for example, upgraded by pulling new images without re-running `setup-k3s.sh`) fail every run with *Infrastructure error: execution network isolation not enforced*. `install.sh --upgrade` and the documented manual upgrade already re-run it; otherwise run `sudo bash setup-k3s.sh --execution-plane-only` on the main server and on every worker server. Clusters that do not enforce Kubernetes NetworkPolicy cannot run tests.
@@ -16,6 +19,8 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 
 ### Added
 
+- Organization deletion has a pending window: a banner with a countdown for every member, **Cancel deletion** for the owner, read-only access meanwhile, and emails to the owners on request, 7 days and 1 day before, and on completion. Super admins can **Purge now** with a recorded reason from the new **Deletion** tab. New endpoint `POST /api/organizations/{id}/cancel-deletion`.
+- Projects are soft-deleted and can be restored by owners and admins for 7 days (**Recently deleted projects**), then purged in the background. New endpoints `POST /api/projects/{id}/restore` and `GET /api/projects/deleted`.
 - `GET /api/audit` accepts a `cursor` for stable paging, and the audit log table loads the newest 100 events with **Load older events**.
 - Monitors can open incidents without any notification channel, so incident-only monitoring works.
 - Incidents report `alertCount` (the opening alert plus repeats while the incident stayed open) and `lastAlertAt` in the API and in the MCP `get_incident` tool.
@@ -23,6 +28,8 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 
 ### Changed
 
+- `DELETE /api/organizations/{id}` schedules the deletion instead of deleting. The body is now `{ "confirmName": "<organization name>" }` (the old `confirmOrganizationId` is no longer accepted), and it answers `403` with code `REAUTH_REQUIRED` when the session is older than a few minutes. The synchronous teardown path is removed. `DELETE /api/projects/{id}` is a soft delete.
+- Audit log entries are kept for 12 months and then removed; email addresses in their details are replaced by a hash after 30 days.
 - `PATCH /api/monitors/{id}` merges `config` and `alertConfig` as a JSON merge patch: objects merge, arrays replace and `null` deletes a key. `PUT` still replaces `config` as a whole. Invalid notification providers, a blank name or a non-object `alertConfig` return `400`.
 - `PATCH /api/monitors/{id}/status` accepts only `up`, `down`, `paused` and `pending`, and pausing now also disables the monitor. Resuming a monitor re-checks the plan limit and, on Supercheck Cloud, the subscription, and can return `403` (`plan_limit`), `402` or `503` with `Retry-After`.
 - AI analysis of jobs, k6 runs and monitors needs edit permission, as AI Fix does, because it spends AI credits.

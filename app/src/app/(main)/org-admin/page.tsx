@@ -44,6 +44,8 @@ import type { Project } from "@/components/org-admin/project-columns";
 import { ProjectLocationsDialog } from "@/components/org-admin/project-locations-dialog";
 import { ProjectIncidentPolicyDialog } from "@/components/org-admin/project-incident-policy-dialog";
 import { SubscriptionTab } from "@/components/org-admin/subscription-tab";
+import { DeleteProjectDialog } from "@/components/org-admin/delete-project-dialog";
+import { DeletedProjects } from "@/components/org-admin/deleted-projects";
 import { DeleteOrganizationButton } from "@/components/org-admin/delete-organization-button";
 import { MemberAccessDialog } from "@/components/members/MemberAccessDialog";
 import { PrivateAgentsAdminView } from "@/components/sre/private-agents/private-agents-admin-view";
@@ -74,6 +76,7 @@ import type {
 } from "@/actions/sre-diagnostic-queries";
 import {
   canCreateProjects,
+  canDeleteProject,
   canInviteMembers,
   canManageProject,
   canManageOrganization,
@@ -81,7 +84,7 @@ import {
 import { normalizeRole } from "@/lib/rbac/role-normalizer";
 import { z } from "zod";
 import { useAppConfig } from "@/hooks/use-app-config";
-import { useProjectContext } from "@/hooks/use-project-context";
+import { clearProjectsCache, useProjectContext } from "@/hooks/use-project-context";
 import {
   getSreAdminQueryKey,
   SRE_QUERY_KEYS,
@@ -727,6 +730,8 @@ function OrgAdminDashboardContent() {
   };
 
   const [policyProject, setPolicyProject] = useState<Project | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Project | null>(null);
+  const [deletedRefresh, setDeletedRefresh] = useState(0);
 
   const handleUpdateProject = async () => {
     if (!editingProject) return;
@@ -866,6 +871,11 @@ function OrgAdminDashboardContent() {
               onEditProject={handleEditProject}
               onManageLocations={handleManageLocations}
               onManageIncidentPolicy={setPolicyProject}
+              onDeleteProject={
+                canDeleteProject(normalizeRole(currentUserRole))
+                  ? setDeleteTarget
+                  : undefined
+              }
               canCreateProjects={canCreateProjects(
                 normalizeRole(currentUserRole),
               )}
@@ -873,6 +883,28 @@ function OrgAdminDashboardContent() {
                 normalizeRole(currentUserRole),
               )}
             />
+          )}
+
+          {canDeleteProject(normalizeRole(currentUserRole)) && (
+            <>
+              <DeletedProjects
+                refreshKey={deletedRefresh}
+                onRestored={() => {
+                  invalidateProjects();
+                  invalidateStats();
+                }}
+              />
+              <DeleteProjectDialog
+                project={deleteTarget}
+                onOpenChange={(open) => !open && setDeleteTarget(null)}
+                onDeleted={() => {
+                  setDeletedRefresh((n) => n + 1);
+                  invalidateProjects();
+                  invalidateStats();
+                  clearProjectsCache();
+                }}
+              />
+            </>
           )}
 
           {/* Create Project Dialog */}

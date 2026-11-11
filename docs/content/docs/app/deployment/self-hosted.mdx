@@ -188,6 +188,9 @@ Edit `.env` in `deploy/docker`, then run `sudo docker compose up -d --force-recr
 | `SIGNUP_ENABLED` | `true` | `false` disables open registration (invited users still work) |
 | `ALLOWED_EMAIL_DOMAINS` | empty | Comma-separated signup allowlist, for example `acme.com,acme.org` |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM_EMAIL`, `SMTP_USER`, `SMTP_PASSWORD` | unset | Email for alerts and invitations (disabled without `SMTP_HOST`) |
+| `ORG_DELETION_GRACE_DAYS` | `14` | Days an owner can cancel a requested organization deletion before the data is purged (0 to 365). `0` purges at once and is honored on self-hosted installations only. During the window the organization is read-only |
+| `ORG_DELETION_REAUTH_MINUTES` | `10` | Minutes a session may be old before an owner must sign in again to request an organization deletion (1 to 60) |
+| `AUDIT_EMAIL_SCRUB_DAYS` | `30` | Days before email addresses in audit log details are replaced by a hash. Audit logs are removed after 12 months |
 | `SMTP_FROM_NAME`, `SMTP_REPLY_TO` | unset | Optional display name for the From address and an optional Reply-To address on every email |
 | `SMTP_BLOCKED_RECIPIENT_DOMAINS` | unset | Extra recipient domains never emailed (reserved domains such as `example.com` are always skipped) |
 | `AI_PROVIDER`, `AI_MODEL`, `OPENAI_API_KEY` | `openai`, `gpt-6-luna`, unset | AI features and AI SRE. Other providers: [Docker environment reference](https://github.com/supercheck-io/supercheck/blob/v1.6.0/deploy/docker/README.md#environment-variables) |

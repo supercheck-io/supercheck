@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AlertTriangle, Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { reloadProjectContext } from "@/lib/project-navigation";
+import { signOut } from "@/utils/auth-client";
 import { clearProjectsCache } from "@/hooks/use-project-context";
 
 interface DeleteOrganizationButtonProps {
@@ -23,44 +23,75 @@ interface DeleteOrganizationButtonProps {
   organizationName: string;
 }
 
-/** Owner-only: permanently deletes the organization after the name is typed. */
+type DeletionInfo = { graceDays: number; emailAvailable: boolean; hasSubscription: boolean; pending: boolean };
+
+/**
+ * Owner-only: asks to delete the organization after the name is typed. Never immediate: the organization turns
+ * read-only for a grace window and the owner can cancel until it ends.
+ */
 export function DeleteOrganizationButton({ organizationId, organizationName }: DeleteOrganizationButtonProps) {
   const [open, setOpen] = useState(false);
   const [typedName, setTypedName] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
+  const [info, setInfo] = useState<DeletionInfo | null>(null);
+  const [needsReauth, setNeedsReauth] = useState(false);
+  const [requested, setRequested] = useState<{ purgeAfter: string | null } | null>(null);
   // Compare trimmed values and never accept an empty confirmation.
   const expectedName = organizationName.trim();
   const confirmed = typedName.trim() !== "" && typedName.trim() === expectedName;
 
-  const handleDelete = async () => {
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    fetch(`/api/organizations/${organizationId}/deletion`)
+      .then((res) => res.json())
+      .then((data) => !cancelled && data?.deletion && setInfo(data.deletion))
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [open, organizationId]);
+
+  const graceDays = info?.graceDays ?? 14;
+  // Without a mail server nothing is sent, so the confirmation is shown here instead.
+  const emailed = info ? info.emailAvailable : true;
+
+  const handleRequest = async () => {
     if (!confirmed || isDeleting) return;
     setIsDeleting(true);
     try {
       const res = await fetch(`/api/organizations/${organizationId}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ confirmOrganizationId: organizationId }),
+        body: JSON.stringify({ confirmName: typedName.trim() }),
       });
       const data = await res.json().catch(() => null);
       if (!data) {
-        toast.error("No response from the server. The deletion may still be running; reload the page before retrying.");
-        setIsDeleting(false);
-        return;
+        toast.error("No response from the server. Reload the page to see whether the deletion was requested.");
+      } else if (data.code === "REAUTH_REQUIRED") {
+        setNeedsReauth(true);
+      } else if (!data.success) {
+        toast.error(data.error || "Failed to request organization deletion");
+      } else {
+        setRequested({ purgeAfter: data.purgeAfter ?? null });
+        clearProjectsCache();
       }
-      if (!data.success) {
-        toast.error(data.error || "Failed to delete organization");
-        setIsDeleting(false);
-        return;
-      }
-      toast.success("Organization deleted");
-      // Drop cached projects and queries of the deleted organization, then reload (stays disabled meanwhile).
-      reloadProjectContext(clearProjectsCache);
-      return;
     } catch {
-      // The request may have reached the server before the connection dropped.
-      toast.error("Lost contact with the server. The deletion may have gone through; reload the page before retrying.");
+      toast.error("Lost contact with the server. Reload the page to see whether the deletion was requested.");
     }
     setIsDeleting(false);
+  };
+
+  const handleReauth = async () => {
+    await signOut();
+    window.location.replace(new URL("/sign-in?next=%2Forg-admin", window.location.origin));
+  };
+
+  const close = (next: boolean) => {
+    if (isDeleting) return;
+    setOpen(next);
+    // The page shows the pending banner once the request succeeded.
+    if (!next && requested) window.location.reload();
   };
 
   return (
@@ -71,6 +102,8 @@ export function DeleteOrganizationButton({ organizationId, organizationName }: D
         className="h-7 w-7 shrink-0 text-destructive hover:text-destructive"
         onClick={() => {
           setTypedName("");
+          setNeedsReauth(false);
+          setRequested(null);
           setOpen(true);
         }}
         title="Delete organization"
@@ -78,51 +111,88 @@ export function DeleteOrganizationButton({ organizationId, organizationName }: D
       >
         <Trash2 className="h-3.5 w-3.5" />
       </Button>
-      <Dialog open={open} onOpenChange={(next) => !isDeleting && setOpen(next)}>
-        <DialogContent className="sm:max-w-lg">
+      <Dialog open={open} onOpenChange={close}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Trash2 className="h-5 w-5 text-destructive" />
-              Delete organization
+              {requested ? "Deletion requested" : "Delete organization"}
             </DialogTitle>
-            <DialogDescription>Permanently delete {organizationName}. This cannot be undone.</DialogDescription>
+            <DialogDescription>
+              {requested
+                ? `${organizationName} is scheduled for deletion.`
+                : `Schedule ${organizationName} for deletion. You can cancel during the ${graceDays}-day window.`}
+            </DialogDescription>
           </DialogHeader>
-          <Alert variant="destructive">
-            <AlertTriangle className="h-4 w-4" />
-            <AlertTitle>Everything in this organization is deleted</AlertTitle>
-            <AlertDescription>
-              <ul className="mt-1 list-disc pl-5">
-                <li>All projects, tests, jobs, runs, monitors, status pages and stored reports</li>
-                <li>Every member loses access</li>
-                <li>A subscription that is still active is cancelled immediately, without a refund</li>
-              </ul>
-            </AlertDescription>
-          </Alert>
-          <form
-            className="space-y-2"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void handleDelete();
-            }}
-          >
-            <Label htmlFor="delete-org-confirm">Type the organization name to confirm</Label>
-            <Input
-              id="delete-org-confirm"
-              value={typedName}
-              onChange={(event) => setTypedName(event.target.value)}
-              placeholder={expectedName}
-              autoComplete="off"
-              disabled={isDeleting}
-            />
-          </form>
+          {requested ? (
+            <Alert>
+              <AlertTitle>{emailed ? "We emailed the organization owners" : "Confirmed. No email was sent"}</AlertTitle>
+              <AlertDescription>
+                {requested.purgeAfter ? `Everything is deleted permanently on ${new Date(requested.purgeAfter).toLocaleDateString()} unless you cancel. ` : ""}
+                {emailed
+                  ? "Reminders follow before the deletion. "
+                  : "This server cannot send email, so keep this date. "}
+                Cancel any time before then from the banner at the top of the app.
+              </AlertDescription>
+            </Alert>
+          ) : (
+            <>
+              <Alert variant="destructive">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>What happens next</AlertTitle>
+                <AlertDescription>
+                  <ul className="mt-1 list-disc pl-5">
+                    <li>
+                      {graceDays > 0
+                        ? `The organization is read-only for ${graceDays} days: members can view and export, nothing runs, no changes or invites`
+                        : "The organization is deleted straight away"}
+                    </li>
+                    <li>All projects, tests, jobs, runs, monitors, status pages and stored reports are then deleted permanently</li>
+                    {info?.hasSubscription && <li>The subscription stops renewing and ends at the end of the paid period</li>}
+                    <li>{emailed ? "All owners are emailed" : "No email is sent (this server has no mail setup)"}</li>
+                  </ul>
+                </AlertDescription>
+              </Alert>
+              {needsReauth && (
+                <Alert>
+                  <AlertTitle>Sign in again to continue</AlertTitle>
+                  <AlertDescription className="space-y-2">
+                    <p>For your safety, sign in again, then reopen this dialog and confirm within a few minutes.</p>
+                    <Button size="sm" variant="outline" onClick={() => void handleReauth()}>
+                      Sign in again
+                    </Button>
+                  </AlertDescription>
+                </Alert>
+              )}
+              <form
+                className="space-y-2"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void handleRequest();
+                }}
+              >
+                <Label htmlFor="delete-org-confirm">Type the organization name to confirm</Label>
+                <Input
+                  id="delete-org-confirm"
+                  value={typedName}
+                  onChange={(event) => setTypedName(event.target.value)}
+                  placeholder={expectedName}
+                  autoComplete="off"
+                  disabled={isDeleting}
+                />
+              </form>
+            </>
+          )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)} disabled={isDeleting}>
-              Cancel
+            <Button variant="outline" onClick={() => close(false)} disabled={isDeleting}>
+              {requested ? "Close" : "Cancel"}
             </Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={!confirmed || isDeleting}>
-              {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Delete organization
-            </Button>
+            {!requested && (
+              <Button variant="destructive" onClick={handleRequest} disabled={!confirmed || isDeleting}>
+                {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Request deletion
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

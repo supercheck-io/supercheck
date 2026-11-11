@@ -30,12 +30,14 @@ import {
   RefreshCw,
   AlertCircle,
   MapPin,
+  Trash2,
 } from "lucide-react";
 import { useBreadcrumbs } from "@/components/breadcrumb-context";
 import { TabLoadingSpinner } from "@/components/ui/table-skeleton";
 import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 import { cn } from "@/lib/utils";
 import { LocationsTable } from "@/components/admin/locations-table";
+import { DeletionPanel } from "@/components/admin/deletion-panel";
 import { NAV } from "@/lib/nav-areas";
 
 const TABS: SectionTab[] = [
@@ -43,6 +45,7 @@ const TABS: SectionTab[] = [
   { value: "users", label: "Users", icon: Users },
   { value: "organizations", label: "Organizations", icon: Building2 },
   { value: "locations", label: "Locations", icon: MapPin },
+  { value: "deletion", label: "Deletion", icon: Trash2 },
   { value: "queues", label: "Queues", icon: ListOrdered },
 ];
 
@@ -61,12 +64,12 @@ export default function AdminDashboard() {
   const { stats, isLoading: statsLoading } = useSuperAdminStats();
   const { users, isLoading: usersLoading } = useSuperAdminUsers();
   const { organizations, isLoading: orgsLoading } = useSuperAdminOrganizations();
-  const { invalidateStats, invalidateUsers } = useSuperAdminDataInvalidation();
+  const { invalidateStats, invalidateUsers, invalidateOrganizations } = useSuperAdminDataInvalidation();
 
   const hasData = stats !== null;
   const isInitialLoading = !isMounted || (!hasData && statsLoading);
 
-  const allowedTabs = ["overview", "users", "organizations", "locations", "queues"];
+  const allowedTabs = ["overview", "users", "organizations", "locations", "deletion", "queues"];
   const requestedTab = searchParams.get("tab");
   const safeTab = requestedTab && allowedTabs.includes(requestedTab)
     ? requestedTab
@@ -301,6 +304,16 @@ export default function AdminDashboard() {
 
         <TabsContent value="locations" className="mt-0 space-y-4">
           <LocationsTable />
+        </TabsContent>
+
+        <TabsContent value="deletion" className="mt-0 space-y-4">
+          <DeletionPanel
+            organizations={organizations}
+            onChanged={() => {
+              invalidateOrganizations();
+              invalidateStats();
+            }}
+          />
         </TabsContent>
 
         <TabsContent

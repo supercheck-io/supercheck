@@ -11,14 +11,16 @@ interface ProjectsTableProps {
   onEditProject?: (project: Project) => void;
   onManageLocations?: (project: Project) => void;
   onManageIncidentPolicy?: (project: Project) => void;
+  /** Owners and admins only: omit to hide the action. */
+  onDeleteProject?: (project: Project) => void;
   canCreateProjects?: boolean;
   canManageProject?: boolean;
 }
 
 
 
-export function ProjectsTable({ projects, onCreateProject, onEditProject, onManageLocations, onManageIncidentPolicy, canCreateProjects = false, canManageProject = false }: ProjectsTableProps) {
-  const columns = React.useMemo(() => createProjectColumns(onEditProject, canManageProject, onManageLocations, onManageIncidentPolicy), [onEditProject, canManageProject, onManageLocations, onManageIncidentPolicy]);
+export function ProjectsTable({ projects, onCreateProject, onEditProject, onManageLocations, onManageIncidentPolicy, onDeleteProject, canCreateProjects = false, canManageProject = false }: ProjectsTableProps) {
+  const columns = React.useMemo(() => createProjectColumns(onEditProject, canManageProject, onManageLocations, onManageIncidentPolicy, onDeleteProject), [onEditProject, canManageProject, onManageLocations, onManageIncidentPolicy, onDeleteProject]);
 
    
   const CustomToolbar = React.useCallback(({ table }: { table: any }) => (

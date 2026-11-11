@@ -26,6 +26,7 @@ import { isSelfHosted } from "@/lib/feature-flags";
 import { getTrialSummary } from "@/lib/execution/trial-limits";
 import { TrialBanner } from "@/components/trial-banner";
 import { SpendingCapBanner } from "@/components/spending-cap-banner";
+import { PendingDeletionBanner } from "@/components/pending-deletion-banner";
 import { checkPermissionWithContext, getUserOrgRole } from "@/lib/rbac/middleware";
 import { Role } from "@/lib/rbac/permissions";
 
@@ -86,8 +87,13 @@ export default async function MainLayout({
   };
   const initialIsSelfHosted = isSelfHosted();
   let showSpendingCap = false;
+  const orgPendingDeletion = !!org?.deletionRequestedAt;
+  let isOrgOwner = false;
 
   if (user && org) {
+    if (orgPendingDeletion) {
+      isOrgOwner = (await getUserOrgRole(user.id, org.id).catch(() => null)) === Role.ORG_OWNER;
+    }
     // Derive subscription status from org data already fetched (avoids client-side API call)
     initialSubscriptionStatus = deriveInitialSubscriptionStatus(
       org,
@@ -210,6 +216,7 @@ export default async function MainLayout({
                   </div>
                 </header>
                 <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+                  {org && <PendingDeletionBanner organizationId={org.id} pending={orgPendingDeletion} isOwner={isOrgOwner} />}
                   <TrialBanner initialTrial={initialSubscriptionStatus?.trial ?? null} />
                   <SpendingCapBanner enabled={showSpendingCap} />
                   <SubscriptionGuard
