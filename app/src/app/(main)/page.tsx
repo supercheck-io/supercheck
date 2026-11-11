@@ -7,6 +7,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { IconChip } from "@/components/ui/icon-chip";
 import { Button } from "@/components/ui/button";
 import {
   ChartContainer,
@@ -21,6 +22,7 @@ import {
   Globe,
   RefreshCw,
   ChevronDown,
+  ChartColumn,
 } from "lucide-react";
 import { useMemo, useSyncExternalStore } from "react";
 import { cn } from "@/lib/utils";
@@ -399,13 +401,14 @@ export default function Home() {
       <Card className="shadow-sm m-4 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
         <CardContent className="p-6 overflow-hidden lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
           <div className="flex items-center justify-between mb-3">
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight">
-                Project Dashboard
-              </h1>
-              <p className="text-muted-foreground text-sm">
-                Overview of project&apos;s health, and key insights.
-              </p>
+            <div className="flex min-w-0 items-start gap-3">
+              <IconChip icon={ChartColumn} tone="slate" size="md" className="mt-0.5" />
+              <div>
+                <h1 className="text-2xl font-semibold">Project Dashboard</h1>
+                <p className="text-muted-foreground text-sm">
+                  Overview of project&apos;s health, and key insights.
+                </p>
+              </div>
             </div>
             <div className="flex items-center gap-1.5">
             <HealthInfo />

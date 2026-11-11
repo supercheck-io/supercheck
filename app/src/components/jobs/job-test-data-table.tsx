@@ -217,7 +217,7 @@ export function JobTestDataTable({
       {table.getRowModel().rows.length > 0 && (
         <div className="flex items-center justify-between px-2">
           <div className="flex-1 text-sm text-muted-foreground">
-           Total Tests: {table.getFilteredRowModel().rows.length}
+           Total {table.getFilteredRowModel().rows.length} tests
           </div>
           <div className="flex items-center space-x-6 lg:space-x-8">
             <div className="flex items-center space-x-2">

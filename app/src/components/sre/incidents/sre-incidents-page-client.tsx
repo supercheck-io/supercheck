@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { BarChart3 } from "lucide-react";
+import { BarChart3, Siren } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/shared/page-header";
 import { NewIncidentAction } from "@/components/sre/incidents/new-incident-action";
@@ -54,6 +54,8 @@ export function SreIncidentsPageClient() {
     <div className="mt-6 w-full max-w-full space-y-4 p-2">
       <PageHeader
         title="Incidents"
+        icon={Siren}
+        tone="respond"
         description="Track, investigate, and resolve operational incidents."
         className="-mt-2"
         actions={

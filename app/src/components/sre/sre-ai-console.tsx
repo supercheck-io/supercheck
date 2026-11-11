@@ -15,8 +15,8 @@ import {
   archiveSreCopilotChat,
   type SreCopilotChatHistory,
 } from "@/actions/sre-ai";
-import { IconTile } from "@/components/sre/incidents/incident-ui";
 import { SreAssistantUiThread } from "@/components/sre/sre-assistant-ui-thread";
+import { IconChip } from "@/components/ui/icon-chip";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -262,10 +262,10 @@ export function SreAiConsole({
       <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <header className="flex min-h-14 shrink-0 flex-col gap-2 border-b bg-background/95 px-3 py-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:px-5">
           <div className="flex min-w-0 items-center gap-3">
-            <IconTile icon={Bot} tone="violet" className="hidden size-9 rounded-lg sm:inline-flex [&_svg]:size-5" />
+            <IconChip icon={Bot} tone="ai" size="md" className="hidden sm:inline-flex" />
             <div className="min-w-0">
               <div className="flex min-w-0 items-center gap-2">
-                <h1 className="truncate text-lg font-semibold leading-tight">Copilot</h1>
+                <h1 className="truncate text-2xl font-semibold">Copilot</h1>
                 {incidentId && <TableBadge tone="info" compact>Incident</TableBadge>}
               </div>
               <p className="truncate text-sm text-muted-foreground">

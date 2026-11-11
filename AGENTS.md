@@ -95,6 +95,7 @@ Full contributor walkthrough: CONTRIBUTING.md, "Run the app and worker from sour
 - Client components start with `"use client"`; prefer Server Components otherwise.
 - Read data through the React Query hooks in `app/src/hooks/`; render cached data directly and invalidate the affected query keys after mutations.
 - Use the primitives in `app/src/components/ui/` and the oklch tokens in `globals.css` (never `hsl(var(--token))`). See `.agents/skills/ui/SKILL.md`.
+- Read `DESIGN.md` before any change to the app UI, the marketing site, pricing or the docs theme. Colours come from its roles and tokens only; primary actions stay black. Update `DESIGN.md` in the same change when you add a pattern.
 
 ## Testing
 

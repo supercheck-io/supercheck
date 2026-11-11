@@ -240,6 +240,8 @@ export default function RequirementsPage() {
             <Tabs defaultValue="requirements" className="w-full">
                 <PageHeader
                     title="Requirements"
+                    icon={Target}
+                    tone="automate"
                     description="Manage requirements and their test coverage"
                     className="-mt-2"
                     actions={

@@ -28,7 +28,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-import { DataTablePagination } from "./data-table-pagination";
+import { DataTablePagination } from "@/components/ui/data-table-pagination";
 import { DataTableSkeleton } from "@/components/ui/data-table-skeleton";
 import { cn } from "@/lib/utils";
 import { useFitPagination } from "@/hooks/use-fit-page-size";
@@ -426,7 +426,7 @@ export function DataTable<TData, TValue>({
           </TableBody>
         </Table>
       </div>
-      <DataTablePagination table={table} entityLabel={entityLabel} />
+      <DataTablePagination table={table} itemName={entityLabel} />
     </div>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { format } from "date-fns";
-import { Activity, Boxes, Siren } from "lucide-react";
+import { Activity, Boxes, Siren, ChartLine } from "lucide-react";
 import { Area, AreaChart, Bar, BarChart, Cell, XAxis, YAxis } from "recharts";
 
 import type { SreIncidentAnalytics as Analytics } from "@/actions/sre-incidents";
@@ -127,6 +127,8 @@ export function SreIncidentAnalytics({ analytics }: { analytics: Analytics }) {
     <div className="flex flex-col gap-4 lg:min-h-0 lg:flex-1">
       <PageHeader
         title="Trends"
+        icon={ChartLine}
+        tone="respond"
         description={`Incident volume and resolution over the last ${windowDays} days.`}
       />
 

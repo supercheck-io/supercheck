@@ -24,7 +24,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-import { DataTablePagination } from "./data-table-pagination";
+import { useFitPagination } from "@/hooks/use-fit-page-size";
+import { DataTablePagination } from "@/components/ui/data-table-pagination";
 import { DataTableSkeleton } from "@/components/ui/data-table-skeleton";
 import { cn } from "@/lib/utils";
 import { NotificationChannel } from "./notification-channels-schema";
@@ -53,6 +54,7 @@ export function NotificationChannelsDataTable<TData, TValue>({
   meta,
 }: DataTableProps<TData, TValue>) {
   const [mounted, setMounted] = React.useState(false);
+  const { bodyRef, pagination, onPaginationChange } = useFitPagination(data.length);
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({});
   const [rowSelection, setRowSelection] = React.useState<Record<string, boolean>>({});
@@ -87,12 +89,9 @@ export function NotificationChannelsDataTable<TData, TValue>({
   const table = useReactTable({
     data,
     columns,
-    initialState: {
-      pagination: {
-        pageSize: 12,
-      },
-    },
+    onPaginationChange,
     state: {
+      pagination,
       sorting,
       columnVisibility,
       rowSelection,
@@ -174,7 +173,7 @@ export function NotificationChannelsDataTable<TData, TValue>({
               </TableRow>
             ))}
           </TableHeader>
-          <TableBody>
+          <TableBody ref={bodyRef}>
             {isLoading ? (
               <TableRow>
                 <TableCell
@@ -228,7 +227,7 @@ export function NotificationChannelsDataTable<TData, TValue>({
           </TableBody>
         </Table>
       </div>
-      <DataTablePagination table={table} />
+      <DataTablePagination table={table} itemName="channels" />
     </div>
   );
 } 

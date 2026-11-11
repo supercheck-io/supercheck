@@ -29,7 +29,8 @@ describe("ServicesToolbar", () => {
     const guide = screen.getByRole("button", { name: "Setup guide" });
     const search = screen.getByLabelText("Search services");
 
-    const titleRow = heading.closest("div")!.parentElement!;
+    // heading -> text column -> chip row -> title row
+    const titleRow = heading.closest("div")!.parentElement!.parentElement!;
     expect(titleRow).toContainElement(add);
     expect(titleRow).toContainElement(guide);
     expect(titleRow).not.toContainElement(search);

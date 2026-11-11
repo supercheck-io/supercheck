@@ -1,0 +1,88 @@
+# DESIGN.md: how Supercheck looks
+
+The visual rules for the app (`app/`), the marketing site and the docs (`docs/`). Read this before changing any UI. The tokens it names live in `app/src/app/globals.css` (app) and `docs/src/app/global.css` (site and docs).
+
+## 1. Theme and atmosphere
+
+A calm tool for people fixing production. The surfaces stay neutral (white and zinc, or near-black in dark mode), and colour carries meaning. The base is shadcn/ui ("new-york", zinc, lucide icons). We follow Vercel for restraint on marketing and pricing pages and Linear for density in tables and lists. The brand is ours: the green check logo, and the colour roles below.
+
+## 2. Colour roles
+
+Every colour has one job. New code uses the token, never a raw palette class or hex value, except inside one of the central maps listed under Components. Older screens still have raw classes; when you touch one, move it to a token.
+
+| Role | Token / class | Where it may appear |
+|---|---|---|
+| Main action | `bg-primary` (black; white in dark mode) | Primary buttons. Never give a primary button another colour. |
+| Secondary action | `variant="outline"` / `variant="ghost"` | Everything else that is clickable |
+| Link, focus | blue (`--color-fd-primary` on the site, the `ring` token in the app) | Text links, focus rings |
+| Area: Automate (tests, jobs, runs, requirements, variables) | `automate` (sky) | Icon chips, eyebrows, area labels |
+| Area: Monitor (monitors) | `monitor` (teal) | Same |
+| Area: Respond (incidents, services) | `respond` (orange) | Same |
+| Area: Communicate (status pages, notifications) | `communicate` (pink) | Same |
+| AI (Copilot, investigations, AI create, fix and analyze) | `ai` (violet) | Same. Violet means AI and nothing else. |
+| Settings and admin (dashboard, organization, super admin) | `slate` | Page chips |
+| Status | `success`, `warning`, `failure`, plus the `TableBadge` tones | Badges, status dots and charts only, always beside a text label or an icon |
+
+- Area colours mark where you are; status colours say how something is. They never swap jobs. An area colour never shows up on a status badge, and a status colour never decorates a heading.
+- Incident lifecycle: Triggered `danger`, Acknowledged `warning`, Investigating `info`, Fixing `indigo`, Monitoring `cyan`, Resolved `success` (`app/src/lib/sre/incident-status-display.ts`).
+- Charts use `var(--chart-1)` to `var(--chart-5)`. Never write `hsl(var(--token))`: the tokens are oklch.
+
+## 3. Typography
+
+- Geist Sans and Geist Mono, from the `geist` package (bundled font files, so builds work offline). Everything goes through `font-sans` and `font-mono`.
+- Page title `text-2xl font-semibold`, card title `text-sm font-semibold` or `text-base font-semibold`, body `text-sm`, captions and help text `text-xs text-muted-foreground`.
+- Numbers in tables and metrics use `tabular-nums`.
+- Sentence case for headings, buttons and labels ("Create monitor", not "Create Monitor").
+
+## 4. Components
+
+| Need | Use | File |
+|---|---|---|
+| Page title row | `PageHeader` with `icon` and `tone` set to the page's area | `app/src/components/shared/page-header.tsx` |
+| Tinted icon (page, section or event type) | `IconChip` (`size="sm"` for sections, `"md"` for page titles) | `app/src/components/ui/icon-chip.tsx` |
+| Section heading inside a card | `SectionTitle` (chip, title, count, hint, action) | `app/src/components/sre/incidents/incident-ui.tsx` |
+| Table footer | `DataTablePagination` (label `Total {n} {itemName}`, rows-per-page fitted to the window) | `app/src/components/ui/data-table-pagination.tsx` |
+| Status or category badge | `TableBadge` with a tone | `app/src/components/ui/table-badge.tsx` |
+| People | `UserCell` and `UserAvatar` | `app/src/components/ui/user-cell.tsx` |
+| Buttons | `Button` variants (`default`, `secondary`, `outline`, `ghost`, `link`, `destructive`). Never override a button's colour with a `className`. | `app/src/components/ui/button.tsx` |
+
+Rules for chips:
+- One chip per page title and at most one per card header. Rows in tables and form fields get no chips.
+- A chip is decorative (`aria-hidden`). The text next to it carries the meaning.
+
+## 5. Layout
+
+- App pages: `PageBreadcrumbs`, then one `Card` (`m-4`) holding the feature component. The title row is `PageHeader`, search and filters go on a toolbar row under it, then the content.
+- Spacing comes from the 4px scale (`gap-2`, `gap-3`, `p-4`, `p-6`). Card padding is `p-6` on pages and `p-4` inside panels.
+- Radius: `rounded-md` for controls and small (`sm`) chips, `rounded-lg` for page (`md`) chips and small panels, `rounded-xl` for cards and screenshots.
+- Marketing and pricing: content width `max-w-6xl`, sections separated by `py-24`, left-aligned headings, one idea per section.
+
+## 6. Depth and elevation
+
+Flat by default: borders (`border`) separate surfaces. Use `shadow-sm` on page cards and popovers only. No glows, no gradients behind content, no `backdrop-blur` on content cards. The one exception is a soft shadow under product screenshots on the site.
+
+## 7. Do and don't
+
+| Do | Don't |
+|---|---|
+| Use tokens (`text-muted-foreground`, `bg-ai/10`, `text-monitor`) | Hard-code hex, `rgb()`, `hsl(...)`, or `text-green-500` for a status |
+| Give every page title its area chip | Put chips in table rows or on every card |
+| Keep primary actions black | Make a blue, green or gradient primary button |
+| Pair every status colour with a word or an icon | Rely on colour alone to say "down" |
+| Reuse `PageHeader`, `IconChip`, `DataTablePagination` | Copy a toolbar or pagination component into a feature folder |
+| Check light and dark mode, at 390px and 1440px | Ship a screen you have only seen in one theme |
+
+## 8. Responsive behaviour
+
+- Nothing may overflow at 390px. Stat strips wrap, tables scroll inside their card, and long names truncate with a tooltip.
+- Page chips stay visible on mobile. Copilot hides its chip below `sm` to give the title room.
+- The marketing site stacks feature rows into a single column below `lg`, and pricing cards stack below `md`.
+
+## 9. Agent checklist
+
+Before you finish any UI change:
+1. Every colour you added is a token or comes from one of the central maps in section 4.
+2. Primary actions use the default `Button` variant.
+3. New pages use `PageHeader` with the right area `icon` and `tone`. New tables use `DataTablePagination`.
+4. You checked light and dark mode at 390px and 1440px (the PR Screenshots workflow covers the app tour).
+5. If you added a pattern, you documented it here in the same PR.
