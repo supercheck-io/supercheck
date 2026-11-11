@@ -1107,6 +1107,7 @@ describe('ContainerExecutorService', () => {
     it.each([
       // [execution start offset ms or null, expected loop end ms]
       [1_000, 6_000], // started: exactly timeoutMs from its own start
+      [22_000, 27_000], // slow start past the allowance: still the full timeout
       [null, 25_000], // never started: guard allowance still applies
     ])(
       'bounds the script by its own timeout once it starts (start=%p)',

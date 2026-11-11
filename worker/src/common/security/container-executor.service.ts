@@ -2152,10 +2152,12 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
         startEvidence.startedAtMs !== null
       ) {
         executionDeadlineSet = true;
-        // Never earlier than our own poll start, so node clock skew cannot cut it short.
+        // The script gets its full timeout from its own start, even after a slow
+        // image pull. Never earlier than our poll start (node clock skew), and
+        // inside the Job's activeDeadlineSeconds (timeout + 120s from Job start).
         timeoutAt = Math.min(
-          timeoutAt,
           Math.max(startEvidence.startedAtMs, startedAt) + timeoutMs,
+          startedAt + startAllowanceMs + timeoutMs + 90_000,
         );
       }
       if (terminated) {
