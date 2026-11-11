@@ -15,6 +15,9 @@ type Receipt = {
  * In-memory stand-in for the tables prepareGroupEvaluation touches. Drizzle conditions are opaque here, so
  * the fake scopes every read to the group passed to `use(group)`, which mirrors the per-group WHERE clauses.
  */
+const isObject = (value: unknown) =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
 function fakeGroupStore(
   monitor: Record<string, unknown> | null,
   results: ResultRow[],
@@ -48,7 +51,8 @@ function fakeGroupStore(
           if (fields && 'evaluation' in fields) {
             return thenable(
               rows
-                .filter((row) => row.details?.aggregationEvaluation)
+                // Mirrors jsonb_typeof(...) = 'object' and = 'true'::jsonb in the real query.
+                .filter((row) => isObject(row.details?.aggregationEvaluation))
                 .map((row) => ({
                   id: row.id,
                   evaluation: row.details!.aggregationEvaluation,

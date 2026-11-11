@@ -219,6 +219,66 @@ suite('MonitorEvaluator group receipt (PostgreSQL)', () => {
     ).resolves.toBeNull();
   });
 
+  it('stops at a legacy receipt an older worker already marked processed', async () => {
+    await report('old-done', {
+      aggregationEvaluation: { previousStatus: 'up', currentStatus: 'down' },
+      aggregationNotificationProcessed: true,
+    });
+    await expect(
+      evaluator.prepareGroupEvaluation(
+        monitorId,
+        'old-done',
+        'down',
+        checkedAt,
+        2,
+      ),
+    ).resolves.toBeNull();
+    expect(await receiptRows('old-done')).toHaveLength(0);
+    expect(await failureCount()).toBeUndefined();
+  });
+
+  it('ignores a legacy key that is not an evaluation object and treats odd flags as unprocessed', async () => {
+    // JSON null under the key is not a receipt: the group is evaluated normally.
+    await report('nullish', { aggregationEvaluation: null });
+    const fresh = await evaluator.prepareGroupEvaluation(
+      monitorId,
+      'nullish',
+      'down',
+      checkedAt,
+      2,
+    );
+    expect(fresh!.receipt).toEqual({ kind: 'group' });
+    // A string flag never fails the job; only JSON true counts as processed.
+    await report('odd', {
+      aggregationEvaluation: { previousStatus: 'down', currentStatus: 'down' },
+      aggregationNotificationProcessed: 'yes',
+    });
+    const odd = await evaluator.prepareGroupEvaluation(
+      monitorId,
+      'odd',
+      'down',
+      checkedAt,
+      2,
+    );
+    expect(odd!.receipt).toMatchObject({ kind: 'legacy' });
+  });
+
+  it('marks nothing and does not throw when the monitor was deleted after preparing', async () => {
+    await report('gone');
+    const prepared = await evaluator.prepareGroupEvaluation(
+      monitorId,
+      'gone',
+      'down',
+      checkedAt,
+      2,
+    );
+    await db.delete(schema.monitors).where(eq(schema.monitors.id, monitorId));
+    await expect(
+      evaluator.markGroupNotified(monitorId, 'gone', prepared!.receipt),
+    ).resolves.toBeUndefined();
+    expect(await receiptRows('gone')).toHaveLength(0);
+  });
+
   it('refuses a group with no persisted results and writes nothing', async () => {
     await expect(
       evaluator.prepareGroupEvaluation(monitorId, 'none', 'down', checkedAt, 2),

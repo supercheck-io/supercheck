@@ -816,14 +816,15 @@ export class MonitorEvaluator {
         .select({
           id: schema.monitorResults.id,
           evaluation: sql<GroupAlertEvaluation>`${schema.monitorResults.details} -> 'aggregationEvaluation'`,
-          processed: sql<boolean>`coalesce((${schema.monitorResults.details} ->> 'aggregationNotificationProcessed')::boolean, false)`,
+          // Exact JSON true, as older workers wrote it; no cast, so an odd value cannot fail the job.
+          processed: sql<boolean>`coalesce(${schema.monitorResults.details} -> 'aggregationNotificationProcessed' = 'true'::jsonb, false)`,
         })
         .from(schema.monitorResults)
         .where(
           and(
             eq(schema.monitorResults.monitorId, monitorId),
             eq(schema.monitorResults.executionGroupId, executionGroupId),
-            sql`${schema.monitorResults.details} -> 'aggregationEvaluation' IS NOT NULL`,
+            sql`jsonb_typeof(${schema.monitorResults.details} -> 'aggregationEvaluation') = 'object'`,
           ),
         )
         .limit(1);
