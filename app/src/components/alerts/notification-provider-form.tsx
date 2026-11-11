@@ -732,7 +732,7 @@ export function NotificationProviderForm({
               name="config.name"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Name</FormLabel>
+                  <FormLabel>Title</FormLabel>
                   <FormControl>
                     <Input
                       placeholder="My Email Alerts"

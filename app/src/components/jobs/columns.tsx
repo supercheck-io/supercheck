@@ -424,7 +424,7 @@ function RunButton({ job }: { job: Job }) {
 export const columns: ColumnDef<Job>[] = [
   {
     id: "run",
-    header: () => <div className="ml-2">Trigger</div>,
+    header: () => "Trigger",
     cell: ({ row }) => {
       const job = row.original;
       return <RunButton job={job} />;
@@ -455,7 +455,7 @@ export const columns: ColumnDef<Job>[] = [
   {
     accessorKey: "name",
     header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="Name" />
+      <DataTableColumnHeader column={column} title="Title" />
     ),
     cell: ({ row }) => {
       const name = row.getValue("name") as string;

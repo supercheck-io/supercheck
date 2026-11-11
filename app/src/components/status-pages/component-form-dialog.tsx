@@ -379,7 +379,7 @@ export function ComponentFormDialog({
               </div>
 
               <div className="space-y-1.5">
-                <Label htmlFor="name">Name *</Label>
+                <Label htmlFor="name">Title *</Label>
                 <Input
                   id="name"
                   placeholder="API Server"

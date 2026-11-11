@@ -172,7 +172,7 @@ export function PrivateAgentFormDialog({
           <form className="space-y-4" onSubmit={handleSubmit}>
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-1.5 md:col-span-2">
-                <Label htmlFor="private-agent-name">Agent name *</Label>
+                <Label htmlFor="private-agent-name">Title *</Label>
                 <Input
                   id="private-agent-name"
                   value={name}

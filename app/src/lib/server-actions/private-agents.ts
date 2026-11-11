@@ -15,7 +15,7 @@ import { hashApiKey } from "@/lib/security/api-key-hash";
 import { db } from "@/utils/db";
 
 const privateAgentInputSchema = z.object({
-  name: z.string().trim().min(1, "Agent name is required").max(100),
+  name: z.string().trim().min(1, "Title is required").max(100),
   region: z.string().trim().max(50).optional().nullable(),
   networkLabel: z.string().trim().max(100).optional().nullable(),
   projectScoped: z.boolean().default(true),

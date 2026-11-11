@@ -143,7 +143,7 @@ describe("ServiceCatalog", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Clear service search" }),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Service" }));
+    fireEvent.click(screen.getByRole("button", { name: "Title" }));
     expect(screen.getAllByRole("row")[1]).toHaveTextContent("a-inventory");
   });
 

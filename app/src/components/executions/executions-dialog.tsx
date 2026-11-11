@@ -195,7 +195,7 @@ export function ExecutionsDialog({
             <TableRow>
               <TableHead className="w-[100px]">Source</TableHead>
               <TableHead className="w-[120px]">Type</TableHead>
-              <TableHead>Name</TableHead>
+              <TableHead>Title</TableHead>
               <TableHead className="w-[150px]">Project</TableHead>
               <TableHead className="w-[150px]">
                 {activeTab === "running" ? "Started" : "Queued"}

@@ -50,7 +50,7 @@ const optionalHttpUrlSchema = z
   }, "Enter a valid HTTP or HTTPS repository URL");
 
 const serviceInputSchema = z.object({
-  name: z.string().trim().min(1, "Service name is required").max(100),
+  name: z.string().trim().min(1, "Title is required").max(100),
   description: z.string().trim().max(2000).optional().nullable(),
   tier: serviceTierSchema.default("3"),
   environment: z.string().trim().max(50).optional().nullable(),

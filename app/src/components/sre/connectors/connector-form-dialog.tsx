@@ -326,7 +326,7 @@ export function ConnectorFormDialog({
                   </div>
 
                   <div className="flex min-w-0 flex-col gap-1.5">
-                    <Label htmlFor="connector-name">Name *</Label>
+                    <Label htmlFor="connector-name">Title *</Label>
                     <Input
                       id="connector-name"
                       value={name}

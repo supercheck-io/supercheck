@@ -441,7 +441,7 @@ export default function TestSelector({
                 <TableHead className="w-[120px] sticky top-0">
                   Test ID
                 </TableHead>
-                <TableHead className="w-[180px] sticky top-0">Name</TableHead>
+                <TableHead className="w-[180px] sticky top-0">Title</TableHead>
                 <TableHead className="w-[120px] sticky top-0 ">Type</TableHead>
                 <TableHead className="w-[170px] sticky top-0">Tags</TableHead>
                 <TableHead className="w-[150px]  sticky top-0">

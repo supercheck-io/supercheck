@@ -594,7 +594,7 @@ export function SettingsTab({
         <CardContent className="grid gap-5 md:grid-cols-2">
           <div className="space-y-2">
             <div className="flex items-center gap-1">
-              <Label htmlFor="name">Page name</Label>
+              <Label htmlFor="name">Title</Label>
               <InfoHint label="Internal name details">
                 <InfoHintText>
                   Internal name used across the dashboard. Visitors see the

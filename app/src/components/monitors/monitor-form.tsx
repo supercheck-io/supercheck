@@ -1265,7 +1265,7 @@ export function MonitorForm({
                   name="name"
                   render={({ field }) => (
                     <FormItem className="space-y-2">
-                      <FormLabel>Monitor Name</FormLabel>
+                      <FormLabel>Title</FormLabel>
                       <FormControl>
                         <Input
                           placeholder={

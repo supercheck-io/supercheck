@@ -42,7 +42,7 @@ test.describe("AI SRE saved queries @aisre @diagnostics @critical", () => {
       });
       await connectorDialog.getByLabel("Connector type").click();
       await page.getByRole("option", { name: "GitHub", exact: true }).click();
-      await connectorDialog.getByLabel("Name *").fill(connectorName);
+      await connectorDialog.getByLabel("Title *").fill(connectorName);
       await connectorDialog
         .getByLabel("Endpoint URL")
         .fill("https://api.github.com");
@@ -58,7 +58,7 @@ test.describe("AI SRE saved queries @aisre @diagnostics @critical", () => {
       ).toBeVisible();
       await expect(page.getByRole("columnheader")).toHaveText([
         "Connector ID",
-        "Name",
+        "Title",
         "Type",
         "Execution",
         "Private agent",
@@ -171,7 +171,7 @@ test.describe("AI SRE saved queries @aisre @diagnostics @critical", () => {
       const row = page.getByRole("row").filter({ hasText: queryName });
       await expect(savedQueryTable.getByRole("columnheader")).toHaveText([
         "Query ID",
-        "Name",
+        "Title",
         "Template",
         "Connector",
         "Connector type",

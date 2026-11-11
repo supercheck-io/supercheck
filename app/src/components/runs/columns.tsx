@@ -107,7 +107,7 @@ export const createColumns = (
     {
       accessorKey: "id",
       header: ({ column }) => (
-        <DataTableColumnHeader className="ml-2" column={column} title="Run ID" />
+        <DataTableColumnHeader column={column} title="Run ID" />
       ),
       cell: ({ row }) => {
         const id = row.getValue("id") as string;
@@ -148,7 +148,7 @@ export const createColumns = (
     {
       accessorKey: "jobName",
       header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="Job Name" />
+        <DataTableColumnHeader column={column} title="Job" />
       ),
       cell: ({ row }) => {
         const jobName = row.getValue("jobName") as string | undefined;

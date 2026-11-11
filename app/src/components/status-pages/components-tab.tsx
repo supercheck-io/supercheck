@@ -416,7 +416,7 @@ export function ComponentsTab({
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[100px]">Component ID</TableHead>
-                  <TableHead>Name</TableHead>
+                  <TableHead>Title</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Description</TableHead>
                   <TableHead>Linked Monitors</TableHead>

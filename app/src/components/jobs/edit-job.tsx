@@ -580,7 +580,7 @@ export default function EditJob({ jobId, initialJobData }: EditJobProps) {
                       field: ControllerRenderProps<FormData, "name">;
                     }) => (
                       <FormItem>
-                        <FormLabel>Job Name</FormLabel>
+                        <FormLabel>Title</FormLabel>
                         <FormControl>
                           <Input {...field} placeholder="Enter job name" className="text-muted-foreground" />
                         </FormControl>
