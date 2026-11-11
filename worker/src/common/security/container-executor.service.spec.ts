@@ -1377,6 +1377,10 @@ describe('ContainerExecutorService', () => {
             '-e',
             expect.stringContaining('KUBERNETES_SERVICE_HOST'),
           ],
+          // execution-guardrails LimitRange (setup-k3s.sh) requires >= 128Mi per container.
+          resources: expect.objectContaining({
+            requests: { cpu: '100m', memory: '128Mi' },
+          }),
         }),
       ]);
       expect(container.env).toEqual(

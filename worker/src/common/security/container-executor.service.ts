@@ -1376,7 +1376,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
                 imagePullPolicy: this.resolveExecutionImagePullPolicy(image),
                 command: ['node', '-e', EGRESS_GUARD_SCRIPT],
                 resources: {
-                  requests: { cpu: '100m', memory: '64Mi' },
+                  requests: { cpu: '100m', memory: '128Mi' },
                   limits: { cpu: '200m', memory: '256Mi' },
                 },
                 securityContext: {
