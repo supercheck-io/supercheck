@@ -32,7 +32,7 @@ describe("restore project", () => {
 
   it("restores for someone who may delete projects (owners and admins)", async () => {
     expect((await call()).status).toBe(200);
-    expect(hasPermissionForUser).toHaveBeenCalledWith("u", "project", "delete", { organizationId: "org-1", projectId: ID });
+    expect(hasPermissionForUser).toHaveBeenCalledWith("u", "project", "delete", { organizationId: "org-1" });
     expect(restoreProject).toHaveBeenCalledWith({ projectId: ID, actorUserId: "u" });
   });
 

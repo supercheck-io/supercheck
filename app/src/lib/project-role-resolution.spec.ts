@@ -2,7 +2,7 @@
 // The effective project role must be the LOWER of the org role and project_members.role,
 // and must be identical on the dashboard session path, the project-id (permission context)
 // path and the CLI token path. Org owners/admins keep their org-wide bypass.
-jest.mock("@/lib/deletion/org-state", () => ({ isOrgPendingDeletion: jest.fn().mockResolvedValue(false) }));
+jest.mock("@/lib/deletion/org-state", () => ({ isOrgPendingDeletion: jest.fn().mockResolvedValue(false), isProjectDeleted: jest.fn().mockResolvedValue(false) }));
 jest.mock("next/headers", () => ({
   headers: jest.fn(async () => new Headers({ authorization: "Bearer sck_live_testcredential123456789" })),
 }));

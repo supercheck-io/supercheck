@@ -2492,7 +2492,13 @@ export class AuditLogsCleanupStrategy implements ICleanupStrategy {
     };
 
     try {
-      result.details.emailsScrubbed = await scrubAuditEmails({ dryRun, batchSize, maxRecords });
+      // A scrub failure (for example a missing server secret) is reported but must not stop the retention delete below.
+      try {
+        result.details.emailsScrubbed = await scrubAuditEmails({ dryRun, batchSize, maxRecords });
+      } catch (scrubError) {
+        result.errors.push(`audit email scrub failed: ${scrubError instanceof Error ? scrubError.message : String(scrubError)}`);
+        result.success = false;
+      }
       let totalDeleted = 0;
       let scannedRecords = 0;
       let iterations = 0;

@@ -58,9 +58,9 @@ it("sends the user through sign-in again when fresh authentication is required",
 
 it("sends the owner back through the organization switch after signing in again", () => {
   const { sanitizeNextPath } = jest.requireActual("@/lib/auth/safe-next-path") as typeof import("@/lib/auth/safe-next-path");
-  const next = encodeURIComponent("/org-admin/switch?org=01a1cc16-a6e5-7685-aaf1-5a7a3f714c3c");
-  expect(sanitizeNextPath(next)).toBe("/org-admin/switch?org=01a1cc16-a6e5-7685-aaf1-5a7a3f714c3c");
-  expect(sanitizeNextPath(encodeURIComponent("/org-admin/switch?org=../../evil"))).toBeNull();
+  const next = encodeURIComponent("/switch-organization?org=01a1cc16-a6e5-7685-aaf1-5a7a3f714c3c");
+  expect(sanitizeNextPath(next)).toBe("/switch-organization?org=01a1cc16-a6e5-7685-aaf1-5a7a3f714c3c");
+  expect(sanitizeNextPath(encodeURIComponent("/switch-organization?org=../../evil"))).toBeNull();
 });
 
 it("confirms by email after a successful request", async () => {
