@@ -4,6 +4,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import * as schema from "@/db/schema";
 import { NextRequest } from "next/server";
 let mockDatabase: ReturnType<typeof drizzle>;
+const queries: string[] = [];
 const mockDeleteReports = jest.fn();
 const mockRemoveQueuedJob = jest.fn();
 let mockJobProcessedOn: number | undefined = Date.now();
@@ -36,7 +37,7 @@ beforeAll(async () => {
   const url = new URL(process.env.TEST_DATABASE_URL);
   url.pathname = `/${databaseName}`;
   client = postgres(url.toString(), { max: 1 });
-  mockDatabase = drizzle(client, { schema });
+  mockDatabase = drizzle(client, { schema, logger: { logQuery: (query) => { queries.push(query); } } });
   await client.unsafe(`
     CREATE TABLE jobs (id text PRIMARY KEY, project_id text, organization_id text, name text, description text, cron_schedule text, status text);
     CREATE TABLE job_tests (job_id text REFERENCES jobs(id));
@@ -182,18 +183,142 @@ describe('job and monitor deletion against PostgreSQL', () => {
     }
   });
 
-  it.each(['job','monitor'])('rejects %s deletion when a new child arrives during storage cleanup', async kind => {
-    const own = kind === 'job' ? await seedJob() : await seedMonitor();
+  it('deletes thousands of results in bounded statements with no unindexed lookups', async () => {
+    const own = await seedMonitor();
+    await client`INSERT INTO monitor_results SELECT gen_random_uuid()::text, ${own.id}, 'bulk-' || g, 'http://storage/monitors/bulk-' || g || '-a1b2c3d4/report/index.html' FROM generate_series(1, 2500) g`;
+    await client`INSERT INTO reports SELECT 'bulk-report-' || g, 'bulk-' || g, 'monitor', 'bulk-' || g || '/report', 'http://storage/monitors/bulk-' || g || '-a1b2c3d4/report/index.html' FROM generate_series(1, 2500) g`;
+    queries.length = 0;
+    const result = await deleteMonitorWithContext(own.id,deletionContext);
+    expect(result.success).toBe(true);
+    expect(mockDeleteReports).toHaveBeenCalledTimes(1);
+    expect(mockDeleteReports.mock.calls[0][0].length).toBeGreaterThan(2500);
+    // 2,501 results in 500-row statements (the old code issued one), and every report matched by execution id.
+    expect(queries.filter(q => q.startsWith('delete from "monitor_results"'))).toHaveLength(6);
+    expect(queries.filter(q => q.startsWith('delete from "reports"'))).toHaveLength(6);
+    expect(queries.filter(q => q.includes('from "reports"') && q.includes('"s3_url" in'))).toHaveLength(0);
+    expect(await client`SELECT id FROM monitor_results WHERE monitor_id=${own.id}`).toHaveLength(0);
+    expect(await client`SELECT id FROM monitors WHERE id=${own.id}`).toHaveLength(0);
+    expect(await client`SELECT id FROM reports WHERE entity_id LIKE 'bulk-%'`).toHaveLength(0);
+  });
+
+  it('counts reports across retry attempts and applies the final transaction timeouts', async () => {
+    const own = await seedMonitor();
+    const newUrl = 'http://storage/monitors/new-execution-a1b2c3d4/report/index.html';
     mockDeleteReports.mockImplementationOnce(async () => {
-      if (kind === 'job') await client`INSERT INTO runs (id,job_id,project_id,status) VALUES (${randomUUID()},${own.id},'project','running')`;
-      else await client`INSERT INTO monitor_results VALUES (${randomUUID()},${own.id},'new-execution','http://storage/new')`;
+      await client`INSERT INTO monitor_results VALUES (${randomUUID()},${own.id},'new-execution',${newUrl})`;
+      return {success:true};
+    });
+    queries.length = 0;
+    jest.mocked(logAuditEvent).mockClear();
+    const result = await deleteMonitorWithContext(own.id,deletionContext);
+    expect(result.success).toBe(true);
+    expect(jest.mocked(logAuditEvent)).toHaveBeenCalledWith(expect.objectContaining({ metadata: expect.objectContaining({ reportsDeleted: 2, resultsDeleted: 2 }) }));
+    // Both limits are set inside each final transaction, before the monitor lock.
+    const finals = queries.filter(q => q.includes('lock_timeout') || q.includes('statement_timeout'));
+    expect(finals.some(q => q.includes("statement_timeout = '30s'"))).toBe(true);
+    expect(finals.some(q => q.includes("lock_timeout = '5s'"))).toBe(true);
+  });
+
+  it('cleans only new results and completes when a monitor produces results during storage cleanup', async () => {
+    const own = await seedMonitor();
+    const newUrl = 'http://storage/monitors/new-execution-a1b2c3d4/report/index.html';
+    mockDeleteReports.mockResolvedValue({success:true});
+    mockDeleteReports.mockImplementationOnce(async () => {
+      await client`INSERT INTO monitor_results VALUES (${randomUUID()},${own.id},'new-execution',${newUrl})`;
+      return {success:true};
+    });
+    const result = await deleteMonitorWithContext(own.id,deletionContext);
+    expect(result.success).toBe(true);
+    expect(mockDeleteReports).toHaveBeenCalledTimes(2);
+    expect(mockDeleteReports.mock.calls[1][0]).toEqual([expect.objectContaining({ s3Url:newUrl })]);
+    expect(await client`SELECT id FROM monitors WHERE id=${own.id}`).toHaveLength(0);
+    expect(await client`SELECT id FROM monitor_results WHERE monitor_id=${own.id}`).toHaveLength(0);
+  });
+
+  it('deletes a long-history monitor in chunks and keeps the monitor when a retry cleanup fails', async () => {
+    const own = await seedMonitor();
+    mockDeleteReports.mockImplementationOnce(async () => {
+      await client`INSERT INTO monitor_results VALUES (${randomUUID()},${own.id},'new-execution','http://storage/monitors/new-execution-a1b2c3d4/report/index.html')`;
+      return {success:true};
+    }).mockResolvedValueOnce({success:false});
+    const result = await deleteMonitorWithContext(own.id,deletionContext);
+    expect(result.success).toBe(false);
+    // Rows whose storage was cleaned are gone; the uncleaned new row and the monitor stay for the next attempt.
+    expect(await client`SELECT id FROM monitor_results WHERE monitor_id=${own.id}`).toHaveLength(1);
+    expect(await client`SELECT id FROM monitors WHERE id=${own.id}`).toHaveLength(1);
+  });
+
+  it('keeps every report row reachable when a moved report cannot be cleaned on retry', async () => {
+    const own = await seedMonitor();
+    mockDeleteReports.mockImplementationOnce(async () => {
+      await client`UPDATE reports SET report_path='new-execution/report', s3_url='http://storage/updated/index.html' WHERE id=${`report-${own.id}`}`;
+      return {success:true};
+    }).mockResolvedValueOnce({success:false});
+    const result = await deleteMonitorWithContext(own.id,deletionContext);
+    expect(result.success).toBe(false);
+    expect(await client`SELECT id FROM reports WHERE id=${`report-${own.id}`}`).toHaveLength(1);
+    expect(await client`SELECT id FROM monitor_results WHERE monitor_id=${own.id}`).toHaveLength(1);
+    // A later request still finds and removes everything.
+    mockDeleteReports.mockResolvedValue({success:true});
+    expect((await deleteMonitorWithContext(own.id,deletionContext)).success).toBe(true);
+    expect(await client`SELECT id FROM reports WHERE id=${`report-${own.id}`}`).toHaveLength(0);
+  });
+
+  it('cleans only new runs and completes when a job creates runs during storage cleanup', async () => {
+    const own = await seedJob();
+    const newRun = randomUUID();
+    mockDeleteReports.mockImplementationOnce(async () => {
+      await client`INSERT INTO runs (id,job_id,project_id,status) VALUES (${newRun},${own.id},'project','passed')`;
+      await client`INSERT INTO reports VALUES (${`new-${newRun}`},${newRun},'job',${`${newRun}/report`},NULL)`;
+      return {success:true};
+    });
+    const result = await deleteJobWithContext(own.id,deletionContext);
+    expect(result.success).toBe(true);
+    expect(mockDeleteReports).toHaveBeenCalledTimes(2);
+    expect(mockDeleteReports.mock.calls[1][0]).toEqual([expect.objectContaining({ entityId:newRun })]);
+    expect(await client`SELECT id FROM jobs WHERE id=${own.id}`).toHaveLength(0);
+    expect(await client`SELECT id FROM runs WHERE job_id=${own.id}`).toHaveLength(0);
+  });
+
+  it('reports a clear retry error and keeps the job when the schedule queues a run during cleanup', async () => {
+    const own = await seedJob();
+    mockDeleteReports.mockImplementationOnce(async () => {
+      await client`INSERT INTO runs (id,job_id,project_id,status) VALUES (${randomUUID()},${own.id},'project','queued')`;
+      return {success:true};
+    });
+    const result = await deleteJobWithContext(own.id,deletionContext);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('active runs');
+    expect(await client`SELECT id FROM jobs WHERE id=${own.id}`).toHaveLength(1);
+  });
+
+  it('keeps job rows when a retry cleanup fails', async () => {
+    const own = await seedJob();
+    mockDeleteReports.mockImplementationOnce(async () => {
+      const id = randomUUID();
+      await client`INSERT INTO runs (id,job_id,project_id,status) VALUES (${id},${own.id},'project','passed')`;
+      await client`INSERT INTO reports VALUES (${`new-${id}`},${id},'job',${`${id}/report`},NULL)`;
+      return {success:true};
+    }).mockResolvedValueOnce({success:false});
+    const result = await deleteJobWithContext(own.id,deletionContext);
+    expect(result.success).toBe(false);
+    expect(await client`SELECT id FROM runs WHERE job_id=${own.id}`).toHaveLength(2);
+  });
+
+  it.each(['job','monitor'])('gives up with a retry message when a %s keeps changing during cleanup', async kind => {
+    const own = kind === 'job' ? await seedJob() : await seedMonitor();
+    mockDeleteReports.mockImplementation(async () => {
+      const id = randomUUID();
+      if (kind === 'job') {
+        await client`INSERT INTO runs (id,job_id,project_id,status) VALUES (${id},${own.id},'project','passed')`;
+        await client`INSERT INTO reports VALUES (${`new-${id}`},${id},'job',${`${id}/report`},NULL)`;
+      } else await client`INSERT INTO monitor_results VALUES (${randomUUID()},${own.id},${`exec-${randomUUID()}`},'http://storage/new')`;
       return {success:true};
     });
     const result = kind === 'job' ? await deleteJobWithContext(own.id,deletionContext) : await deleteMonitorWithContext(own.id,deletionContext);
     expect(result.success).toBe(false);
     expect(result.error).toContain('changed during cleanup');
-    if (kind === 'job') expect(await client`SELECT id FROM runs WHERE job_id=${own.id}`).toHaveLength(2);
-    else expect(await client`SELECT id FROM monitor_results WHERE monitor_id=${own.id}`).toHaveLength(2);
+    expect(await client`SELECT id FROM ${client(kind === 'job' ? 'jobs' : 'monitors')} WHERE id=${own.id}`).toHaveLength(1);
   });
 
   it.each([['job','foreign-project','org'],['job','project','foreign-org'],['monitor','foreign-project','org'],['monitor','project','foreign-org']])('denies %s in project %s / org %s before storage access', async (kind,project,org) => {
@@ -204,7 +329,8 @@ describe('job and monitor deletion against PostgreSQL', () => {
   });
 });
 
-it.each(['job','monitor'])('preserves %s pointers changed during storage cleanup', async kind => {
+it.each(['job','monitor'])('cleans the new location of a %s pointer that changed during storage cleanup', async kind => {
+  mockDeleteReports.mockClear();
   const own = kind === 'job' ? await seedJob() : await seedMonitor();
   const reportId = kind === 'job' ? `job-${own.id}` : `report-${own.id}`;
   mockDeleteReports.mockImplementationOnce(async () => {
@@ -212,11 +338,10 @@ it.each(['job','monitor'])('preserves %s pointers changed during storage cleanup
     return {success:true};
   });
   const result = kind === 'job' ? await deleteJobWithContext(own.id,deletionContext) : await deleteMonitorWithContext(own.id,deletionContext);
-  expect(result.success).toBe(false);
-  expect(result.error).toContain('reports changed during cleanup');
-  expect(await client`SELECT report_path FROM reports WHERE id=${reportId}`).toEqual([{report_path:'new-execution/report'}]);
-  if (kind === 'job') expect(await client`SELECT id FROM jobs WHERE id=${own.id}`).toHaveLength(1);
-  else expect(await client`SELECT id FROM monitors WHERE id=${own.id}`).toHaveLength(1);
+  expect(result.success).toBe(true);
+  expect(mockDeleteReports).toHaveBeenCalledTimes(2);
+  expect(mockDeleteReports.mock.calls[1][0]).toEqual([expect.objectContaining({ reportPath:'new-execution/report' })]);
+  expect(await client`SELECT id FROM reports WHERE id=${reportId}`).toHaveLength(0);
 });
 
 it.each(['job','monitor'])('deletes an empty %s without contacting storage', async kind => {

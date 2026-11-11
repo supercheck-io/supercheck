@@ -48,6 +48,28 @@ export interface ReportDeletionInput {
   entityType: "job" | "test" | "monitor" | "k6_test" | "k6_job" | "status";
 }
 
+const LIST_CONCURRENCY = 16;
+const DELETE_CONCURRENCY = 8;
+const DELETE_BATCH_SIZE = 1000; // S3 DeleteObjects limit
+// Prefixes `<uuid>-<suffix>/` share this stem (a full UUID plus "-"); runs of one test share it.
+const UUID_STEM = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-/i;
+// Listing a stem pages through every retained run of the test, so only group when that beats
+// listing each prefix at LIST_CONCURRENCY (two waves of individual lists).
+const MIN_PREFIXES_PER_STEM = 2 * LIST_CONCURRENCY;
+
+/** Run `fn` over `items` with at most `limit` in flight; results keep input order. */
+async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const index = next++;
+      results[index] = await fn(items[index]);
+    }
+  }));
+  return results;
+}
+
 /**
  * S3 Cleanup Service with retry logic and comprehensive error handling
  */
@@ -199,17 +221,14 @@ export class S3CleanupService {
    */
   private async listObjectsWithPrefix(
     bucketName: string,
-    prefix: string
+    prefix: string,
+    keep: (key: string) => boolean = () => true,
   ): Promise<string[]> {
     const objects: string[] = [];
     let continuationToken: string | undefined;
 
     try {
       do {
-        console.log(
-          `[S3_CLEANUP] Listing objects in s3://${bucketName} with prefix: ${prefix}`
-        );
-
         const response = await this.s3Client.send(
           new ListObjectsV2Command({
             Bucket: bucketName,
@@ -219,21 +238,16 @@ export class S3CleanupService {
         );
 
         if (response.Contents) {
+          // Filter per page so a wide listing never holds the whole stem in memory.
           const keys = response.Contents.map((obj) => obj.Key).filter(
-            (key): key is string => key !== undefined
+            (key): key is string => key !== undefined && keep(key)
           );
           objects.push(...keys);
-          console.log(
-            `[S3_CLEANUP] Found ${keys.length} objects in this batch`
-          );
         }
 
         continuationToken = response.NextContinuationToken;
       } while (continuationToken);
 
-      console.log(
-        `[S3_CLEANUP] Total objects found with prefix ${prefix}: ${objects.length}`
-      );
       return objects;
     } catch (error) {
       const errorMessage =
@@ -286,10 +300,6 @@ export class S3CleanupService {
       };
     }
 
-    console.log(
-      `[S3_CLEANUP] Batch deleting ${keys.length} objects from s3://${bucketName}`
-    );
-
     const result: S3DeletionResult = {
       success: true,
       deletedObjects: [],
@@ -297,74 +307,41 @@ export class S3CleanupService {
       totalAttempted: keys.length,
     };
 
-    // S3 delete operation supports up to 1000 objects per request
-    const batchSize = 1000;
-    for (let i = 0; i < keys.length; i += batchSize) {
-      const batch = keys.slice(i, i + batchSize);
+    const batches: string[][] = [];
+    for (let i = 0; i < keys.length; i += DELETE_BATCH_SIZE) batches.push(keys.slice(i, i + DELETE_BATCH_SIZE));
 
+    const outcomes = await mapLimit(batches, DELETE_CONCURRENCY, async (batch) => {
+      const outcome = { deleted: [] as string[], failed: [] as Array<{ key: string; error: string }> };
       try {
-        console.log(
-          `[S3_CLEANUP] Deleting batch of ${batch.length} objects (${
-            i + 1
-          }-${Math.min(i + batchSize, keys.length)} of ${keys.length})`
+        const deleteResponse: DeleteObjectsCommandOutput = await this.s3Client.send(
+          new DeleteObjectsCommand({
+            Bucket: bucketName,
+            Delete: { Objects: batch.map((key) => ({ Key: key })), Quiet: false },
+          })
         );
-
-        const deleteResponse: DeleteObjectsCommandOutput =
-          await this.s3Client.send(
-            new DeleteObjectsCommand({
-              Bucket: bucketName,
-              Delete: {
-                Objects: batch.map((key) => ({ Key: key })),
-                Quiet: false, // Get detailed response
-              },
-            })
-          );
-
-        // Track successful deletions
-        if (deleteResponse.Deleted) {
-          for (const deleted of deleteResponse.Deleted) {
-            if (deleted.Key) {
-              result.deletedObjects.push(deleted.Key);
-            }
-          }
+        for (const deleted of deleteResponse.Deleted ?? []) {
+          if (deleted.Key) outcome.deleted.push(deleted.Key);
         }
-
-        // Track failed deletions
-        if (deleteResponse.Errors) {
-          for (const error of deleteResponse.Errors) {
-            if (error.Key) {
-              result.failedObjects.push({
-                key: error.Key,
-                error: error.Message || "Unknown error",
-              });
-              result.success = false;
-            }
-          }
+        for (const error of deleteResponse.Errors ?? []) {
+          if (error.Key) outcome.failed.push({ key: error.Key, error: error.Message || "Unknown error" });
         }
-
-        console.log(
-          `[S3_CLEANUP] Batch completed: ${
-            deleteResponse.Deleted?.length || 0
-          } deleted, ${deleteResponse.Errors?.length || 0} errors`
-        );
       } catch (error) {
-        const errorMessage =
-          error instanceof Error ? error.message : String(error);
+        const errorMessage = error instanceof Error ? error.message : String(error);
         console.error(`[S3_CLEANUP] Batch deletion failed:`, errorMessage);
-
         // Mark all items in this batch as failed
-        for (const key of batch) {
-          result.failedObjects.push({
-            key,
-            error: errorMessage,
-          });
-        }
-        result.success = false;
+        for (const key of batch) outcome.failed.push({ key, error: errorMessage });
       }
+      return outcome;
+    });
+
+    for (const { deleted, failed } of outcomes) {
+      result.deletedObjects.push(...deleted);
+      result.failedObjects.push(...failed);
+      if (failed.length > 0) result.success = false;
     }
 
     console.log(
-      `[S3_CLEANUP] Batch deletion summary: ${result.deletedObjects.length} succeeded, ${result.failedObjects.length} failed`
+      `[S3_CLEANUP] Deleted from s3://${bucketName}: ${result.deletedObjects.length} succeeded, ${result.failedObjects.length} failed`
     );
     return result;
   }
@@ -477,10 +454,6 @@ export class S3CleanupService {
   async deleteReports(
     inputs: ReportDeletionInput[]
   ): Promise<S3DeletionResult> {
-    console.log(
-      `[S3_CLEANUP] Starting batch report deletion for ${inputs.length} reports`
-    );
-
     const combinedResult: S3DeletionResult = {
       success: true,
       deletedObjects: [],
@@ -500,20 +473,12 @@ export class S3CleanupService {
 
     // Process each bucket group
     for (const [bucketName, bucketInputs] of bucketGroups) {
-      console.log(
-        `[S3_CLEANUP] Processing ${bucketInputs.length} deletions for bucket: ${bucketName}`
-      );
-
-      // Collect all keys to delete from this bucket
-      const keysToDelete: string[] = [];
-
-      const processedPrefixes = new Set<string>();
+      // Resolve each input to its execution prefix; one input may fail without blocking the rest.
+      const owners = new Map<string, ReportDeletionInput[]>();
       for (const input of bucketInputs) {
         try {
           const prefix = `${this.extractS3Key(input)}/`;
-          if (processedPrefixes.has(prefix)) continue;
-          processedPrefixes.add(prefix);
-          keysToDelete.push(...await this.listObjectsWithPrefix(bucketName, prefix));
+          owners.set(prefix, [...(owners.get(prefix) ?? []), input]);
         } catch (error) {
           combinedResult.failedObjects.push({
             key: input.reportPath || input.s3Url || input.entityId,
@@ -522,6 +487,37 @@ export class S3CleanupService {
           combinedResult.success = false;
         }
       }
+
+      // Many runs of one test share a `<uuid>-` stem: list that stem once and keep only requested directories.
+      const byStem = new Map<string, string[]>();
+      for (const prefix of owners.keys()) {
+        const stem = UUID_STEM.test(prefix) ? prefix.slice(0, 37) : prefix;
+        const group = byStem.get(stem);
+        if (group) group.push(prefix);
+        else byStem.set(stem, [prefix]);
+      }
+      const listings = [...byStem.entries()].flatMap(([stem, prefixes]) =>
+        prefixes.length >= MIN_PREFIXES_PER_STEM ? [{ listPrefix: stem, prefixes, grouped: true }]
+          : prefixes.map((prefix) => ({ listPrefix: prefix, prefixes: [prefix], grouped: false })));
+
+      const keysToDelete: string[] = [];
+      await mapLimit(listings, LIST_CONCURRENCY, async ({ listPrefix, prefixes, grouped }) => {
+        try {
+          const wanted = new Set(prefixes);
+          // Never delete outside the requested execution directories.
+          const keys = await this.listObjectsWithPrefix(bucketName, listPrefix,
+            grouped ? (key) => wanted.has(key.slice(0, key.indexOf("/") + 1)) : undefined);
+          for (const key of keys) keysToDelete.push(key);
+        } catch (error) {
+          for (const input of prefixes.flatMap((prefix) => owners.get(prefix) ?? [])) {
+            combinedResult.failedObjects.push({
+              key: input.reportPath || input.s3Url || input.entityId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+          combinedResult.success = false;
+        }
+      });
 
       // Remove duplicates
       const uniqueKeys = [...new Set(keysToDelete)];
