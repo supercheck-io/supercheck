@@ -3,7 +3,7 @@ import { isInvalidUuidError, isUuid } from "@/lib/uuid";
 import { NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { runs, reports, jobs, jobTests, projects } from "@/db/schema";
-import { eq, and, count, sql, inArray } from "drizzle-orm";
+import { eq, and, count, sql, inArray, or, isNull } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { runReportPath } from "@/lib/run-report-url";
@@ -65,7 +65,8 @@ export async function GET(
         and(
           eq(runs.id, runId),
           eq(runs.projectId, authCtx.project.id),
-          eq(projects.organizationId, authCtx.organizationId)
+          eq(projects.organizationId, authCtx.organizationId),
+          or(isNull(runs.jobId), isNull(jobs.deletingAt))
         )
       )
       .limit(1);

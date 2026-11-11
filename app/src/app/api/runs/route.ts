@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { runs, jobs, reports, TestRunStatus } from "@/db/schema";
-import { desc, eq, and, sql, inArray } from "drizzle-orm";
+import { desc, eq, and, sql, inArray, or, isNull } from "drizzle-orm";
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-context';
 import { isUuid } from '@/lib/uuid';
@@ -82,6 +82,8 @@ export async function GET(request: NextRequest) {
       filters.push(eq(runs.status, status as TestRunStatus));
     }
 
+    // Runs of a job being deleted are gone for the user at once (playground runs have no job).
+    filters.push(or(isNull(runs.jobId), isNull(jobs.deletingAt))!);
     const whereCondition = and(...filters);
 
     // PERFORMANCE: Run count and data queries in parallel

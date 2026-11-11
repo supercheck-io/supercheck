@@ -1,5 +1,5 @@
 {
-  "id": "27430151-bdfc-440c-b1f5-73a7080d2068",
+  "id": "c75d319c-048e-4b18-bdc6-4fc36d90acaa",
   "prevId": "f9f5cba9-141f-4418-9534-335ef8e8e45a",
   "version": "7",
   "dialect": "postgresql",
@@ -1942,6 +1942,12 @@
         "heartbeat_at": {
           "name": "heartbeat_at",
           "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "owner_token": {
+          "name": "owner_token",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": false
         },
@@ -9415,6 +9421,22 @@
             }
           ],
           "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "reports_test_report_path_idx": {
+          "name": "reports_test_report_path_idx",
+          "columns": [
+            {
+              "expression": "report_path",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "entity_type = 'test'",
           "concurrently": false,
           "method": "btree",
           "with": {}

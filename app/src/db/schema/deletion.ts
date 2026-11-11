@@ -30,6 +30,8 @@ export const deletionJobs = pgTable(
     attempts: integer("attempts").notNull().default(0),
     nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }).notNull().defaultNow(),
     heartbeatAt: timestamp("heartbeat_at", { withTimezone: true }),
+    // Set by the claim; every state write names it, so a runner that lost its claim (stale takeover) cannot overwrite the new owner.
+    ownerToken: uuid("owner_token"),
     lastError: text("last_error"),
     requestedByUserId: uuid("requested_by_user_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

@@ -1,6 +1,6 @@
 import { Queue, Worker } from "bullmq";
 import { getRedisConnection } from "@/lib/queue";
-import { GLOBAL_CONCURRENCY, findDueDeletions, enqueueOrphanedDeletions } from "./jobs";
+import { GLOBAL_CONCURRENCY, findDueDeletions, enqueueOrphanedDeletions, pruneCompletedDeletions } from "./jobs";
 import { runDeletion } from "./runner";
 
 export const DELETION_QUEUE = "deletion-purge";
@@ -38,9 +38,10 @@ export async function initializeDeletionWorker(): Promise<void> {
 }
 
 /** Periodic safety net (data-lifecycle tick): stuck, due and orphaned purges are triggered again. */
-export async function sweepDeletions(): Promise<{ triggered: number; orphaned: number }> {
+export async function sweepDeletions(): Promise<{ triggered: number; orphaned: number; pruned: number }> {
+  const pruned = await pruneCompletedDeletions();
   const orphaned = await enqueueOrphanedDeletions();
   const due = await findDueDeletions();
   await Promise.all(due.map((id) => triggerDeletion(id)));
-  return { triggered: due.length, orphaned };
+  return { triggered: due.length, orphaned, pruned };
 }

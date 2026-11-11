@@ -9,6 +9,7 @@ CREATE TABLE "deletion_jobs" (
 	"attempts" integer DEFAULT 0 NOT NULL,
 	"next_attempt_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"heartbeat_at" timestamp with time zone,
+	"owner_token" uuid,
 	"last_error" text,
 	"requested_by_user_id" uuid,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,

@@ -7,7 +7,7 @@ import {
   jobNotificationSettings,
   tests as testsTable,
 } from "@/db/schema";
-import { eq, and, asc, inArray } from "drizzle-orm";
+import { eq, and, asc, inArray, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { alertThresholdError } from "@/lib/alert-thresholds";
@@ -143,7 +143,8 @@ export async function updateJob(data: UpdateJobData, contextOverride?: UpdateJob
         and(
           eq(jobs.id, validatedData.jobId),
           eq(jobs.projectId, project.id),
-          eq(jobs.organizationId, organizationId)
+          eq(jobs.organizationId, organizationId),
+          isNull(jobs.deletingAt)
         )
       )
       .limit(1);

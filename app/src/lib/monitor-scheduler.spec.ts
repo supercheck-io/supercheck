@@ -1,6 +1,7 @@
 /** @jest-environment node */
 const queue = { getRepeatableJobs: jest.fn(), removeRepeatableByKey: jest.fn(), add: jest.fn() };
-jest.mock("@/utils/db", () => ({ db: {} }));
+const mockDeleting = jest.fn();
+jest.mock("@/utils/db", () => ({ db: { select: () => ({ from: () => ({ where: () => ({ limit: () => mockDeleting() }) }) }) } }));
 jest.mock("./queue", () => ({ getQueues: async () => ({ monitorSchedulerQueue: queue }) }));
 import { removeScheduledMonitor, scheduleMonitor } from "./monitor-scheduler";
 
@@ -9,6 +10,7 @@ const opts = { monitorId: "m", frequencyMinutes: 5, jobData: { type: "website" }
 
 beforeEach(() => {
   jest.resetAllMocks();
+  mockDeleting.mockResolvedValue([]);
   jest.spyOn(console, "log").mockImplementation(() => {});
   jest.spyOn(console, "warn").mockImplementation(() => {});
   jest.spyOn(console, "error").mockImplementation(() => {});
@@ -57,4 +59,9 @@ describe("aborted (timed-out) callers do not mutate the queue", () => {
     expect(await scheduleMonitor(opts)).toBe("m");
     expect(queue.add).toHaveBeenCalled();
   });
+});
+
+it("refuses to schedule a monitor that is being deleted", async () => {
+  mockDeleting.mockResolvedValue([{ id: "m" }]);
+  await expect(scheduleMonitor(opts)).rejects.toThrow("being deleted");
 });

@@ -1,4 +1,4 @@
-import { BLOCKED_RETRY_MS, claimDeletion, completeDeletion, failDeletion, heartbeat, releaseDeletion, type DeletionRow } from "./jobs";
+import { BLOCKED_RETRY_MS, LostClaimError, MAX_ATTEMPTS, claimDeletion, completeDeletion, failDeletion, heartbeat, releaseDeletion, type DeletionRow } from "./jobs";
 import { purgeJobStep, purgeMonitorStep, type StepResult } from "./purge";
 
 /** One invocation works for at most this long, then hands the rest to the next trigger so a worker slot is never pinned. */
@@ -18,12 +18,12 @@ export type RunOutcome = { retryInMs?: number };
 
 export async function runDeletion(id: string): Promise<RunOutcome> {
   const claim = await claimDeletion(id);
-  if ("skip" in claim) return {};
+  if ("skip" in claim) return claim.skip === "busy" && claim.retryInMs ? { retryInMs: claim.retryInMs } : {};
   if ("blocked" in claim) return { retryInMs: BLOCKED_RETRY_MS };
   let row = claim.claimed;
   const handler = handlers[row.scope];
   if (!handler) {
-    await failDeletion({ ...row, attempts: Number.MAX_SAFE_INTEGER - 1 }, new Error(`No purge handler for scope ${row.scope}`));
+    await failDeletion({ ...row, attempts: MAX_ATTEMPTS - 1 }, new Error(`No purge handler for scope ${row.scope}`));
     return {};
   }
   const deadline = Date.now() + SLICE_MS;
@@ -31,23 +31,24 @@ export async function runDeletion(id: string): Promise<RunOutcome> {
     for (;;) {
       const result = await handler(row);
       if (result.done) {
-        await completeDeletion(row.id);
+        await completeDeletion(row);
         return {};
       }
       const cursor = result.progress ?? row.cursor;
-      await heartbeat(row.id, { phase: result.phase, cursor });
+      await heartbeat(row, { phase: result.phase, cursor, progressed: !!result.progress });
       row = { ...row, phase: result.phase, cursor };
       if (result.delayMs) {
-        await releaseDeletion(row.id, result.delayMs);
+        await releaseDeletion(row, result.delayMs);
         return { retryInMs: result.delayMs };
       }
       if (Date.now() > deadline) {
-        await releaseDeletion(row.id, 1000);
+        await releaseDeletion(row, 1000);
         return { retryInMs: 1000 };
       }
       if (BATCH_PAUSE_MS > 0) await sleep(BATCH_PAUSE_MS);
     }
   } catch (error) {
+    if (error instanceof LostClaimError) return {}; // another pod owns it now; it carries on
     console.error(`[DELETION] ${row.scope} ${row.targetId} failed:`, error);
     const delay = await failDeletion(row, error);
     return delay === null ? {} : { retryInMs: delay };

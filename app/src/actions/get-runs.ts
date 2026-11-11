@@ -3,7 +3,7 @@
 import { db } from "@/utils/db";
 import { runs, reports, jobs, jobTests, projects } from "@/db/schema";
 import type { JobType } from "@/db/schema";
-import { eq, and, count, sql } from "drizzle-orm";
+import { eq, and, count, sql, or, isNull } from "drizzle-orm";
 import {
   requireAuth,
   getUserRole,
@@ -72,7 +72,7 @@ export async function getRun(
           eq(reports.entityType, "job")
         )
       )
-      .where(eq(runs.id, runId))
+      .where(and(eq(runs.id, runId), or(isNull(runs.jobId), isNull(jobs.deletingAt))))
       .limit(1);
 
     if (result.length === 0) {

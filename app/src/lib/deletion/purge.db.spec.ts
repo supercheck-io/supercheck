@@ -25,7 +25,7 @@ jest.mock("./queue", () => ({ triggerDeletion: (...a: unknown[]) => mockTrigger(
 process.env.DELETION_BATCH_PAUSE_MS = "0";
 import { requestJobDeletion, requestMonitorDeletion } from "./request";
 import { runDeletion } from "./runner";
-import { claimDeletion, enqueueOrphanedDeletions, failDeletion, findDueDeletions, retryFailedDeletion, MAX_ATTEMPTS } from "./jobs";
+import { claimDeletion, completeDeletion, enqueueOrphanedDeletions, failDeletion, findDueDeletions, heartbeat, LostClaimError, pruneCompletedDeletions, retryFailedDeletion, MAX_ATTEMPTS } from "./jobs";
 
 const name = `deletion_purge_${randomUUID().replaceAll("-", "")}`;
 let maintenance: ReturnType<typeof postgres>;
@@ -244,7 +244,7 @@ describe("claims, retries and the sweep", () => {
     expect("claimed" in (await claimDeletion(a))).toBe(true);
     expect(await claimDeletion(b)).toEqual({ blocked: true });
     // The blocked row is pushed out: duplicate triggers stop at "busy" and the sweep does not re-select it.
-    expect(await claimDeletion(b)).toEqual({ skip: "busy" });
+    expect(await claimDeletion(b)).toMatchObject({ skip: "busy" });
     expect(await findDueDeletions()).not.toContain(b);
   });
 
@@ -257,11 +257,65 @@ describe("claims, retries and the sweep", () => {
     expect("claimed" in (await claimDeletion(row.id))).toBe(true);
   });
 
+  it("fences a runner that lost its claim: it can neither heartbeat nor finish over the new owner", async () => {
+    const seeded = await seedJob(1);
+    await requestJobDeletion(scope(seeded));
+    const id = (await deletionRow(seeded.jobId)).id;
+    const first = await claimDeletion(id);
+    if (!("claimed" in first)) throw new Error("expected a claim");
+    await client`UPDATE deletion_jobs SET heartbeat_at = now() - interval '10 minutes' WHERE id = ${id}`;
+    const second = await claimDeletion(id);
+    if (!("claimed" in second)) throw new Error("expected a takeover");
+    await expect(heartbeat(first.claimed)).rejects.toBeInstanceOf(LostClaimError);
+    await completeDeletion(first.claimed); // no-op: not the owner
+    expect((await deletionRow(seeded.jobId)).state).toBe("running");
+    await expect(heartbeat(second.claimed, { progressed: true })).resolves.toBeUndefined();
+  });
+
+  it("resets the attempt budget when a step makes progress, so a long purge is not failed by scattered errors", async () => {
+    const seeded = await seedMonitor(1200);
+    await requestMonitorDeletion(scope(seeded));
+    // Fail the storage call of the second batch only: attempts goes to 1, then progress brings it back to 0.
+    mockDeleteReports.mockResolvedValue({ success: true });
+    await client`UPDATE deletion_jobs SET attempts = ${MAX_ATTEMPTS - 1} WHERE target_id = ${seeded.monitorId}`;
+    const done = await drive(seeded.monitorId);
+    expect(done.state).toBe("completed");
+    expect(done.attempts).toBe(0);
+  });
+
+  it("returns a retry delay for a purge that is not due yet instead of dropping the trigger", async () => {
+    const seeded = await seedJob(1);
+    await requestJobDeletion(scope(seeded));
+    const id = (await deletionRow(seeded.jobId)).id;
+    await client`UPDATE deletion_jobs SET next_attempt_at = now() + interval '45 seconds' WHERE id = ${id}`;
+    const result = await claimDeletion(id);
+    expect("skip" in result && result.skip === "busy" && (result.retryInMs ?? 0) > 30_000).toBe(true);
+  });
+
+  it("prunes old completed rows only", async () => {
+    const seeded = await seedJob(1);
+    await requestJobDeletion(scope(seeded));
+    await drive(seeded.jobId);
+    await client`UPDATE deletion_jobs SET completed_at = now() - interval '40 days' WHERE target_id = ${seeded.jobId}`;
+    const fresh = await seedJob(1);
+    await requestJobDeletion(scope(fresh));
+    await drive(fresh.jobId);
+    expect(await pruneCompletedDeletions()).toBeGreaterThanOrEqual(1);
+    expect(await count("deletion_jobs", "target_id", seeded.jobId)).toBe(0);
+    expect(await count("deletion_jobs", "target_id", fresh.jobId)).toBe(1);
+  });
+
   it("gives up after the attempt budget and a super admin can retry it", async () => {
     const seeded = await seedJob(1);
     await requestJobDeletion(scope(seeded));
-    let row = await deletionRow(seeded.jobId);
-    for (let i = 0; i < MAX_ATTEMPTS; i++) { await failDeletion(row, new Error("boom")); row = await deletionRow(seeded.jobId); }
+    const id = (await deletionRow(seeded.jobId)).id;
+    for (let i = 0; i < MAX_ATTEMPTS; i++) {
+      await client`UPDATE deletion_jobs SET next_attempt_at = now() WHERE id = ${id}`;
+      const claim = await claimDeletion(id);
+      if (!("claimed" in claim)) throw new Error("expected a claim");
+      await failDeletion(claim.claimed, new Error("boom"));
+    }
+    const row = await deletionRow(seeded.jobId);
     expect(row.state).toBe("failed");
     expect(await retryFailedDeletion(row.id)).toBe(true);
     expect(await retryFailedDeletion(row.id)).toBe(false);

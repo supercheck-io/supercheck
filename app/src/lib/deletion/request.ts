@@ -1,6 +1,6 @@
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { db } from "@/utils/db";
-import { jobs, monitors, runs } from "@/db/schema";
+import { jobs, monitors, runs, statusPageComponentMonitors } from "@/db/schema";
 import { deleteScheduledJob } from "@/lib/job-scheduler";
 import { deleteScheduledMonitor } from "@/lib/monitor-scheduler";
 import { RUN_CANCELLATION_MARKER, setCancellationSignal } from "@/lib/cancellation-service";
@@ -48,6 +48,8 @@ export async function requestMonitorDeletion(scope: Scope) {
       const [existing] = await tx.select({ id: monitors.id }).from(monitors).where(where).limit(1);
       return existing ? { status: "already" } : { status: "not_found" };
     }
+    // Public status pages stop showing it at once (indexed by monitor_id); the purge removes the rest.
+    await tx.delete(statusPageComponentMonitors).where(eq(statusPageComponentMonitors.monitorId, scope.id));
     const deletionId = await insertDeletionJob(tx, { scope: "monitor", targetId: scope.id, organizationId: scope.organizationId, requestedByUserId: scope.userId });
     return { status: "requested", data: { ...flagged, deletionId } };
   });

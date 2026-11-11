@@ -111,6 +111,7 @@ async function suspendOrganizationResources(
       and(
         eq(monitors.organizationId, organizationId),
         ne(monitors.status, "paused"),
+        isNull(monitors.deletingAt),
       ),
     );
   const published = await tx
@@ -308,7 +309,7 @@ export async function suspendLapsedOrganizations(
               database
                 .select({ one: sql`1` })
                 .from(monitors)
-                .where(and(eq(monitors.organizationId, organization.id), ne(monitors.status, "paused"))),
+                .where(and(eq(monitors.organizationId, organization.id), ne(monitors.status, "paused"), isNull(monitors.deletingAt))),
             ),
             exists(
               database

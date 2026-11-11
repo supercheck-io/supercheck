@@ -31,6 +31,10 @@ export async function scheduleMonitor(
   try {
     const { monitorSchedulerQueue } = await getQueues();
     const schedulerJobName = `scheduled-monitor-${options.monitorId}`;
+    // A monitor being deleted must never get a schedule back (trial restore, reconcile and edit paths call this).
+    // Init passes `prefetched` and has already filtered deleting monitors, so it skips the lookup.
+    const [deleting] = prefetched ? [] : await db.select({ id: monitorSchemaDb.id }).from(monitorSchemaDb).where(and(eq(monitorSchemaDb.id, options.monitorId), isNotNull(monitorSchemaDb.deletingAt))).limit(1);
+    if (deleting) throw new Error(`Monitor ${options.monitorId} is being deleted`);
     // Backstop for the write-path check: concurrent edits (or rows saved before it) must not schedule faster checks.
     const frequencyMinutes = effectiveFrequencyMinutes(options.jobData.type, options.frequencyMinutes);
 

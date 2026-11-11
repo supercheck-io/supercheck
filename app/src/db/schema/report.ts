@@ -49,6 +49,8 @@ export const reports = pgTable(
       table.entityType,
       table.entityId
     ),
+    // Run deletion finds the latest-report aliases of saved tests (entity_type = test) by the run directory they point at.
+    reportsTestPathIdx: index("reports_test_report_path_idx").on(table.reportPath).where(sql`entity_type = 'test'`),
     reportsCreatedByUserIdIdx: index("reports_created_by_user_id_idx").on(table.createdByUserId),
     reportsOrganizationIdIdx: index("reports_organization_id_idx").on(table.organizationId),
     reportsEntityTypeCheck: check("reports_entity_type_check", sql`${table.entityType} IN ('test', 'job', 'monitor', 'k6_test', 'k6_job')`),

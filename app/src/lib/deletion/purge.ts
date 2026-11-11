@@ -35,6 +35,19 @@ async function deleteStorage(inputs: ReportDeletionInput[], what: string) {
   if (!result.success) throw new Error(`Could not delete ${what} storage; will retry`);
 }
 
+// Tables whose rows cascade from the target and can be large. Names are constants (never input) and each has an index on the column.
+const MONITOR_CHILD_TABLES = ["monitor_aggregates", "monitor_cycles", "alert_history", "alerts", "monitor_aggregate_dedup_audit"] as const;
+const JOB_CHILD_TABLES = ["alert_history"] as const;
+
+/** Delete up to one batch of a child table's rows by the target's id; returns how many went. */
+async function deleteChildBatch(table: string, column: "monitor_id" | "job_id", id: string): Promise<number> {
+  return db.transaction(async (tx) => {
+    await limits(tx);
+    const result = await tx.execute(sql`DELETE FROM ${sql.identifier(table)} WHERE ctid IN (SELECT ctid FROM ${sql.identifier(table)} WHERE ${sql.identifier(column)} = ${id} LIMIT ${PURGE_BATCH})`);
+    return result.count ?? 0;
+  });
+}
+
 const progress = (row: DeletionRow, key: string, add: number) => ({ ...row.cursor, [key]: Number(row.cursor?.[key] ?? 0) + add });
 
 export async function purgeMonitorStep(row: DeletionRow): Promise<StepResult> {
@@ -51,7 +64,7 @@ export async function purgeMonitorStep(row: DeletionRow): Promise<StepResult> {
     const batch = await db.select({ id: monitorResults.id, testExecutionId: monitorResults.testExecutionId, url: monitorResults.testReportS3Url })
       .from(monitorResults).where(sql`${monitorResults.monitorId} = ANY(ARRAY[${monitorId}]::uuid[])`)
       .orderBy(asc(monitorResults.monitorId), asc(monitorResults.checkedAt)).limit(PURGE_BATCH);
-    if (batch.length === 0) return { done: false, phase: "final" };
+    if (batch.length === 0) return { done: false, phase: "children" };
     // Report rows by the unique (entity_type, entity_id) key; the unindexed s3_url only for legacy results with a URL and no match.
     const executionIds = batch.flatMap((r) => (r.testExecutionId ? [r.testExecutionId] : []));
     const byExecution = executionIds.length
@@ -73,6 +86,11 @@ export async function purgeMonitorStep(row: DeletionRow): Promise<StepResult> {
       await tx.delete(monitorResults).where(and(eq(monitorResults.monitorId, monitorId), inArray(monitorResults.id, batch.map((r) => r.id))));
     });
     return { done: false, phase: "results", progress: progress(row, "results", batch.length) };
+  }
+  if (phase === "children") {
+    // Cycles, aggregates and alert history cascade from the monitor row; delete them in batches first so the final delete is small.
+    for (const table of MONITOR_CHILD_TABLES) if ((await deleteChildBatch(table, "monitor_id", monitorId)) === PURGE_BATCH) return { done: false, phase: "children" };
+    return { done: false, phase: "final" };
   }
   // final: the parent row lock stops new results (their foreign key needs a share lock on it), then verify and delete.
   const finished = await db.transaction(async (tx) => {
@@ -109,11 +127,15 @@ export async function purgeJobStep(row: DeletionRow): Promise<StepResult> {
     const batch = await db.select({ id: runs.id, reportS3Url: runs.reportS3Url, logsS3Url: runs.logsS3Url, metadata: runs.metadata })
       .from(runs).where(sql`${runs.jobId} = ANY(ARRAY[${jobId}]::uuid[])`)
       .orderBy(asc(runs.jobId), sql`${runs.createdAt} desc nulls first`).limit(PURGE_BATCH); // walks runs_job_created_idx; see the monitor batch note
-    if (batch.length === 0) return { done: false, phase: "job_reports" };
+    if (batch.length === 0) return { done: false, phase: "children" };
     const ids = batch.map((r) => r.id);
-    // Run reports by indexed entity id, or the saved-test report path of a run.
-    const reportRows = await db.select({ ...reportColumns, entityType: reports.entityType }).from(reports)
-      .where(or(inArray(reports.entityId, ids), and(eq(reports.entityType, "test"), inArray(reports.reportPath, ids.map((id) => `${id}/report`)))));
+    // Both lookups are indexed: (entity_type, entity_id) for the run's own reports, and the partial report_path index
+    // for the latest-report aliases of saved tests that point into a run directory.
+    const own = await db.select({ ...reportColumns, entityType: reports.entityType }).from(reports)
+      .where(and(inArray(reports.entityType, ["job", "k6_job"]), inArray(reports.entityId, ids)));
+    const aliases = await db.select({ ...reportColumns, entityType: reports.entityType }).from(reports)
+      .where(and(eq(reports.entityType, "test"), inArray(reports.reportPath, ids.map((id) => `${id}/report`))));
+    const reportRows = [...new Map([...own, ...aliases].map((r) => [r.id, r])).values()];
     const s3 = createS3CleanupService();
     await deleteStorage([...reportRows.map((r) => asInput(r, r.entityType)), ...batch.flatMap((r) => s3.getRunArtifactInputs(r))], "job run");
     await db.transaction(async (tx) => {
@@ -123,6 +145,10 @@ export async function purgeJobStep(row: DeletionRow): Promise<StepResult> {
       await tx.delete(runs).where(and(eq(runs.jobId, jobId), inArray(runs.id, ids)));
     });
     return { done: false, phase: "runs", progress: progress(row, "runs", batch.length) };
+  }
+  if (phase === "children") {
+    for (const table of JOB_CHILD_TABLES) if ((await deleteChildBatch(table, "job_id", jobId)) === PURGE_BATCH) return { done: false, phase: "children" };
+    return { done: false, phase: "job_reports" };
   }
   if (phase === "job_reports") {
     const own = await db.select({ ...reportColumns, entityType: reports.entityType }).from(reports).where(and(eq(reports.entityId, jobId), eq(reports.entityType, "job")));
