@@ -3,16 +3,10 @@ import React, { useState, useCallback } from "react";
 import { CreateCard } from "./create-card";
 import { useRouter } from "next/navigation";
 import {
-  Bot,
-  Boxes,
-  Cable,
   FileText,
   FolderOpen,
   KeyRound,
-  RadioTower,
   Shield,
-  Siren,
-  Tally4,
   UserPlus,
   Variable,
   Video,
@@ -31,6 +25,7 @@ import { monitorTypes } from "@/components/monitors/data";
 import { types } from "@/components/tests/data";
 import { K6Logo } from "@/components/logo/k6-logo";
 import { PlaywrightLogo } from "@/components/logo/playwright-logo";
+import { AREA_TEXT, NAV } from "@/lib/nav-areas";
 import { notificationProviders } from "@/components/alerts/data";
 
 type ScriptType =
@@ -160,7 +155,7 @@ export function CreatePageContent({
 
   const statusPageTypes = [
     {
-      icon: <Tally4 size={20} className="text-communicate" />,
+      icon: <NAV.statusPages.icon size={20} className={AREA_TEXT[NAV.statusPages.tone]} />,
       title: "Status Page",
       description: "Publish service health",
       onClick: () => router.push("/status-pages?create=true"),
@@ -188,13 +183,13 @@ export function CreatePageContent({
   const investigationTypes = capabilities.canInvestigateSre
     ? [
         {
-          icon: <Bot size={20} className="text-zinc-300" />,
+          icon: <NAV.copilot.icon size={20} className={AREA_TEXT[NAV.copilot.tone]} />,
           title: "Copilot",
           description: "Start read-only triage",
           onClick: () => router.push("/copilot"),
         },
         {
-          icon: <Siren size={20} className="text-respond" />,
+          icon: <NAV.incidents.icon size={20} className={AREA_TEXT[NAV.incidents.tone]} />,
           title: "Incidents",
           description: "Review response queue",
           onClick: () => router.push("/incidents"),
@@ -204,7 +199,7 @@ export function CreatePageContent({
   const sreSetupTypes = [
     capabilities.canCreateSreServices
       ? {
-          icon: <Boxes size={20} className="text-respond" />,
+          icon: <NAV.services.icon size={20} className={AREA_TEXT[NAV.services.tone]} />,
           title: "Service",
           description: "Define service topology",
           onClick: () => router.push("/services"),
@@ -212,7 +207,7 @@ export function CreatePageContent({
       : null,
     capabilities.canConfigureSreConnectors
       ? {
-          icon: <Cable size={20} className="text-respond" />,
+          icon: <NAV.integrations.icon size={20} className={AREA_TEXT[NAV.integrations.tone]} />,
           title: "Integration",
           description: "Connect evidence sources",
           onClick: () => router.push("/org-admin?tab=integrations"),
@@ -220,7 +215,7 @@ export function CreatePageContent({
       : null,
     capabilities.canConfigureSreConnectors
       ? {
-          icon: <RadioTower size={20} className="text-respond" />,
+          icon: <NAV.privateAgents.icon size={20} className={AREA_TEXT[NAV.privateAgents.tone]} />,
           title: "Private Agent",
           description: "Register private access",
           onClick: () => router.push("/org-admin?tab=private-agents"),
@@ -230,7 +225,7 @@ export function CreatePageContent({
   const adminSetupTypes = [
     capabilities.canCreateProjects
       ? {
-          icon: <FolderOpen size={20} className="text-muted-foreground" />,
+          icon: <FolderOpen size={20} className={AREA_TEXT.settings} />,
           title: "Project",
           description: "Manage workspaces",
           onClick: () => router.push("/org-admin?tab=projects"),
@@ -238,7 +233,7 @@ export function CreatePageContent({
       : null,
     capabilities.canInviteMembers
       ? {
-          icon: <UserPlus size={20} className="text-muted-foreground" />,
+          icon: <UserPlus size={20} className={AREA_TEXT.settings} />,
           title: "Member",
           description: "Invite users",
           onClick: () => router.push("/org-admin?tab=members"),
@@ -246,7 +241,7 @@ export function CreatePageContent({
       : null,
     capabilities.canCreateCliTokens
       ? {
-          icon: <KeyRound size={20} className="text-muted-foreground" />,
+          icon: <KeyRound size={20} className={AREA_TEXT.settings} />,
           title: "CLI Token",
           description: "Create CLI access",
           onClick: () => router.push("/org-admin?tab=cli-tokens"),

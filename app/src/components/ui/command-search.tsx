@@ -4,30 +4,14 @@ import * as React from "react";
 import { useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Globe,
-  Code,
   SearchIcon,
-  BellRing,
   LaptopMinimal,
-  ChartColumn,
-  CalendarClock,
   Chrome,
   ArrowLeftRight,
   Database,
   SquareFunction,
   ChevronsLeftRightEllipsis,
   EthernetPort,
-  Variable,
-  Tally4,
-  ClipboardList,
-  Target,
-  Bot,
-  Network,
-  Siren,
-  UserCog,
-  Boxes,
-  SquareLibrary,
-  RadioTower,
 } from "lucide-react";
 import { PlaywrightLogo } from "@/components/logo/playwright-logo";
 import { K6Logo } from "@/components/logo/k6-logo";
@@ -48,6 +32,17 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { AREA_TEXT, NAV } from "@/lib/nav-areas";
+
+function NavCommandItem({ id, onSelect }: { id: keyof typeof NAV; onSelect: () => void }) {
+  const { title, icon: Icon, tone } = NAV[id];
+  return (
+    <CommandItem onSelect={onSelect}>
+      <Icon className={`mr-2 h-4 w-4 ${AREA_TEXT[tone]}`} />
+      <span>{title}</span>
+    </CommandItem>
+  );
+}
 
 interface CommandSearchProps {
   className?: string;
@@ -184,50 +179,17 @@ export function CommandSearch({
               <CommandEmpty>No results found.</CommandEmpty>
 
               <CommandGroup heading="Navigation">
-                <CommandItem onSelect={() => handleCommand("home")}>
-                  <ChartColumn className="mr-2 h-4 w-4 !text-muted-foreground" />
-                  <span>Dashboard</span>
-                </CommandItem>
-                <CommandItem onSelect={() => handleCommand("alerts")}>
-                  <BellRing className="mr-2 h-4 w-4 !text-communicate" />
-                  <span>Delivery history</span>
-                </CommandItem>
-                <CommandItem onSelect={() => handleCommand("incidents")}>
-                  <Siren className="mr-2 h-4 w-4 !text-respond" />
-                  <span>Incidents</span>
-                </CommandItem>
-                <CommandItem onSelect={() => handleCommand("notifications")}>
-                  <BellRing className="mr-2 h-4 w-4 !text-communicate" />
-                  <span>Notifications</span>
-                </CommandItem>
-                <CommandItem onSelect={() => handleCommand("status-pages")}>
-                  <Tally4 className="mr-2 h-4 w-4 !text-communicate" />
-                  <span>Status Pages</span>
-                </CommandItem>
-                <CommandItem onSelect={() => handleCommand("requirements")}>
-                  <Target className="mr-2 h-4 w-4 !text-automate" />
-                  <span>Requirements</span>
-                </CommandItem>
-                <CommandItem onSelect={() => handleCommand("tests")}>
-                  <Code className="mr-2 h-4 w-4 !text-automate" />
-                  <span>Tests</span>
-                </CommandItem>
-                <CommandItem onSelect={() => handleCommand("jobs")}>
-                  <CalendarClock className="mr-2 h-4 w-4 !text-automate" />
-                  <span>Jobs</span>
-                </CommandItem>
-                <CommandItem onSelect={() => handleCommand("runs")}>
-                  <ClipboardList className="mr-2 h-4 w-4 !text-automate" />
-                  <span>Runs</span>
-                </CommandItem>
-                <CommandItem onSelect={() => handleCommand("variables")}>
-                  <Variable className="mr-2 h-4 w-4 !text-automate" />
-                  <span>Variables</span>
-                </CommandItem>
-                <CommandItem onSelect={() => handleCommand("monitors")}>
-                  <Globe className="mr-2 h-4 w-4 !text-monitor" />
-                  <span>Monitors</span>
-                </CommandItem>
+                <NavCommandItem id="dashboard" onSelect={() => handleCommand("home")} />
+                <NavCommandItem id="deliveryHistory" onSelect={() => handleCommand("alerts")} />
+                <NavCommandItem id="incidents" onSelect={() => handleCommand("incidents")} />
+                <NavCommandItem id="notifications" onSelect={() => handleCommand("notifications")} />
+                <NavCommandItem id="statusPages" onSelect={() => handleCommand("status-pages")} />
+                <NavCommandItem id="requirements" onSelect={() => handleCommand("requirements")} />
+                <NavCommandItem id="tests" onSelect={() => handleCommand("tests")} />
+                <NavCommandItem id="jobs" onSelect={() => handleCommand("jobs")} />
+                <NavCommandItem id="runs" onSelect={() => handleCommand("runs")} />
+                <NavCommandItem id="variables" onSelect={() => handleCommand("variables")} />
+                <NavCommandItem id="monitors" onSelect={() => handleCommand("monitors")} />
               </CommandGroup>
 
               <CommandSeparator />
@@ -235,12 +197,7 @@ export function CommandSearch({
               {canInvestigateSre && (
                 <>
                   <CommandGroup heading="Respond">
-                    <CommandItem
-                      onSelect={() => handleCommand("investigation-chat")}
-                    >
-                      <Bot className="mr-2 h-4 w-4 !text-ai" />
-                      <span>Copilot</span>
-                    </CommandItem>
+                    <NavCommandItem id="copilot" onSelect={() => handleCommand("investigation-chat")} />
                   </CommandGroup>
 
                   <CommandSeparator />
@@ -248,36 +205,13 @@ export function CommandSearch({
               )}
 
               <CommandGroup heading="Admin">
-                <CommandItem onSelect={() => handleCommand("admin")}>
-                  <UserCog className="mr-2 h-4 w-4 !text-muted-foreground" />
-                  <span>Organization</span>
-                </CommandItem>
+                <NavCommandItem id="organization" onSelect={() => handleCommand("admin")} />
                 {canConfigureSre && (
                   <>
-                    <CommandItem
-                      onSelect={() => handleCommand("admin-services")}
-                    >
-                      <Boxes className="mr-2 h-4 w-4 !text-respond" />
-                      <span>Services</span>
-                    </CommandItem>
-                    <CommandItem
-                      onSelect={() => handleCommand("admin-integrations")}
-                    >
-                      <Network className="mr-2 h-4 w-4 !text-respond" />
-                      <span>Integrations</span>
-                    </CommandItem>
-                    <CommandItem
-                      onSelect={() => handleCommand("admin-diagnostic-recipes")}
-                    >
-                      <SquareLibrary className="mr-2 h-4 w-4 !text-respond" />
-                      <span>Saved queries</span>
-                    </CommandItem>
-                    <CommandItem
-                      onSelect={() => handleCommand("admin-private-agents")}
-                    >
-                      <RadioTower className="mr-2 h-4 w-4 !text-respond" />
-                      <span>Private Agents</span>
-                    </CommandItem>
+                    <NavCommandItem id="services" onSelect={() => handleCommand("admin-services")} />
+                    <NavCommandItem id="integrations" onSelect={() => handleCommand("admin-integrations")} />
+                    <NavCommandItem id="savedQueries" onSelect={() => handleCommand("admin-diagnostic-recipes")} />
+                    <NavCommandItem id="privateAgents" onSelect={() => handleCommand("admin-private-agents")} />
                   </>
                 )}
               </CommandGroup>

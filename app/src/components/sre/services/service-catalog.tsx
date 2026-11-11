@@ -30,6 +30,7 @@ import { DataTable } from "@/components/sre/data-table/data-table";
 import { columns } from "@/components/sre/data-table/services/columns";
 import { ServicesToolbar } from "@/components/sre/data-table/services/toolbar";
 import { SreSetupGuideDialog } from "@/components/sre/onboarding/sre-setup-guide-dialog";
+import { NAV } from "@/lib/nav-areas";
 
 // Saves the server payload has not caught up with yet. revalidatePath can remount
 // the catalog with a payload rendered before the write, so component state alone
@@ -157,8 +158,8 @@ export function ServiceCatalog({
         <>
         <PageHeader
           title="Services"
-          icon={Boxes}
-          tone="respond"
+          icon={NAV.services.icon}
+          tone={NAV.services.tone}
           description="Link monitors and jobs to services for investigation context."
           className="mb-4 -mt-2"
         />

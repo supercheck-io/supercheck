@@ -28,3 +28,12 @@ it("marks the current page's link active and tints its icon with the group's are
   expect(active.className).toContain("[&[data-active=true]>svg]:text-monitor");
   expect(screen.getByRole("link", { name: "Incidents" })).toHaveAttribute("data-active", "false");
 });
+
+it("lets an item override its group's area colour", () => {
+  render(
+    <SidebarProvider>
+      <NavMain groupLabel="Monitor" items={[{ title: "Monitors", url: "/monitors", icon: Globe, tone: "ai" }]} />
+    </SidebarProvider>,
+  );
+  expect(screen.getByRole("link", { name: "Monitors" }).className).toContain("[&[data-active=true]>svg]:text-ai");
+});

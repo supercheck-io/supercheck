@@ -21,6 +21,6 @@ describe("MonitorStatusIndicator", () => {
   it("gives each known status its own tone", () => {
     expect(getMonitorStatusConfig("up").tone).toBe("success");
     expect(getMonitorStatusConfig("down").tone).toBe("danger");
-    expect(getMonitorStatusConfig("maintenance").tone).toBe("indigo");
+    expect(getMonitorStatusConfig("maintenance").tone).toBe("purple");
   });
 });

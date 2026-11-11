@@ -29,7 +29,7 @@ const STATUS_CONFIG: Record<string, StatusConfig> = {
   paused: { label: "Paused", icon: Pause, tone: "slate" },
   pending: { label: "Pending", icon: Clock, tone: "neutral" },
   running: { label: "Running", icon: PlayCircle, tone: "info" },
-  maintenance: { label: "Maintenance", icon: Wrench, tone: "indigo" },
+  maintenance: { label: "Maintenance", icon: Wrench, tone: "purple" },
   error: { label: "Error", icon: AlertCircle, tone: "warning" },
 };
 

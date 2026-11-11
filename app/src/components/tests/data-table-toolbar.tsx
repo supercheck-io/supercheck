@@ -1,5 +1,5 @@
 import type { Table } from "@tanstack/react-table";
-import { PlusIcon, X, Search, Code } from "lucide-react";
+import { PlusIcon, X, Search } from "lucide-react";
 
 import { IconChip } from "@/components/ui/icon-chip";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import { types, priorities } from "./data";
 import { DataTableFacetedFilter } from "./data-table-faceted-filter";
 import { DataTableTagFilter } from "./data-table-tag-filter";
 import { useTestPermissions } from "@/hooks/use-rbac-permissions";
+import { NAV } from "@/lib/nav-areas";
 
 
 
@@ -28,7 +29,7 @@ export function DataTableToolbar<TData>({
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 mb-4 -mt-2">
       <div className="flex items-start gap-3">
-        <IconChip icon={Code} tone="automate" size="md" className="mt-0.5" />
+        <IconChip icon={NAV.tests.icon} tone={NAV.tests.tone} size="md" className="mt-0.5" />
         <div className="flex flex-col">
           <h2 className="text-2xl font-semibold">Tests</h2>
           <p className="text-muted-foreground text-sm">
