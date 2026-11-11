@@ -108,6 +108,19 @@ describe("pending flag rides on the rows the auth paths already read", () => {
   });
 });
 
+describe("id-based permission checks and soft-deleted projects", () => {
+  it("deny writes but allow reads once the project is soft-deleted", async () => {
+    const seeded = await seed();
+    const ctx = { organizationId: seeded.orgId, projectId: seeded.projectId };
+    mockSessionToken = seeded.token;
+    expect(await hasPermissionForUser(seeded.userId, "job", "create", ctx)).toBe(true);
+    await client`UPDATE projects SET status = 'deleted', deleted_at = now(), purge_after = now() + interval '7 days' WHERE id = ${seeded.projectId}`;
+    clearDeletionStateCache();
+    expect(await hasPermissionForUser(seeded.userId, "job", "create", ctx)).toBe(false);
+    expect(await hasPermissionForUser(seeded.userId, "job", "view", ctx)).toBe(true);
+  });
+});
+
 describe("scheduler predicate", () => {
   it("excludes jobs of pending organizations and keeps the rest", async () => {
     const pending = await seed();

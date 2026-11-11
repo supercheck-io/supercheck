@@ -84,7 +84,8 @@ export function DeleteOrganizationButton({ organizationId, organizationName }: D
 
   const handleReauth = async () => {
     await signOut().catch(() => undefined);
-    window.location.replace(new URL("/sign-in?next=%2Forg-admin", window.location.origin));
+    // Signing in again starts a fresh session on the default organization, so come back through the switch route.
+    window.location.replace(new URL(`/sign-in?next=${encodeURIComponent(`/org-admin/switch?org=${organizationId}`)}`, window.location.origin));
   };
 
   const close = (next: boolean) => {

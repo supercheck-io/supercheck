@@ -23,7 +23,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (!isUuid(id)) return NextResponse.json({ error: "Project not found" }, { status: 404 });
     const [project] = await db.select({ organizationId: projects.organizationId, status: projects.status }).from(projects).where(eq(projects.id, id)).limit(1);
     if (!project || project.status !== "deleted") return NextResponse.json({ error: "Project not found" }, { status: 404 });
-    if (!(await hasPermissionForUser(userId, "project", "delete", { organizationId: project.organizationId, projectId: id }))) {
+    if (!(await hasPermissionForUser(userId, "project", "delete", { organizationId: project.organizationId }))) {
       return await forbiddenOrNotFound(userId, project.organizationId, "Insufficient permissions to restore project", "Project not found");
     }
     await restoreProject({ projectId: id, actorUserId: userId });

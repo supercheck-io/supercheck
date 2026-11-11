@@ -28,7 +28,7 @@ import { isSuperAdmin } from "./super-admin";
 import { getClientIP } from "@/lib/session-security";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { getCachedAuthSession } from "@/lib/session-cache";
-import { isOrgPendingDeletion } from "@/lib/deletion/org-state";
+import { isOrgPendingDeletion, isProjectDeleted } from "@/lib/deletion/org-state";
 
 // getCachedAuthSession imported from session-cache.ts (DRY principle)
 
@@ -188,7 +188,8 @@ export async function hasPermission(
       projectId: context?.projectId,
       assignedProjectIds: assignedProjects,
       resourceCreatorId: context?.resourceCreatorId,
-      orgPendingDeletion: await isOrgPendingDeletion(context?.organizationId),
+      // A soft-deleted project is read-only like a pending organization (id-based routes do not go through the active-project context).
+      orgPendingDeletion: (await isOrgPendingDeletion(context?.organizationId)) || (await isProjectDeleted(context?.projectId)),
     };
 
     return checkPermission(permissionContext, resource, action);
@@ -257,7 +258,8 @@ export async function hasPermissionForUser(
       projectId: context?.projectId,
       assignedProjectIds: assignedProjects,
       resourceCreatorId: context?.resourceCreatorId,
-      orgPendingDeletion: await isOrgPendingDeletion(context?.organizationId),
+      // A soft-deleted project is read-only like a pending organization (id-based routes do not go through the active-project context).
+      orgPendingDeletion: (await isOrgPendingDeletion(context?.organizationId)) || (await isProjectDeleted(context?.projectId)),
     };
 
     return checkPermission(permissionContext, resource, action);

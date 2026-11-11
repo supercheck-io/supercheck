@@ -9,6 +9,7 @@ describe("sanitizeNextPath", () => {
   it.each([
     ["/device", "/device"],
     ["/org-admin", "/org-admin"],
+    ["/org-admin/switch?org=01a1cc16-a6e5-7685-aaf1-5a7a3f714c3c", "/org-admin/switch?org=01a1cc16-a6e5-7685-aaf1-5a7a3f714c3c"],
     ["/device?code=BCDF-GHJK", "/device?code=BCDF-GHJK"],
     [encodeURIComponent("/device?code=BCDF-GHJK"), "/device?code=BCDF-GHJK"],
   ])("accepts %s", (input, expected) => {

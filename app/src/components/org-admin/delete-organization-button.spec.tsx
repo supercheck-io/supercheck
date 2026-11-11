@@ -56,6 +56,13 @@ it("sends the user through sign-in again when fresh authentication is required",
   await waitFor(() => expect(signOut).toHaveBeenCalled());
 });
 
+it("sends the owner back through the organization switch after signing in again", () => {
+  const { sanitizeNextPath } = jest.requireActual("@/lib/auth/safe-next-path") as typeof import("@/lib/auth/safe-next-path");
+  const next = encodeURIComponent("/org-admin/switch?org=01a1cc16-a6e5-7685-aaf1-5a7a3f714c3c");
+  expect(sanitizeNextPath(next)).toBe("/org-admin/switch?org=01a1cc16-a6e5-7685-aaf1-5a7a3f714c3c");
+  expect(sanitizeNextPath(encodeURIComponent("/org-admin/switch?org=../../evil"))).toBeNull();
+});
+
 it("confirms by email after a successful request", async () => {
   fetchMock.mockResolvedValueOnce(info());
   fetchMock.mockResolvedValueOnce({ json: async () => ({ success: true, purgeAfter: "2030-01-15T00:00:00.000Z" }) });

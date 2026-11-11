@@ -12,7 +12,7 @@
  */
 
 // Mock Next.js server before any imports
-jest.mock("@/lib/deletion/org-state", () => ({ isOrgPendingDeletion: jest.fn().mockResolvedValue(false) }));
+jest.mock("@/lib/deletion/org-state", () => ({ isOrgPendingDeletion: jest.fn().mockResolvedValue(false), isProjectDeleted: jest.fn().mockResolvedValue(false) }));
 jest.mock("next/server", () => ({
   NextRequest: jest.fn(),
   NextResponse: {

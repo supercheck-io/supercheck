@@ -4,10 +4,10 @@
  * redirect. Only the device-approval page and the organization admin page (re-sign-in before deleting an
  * organization) may be resumed.
  */
-const DEVICE_PATH = /^\/(?:device(?:\?code=[A-Za-z0-9-]{1,16})?|org-admin)$/;
+const DEVICE_PATH = /^\/(?:device(?:\?code=[A-Za-z0-9-]{1,16})?|org-admin(?:\/switch\?org=[0-9a-fA-F-]{36})?)$/;
 
 export function sanitizeNextPath(raw: string | null | undefined): string | null {
-  if (typeof raw !== "string" || raw.length === 0 || raw.length > 64) return null;
+  if (typeof raw !== "string" || raw.length === 0 || raw.length > 128) return null;
   let value: string;
   try {
     value = decodeURIComponent(raw);

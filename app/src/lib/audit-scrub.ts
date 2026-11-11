@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHmac } from "node:crypto";
 import { and, asc, eq, lt, sql } from "drizzle-orm";
 import { db } from "@/utils/db";
 import { auditLogs } from "@/db/schema";
@@ -12,7 +12,19 @@ export const AUDIT_SCRUBBED_MARKER = "emailsScrubbed";
 const EMAIL = /[A-Za-z0-9._%+'-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
 // Keeps equal addresses comparable ("the same person did these") without keeping the address. Unsalted on purpose:
 // the goal is removal from the stored record, and a salt would have to outlive the rows to stay comparable.
-export const hashEmail = (email: string) => `email:${createHash("sha256").update(email.trim().toLowerCase()).digest("hex").slice(0, 16)}`;
+/**
+ * Keyed with a key derived from the server secret, so a hash cannot be reversed by hashing a list of known emails
+ * (an unkeyed hash of an email is guessable). Stable for one deployment, so a user's events can still be correlated.
+ */
+function emailHashKey(): string {
+  const secret = process.env.BETTER_AUTH_SECRET;
+  if (!secret) {
+    if (process.env.NODE_ENV === "production") throw new Error("BETTER_AUTH_SECRET is required to scrub audit emails");
+    return "development-only-audit-key";
+  }
+  return createHmac("sha256", secret).update("supercheck:audit-email:v1").digest("hex");
+}
+export const hashEmail = (email: string) => `email:${createHmac("sha256", emailHashKey()).update(email.trim().toLowerCase()).digest("hex").slice(0, 16)}`;
 
 /** Replace every email address found in strings anywhere in the value, keys included in nothing: values only. */
 export function scrubEmails<T>(value: T): T {
