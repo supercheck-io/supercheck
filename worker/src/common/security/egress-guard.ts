@@ -9,6 +9,10 @@
  * code. A first blocked probe exits immediately. Uses node because the
  * execution image has node but no nc, and /bin/sh has no /dev/tcp.
  */
+/** Runs the guard with a clean env so caller env cannot alter or skip it. */
+export const EGRESS_GUARD_COMMAND_PREFIX =
+  'env -i PATH=/usr/local/bin:/usr/bin:/bin KUBERNETES_SERVICE_HOST="$KUBERNETES_SERVICE_HOST" KUBERNETES_SERVICE_PORT="$KUBERNETES_SERVICE_PORT"';
+
 export const EGRESS_GUARD_SCRIPT = `
 const net = require('net');
 const dns = require('dns');
@@ -20,7 +24,8 @@ const reachable = (host) =>
     const s = net.connect({ host, port, timeout: 1000 });
     s.on('connect', () => { s.destroy(); resolve(true); });
     s.on('timeout', () => { s.destroy(); resolve(false); });
-    s.on('error', () => resolve(false));
+    s.on('error', (e) =>
+      resolve(['ECONNREFUSED', 'EHOSTUNREACH', 'ENETUNREACH', 'EACCES'].includes(e.code) ? false : null));
   });
 (async () => {
   for (;;) {
@@ -28,7 +33,9 @@ const reachable = (host) =>
     try {
       const host = process.env.KUBERNETES_SERVICE_HOST ||
         (await dns.promises.lookup('kubernetes.default.svc')).address;
-      if (!(await reachable(host))) process.exit(0);
+      const r = await reachable(host);
+      if (r === false) process.exit(0);
+      if (r === null) detail = 'probe error, cannot confirm block';
     } catch (e) {
       detail = 'cannot resolve kubernetes API Service: ' + e.message;
     }

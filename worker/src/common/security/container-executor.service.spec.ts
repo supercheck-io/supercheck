@@ -1317,6 +1317,8 @@ describe('ContainerExecutorService', () => {
           env: {
             PUBLIC_SETTING: 'visible',
             SUPERCHECK_SECRETS_B64: 'plaintext-secret-material',
+            KUBERNETES_SERVICE_HOST: '192.0.2.1',
+            KUBERNETES_SERVICE_PORT: '1',
           },
         },
         payloadSecretNames: [
@@ -1333,7 +1335,8 @@ describe('ContainerExecutorService', () => {
 
       expect(podSpec.serviceAccountName).toBe('execution-runner');
       expect(podSpec.automountServiceAccountToken).toBe(false);
-      expect(bootstrapScript.startsWith('node -e ')).toBe(true);
+      expect(bootstrapScript.startsWith('env -i ')).toBe(true);
+      expect(bootstrapScript).toContain(' node -e ');
       expect(bootstrapScript.indexOf('|| exit 1\n')).toBeGreaterThan(0);
       expect(bootstrapScript.indexOf('|| exit 1\n')).toBeLessThan(
         bootstrapScript.indexOf('/supercheck-payload-0/chunk'),
@@ -1346,6 +1349,11 @@ describe('ContainerExecutorService', () => {
       expect(container.env).not.toEqual(
         expect.arrayContaining([
           expect.objectContaining({ name: 'SUPERCHECK_SECRETS_B64' }),
+        ]),
+      );
+      expect(container.env).not.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ name: 'KUBERNETES_SERVICE_HOST' }),
         ]),
       );
       expect(podSpec.volumes).toEqual(
