@@ -23,7 +23,7 @@ export async function sendOrganizationNotice(organizationId: string, key: Notice
   // Claim: only the pod that flips the marker sends.
   const [org] = await db.update(organization)
     .set({ deletionMeta: sql`${organization.deletionMeta} || ${JSON.stringify({ [key]: new Date().toISOString() })}::jsonb` })
-    .where(and(eq(organization.id, organizationId), sql`NOT (${organization.deletionMeta} ? ${key})`))
+    .where(and(eq(organization.id, organizationId), isNotNull(organization.deletionRequestedAt), sql`NOT (${organization.deletionMeta} ? ${key})`))
     .returning({ name: organization.name, purgeAfter: organization.deletionPurgeAfter });
   if (!org) return "skipped";
   const release = () => db.update(organization).set({ deletionMeta: sql`${organization.deletionMeta} - ${key}::text` }).where(eq(organization.id, organizationId));

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { organization } from "@/db/schema";
+import { isOrgPendingDeletion, pendingDeletionResponse } from "@/lib/deletion/org-state";
 import { requireUserAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { getPolarConfig, isPolarEnabled } from "@/lib/feature-flags";
 import { getUserOrgRole, getImpersonationState } from "@/lib/rbac/middleware";
@@ -17,6 +18,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const { userId, organizationId, isCliAuth } = await requireUserAuthContext();
+    // The portal could undo the cancellation made for a pending deletion.
+    if (await isOrgPendingDeletion(organizationId, { fresh: true })) return pendingDeletionResponse();
     if (isCliAuth) {
       return NextResponse.json(
         { error: "Customer portal access requires an interactive browser session" },

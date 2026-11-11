@@ -371,6 +371,8 @@ export interface PermissionContext {
 
 /** Actions that stay allowed while an organization is pending deletion: reading and exporting. */
 export const PENDING_DELETION_ALLOWED_ACTIONS: ReadonlySet<string> = new Set(["view", "view_secrets", "export"]);
+/** Containment stays possible during the window: revoking credentials, removing members and cancelling invitations. */
+export const PENDING_DELETION_ALLOWED_PAIRS: ReadonlySet<string> = new Set(["apiKey:delete", "apiKey:update", "member:delete", "invitation:cancel"]);
 
 // Check if user has permission in context
 export function hasPermission(
@@ -384,7 +386,7 @@ export function hasPermission(
   }
 
   // Checked before the super admin shortcut: a pending organization is read-only for every role.
-  if (context.orgPendingDeletion && !PENDING_DELETION_ALLOWED_ACTIONS.has(action)) {
+  if (context.orgPendingDeletion && !PENDING_DELETION_ALLOWED_ACTIONS.has(action) && !PENDING_DELETION_ALLOWED_PAIRS.has(`${resource}:${action}`)) {
     return false;
   }
 

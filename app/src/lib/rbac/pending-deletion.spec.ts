@@ -1,5 +1,5 @@
 /** @jest-environment node */
-import { Role, hasPermission, PENDING_DELETION_ALLOWED_ACTIONS, statement } from "./permissions";
+import { Role, hasPermission, PENDING_DELETION_ALLOWED_ACTIONS, PENDING_DELETION_ALLOWED_PAIRS, statement } from "./permissions";
 
 const ROLES = [Role.SUPER_ADMIN, Role.ORG_OWNER, Role.ORG_ADMIN, Role.PROJECT_ADMIN, Role.PROJECT_EDITOR, Role.PROJECT_VIEWER];
 const context = (role: Role, orgPendingDeletion: boolean) => ({ userId: "u", role, organizationId: "o", projectId: "p", assignedProjectIds: ["p"], orgPendingDeletion });
@@ -12,7 +12,7 @@ describe("pending organization deletion in the permission layer", () => {
   it.each(ROLES)("%s: every non-read action on every resource is denied while pending", (role) => {
     for (const [resource, actions] of Object.entries(statement)) {
       for (const action of actions as readonly string[]) {
-        if (PENDING_DELETION_ALLOWED_ACTIONS.has(action)) continue;
+        if (PENDING_DELETION_ALLOWED_ACTIONS.has(action) || PENDING_DELETION_ALLOWED_PAIRS.has(`${resource}:${action}`)) continue;
         expect({ resource, action, allowed: hasPermission(context(role, true), resource as keyof typeof statement, action) }).toEqual({ resource, action, allowed: false });
       }
     }
@@ -36,6 +36,13 @@ describe("pending organization deletion in the permission layer", () => {
       expect(hasPermission(context(Role.ORG_OWNER, true), resource, action)).toBe(false);
       expect(hasPermission(context(Role.ORG_OWNER, false), resource, action)).toBe(true);
     }
+  });
+
+  it("containment stays possible: revoke keys, remove members, cancel invitations", () => {
+    expect(hasPermission(context(Role.ORG_OWNER, true), "apiKey", "delete")).toBe(true);
+    expect(hasPermission(context(Role.ORG_OWNER, true), "member", "delete")).toBe(true);
+    expect(hasPermission(context(Role.ORG_ADMIN, true), "invitation", "cancel")).toBe(true);
+    expect(hasPermission(context(Role.PROJECT_VIEWER, true), "member", "delete")).toBe(hasPermission(context(Role.PROJECT_VIEWER, false), "member", "delete"));
   });
 
   it("an organization that is not pending behaves exactly as before, flag absent or false", () => {

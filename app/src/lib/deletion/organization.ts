@@ -26,6 +26,9 @@ export type MembershipGuard = { ownerUserId: string } | { noMembers: true } | { 
 /** The organization's members changed since the caller confirmed the deletion. */
 export class OrganizationMembershipChangedError extends Error {}
 
+/** The deletion request time at full microsecond precision, as text: a JS Date would truncate it and never match the column. */
+const cycleToken = sql<string>`${organization.deletionRequestedAt}::text`;
+
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 async function assertMembership(tx: Tx, organizationId: string, guard: MembershipGuard) {
@@ -81,11 +84,11 @@ export async function requestOrganizationDeletion(input: {
   invalidateOrgState(input.organizationId);
   if (!outcome.flipped) return { status: "already", purgeAfter: outcome.purgeAfter, deletionId: null, billing: "skipped" };
 
-  const billing = await settleBillingOnRequest(input.organizationId);
+  const billing = await settleBillingOnRequest(input.organizationId).catch((error) => { console.error("[ORG_DELETION] billing settle failed; the sweep retries:", error); return "retry" as const; });
   await logAuditEvent({
     userId: input.actorUserId, organizationId: input.organizationId, action: "organization_deletion_requested", resource: "organization",
     resourceId: input.organizationId, metadata: { purgeAfter: outcome.purgeAfter.toISOString(), reason: input.reason ?? "owner" }, success: true,
-  });
+  }).catch((error) => console.error("[ORG_DELETION] audit failed:", error));
   await quiesceOrganization(input.organizationId).catch((error) => console.error("[ORG_DELETION] quiesce failed; the sweep resumes it:", error));
   await sendOrganizationNotice(input.organizationId, "noticeRequested").catch(() => undefined);
   if (new Date(outcome.purgeAfter).getTime() <= Date.now() && outcome.deletionId) await triggerDeletion(outcome.deletionId); // self-hosted grace 0
@@ -94,14 +97,23 @@ export async function requestOrganizationDeletion(input: {
 
 /** After the flip: cancel at period end once, flush usage. A provider outage leaves the marker unsettled and the sweep retries. */
 export async function settleBillingOnRequest(organizationId: string): Promise<"cancelled" | "already" | "none" | "skipped" | "retry"> {
-  const [org] = await db.select({ id: organization.id, subscriptionId: organization.subscriptionId, polarCustomerId: organization.polarCustomerId, meta: organization.deletionMeta })
+  const [org] = await db.select({ id: organization.id, subscriptionId: organization.subscriptionId, polarCustomerId: organization.polarCustomerId, meta: organization.deletionMeta, requestedAt: cycleToken })
     .from(organization).where(and(eq(organization.id, organizationId), isNotNull(organization.deletionRequestedAt)));
-  if (!org) return "skipped";
+  if (!org?.requestedAt) return "skipped";
   if ((org.meta as DeletionMeta).billingCancelSettled) return "already";
   try {
     const result = await cancelSubscriptionAtPeriodEnd(org);
-    await db.update(organization).set({ deletionMeta: metaPatch(organization.deletionMeta, { billingCancelSettled: true, billingCancelRequested: result.status === "cancelled" }) })
-      .where(eq(organization.id, organizationId));
+    // Fenced on this deletion cycle: a cancel (or cancel and re-request) that happened during the provider call must not
+    // receive our result. `billingCancelRequested` is only ever written as true, so a concurrent sweep that merely saw
+    // our own cancellation as "already" cannot erase the fact that this flow made it.
+    const written = await db.update(organization).set({
+      deletionMeta: metaPatch(organization.deletionMeta, result.status === "cancelled" ? { billingCancelSettled: true, billingCancelRequested: true } : { billingCancelSettled: true }),
+    }).where(and(eq(organization.id, organizationId), sql`${cycleToken} = ${org.requestedAt}`)).returning({ id: organization.id });
+    if (written.length === 0) {
+      // The deletion was cancelled while we talked to the provider: undo what we just did.
+      if (result.status === "cancelled") await reinstateSubscription(org).catch((error) => console.error("[ORG_DELETION] could not reinstate after a concurrent cancel:", error));
+      return "skipped";
+    }
     if (result.status === "cancelled" || result.status === "already") await flushFinalUsage(organizationId, { strict: false });
     return result.status;
   } catch (error) {
@@ -195,16 +207,22 @@ const QUIESCE_BUDGET_MS = 20_000;
  */
 export async function quiesceOrganization(organizationId: string, options: { budgetMs?: number; force?: boolean } = {}): Promise<boolean> {
   const deadline = Date.now() + (options.budgetMs ?? QUIESCE_BUDGET_MS);
-  const read = async () => (await db.select({ pending: organization.deletionRequestedAt, meta: organization.deletionMeta }).from(organization).where(eq(organization.id, organizationId)))[0];
+  const read = async () => (await db.select({ pending: cycleToken, meta: organization.deletionMeta }).from(organization).where(eq(organization.id, organizationId)))[0];
   let state = await read();
   if (!state?.pending) return false;
   let meta = state.meta as DeletionMeta;
   if (meta.quiesced && !options.force) return true;
+  // A forced pass (the purge) re-walks every schedule: anything re-added behind the old cursor is removed again.
+  if (options.force) meta = { ...meta, quiesceAfter: undefined };
+  // Fenced on this deletion cycle: a cancel (which restores schedules) or cancel and re-request must stop this pass.
+  const cycle = state.pending;
+  const stillThisCycle = async () => (await read())?.pending === cycle;
   const save = (patch: DeletionMeta) => db.update(organization).set({ deletionMeta: metaPatch(organization.deletionMeta, patch) })
-    .where(and(eq(organization.id, organizationId), isNotNull(organization.deletionRequestedAt)));
+    .where(and(eq(organization.id, organizationId), sql`${cycleToken} = ${cycle}`));
 
   // 1. Runs. Rows that already carry the marker are skipped, so each pass makes progress even while a worker has not claimed them yet.
   for (;;) {
+    if (!(await stillThisCycle())) return false;
     const active = await db.select({ id: runs.id }).from(runs).innerJoin(projects, eq(projects.id, runs.projectId))
       .where(and(eq(projects.organizationId, organizationId), inArray(runs.status, ["queued", "running"]), or(sql`${runs.errorDetails} IS NULL`, ne(runs.errorDetails, RUN_CANCELLATION_MARKER))))
       .limit(QUIESCE_BATCH);
@@ -217,6 +235,7 @@ export async function quiesceOrganization(organizationId: string, options: { bud
   // 2. Schedules, keyset-paged so a failure keeps the cursor and the next pass retries the same page.
   for (const kind of ["job", "monitor"] as const) {
     for (;;) {
+      if (!(await stillThisCycle())) return false;
       const after = meta.quiesceAfter?.[kind];
       const page = kind === "job"
         ? await db.select({ id: jobs.id, scheduledId: jobs.scheduledJobId }).from(jobs).where(and(eq(jobs.organizationId, organizationId), after ? gt(jobs.id, after) : undefined)).orderBy(asc(jobs.id)).limit(QUIESCE_BATCH)
@@ -229,7 +248,8 @@ export async function quiesceOrganization(organizationId: string, options: { bud
           return true;
         } catch { return false; }
       }));
-      if (results.some((ok) => !ok)) return false; // retried by the sweep; the cursor stays on this page
+      // A real scheduler failure is an error (recorded and backed off by the purge, logged by the sweep), not a quiet "not yet".
+      if (results.some((ok) => !ok)) throw new Error("Could not remove schedules; will retry");
       meta = { ...meta, quiesceAfter: { ...meta.quiesceAfter, [kind]: page[page.length - 1].id } };
       await save({ quiesceAfter: meta.quiesceAfter });
       if (Date.now() > deadline) return false;

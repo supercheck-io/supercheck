@@ -66,7 +66,6 @@ export async function DELETE(
   const resolvedParams = await params;
   try {
     const { userId, organizationId, isCliAuth } = await requireUserAuthContext();
-    if (await isOrgPendingDeletion(organizationId, { fresh: true })) return pendingDeletionResponse();
     if (isCliAuth) {
       return NextResponse.json({ error: "Organization administration requires an interactive browser session; CLI tokens are project-scoped" }, { status: 403 });
     }

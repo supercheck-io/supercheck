@@ -6,6 +6,8 @@ import { adminDeniedResponse } from "@/lib/admin-errors";
 import { getCurrentUser } from "@/lib/session";
 import { isImpersonatedSession } from "@/lib/rbac/middleware";
 import { checkAdminRateLimit } from "@/lib/session-security";
+import { requireSameOriginRequest } from "@/lib/security/same-origin";
+import { isFreshSession, reauthRequiredResponse } from "@/lib/deletion/reauth";
 import { purgeOrganizationNow } from "@/lib/deletion/organization";
 
 const bodySchema = z.object({ reason: z.string().trim().min(10).max(500), confirmOrganizationId: z.string().uuid() });
@@ -22,6 +24,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const admin = await getCurrentUser();
     if (!admin) throw new Error("Authentication required");
     if (await isImpersonatedSession()) return NextResponse.json({ success: false, error: "Stop impersonating before purging organizations" }, { status: 403 });
+    const originError = requireSameOriginRequest(request);
+    if (originError) return originError;
+    if (!(await isFreshSession())) return reauthRequiredResponse();
     if (!isUuid(id)) return NextResponse.json({ success: false, error: "Organization not found" }, { status: 404 });
     const limit = await checkAdminRateLimit(admin.id, "purge_organization", 10, 10 * 60 * 1000);
     if (!limit.allowed) return NextResponse.json({ success: false, error: "Too many purges. Try again later." }, { status: 429 });

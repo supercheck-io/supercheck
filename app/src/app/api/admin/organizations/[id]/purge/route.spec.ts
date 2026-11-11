@@ -5,6 +5,7 @@ jest.mock("@/lib/admin-errors", () => ({ adminDeniedResponse: jest.fn(() => null
 jest.mock("@/lib/session", () => ({ getCurrentUser: jest.fn(async () => ({ id: "admin" })) }));
 jest.mock("@/lib/rbac/middleware", () => ({ isImpersonatedSession: jest.fn(async () => false) }));
 jest.mock("@/lib/session-security", () => ({ checkAdminRateLimit: jest.fn(async () => ({ allowed: true })) }));
+jest.mock("@/lib/deletion/reauth", () => ({ isFreshSession: jest.fn(async () => true), reauthRequiredResponse: jest.fn(() => new Response(null, { status: 403 })) }));
 jest.mock("@/lib/deletion/organization", () => ({ purgeOrganizationNow: jest.fn() }));
 import { requireAdmin } from "@/lib/admin";
 import { adminDeniedResponse } from "@/lib/admin-errors";
@@ -13,7 +14,7 @@ import { purgeOrganizationNow } from "@/lib/deletion/organization";
 import { POST } from "./route";
 
 const ORG_ID = "267cc333-3242-5fc2-821c-51a1a17b9580";
-const call = (body: unknown) => POST(new NextRequest("http://localhost/x", { method: "POST", body: JSON.stringify(body) }), { params: Promise.resolve({ id: ORG_ID }) });
+const call = (body: unknown) => POST(new NextRequest("https://app.supercheck.io/x", { method: "POST", headers: { origin: "https://app.supercheck.io" }, body: JSON.stringify(body) }), { params: Promise.resolve({ id: ORG_ID }) });
 const valid = { reason: "Legal erasure request 2026-11", confirmOrganizationId: ORG_ID };
 
 describe("super admin early purge", () => {
@@ -41,6 +42,13 @@ describe("super admin early purge", () => {
     (adminDeniedResponse as jest.Mock).mockReturnValueOnce(new Response(null, { status: 403 }));
     expect((await call(valid)).status).toBe(403);
     (isImpersonatedSession as jest.Mock).mockResolvedValueOnce(true);
+    expect((await call(valid)).status).toBe(403);
+    expect(purgeOrganizationNow).not.toHaveBeenCalled();
+  });
+
+  it("asks for a fresh sign-in first", async () => {
+    const { isFreshSession } = jest.requireMock("@/lib/deletion/reauth");
+    isFreshSession.mockResolvedValueOnce(false);
     expect((await call(valid)).status).toBe(403);
     expect(purgeOrganizationNow).not.toHaveBeenCalled();
   });

@@ -17,10 +17,13 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     if (isCliAuth) return NextResponse.json({ error: "Organization administration requires an interactive browser session; CLI tokens are project-scoped" }, { status: 403 });
     const { id } = await params;
     if (!isUuid(id)) return NextResponse.json({ error: "Organization not found" }, { status: 404 });
-    if (!(await getUserOrgRole(userId, id))) return NextResponse.json({ error: "Organization not found" }, { status: 404 });
+    const role = await getUserOrgRole(userId, id);
+    if (!role) return NextResponse.json({ error: "Organization not found" }, { status: 404 });
     const state = await getOrganizationDeletionState(id);
     if (!state) return NextResponse.json({ error: "Organization not found" }, { status: 404 });
-    return NextResponse.json({ success: true, deletion: { ...state, reauthMaxAgeSeconds: reauthMaxAgeSeconds() } });
+    // Raw purge errors can carry internal detail: owners only (super admins read them in the admin view).
+    const purge = state.purge && role !== "org_owner" ? { ...state.purge, lastError: state.purge.lastError ? "Purge is retrying" : null } : state.purge;
+    return NextResponse.json({ success: true, deletion: { ...state, purge, reauthMaxAgeSeconds: reauthMaxAgeSeconds() } });
   } catch (error) {
     if (isAuthError(error)) return NextResponse.json({ error: error instanceof Error ? error.message : "Authentication required" }, { status: authErrorStatus(error) });
     console.error("Failed to read organization deletion state:", error);

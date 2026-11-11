@@ -358,6 +358,20 @@ describe("organization deletion billing (Polar mocked)", () => {
     expect((await orgRow(seeded.orgId)).deletion_requested_at).toBeNull();
   });
 
+  it("a cancel that lands while the provider call is in flight gets its subscription reinstated, not silently ended", async () => {
+    cloud();
+    const seeded = await seedOrg({ subscription: "sub_10" });
+    mockPolarGet.mockResolvedValueOnce({ cancel_at_period_end: false, status: "active" }).mockResolvedValue({ cancel_at_period_end: true, status: "active" });
+    mockPolarUpdate.mockImplementationOnce(async () => {
+      // The owner cancels after we read the state but before our result is written.
+      await client`UPDATE organization SET deletion_requested_at = NULL, deletion_purge_after = NULL, deletion_meta = '{}' WHERE id = ${seeded.orgId}`;
+    });
+    await requestOrganizationDeletion({ organizationId: seeded.orgId, actorUserId: seeded.ownerId, guard: { ownerUserId: seeded.ownerId } });
+    expect(mockPolarUpdate).toHaveBeenCalledTimes(2);
+    expect(mockPolarUpdate).toHaveBeenLastCalledWith("sub_10", { cancel_at_period_end: false });
+    expect((await orgRow(seeded.orgId)).deletion_meta).toEqual({});
+  });
+
   it("a refused (too late) cancel never touches billing", async () => {
     cloud();
     mockPolarGet.mockResolvedValue({ cancel_at_period_end: false, status: "active" });

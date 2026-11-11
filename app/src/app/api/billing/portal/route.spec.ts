@@ -1,4 +1,5 @@
 /** @jest-environment node */
+jest.mock("@/lib/deletion/org-state");
 import { NextRequest } from "next/server";
 
 const mockFindFirst = jest.fn();

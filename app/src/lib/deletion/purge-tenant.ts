@@ -27,7 +27,8 @@ const count = (state: ProjectState, key: string, add: number) => ({ ...state.cou
 
 /** Run one child job/monitor purge step and fold its position back into the state. */
 async function stepChild(row: DeletionRow, state: ProjectState, child: Child): Promise<Pass> {
-  const synthetic = { ...row, scope: child.kind, targetId: child.id, phase: child.phase ?? (child.kind === "job" ? "drain" : "results"), cursor: child.cursor ?? {} } as DeletionRow;
+  // The drain wait is bounded from when this purge began (not from the request, days earlier).
+  const synthetic = { ...row, createdAt: row.startedAt ?? new Date(), scope: child.kind, targetId: child.id, phase: child.phase ?? (child.kind === "job" ? "drain" : "results"), cursor: child.cursor ?? {} } as DeletionRow;
   const result: StepResult = await (child.kind === "job" ? purgeJobStep : purgeMonitorStep)(synthetic);
   if (result.done) return { done: false, state: { ...state, child: undefined, counts: count(state, `${child.kind}s`, 1) } };
   return { done: false, state: { ...state, child: { ...child, phase: result.phase, cursor: result.progress ?? child.cursor } }, delayMs: result.delayMs };
