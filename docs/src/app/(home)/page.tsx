@@ -4,7 +4,7 @@ import { ArrowRight, BellRing, CircleCheck, Code, Globe, Radio, Siren, Sparkles 
 import { SiteHeader } from "../../components/site-header";
 import { CodeWindow } from "../../components/landing/code-window";
 import { CopyCommand, HeroVideo } from "../../components/landing/interactive";
-import { CheckList, IconChip, Screenshot, SectionHeading, SolutionCards, primaryButton, secondaryButton, textLink, type Area, type ShotFocus } from "../../components/landing/ui";
+import { CheckList, IconChip, Screenshot, SectionHeading, SolutionCards, primaryButton, secondaryButton, textLink, type Area } from "../../components/landing/ui";
 import { SiteFooter } from "../../components/site-footer";
 import { toolGroups } from "../../components/landing/tool-logos";
 import { DEMO_URL } from "../../lib/site-nav";
@@ -18,7 +18,7 @@ const products = [
     icon: Code,
     summary: "Write, record and run end-to-end and load tests.",
     href: "/docs/app/automate",
-    shot: { src: "/screenshots/site/playground-editor.webp", alt: "Playground editor with a Playwright checkout test", focus: { x: 0.16, y: 0.055, w: 0.84, h: 0.62 } satisfies ShotFocus },
+    shot: { src: "/screenshots/site/playground-editor.webp", alt: "Playground editor with a Playwright checkout test" },
     items: [
       "Playwright browser, API and database tests",
       "k6 load tests with streaming logs and run comparison",
@@ -33,7 +33,7 @@ const products = [
     icon: Globe,
     summary: "Know when something breaks before your users tell you.",
     href: "/docs/app/monitor",
-    shot: { src: "/screenshots/site/monitors-list.webp", alt: "Monitors list with HTTP, website, ping, port and synthetic monitors", focus: { x: 0.165, y: 0.06, w: 0.835, h: 0.62 } satisfies ShotFocus },
+    shot: { src: "/screenshots/site/monitors-list.webp", alt: "Monitors list with HTTP, website, ping, port and synthetic monitors" },
     items: [
       "HTTP, website, ping and port checks",
       "Uptime checks from several regions, including Europe, North America and Asia Pacific on Cloud",
@@ -47,7 +47,7 @@ const products = [
     icon: Siren,
     summary: "Monitor and job alerts open an incident you can work from (on by default, per check).",
     href: "/docs/app/investigate",
-    shot: { src: "/screenshots/site/incident-workspace-overview.webp", alt: "Incident workspace for a Checkout API outage with an AI summary", focus: { x: 0.2, y: 0.07, w: 0.8, h: 0.7 } satisfies ShotFocus },
+    shot: { src: "/screenshots/site/incident-workspace-overview.webp", alt: "Incident workspace for a Checkout API outage with an AI summary" },
     items: [
       "One incident per failing source, resolved on recovery unless someone has acknowledged it",
       "AI SRE investigations that cite their evidence",
@@ -62,7 +62,7 @@ const products = [
     icon: Radio,
     summary: "Tell your team first, then tell your users.",
     href: "/docs/app/communicate",
-    shot: { src: "/screenshots/site/status-page-public.webp", alt: "Public status page with a partial outage banner and 90 days of uptime per component", focus: { x: 0.2, y: 0.03, w: 0.6, h: 0.72 } satisfies ShotFocus },
+    shot: { src: "/screenshots/site/status-page-public.webp", alt: "Public status page with a partial outage banner and 90 days of uptime per component" },
     items: [
       "Notifications by email, Slack, Teams, Discord, Telegram and webhooks",
       "Public status pages on your own domain",
@@ -243,7 +243,7 @@ export default async function HomePage() {
                     </Link>
                   </div>
                   <div className={index % 2 === 1 ? "lg:order-1" : undefined}>
-                    <Screenshot src={product.shot.src} alt={product.shot.alt} focus={product.shot.focus} />
+                    <Screenshot src={product.shot.src} alt={product.shot.alt} />
                   </div>
                 </div>
               ))}
