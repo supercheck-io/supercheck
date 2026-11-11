@@ -32,6 +32,7 @@ import {
   isMutableImageReference,
   parseImagePullPolicyOverride,
 } from '../utils/image-reference';
+import { EGRESS_GUARD_MAX_WAIT_MS, EGRESS_GUARD_SCRIPT } from './egress-guard';
 
 /** Recorded for a run whose execution Job the shutdown drain deleted. */
 export const WORKER_INTERRUPTED_ERROR = 'Interrupted by worker restart';
@@ -1078,7 +1079,8 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       const outcome = await this.waitForExecutionOutcome(
         podName,
         workspace,
-        limits.timeoutMs,
+        // Headroom for the egress wait that precedes the script.
+        limits.timeoutMs + EGRESS_GUARD_MAX_WAIT_MS,
         startEvidence,
         async () => {
           if (options.extractFromContainer && options.extractToHost) {
@@ -1364,6 +1366,29 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
               fsGroup: 1000,
               seccompProfile: { type: 'RuntimeDefault' },
             },
+            // Own init container: a failure leaves the execution container
+            // unstarted (nothing billed) and its exit code cannot be forged by
+            // user code or influenced by caller env.
+            initContainers: [
+              {
+                name: 'egress-wait',
+                image,
+                imagePullPolicy: this.resolveExecutionImagePullPolicy(image),
+                command: ['node', '-e', EGRESS_GUARD_SCRIPT],
+                resources: {
+                  requests: { cpu: '100m', memory: '128Mi' },
+                  limits: { cpu: '200m', memory: '256Mi' },
+                },
+                securityContext: {
+                  runAsNonRoot: true,
+                  runAsUser: 1000,
+                  allowPrivilegeEscalation: false,
+                  readOnlyRootFilesystem: true,
+                  capabilities: { drop: ['ALL'] },
+                  seccompProfile: { type: 'RuntimeDefault' },
+                },
+              },
+            ],
             containers: [
               {
                 name: 'execution',
@@ -2084,6 +2109,20 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       const executionState = pod.status?.containerStatuses?.find(
         (container) => container.name === 'execution',
       )?.state;
+      const guardFailure = pod.status?.initContainerStatuses?.find(
+        (c) =>
+          c.name === 'egress-wait' &&
+          (c.state?.terminated?.exitCode ?? 0) !== 0,
+      )?.state?.terminated;
+      if (guardFailure) {
+        return {
+          exitCode: guardFailure.exitCode,
+          timedOut: false,
+          cancelled: false,
+          message:
+            'Infrastructure error: execution network isolation not enforced; the run was not started',
+        };
+      }
       const terminated = executionState?.terminated;
       const startedAtRaw =
         executionState?.running?.startedAt ?? terminated?.startedAt;

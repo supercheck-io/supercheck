@@ -807,6 +807,41 @@ describe('ContainerExecutorService', () => {
   });
 
   describe('kubernetes execution', () => {
+    it('reports a failed egress-wait init container as an unstarted infrastructure error', async () => {
+      service['coreApi'] = {
+        readNamespacedPod: jest.fn().mockResolvedValue({
+          status: {
+            initContainerStatuses: [
+              {
+                name: 'egress-wait',
+                state: { terminated: { exitCode: 78, reason: 'Error' } },
+              },
+            ],
+            containerStatuses: [
+              {
+                name: 'execution',
+                state: { waiting: { reason: 'PodInitializing' } },
+              },
+            ],
+          },
+        }),
+      } as unknown as NonNullable<(typeof service)['coreApi']>;
+      const evidence = { startedAtMs: null, finishedAtMs: null };
+      const outcome = await service['waitForExecutionOutcome'](
+        'pod',
+        '/tmp/run',
+        1000,
+        evidence,
+        jest.fn(),
+      );
+      expect(outcome).toMatchObject({
+        exitCode: 78,
+        timedOut: false,
+        message: expect.stringContaining('Infrastructure error'),
+      });
+      expect(evidence.startedAtMs).toBeNull();
+    });
+
     it('retains the numeric exit-code fallback for a generic Kubernetes Error', async () => {
       service['coreApi'] = {
         readNamespacedPod: jest.fn().mockResolvedValue({
@@ -1333,6 +1368,21 @@ describe('ContainerExecutorService', () => {
 
       expect(podSpec.serviceAccountName).toBe('execution-runner');
       expect(podSpec.automountServiceAccountToken).toBe(false);
+      expect(bootstrapScript).not.toContain('egress');
+      expect(podSpec.initContainers).toEqual([
+        expect.objectContaining({
+          name: 'egress-wait',
+          command: [
+            'node',
+            '-e',
+            expect.stringContaining('KUBERNETES_SERVICE_HOST'),
+          ],
+          // execution-guardrails LimitRange (setup-k3s.sh) requires >= 128Mi per container.
+          resources: expect.objectContaining({
+            requests: { cpu: '100m', memory: '128Mi' },
+          }),
+        }),
+      ]);
       expect(container.env).toEqual(
         expect.arrayContaining([
           expect.objectContaining({ name: 'PUBLIC_SETTING', value: 'visible' }),
