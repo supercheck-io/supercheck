@@ -224,6 +224,71 @@ describe('ContainerExecutorService', () => {
       expect(service['coreApi'].listNamespacedPod).not.toHaveBeenCalled();
     });
 
+    describe('pod admission rejection', () => {
+      const withEvents = (
+        listNamespacedEvent: jest.Mock,
+        pods: unknown[] = [],
+      ) => {
+        service['coreApi'] = {
+          listNamespacedPod: jest
+            .fn()
+            .mockResolvedValueOnce({ items: pods })
+            .mockResolvedValue({ items: [{ metadata: { name: 'pod-a' } }] }),
+          listNamespacedEvent,
+        } as unknown as NonNullable<(typeof service)['coreApi']>;
+        service['sleep'] = jest.fn().mockResolvedValue(undefined);
+      };
+
+      it('fails at once with a sanitized infrastructure error when admission denied the pod', async () => {
+        const listNamespacedEvent = jest.fn().mockResolvedValue({
+          items: [
+            {
+              message:
+                'Error creating: pods "j" is forbidden: ValidatingAdmissionPolicy \'p\' denied request\u0007',
+            },
+          ],
+        });
+        withEvents(listNamespacedEvent);
+        await expect(service['waitForExecutionPod']('job-a')).rejects.toThrow(
+          /^Infrastructure error: Execution pod was rejected by the cluster: .*denied request $/,
+        );
+        expect(listNamespacedEvent).toHaveBeenCalledWith({
+          namespace: expect.any(String),
+          fieldSelector: 'involvedObject.name=job-a,reason=FailedCreate',
+        });
+      });
+
+      it('keeps waiting on quota events and on unrelated events', async () => {
+        withEvents(
+          jest.fn().mockResolvedValue({
+            items: [{ message: 'pods "j" is forbidden: exceeded quota: q' }],
+          }),
+        );
+        await expect(service['waitForExecutionPod']('job-b')).resolves.toBe(
+          'pod-a',
+        );
+      });
+
+      it('tolerates 403 on events and logs once', async () => {
+        const warn = jest.spyOn(service['logger'], 'warn');
+        withEvents(jest.fn().mockRejectedValue(new Error('HTTP-Code: 403')));
+        service['coreApi']!.listNamespacedPod = jest
+          .fn()
+          .mockResolvedValueOnce({ items: [] })
+          .mockResolvedValueOnce({ items: [] })
+          .mockResolvedValue({ items: [{ metadata: { name: 'pod-a' } }] });
+        await expect(service['waitForExecutionPod']('job-c')).resolves.toBe(
+          'pod-a',
+        );
+        await service['failIfPodRejected']('job-c');
+        expect(
+          warn.mock.calls.filter((c) =>
+            /Cannot read execution events/.test(String(c[0])),
+          ),
+        ).toHaveLength(1);
+      });
+    });
+
     it('maps any failure after shutdown deleted the run Job to an interrupted result', async () => {
       service['batchApi'] = {
         createNamespacedJob: jest
@@ -1499,6 +1564,9 @@ describe('ContainerExecutorService', () => {
       const bootstrapScript = container.command[2] as string;
 
       expect(podSpec.serviceAccountName).toBe('execution-runner');
+      expect(job.spec.template.metadata.annotations).toEqual({
+        'supercheck.io/scrape-logs': 'false',
+      });
       expect(podSpec.automountServiceAccountToken).toBe(false);
       expect(bootstrapScript).not.toContain('egress');
       expect(podSpec.initContainers).toEqual([
