@@ -24,7 +24,8 @@ Every colour has one job. New code uses the token, never a raw palette class or 
 | Status | `success`, `warning`, `failure`, plus the `TableBadge` tones | Badges, status dots and charts only, always beside a text label or an icon |
 
 - Area colours mark where you are; status colours say how something is. They never swap jobs. An area colour never shows up on a status badge, and a status colour never decorates a heading.
-- Incident lifecycle: Triggered `danger`, Acknowledged `warning`, Investigating `info`, Fixing `indigo`, Monitoring `cyan`, Resolved `success` (`app/src/lib/sre/incident-status-display.ts`).
+- Incident lifecycle: Triggered `danger`, Acknowledged `warning`, Investigating `info`, Fixing `purple`, Monitoring `cyan`, Resolved `success` (`app/src/lib/sre/incident-status-display.ts`).
+- Status badges never use an area colour: `indigo` is reserved for the Communicate area, so Fixing and monitor Maintenance use `purple`.
 - Charts use `var(--chart-1)` to `var(--chart-5)`, and raw `var(--success)`, `var(--warning)` and `var(--failure)` for bright fills. Never write `hsl(var(--token))`: the tokens are oklch.
 - Contrast: Tailwind classes (`text-success`, `bg-warning/10`, `text-monitor`, ...) resolve to shades that meet WCAG AA (4.5:1) on cards in light mode (`--success-strong`, `--warning-strong`, `--failure-strong`, and the 700-shade area values; 600 for communicate and settings, still above 6:1 on white). Don't use the raw chart `var()`s for text.
 
