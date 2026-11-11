@@ -1771,7 +1771,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     const denied = items.find(
       (event) =>
         /forbidden|denied|admission/i.test(event.message ?? '') &&
-        !/exceeded quota/i.test(event.message ?? ''),
+        !/quota|error looking up service account/i.test(event.message ?? ''),
     );
     if (denied) {
       // Control characters stripped and length capped: the text comes from the cluster.
