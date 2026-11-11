@@ -88,6 +88,13 @@ export type GroupAlertEvaluation = {
   alertState?: AggregatedAlertState;
 };
 
+/**
+ * A group is evaluated only while its check is recent. Retries and late regions end within about 80 minutes,
+ * and receipts are kept at least two days (telemetry-retention.ts), so a group this old that has no receipt is
+ * stale: applying it would re-count it and overwrite the monitor's current status with an old one.
+ */
+export const GROUP_EVALUATION_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
 /** Where a group's alert receipt lives: its own row, or (groups from older workers) a result row's details. */
 export type GroupReceipt =
   { kind: 'group' } | { kind: 'legacy'; resultId: string };
@@ -847,6 +854,12 @@ export class MonitorEvaluator {
         )
         .limit(1);
       if (!row) throw new Error('Persisted aggregation group is missing');
+      if (Date.now() - checkedAt.getTime() > GROUP_EVALUATION_MAX_AGE_MS) {
+        this.logger.warn(
+          `Skipping stale check group ${executionGroupId} for monitor ${monitorId}: checked at ${checkedAt.toISOString()}`,
+        );
+        return null;
+      }
       const previousStatus = monitor.status;
       const evaluation: GroupAlertEvaluation = {
         previousStatus,

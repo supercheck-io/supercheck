@@ -12,6 +12,8 @@ export interface TelemetryRetentionRule {
   protect?: string;
   /** Floor for the per-run row cap, for tables that grow faster than the shared limit. */
   minSafetyLimit?: number;
+  /** Smallest retention honoured; a lower setting is raised to it (rows a correctness check still needs). */
+  minDays?: number;
 }
 
 export const TELEMETRY_RETENTION_RULES: readonly TelemetryRetentionRule[] = [
@@ -70,6 +72,9 @@ export const TELEMETRY_RETENTION_RULES: readonly TelemetryRetentionRule[] = [
     timeColumn: "created_at",
     envVar: "MONITOR_GROUP_EVALUATION_RETENTION_DAYS",
     defaultDays: 14,
+    // The worker refuses to evaluate a group older than one day (GROUP_EVALUATION_MAX_AGE_MS), so a receipt
+    // must outlive that: a lower setting would let a stale group apply again once its receipt is gone.
+    minDays: 2,
   },
 ];
 
@@ -79,9 +84,11 @@ export function resolveRetentionDays(
   env: Record<string, string | undefined> = process.env,
 ): number {
   const parsed = Number(env[rule.envVar]);
-  return Number.isInteger(parsed) && parsed >= 1 && parsed <= 3650
-    ? parsed
-    : rule.defaultDays;
+  const days =
+    Number.isInteger(parsed) && parsed >= 1 && parsed <= 3650
+      ? parsed
+      : rule.defaultDays;
+  return Math.max(days, rule.minDays ?? 1);
 }
 
 /** Integer in [min, max] from a raw value; anything else (NaN, negative, too large) falls back with a warning. */

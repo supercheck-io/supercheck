@@ -25,7 +25,8 @@ suite('MonitorEvaluator group receipt (PostgreSQL)', () => {
   let db: ReturnType<typeof drizzle<typeof schema>>;
   let evaluator: MonitorEvaluator;
   let monitorId: string;
-  const checkedAt = new Date('2026-11-12T10:00:00Z');
+  // Recent: the evaluator refuses groups older than GROUP_EVALUATION_MAX_AGE_MS.
+  const checkedAt = new Date(Date.now() - 60_000);
 
   beforeAll(async () => {
     testDb = await createTestDatabase(url!);

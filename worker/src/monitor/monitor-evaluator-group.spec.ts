@@ -1,4 +1,8 @@
-import { MonitorEvaluator, type GroupReceipt } from './monitor-evaluator';
+import {
+  GROUP_EVALUATION_MAX_AGE_MS,
+  MonitorEvaluator,
+  type GroupReceipt,
+} from './monitor-evaluator';
 import * as schema from '../db/schema';
 
 type ResultRow = {
@@ -116,13 +120,18 @@ function fakeGroupStore(
     evaluator,
     receipts,
     writes,
-    prepare(g: string, status: 'up' | 'down', resultCount = 2) {
+    prepare(
+      g: string,
+      status: 'up' | 'down',
+      resultCount = 2,
+      checkedAt = new Date(),
+    ) {
       group = g;
       return evaluator.prepareGroupEvaluation(
         'm1',
         g,
         status,
-        new Date('2026-11-12T10:00:00Z'),
+        checkedAt,
         resultCount,
       );
     },
@@ -246,6 +255,37 @@ describe('MonitorEvaluator group receipt', () => {
     );
     expect(store.writes).toEqual({ monitor: 0, results: 0, inserts: 0 });
     expect(monitor.status).toBe('up');
+  });
+
+  it('refuses a stale group with no receipt, leaving status and counters alone', async () => {
+    const monitor = multiLocationMonitor('up');
+    const store = fakeGroupStore(monitor, groupRows('old'));
+    const dayAndAMinuteAgo = new Date(
+      Date.now() - GROUP_EVALUATION_MAX_AGE_MS - 60_000,
+    );
+    await expect(
+      store.prepare('old', 'down', 2, dayAndAMinuteAgo),
+    ).resolves.toBeNull();
+    expect(store.writes).toEqual({ monitor: 0, results: 0, inserts: 0 });
+    expect(monitor.status).toBe('up');
+  });
+
+  it('still evaluates a group just inside the age limit', async () => {
+    const store = fakeGroupStore(multiLocationMonitor('up'), groupRows('late'));
+    const almostADay = new Date(
+      Date.now() - GROUP_EVALUATION_MAX_AGE_MS + 60_000,
+    );
+    await expect(
+      store.prepare('late', 'down', 2, almostADay),
+    ).resolves.toMatchObject({ receipt: { kind: 'group' } });
+  });
+
+  it('resumes an existing receipt even when the check is older than the limit', async () => {
+    const store = fakeGroupStore(multiLocationMonitor('up'), groupRows('g1'));
+    const first = await store.prepare('g1', 'down');
+    const old = new Date(Date.now() - GROUP_EVALUATION_MAX_AGE_MS - 60_000);
+    const retry = await store.prepare('g1', 'down', 2, old);
+    expect(retry!.evaluation).toEqual(first!.evaluation);
   });
 
   it('returns null for a deleted monitor', async () => {
