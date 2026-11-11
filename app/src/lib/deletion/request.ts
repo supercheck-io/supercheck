@@ -1,10 +1,9 @@
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/utils/db";
 import { jobs, monitors, runs, statusPageComponentMonitors } from "@/db/schema";
 import { deleteScheduledJob } from "@/lib/job-scheduler";
 import { deleteScheduledMonitor } from "@/lib/monitor-scheduler";
 import { RUN_CANCELLATION_MARKER, setCancellationSignal } from "@/lib/cancellation-service";
-import { sql } from "drizzle-orm";
 import { DELETION_TX_LIMITS, DELETION_TX_STATEMENT_LIMIT } from "@/lib/resource-deletion/chunks";
 import { insertDeletionJob } from "./jobs";
 import { triggerDeletion } from "./queue";
