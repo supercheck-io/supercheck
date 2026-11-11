@@ -42,7 +42,7 @@ Execution pods do not receive Kubernetes credentials.
 
 ### Network isolation check (fail closed)
 
-Every execution Job has an `egress-wait` init container that probes the Kubernetes API Service. If it stays reachable for 20 s the NetworkPolicy is not being enforced, so the pod exits 78 and user code never starts. The run is reported as `Infrastructure error: execution network isolation not enforced; the run was not started`, is not billed and is not a test failure. If admission control rejects the pod instead (for example a policy that denies init containers), the worker reads the Job's `FailedCreate` events and fails the run immediately with `Infrastructure error: Execution pod was rejected by the cluster: <reason>`.
+Every execution Job has an `egress-wait` init container that probes the Kubernetes API Service once a second and passes only after two blocked probes in a row (refused or timed out), so a single refusal from a restarting API server is not taken as proof. If it stays reachable for 20 s the NetworkPolicy is not being enforced, so the pod exits 78 and user code never starts. The run is reported as `Infrastructure error: execution network isolation not enforced; the run was not started`, is not billed and is not a test failure. If admission control rejects the pod instead (for example a policy that denies init containers), the worker reads the Job's `FailedCreate` events and fails the run immediately with `Infrastructure error: Execution pod was rejected by the cluster: <reason>`.
 
 ### Log collectors
 

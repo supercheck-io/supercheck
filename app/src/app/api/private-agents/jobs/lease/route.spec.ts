@@ -7,6 +7,7 @@ jest.mock("@/utils/db", () => ({
     transaction: jest.fn(),
     query: { externalConnectorCredentials: { findFirst: jest.fn() }, externalConnectors: { findFirst: jest.fn() } },
     update: jest.fn(),
+    select: jest.fn(),
   },
 }));
 jest.mock("@/lib/sre/connectors", () => ({ decryptConnectorCredential: jest.fn() }));
@@ -23,6 +24,7 @@ const { db: mockDb } = jest.requireMock("@/utils/db") as {
     transaction: jest.Mock;
     query: { externalConnectorCredentials: { findFirst: jest.Mock }; externalConnectors: { findFirst: jest.Mock } };
     update: jest.Mock;
+    select: jest.Mock;
   };
 };
 
@@ -172,6 +174,50 @@ describe("Private Agent job lease route", () => {
     // Only the agent heartbeat touch runs; no job state is changed.
     expect(sets.every((values) => !("status" in values && values.status !== undefined))).toBe(true);
     expect(selectedWork).not.toHaveBeenCalled();
+  });
+});
+
+describe("Private Agent job lease route long poll", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.useFakeTimers();
+    mockAuthenticatePrivateAgent.mockResolvedValue({
+      agent: { id: "a", organizationId: "o", supportsSreConnectors: true },
+      credential: { id: "c" },
+    });
+    mockDb.update.mockReturnValue({ set: jest.fn(() => ({ where: jest.fn().mockResolvedValue([]) })) });
+    mockDb.transaction.mockImplementation(async () => null);
+  });
+  afterEach(() => jest.useRealTimers());
+
+  const poll = async (waitMs: number, advanceMs: number) => {
+    const pending = POST(new NextRequest("http://localhost/api/private-agents/jobs/lease", { method: "POST", body: JSON.stringify({ waitMs }) }));
+    await jest.advanceTimersByTimeAsync(advanceMs);
+    return pending;
+  };
+  const probe = (found: boolean) =>
+    mockDb.select.mockReturnValue({ from: () => ({ where: () => ({ limit: async () => (found ? [{ id: "j" }] : []) }) }) });
+
+  it("idle ticks only probe; the full transaction runs on the first tick and every 5s", async () => {
+    probe(false);
+    const res = await poll(12_000, 12_000);
+    expect(await res.json()).toEqual({ job: null });
+    // full ticks at t=0, 5s, 10s plus the final touchAgent; 12 one-second ticks, 2 of them full
+    expect(mockDb.transaction.mock.calls.length).toBe(3 + 1);
+    expect(mockDb.select.mock.calls.length).toBe(10);
+  });
+
+  it("runs the full transaction (credential check included) as soon as queued work appears", async () => {
+    probe(true);
+    await poll(3_000, 3_000);
+    // initial tick, a full tick on each of the 3 probe hits, and touchAgent
+    expect(mockDb.transaction.mock.calls.length).toBe(1 + 3 + 1);
+  });
+
+  it("does not probe when waitMs is 0", async () => {
+    probe(true);
+    await poll(0, 0);
+    expect(mockDb.select).not.toHaveBeenCalled();
   });
 });
 
