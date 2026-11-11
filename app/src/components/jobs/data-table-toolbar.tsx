@@ -23,7 +23,7 @@ export function DataTableToolbar<TData>({
   const { canCreateJob } = useJobPermissions();
 
   return (
-    <div className="flex items-center justify-between mb-4 -mt-2" >
+    <div className="flex flex-wrap items-center justify-between gap-2 mb-4 -mt-2">
       <div className="flex items-start gap-3">
 
         <IconChip icon={CalendarClock} tone="automate" size="md" className="mt-0.5" />

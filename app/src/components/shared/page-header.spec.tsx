@@ -34,6 +34,15 @@ describe("PageHeader", () => {
     expect(screen.getByRole("heading", { level: 1, name: "Notifications" })).toBeInTheDocument();
   });
 
+  it("keeps the title adornment visible next to an icon chip", () => {
+    render(
+      <PageHeader title="Organization" icon={Bell} titleAdornment={<span>Acme Inc</span>} />,
+    );
+
+    expect(screen.getByRole("heading", { level: 1, name: "Organization" })).toBeInTheDocument();
+    expect(screen.getByText("Acme Inc")).toBeVisible();
+  });
+
   it("defaults the chip to the neutral slate tone", () => {
     const { container } = render(<PageHeader title="Organization" icon={Bell} />);
 
