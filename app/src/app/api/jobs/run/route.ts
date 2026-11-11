@@ -31,6 +31,7 @@ import {
   buildExecutionPolicyFailureResponse,
 } from "@/lib/execution-api-responses";
 import { requireSameOriginRequest } from "@/lib/security/same-origin";
+import { isJobDeletingError } from "@/lib/deletion/errors";
 
 export async function POST(request: NextRequest) {
   let jobId: string | null = null;
@@ -194,7 +195,8 @@ export async function POST(request: NextRequest) {
     runId = crypto.randomUUID();
     const startTime = new Date();
     
-    await db.insert(runs).values({
+    try {
+      await db.insert(runs).values({
       id: runId,
       jobId,
       projectId: jobRecord?.projectId ?? null,
@@ -213,6 +215,10 @@ export async function POST(request: NextRequest) {
           : { executionEngine: "playwright" }),
       },
     });
+    } catch (insertError) {
+      if (isJobDeletingError(insertError)) return NextResponse.json({ error: "Job not found" }, { status: 404 });
+      throw insertError;
+    }
 
     console.log(`[${jobId}/${runId}] Created queued run record: ${runId}`);
 

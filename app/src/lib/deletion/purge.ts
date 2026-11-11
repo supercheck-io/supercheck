@@ -14,6 +14,9 @@ export const PURGE_BATCH = Math.min(1000, Math.max(100, Number(process.env.DELET
 /** After this long a running job run that ignored its cancellation is purged anyway. */
 export const DRAIN_MAX_MS = 30 * 60_000;
 
+/** Handed to a step by the runner: `beat` proves the claim is still ours (throws if lost) and keeps the heart beating. */
+export type StepContext = { beat: () => Promise<void> };
+
 /** One unit of work. `phase` is the resume pointer persisted by the runner; every step is idempotent. */
 export type StepResult =
   | { done: true }
@@ -29,13 +32,15 @@ const asInput = (r: { entityId: string; reportPath: string | null; s3Url: string
   ({ reportPath: r.reportPath || undefined, s3Url: r.s3Url || undefined, entityId: r.entityId, entityType });
 
 /** Storage first, so a failure leaves the rows that point at it for the retry. Never called inside a transaction. */
-async function deleteStorage(inputs: ReportDeletionInput[] | ((s3: ReturnType<typeof createS3CleanupService>) => ReportDeletionInput[]), what: string) {
+async function deleteStorage(ctx: StepContext, inputs: ReportDeletionInput[] | ((s3: ReturnType<typeof createS3CleanupService>) => ReportDeletionInput[]), what: string) {
+  await ctx.beat();
   const s3 = createS3CleanupService();
   try { // a client per batch, released afterwards so a long purge does not accumulate sockets
     const list = typeof inputs === "function" ? inputs(s3) : inputs;
     if (list.length === 0) return;
     const result = await s3.deleteReports(list);
     if (!result.success) throw new Error(`Could not delete ${what} storage; will retry`);
+    await ctx.beat();
   } finally {
     s3.destroy();
   }
@@ -46,7 +51,8 @@ const MONITOR_CHILD_TABLES = ["monitor_aggregates", "monitor_cycles", "alert_his
 const JOB_CHILD_TABLES = ["alert_history"] as const;
 
 /** Delete up to one batch of a child table's rows by the target's id; returns how many went. */
-async function deleteChildBatch(table: string, column: "monitor_id" | "job_id", id: string): Promise<number> {
+async function deleteChildBatch(ctx: StepContext, table: string, column: "monitor_id" | "job_id", id: string): Promise<number> {
+  await ctx.beat();
   return db.transaction(async (tx) => {
     await limits(tx);
     const result = await tx.execute(sql`DELETE FROM ${sql.identifier(table)} WHERE ctid IN (SELECT ctid FROM ${sql.identifier(table)} WHERE ${sql.identifier(column)} = ${id} LIMIT ${PURGE_BATCH})`);
@@ -54,9 +60,18 @@ async function deleteChildBatch(table: string, column: "monitor_id" | "job_id", 
   });
 }
 
+/**
+ * Delete report rows only while they still point where they did when their storage was cleaned: a live execution may
+ * have repointed a row (the latest-report alias of a saved test) to a newer report in the meantime, and that one must stay.
+ */
+const deleteReportRows = (tx: Tx, rows: Array<{ id: string; reportPath: string }>) =>
+  rows.length === 0 ? Promise.resolve() : tx.delete(reports).where(
+    sql`(${reports.id}, ${reports.reportPath}) IN (${sql.join(rows.map((r) => sql`(${r.id}::uuid, ${r.reportPath})`), sql`, `)})`,
+  );
+
 const progress = (row: DeletionRow, key: string, add: number) => ({ ...row.cursor, [key]: Number(row.cursor?.[key] ?? 0) + add });
 
-export async function purgeMonitorStep(row: DeletionRow): Promise<StepResult> {
+export async function purgeMonitorStep(row: DeletionRow, ctx: StepContext): Promise<StepResult> {
   const monitorId = row.targetId;
   const phase = row.phase ?? "unschedule";
   if (phase === "unschedule") {
@@ -82,13 +97,14 @@ export async function purgeMonitorStep(row: DeletionRow): Promise<StepResult> {
       ? await db.select(reportColumns).from(reports).where(and(eq(reports.entityType, "monitor"), inArray(reports.s3Url, legacyUrls)))
       : [];
     const reportRows = [...new Map([...byExecution, ...legacy].map((r) => [r.id, r])).values()];
-    await deleteStorage([
+    await deleteStorage(ctx, [
       ...batch.filter((r) => r.url).map((r) => ({ reportPath: r.testExecutionId || undefined, s3Url: r.url || undefined, entityId: r.id, entityType: "monitor" as const })),
       ...reportRows.map((r) => asInput(r, "monitor")),
     ], "monitor");
+    await ctx.beat(); // still our claim? never delete rows on a lost one
     await db.transaction(async (tx) => {
       await limits(tx);
-      if (reportRows.length) await tx.delete(reports).where(inArray(reports.id, reportRows.map((r) => r.id)));
+      await deleteReportRows(tx, reportRows);
       await tx.delete(monitorResults).where(and(eq(monitorResults.monitorId, monitorId), inArray(monitorResults.id, batch.map((r) => r.id))));
     });
     return { done: false, phase: "results", progress: progress(row, "results", batch.length) };
@@ -97,13 +113,14 @@ export async function purgeMonitorStep(row: DeletionRow): Promise<StepResult> {
     // Cycles, aggregates and alert history cascade from the monitor row; delete them in batches first so the final delete is small.
     let deleted = 0;
     for (const table of MONITOR_CHILD_TABLES) {
-      const n = await deleteChildBatch(table, "monitor_id", monitorId);
+      const n = await deleteChildBatch(ctx, table, "monitor_id", monitorId);
       deleted += n;
       if (n === PURGE_BATCH) return { done: false, phase: "children", progress: progress(row, "children", deleted) };
     }
     return { done: false, phase: "final", ...(deleted ? { progress: progress(row, "children", deleted) } : {}) };
   }
   // final: the parent row lock stops new results (their foreign key needs a share lock on it), then verify and delete.
+  await ctx.beat();
   const finished = await db.transaction(async (tx) => {
     await limits(tx);
     const [locked] = await tx.select({ id: monitors.id }).from(monitors).where(eq(monitors.id, monitorId)).for("update");
@@ -118,7 +135,7 @@ export async function purgeMonitorStep(row: DeletionRow): Promise<StepResult> {
   return finished ? { done: true } : { done: false, phase: "results" };
 }
 
-export async function purgeJobStep(row: DeletionRow): Promise<StepResult> {
+export async function purgeJobStep(row: DeletionRow, ctx: StepContext): Promise<StepResult> {
   const jobId = row.targetId;
   const phase = row.phase ?? "unschedule";
   if (phase === "unschedule") {
@@ -147,10 +164,11 @@ export async function purgeJobStep(row: DeletionRow): Promise<StepResult> {
     const aliases = await db.select({ ...reportColumns, entityType: reports.entityType }).from(reports)
       .where(and(eq(reports.entityType, "test"), inArray(reports.reportPath, ids.map((id) => `${id}/report`))));
     const reportRows = [...new Map([...own, ...aliases].map((r) => [r.id, r])).values()];
-    await deleteStorage((s3) => [...reportRows.map((r) => asInput(r, r.entityType)), ...batch.flatMap((r) => s3.getRunArtifactInputs(r))], "job run");
+    await deleteStorage(ctx, (s3) => [...reportRows.map((r) => asInput(r, r.entityType)), ...batch.flatMap((r) => s3.getRunArtifactInputs(r))], "job run");
+    await ctx.beat();
     await db.transaction(async (tx) => {
       await limits(tx);
-      if (reportRows.length) await tx.delete(reports).where(inArray(reports.id, reportRows.map((r) => r.id)));
+      await deleteReportRows(tx, reportRows);
       await removeK6RunLinks(tx, ids);
       await tx.delete(runs).where(and(eq(runs.jobId, jobId), inArray(runs.id, ids)));
     });
@@ -159,7 +177,7 @@ export async function purgeJobStep(row: DeletionRow): Promise<StepResult> {
   if (phase === "children") {
     let deleted = 0;
     for (const table of JOB_CHILD_TABLES) {
-      const n = await deleteChildBatch(table, "job_id", jobId);
+      const n = await deleteChildBatch(ctx, table, "job_id", jobId);
       deleted += n;
       if (n === PURGE_BATCH) return { done: false, phase: "children", progress: progress(row, "children", deleted) };
     }
@@ -167,10 +185,12 @@ export async function purgeJobStep(row: DeletionRow): Promise<StepResult> {
   }
   if (phase === "job_reports") {
     const own = await db.select({ ...reportColumns, entityType: reports.entityType }).from(reports).where(and(eq(reports.entityId, jobId), eq(reports.entityType, "job")));
-    await deleteStorage(own.map((r) => asInput(r, r.entityType)), "job");
-    if (own.length) await db.delete(reports).where(inArray(reports.id, own.map((r) => r.id)));
+    await deleteStorage(ctx, own.map((r) => asInput(r, r.entityType)), "job");
+    await ctx.beat();
+    if (own.length) await db.transaction(async (tx) => { await limits(tx); await deleteReportRows(tx, own); });
     return { done: false, phase: "final" };
   }
+  await ctx.beat();
   const finished = await db.transaction(async (tx) => {
     await limits(tx);
     const [locked] = await tx.select({ id: jobs.id }).from(jobs).where(eq(jobs.id, jobId)).for("update");

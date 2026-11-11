@@ -37,6 +37,7 @@ import {
   getSafeExecutionQueueErrorDetails,
   buildExecutionPolicyFailureResponse,
 } from "@/lib/execution-api-responses";
+import { isJobDeletingError } from "@/lib/deletion/errors";
 
 // POST /api/jobs/[id]/trigger - Trigger job remotely via API key
 export async function POST(
@@ -365,7 +366,8 @@ export async function POST(
     const runId = crypto.randomUUID();
     const startTime = new Date();
 
-    await db.insert(runs).values({
+    try {
+      await db.insert(runs).values({
       id: runId,
       jobId,
       projectId: job.projectId,
@@ -384,6 +386,10 @@ export async function POST(
           : { executionEngine: "playwright" }),
       },
     });
+    } catch (insertError) {
+      if (isJobDeletingError(insertError)) return NextResponse.json({ error: "Job not found" }, { status: 404 });
+      throw insertError;
+    }
     createdRunId = runId;
 
     console.log(

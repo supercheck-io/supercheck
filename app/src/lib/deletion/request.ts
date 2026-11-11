@@ -28,12 +28,13 @@ export async function requestJobDeletion(scope: Scope) {
   const result = await db.transaction(async (tx): Promise<DeletionRequest<{ name: string; description: string | null; cronSchedule: string | null; deletionId: string }>> => {
     await limit(tx);
     const where = and(eq(jobs.id, scope.id), eq(jobs.projectId, scope.projectId), eq(jobs.organizationId, scope.organizationId));
-    const [flagged] = await tx.update(jobs).set({ deletingAt: new Date() }).where(and(where, isNull(jobs.deletingAt)))
-      .returning({ name: jobs.name, description: jobs.description, cronSchedule: jobs.cronSchedule });
-    if (!flagged) {
-      const [existing] = await tx.select({ id: jobs.id }).from(jobs).where(where).limit(1);
-      return existing ? { status: "already" } : { status: "not_found" };
-    }
+    // FOR UPDATE first: it waits for runs being inserted right now and blocks new ones (see the runs trigger in migration 0074),
+    // so the cancellation below sees every run that exists and none can be created afterwards.
+    const [current] = await tx.select({ name: jobs.name, description: jobs.description, cronSchedule: jobs.cronSchedule, deletingAt: jobs.deletingAt }).from(jobs).where(where).for("update");
+    if (!current) return { status: "not_found" };
+    if (current.deletingAt) return { status: "already" };
+    await tx.update(jobs).set({ deletingAt: new Date() }).where(eq(jobs.id, scope.id));
+    const flagged = { name: current.name, description: current.description, cronSchedule: current.cronSchedule };
     await tx.update(runs).set({ errorDetails: RUN_CANCELLATION_MARKER }).where(and(eq(runs.jobId, scope.id), inArray(runs.status, ["queued", "running"])));
     const deletionId = await insertDeletionJob(tx, { scope: "job", targetId: scope.id, organizationId: scope.organizationId, requestedByUserId: scope.userId });
     return { status: "requested", data: { ...flagged, deletionId } };
