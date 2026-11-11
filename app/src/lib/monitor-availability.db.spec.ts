@@ -210,3 +210,34 @@ it("keeps tenancy: another project or organization's checks never count", async 
   expect(total).toBeLessThan(everything[0].n);
   expect(await newDaily(new Date(now.getTime() - 30 * D), now)).toEqual(await rawDaily(new Date(now.getTime() - 30 * D)));
 });
+
+it("returns nothing for a project without monitors or checks, and ignores a quiet monitor", async () => {
+  const [empty] = await mockDatabase.insert(schema.projects).values({ organizationId: orgId, name: "Empty" }).returning();
+  const now = new Date();
+  const from = new Date(now.getTime() - 30 * D);
+  expect(await getRowCountsByPeriod({ organizationId: orgId, projectId: empty.id, from, now, period: "daily" })).toEqual(new Map());
+  // Wrong organization for a real project: tenancy scope yields nothing.
+  expect(await getRowCountsByPeriod({ organizationId: randomUUID(), projectId, from, now, period: "daily" })).toEqual(new Map());
+  await mockDatabase.insert(schema.monitors).values({
+    organizationId: orgId, projectId: empty.id, name: "quiet", type: "http_request", target: "https://q.test", status: "paused", enabled: false,
+  });
+  expect(await getRowCountsByPeriod({ organizationId: orgId, projectId: empty.id, from, now, period: "daily" })).toEqual(new Map());
+});
+
+it("counts a monitor created mid-window with only raw rows and no aggregates yet", async () => {
+  const [fresh] = await mockDatabase.insert(schema.projects).values({ organizationId: orgId, name: "Fresh" }).returning();
+  const [monitor] = await mockDatabase.insert(schema.monitors).values({
+    organizationId: orgId, projectId: fresh.id, name: "new", type: "http_request", target: "https://n.test", status: "up",
+    createdAt: new Date(midnight - 2 * D + H),
+  }).returning();
+  await mockDatabase.insert(schema.monitorResults).values([
+    { monitorId: monitor.id, checkedAt: new Date(midnight - 2 * D + 2 * H), isUp: true, status: "up", location: "us-east" },
+    { monitorId: monitor.id, checkedAt: new Date(midnight - D + 2 * H), isUp: false, status: "down", location: "us-east" },
+  ]);
+  const now = new Date();
+  const counts = await getRowCountsByPeriod({ organizationId: orgId, projectId: fresh.id, from: new Date(now.getTime() - 30 * D), now, period: "daily" });
+  expect([...counts]).toEqual([
+    [midnight - 2 * D, { total: 1, up: 1 }],
+    [midnight - D, { total: 1, up: 0 }],
+  ]);
+});
