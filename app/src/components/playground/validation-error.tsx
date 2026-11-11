@@ -36,12 +36,12 @@ export function ValidationError({
 
   // Get error category for styling
   const getErrorCategory = (type?: string) => {
-    if (type === 'syntax') return { label: 'Syntax', color: 'text-red-600' };
-    if (type === 'security') return { label: 'Security', color: 'text-red-600' };
-    if (type === 'complexity') return { label: 'Complexity', color: 'text-amber-600' };
-    if (type === 'length') return { label: 'Length', color: 'text-amber-600' };
-    if (type === 'pattern') return { label: 'Validation', color: 'text-red-600' };
-    return { label: 'Validation', color: 'text-red-600' };
+    if (type === 'syntax') return { label: 'Syntax', color: 'text-failure' };
+    if (type === 'security') return { label: 'Security', color: 'text-failure' };
+    if (type === 'complexity') return { label: 'Complexity', color: 'text-warning' };
+    if (type === 'length') return { label: 'Length', color: 'text-warning' };
+    if (type === 'pattern') return { label: 'Validation', color: 'text-failure' };
+    return { label: 'Validation', color: 'text-failure' };
   };
 
   const cleanMessage = getCleanErrorMessage(error);
@@ -50,12 +50,12 @@ export function ValidationError({
   return (
     <Alert
       variant="destructive"
-      className={`bg-rose-100/95 shadow-lg rounded-sm p-4 relative ${className}`}
+      className={`border border-failure/30 bg-failure/10 shadow-lg rounded-sm p-4 relative ${className}`}
     >
       <div className="flex items-start w-full pr-10">
         <div className="flex items-start gap-4 flex-1">
-          <div className="flex items-center justify-center h-10 w-10 rounded-full bg-red-200 mr-2 mt-1">
-            <Info className="h-5 w-5 text-red-600" />
+          <div className="flex items-center justify-center h-10 w-10 rounded-full bg-failure/15 mr-2 mt-1">
+            <Info className="h-5 w-5 text-failure" />
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-3 mb-1">
@@ -63,13 +63,13 @@ export function ValidationError({
                 {category.label} Error
               </span>
               {line && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-red-200 text-red-700 text-xs font-medium rounded-sm border border-red-200">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-failure/15 text-failure text-xs font-medium rounded-sm border border-failure/20">
                   <MapPin className="h-3 w-3" />
                   Line {line}{column ? `:${column}` : ''}
                 </span>
               )}
             </div>
-            <AlertDescription className="text-sm text-red-800 leading-relaxed">
+            <AlertDescription className="text-sm text-foreground leading-relaxed">
               {cleanMessage}
             </AlertDescription>
           </div>
@@ -80,7 +80,7 @@ export function ValidationError({
           variant="ghost"
           size="icon"
           onClick={onDismiss}
-          className="absolute top-6 right-4 h-8 w-8 rounded-lg bg-red-200 transition" 
+          className="absolute top-6 right-4 h-8 w-8 rounded-lg bg-failure/15 transition" 
           aria-label="Dismiss error"
         >
           <X className="h-4 w-4 text-gray-600" />

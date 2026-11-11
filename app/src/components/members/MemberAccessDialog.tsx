@@ -537,7 +537,7 @@ export function MemberAccessDialog({
               </div>
               {requiresProjectSelection &&
                 formData.selectedProjects.length === 0 && (
-                  <p className="text-xs text-amber-600 flex items-center gap-1">
+                  <p className="text-xs text-warning flex items-center gap-1">
                     <Info className="h-3 w-3" />
                     Select at least one project for this role
                   </p>

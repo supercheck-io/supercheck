@@ -2,7 +2,7 @@
 
 import { ChevronRight, type LucideIcon } from "lucide-react";
 import { useCallback, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { prefetchSidebarRoute } from "@/lib/prefetch-utils";
@@ -25,15 +25,17 @@ import {
 import Link from "next/link";
 import React from "react";
 
+// SidebarMenuButton passes data-active and other slot props through asChild; forward them to the anchor.
 function HoverPrefetchLink({
   href,
   children,
   className,
+  ...rest
 }: {
   href: string;
   children: React.ReactNode;
   className?: string;
-}) {
+} & Omit<React.AnchorHTMLAttributes<HTMLAnchorElement>, "href">) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { currentProject } = useProjectContext();
@@ -49,6 +51,7 @@ function HoverPrefetchLink({
 
   return (
     <Link
+      {...rest}
       href={href}
       prefetch={false}
       onMouseEnter={handleMouseEnter}
@@ -57,6 +60,20 @@ function HoverPrefetchLink({
       {children}
     </Link>
   );
+}
+
+// The current page's icon takes its group's area colour (DESIGN.md); other groups stay neutral.
+const GROUP_TONE: Record<string, string> = {
+  Respond: "[&[data-active=true]>svg]:text-respond",
+  Communicate: "[&[data-active=true]>svg]:text-communicate",
+  Automate: "[&[data-active=true]>svg]:text-automate",
+  Monitor: "[&[data-active=true]>svg]:text-monitor",
+};
+
+/** True for the item's own page and its sub-pages ("/" matches the dashboard only). */
+export function isCurrentRoute(pathname: string, url: string): boolean {
+  if (url === "/") return pathname === "/";
+  return pathname === url || pathname.startsWith(`${url}/`);
 }
 
 type IconComponent = LucideIcon | React.ComponentType<{ className?: string }>;
@@ -84,6 +101,8 @@ export function NavMain({
   groupLabel: string;
   items: MenuItem[];
 }) {
+  const pathname = usePathname() ?? "";
+  const activeTone = GROUP_TONE[groupLabel];
   return (
     <SidebarGroup>
       <SidebarGroupLabel>{groupLabel}</SidebarGroupLabel>
@@ -108,7 +127,12 @@ export function NavMain({
                 </CollapsibleTrigger>
               )}
               {!item.items && (
-                <SidebarMenuButton tooltip={item.title} asChild>
+                <SidebarMenuButton
+                  tooltip={item.title}
+                  asChild
+                  isActive={!item.url.startsWith("http") && isCurrentRoute(pathname, item.url)}
+                  className={activeTone}
+                >
                   {item.url.startsWith("http") ? (
                     <a
                       href={item.url}

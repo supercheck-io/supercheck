@@ -102,7 +102,7 @@ export function CreatePageContent({
       scriptType: type.value as ScriptType,
     })),
     {
-      icon: <Video size={20} className="text-red-500" />,
+      icon: <Video size={20} className="text-automate" />,
       title: "Record",
       description: "Capture a browser flow",
       path: "", // Handled by custom onClick
@@ -139,19 +139,19 @@ export function CreatePageContent({
 
   const variableTypes = [
     {
-      icon: <Variable size={20} className="text-cyan-500" />,
+      icon: <Variable size={20} className="text-automate" />,
       title: "Variable",
       description: "Store plain config",
       onClick: () => router.push("/variables?create=true"),
     },
     {
-      icon: <Shield size={20} className="text-red-500" />,
+      icon: <Shield size={20} className="text-automate" />,
       title: "Secret",
       description: "Store encrypted values",
       onClick: () => router.push("/variables?create=true&type=secret"),
     },
     {
-      icon: <FileText size={20} className="text-green-500" />,
+      icon: <FileText size={20} className="text-automate" />,
       title: "File",
       description: "Upload project files",
       onClick: () => router.push("/variables?create=true&type=file"),
@@ -160,7 +160,7 @@ export function CreatePageContent({
 
   const statusPageTypes = [
     {
-      icon: <Tally4 size={20} className="text-green-600" />,
+      icon: <Tally4 size={20} className="text-communicate" />,
       title: "Status Page",
       description: "Publish service health",
       onClick: () => router.push("/status-pages?create=true"),
@@ -194,7 +194,7 @@ export function CreatePageContent({
           onClick: () => router.push("/copilot"),
         },
         {
-          icon: <Siren size={20} className="text-rose-500" />,
+          icon: <Siren size={20} className="text-respond" />,
           title: "Incidents",
           description: "Review response queue",
           onClick: () => router.push("/incidents"),
@@ -204,7 +204,7 @@ export function CreatePageContent({
   const sreSetupTypes = [
     capabilities.canCreateSreServices
       ? {
-          icon: <Boxes size={20} className="text-sky-500" />,
+          icon: <Boxes size={20} className="text-respond" />,
           title: "Service",
           description: "Define service topology",
           onClick: () => router.push("/services"),
@@ -212,7 +212,7 @@ export function CreatePageContent({
       : null,
     capabilities.canConfigureSreConnectors
       ? {
-          icon: <Cable size={20} className="text-emerald-500" />,
+          icon: <Cable size={20} className="text-respond" />,
           title: "Integration",
           description: "Connect evidence sources",
           onClick: () => router.push("/org-admin?tab=integrations"),
@@ -220,7 +220,7 @@ export function CreatePageContent({
       : null,
     capabilities.canConfigureSreConnectors
       ? {
-          icon: <RadioTower size={20} className="text-violet-500" />,
+          icon: <RadioTower size={20} className="text-respond" />,
           title: "Private Agent",
           description: "Register private access",
           onClick: () => router.push("/org-admin?tab=private-agents"),
@@ -230,7 +230,7 @@ export function CreatePageContent({
   const adminSetupTypes = [
     capabilities.canCreateProjects
       ? {
-          icon: <FolderOpen size={20} className="text-amber-500" />,
+          icon: <FolderOpen size={20} className="text-muted-foreground" />,
           title: "Project",
           description: "Manage workspaces",
           onClick: () => router.push("/org-admin?tab=projects"),
@@ -238,7 +238,7 @@ export function CreatePageContent({
       : null,
     capabilities.canInviteMembers
       ? {
-          icon: <UserPlus size={20} className="text-teal-500" />,
+          icon: <UserPlus size={20} className="text-muted-foreground" />,
           title: "Member",
           description: "Invite users",
           onClick: () => router.push("/org-admin?tab=members"),
@@ -246,7 +246,7 @@ export function CreatePageContent({
       : null,
     capabilities.canCreateCliTokens
       ? {
-          icon: <KeyRound size={20} className="text-indigo-500" />,
+          icon: <KeyRound size={20} className="text-muted-foreground" />,
           title: "CLI Token",
           description: "Create CLI access",
           onClick: () => router.push("/org-admin?tab=cli-tokens"),
@@ -288,8 +288,8 @@ export function CreatePageContent({
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-3">
-              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-amber-100 dark:bg-amber-900/40">
-                <Chrome className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-warning/10">
+                <Chrome className="h-4 w-4 text-warning" />
               </div>
               <span>Browser Not Supported</span>
             </DialogTitle>

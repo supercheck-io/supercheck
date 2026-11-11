@@ -232,7 +232,6 @@ export const columns: ColumnDef<Requirement>[] = [
             );
         },
         enableSorting: false,
-        enableHiding: false,
     },
 
     // Title column

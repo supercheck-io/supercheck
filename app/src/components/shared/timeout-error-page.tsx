@@ -22,17 +22,17 @@ export function TimeoutErrorPage({
 
   const getIconColor = () => {
     switch (timeoutInfo.timeoutType) {
-      case 'test': return 'text-amber-500';
-      case 'job': return 'text-orange-500';
-      default: return 'text-red-500';
+      case 'test': return 'text-warning';
+      case 'job': return 'text-warning';
+      default: return 'text-failure';
     }
   };
 
   const getBackgroundColor = () => {
     switch (timeoutInfo.timeoutType) {
-      case 'test': return 'bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800';
-      case 'job': return 'bg-orange-50 dark:bg-orange-900/10 border-orange-200 dark:border-orange-800';
-      default: return 'bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800';
+      case 'test': return 'bg-warning/10 border-warning/30';
+      case 'job': return 'bg-warning/10 border-warning/30';
+      default: return 'bg-failure/10 border-failure/30';
     }
   };
 

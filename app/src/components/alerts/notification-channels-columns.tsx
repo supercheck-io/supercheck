@@ -48,7 +48,6 @@ export const notificationChannelColumns: ColumnDef<NotificationChannel>[] = [
       );
     },
     enableSorting: false,
-    enableHiding: false,
   },
   {
     accessorKey: "name",

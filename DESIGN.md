@@ -25,7 +25,8 @@ Every colour has one job. New code uses the token, never a raw palette class or 
 
 - Area colours mark where you are; status colours say how something is. They never swap jobs. An area colour never shows up on a status badge, and a status colour never decorates a heading.
 - Incident lifecycle: Triggered `danger`, Acknowledged `warning`, Investigating `info`, Fixing `indigo`, Monitoring `cyan`, Resolved `success` (`app/src/lib/sre/incident-status-display.ts`).
-- Charts use `var(--chart-1)` to `var(--chart-5)`. Never write `hsl(var(--token))`: the tokens are oklch.
+- Charts use `var(--chart-1)` to `var(--chart-5)`, and raw `var(--success)`, `var(--warning)` and `var(--failure)` for bright fills. Never write `hsl(var(--token))`: the tokens are oklch.
+- Contrast: Tailwind classes (`text-success`, `bg-warning/10`, `text-monitor`, ...) resolve to shades that meet WCAG AA (4.5:1) on cards in light mode (`--success-strong`, `--warning-strong`, `--failure-strong`, and the 700-shade area values). Don't use the raw chart `var()`s for text.
 
 ## 3. Typography
 
@@ -43,8 +44,13 @@ Every colour has one job. New code uses the token, never a raw palette class or 
 | Section heading inside a card | `SectionTitle` (chip, title, count, hint, action) | `app/src/components/sre/incidents/incident-ui.tsx` |
 | Table footer | `DataTablePagination` (label `Total {n} {itemName}`, rows-per-page fitted to the window) | `app/src/components/ui/data-table-pagination.tsx` |
 | Status or category badge | `TableBadge` with a tone | `app/src/components/ui/table-badge.tsx` |
+| Callout (info, success, warning, error box) | `Alert` with `variant="info" | "success" | "warning" | "error"` (`destructive` for blocking errors) | `app/src/components/ui/alert.tsx` |
 | People | `UserCell` and `UserAvatar` | `app/src/components/ui/user-cell.tsx` |
 | Buttons | `Button` variants (`default`, `secondary`, `outline`, `ghost`, `link`, `destructive`). Never override a button's colour with a `className`. | `app/src/components/ui/button.tsx` |
+
+List tables that have a View menu (monitors, tests, jobs, requirements) hide the UUID column by default (`id: false` in the initial column visibility), and the column must stay hideable so people can show it again. Tables without a View menu, and admin configuration tables, keep it visible.
+
+The sidebar marks the current page with its active state, and the active icon takes its group's area colour (`components/nav-main.tsx`).
 
 Rules for chips:
 - One chip per page title and at most one per card header. Rows in tables and form fields get no chips.
@@ -78,10 +84,16 @@ Flat by default: borders (`border`) separate surfaces. Use `shadow-sm` on page c
 - Page chips stay visible on mobile. Copilot hides its chip below `sm` to give the title room.
 - The marketing site stacks feature rows into a single column below `lg`, and pricing cards stack below `md`.
 
-## 9. Agent checklist
+## 9. Raw colour guard
+
+`app/src/lib/design-tokens.spec.ts` counts raw palette classes (`text-green-500`, `bg-amber-100`, ...) in `app/src` and fails if the count rises above its `BASELINE`. When you remove raw colours, lower the baseline in the same PR. Never raise it. Exempt paths: emails (clients need inline colours), `components/logo/`, the central maps (`table-badge.tsx`, `icon-chip.tsx`, `alert.tsx`), user-chosen tag colours (`tag-selector.tsx`), and the public status pages (`status-pages/public-*`, customer branding).
+
+Category colours with no token (user roles, file types, notification providers, priority levels) stay in one map per feature. Don't scatter them across components.
+
+## 10. Agent checklist
 
 Before you finish any UI change:
-1. Every colour you added is a token or comes from one of the central maps in section 4.
+1. Every colour you added is a token or comes from one of the central maps in section 4, and `npx jest src/lib/design-tokens.spec.ts` passes.
 2. Primary actions use the default `Button` variant.
 3. New pages use `PageHeader` with the right area `icon` and `tone`. New tables use `DataTablePagination`.
 4. You checked light and dark mode at 390px and 1440px (the PR Screenshots workflow covers the app tour).
