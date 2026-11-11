@@ -1,16 +1,16 @@
 import type { Table } from "@tanstack/react-table";
 
-import { ListPagination } from "@/components/admin/list-pagination";
+import { ListPagination } from "./list-pagination";
 
-interface AdminDataTablePaginationProps<TData> {
+interface DataTablePaginationProps<TData> {
   table: Table<TData>;
   itemName?: string;
 }
 
-export function AdminDataTablePagination<TData>({
+export function DataTablePagination<TData>({
   table,
   itemName = "items",
-}: AdminDataTablePaginationProps<TData>) {
+}: DataTablePaginationProps<TData>) {
   const { pageIndex, pageSize } = table.getState().pagination;
   return (
     <ListPagination

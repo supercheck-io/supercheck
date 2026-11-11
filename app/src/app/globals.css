@@ -37,6 +37,12 @@
   --success: oklch(0.627 0.194 149.2);
   --failure: oklch(0.577 0.245 27.325);
   --warning: oklch(0.75 0.17 70);
+  /* Product areas (DESIGN.md): icon chips, eyebrows and active nav icons only, never status. */
+  --automate: oklch(0.588 0.158 241.966);
+  --monitor: oklch(0.6 0.118 184.704);
+  --respond: oklch(0.646 0.222 41.116);
+  --communicate: oklch(0.592 0.249 0.584);
+  --ai: oklch(0.541 0.281 293.009);
   --radius: 0.625rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.141 0.005 285.823);
@@ -76,6 +82,11 @@
   --success: oklch(0.696 0.17 162.48);
   --failure: oklch(0.637 0.237 25.331);
   --warning: oklch(0.769 0.188 70.08);
+  --automate: oklch(0.746 0.16 232.661);
+  --monitor: oklch(0.777 0.152 181.912);
+  --respond: oklch(0.75 0.183 55.934);
+  --communicate: oklch(0.718 0.202 349.761);
+  --ai: oklch(0.702 0.183 293.541);
   --sidebar: oklch(0.21 0.006 285.885);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);
@@ -84,15 +95,6 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(0.274 0.006 286.033);
   --sidebar-ring: oklch(0.442 0.017 285.786);
-}
-
-@keyframes shimmer {
-  0% {
-    transform: translateX(-100%);
-  }
-  100% {
-    transform: translateX(100%);
-  }
 }
 
 @theme inline {
@@ -123,6 +125,11 @@
   --color-success: var(--success);
   --color-failure: var(--failure);
   --color-warning: var(--warning);
+  --color-automate: var(--automate);
+  --color-monitor: var(--monitor);
+  --color-respond: var(--respond);
+  --color-communicate: var(--communicate);
+  --color-ai: var(--ai);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
 

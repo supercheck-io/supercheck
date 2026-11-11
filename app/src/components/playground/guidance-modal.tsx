@@ -114,7 +114,7 @@ export function GuidanceModal({
           <div className="flex justify-end">
             <Button
               onClick={onClose}
-              className="bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white px-4 text-sm"
+              className="px-4 text-sm"
             >
               Continue
             </Button>

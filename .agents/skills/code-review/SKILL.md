@@ -39,6 +39,7 @@ flowchart LR
 - Migration existing-data safety, constraints/indexes, lock duration, destructive operations, rollback/recovery, and version skew.
 - Queue payload parity, atomic capacity, retries/idempotency, duplicate delivery, cancellation, terminal cleanup, and worker loss.
 - React server/client boundary, query-key/invalidation parity, stale data, accessibility, error/loading/empty behavior.
+- Visual design against `DESIGN.md`: raw palette, hex or `hsl(...)` colours outside the central maps, a recoloured or non-black primary button, a status colour without text or an icon, copied toolbar/pagination components, and missing light/dark or 390px checks.
 - External effects: timeout, retry safety, idempotency, cancellation, billing/usage exactly-once behavior, and provider reconciliation.
 - Deployment: immutable versions, secret handling, gVisor/network/namespace isolation, resource ceilings, autoscaling, health, and destructive blast radius.
 - CLI/recorder public compatibility and AGPL versus Apache/third-party NOTICE obligations.

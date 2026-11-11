@@ -39,7 +39,7 @@ import { describeTimelineEvent } from "@/lib/sre/incident-timeline-format";
 export { aiFindingHeadline, describeTimelineEvent } from "@/lib/sre/incident-timeline-format";
 
 const STATE_VISUAL: Record<string, { icon: LucideIcon; tone: IconTone }> = {
-  acknowledged: { icon: UserCheck, tone: "sky" },
+  acknowledged: { icon: UserCheck, tone: "amber" },
   resolved: { icon: CircleCheck, tone: "emerald" },
   recovered: { icon: HeartPulse, tone: "emerald" },
   reopened: { icon: RotateCcw, tone: "rose" },

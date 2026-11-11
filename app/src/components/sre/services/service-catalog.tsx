@@ -157,6 +157,8 @@ export function ServiceCatalog({
         <>
         <PageHeader
           title="Services"
+          icon={Boxes}
+          tone="respond"
           description="Link monitors and jobs to services for investigation context."
           className="mb-4 -mt-2"
         />

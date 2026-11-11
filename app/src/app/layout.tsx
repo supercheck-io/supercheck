@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { GeistMono } from "geist/font/mono";
+import { GeistSans } from "geist/font/sans";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
@@ -6,12 +8,6 @@ import { QueryProvider } from "@/lib/query-provider";
 import { ServiceWorkerRegistration } from "@/components/service-worker-registration";
 import { HydrationReady } from "@/components/hydration-ready";
 import { SupportChat } from "@/components/support/support-chat";
-
-// Use system fonts instead of Google Fonts for offline builds
-const systemFonts = {
-  sans: ["system-ui", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "Roboto", "Helvetica Neue", "Arial", "sans-serif"],
-  mono: ["ui-monospace", "SFMono-Regular", "Menlo", "Monaco", "Consolas", "Liberation Mono", "Courier New", "monospace"],
-};
 
 export const metadata: Metadata = {
   title: "Dashboard | Supercheck",
@@ -26,14 +22,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" className={`${GeistSans.variable} ${GeistMono.variable}`} suppressHydrationWarning>
       <body
-        className="antialiased"
-        style={{
-          fontFamily: systemFonts.sans.join(", "),
-          "--font-geist-sans": systemFonts.sans.join(", "),
-          "--font-geist-mono": systemFonts.mono.join(", "),
-        } as React.CSSProperties}
+        className="font-sans antialiased"
         suppressHydrationWarning
       >
         {/* Removes the retired root service worker that broke the trace viewer */}

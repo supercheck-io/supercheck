@@ -1491,7 +1491,7 @@ const Playground: React.FC<PlaygroundProps> = ({
                           isAICreating ||
                           !userCanRunTests
                         }
-                        className="flex items-center gap-2 bg-[hsl(221.2,83.2%,53.3%)] text-white hover:bg-[hsl(221.2,83.2%,48%)]"
+                        className="flex items-center gap-2"
                         size="sm"
                         title={
                           isRunning

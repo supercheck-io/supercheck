@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import { Bell } from "lucide-react";
 
 import { PageHeader } from "./page-header";
 
@@ -23,5 +24,34 @@ describe("PageHeader", () => {
     expect(screen.getByRole("heading", { name: "Services" })).toBeInTheDocument();
     expect(container.querySelectorAll("p")).toHaveLength(0);
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
+  });
+
+  it("shows a decorative area chip before the title when an icon is given", () => {
+    const { container } = render(<PageHeader title="Notifications" icon={Bell} tone="communicate" />);
+
+    const chip = container.querySelector('[data-tone="communicate"]');
+    expect(chip).toHaveAttribute("aria-hidden", "true");
+    expect(screen.getByRole("heading", { level: 1, name: "Notifications" })).toBeInTheDocument();
+  });
+
+  it("keeps the title adornment visible next to an icon chip", () => {
+    render(
+      <PageHeader title="Organization" icon={Bell} titleAdornment={<span>Acme Inc</span>} />,
+    );
+
+    expect(screen.getByRole("heading", { level: 1, name: "Organization" })).toBeInTheDocument();
+    expect(screen.getByText("Acme Inc")).toBeVisible();
+  });
+
+  it("defaults the chip to the neutral slate tone", () => {
+    const { container } = render(<PageHeader title="Organization" icon={Bell} />);
+
+    expect(container.querySelector('[data-tone="slate"]')).not.toBeNull();
+  });
+
+  it("renders no chip without an icon", () => {
+    const { container } = render(<PageHeader title="Services" />);
+
+    expect(container.querySelector("[data-tone]")).toBeNull();
   });
 });

@@ -27,7 +27,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-import { AdminDataTablePagination } from "@/components/admin/admin-data-table-pagination";
+import { DataTablePagination } from "@/components/ui/data-table-pagination";
 import { UserTableToolbar } from "./user-table-toolbar";
 import { cn } from "@/lib/utils";
 import { useFitPagination } from "@/hooks/use-fit-page-size";
@@ -349,7 +349,7 @@ export function AdminDataTable<TData, TValue>({
           </TableBody>
         </Table>
       </div>
-      <AdminDataTablePagination table={table} itemName={itemName} />
+      <DataTablePagination table={table} itemName={itemName} />
     </div>
   );
 }
