@@ -241,3 +241,38 @@ it("counts a monitor created mid-window with only raw rows and no aggregates yet
     [midnight - D, { total: 1, up: 0 }],
   ]);
 });
+
+it("counts a row that lands in the last completed day or hour after the aggregator ran", async () => {
+  await aggregateAll();
+  const [single] = await mockDatabase.select().from(schema.monitors).where(eq(schema.monitors.name, "single"));
+  const late = (checkedAt: number) =>
+    mockDatabase.insert(schema.monitorResults).values({ monitorId: single.id, checkedAt: new Date(checkedAt), isUp: false, status: "down", location: "us-east" });
+  // The last completed hour: late for the 24h totals.
+  await late(hourStart - 1000);
+  let now = new Date();
+  expect(await newTotals(new Date(now.getTime() - D), now)).toEqual(await rawTotals(new Date(now.getTime() - D)));
+  // Older than the last completed period: not seen until the aggregator reruns (documented trade-off).
+  await late(hourStart - 5 * H - 1000);
+  expect((await newTotals(new Date(now.getTime() - D), now)).total).toBe((await rawTotals(new Date(now.getTime() - D))).total - 1);
+  await aggregateAll();
+  expect(await newTotals(new Date(now.getTime() - D), now)).toEqual(await rawTotals(new Date(now.getTime() - D)));
+  // Yesterday's last hour: late for the daily trend (the last completed day is read raw).
+  await late(midnight - H);
+  now = new Date();
+  expect(await newDaily(new Date(now.getTime() - 30 * D), now)).toEqual(await rawDaily(new Date(now.getTime() - 30 * D)));
+});
+
+it("serves a project with thousands of monitors without a bind parameter per range", async () => {
+  const [big] = await mockDatabase.insert(schema.projects).values({ organizationId: orgId, name: "Big" }).returning();
+  const created = await mockDatabase.insert(schema.monitors).values(
+    Array.from({ length: 2000 }, (_, i) => ({
+      organizationId: orgId, projectId: big.id, name: `bulk-${i}`, type: "http_request" as const, target: "https://b.test", status: "up" as const,
+    })),
+  ).returning({ id: schema.monitors.id });
+  await mockDatabase.insert(schema.monitorResults).values(
+    created.map((m) => ({ monitorId: m.id, checkedAt: new Date(Date.now() - 1000), isUp: true, status: "up" as const, location: "us-east" as const })),
+  );
+  const now = new Date();
+  const counts = await getRowCountsByPeriod({ organizationId: orgId, projectId: big.id, from: new Date(now.getTime() - 30 * D), now, period: "daily" });
+  expect([...counts.values()].reduce((sum, c) => sum + c.total, 0)).toBe(2000);
+});
