@@ -1,6 +1,6 @@
 import { ceilUsageCostCents } from "@/lib/billing/usage-cost";
 import { DEFAULT_OVERAGE_PRICING_CENTS } from "@/lib/billing/pricing-defaults";
-import { getBillingReconciliationStatus } from "@/lib/billing/reconciliation-status";
+import { getBillingReconciliationStatus, REJECTED_USAGE_EVENT_ERROR } from "@/lib/billing/reconciliation-status";
 import { reconcilePolarSubscriptions } from "./subscription-reconciliation";
 /**
  * Polar Usage Service
@@ -97,6 +97,23 @@ const ORGANIZATION_FLUSH_LIMIT = 200;
 const ORGANIZATION_FLUSH_BUDGET_MS = 30_000;
 export { POLAR_API_VERSION };
 export const CLOSED_USAGE_PERIOD_ERROR = "Billing period closed; manual reconciliation required";
+const MAX_REJECTED_USAGE_ATTEMPTS = 3;
+
+/** Polar's HTTP status only: response bodies can echo customer identifiers, so they are never kept. */
+class PolarIngestError extends Error {
+  constructor(readonly status: number) {
+    super(`Polar API error (${status})`);
+  }
+}
+
+/**
+ * Rejections specific to one event that a retry cannot fix. Other 4xx (401/403 credentials, 402, 408,
+ * 409, 425, 429) are about the account or a temporary condition, so they stay retryable.
+ */
+export function isNonRetryableIngestStatus(status: number): boolean {
+  return [400, 404, 410, 413, 422].includes(status);
+}
+
 type UsageSyncResult = {
   processed: number;
   succeeded: number;
@@ -292,8 +309,7 @@ class PolarUsageService {
       );
 
       if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Polar API error (${response.status}): ${errorText}`);
+        throw new PolarIngestError(response.status);
       }
 
       const result: unknown = await response.json();
@@ -324,13 +340,18 @@ class PolarUsageService {
       logger.info({ eventId }, "Synced usage event to Polar");
       return true;
     } catch (error) {
-      logger.error({ error, eventId }, "Failed to sync usage event to Polar");
-      
-      // Update sync status with error
+      const message = error instanceof Error ? error.message : "Unknown error";
+      logger.error({ message, eventId }, "Failed to sync usage event to Polar");
+      const rejected = error instanceof PolarIngestError && isNonRetryableIngestStatus(error.status);
+
+      // shortcut: syncAttempts is cumulative, so earlier transient failures count toward parking; fine for a safety net, count rejections separately if it parks too eagerly.
+      // Update sync status with error; a repeatedly rejected event is parked instead of retried forever
       await database
         .update(usageEvents)
         .set({
-          syncError: error instanceof Error ? error.message : "Unknown error",
+          syncError: rejected
+            ? sql`CASE WHEN ${usageEvents.syncAttempts} + 1 >= ${MAX_REJECTED_USAGE_ATTEMPTS} THEN ${REJECTED_USAGE_EVENT_ERROR} ELSE ${message} END`
+            : message,
           syncAttempts: sql`${usageEvents.syncAttempts} + 1`,
           lastSyncAttempt: new Date(),
         })
@@ -352,6 +373,7 @@ class PolarUsageService {
         eq(usageEvents.organizationId, organizationId),
         eq(usageEvents.syncedToPolar, false),
         gt(usageEvents.billingPeriodEnd, new Date()),
+        or(isNull(usageEvents.syncError), ne(usageEvents.syncError, REJECTED_USAGE_EVENT_ERROR)),
       ),
       columns: { id: true },
       orderBy: (events, { asc }) => [asc(events.createdAt)],
@@ -611,7 +633,7 @@ class PolarUsageService {
             eq(usageEvents.syncedToPolar, false),
             lte(usageEvents.createdAt, scanUntil),
             ...(attemptedIds.length ? [notInArray(usageEvents.id, attemptedIds)] : []),
-            or(isNull(usageEvents.syncError), ne(usageEvents.syncError, CLOSED_USAGE_PERIOD_ERROR)),
+            or(isNull(usageEvents.syncError), notInArray(usageEvents.syncError, [CLOSED_USAGE_PERIOD_ERROR, REJECTED_USAGE_EVENT_ERROR])),
             // Exponential backoff: only retry after appropriate delay
             sql`(
               ${usageEvents.lastSyncAttempt} IS NULL

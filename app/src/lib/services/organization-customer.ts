@@ -10,7 +10,7 @@ const ORGANIZATION_EXTERNAL_ID = /^organization:(.+)$/;
 /** The owner's email already belongs to a billing customer that cannot be reused safely. */
 export class BillingCustomerConflictError extends Error {
   constructor() {
-    super("This email is already linked to another billing account. Contact support to continue.");
+    super("This email already has a Supercheck billing account. Contact support at hello@supercheck.io and we'll link it.");
     this.name = "BillingCustomerConflictError";
   }
 }
@@ -27,14 +27,16 @@ function statusCodeOf(error: unknown): number | undefined {
  * for this same user, its organization no longer exists here, no other organization holds it, and it
  * has no active subscription. external_id is immutable, so the new organization is recorded in
  * metadata, which customer events resolve from. The caller has already verified the email.
- * Returns null when no customer has this email (the create failed for another reason).
+ * Returns null when no customer has this email (the create failed for another reason). The metadata
+ * write is returned, not run: the caller performs it only after the database link succeeds, so a losing
+ * concurrent racer never leaves the customer pointing at the wrong organization.
  */
 async function reuseDeletedOrganizationCustomer(
   polarClient: PolarClient,
   userId: string,
   userEmail: string,
   organizationId: string,
-): Promise<string | null> {
+): Promise<{ id: string; recordMetadata: () => Promise<void> } | null> {
   const { items } = await polarClient.customers.list({ email: userEmail, limit: 2 });
   const matches = items.filter((customer) => customer.email?.toLowerCase() === userEmail.toLowerCase());
   if (matches.length === 0) return null;
@@ -42,23 +44,31 @@ async function reuseDeletedOrganizationCustomer(
   const formerOrganizationId = matches.length === 1
     ? ORGANIZATION_EXTERNAL_ID.exec(customer.external_id ?? "")?.[1]
     : undefined;
+  // Legacy customers were created with the bare user ID as external_id: the same person by construction.
+  const legacy = matches.length === 1 && customer.external_id === userId;
   // The same person, not just the same address: an address can be reassigned to someone else.
-  if (!isUuid(formerOrganizationId) || formerOrganizationId === organizationId || customer.metadata?.userId !== userId) {
+  if (!legacy && (!isUuid(formerOrganizationId) || formerOrganizationId === organizationId || customer.metadata?.userId !== userId)) {
     throw new BillingCustomerConflictError();
   }
   const [formerOrganization, holder] = await Promise.all([
-    db.query.organization.findFirst({ where: eq(orgTable.id, formerOrganizationId), columns: { id: true } }),
+    formerOrganizationId && !legacy
+      ? db.query.organization.findFirst({ where: eq(orgTable.id, formerOrganizationId), columns: { id: true } })
+      : undefined,
     db.query.organization.findFirst({ where: eq(orgTable.polarCustomerId, customer.id), columns: { id: true } }),
   ]);
   if (formerOrganization || holder) throw new BillingCustomerConflictError();
   if ((await polarClient.customers.getState(customer.id)).active_subscriptions.length > 0) {
     throw new BillingCustomerConflictError();
   }
-  await polarClient.customers.update(customer.id, {
-    metadata: { userId, referenceId: organizationId, source: "supercheck-reused-after-organization-deletion" },
-  });
-  console.warn(`[Polar] Reused the billing customer of deleted organization ${formerOrganizationId} for ${organizationId}`);
-  return customer.id;
+  return {
+    id: customer.id,
+    recordMetadata: async () => {
+      await polarClient.customers.update(customer.id, {
+        metadata: { userId, referenceId: organizationId, source: legacy ? "legacy-user-customer" : "supercheck-reused-after-organization-deletion" },
+      });
+      console.warn(`[Polar] Reused the billing customer of ${legacy ? "a legacy user" : `deleted organization ${formerOrganizationId}`} for ${organizationId}`);
+    },
+  };
 }
 
 /**
@@ -92,6 +102,7 @@ export async function ensurePolarCustomerAndLink(
     // tenant identifiers and must never select another organization's customer.
     const externalId = `organization:${organizationId}`;
     let customerId: string;
+    let recordReuse: (() => Promise<void>) | undefined;
     try {
       customerId = (await polarClient.customers.getExternal(externalId)).id;
     } catch (error) {
@@ -127,7 +138,8 @@ export async function ensurePolarCustomerAndLink(
           if (statusCodeOf(createError) !== 422 || statusCodeOf(lookupError) !== 404) throw createError;
           const reused = await reuseDeletedOrganizationCustomer(polarClient, userId, userEmail, organizationId);
           if (!reused) throw createError;
-          customerId = reused;
+          customerId = reused.id;
+          recordReuse = reused.recordMetadata;
         }
       }
     }
@@ -139,7 +151,10 @@ export async function ensurePolarCustomerAndLink(
         and(eq(orgTable.id, organizationId), isNull(orgTable.polarCustomerId)),
       )
       .returning({ polarCustomerId: orgTable.polarCustomerId });
-    if (linked) return linked.polarCustomerId;
+    if (linked) {
+      await recordReuse?.();
+      return linked.polarCustomerId;
+    }
 
     const current = await db.query.organization.findFirst({
       where: eq(orgTable.id, organizationId),

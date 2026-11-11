@@ -1,7 +1,13 @@
 /** @jest-environment node */
 jest.mock("@/utils/db", () => ({ db: { transaction: jest.fn() } }));
 
+jest.mock("@/lib/logger/index", () => {
+  const logger = { error: jest.fn() };
+  return { createLogger: () => logger, __logger: logger };
+});
+
 import { db } from "@/utils/db";
+import * as loggerModule from "@/lib/logger/index";
 import {
   getPolarWebhookDb,
   getPolarWebhookOrganizationId,
@@ -148,6 +154,23 @@ describe("Polar event transactions", () => {
     expect(set).toHaveBeenCalledWith(
       expect.objectContaining({ polarRetiredSubscriptionIds: ["old-sub"] }),
     );
+  });
+
+  it.each(["active", "past_due"])("raises an alert when a replacement binds over a %s subscription", async (subscriptionStatus) => {
+    setup({ subscriptionId: "old-subscription-id", subscriptionStatus });
+    await runOrderedPolarEvent({ ...input, subscriptionId: "new-subscription-id" }, async () => {});
+    const { __logger } = loggerModule as unknown as { __logger: { error: jest.Mock } };
+    expect(__logger.error).toHaveBeenCalledWith(
+      { organizationId: "org-1".slice(-8), replacedSubscriptionId: "old-subs", newSubscriptionId: "new-subs" },
+      "Active subscription replaced another active subscription; check for duplicate billing",
+    );
+  });
+
+  it.each([["canceled", "old-sub"], ["none", "old-sub"], ["active", "sub-1"]])("does not alert for a %s binding replaced by %s", async (subscriptionStatus, bound) => {
+    setup({ subscriptionId: bound, subscriptionStatus });
+    await runOrderedPolarEvent(input, async () => {});
+    const { __logger } = loggerModule as unknown as { __logger: { error: jest.Mock } };
+    expect(__logger.error).not.toHaveBeenCalled();
   });
 
   it("does not let payment timestamps suppress subscription lifecycle events", async () => {

@@ -2,8 +2,9 @@ jest.mock("@/lib/billing/usage-sync-lease", () => ({
   withUsageSyncLease: jest.fn(async (run) => run(() => {})),
 }));
 jest.mock("./subscription-reconciliation", () => ({ reconcilePolarSubscriptions: jest.fn() }));
-jest.mock("@/lib/billing/reconciliation-status", () => ({ getBillingReconciliationStatus: jest.fn().mockResolvedValue({ requiresAttention: false }) }));
+jest.mock("@/lib/billing/reconciliation-status", () => ({ REJECTED_USAGE_EVENT_ERROR: "Rejected by Polar; manual reconciliation required", getBillingReconciliationStatus: jest.fn().mockResolvedValue({ requiresAttention: false }) }));
 import { POLAR_API_VERSION } from "@/lib/billing/polar-client";
+import { sql } from "drizzle-orm";
 import { withUsageSyncLease } from "@/lib/billing/usage-sync-lease";
 import { reconcilePolarSubscriptions } from "./subscription-reconciliation";
 import { failStuckSreInvestigationRuns, reconcileUnbilledSreInvestigations } from "@/lib/sre/investigation-billing";
@@ -428,6 +429,60 @@ describe("PolarUsageService retry idempotency", () => {
     }));
   });
 
+  it.each([
+    [422, true],
+    [404, true],
+    [400, true],
+    [401, false],
+    [403, false],
+    [408, false],
+    [409, false],
+    [425, false],
+    [429, false],
+    [503, false],
+  ])("handles a %i rejection without keeping the response body (parked: %s)", async (status, parked) => {
+    const event = { id: "bad-event", organizationId: "org-1", eventType: "sre_investigation", units: "1.0000",
+      unitType: "investigation_units", createdAt: new Date(), billingPeriodEnd: new Date(Date.now() + 86_400_000) };
+    mockDb.query.usageEvents.findMany.mockResolvedValue([event]);
+    mockDb.query.usageEvents.findFirst.mockResolvedValue(event);
+    mockDb.query.organization.findFirst.mockResolvedValue({ polarCustomerId: "polar-customer-1" });
+    const updateSet = jest.fn((_values: unknown) => ({ where: jest.fn().mockResolvedValue([]) }));
+    mockDb.update.mockReturnValue({ set: updateSet });
+    mockDb.selectDistinct.mockReturnValue({ from: () => ({ leftJoin: () => ({ where: jest.fn().mockResolvedValue([]) }) }) });
+    global.fetch = jest.fn().mockResolvedValue({ ok: false, status, text: async () => "Customer polar-customer-1 not found" }) as never;
+
+    await expect(polarUsageService.syncPendingEvents()).resolves.toMatchObject({ failed: 1 });
+
+    const set = updateSet.mock.calls.at(-1)?.[0] as unknown as { syncError: unknown };
+    if (parked) {
+      expect(set.syncError).toEqual({ op: "sql" });
+      const caseCall = (jest.mocked(sql).mock.calls as unknown as [TemplateStringsArray, ...unknown[]][]).find(([strings]) => strings.join("").includes("CASE WHEN"));
+      expect(caseCall?.slice(1)).toEqual([expect.anything(), 3, "Rejected by Polar; manual reconciliation required", `Polar API error (${status})`]);
+    } else {
+      expect(set.syncError).toBe(`Polar API error (${status})`);
+    }
+    expect(JSON.stringify(updateSet.mock.calls)).not.toContain("polar-customer-1");
+  });
+
+  it("excludes parked events from the pending query and continues past a failed one", async () => {
+    const make = (id: string) => ({ id, organizationId: "org-1", eventType: "sre_investigation", units: "1.0000",
+      unitType: "investigation_units", createdAt: new Date(), billingPeriodEnd: new Date(Date.now() + 86_400_000) });
+    const [bad, good] = [make("bad"), make("good")];
+    mockDb.query.usageEvents.findMany.mockResolvedValue([bad, good]);
+    mockDb.query.usageEvents.findFirst.mockImplementation(async () => (global.fetch as jest.Mock).mock.calls.length ? good : bad);
+    mockDb.query.organization.findFirst.mockResolvedValue({ polarCustomerId: "polar-customer-1" });
+    mockDb.update.mockReturnValue({ set: () => ({ where: jest.fn().mockResolvedValue([]) }) });
+    mockDb.selectDistinct.mockReturnValue({ from: () => ({ leftJoin: () => ({ where: jest.fn().mockResolvedValue([]) }) }) });
+    global.fetch = jest.fn()
+      .mockResolvedValueOnce({ ok: false, status: 422 })
+      .mockResolvedValueOnce({ ok: true, status: 202, json: async () => ({ inserted: 1 }) }) as never;
+
+    await expect(polarUsageService.syncPendingEvents()).resolves.toMatchObject({ processed: 2, succeeded: 1, failed: 1 });
+    const where = JSON.stringify(mockDb.query.usageEvents.findMany.mock.calls[0]?.[0]?.where);
+    expect(where).toContain("Rejected by Polar; manual reconciliation required");
+    expect(where).toContain("Billing period closed; manual reconciliation required");
+  });
+
 });
 
 describe("PolarUsageService ingestion contract", () => {
@@ -498,10 +553,10 @@ describe("PolarUsageService ingestion contract", () => {
     expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({ syncError: "Polar did not acknowledge the usage event" }));
   });
 
-  it.each([400, 401, 403, 404, 422, 429, 500, 502, 503])("keeps the ledger row retryable on HTTP %i", async (status) => {
+  it.each([429, 500, 502, 503])("keeps the ledger row retryable on HTTP %i", async (status) => {
     const { result, updateSet } = await syncOnce({ ok: false, status, text: "rejected" });
     expect(result).toMatchObject({ succeeded: 0, failed: 1 });
-    expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({ syncError: `Polar API error (${status}): rejected` }));
+    expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({ syncError: `Polar API error (${status})` }));
   });
 
   it.each([

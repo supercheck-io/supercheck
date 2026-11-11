@@ -17,6 +17,7 @@ const handlers = {
   handleSubscriptionRevoked: jest.fn(),
   handleOrderCreated: jest.fn(),
   handleOrderPaid: jest.fn(),
+  handleRefund: jest.fn(),
   handleCustomerStateChanged: jest.fn(),
   handleCustomerDeleted: jest.fn(),
   handleSubscriptionPastDue: jest.fn(),
@@ -136,6 +137,16 @@ describe("auth.ts Polar wiring", () => {
     });
   });
 
+  it.each([
+    ["onOrderRefunded", "order.refunded"],
+    ["onRefundCreated", "refund.created"],
+  ] as const)("%s hands handleRefund a normalised payload and its event type", async (callback, eventType) => {
+    await captured[callback](snake);
+    const [received, type] = handlers.handleRefund.mock.calls[0];
+    expect(received.data.customerId).toBe("cus_1");
+    expect(type).toBe(eventType);
+  });
+
   it("routes past-due through the catch-all with a normalised payload and ignores other event types", async () => {
     await captured.onPayload({
       type: "subscription.past_due",
@@ -167,7 +178,9 @@ describe("auth.ts Polar wiring", () => {
         "onSubscriptionActive",
         "onSubscriptionCanceled",
         "onSubscriptionCreated",
+        "onOrderRefunded",
         "onPayload",
+        "onRefundCreated",
         "onSubscriptionRevoked",
         "onSubscriptionUncanceled",
         "onSubscriptionUpdated",

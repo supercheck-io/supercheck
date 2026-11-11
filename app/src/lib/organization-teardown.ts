@@ -58,18 +58,19 @@ async function flushFinalUsage(organizationId: string): Promise<void> {
 /**
  * Usage that was never settled would be lost with the organization (both tables cascade): a completed
  * execution whose receipt is unsettled, and a usage event parked for manual reconciliation because its
- * billing period had closed. Refusing keeps that evidence; deletion can be retried once it is settled.
+ * billing period had closed or Polar rejected it. Refusing keeps that evidence; deletion can be retried once it is settled.
  */
 async function assertNoUnsettledUsage(executor: Pick<typeof db, "select">, organizationId: string): Promise<void> {
   const [receipts] = await executor.select({ count: sql<number>`count(*)::int` }).from(executionUsageReceipts)
     .where(and(eq(executionUsageReceipts.organizationId, organizationId), isNull(executionUsageReceipts.settledAt)));
   const { CLOSED_USAGE_PERIOD_ERROR } = await import("@/lib/services/polar-usage.service");
+  const { REJECTED_USAGE_EVENT_ERROR } = await import("@/lib/billing/reconciliation-status");
   const [parked] = await executor.select({ count: sql<number>`count(*)::int` }).from(usageEvents)
     .where(and(eq(usageEvents.organizationId, organizationId), eq(usageEvents.syncedToPolar, false),
       // The flush skips closed periods, whether or not the sync loop has marked them yet.
-      or(eq(usageEvents.syncError, CLOSED_USAGE_PERIOD_ERROR), lte(usageEvents.billingPeriodEnd, new Date()))));
+      or(eq(usageEvents.syncError, CLOSED_USAGE_PERIOD_ERROR), eq(usageEvents.syncError, REJECTED_USAGE_EVENT_ERROR), lte(usageEvents.billingPeriodEnd, new Date()))));
   if ((receipts?.count ?? 0) > 0 || (parked?.count ?? 0) > 0) {
-    throw new BillingCancellationError("The organization still has usage that was not billed (an unsettled execution or a closed billing period awaiting manual reconciliation). Nothing was deleted. Settle it, then retry the deletion.");
+    throw new BillingCancellationError("The organization still has usage that was not billed (an unsettled execution or a closed or rejected billing event awaiting manual reconciliation). Nothing was deleted. Settle it, then retry the deletion.");
   }
 }
 

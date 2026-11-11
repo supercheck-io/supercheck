@@ -1,7 +1,7 @@
 /** @jest-environment node */
 jest.mock("@/utils/db", () => ({ db: { select: jest.fn() } }));
 import { db } from "@/utils/db";
-import { getBillingReconciliationStatus } from "./reconciliation-status";
+import { getBillingReconciliationStatus, REJECTED_USAGE_EVENT_ERROR } from "./reconciliation-status";
 
 describe("billing reconciliation visibility", () => {
   it("reports stranded usage and receipts without replaying or exposing customer data", async () => {
@@ -14,5 +14,11 @@ describe("billing reconciliation visibility", () => {
     jest.mocked(db.select).mockReturnValueOnce({ from: () => ({ where: async () => [{ pendingEvents: 0, parkedEvents: 0, oldestPendingAt: null }] }) } as never)
       .mockReturnValueOnce({ from: () => ({ where: async () => [{ pendingReceipts: 0, parkedReceipts: 0 }] }) } as never);
     await expect(getBillingReconciliationStatus()).resolves.toMatchObject({ requiresAttention: false });
+  });
+  it("counts rejected events as parked so the attention alert fires", async () => {
+    jest.mocked(db.select).mockReturnValueOnce({ from: () => ({ where: async () => [{ pendingEvents: 1, parkedEvents: 1, oldestPendingAt: new Date() }] }) } as never)
+      .mockReturnValueOnce({ from: () => ({ where: async () => [{ pendingReceipts: 0, parkedReceipts: 0 }] }) } as never);
+    await expect(getBillingReconciliationStatus()).resolves.toMatchObject({ requiresAttention: true });
+    expect(REJECTED_USAGE_EVENT_ERROR).toMatch(/manual reconciliation/);
   });
 });
