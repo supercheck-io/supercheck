@@ -1079,8 +1079,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       const outcome = await this.waitForExecutionOutcome(
         podName,
         workspace,
-        // Headroom for the egress wait that precedes the script.
-        limits.timeoutMs + EGRESS_GUARD_MAX_WAIT_MS,
+        limits.timeoutMs,
         startEvidence,
         async () => {
           if (options.extractFromContainer && options.extractToHost) {
@@ -1128,6 +1127,8 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
             );
           }
         },
+        // The egress wait runs before the script; it must not extend script time.
+        EGRESS_GUARD_MAX_WAIT_MS,
       );
       timedOut = outcome.timedOut;
       // The deleted Job's pod is seen either gone (404) or killed (137/143) first.
@@ -2059,6 +2060,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     timeoutMs: number,
     startEvidence: ContainerStartEvidence,
     collectArtifacts: () => Promise<void>,
+    startAllowanceMs = 0,
   ): Promise<{
     exitCode: number;
     timedOut: boolean;
@@ -2066,11 +2068,21 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     message?: string;
   }> {
     const startedAt = Date.now();
-    let timeoutAt = Date.now() + timeoutMs;
+    // Before the execution container starts, allow for the egress wait. Once it
+    // starts, the script gets exactly timeoutMs from its own start.
+    let timeoutAt = startedAt + timeoutMs + startAllowanceMs;
+    let executionDeadlineSet = false;
     const exitCodeFile = this.getWorkspaceExitCodeFile(workspace);
     let artifactsCollected = false;
 
-    while (Date.now() < timeoutAt) {
+    // One extra pass after the deadline: a script that finished just before it
+    // waits for our exit signal, so only the marker check can see it completed.
+    let finalPass = false;
+    for (;;) {
+      if (Date.now() >= timeoutAt) {
+        if (finalPass) break;
+        finalPass = true;
+      }
       let pod: k8s.V1Pod;
       try {
         pod = await this.coreApi!.readNamespacedPod({
@@ -2132,6 +2144,22 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
           startEvidence.startedAtMs = parsed;
         }
       }
+      // Skip once artifacts are collected: their extension must hold even if
+      // kubelet reports the start late.
+      if (
+        !executionDeadlineSet &&
+        !artifactsCollected &&
+        startEvidence.startedAtMs !== null
+      ) {
+        executionDeadlineSet = true;
+        // The script gets its full timeout from its own start, even after a slow
+        // image pull. Never earlier than our poll start (node clock skew), and
+        // inside the Job's activeDeadlineSeconds (timeout + 120s from Job start).
+        timeoutAt = Math.min(
+          Math.max(startEvidence.startedAtMs, startedAt) + timeoutMs,
+          startedAt + startAllowanceMs + timeoutMs + 90_000,
+        );
+      }
       if (terminated) {
         if (terminated.finishedAt) {
           const finished = new Date(terminated.finishedAt).getTime();
@@ -2169,10 +2197,11 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
             timeoutAt + Date.now() - extractionStartedAt,
             Date.now() + 30_000,
           ),
-          startedAt + timeoutMs + 90_000,
+          startedAt + startAllowanceMs + timeoutMs + 90_000,
         );
       }
 
+      if (finalPass && Date.now() >= timeoutAt) break;
       await this.sleep(
         this.getExecutionOutcomePollIntervalMs(startedAt, timeoutAt),
       );
