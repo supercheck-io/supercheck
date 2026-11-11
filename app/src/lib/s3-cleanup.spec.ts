@@ -230,11 +230,21 @@ describe("S3 report cleanup", () => {
         `${stem}aaaaaaa1/report/index.html`, `${stem}aaaaaaa2/report/index.html`, `${stem}aaaaaaa3/report/index.html`,
         `${stem}bbbbbbb1/report/index.html`, `${stem}aaaaaaa10/report/index.html`, `${stem}aaaaaaa1`, "other/report/index.html",
       ]);
-      const result = await service.deleteReports(["aaaaaaa1", "aaaaaaa2", "aaaaaaa3"].map(id => input(`${stem}${id}`)));
+      const requested = ["aaaaaaa1", "aaaaaaa2", "aaaaaaa3", ...Array.from({ length: 29 }, (_, i) => `ccccc${i.toString().padStart(3, "0")}`)];
+      objects.get("monitors")!.push(...requested.slice(3).map(id => `${stem}${id}/report/index.html`));
+      const result = await service.deleteReports(requested.map(id => input(`${stem}${id}`)));
       expect(result.success).toBe(true);
       expect(lists()).toHaveLength(1);
       expect(lists()[0][0].input.Prefix).toBe(stem);
       expect(objects.get("monitors")).toEqual([`${stem}bbbbbbb1/report/index.html`, `${stem}aaaaaaa10/report/index.html`, `${stem}aaaaaaa1`, "other/report/index.html"]);
+    });
+
+    it("lists each prefix separately below the grouping threshold", async () => {
+      const ids = Array.from({ length: 31 }, (_, i) => `${stem}${i.toString(16).padStart(8, "0")}`);
+      objects.set("monitors", ids.map(id => `${id}/report/index.html`));
+      const result = await service.deleteReports(ids.map(input));
+      expect(result.success).toBe(true);
+      expect(lists()).toHaveLength(31);
     });
 
     it("bounds listing and delete concurrency", async () => {
@@ -271,9 +281,11 @@ describe("S3 report cleanup", () => {
 
     it("fails the whole deletion when a grouped listing fails", async () => {
       send.mockRejectedValue(new Error("Access denied"));
-      const result = await service.deleteReports(["a", "b", "c"].map(id => input(`${stem}0000000${id}`)));
+      const inputs = Array.from({ length: 32 }, (_, i) => input(`${stem}${i.toString(16).padStart(8, "0")}`));
+      const result = await service.deleteReports(inputs);
       expect(result.success).toBe(false);
-      expect(result.failedObjects).toHaveLength(3);
+      expect(result.failedObjects).toHaveLength(32);
+      expect(service.getFailedReportEntityIds(inputs, result)).toEqual(new Set(inputs.map(i => i.entityId)));
       expect(send).toHaveBeenCalledTimes(1);
     });
   });

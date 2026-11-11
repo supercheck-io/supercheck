@@ -53,7 +53,9 @@ const DELETE_CONCURRENCY = 8;
 const DELETE_BATCH_SIZE = 1000; // S3 DeleteObjects limit
 // Prefixes `<uuid>-<suffix>/` share this stem (a full UUID plus "-"); runs of one test share it.
 const UUID_STEM = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-/i;
-const MIN_PREFIXES_PER_STEM = 3;
+// Listing a stem pages through every retained run of the test, so only group when that beats
+// listing each prefix at LIST_CONCURRENCY (two waves of individual lists).
+const MIN_PREFIXES_PER_STEM = 2 * LIST_CONCURRENCY;
 
 /** Run `fn` over `items` with at most `limit` in flight; results keep input order. */
 async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
@@ -219,7 +221,8 @@ export class S3CleanupService {
    */
   private async listObjectsWithPrefix(
     bucketName: string,
-    prefix: string
+    prefix: string,
+    keep: (key: string) => boolean = () => true,
   ): Promise<string[]> {
     const objects: string[] = [];
     let continuationToken: string | undefined;
@@ -235,8 +238,9 @@ export class S3CleanupService {
         );
 
         if (response.Contents) {
+          // Filter per page so a wide listing never holds the whole stem in memory.
           const keys = response.Contents.map((obj) => obj.Key).filter(
-            (key): key is string => key !== undefined
+            (key): key is string => key !== undefined && keep(key)
           );
           objects.push(...keys);
         }
@@ -497,12 +501,11 @@ export class S3CleanupService {
       const keysToDelete: string[] = [];
       await mapLimit(listings, LIST_CONCURRENCY, async ({ listPrefix, prefixes, grouped }) => {
         try {
-          const keys = await this.listObjectsWithPrefix(bucketName, listPrefix);
           const wanted = new Set(prefixes);
           // Never delete outside the requested execution directories.
-          for (const key of keys) {
-            if (!grouped || wanted.has(key.slice(0, key.indexOf("/") + 1))) keysToDelete.push(key);
-          }
+          const keys = await this.listObjectsWithPrefix(bucketName, listPrefix,
+            grouped ? (key) => wanted.has(key.slice(0, key.indexOf("/") + 1)) : undefined);
+          for (const key of keys) keysToDelete.push(key);
         } catch (error) {
           for (const input of prefixes.flatMap((prefix) => owners.get(prefix) ?? [])) {
             combinedResult.failedObjects.push({

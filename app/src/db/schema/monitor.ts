@@ -146,6 +146,10 @@ export const monitorResults = pgTable(
       table.monitorId,
       table.executionGroupId
     ),
+    // Serves the tenancy lookup of a report by its execution id (`test_execution_id = $1`); built concurrently in 0073.
+    testExecutionIdIdx: index("monitor_results_test_execution_id_idx")
+      .on(table.testExecutionId)
+      .where(sql`${table.testExecutionId} IS NOT NULL`),
     monitorResultsStatusCheck: check("monitor_results_status_check", sql`${table.status} IN ('up', 'down', 'error', 'timeout')`),
   })
 );
