@@ -276,3 +276,46 @@ it("serves a project with thousands of monitors without a bind parameter per ran
   const counts = await getRowCountsByPeriod({ organizationId: orgId, projectId: big.id, from: new Date(now.getTime() - 30 * D), now, period: "daily" });
   expect([...counts.values()].reduce((sum, c) => sum + c.total, 0)).toBe(2000);
 });
+
+it("leaves earlier periods complete and the failed period absent when a later aggregate statement fails", async () => {
+  const [project] = await mockDatabase.insert(schema.projects).values({ organizationId: orgId, name: "Chunks" }).returning();
+  const [monitor] = await mockDatabase.insert(schema.monitors).values({
+    organizationId: orgId, projectId: project.id, name: "chunks", type: "http_request", target: "https://c.test", status: "up",
+  }).returning();
+  // 80 days x 3 regions = 240 located rows: more than one 200-row statement.
+  const regions = ["us-east", "eu-central", "asia-pacific"] as const;
+  await mockDatabase.insert(schema.monitorResults).values(
+    Array.from({ length: 80 }, (_, i) => regions.map((location) => ({
+      monitorId: monitor.id, checkedAt: new Date(midnight - (i + 1) * D + H), isUp: i % 3 !== 0, status: i % 3 !== 0 ? "up" as const : "down" as const,
+      location, executionGroupId: `c-${i}`,
+    }))).flat(),
+  );
+  const original = mockDatabase.insert.bind(mockDatabase);
+  let statements = 0;
+  const spy = jest.spyOn(mockDatabase, "insert").mockImplementation(((table: Parameters<typeof original>[0]) => {
+    const builder = original(table);
+    if (table !== schema.monitorAggregates) return builder;
+    const values = builder.values.bind(builder);
+    builder.values = ((rows: { monitorId: string }[]) => {
+      if (rows[0].monitorId === monitor.id && ++statements === 2) throw new Error("boom");
+      return values(rows as never);
+    }) as typeof builder.values;
+    return builder;
+  }) as typeof original);
+  let errors: string[];
+  try {
+    errors = (await monitorAggregationService.runDailyAggregation(85)).errors;
+  } finally { spy.mockRestore(); }
+  expect(errors).toHaveLength(1);
+
+  const perPeriod = await client`
+    SELECT period_start, count(*)::int AS n FROM monitor_aggregates
+    WHERE monitor_id = ${monitor.id} AND period_type = 'daily' AND location IS NOT NULL GROUP BY period_start`;
+  expect(perPeriod.length).toBeGreaterThan(0);
+  expect(perPeriod.length).toBeLessThan(80);
+  for (const row of perPeriod) expect(row.n).toBe(3);
+
+  const now = new Date();
+  const counts = await getRowCountsByPeriod({ organizationId: orgId, projectId: project.id, from: new Date(now.getTime() - 85 * D), now, period: "daily" });
+  expect([...counts.values()].reduce((sum, c) => sum + c.total, 0)).toBe(240);
+});

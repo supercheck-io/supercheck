@@ -581,6 +581,35 @@ export interface WindowMetrics {
 const MIN_P95_SAMPLES = AGGREGATION_CONFIG.MIN_CHECKS_FOR_P95;
 const INSERT_CHUNK = 200;
 
+/**
+ * Split rows into statements of about `size` rows without ever splitting one (monitor, period): all
+ * locations of a period land in a single INSERT, which is atomic, so readers that sum the located rows
+ * never see a half-written period. A period larger than `size` gets a statement of its own.
+ */
+export function chunkWholePeriods<T extends { monitorId: string; periodType: string; periodStart: Date }>(
+  rows: T[],
+  size: number = INSERT_CHUNK,
+): T[][] {
+  const groups = new Map<string, T[]>();
+  for (const row of rows) {
+    const key = `${row.monitorId}|${row.periodType}|${row.periodStart.getTime()}`;
+    const group = groups.get(key);
+    if (group) group.push(row);
+    else groups.set(key, [row]);
+  }
+  const chunks: T[][] = [];
+  let current: T[] = [];
+  for (const group of groups.values()) {
+    if (current.length > 0 && current.length + group.length > size) {
+      chunks.push(current);
+      current = [];
+    }
+    current.push(...group);
+  }
+  if (current.length > 0) chunks.push(current);
+  return chunks;
+}
+
 const isUpSample = (row: CheckRow) =>
   row.isUp && row.responseTimeMs !== null && row.responseTimeMs > 0;
 
@@ -886,10 +915,10 @@ export class MonitorAggregationService {
       monitorAggregates.periodStart,
     ];
     const upsert = async (batch: MonitorAggregateInsert[], withLocation: boolean) => {
-      for (let i = 0; i < batch.length; i += INSERT_CHUNK) {
+      for (const chunk of chunkWholePeriods(batch)) {
         const written = await db
           .insert(monitorAggregates)
-          .values(batch.slice(i, i + INSERT_CHUNK))
+          .values(chunk)
           .onConflictDoUpdate({
             target: withLocation ? [...target, monitorAggregates.location] : target,
             // PostgreSQL's ordinary unique index treats NULL locations as distinct.
