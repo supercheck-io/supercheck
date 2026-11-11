@@ -331,11 +331,11 @@ function DocumentCard({
     const getStatusBadge = (status: Document["status"]) => {
         switch (status) {
             case "processed":
-                return <Badge variant="secondary" className="bg-green-500/10 text-green-500">Processed</Badge>;
+                return <Badge variant="secondary" className="bg-success/10 text-success">Processed</Badge>;
             case "processing":
-                return <Badge variant="secondary" className="bg-yellow-500/10 text-yellow-500">Processing</Badge>;
+                return <Badge variant="secondary" className="bg-warning/10 text-warning">Processing</Badge>;
             case "failed":
-                return <Badge variant="secondary" className="bg-red-500/10 text-red-500">Failed</Badge>;
+                return <Badge variant="secondary" className="bg-failure/10 text-failure">Failed</Badge>;
         }
     };
 
@@ -375,7 +375,7 @@ function DocumentCard({
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem
-                                    className="text-red-600"
+                                    className="text-failure"
                                     onClick={() => setDeleteDialogOpen(true)}
                                 >
                                     <Trash2 className="h-4 w-4 mr-2" />

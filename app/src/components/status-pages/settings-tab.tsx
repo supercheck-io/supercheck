@@ -609,7 +609,7 @@ export function SettingsTab({
               disabled={!canUpdate}
             />
             {errors.name && (
-              <p className="text-sm text-red-500">{errors.name.message}</p>
+              <p className="text-sm text-failure">{errors.name.message}</p>
             )}
           </div>
 
@@ -631,7 +631,7 @@ export function SettingsTab({
               disabled={!canUpdate}
             />
             {errors.headline && (
-              <p className="text-sm text-red-500">{errors.headline.message}</p>
+              <p className="text-sm text-failure">{errors.headline.message}</p>
             )}
           </div>
 
@@ -653,7 +653,7 @@ export function SettingsTab({
               rows={2}
             />
             {errors.pageDescription && (
-              <p className="text-sm text-red-500">
+              <p className="text-sm text-failure">
                 {errors.pageDescription.message}
               </p>
             )}
@@ -677,7 +677,7 @@ export function SettingsTab({
               disabled={!canUpdate}
             />
             {errors.supportUrl && (
-              <p className="text-sm text-red-500">
+              <p className="text-sm text-failure">
                 {errors.supportUrl.message}
               </p>
             )}
@@ -830,25 +830,25 @@ export function SettingsTab({
           )}
 
           {errors.customDomain && (
-            <p className="text-sm text-red-500">
+            <p className="text-sm text-failure">
               {errors.customDomain.message}
             </p>
           )}
 
           {customDomainConfigMessage && (
-            <div className="flex gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/50 dark:text-amber-200">
+            <div className="flex gap-2 rounded-md border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
               <p>{customDomainConfigMessage}</p>
             </div>
           )}
 
           {hasReservedCustomDomain && (
-            <div className="flex gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/50 dark:text-amber-200">
+            <div className="flex gap-2 rounded-md border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
               <p>
                 This domain is reserved for default status page routing. Use a
                 different hostname and point its CNAME to{" "}
-                <code className="rounded bg-amber-100 px-1 py-0.5 text-xs dark:bg-amber-900/60">
+                <code className="rounded bg-warning/10 px-1 py-0.5 text-xs">
                   {effectiveStatusPageCnameTarget}
                 </code>
                 .
@@ -857,7 +857,7 @@ export function SettingsTab({
           )}
 
           {domainVerified && (
-            <div className="inline-flex items-center gap-2 rounded-md bg-green-50 px-2.5 py-1.5 text-sm text-green-700 dark:bg-green-950/50 dark:text-green-300">
+            <div className="inline-flex items-center gap-2 rounded-md bg-success/10 px-2.5 py-1.5 text-sm text-success">
               <CheckCircle2 className="h-4 w-4" />
               Domain verified and active
             </div>
@@ -866,7 +866,7 @@ export function SettingsTab({
           {domainPending && (
             <p
               role="status"
-              className="text-sm text-amber-700 dark:text-amber-400"
+              className="text-sm text-warning"
             >
               Pending verification. Add the records below, then select Verify
               DNS.
@@ -1184,7 +1184,7 @@ export function SettingsTab({
                     />
                   </div>
                   {errors[color.name] && (
-                    <p className="text-sm text-red-500">
+                    <p className="text-sm text-failure">
                       {errors[color.name]?.message}
                     </p>
                   )}
@@ -1203,7 +1203,7 @@ export function SettingsTab({
             className="flex items-center justify-between gap-3 rounded-xl border bg-background/95 p-2 pl-4 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/80"
           >
             <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+              <span className="h-1.5 w-1.5 rounded-full bg-warning" />
               Unsaved changes
             </p>
             <div className="flex items-center gap-1.5">

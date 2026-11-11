@@ -415,7 +415,7 @@ export const columns: ColumnDef<Requirement>[] = [
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
-                            className="text-red-600"
+                            className="text-failure"
                             onClick={(e) => {
                                 e.stopPropagation();
                                 meta?.onDeleteRequirement?.(requirement.id);

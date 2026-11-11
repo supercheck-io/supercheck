@@ -33,16 +33,16 @@ const variantStyles = {
     iconColor: "text-blue-600 dark:text-blue-400",
   },
   success: {
-    iconBg: "bg-emerald-50 dark:bg-emerald-950/50",
-    iconColor: "text-emerald-600 dark:text-emerald-400",
+    iconBg: "bg-success/10",
+    iconColor: "text-success",
   },
   warning: {
-    iconBg: "bg-amber-50 dark:bg-amber-950/50",
-    iconColor: "text-amber-600 dark:text-amber-400",
+    iconBg: "bg-warning/10",
+    iconColor: "text-warning",
   },
   danger: {
-    iconBg: "bg-red-50 dark:bg-red-950/50",
-    iconColor: "text-red-600 dark:text-red-400",
+    iconBg: "bg-failure/10",
+    iconColor: "text-failure",
   },
   purple: {
     iconBg: "bg-violet-50 dark:bg-violet-950/50",
@@ -88,8 +88,8 @@ export function StatsCard({
                   className={cn(
                     "text-xs font-medium",
                     trend.isPositive !== false
-                      ? "text-emerald-600 dark:text-emerald-400"
-                      : "text-red-600 dark:text-red-400"
+                      ? "text-success"
+                      : "text-failure"
                   )}
                 >
                   {trend.isPositive !== false ? "+" : ""}

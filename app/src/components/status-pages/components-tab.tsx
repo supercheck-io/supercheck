@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -302,13 +302,13 @@ export function ComponentsTab({
   const getStatusBadgeColor = (status: ComponentStatus) => {
     switch (status) {
       case "operational":
-        return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200";
+        return "bg-success/10 text-success";
       case "degraded_performance":
-        return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200";
+        return "bg-warning/10 text-warning";
       case "partial_outage":
-        return "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200";
+        return "bg-failure/10 text-failure";
       case "major_outage":
-        return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200";
+        return "bg-failure text-white";
       case "under_maintenance":
         return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200";
       default:
@@ -667,7 +667,7 @@ export function ComponentsTab({
                               variant="ghost"
                               size="sm"
                               onClick={() => handleDeleteClick(component)}
-                              className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
+                              className="h-8 w-8 p-0 text-failure hover:text-failure hover:bg-failure/10"
                               title={
                                 !canUpdate
                                   ? "You don't have permission to delete components"
@@ -807,7 +807,7 @@ export function ComponentsTab({
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={confirmDelete}
-              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+              className={buttonVariants({ variant: "destructive" })}
             >
               Delete
             </AlertDialogAction>
