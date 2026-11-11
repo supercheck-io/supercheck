@@ -1754,10 +1754,26 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
   private async failIfPodRejected(jobName: string): Promise<void> {
     let items: k8s.CoreV1Event[];
     try {
-      ({ items } = await this.coreApi!.listNamespacedEvent({
+      // Bounded so a stalled events call cannot block pod polling or its 120s deadline.
+      const request = this.coreApi!.listNamespacedEvent({
         namespace: this.executionNamespace,
         fieldSelector: `involvedObject.name=${jobName},reason=FailedCreate`,
-      }));
+      });
+      request.catch(() => undefined);
+      let timer: NodeJS.Timeout | undefined;
+      try {
+        ({ items } = await Promise.race([
+          request,
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(
+              () => reject(new Error('events request timed out')),
+              ContainerExecutorService.POD_EVENT_CHECK_MS,
+            );
+          }),
+        ]));
+      } finally {
+        clearTimeout(timer);
+      }
     } catch (error) {
       if (!this.podEventsUnavailableLogged) {
         this.podEventsUnavailableLogged = true;

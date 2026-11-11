@@ -269,6 +269,20 @@ describe('ContainerExecutorService', () => {
         );
       });
 
+      it('does not let a stalled events call block pod polling', async () => {
+        jest.useFakeTimers();
+        try {
+          const warn = jest.spyOn(service['logger'], 'warn');
+          withEvents(jest.fn().mockReturnValue(new Promise(() => undefined)));
+          const pending = service['failIfPodRejected']('job-d');
+          await jest.advanceTimersByTimeAsync(5_000);
+          await expect(pending).resolves.toBeUndefined();
+          expect(warn).toHaveBeenCalled();
+        } finally {
+          jest.useRealTimers();
+        }
+      });
+
       it('tolerates 403 on events and logs once', async () => {
         const warn = jest.spyOn(service['logger'], 'warn');
         withEvents(jest.fn().mockRejectedValue(new Error('HTTP-Code: 403')));

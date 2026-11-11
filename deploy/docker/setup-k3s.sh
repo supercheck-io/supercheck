@@ -400,7 +400,10 @@ UNIT
     systemctl daemon-reload
   fi
   rm -f "$unit_tmp"
-  systemctl enable --now supercheck-metadata-block.service
+  # Restart (not just start): an already-active oneshot would not re-run ExecStart, so a
+  # rule lost to a firewall reload would stay missing.
+  systemctl enable supercheck-metadata-block.service
+  systemctl restart supercheck-metadata-block.service
   log "Host rule dropping pod traffic to 169.254.169.254 installed"
 }
 
