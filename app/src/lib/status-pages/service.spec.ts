@@ -3,7 +3,7 @@
 const chainResult = { value: [] as unknown };
 const makeChain = (): Record<string, unknown> => {
   const chain: Record<string, unknown> = {};
-  for (const m of ["from", "where", "set", "values", "returning", "innerJoin", "limit"]) {
+  for (const m of ["from", "where", "set", "values", "returning", "innerJoin", "limit", "orderBy", "for"]) {
     chain[m] = jest.fn(() => chain);
   }
   chain.then = (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) =>
@@ -428,6 +428,7 @@ describe("status page service", () => {
       componentFindFirst.mockResolvedValue({ id: compId, name: "API" });
       chainResult.value = [{ id: monitorA }, { id: monitorB }];
       const weights = { from: () => weights, where: () => Promise.resolve([{ monitorId: monitorA, weight: 3 }]) };
+      txSelect.mockReturnValueOnce(makeChain() as never); // the monitor lock comes first in the transaction
       txSelect.mockReturnValueOnce(weights as never);
       const insertChain = makeChain();
       insert.mockReturnValueOnce(insertChain as never);
@@ -448,8 +449,31 @@ describe("status page service", () => {
       insert.mockReturnValueOnce(insertChain as never);
 
       await updateComponent(ctx, pageId, compId, { monitorIds: [monitorA], monitorWeights: { [monitorA]: 5 }, status: "operational" });
-      expect(txSelect).not.toHaveBeenCalled();
+      expect(txSelect).toHaveBeenCalledTimes(1); // only the monitor lock, never the existing weights
       expect(insertChain.values).toHaveBeenCalledWith([expect.objectContaining({ monitorId: monitorA, weight: 5 })]);
+    });
+
+    it("maps a monitor that began deleting during the write to a validation error, not a 500", async () => {
+      pageFindFirst.mockResolvedValue({ id: pageId });
+      componentFindFirst.mockResolvedValue({ id: compId, name: "API" });
+      chainResult.value = [{ id: monitorA }];
+      transaction.mockRejectedValueOnce(Object.assign(new Error("monitor is being deleted"), { code: "DL001" }));
+      expect(await updateComponent(ctx, pageId, compId, { monitorIds: [monitorA] })).toEqual({
+        ok: false, code: "validation", message: "One or more monitors not found or access denied",
+      });
+      transaction.mockRejectedValueOnce(Object.assign(new Error("x"), { cause: { code: "DL001" } }));
+      expect(await createComponent(ctx, pageId, { name: "API", monitorIds: [monitorA] })).toMatchObject({ ok: false, code: "validation" });
+    });
+
+    it("rejects the update when the locked monitor set no longer matches (monitor flagged after the first check)", async () => {
+      pageFindFirst.mockResolvedValue({ id: pageId });
+      componentFindFirst.mockResolvedValue({ id: compId, name: "API" });
+      chainResult.value = [{ id: monitorA }];
+      const emptyLock = makeChain();
+      emptyLock.then = (resolve: (v: unknown) => unknown) => Promise.resolve([]).then(resolve);
+      txSelect.mockReturnValueOnce(emptyLock as never);
+      expect(await updateComponent(ctx, pageId, compId, { monitorIds: [monitorA] })).toMatchObject({ ok: false, code: "validation" });
+      expect(del).not.toHaveBeenCalled();
     });
 
     it("rejects a whitespace-only component name", async () => {

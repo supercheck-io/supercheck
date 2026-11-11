@@ -24,6 +24,7 @@ jest.mock("@/lib/cancellation-service", () => ({ RUN_CANCELLATION_MARKER: "Cance
 jest.mock("./queue", () => ({ triggerDeletion: (...a: unknown[]) => mockTrigger(...a) }));
 process.env.DELETION_BATCH_PAUSE_MS = "0";
 import { requestJobDeletion, requestMonitorDeletion } from "./request";
+import { getRowCountsByPeriod } from "@/lib/monitor-availability";
 import { runDeletion } from "./runner";
 import { claimDeletion, completeDeletion, enqueueOrphanedDeletions, failDeletion, findDueDeletions, heartbeat, LostClaimError, pruneCompletedDeletions, retryFailedDeletion, MAX_ATTEMPTS, GLOBAL_CONCURRENCY } from "./jobs";
 
@@ -88,6 +89,15 @@ async function seedMonitor(resultCount: number, extra: { orgId?: string; project
   await client`INSERT INTO reports (id, entity_type, entity_id, report_path, status)
     SELECT uuidv7(), 'monitor', test_execution_id, test_execution_id || '/report', 'passed' FROM monitor_results WHERE monitor_id = ${monitor.id} AND test_execution_id IS NOT NULL`;
   return { ...base, monitorId: monitor.id };
+}
+
+let componentOrg: { orgId: string; projectId: string };
+async function seedComponent() {
+  const seeded = await seedMonitor(0);
+  componentOrg = seeded;
+  const [page] = await client`INSERT INTO status_pages (id, organization_id, project_id, name, subdomain) VALUES (uuidv7(), ${seeded.orgId}, ${seeded.projectId}, 'S', ${`s${randomUUID().slice(0, 8)}`}) RETURNING id`;
+  const [component] = await client`INSERT INTO status_page_components (id, status_page_id, name) VALUES (uuidv7(), ${page.id}, 'C') RETURNING id`;
+  return { monitorId: seeded.monitorId, componentId: component.id as string };
 }
 
 const scope = (s: { jobId?: string; monitorId?: string; orgId: string; projectId: string }) => ({ id: (s.jobId ?? s.monitorId)!, projectId: s.projectId, organizationId: s.orgId, userId: randomUUID() });
@@ -209,6 +219,44 @@ describe("job deletion", () => {
     await requesting;
     await expect(insert).rejects.toMatchObject({ code: "DL001" });
     expect(await count("runs", "job_id", seeded.jobId)).toBe(0);
+  });
+
+  it("rejects attaching a monitor being deleted to a status page component", async () => {
+    const { monitorId, componentId } = await seedComponent();
+    await requestMonitorDeletion(scope({ monitorId, orgId: componentOrg.orgId, projectId: componentOrg.projectId }));
+    await expect(client`INSERT INTO status_page_component_monitors (component_id, monitor_id) VALUES (${componentId}, ${monitorId})`)
+      .rejects.toMatchObject({ code: "DL001" });
+    expect(await count("status_page_component_monitors", "monitor_id", monitorId)).toBe(0);
+  });
+
+  it("a status page link insert in flight makes the deletion request wait, then its link is removed", async () => {
+    const { monitorId, componentId } = await seedComponent();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let linked!: () => void;
+    const linkedPromise = new Promise<void>((resolve) => { linked = resolve; });
+    const linking = client.begin(async (tx) => {
+      await tx`INSERT INTO status_page_component_monitors (component_id, monitor_id) VALUES (${componentId}, ${monitorId})`;
+      linked();
+      await gate;
+    });
+    await linkedPromise;
+    let done = false;
+    const request = requestMonitorDeletion(scope({ monitorId, orgId: componentOrg.orgId, projectId: componentOrg.projectId })).then((r) => { done = true; return r; });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(done).toBe(false);
+    release();
+    await linking;
+    expect((await request).status).toBe("requested");
+    expect(await count("status_page_component_monitors", "monitor_id", monitorId)).toBe(0);
+  });
+
+  it("leaves a monitor being deleted out of the dashboard availability counts", async () => {
+    const live = await seedMonitor(30);
+    const doomed = await seedMonitor(30, live);
+    await requestMonitorDeletion(scope(doomed));
+    const total = async () => [...(await getRowCountsByPeriod({ organizationId: live.orgId, projectId: live.projectId, from: new Date(Date.now() - 86_400_000), now: new Date(), period: "hourly" })).values()].reduce((n, v) => n + v.total, 0);
+    expect(await total()).toBe(30);
   });
 
   it("keeps a latest-report alias that a live execution repointed while storage was being cleaned", async () => {

@@ -26,7 +26,7 @@ import {
 } from '@/lib/services/subscription-service';
 import { polarUsageService } from '@/lib/services/polar-usage.service';
 import { getSafeExecutionQueueErrorDetails } from '@/lib/execution-api-responses';
-import { isJobDeletingError } from '@/lib/deletion/errors';
+import { isDeletingError } from '@/lib/deletion/errors';
 
 const logger = queueLogger;
 
@@ -56,7 +56,7 @@ async function insertTickRun(
   try {
     return await insertTickRunInner(values, jobId, tickKey);
   } catch (error) {
-    if (isJobDeletingError(error)) return false; // lost the race with a deletion: no run, and the next tick drops the schedule
+    if (isDeletingError(error)) return false; // lost the race with a deletion: no run, and the next tick drops the schedule
     throw error;
   }
 }

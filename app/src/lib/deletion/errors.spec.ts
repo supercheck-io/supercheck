@@ -1,13 +1,13 @@
-import { isJobDeletingError } from "./errors";
+import { isDeletingError } from "./errors";
 
-describe("isJobDeletingError", () => {
+describe("isDeletingError", () => {
   it("recognises the trigger's SQLSTATE directly and as a wrapped cause", () => {
-    expect(isJobDeletingError({ code: "DL001" })).toBe(true);
-    expect(isJobDeletingError({ cause: { code: "DL001" } })).toBe(true);
+    expect(isDeletingError({ code: "DL001" })).toBe(true);
+    expect(isDeletingError({ cause: { code: "DL001" } })).toBe(true);
   });
   it("ignores other errors", () => {
-    expect(isJobDeletingError({ code: "23503" })).toBe(false);
-    expect(isJobDeletingError(new Error("x"))).toBe(false);
-    expect(isJobDeletingError(null)).toBe(false);
+    expect(isDeletingError({ code: "23503" })).toBe(false);
+    expect(isDeletingError(new Error("x"))).toBe(false);
+    expect(isDeletingError(null)).toBe(false);
   });
 });

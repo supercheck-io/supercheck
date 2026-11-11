@@ -39,3 +39,17 @@ END;
 $$ LANGUAGE plpgsql;
 --> statement-breakpoint
 CREATE OR REPLACE TRIGGER runs_reject_deleting_job BEFORE INSERT ON runs FOR EACH ROW EXECUTE FUNCTION runs_reject_deleting_job();
+--> statement-breakpoint
+-- Same fence for status page links: a monitor being deleted must never be attached to a public status page.
+CREATE OR REPLACE FUNCTION status_page_links_reject_deleting_monitor() RETURNS trigger AS $$
+DECLARE flagged timestamptz;
+BEGIN
+  SELECT deleting_at INTO flagged FROM public.monitors WHERE id = NEW.monitor_id FOR KEY SHARE;
+  IF flagged IS NOT NULL THEN
+    RAISE EXCEPTION 'monitor % is being deleted', NEW.monitor_id USING ERRCODE = 'DL001';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+--> statement-breakpoint
+CREATE OR REPLACE TRIGGER status_page_links_reject_deleting_monitor BEFORE INSERT ON status_page_component_monitors FOR EACH ROW EXECUTE FUNCTION status_page_links_reject_deleting_monitor();

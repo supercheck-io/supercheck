@@ -261,7 +261,9 @@ export async function GET() {
           gte(k6PerformanceRuns.startedAt, last30Days),
           eq(k6PerformanceRuns.projectId, targetProjectId),
           eq(k6PerformanceRuns.organizationId, context.organizationId),
-          sql`${k6PerformanceRuns.completedAt} IS NOT NULL`
+          sql`${k6PerformanceRuns.completedAt} IS NOT NULL`,
+          // Runs of a job being deleted are gone at once (anti-join on the jobs primary key).
+          sql`(${k6PerformanceRuns.jobId} IS NULL OR NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.id = ${k6PerformanceRuns.jobId} AND jobs.deleting_at IS NOT NULL))`
         )),
 
     ]);
@@ -288,6 +290,7 @@ export async function GET() {
           gte(monitorResults.checkedAt, last30Days),
           eq(monitors.projectId, targetProjectId),
           eq(monitors.organizationId, context.organizationId),
+          isNull(monitors.deletingAt),
           eq(monitors.type, 'synthetic_test'),
           excludeSyntheticResults
         )),
@@ -347,7 +350,8 @@ export async function GET() {
           gte(monitorResults.checkedAt, last24Hours),
           eq(monitorResults.isUp, true),
           eq(monitors.projectId, targetProjectId),
-          eq(monitors.organizationId, context.organizationId)
+          eq(monitors.organizationId, context.organizationId),
+          isNull(monitors.deletingAt)
         )),
 
       // Daily playground executions breakdown (last 30 days)
