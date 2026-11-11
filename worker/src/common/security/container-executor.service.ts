@@ -2075,7 +2075,14 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     const exitCodeFile = this.getWorkspaceExitCodeFile(workspace);
     let artifactsCollected = false;
 
-    while (Date.now() < timeoutAt) {
+    // One extra pass after the deadline: a script that finished just before it
+    // waits for our exit signal, so only the marker check can see it completed.
+    let finalPass = false;
+    for (;;) {
+      if (Date.now() >= timeoutAt) {
+        if (finalPass) break;
+        finalPass = true;
+      }
       let pod: k8s.V1Pod;
       try {
         pod = await this.coreApi!.readNamespacedPod({
@@ -2192,6 +2199,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
         );
       }
 
+      if (finalPass && Date.now() >= timeoutAt) break;
       await this.sleep(
         this.getExecutionOutcomePollIntervalMs(startedAt, timeoutAt),
       );
