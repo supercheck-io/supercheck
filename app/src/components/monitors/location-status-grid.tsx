@@ -123,7 +123,7 @@ export function LocationStatusGrid({
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-red-600">{error}</p>
+          <p className="text-sm text-failure">{error}</p>
         </CardContent>
       </Card>
     );
@@ -172,8 +172,8 @@ export function LocationStatusGrid({
                 key={stat.location}
                 className={`rounded-lg border p-4 space-y-3 transition-all ${
                   isUp
-                    ? "border-green-200 bg-green-50 dark:bg-green-950/20"
-                    : "border-red-200 bg-red-50 dark:bg-red-950/20"
+                    ? "border-success/30 bg-success/10"
+                    : "border-failure/30 bg-failure/10"
                 }`}
               >
                 {/* Location Header */}
@@ -211,10 +211,10 @@ export function LocationStatusGrid({
                     <div
                       className={`h-full ${
                         stat.uptimePercentage >= 99
-                          ? "bg-green-600"
+                          ? "bg-success"
                           : stat.uptimePercentage >= 95
-                          ? "bg-yellow-600"
-                          : "bg-red-600"
+                          ? "bg-warning"
+                          : "bg-failure"
                       }`}
                       style={{ width: `${stat.uptimePercentage}%` }}
                     />
@@ -239,11 +239,11 @@ export function LocationStatusGrid({
                   stat.maxResponseTime !== null && (
                     <div className="flex items-center justify-between text-xs text-gray-500">
                       <div className="flex items-center gap-1">
-                        <TrendingDown className="h-3 w-3 text-green-600" />
+                        <TrendingDown className="h-3 w-3 text-success" />
                         <span>{formatResponseTime(stat.minResponseTime)}</span>
                       </div>
                       <div className="flex items-center gap-1">
-                        <TrendingUp className="h-3 w-3 text-orange-600" />
+                        <TrendingUp className="h-3 w-3 text-warning" />
                         <span>{formatResponseTime(stat.maxResponseTime)}</span>
                       </div>
                     </div>

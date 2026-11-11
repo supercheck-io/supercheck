@@ -28,19 +28,19 @@ export const runStatuses = [
     value: "passed",
     label: "Passed",
     icon: CheckCircle,
-    color: "text-green-500",
+    color: "text-success",
   },
   {
     value: "failed",
     label: "Failed",
     icon: XCircle,
-    color: "text-red-500",
+    color: "text-failure",
   },
   {
     value: "error",
     label: "Error",
     icon: AlertCircle,
-    color: "text-orange-500",
+    color: "text-warning",
   },
   {
     value: "cancelled",
@@ -52,7 +52,7 @@ export const runStatuses = [
     value: "blocked",
     label: "Blocked",
     icon: ShieldOff,
-    color: "text-red-600",
+    color: "text-failure",
   },
 ];
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { UserAvatar } from "@/components/ui/user-cell";
@@ -182,9 +182,9 @@ export function CicdSettings({ jobId, onChange }: CicdSettingsProps) {
     const daysUntilExpiry = Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 
     if (daysUntilExpiry < 0) {
-      return { status: "expired", text: "Expired", className: "bg-red-500/10 text-red-500" };
+      return { status: "expired", text: "Expired", className: "bg-failure/10 text-failure" };
     } else if (daysUntilExpiry <= 7) {
-      return { status: "expiring", text: `Expires in ${daysUntilExpiry}d`, className: "bg-amber-500/10 text-amber-600 dark:text-amber-400" };
+      return { status: "expiring", text: `Expires in ${daysUntilExpiry}d`, className: "bg-warning/10 text-warning" };
     }
 
     return null;
@@ -263,7 +263,7 @@ export function CicdSettings({ jobId, onChange }: CicdSettingsProps) {
                       className={cn(
                         "group flex items-center justify-between p-4 border rounded-lg transition-colors",
                         isExpired
-                          ? "bg-red-500/5 border-red-500/20"
+                          ? "bg-failure/5 border-failure/20"
                           : "hover:bg-muted/50"
                       )}
                     >
@@ -272,8 +272,8 @@ export function CicdSettings({ jobId, onChange }: CicdSettingsProps) {
                           <Key className="h-4 w-4 text-muted-foreground shrink-0" />
                           <span className="font-medium text-sm">{key.name}</span>
                           {key.enabled && !isExpired && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-green-500/10 text-green-600 dark:text-green-400">
-                              <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-success/10 text-success">
+                              <span className="h-1.5 w-1.5 rounded-full bg-success" />
                               Active
                             </span>
                           )}
@@ -327,7 +327,7 @@ export function CicdSettings({ jobId, onChange }: CicdSettingsProps) {
                               {operationLoadingStates[key.id] === 'toggle' ? (
                                 <Loader2 className="h-4 w-4 animate-spin" />
                               ) : key.enabled ? (
-                                <CheckCircle className="h-4 w-4 text-green-500" />
+                                <CheckCircle className="h-4 w-4 text-success" />
                               ) : (
                                 <Ban className="h-4 w-4 text-muted-foreground" />
                               )}
@@ -345,7 +345,7 @@ export function CicdSettings({ jobId, onChange }: CicdSettingsProps) {
                               className={cn(
                                 "h-8 w-8",
                                 canDeleteApiKeys
-                                  ? "text-muted-foreground hover:text-red-600 hover:bg-red-500/10"
+                                  ? "text-muted-foreground hover:text-failure hover:bg-failure/10"
                                   : "text-muted-foreground/50 cursor-not-allowed"
                               )}
                               onClick={() => handleDelete(key.id)}
@@ -406,8 +406,8 @@ export function CicdSettings({ jobId, onChange }: CicdSettingsProps) {
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle className="flex items-center gap-2">
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-red-500/10">
-                  <AlertTriangle className="h-4 w-4 text-red-500" />
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-failure/10">
+                  <AlertTriangle className="h-4 w-4 text-failure" />
                 </div>
                 Delete API Key
               </AlertDialogTitle>
@@ -422,7 +422,7 @@ export function CicdSettings({ jobId, onChange }: CicdSettingsProps) {
               <AlertDialogAction
                 onClick={confirmDelete}
                 disabled={keyToDelete ? operationLoadingStates[keyToDelete] === 'delete' : false}
-                className="bg-red-600 hover:bg-red-700"
+                className={buttonVariants({ variant: "destructive" })}
               >
                 {keyToDelete && operationLoadingStates[keyToDelete] === 'delete' ? (
                   <>

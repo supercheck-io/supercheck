@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Test } from "./schema";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -558,7 +558,7 @@ export default function EditJob({ jobId, initialJobData }: EditJobProps) {
               onClick={() => setShowDeleteDialog(true)}
               disabled={!canDeleteJob || isSubmitting || isDeleting}
               size="sm"
-              className={`flex items-center ${!canDeleteJob ? 'opacity-50 cursor-not-allowed text-muted-foreground' : 'text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/50'}`}
+              className={`flex items-center ${!canDeleteJob ? 'opacity-50 cursor-not-allowed text-muted-foreground' : 'text-failure hover:text-failure hover:bg-failure/10'}`}
               title={canDeleteJob ? "Delete job" : "Insufficient permissions to delete jobs"}
             >
               <Trash2 className="h-4 w-4 mr-2" />
@@ -689,7 +689,7 @@ export default function EditJob({ jobId, initialJobData }: EditJobProps) {
                 handleDeleteJob();
               }}
               disabled={isDeleting}
-              className="bg-red-600 hover:bg-red-700"
+              className={buttonVariants({ variant: "destructive" })}
             >
               {isDeleting ? "Deleting..." : "Delete"}
             </AlertDialogAction>

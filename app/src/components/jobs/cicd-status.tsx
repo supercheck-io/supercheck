@@ -74,8 +74,8 @@ export function CiCdStatus({ jobId, compact = false }: CiCdStatusProps) {
       <Card className={compact ? "p-3" : ""}>
         <CardContent className={compact ? "p-0" : ""}>
           <div className="flex items-center gap-2">
-            <AlertCircle className="h-4 w-4 text-red-500" />
-            <span className="text-sm text-red-600">{error}</span>
+            <AlertCircle className="h-4 w-4 text-failure" />
+            <span className="text-sm text-failure">{error}</span>
           </div>
         </CardContent>
       </Card>
@@ -132,12 +132,12 @@ export function CiCdStatus({ jobId, compact = false }: CiCdStatusProps) {
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 {hasActiveKeys ? (
                   <>
-                    <CheckCircle className="h-3 w-3 text-green-500" />
+                    <CheckCircle className="h-3 w-3 text-success" />
                     <span>{activeKeysCount} active API key{activeKeysCount !== 1 ? 's' : ''}</span>
                   </>
                 ) : totalKeysCount > 0 ? (
                   <>
-                    <AlertCircle className="h-3 w-3 text-yellow-500" />
+                    <AlertCircle className="h-3 w-3 text-warning" />
                     <span>{totalKeysCount} disabled API key{totalKeysCount !== 1 ? 's' : ''}</span>
                   </>
                 ) : (
