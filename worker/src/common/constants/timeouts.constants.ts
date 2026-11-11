@@ -10,6 +10,8 @@ export const TIMEOUTS = {
   TEST_EXECUTION_DEFAULT_MS: 300000, // 5 minutes (matches min synthetic monitor frequency)
   JOB_EXECUTION_DEFAULT_MS: 3600000, // 1 hour (60 minutes) - for complex multi-test jobs
   K6_EXECUTION_DEFAULT_MS: 3600000, // 1 hour (60 minutes) - for high-load K6 tests
+  // Hard cap the container executor accepts for any single run.
+  EXECUTION_MAX_MS: 3600000,
   HTTP_REQUEST_DEFAULT_MS: 30000, // 30 seconds
   PING_HOST_DEFAULT_MS: 5000, // 5 seconds
   PORT_CHECK_DEFAULT_MS: 10000, // 10 seconds

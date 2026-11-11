@@ -33,6 +33,7 @@ import {
   parseImagePullPolicyOverride,
 } from '../utils/image-reference';
 import { EGRESS_GUARD_MAX_WAIT_MS, EGRESS_GUARD_SCRIPT } from './egress-guard';
+import { TIMEOUTS } from '../constants/timeouts.constants';
 
 /** Recorded for a run whose execution Job the shutdown drain deleted. */
 export const WORKER_INTERRUPTED_ERROR = 'Interrupted by worker restart';
@@ -3050,7 +3051,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     const MIN_CPU = 0.1;
     const MAX_CPU = Math.min(4.0, this.maxExecutionCpuLimit);
     const MIN_TIMEOUT_MS = 5000;
-    const MAX_TIMEOUT_MS = 3600000;
+    const MAX_TIMEOUT_MS = TIMEOUTS.EXECUTION_MAX_MS;
 
     const errors: string[] = [];
 
