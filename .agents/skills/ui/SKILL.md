@@ -1,25 +1,27 @@
 ---
 name: supercheck-ui
-description: Build or change Supercheck web app UI, such as pages, layouts, components, tables, forms, dialogs, charts, sidebar navigation, empty, loading and error states, dark mode, responsive layout, or accessibility, and verify it visually. For the docs site use the docs/ conventions; for data hooks see supercheck-architecture.
+description: Build or change Supercheck UI or visual design, such as app pages, layouts, components, tables, forms, dialogs, charts, sidebar navigation, empty, loading and error states, dark mode, responsive layout, accessibility, colours, fonts, icons, or the look of the marketing landing page, pricing page and docs theme, and verify it visually. For data hooks see supercheck-architecture.
 ---
 
 # Supercheck UI
 
-The app is Next.js 16 + React 19 with Tailwind 4 and shadcn-style components (`app/components.json`: style `new-york`, base color zinc, CSS variables, lucide icons). Reuse what exists before writing new UI.
+The app is Next.js 16 + React 19 with Tailwind 4 and shadcn-style components (`app/components.json`: style `new-york`, base color zinc, CSS variables, lucide icons). Reuse what exists before writing new UI. **Read `DESIGN.md` (repo root) first**: it defines the colour roles (black primary actions, area colours, violet for AI only, status colours for badges only), typography and the shared components below.
 
 ## Start here
 
 | File | Why |
 |---|---|
 | `app/src/components/ui/` | Primitives (button, card, dialog, alert-dialog, form, field, table, data-table-*, chart, skeleton, tooltip, sidebar, ...) |
-| `app/src/app/globals.css` | Design tokens (oklch CSS variables, `@theme inline` mappings, `.dark` overrides) |
+| `DESIGN.md` | Colour roles, typography, layout and the agent checklist |
+| `app/src/app/globals.css` | Design tokens (oklch CSS variables incl. area tokens `automate`/`monitor`/`respond`/`communicate`/`ai`, `@theme inline` mappings, `.dark` overrides) |
 | `app/src/app/(main)/monitors/page.tsx` | Reference page layout |
 | `app/src/components/app-sidebar.tsx` | Sidebar navigation entries |
 | `app/src/hooks/` | React Query hooks the UI reads from |
 
 ## Page structure
 
-- Pages render `<PageBreadcrumbs items={...} />` (`components/page-breadcrumbs.tsx`) followed by a `Card` with `CardContent` holding the feature component. Follow the neighboring page; there is no separate page-header component.
+- Pages render `<PageBreadcrumbs items={...} />` (`components/page-breadcrumbs.tsx`) followed by a `Card` with `CardContent` holding the feature component.
+- The title row is `PageHeader` (`components/shared/page-header.tsx`) with `icon` and `tone` set to the page's product area (`automate`, `monitor`, `respond`, `communicate`, `ai`; `slate` for settings and admin).
 - Keep `page.tsx` a Server Component and put interactive parts in a `"use client"` feature component.
 - Route-level loading uses `app/(main)/loading.tsx` (`components/shared/supercheck-loading.tsx`). Tables use `ui/data-table-skeleton.tsx` or `ui/table-skeleton.tsx`; generic placeholders use `ui/skeleton.tsx`.
 - Every list or panel needs explicit loading, empty, and error states. Reference empty state: `components/dashboard/dashboard-empty-state.tsx`. App-level errors: `app/error.tsx`, `not-found.tsx`.
@@ -27,6 +29,9 @@ The app is Next.js 16 + React 19 with Tailwind 4 and shadcn-style components (`a
 ## Components and patterns
 
 - Tables: TanStack Table with the `ui/data-table-*` pieces (column header, faceted filter, view options). Reference: `components/monitors/data-table.tsx`.
+- Table footers use `ui/data-table-pagination.tsx` (`DataTablePagination`, label `Total {n} {itemName}`); never copy a pagination component into a feature folder.
+- Icon chips: `ui/icon-chip.tsx` (`IconChip`), one per page title or card header, never in table rows. Incident sections use `SectionTitle` from `sre/incidents/incident-ui.tsx`.
+- Buttons: `Button` variants only; never recolour a button with `className` (the Run buttons once did and drifted to blue).
 - List tables fit the window: use `useFitPagination` / `useFitPageSize` and `pageSizeOptions` from `hooks/use-fit-page-size.ts` (rows per page follow the viewport; a manual choice overrides). Pass a fixed size for tables embedded in sheets. Pages that must fill the viewport without scrolling put `data-fit-viewport` on their root (the layout reads it).
 - Forms: react-hook-form with `zodResolver` and the shared Zod schemas; use `ui/form.tsx` or `ui/field.tsx` as the neighboring form does.
 - Destructive actions confirm with `ui/alert-dialog.tsx` and name the object being deleted.
@@ -40,7 +45,7 @@ The app is Next.js 16 + React 19 with Tailwind 4 and shadcn-style components (`a
 - Colors come from CSS variables in `globals.css`, which are **oklch**. Use Tailwind token classes (`bg-primary`, `text-muted-foreground`, `border`) or `var(--token)`. Never hard-code hex/rgb, and never wrap a token in `hsl(...)`: `hsl(var(--chart-1))` is invalid CSS on oklch values and renders no color.
 - Chart colors: `var(--chart-1)` to `var(--chart-5)` (Tailwind `--color-chart-*` is mapped in `@theme inline`). Charts use recharts through `ui/chart.tsx` (`ChartContainer`).
 - Dark mode is the `.dark` class from next-themes (`components/theme-provider.tsx`). Check every change in both themes.
-- Fonts are system stacks mapped to `--font-sans`/`--font-mono` (no web font downloads).
+- Fonts are Geist Sans and Geist Mono from the `geist` package (local font files, no download at build time), exposed as `--font-geist-sans`/`--font-geist-mono` and used through `font-sans`/`font-mono`.
 
 ## Data in components
 

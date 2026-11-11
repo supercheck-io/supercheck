@@ -27,7 +27,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-import { DataTablePagination } from "./data-table-pagination";
+import { DataTablePagination } from "@/components/ui/data-table-pagination";
 import { useFitPagination } from "@/hooks/use-fit-page-size";
 import { DataTableToolbar } from "./data-table-toolbar";
 import { DataTableSkeleton } from "@/components/ui/data-table-skeleton";
@@ -327,7 +327,7 @@ export function DataTable<TData extends AlertHistory, TValue>({
           </TableBody>
         </Table>
       </div>
-      <DataTablePagination table={table} />
+      <DataTablePagination table={table} itemName="alerts" />
     </div>
   );
 }

@@ -8,6 +8,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { IconChip } from "@/components/ui/icon-chip";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -344,13 +345,16 @@ export default function StatusPagesList() {
     <div className="p-6 max-h-[calc(100vh-130px)] flex flex-col">
       <CardHeader className="px-0 pt-0 shrink-0">
         <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className="text-2xl font-semibold">
-              Status Pages
-            </CardTitle>
-            <CardDescription>
-              Create and manage public status pages for your services
-            </CardDescription>
+          <div className="flex min-w-0 items-start gap-3">
+            <IconChip icon={Tally4} tone="communicate" size="md" className="mt-0.5" />
+            <div>
+              <CardTitle className="text-2xl font-semibold">
+                Status Pages
+              </CardTitle>
+              <CardDescription>
+                Create and manage public status pages for your services
+              </CardDescription>
+            </div>
           </div>
           <Dialog
             open={isCreateDialogOpen}

@@ -2,6 +2,7 @@
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ClipboardList } from "lucide-react";
+import { IconChip } from "@/components/ui/icon-chip";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Runs } from "@/components/runs";
 import { K6AnalyticsView } from "@/components/runs/analytics/k6-analytics-view";
@@ -31,11 +32,14 @@ export function RunsViewTabs() {
   return (
     <Tabs value={view} onValueChange={handleViewChange} className="space-y-4">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Runs</h1>
-          <p className="text-muted-foreground text-sm">
-            Job run history, with k6 and Playwright analytics.
-          </p>
+        <div className="flex min-w-0 items-start gap-3">
+          <IconChip icon={ClipboardList} tone="automate" size="md" className="mt-0.5" />
+          <div>
+            <h1 className="text-2xl font-semibold">Runs</h1>
+            <p className="text-muted-foreground text-sm">
+              Job run history, with k6 and Playwright analytics.
+            </p>
+          </div>
         </div>
         <TabsList className="self-start md:self-auto">
           <TabsTrigger value="all" className="gap-2">

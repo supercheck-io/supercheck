@@ -286,7 +286,7 @@ describe("timelineEventVisual", () => {
     [{ eventType: "ai_finding", eventData: { type: "sre_investigation" } }, "violet"],
     [{ eventType: "ai_finding", eventData: { type: "sre_investigation_failed" } }, "rose"],
     [{ eventType: "state_change", eventData: { state: "resolved" } }, "emerald"],
-    [{ eventType: "state_change", eventData: { state: "acknowledged" } }, "sky"],
+    [{ eventType: "state_change", eventData: { state: "acknowledged" } }, "amber"],
     [{ eventType: "state_change", eventData: { state: "created_from_alert_history" } }, "rose"],
     [{ eventType: "state_change", eventData: { state: "something_new" } }, "slate"],
     [{ eventType: "tool_call", eventData: null }, "slate"],

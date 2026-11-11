@@ -30,6 +30,7 @@ import {
   RefreshCw,
   AlertCircle,
   MapPin,
+  ShieldCheck,
 } from "lucide-react";
 import { useBreadcrumbs } from "@/components/breadcrumb-context";
 import { TabLoadingSpinner } from "@/components/ui/table-skeleton";
@@ -186,6 +187,8 @@ export default function AdminDashboard() {
       >
         <PageHeader
           title="Super Admin"
+          icon={ShieldCheck}
+          tone="slate"
           actions={
             <SectionTabs
               tabs={TABS}

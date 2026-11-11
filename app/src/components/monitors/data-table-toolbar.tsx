@@ -1,6 +1,7 @@
 import type { Table } from "@tanstack/react-table";
-import { PlusIcon, Search, X } from "lucide-react";
+import { PlusIcon, Search, X, Globe } from "lucide-react";
 
+import { IconChip } from "@/components/ui/icon-chip";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DataTableViewOptions } from "@/components/monitors/data-table-view-options";
@@ -28,7 +29,8 @@ export function DataTableToolbar<TData>({
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 mb-4 -mt-2">
-      <div className="flex items-center justify-between space-y-2">
+      <div className="flex items-start gap-3">
+        <IconChip icon={Globe} tone="monitor" size="md" className="mt-0.5" />
         <div className="flex flex-col">
           <h2 className="text-2xl font-semibold">Monitors</h2>
           <p className="text-muted-foreground text-sm">

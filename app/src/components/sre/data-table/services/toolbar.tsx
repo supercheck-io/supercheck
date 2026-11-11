@@ -1,7 +1,8 @@
 import { Table } from "@tanstack/react-table";
 import type { ReactNode } from "react";
-import { Plus, Search, X } from "lucide-react";
+import { Plus, Search, X, Boxes } from "lucide-react";
 
+import { IconChip } from "@/components/ui/icon-chip";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DataTableFacetedFilter } from "@/components/ui/data-table-faceted-filter";
@@ -21,11 +22,14 @@ export function ServicesToolbar<TData>({
     <div className="mb-4 -mt-2 space-y-4">
       {/* Title and actions share one row, as on the Incidents page; search and filters sit below. */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex min-w-0 flex-col">
-          <h1 className="text-2xl font-semibold">Services</h1>
-          <p className="text-sm text-muted-foreground">
-            Link monitors and jobs to services for investigation context.
-          </p>
+        <div className="flex min-w-0 items-start gap-3">
+          <IconChip icon={Boxes} tone="respond" size="md" className="mt-0.5" />
+          <div className="flex min-w-0 flex-col">
+            <h1 className="text-2xl font-semibold">Services</h1>
+            <p className="text-sm text-muted-foreground">
+              Link monitors and jobs to services for investigation context.
+            </p>
+          </div>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
           {setupGuide}

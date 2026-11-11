@@ -365,8 +365,7 @@ export function StatusPageDetail({
                 size="default"
                 onClick={handlePublish}
                 disabled={isPublishing || !canUpdate}
-                className="bg-green-600 hover:bg-green-700 text-white shadow-md"
-                title={!canUpdate ? "You don't have permission to publish" : ""}
+                                title={!canUpdate ? "You don't have permission to publish" : ""}
               >
                 {isPublishing ? (
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />

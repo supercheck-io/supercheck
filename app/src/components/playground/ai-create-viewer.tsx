@@ -264,7 +264,7 @@ export function AICreateViewer({
               <Button
                 onClick={() => onAccept(currentGeneratedScript)}
                 disabled={isStreaming}
-                className="h-9 px-4 text-sm bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                className="h-9 px-4 text-sm"
               >
                 <Check className="h-4 w-4 mr-1" />
                 {isStreaming ? "Generating..." : "Apply to Editor"}

@@ -1,21 +1,9 @@
 import { Info, type LucideIcon } from "lucide-react";
 
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { cn } from "@/lib/utils";
+import { IconChip, type IconTone } from "@/components/ui/icon-chip";
 
-export type IconTone = "violet" | "amber" | "blue" | "emerald" | "rose" | "slate" | "indigo" | "sky";
-
-// Same palette steps as TableBadge, so icon tiles and badges read as one system in light and dark.
-const ICON_TONE: Record<IconTone, string> = {
-  violet: "bg-violet-500/10 text-violet-600 dark:text-violet-400",
-  amber: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
-  blue: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
-  emerald: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
-  rose: "bg-rose-500/10 text-rose-600 dark:text-rose-400",
-  slate: "bg-slate-500/10 text-slate-600 dark:text-slate-400",
-  indigo: "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400",
-  sky: "bg-sky-500/10 text-sky-600 dark:text-sky-400",
-};
+export type { IconTone };
 
 // Violet is kept for AI identity only. AI actions are plain outline buttons whose icon alone carries the colour.
 const BUTTON_TONE = {
@@ -32,14 +20,8 @@ export const PANEL_CARD = "flex flex-col gap-3 py-4 shadow-none";
 export const PANEL_HEADER = "px-4 pt-0 pb-0";
 export const PANEL_CONTENT = "px-4 pb-0";
 
-/** A small tinted square holding an icon; marks a section or an event type. */
-export function IconTile({ icon: Icon, tone, className }: { icon: LucideIcon; tone: IconTone; className?: string }) {
-  return (
-    <span aria-hidden="true" className={cn("inline-flex size-6 shrink-0 items-center justify-center rounded-md", ICON_TONE[tone], className)}>
-      <Icon className="size-3.5" />
-    </span>
-  );
-}
+/** Kept for the incident components; new code uses `IconChip` from `@/components/ui/icon-chip`. */
+export const IconTile = IconChip;
 
 // Desktop columns scroll inside the page card with the scrollbar hidden, as on Copilot; small screens scroll the page.
 export const COLUMN_SCROLL = "lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden";

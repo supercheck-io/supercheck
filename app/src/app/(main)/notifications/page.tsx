@@ -239,6 +239,8 @@ function NotificationsPage() {
               <Tabs value={tab} onValueChange={onTabChange} className="w-full">
                 <PageHeader
                   title="Notifications"
+                  icon={BellRing}
+                  tone="communicate"
                   description="Choose where Supercheck sends alerts and incident updates, and see what was sent"
                   titleAdornment={
                     <InfoTip label="About notifications">

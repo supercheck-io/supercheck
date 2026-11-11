@@ -29,7 +29,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-import { DataTablePagination } from "./data-table-pagination";
+import { DataTablePagination } from "@/components/ui/data-table-pagination";
 import { useFitPagination } from "@/hooks/use-fit-page-size";
 import { DataTableToolbar } from "./data-table-toolbar";
 import { DataTableSkeleton } from "@/components/ui/data-table-skeleton";
@@ -275,7 +275,7 @@ export function DataTable<TData, TValue>({
           </TableBody>
         </Table>
       </div>
-      {!hidePagination && <DataTablePagination table={table} />}
+      {!hidePagination && <DataTablePagination table={table} itemName="monitors" />}
     </div>
   );
 } 
