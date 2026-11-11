@@ -25,7 +25,7 @@ jest.mock("./queue", () => ({ triggerDeletion: (...a: unknown[]) => mockTrigger(
 process.env.DELETION_BATCH_PAUSE_MS = "0";
 import { requestJobDeletion, requestMonitorDeletion } from "./request";
 import { runDeletion } from "./runner";
-import { claimDeletion, completeDeletion, enqueueOrphanedDeletions, failDeletion, findDueDeletions, heartbeat, LostClaimError, pruneCompletedDeletions, retryFailedDeletion, MAX_ATTEMPTS } from "./jobs";
+import { claimDeletion, completeDeletion, enqueueOrphanedDeletions, failDeletion, findDueDeletions, heartbeat, LostClaimError, pruneCompletedDeletions, retryFailedDeletion, MAX_ATTEMPTS, GLOBAL_CONCURRENCY } from "./jobs";
 
 const name = `deletion_purge_${randomUUID().replaceAll("-", "")}`;
 let maintenance: ReturnType<typeof postgres>;
@@ -333,16 +333,15 @@ describe("claims, retries and the sweep", () => {
   });
 
   it("a stale runner that is then blocked by the concurrency cap loses its ownership", async () => {
-    const seeded = await seedJob(1);
-    const other = await seedJob(1);
-    const third = await seedJob(1);
-    await Promise.all([requestJobDeletion(scope(seeded)), requestJobDeletion(scope(other)), requestJobDeletion(scope(third))]);
-    const ids = await Promise.all([seeded, other, third].map(async (s) => (await deletionRow(s.jobId)).id));
+    // One stale runner plus GLOBAL_CONCURRENCY fresh ones, so the test holds for any configured cap.
+    const seeds = [];
+    for (let i = 0; i <= GLOBAL_CONCURRENCY; i++) seeds.push(await seedJob(1));
+    await Promise.all(seeds.map((s) => requestJobDeletion(scope(s))));
+    const ids = await Promise.all(seeds.map(async (s) => (await deletionRow(s.jobId)).id));
     const stale = await claimDeletion(ids[0]);
     if (!("claimed" in stale)) throw new Error("expected a claim");
     await client`UPDATE deletion_jobs SET heartbeat_at = now() - interval '10 minutes' WHERE id = ${ids[0]}`;
-    expect("claimed" in (await claimDeletion(ids[1]))).toBe(true);
-    expect("claimed" in (await claimDeletion(ids[2]))).toBe(true); // global cap (2) now reached by the two fresh runners
+    for (const id of ids.slice(1)) expect("claimed" in (await claimDeletion(id))).toBe(true);
     expect(await claimDeletion(ids[0])).toEqual({ blocked: true });
     await expect(heartbeat(stale.claimed)).rejects.toBeInstanceOf(LostClaimError);
   });
