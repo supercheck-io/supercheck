@@ -807,6 +807,41 @@ describe('ContainerExecutorService', () => {
   });
 
   describe('kubernetes execution', () => {
+    it('reports a failed egress-wait init container as an unstarted infrastructure error', async () => {
+      service['coreApi'] = {
+        readNamespacedPod: jest.fn().mockResolvedValue({
+          status: {
+            initContainerStatuses: [
+              {
+                name: 'egress-wait',
+                state: { terminated: { exitCode: 78, reason: 'Error' } },
+              },
+            ],
+            containerStatuses: [
+              {
+                name: 'execution',
+                state: { waiting: { reason: 'PodInitializing' } },
+              },
+            ],
+          },
+        }),
+      } as unknown as NonNullable<(typeof service)['coreApi']>;
+      const evidence = { startedAtMs: null, finishedAtMs: null };
+      const outcome = await service['waitForExecutionOutcome'](
+        'pod',
+        '/tmp/run',
+        1000,
+        evidence,
+        jest.fn(),
+      );
+      expect(outcome).toMatchObject({
+        exitCode: 78,
+        timedOut: false,
+        message: expect.stringContaining('Infrastructure error'),
+      });
+      expect(evidence.startedAtMs).toBeNull();
+    });
+
     it('retains the numeric exit-code fallback for a generic Kubernetes Error', async () => {
       service['coreApi'] = {
         readNamespacedPod: jest.fn().mockResolvedValue({
@@ -1317,8 +1352,6 @@ describe('ContainerExecutorService', () => {
           env: {
             PUBLIC_SETTING: 'visible',
             SUPERCHECK_SECRETS_B64: 'plaintext-secret-material',
-            KUBERNETES_SERVICE_HOST: '192.0.2.1',
-            KUBERNETES_SERVICE_PORT: '1',
           },
         },
         payloadSecretNames: [
@@ -1335,12 +1368,17 @@ describe('ContainerExecutorService', () => {
 
       expect(podSpec.serviceAccountName).toBe('execution-runner');
       expect(podSpec.automountServiceAccountToken).toBe(false);
-      expect(bootstrapScript.startsWith('env -i ')).toBe(true);
-      expect(bootstrapScript).toContain(' node -e ');
-      expect(bootstrapScript.indexOf('|| exit 78\n')).toBeGreaterThan(0);
-      expect(bootstrapScript.indexOf('|| exit 78\n')).toBeLessThan(
-        bootstrapScript.indexOf('/supercheck-payload-0/chunk'),
-      );
+      expect(bootstrapScript).not.toContain('egress');
+      expect(podSpec.initContainers).toEqual([
+        expect.objectContaining({
+          name: 'egress-wait',
+          command: [
+            'node',
+            '-e',
+            expect.stringContaining('KUBERNETES_SERVICE_HOST'),
+          ],
+        }),
+      ]);
       expect(container.env).toEqual(
         expect.arrayContaining([
           expect.objectContaining({ name: 'PUBLIC_SETTING', value: 'visible' }),
@@ -1349,11 +1387,6 @@ describe('ContainerExecutorService', () => {
       expect(container.env).not.toEqual(
         expect.arrayContaining([
           expect.objectContaining({ name: 'SUPERCHECK_SECRETS_B64' }),
-        ]),
-      );
-      expect(container.env).not.toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ name: 'KUBERNETES_SERVICE_HOST' }),
         ]),
       );
       expect(podSpec.volumes).toEqual(

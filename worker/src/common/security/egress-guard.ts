@@ -9,9 +9,8 @@
  * code. A first blocked probe exits immediately. Uses node because the
  * execution image has node but no nc, and /bin/sh has no /dev/tcp.
  */
-/** Runs the guard with a clean env so caller env cannot alter or skip it. */
-export const EGRESS_GUARD_COMMAND_PREFIX =
-  'env -i PATH=/usr/local/bin:/usr/bin:/bin KUBERNETES_SERVICE_HOST="$KUBERNETES_SERVICE_HOST" KUBERNETES_SERVICE_PORT="$KUBERNETES_SERVICE_PORT"';
+/** Default bound (seconds) of the wait; the worker adds it as timeout headroom. */
+export const EGRESS_GUARD_MAX_WAIT_MS = 20_000;
 
 export const EGRESS_GUARD_SCRIPT = `
 const net = require('net');
@@ -33,7 +32,10 @@ let timeouts = 0;
     let detail = 'kubernetes API Service still reachable';
     try {
       const host = process.env.KUBERNETES_SERVICE_HOST ||
-        (await dns.promises.lookup('kubernetes.default.svc')).address;
+        (await Promise.race([
+          dns.promises.lookup('kubernetes.default.svc'),
+          sleep(3000).then(() => { throw new Error('DNS lookup timed out'); }),
+        ])).address;
       const r = await reachable(host);
       // A lone timeout can be a delayed SYN; require two in a row.
       timeouts = r === 'timeout' ? timeouts + 1 : 0;

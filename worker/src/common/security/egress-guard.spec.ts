@@ -1,9 +1,6 @@
 import { spawnSync } from 'child_process';
 import { createServer, Server } from 'net';
-import {
-  EGRESS_GUARD_COMMAND_PREFIX,
-  EGRESS_GUARD_SCRIPT,
-} from './egress-guard';
+import { EGRESS_GUARD_SCRIPT } from './egress-guard';
 
 const run = (port: number, boundSeconds: number) =>
   spawnSync(process.execPath, ['-e', EGRESS_GUARD_SCRIPT, `${boundSeconds}`], {
@@ -16,6 +13,14 @@ const run = (port: number, boundSeconds: number) =>
   });
 
 describe('EGRESS_GUARD_SCRIPT', () => {
+  it('fails closed (78) within the bound when the API address cannot be resolved', () => {
+    const r = spawnSync(process.execPath, ['-e', EGRESS_GUARD_SCRIPT, '2'], {
+      env: { PATH: process.env.PATH, KUBERNETES_SERVICE_HOST: '' },
+      encoding: 'utf8',
+    });
+    expect(r.status).toBe(78);
+  });
+
   let server: Server;
   let openPort: number;
 
@@ -40,22 +45,5 @@ describe('EGRESS_GUARD_SCRIPT', () => {
     const result = run(openPort, 2);
     expect(result.status).toBe(78);
     expect(result.stderr).toContain('Infrastructure error');
-  });
-});
-
-describe('guard isolation from caller env', () => {
-  it('ignores NODE_OPTIONS when launched through the command prefix', () => {
-    const r = spawnSync(
-      '/bin/sh',
-      [
-        '-c',
-        `${EGRESS_GUARD_COMMAND_PREFIX} ${process.execPath} -e 'console.log(process.env.NODE_OPTIONS === undefined)'`,
-      ],
-      {
-        env: { ...process.env, NODE_OPTIONS: '--no-warnings' },
-        encoding: 'utf8',
-      },
-    );
-    expect(r.stdout.trim()).toBe('true');
   });
 });

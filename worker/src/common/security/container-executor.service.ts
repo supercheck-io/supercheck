@@ -32,10 +32,7 @@ import {
   isMutableImageReference,
   parseImagePullPolicyOverride,
 } from '../utils/image-reference';
-import {
-  EGRESS_GUARD_COMMAND_PREFIX,
-  EGRESS_GUARD_SCRIPT,
-} from './egress-guard';
+import { EGRESS_GUARD_MAX_WAIT_MS, EGRESS_GUARD_SCRIPT } from './egress-guard';
 
 /** Recorded for a run whose execution Job the shutdown drain deleted. */
 export const WORKER_INTERRUPTED_ERROR = 'Interrupted by worker restart';
@@ -1082,7 +1079,8 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       const outcome = await this.waitForExecutionOutcome(
         podName,
         workspace,
-        limits.timeoutMs,
+        // Headroom for the egress wait that precedes the script.
+        limits.timeoutMs + EGRESS_GUARD_MAX_WAIT_MS,
         startEvidence,
         async () => {
           if (options.extractFromContainer && options.extractToHost) {
@@ -1277,7 +1275,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
     const payloadPaths = payloadSecretNames.map(
       (_name, index) => `/supercheck-payload-${index}/chunk`,
     );
-    const userBootstrapScript =
+    const bootstrapScript =
       payloadSecretNames.length > 0
         ? [
             `mkdir -p ${this.escapeShellArg(workspace)}`,
@@ -1294,9 +1292,6 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
             this.getWorkspaceExitCodeFile(workspace),
             this.getWorkspaceExitSignalFile(workspace),
           );
-    // Newline, not &&: the wrapper script can be multi-line.
-    // env -i: caller env (NODE_OPTIONS, PATH, ...) must not reach the guard.
-    const bootstrapScript = `${EGRESS_GUARD_COMMAND_PREFIX} node -e ${this.escapeShellArg(EGRESS_GUARD_SCRIPT)} || exit 78\n${userBootstrapScript}`;
     const secretVolumeMounts: k8s.V1VolumeMount[] = [
       ...payloadSecretNames.map((_name, index) => ({
         name: `payload-${index}`,
@@ -1371,6 +1366,29 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
               fsGroup: 1000,
               seccompProfile: { type: 'RuntimeDefault' },
             },
+            // Own init container: a failure leaves the execution container
+            // unstarted (nothing billed) and its exit code cannot be forged by
+            // user code or influenced by caller env.
+            initContainers: [
+              {
+                name: 'egress-wait',
+                image,
+                imagePullPolicy: this.resolveExecutionImagePullPolicy(image),
+                command: ['node', '-e', EGRESS_GUARD_SCRIPT],
+                resources: {
+                  requests: { cpu: '100m', memory: '64Mi' },
+                  limits: { cpu: '200m', memory: '256Mi' },
+                },
+                securityContext: {
+                  runAsNonRoot: true,
+                  runAsUser: 1000,
+                  allowPrivilegeEscalation: false,
+                  readOnlyRootFilesystem: true,
+                  capabilities: { drop: ['ALL'] },
+                  seccompProfile: { type: 'RuntimeDefault' },
+                },
+              },
+            ],
             containers: [
               {
                 name: 'execution',
@@ -1646,12 +1664,6 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
 
     if (env) {
       for (const [name, value] of Object.entries(env)) {
-        // Kubelet-injected API Service address feeds the egress guard.
-        if (
-          name === 'KUBERNETES_SERVICE_HOST' ||
-          name === 'KUBERNETES_SERVICE_PORT'
-        )
-          continue;
         if (/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)) {
           merged.set(name, this.rewriteTmpPath(value, workspace));
         }
@@ -2097,6 +2109,20 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
       const executionState = pod.status?.containerStatuses?.find(
         (container) => container.name === 'execution',
       )?.state;
+      const guardFailure = pod.status?.initContainerStatuses?.find(
+        (c) =>
+          c.name === 'egress-wait' &&
+          (c.state?.terminated?.exitCode ?? 0) !== 0,
+      )?.state?.terminated;
+      if (guardFailure) {
+        return {
+          exitCode: guardFailure.exitCode,
+          timedOut: false,
+          cancelled: false,
+          message:
+            'Infrastructure error: execution network isolation not enforced; the run was not started',
+        };
+      }
       const terminated = executionState?.terminated;
       const startedAtRaw =
         executionState?.running?.startedAt ?? terminated?.startedAt;
