@@ -31,7 +31,7 @@ type CreateStatusPageFormProps = {
 };
 
 const createStatusPageSchema = z.object({
-  name: z.string().min(1, "Name is required").max(100, "Name is too long"),
+  name: z.string().min(1, "Title is required").max(100, "Title is too long"),
   headline: z.string().max(100, "Headline is too long").optional(),
   pageDescription: z.string().max(500, "Description is too long").optional(),
 });
@@ -79,7 +79,7 @@ export function CreateStatusPageForm({ onSuccess, onCancel }: CreateStatusPageFo
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
       <div className="space-y-2">
         <div className="flex items-center gap-1">
-          <Label htmlFor="name">Status Page Name *</Label>
+          <Label htmlFor="name">Title *</Label>
           <InfoHint label="Internal name details">
             <InfoHintText>
               Internal name used in the dashboard. Visitors see the public

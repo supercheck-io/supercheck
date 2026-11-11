@@ -306,7 +306,7 @@ export function DiagnosticQueriesAdminView({
                 </Select>
               </div>
               <div className="grid gap-2 lg:col-span-6">
-                <Label>Name</Label>
+                <Label>Title</Label>
                 <Input
                   value={form.name}
                   onChange={(event) =>

@@ -96,7 +96,7 @@ type ComponentFormDialogProps = {
 };
 
 const componentFormSchema = z.object({
-  name: z.string().min(1, "Name is required").max(100, "Name is too long"),
+  name: z.string().min(1, "Title is required").max(100, "Title is too long"),
   description: z.string().max(500, "Description is too long").optional(),
   status: z.enum([
     "operational",

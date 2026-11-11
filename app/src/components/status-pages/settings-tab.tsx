@@ -124,8 +124,8 @@ const hexColorField = z
 const settingsSchema = z.object({
   name: z
     .string()
-    .min(1, "Name is required")
-    .max(255, "Name is too long")
+    .min(1, "Title is required")
+    .max(255, "Title is too long")
     .trim(),
   headline: z.string().max(255, "Headline is too long").trim().optional(),
   pageDescription: z

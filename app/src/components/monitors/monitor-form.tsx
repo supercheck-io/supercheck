@@ -122,8 +122,8 @@ const formSchema = z
   .object({
     name: z
       .string()
-      .min(3, "Name must be at least 3 characters")
-      .max(100, "Name must be 100 characters or less"),
+      .min(3, "Title must be at least 3 characters")
+      .max(100, "Title must be 100 characters or less"),
     target: z.string().optional(),
     type: z.enum(
       ["http_request", "website", "ping_host", "port_check", "synthetic_test"],

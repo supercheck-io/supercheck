@@ -26,7 +26,7 @@ import {
 } from "@/lib/script-type-validator";
 
 // Limits shared by POST /api/jobs and updateJob. Name matches jobs.name varchar(255); description is unbounded text in the DB.
-export const jobNameSchema = z.string().trim().min(1, { message: "Job name is required." }).max(255, { message: "Job name must be at most 255 characters." });
+export const jobNameSchema = z.string().trim().min(1, { message: "Title is required." }).max(255, { message: "Title must be at most 255 characters." });
 export const jobDescriptionSchema = z.string().max(2000, { message: "Description must be at most 2000 characters." });
 export const MAX_JOB_TESTS = 50;
 

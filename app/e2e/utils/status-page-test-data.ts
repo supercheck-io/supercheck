@@ -25,7 +25,7 @@ export async function createStatusPageThroughUi(
 
   const dialog = page.getByRole('dialog', { name: /create status page/i });
   await expect(dialog).toBeVisible();
-  await dialog.getByLabel('Status Page Name *').fill(name);
+  await dialog.getByLabel('Title *').fill(name);
   await dialog.getByLabel('Public Headline').fill(headline);
   await dialog
     .getByLabel('Description')

@@ -41,7 +41,7 @@ test('create HTTP monitor', async ({ page }, testInfo) => {
   await open(page, '/monitors/create');
   await frame('choose-type');
   await open(page, '/monitors/create?type=http_request');
-  await page.getByLabel(/^(Monitor )?Name/).first().fill('Checkout API');
+  await page.getByLabel(/^Title/).first().fill('Checkout API');
   await page.getByLabel(/^(URL|Target)/).first().fill('https://shop.example.com/api/health');
   await frame('filled');
 });
@@ -109,7 +109,7 @@ test('create status page', async ({ page }, testInfo) => {
 test('invalid monitor URL', async ({ page }, testInfo) => {
   const frame = frames(page, testInfo, 'invalid-monitor-url');
   await open(page, '/monitors/create?type=http_request');
-  await page.getByLabel(/^(Monitor )?Name/).first().fill('Checkout API');
+  await page.getByLabel(/^Title/).first().fill('Checkout API');
   await page.getByLabel(/^(URL|Target)/).first().fill('not-a-url');
   await page.getByRole('button', { name: /^Next:/ }).click();
   await expect(page.getByText(/Target must be a valid http/)).toBeVisible();
@@ -122,7 +122,7 @@ test('invalid status page', async ({ page }, testInfo) => {
   await page.getByTestId('create-status-page-button').click();
   const dialog = page.getByRole('dialog', { name: 'Create Status Page' });
   await dialog.getByRole('button', { name: 'Create Status Page' }).click();
-  await expect(dialog.getByText('Name is required')).toBeVisible();
+  await expect(dialog.getByText('Title is required')).toBeVisible();
   await frame('error');
 });
 
