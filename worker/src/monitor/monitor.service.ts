@@ -80,6 +80,7 @@ import {
   MonitorEvaluator,
   sslHost,
   type GroupAlertEvaluation,
+  type GroupReceipt,
 } from './monitor-evaluator';
 import { nextOutageKey } from '../monitor-control/sequence-counters';
 
@@ -91,7 +92,7 @@ const RESULT_SAVE_ATTEMPTS = 3;
 const RESULT_SAVE_BACKOFF_MS = 250;
 // How long a UDP probe waits for a reply or an ICMP port-unreachable before reporting open|filtered.
 const UDP_SILENCE_WAIT_MS = 2000;
-// The completed marker only guards late sibling completions within a job's lifetime (attempts x 15-min lock + backoff + busy retries, under ~80 min); later duplicates are still guarded by the persisted aggregationEvaluation in the DB.
+// The completed marker only guards late sibling completions within a job's lifetime (attempts x 15-min lock + backoff + busy retries, under ~80 min); later duplicates are still guarded by the persisted group receipt (monitor_group_evaluations) in the DB.
 export const AGGREGATION_COMPLETED_TTL_SECONDS = 2 * 60 * 60;
 
 function serializeResponseData(value: unknown): string {
@@ -556,7 +557,11 @@ export class MonitorService {
     let previousStatus = monitor.status;
     const checkedAt = results[0].checkedAt;
     let groupEvaluation:
-      (GroupAlertEvaluation & { resultId: string }) | undefined;
+      | (GroupAlertEvaluation & {
+          executionGroupId: string;
+          receipt: GroupReceipt;
+        })
+      | undefined;
     if (options?.executionGroupId) {
       const prepared = await this.prepareGroupEvaluation(
         monitorId,
@@ -569,7 +574,11 @@ export class MonitorService {
       monitor = prepared.monitor;
       previousStatus = prepared.evaluation.previousStatus;
       overallStatus = prepared.evaluation.currentStatus;
-      groupEvaluation = { ...prepared.evaluation, resultId: prepared.resultId };
+      groupEvaluation = {
+        ...prepared.evaluation,
+        executionGroupId: options.executionGroupId,
+        receipt: prepared.receipt,
+      };
     } else {
       await this.updateMonitorStatus(monitorId, overallStatus, checkedAt);
     }
@@ -635,12 +644,11 @@ export class MonitorService {
       await this.checkSslExpirationAlert(result, monitor);
     }
     if (groupEvaluation) {
-      await this.dbService.db
-        .update(schema.monitorResults)
-        .set({
-          details: sql`jsonb_set(coalesce(${schema.monitorResults.details}, '{}'::jsonb), '{aggregationNotificationProcessed}', 'true'::jsonb)`,
-        })
-        .where(eq(schema.monitorResults.id, groupEvaluation.resultId));
+      await this.evaluator.markGroupNotified(
+        monitorId,
+        groupEvaluation.executionGroupId,
+        groupEvaluation.receipt,
+      );
     }
   }
 

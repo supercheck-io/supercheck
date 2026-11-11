@@ -100,7 +100,18 @@ export class MonitorCycleService {
 
       // An older-image worker may have aggregated this group through the legacy Redis path
       // (rollout or rollback). It already advanced the counters and alerted: never do it twice.
+      const [groupReceipt] = await tx
+        .select({ monitorId: schema.monitorGroupEvaluations.monitorId })
+        .from(schema.monitorGroupEvaluations)
+        .where(
+          and(
+            eq(schema.monitorGroupEvaluations.monitorId, cycle.monitorId),
+            eq(schema.monitorGroupEvaluations.executionGroupId, cycle.id),
+          ),
+        )
+        .limit(1);
       const legacyEvaluated =
+        Boolean(groupReceipt) ||
         rows.some(
           (row) =>
             (row.details as { aggregationEvaluation?: unknown } | null)

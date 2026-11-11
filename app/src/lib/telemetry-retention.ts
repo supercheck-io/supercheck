@@ -63,6 +63,14 @@ export const TELEMETRY_RETENTION_RULES: readonly TelemetryRetentionRule[] = [
     defaultDays: 30,
     protect: `{a}.expanded_at IS NOT NULL AND NOT EXISTS (SELECT 1 FROM status_page_notification_deliveries d WHERE d.event_id = {a}.id AND d.status NOT IN ('delivered', 'failed', 'skipped'))`,
   },
+  {
+    // Alert receipts of worker-aggregated monitor check groups. A group's retries and late regions end
+    // within about 80 minutes, so two weeks is ample; deleting a receipt never deletes check results.
+    table: "monitor_group_evaluations",
+    timeColumn: "created_at",
+    envVar: "MONITOR_GROUP_EVALUATION_RETENTION_DAYS",
+    defaultDays: 14,
+  },
 ];
 
 /** Positive integer days from env; anything else falls back so a typo never deletes more than intended. */

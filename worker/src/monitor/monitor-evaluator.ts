@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import type { z } from 'zod';
 import { DbService } from '../db/db.service';
 import * as schema from '../db/schema';
@@ -87,6 +87,10 @@ export type GroupAlertEvaluation = {
   currentStatus: 'up' | 'down';
   alertState?: AggregatedAlertState;
 };
+
+/** Where a group's alert receipt lives: its own row, or (groups from older workers) a result row's details. */
+export type GroupReceipt =
+  { kind: 'group' } | { kind: 'legacy'; resultId: string };
 
 /**
  * Alert and status evaluation shared by the regional worker (MonitorService) and the
@@ -781,30 +785,66 @@ export class MonitorEvaluator {
         .limit(1)
         .for('update');
       if (!monitor) return null;
-      const rows = await tx
+      // The monitor row lock serializes preparers, so the receipt read below cannot race its insert.
+      const [receipt] = await tx
+        .select({
+          evaluation: schema.monitorGroupEvaluations.evaluation,
+          processedAt: schema.monitorGroupEvaluations.notificationProcessedAt,
+        })
+        .from(schema.monitorGroupEvaluations)
+        .where(
+          and(
+            eq(schema.monitorGroupEvaluations.monitorId, monitorId),
+            eq(
+              schema.monitorGroupEvaluations.executionGroupId,
+              executionGroupId,
+            ),
+          ),
+        )
+        .limit(1);
+      if (receipt) {
+        if (receipt.processedAt) return null;
+        return {
+          monitor,
+          receipt: { kind: 'group' } as GroupReceipt,
+          evaluation: receipt.evaluation as GroupAlertEvaluation,
+        };
+      }
+      // A group evaluated by a worker that predates monitor_group_evaluations keeps its receipt in
+      // one result row's details; honour it so a rollout neither re-advances counters nor re-alerts.
+      const [legacy] = await tx
         .select({
           id: schema.monitorResults.id,
-          details: schema.monitorResults.details,
+          evaluation: sql<GroupAlertEvaluation>`${schema.monitorResults.details} -> 'aggregationEvaluation'`,
+          processed: sql<boolean>`coalesce((${schema.monitorResults.details} ->> 'aggregationNotificationProcessed')::boolean, false)`,
         })
         .from(schema.monitorResults)
         .where(
           and(
             eq(schema.monitorResults.monitorId, monitorId),
             eq(schema.monitorResults.executionGroupId, executionGroupId),
+            sql`${schema.monitorResults.details} -> 'aggregationEvaluation' IS NOT NULL`,
           ),
-        );
-      const applied = rows.find((row) => row.details?.aggregationEvaluation);
-      if (applied) {
-        if (applied.details?.aggregationNotificationProcessed === true)
-          return null;
+        )
+        .limit(1);
+      if (legacy) {
+        if (legacy.processed) return null;
         return {
           monitor,
-          resultId: applied.id,
-          evaluation: applied.details!
-            .aggregationEvaluation as GroupAlertEvaluation,
+          receipt: { kind: 'legacy', resultId: legacy.id } as GroupReceipt,
+          evaluation: legacy.evaluation,
         };
       }
-      const row = rows[0];
+      const [row] = await tx
+        .select({ id: schema.monitorResults.id })
+        .from(schema.monitorResults)
+        .where(
+          and(
+            eq(schema.monitorResults.monitorId, monitorId),
+            eq(schema.monitorResults.executionGroupId, executionGroupId),
+          ),
+        )
+        .limit(1);
       if (!row) throw new Error('Persisted aggregation group is missing');
       const previousStatus = monitor.status;
       const evaluation: GroupAlertEvaluation = {
@@ -843,18 +883,44 @@ export class MonitorEvaluator {
             : {}),
         })
         .where(eq(schema.monitors.id, monitorId));
-      await tx
+      await tx.insert(schema.monitorGroupEvaluations).values({
+        monitorId,
+        executionGroupId,
+        evaluation,
+      });
+      return {
+        monitor,
+        receipt: { kind: 'group' } as GroupReceipt,
+        evaluation,
+      };
+    });
+  }
+
+  /** Records that the group's alerts were handled, so a retry or late sibling does not send them again. */
+  async markGroupNotified(
+    monitorId: string,
+    executionGroupId: string,
+    receipt: GroupReceipt,
+  ): Promise<void> {
+    if (receipt.kind === 'legacy') {
+      await this.dbService.db
         .update(schema.monitorResults)
         .set({
-          details: {
-            ...(row.details ?? {}),
-            aggregationEvaluation: evaluation,
-            aggregationNotificationProcessed: false,
-          },
+          details: sql`jsonb_set(coalesce(${schema.monitorResults.details}, '{}'::jsonb), '{aggregationNotificationProcessed}', 'true'::jsonb)`,
         })
-        .where(eq(schema.monitorResults.id, row.id));
-      return { monitor, resultId: row.id, evaluation };
-    });
+        .where(eq(schema.monitorResults.id, receipt.resultId));
+      return;
+    }
+    await this.dbService.db
+      .update(schema.monitorGroupEvaluations)
+      .set({ notificationProcessedAt: new Date() })
+      .where(
+        and(
+          eq(schema.monitorGroupEvaluations.monitorId, monitorId),
+          eq(schema.monitorGroupEvaluations.executionGroupId, executionGroupId),
+          isNull(schema.monitorGroupEvaluations.notificationProcessedAt),
+        ),
+      );
   }
 
   /**

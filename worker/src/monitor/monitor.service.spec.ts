@@ -2360,38 +2360,61 @@ describe('MonitorService', () => {
           },
         },
       };
-      const rows: Record<
+      // Each group has persisted result rows; receipts live in monitor_group_evaluations.
+      const receipts = new Map<
         string,
-        { id: string; details: Record<string, unknown> }
-      > = {
-        a: { id: 'result-a', details: {} },
-        b: { id: 'result-b', details: {} },
-      };
+        { evaluation: unknown; notificationProcessedAt: Date | null }
+      >();
+      let resultRowWrites = 0;
       let activeGroup = 'a';
+      const limited = (rows: unknown[]) => ({
+        for: async () => [monitor],
+        then: (resolve: (value: unknown) => void) => resolve(rows),
+      });
       const tx = {
-        select: () => ({
+        select: (fields?: Record<string, unknown>) => ({
           from: (table: unknown) => ({
             where: () => ({
-              limit: () => ({ for: async () => [monitor] }),
-              then: (resolve: (value: unknown) => void) =>
-                resolve(
-                  table === schema.monitorResults
-                    ? [rows[activeGroup]]
-                    : [monitor],
-                ),
+              limit: () => {
+                if (table === schema.monitors) return limited([monitor]);
+                if (table === schema.monitorGroupEvaluations) {
+                  const receipt = receipts.get(activeGroup);
+                  return limited(
+                    receipt
+                      ? [
+                          {
+                            evaluation: receipt.evaluation,
+                            processedAt: receipt.notificationProcessedAt,
+                          },
+                        ]
+                      : [],
+                  );
+                }
+                // Legacy receipt lookup finds none; the group's result rows exist.
+                return limited(
+                  fields && 'evaluation' in fields
+                    ? []
+                    : [{ id: `result-${activeGroup}` }],
+                );
+              },
             }),
           }),
+        }),
+        insert: (table: unknown) => ({
+          values: async (values: Record<string, unknown>) => {
+            expect(table).toBe(schema.monitorGroupEvaluations);
+            receipts.set(values.executionGroupId as string, {
+              evaluation: values.evaluation,
+              notificationProcessedAt: null,
+            });
+          },
         }),
         update: (table: unknown) => ({
           set: (values: Record<string, unknown>) => ({
             where: async () => {
               if (table === schema.monitors)
                 monitor = { ...monitor, ...values };
-              else
-                rows[activeGroup].details = values.details as Record<
-                  string,
-                  unknown
-                >;
+              else resultRowWrites++;
             },
           }),
         }),
@@ -2406,15 +2429,16 @@ describe('MonitorService', () => {
       mockLocationService.calculateAggregatedStatus.mockReturnValue('down');
       let failMarker = true;
       mockDbService.db.update.mockImplementation((table: unknown) => ({
-        set: jest.fn(() => ({
+        set: jest.fn((values: Record<string, unknown>) => ({
           where: async () => {
-            if (table === schema.monitorResults) {
+            if (table === schema.monitorGroupEvaluations) {
               if (failMarker) {
                 failMarker = false;
                 throw new Error('marker write failed');
               }
-              rows[activeGroup].details.aggregationNotificationProcessed = true;
-            }
+              receipts.get(activeGroup)!.notificationProcessedAt =
+                values.notificationProcessedAt as Date;
+            } else if (table === schema.monitorResults) resultRowWrites++;
           },
         })),
       }));
@@ -2456,7 +2480,10 @@ describe('MonitorService', () => {
         3,
       );
       expect(mockAlertService.sendNotification).toHaveBeenCalledTimes(1);
-      expect(rows.a.details.aggregationNotificationProcessed).toBe(true);
+      expect(receipts.get('a')!.notificationProcessedAt).toBeInstanceOf(Date);
+      expect(receipts.get('b')!.notificationProcessedAt).toBeInstanceOf(Date);
+      // Result rows stay insert-only: no receipt is written into them.
+      expect(resultRowWrites).toBe(0);
     });
 
     it('propagates group transaction failures before sending notifications', async () => {
