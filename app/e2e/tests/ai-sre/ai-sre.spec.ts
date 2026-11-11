@@ -47,7 +47,7 @@ test.describe("AI SRE service catalog @aisre @critical", () => {
       await page.getByTestId("add-service-btn").click();
       const dialog = page.getByRole("dialog", { name: "Add service" });
       await expect(dialog).toBeVisible();
-      await dialog.getByLabel("Service name *").fill(name);
+      await dialog.getByLabel("Title *").fill(name);
       await dialog.getByLabel("Environment").fill("staging");
       await dialog.getByLabel("Description").fill(`Created service ${suffix}`);
       await checkpoint(page, "add service dialog");
@@ -68,7 +68,7 @@ test.describe("AI SRE service catalog @aisre @critical", () => {
       const row = page.getByRole("row").filter({ hasText: name });
       await expect(page.getByRole("columnheader")).toHaveText([
         "Service ID",
-        "Service",
+        "Title",
         "Environment",
         "Description",
         "Tier",

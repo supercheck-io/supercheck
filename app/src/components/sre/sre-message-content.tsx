@@ -663,7 +663,7 @@ export function SreMessageContent({
                 {header.map((cell, cellIndex) => (
                   <TableHead
                     key={`${cell}-${cellIndex}`}
-                    className="h-8 whitespace-normal px-3"
+                    className="h-8 whitespace-normal px-3 first:pl-3"
                   >
                     {renderInlineMarkdown(cell)}
                   </TableHead>
@@ -676,7 +676,7 @@ export function SreMessageContent({
                   {header.map((_, cellIndex) => (
                     <TableCell
                       key={`cell-${rowIndex}-${cellIndex}`}
-                      className="whitespace-normal px-3 py-2"
+                      className="whitespace-normal px-3 py-2 first:pl-3"
                     >
                       {renderInlineMarkdown(row[cellIndex] ?? "")}
                     </TableCell>

@@ -75,7 +75,6 @@ export const columns: ColumnDef<AlertHistory>[] = [
     accessorKey: "id",
     header: ({ column }) => (
       <DataTableColumnHeader
-        className="ml-2"
         column={column}
         title="Alert ID"
       />
@@ -83,7 +82,7 @@ export const columns: ColumnDef<AlertHistory>[] = [
     cell: ({ row }) => {
       const id = row.getValue("id") as string;
       return (
-        <div className="w-[90px] ml-2">
+        <div className="w-[90px]">
           <UUIDField
             value={id}
             maxLength={8}
@@ -98,7 +97,7 @@ export const columns: ColumnDef<AlertHistory>[] = [
   {
     accessorKey: "targetName",
     header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="Name" />
+      <DataTableColumnHeader column={column} title="Title" />
     ),
     cell: ({ row }) => {
       const targetName = row.getValue("targetName") as string;

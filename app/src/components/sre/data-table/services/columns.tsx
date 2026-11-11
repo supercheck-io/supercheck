@@ -49,10 +49,10 @@ export const columns: ColumnDef<SreServiceListItem>[] = [
   {
     accessorKey: "id",
     header: ({ column }) => (
-      <DataTableColumnHeader className="ml-2" column={column} title="Service ID" />
+      <DataTableColumnHeader column={column} title="Service ID" />
     ),
     cell: ({ row }) => (
-      <div className="ml-2 w-[90px]">
+      <div className="w-[90px]">
         <UUIDField value={row.original.id} maxLength={8} />
       </div>
     ),
@@ -61,7 +61,7 @@ export const columns: ColumnDef<SreServiceListItem>[] = [
   {
     accessorKey: "name",
     header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="Service" />
+      <DataTableColumnHeader column={column} title="Title" />
     ),
     cell: ({ row }) => (
       <span className="flex max-w-[260px] items-center gap-2">

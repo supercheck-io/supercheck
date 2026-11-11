@@ -80,7 +80,7 @@ agent: { id: "018f0000-0000-7000-8000-000000000002", name: "edge" },
 });
 render(<PrivateAgentsAdminView initialAgents={[]} loadError={null} />);
 fireEvent.click(screen.getByRole("button", { name: "Register agent" }));
-fireEvent.change(screen.getByLabelText("Agent name *"), { target: { value: "edge" } });
+fireEvent.change(screen.getByLabelText("Title *"), { target: { value: "edge" } });
 const dialog = screen.getByRole("dialog", { name: "Register Private Agent" });
 fireEvent.click(within(dialog).getByRole("button", { name: "Register agent" }));
 await screen.findByText("PRIVATE_AGENT_TOKEN");

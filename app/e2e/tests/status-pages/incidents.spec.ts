@@ -15,7 +15,7 @@ test.describe('Status-page incident lifecycle @status-pages @incidents', () => {
     await page.getByRole('tab', { name: 'Components', exact: true }).click();
     await page.getByRole('button', { name: 'Add Component', exact: true }).click();
     const componentDialog = page.getByRole('dialog', { name: 'Add Component' });
-    await componentDialog.getByLabel('Name *').fill(componentName);
+    await componentDialog.getByLabel('Title *').fill(componentName);
     await componentDialog.getByLabel('Description').fill('Isolated E2E status-page component');
     await componentDialog.getByRole('button', { name: 'Add Component', exact: true }).click();
     await expect(componentDialog).toBeHidden();

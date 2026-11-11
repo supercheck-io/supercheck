@@ -53,7 +53,7 @@ export const createNotificationProviderSchema = (
   .object({
     type: z.enum(["email", "slack", "webhook", "telegram", "discord", "teams"] as const),
     config: z.object({
-      name: z.string().min(1, "Name is required"),
+      name: z.string().min(1, "Title is required"),
 
       // Email fields - simplified to just email addresses
       emails: z
@@ -732,7 +732,7 @@ export function NotificationProviderForm({
               name="config.name"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Name</FormLabel>
+                  <FormLabel>Title</FormLabel>
                   <FormControl>
                     <Input
                       placeholder="My Email Alerts"

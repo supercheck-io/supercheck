@@ -28,8 +28,8 @@ const createIncidentSchema = z.object({
   statusPageId: z.string().uuid(),
   name: z
     .string()
-    .min(1, "Name is required")
-    .max(255, "Name is too long")
+    .min(1, "Title is required")
+    .max(255, "Title is too long")
     .trim(),
   status: z
     .enum([

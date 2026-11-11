@@ -16,7 +16,6 @@ export const statusPageColumns: ColumnDef<Monitor>[] = [
     accessorKey: "id",
     header: ({ column }) => (
       <DataTableColumnHeader
-        className="ml-2"
         column={column}
         title="Monitor ID"
       />
@@ -38,7 +37,7 @@ export const statusPageColumns: ColumnDef<Monitor>[] = [
   {
     accessorKey: "name",
     header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="Name" />
+      <DataTableColumnHeader column={column} title="Title" />
     ),
     cell: ({ row }) => {
       const name = row.getValue("name") as string;

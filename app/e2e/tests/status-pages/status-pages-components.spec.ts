@@ -20,7 +20,7 @@ test.describe('Status-page component lifecycle @status-pages @components', () =>
     await page.getByRole('button', { name: 'Add Component', exact: true }).click();
 
     const createDialog = page.getByRole('dialog', { name: 'Add Component' });
-    await createDialog.getByLabel('Name *').fill(originalName);
+    await createDialog.getByLabel('Title *').fill(originalName);
     await createDialog.getByLabel('Description').fill('Original component description');
     await createDialog.getByRole('button', { name: 'Add Component', exact: true }).click();
     await expect(createDialog).toBeHidden();
@@ -31,7 +31,7 @@ test.describe('Status-page component lifecycle @status-pages @components', () =>
     await row.getByTitle('Edit component').click();
 
     const editDialog = page.getByRole('dialog', { name: 'Edit Component' });
-    await editDialog.getByLabel('Name *').fill(updatedName);
+    await editDialog.getByLabel('Title *').fill(updatedName);
     await editDialog.getByLabel('Description').fill('Persisted component description');
     await editDialog.getByRole('button', { name: 'Update Component', exact: true }).click();
     await expect(editDialog).toBeHidden();

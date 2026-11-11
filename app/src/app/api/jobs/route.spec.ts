@@ -36,7 +36,7 @@ jest.mock("@/lib/server-actions/update-job", () => {
   const { z } = jest.requireActual("zod");
   return {
     updateJob: jest.fn(),
-    jobNameSchema: z.string().trim().min(1, "Job name is required.").max(255, "Job name must be at most 255 characters."),
+    jobNameSchema: z.string().trim().min(1, "Title is required.").max(255, "Title must be at most 255 characters."),
     jobDescriptionSchema: z.string().max(2000, "Description must be at most 2000 characters."),
     MAX_JOB_TESTS: 50,
     JOB_CONFLICT_ERROR: "Job changed since you opened it — reload",

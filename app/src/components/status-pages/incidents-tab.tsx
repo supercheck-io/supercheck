@@ -309,7 +309,7 @@ export function IncidentsTab({
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[100px]">Incident ID</TableHead>
-                  <TableHead>Name</TableHead>
+                  <TableHead>Title</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Impact</TableHead>
                   <TableHead>Affected Components</TableHead>

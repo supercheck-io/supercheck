@@ -3,6 +3,8 @@ import {
   ExecutionAdmissionService,
   ExecutionCapacityError,
   ExecutionEntitlementError,
+  LIMITED_RUN_OVERHEAD_MS,
+  MAX_LIMITED_RUN_MS,
   RESERVATION_LEASE_TTL_MS,
   RESERVATION_RENEW_INTERVAL_MS,
   RESERVATION_RETENTION_MS,
@@ -204,6 +206,25 @@ describe('reserve', () => {
       k6MaxVus: 3,
     });
   });
+
+  it.each(['k6', 'playwright'] as const)(
+    'keeps a full-length trial %s run inside the executor timeout cap',
+    async (kind) => {
+      const { service } = build({
+        org: trialOrg,
+        entitlement: trial({
+          playwrightBudgetMs: 9_000_000,
+          expiresAt: new Date(Date.now() + 30 * 86_400_000),
+        }),
+      });
+      const reservation = await service.reserve('org', 'run', kind, 3_600_000);
+      expect(reservation?.reservedMs).toBe(MAX_LIMITED_RUN_MS);
+      // The pod deadline adds the overhead; it must not exceed the executor's 60 minute cap.
+      expect(
+        reservation!.reservedMs + LIMITED_RUN_OVERHEAD_MS,
+      ).toBeLessThanOrEqual(3_600_000);
+    },
+  );
 
   it('caps a reservation to the remaining entitlement lifetime', async () => {
     const { service } = build({

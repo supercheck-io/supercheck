@@ -188,7 +188,7 @@ export const columns: ColumnDef<Test>[] = [
   {
     accessorKey: "id",
     header: ({ column }) => (
-      <DataTableColumnHeader className="ml-2" column={column} title="Test ID" />
+      <DataTableColumnHeader column={column} title="Test ID" />
     ),
     cell: ({ row }) => {
       const id = row.getValue("id") as string;
@@ -208,7 +208,7 @@ export const columns: ColumnDef<Test>[] = [
   {
     accessorKey: "title",
     header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="Name" />
+      <DataTableColumnHeader column={column} title="Title" />
     ),
     cell: ({ row }) => {
       const title = row.getValue("title") as string;

@@ -30,7 +30,7 @@ export const createJobTestColumns = (): ColumnDef<Test>[] => [
   {
     accessorKey: "name",
     header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="Name" />
+      <DataTableColumnHeader column={column} title="Title" />
     ),
     cell: ({ row }) => {
       const name = row.getValue("name") as string
