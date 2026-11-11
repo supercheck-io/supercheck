@@ -1,6 +1,6 @@
 import {
-  Bot, BellRing, Boxes, CalendarClock, ChartColumn, ClipboardList, Code, Globe, History,
-  Network, RadioTower, ShieldCheck, Siren, SquareLibrary, Tally4, Target, UserCog, Variable,
+  Bot, BellRing, Boxes, Cable, CalendarClock, ChartColumn, ClipboardList, Code, Globe, History,
+  RadioTower, ShieldCheck, Siren, SquareLibrary, Tally4, Target, UserCog, Variable,
   type LucideIcon,
 } from "lucide-react";
 
@@ -16,7 +16,7 @@ export const NAV = {
   dashboard: { title: "Dashboard", icon: ChartColumn, tone: "respond" },
   incidents: { title: "Incidents", icon: Siren, tone: "respond" },
   services: { title: "Services", icon: Boxes, tone: "respond" },
-  integrations: { title: "Integrations", icon: Network, tone: "respond" },
+  integrations: { title: "Integrations", icon: Cable, tone: "respond" },
   savedQueries: { title: "Saved queries", icon: SquareLibrary, tone: "respond" },
   privateAgents: { title: "Private Agents", icon: RadioTower, tone: "respond" },
   copilot: { title: "Copilot", icon: Bot, tone: "ai" },
