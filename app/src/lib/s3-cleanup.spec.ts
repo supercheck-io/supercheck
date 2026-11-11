@@ -28,9 +28,11 @@ describe("S3 report cleanup", () => {
     objects = new Map();
     send.mockImplementation(async (command) => {
       if (command instanceof ListObjectsV2Command) {
-        return { Contents: (objects.get(command.input.Bucket!) || [])
-          .filter(key => key.startsWith(command.input.Prefix || ""))
-          .map(Key => ({ Key })) };
+        // Like S3: at most 1000 keys per page, continued by token.
+        const matching = (objects.get(command.input.Bucket!) || []).filter(key => key.startsWith(command.input.Prefix || ""));
+        const offset = Number(command.input.ContinuationToken ?? 0);
+        return { Contents: matching.slice(offset, offset + 1000).map(Key => ({ Key })),
+          NextContinuationToken: offset + 1000 < matching.length ? String(offset + 1000) : undefined };
       }
       if (command instanceof DeleteObjectsCommand) {
         const keys = command.input.Delete!.Objects!.map(obj => obj.Key!);
@@ -269,13 +271,14 @@ describe("S3 report cleanup", () => {
       expect(peak).toBeLessThanOrEqual(8);
     });
 
-    it("completes thousands of prefixes with far fewer List calls", async () => {
+    it("completes thousands of prefixes with far fewer paginated List calls", async () => {
       const ids = Array.from({ length: 2200 }, (_, i) => `${stem}${i.toString(16).padStart(8, "0")}`);
       objects.set("monitors", ids.map(id => `${id}/report/index.html`));
       const result = await service.deleteReports(ids.map(input));
       expect(result.success).toBe(true);
       expect(result.deletedObjects).toHaveLength(2200);
-      expect(lists()).toHaveLength(1);
+      expect(lists()).toHaveLength(3); // one stem, three pages of at most 1000 keys
+      expect(new Set(lists().map(([command]) => command.input.Prefix))).toEqual(new Set([stem]));
       expect(objects.get("monitors")).toEqual([]);
     });
 
