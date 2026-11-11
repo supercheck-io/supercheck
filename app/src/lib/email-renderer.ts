@@ -23,6 +23,9 @@ import {
   UsageNotificationEmail,
   TrialNotificationEmail,
   trialNotificationSubject,
+  OrganizationDeletionEmail,
+  organizationDeletionSubject,
+  type OrganizationDeletionKind,
   PLAIN_TEXT_RENDER_OPTIONS,
   type TrialNotificationKind,
 } from "@/emails";
@@ -263,6 +266,24 @@ export async function renderIncidentUpdateEmail(
 
   return {
     subject: `[Supercheck] ${incidentUpdateHeadline(params.event, params.actorName, params.assigneeName)}: #${params.incidentNumber} ${params.title} (${params.severity.toUpperCase()})`,
+    html: await render(component, { pretty: false }),
+    text: await render(component, PLAIN_TEXT_RENDER_OPTIONS),
+  };
+}
+
+/**
+ * Organization deletion notices: requested, 7 and 1 day reminders, completed.
+ */
+export async function renderOrganizationDeletionEmail(params: {
+  organizationName: string;
+  kind: OrganizationDeletionKind;
+  purgeDate?: string;
+  daysRemaining?: number;
+  settingsUrl?: string;
+}): Promise<RenderedEmail> {
+  const component = OrganizationDeletionEmail(params);
+  return {
+    subject: organizationDeletionSubject(params.kind, params.organizationName, params.daysRemaining),
     html: await render(component, { pretty: false }),
     text: await render(component, PLAIN_TEXT_RENDER_OPTIONS),
   };

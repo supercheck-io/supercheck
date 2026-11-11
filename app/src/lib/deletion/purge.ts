@@ -19,17 +19,17 @@ export type StepResult =
   | { done: true }
   | { done: false; phase: string; progress?: Record<string, unknown>; delayMs?: number };
 
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
-const limits = async (tx: Tx) => {
+export type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+export const limits = async (tx: Tx) => {
   await tx.execute(sql`SET LOCAL lock_timeout = ${DELETION_TX_LIMITS}`);
   await tx.execute(sql`SET LOCAL statement_timeout = ${DELETION_TX_STATEMENT_LIMIT}`);
 };
-const reportColumns = { id: reports.id, entityId: reports.entityId, reportPath: reports.reportPath, s3Url: reports.s3Url };
-const asInput = (r: { entityId: string; reportPath: string | null; s3Url: string | null }, entityType: ReportDeletionInput["entityType"]): ReportDeletionInput =>
+export const reportColumns = { id: reports.id, entityId: reports.entityId, reportPath: reports.reportPath, s3Url: reports.s3Url };
+export const asInput = (r: { entityId: string; reportPath: string | null; s3Url: string | null }, entityType: ReportDeletionInput["entityType"]): ReportDeletionInput =>
   ({ reportPath: r.reportPath || undefined, s3Url: r.s3Url || undefined, entityId: r.entityId, entityType });
 
 /** Storage first, so a failure leaves the rows that point at it for the retry. Never called inside a transaction. */
-async function deleteStorage(inputs: ReportDeletionInput[], what: string) {
+export async function deleteStorage(inputs: ReportDeletionInput[], what: string) {
   if (inputs.length === 0) return;
   const result = await createS3CleanupService().deleteReports(inputs);
   if (!result.success) throw new Error(`Could not delete ${what} storage; will retry`);
@@ -107,6 +107,34 @@ export async function purgeMonitorStep(row: DeletionRow): Promise<StepResult> {
   return finished ? { done: true } : { done: false, phase: "results" };
 }
 
+/**
+ * One batch of runs by job or by project: storage first (report rows, run artifacts), then the rows, in one short
+ * transaction. Returns how many runs went. Both lookups are indexed: (entity_type, entity_id) for the run's own reports,
+ * and the partial report_path index for the latest-report aliases of saved tests that point into a run directory.
+ */
+export async function purgeRunBatch(column: "jobId" | "projectId", id: string): Promise<number> {
+  const col = column === "jobId" ? runs.jobId : runs.projectId;
+  const batch = await db.select({ id: runs.id, reportS3Url: runs.reportS3Url, logsS3Url: runs.logsS3Url, metadata: runs.metadata })
+    .from(runs).where(sql`${col} = ANY(ARRAY[${id}]::uuid[])`)
+    .orderBy(asc(col), sql`${runs.createdAt} desc nulls first`).limit(PURGE_BATCH); // walks the (id, created_at) index; see the monitor batch note
+  if (batch.length === 0) return 0;
+  const ids = batch.map((r) => r.id);
+  const own = await db.select({ ...reportColumns, entityType: reports.entityType }).from(reports)
+    .where(and(inArray(reports.entityType, ["job", "k6_job"]), inArray(reports.entityId, ids)));
+  const aliases = await db.select({ ...reportColumns, entityType: reports.entityType }).from(reports)
+    .where(and(eq(reports.entityType, "test"), inArray(reports.reportPath, ids.map((runId) => `${runId}/report`))));
+  const reportRows = [...new Map([...own, ...aliases].map((r) => [r.id, r])).values()];
+  const s3 = createS3CleanupService();
+  await deleteStorage([...reportRows.map((r) => asInput(r, r.entityType)), ...batch.flatMap((r) => s3.getRunArtifactInputs(r))], column === "jobId" ? "job run" : "project run");
+  await db.transaction(async (tx) => {
+    await limits(tx);
+    if (reportRows.length) await tx.delete(reports).where(inArray(reports.id, reportRows.map((r) => r.id)));
+    await removeK6RunLinks(tx, ids);
+    await tx.delete(runs).where(and(eq(col, id), inArray(runs.id, ids)));
+  });
+  return batch.length;
+}
+
 export async function purgeJobStep(row: DeletionRow): Promise<StepResult> {
   const jobId = row.targetId;
   const phase = row.phase ?? "unschedule";
@@ -119,32 +147,16 @@ export async function purgeJobStep(row: DeletionRow): Promise<StepResult> {
       .where(and(eq(runs.jobId, jobId), inArray(runs.status, ["queued", "running"]))).limit(PURGE_BATCH);
     if (active.length === 0) return { done: false, phase: "runs" };
     const [job] = await db.select({ deletingAt: jobs.deletingAt }).from(jobs).where(eq(jobs.id, jobId));
-    if (!job || (job.deletingAt && Date.now() - job.deletingAt.getTime() > DRAIN_MAX_MS)) return { done: false, phase: "runs" };
+    // A job purged as part of a project or organization has no flag: the wait is bounded from when that purge began.
+    const since = job?.deletingAt ?? row.createdAt;
+    if (!job || Date.now() - since.getTime() > DRAIN_MAX_MS) return { done: false, phase: "runs" };
     await cancelActiveRuns(jobId, active.map((r) => r.id));
     return { done: false, phase: "drain", delayMs: 15_000 };
   }
   if (phase === "runs") {
-    const batch = await db.select({ id: runs.id, reportS3Url: runs.reportS3Url, logsS3Url: runs.logsS3Url, metadata: runs.metadata })
-      .from(runs).where(sql`${runs.jobId} = ANY(ARRAY[${jobId}]::uuid[])`)
-      .orderBy(asc(runs.jobId), sql`${runs.createdAt} desc nulls first`).limit(PURGE_BATCH); // walks runs_job_created_idx; see the monitor batch note
-    if (batch.length === 0) return { done: false, phase: "children" };
-    const ids = batch.map((r) => r.id);
-    // Both lookups are indexed: (entity_type, entity_id) for the run's own reports, and the partial report_path index
-    // for the latest-report aliases of saved tests that point into a run directory.
-    const own = await db.select({ ...reportColumns, entityType: reports.entityType }).from(reports)
-      .where(and(inArray(reports.entityType, ["job", "k6_job"]), inArray(reports.entityId, ids)));
-    const aliases = await db.select({ ...reportColumns, entityType: reports.entityType }).from(reports)
-      .where(and(eq(reports.entityType, "test"), inArray(reports.reportPath, ids.map((id) => `${id}/report`))));
-    const reportRows = [...new Map([...own, ...aliases].map((r) => [r.id, r])).values()];
-    const s3 = createS3CleanupService();
-    await deleteStorage([...reportRows.map((r) => asInput(r, r.entityType)), ...batch.flatMap((r) => s3.getRunArtifactInputs(r))], "job run");
-    await db.transaction(async (tx) => {
-      await limits(tx);
-      if (reportRows.length) await tx.delete(reports).where(inArray(reports.id, reportRows.map((r) => r.id)));
-      await removeK6RunLinks(tx, ids);
-      await tx.delete(runs).where(and(eq(runs.jobId, jobId), inArray(runs.id, ids)));
-    });
-    return { done: false, phase: "runs", progress: progress(row, "runs", batch.length) };
+    const purged = await purgeRunBatch("jobId", jobId);
+    if (purged === 0) return { done: false, phase: "children" };
+    return { done: false, phase: "runs", progress: progress(row, "runs", purged) };
   }
   if (phase === "children") {
     for (const table of JOB_CHILD_TABLES) if ((await deleteChildBatch(table, "job_id", jobId)) === PURGE_BATCH) return { done: false, phase: "children" };

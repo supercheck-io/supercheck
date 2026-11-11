@@ -24,3 +24,4 @@ export {
 export { TestEmail } from "./test-email";
 export { UsageNotificationEmail } from "./usage-notification";
 export { TrialNotificationEmail, trialNotificationSubject, type TrialNotificationKind } from "./trial-notification";
+export { OrganizationDeletionEmail, organizationDeletionSubject, type OrganizationDeletionKind } from "./organization-deletion";

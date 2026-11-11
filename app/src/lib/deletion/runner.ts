@@ -1,5 +1,6 @@
 import { BLOCKED_RETRY_MS, LostClaimError, MAX_ATTEMPTS, claimDeletion, completeDeletion, failDeletion, heartbeat, releaseDeletion, type DeletionRow } from "./jobs";
 import { purgeJobStep, purgeMonitorStep, type StepResult } from "./purge";
+import { purgeOrganizationStep, purgeProjectStep } from "./purge-tenant";
 
 /** One invocation works for at most this long, then hands the rest to the next trigger so a worker slot is never pinned. */
 const SLICE_MS = 4 * 60_000;
@@ -9,6 +10,8 @@ const BATCH_PAUSE_MS = Number(process.env.DELETION_BATCH_PAUSE_MS ?? 100);
 const handlers: Record<string, (row: DeletionRow) => Promise<StepResult>> = {
   job: purgeJobStep,
   monitor: purgeMonitorStep,
+  project: purgeProjectStep,
+  organization: purgeOrganizationStep,
 };
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, inArray, isNotNull, lt, lte, or, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import { db } from "@/utils/db";
-import { deletionJobs, jobs, monitors } from "@/db/schema";
+import { deletionJobs, jobs, monitors, organization, projects } from "@/db/schema";
 import type { DeletionScope } from "@/db/schema";
 
 /** Table-backed state for background purges. BullMQ (see queue.ts) only triggers; every decision is made here. */
@@ -24,13 +24,14 @@ const truncate = (message: string) => message.slice(0, 1000);
 /** Idempotent: a second request (another pod, a double click) converges on the single live row. */
 export async function insertDeletionJob(
   executor: Executor,
-  input: { scope: DeletionScope; targetId: string; organizationId?: string | null; requestedByUserId?: string | null },
+  input: { scope: DeletionScope; targetId: string; organizationId?: string | null; requestedByUserId?: string | null; nextAttemptAt?: Date },
 ): Promise<string> {
   const [created] = await executor.insert(deletionJobs).values({
     scope: input.scope,
     targetId: input.targetId,
     organizationId: input.organizationId ?? null,
     requestedByUserId: input.requestedByUserId ?? null,
+    ...(input.nextAttemptAt ? { nextAttemptAt: input.nextAttemptAt } : {}),
   }).onConflictDoNothing().returning({ id: deletionJobs.id });
   if (created) return created.id;
   const [live] = await executor.select({ id: deletionJobs.id }).from(deletionJobs)
@@ -117,6 +118,23 @@ export async function retryFailedDeletion(id: string): Promise<boolean> {
   return updated.length > 0;
 }
 
+/**
+ * Cancel or restore: close every unfinished row for the target, failed ones included (the live-row unique index only
+ * exempts `completed`, so a failed row would block a later request). Runs inside the caller's transaction. Clearing the
+ * owner token makes a runner that is mid-purge hit LostClaimError at its next heartbeat and stop.
+ */
+export async function closeDeletionJobs(executor: Pick<typeof db, "update">, scope: DeletionScope, targetId: string): Promise<void> {
+  await executor.update(deletionJobs).set({ state: "completed", completedAt: new Date(), heartbeatAt: null, ownerToken: null, lastError: null })
+    .where(and(eq(deletionJobs.scope, scope), eq(deletionJobs.targetId, targetId), ne(deletionJobs.state, "completed")));
+}
+
+/** Pull a waiting purge forward (super-admin early purge). */
+export async function expediteDeletionJob(scope: DeletionScope, targetId: string): Promise<string | null> {
+  const [row] = await db.update(deletionJobs).set({ nextAttemptAt: new Date(), state: sql`CASE WHEN ${deletionJobs.state} = 'failed' THEN 'queued' ELSE ${deletionJobs.state} END`, attempts: 0 })
+    .where(and(eq(deletionJobs.scope, scope), eq(deletionJobs.targetId, targetId), ne(deletionJobs.state, "completed"))).returning({ id: deletionJobs.id });
+  return row?.id ?? null;
+}
+
 /** Everything the sweep must (re)trigger. All lookups hit partial indexes over unfinished rows only. */
 export async function findDueDeletions(limit = 50): Promise<string[]> {
   const rows = await db.select({ id: deletionJobs.id }).from(deletionJobs).where(or(
@@ -137,6 +155,19 @@ export async function enqueueOrphanedDeletions(limit = 50): Promise<number> {
       await insertDeletionJob(db, { scope, targetId: orphan.id, organizationId: orphan.organizationId });
       created++;
     }
+  }
+  // Pending organizations and soft-deleted projects whose purge row is missing (the request writes both in one transaction, so this is a repair path).
+  const pendingOrgs = await db.select({ id: organization.id, purgeAfter: organization.deletionPurgeAfter }).from(organization)
+    .where(and(isNotNull(organization.deletionRequestedAt), sql`NOT EXISTS (SELECT 1 FROM deletion_jobs d WHERE d.scope = 'organization' AND d.target_id = ${organization.id} AND d.state <> 'completed')`)).limit(limit);
+  for (const org of pendingOrgs) {
+    await insertDeletionJob(db, { scope: "organization", targetId: org.id, organizationId: org.id, nextAttemptAt: org.purgeAfter ?? undefined });
+    created++;
+  }
+  const deletedProjects = await db.select({ id: projects.id, organizationId: projects.organizationId, purgeAfter: projects.purgeAfter }).from(projects)
+    .where(and(isNotNull(projects.deletedAt), sql`NOT EXISTS (SELECT 1 FROM deletion_jobs d WHERE d.scope = 'project' AND d.target_id = ${projects.id} AND d.state <> 'completed')`)).limit(limit);
+  for (const project of deletedProjects) {
+    await insertDeletionJob(db, { scope: "project", targetId: project.id, organizationId: project.organizationId, nextAttemptAt: project.purgeAfter ?? undefined });
+    created++;
   }
   return created;
 }

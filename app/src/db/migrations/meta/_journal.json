@@ -533,6 +533,20 @@
       "when": 1794423612809,
       "tag": "0075_deleting_flag_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1794424912395,
+      "tag": "0076_org_project_deletion_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1794424913395,
+      "tag": "0077_org_project_deletion_indexes",
+      "breakpoints": true
     }
   ]
 }
