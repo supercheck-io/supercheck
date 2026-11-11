@@ -3,7 +3,7 @@ import { isInvalidUuidError, isUuid } from "@/lib/uuid";
 import { isTestPriority, MAX_SCRIPT_LENGTH, MAX_DESCRIPTION_LENGTH } from "@/lib/validations/common";
 import { db } from "@/utils/db";
 import { tests, jobTests, jobs, monitors, TEST_TYPE_VALUES } from "@/db/schema";
-import { eq, and, count, sql } from "drizzle-orm";
+import { eq, and, count, sql, isNull } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { logAuditEvent } from "@/lib/audit-logger";
@@ -334,6 +334,7 @@ export async function DELETE(
             eq(jobTests.testId, id),
             eq(jobs.projectId, project.id),
             eq(jobs.organizationId, organizationId),
+            isNull(jobs.deletingAt), // a job being deleted no longer uses the test
           ),
         );
 
@@ -355,6 +356,7 @@ export async function DELETE(
             eq(monitors.type, "synthetic_test"),
             eq(monitors.projectId, project.id),
             eq(monitors.organizationId, organizationId),
+            isNull(monitors.deletingAt),
             sql`${monitors.config}->>'testId' = ${id}`,
           ),
         );
