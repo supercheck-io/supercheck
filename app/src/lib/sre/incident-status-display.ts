@@ -27,7 +27,7 @@ export const INCIDENT_DISPLAY_STATUSES: ReadonlyArray<{
   { value: "triggered", label: "Triggered", tone: "danger", description: "An alert opened this incident and nobody has acknowledged it yet." },
   { value: "acknowledged", label: "Acknowledged", tone: "warning", description: "Someone is on it." },
   { value: "investigating", label: "Investigating", tone: "info", description: "The team or the AI is looking for the cause." },
-  { value: "fixing", label: "Fixing", tone: "indigo", description: "The cause is known and a fix is being prepared or applied." },
+  { value: "fixing", label: "Fixing", tone: "purple", description: "The cause is known and a fix is being prepared or applied." },
   { value: "monitoring", label: "Monitoring", tone: "cyan", description: "A fix is in place. Watching to confirm it holds." },
   { value: "resolved", label: "Resolved", tone: "success", description: "The incident is over." },
 ];

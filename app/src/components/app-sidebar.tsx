@@ -3,13 +3,7 @@
 import * as React from "react";
 import { useSyncExternalStore } from "react";
 import {
-  CalendarClock,
-  ChartColumn,
-  Globe,
-  BellRing,
   SquarePlus,
-  Code,
-  SquareLibrary,
   BookOpenText,
   Plus,
   Chrome,
@@ -19,16 +13,7 @@ import {
   LaptopMinimal,
   ChevronsLeftRightEllipsis,
   EthernetPort,
-  Variable,
-  UserCog,
-  UserPlus,
-  Tally4,
   type LucideIcon,
-  ClipboardList,
-  Target,
-  Siren,
-  Bot,
-  Boxes,
 } from "lucide-react";
 import { PlaywrightLogo } from "@/components/logo/playwright-logo";
 import { K6Logo } from "@/components/logo/k6-logo";
@@ -49,6 +34,7 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar";
 import { useAdminStatus } from "@/hooks/use-admin-status";
+import { NAV } from "@/lib/nav-areas";
 import { getReleaseVersionBadge } from "@/lib/release-metadata";
 
 // Internal: build-time value baked in by the release image build; not an operator setting.
@@ -60,38 +46,39 @@ const releaseVersionBadge = getReleaseVersionBadge(
 const data = {
   Respond: [
     {
-      title: "Dashboard",
+      title: NAV.dashboard.title,
       url: "/",
-      icon: ChartColumn,
+      icon: NAV.dashboard.icon,
       isActive: true,
     },
     {
-      title: "Incidents",
+      title: NAV.incidents.title,
       url: "/incidents",
-      icon: Siren,
+      icon: NAV.incidents.icon,
     },
     {
-      title: "Copilot",
+      title: NAV.copilot.title,
       url: "/copilot",
-      icon: Bot,
+      icon: NAV.copilot.icon,
+      tone: NAV.copilot.tone,
     },
     {
-      title: "Services",
+      title: NAV.services.title,
       url: "/services",
-      icon: Boxes,
+      icon: NAV.services.icon,
     },
   ],
 
   Communicate: [
     {
-      title: "Status Pages",
+      title: NAV.statusPages.title,
       url: "/status-pages",
-      icon: Tally4,
+      icon: NAV.statusPages.icon,
     },
     {
-      title: "Notifications",
+      title: NAV.notifications.title,
       url: "/notifications",
-      icon: BellRing,
+      icon: NAV.notifications.icon,
     },
   ],
 
@@ -149,29 +136,29 @@ const data = {
       ],
     },
     {
-      title: "Requirements",
+      title: NAV.requirements.title,
       url: "/requirements",
-      icon: Target,
+      icon: NAV.requirements.icon,
     },
     {
-      title: "Tests",
+      title: NAV.tests.title,
       url: "/tests",
-      icon: Code,
+      icon: NAV.tests.icon,
     },
     {
-      title: "Jobs",
+      title: NAV.jobs.title,
       url: "/jobs",
-      icon: CalendarClock,
+      icon: NAV.jobs.icon,
     },
     {
-      title: "Runs",
+      title: NAV.runs.title,
       url: "/runs",
-      icon: ClipboardList,
+      icon: NAV.runs.icon,
     },
     {
-      title: "Variables",
+      title: NAV.variables.title,
       url: "/variables",
-      icon: Variable,
+      icon: NAV.variables.icon,
     },
   ],
 
@@ -214,24 +201,24 @@ const data = {
       ],
     },
     {
-      title: "Monitors",
+      title: NAV.monitors.title,
       url: "/monitors",
-      icon: Globe,
+      icon: NAV.monitors.icon,
     },
   ],
 
   SuperAdmin: [
     {
-      title: "Super Admin",
+      title: NAV.superAdmin.title,
       url: "/super-admin",
-      icon: UserPlus,
+      icon: NAV.superAdmin.icon,
     },
   ],
   OrgAdmin: [
     {
-      title: "Organization",
+      title: NAV.organization.title,
       url: "/org-admin",
-      icon: UserCog,
+      icon: NAV.organization.icon,
     },
   ],
 

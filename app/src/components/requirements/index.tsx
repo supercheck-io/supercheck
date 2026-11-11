@@ -73,6 +73,7 @@ import { Requirement } from "./schema";
 import { RequirementTestDataTable } from "./requirement-test-data-table";
 import { createRequirementTestColumns } from "./requirement-test-columns";
 import { DocumentsList } from "./documents-list";
+import { NAV } from "@/lib/nav-areas";
 
 // GET /api/requirements caps pageSize at this value and the list sends none.
 const REQUIREMENTS_LIST_CAP = 500;
@@ -240,8 +241,8 @@ export default function RequirementsPage() {
             <Tabs defaultValue="requirements" className="w-full">
                 <PageHeader
                     title="Requirements"
-                    icon={Target}
-                    tone="automate"
+                    icon={NAV.requirements.icon}
+                    tone={NAV.requirements.tone}
                     description="Manage requirements and their test coverage"
                     className="-mt-2"
                     actions={

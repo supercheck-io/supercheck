@@ -11,6 +11,7 @@ import { K6Logo } from "@/components/logo/k6-logo";
 import { PlaywrightLogo } from "@/components/logo/playwright-logo";
 import { parseRunsView, type RunsView } from "./runs-view";
 import { useProjectContext } from "@/hooks/use-project-context";
+import { NAV } from "@/lib/nav-areas";
 
 /** Runs page tabs; the active view lives in the URL as `?view=all|k6|playwright`. */
 export function RunsViewTabs() {
@@ -33,7 +34,7 @@ export function RunsViewTabs() {
     <Tabs value={view} onValueChange={handleViewChange} className="space-y-4">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div className="flex min-w-0 items-start gap-3">
-          <IconChip icon={ClipboardList} tone="automate" size="md" className="mt-0.5" />
+          <IconChip icon={NAV.runs.icon} tone={NAV.runs.tone} size="md" className="mt-0.5" />
           <div>
             <h1 className="text-2xl font-semibold">Runs</h1>
             <p className="text-muted-foreground text-sm">

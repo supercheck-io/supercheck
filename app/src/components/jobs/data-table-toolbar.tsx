@@ -1,5 +1,5 @@
 import type { Table } from "@tanstack/react-table";
-import { PlusIcon, Search, X, CalendarClock } from "lucide-react";
+import { PlusIcon, Search, X } from "lucide-react";
 
 import { IconChip } from "@/components/ui/icon-chip";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ import { jobStatuses } from "./data";
 import { DataTableFacetedFilter } from "./data-table-faceted-filter";
 import { useRouter } from "next/navigation";
 import { useJobPermissions } from "@/hooks/use-rbac-permissions";
+import { NAV } from "@/lib/nav-areas";
 
 interface DataTableToolbarProps<TData> {
   table: Table<TData>;
@@ -26,7 +27,7 @@ export function DataTableToolbar<TData>({
     <div className="flex flex-wrap items-center justify-between gap-2 mb-4 -mt-2">
       <div className="flex items-start gap-3">
 
-        <IconChip icon={CalendarClock} tone="automate" size="md" className="mt-0.5" />
+        <IconChip icon={NAV.jobs.icon} tone={NAV.jobs.tone} size="md" className="mt-0.5" />
         <div className="flex flex-col">
           <h2 className="text-2xl font-semibold">Jobs</h2>
           <p className="text-muted-foreground text-sm">

@@ -45,7 +45,8 @@
   --automate: oklch(0.5 0.134 242.749);
   --monitor: oklch(0.511 0.096 186.391);
   --respond: oklch(0.553 0.195 38.402);
-  --communicate: oklch(0.525 0.223 3.958);
+  --communicate: oklch(0.511 0.262 276.966);
+  --settings: oklch(0.446 0.043 257.281);
   --ai: oklch(0.541 0.281 293.009);
   --radius: 0.625rem;
   --sidebar: oklch(0.985 0 0);
@@ -92,7 +93,8 @@
   --automate: oklch(0.746 0.16 232.661);
   --monitor: oklch(0.777 0.152 181.912);
   --respond: oklch(0.75 0.183 55.934);
-  --communicate: oklch(0.718 0.202 349.761);
+  --communicate: oklch(0.673 0.182 276.935);
+  --settings: oklch(0.704 0.04 256.788);
   --ai: oklch(0.702 0.183 293.541);
   --sidebar: oklch(0.21 0.006 285.885);
   --sidebar-foreground: oklch(0.985 0 0);
@@ -137,6 +139,7 @@
   --color-respond: var(--respond);
   --color-communicate: var(--communicate);
   --color-ai: var(--ai);
+  --color-settings: var(--settings);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
 

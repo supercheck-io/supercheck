@@ -34,7 +34,6 @@ import {
   Pencil,
   RadioTower,
   Cable,
-  UserCog,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AuditLogsTable } from "@/components/admin/audit-logs-table";
@@ -95,6 +94,7 @@ import {
   useOrgProjects,
   useOrgDataInvalidation,
 } from "@/hooks/use-organization";
+import { NAV } from "@/lib/nav-areas";
 
 interface OrgMember {
   id: string;
@@ -818,8 +818,8 @@ function OrgAdminDashboardContent() {
       >
         <PageHeader
           title="Organization"
-          icon={UserCog}
-          tone="slate"
+          icon={NAV.organization.icon}
+          tone={NAV.organization.tone}
           titleAdornment={
             <span className="inline-flex min-w-0 max-w-[320px] items-center gap-1">
               <TableBadge tone="info" className="min-w-0">
