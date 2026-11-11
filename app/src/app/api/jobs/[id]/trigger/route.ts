@@ -38,7 +38,7 @@ import {
   getSafeExecutionQueueErrorDetails,
   buildExecutionPolicyFailureResponse,
 } from "@/lib/execution-api-responses";
-import { isJobDeletingError } from "@/lib/deletion/errors";
+import { isDeletingError } from "@/lib/deletion/errors";
 
 // POST /api/jobs/[id]/trigger - Trigger job remotely via API key
 export async function POST(
@@ -391,7 +391,7 @@ export async function POST(
       },
     });
     } catch (insertError) {
-      if (isJobDeletingError(insertError)) return NextResponse.json({ error: "Job not found" }, { status: 404 });
+      if (isDeletingError(insertError)) return NextResponse.json({ error: "Job not found" }, { status: 404 });
       throw insertError;
     }
     createdRunId = runId;

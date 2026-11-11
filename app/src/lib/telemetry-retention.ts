@@ -22,7 +22,8 @@ export const TELEMETRY_RETENTION_RULES: readonly TelemetryRetentionRule[] = [
     defaultDays: 7,
     minSafetyLimit: 2_000_000, // 2,880 rows per agent per day at one heartbeat every 30s
     // Always keep each agent's newest heartbeat so "last seen" survives an idle agent.
-    protect: `EXISTS (SELECT 1 FROM private_agent_heartbeats n WHERE n.private_agent_id = {a}.private_agent_id AND (n.created_at, n.id) > ({a}.created_at, {a}.id))`,
+    // A scalar top-1 lookup per candidate (agent, created_at index); a correlated EXISTS was planned as a hash semi join that read the whole table every run.
+    protect: `{a}.id <> (SELECT n.id FROM private_agent_heartbeats n WHERE n.private_agent_id = {a}.private_agent_id ORDER BY n.created_at DESC, n.id DESC LIMIT 1)`,
   },
   {
     table: "private_agent_jobs",

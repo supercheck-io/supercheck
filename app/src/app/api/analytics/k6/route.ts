@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { k6PerformanceRuns, jobs } from "@/db/schema";
-import { eq, and, desc, gte, count, sql, avg, inArray } from "drizzle-orm";
+import { eq, and, desc, gte, count, sql, avg, inArray, isNull } from "drizzle-orm";
 import {
   IN_FLIGHT_RUN_STATUSES,
   NOT_PASSED_RUN_STATUSES,
@@ -61,7 +61,9 @@ export async function GET(request: NextRequest) {
       eq(k6PerformanceRuns.projectId, targetProjectId),
       eq(k6PerformanceRuns.organizationId, organizationId),
       sql`${k6PerformanceRuns.completedAt} IS NOT NULL`,
-      sql`${k6PerformanceRuns.jobId} IS NOT NULL`
+      sql`${k6PerformanceRuns.jobId} IS NOT NULL`,
+      // Runs of a job being deleted are gone at once.
+      sql`NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.id = ${k6PerformanceRuns.jobId} AND jobs.deleting_at IS NOT NULL)`,
     ];
 
     if (jobId) {
@@ -83,7 +85,8 @@ export async function GET(request: NextRequest) {
           and(
             eq(jobs.projectId, targetProjectId),
             eq(jobs.organizationId, organizationId),
-            eq(jobs.jobType, 'k6')
+            eq(jobs.jobType, 'k6'),
+            isNull(jobs.deletingAt)
           )
         )
         .orderBy(desc(jobs.lastRunAt)),

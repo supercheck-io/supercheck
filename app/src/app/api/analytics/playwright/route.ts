@@ -2,7 +2,7 @@ import { isUuid } from '@/lib/uuid';
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { jobs, runs } from "@/db/schema";
-import { eq, and, desc, gte, count, sql, avg, inArray } from "drizzle-orm";
+import { eq, and, desc, gte, count, sql, avg, inArray, isNull } from "drizzle-orm";
 import {
   IN_FLIGHT_RUN_STATUSES,
   NOT_PASSED_RUN_STATUSES,
@@ -55,7 +55,9 @@ export async function GET(request: NextRequest) {
     const baseRunConditions = [
       gte(runs.startedAt, startDate),
       eq(runs.projectId, targetProjectId),
-      sql`${runs.completedAt} IS NOT NULL`
+      sql`${runs.completedAt} IS NOT NULL`,
+      // Runs of a job being deleted are gone at once.
+      sql`(${runs.jobId} IS NULL OR NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.id = ${runs.jobId} AND jobs.deleting_at IS NOT NULL))`,
     ];
 
     if (jobId) {
@@ -77,7 +79,8 @@ export async function GET(request: NextRequest) {
           and(
             eq(jobs.projectId, targetProjectId),
             eq(jobs.organizationId, context.organizationId),
-            eq(jobs.jobType, 'playwright')
+            eq(jobs.jobType, 'playwright'),
+            isNull(jobs.deletingAt)
           )
         )
         .orderBy(desc(jobs.lastRunAt)),

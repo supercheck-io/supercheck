@@ -1,10 +1,9 @@
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/utils/db";
 import { jobs, monitors, runs, statusPageComponentMonitors } from "@/db/schema";
 import { deleteScheduledJob } from "@/lib/job-scheduler";
 import { deleteScheduledMonitor } from "@/lib/monitor-scheduler";
 import { RUN_CANCELLATION_MARKER, setCancellationSignal } from "@/lib/cancellation-service";
-import { sql } from "drizzle-orm";
 import { DELETION_TX_LIMITS, DELETION_TX_STATEMENT_LIMIT } from "@/lib/resource-deletion/chunks";
 import { insertDeletionJob } from "./jobs";
 import { triggerDeletion } from "./queue";
@@ -55,12 +54,12 @@ export async function requestMonitorDeletion(scope: Scope) {
   const result = await db.transaction(async (tx): Promise<DeletionRequest<{ name: string; type: string; target: string; deletionId: string }>> => {
     await limit(tx);
     const where = and(eq(monitors.id, scope.id), eq(monitors.projectId, scope.projectId), eq(monitors.organizationId, scope.organizationId));
-    const [flagged] = await tx.update(monitors).set({ deletingAt: new Date() }).where(and(where, isNull(monitors.deletingAt)))
-      .returning({ name: monitors.name, type: monitors.type, target: monitors.target });
-    if (!flagged) {
-      const [existing] = await tx.select({ id: monitors.id }).from(monitors).where(where).limit(1);
-      return existing ? { status: "already" } : { status: "not_found" };
-    }
+    // FOR UPDATE first: it waits for status page links being inserted right now and blocks new ones (trigger in migration 0074).
+    const [current] = await tx.select({ name: monitors.name, type: monitors.type, target: monitors.target, deletingAt: monitors.deletingAt }).from(monitors).where(where).for("update");
+    if (!current) return { status: "not_found" };
+    if (current.deletingAt) return { status: "already" };
+    await tx.update(monitors).set({ deletingAt: new Date() }).where(eq(monitors.id, scope.id));
+    const flagged = { name: current.name, type: current.type, target: current.target };
     // Public status pages stop showing it at once (indexed by monitor_id); the purge removes the rest.
     await tx.delete(statusPageComponentMonitors).where(eq(statusPageComponentMonitors.monitorId, scope.id));
     const deletionId = await insertDeletionJob(tx, { scope: "monitor", targetId: scope.id, organizationId: scope.organizationId, requestedByUserId: scope.userId });

@@ -120,6 +120,26 @@ describe("telemetry retention purge", () => {
     ).toBe(1);
   });
 
+  it("heartbeats: with tied timestamps keeps exactly the highest-id row per agent, across agents", async () => {
+    const [a, b, org] = [id(), id(), id()];
+    const hb = (agent: string, hid: string, ts: string) =>
+      `INSERT INTO private_agent_heartbeats (id, private_agent_id, organization_id, status, protocol_version, agent_version, created_at) VALUES ('${hid}','${agent}','${org}','connected','1','1','${ts}')`;
+    const tie = "2020-01-01 00:00:00+00";
+    const [lo, hi] = ["00000000-0000-4000-8000-000000000001", "00000000-0000-4000-8000-000000000002"];
+    const [bOld, bNewest] = [id(), id()];
+    await seed([
+      hb(a, lo, tie), hb(a, hi, tie), // a's newest is the tied row with the higher id
+      hb(a, id(), "2019-12-31 00:00:00+00"),
+      hb(b, bOld, "2019-01-01 00:00:00+00"), hb(b, bNewest, "2019-06-01 00:00:00+00"),
+    ]);
+    expect(await purge("private_agent_heartbeats")).toBe(3);
+    const left = await ids("private_agent_heartbeats");
+    expect(left.has(hi) && left.has(bNewest)).toBe(true);
+    expect(left.has(lo) || left.has(bOld)).toBe(false);
+    // idempotent: a second run has nothing left to delete
+    expect(await purge("private_agent_heartbeats")).toBe(0);
+  });
+
   it("health snapshots keep the latest per service; observations purge by age", async () => {
     const [svc, proj] = [id(), id()];
     const snap = (days: number, service = svc) =>

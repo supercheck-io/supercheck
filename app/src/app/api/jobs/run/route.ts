@@ -32,7 +32,7 @@ import {
 } from "@/lib/execution-api-responses";
 import { requireSameOriginRequest } from "@/lib/security/same-origin";
 import { pendingDeletionResponse, isOrgPendingDeletion } from "@/lib/deletion/org-state";
-import { isJobDeletingError } from "@/lib/deletion/errors";
+import { isDeletingError } from "@/lib/deletion/errors";
 
 export async function POST(request: NextRequest) {
   let jobId: string | null = null;
@@ -218,7 +218,7 @@ export async function POST(request: NextRequest) {
       },
     });
     } catch (insertError) {
-      if (isJobDeletingError(insertError)) return NextResponse.json({ error: "Job not found" }, { status: 404 });
+      if (isDeletingError(insertError)) return NextResponse.json({ error: "Job not found" }, { status: 404 });
       throw insertError;
     }
 
