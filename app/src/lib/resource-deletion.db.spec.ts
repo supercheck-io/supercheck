@@ -182,7 +182,35 @@ describe('job and monitor deletion against PostgreSQL', () => {
     }
   });
 
-  it.each(['job','monitor'])('rejects %s deletion when a new child arrives during storage cleanup', async kind => {
+  it('cleans only new results and completes when a monitor produces results during storage cleanup', async () => {
+    const own = await seedMonitor();
+    const newUrl = 'http://storage/monitors/new-execution-a1b2c3d4/report/index.html';
+    mockDeleteReports.mockResolvedValue({success:true});
+    mockDeleteReports.mockImplementationOnce(async () => {
+      await client`INSERT INTO monitor_results VALUES (${randomUUID()},${own.id},'new-execution',${newUrl})`;
+      return {success:true};
+    });
+    const result = await deleteMonitorWithContext(own.id,deletionContext);
+    expect(result.success).toBe(true);
+    expect(mockDeleteReports).toHaveBeenCalledTimes(2);
+    expect(mockDeleteReports.mock.calls[1][0]).toEqual([expect.objectContaining({ s3Url:newUrl })]);
+    expect(await client`SELECT id FROM monitors WHERE id=${own.id}`).toHaveLength(0);
+    expect(await client`SELECT id FROM monitor_results WHERE monitor_id=${own.id}`).toHaveLength(0);
+  });
+
+  it('keeps monitor rows when a retry cleanup fails', async () => {
+    const own = await seedMonitor();
+    mockDeleteReports.mockImplementationOnce(async () => {
+      await client`INSERT INTO monitor_results VALUES (${randomUUID()},${own.id},'new-execution','http://storage/monitors/new-execution-a1b2c3d4/report/index.html')`;
+      return {success:true};
+    }).mockResolvedValueOnce({success:false});
+    const result = await deleteMonitorWithContext(own.id,deletionContext);
+    expect(result.success).toBe(false);
+    expect(await client`SELECT id FROM monitor_results WHERE monitor_id=${own.id}`).toHaveLength(2);
+  });
+
+  it('rejects job deletion when a new child arrives during storage cleanup', async () => {
+    const kind = 'job';
     const own = kind === 'job' ? await seedJob() : await seedMonitor();
     mockDeleteReports.mockImplementationOnce(async () => {
       if (kind === 'job') await client`INSERT INTO runs (id,job_id,project_id,status) VALUES (${randomUUID()},${own.id},'project','running')`;

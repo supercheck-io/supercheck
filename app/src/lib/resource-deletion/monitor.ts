@@ -17,6 +17,14 @@ type MonitorDeletionResult = {
   details?: string;
 };
 
+const MAX_CLEANUP_ATTEMPTS = 5;
+
+class ResultsChangedError extends Error {
+  constructor() {
+    super("Monitor results changed during cleanup; retry deletion");
+  }
+}
+
 export async function deleteMonitorWithContext(
   monitorId: string,
   context: ProjectAuthContext,
@@ -81,6 +89,11 @@ export async function deleteMonitorWithContext(
 
       const monitorData = existingMonitor[0];
 
+      // An active monitor keeps producing results while storage cleanup runs, so retry the whole
+      // collect/clean/delete cycle, cleaning only results not yet cleaned, until the set is stable.
+      const cleanedResultIds = new Set<string>();
+      const cleanedReportIds = new Set<string>();
+      for (let attempt = 1; ; attempt++) {
       // Collect all monitor results with S3 reports that need cleanup
       const resultsWithReports = await tx
         .select({
@@ -105,26 +118,31 @@ export async function deleteMonitorWithContext(
       const reportsToDelete = resultsWithReports.filter(
         (result) => result.testReportS3Url
       );
+      const pendingResults = reportsToDelete.filter(report => !cleanedResultIds.has(report.id));
+      const pendingReports = reportRows.filter(report => !cleanedReportIds.has(report.id));
 
-      if (reportsToDelete.length > 0 || reportRows.length > 0) {
+      if (pendingResults.length > 0 || pendingReports.length > 0) {
         const cleanup = await createS3CleanupService().deleteReports(
-          [...reportsToDelete.map(report => ({
+          [...pendingResults.map(report => ({
             reportPath: report.testExecutionId || undefined,
             s3Url: report.testReportS3Url || undefined,
             entityId: report.id,
             entityType: "monitor" as const,
-          })), ...reportRows.map(report => ({
+          })), ...pendingReports.map(report => ({
             reportPath: report.reportPath || undefined, s3Url: report.s3Url || undefined,
             entityId: report.entityId, entityType: "monitor" as const,
           }))]
         );
         if (!cleanup.success) throw new Error("Could not delete monitor storage; please retry");
+        pendingResults.forEach(report => cleanedResultIds.add(report.id));
+        pendingReports.forEach(report => cleanedReportIds.add(report.id));
       }
 
-      return db.transaction(async (tx) => {
+      try {
+      return await db.transaction(async (tx) => {
       const [freshMonitor] = await tx.select({id: monitors.id}).from(monitors).where(and(eq(monitors.id,monitorId),eq(monitors.projectId,project.id),eq(monitors.organizationId,organizationId))).for("update");
       const freshResults = await tx.select({ id: monitorResults.id, testExecutionId: monitorResults.testExecutionId, testReportS3Url: monitorResults.testReportS3Url }).from(monitorResults).where(eq(monitorResults.monitorId,monitorId)).for("update");
-      if (!freshMonitor || !isDeepStrictEqual(freshResults.sort((a,b)=>a.id.localeCompare(b.id)), resultsWithReports.sort((a,b)=>a.id.localeCompare(b.id)))) throw new Error("Monitor results changed during cleanup; retry deletion");
+      if (!freshMonitor || !isDeepStrictEqual(freshResults.sort((a,b)=>a.id.localeCompare(b.id)), resultsWithReports.sort((a,b)=>a.id.localeCompare(b.id)))) throw new ResultsChangedError();
       const freshReports = executionIds.length || urls.length ? await tx.select({
         id: reports.id, entityId: reports.entityId, reportPath: reports.reportPath, s3Url: reports.s3Url,
       }).from(reports).where(reportOwnership).for("update") : [];
@@ -165,6 +183,10 @@ export async function deleteMonitorWithContext(
         deletedResults: deletedResults.length,
       };
       });
+      } catch (error) {
+        if (!(error instanceof ResultsChangedError) || attempt >= MAX_CLEANUP_ATTEMPTS) throw error;
+      }
+      }
     })();
 
     // Handle cleanup tasks outside the transaction

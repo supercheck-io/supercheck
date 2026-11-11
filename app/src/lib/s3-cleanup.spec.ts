@@ -220,6 +220,64 @@ describe("S3 report cleanup", () => {
     expect(send.mock.calls[3][0].input.Delete.Objects).toHaveLength(1);
   });
 
+  describe("scaling to long histories", () => {
+    const stem = "0b5c1f2e-1a2b-4c3d-8e9f-0123456789ab-";
+    const input = (prefix: string) => ({ entityType: "monitor" as const, entityId: prefix, reportPath: `${prefix}/report` });
+    const lists = () => send.mock.calls.filter(([command]) => command instanceof ListObjectsV2Command);
+
+    it("lists a shared stem once and deletes only the requested directories", async () => {
+      objects.set("monitors", [
+        `${stem}aaaaaaa1/report/index.html`, `${stem}aaaaaaa2/report/index.html`, `${stem}aaaaaaa3/report/index.html`,
+        `${stem}bbbbbbb1/report/index.html`, `${stem}aaaaaaa10/report/index.html`, `${stem}aaaaaaa1`, "other/report/index.html",
+      ]);
+      const result = await service.deleteReports(["aaaaaaa1", "aaaaaaa2", "aaaaaaa3"].map(id => input(`${stem}${id}`)));
+      expect(result.success).toBe(true);
+      expect(lists()).toHaveLength(1);
+      expect(lists()[0][0].input.Prefix).toBe(stem);
+      expect(objects.get("monitors")).toEqual([`${stem}bbbbbbb1/report/index.html`, `${stem}aaaaaaa10/report/index.html`, `${stem}aaaaaaa1`, "other/report/index.html"]);
+    });
+
+    it("bounds listing and delete concurrency", async () => {
+      let active = 0; let peak = 0;
+      send.mockImplementation(async (command) => {
+        active++; peak = Math.max(peak, active);
+        await new Promise(resolve => setTimeout(resolve, 1));
+        active--;
+        if (command instanceof ListObjectsV2Command) return { Contents: [{ Key: `${command.input.Prefix}x` }] };
+        return { Deleted: command.input.Delete.Objects };
+      });
+      const result = await service.deleteReports(Array.from({ length: 100 }, (_, i) => input(`run-${i}`)));
+      expect(result.success).toBe(true);
+      expect(lists()).toHaveLength(100);
+      expect(peak).toBeGreaterThan(1);
+      expect(peak).toBeLessThanOrEqual(16);
+
+      peak = 0;
+      const keys = Array.from({ length: 20_000 }, (_, i) => `run/${i}`);
+      await service.deleteObjectsBatch("monitors", keys);
+      expect(peak).toBeGreaterThan(1);
+      expect(peak).toBeLessThanOrEqual(8);
+    });
+
+    it("completes thousands of prefixes with far fewer List calls", async () => {
+      const ids = Array.from({ length: 2200 }, (_, i) => `${stem}${i.toString(16).padStart(8, "0")}`);
+      objects.set("monitors", ids.map(id => `${id}/report/index.html`));
+      const result = await service.deleteReports(ids.map(input));
+      expect(result.success).toBe(true);
+      expect(result.deletedObjects).toHaveLength(2200);
+      expect(lists()).toHaveLength(1);
+      expect(objects.get("monitors")).toEqual([]);
+    });
+
+    it("fails the whole deletion when a grouped listing fails", async () => {
+      send.mockRejectedValue(new Error("Access denied"));
+      const result = await service.deleteReports(["a", "b", "c"].map(id => input(`${stem}0000000${id}`)));
+      expect(result.success).toBe(false);
+      expect(result.failedObjects).toHaveLength(3);
+      expect(send).toHaveBeenCalledTimes(1);
+    });
+  });
+
 it("applies the configured network timeout and supports endpoint path prefixes", async () => {
   const service = new S3CleanupService({ ...config, endpoint: "http://storage:9000/storage/s3", operationTimeout: 1200 });
   expect(jest.mocked(S3Client)).toHaveBeenLastCalledWith(expect.objectContaining({ requestHandler: { connectionTimeout: 1200, requestTimeout: 1200, socketTimeout: 1200, throwOnRequestTimeout: true } }));
