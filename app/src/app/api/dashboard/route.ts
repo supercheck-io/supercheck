@@ -15,7 +15,8 @@ import { subDays, subHours } from "date-fns";
 import { getQueueStats } from "@/lib/queue-stats";
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-context';
-import { excludeSupersededSyntheticResults, excludeSyntheticResults } from "@/lib/monitor-result-filters";
+import { excludeSyntheticResults } from "@/lib/monitor-result-filters";
+import { getRowCountsByPeriod } from "@/lib/monitor-availability";
 import { buildSystemIssues } from "@/lib/dashboard/system-health";
 import { FAILED_RUN_STATUSES } from "@/lib/dashboard/run-outcomes";
 
@@ -51,6 +52,8 @@ export async function GET() {
 
     // Monitor Statistics - scoped to project
     // OPTIMIZED: Consolidated 4 separate count queries into 1 using PostgreSQL FILTER clause
+    const availabilityScope = { organizationId: context.organizationId, projectId: targetProjectId, now };
+
     const monitorBaseCondition = and(
       eq(monitors.projectId, targetProjectId),
       eq(monitors.organizationId, context.organizationId),
@@ -59,7 +62,7 @@ export async function GET() {
     
     const [
       monitorCounts,
-      recentMonitorResults,
+      recentMonitorCounts,
       monitorsByType,
       criticalAlerts
     ] = await Promise.all([
@@ -77,17 +80,9 @@ export async function GET() {
       }).from(monitors)
         .where(monitorBaseCondition),
       
-      // Recent monitor results (last 24h) - only for monitors in this project
-      dbInstance.select({ count: count() })
-        .from(monitorResults)
-        .innerJoin(monitors, eq(monitorResults.monitorId, monitors.id))
-        .where(and(
-          gte(monitorResults.checkedAt, last24Hours),
-          eq(monitors.projectId, targetProjectId),
-          eq(monitors.organizationId, context.organizationId),
-          excludeSupersededSyntheticResults
-        )),
-      
+      // Recent monitor results (last 24h): hourly aggregates plus raw rows for the unaggregated rest
+      getRowCountsByPeriod({ ...availabilityScope, from: last24Hours, period: "hourly" }),
+
       // Monitor count by type
       dbInstance.select({
         type: monitors.type,
@@ -107,6 +102,11 @@ export async function GET() {
         .where(and(eq(monitors.status, "down"), eq(monitors.projectId, targetProjectId), eq(monitors.organizationId, context.organizationId), isNull(monitors.deletingAt)))
         .limit(5)
     ]);
+
+    const recentChecks24h = [...recentMonitorCounts.values()].reduce(
+      (acc, c) => ({ total: acc.total + c.total, up: acc.up + c.up }),
+      { total: 0, up: 0 },
+    );
 
     // Job Statistics - scoped to project
     // OPTIMIZED: Consolidated count queries using PostgreSQL FILTER clause
@@ -322,34 +322,19 @@ export async function GET() {
           sql`${auditLogs.details}->'metadata'->>'projectId' = ${targetProjectId}`
         )),
 
-      // OPTIMIZED: Calculate uptime percentage using SQL aggregation instead of fetching all rows
-      dbInstance.select({
-        totalChecks: count(),
-        successfulChecks: sql<number>`count(*) filter (where ${monitorResults.isUp} = true)`.mapWith(Number),
-      }).from(monitorResults)
-        .innerJoin(monitors, eq(monitorResults.monitorId, monitors.id))
-        .where(and(
-          gte(monitorResults.checkedAt, last24Hours),
-          eq(monitors.projectId, targetProjectId),
-          eq(monitors.organizationId, context.organizationId),
-          excludeSupersededSyntheticResults
-        )),
+      // Uptime over the last 24h: the same hourly counts as recentChecks24h
+      Promise.resolve([{ totalChecks: recentChecks24h.total, successfulChecks: recentChecks24h.up }]),
 
-      // Monitor availability trend (last 30 days) - only for monitors in this project
-      dbInstance.select({
-        date: sql<string>`DATE(${monitorResults.checkedAt})`,
-        upCount: sql<number>`SUM(CASE WHEN ${monitorResults.isUp} THEN 1 ELSE 0 END)`.mapWith(Number),
-        totalCount: count()
-      }).from(monitorResults)
-        .innerJoin(monitors, eq(monitorResults.monitorId, monitors.id))
-        .where(and(
-          gte(monitorResults.checkedAt, last30Days),
-          eq(monitors.projectId, targetProjectId),
-          eq(monitors.organizationId, context.organizationId),
-          excludeSupersededSyntheticResults
-        ))
-        .groupBy(sql`DATE(${monitorResults.checkedAt})`)
-        .orderBy(sql`DATE(${monitorResults.checkedAt})`),
+      // Monitor availability trend (last 30 days): daily aggregates plus raw rows for the unaggregated rest
+      getRowCountsByPeriod({ ...availabilityScope, from: last30Days, period: "daily" }).then((counts) =>
+        [...counts]
+          .sort(([a], [b]) => a - b)
+          .map(([day, { total, up }]) => ({
+            date: new Date(day).toISOString().slice(0, 10),
+            upCount: up,
+            totalCount: total,
+          })),
+      ),
 
       // Response time statistics - only for monitors in this project
       dbInstance.select({
@@ -446,7 +431,7 @@ export async function GET() {
         maintenance: monitorCounts[0].maintenance,
         error: monitorCounts[0].error,
         uptime: overallUptime === null ? null : Math.round(overallUptime * 100) / 100,
-        recentChecks24h: recentMonitorResults[0].count,
+        recentChecks24h: recentChecks24h.total,
         byType: monitorsByType,
         criticalAlerts: criticalAlerts,
         availabilityTrend: availabilityTrend.map(day => ({

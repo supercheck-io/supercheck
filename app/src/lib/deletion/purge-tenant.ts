@@ -9,7 +9,7 @@ import type { DeletionRow } from "./jobs";
 import { quiesceOrganization } from "./organization";
 import { invalidateOrgState, invalidateProjectState, type DeletionMeta, metaPatch } from "./org-state";
 import { sendCompletionNotice } from "./notices";
-import { PURGE_BATCH, asInput, deleteStorage, limits, purgeJobStep, purgeMonitorStep, purgeRunBatch, reportColumns, type StepResult } from "./purge";
+import { PURGE_BATCH, asInput, deleteStorage, limits, purgeJobStep, purgeMonitorStep, purgeRunBatch, reportColumns, type StepContext, type StepResult } from "./purge";
 
 /**
  * Project and organization purges. Both are phased and resumable: the whole position lives in the deletion row's cursor
@@ -26,17 +26,17 @@ type Pass = { done: true } | { done: false; state: ProjectState; delayMs?: numbe
 const count = (state: ProjectState, key: string, add: number) => ({ ...state.counts, [key]: (state.counts?.[key] ?? 0) + add });
 
 /** Run one child job/monitor purge step and fold its position back into the state. */
-async function stepChild(row: DeletionRow, state: ProjectState, child: Child): Promise<Pass> {
+async function stepChild(row: DeletionRow, ctx: StepContext, state: ProjectState, child: Child): Promise<Pass> {
   const synthetic = { ...row, scope: child.kind, targetId: child.id, phase: child.phase ?? (child.kind === "job" ? "drain" : "results"), cursor: child.cursor ?? {} } as DeletionRow;
-  const result: StepResult = await (child.kind === "job" ? purgeJobStep : purgeMonitorStep)(synthetic);
+  const result: StepResult = await (child.kind === "job" ? purgeJobStep : purgeMonitorStep)(synthetic, ctx);
   if (result.done) return { done: false, state: { ...state, child: undefined, counts: count(state, `${child.kind}s`, 1) } };
   return { done: false, state: { ...state, child: { ...child, phase: result.phase, cursor: result.progress ?? child.cursor } }, delayMs: result.delayMs };
 }
 
 /** Purge the content of one project (not its row). Returns done when nothing is left to remove. */
-async function purgeProjectContent(row: DeletionRow, projectId: string, state: ProjectState): Promise<Pass> {
+async function purgeProjectContent(row: DeletionRow, ctx: StepContext, projectId: string, state: ProjectState): Promise<Pass> {
   const sub = state.sub ?? "jobs";
-  if (state.child) return stepChild(row, state, state.child);
+  if (state.child) return stepChild(row, ctx, state, state.child);
   if (sub === "jobs" || sub === "monitors") {
     const table = sub === "jobs" ? jobs : monitors;
     const [next] = await db.select({ id: table.id }).from(table).where(eq(table.projectId, projectId)).orderBy(asc(table.id)).limit(1);
@@ -45,7 +45,7 @@ async function purgeProjectContent(row: DeletionRow, projectId: string, state: P
   }
   if (sub === "runs") {
     // Runs without a job (playground and saved-test executions) and anything a late tick created.
-    const purged = await purgeRunBatch("projectId", projectId);
+    const purged = await purgeRunBatch(ctx, "projectId", projectId);
     return { done: false, state: purged === 0 ? { ...state, sub: "tests" } : { ...state, counts: count(state, "runs", purged) } };
   }
   if (sub === "tests") {
@@ -62,7 +62,7 @@ async function purgeProjectContent(row: DeletionRow, projectId: string, state: P
       }
     } finally { s3.destroy(); }
     const own = await db.select({ ...reportColumns, entityType: reports.entityType }).from(reports).where(and(inArray(reports.entityType, ["test", "k6_test"]), inArray(reports.entityId, ids)));
-    await deleteStorage(own.map((r) => asInput(r, r.entityType)), "test");
+    await deleteStorage(ctx, own.map((r) => asInput(r, r.entityType)), "test");
     await db.transaction(async (tx) => {
       await limits(tx);
       if (own.length) await tx.delete(reports).where(inArray(reports.id, own.map((r) => r.id)));
@@ -106,7 +106,7 @@ async function deleteProjectRow(projectId: string): Promise<boolean> {
 const done = (): StepResult => ({ done: true });
 
 /** Project purge: verify under the row lock that it is still deleted and past its restore window, then purge. */
-export async function purgeProjectStep(row: DeletionRow): Promise<StepResult> {
+export async function purgeProjectStep(row: DeletionRow, ctx: StepContext): Promise<StepResult> {
   const projectId = row.targetId;
   const state = (row.cursor as ProjectState & { begun?: boolean; archivedPages?: unknown }) ?? {};
   if (!state.begun) {
@@ -121,7 +121,7 @@ export async function purgeProjectStep(row: DeletionRow): Promise<StepResult> {
     if (proceed === "wait") return { done: false, phase: "waiting", delayMs: 60_000 };
     return { done: false, phase: "jobs", progress: { ...state, begun: true } };
   }
-  const pass = await purgeProjectContent(row, projectId, state);
+  const pass = await purgeProjectContent(row, ctx, projectId, state);
   if (!pass.done) return { done: false, phase: pass.state.child ? `${pass.state.sub ?? "jobs"}:child` : (pass.state.sub ?? "jobs"), progress: { ...state, ...pass.state, begun: true }, delayMs: pass.delayMs };
   if (!(await deleteProjectRow(projectId))) return { done: false, phase: "jobs", progress: { ...state, sub: "jobs", child: undefined, begun: true } };
   invalidateProjectState(projectId);
@@ -130,7 +130,7 @@ export async function purgeProjectStep(row: DeletionRow): Promise<StepResult> {
 }
 
 /** Organization purge. The first step re-verifies, under the org row lock, that the org is still pending and due, and stamps the start so a late cancel is refused. */
-export async function purgeOrganizationStep(row: DeletionRow): Promise<StepResult> {
+export async function purgeOrganizationStep(row: DeletionRow, ctx: StepContext): Promise<StepResult> {
   const organizationId = row.targetId;
   const state = (row.cursor as OrgState) ?? {};
   const stage = state.stage ?? "begin";
@@ -174,7 +174,7 @@ export async function purgeOrganizationStep(row: DeletionRow): Promise<StepResul
       projectId = first.id;
     }
     const projectState = state.project ?? {};
-    const pass = await purgeProjectContent(row, projectId, projectState);
+    const pass = await purgeProjectContent(row, ctx, projectId, projectState);
     if (!pass.done) return { done: false, phase: "projects", progress: { ...state, projectId, project: pass.state }, delayMs: pass.delayMs };
     if (!(await deleteProjectRow(projectId))) return next({ projectId, project: { counts: projectState.counts } }, "projects");
     return next({ projectId: undefined, project: undefined, counts: count(state, "projects", 1) }, "projects");
@@ -183,7 +183,7 @@ export async function purgeOrganizationStep(row: DeletionRow): Promise<StepResul
     // Report rows owned by the organization that no project purge reached.
     const batch = await db.select({ ...reportColumns, entityType: reports.entityType }).from(reports).where(eq(reports.organizationId, organizationId)).limit(PURGE_BATCH);
     if (batch.length === 0) return next({ stage: "billing" });
-    await deleteStorage(batch.map((r) => asInput(r, r.entityType)), "organization");
+    await deleteStorage(ctx, batch.map((r) => asInput(r, r.entityType)), "organization");
     await db.delete(reports).where(inArray(reports.id, batch.map((r) => r.id)));
     return next({ counts: count(state, "reports", batch.length) }, "reports");
   }

@@ -21,21 +21,20 @@ async function getQueue(): Promise<Queue> {
 /** A trigger never waits longer than the sweep interval: the sweep re-triggers due rows, and a far-future delayed job would make BullMQ drop every later trigger that reuses its id. */
 const MAX_TRIGGER_DELAY_MS = 15 * 60_000;
 
-/**
- * Wake a purge. Duplicate triggers are harmless: the claim in the database admits one runner.
- * `replace` first removes a waiting trigger so an early purge is not swallowed by its deduplication.
- */
-export async function triggerDeletion(id: string, delayMs = 0, options: { replace?: boolean } = {}): Promise<void> {
+/** Wake a purge. Duplicate triggers are harmless: the claim in the database admits one runner. */
+export async function triggerDeletion(id: string, delayMs = 0): Promise<void> {
   try {
-    const target = await getQueue();
-    const jobId = `purge-${id}`;
-    if (options.replace) await (await target.getJob(jobId))?.remove().catch(() => undefined);
-    // A deterministic id keeps one pending trigger per purge however many callers wake it.
-    await target.add("purge", { id }, { delay: Math.min(delayMs, MAX_TRIGGER_DELAY_MS), jobId });
+    // Redis may be down with its offline queue pending forever; give up quickly, the sweep retries from the table.
+    await Promise.race([enqueue(id, delayMs), new Promise<never>((_, reject) => setTimeout(() => reject(new Error("queue unavailable")), 2000).unref())]);
   } catch (error) {
-    // The table is the source of truth: the sweep re-triggers anything this misses.
     console.error("[DELETION] Could not queue purge trigger; the sweep will pick it up:", error);
   }
+}
+
+async function enqueue(id: string, delayMs: number): Promise<void> {
+  // No custom job id: a follow-up is added while the current job is still active, and a repeated id would be dropped as a duplicate.
+  // Extra triggers are harmless (the claim admits one runner and pushes blocked rows out), and the sweep is the backstop.
+  await (await getQueue()).add("purge", { id }, { delay: Math.min(delayMs, MAX_TRIGGER_DELAY_MS) });
 }
 
 /** Start the purge consumer once per process. Concurrency is capped here and, across pods, in the claim. */

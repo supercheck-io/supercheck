@@ -180,7 +180,7 @@ export async function purgeOrganizationNow(input: { organizationId: string; admi
   invalidateOrgState(input.organizationId);
   await logAdminEvent(input.adminUserId, "organization_purge_now", input.organizationId, "organization", input.organizationId, { reason: input.reason, wasPending: outcome.wasPending });
   const id = (await expediteDeletionJob("organization", input.organizationId)) ?? outcome.deletionId;
-  if (id) await triggerDeletion(id, 0, { replace: true });
+  if (id) await triggerDeletion(id, 0);
   if (!outcome.wasPending) await quiesceOrganization(input.organizationId).catch(() => undefined);
   return { deletionId: id, wasPending: outcome.wasPending };
 }

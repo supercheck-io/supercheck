@@ -283,7 +283,7 @@ describe("organization deletion", () => {
     const outcome = await purgeOrganizationNow({ organizationId: seeded.orgId, adminUserId: admin.id, reason: "legal erasure request" });
     expect(outcome?.wasPending).toBe(false);
     expect(mockAdminAudit).toHaveBeenCalledWith(admin.id, "organization_purge_now", seeded.orgId, "organization", seeded.orgId, expect.objectContaining({ reason: "legal erasure request" }));
-    expect(mockTrigger).toHaveBeenCalledWith(expect.any(String), 0, { replace: true });
+    expect(mockTrigger).toHaveBeenCalledWith(expect.any(String), 0);
     expect((await drive("organization", seeded.orgId)).state).toBe("completed");
     expect(await count("runs", "job_id", jobId)).toBe(0);
     expect(await client`SELECT 1 FROM organization WHERE id = ${other.orgId}`).toHaveLength(1); // tenancy

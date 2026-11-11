@@ -242,6 +242,8 @@ export function registerMcpTools(server: McpServer, ctx: McpCallContext): void {
           .from(projects)
           .where(and(eq(projects.id, ctx.projectId), eq(projects.organizationId, ctx.organizationId))),
       ),
+      // Runs of a job being deleted are gone at once (runs without a job, such as playground runs, stay).
+      sql`(${runs.jobId} IS NULL OR NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.id = ${runs.jobId} AND jobs.deleting_at IS NOT NULL))`,
       ...extra,
     );
   const runDto = (r: { startedAt: Date | null; completedAt: Date | null } & Record<string, unknown>) => ({

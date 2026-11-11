@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { desc, ne } from "drizzle-orm";
-import { isAdminAccessDeniedError, requireAdmin } from "@/lib/admin";
+import { requireAdmin } from "@/lib/admin";
 import { getCurrentUser } from "@/lib/session";
 import { adminDeniedResponse } from "@/lib/admin-errors";
 import { db } from "@/utils/db";
@@ -21,7 +21,8 @@ export async function GET() {
     }).from(deletionJobs).where(ne(deletionJobs.state, "completed")).orderBy(desc(deletionJobs.createdAt)).limit(200);
     return NextResponse.json({ data: rows });
   } catch (error) {
-    if (isAdminAccessDeniedError(error)) return adminDeniedResponse(error);
+    const denied = adminDeniedResponse(error);
+    if (denied) return denied;
     console.error("[ADMIN] deletion jobs list failed:", error);
     return NextResponse.json({ error: "Failed to list deletion jobs" }, { status: 500 });
   }
@@ -35,12 +36,18 @@ export async function POST(request: NextRequest) {
     if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const body = (await request.json().catch(() => null)) as { id?: unknown } | null;
     if (!body || typeof body.id !== "string" || !isUuid(body.id)) return NextResponse.json({ error: "A deletion job id is required" }, { status: 400 });
-    if (!(await retryFailedDeletion(body.id))) return NextResponse.json({ error: "Only a failed deletion job can be retried" }, { status: 409 });
-    await logAdminEvent(admin.id, "deletion_job_retried", undefined, "deletion_job", body.id);
+    // The retry and its audit record commit together, so a purge is never re-queued without a record.
+    const retried = await db.transaction(async (tx) => {
+      if (!(await retryFailedDeletion(body.id as string, tx))) return false;
+      await logAdminEvent(admin.id, "deletion_job_retried", undefined, "deletion_job", body.id as string, undefined, tx);
+      return true;
+    });
+    if (!retried) return NextResponse.json({ error: "Only a failed deletion job can be retried" }, { status: 409 });
     await triggerDeletion(body.id);
     return NextResponse.json({ success: true });
   } catch (error) {
-    if (isAdminAccessDeniedError(error)) return adminDeniedResponse(error);
+    const denied = adminDeniedResponse(error);
+    if (denied) return denied;
     console.error("[ADMIN] deletion job retry failed:", error);
     return NextResponse.json({ error: "Failed to retry deletion job" }, { status: 500 });
   }

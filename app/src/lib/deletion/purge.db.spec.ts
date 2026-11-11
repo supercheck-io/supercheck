@@ -17,7 +17,7 @@ const mockUnscheduleMonitor = jest.fn();
 const mockSignal = jest.fn();
 const mockTrigger = jest.fn();
 jest.mock("@/utils/db", () => ({ get db() { return mockDatabase; } }));
-jest.mock("@/lib/s3-cleanup", () => ({ createS3CleanupService: () => ({ getRunArtifactInputs: () => [], deleteReports: (...a: unknown[]) => mockDeleteReports(...a) }) }));
+jest.mock("@/lib/s3-cleanup", () => ({ createS3CleanupService: () => ({ getRunArtifactInputs: () => [], deleteReports: (...a: unknown[]) => mockDeleteReports(...a), destroy: () => undefined }) }));
 jest.mock("@/lib/job-scheduler", () => ({ deleteScheduledJob: (...a: unknown[]) => mockUnscheduleJob(...a) }));
 jest.mock("@/lib/monitor-scheduler", () => ({ deleteScheduledMonitor: (...a: unknown[]) => mockUnscheduleMonitor(...a), removeScheduledMonitor: (...a: unknown[]) => mockUnscheduleMonitor(...a) }));
 jest.mock("@/lib/cancellation-service", () => ({ RUN_CANCELLATION_MARKER: "Cancellation requested by user", setCancellationSignal: (...a: unknown[]) => mockSignal(...a) }));
@@ -157,6 +157,90 @@ describe("job deletion", () => {
     expect(await count("runs", "job_id", seeded.jobId)).toBe(0);
   });
 
+  it("rejects a run insert for a job being deleted, whichever path creates it", async () => {
+    const seeded = await seedJob(0);
+    await requestJobDeletion(scope(seeded));
+    await expect(client`INSERT INTO runs (id, job_id, project_id, status, trigger) VALUES (uuidv7(), ${seeded.jobId}, ${seeded.projectId}, 'queued', 'manual')`)
+      .rejects.toThrow(/is being deleted/);
+    expect(await count("runs", "job_id", seeded.jobId)).toBe(0);
+  });
+
+  it("waits for a run that is being created right now and cancels it", async () => {
+    const seeded = await seedJob(0);
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let inserted!: () => void;
+    const insertedPromise = new Promise<void>((resolve) => { inserted = resolve; });
+    const creating = client.begin(async (tx) => {
+      await tx`INSERT INTO runs (id, job_id, project_id, status, trigger) VALUES (uuidv7(), ${seeded.jobId}, ${seeded.projectId}, 'queued', 'manual')`;
+      inserted();
+      await gate;
+    });
+    await insertedPromise;
+    const request = requestJobDeletion(scope(seeded)); // blocks on the job row lock held by the insert's key share
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(await count("deletion_jobs", "target_id", seeded.jobId)).toBe(0); // not finished: the request is waiting
+    release();
+    await creating;
+    expect((await request).status).toBe("requested");
+    expect(await client`SELECT 1 FROM runs WHERE job_id = ${seeded.jobId} AND error_details = 'Cancellation requested by user'`).toHaveLength(1);
+  });
+
+  it("blocks a run insert behind the delete request's lock, then rejects it with a dedicated error", async () => {
+    const seeded = await seedJob(0);
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let flagged!: () => void;
+    const flaggedPromise = new Promise<void>((resolve) => { flagged = resolve; });
+    const requesting = client.begin(async (tx) => {
+      await tx`SELECT id FROM jobs WHERE id = ${seeded.jobId} FOR UPDATE`;
+      await tx`UPDATE jobs SET deleting_at = now() WHERE id = ${seeded.jobId}`;
+      flagged();
+      await gate;
+    });
+    await flaggedPromise;
+    let settled = false;
+    const insert = client`INSERT INTO runs (id, job_id, project_id, status, trigger) VALUES (uuidv7(), ${seeded.jobId}, ${seeded.projectId}, 'queued', 'schedule')`
+      .then(() => { settled = true; }, (error: unknown) => { settled = true; throw error; });
+    insert.catch(() => undefined);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(settled).toBe(false); // the trigger is waiting on the uncommitted flag
+    release();
+    await requesting;
+    await expect(insert).rejects.toMatchObject({ code: "DL001" });
+    expect(await count("runs", "job_id", seeded.jobId)).toBe(0);
+  });
+
+  it("keeps a latest-report alias that a live execution repointed while storage was being cleaned", async () => {
+    const seeded = await seedJob(2);
+    const [{ id: runId }] = await client`SELECT id::text FROM runs WHERE job_id = ${seeded.jobId} LIMIT 1`;
+    const testId = randomUUID();
+    await client`INSERT INTO reports (id, entity_type, entity_id, report_path, status) VALUES (uuidv7(), 'test', ${testId}, ${`${runId}/report`}, 'passed')`;
+    await requestJobDeletion(scope(seeded));
+    mockDeleteReports.mockImplementationOnce(async () => {
+      await client`UPDATE reports SET report_path = ${`${randomUUID()}/report`} WHERE entity_id = ${testId}`;
+      return { success: true };
+    });
+    expect((await drive(seeded.jobId)).state).toBe("completed");
+    expect(await client`SELECT 1 FROM reports WHERE entity_id = ${testId}`).toHaveLength(1);
+  });
+
+  it("stops before deleting when the claim is lost during the storage step", async () => {
+    const seeded = await seedJob(3);
+    await requestJobDeletion(scope(seeded));
+    const id = (await deletionRow(seeded.jobId)).id;
+    mockDeleteReports.mockImplementation(async () => {
+      await client`UPDATE deletion_jobs SET owner_token = ${randomUUID()}::uuid WHERE id = ${id}`; // another pod took over
+      return { success: true };
+    });
+    const before = await count("runs", "job_id", seeded.jobId);
+    await client`UPDATE deletion_jobs SET phase = 'runs' WHERE id = ${id}`;
+    await runDeletion(id);
+    expect(mockDeleteReports).toHaveBeenCalled();
+    expect(await count("runs", "job_id", seeded.jobId)).toBe(before); // nothing deleted by the stale runner
+    expect((await deletionRow(seeded.jobId)).state).toBe("running"); // and it did not touch the new owner's row
+  });
+
   it("a scheduler failure retries instead of dropping the purge", async () => {
     const seeded = await seedJob(1);
     await requestJobDeletion(scope(seeded));
@@ -193,7 +277,7 @@ describe("monitor deletion", () => {
     expect(await count("monitor_results", "monitor_id", other.monitorId)).toBe(10);
     expect(await client`SELECT 1 FROM reports WHERE entity_id LIKE ${"%" + mine.monitorId}`).toHaveLength(0);
     expect(await client`SELECT 1 FROM reports WHERE entity_id LIKE ${"%" + other.monitorId}`).toHaveLength(0); // other has 10 results: none sampled for a report
-    expect(queries.length).toBeLessThan(80);
+    expect(queries.length).toBeLessThan(150); // per batch (500 rows), never per row: 2500 results
     expect(mockUnscheduleMonitor).toHaveBeenCalled();
   });
 
@@ -248,6 +332,21 @@ describe("claims, retries and the sweep", () => {
     expect(await findDueDeletions()).not.toContain(b);
   });
 
+  it("a stale runner that is then blocked by the concurrency cap loses its ownership", async () => {
+    const seeded = await seedJob(1);
+    const other = await seedJob(1);
+    const third = await seedJob(1);
+    await Promise.all([requestJobDeletion(scope(seeded)), requestJobDeletion(scope(other)), requestJobDeletion(scope(third))]);
+    const ids = await Promise.all([seeded, other, third].map(async (s) => (await deletionRow(s.jobId)).id));
+    const stale = await claimDeletion(ids[0]);
+    if (!("claimed" in stale)) throw new Error("expected a claim");
+    await client`UPDATE deletion_jobs SET heartbeat_at = now() - interval '10 minutes' WHERE id = ${ids[0]}`;
+    expect("claimed" in (await claimDeletion(ids[1]))).toBe(true);
+    expect("claimed" in (await claimDeletion(ids[2]))).toBe(true); // global cap (2) now reached by the two fresh runners
+    expect(await claimDeletion(ids[0])).toEqual({ blocked: true });
+    await expect(heartbeat(stale.claimed)).rejects.toBeInstanceOf(LostClaimError);
+  });
+
   it("takes over a purge whose pod crashed (stale heartbeat) and finds it in the sweep", async () => {
     const seeded = await seedJob(1);
     await requestJobDeletion(scope(seeded));
@@ -281,6 +380,17 @@ describe("claims, retries and the sweep", () => {
     const done = await drive(seeded.monitorId);
     expect(done.state).toBe("completed");
     expect(done.attempts).toBe(0);
+  });
+
+  it("restarts the attempt count after progress even when the claim started at the limit", async () => {
+    const seeded = await seedJob(1100);
+    await requestJobDeletion(scope(seeded));
+    await client`UPDATE deletion_jobs SET attempts = ${MAX_ATTEMPTS - 1} WHERE target_id = ${seeded.jobId}`;
+    mockDeleteReports.mockResolvedValueOnce({ success: true }).mockResolvedValueOnce({ success: false, failedObjects: [] });
+    await runDeletion((await deletionRow(seeded.jobId)).id);
+    const row = await deletionRow(seeded.jobId);
+    expect(row.state).toBe("queued"); // not failed: a batch succeeded, so this is attempt 1 again
+    expect(row.attempts).toBe(1);
   });
 
   it("returns a retry delay for a purge that is not due yet instead of dropping the trigger", async () => {
