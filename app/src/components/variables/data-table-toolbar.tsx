@@ -18,6 +18,7 @@ import { VariableDialog } from "./variable-dialog";
 import { useState, useRef, useEffect } from "react";
 import { toast } from "sonner";
 import { useSearchParams, useRouter } from "next/navigation";
+import { NAV } from "@/lib/nav-areas";
 
 interface DataTableToolbarProps<TData> {
   table: Table<TData>;
@@ -121,7 +122,7 @@ export function DataTableToolbar<TData>({
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 mb-4 -mt-2">
       <div className="flex items-start gap-3">
-        <IconChip icon={Variable} tone="automate" size="md" className="mt-0.5" />
+        <IconChip icon={NAV.variables.icon} tone={NAV.variables.tone} size="md" className="mt-0.5" />
         <div className="flex flex-col">
           <div className="flex items-center gap-2">
             <h2 className="text-2xl font-semibold">Variables</h2>

@@ -15,12 +15,12 @@ Every colour has one job. New code uses the token, never a raw palette class or 
 | Main action | `bg-primary` (black; white in dark mode) | Primary buttons. Never give a primary button another colour. |
 | Secondary action | `variant="outline"` / `variant="ghost"` | Everything else that is clickable |
 | Link, focus | blue (`--color-fd-primary` on the site, the `ring` token in the app) | Text links, focus rings |
+| Area: Respond (dashboard, incidents, services) | `respond` (orange) | Same |
 | Area: Automate (tests, jobs, runs, requirements, variables) | `automate` (sky) | Icon chips, eyebrows, area labels |
 | Area: Monitor (monitors) | `monitor` (teal) | Same |
-| Area: Respond (incidents, services) | `respond` (orange) | Same |
-| Area: Communicate (status pages, notifications) | `communicate` (pink) | Same |
+| Area: Communicate (status pages, notifications, delivery history) | `communicate` (indigo) | Same |
 | AI (Copilot, investigations, AI create, fix and analyze) | `ai` (violet) | Same. Violet means AI and nothing else. |
-| Settings and admin (dashboard, organization, super admin) | `slate` | Page chips |
+| Settings and admin (organization, super admin) | `settings` (slate) | Same |
 | Status | `success`, `warning`, `failure`, plus the `TableBadge` tones | Badges, status dots and charts only, always beside a text label or an icon |
 
 - Area colours mark where you are; status colours say how something is. They never swap jobs. An area colour never shows up on a status badge, and a status colour never decorates a heading.
@@ -39,7 +39,8 @@ Every colour has one job. New code uses the token, never a raw palette class or 
 
 | Need | Use | File |
 |---|---|---|
-| Page title row | `PageHeader` with `icon` and `tone` set to the page's area | `app/src/components/shared/page-header.tsx` |
+| Area colour and icon of a destination | `NAV` in `app/src/lib/nav-areas.ts`: the one place that maps a page to its icon and area tone. The sidebar, command palette (Cmd+K), Quick Create and page headers read it; never pick a tone or icon per page. | `app/src/lib/nav-areas.ts` |
+| Page title row | `PageHeader` with `icon` and `tone` from `NAV` | `app/src/components/shared/page-header.tsx` |
 | Tinted icon (page, section or event type) | `IconChip` (`size="sm"` for sections, `"md"` for page titles) | `app/src/components/ui/icon-chip.tsx` |
 | Section heading inside a card | `SectionTitle` (chip, title, count, hint, action) | `app/src/components/sre/incidents/incident-ui.tsx` |
 | Table footer | `DataTablePagination` (label `Total {n} {itemName}`, rows-per-page fitted to the window) | `app/src/components/ui/data-table-pagination.tsx` |

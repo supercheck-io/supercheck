@@ -2,13 +2,14 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { BarChart3, Siren } from "lucide-react";
+import { BarChart3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/shared/page-header";
 import { NewIncidentAction } from "@/components/sre/incidents/new-incident-action";
 import { SreIncidentsList } from "@/components/sre/incidents/sre-incidents-list";
 import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 import { useSreIncidents } from "@/hooks/use-sre";
+import { NAV } from "@/lib/nav-areas";
 
 function IncidentsTab() {
   const [scope, setScope] = useState<"active" | "all">("active");
@@ -54,8 +55,8 @@ export function SreIncidentsPageClient() {
     <div className="mt-6 w-full max-w-full space-y-4 p-2">
       <PageHeader
         title="Incidents"
-        icon={Siren}
-        tone="respond"
+        icon={NAV.incidents.icon}
+        tone={NAV.incidents.tone}
         description="Track, investigate, and resolve operational incidents."
         className="-mt-2"
         actions={

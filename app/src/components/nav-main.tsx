@@ -6,6 +6,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { prefetchSidebarRoute } from "@/lib/prefetch-utils";
+import { AREA_ACTIVE_ICON } from "@/lib/nav-areas";
+import type { AreaTone } from "@/components/ui/icon-chip";
 
 import {
   Collapsible,
@@ -63,11 +65,12 @@ function HoverPrefetchLink({
 }
 
 // The current page's icon takes its group's area colour (DESIGN.md); other groups stay neutral.
-const GROUP_TONE: Record<string, string> = {
-  Respond: "[&[data-active=true]>svg]:text-respond",
-  Communicate: "[&[data-active=true]>svg]:text-communicate",
-  Automate: "[&[data-active=true]>svg]:text-automate",
-  Monitor: "[&[data-active=true]>svg]:text-monitor",
+const GROUP_TONE: Record<string, AreaTone> = {
+  Respond: "respond",
+  Communicate: "communicate",
+  Automate: "automate",
+  Monitor: "monitor",
+  Settings: "settings",
 };
 
 /** True for the item's own page and its sub-pages ("/" matches the dashboard only). */
@@ -90,6 +93,8 @@ export type MenuItem = {
   url: string;
   icon?: IconComponent;
   isActive?: boolean;
+  /** Overrides the group's area colour for this item (e.g. Copilot is AI). */
+  tone?: AreaTone;
   badge?: string;
   items?: (SubItem | { groupLabel?: string; items?: SubItem[] })[];
 };
@@ -102,7 +107,6 @@ export function NavMain({
   items: MenuItem[];
 }) {
   const pathname = usePathname() ?? "";
-  const activeTone = GROUP_TONE[groupLabel];
   return (
     <SidebarGroup>
       <SidebarGroupLabel>{groupLabel}</SidebarGroupLabel>
@@ -131,7 +135,7 @@ export function NavMain({
                   tooltip={item.title}
                   asChild
                   isActive={!item.url.startsWith("http") && isCurrentRoute(pathname, item.url)}
-                  className={activeTone}
+                  className={AREA_ACTIVE_ICON[item.tone ?? GROUP_TONE[groupLabel]]}
                 >
                   {item.url.startsWith("http") ? (
                     <a

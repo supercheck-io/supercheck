@@ -72,6 +72,7 @@ import {
   type StatusPagesResponse,
 } from "@/hooks/use-status-pages";
 import { SupercheckLoading } from "@/components/shared/supercheck-loading";
+import { NAV } from "@/lib/nav-areas";
 
 // GET /api/status-pages returns at most this many rows and the list has no pagination.
 const STATUS_PAGES_LIST_CAP = 100;
@@ -346,7 +347,7 @@ export default function StatusPagesList() {
       <CardHeader className="px-0 pt-0 shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex min-w-0 items-start gap-3">
-            <IconChip icon={Tally4} tone="communicate" size="md" className="mt-0.5" />
+            <IconChip icon={NAV.statusPages.icon} tone={NAV.statusPages.tone} size="md" className="mt-0.5" />
             <div>
               <CardTitle className="text-2xl font-semibold">
                 Status Pages

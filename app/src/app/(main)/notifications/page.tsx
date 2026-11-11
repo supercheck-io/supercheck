@@ -47,6 +47,7 @@ import {
 } from "@/hooks/use-alerts";
 import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 import { ListErrorState } from "@/components/shared/list-states";
+import { NAV } from "@/lib/nav-areas";
 
 function NotificationsPage() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -239,8 +240,8 @@ function NotificationsPage() {
               <Tabs value={tab} onValueChange={onTabChange} className="w-full">
                 <PageHeader
                   title="Notifications"
-                  icon={BellRing}
-                  tone="communicate"
+                  icon={NAV.notifications.icon}
+                  tone={NAV.notifications.tone}
                   description="Choose where Supercheck sends alerts and incident updates, and see what was sent"
                   titleAdornment={
                     <InfoTip label="About notifications">

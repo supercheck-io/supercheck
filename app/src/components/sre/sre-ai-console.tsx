@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import {
   Archive,
-  Bot,
+  
   History as HistoryIcon,
   Plus,
   Search,
@@ -40,6 +40,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { TableBadge } from "@/components/ui/table-badge";
 import { cn } from "@/lib/utils";
+import { NAV } from "@/lib/nav-areas";
 
 type SreAiConsoleProps = {
   initialHistories?: SreCopilotChatHistory[];
@@ -262,7 +263,7 @@ export function SreAiConsole({
       <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <header className="flex min-h-14 shrink-0 flex-col gap-2 border-b bg-background/95 px-3 py-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:px-5">
           <div className="flex min-w-0 items-center gap-3">
-            <IconChip icon={Bot} tone="ai" size="md" className="hidden sm:inline-flex" />
+            <IconChip icon={NAV.copilot.icon} tone={NAV.copilot.tone} size="md" className="hidden sm:inline-flex" />
             <div className="min-w-0">
               <div className="flex min-w-0 items-center gap-2">
                 <h1 className="truncate text-2xl font-semibold">Copilot</h1>

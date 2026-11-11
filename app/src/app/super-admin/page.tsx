@@ -30,13 +30,14 @@ import {
   RefreshCw,
   AlertCircle,
   MapPin,
-  ShieldCheck,
+  
 } from "lucide-react";
 import { useBreadcrumbs } from "@/components/breadcrumb-context";
 import { TabLoadingSpinner } from "@/components/ui/table-skeleton";
 import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 import { cn } from "@/lib/utils";
 import { LocationsTable } from "@/components/admin/locations-table";
+import { NAV } from "@/lib/nav-areas";
 
 const TABS: SectionTab[] = [
   { value: "overview", label: "Overview", icon: LayoutDashboard },
@@ -187,8 +188,8 @@ export default function AdminDashboard() {
       >
         <PageHeader
           title="Super Admin"
-          icon={ShieldCheck}
-          tone="slate"
+          icon={NAV.superAdmin.icon}
+          tone={NAV.superAdmin.tone}
           actions={
             <SectionTabs
               tabs={TABS}
