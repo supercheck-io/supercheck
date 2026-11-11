@@ -211,7 +211,7 @@ export function IncidentsTab({
   const getImpactBadgeColor = (impact: IncidentImpact) => {
     switch (impact) {
       case "critical":
-        return "bg-failure text-white";
+        return "bg-failure text-background";
       case "major":
         return "bg-failure/10 text-failure";
       case "minor":

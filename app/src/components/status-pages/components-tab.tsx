@@ -308,7 +308,7 @@ export function ComponentsTab({
       case "partial_outage":
         return "bg-failure/10 text-failure";
       case "major_outage":
-        return "bg-failure text-white";
+        return "bg-failure text-background";
       case "under_maintenance":
         return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200";
       default:
