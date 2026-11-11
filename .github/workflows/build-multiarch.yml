@@ -456,6 +456,7 @@ jobs:
           # `bash -s` with the script on SSH stdin lets docker/cli children
           # inherit that stream; a failed imagetools/digest step also surfaced
           # only as SSH exit 255 with no script diagnostics.
+          # shellcheck disable=SC2029 # the remote command is built here on purpose
           ssh "${ssh_options[@]}" "$DEMO_USER@$DEMO_HOST" \
             "set -Eeuo pipefail; script=\$(mktemp); trap 'rm -f -- \"\$script\" ${remote_setup}' EXIT; cat >\"\$script\"; chmod 700 \"\$script\"; bash \"\$script\" ${REMOTE_ARGS}" \
             <.github/scripts/deploy-demo.sh
