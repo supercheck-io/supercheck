@@ -3,9 +3,10 @@ import { trialFaqs, trialHighlights } from '../../../../app/src/lib/billing/tria
 import { SHARED_PRICING_FAQS } from '../../../../app/src/lib/billing/pricing-copy';
 import React from 'react';
 import Link from 'next/link';
-import { Check, ChevronDown } from 'lucide-react';
+import { Bot, Check, ChevronDown, Database, Gauge, LifeBuoy, Users, type LucideIcon } from 'lucide-react';
 import { SiteHeader } from '../../lib/layout.shared';
 import { SiteFooter } from '../../components/site-footer';
+import { primaryButton, secondaryButton } from '../../components/landing/ui';
 import { VendorComparison } from '../../components/pricing/vendor-comparison';
 import { CopyEmail } from '../../components/pricing/copy-email';
 import { planCrossoverMinutes } from '../../lib/pricing-estimate';
@@ -87,7 +88,7 @@ const plans: {
         cta: 'Join the Pro waitlist',
         ctaLink: waitlistHref('Pro'),
         highlighted: true,
-        badge: 'Recommended',
+        badge: 'Popular',
     },
     {
         name: 'Enterprise',
@@ -126,9 +127,9 @@ interface ComparisonItem {
     enterprise: string;
 }
 
-const comparisonFeatures: { category: string; items: ComparisonItem[] }[] = [
+const comparisonFeatures: { category: string; description: string; icon: LucideIcon; items: ComparisonItem[] }[] = [
     {
-        category: 'Usage limits', items: [
+        category: 'Usage limits', description: 'What each plan includes every month, and where checks run.', icon: Gauge, items: [
             { name: 'Monitors', plus: `${Number(catalog.plus.limits.maxMonitors).toLocaleString("en-US")}`, pro: `${Number(catalog.pro.limits.maxMonitors).toLocaleString("en-US")}`, enterprise: CUSTOM },
             { name: 'Playwright minutes/month', hint: 'Shared by Playwright tests and synthetic monitors', plus: `${Number(catalog.plus.limits.playwrightMinutesIncluded).toLocaleString("en-US")}`, pro: `${Number(catalog.pro.limits.playwrightMinutesIncluded).toLocaleString("en-US")}`, enterprise: CUSTOM },
             { name: 'k6 VU minutes/month', plus: `${Number(catalog.plus.limits.k6VuMinutesIncluded).toLocaleString("en-US")}`, pro: `${Number(catalog.pro.limits.k6VuMinutesIncluded).toLocaleString("en-US")}`, enterprise: CUSTOM },
@@ -146,7 +147,7 @@ const comparisonFeatures: { category: string; items: ComparisonItem[] }[] = [
         ]
     },
     {
-        category: 'AI SRE', items: [
+        category: 'AI SRE', description: 'Copilot and evidence-backed incident investigations.', icon: Bot, items: [
             { name: 'Standalone AI SRE Copilot', plus: CHECK, pro: CHECK, enterprise: CHECK },
             { name: 'Incident-scoped Copilot', plus: CHECK, pro: CHECK, enterprise: CHECK },
             { name: 'Evidence graph and reports', plus: CHECK, pro: CHECK, enterprise: CHECK },
@@ -155,7 +156,7 @@ const comparisonFeatures: { category: string; items: ComparisonItem[] }[] = [
         ]
     },
     {
-        category: 'Team and projects', items: [
+        category: 'Team and projects', description: 'People, projects and public status pages.', icon: Users, items: [
             { name: 'Team members', plus: `${Number(catalog.plus.limits.maxTeamMembers).toLocaleString("en-US")}`, pro: `${Number(catalog.pro.limits.maxTeamMembers).toLocaleString("en-US")}, then ${usd(catalog.pro.extraMemberPriceCents)}/member/month up to ${fmt(catalog.pro.maxTotalMembers)}`, enterprise: CUSTOM },
             { name: 'Projects', plus: `${Number(catalog.plus.limits.maxProjects).toLocaleString("en-US")}`, pro: `${Number(catalog.pro.limits.maxProjects).toLocaleString("en-US")}`, enterprise: CUSTOM },
             { name: 'Status pages', plus: `${Number(catalog.plus.limits.maxStatusPages).toLocaleString("en-US")}`, pro: `${Number(catalog.pro.limits.maxStatusPages).toLocaleString("en-US")}`, enterprise: CUSTOM },
@@ -163,14 +164,14 @@ const comparisonFeatures: { category: string; items: ComparisonItem[] }[] = [
         ]
     },
     {
-        category: 'Data retention', items: [
+        category: 'Data retention', description: 'How long results and history are kept.', icon: Database, items: [
             { name: 'Raw monitor data', plus: `${Number(catalog.plus.limits.dataRetentionDays).toLocaleString("en-US")} days`, pro: `${Number(catalog.pro.limits.dataRetentionDays).toLocaleString("en-US")} days`, enterprise: CUSTOM },
             { name: 'Aggregated metrics', plus: `${Number(catalog.plus.limits.aggregatedDataRetentionDays).toLocaleString("en-US")} days`, pro: `${Number(catalog.pro.limits.aggregatedDataRetentionDays).toLocaleString("en-US")} days`, enterprise: CUSTOM },
             { name: 'Job run history', plus: `${Number(catalog.plus.limits.jobDataRetentionDays).toLocaleString("en-US")} days`, pro: `${Number(catalog.pro.limits.jobDataRetentionDays).toLocaleString("en-US")} days`, enterprise: CUSTOM },
         ]
     },
     {
-        category: 'Features and support', items: [
+        category: 'Features and support', description: 'Everything else that comes with every plan.', icon: LifeBuoy, items: [
             { name: 'Custom domains', plus: CHECK, pro: CHECK, enterprise: CHECK },
             { name: 'CI/CD integration', plus: CHECK, pro: CHECK, enterprise: CHECK },
             { name: 'Cron job scheduling', plus: CHECK, pro: CHECK, enterprise: CHECK },
@@ -189,7 +190,7 @@ function ComparisonCell({ value }: { value: string }) {
     if (value === CHECK) {
         return (
             <>
-                <Check aria-hidden="true" className="mx-auto size-4 text-fd-primary" />
+                <Check aria-hidden="true" className="mx-auto size-4 text-fd-foreground" />
                 <span className="sr-only">Included</span>
             </>
         );
@@ -271,11 +272,11 @@ function FAQItem({ question, answer }: { question: string; answer: string }) {
     );
 }
 
-const sectionHeading = 'text-2xl font-semibold tracking-tight';
+const sectionHeading = 'text-3xl font-semibold tracking-tight';
 
 function CheckIcon() {
     return (
-        <Check aria-hidden="true" className="mt-1 size-4 shrink-0 text-fd-primary" />
+        <Check aria-hidden="true" className="mt-1 size-4 shrink-0 text-fd-muted-foreground" />
     );
 }
 
@@ -293,55 +294,39 @@ export default function PricingPage() {
             <SiteHeader />
 
             <main className="mx-auto w-full max-w-6xl px-4 pt-16 pb-24 sm:px-6 md:pt-20">
-                <div className="mx-auto mb-10 max-w-2xl text-center">
-                    <p className="text-sm font-medium text-fd-primary">Supercheck Cloud is coming soon</p>
-                    <h1 className="mt-3 text-balance text-4xl font-semibold tracking-tight sm:text-5xl">
+                <div className="mb-12 max-w-3xl">
+                    <p className="text-sm font-medium text-fd-muted-foreground">Supercheck Cloud is coming soon</p>
+                    <h1 className="mt-3 text-balance text-4xl font-semibold tracking-tight sm:text-5xl md:text-6xl md:leading-[1.05]">
                         Simple plans for Cloud.
                     </h1>
-                    <p className="mt-4 text-pretty text-lg text-fd-muted-foreground">
+                    <p className="mt-5 max-w-2xl text-pretty text-lg text-fd-muted-foreground">
                         Preview the Cloud plans and join the waitlist. Cloud signups are not open yet.
                     </p>
-                    <p className="mt-3 text-sm text-fd-muted-foreground">
-                        Priced per organization, not per seat; only extra {catalog.pro.name} seats you buy above the included members are billed per seat, even when unfilled. Prices in USD per month, before taxes. Playwright minutes, k6 VU-minutes, and completed AI SRE investigations beyond the included allowance are billed at the{' '}
-                        <a href="#overage" className="underline underline-offset-4 hover:text-fd-foreground">overage rates</a>.
-                    </p>
-                    <nav aria-label="Pricing sections" className="mt-6 flex flex-wrap justify-center gap-x-6 gap-y-3 text-sm font-medium text-fd-primary">
-                        <a href="#compare" className="underline underline-offset-4">Compare plans</a>
-                        <a href="#overage" className="underline underline-offset-4">Overage rates</a>
-                        <Link href="/docs/app/admin/subscription" className="underline underline-offset-4">How billing works</Link>
+                    <nav aria-label="Pricing sections" className="mt-6 flex flex-wrap gap-x-6 gap-y-3 text-sm font-medium">
+                        <a href="#compare" className="text-fd-primary hover:underline">Compare plans</a>
+                        <a href="#overage" className="text-fd-primary hover:underline">Overage rates</a>
+                        <Link href="/docs/app/admin/subscription" className="text-fd-primary hover:underline">How billing works</Link>
                     </nav>
                 </div>
 
-                <div id="waitlist" className="grid scroll-mt-20 gap-6 md:grid-cols-2 lg:grid-cols-3">
+                <div id="waitlist" className="grid scroll-mt-20 overflow-hidden rounded-xl border border-fd-border lg:grid-cols-3">
                     {plans.map((plan) => (
                         <div
                             key={plan.name}
-                            className={`relative flex flex-col rounded-xl border bg-fd-card p-6 sm:p-8 ${plan.price ? '' : 'md:col-span-2 lg:col-span-1'} ${plan.highlighted
-                                ? 'border-fd-primary ring-1 ring-fd-primary'
-                                : 'border-fd-border'
-                                }`}
+                            className={`flex flex-col border-fd-border p-6 sm:p-8 [&:not(:first-child)]:border-t lg:[&:not(:first-child)]:border-t-0 lg:[&:not(:first-child)]:border-l ${plan.highlighted ? 'bg-fd-background' : 'bg-fd-card/60'}`}
                         >
-                            <div className="flex items-center justify-between gap-3">
-                                <h2 className="text-lg font-semibold">{plan.name}</h2>
+                            <div className="flex items-center gap-2">
+                                <h2 className="text-sm font-medium">{plan.name}</h2>
                                 {plan.badge && (
-                                    <span className="rounded-full bg-fd-primary px-2.5 py-0.5 text-xs font-semibold text-fd-primary-foreground">{plan.badge}</span>
+                                    <span className="rounded-full border border-fd-border bg-fd-muted px-2 py-0.5 text-[11px] font-medium text-fd-muted-foreground">{plan.badge}</span>
                                 )}
                             </div>
-                            <p className="mt-1 min-h-10 text-sm text-fd-muted-foreground">{plan.description}</p>
-                            <div className="mt-6 flex h-12 items-baseline gap-1">
-                                <span className="text-4xl font-semibold tracking-tight">{plan.price ?? 'Custom'}</span>
-                                {plan.period && <span className="text-sm text-fd-muted-foreground">{plan.period}</span>}
+                            <div className="mt-4 flex items-baseline gap-1.5">
+                                <span className="text-5xl font-semibold tracking-tight">{plan.price ?? 'Custom'}</span>
+                                {plan.period && <span className="font-mono text-sm text-fd-muted-foreground">{plan.period}</span>}
                             </div>
-                            <Link
-                                href={plan.ctaLink}
-                                className={`mt-6 block w-full rounded-md px-4 py-2.5 text-center text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fd-primary ${plan.highlighted
-                                    ? 'bg-fd-primary text-fd-primary-foreground hover:opacity-90'
-                                    : 'border border-fd-border hover:bg-fd-accent'
-                                    }`}
-                            >
-                                {plan.cta}
-                            </Link>
-                            <ul className="mt-8 space-y-3 border-t border-fd-border pt-6">
+                            <p className="mt-4 min-h-10 max-w-xs text-pretty text-fd-muted-foreground">{plan.description}</p>
+                            <ul className="mt-6 flex-1 space-y-3 border-t border-fd-border pt-6">
                                 {plan.features.map((feature) => {
                                     const text = typeof feature === 'string' ? feature : feature.text;
                                     const hint = typeof feature === 'string' ? null : feature.hint;
@@ -356,9 +341,17 @@ export default function PricingPage() {
                                     );
                                 })}
                             </ul>
+                            <Link href={plan.ctaLink} className={`mt-8 w-full sm:w-auto sm:self-start ${plan.highlighted ? primaryButton : secondaryButton}`}>
+                                {plan.cta}
+                            </Link>
                         </div>
                     ))}
                 </div>
+
+                <p className="mt-4 text-center text-xs text-fd-muted-foreground">
+                    Priced per organization, not per seat; only extra {catalog.pro.name} seats you buy above the included members are billed per seat, even when unfilled. Prices in USD per month, before taxes. Playwright minutes, k6 VU-minutes, and completed AI SRE investigations beyond the included allowance are billed at the{' '}
+                    <a href="#overage" className="underline underline-offset-4 hover:text-fd-foreground">overage rates</a>.
+                </p>
 
                 <CopyEmail email={WAITLIST_EMAIL} />
 
@@ -369,7 +362,7 @@ export default function PricingPage() {
                 <ul aria-label="Plan basics" className="mt-6 flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm text-fd-muted-foreground">
                     {[`Priced per organization; extra ${catalog.pro.name} seats billed per seat`, 'Spending limits and usage alerts', 'Cancel anytime'].map((item) => (
                         <li key={item} className="flex items-center gap-2">
-                            <Check aria-hidden="true" className="size-4 text-fd-primary" />
+                            <Check aria-hidden="true" className="size-4 text-fd-muted-foreground" />
                             {item}
                         </li>
                     ))}
@@ -394,13 +387,14 @@ export default function PricingPage() {
                 </section>
 
                 <section id="compare" aria-labelledby="compare-heading" className="mt-24 scroll-mt-20">
-                    <div className="mx-auto mb-8 max-w-2xl text-center">
-                        <h2 id="compare-heading" className={sectionHeading}>Compare plans</h2>
-                    </div>
-                    <div className="space-y-6 md:hidden">
+                    <h2 id="compare-heading" className={sectionHeading}>Compare plans</h2>
+                    <div className="mt-8 space-y-6 md:hidden">
                         {comparisonFeatures.map((category) => (
                             <div key={category.category} className="rounded-xl border border-fd-border">
-                                <h3 className="border-b border-fd-border bg-fd-muted/40 px-4 py-2.5 text-xs font-medium text-fd-muted-foreground">{category.category}</h3>
+                                <h3 className="flex items-center gap-2 border-b border-fd-border px-4 py-3 text-sm font-medium">
+                                    <category.icon aria-hidden="true" className="size-4 text-fd-muted-foreground" />
+                                    {category.category}
+                                </h3>
                                 <dl className="divide-y divide-fd-border">
                                     {category.items.map((item) => (
                                         <div key={item.name} className="px-4 py-3">
@@ -422,50 +416,51 @@ export default function PricingPage() {
                             </div>
                         ))}
                     </div>
-                    <div className="relative hidden overflow-x-auto rounded-xl border border-fd-border md:block" role="region" aria-label="Plan feature comparison" tabIndex={0}>
-                        <table className="w-full min-w-[640px] text-sm" aria-label="Full plan feature comparison">
-                            <thead>
-                                <tr className="border-b border-fd-border">
-                                    <th className="sticky left-0 z-10 w-2/5 bg-fd-background px-6 py-4 text-left font-medium">Feature</th>
-                                    <th className="px-6 py-4 text-center font-medium">Plus</th>
-                                    <th className="px-6 py-4 text-center font-medium">Pro</th>
-                                    <th className="px-6 py-4 text-center font-medium">Enterprise</th>
+                    {/* No overflow wrapper on desktop, so the plan names stay pinned under the site header while scrolling. */}
+                    <table className="mt-6 hidden w-full table-fixed text-sm md:table" aria-label="Full plan feature comparison">
+                        <thead>
+                            <tr>
+                                <th scope="col" className="sticky top-14 z-10 w-2/5 border-b border-fd-border bg-fd-background py-4 pr-6 text-left text-sm font-normal text-fd-muted-foreground">Feature</th>
+                                {['Plus', 'Pro', 'Enterprise'].map((plan) => (
+                                    <th key={plan} scope="col" className="sticky top-14 z-10 border-b border-fd-border bg-fd-background px-4 py-4 text-center text-xl font-medium tracking-tight">{plan}</th>
+                                ))}
+                            </tr>
+                        </thead>
+                        {comparisonFeatures.map((category) => (
+                            <tbody key={category.category}>
+                                <tr>
+                                    <th scope="colgroup" colSpan={4} className="pt-12 pb-4 text-left font-normal">
+                                        <span className="flex items-center gap-2 text-xl font-medium tracking-tight">
+                                            <category.icon aria-hidden="true" className="size-5 text-fd-muted-foreground" />
+                                            {category.category}
+                                        </span>
+                                        <span className="mt-1 block text-sm text-fd-muted-foreground">{category.description}</span>
+                                    </th>
                                 </tr>
-                            </thead>
-                            <tbody>
-                                {comparisonFeatures.map((category) => (
-                                    <React.Fragment key={category.category}>
-                                        <tr className="border-b border-fd-border bg-fd-muted/40">
-                                            <th scope="colgroup" colSpan={4} className="px-6 py-2.5 text-left text-xs font-medium text-fd-muted-foreground">
-                                                {category.category}
-                                            </th>
-                                        </tr>
-                                        {category.items.map((item) => (
-                                            <tr key={item.name} className="border-b border-fd-border last:border-0">
-                                                <th scope="row" className="sticky left-0 z-10 bg-fd-background px-6 py-3 text-left font-normal">
-                                                    {item.name}
-                                                    {item.hint && <span className="block max-w-sm text-xs text-fd-muted-foreground">{item.hint}</span>}
-                                                </th>
-                                                <td className="px-6 py-3 text-center"><ComparisonCell value={item.plus} /></td>
-                                                <td className="px-6 py-3 text-center"><ComparisonCell value={item.pro} /></td>
-                                                <td className="px-6 py-3 text-center"><ComparisonCell value={item.enterprise} /></td>
-                                            </tr>
-                                        ))}
-                                    </React.Fragment>
+                                {category.items.map((item) => (
+                                    <tr key={item.name} className="border-t border-fd-border">
+                                        <th scope="row" className="py-3.5 pr-6 text-left font-normal">
+                                            {item.name}
+                                            {item.hint && <span className="block max-w-sm text-xs text-fd-muted-foreground">{item.hint}</span>}
+                                        </th>
+                                        <td className="px-4 py-3.5 text-center"><ComparisonCell value={item.plus} /></td>
+                                        <td className="px-4 py-3.5 text-center"><ComparisonCell value={item.pro} /></td>
+                                        <td className="px-4 py-3.5 text-center"><ComparisonCell value={item.enterprise} /></td>
+                                    </tr>
                                 ))}
                             </tbody>
-                        </table>
-                    </div>
+                        ))}
+                    </table>
                 </section>
 
                 <section id="overage" aria-labelledby="overage-heading" className="mt-24 scroll-mt-20">
-                    <div className="mx-auto mb-8 max-w-2xl text-center">
+                    <div className="mb-8 max-w-3xl">
                         <h2 id="overage-heading" className={sectionHeading}>Overage rates</h2>
                         <p className="mt-3 text-fd-muted-foreground">
                             Charged only for usage beyond your monthly allowance. Every paid plan starts with an overage cap and a hard stop, so with the default cap a month costs about {usd(catalog.plus.monthlyPriceCents + catalog.plus.limits.defaultSpendingLimitCents)} on Plus or {usd(catalog.pro.monthlyPriceCents + catalog.pro.limits.defaultSpendingLimitCents)} on Pro at most before taxes, plus any extra {catalog.pro.name} member seats. Raising the cap or turning off the hard stop allows more overage. At the cap, new browser checks, test and job runs, k6 load tests and full AI SRE investigations pause. HTTP, website, ping and port monitors keep running. In-flight usage can run slightly past the cap.
                         </p>
                     </div>
-                    <div className="relative mx-auto max-w-3xl overflow-x-auto rounded-xl border border-fd-border" role="region" aria-label="Usage overage pricing" tabIndex={0}>
+                    <div className="relative max-w-3xl overflow-x-auto rounded-xl border border-fd-border" role="region" aria-label="Usage overage pricing" tabIndex={0}>
                         <table className="w-full text-sm" aria-label="Usage overage rates">
                             <thead>
                                 <tr className="border-b border-fd-border">
@@ -489,8 +484,8 @@ export default function PricingPage() {
 
                 <VendorComparison />
 
-                <section aria-labelledby="faq-heading" className="mx-auto mt-24 max-w-3xl">
-                    <div className="mb-8 text-center">
+                <section aria-labelledby="faq-heading" className="mt-24 grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+                    <div>
                         <h2 id="faq-heading" className={sectionHeading}>Frequently asked questions</h2>
                         <p className="mt-3 text-fd-muted-foreground">
                             Something else? Email{' '}

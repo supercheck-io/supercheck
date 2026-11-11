@@ -202,7 +202,7 @@ function MobileNav({ open, onClose }: { open: boolean; onClose: () => void }) {
             href={DEMO_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className={`${focusRing} inline-flex items-center justify-center gap-2 rounded-md bg-fd-primary px-4 py-2.5 text-sm font-medium text-fd-primary-foreground`}
+            className={`${focusRing} inline-flex items-center justify-center gap-2 rounded-md bg-fd-foreground px-4 py-2.5 text-sm font-medium text-fd-background`}
           >
             Try the live demo
             <ArrowRight className="size-4" aria-hidden="true" />
@@ -268,7 +268,7 @@ export function SiteHeader() {
             href={DEMO_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className={`${focusRing} ml-1 hidden rounded-md bg-fd-primary px-3 py-1.5 text-sm font-medium text-fd-primary-foreground transition-opacity hover:opacity-90 lg:inline-flex`}
+            className={`${focusRing} ml-1 hidden rounded-md bg-fd-foreground px-3 py-1.5 text-sm font-medium text-fd-background transition-opacity hover:opacity-85 lg:inline-flex`}
           >
             Live demo
           </a>

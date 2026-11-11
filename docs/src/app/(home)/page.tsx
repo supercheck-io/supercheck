@@ -1,10 +1,10 @@
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, BellRing, CircleCheck, Code, Globe, Radio, Siren, Sparkles } from "lucide-react";
 import { SiteHeader } from "../../components/site-header";
 import { CodeWindow } from "../../components/landing/code-window";
 import { CopyCommand, HeroVideo } from "../../components/landing/interactive";
-import { CheckList, Screenshot, SectionHeading, SolutionCards, primaryButton, secondaryButton, textLink } from "../../components/landing/ui";
+import { CheckList, IconChip, Screenshot, SectionHeading, SolutionCards, primaryButton, secondaryButton, textLink, type Area, type ShotFocus } from "../../components/landing/ui";
 import { SiteFooter } from "../../components/site-footer";
 import { toolGroups } from "../../components/landing/tool-logos";
 import { DEMO_URL } from "../../lib/site-nav";
@@ -14,9 +14,11 @@ import { versioned } from "../../lib/assets";
 const products = [
   {
     title: "Automate",
+    area: "automate" as Area,
+    icon: Code,
     summary: "Write, record and run end-to-end and load tests.",
     href: "/docs/app/automate",
-    shot: { src: "/screenshots/site/playground-editor.webp", alt: "Playground editor with a Playwright checkout test" },
+    shot: { src: "/screenshots/site/playground-editor.webp", alt: "Playground editor with a Playwright checkout test", focus: { x: 0.16, y: 0.055, w: 0.84, h: 0.62 } satisfies ShotFocus },
     items: [
       "Playwright browser, API and database tests",
       "k6 load tests with streaming logs and run comparison",
@@ -27,9 +29,11 @@ const products = [
   },
   {
     title: "Monitor",
+    area: "monitor" as Area,
+    icon: Globe,
     summary: "Know when something breaks before your users tell you.",
     href: "/docs/app/monitor",
-    shot: { src: "/screenshots/site/monitors-list.webp", alt: "Monitors list with HTTP, website, ping, port and synthetic monitors" },
+    shot: { src: "/screenshots/site/monitors-list.webp", alt: "Monitors list with HTTP, website, ping, port and synthetic monitors", focus: { x: 0.165, y: 0.06, w: 0.835, h: 0.62 } satisfies ShotFocus },
     items: [
       "HTTP, website, ping and port checks",
       "Uptime checks from several regions, including Europe, North America and Asia Pacific on Cloud",
@@ -39,9 +43,11 @@ const products = [
   },
   {
     title: "Respond",
+    area: "respond" as Area,
+    icon: Siren,
     summary: "Monitor and job alerts open an incident you can work from (on by default, per check).",
     href: "/docs/app/investigate",
-    shot: { src: "/screenshots/site/incident-workspace-overview.webp", alt: "Incident workspace for a Checkout API outage with an AI summary" },
+    shot: { src: "/screenshots/site/incident-workspace-overview.webp", alt: "Incident workspace for a Checkout API outage with an AI summary", focus: { x: 0.2, y: 0.07, w: 0.8, h: 0.7 } satisfies ShotFocus },
     items: [
       "One incident per failing source, resolved on recovery unless someone has acknowledged it",
       "AI SRE investigations that cite their evidence",
@@ -52,9 +58,11 @@ const products = [
   },
   {
     title: "Communicate",
+    area: "communicate" as Area,
+    icon: Radio,
     summary: "Tell your team first, then tell your users.",
     href: "/docs/app/communicate",
-    shot: { src: "/screenshots/site/status-page-public.webp", alt: "Public status page with a partial outage banner and 90 days of uptime per component" },
+    shot: { src: "/screenshots/site/status-page-public.webp", alt: "Public status page with a partial outage banner and 90 days of uptime per component", focus: { x: 0.2, y: 0.03, w: 0.6, h: 0.72 } satisfies ShotFocus },
     items: [
       "Notifications by email, Slack, Teams, Discord, Telegram and webhooks",
       "Public status pages on your own domain",
@@ -63,12 +71,12 @@ const products = [
   },
 ];
 
-const flow = [
-  { step: "Check", body: "A monitor or scheduled job with alerts on fails past its threshold." },
-  { step: "Alert", body: "Your notification channels get the failure." },
-  { step: "Incident", body: "An incident opens for that source, with its alerts attached." },
-  { step: "Investigate", body: "Run an AI SRE investigation that cites what it found. You decide the fix." },
-  { step: "Recover", body: "The check passes, a recovery is sent, and an unacknowledged incident resolves." },
+const flow: { step: string; body: string; area: Area; icon: typeof Globe }[] = [
+  { step: "Check", body: "A monitor or scheduled job with alerts on fails past its threshold.", area: "monitor", icon: Globe },
+  { step: "Alert", body: "Your notification channels get the failure.", area: "communicate", icon: BellRing },
+  { step: "Incident", body: "An incident opens for that source, with its alerts attached.", area: "respond", icon: Siren },
+  { step: "Investigate", body: "Run an AI SRE investigation that cites what it found. You decide the fix.", area: "ai", icon: Sparkles },
+  { step: "Recover", body: "The check passes, a recovery is sent, and an unacknowledged incident resolves.", area: "monitor", icon: CircleCheck },
 ];
 
 const configExample = `import { defineConfig } from '@supercheck/cli'
@@ -209,8 +217,11 @@ export default async function HomePage() {
             <ol className="mt-12 grid gap-px overflow-hidden rounded-xl border border-fd-border bg-fd-border lg:grid-cols-5">
               {flow.map((item, index) => (
                 <li key={item.step} className="bg-fd-background p-5">
-                  <p className="font-mono text-xs text-fd-muted-foreground">{String(index + 1).padStart(2, "0")}</p>
-                  <h3 className="mt-2 font-semibold">{item.step}</h3>
+                  <div className="flex items-center justify-between">
+                    <IconChip icon={item.icon} area={item.area} />
+                    <p className="font-mono text-xs text-fd-muted-foreground">{String(index + 1).padStart(2, "0")}</p>
+                  </div>
+                  <h3 className="mt-4 font-semibold">{item.step}</h3>
                   <p className="mt-1 text-sm leading-relaxed text-fd-muted-foreground">{item.body}</p>
                 </li>
               ))}
@@ -222,16 +233,17 @@ export default async function HomePage() {
                   className={`grid items-center gap-8 lg:gap-14 ${index % 2 === 1 ? "lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]" : "lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]"}`}
                 >
                   <div className={index % 2 === 1 ? "lg:order-2" : undefined}>
-                    <h3 className="text-2xl font-semibold tracking-tight">{product.title}</h3>
+                    <IconChip icon={product.icon} area={product.area} />
+                    <h3 className="mt-4 text-2xl font-semibold tracking-tight">{product.title}</h3>
                     <p className="mt-2 text-fd-muted-foreground">{product.summary}</p>
-                    <CheckList items={product.items} className="mt-6" />
+                    <CheckList items={product.items} area={product.area} className="mt-6" />
                     <Link href={product.href} className={`${textLink} mt-6`}>
                       {product.title} docs
                       <ArrowRight className="size-3.5" aria-hidden="true" />
                     </Link>
                   </div>
                   <div className={index % 2 === 1 ? "lg:order-1" : undefined}>
-                    <Screenshot src={product.shot.src} alt={product.shot.alt} />
+                    <Screenshot src={product.shot.src} alt={product.shot.alt} focus={product.shot.focus} />
                   </div>
                 </div>
               ))}

@@ -82,7 +82,7 @@ function Slider({ label, value, min, max, unit, onChange }: SliderProps) {
 
 function LowestBadge() {
   return (
-    <span className="ml-2 rounded border border-fd-primary/40 px-1.5 py-0.5 align-middle text-[11px] font-medium text-fd-primary">
+    <span className="ml-2 rounded border border-fd-border bg-fd-muted px-1.5 py-0.5 align-middle text-[11px] font-medium text-fd-foreground">
       Lowest
     </span>
   );
@@ -285,7 +285,7 @@ export function VendorComparison() {
                 <th
                   key={vendor.key}
                   scope="col"
-                  className={`px-3 py-3 text-left text-sm font-medium ${vendor.key === 'supercheck' ? 'bg-fd-primary/10 text-fd-primary' : ''}`}
+                  className={`px-3 py-3 text-left text-sm font-medium ${vendor.key === 'supercheck' ? 'bg-fd-muted text-fd-foreground' : ''}`}
                 >
                   {vendor.name}
                 </th>
@@ -303,7 +303,7 @@ export function VendorComparison() {
               {VENDORS.map((vendor) => (
                 <td
                   key={vendor.key}
-                  className={`px-3 py-4 ${vendor.key === 'supercheck' ? 'bg-fd-primary/5' : ''}`}
+                  className={`px-3 py-4 ${vendor.key === 'supercheck' ? 'bg-fd-muted/50' : ''}`}
                 >
                   <CostCell
                     estimate={estimateFor(vendor.key)}
@@ -321,7 +321,7 @@ export function VendorComparison() {
                 {VENDORS.map((vendor) => (
                   <td
                     key={vendor.key}
-                    className={`px-3 py-3 text-sm ${vendor.key === 'supercheck' ? 'bg-fd-primary/5 font-medium' : 'text-fd-muted-foreground'}`}
+                    className={`px-3 py-3 text-sm ${vendor.key === 'supercheck' ? 'bg-fd-muted/50 font-medium' : 'text-fd-muted-foreground'}`}
                   >
                     {row[vendor.key]}
                   </td>
@@ -337,7 +337,7 @@ export function VendorComparison() {
         {cardOrder.map((vendor) => (
           <li
             key={vendor.key}
-            className={`rounded-xl border p-5 ${vendor.key === 'supercheck' ? 'border-fd-primary bg-fd-primary/5' : 'border-fd-border bg-fd-card'}`}
+            className={`rounded-xl border p-5 ${vendor.key === 'supercheck' ? 'border-fd-foreground/40 bg-fd-muted/50' : 'border-fd-border bg-fd-card'}`}
           >
             <h3 className="mb-2 text-base font-semibold">{vendor.name}</h3>
             <CostCell

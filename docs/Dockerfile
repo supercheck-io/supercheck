@@ -6,7 +6,8 @@ COPY docs/next.config.mjs docs/source.config.ts ./
 RUN npm ci --silent
 COPY docs/ ./
 COPY app/public/openapi.json /app/app/public/openapi.json
-COPY app/src/lib/billing/plan-catalog.json /app/app/src/lib/billing/plan-catalog.json
+# The pricing page imports the plan catalog and its copy helpers from the app.
+COPY app/src/lib/billing/plan-catalog.json app/src/lib/billing/trial-copy.ts app/src/lib/billing/pricing-copy.ts /app/app/src/lib/billing/
 RUN npm run build -- --webpack
 
 # Next.js exports this site as static files; next start cannot serve it.
