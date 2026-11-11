@@ -2,7 +2,7 @@ import type { Row } from "@tanstack/react-table";
 import { MoreHorizontal, Trash2, Edit } from "lucide-react";
 import { useRouter } from "next/navigation";
 
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -172,7 +172,7 @@ export function DataTableRowActions<TData>({
                   disabled={!hasDeletePermission}
                   className={`${!hasDeletePermission
                       ? "opacity-50 cursor-not-allowed"
-                      : "text-red-600"
+                      : "text-failure"
                     }`}
                 >
                   <Trash2 className="mr-2 h-4 w-4" />
@@ -211,7 +211,7 @@ export function DataTableRowActions<TData>({
                 void handleDeleteJob();
               }}
               disabled={isDeleting}
-              className="bg-red-600 hover:bg-red-700"
+              className={buttonVariants({ variant: "destructive" })}
             >
               {isDeleting ? "Deleting..." : "Delete"}
             </AlertDialogAction>

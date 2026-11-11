@@ -17,25 +17,25 @@ export const alertStatuses = [
     value: "sent",
     label: "Sent",
     icon: CheckCircle,
-    color: "text-green-500",
+    color: "text-success",
   },
   {
     value: "failed",
     label: "Failed",
     icon: XCircle,
-    color: "text-red-500",
+    color: "text-failure",
   },
   {
     value: "pending",
     label: "Pending",
     icon: Clock,
-    color: "text-yellow-500",
+    color: "text-warning",
   },
   {
     value: "error",
     label: "Error",
     icon: AlertCircle,
-    color: "text-orange-500",
+    color: "text-warning",
   },
 ];
 
@@ -44,43 +44,43 @@ export const alertTypes = [
     value: "job_failed",
     label: "Job Failed",
     icon: XCircle,
-    color: "text-red-500",
+    color: "text-failure",
   },
   {
     value: "job_success",
     label: "Job Success",
     icon: CheckCircle,
-    color: "text-green-500",
+    color: "text-success",
   },
   {
     value: "job_timeout",
     label: "Job Timeout",
     icon: Clock,
-    color: "text-yellow-500",
+    color: "text-warning",
   },
   {
     value: "monitor_failure",
     label: "Monitor Failure",
     icon: XCircle,
-    color: "text-red-500",
+    color: "text-failure",
   },
   {
     value: "monitor_recovery",
     label: "Monitor Recovery",
     icon: CheckCircle,
-    color: "text-green-500",
+    color: "text-success",
   },
   {
     value: "ssl_expiring",
     label: "SSL Expiring",
     icon: AlertCircle,
-    color: "text-orange-500",
+    color: "text-warning",
   },
   {
     value: "ssl_renewed",
     label: "SSL Renewed",
     icon: CheckCircle,
-    color: "text-green-500",
+    color: "text-success",
   },
 ];
 
@@ -143,7 +143,7 @@ export const getNotificationProviderConfig = (type: string) => {
     type: type,
     label: type.charAt(0).toUpperCase() + type.slice(1), // Capitalize first letter
     icon: BotMessageSquare, // Default icon
-    color: "text-gray-500", // Default color
+    color: "text-muted-foreground", // Default color
   };
 };
 

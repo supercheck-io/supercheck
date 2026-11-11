@@ -22,7 +22,7 @@ import { Role } from "@/lib/rbac/permissions-client";
 import { Spinner } from "@/components/ui/spinner";
 import { RunStatusListener } from "./run-status-listener";
 import { TestRunStatus } from "@/db/schema";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -382,7 +382,7 @@ export function RunDetails({
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-9 px-3 flex items-center text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/50"
+                  className="h-9 px-3 flex items-center text-failure hover:text-failure hover:bg-failure/10"
                   disabled
                 >
                   <Trash2 className="h-4 w-4 mr-1" />
@@ -395,7 +395,7 @@ export function RunDetails({
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-9 px-3 flex items-center text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/50"
+                    className="h-9 px-3 flex items-center text-failure hover:text-failure hover:bg-failure/10"
                     onClick={() => setShowDeleteDialog(true)}
                   >
                     <Trash2 className="h-4 w-4 mr-1" />
@@ -459,7 +459,7 @@ export function RunDetails({
 
           {isPerformanceRun ? (
             <div className="bg-muted/30 rounded-lg p-2 border flex items-center overflow-hidden">
-              <MapPin className="h-6 w-6 min-w-6 mr-2 text-green-600" />
+              <MapPin className="h-6 w-6 min-w-6 mr-2 text-success" />
               <div className="min-w-0 w-full">
                 <div className="text-xs font-medium text-muted-foreground">
                   Location
@@ -566,8 +566,8 @@ export function RunDetails({
       </div>
 
 	      {isBillingBlocked ? (
-	        <Alert className="mb-4 border-red-200 bg-red-50 text-red-900 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-100">
-	          <ShieldOff className="h-4 w-4" />
+	        <Alert className="mb-4 border-failure/30 bg-failure/10 text-foreground">
+	          <ShieldOff className="h-4 w-4 text-failure" />
 	          <AlertTitle>Execution blocked by spending limit</AlertTitle>
 	          <AlertDescription>
 	            {formatBillingBlockedMessage(currentErrorDetails)}
@@ -629,7 +629,7 @@ export function RunDetails({
                 handleDeleteRun();
               }}
               disabled={isDeleting}
-              className="bg-red-600 hover:bg-red-700"
+              className={buttonVariants({ variant: "destructive" })}
             >
               {isDeleting ? (
                 <div className="flex items-center gap-2">

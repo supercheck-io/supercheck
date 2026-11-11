@@ -78,8 +78,8 @@ import { DocumentsList } from "./documents-list";
 const REQUIREMENTS_LIST_CAP = 500;
 
 const statusConfig = {
-    covered: { label: "Covered", icon: CheckCircle, color: "text-green-500", bgColor: "bg-green-500/10" },
-    failing: { label: "Failing", icon: XCircle, color: "text-red-500", bgColor: "bg-red-500/10" },
+    covered: { label: "Covered", icon: CheckCircle, color: "text-success", bgColor: "bg-success/10" },
+    failing: { label: "Failing", icon: XCircle, color: "text-failure", bgColor: "bg-failure/10" },
     missing: { label: "Missing", icon: CircleDashed, color: "text-gray-400", bgColor: "bg-gray-400/10" },
 } as const;
 
@@ -512,7 +512,7 @@ export default function RequirementsPage() {
                                                                 </div>
                                                             </div>
                                                             <div className="flex gap-2">
-                                                                <Sparkles className="h-4 w-4 text-purple-500 shrink-0 mt-0.5" />
+                                                                <Sparkles className="h-4 w-4 text-ai shrink-0 mt-0.5" />
                                                                 <div>
                                                                     <p className="font-medium text-foreground">API, Database, Custom & Performance</p>
                                                                     <p className="text-muted-foreground">AI generates a prompt from this requirement. Review, customize, and generate your test script.</p>
@@ -587,13 +587,13 @@ export default function RequirementsPage() {
                                                 <div className="text-xs text-muted-foreground">Linked Tests</div>
                                             </div>
                                             <div className="space-y-0.5 bg-card p-4 rounded-lg border border-border/40 text-center">
-                                                <div className="text-2xl font-bold text-green-500">
+                                                <div className="text-2xl font-bold text-success">
                                                     {selectedRequirement.passedTestCount}
                                                 </div>
                                                 <div className="text-xs text-muted-foreground">Passed</div>
                                             </div>
                                             <div className="space-y-0.5 bg-card p-4 rounded-lg border border-border/40 text-center">
-                                                <div className="text-2xl font-bold text-red-500">
+                                                <div className="text-2xl font-bold text-failure">
                                                     {selectedRequirement.failedTestCount}
                                                 </div>
                                                 <div className="text-xs text-muted-foreground">Failed</div>

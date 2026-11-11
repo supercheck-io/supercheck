@@ -21,7 +21,7 @@ import {
 import type { Job } from "./schema";
 import { DataTableColumnHeader } from "./data-table-column-header";
 import { DataTableRowActions } from "./data-table-row-actions";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useJobContext, JobStatusDisplay } from "./job-context";
@@ -368,10 +368,10 @@ function RunButton({ job }: { job: Job }) {
               <Button
                 onClick={handleCancelClick}
                 size="sm"
-                variant="ghost"
+                variant="destructive"
                 disabled={isCancelling}
                 className={cn(
-                  "absolute -top-1.5 -right-1.5 h-5 w-5 p-0 rounded-full bg-red-500 hover:bg-red-600 shadow-md transition-colors",
+                  "absolute -top-1.5 -right-1.5 h-5 w-5 p-0 rounded-full shadow-md transition-colors",
                   isCancelling && "cursor-not-allowed"
                 )}
                 title={isCancelling ? "Cancelling..." : "Cancel run"}
@@ -410,7 +410,7 @@ function RunButton({ job }: { job: Job }) {
                 e.stopPropagation();
                 handleCancelRun(e);
               }}
-              className="bg-red-500 hover:bg-red-600"
+              className={buttonVariants({ variant: "destructive" })}
             >
               Cancel Execution
             </AlertDialogAction>

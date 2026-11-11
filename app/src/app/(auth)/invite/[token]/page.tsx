@@ -210,8 +210,8 @@ export default function InvitePage({
       <div className="flex flex-col gap-6 w-full max-w-md">
         <FieldGroup>
           <div className="flex flex-col items-center gap-4 text-center">
-            <div className="flex size-16 items-center justify-center rounded-full bg-green-500/10">
-              <CheckCircle className="size-8 text-green-500" />
+            <div className="flex size-16 items-center justify-center rounded-full bg-success/10">
+              <CheckCircle className="size-8 text-success" />
             </div>
             <div>
               <h1 className="text-xl font-bold">
@@ -325,9 +325,9 @@ export default function InvitePage({
 
             {/* Expiry Warning */}
             {isExpiringSoon && (
-              <div className="flex items-center gap-2 p-3 rounded-md bg-amber-500/10 border border-amber-500/20">
-                <Clock className="h-4 w-4 text-amber-500" />
-                <span className="text-sm text-amber-600 dark:text-amber-400">
+              <div className="flex items-center gap-2 p-3 rounded-md bg-warning/10 border border-warning/20">
+                <Clock className="h-4 w-4 text-warning" />
+                <span className="text-sm text-warning">
                   Expires in {daysUntilExpiry} day
                   {daysUntilExpiry !== 1 ? "s" : ""}
                 </span>

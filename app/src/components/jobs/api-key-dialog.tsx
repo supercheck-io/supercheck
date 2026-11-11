@@ -191,8 +191,8 @@ export function ApiKeyDialog({ jobId, onApiKeyCreated }: ApiKeyDialogProps) {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-green-500/10">
-                <CheckCircle className="h-4 w-4 text-green-500" />
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-success/10">
+                <CheckCircle className="h-4 w-4 text-success" />
               </div>
               API Key Created Successfully
             </DialogTitle>
@@ -245,7 +245,7 @@ export function ApiKeyDialog({ jobId, onApiKeyCreated }: ApiKeyDialogProps) {
                         onClick={() => copyToClipboard(createdKey.key)}
                       >
                         {copied ? (
-                          <Check className="h-3.5 w-3.5 text-green-500" />
+                          <Check className="h-3.5 w-3.5 text-success" />
                         ) : (
                           <Copy className="h-3.5 w-3.5" />
                         )}
@@ -281,9 +281,9 @@ export function ApiKeyDialog({ jobId, onApiKeyCreated }: ApiKeyDialogProps) {
               </code>
             </div>
 
-            <div className="flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3">
-              <Info className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
-              <p className="text-xs text-amber-600 dark:text-amber-400">
+            <div className="flex items-start gap-2 rounded-lg border border-warning/20 bg-warning/5 p-3">
+              <Info className="h-4 w-4 text-warning mt-0.5 shrink-0" />
+              <p className="text-xs text-warning">
                 This key will only be displayed once. Please copy it and store it securely.
               </p>
             </div>

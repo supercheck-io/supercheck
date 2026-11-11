@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import React, { useState, useEffect, useCallback } from "react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -194,13 +194,13 @@ export function IncidentsTab({
   const getStatusBadgeColor = (status: IncidentStatus) => {
     switch (status) {
       case "investigating":
-        return "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200";
+        return "bg-failure/10 text-failure";
       case "identified":
-        return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200";
+        return "bg-warning/10 text-warning";
       case "monitoring":
         return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200";
       case "resolved":
-        return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200";
+        return "bg-success/10 text-success";
       case "scheduled":
         return "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200";
       default:
@@ -211,11 +211,11 @@ export function IncidentsTab({
   const getImpactBadgeColor = (impact: IncidentImpact) => {
     switch (impact) {
       case "critical":
-        return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200";
+        return "bg-failure text-background";
       case "major":
-        return "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200";
+        return "bg-failure/10 text-failure";
       case "minor":
-        return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200";
+        return "bg-warning/10 text-warning";
       case "none":
         return "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200";
       default:
@@ -366,9 +366,9 @@ export function IncidentsTab({
       </CardHeader>
       <CardContent className="pt-0">
         {components.length === 0 && (
-          <div className="mb-4 p-3 bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 rounded-lg flex items-center gap-2">
-            <OctagonAlert className="h-4 w-4 text-amber-600 dark:text-amber-400 flex-shrink-0" />
-            <p className="text-sm text-amber-800 dark:text-amber-200">
+          <div className="mb-4 p-3 bg-warning/10 border border-warning/30 rounded-lg flex items-center gap-2">
+            <OctagonAlert className="h-4 w-4 text-warning flex-shrink-0" />
+            <p className="text-sm text-warning">
               You need to create components before you can create incidents.
             </p>
           </div>
@@ -376,8 +376,8 @@ export function IncidentsTab({
 
         {incidents.length === 0 ? (
           <div className="text-center py-12 border-2 border-dashed rounded-lg bg-muted/20">
-            <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-green-100 dark:bg-green-900/50 mb-4">
-              <CheckCircle2 className="h-7 w-7 text-green-600 dark:text-green-400" />
+            <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-success/10 mb-4">
+              <CheckCircle2 className="h-7 w-7 text-success" />
             </div>
             <h4 className="text-base font-semibold mb-1">
               No status updates posted
@@ -505,7 +505,7 @@ export function IncidentsTab({
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
-                          <OctagonAlert className="h-4 w-4 text-orange-500 flex-shrink-0" />
+                          <OctagonAlert className="h-4 w-4 text-warning flex-shrink-0" />
                           <TruncatedTextWithTooltip
                             text={incident.name}
                             className="font-medium"
@@ -577,7 +577,7 @@ export function IncidentsTab({
                           )}
                         </div>
                         {incident.resolvedAt && (
-                          <div className="text-xs text-green-600 dark:text-green-400 mt-1">
+                          <div className="text-xs text-success mt-1">
                             Resolved{" "}
                             {formatDistanceToNow(
                               new Date(incident.resolvedAt),
@@ -608,7 +608,7 @@ export function IncidentsTab({
                             variant="ghost"
                             size="sm"
                             onClick={() => handleDeleteClick(incident)}
-                            className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
+                            className="h-8 w-8 p-0 text-failure hover:text-failure hover:bg-failure/10"
                             title={
                               !canUpdate
                                 ? "You don't have permission to delete incidents"
@@ -755,7 +755,7 @@ export function IncidentsTab({
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={confirmDelete}
-              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+              className={buttonVariants({ variant: "destructive" })}
             >
               Delete
             </AlertDialogAction>

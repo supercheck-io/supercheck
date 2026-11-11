@@ -15,7 +15,7 @@ export const jobStatuses = [
     value: "pending",
     label: "Pending",
     icon: Clock,
-    color: "text-gray-500",
+    color: "text-muted-foreground",
   },
   {
     value: "running",
@@ -27,25 +27,25 @@ export const jobStatuses = [
     value: "passed",
     label: "Passed",
     icon: CheckCircle,
-    color: "text-green-500",
+    color: "text-success",
   },
   {
     value: "failed",
     label: "Failed",
     icon: XCircle,
-    color: "text-red-500",
+    color: "text-failure",
   },
   {
     value: "error",
     label: "Error",
     icon: AlertCircle,
-    color: "text-orange-500",
+    color: "text-warning",
   },
   {
     value: "blocked",
     label: "Blocked",
     icon: ShieldOff,
-    color: "text-red-600",
+    color: "text-failure",
   },
 ]
 
