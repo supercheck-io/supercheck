@@ -44,7 +44,7 @@ export type ClaimResult = { claimed: DeletionRow } | { skip: "gone" } | { skip: 
 /** The runner lost its claim (a stale takeover): it must stop without writing anything more. */
 export class LostClaimError extends Error {}
 
-const owned = (row: Pick<DeletionRow, "id" | "ownerToken">) => and(eq(deletionJobs.id, row.id), eq(deletionJobs.ownerToken, row.ownerToken ?? randomUUID()));
+const owned = (row: Pick<DeletionRow, "id" | "ownerToken">) => and(eq(deletionJobs.id, row.id), eq(deletionJobs.state, "running"), eq(deletionJobs.ownerToken, row.ownerToken ?? randomUUID()));
 
 /**
  * Take the purge for this process. A short transaction under a global advisory lock enforces the concurrency
@@ -68,7 +68,7 @@ export async function claimDeletion(id: string): Promise<ClaimResult> {
       .where(and(eq(deletionJobs.state, "running"), sql`${deletionJobs.heartbeatAt} > now() - make_interval(secs => ${STALE_HEARTBEAT_SECONDS})`, sql`${deletionJobs.id} <> ${id}`));
     if (running.length >= GLOBAL_CONCURRENCY || (row.row.organizationId && running.some((other) => other.organizationId === row.row.organizationId))) {
       // Push the row out so duplicate triggers see "busy" and stop, and the sweep does not re-select it every tick.
-      await tx.update(deletionJobs).set({ state: "queued", nextAttemptAt: sql`now() + make_interval(secs => ${BLOCKED_RETRY_MS / 1000})` }).where(eq(deletionJobs.id, id));
+      await tx.update(deletionJobs).set({ state: "queued", ownerToken: null, heartbeatAt: null, nextAttemptAt: sql`now() + make_interval(secs => ${BLOCKED_RETRY_MS / 1000})` }).where(eq(deletionJobs.id, id));
       return { blocked: true } as const;
     }
     const [claimed] = await tx.update(deletionJobs).set({
@@ -111,8 +111,8 @@ export async function releaseDeletion(row: DeletionRow, delayMs: number): Promis
 }
 
 /** Super admin: put a failed purge back in the queue with a fresh attempt budget. */
-export async function retryFailedDeletion(id: string): Promise<boolean> {
-  const updated = await db.update(deletionJobs).set({ state: "queued", attempts: 0, nextAttemptAt: new Date(), lastError: null })
+export async function retryFailedDeletion(id: string, executor: Pick<typeof db, "update"> = db): Promise<boolean> {
+  const updated = await executor.update(deletionJobs).set({ state: "queued", attempts: 0, nextAttemptAt: new Date(), lastError: null })
     .where(and(eq(deletionJobs.id, id), eq(deletionJobs.state, "failed"))).returning({ id: deletionJobs.id });
   return updated.length > 0;
 }

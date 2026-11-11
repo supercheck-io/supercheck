@@ -4,8 +4,18 @@ import { jobs, monitors, runs, statusPageComponentMonitors } from "@/db/schema";
 import { deleteScheduledJob } from "@/lib/job-scheduler";
 import { deleteScheduledMonitor } from "@/lib/monitor-scheduler";
 import { RUN_CANCELLATION_MARKER, setCancellationSignal } from "@/lib/cancellation-service";
+import { sql } from "drizzle-orm";
+import { DELETION_TX_LIMITS, DELETION_TX_STATEMENT_LIMIT } from "@/lib/resource-deletion/chunks";
 import { insertDeletionJob } from "./jobs";
 import { triggerDeletion } from "./queue";
+
+/** Redis can be down while the database is up: the flag and purge row are already committed, so never let a slow queue hold the caller. */
+const POST_COMMIT_BUDGET_MS = 3000;
+const bounded = <T>(work: Promise<T>) => Promise.race([work, new Promise<void>((resolve) => setTimeout(resolve, POST_COMMIT_BUDGET_MS).unref())]).catch(() => undefined);
+const limit = async (tx: Parameters<Parameters<typeof db.transaction>[0]>[0]) => {
+  await tx.execute(sql`SET LOCAL lock_timeout = ${DELETION_TX_LIMITS}`);
+  await tx.execute(sql`SET LOCAL statement_timeout = ${DELETION_TX_STATEMENT_LIMIT}`);
+};
 
 type Scope = { id: string; projectId: string; organizationId: string; userId: string };
 export type DeletionRequest<T> = { status: "requested"; data: T } | { status: "already" } | { status: "not_found" };
@@ -16,6 +26,7 @@ export type DeletionRequest<T> = { status: "requested"; data: T } | { status: "a
  */
 export async function requestJobDeletion(scope: Scope) {
   const result = await db.transaction(async (tx): Promise<DeletionRequest<{ name: string; description: string | null; cronSchedule: string | null; deletionId: string }>> => {
+    await limit(tx);
     const where = and(eq(jobs.id, scope.id), eq(jobs.projectId, scope.projectId), eq(jobs.organizationId, scope.organizationId));
     const [flagged] = await tx.update(jobs).set({ deletingAt: new Date() }).where(and(where, isNull(jobs.deletingAt)))
       .returning({ name: jobs.name, description: jobs.description, cronSchedule: jobs.cronSchedule });
@@ -29,18 +40,19 @@ export async function requestJobDeletion(scope: Scope) {
   });
   // Best effort: the purge repeats the unschedule, and a late scheduled run sees the flag and does nothing.
   if (result.status === "requested") {
-    await Promise.allSettled([
+    await bounded(Promise.allSettled([
       deleteScheduledJob(scope.id),
       db.select({ id: runs.id }).from(runs).where(and(eq(runs.jobId, scope.id), inArray(runs.status, ["queued", "running"]))).limit(200)
         .then((active) => Promise.allSettled(active.map((run) => setCancellationSignal(run.id)))),
-    ]);
-    await triggerDeletion(result.data.deletionId);
+      triggerDeletion(result.data.deletionId),
+    ]));
   }
   return result;
 }
 
 export async function requestMonitorDeletion(scope: Scope) {
   const result = await db.transaction(async (tx): Promise<DeletionRequest<{ name: string; type: string; target: string; deletionId: string }>> => {
+    await limit(tx);
     const where = and(eq(monitors.id, scope.id), eq(monitors.projectId, scope.projectId), eq(monitors.organizationId, scope.organizationId));
     const [flagged] = await tx.update(monitors).set({ deletingAt: new Date() }).where(and(where, isNull(monitors.deletingAt)))
       .returning({ name: monitors.name, type: monitors.type, target: monitors.target });
@@ -54,8 +66,7 @@ export async function requestMonitorDeletion(scope: Scope) {
     return { status: "requested", data: { ...flagged, deletionId } };
   });
   if (result.status === "requested") {
-    await Promise.allSettled([deleteScheduledMonitor(scope.id)]);
-    await triggerDeletion(result.data.deletionId);
+    await bounded(Promise.allSettled([deleteScheduledMonitor(scope.id), triggerDeletion(result.data.deletionId)]));
   }
   return result;
 }

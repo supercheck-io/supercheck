@@ -6,6 +6,7 @@
 
 import { pgTable, uuid, varchar, text, integer, timestamp, jsonb, index, uniqueIndex, check } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 
 export const DELETION_SCOPES = ["job", "monitor", "project", "organization"] as const;
 export type DeletionScope = (typeof DELETION_SCOPES)[number];
@@ -51,3 +52,6 @@ export const deletionJobs = pgTable(
     stateCheck: check("deletion_jobs_state_check", sql`${table.state} IN ('queued', 'running', 'completed', 'failed')`),
   })
 );
+
+export const deletionJobsInsertSchema = createInsertSchema(deletionJobs);
+export const deletionJobsSelectSchema = createSelectSchema(deletionJobs);

@@ -177,7 +177,7 @@ export async function repairMonitorSchedules(): Promise<{ repaired: number; fail
     const active = await db
       .select({ id: monitorSchemaDb.id, scheduledJobId: monitorSchemaDb.scheduledJobId })
       .from(monitorSchemaDb)
-      .where(and(gt(monitorSchemaDb.frequencyMinutes, 0), eq(monitorSchemaDb.enabled, true), ne(monitorSchemaDb.status, 'paused')))
+      .where(and(gt(monitorSchemaDb.frequencyMinutes, 0), eq(monitorSchemaDb.enabled, true), ne(monitorSchemaDb.status, 'paused'), isNull(monitorSchemaDb.deletingAt)))
       .orderBy(monitorSchemaDb.id);
     // Never-scheduled monitors first; within each group continue after the last id of the previous sweep,
     // so rows that keep failing cannot starve the rest of the batch.

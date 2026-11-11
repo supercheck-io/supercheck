@@ -17,7 +17,7 @@ const mockUnscheduleMonitor = jest.fn();
 const mockSignal = jest.fn();
 const mockTrigger = jest.fn();
 jest.mock("@/utils/db", () => ({ get db() { return mockDatabase; } }));
-jest.mock("@/lib/s3-cleanup", () => ({ createS3CleanupService: () => ({ getRunArtifactInputs: () => [], deleteReports: (...a: unknown[]) => mockDeleteReports(...a) }) }));
+jest.mock("@/lib/s3-cleanup", () => ({ createS3CleanupService: () => ({ getRunArtifactInputs: () => [], deleteReports: (...a: unknown[]) => mockDeleteReports(...a), destroy: () => undefined }) }));
 jest.mock("@/lib/job-scheduler", () => ({ deleteScheduledJob: (...a: unknown[]) => mockUnscheduleJob(...a) }));
 jest.mock("@/lib/monitor-scheduler", () => ({ deleteScheduledMonitor: (...a: unknown[]) => mockUnscheduleMonitor(...a), removeScheduledMonitor: (...a: unknown[]) => mockUnscheduleMonitor(...a) }));
 jest.mock("@/lib/cancellation-service", () => ({ RUN_CANCELLATION_MARKER: "Cancellation requested by user", setCancellationSignal: (...a: unknown[]) => mockSignal(...a) }));
@@ -246,6 +246,21 @@ describe("claims, retries and the sweep", () => {
     // The blocked row is pushed out: duplicate triggers stop at "busy" and the sweep does not re-select it.
     expect(await claimDeletion(b)).toMatchObject({ skip: "busy" });
     expect(await findDueDeletions()).not.toContain(b);
+  });
+
+  it("a stale runner that is then blocked by the concurrency cap loses its ownership", async () => {
+    const seeded = await seedJob(1);
+    const other = await seedJob(1);
+    const third = await seedJob(1);
+    await Promise.all([requestJobDeletion(scope(seeded)), requestJobDeletion(scope(other)), requestJobDeletion(scope(third))]);
+    const ids = await Promise.all([seeded, other, third].map(async (s) => (await deletionRow(s.jobId)).id));
+    const stale = await claimDeletion(ids[0]);
+    if (!("claimed" in stale)) throw new Error("expected a claim");
+    await client`UPDATE deletion_jobs SET heartbeat_at = now() - interval '10 minutes' WHERE id = ${ids[0]}`;
+    expect("claimed" in (await claimDeletion(ids[1]))).toBe(true);
+    expect("claimed" in (await claimDeletion(ids[2]))).toBe(true); // global cap (2) now reached by the two fresh runners
+    expect(await claimDeletion(ids[0])).toEqual({ blocked: true });
+    await expect(heartbeat(stale.claimed)).rejects.toBeInstanceOf(LostClaimError);
   });
 
   it("takes over a purge whose pod crashed (stale heartbeat) and finds it in the sweep", async () => {

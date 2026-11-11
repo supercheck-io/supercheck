@@ -12,7 +12,7 @@ jest.mock("@/lib/session", () => ({ getCurrentUser: async () => ({ id: "admin-1"
 jest.mock("@/lib/audit-logger", () => ({ logAdminEvent: jest.fn() }));
 jest.mock("@/lib/deletion/jobs", () => ({ retryFailedDeletion: (...a: unknown[]) => mockRetry(...a) }));
 jest.mock("@/lib/deletion/queue", () => ({ triggerDeletion: (...a: unknown[]) => mockTrigger(...a) }));
-jest.mock("@/utils/db", () => ({ db: { select: () => ({ from: () => ({ where: () => ({ orderBy: () => ({ limit: () => mockRows() }) }) }) }) } }));
+jest.mock("@/utils/db", () => ({ db: { select: () => ({ from: () => ({ where: () => ({ orderBy: () => ({ limit: () => mockRows() }) }) }) }), transaction: async (cb: (tx: object) => unknown) => cb({}) } }));
 import { GET, POST } from "./route";
 
 const post = (body: unknown) => POST(new NextRequest("http://localhost/api/admin/deletion-jobs", { method: "POST", body: JSON.stringify(body) }));

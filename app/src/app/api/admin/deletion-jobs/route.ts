@@ -36,8 +36,13 @@ export async function POST(request: NextRequest) {
     if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const body = (await request.json().catch(() => null)) as { id?: unknown } | null;
     if (!body || typeof body.id !== "string" || !isUuid(body.id)) return NextResponse.json({ error: "A deletion job id is required" }, { status: 400 });
-    if (!(await retryFailedDeletion(body.id))) return NextResponse.json({ error: "Only a failed deletion job can be retried" }, { status: 409 });
-    await logAdminEvent(admin.id, "deletion_job_retried", undefined, "deletion_job", body.id);
+    // The retry and its audit record commit together, so a purge is never re-queued without a record.
+    const retried = await db.transaction(async (tx) => {
+      if (!(await retryFailedDeletion(body.id as string, tx))) return false;
+      await logAdminEvent(admin.id, "deletion_job_retried", undefined, "deletion_job", body.id as string, undefined, tx);
+      return true;
+    });
+    if (!retried) return NextResponse.json({ error: "Only a failed deletion job can be retried" }, { status: 409 });
     await triggerDeletion(body.id);
     return NextResponse.json({ success: true });
   } catch (error) {

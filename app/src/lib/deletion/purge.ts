@@ -29,10 +29,16 @@ const asInput = (r: { entityId: string; reportPath: string | null; s3Url: string
   ({ reportPath: r.reportPath || undefined, s3Url: r.s3Url || undefined, entityId: r.entityId, entityType });
 
 /** Storage first, so a failure leaves the rows that point at it for the retry. Never called inside a transaction. */
-async function deleteStorage(inputs: ReportDeletionInput[], what: string) {
-  if (inputs.length === 0) return;
-  const result = await createS3CleanupService().deleteReports(inputs);
-  if (!result.success) throw new Error(`Could not delete ${what} storage; will retry`);
+async function deleteStorage(inputs: ReportDeletionInput[] | ((s3: ReturnType<typeof createS3CleanupService>) => ReportDeletionInput[]), what: string) {
+  const s3 = createS3CleanupService();
+  try { // a client per batch, released afterwards so a long purge does not accumulate sockets
+    const list = typeof inputs === "function" ? inputs(s3) : inputs;
+    if (list.length === 0) return;
+    const result = await s3.deleteReports(list);
+    if (!result.success) throw new Error(`Could not delete ${what} storage; will retry`);
+  } finally {
+    s3.destroy();
+  }
 }
 
 // Tables whose rows cascade from the target and can be large. Names are constants (never input) and each has an index on the column.
@@ -89,8 +95,13 @@ export async function purgeMonitorStep(row: DeletionRow): Promise<StepResult> {
   }
   if (phase === "children") {
     // Cycles, aggregates and alert history cascade from the monitor row; delete them in batches first so the final delete is small.
-    for (const table of MONITOR_CHILD_TABLES) if ((await deleteChildBatch(table, "monitor_id", monitorId)) === PURGE_BATCH) return { done: false, phase: "children" };
-    return { done: false, phase: "final" };
+    let deleted = 0;
+    for (const table of MONITOR_CHILD_TABLES) {
+      const n = await deleteChildBatch(table, "monitor_id", monitorId);
+      deleted += n;
+      if (n === PURGE_BATCH) return { done: false, phase: "children", progress: progress(row, "children", deleted) };
+    }
+    return { done: false, phase: "final", ...(deleted ? { progress: progress(row, "children", deleted) } : {}) };
   }
   // final: the parent row lock stops new results (their foreign key needs a share lock on it), then verify and delete.
   const finished = await db.transaction(async (tx) => {
@@ -136,8 +147,7 @@ export async function purgeJobStep(row: DeletionRow): Promise<StepResult> {
     const aliases = await db.select({ ...reportColumns, entityType: reports.entityType }).from(reports)
       .where(and(eq(reports.entityType, "test"), inArray(reports.reportPath, ids.map((id) => `${id}/report`))));
     const reportRows = [...new Map([...own, ...aliases].map((r) => [r.id, r])).values()];
-    const s3 = createS3CleanupService();
-    await deleteStorage([...reportRows.map((r) => asInput(r, r.entityType)), ...batch.flatMap((r) => s3.getRunArtifactInputs(r))], "job run");
+    await deleteStorage((s3) => [...reportRows.map((r) => asInput(r, r.entityType)), ...batch.flatMap((r) => s3.getRunArtifactInputs(r))], "job run");
     await db.transaction(async (tx) => {
       await limits(tx);
       if (reportRows.length) await tx.delete(reports).where(inArray(reports.id, reportRows.map((r) => r.id)));
@@ -147,8 +157,13 @@ export async function purgeJobStep(row: DeletionRow): Promise<StepResult> {
     return { done: false, phase: "runs", progress: progress(row, "runs", batch.length) };
   }
   if (phase === "children") {
-    for (const table of JOB_CHILD_TABLES) if ((await deleteChildBatch(table, "job_id", jobId)) === PURGE_BATCH) return { done: false, phase: "children" };
-    return { done: false, phase: "job_reports" };
+    let deleted = 0;
+    for (const table of JOB_CHILD_TABLES) {
+      const n = await deleteChildBatch(table, "job_id", jobId);
+      deleted += n;
+      if (n === PURGE_BATCH) return { done: false, phase: "children", progress: progress(row, "children", deleted) };
+    }
+    return { done: false, phase: "job_reports", ...(deleted ? { progress: progress(row, "children", deleted) } : {}) };
   }
   if (phase === "job_reports") {
     const own = await db.select({ ...reportColumns, entityType: reports.entityType }).from(reports).where(and(eq(reports.entityId, jobId), eq(reports.entityType, "job")));
