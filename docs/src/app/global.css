@@ -4,11 +4,33 @@
 @import 'fumadocs-openapi/css/preset.css';
 
 :root {
+  /* Blue stays the link and focus colour; primary buttons are black (see DESIGN.md). */
   --color-fd-primary: hsl(220, 90%, 56%);
+  /* Product areas, same values as app/src/app/globals.css. Chips, eyebrows and icons only. */
+  --automate: oklch(0.588 0.158 241.966);
+  --monitor: oklch(0.6 0.118 184.704);
+  --respond: oklch(0.646 0.222 41.116);
+  --communicate: oklch(0.592 0.249 0.584);
+  --ai: oklch(0.541 0.281 293.009);
 }
 
 .dark {
   --color-fd-primary: hsl(220, 90%, 66%);
+  --automate: oklch(0.746 0.16 232.661);
+  --monitor: oklch(0.777 0.152 181.912);
+  --respond: oklch(0.75 0.183 55.934);
+  --communicate: oklch(0.718 0.202 349.761);
+  --ai: oklch(0.702 0.183 293.541);
+}
+
+@theme inline {
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, monospace;
+  --color-automate: var(--automate);
+  --color-monitor: var(--monitor);
+  --color-respond: var(--respond);
+  --color-communicate: var(--communicate);
+  --color-ai: var(--ai);
 }
 
 html {

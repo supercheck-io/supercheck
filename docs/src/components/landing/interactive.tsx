@@ -66,7 +66,7 @@ export function HeroVideo({ children }: { children: React.ReactNode }) {
         className="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center gap-3 whitespace-nowrap rounded-full bg-fd-background/95 py-3 pl-3 pr-5 text-sm font-medium text-fd-foreground shadow-lg ring-1 ring-fd-border transition-transform group-hover:scale-105"
         aria-hidden="true"
       >
-        <span className="flex size-10 items-center justify-center rounded-full bg-fd-primary text-fd-primary-foreground">
+        <span className="flex size-10 items-center justify-center rounded-full bg-fd-foreground text-fd-background">
           <Play className="ml-0.5 size-4 fill-current" />
         </span>
         Watch the overview · 3 min
