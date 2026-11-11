@@ -222,6 +222,22 @@ describe('job and monitor deletion against PostgreSQL', () => {
     expect(await client`SELECT id FROM monitors WHERE id=${own.id}`).toHaveLength(1);
   });
 
+  it('keeps every report row reachable when a moved report cannot be cleaned on retry', async () => {
+    const own = await seedMonitor();
+    mockDeleteReports.mockImplementationOnce(async () => {
+      await client`UPDATE reports SET report_path='new-execution/report', s3_url='http://storage/updated/index.html' WHERE id=${`report-${own.id}`}`;
+      return {success:true};
+    }).mockResolvedValueOnce({success:false});
+    const result = await deleteMonitorWithContext(own.id,deletionContext);
+    expect(result.success).toBe(false);
+    expect(await client`SELECT id FROM reports WHERE id=${`report-${own.id}`}`).toHaveLength(1);
+    expect(await client`SELECT id FROM monitor_results WHERE monitor_id=${own.id}`).toHaveLength(1);
+    // A later request still finds and removes everything.
+    mockDeleteReports.mockResolvedValue({success:true});
+    expect((await deleteMonitorWithContext(own.id,deletionContext)).success).toBe(true);
+    expect(await client`SELECT id FROM reports WHERE id=${`report-${own.id}`}`).toHaveLength(0);
+  });
+
   it('cleans only new runs and completes when a job creates runs during storage cleanup', async () => {
     const own = await seedJob();
     const newRun = randomUUID();
@@ -236,6 +252,18 @@ describe('job and monitor deletion against PostgreSQL', () => {
     expect(mockDeleteReports.mock.calls[1][0]).toEqual([expect.objectContaining({ entityId:newRun })]);
     expect(await client`SELECT id FROM jobs WHERE id=${own.id}`).toHaveLength(0);
     expect(await client`SELECT id FROM runs WHERE job_id=${own.id}`).toHaveLength(0);
+  });
+
+  it('reports a clear retry error and keeps the job when the schedule queues a run during cleanup', async () => {
+    const own = await seedJob();
+    mockDeleteReports.mockImplementationOnce(async () => {
+      await client`INSERT INTO runs (id,job_id,project_id,status) VALUES (${randomUUID()},${own.id},'project','queued')`;
+      return {success:true};
+    });
+    const result = await deleteJobWithContext(own.id,deletionContext);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('active runs');
+    expect(await client`SELECT id FROM jobs WHERE id=${own.id}`).toHaveLength(1);
   });
 
   it('keeps job rows when a retry cleanup fails', async () => {

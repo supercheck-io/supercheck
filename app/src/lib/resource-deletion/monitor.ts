@@ -95,8 +95,9 @@ export async function deleteMonitorWithContext(
       // chunks (their storage is gone), then delete the monitor only when no result remains.
       const cleaned = new Set<string>(); // keyed by id and location, so a moved report is cleaned again
       const key = (...parts: Array<string | null>) => JSON.stringify(parts);
-      const executionIds = new Set<string>();
-      const urls = new Set<string>();
+      // Every result seen so far: result rows are deleted as they are cleaned, but their report rows must still be found.
+      const seen = new Map<string, { executionId: string | null; url: string | null }>();
+      let deletedResults = 0;
       for (let attempt = 1; ; attempt++) {
       const resultsWithReports = await tx
         .select({
@@ -107,11 +108,7 @@ export async function deleteMonitorWithContext(
         .from(monitorResults)
         .where(eq(monitorResults.monitorId, monitorId));
 
-      // Accumulated across attempts: result rows are deleted as they are cleaned, but their report rows must still be found.
-      for (const result of resultsWithReports) {
-        if (result.testExecutionId) executionIds.add(result.testExecutionId);
-        if (result.testReportS3Url) urls.add(result.testReportS3Url);
-      }
+      for (const result of resultsWithReports) seen.set(result.id, { executionId: result.testExecutionId, url: result.testReportS3Url });
       // Match by the indexed (entity_type, entity_id) key; s3_url (unindexed) only finds legacy rows.
       const ownedReports = async (reader: Pick<typeof db, "select">, lock: boolean) => {
         const find = (column: typeof reports.entityId | typeof reports.s3Url) => (values: string[]) => {
@@ -121,7 +118,11 @@ export async function deleteMonitorWithContext(
           return lock ? query.for("update") : query;
         };
         const rows = new Map<string, Awaited<ReturnType<ReturnType<typeof find>>>[number]>();
-        for (const row of [...await selectInChunks([...executionIds], find(reports.entityId)), ...await selectInChunks([...urls], find(reports.s3Url))]) rows.set(row.id, row);
+        const byEntity = await selectInChunks([...new Set([...seen.values()].flatMap(r => r.executionId ? [r.executionId] : []))], find(reports.entityId));
+        const matched = new Set(byEntity.map(row => row.entityId));
+        // Unindexed s3_url lookups only for results whose execution id found no report (legacy rows).
+        const legacyUrls = [...new Set([...seen.values()].flatMap(r => r.url && !(r.executionId && matched.has(r.executionId)) ? [r.url] : []))];
+        for (const row of [...byEntity, ...await selectInChunks(legacyUrls, find(reports.s3Url))]) rows.set(row.id, row);
         return [...rows.values()].sort((a, b) => a.id.localeCompare(b.id));
       };
       const reportRows = await ownedReports(tx, false);
@@ -153,14 +154,25 @@ export async function deleteMonitorWithContext(
 
       // Storage for these rows is gone, so deleting them in small statements (not one long transaction)
       // is safe and resumable: a failure here leaves only rows that are retried on the next attempt.
-      let deletedResults = 0;
+      try {
+      // Report rows go first (each chunk re-verified under lock), so a failure can never leave report
+      // rows that no longer have a result row pointing at them.
+      for (const part of chunk(reportRows)) {
+        await db.transaction(async (chunkTx) => {
+          await chunkTx.execute(sql`SET LOCAL lock_timeout = ${DELETION_TX_LIMITS}`);
+          const fresh = await chunkTx.select({
+            id: reports.id, entityId: reports.entityId, reportPath: reports.reportPath, s3Url: reports.s3Url,
+          }).from(reports).where(inArray(reports.id, part.map(report => report.id))).for("update");
+          if (!isDeepStrictEqual(fresh.sort((a, b) => a.id.localeCompare(b.id)), part)) throw new ResultsChangedError("Monitor reports changed during cleanup; retry deletion");
+          await chunkTx.delete(reports).where(inArray(reports.id, part.map(report => report.id)));
+        });
+      }
       for (const ids of chunk(resultsWithReports.map(result => result.id))) {
         deletedResults += (await tx.delete(monitorResults)
           .where(and(eq(monitorResults.monitorId, monitorId), inArray(monitorResults.id, ids)))
           .returning({ id: monitorResults.id })).length;
       }
 
-      try {
       return await db.transaction(async (tx) => {
       await tx.execute(sql`SET LOCAL lock_timeout = ${DELETION_TX_LIMITS}`);
       await tx.execute(sql`SET LOCAL statement_timeout = ${DELETION_TX_STATEMENT_LIMIT}`);
@@ -170,11 +182,7 @@ export async function deleteMonitorWithContext(
       // Cheap guard: every collected result is deleted above, so any row left arrived during cleanup.
       const [{ remaining }] = await tx.select({ remaining: count() }).from(monitorResults).where(eq(monitorResults.monitorId, monitorId));
       if (remaining > 0) throw new ResultsChangedError();
-      const freshReports = await ownedReports(tx, true);
-      if (!isDeepStrictEqual(freshReports, reportRows)) {
-        throw new ResultsChangedError("Monitor reports changed during cleanup; retry deletion");
-      }
-      for (const ids of chunk(reportRows.map(report => report.id))) await tx.delete(reports).where(inArray(reports.id, ids));
+      if ((await ownedReports(tx, true)).length > 0) throw new ResultsChangedError("Monitor reports changed during cleanup; retry deletion");
 
       await removeServiceResourceLinks(tx, "monitor", [monitorId]);
       await removeTrialSuspensions(tx, "monitor", [monitorId]);
