@@ -1,4 +1,4 @@
-import { spawnSync } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import { createServer, Server } from 'net';
 import { EGRESS_GUARD_SCRIPT } from './egress-guard';
 
@@ -31,7 +31,7 @@ describe('EGRESS_GUARD_SCRIPT', () => {
   });
   afterAll(() => new Promise((r) => server.close(r)));
 
-  it('exits 0 immediately when the API port is blocked', async () => {
+  it('exits 0 after two blocked probes when the API port is blocked', async () => {
     const closed = createServer();
     await new Promise<void>((r) => closed.listen(0, '127.0.0.1', r));
     const port = (closed.address() as { port: number }).port;
@@ -39,6 +39,29 @@ describe('EGRESS_GUARD_SCRIPT', () => {
     const started = Date.now();
     expect(run(port, 5).status).toBe(0);
     expect(Date.now() - started).toBeLessThan(2500);
+  });
+
+  it('does not pass on a single refusal followed by a reachable API', async () => {
+    // A restarting API server refuses once while the policy is still missing.
+    const flapping = createServer((s) => s.destroy());
+    await new Promise<void>((r) => flapping.listen(0, '127.0.0.1', r));
+    const port = (flapping.address() as { port: number }).port;
+    await new Promise((r) => flapping.close(r));
+    const child = spawn(process.execPath, ['-e', EGRESS_GUARD_SCRIPT, '3'], {
+      env: {
+        ...process.env,
+        KUBERNETES_SERVICE_HOST: '127.0.0.1',
+        KUBERNETES_SERVICE_PORT: `${port}`,
+      },
+    });
+    const exited = new Promise<number | null>((r) => child.on('exit', r));
+    await new Promise((r) => setTimeout(r, 300));
+    await new Promise<void>((r) => flapping.listen(port, '127.0.0.1', r));
+    try {
+      expect(await exited).toBe(78);
+    } finally {
+      await new Promise((r) => flapping.close(r));
+    }
   });
 
   it('fails closed with an infrastructure error when still reachable at the bound', () => {

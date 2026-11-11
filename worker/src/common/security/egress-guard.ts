@@ -3,10 +3,10 @@
  *
  * k3s programs the `execution-egress` NetworkPolicy asynchronously after pod
  * start, so the Kubernetes API Service is briefly reachable. This script
- * passes only once a TCP connect to it is refused or times out, retrying
- * every second up to argv[1] seconds (default 20). Still reachable at the
- * bound means the isolation contract is not enforced: exit 78, never run user
- * code. A first blocked probe exits immediately. Uses node because the
+ * passes only once two TCP connects in a row to it are refused or time out,
+ * retrying every second up to argv[1] seconds (default 20). Still reachable at
+ * the bound means the isolation contract is not enforced: exit 78, never run
+ * user code. A blocked API passes in about one second. Uses node because the
  * execution image has node but no nc, and /bin/sh has no /dev/tcp.
  */
 /** Default bound (seconds) of the wait; the worker adds it as timeout headroom. */
@@ -26,7 +26,7 @@ const reachable = (host) =>
     s.on('error', (e) =>
       resolve(['ECONNREFUSED', 'EHOSTUNREACH', 'ENETUNREACH', 'EACCES'].includes(e.code) ? false : null));
   });
-let timeouts = 0;
+let misses = 0;
 (async () => {
   for (;;) {
     let detail = 'kubernetes API Service still reachable';
@@ -37,9 +37,10 @@ let timeouts = 0;
           sleep(3000).then(() => { throw new Error('DNS lookup timed out'); }),
         ])).address;
       const r = await reachable(host);
-      // A lone timeout can be a delayed SYN; require two in a row.
-      timeouts = r === 'timeout' ? timeouts + 1 : 0;
-      if (r === false || timeouts >= 2) process.exit(0);
+      // A lone miss is not proof: a timeout can be a delayed SYN, and a refusal
+      // can come from a restarting API server before the policy lands.
+      misses = r === false || r === 'timeout' ? misses + 1 : 0;
+      if (misses >= 2) process.exit(0);
       if (r === null) detail = 'probe error, cannot confirm block';
     } catch (e) {
       detail = 'cannot resolve kubernetes API Service: ' + e.message;
