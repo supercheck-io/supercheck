@@ -260,11 +260,11 @@ export function StatusPageDetail({
   const getStatusBadgeColor = (status: string) => {
     switch (status) {
       case "published":
-        return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200";
+        return "bg-success/10 text-success";
       case "draft":
         return "bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-200";
       case "archived":
-        return "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200";
+        return "bg-warning/10 text-warning";
       default:
         return "bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-200";
     }
@@ -298,7 +298,7 @@ export function StatusPageDetail({
             )}
             {publicStatusPageUrl ? (
               <div className="flex items-center gap-2 text-sm text-muted-foreground mt-3 min-w-0">
-                <Tally4 className="h-4 w-4 flex-shrink-0 !text-green-600" />
+                <Tally4 className="h-4 w-4 flex-shrink-0 !text-success" />
                 <span className="min-w-0 truncate font-mono text-xs sm:text-sm">
                   {publicStatusPageUrl}
                 </span>
@@ -462,8 +462,8 @@ export function StatusPageDetail({
             <Card className="overflow-hidden">
               <CardContent className="p-4 lg:p-6">
                 <div className="flex items-center gap-3 lg:gap-4">
-                  <div className="flex items-center justify-center w-10 h-10 rounded-lg lg:w-12 lg:h-12 bg-orange-100 dark:bg-orange-900/50">
-                    <OctagonAlert className="h-6 w-6 text-orange-500 dark:text-orange-400" />
+                  <div className="flex items-center justify-center w-10 h-10 rounded-lg lg:w-12 lg:h-12 bg-warning/10">
+                    <OctagonAlert className="h-6 w-6 text-warning" />
                   </div>
                   <div className="min-w-0">
                     <div className="text-xl font-bold lg:text-2xl">{stats?.activeIncidents ?? 0}</div>
@@ -477,8 +477,8 @@ export function StatusPageDetail({
             <Card className="overflow-hidden">
               <CardContent className="p-4 lg:p-6">
                 <div className="flex items-center gap-3 lg:gap-4">
-                  <div className="flex items-center justify-center w-10 h-10 rounded-lg lg:w-12 lg:h-12 bg-green-100 dark:bg-green-900/50">
-                    <Users className="h-6 w-6 text-green-600 dark:text-green-400" />
+                  <div className="flex items-center justify-center w-10 h-10 rounded-lg lg:w-12 lg:h-12 bg-success/10">
+                    <Users className="h-6 w-6 text-success" />
                   </div>
                   <div className="min-w-0">
                     <div className="text-xl font-bold lg:text-2xl">{stats?.subscribers ?? 0}</div>
@@ -494,12 +494,12 @@ export function StatusPageDetail({
                 <div className="flex items-center gap-3 lg:gap-4">
                   <div className={`flex items-center justify-center w-10 h-10 rounded-lg lg:w-12 lg:h-12 ${
                     (stats?.failedMonitors ?? 0) > 0
-                      ? "bg-red-100 dark:bg-red-900/50"
+                      ? "bg-failure/10"
                       : "bg-gray-100 dark:bg-gray-800/50"
                   }`}>
                     <AlertTriangle className={`h-6 w-6 ${
                       (stats?.failedMonitors ?? 0) > 0
-                        ? "text-red-600 dark:text-red-400"
+                        ? "text-failure"
                         : "text-gray-400 dark:text-gray-500"
                     }`} />
                   </div>

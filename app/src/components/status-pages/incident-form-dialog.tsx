@@ -142,11 +142,11 @@ const statusOptions: {
   {
     value: "investigating",
     label: "Investigating",
-    dotClassName: "bg-orange-500",
+    dotClassName: "bg-failure",
   },
-  { value: "identified", label: "Identified", dotClassName: "bg-yellow-500" },
+  { value: "identified", label: "Identified", dotClassName: "bg-warning" },
   { value: "monitoring", label: "Monitoring", dotClassName: "bg-blue-500" },
-  { value: "resolved", label: "Resolved", dotClassName: "bg-green-500" },
+  { value: "resolved", label: "Resolved", dotClassName: "bg-success" },
   { value: "scheduled", label: "Scheduled", dotClassName: "bg-purple-500" },
 ];
 
@@ -156,9 +156,9 @@ const impactOptions: {
   dotClassName: string;
 }[] = [
   { value: "none", label: "None", dotClassName: "bg-gray-400" },
-  { value: "minor", label: "Minor", dotClassName: "bg-yellow-500" },
-  { value: "major", label: "Major", dotClassName: "bg-orange-500" },
-  { value: "critical", label: "Critical", dotClassName: "bg-red-500" },
+  { value: "minor", label: "Minor", dotClassName: "bg-warning" },
+  { value: "major", label: "Major", dotClassName: "bg-failure/60" },
+  { value: "critical", label: "Critical", dotClassName: "bg-failure" },
 ];
 
 const componentStatusOptions: { value: ComponentStatus; label: string }[] = [
@@ -310,7 +310,7 @@ export function IncidentFormDialog({
                 disabled={isSubmitting}
               />
               {errors.name && (
-                <p className="text-xs text-red-500">{errors.name.message}</p>
+                <p className="text-xs text-failure">{errors.name.message}</p>
               )}
             </div>
 
@@ -325,7 +325,7 @@ export function IncidentFormDialog({
                 className="resize-none"
               />
               {errors.body && (
-                <p className="text-xs text-red-500">{errors.body.message}</p>
+                <p className="text-xs text-failure">{errors.body.message}</p>
               )}
               <p className="text-xs text-muted-foreground">
                 This update is published immediately. You can add more updates
@@ -429,7 +429,7 @@ export function IncidentFormDialog({
                       disabled={isSubmitting}
                     />
                     {errors.scheduledFor && (
-                      <p className="text-xs text-red-500">
+                      <p className="text-xs text-failure">
                         {errors.scheduledFor.message}
                       </p>
                     )}
@@ -445,7 +445,7 @@ export function IncidentFormDialog({
                       disabled={isSubmitting}
                     />
                     {errors.scheduledUntil && (
-                      <p className="text-xs text-red-500">
+                      <p className="text-xs text-failure">
                         {errors.scheduledUntil.message}
                       </p>
                     )}
@@ -519,7 +519,7 @@ export function IncidentFormDialog({
                 <p
                   id="affected-components-error"
                   role="alert"
-                  className="text-xs text-red-500"
+                  className="text-xs text-failure"
                 >
                   {errors.affectedComponentIds.message}
                 </p>

@@ -118,11 +118,11 @@ const statusOptions: { value: IncidentStatus; label: string; color: string }[] =
     {
       value: "investigating",
       label: "Investigating",
-      color: "text-orange-600",
+      color: "text-failure",
     },
-    { value: "identified", label: "Identified", color: "text-yellow-600" },
+    { value: "identified", label: "Identified", color: "text-warning" },
     { value: "monitoring", label: "Monitoring", color: "text-blue-600" },
-    { value: "resolved", label: "Resolved", color: "text-green-600" },
+    { value: "resolved", label: "Resolved", color: "text-success" },
     { value: "scheduled", label: "Scheduled", color: "text-purple-600" },
   ];
 
@@ -291,7 +291,7 @@ export function IncidentUpdateDialog({
                     disabled={isSubmitting}
                   />
                   {errors.scheduledFor && (
-                    <p className="text-xs text-red-500">
+                    <p className="text-xs text-failure">
                       {errors.scheduledFor.message}
                     </p>
                   )}
@@ -307,7 +307,7 @@ export function IncidentUpdateDialog({
                     disabled={isSubmitting}
                   />
                   {errors.scheduledUntil && (
-                    <p className="text-xs text-red-500">
+                    <p className="text-xs text-failure">
                       {errors.scheduledUntil.message}
                     </p>
                   )}
@@ -326,7 +326,7 @@ export function IncidentUpdateDialog({
               disabled={isSubmitting}
             />
             {errors.body && (
-              <p className="text-xs text-red-500">{errors.body.message}</p>
+              <p className="text-xs text-failure">{errors.body.message}</p>
             )}
           </div>
 
@@ -335,7 +335,7 @@ export function IncidentUpdateDialog({
               control={control}
               name="restoreComponentStatus"
               render={({ field }) => (
-                <div className="flex items-center gap-2 p-2.5 bg-green-50 dark:bg-green-950 rounded-md">
+                <div className="flex items-center gap-2 p-2.5 bg-success/10 rounded-md">
                   <Checkbox
                     id="restoreStatus"
                     checked={field.value}

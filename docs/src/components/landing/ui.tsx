@@ -65,55 +65,17 @@ export function CheckList({ items, area, className = "" }: { items: string[]; ar
   );
 }
 
-// Intrinsic sizes of the 1600px WebP copies in public/screenshots/site.
-const SHOT_HEIGHTS: Record<string, number> = {
-  "incident-workspace-overview": 1000,
-  "sre-copilot-chat": 1000,
-  "notification-channels": 1000,
-};
-
-/** Region of a screenshot to show, as fractions of the full image (0 to 1). */
-export type ShotFocus = { x: number; y: number; w: number; h: number };
-
-/**
- * Product screenshot in a framed panel. Screenshots are dark-theme captures in both site themes.
- * `focus` crops to the panel that matters with CSS, so the source image can be regenerated as is.
- */
-export function Screenshot({ src, alt, priority = false, focus }: { src: string; alt: string; priority?: boolean; focus?: ShotFocus }) {
-  const name = src.split("/").pop()?.replace(/\.webp$/, "") ?? "";
-  const height = SHOT_HEIGHTS[name] ?? 969;
-  const frame =
-    "overflow-hidden rounded-xl border border-fd-border bg-[#0a0a0a] shadow-[0_1px_2px_rgb(0_0_0/0.04),0_24px_48px_-24px_rgb(0_0_0/0.3)]";
-  if (!focus) {
-    return (
-      <div className={frame}>
-        <Image
-          src={versioned(src)}
-          alt={alt}
-          width={1600}
-          height={height}
-          sizes="(min-width: 1024px) 640px, 100vw"
-          className="h-auto w-full"
-          priority={priority}
-        />
-      </div>
-    );
-  }
+/** Product screenshot in a framed panel. Every site screenshot is a full 1600x969 dark-theme capture, so all frames match. */
+export function Screenshot({ src, alt, priority = false }: { src: string; alt: string; priority?: boolean }) {
   return (
-    <div className={`relative ${frame}`} style={{ aspectRatio: `${1600 * focus.w} / ${height * focus.h}` }}>
+    <div className="overflow-hidden rounded-xl border border-fd-border bg-[#0a0a0a] shadow-[0_1px_2px_rgb(0_0_0/0.04),0_24px_48px_-24px_rgb(0_0_0/0.3)]">
       <Image
         src={versioned(src)}
         alt={alt}
         width={1600}
-        height={height}
-        sizes="(min-width: 1024px) 900px, 130vw"
-        className="absolute max-w-none"
-        style={{
-          width: `${100 / focus.w}%`,
-          height: "auto",
-          left: `${(-focus.x / focus.w) * 100}%`,
-          top: `${(-focus.y / focus.h) * 100}%`,
-        }}
+        height={969}
+        sizes="(min-width: 1024px) 640px, 100vw"
+        className="h-auto w-full"
         priority={priority}
       />
     </div>

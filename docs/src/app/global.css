@@ -6,11 +6,11 @@
 :root {
   /* Blue stays the link and focus colour; primary buttons are black (see DESIGN.md). */
   --color-fd-primary: hsl(220, 90%, 56%);
-  /* Product areas, same values as app/src/app/globals.css. Chips, eyebrows and icons only. */
-  --automate: oklch(0.588 0.158 241.966);
-  --monitor: oklch(0.6 0.118 184.704);
-  --respond: oklch(0.646 0.222 41.116);
-  --communicate: oklch(0.592 0.249 0.584);
+  /* Product areas, same values as app/src/app/globals.css (700 shades, WCAG AA on cards). Chips, eyebrows and icons only. */
+  --automate: oklch(0.5 0.134 242.749);
+  --monitor: oklch(0.511 0.096 186.391);
+  --respond: oklch(0.553 0.195 38.402);
+  --communicate: oklch(0.525 0.223 3.958);
   --ai: oklch(0.541 0.281 293.009);
 }
 

@@ -9,7 +9,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { IconChip } from "@/components/ui/icon-chip";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
@@ -302,7 +302,7 @@ export default function StatusPagesList() {
         return {
           variant: "default" as const,
           className:
-            "bg-green-100 text-green-700 hover:bg-green-100 dark:bg-green-900/30 dark:text-green-400",
+            "bg-success/10 text-success hover:bg-success/10",
           icon: CheckCircle2,
           label: "Published",
         };
@@ -318,7 +318,7 @@ export default function StatusPagesList() {
         return {
           variant: "outline" as const,
           className:
-            "bg-orange-100 text-orange-700 hover:bg-orange-100 dark:bg-orange-900/30 dark:text-orange-400",
+            "bg-warning/10 text-warning hover:bg-warning/10",
           icon: Archive,
           label: "Archived",
         };
@@ -415,7 +415,7 @@ export default function StatusPagesList() {
                 </AlertDialogCancel>
                 <AlertDialogAction
                   onClick={confirmDelete}
-                  className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+                  className={buttonVariants({ variant: "destructive" })}
                 >
                   Delete
                 </AlertDialogAction>
@@ -433,7 +433,7 @@ export default function StatusPagesList() {
           <DashboardEmptyState
             title="No status pages yet"
             description="Create your first status page to communicate service status with your users"
-            icon={<Tally4 className="h-12 w-12 text-green-500" />}
+            icon={<Tally4 className="h-12 w-12 text-success" />}
             action={
               <Button
                 onClick={() => setIsCreateDialogOpen(true)}
@@ -468,7 +468,7 @@ export default function StatusPagesList() {
                     <div className="flex items-start justify-between gap-3 mb-3">
                       <div className="flex items-center gap-3 min-w-0 flex-1">
                         <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-primary/10 flex-shrink-0">
-                          <Tally4 className="h-5 w-5 text-green-500" />
+                          <Tally4 className="h-5 w-5 text-success" />
                         </div>
                         <div className="min-w-0 flex-1">
                           <h3 className="font-semibold text-base truncate group-hover:text-primary transition-colors">
@@ -531,7 +531,7 @@ export default function StatusPagesList() {
                             <DropdownMenuItem
                               onClick={() => handleDeleteClick(page)}
                               disabled={!canDelete}
-                              className="text-red-600 focus:text-red-600 cursor-pointer"
+                              className="text-failure focus:text-failure cursor-pointer"
                             >
                               <Trash2 className="h-4 w-4 mr-2" />
                               Delete
