@@ -18,6 +18,7 @@ jest.mock("@/lib/session-cache", () => ({ getCachedAuthSession: jest.fn(async ()
 import { getUnifiedAuthContext } from "@/lib/rbac/unified-auth";
 import { resolveProjectPermissionContext, checkPermissionWithContext, hasPermissionForUser } from "@/lib/rbac/middleware";
 import { clearDeletionStateCache, isOrgPendingDeletion, isProjectDeleted, invalidateOrgState, isProjectOrgPending, organizationGraceDays } from "./org-state";
+import { notInPendingOrganization } from "./org-state";
 import { isFreshSession, reauthMaxAgeSeconds } from "./reauth";
 
 const name = `deletion_guards_${randomUUID().replaceAll("-", "")}`;
@@ -104,6 +105,18 @@ describe("pending flag rides on the rows the auth paths already read", () => {
     expect(await resolveProjectPermissionContext(seeded.userId, seeded.projectId)).toBeNull();
     expect((await getUnifiedAuthContext(seeded.token)).projectId).toBeNull();
     expect(await isProjectDeleted(seeded.projectId, { fresh: true })).toBe(true);
+  });
+});
+
+describe("scheduler predicate", () => {
+  it("excludes jobs of pending organizations and keeps the rest", async () => {
+    const pending = await seed();
+    const normal = await seed();
+    for (const s of [pending, normal]) await mockDatabase.insert(schema.jobs).values({ organizationId: s.orgId, projectId: s.projectId, name: "J", cronSchedule: "* * * * *" });
+    await makePending(pending.orgId);
+    const rows = await mockDatabase.select({ org: schema.jobs.organizationId }).from(schema.jobs).where(notInPendingOrganization(schema.jobs.organizationId));
+    expect(rows.map((r) => r.org)).toContain(normal.orgId);
+    expect(rows.map((r) => r.org)).not.toContain(pending.orgId);
   });
 });
 

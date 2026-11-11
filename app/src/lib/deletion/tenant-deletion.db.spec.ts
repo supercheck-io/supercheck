@@ -348,6 +348,27 @@ describe("organization deletion billing (Polar mocked)", () => {
     expect(mockPolarUpdate).toHaveBeenLastCalledWith("sub_3", { cancel_at_period_end: false });
   });
 
+  it("a provider outage while cancelling the deletion restores the organization anyway and reports it", async () => {
+    cloud();
+    mockPolarGet.mockResolvedValueOnce({ cancel_at_period_end: false, status: "active" }).mockRejectedValue(new Error("polar down"));
+    const seeded = await seedOrg({ subscription: "sub_8" });
+    await requestOrganizationDeletion({ organizationId: seeded.orgId, actorUserId: seeded.ownerId, guard: { ownerUserId: seeded.ownerId } });
+    const outcome = await cancelOrganizationDeletion({ organizationId: seeded.orgId, actorUserId: seeded.ownerId });
+    expect(outcome.billing).toBe("failed");
+    expect((await orgRow(seeded.orgId)).deletion_requested_at).toBeNull();
+  });
+
+  it("a refused (too late) cancel never touches billing", async () => {
+    cloud();
+    mockPolarGet.mockResolvedValue({ cancel_at_period_end: false, status: "active" });
+    const seeded = await seedOrg({ subscription: "sub_9" });
+    await requestOrganizationDeletion({ organizationId: seeded.orgId, actorUserId: seeded.ownerId, guard: { ownerUserId: seeded.ownerId } });
+    mockPolarUpdate.mockClear();
+    await makeDue(seeded.orgId);
+    await expect(cancelOrganizationDeletion({ organizationId: seeded.orgId, actorUserId: seeded.ownerId })).rejects.toMatchObject({ code: "PURGE_STARTED" });
+    expect(mockPolarUpdate).not.toHaveBeenCalled();
+  });
+
   it("a provider outage at request time leaves the cancellation for the sweep to retry", async () => {
     cloud();
     mockPolarGet.mockRejectedValueOnce(new Error("polar down")).mockResolvedValue({ cancel_at_period_end: false, status: "active" });

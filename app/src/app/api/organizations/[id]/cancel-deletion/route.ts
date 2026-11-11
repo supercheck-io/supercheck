@@ -9,7 +9,7 @@ import { OrganizationDeletionError, cancelOrganizationDeletion } from "@/lib/del
 /**
  * POST /api/organizations/[id]/cancel-deletion
  * Owner cancels a pending deletion during the window. 409 PURGE_STARTED once the window is over.
- * Response: { success, billing: "reinstated" | "ended" | "skipped" | "none" } ("ended": the paid period already finished, resubscribe).
+ * Response: { success, billing: "reinstated" | "ended" | "skipped" | "none" | "failed" } ("ended": the paid period already finished, resubscribe; "failed": the organization is restored but renewal could not be re-enabled, use the billing portal).
  */
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {

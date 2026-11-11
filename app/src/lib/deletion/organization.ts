@@ -123,35 +123,35 @@ export async function retryPendingBillingCancels(limit = 25): Promise<number> {
  * Owner cancels during the window. Refused once the window has passed or the purge has started (decided under the org
  * row lock, the same lock the purge's first step takes). Reinstates a billing cancellation only if this flow made it.
  */
-export async function cancelOrganizationDeletion(input: { organizationId: string; actorUserId: string }): Promise<{ billing: "reinstated" | "ended" | "skipped" | "none" }> {
-  const [current] = await db.select({
-    id: organization.id, subscriptionId: organization.subscriptionId, polarCustomerId: organization.polarCustomerId,
-    pending: organization.deletionRequestedAt, purgeAfter: organization.deletionPurgeAfter, meta: organization.deletionMeta,
-  }).from(organization).where(eq(organization.id, input.organizationId));
-  if (!current?.pending) throw new OrganizationDeletionError("This organization is not scheduled for deletion", 409, "NOT_PENDING");
-  const meta = current.meta as DeletionMeta;
+export async function cancelOrganizationDeletion(input: { organizationId: string; actorUserId: string }): Promise<{ billing: "reinstated" | "ended" | "skipped" | "none" | "failed" }> {
   const tooLate = () => new OrganizationDeletionError("The deletion window has ended and the purge has started; it can no longer be cancelled", 409, "PURGE_STARTED");
-  if (meta.purgeStartedAt || (current.purgeAfter && current.purgeAfter.getTime() <= Date.now())) throw tooLate();
-
-  let billing: "reinstated" | "ended" | "skipped" | "none" = "none";
-  if (meta.billingCancelRequested) {
-    try { billing = await reinstateSubscription(current); }
-    catch (error) {
-      if (error instanceof BillingCancellationError) throw new OrganizationDeletionError(error.message, 502, "BILLING_UNAVAILABLE");
-      throw error;
-    }
-  }
-  await db.transaction(async (tx) => {
+  // Decide and clear under the organization row lock, the same lock the purge's first step takes: after this commits the
+  // purge sees a non-pending organization and does nothing, and before it the purge's stamp makes this refuse.
+  const cleared = await db.transaction(async (tx) => {
     await lockTimeout(tx);
-    const [org] = await tx.select({ pending: organization.deletionRequestedAt, purgeAfter: organization.deletionPurgeAfter, meta: organization.deletionMeta })
-      .from(organization).where(eq(organization.id, input.organizationId)).for("update");
+    const [org] = await tx.select({
+      id: organization.id, subscriptionId: organization.subscriptionId, polarCustomerId: organization.polarCustomerId,
+      pending: organization.deletionRequestedAt, expired: sql<boolean>`${organization.deletionPurgeAfter} <= now()`, meta: organization.deletionMeta,
+    }).from(organization).where(eq(organization.id, input.organizationId)).for("update");
     if (!org?.pending) throw new OrganizationDeletionError("This organization is not scheduled for deletion", 409, "NOT_PENDING");
-    if ((org.meta as DeletionMeta).purgeStartedAt || (org.purgeAfter && org.purgeAfter.getTime() <= Date.now())) throw tooLate();
+    if ((org.meta as DeletionMeta).purgeStartedAt || org.expired) throw tooLate();
     await tx.update(organization).set({ deletionRequestedAt: null, deletionPurgeAfter: null, deletionRequestedByUserId: null, deletionMeta: {} })
       .where(eq(organization.id, input.organizationId));
     await closeDeletionJobs(tx, "organization", input.organizationId);
+    return { org: { id: org.id, subscriptionId: org.subscriptionId, polarCustomerId: org.polarCustomerId }, billingCancelRequested: !!(org.meta as DeletionMeta).billingCancelRequested };
   });
   invalidateOrgState(input.organizationId);
+
+  // After the commit, and only for a cancellation this flow made. The organization is already back to normal, so a provider
+  // outage is reported (the owner can restore renewal in the billing portal) instead of undoing the cancel.
+  let billing: "reinstated" | "ended" | "skipped" | "none" | "failed" = "none";
+  if (cleared.billingCancelRequested) {
+    try { billing = await reinstateSubscription(cleared.org); }
+    catch (error) {
+      if (!(error instanceof BillingCancellationError)) throw error;
+      billing = "failed";
+    }
+  }
   await logAuditEvent({
     userId: input.actorUserId, organizationId: input.organizationId, action: "organization_deletion_cancelled", resource: "organization",
     resourceId: input.organizationId, metadata: { billing }, success: true,
