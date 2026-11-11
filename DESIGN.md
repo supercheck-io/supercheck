@@ -86,7 +86,7 @@ Flat by default: borders (`border`) separate surfaces. Use `shadow-sm` on page c
 
 ## 9. Raw colour guard
 
-`app/src/lib/design-tokens.spec.ts` counts raw palette classes (`text-green-500`, `bg-amber-100`, ...) in `app/src` and fails if the count rises above its `BASELINE`. When you remove raw colours, lower the baseline in the same PR. Never raise it. Exempt paths: emails (clients need inline colours), `components/logo/`, the central maps (`table-badge.tsx`, `icon-chip.tsx`, `alert.tsx`), user-chosen tag colours (`tag-selector.tsx`), and the public status pages (`status-pages/public-*`, customer branding).
+`app/src/lib/design-tokens.spec.ts` counts raw palette classes (`text-green-500`, `bg-amber-100`, ...) in `app/src` and fails if the count rises above its `BASELINE`. Raw neutral greys (`text-gray-500`, `bg-zinc-100`, ...) have their own `NEUTRAL_BASELINE`; use `text-muted-foreground`, `bg-muted`, `border` and `bg-accent` instead. When you remove raw colours, lower the baseline in the same PR. Never raise it. Exempt paths: emails (clients need inline colours), `components/logo/`, the central maps (`table-badge.tsx`, `icon-chip.tsx`, `alert.tsx`), user-chosen tag colours (`tag-selector.tsx`), and the public status pages (`status-pages/public-*`, customer branding).
 
 Category colours with no token (user roles, file types, notification providers, priority levels) stay in one map per feature. Don't scatter them across components.
 
