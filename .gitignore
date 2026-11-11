@@ -230,3 +230,6 @@ supercheck.state.json.lock
 
 # Agent and contributor git worktrees
 .worktrees/
+
+# playwright-cli session snapshots
+.playwright-cli/
