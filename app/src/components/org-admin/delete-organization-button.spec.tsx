@@ -6,7 +6,7 @@ import { DeleteOrganizationButton } from "./delete-organization-button";
 jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
 jest.mock("@/hooks/use-project-context", () => ({ clearProjectsCache: jest.fn() }));
 const signOut = jest.fn();
-jest.mock("@/utils/auth-client", () => ({ signOut: (...a: unknown[]) => signOut(...a) }));
+jest.mock("@/utils/auth-client", () => ({ signOut: (...a: unknown[]) => { signOut(...a); return Promise.resolve(); } }));
 const fetchMock = jest.fn();
 
 const info = (over: Record<string, unknown> = {}) => ({ json: async () => ({ deletion: { graceDays: 14, emailAvailable: true, hasSubscription: true, pending: false, ...over } }) });

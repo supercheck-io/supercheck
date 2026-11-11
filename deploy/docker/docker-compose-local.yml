@@ -209,6 +209,9 @@ x-common-env: &common-env # Database Configuration
   SMTP_FROM_NAME: ${SMTP_FROM_NAME:-}
   SMTP_REPLY_TO: ${SMTP_REPLY_TO:-}
   SMTP_BLOCKED_RECIPIENT_DOMAINS: ${SMTP_BLOCKED_RECIPIENT_DOMAINS:-}
+  ORG_DELETION_GRACE_DAYS: ${ORG_DELETION_GRACE_DAYS:-}
+  ORG_DELETION_REAUTH_MINUTES: ${ORG_DELETION_REAUTH_MINUTES:-}
+  AUDIT_EMAIL_SCRUB_DAYS: ${AUDIT_EMAIL_SCRUB_DAYS:-}
 
   # ==========================================================================
   # AI Features Configuration (AI Fix, AI Create, AI Analyze)

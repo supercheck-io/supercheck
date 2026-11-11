@@ -83,7 +83,7 @@ export function DeleteOrganizationButton({ organizationId, organizationName }: D
   };
 
   const handleReauth = async () => {
-    await signOut();
+    await signOut().catch(() => undefined);
     window.location.replace(new URL("/sign-in?next=%2Forg-admin", window.location.origin));
   };
 
@@ -121,18 +121,20 @@ export function DeleteOrganizationButton({ organizationId, organizationName }: D
             <DialogDescription>
               {requested
                 ? `${organizationName} is scheduled for deletion.`
-                : `Schedule ${organizationName} for deletion. You can cancel during the ${graceDays}-day window.`}
+                : graceDays > 0
+                  ? `Schedule ${organizationName} for deletion. You can cancel during the ${graceDays}-day window.`
+                  : `Delete ${organizationName}. There is no cancellation window.`}
             </DialogDescription>
           </DialogHeader>
           {requested ? (
             <Alert>
               <AlertTitle>{emailed ? "We emailed the organization owners" : "Confirmed. No email was sent"}</AlertTitle>
               <AlertDescription>
-                {requested.purgeAfter ? `Everything is deleted permanently on ${new Date(requested.purgeAfter).toLocaleDateString()} unless you cancel. ` : ""}
-                {emailed
-                  ? "Reminders follow before the deletion. "
-                  : "This server cannot send email, so keep this date. "}
-                Cancel any time before then from the banner at the top of the app.
+                {graceDays === 0
+                  ? "Everything is being deleted now."
+                  : `${requested.purgeAfter ? `Everything is deleted permanently on ${new Date(requested.purgeAfter).toLocaleDateString()} unless you cancel. ` : ""}${
+                      emailed ? "Reminders follow before the deletion. " : "This server cannot send email, so keep this date. "
+                    }Cancel any time before then from the banner at the top of the app.`}
               </AlertDescription>
             </Alert>
           ) : (

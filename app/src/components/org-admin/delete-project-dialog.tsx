@@ -67,7 +67,7 @@ export function DeleteProjectDialog({ project, onOpenChange, onDeleted }: Delete
           <Input id="delete-project-confirm" value={typedName} onChange={(e) => setTypedName(e.target.value)} placeholder={expected} autoComplete="off" disabled={busy} />
         </form>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>Cancel</Button>
+          <Button variant="outline" onClick={() => { setTypedName(""); onOpenChange(false); }} disabled={busy}>Cancel</Button>
           <Button variant="destructive" onClick={() => void submit()} disabled={!confirmed || busy}>
             {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Delete project

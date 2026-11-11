@@ -31,14 +31,16 @@ export function DeletionPanel({ organizations, onChanged }: { organizations: Adm
   const [reason, setReason] = useState("");
   const [typedId, setTypedId] = useState("");
   const [busy, setBusy] = useState(false);
+  const [retrying, setRetrying] = useState<string | null>(null);
   const pending = organizations.filter((o) => o.deletionRequestedAt);
 
-  const { data: jobs = null, refetch } = useQuery({
+  const { data: jobs = null, isError, refetch } = useQuery({
     queryKey: ["super-admin", "deletion-jobs"],
     queryFn: async (): Promise<DeletionJob[]> => {
-      const res = await fetch("/api/admin/deletion-jobs").catch(() => null);
-      const data = await res?.json().catch(() => null);
-      return res?.ok && Array.isArray(data?.data) ? data.data : [];
+      const res = await fetch("/api/admin/deletion-jobs");
+      if (!res.ok) throw new Error("Failed to load deletion jobs");
+      const data = await res.json().catch(() => null);
+      return Array.isArray(data?.data) ? data.data : [];
     },
     staleTime: 0,
   });
@@ -74,11 +76,13 @@ export function DeletionPanel({ organizations, onChanged }: { organizations: Adm
   };
 
   const retry = async (id: string) => {
+    setRetrying(id);
     const res = await fetch("/api/admin/deletion-jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) }).catch(() => null);
     if (res?.ok) {
       toast.success("Retry queued");
       void loadJobs();
     } else toast.error("Only a failed deletion job can be retried");
+    setRetrying(null);
   };
 
   return (
@@ -97,7 +101,7 @@ export function DeletionPanel({ organizations, onChanged }: { organizations: Adm
                     Purge on {o.deletionPurgeAfter ? new Date(o.deletionPurgeAfter).toLocaleString() : "unknown"}
                   </span>
                 </span>
-                <Button size="sm" variant="destructive" onClick={() => { setTarget(o); setReason(""); setTypedId(""); }}>
+                <Button size="sm" variant="destructive" aria-label={`Purge ${o.name} now`} onClick={() => { setTarget(o); setReason(""); setTypedId(""); }}>
                   Purge now
                 </Button>
               </li>
@@ -108,7 +112,9 @@ export function DeletionPanel({ organizations, onChanged }: { organizations: Adm
 
       <section aria-label="Deletion jobs" className="space-y-2">
         <h3 className="text-sm font-semibold">Unfinished deletion jobs</h3>
-        {jobs === null ? (
+        {isError ? (
+          <p role="alert" className="text-sm text-destructive">Could not load deletion jobs. Reload to try again.</p>
+        ) : jobs === null ? (
           <p className="text-sm text-muted-foreground">Loading...</p>
         ) : jobs.length === 0 ? (
           <p className="text-sm text-muted-foreground">None.</p>
@@ -128,7 +134,7 @@ export function DeletionPanel({ organizations, onChanged }: { organizations: Adm
                   </span>
                 </span>
                 {j.state === "failed" && (
-                  <Button size="sm" variant="outline" onClick={() => void retry(j.id)}>
+                  <Button size="sm" variant="outline" disabled={retrying === j.id} aria-label={`Retry ${j.scope} deletion ${j.targetId.slice(0, 8)}`} onClick={() => void retry(j.id)}>
                     Retry
                   </Button>
                 )}
@@ -148,7 +154,7 @@ export function DeletionPanel({ organizations, onChanged }: { organizations: Adm
           </DialogHeader>
           <div className="space-y-2">
             <Label htmlFor="purge-reason">Reason (at least {MIN_PURGE_REASON} characters)</Label>
-            <Textarea id="purge-reason" value={reason} onChange={(e) => setReason(e.target.value)} disabled={busy} />
+            <Textarea id="purge-reason" maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} disabled={busy} />
           </div>
           <div className="space-y-2">
             <Label htmlFor="purge-org-id">Type the organization ID to confirm</Label>

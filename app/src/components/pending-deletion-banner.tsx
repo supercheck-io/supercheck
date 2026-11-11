@@ -63,7 +63,7 @@ export function PendingDeletionBanner({ organizationId, pending, isOwner }: { or
 
   const canCancel = isOwner && data?.canCancel !== false;
   return (
-    <div role="alert" className="flex flex-wrap items-center justify-between gap-2 border-b bg-red-50 px-4 py-2 text-sm text-red-900 dark:bg-red-950/40 dark:text-red-100">
+    <div role="status" className="flex flex-wrap items-center justify-between gap-2 border-b bg-destructive/10 px-4 py-2 text-sm text-destructive">
       <span className="flex items-center gap-2">
         <Trash2 className="h-4 w-4 shrink-0" aria-hidden />
         <span>

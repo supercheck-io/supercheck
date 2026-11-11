@@ -27,7 +27,7 @@ it("lists only pending organizations and failed jobs", async () => {
 it("requires a reason and the organization id before purging", async () => {
   const onChanged = jest.fn();
   render(<QueryClientProvider client={new QueryClient()}><DeletionPanel organizations={orgs} onChanged={onChanged} /></QueryClientProvider>);
-  fireEvent.click(await screen.findByRole("button", { name: "Purge now" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Purge Acme now" }));
   const go = screen.getByRole("button", { name: "Purge organization" });
   expect(go).toBeDisabled();
   fireEvent.change(screen.getByLabelText(/Reason/), { target: { value: "too short" } });

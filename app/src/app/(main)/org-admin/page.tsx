@@ -84,6 +84,7 @@ import {
 import { normalizeRole } from "@/lib/rbac/role-normalizer";
 import { z } from "zod";
 import { useAppConfig } from "@/hooks/use-app-config";
+import { reloadProjectContext } from "@/lib/project-navigation";
 import { clearProjectsCache, useProjectContext } from "@/hooks/use-project-context";
 import {
   getSreAdminQueryKey,
@@ -211,7 +212,7 @@ function OrgAdminDashboardContent() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
-  const { projectId } = useProjectContext();
+  const { projectId, refreshProjects } = useProjectContext();
 
   const isMounted = useSyncExternalStore(
     () => () => {},
@@ -892,6 +893,8 @@ function OrgAdminDashboardContent() {
                 onRestored={() => {
                   invalidateProjects();
                   invalidateStats();
+                  clearProjectsCache();
+                  void refreshProjects();
                 }}
               />
               <DeleteProjectDialog
@@ -901,7 +904,12 @@ function OrgAdminDashboardContent() {
                   setDeletedRefresh((n) => n + 1);
                   invalidateProjects();
                   invalidateStats();
-                  clearProjectsCache();
+                  // The active project may be the deleted one: reload it away so nothing keeps calling it.
+                  if (deleteTarget?.id === projectId) reloadProjectContext(clearProjectsCache);
+                  else {
+                    clearProjectsCache();
+                    void refreshProjects();
+                  }
                 }}
               />
             </>

@@ -91,9 +91,6 @@ export default async function MainLayout({
   let isOrgOwner = false;
 
   if (user && org) {
-    if (orgPendingDeletion) {
-      isOrgOwner = (await getUserOrgRole(user.id, org.id).catch(() => null)) === Role.ORG_OWNER;
-    }
     // Derive subscription status from org data already fetched (avoids client-side API call)
     initialSubscriptionStatus = deriveInitialSubscriptionStatus(
       org,
@@ -102,8 +99,11 @@ export default async function MainLayout({
     // A free trial is separate from a paid subscription; without it an
     // unsubscribed organization would be sent to the subscribe page.
     // Only paying org admins can see or change the cap, so only they poll it.
-    if (!initialIsSelfHosted && initialSubscriptionStatus.isActive) {
-      const role = await getUserOrgRole(user.id, org.id).catch(() => null);
+    // One role lookup serves the spending-cap banner and the pending-deletion banner.
+    const needsSpendingCapRole = !initialIsSelfHosted && initialSubscriptionStatus.isActive;
+    const role = needsSpendingCapRole || orgPendingDeletion ? await getUserOrgRole(user.id, org.id).catch(() => null) : null;
+    isOrgOwner = role === Role.ORG_OWNER;
+    if (needsSpendingCapRole) {
       showSpendingCap = role === Role.ORG_ADMIN || role === Role.ORG_OWNER;
     }
     if (!initialIsSelfHosted && !initialSubscriptionStatus.isActive) {
