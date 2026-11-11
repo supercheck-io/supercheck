@@ -148,7 +148,7 @@ function StepIndicator({ currentStep }: { currentStep: number }) {
                             <div
                                 className={cn(
                                     "w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300",
-                                    isCompleted && "bg-green-500/10 text-green-500",
+                                    isCompleted && "bg-success/10 text-success",
                                     isActive && "bg-primary/10 text-primary ring-2 ring-primary/30",
                                     !isCompleted && !isActive && "bg-muted text-muted-foreground"
                                 )}
@@ -159,7 +159,7 @@ function StepIndicator({ currentStep }: { currentStep: number }) {
                                 className={cn(
                                     "text-xs mt-1.5 font-medium",
                                     isActive && "text-primary",
-                                    isCompleted && "text-green-500",
+                                    isCompleted && "text-success",
                                     !isActive && !isCompleted && "text-muted-foreground"
                                 )}
                             >
@@ -170,7 +170,7 @@ function StepIndicator({ currentStep }: { currentStep: number }) {
                             <div
                                 className={cn(
                                     "w-12 h-0.5 mx-2 mt-[-1rem] transition-colors duration-300",
-                                    isCompleted ? "bg-green-500" : "bg-muted"
+                                    isCompleted ? "bg-success" : "bg-muted"
                                 )}
                             />
                         )}
@@ -383,7 +383,7 @@ export function UploadDocumentDialog({
             <DialogContent className="max-w-5xl max-h-[90vh] min-w-4xl overflow-hidden flex flex-col">
                 <DialogHeader className="pb-2">
                     <DialogTitle className="flex items-center gap-2 text-xl">
-                        <Sparkles className="h-6 w-6 text-purple-500" />
+                        <Sparkles className="h-6 w-6 text-ai" />
                         Extract Requirements from Document
                     </DialogTitle>
                     <DialogDescription className="text-sm">
@@ -437,7 +437,7 @@ export function UploadDocumentDialog({
                             {/* How it works section */}
                             <div className="border rounded-lg p-4 bg-muted/30">
                                 <div className="flex items-center gap-2 mb-3">
-                                    <Lightbulb className="h-4 w-4 text-amber-500" />
+                                    <Lightbulb className="h-4 w-4 text-warning" />
                                     <span className="font-medium text-sm">How it works</span>
                                 </div>
                                 <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
@@ -504,11 +504,11 @@ export function UploadDocumentDialog({
                                 <div className="flex items-center gap-3">
                                     <div className={cn(
                                         "w-10 h-10 rounded-lg flex items-center justify-center",
-                                        extractedRequirements.length > 0 ? "bg-green-500/10" : "bg-amber-500/10"
+                                        extractedRequirements.length > 0 ? "bg-success/10" : "bg-warning/10"
                                     )}>
                                         <FileText className={cn(
                                             "h-5 w-5",
-                                            extractedRequirements.length > 0 ? "text-green-500" : "text-amber-500"
+                                            extractedRequirements.length > 0 ? "text-success" : "text-warning"
                                         )} />
                                     </div>
                                     <div>
@@ -527,8 +527,8 @@ export function UploadDocumentDialog({
 
                             {extractedRequirements.length === 0 ? (
                                 <div className="border rounded-lg p-6 bg-muted/20 text-center">
-                                    <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-amber-500/10 flex items-center justify-center">
-                                        <AlertCircle className="h-6 w-6 text-amber-500" />
+                                    <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-warning/10 flex items-center justify-center">
+                                        <AlertCircle className="h-6 w-6 text-warning" />
                                     </div>
                                     <p className="font-medium text-foreground mb-2">No testable requirements found</p>
                                     <p className="text-sm text-muted-foreground mb-4 max-w-md mx-auto">
@@ -633,11 +633,11 @@ export function UploadDocumentDialog({
                     {/* Done State */}
                     {state === "done" && (
                         <div className="py-6 text-center">
-                            <div className="w-14 h-14 mx-auto mb-4 rounded-full bg-green-500/10 flex items-center justify-center">
-                                <CheckCircle2 className="h-7 w-7 text-green-500" />
+                            <div className="w-14 h-14 mx-auto mb-4 rounded-full bg-success/10 flex items-center justify-center">
+                                <CheckCircle2 className="h-7 w-7 text-success" />
                             </div>
 
-                            <p className="text-lg font-semibold text-green-500 mb-1">
+                            <p className="text-lg font-semibold text-success mb-1">
                                 Requirements created successfully!
                             </p>
                             <p className="text-sm text-muted-foreground mb-5">
@@ -647,7 +647,7 @@ export function UploadDocumentDialog({
                             {/* What's Next Section - matching How it works style */}
                             <div className="border rounded-lg p-4 bg-muted/30 text-left">
                                 <div className="flex items-center gap-2 mb-3">
-                                    <Lightbulb className="h-4 w-4 text-amber-500" />
+                                    <Lightbulb className="h-4 w-4 text-warning" />
                                     <span className="font-medium text-sm">What&apos;s Next?</span>
                                 </div>
 
@@ -699,10 +699,10 @@ export function UploadDocumentDialog({
                     {/* Error State */}
                     {state === "error" && (
                         <div className="py-10 text-center">
-                            <div className="w-16 h-16 mx-auto mb-5 rounded-full bg-red-500/10 flex items-center justify-center">
-                                <AlertCircle className="h-8 w-8 text-red-500" />
+                            <div className="w-16 h-16 mx-auto mb-5 rounded-full bg-failure/10 flex items-center justify-center">
+                                <AlertCircle className="h-8 w-8 text-failure" />
                             </div>
-                            <p className="text-lg font-semibold text-red-500 mb-2">
+                            <p className="text-lg font-semibold text-failure mb-2">
                                 Something went wrong
                             </p>
                             <p className="text-sm text-muted-foreground mb-5 max-w-md mx-auto">{error}</p>

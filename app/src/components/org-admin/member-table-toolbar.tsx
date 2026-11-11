@@ -77,9 +77,9 @@ export function MemberTableToolbar<TData>({
   const getStatusColor = (status: string) => {
     if (!status || typeof status !== 'string') return 'text-gray-600';
     switch (status) {
-      case 'active': return 'text-green-600';
-      case 'pending': return 'text-yellow-600';
-      case 'expired': return 'text-red-600';
+      case 'active': return 'text-success';
+      case 'pending': return 'text-warning';
+      case 'expired': return 'text-failure';
       default: return 'text-gray-600';
     }
   };
@@ -119,7 +119,7 @@ export function MemberTableToolbar<TData>({
           {(table.getState().globalFilter as string)?.length > 0 && (
             <button
               type="reset"
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-red-500 rounded-sm bg-red-200 p-0.5"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-failure rounded-sm bg-failure/10 p-0.5"
               onClick={() => table.setGlobalFilter("")}
               tabIndex={0}
               aria-label="Clear search"

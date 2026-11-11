@@ -2,7 +2,7 @@
 
 import { DeliveryHistory } from "./delivery-history";
 import React, { useState, useEffect, useCallback } from "react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Table,
@@ -333,8 +333,8 @@ export function SubscribersTab({ statusPageId, canUpdate }: SubscribersTabProps)
             </div>
             <div className="p-4 border rounded-lg bg-muted/30">
               <div className="flex items-center gap-3">
-                <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-green-100 dark:bg-green-900/50">
-                  <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
+                <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-success/10">
+                  <CheckCircle2 className="h-5 w-5 text-success" />
                 </div>
                 <div>
                   <div className="text-2xl font-bold">-</div>
@@ -344,8 +344,8 @@ export function SubscribersTab({ statusPageId, canUpdate }: SubscribersTabProps)
             </div>
             <div className="p-4 border rounded-lg bg-muted/30">
               <div className="flex items-center gap-3">
-                <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-amber-100 dark:bg-amber-900/50">
-                  <Clock className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-warning/10">
+                  <Clock className="h-5 w-5 text-warning" />
                 </div>
                 <div>
                   <div className="text-2xl font-bold">-</div>
@@ -441,8 +441,8 @@ export function SubscribersTab({ statusPageId, canUpdate }: SubscribersTabProps)
           </div>
           <div className="p-4 border rounded-lg bg-muted/30">
             <div className="flex items-center gap-3">
-              <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-green-100 dark:bg-green-900/50">
-                <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
+              <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-success/10">
+                <CheckCircle2 className="h-5 w-5 text-success" />
               </div>
               <div>
                 <div className="text-2xl font-bold">{stats.verified}</div>
@@ -452,8 +452,8 @@ export function SubscribersTab({ statusPageId, canUpdate }: SubscribersTabProps)
           </div>
           <div className="p-4 border rounded-lg bg-muted/30">
             <div className="flex items-center gap-3">
-              <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-amber-100 dark:bg-amber-900/50">
-                <Clock className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+              <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-warning/10">
+                <Clock className="h-5 w-5 text-warning" />
               </div>
               <div>
                 <div className="text-2xl font-bold">{stats.pending}</div>
@@ -624,7 +624,7 @@ export function SubscribersTab({ statusPageId, canUpdate }: SubscribersTabProps)
                           )}
                           {subscriber.mode === "webhook" && (
                             <>
-                              <Webhook className="h-4 w-4 text-green-500" />
+                              <Webhook className="h-4 w-4 text-success" />
                               <span className="capitalize">Webhook</span>
                             </>
                           )}
@@ -640,19 +640,19 @@ export function SubscribersTab({ statusPageId, canUpdate }: SubscribersTabProps)
                       <TableCell>
                         {subscriber.quarantinedAt ? (
                           <Badge
-                            className="bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
+                            className="bg-failure/10 text-failure"
                             title="Delivery paused after repeated failures. A successful webhook test or resubscribing re-enables it."
                           >
                             <AlertCircle className="h-3 w-3 mr-1" />
                             Quarantined
                           </Badge>
                         ) : subscriber.verifiedAt ? (
-                          <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                          <Badge className="bg-success/10 text-success">
                             <CheckCircle2 className="h-3 w-3 mr-1" />
                             Verified
                           </Badge>
                         ) : (
-                          <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200">
+                          <Badge className="bg-warning/10 text-warning">
                             <Clock className="h-3 w-3 mr-1" />
                             Pending
                           </Badge>
@@ -721,7 +721,7 @@ export function SubscribersTab({ statusPageId, canUpdate }: SubscribersTabProps)
                               setSubscriberToDelete(subscriber.id);
                               setDeleteDialogOpen(true);
                             }}
-                            className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
+                            className="h-8 w-8 p-0 text-failure hover:text-failure hover:bg-failure/10"
                             title="Delete subscriber"
                           >
                             <Trash2 className="h-4 w-4" />
@@ -857,7 +857,7 @@ export function SubscribersTab({ statusPageId, canUpdate }: SubscribersTabProps)
               <AlertDialogCancel>Cancel</AlertDialogCancel>
               <AlertDialogAction
                 onClick={handleDelete}
-                className="bg-red-600 hover:bg-red-700"
+                className={buttonVariants({ variant: "destructive" })}
               >
                 Remove
               </AlertDialogAction>

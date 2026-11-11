@@ -96,11 +96,11 @@ const statusClasses: Record<SreConnectorListItem["status"], string> = {
   configured:
     "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900/60 dark:bg-sky-950/40 dark:text-sky-300",
   valid:
-    "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300",
+    "border-success/30 bg-success/10 text-success",
   unreachable:
-    "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300",
+    "border-warning/30 bg-warning/10 text-warning",
   missing_credentials:
-    "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300",
+    "border-warning/30 bg-warning/10 text-warning",
   disabled:
     "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300",
 };
@@ -116,13 +116,13 @@ const jobStatusClasses: Record<
   running:
     "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900/60 dark:bg-sky-950/40 dark:text-sky-300",
   completed:
-    "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300",
+    "border-success/30 bg-success/10 text-success",
   failed:
-    "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300",
+    "border-failure/30 bg-failure/10 text-failure",
   cancelled:
     "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300",
   timed_out:
-    "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300",
+    "border-warning/30 bg-warning/10 text-warning",
 };
 
 const evidenceSearchConnectorTypes = new Set([
@@ -828,7 +828,7 @@ export function ConnectorAdminView({
                   <div className="space-y-4">
                     <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/20 px-3 py-2.5">
                       <div className="flex items-center gap-2">
-                        <ShieldCheck className="h-4 w-4 text-emerald-500" />
+                        <ShieldCheck className="h-4 w-4 text-success" />
                         <span className="text-sm font-medium">
                           Bounded search
                         </span>
@@ -957,7 +957,7 @@ export function ConnectorAdminView({
                         )}
                       </div>
                       {availableServices.length === 0 && (
-                        <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200 sm:col-span-2">
+                        <div className="rounded-md border border-warning/30 bg-warning/10 p-3 text-sm text-warning sm:col-span-2">
                           No matching services are available for this connector
                           scope.
                         </div>
