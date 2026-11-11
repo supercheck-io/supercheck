@@ -73,7 +73,7 @@ interface AlertConfiguration {
 }
 
 const jobFormSchema = z.object({
-  name: z.string().min(1, "Job name is required"),
+  name: z.string().min(1, "Title is required"),
   description: z.string().min(1, "Job description is required"),
   cronSchedule: z.string().optional(),
 });
@@ -580,7 +580,7 @@ export default function EditJob({ jobId, initialJobData }: EditJobProps) {
                       field: ControllerRenderProps<FormData, "name">;
                     }) => (
                       <FormItem>
-                        <FormLabel>Job Name</FormLabel>
+                        <FormLabel>Title</FormLabel>
                         <FormControl>
                           <Input {...field} placeholder="Enter job name" className="text-muted-foreground" />
                         </FormControl>

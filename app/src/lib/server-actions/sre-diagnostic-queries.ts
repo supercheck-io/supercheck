@@ -22,7 +22,7 @@ const parameterSchemaJson: z.ZodType<Record<string, unknown>> = z.record(z.strin
 
 const createDiagnosticQuerySchema = z.object({
   connectorId: z.string().uuid(),
-  name: z.string().trim().min(1, "Name is required").max(150),
+  name: z.string().trim().min(1, "Title is required").max(150),
   queryType: z.enum(diagnosticQueryTypes),
   template: z.string().trim().min(1, "Template is required").max(5000),
   parameterSchema: parameterSchemaJson.default({}),

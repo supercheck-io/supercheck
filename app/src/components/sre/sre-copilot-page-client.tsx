@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, type ReactNode } from "react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Sparkles, ShieldCheck } from "lucide-react";
@@ -9,6 +9,9 @@ import type { SreCopilotChatHistory } from "@/actions/sre-ai";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { PageHeader } from "@/components/shared/page-header";
+import { NAV } from "@/lib/nav-areas";
 import {
   SUBSCRIPTION_STATUS_QUERY_KEY,
   fetchSubscriptionStatus,
@@ -57,9 +60,9 @@ export function SreCopilotPageClient({
 
   if (needsPaidPlan) {
     return (
-      <div className="flex h-full items-center justify-center p-6">
+      <CopilotGateShell>
         <DashboardEmptyState
-          icon={<Sparkles className="h-10 w-10" />}
+          icon={<Sparkles className="h-12 w-12" />}
           title="Copilot needs a paid plan"
           description="Copilot chat is not part of the free trial. Subscribe to ask questions about incidents and evidence."
           action={
@@ -68,19 +71,19 @@ export function SreCopilotPageClient({
             </Button>
           }
         />
-      </div>
+      </CopilotGateShell>
     );
   }
 
   if (!canInvestigate) {
     return (
-      <div className="flex h-full items-center justify-center p-6">
+      <CopilotGateShell>
         <DashboardEmptyState
-          icon={<ShieldCheck className="h-10 w-10" />}
+          icon={<ShieldCheck className="h-12 w-12" />}
           title="Read-only access"
           description="Copilot chat requires investigation permission. You can still review incidents, evidence, and saved reports in this project."
         />
-      </div>
+      </CopilotGateShell>
     );
   }
 
@@ -115,5 +118,25 @@ export function SreCopilotPageClient({
         query.data.success ? refreshHistories : undefined
       }
     />
+  );
+}
+
+// Gate states use the same card + page header shell as other list pages
+// (e.g. Status Pages), so the empty state sits under the title, not mid-screen.
+function CopilotGateShell({ children }: { children: ReactNode }) {
+  return (
+    <Card className="m-4 mb-8 shadow-sm">
+      <CardContent>
+        <div className="space-y-6 p-6">
+          <PageHeader
+            title={NAV.copilot.title}
+            description="Ask questions about incidents and evidence"
+            icon={NAV.copilot.icon}
+            tone={NAV.copilot.tone}
+          />
+          {children}
+        </div>
+      </CardContent>
+    </Card>
   );
 }

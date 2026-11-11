@@ -32,7 +32,7 @@ async function createService(page: Page, name: string, environment: string): Pro
   await waitForHydration(page);
   await page.getByTestId('add-service-btn').click();
   const dialog = page.getByRole('dialog', { name: /add service/i });
-  await dialog.getByLabel('Service name *').fill(name);
+  await dialog.getByLabel('Title *').fill(name);
   await dialog.getByLabel('Environment').fill(environment);
   await dialog.getByTestId('submit-service-btn').click();
   await expect(dialog).toBeHidden();

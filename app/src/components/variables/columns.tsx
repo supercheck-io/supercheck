@@ -303,7 +303,7 @@ export const columns: ColumnDef<Variable>[] = [
   {
     accessorKey: "key",
     header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="Name" className="ml-2" />
+      <DataTableColumnHeader column={column} title="Name" />
     ),
     cell: ({ row }) => {
       const key = row.getValue("key") as string;

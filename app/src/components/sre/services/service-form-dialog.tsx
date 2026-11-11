@@ -148,7 +148,7 @@ export function ServiceFormDialog({
         <form className="space-y-4" onSubmit={handleSubmit}>
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-1.5 md:col-span-2">
-              <Label htmlFor="service-name">Service name *</Label>
+              <Label htmlFor="service-name">Title *</Label>
               <Input
                 id="service-name"
                 value={name}

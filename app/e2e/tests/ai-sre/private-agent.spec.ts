@@ -51,7 +51,7 @@ test.describe("AI SRE Private Agent lifecycle @aisre @private-agent @critical", 
       const registerDialog = page.getByRole("dialog", {
         name: "Register Private Agent",
       });
-      await registerDialog.getByLabel("Agent name *").fill(agentName);
+      await registerDialog.getByLabel("Title *").fill(agentName);
       await registerDialog.getByLabel("Region").fill("e2e-region");
       await registerDialog
         .getByLabel("Network label")

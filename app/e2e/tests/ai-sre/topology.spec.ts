@@ -148,7 +148,7 @@ async function createService(page: Page, name: string): Promise<string> {
     if (!(await dialog.isVisible())) await page.getByTestId("add-service-btn").click();
     await expect(dialog).toBeVisible({ timeout: 2_000 });
   }).toPass({ timeout: 15_000 });
-  await dialog.getByLabel("Service name *").fill(name);
+  await dialog.getByLabel("Title *").fill(name);
   await dialog.getByLabel("Environment").fill("staging");
   await dialog.getByTestId("submit-service-btn").click();
   await expect(dialog).toBeHidden();

@@ -190,7 +190,7 @@ it("applies create defaults when no alertConfig is stored", async () => {
 
 describe("input limits and concurrent edits", () => {
   it.each([
-    ["a blank name", { name: "   " }, "name is required"],
+    ["a blank name", { name: "   " }, "Title is required"],
     ["a name over 255 characters", { name: "x".repeat(256) }, "255"],
     ["a description over 2000 characters", { description: "x".repeat(2001) }, "2000"],
   ])("rejects %s with a readable message and no database access", async (_label, extra, text) => {

@@ -40,9 +40,9 @@ export const privateAgentScope = (agent: PrivateAgentListItem) =>
 export const columns: ColumnDef<PrivateAgentListItem>[] = [
   {
     accessorKey: "id",
-    header: () => <span className="ml-2">Agent ID</span>,
+    header: () => "Agent ID",
     cell: ({ row }) => (
-      <div className="ml-2 w-[90px]">
+      <div className="w-[90px]">
         <UUIDField value={row.original.id} maxLength={8} />
       </div>
     ),
@@ -52,7 +52,7 @@ export const columns: ColumnDef<PrivateAgentListItem>[] = [
   {
     accessorKey: "name",
     header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="Name" />
+      <DataTableColumnHeader column={column} title="Title" />
     ),
     cell: ({ row }) => (
       <TruncatedTextWithTooltip

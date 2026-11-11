@@ -92,7 +92,7 @@ export function httpStatusForServiceError(code: ServiceErrorCode): number {
 // ---------------------------------------------------------------------------
 
 export const createStatusPageSchema = z.object({
-  name: z.string().trim().min(1, "Name is required").max(255),
+  name: z.string().trim().min(1, "Title is required").max(255),
   headline: z.string().max(255).optional(),
   pageDescription: z.string().max(2000, "Description too long").optional(),
 });
@@ -108,7 +108,7 @@ const hexColor = z
 
 /** Settings fields (everything the settings form can change, without the page id). */
 export const statusPageSettingsFieldsSchema = z.object({
-  name: z.string().min(1, "Name is required").max(255, "Name too long").trim().optional(),
+  name: z.string().min(1, "Title is required").max(255, "Title is too long").trim().optional(),
   headline: z.string().max(255, "Headline too long").trim().optional(),
   pageDescription: z.string().max(2000, "Description too long").trim().optional(),
   supportUrl: statusPageSupportContactSchema.optional(),
@@ -175,7 +175,7 @@ const monitorIdList = z
 const monitorWeightMap = z
   .record(z.string().uuid(), z.number().int().min(1).max(100))
   .refine((weights) => Object.keys(weights).length <= 100, "At most 100 monitor weights");
-const componentName = z.string().trim().min(1, "Name is required").max(255, "Name is too long");
+const componentName = z.string().trim().min(1, "Title is required").max(255, "Title is too long");
 
 export const createComponentFieldsSchema = z.object({
   name: componentName,

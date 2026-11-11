@@ -30,7 +30,6 @@ export const notificationChannelColumns: ColumnDef<NotificationChannel>[] = [
     accessorKey: "id",
     header: ({ column }) => (
       <DataTableColumnHeader
-        className="ml-2"
         column={column}
         title="Channel ID"
       />
@@ -38,7 +37,7 @@ export const notificationChannelColumns: ColumnDef<NotificationChannel>[] = [
     cell: ({ row }) => {
       const id = row.getValue("id") as string;
       return (
-        <div className="w-[90px] ml-2">
+        <div className="w-[90px]">
           <UUIDField
             value={id}
             maxLength={8}
@@ -52,7 +51,7 @@ export const notificationChannelColumns: ColumnDef<NotificationChannel>[] = [
   {
     accessorKey: "name",
     header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="Name" />
+      <DataTableColumnHeader column={column} title="Title" />
     ),
     cell: ({ row }) => {
       const name = row.getValue("name") as string;

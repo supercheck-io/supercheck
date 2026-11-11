@@ -217,7 +217,7 @@ export const columns: ColumnDef<Requirement>[] = [
     {
         accessorKey: "id",
         header: ({ column }) => (
-            <DataTableColumnHeader className="ml-2" column={column} title="Req ID" />
+            <DataTableColumnHeader column={column} title="Req ID" />
         ),
         cell: ({ row }) => {
             const id = row.getValue("id") as string;
