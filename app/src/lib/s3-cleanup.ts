@@ -492,7 +492,9 @@ export class S3CleanupService {
       const byStem = new Map<string, string[]>();
       for (const prefix of owners.keys()) {
         const stem = UUID_STEM.test(prefix) ? prefix.slice(0, 37) : prefix;
-        byStem.set(stem, [...(byStem.get(stem) ?? []), prefix]);
+        const group = byStem.get(stem);
+        if (group) group.push(prefix);
+        else byStem.set(stem, [prefix]);
       }
       const listings = [...byStem.entries()].flatMap(([stem, prefixes]) =>
         prefixes.length >= MIN_PREFIXES_PER_STEM ? [{ listPrefix: stem, prefixes, grouped: true }]
