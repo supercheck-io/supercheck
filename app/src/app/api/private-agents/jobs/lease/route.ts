@@ -16,6 +16,8 @@ const LEASE_TTL_MS = 5 * 60_000;
 const MAX_QUEUED_AGE_MS = 10 * 60_000;
 const MAX_LONG_POLL_MS = 25_000;
 const LONG_POLL_INTERVAL_MS = 1_000;
+// Idle ticks only probe for queued work; the full credential check and queue maintenance run at most this often.
+const FULL_CHECK_INTERVAL_MS = 5_000;
 const logger = createLogger({ module: "private-agent-job-lease" }) as {
   error: (data: unknown, message?: string) => void;
 };
@@ -178,11 +180,34 @@ export async function POST(request: NextRequest) {
       return leasedJob ? { leasedJob, leaseToken, leaseExpiresAt } : null;
     };
 
+    // Same filter as the lease select, so a probe hit is the only way an idle tick can lead to a lease.
+    const hasQueuedWork = async () => {
+      const rows = await db
+        .select({ id: privateAgentJobs.id })
+        .from(privateAgentJobs)
+        .where(
+          and(
+            eq(privateAgentJobs.privateAgentId, auth.agent.id),
+            eq(privateAgentJobs.organizationId, auth.agent.organizationId),
+            eq(privateAgentJobs.jobClass, "sre_connector_query"),
+            eq(privateAgentJobs.status, "queued")
+          )
+        )
+        .limit(1);
+      return rows.length > 0;
+    };
+
     const deadline = Date.now() + parsedBody.waitMs;
     let leased = await tryLeaseJob();
+    let lastFullCheck = Date.now();
     while (!leased && Date.now() < deadline) {
       await sleep(Math.min(LONG_POLL_INTERVAL_MS, deadline - Date.now()));
-      leased = await tryLeaseJob();
+      // Every lease still goes through tryLeaseJob, which re-checks the credential, so a revoked credential
+      // never leases; the skipped ticks only delay requeueing expired leases and failing stale jobs by <= FULL_CHECK_INTERVAL_MS.
+      if (Date.now() - lastFullCheck >= FULL_CHECK_INTERVAL_MS || (await hasQueuedWork())) {
+        lastFullCheck = Date.now();
+        leased = await tryLeaseJob();
+      }
     }
 
     if (!leased) {
