@@ -1,5 +1,5 @@
 /** @jest-environment node */
-import { monitorAggregationService } from "./monitor-aggregation-service";
+import { monitorAggregationService, chunkWholePeriods } from "./monitor-aggregation-service";
 import type { SQL } from "drizzle-orm";
 
 const mockOrderBy = jest.fn();
@@ -82,5 +82,31 @@ describe("aggregate period precedence", () => {
     expect(
       new PgDialect().sqlToQuery(mockWhere.mock.calls[0][0]).params,
     ).toContain("eu-central");
+  });
+});
+
+describe("chunkWholePeriods", () => {
+  const row = (monitorId: string, day: number, location: string) => ({
+    monitorId, periodType: "daily", periodStart: new Date(day * 86_400_000), location,
+  });
+  const periodsOf = (chunk: ReturnType<typeof row>[]) => new Set(chunk.map((r) => `${r.monitorId}|${r.periodStart.getTime()}`));
+
+  it("never splits the locations of a period across statements", () => {
+    const rows = Array.from({ length: 10 }, (_, day) => ["a", "b", "c"].map((l) => row("m", day, l))).flat();
+    const chunks = chunkWholePeriods(rows, 7);
+    expect(chunks.flat()).toHaveLength(30);
+    expect(chunks.map((c) => c.length)).toEqual([6, 6, 6, 6, 6]);
+    for (const chunk of chunks) for (const key of periodsOf(chunk)) {
+      const all = rows.filter((r) => `${r.monitorId}|${r.periodStart.getTime()}` === key).length;
+      expect(chunk.filter((r) => `${r.monitorId}|${r.periodStart.getTime()}` === key)).toHaveLength(all);
+    }
+  });
+
+  it("groups interleaved rows and gives an oversized period its own statement", () => {
+    const rows = [row("m", 1, "a"), row("m", 2, "a"), row("m", 1, "b"), row("m", 3, "a"), row("m", 3, "b"), row("m", 3, "c")];
+    expect(chunkWholePeriods(rows, 2).map((c) => c.map((r) => `${r.periodStart.getTime() / 86_400_000}${r.location}`))).toEqual([
+      ["1a", "1b"], ["2a"], ["3a", "3b", "3c"],
+    ]);
+    expect(chunkWholePeriods([], 5)).toEqual([]);
   });
 });
