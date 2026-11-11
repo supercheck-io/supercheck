@@ -38,7 +38,7 @@ describe('EGRESS_GUARD_SCRIPT', () => {
 
   it('fails closed with an infrastructure error when still reachable at the bound', () => {
     const result = run(openPort, 2);
-    expect(result.status).toBe(1);
+    expect(result.status).toBe(78);
     expect(result.stderr).toContain('Infrastructure error');
   });
 });

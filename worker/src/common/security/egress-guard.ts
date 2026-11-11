@@ -5,7 +5,7 @@
  * start, so the Kubernetes API Service is briefly reachable. This script
  * passes only once a TCP connect to it is refused or times out, retrying
  * every second up to argv[1] seconds (default 20). Still reachable at the
- * bound means the isolation contract is not enforced: exit 1, never run user
+ * bound means the isolation contract is not enforced: exit 78, never run user
  * code. A first blocked probe exits immediately. Uses node because the
  * execution image has node but no nc, and /bin/sh has no /dev/tcp.
  */
@@ -23,10 +23,11 @@ const reachable = (host) =>
   new Promise((resolve) => {
     const s = net.connect({ host, port, timeout: 1000 });
     s.on('connect', () => { s.destroy(); resolve(true); });
-    s.on('timeout', () => { s.destroy(); resolve(false); });
+    s.on('timeout', () => { s.destroy(); resolve('timeout'); });
     s.on('error', (e) =>
       resolve(['ECONNREFUSED', 'EHOSTUNREACH', 'ENETUNREACH', 'EACCES'].includes(e.code) ? false : null));
   });
+let timeouts = 0;
 (async () => {
   for (;;) {
     let detail = 'kubernetes API Service still reachable';
@@ -34,14 +35,16 @@ const reachable = (host) =>
       const host = process.env.KUBERNETES_SERVICE_HOST ||
         (await dns.promises.lookup('kubernetes.default.svc')).address;
       const r = await reachable(host);
-      if (r === false) process.exit(0);
+      // A lone timeout can be a delayed SYN; require two in a row.
+      timeouts = r === 'timeout' ? timeouts + 1 : 0;
+      if (r === false || timeouts >= 2) process.exit(0);
       if (r === null) detail = 'probe error, cannot confirm block';
     } catch (e) {
       detail = 'cannot resolve kubernetes API Service: ' + e.message;
     }
     if (Date.now() >= deadline) {
       console.error('Infrastructure error: execution network isolation not enforced (' + detail + '); refusing to run user code');
-      process.exit(1);
+      process.exit(78);
     }
     await sleep(1000);
   }

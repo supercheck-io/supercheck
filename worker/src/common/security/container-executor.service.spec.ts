@@ -1337,8 +1337,8 @@ describe('ContainerExecutorService', () => {
       expect(podSpec.automountServiceAccountToken).toBe(false);
       expect(bootstrapScript.startsWith('env -i ')).toBe(true);
       expect(bootstrapScript).toContain(' node -e ');
-      expect(bootstrapScript.indexOf('|| exit 1\n')).toBeGreaterThan(0);
-      expect(bootstrapScript.indexOf('|| exit 1\n')).toBeLessThan(
+      expect(bootstrapScript.indexOf('|| exit 78\n')).toBeGreaterThan(0);
+      expect(bootstrapScript.indexOf('|| exit 78\n')).toBeLessThan(
         bootstrapScript.indexOf('/supercheck-payload-0/chunk'),
       );
       expect(container.env).toEqual(

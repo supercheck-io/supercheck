@@ -1296,7 +1296,7 @@ export class ContainerExecutorService implements OnModuleInit, OnModuleDestroy {
           );
     // Newline, not &&: the wrapper script can be multi-line.
     // env -i: caller env (NODE_OPTIONS, PATH, ...) must not reach the guard.
-    const bootstrapScript = `${EGRESS_GUARD_COMMAND_PREFIX} node -e ${this.escapeShellArg(EGRESS_GUARD_SCRIPT)} || exit 1\n${userBootstrapScript}`;
+    const bootstrapScript = `${EGRESS_GUARD_COMMAND_PREFIX} node -e ${this.escapeShellArg(EGRESS_GUARD_SCRIPT)} || exit 78\n${userBootstrapScript}`;
     const secretVolumeMounts: k8s.V1VolumeMount[] = [
       ...payloadSecretNames.map((_name, index) => ({
         name: `payload-${index}`,
