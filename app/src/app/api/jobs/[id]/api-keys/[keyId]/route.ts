@@ -3,7 +3,7 @@ import { isUuid } from "@/lib/uuid";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { apikey, jobs } from "@/db/schema";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { z } from "zod";

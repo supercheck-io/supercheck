@@ -4,7 +4,7 @@ import { notInDeletedProject } from "@/lib/middleware/plan-limit-lock";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { monitors, projects } from "@/db/schema";
-import { and, eq, ne, sql, isNull } from "drizzle-orm";
+import { and, eq, ne, sql } from "drizzle-orm";
 import { isAuthError, requireUserAuthContext, authErrorStatus } from "@/lib/auth-context";
 import { resumeRefusalResponse, withResumeWithinPlan } from "@/lib/middleware/plan-enforcement";
 import { ensureSubscribedForResume, monitorResumeBlockedResponse, subscriptionDeniedResponse } from "@/lib/execution/trial-interval-response";

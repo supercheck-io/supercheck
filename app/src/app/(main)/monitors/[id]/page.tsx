@@ -14,7 +14,7 @@ import {
   MonitorType as DBMonitorType,
   MonitorResultStatus as DBMonitorResultStatusType,
 } from "@/db/schema";
-import { and, eq, desc, isNull } from "drizzle-orm";
+import { and, eq, desc } from "drizzle-orm";
 
 // Limit for chart data only - keep small for performance
 const chartResultsLimit = 100;

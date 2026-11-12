@@ -1,6 +1,6 @@
 import { liveMonitor } from "@/lib/deletion/visibility";
 import { NextRequest, NextResponse } from "next/server";
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/utils/db";
 import { monitors, monitorTags, tags } from "@/db/schema";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";

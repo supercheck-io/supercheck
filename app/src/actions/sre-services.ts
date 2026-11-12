@@ -2,7 +2,7 @@
 
 import { liveJob, liveMonitor, liveRunOfLiveJob } from "@/lib/deletion/visibility";
 import { revalidatePath } from "next/cache";
-import { and, count, desc, eq, inArray, isNull, ne, or } from "drizzle-orm";
+import { and, count, desc, eq, inArray, ne, or } from "drizzle-orm";
 import { z } from "zod";
 
 import { db } from "@/utils/db";

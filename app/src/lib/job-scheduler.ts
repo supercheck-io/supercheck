@@ -4,7 +4,7 @@ import { randomUUID } from "crypto";
 import type { Redis } from "ioredis";
 import { db } from "@/utils/db";
 import { jobs } from "@/db/schema";
-import { eq, isNotNull, isNull, and } from "drizzle-orm";
+import { eq, isNotNull, and } from "drizzle-orm";
 import { getQueues } from "./queue";
 import { getNextRunDate } from "@/lib/cron-utils";
 import {

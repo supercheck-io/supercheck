@@ -1,5 +1,5 @@
 import { liveMonitor } from "@/lib/deletion/visibility";
-import { and, eq, gte, isNotNull, isNull, lt, sql } from "drizzle-orm";
+import { and, eq, gte, isNotNull, lt, sql } from "drizzle-orm";
 import { db } from "@/utils/db";
 import { monitorAggregates, monitorResults, monitors } from "@/db/schema";
 import { excludeSupersededSyntheticResults } from "@/lib/monitor-result-filters";

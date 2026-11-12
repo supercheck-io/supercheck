@@ -2,7 +2,7 @@ import { liveRunOfLiveJob } from "@/lib/deletion/visibility";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { runs, jobs, reports, TestRunStatus } from "@/db/schema";
-import { desc, eq, and, sql, inArray, or, isNull } from "drizzle-orm";
+import { desc, eq, and, sql, inArray } from "drizzle-orm";
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-context';
 import { isUuid } from '@/lib/uuid';

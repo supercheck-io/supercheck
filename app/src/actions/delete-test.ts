@@ -3,7 +3,7 @@
 import { liveJob, liveMonitor } from "@/lib/deletion/visibility";
 import { db } from "../utils/db";
 import { tests, jobTests, monitors } from "@/db/schema";
-import { eq, count, and, sql, isNull } from "drizzle-orm";
+import { eq, count, and, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { requireProjectContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";

@@ -538,6 +538,20 @@ describe("claims, retries and the sweep", () => {
     expect(row.state).toBe("completed"); // the drain window elapsed, so the run is purged anyway
   });
 
+  it("signals every active run when there are more than one batch of them", async () => {
+    const seeded = await seedJob(1200);
+    await client`UPDATE runs SET status = 'running' WHERE job_id = ${seeded.jobId}`;
+    await requestJobDeletion(scope(seeded));
+    mockSignal.mockClear();
+    const id = (await deletionRow(seeded.jobId)).id;
+    for (let i = 0; i < 4; i++) {
+      await client`UPDATE deletion_jobs SET next_attempt_at = now() WHERE id = ${id}`;
+      await runDeletion(id); // unschedule, then drain pages
+    }
+    const signalled = new Set(mockSignal.mock.calls.map((call) => String(call[0])));
+    expect(signalled.size).toBeGreaterThanOrEqual(1200); // two full pages and the rest, not the first page again and again
+  });
+
   it("returns a retry delay for a purge that is not due yet instead of dropping the trigger", async () => {
     const seeded = await seedJob(1);
     await requestJobDeletion(scope(seeded));

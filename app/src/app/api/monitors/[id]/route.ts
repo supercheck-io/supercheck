@@ -17,7 +17,7 @@ import {
   notificationProviders,
 } from "@/db/schema";
 import { MonitorType, MonitorStatus } from "@/db/schema/types";
-import { eq, desc, and, isNull } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 import {
   scheduleMonitor,
   deleteScheduledMonitor,

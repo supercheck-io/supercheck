@@ -6,7 +6,7 @@ import { resolveEffectiveProjectRole } from '@/lib/rbac/effective-project-role';
 import { requireUserAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-context';
 import { db } from '@/utils/db';
 import { projects, projectMembers, jobs, tests, monitors, statusPages } from '@/db/schema';
-import { eq, and, ne, count, isNotNull, isNull } from 'drizzle-orm';
+import { eq, and, ne, count, isNotNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { logAuditEvent } from '@/lib/audit-logger';
 

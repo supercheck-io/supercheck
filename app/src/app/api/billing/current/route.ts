@@ -14,7 +14,7 @@ import {
   member,
   invitation,
 } from "@/db/schema";
-import { and, eq, gte, ne, sql, isNull } from "drizzle-orm";
+import { and, eq, gte, ne, sql } from "drizzle-orm";
 import { notInDeletedProject } from "@/lib/middleware/plan-limit-lock";
 import { getPlanPricing, isCloudHosted } from "@/lib/feature-flags";
 import { EXTRA_MEMBER_PRICE_CENTS, effectiveMemberLimit } from "@/lib/billing/member-seats";

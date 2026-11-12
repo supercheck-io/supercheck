@@ -6,7 +6,7 @@ import {
   monitors,
   monitorResults,
 } from "@/db/schema";
-import { eq, and, isNull, gte, sql, desc } from "drizzle-orm";
+import { eq, and, gte, sql, desc } from "drizzle-orm";
 import { hasPermissionForUser, forbiddenOrNotFound } from "@/lib/rbac/middleware";
 import { isAuthError, requireUserAuthContext, authErrorStatus } from "@/lib/auth-context";
 import { createLogger } from "@/lib/logger/index";

@@ -16,7 +16,7 @@ const logger = createLogger({ module: "monitor-permissions-api" }) as {
 };
 import { db } from '@/utils/db';
 import { monitors } from '@/db/schema';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 
 export async function GET(
   request: NextRequest,

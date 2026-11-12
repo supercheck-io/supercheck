@@ -4,7 +4,7 @@ import { liveRunOfLiveJob } from "@/lib/deletion/visibility";
 import { db } from "@/utils/db";
 import { runs, reports, jobs, jobTests, projects } from "@/db/schema";
 import type { JobType } from "@/db/schema";
-import { eq, and, count, sql, or, isNull } from "drizzle-orm";
+import { eq, and, count, sql } from "drizzle-orm";
 import {
   requireAuth,
   getUserRole,

@@ -7,7 +7,7 @@ import {
   notificationProviders,
   monitors,
 } from "@/db/schema";
-import { eq, and, count, isNull } from "drizzle-orm";
+import { eq, and, count } from "drizzle-orm";
 import { hasPermissionForUser, forbiddenOrNotFound } from "@/lib/rbac/middleware";
 import { requireUserAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { AlertConfigConflictError, lockMonitorRow, mirrorProviderRowsToAlertConfig } from "@/lib/monitor-write";

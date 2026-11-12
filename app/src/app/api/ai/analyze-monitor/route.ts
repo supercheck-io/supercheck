@@ -15,7 +15,7 @@ import { headers } from "next/headers";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { db } from "@/utils/db";
 import { monitors, monitorResults } from "@/db/schema";
-import { eq, desc, and, gte, isNull } from "drizzle-orm";
+import { eq, desc, and, gte } from "drizzle-orm";
 import { getS3FileContentFromUrl, getS3FileContent } from "@/lib/s3-proxy";
 import { excludeSupersededSyntheticResults } from "@/lib/monitor-result-filters";
 

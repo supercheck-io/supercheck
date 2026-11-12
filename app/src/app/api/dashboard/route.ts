@@ -11,7 +11,7 @@ import {
   reports,
   k6PerformanceRuns,
 } from "@/db/schema";
-import { eq, gte, and, count, sql, sum, inArray, isNull } from "drizzle-orm";
+import { eq, gte, and, count, sql, sum, inArray } from "drizzle-orm";
 import { subDays, subHours } from "date-fns";
 import { getQueueStats } from "@/lib/queue-stats";
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';

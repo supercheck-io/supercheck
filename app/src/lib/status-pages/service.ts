@@ -11,7 +11,7 @@ import { liveMonitor } from "@/lib/deletion/visibility";
 import { randomUUID } from "crypto";
 import { z } from "zod";
 import { HEX_COLOR_REGEX, normalizeHexColor } from "@/lib/status-page-branding";
-import { and, asc, eq, inArray, lt, ne, sql, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, lt, ne, sql } from "drizzle-orm";
 import { isDeletingError } from "@/lib/deletion/errors";
 import { db } from "@/utils/db";
 import {

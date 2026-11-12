@@ -10,7 +10,7 @@ import { subscriptionService } from "@/lib/services/subscription-service";
 import { isPolarEnabled } from "@/lib/feature-flags";
 import { db } from "@/utils/db";
 import { monitors, organization, statusPages } from "@/db/schema";
-import { and, eq, isNull, ne, sql } from "drizzle-orm";
+import { and, eq, ne, sql } from "drizzle-orm";
 import { EXTRA_MEMBER_PRICE_CENTS, MAX_MEMBER_SEATS, effectiveMemberLimit } from "@/lib/billing/member-seats";
 import { notInDeletedProject, withPlanLimitLock, PlanLimitBusyError, type PlanLimitTransaction } from "@/lib/middleware/plan-limit-lock";
 

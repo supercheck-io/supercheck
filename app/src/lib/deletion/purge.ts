@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, sql } from "drizzle-orm";
 import { db } from "@/utils/db";
 import { jobs, jobTests, monitorResults, monitors, reports, runs } from "@/db/schema";
 import { createS3CleanupService, type ReportDeletionInput } from "@/lib/s3-cleanup";
@@ -146,16 +146,23 @@ export async function purgeJobStep(row: DeletionRow, ctx: StepContext): Promise<
     return { done: false, phase: "drain", progress: { ...row.cursor, drainStartedAtMs: await dbNowMs() } };
   }
   if (phase === "drain") {
+    // Page by id so more than one batch of active runs is all reached; the cursor wraps after the last page.
+    const after = typeof row.cursor?.drainAfter === "string" ? row.cursor.drainAfter : null;
     const active = await db.select({ id: runs.id }).from(runs)
-      .where(and(eq(runs.jobId, jobId), inArray(runs.status, ["queued", "running"]))).limit(PURGE_BATCH);
-    if (active.length === 0) return { done: false, phase: "runs" };
+      .where(and(eq(runs.jobId, jobId), inArray(runs.status, ["queued", "running"]), after ? gt(runs.id, after) : undefined))
+      .orderBy(asc(runs.id)).limit(PURGE_BATCH);
+    if (active.length === 0) {
+      if (after) return { done: false, phase: "drain", progress: { ...row.cursor, drainAfter: null } }; // wrapped: re-check from the start
+      return { done: false, phase: "runs" };
+    }
     // Measured from when this drain began (not from the delete request), so a purge that starts late still gives runs time to stop.
     const nowMs = await dbNowMs();
     const startedMs = Number(row.cursor?.drainStartedAtMs);
     if (!Number.isFinite(startedMs)) return { done: false, phase: "drain", progress: { ...row.cursor, drainStartedAtMs: nowMs } }; // a row from before the marker existed
     if (nowMs - startedMs > DRAIN_MAX_MS) return { done: false, phase: "runs" };
     await cancelActiveRuns(jobId, active.map((r) => r.id));
-    return { done: false, phase: "drain", delayMs: 15_000 };
+    const more = active.length === PURGE_BATCH;
+    return { done: false, phase: "drain", progress: { ...row.cursor, drainAfter: more ? active[active.length - 1].id : null }, ...(more ? {} : { delayMs: 15_000 }) };
   }
   if (phase === "runs") {
     const batch = await db.select({ id: runs.id, reportS3Url: runs.reportS3Url, logsS3Url: runs.logsS3Url, metadata: runs.metadata })

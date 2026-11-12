@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { monitors, monitorResults } from "@/db/schema";
 import { monitorResultForRead } from "@/lib/monitor-read-config";
-import { eq, isNull, desc, and, gte, lt, sql } from "drizzle-orm";
+import { eq, desc, and, gte, lt, sql } from "drizzle-orm";
 import { requireAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-context';
 import { createLogger } from "@/lib/logger/index";
 

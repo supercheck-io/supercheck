@@ -2,7 +2,7 @@ import { liveJob } from "@/lib/deletion/visibility";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { apikey, jobs, user } from "@/db/schema";
-import { eq, and, isNull, sql } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { z } from "zod";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { checkPermissionWithContext, isImpersonatedSession } from "@/lib/rbac/middleware";

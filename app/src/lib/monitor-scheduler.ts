@@ -1,7 +1,7 @@
 import { liveMonitor } from "@/lib/deletion/visibility";
 import { db } from "@/utils/db";
 import { monitors as monitorSchemaDb, MonitorConfig } from "@/db/schema";
-import { eq, isNotNull, isNull, and, ne, inArray, gt } from "drizzle-orm";
+import { eq, isNotNull, and, ne, inArray, gt } from "drizzle-orm";
 import { getQueues, MonitorJobData } from "./queue";
 import { SYNTHETIC_MIN_FREQUENCY_MINUTES } from "./monitor-write";
 import type { Redis } from "ioredis";

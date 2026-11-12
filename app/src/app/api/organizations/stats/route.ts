@@ -2,7 +2,7 @@ import { liveJob, liveMonitor } from "@/lib/deletion/visibility";
 import { NextResponse } from 'next/server';
 import { db } from '@/utils/db';
 import { projects, jobs, tests, monitors, runs, member } from '@/db/schema';
-import { and, count, eq, isNull, ne } from 'drizzle-orm';
+import { and, count, eq, ne } from 'drizzle-orm';
 import { getUserOrgRole } from '@/lib/rbac/middleware';
 import { requireUserAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-context';
 import { Role } from '@/lib/rbac/permissions';

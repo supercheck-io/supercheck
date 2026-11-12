@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { runs, JobTrigger, tests, jobs, jobTests } from "@/db/schema";
 import type { JobType, K6Location } from "@/db/schema";
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import crypto from "crypto";
 import {
   addJobToQueue,

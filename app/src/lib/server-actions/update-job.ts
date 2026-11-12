@@ -8,7 +8,7 @@ import {
   jobNotificationSettings,
   tests as testsTable,
 } from "@/db/schema";
-import { eq, and, asc, inArray, isNull } from "drizzle-orm";
+import { eq, and, asc, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { alertThresholdError } from "@/lib/alert-thresholds";

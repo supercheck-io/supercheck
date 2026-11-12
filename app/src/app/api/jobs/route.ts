@@ -12,7 +12,7 @@ import {
   jobNotificationSettings,
   JobType,
 } from "@/db/schema";
-import { desc, eq, inArray, and, asc, sql, isNull } from "drizzle-orm";
+import { desc, eq, inArray, and, asc, sql } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { z } from "zod";
 import { updateJob, JOB_CONFLICT_ERROR, jobNameSchema, jobDescriptionSchema, MAX_JOB_TESTS } from "@/lib/server-actions/update-job";

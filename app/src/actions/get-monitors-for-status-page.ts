@@ -3,7 +3,7 @@
 import { liveMonitor } from "@/lib/deletion/visibility";
 import { db } from "@/utils/db";
 import { monitors } from "@/db/schema";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { requireProjectContext } from "@/lib/project-context";
 
 export async function getMonitorsForStatusPage() {

@@ -14,7 +14,7 @@ import {
   scheduleMonitor,
   deleteScheduledMonitor,
 } from "@/lib/monitor-scheduler";
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { ResumeRefusedError, withResumeWithinPlan } from "@/lib/middleware/plan-enforcement";
 import { assertKeptProvidersValid, MonitorScheduleError, dropStaleSslAlertState, preserveWorkerConfigKeys, scheduleOutOfSync, syncMonitorProviderRows, WORKER_OWNED_CONFIG_KEYS } from "@/lib/monitor-write";
 import { reconcileMonitorSchedule } from "@/lib/monitor-schedule-reconcile";
