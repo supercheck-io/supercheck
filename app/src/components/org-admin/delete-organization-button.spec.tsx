@@ -71,7 +71,7 @@ it("confirms by email after a successful request", async () => {
   await openDialog();
   typeName("Acme");
   fireEvent.click(confirmButton());
-  expect(await screen.findByText("We emailed the organization owners")).toBeTruthy();
+  expect(await screen.findByText("A confirmation is being emailed to the organization owners")).toBeTruthy();
 });
 
 it("shows in-app confirmation when the server cannot send email", async () => {
@@ -105,7 +105,7 @@ it("does not claim an email went out when the organization was already scheduled
   typeName("Acme");
   fireEvent.click(confirmButton());
   await waitFor(() => expect(toast.info).toHaveBeenCalledWith(expect.stringContaining("already scheduled")));
-  expect(screen.queryByText("We emailed the organization owners")).toBeNull();
+  expect(screen.queryByText("A confirmation is being emailed to the organization owners")).toBeNull();
 });
 
 it("keeps the request disabled and offers a retry while the deletion settings cannot be loaded", async () => {

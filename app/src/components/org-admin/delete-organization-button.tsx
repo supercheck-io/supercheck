@@ -140,12 +140,12 @@ export function DeleteOrganizationButton({ organizationId, organizationName }: D
           </DialogHeader>
           {requested ? (
             <Alert>
-              <AlertTitle>{emailed ? "We emailed the organization owners" : "Confirmed. No email was sent"}</AlertTitle>
+              <AlertTitle>{emailed ? "A confirmation is being emailed to the organization owners" : "Confirmed. No email was sent"}</AlertTitle>
               <AlertDescription>
                 {graceDays === 0
                   ? "Everything is being deleted now."
                   : `${requested.purgeAfter ? `Everything is deleted permanently on ${new Date(requested.purgeAfter).toLocaleDateString()} unless you cancel. ` : ""}${
-                      emailed ? "Reminders follow before the deletion. " : "This server cannot send email, so keep this date. "
+                      emailed ? "Reminders follow before the deletion; keep this date in case an email does not arrive. " : "This server cannot send email, so keep this date. "
                     }Cancel any time before then from the banner at the top of the app.`}
               </AlertDescription>
             </Alert>
