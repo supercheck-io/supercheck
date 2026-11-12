@@ -117,7 +117,7 @@ const BILLING_CLAIM_TTL = "2 minutes";
  * is the first to claim sees no earlier attempt, so the owner's own earlier cancellation is never taken for ours.
  */
 export async function settleBillingOnRequest(organizationId: string): Promise<"cancelled" | "already" | "none" | "skipped" | "retry"> {
-  const [org] = await db.select({ id: organization.id, subscriptionId: organization.subscriptionId, polarCustomerId: organization.polarCustomerId, meta: organization.deletionMeta })
+  const [org] = await db.select({ id: organization.id, subscriptionId: organization.subscriptionId, polarCustomerId: organization.polarCustomerId, meta: organization.deletionMeta, requestedAt: sql<string>`${organization.deletionRequestedAt}::text` })
     .from(organization).where(and(eq(organization.id, organizationId), isNotNull(organization.deletionRequestedAt)));
   if (!org) return "skipped";
   const meta = org.meta as DeletionMeta;
@@ -136,7 +136,11 @@ export async function settleBillingOnRequest(organizationId: string): Promise<"c
   }
   // Every write of this call's outcome is bound to its own claim: a cancel and a new request reset the meta, so a stale call
   // (paused after the provider answered) can never mark a newer deletion cycle as settled.
-  const ownClaim = hasBilling ? sql`${organization.deletionMeta} ->> 'billingCancelClaimAt' = ${claimAt}` : undefined;
+  // Also bound to the deletion request this call read (a later request has a different timestamp), claim or no claim.
+  const ownClaim = and(
+    sql`${organization.deletionRequestedAt}::text = ${org.requestedAt}`, // text keeps the microseconds a JS Date would drop
+    hasBilling ? sql`${organization.deletionMeta} ->> 'billingCancelClaimAt' = ${claimAt}` : undefined,
+  );
   const savePatch = (patch: DeletionMeta) => db.update(organization).set({ deletionMeta: metaPatch(organization.deletionMeta, patch) })
     .where(and(eq(organization.id, organizationId), isNotNull(organization.deletionRequestedAt), ownClaim)).returning({ id: organization.id });
   const dropClaim = () => db.update(organization).set({ deletionMeta: sql`${organization.deletionMeta} - 'billingCancelClaimAt'` })
