@@ -1,4 +1,4 @@
-import { liveMonitor } from "@/lib/deletion/visibility";
+import { liveMonitor, notInPendingOrganization } from "@/lib/deletion/visibility";
 import { db } from "@/utils/db";
 import { monitors as monitorSchemaDb, MonitorConfig } from "@/db/schema";
 import { eq, isNotNull, and, ne, inArray, gt } from "drizzle-orm";
@@ -178,7 +178,7 @@ export async function repairMonitorSchedules(): Promise<{ repaired: number; fail
     const active = await db
       .select({ id: monitorSchemaDb.id, scheduledJobId: monitorSchemaDb.scheduledJobId })
       .from(monitorSchemaDb)
-      .where(and(gt(monitorSchemaDb.frequencyMinutes, 0), eq(monitorSchemaDb.enabled, true), ne(monitorSchemaDb.status, 'paused'), liveMonitor(monitorSchemaDb)))
+      .where(and(gt(monitorSchemaDb.frequencyMinutes, 0), eq(monitorSchemaDb.enabled, true), ne(monitorSchemaDb.status, 'paused'), liveMonitor(monitorSchemaDb), notInPendingOrganization(monitorSchemaDb.organizationId)))
       .orderBy(monitorSchemaDb.id);
     // Never-scheduled monitors first; within each group continue after the last id of the previous sweep,
     // so rows that keep failing cannot starve the rest of the batch.
@@ -277,7 +277,8 @@ export async function initializeMonitorSchedulers(): Promise<{ success: boolean;
             isNotNull(monitorSchemaDb.frequencyMinutes),
             eq(monitorSchemaDb.enabled, true),
             ne(monitorSchemaDb.status, 'paused'),
-            liveMonitor(monitorSchemaDb)
+            liveMonitor(monitorSchemaDb),
+            notInPendingOrganization(monitorSchemaDb.organizationId)
           ));
 
         if (activeMonitors.length === 0) {

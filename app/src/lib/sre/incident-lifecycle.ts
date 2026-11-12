@@ -707,6 +707,64 @@ export async function applySourceRecovery(
   return { resolved, recovered };
 }
 
+/**
+ * The monitor or job behind open incidents is being deleted, so nothing can ever recover them: resolve them (also
+ * acknowledged ones) with a system note and end their firing alerts. Runs inside the deletion request transaction.
+ * No notification is sent: the deletion is a deliberate user action, and the history stays on the incident.
+ */
+export async function resolveIncidentsOfDeletedSource(tx: Executor, source: SourceRef & { targetName: string }) {
+  const now = new Date();
+  const open = await tx
+    .select({ id: sreIncidents.id })
+    .from(sreIncidentAlerts)
+    .innerJoin(sreIncidents, eq(sreIncidentAlerts.incidentId, sreIncidents.id))
+    .innerJoin(sreAlertEvents, eq(sreIncidentAlerts.alertEventId, sreAlertEvents.id))
+    .where(
+      and(
+        eq(sreIncidents.organizationId, source.organizationId),
+        eq(sreIncidents.projectId, source.projectId),
+        eq(sreIncidentAlerts.role, "trigger"),
+        eq(sreAlertEvents.sourceType, source.sourceType),
+        eq(sreAlertEvents.sourceId, source.sourceId),
+        ne(sreIncidents.status, "resolved"),
+      ),
+    );
+  await tx
+    .update(sreAlertEvents)
+    .set({ status: "resolved", resolvedAt: now })
+    .where(
+      and(
+        eq(sreAlertEvents.organizationId, source.organizationId),
+        eq(sreAlertEvents.projectId, source.projectId),
+        eq(sreAlertEvents.sourceType, source.sourceType),
+        eq(sreAlertEvents.sourceId, source.sourceId),
+        eq(sreAlertEvents.status, "firing"),
+      ),
+    );
+  const summary = `Resolved automatically: ${source.targetName} was deleted.`;
+  for (const id of new Set(open.map((row) => row.id))) {
+    const [updated] = await tx
+      .update(sreIncidents)
+      .set({
+        status: "resolved",
+        resolvedAt: now,
+        mitigatedAt: sql`coalesce(${sreIncidents.mitigatedAt}, ${now.toISOString()}::timestamptz)`,
+        resolutionSummary: summary,
+        updatedAt: now,
+      })
+      .where(and(eq(sreIncidents.id, id), ne(sreIncidents.status, "resolved")))
+      .returning({ id: sreIncidents.id });
+    if (!updated) continue;
+    await tx.insert(sreIncidentTimelineEvents).values({
+      incidentId: id,
+      eventType: "state_change",
+      eventData: { state: "resolved", comment: summary, automatic: true },
+      actorType: "system",
+      createdAt: now,
+    });
+  }
+}
+
 /** When the incident's source recovered, or null if it has not or a failure has returned since. */
 export async function getSourceRecoveredAt(incidentId: string): Promise<string | null> {
   const [last] = await db

@@ -1,3 +1,4 @@
+jest.mock("@/lib/deletion/org-state");
 import { getExecutionPolicy } from "@/lib/execution/execution-policy";
 jest.mock("@/lib/execution/execution-policy", () => ({
   ...jest.requireActual("@/lib/execution/execution-policy"),
@@ -75,6 +76,7 @@ import { processScheduledJob } from "./job-scheduler";
 import { addK6JobToQueue, assertExecutionQueueReady } from "@/lib/queue";
 import { prepareJobTestScripts } from "@/lib/job-execution-utils";
 import { deleteScheduledJob } from "@/lib/job-scheduler";
+import { isOrgPendingDeletion } from "@/lib/deletion/org-state";
 
 const scheduledJob = {
   data: {
@@ -122,6 +124,20 @@ describe("scheduled execution admission", () => {
     await expect(processScheduledJob(scheduledJob)).resolves.toEqual({ success: true });
     expect(values).not.toHaveBeenCalled();
     expect(db.select).toHaveBeenCalledTimes(1);
+  });
+
+  it("does nothing for a pending-deletion organization, reads the database fresh, and leaves the schedule to quiescing", async () => {
+    (db.select as jest.Mock).mockReturnValueOnce(
+      selectRows([{ id: "job-1", projectId: "project-1", organizationId: "org-1", jobType: "playwright", cronSchedule: "*/5 * * * *", deletingAt: null }]),
+    );
+    (isOrgPendingDeletion as jest.Mock).mockResolvedValueOnce(true);
+    const values = jest.fn();
+    (db.insert as jest.Mock).mockReturnValue({ values });
+    await expect(processScheduledJob(scheduledJob)).resolves.toEqual({ success: true });
+    expect(isOrgPendingDeletion).toHaveBeenCalledWith("org-1", { fresh: true });
+    expect(values).not.toHaveBeenCalled();
+    expect(db.select).toHaveBeenCalledTimes(1);
+    expect(deleteScheduledJob).not.toHaveBeenCalled(); // a tick racing a cancellation must not strip the restored schedule
   });
 
   it("records only one blocked run while the job stays blocked for the same reason", async () => {

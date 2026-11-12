@@ -533,6 +533,51 @@ describe('k6 container-start metering', () => {
     );
   });
 
+  it('does not retry a crash of a job being deleted and records it as cancelled', async () => {
+    const runK6Test = jest
+      .fn()
+      .mockRejectedValue(new Error('container exploded'));
+    const { processor, dbService, set } = build(runK6Test);
+    dbService.isJobDeleting.mockResolvedValue(true);
+    const notify = jest.fn().mockResolvedValue(undefined);
+    (
+      processor as unknown as {
+        jobNotificationService: { handleJobNotifications: jest.Mock };
+      }
+    ).jobNotificationService = { handleJobNotifications: notify };
+    const queued = Object.assign(job(), { opts: { attempts: 3 } });
+    Object.assign(queued.data, { jobId: 'job-1' });
+
+    await expect(processor.process(queued)).resolves.toMatchObject({
+      success: false,
+    });
+
+    expect(dbService.isJobDeleting).toHaveBeenCalledWith('job-1');
+    expect(runK6Test).toHaveBeenCalledTimes(1);
+    expect(set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'error',
+        errorDetails: 'Cancellation requested by user',
+      }),
+    );
+    expect(notify).toHaveBeenCalledWith(
+      expect.objectContaining({ cancelled: true }),
+    );
+  });
+
+  it('still retries the same crash when the job is not being deleted', async () => {
+    const runK6Test = jest
+      .fn()
+      .mockRejectedValue(new Error('container exploded'));
+    const { processor } = build(runK6Test);
+    const queued = Object.assign(job(), { opts: { attempts: 3 } });
+    Object.assign(queued.data, { jobId: 'job-1' });
+
+    await expect(processor.process(queued)).rejects.toThrow(
+      'container exploded',
+    );
+  });
+
   it('records a RunInterruptedError as the restart (error status) and sends no alert', async () => {
     const runK6Test = jest
       .fn()
@@ -810,6 +855,115 @@ describe('k6 interrupted completion with a summary on hand', () => {
       expect.objectContaining({
         status: 'error',
         errorDetails: 'Interrupted by worker restart',
+      }),
+    );
+  });
+});
+
+describe('k6 result text of a job deleted mid-run', () => {
+  it('says the job was deleted, while the run row keeps the cancellation marker', async () => {
+    const values = jest.fn().mockResolvedValue(undefined);
+    const transactionSet = jest
+      .fn()
+      .mockReturnValue({ where: jest.fn().mockResolvedValue(undefined) });
+    const tx = {
+      query: {
+        k6PerformanceRuns: {
+          findFirst: jest.fn().mockResolvedValue(undefined),
+        },
+      },
+      select: jest.fn().mockReturnValue({
+        from: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnValue({
+            for: jest.fn().mockResolvedValue([{ id: 'test-id' }]),
+          }),
+        }),
+      }),
+      insert: jest.fn().mockReturnValue({ values }),
+      update: jest.fn().mockReturnValue({ set: transactionSet }),
+    };
+    const outsideSet = jest
+      .fn()
+      .mockReturnValue({ where: jest.fn().mockResolvedValue(undefined) });
+    const db = {
+      update: jest.fn().mockReturnValue({ set: outsideSet }),
+      insert: jest.fn(),
+      execute: jest
+        .fn()
+        .mockResolvedValue([{ supports_browser: true, supports_k6: true }]),
+    };
+    const usage = {
+      shouldBlockExecution: jest.fn().mockResolvedValue({ blocked: false }),
+      trackK6Execution: jest.fn().mockResolvedValue({ blocked: false }),
+      completeRunWithUsage: jest.fn(
+        async (
+          _input: unknown,
+          persist: (t: ExecutionUsageTransaction) => Promise<void>,
+        ) => {
+          await persist(tx as unknown as ExecutionUsageTransaction);
+        },
+      ),
+    };
+    type Dependencies = ConstructorParameters<typeof K6ExecutionProcessor>;
+    const notify = jest.fn().mockResolvedValue(undefined);
+    const processor = new K6ExecutionProcessor(
+      {
+        runK6Test: jest.fn().mockResolvedValue({
+          success: false,
+          durationMs: 4000,
+          billableMs: 4000,
+          billingVirtualUsers: 1,
+          summary: { metrics: {} },
+          thresholdsPassed: false,
+          error: 'thresholds crossed',
+        }),
+        hasActiveExecution: jest.fn().mockResolvedValue(false),
+      } as unknown as Dependencies[0],
+      {
+        db,
+        getTerminalRun: jest.fn().mockResolvedValue(undefined),
+        claimRunExecution: jest.fn().mockResolvedValue(true),
+        isJobDeleting: jest.fn().mockResolvedValue(true),
+        finalizeCancelledRun: jest.fn().mockResolvedValue(false),
+        syncJobStatusFromRuns: jest.fn().mockResolvedValue(undefined),
+      } as unknown as Dependencies[1],
+      { get: () => 'eu' } as unknown as Dependencies[2],
+      {} as Dependencies[3],
+      usage as unknown as Dependencies[4],
+      {} as Dependencies[5],
+      {
+        isCancelled: jest.fn().mockResolvedValue(false),
+      } as unknown as Dependencies[6],
+    );
+    (
+      processor as unknown as {
+        jobNotificationService: { handleJobNotifications: jest.Mock };
+      }
+    ).jobNotificationService = { handleJobNotifications: notify };
+    const queued = {
+      id: 'queue-id',
+      data: {
+        runId: 'run-id',
+        testId: 'test-id',
+        jobId: 'job-1',
+        organizationId: 'org-id',
+        projectId: 'project-id',
+        script: '',
+        tests: [],
+      },
+    } as unknown as Job<K6ExecutionTask>;
+
+    await processor.process(queued);
+
+    expect(values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        errorDetails: 'The job was deleted while this run was in progress.',
+      }),
+    );
+    expect(transactionSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'error',
+        errorDetails: 'Cancellation requested by user',
       }),
     );
   });

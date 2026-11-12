@@ -2,6 +2,8 @@ import { Queue, Worker } from "bullmq";
 import { getRedisConnection } from "@/lib/queue";
 import { GLOBAL_CONCURRENCY, findDueDeletions, enqueueOrphanedDeletions, pruneCompletedDeletions } from "./jobs";
 import { runDeletion } from "./runner";
+import { continueQuiescing, retryPendingBillingCancels } from "./organization";
+import { sendDueReminders } from "./notices";
 
 export const DELETION_QUEUE = "deletion-purge";
 
@@ -16,6 +18,9 @@ async function getQueue(): Promise<Queue> {
   return queue;
 }
 
+/** A trigger never waits longer than the sweep interval: the sweep re-triggers due rows, and a far-future delayed job would make BullMQ drop every later trigger that reuses its id. */
+const MAX_TRIGGER_DELAY_MS = 15 * 60_000;
+
 /** Wake a purge. Duplicate triggers are harmless: the claim in the database admits one runner. */
 export async function triggerDeletion(id: string, delayMs = 0): Promise<void> {
   try {
@@ -29,7 +34,7 @@ export async function triggerDeletion(id: string, delayMs = 0): Promise<void> {
 async function enqueue(id: string, delayMs: number): Promise<void> {
   // No custom job id: a follow-up is added while the current job is still active, and a repeated id would be dropped as a duplicate.
   // Extra triggers are harmless (the claim admits one runner and pushes blocked rows out), and the sweep is the backstop.
-  await (await getQueue()).add("purge", { id }, { delay: delayMs });
+  await (await getQueue()).add("purge", { id }, { delay: Math.min(delayMs, MAX_TRIGGER_DELAY_MS) });
 }
 
 /** Start the purge consumer once per process. Concurrency is capped here and, across pods, in the claim. */
@@ -43,10 +48,16 @@ export async function initializeDeletionWorker(): Promise<void> {
 }
 
 /** Periodic safety net (data-lifecycle tick): stuck, due and orphaned purges are triggered again. */
-export async function sweepDeletions(): Promise<{ triggered: number; orphaned: number; pruned: number }> {
+export async function sweepDeletions(): Promise<{ triggered: number; orphaned: number; pruned: number; quiesced: number; billing: number; reminders: number }> {
   const pruned = await pruneCompletedDeletions();
   const orphaned = await enqueueOrphanedDeletions();
   const due = await findDueDeletions();
   await Promise.all(due.map((id) => triggerDeletion(id)));
-  return { triggered: due.length, orphaned, pruned };
+  // Pending organizations: finish stopping activity, retry a billing cancellation that failed at request time, send due reminders.
+  // Each is independent and idempotent; one failing never blocks the purge triggers above.
+  const settle = async <T>(work: () => Promise<T>, fallback: T) => work().catch((error) => { console.error("[DELETION] sweep step failed:", error); return fallback; });
+  const quiesced = await settle(() => continueQuiescing(), 0);
+  const billing = await settle(() => retryPendingBillingCancels(), 0);
+  const reminders = await settle(() => sendDueReminders(), 0);
+  return { triggered: due.length, orphaned, pruned, quiesced, billing, reminders };
 }

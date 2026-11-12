@@ -540,6 +540,27 @@
       "when": 1794464478548,
       "tag": "0076_deleting_flag_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1794476905565,
+      "tag": "0077_org_project_deletion_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1794476906565,
+      "tag": "0078_org_project_deletion_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1794476907565,
+      "tag": "0079_audit_logs_unscrubbed_index",
+      "breakpoints": true
     }
   ]
 }

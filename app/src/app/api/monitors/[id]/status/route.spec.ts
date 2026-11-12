@@ -1,4 +1,5 @@
 /** @jest-environment node */
+jest.mock("@/lib/deletion/org-state");
 jest.mock("@/utils/db", () => ({ db: { query: { monitors: { findFirst: jest.fn() } }, update: jest.fn(), transaction: jest.fn() } }));
 jest.mock("@/lib/auth-context", () => {
   class AuthError extends Error {

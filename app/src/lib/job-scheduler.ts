@@ -1,4 +1,4 @@
-import { liveJob } from "@/lib/deletion/visibility";
+import { liveJob, notInPendingOrganization } from "@/lib/deletion/visibility";
 import { Job, type RepeatableJob } from "bullmq";
 import { randomUUID } from "crypto";
 import type { Redis } from "ioredis";
@@ -261,7 +261,7 @@ export async function initializeJobSchedulers() {
         const jobsWithSchedules = await db
           .select()
           .from(jobs)
-          .where(and(isNotNull(jobs.cronSchedule), liveJob()));
+          .where(and(isNotNull(jobs.cronSchedule), liveJob(), notInPendingOrganization(jobs.organizationId)));
 
         if (jobsWithSchedules.length === 0) {
           return { success: true, initialized: 0, failed: 0 };
@@ -407,7 +407,7 @@ export async function cleanupJobScheduler() {
       const jobsWithSchedules = await db
         .select({ id: jobs.id, scheduledJobId: jobs.scheduledJobId })
         .from(jobs)
-        .where(and(isNotNull(jobs.scheduledJobId), liveJob()));
+        .where(and(isNotNull(jobs.scheduledJobId), liveJob(), notInPendingOrganization(jobs.organizationId)));
 
       const validJobIds = new Set(
         jobsWithSchedules.map(

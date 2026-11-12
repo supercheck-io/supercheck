@@ -1,3 +1,4 @@
+jest.mock("@/lib/deletion/org-state");
 /**
  * Job Scheduler Tests
  *
@@ -67,6 +68,7 @@ jest.mock("drizzle-orm", () => ({
   and: jest.fn(),
   isNotNull: jest.fn(),
   isNull: jest.fn(),
+  sql: jest.fn(),
 }));
 
 jest.mock("@/db/schema", () => ({

@@ -19,7 +19,7 @@ import { z } from 'zod';
 import { logAdminEvent, logImpersonationEvent } from '@/lib/audit-logger';
 import { checkAdminRateLimit } from '@/lib/session-security';
 import { pruneAvatars } from '@/lib/user-avatar';
-import { BillingCancellationError, OrganizationMembershipChangedError, StorageCleanupError, deleteOrganizationCompletely, soleMemberOrganizations } from '@/lib/organization-teardown';
+import { OrganizationMembershipChangedError, requestOrganizationDeletion, soleMemberOrganizations } from '@/lib/deletion/organization';
 import { isImpersonatedSession } from '@/lib/rbac/middleware';
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -238,24 +238,21 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     }
     for (const org of soleMemberOrgs) {
       try {
-        const deleted = await deleteOrganizationCompletely(org.id, { onlyMemberUserId: userId }, currentAdmin.id);
-        if (deleted) {
+        // Same pending-window path as every other organization deletion; the purge removes it (and its data) when due.
+        const requested = await requestOrganizationDeletion({ organizationId: org.id, actorUserId: currentAdmin.id, guard: { onlyMemberUserId: userId }, reason: 'account_deletion' });
+        if (requested) {
           deletedOrganizationIds.push(org.id);
           try {
-            await logAdminEvent(currentAdmin.id, 'organization_deleted', org.id, 'organization', org.id, {
-            organizationName: org.name, reason: 'sole_member_user_deleted', userId,
-            subscriptionCancelled: deleted.subscriptionCancelled,
-          });
+            await logAdminEvent(currentAdmin.id, 'organization_deletion_requested', org.id, 'organization', org.id, {
+              organizationName: org.name, reason: 'sole_member_user_deleted', userId, purgeAfter: requested.purgeAfter.toISOString(), billing: requested.billing,
+            });
           } catch (error) {
             console.error('Failed to audit organization deletion:', error);
           }
         }
       } catch (error) {
-        // Earlier organizations in this request are already gone; say so, the user is kept.
+        // Earlier organizations in this request are already pending; say so, the user is kept.
         const alreadyDeleted = { deletedOrganizationIds };
-        if (error instanceof BillingCancellationError || error instanceof StorageCleanupError) {
-          return NextResponse.json({ success: false, error: `${org.name}: ${error.message}. The user was not deleted.`, ...alreadyDeleted }, { status: 502 });
-        }
         if (error instanceof OrganizationMembershipChangedError) {
           return NextResponse.json({
             success: false,

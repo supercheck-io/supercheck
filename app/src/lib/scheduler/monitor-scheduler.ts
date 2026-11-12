@@ -7,6 +7,7 @@
  */
 
 import { Job } from 'bullmq';
+import { isOrgPendingDeletion } from '@/lib/deletion/org-state';
 import { eq } from 'drizzle-orm';
 import { db } from '@/utils/db';
 import { monitors } from '@/db/schema';
@@ -73,7 +74,7 @@ export async function processScheduledMonitor(
   // must surface to BullMQ for a retry and not be recorded as the monitor being down.
   const monitor = await db.query.monitors.findFirst({
     where: eq(monitors.id, monitorId),
-    columns: { config: true, target: true, type: true, projectId: true, frequencyMinutes: true, enabled: true, status: true, deletingAt: true },
+    columns: { config: true, target: true, type: true, projectId: true, organizationId: true, frequencyMinutes: true, enabled: true, status: true, deletingAt: true },
   });
   if (!monitor || monitor.enabled === false || monitor.status === 'paused' || monitor.deletingAt) {
     // A deleted monitor still firing means the schedule delete after commit failed, so remove this job's
@@ -89,6 +90,9 @@ export async function processScheduledMonitor(
     }
     return { success: false };
   }
+  // Pending organization deletion: read-only means no new checks (fresh read, it admits work). The schedule itself is left to
+  // quiescing so a tick that raced a cancellation cannot strip the schedule the cancellation restored.
+  if (await isOrgPendingDeletion(monitor.organizationId, { fresh: true })) return { success: false };
   try {
     executionJobData = {
       ...executionJobData,

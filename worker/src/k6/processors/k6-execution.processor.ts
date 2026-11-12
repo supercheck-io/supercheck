@@ -69,6 +69,10 @@ export function getFailedHttpRequestCount(
   );
 }
 
+/** Result text of a k6 run whose job was deleted while it ran (not a user cancellation). */
+export const K6_JOB_DELETED_RESULT =
+  'The job was deleted while this run was in progress.';
+
 abstract class BaseK6ExecutionProcessor extends WorkerHost {
   protected readonly logger: Logger;
   protected readonly workerLocation: string;
@@ -332,9 +336,8 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
       const metrics = this.extractMetrics(result.summary);
 
       // A job whose delete request committed while this ran counts as cancelled, whatever the run produced.
-      const wasCancelled =
-        result.cancelled === true ||
-        (await this.dbService.isJobDeleting(taskData.jobId));
+      const jobDeleting = await this.dbService.isJobDeleting(taskData.jobId);
+      const wasCancelled = result.cancelled === true || jobDeleting;
       const wasInterrupted = result.interrupted === true;
 
       // Create k6_performance_runs record
@@ -437,9 +440,12 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
               reportS3Url: result.reportUrl,
               summaryS3Url: result.summaryUrl ?? null,
               consoleS3Url: result.consoleUrl ?? null,
-              errorDetails: wasCancelled
-                ? RUN_CANCELLATION_MARKER
-                : result.error,
+              // The run row keeps the cancellation marker (admission and recovery compare against it); the result says why.
+              errorDetails: jobDeleting
+                ? K6_JOB_DELETED_RESULT
+                : wasCancelled
+                  ? RUN_CANCELLATION_MARKER
+                  : result.error,
               consoleOutput: result.consoleOutput
                 ? truncateConsoleOutput(result.consoleOutput)
                 : null,

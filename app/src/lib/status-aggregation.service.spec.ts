@@ -1,4 +1,5 @@
-jest.mock("@/utils/db", () => ({ db: {} }));
+const findFirst = jest.fn();
+jest.mock("@/utils/db", () => ({ db: { query: { statusPageComponents: { findFirst: (...args: unknown[]) => findFirst(...args) } } } }));
 import { StatusAggregationService, type ComponentStatus } from "./status-aggregation.service";
 const service = new StatusAggregationService();
 it("honors minimum failing monitor count", () => {
@@ -90,5 +91,29 @@ describe("components without a reporting monitor", () => {
   it("still uses real statuses of a mixed component", () => {
     expect(calc(["paused", "pending", "down"], "operational")).toBe("major_outage");
     expect(calc(["paused", "up"], "major_outage")).toBe("operational");
+  });
+});
+
+describe("calculateComponentStatus skips monitors being deleted", () => {
+  const component = (monitors: Array<{ status: string; deletingAt: Date | null }>) => ({
+    aggregationMethod: "worst_case",
+    failureThreshold: 1,
+    status: "operational",
+    monitors: monitors.map((monitor) => ({ weight: 1, monitor })),
+  });
+
+  it("ignores a deleting monitor that is down", async () => {
+    findFirst.mockResolvedValueOnce(component([{ status: "down", deletingAt: new Date() }, { status: "up", deletingAt: null }]));
+    await expect(service.calculateComponentStatus("c1")).resolves.toBe("operational");
+  });
+
+  it("is operational when every linked monitor is being deleted", async () => {
+    findFirst.mockResolvedValueOnce(component([{ status: "down", deletingAt: new Date() }]));
+    await expect(service.calculateComponentStatus("c1")).resolves.toBe("operational");
+  });
+
+  it("still counts a live down monitor", async () => {
+    findFirst.mockResolvedValueOnce(component([{ status: "down", deletingAt: null }, { status: "up", deletingAt: new Date() }]));
+    await expect(service.calculateComponentStatus("c1")).resolves.toBe("major_outage");
   });
 });

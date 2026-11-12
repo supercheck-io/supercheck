@@ -17,7 +17,7 @@ import path from "node:path";
 import { and, isNull } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 import { jobs, monitors, runs } from "@/db/schema";
-import { liveJob, liveMonitor, liveRunOfLiveJob, notFoundIfDeleting } from "./visibility";
+import { liveJob, liveMonitor, liveRunOfLiveJob, notFoundIfDeleting, notInPendingOrganization } from "./visibility";
 
 const SRC = path.resolve(__dirname, "../..");
 const ROOTS = ["app", "actions", "lib", "sre"];
@@ -30,7 +30,9 @@ const UNFILTERED_OK: Record<string, string> = {
   "lib/deletion/request.ts": "sets and reads the flag itself",
   "lib/deletion/jobs.ts": "sweeper finds deleting rows by design",
   "lib/admin.ts": "super-admin diagnostics read every row",
-  "lib/organization-teardown.ts": "removes whole organizations",
+  "lib/deletion/purge-tenant.ts": "removes whole organizations and projects",
+  "lib/deletion/organization.ts": "organization deletion stops and counts everything it owns, deleting or not",
+  "lib/deletion/project.ts": "project deletion stops and counts everything it owns, deleting or not",
   "lib/resource-deletion/linked-records.ts": "deletion cleanup of rows that point at a target",
   "lib/resource-deletion/run.ts": "deletes runs",
   "lib/data-lifecycle-service.ts": "retention cleanup and system-wide storage stats",
@@ -132,8 +134,32 @@ function sources(): Array<{ rel: string; text: string }> {
   return out;
 }
 
+// Files that read the organization's pending-deletion column themselves, with why. Everything else asks the org-state
+// helpers (isOrgPendingDeletion, assertOrgWritable), the permission layer (orgPendingDeletion) or notInPendingOrganization.
+const PENDING_COLUMN_OK: Record<string, string> = {
+  "lib/deletion/visibility.ts": "defines notInPendingOrganization",
+  "lib/deletion/org-state.ts": "defines the pending-state helpers",
+  "lib/deletion/organization.ts": "the request, cancel and purge transitions decide under the row lock",
+  "lib/deletion/notices.ts": "reminder emails select the pending organizations",
+  "lib/deletion/jobs.ts": "the sweeper finds due organizations",
+  "lib/deletion/purge-tenant.ts": "the purge re-checks the window under the lock",
+  "lib/auth-context.ts": "one join on the key's organization feeds orgPendingDeletion",
+  "lib/rbac/unified-auth.ts": "one join on the session's organization feeds orgPendingDeletion",
+  "lib/rbac/middleware.ts": "one join on the project's organization feeds orgPendingDeletion",
+  "lib/session.ts": "exposes the flag to the client for the banner",
+  "app/(main)/layout.tsx": "reads the flag to render the banner",
+  "app/api/admin/organizations/route.ts": "super-admin list shows the state",
+};
+const PENDING_COLUMN = /\bdeletionRequestedAt\b|\bdeletion_requested_at\b|\bdeletionPurgeAfter\b/;
+
 describe("deletion visibility rule", () => {
   const files = sources();
+
+  it("pending-organization state is read through the shared helpers, not hand-rolled", () => {
+    const offenders = files.filter((f) => PENDING_COLUMN.test(f.text) && !(f.rel in PENDING_COLUMN_OK)).map((f) => f.rel);
+    expect(offenders).toEqual([]);
+    expect(Object.keys(PENDING_COLUMN_OK).filter((rel) => !files.some((f) => f.rel === rel))).toEqual([]);
+  });
 
   it("every query on monitors, jobs or runs goes through the visibility helpers", () => {
     const offenders = files.filter((f) => QUERIES.test(f.text) && !f.text.includes(HELPER) && !(f.rel in UNFILTERED_OK)).map((f) => f.rel);
@@ -177,6 +203,12 @@ describe("visibility helpers", () => {
     expect(sqlOf(liveJob("j"))).toBe("j.deleting_at IS NULL");
     expect(sqlOf(liveMonitor("m"))).toBe("m.deleting_at IS NULL");
     expect(() => liveJob("j; drop table jobs")).toThrow("Invalid table alias");
+  });
+
+  it("notInPendingOrganization excludes organizations with a deletion request", () => {
+    const q = dialect.sqlToQuery(notInPendingOrganization(jobs.organizationId));
+    expect(q.sql).toContain("deletion_requested_at IS NOT NULL");
+    expect(q.sql).toContain('"jobs"."organization_id"');
   });
 
   it("notFoundIfDeleting hides a flagged row and keeps the rest", () => {

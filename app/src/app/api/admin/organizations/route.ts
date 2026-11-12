@@ -23,6 +23,8 @@ export async function GET(request: NextRequest) {
         slug: organization.slug,
         logo: organization.logo,
         createdAt: organization.createdAt,
+        deletionRequestedAt: organization.deletionRequestedAt,
+        deletionPurgeAfter: organization.deletionPurgeAfter,
         metadata: organization.metadata,
       })
       .from(organization)

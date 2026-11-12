@@ -5,6 +5,7 @@ import { deleteScheduledJob } from "@/lib/job-scheduler";
 import { deleteScheduledMonitor } from "@/lib/monitor-scheduler";
 import { RUN_CANCELLATION_MARKER, setCancellationSignal } from "@/lib/cancellation-service";
 import { DELETION_TX_LIMITS, DELETION_TX_STATEMENT_LIMIT } from "@/lib/resource-deletion/chunks";
+import { resolveIncidentsOfDeletedSource } from "@/lib/sre/incident-lifecycle";
 import { insertDeletionJob } from "./jobs";
 import { triggerDeletion } from "./queue";
 
@@ -37,6 +38,7 @@ export async function requestJobDeletion(scope: Scope) {
     await tx.update(runs).set({ errorDetails: RUN_CANCELLATION_MARKER }).where(and(eq(runs.jobId, scope.id), inArray(runs.status, ["queued", "running"])));
     // Drop the links to shared channels now, so a deleting job never blocks deleting a channel or alerts through it.
     await tx.delete(jobNotificationSettings).where(eq(jobNotificationSettings.jobId, scope.id));
+    await resolveIncidentsOfDeletedSource(tx, { organizationId: scope.organizationId, projectId: scope.projectId, sourceType: "job", sourceId: scope.id, targetName: current.name });
     const deletionId = await insertDeletionJob(tx, { scope: "job", targetId: scope.id, organizationId: scope.organizationId, requestedByUserId: scope.userId });
     return { status: "requested", data: { ...flagged, deletionId } };
   });
@@ -67,6 +69,7 @@ export async function requestMonitorDeletion(scope: Scope) {
     // Same for the links to shared tags and channels, so a deleting monitor never blocks deleting them.
     await tx.delete(monitorTags).where(eq(monitorTags.monitorId, scope.id));
     await tx.delete(monitorNotificationSettings).where(eq(monitorNotificationSettings.monitorId, scope.id));
+    await resolveIncidentsOfDeletedSource(tx, { organizationId: scope.organizationId, projectId: scope.projectId, sourceType: "monitor", sourceId: scope.id, targetName: current.name });
     const deletionId = await insertDeletionJob(tx, { scope: "monitor", targetId: scope.id, organizationId: scope.organizationId, requestedByUserId: scope.userId });
     return { status: "requested", data: { ...flagged, deletionId } };
   });

@@ -37,6 +37,10 @@ export const auditLogs = pgTable(
   (table) => ({
     organizationIdIdx: index("audit_logs_organization_id_idx").on(table.organizationId),
     createdAtIdx: index("audit_logs_created_at_idx").on(table.createdAt),
+    // Rows whose emails are not yet scrubbed (see lib/audit-scrub.ts): the scrub walks only these, oldest first.
+    unscrubbedCreatedIdx: index("audit_logs_unscrubbed_created_idx")
+      .on(table.createdAt)
+      .where(sql`(details IS NULL OR NOT (details ? 'emailsScrubbed'))`),
     // Composite index for dashboard playground queries
     actionOrgCreatedIdx: index("audit_logs_action_org_created_idx").on(
       table.action,

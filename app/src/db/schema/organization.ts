@@ -68,8 +68,17 @@ export const organization = pgTable("organization", {
     .default("0"),
   usagePeriodStart: timestamp("usage_period_start", { withTimezone: true }),
   usagePeriodEnd: timestamp("usage_period_end", { withTimezone: true }),
+
+  // Pending deletion: set when an owner (or an admin) requests it; purged after deletionPurgeAfter unless cancelled.
+  // Read-only for members while set. No foreign key on the requester: the user may be deleted before the purge.
+  deletionRequestedAt: timestamp("deletion_requested_at", { withTimezone: true }),
+  deletionPurgeAfter: timestamp("deletion_purge_after", { withTimezone: true }),
+  deletionRequestedByUserId: uuid("deletion_requested_by_user_id"),
+  // Progress markers (quiesced, billing cancel requested, purge started, reminder emails sent), see lib/deletion/org-state.ts.
+  deletionMeta: jsonb("deletion_meta").$type<Record<string, unknown>>().notNull().default({}),
 },
   (table) => [
+    index("organization_deletion_purge_after_idx").on(table.deletionPurgeAfter).where(sql`deletion_requested_at IS NOT NULL`),
     uniqueIndex("organization_polar_customer_id_idx").on(table.polarCustomerId).where(sql`polar_customer_id IS NOT NULL`),
     uniqueIndex("organization_subscription_id_idx").on(table.subscriptionId).where(sql`subscription_id IS NOT NULL`),
     check("organization_playwright_minutes_used_required_check", sql`playwright_minutes_used IS NOT NULL`),
@@ -177,8 +186,12 @@ export const projects = pgTable(
       .default("active"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+    // Soft delete: status is 'deleted' too; restorable until purgeAfter, then purged.
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    purgeAfter: timestamp("purge_after", { withTimezone: true }),
   },
   (table) => ({
+    purgeAfterIdx: index("projects_purge_after_idx").on(table.purgeAfter).where(sql`deleted_at IS NOT NULL`),
     // Composite index on organization_id and status for filtered queries
     orgStatusIdx: index("projects_org_status_idx").on(
       table.organizationId,

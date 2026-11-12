@@ -772,6 +772,45 @@ describe('PlaywrightExecutionProcessor', () => {
         ).toHaveBeenCalledWith(expect.objectContaining({ cancelled: true }));
       });
 
+      it('does not retry a crash of a job being deleted and records it as cancelled', async () => {
+        mockDbService.isJobDeleting.mockResolvedValue(true);
+        mockExecutionService.runJob.mockRejectedValueOnce(
+          new Error('container exploded'),
+        );
+        const job = createMockJob(mockJobTask);
+        job.opts = { attempts: 3 };
+        job.attemptsMade = 0;
+
+        await expect(processor.process(job)).resolves.toMatchObject({
+          success: false,
+        });
+
+        expect(mockDbService.isJobDeleting).toHaveBeenCalledWith(jobId);
+        expect(mockExecutionService.runJob).toHaveBeenCalledTimes(1);
+        expect(mockDbService.updateRunStatus).toHaveBeenCalledWith(
+          mockJobTask.runId,
+          'error',
+          expect.anything(),
+          RUN_CANCELLATION_MARKER,
+        );
+        expect(
+          mockJobNotificationService.handleJobNotifications,
+        ).toHaveBeenCalledWith(expect.objectContaining({ cancelled: true }));
+      });
+
+      it('still retries the same crash when the job is not being deleted', async () => {
+        mockExecutionService.runJob.mockRejectedValueOnce(
+          new Error('container exploded'),
+        );
+        const job = createMockJob(mockJobTask);
+        job.opts = { attempts: 3 };
+        job.attemptsMade = 0;
+
+        await expect(processor.process(job)).rejects.toThrow(
+          'container exploded',
+        );
+      });
+
       it('delays a job whose pod never started instead of consuming an attempt', async () => {
         mockExecutionService.runJob.mockRejectedValueOnce(
           new ExecutionCapacityError('Interrupted by worker restart'),

@@ -73,6 +73,10 @@ export const organization = pgTable('organization', {
     .default('0'),
   usagePeriodStart: timestamp('usage_period_start', { withTimezone: true }),
   usagePeriodEnd: timestamp('usage_period_end', { withTimezone: true }),
+  // Pending deletion (see the app schema): the worker refuses to start work for such an organization.
+  deletionRequestedAt: timestamp('deletion_requested_at', {
+    withTimezone: true,
+  }),
 });
 // Cloud/self-hosted entitlement enforcement lives in the app SubscriptionService.
 // A database row cannot infer hosting mode from the presence of a Polar ID.
@@ -170,6 +174,8 @@ export const projects = pgTable(
       .default('active'),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+    purgeAfter: timestamp('purge_after', { withTimezone: true }),
   },
   (table) => ({
     // Composite index on organization_id and status for filtered queries

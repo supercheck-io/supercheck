@@ -6,7 +6,7 @@ import { requireAdmin } from '@/lib/admin';
 import { adminDeniedResponse } from '@/lib/admin-errors';
 import { eq } from 'drizzle-orm';
 import { roleToDisplayName, normalizeRole } from '@/lib/rbac/role-normalizer';
-import { soleMemberOrganizations } from '@/lib/organization-teardown';
+import { soleMemberOrganizations } from '@/lib/deletion/organization';
 
 /**
  * GET /api/admin/users/[id]/organizations
