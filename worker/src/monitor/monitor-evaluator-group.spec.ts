@@ -51,6 +51,10 @@ function fakeGroupStore(
                       evaluation: receipt.evaluation,
                       processedAt: receipt.notificationProcessedAt,
                       claimedAt: receipt.claimedAt ?? null,
+                      leased:
+                        !!receipt.claimedAt &&
+                        Date.now() - receipt.claimedAt.getTime() <
+                          GROUP_NOTIFICATION_LEASE_MS,
                     },
                   ]
                 : [],
@@ -88,7 +92,10 @@ function fakeGroupStore(
           if ('notificationClaimToken' in values) {
             // A claim sets the lease; a release clears it.
             if (receipt && !receipt.notificationProcessedAt) {
-              receipt.claimedAt = values.notificationClaimedAt as Date | null;
+              // `now()` is SQL in the real query; the fake clock stands in for the database clock.
+              receipt.claimedAt = values.notificationClaimedAt
+                ? new Date()
+                : null;
               receipt.token = values.notificationClaimToken as string | null;
             }
           } else if (receipt && !receipt.notificationProcessedAt) {

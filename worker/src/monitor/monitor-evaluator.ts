@@ -947,6 +947,8 @@ export class MonitorEvaluator {
         .select({
           processedAt: schema.monitorGroupEvaluations.notificationProcessedAt,
           claimedAt: schema.monitorGroupEvaluations.notificationClaimedAt,
+          // Judged on the database clock, so workers with skewed clocks agree on whether a lease is live.
+          leased: sql<boolean>`coalesce(${schema.monitorGroupEvaluations.notificationClaimedAt} > now() - make_interval(secs => ${GROUP_NOTIFICATION_LEASE_MS / 1000}), false)`,
         })
         .from(schema.monitorGroupEvaluations)
         .where(
@@ -961,14 +963,11 @@ export class MonitorEvaluator {
         .limit(1)
         .for('update');
       if (!row || row.processedAt) return 'done' as const;
-      const leased =
-        row.claimedAt &&
-        Date.now() - row.claimedAt.getTime() < GROUP_NOTIFICATION_LEASE_MS;
-      if (leased) return 'busy' as const;
+      if (row.leased) return 'busy' as const;
       await tx
         .update(schema.monitorGroupEvaluations)
         .set({
-          notificationClaimedAt: new Date(),
+          notificationClaimedAt: sql`now()`,
           notificationClaimToken: token,
         })
         .where(
