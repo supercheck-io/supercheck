@@ -766,7 +766,7 @@ export class MonitorService {
           }
         : result;
 
-    // A monitor deleted mid-check has nowhere to record the result: drop it without evaluating or alerting.
+    // A monitor purged mid-check has nowhere to record the result: drop it without evaluating or alerting.
     if (
       !options.persisted &&
       !(await this.insertResultWithRetry(persistedResult))
@@ -2482,7 +2482,7 @@ export class MonitorService {
   // A failed insert makes the BullMQ job retry, so a transient DB error is absorbed here first; re-running the
   // check would bill a synthetic one twice. The row id is fixed up front and the insert ignores a conflict on it,
   // so a retry after an insert that committed (response lost) cannot add a second row.
-  // Returns false when the monitor is gone or being deleted (foreign key violation): terminal, never retried.
+  // Returns false when the monitor row is already purged (foreign key violation): terminal, never retried.
   private async insertResultWithRetry(
     result: MonitorExecutionResult,
   ): Promise<boolean> {
@@ -2494,7 +2494,7 @@ export class MonitorService {
       } catch (error) {
         if (isForeignKeyViolation(error)) {
           this.logger.log(
-            `Monitor ${result.monitorId} no longer exists or is being deleted; dropping its check result`,
+            `Monitor ${result.monitorId} was purged; dropping its check result`,
           );
           return false;
         }
@@ -2621,9 +2621,12 @@ export class MonitorService {
       });
       await (id ? insertRow.onConflictDoNothing() : insertRow);
     } catch (error) {
-      this.logger.error(
-        `Failed to save monitor result for ${resultData.monitorId}: ${getErrorMessage(error)}`,
-      );
+      // An FK violation is the expected "monitor purged mid-check" outcome; its message carries the insert params, so skip it.
+      if (!isForeignKeyViolation(error)) {
+        this.logger.error(
+          `Failed to save monitor result for ${resultData.monitorId}: ${getErrorMessage(error)}`,
+        );
+      }
       // Distributed jobs must fail (and retry) rather than ack with no row, or the region is later closed as a false Down.
       if (rethrow) throw error;
     }

@@ -98,8 +98,8 @@ export async function failDeletion(row: DeletionRow, error: unknown): Promise<nu
   const message = truncate(error instanceof Error ? error.message : String(error));
   if (attempts >= MAX_ATTEMPTS) {
     const failed = await db.update(deletionJobs).set({ state: "failed", attempts, lastError: message, heartbeatAt: null, ownerToken: null }).where(owned(row)).returning({ id: deletionJobs.id });
-    // Stable text: the ops log alert (Loki rule DeletionPurgeFailed) matches it. Ids and counters only, no tenant content.
-    if (failed.length) console.error(`[DELETION] Deletion purge failed permanently: id=${row.id} scope=${row.scope} target=${row.targetId} phase=${row.phase ?? "start"} attempts=${attempts} error=${message}`);
+    // Stable text: the ops log alert (Loki rule DeletionPurgeFailed) matches it. Ids, counters and the error class only: driver messages carry query params.
+    if (failed.length) console.error(`[DELETION] Deletion purge failed permanently: id=${row.id} scope=${row.scope} target=${row.targetId} phase=${row.phase ?? "start"} attempts=${attempts} error=${error instanceof Error ? error.name : "unknown"}`); // detail stays in last_error (driver messages carry query params)
     return null;
   }
   const delay = backoffMs(attempts);
