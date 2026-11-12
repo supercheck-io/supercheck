@@ -7,6 +7,7 @@ import { SYNTHETIC_MIN_FREQUENCY_MINUTES } from "./monitor-write";
 import type { Redis } from "ioredis";
 import type { Queue, RepeatableJob } from "bullmq";
 import { randomUUID } from "crypto";
+import { checkedTick } from '@/lib/sentry-lazy';
 
 interface ScheduleMonitorOptions {
   monitorId: string;
@@ -167,11 +168,11 @@ const REPAIR_LOCK_KEY = 'monitor:scheduler:init:lock'; // shared with init so th
  * without this a lost schedule stays lost until the next restart. Idempotent with init: it takes the same
  * lock, only adds what is missing, and handles at most REPAIR_BATCH monitors per sweep.
  */
-export async function repairMonitorSchedules(): Promise<{ repaired: number; failed: number }> {
+export async function repairMonitorSchedules(): Promise<{ repaired: number; failed: number; skipped?: boolean }> {
   const { monitorSchedulerQueue } = await getQueues();
   const redisClient = (await monitorSchedulerQueue.client) as unknown as Redis;
   const lockToken = `${process.pid}:${randomUUID()}`;
-  if (!(await redisClient.set(REPAIR_LOCK_KEY, lockToken, 'EX', 60, 'NX'))) return { repaired: 0, failed: 0 };
+  if (!(await redisClient.set(REPAIR_LOCK_KEY, lockToken, 'EX', 60, 'NX'))) return { repaired: 0, failed: 0, skipped: true };
   try {
     const repeatables = await monitorSchedulerQueue.getRepeatableJobs();
     const scheduled = new Set(repeatables.map((job) => job.name?.match(/^scheduled-monitor-([0-9a-f-]+)$/)?.[1]));
@@ -226,7 +227,7 @@ export function startMonitorScheduleRepair(): void {
   const state = globalThis as { __monitorRepairTimer?: ReturnType<typeof setInterval> };
   if (state.__monitorRepairTimer) return;
   state.__monitorRepairTimer = setInterval(() => {
-    repairMonitorSchedules().catch((error) => console.error('[MonitorScheduler] Repair sweep failed:', error));
+    checkedTick('monitor-schedule-repair', { type: 'interval', value: 5, unit: 'minute' }, repairMonitorSchedules, (r) => !r.skipped).catch((error) => console.error('[MonitorScheduler] Repair sweep failed:', error));
   }, REPAIR_INTERVAL_MS);
   state.__monitorRepairTimer.unref?.();
 }

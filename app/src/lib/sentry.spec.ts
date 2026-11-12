@@ -1,5 +1,10 @@
 jest.mock("@sentry/node", () => ({
   init: jest.fn(),
+  isInitialized: jest.fn(() => false),
+  httpIntegration: jest.fn(() => ({ name: "Http" })),
+  nativeNodeFetchIntegration: jest.fn(() => ({ name: "NodeFetch" })),
+  pinoIntegration: jest.fn(() => ({ name: "Pino" })),
+  consoleLoggingIntegration: jest.fn(() => ({ name: "ConsoleLogging" })),
   captureException: jest.fn(),
   close: jest.fn().mockResolvedValue(true),
   onUnhandledRejectionIntegration: jest.fn(() => ({
@@ -64,7 +69,9 @@ describe("enable gate", () => {
         { name: "Dedupe" },
       ])
       .map((i: { name: string }) => i.name);
-    expect(names).toEqual(["Dedupe", "OnUnhandledRejection"]);
+    expect(names).toEqual(["Dedupe", "OnUnhandledRejection", "Http", "NodeFetch"]);
+    expect(opts.tracesSampler).toBeUndefined(); // no rate: tracing fully off
+    expect(opts.enableLogs).toBe(false);
     // warn: Next's own listener keeps the app alive on stray rejections; strict would exit the pod.
     expect(Sentry.onUnhandledRejectionIntegration).toHaveBeenCalledWith({
       mode: "warn",

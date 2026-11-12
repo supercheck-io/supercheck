@@ -34,6 +34,10 @@ import {
   type PolarClient,
 } from "@/lib/billing/polar-client";
 import { billingSettingsService } from "./billing-settings.service";
+import { checkedTick } from "@/lib/sentry-lazy";
+
+// Matches the scheduler interval so the cron monitor does not report missed check-ins.
+const usageSyncIntervalMinutes = () => (Number(process.env.USAGE_SYNC_INTERVAL_MS) > 0 ? Number(process.env.USAGE_SYNC_INTERVAL_MS) : 5 * 60_000) / 60_000;
 
 const logger = createLogger({ module: "polar-usage" }) as {
   info: (data: unknown, message?: string) => void;
@@ -564,8 +568,11 @@ class PolarUsageService {
     }
 
     try {
+      // Only the lease holder checks in, so idle replicas never report.
       const result = await withUsageSyncLease((assertOwned) =>
-        this.syncPendingEventsLocked(batchSize, assertOwned),
+        checkedTick("usage-sync", { type: "interval", value: Math.max(1, Math.round(usageSyncIntervalMinutes())), unit: "minute" }, () =>
+          this.syncPendingEventsLocked(batchSize, assertOwned),
+        ),
       );
 
       if (!result) {

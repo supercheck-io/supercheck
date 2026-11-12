@@ -84,6 +84,7 @@ import {
   GROUP_NOTIFICATION_BUSY,
 } from './monitor-evaluator';
 import { nextOutageKey } from '../monitor-control/sequence-counters';
+import { countMetric } from '../common/sentry-reporter';
 
 // Use the Monitor type from schema
 // Use the MonitorResult type from schema
@@ -508,6 +509,19 @@ export class MonitorService {
     if (results.length === 0) {
       this.logger.warn('No results to save');
       return;
+    }
+    for (const r of results) {
+      const cause = (r.details as { errorType?: unknown } | undefined)
+        ?.errorType;
+      // Enum attributes only: never the target, location name or error text.
+      countMetric('monitor.check', {
+        status: r.status,
+        cause: r.isUp
+          ? 'none'
+          : typeof cause === 'string' && /^[a-z_]{1,40}$/.test(cause)
+            ? cause
+            : 'other',
+      });
     }
 
     const monitorId = results[0].monitorId;

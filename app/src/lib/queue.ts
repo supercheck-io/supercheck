@@ -66,6 +66,7 @@ import {
   CapacityReservationUnavailableError,
   type QueuedJobData,
 } from "./capacity-manager";
+import { getTraceHeaders } from "@/lib/sentry-lazy";
 
 function throwExecutionQueueError(error: unknown, operation: string): never {
   if (error instanceof ExecutionQueueError) {
@@ -1030,6 +1031,8 @@ export async function addTestToQueue(task: TestExecutionTask): Promise<{
           {
             ...safeTask,
             _capacityStatus: "immediate",
+            // Continues this request's trace in the worker; empty unless Sentry is on.
+            _trace: await getTraceHeaders(),
           },
           { jobId, priority: policy.priority }
         );
@@ -1113,6 +1116,8 @@ export async function addJobToQueue(task: JobExecutionTask): Promise<{
           {
             ...safeTask,
             _capacityStatus: "immediate",
+            // Continues this request's trace in the worker; empty unless Sentry is on.
+            _trace: await getTraceHeaders(),
           },
           { jobId: runId, priority: policy.priority }
         );
@@ -1205,6 +1210,8 @@ export async function addK6TestToQueue(
             ...safeTask,
             location: k6TestLocation,
             _capacityStatus: "immediate",
+            // Continues this request's trace in the worker; empty unless Sentry is on.
+            _trace: await getTraceHeaders(),
           },
           { jobId: runId, priority: policy.priority }
         );
@@ -1305,6 +1312,8 @@ export async function addK6JobToQueue(
             ...safeTask,
             location: k6JobLocation,
             _capacityStatus: "immediate",
+            // Continues this request's trace in the worker; empty unless Sentry is on.
+            _trace: await getTraceHeaders(),
           },
           { jobId: runId, priority: policy.priority }
         );

@@ -9,7 +9,7 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 ### Upgrade notes
 
 - **Database migrations.** Apply migrations `0059` to `0063` before you update the app and the worker. They add an index and a waiter count on private agent jobs, an origin on investigation runs, an index for trial key lookups and incident alert counts.
-- **New optional settings.** `PRIVATE_AGENT_JOB_RETENTION_DAYS` (default 30) sets how long finished private agent jobs are kept; each connector's newest job always stays. `SMTP_FROM_NAME` and `SMTP_REPLY_TO` set a display name and a Reply-To address on every email. `SENTRY_DSN`, `SENTRY_ENVIRONMENT` and `SENTRY_RELEASE` are documented in `app/.env.example`.
+- **New optional settings.** `PRIVATE_AGENT_JOB_RETENTION_DAYS` (default 30) sets how long finished private agent jobs are kept; each connector's newest job always stays. `SMTP_FROM_NAME` and `SMTP_REPLY_TO` set a display name and a Reply-To address on every email. `SENTRY_DSN`, `SENTRY_ENVIRONMENT`, `SENTRY_RELEASE`, `SENTRY_TRACES_SAMPLE_RATE`, `SENTRY_ENABLE_LOGS`, `SENTRY_REPLAY_SESSION_SAMPLE_RATE` and `SENTRY_REPLAY_ERROR_SAMPLE_RATE` are documented in `app/.env.example`; Sentry stays off on self-hosted installs.
 - **Rate limiters fail closed.** Invitations and API key verification now return `503` with a `Retry-After` header when Redis is unavailable, instead of letting requests through unthrottled.
 - **Re-run `setup-k3s.sh` (required for self-hosted).** Every test run now first checks that the sandbox network policy blocks the Kubernetes API, and refuses to run user code if it does not. Installs whose execution policy predates 1.5.0 (for example, upgraded by pulling new images without re-running `setup-k3s.sh`) fail every run with *Infrastructure error: execution network isolation not enforced*. `install.sh --upgrade` and the documented manual upgrade already re-run it; otherwise run `sudo bash setup-k3s.sh --execution-plane-only` on the main server and on every worker server. Clusters that do not enforce Kubernetes NetworkPolicy cannot run tests.
 - **MCP clients.** A client that registers itself now gets `mcp:read` only; it must request `mcp:incidents:write` or `mcp:sre` explicitly.
@@ -48,6 +48,7 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 
 ### Fixed
 
+- The worker image no longer ships JavaScript source map files.
 - SSL expiry alerts are suppressed during scheduled maintenance, like other monitor alerts.
 - The Playwright trace viewer works again: the retired root service worker no longer controls report pages (one reload clears the old worker in a tab opened before the update).
 - A playground run that fails or is cancelled before its report exists now ends the status stream instead of leaving the spinner running.

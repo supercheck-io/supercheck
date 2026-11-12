@@ -6,6 +6,7 @@ import { getRedisConnection, queueLogger } from "@/lib/queue";
 import { notifyIncidentEvent } from "@/lib/sre/incident-notifier";
 import { sweepSreIncidents } from "@/sre/lib/incident-sweep";
 import { db } from "@/utils/db";
+import { checkedTick } from "@/lib/sentry-lazy";
 
 const QUEUE_NAME = "sre-incident-renotify";
 const TICK_MS = 60_000;
@@ -94,7 +95,7 @@ export async function initializeIncidentRenotifyScheduler() {
     QUEUE_NAME,
     async () => {
       try {
-        await renotifyUnacknowledgedIncidents();
+        await checkedTick("incident-renotify", { type: "interval", value: 1, unit: "minute" }, renotifyUnacknowledgedIncidents);
       } finally {
         // Same 60 s tick, independent of the above: lost recovery signals and detached triage runs (sweepSreIncidents).
         await sweepSreIncidents().catch((error) => queueLogger.error({ err: error }, "Incident sweep failed"));
