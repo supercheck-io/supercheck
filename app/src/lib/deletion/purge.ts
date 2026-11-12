@@ -151,7 +151,7 @@ export async function purgeRunBatch(ctx: StepContext, column: "jobId" | "project
   if (batch.length === 0) return 0;
   const ids = batch.map((r) => r.id);
   const own = await db.select({ ...reportColumns, entityType: reports.entityType }).from(reports)
-    .where(and(inArray(reports.entityType, ["job", "k6_job"]), inArray(reports.entityId, ids)));
+    .where(and(inArray(reports.entityType, ["job", "k6_job", "k6_test"]), inArray(reports.entityId, ids)));
   const aliases = await db.select({ ...reportColumns, entityType: reports.entityType }).from(reports)
     .where(and(eq(reports.entityType, "test"), inArray(reports.reportPath, ids.map((runId) => `${runId}/report`))));
   const reportRows = [...new Map([...own, ...aliases].map((r) => [r.id, r])).values()];

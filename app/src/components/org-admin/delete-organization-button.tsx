@@ -39,7 +39,7 @@ export function DeleteOrganizationButton({ organizationId, organizationName }: D
       const res = await fetch(`/api/organizations/${organizationId}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ confirmOrganizationId: organizationId }),
+        body: JSON.stringify({ confirmName: typedName.trim() }),
       });
       const data = await res.json().catch(() => null);
       if (!data) {
