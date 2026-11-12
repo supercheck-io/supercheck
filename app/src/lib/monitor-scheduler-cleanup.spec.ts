@@ -251,7 +251,7 @@ describe("periodic repair sweep", () => {
 
   it("does nothing while init or another sweep holds the lock", async () => {
     redis.set.mockResolvedValue(null);
-    await expect(repairMonitorSchedules()).resolves.toEqual({ repaired: 0, failed: 0 });
+    await expect(repairMonitorSchedules()).resolves.toEqual({ repaired: 0, failed: 0, skipped: true });
     expect(queue.getRepeatableJobs).not.toHaveBeenCalled();
   });
 

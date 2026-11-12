@@ -1,20 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { useCallback } from "react";
 import { useRouter } from "next/navigation";
-import {
-  SearchIcon,
-  LaptopMinimal,
-  Chrome,
-  ArrowLeftRight,
-  Database,
-  SquareFunction,
-  ChevronsLeftRightEllipsis,
-  EthernetPort,
-} from "lucide-react";
-import { PlaywrightLogo } from "@/components/logo/playwright-logo";
-import { K6Logo } from "@/components/logo/k6-logo";
+import { SearchIcon } from "lucide-react";
 
 import {
   Command,
@@ -33,18 +21,60 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { AREA_TEXT, NAV } from "@/lib/nav-areas";
+import {
+  CAPABILITY_FLAG,
+  CREATE_GROUPS,
+  createActionsFor,
+  type CreateCapabilities,
+} from "@/lib/create-actions";
+import { useAdminStatus } from "@/hooks/use-admin-status";
 
-function NavCommandItem({ id, onSelect }: { id: keyof typeof NAV; onSelect: () => void }) {
-  const { title, icon: Icon, tone } = NAV[id];
-  return (
-    <CommandItem onSelect={onSelect}>
-      <Icon className={`mr-2 h-4 w-4 ${AREA_TEXT[tone]}`} />
-      <span>{title}</span>
-    </CommandItem>
-  );
-}
+type NavId = keyof typeof NAV;
+type Gate = "investigate" | "configure" | "orgAdmin" | "superAdmin";
 
-interface CommandSearchProps {
+/** Destinations in sidebar order (Respond, Communicate, Automate, Monitor, Settings). */
+export const COMMAND_NAV_SECTIONS: Array<{ heading: string; items: Array<{ id: NavId; url: string; gate?: Gate }> }> = [
+  {
+    heading: "Respond",
+    items: [
+      { id: "dashboard", url: "/" },
+      { id: "incidents", url: "/incidents" },
+      { id: "copilot", url: "/copilot", gate: "investigate" },
+      { id: "services", url: "/services", gate: "configure" },
+    ],
+  },
+  {
+    heading: "Communicate",
+    items: [
+      { id: "statusPages", url: "/status-pages" },
+      { id: "notifications", url: "/notifications" },
+      { id: "deliveryHistory", url: "/notifications?tab=history" },
+    ],
+  },
+  {
+    heading: "Automate",
+    items: [
+      { id: "requirements", url: "/requirements" },
+      { id: "tests", url: "/tests" },
+      { id: "jobs", url: "/jobs" },
+      { id: "runs", url: "/runs" },
+      { id: "variables", url: "/variables" },
+    ],
+  },
+  { heading: "Monitor", items: [{ id: "monitors", url: "/monitors" }] },
+  {
+    heading: "Settings",
+    items: [
+      { id: "organization", url: "/org-admin", gate: "orgAdmin" },
+      { id: "superAdmin", url: "/super-admin", gate: "superAdmin" },
+      { id: "integrations", url: "/org-admin?tab=integrations", gate: "configure" },
+      { id: "savedQueries", url: "/org-admin?tab=integrations&section=saved-queries", gate: "configure" },
+      { id: "privateAgents", url: "/org-admin?tab=private-agents", gate: "configure" },
+    ],
+  },
+];
+
+interface CommandSearchProps extends Partial<CreateCapabilities> {
   className?: string;
   canInvestigateSre?: boolean;
   canConfigureSre?: boolean;
@@ -54,78 +84,23 @@ export function CommandSearch({
   className,
   canInvestigateSre = false,
   canConfigureSre = false,
+  ...createCapabilities
 }: CommandSearchProps) {
   const [open, setOpen] = React.useState(false);
   const router = useRouter();
+  const { isAdmin, isOrgAdmin } = useAdminStatus();
 
-  const handleCommand = useCallback(
-    (command: string) => {
-      setOpen(false);
+  const allowed: Record<Gate, boolean> = {
+    investigate: canInvestigateSre,
+    configure: canConfigureSre,
+    orgAdmin: Boolean(isOrgAdmin),
+    superAdmin: Boolean(isAdmin),
+  };
 
-      const routes: Record<string, string> = {
-        // Navigation
-        home: "/",
-        dashboard: "/",
-        requirements: "/requirements",
-        monitors: "/monitors",
-        tests: "/tests",
-        jobs: "/jobs",
-        runs: "/runs",
-        variables: "/variables",
-        alerts: "/notifications?tab=history",
-        notifications: "/notifications",
-        incidents: "/incidents",
-        "status-pages": "/status-pages",
-        admin: "/org-admin",
-        ...(canConfigureSre
-          ? {
-              "admin-services": "/services",
-              "admin-integrations": "/org-admin?tab=integrations",
-              "admin-diagnostic-recipes":
-                "/org-admin?tab=integrations&section=saved-queries",
-              "admin-private-agents": "/org-admin?tab=private-agents",
-            }
-          : {}),
-        ...(canInvestigateSre
-          ? {
-              "investigation-chat": "/copilot",
-            }
-          : {}),
-
-        // Create Actions
-        "create-monitor-http": "/monitors/create?type=http_request",
-        "create-monitor-website": "/monitors/create?type=website",
-        "create-monitor-ping": "/monitors/create?type=ping_host",
-        "create-monitor-port": "/monitors/create?type=port_check",
-        "create-monitor-synthetic": "/monitors/create?type=synthetic_test",
-        "create-test-browser": "/playground?scriptType=browser",
-        "create-test-api": "/playground?scriptType=api",
-        "create-test-custom": "/playground?scriptType=custom",
-        "create-test-database": "/playground?scriptType=database",
-        "create-test-performance": "/playground?scriptType=performance",
-        "create-job": "/jobs/create",
-
-        // Quick Actions
-        "view-critical-alerts": "/monitors?filter=down",
-        "view-running-jobs": "/jobs?status=running",
-        "view-recent-runs": "/runs?sort=recent",
-        "view-failed-tests": "/tests?status=failed",
-
-        // System
-        "system-health": "/api/dashboard",
-      };
-
-      const route = routes[command];
-      if (route) {
-        if (route.startsWith("/api/")) {
-          window.open(route, "_blank");
-        } else {
-          router.push(route);
-        }
-      }
-    },
-    [canConfigureSre, canInvestigateSre, router],
-  );
+  const go = (url: string) => {
+    setOpen(false);
+    router.push(url);
+  };
 
   // Command palette toggle only
   React.useEffect(() => {
@@ -178,111 +153,40 @@ export function CommandSearch({
             <CommandList>
               <CommandEmpty>No results found.</CommandEmpty>
 
-              <CommandGroup heading="Navigation">
-                <NavCommandItem id="dashboard" onSelect={() => handleCommand("home")} />
-                <NavCommandItem id="deliveryHistory" onSelect={() => handleCommand("alerts")} />
-                <NavCommandItem id="incidents" onSelect={() => handleCommand("incidents")} />
-                <NavCommandItem id="notifications" onSelect={() => handleCommand("notifications")} />
-                <NavCommandItem id="statusPages" onSelect={() => handleCommand("status-pages")} />
-                <NavCommandItem id="requirements" onSelect={() => handleCommand("requirements")} />
-                <NavCommandItem id="tests" onSelect={() => handleCommand("tests")} />
-                <NavCommandItem id="jobs" onSelect={() => handleCommand("jobs")} />
-                <NavCommandItem id="runs" onSelect={() => handleCommand("runs")} />
-                <NavCommandItem id="variables" onSelect={() => handleCommand("variables")} />
-                <NavCommandItem id="monitors" onSelect={() => handleCommand("monitors")} />
-              </CommandGroup>
-
-              <CommandSeparator />
-
-              {canInvestigateSre && (
-                <>
-                  <CommandGroup heading="Respond">
-                    <NavCommandItem id="copilot" onSelect={() => handleCommand("investigation-chat")} />
+              {COMMAND_NAV_SECTIONS.map(({ heading, items }) => {
+                const visible = items.filter((item) => !item.gate || allowed[item.gate]);
+                if (visible.length === 0) return null;
+                return (
+                  <CommandGroup key={heading} heading={heading}>
+                    {visible.map(({ id, url }) => {
+                      const { title, icon: Icon, tone } = NAV[id];
+                      return (
+                        <CommandItem key={id} value={`${heading} ${title}`} onSelect={() => go(url)}>
+                          <Icon className={`mr-2 h-4 w-4 ${AREA_TEXT[tone]}`} />
+                          <span>{title}</span>
+                        </CommandItem>
+                      );
+                    })}
                   </CommandGroup>
+                );
+              })}
 
-                  <CommandSeparator />
-                </>
-              )}
-
-              <CommandGroup heading="Admin">
-                <NavCommandItem id="organization" onSelect={() => handleCommand("admin")} />
-                {canConfigureSre && (
-                  <>
-                    <NavCommandItem id="services" onSelect={() => handleCommand("admin-services")} />
-                    <NavCommandItem id="integrations" onSelect={() => handleCommand("admin-integrations")} />
-                    <NavCommandItem id="savedQueries" onSelect={() => handleCommand("admin-diagnostic-recipes")} />
-                    <NavCommandItem id="privateAgents" onSelect={() => handleCommand("admin-private-agents")} />
-                  </>
-                )}
-              </CommandGroup>
-
-              <CommandSeparator />
-
-              <CommandGroup heading="Create Tests">
-                <CommandItem
-                  onSelect={() => handleCommand("create-test-browser")}
-                >
-                  <Chrome className="mr-2 h-4 w-4 !text-automate" />
-                  <span>Browser Test</span>
-                </CommandItem>
-                <CommandItem onSelect={() => handleCommand("create-test-api")}>
-                  <ArrowLeftRight className="mr-2 h-4 w-4 !text-automate" />
-                  <span>API Test</span>
-                </CommandItem>
-                <CommandItem
-                  onSelect={() => handleCommand("create-test-database")}
-                >
-                  <Database className="mr-2 h-4 w-4 !text-automate" />
-                  <span>Database Test</span>
-                </CommandItem>
-                <CommandItem
-                  onSelect={() => handleCommand("create-test-custom")}
-                >
-                  <SquareFunction className="mr-2 h-4 w-4 !text-automate" />
-                  <span>Custom Test</span>
-                </CommandItem>
-                <CommandItem
-                  onSelect={() => handleCommand("create-test-performance")}
-                >
-                  <K6Logo className="mr-2 h-4 w-4" />
-                  <span>Performance Test</span>
-                </CommandItem>
-              </CommandGroup>
-
-              <CommandSeparator />
-
-              <CommandGroup heading="Create Monitors">
-                <CommandItem
-                  onSelect={() => handleCommand("create-monitor-http")}
-                >
-                  <ArrowLeftRight className="mr-2 h-4 w-4 !text-monitor" />
-                  <span>HTTP Monitor</span>
-                </CommandItem>
-                <CommandItem
-                  onSelect={() => handleCommand("create-monitor-website")}
-                >
-                  <LaptopMinimal className="mr-2 h-4 w-4 !text-monitor" />
-                  <span>Website Monitor</span>
-                </CommandItem>
-                <CommandItem
-                  onSelect={() => handleCommand("create-monitor-ping")}
-                >
-                  <ChevronsLeftRightEllipsis className="mr-2 h-4 w-4 !text-monitor" />
-                  <span>Ping Monitor</span>
-                </CommandItem>
-                <CommandItem
-                  onSelect={() => handleCommand("create-monitor-port")}
-                >
-                  <EthernetPort className="mr-2 h-4 w-4 !text-monitor" />
-                  <span>Port Monitor</span>
-                </CommandItem>
-                <CommandItem
-                  onSelect={() => handleCommand("create-monitor-synthetic")}
-                >
-                  <PlaywrightLogo className="mr-2 h-4 w-4 !text-monitor" />
-                  <span>Synthetic Monitor</span>
-                </CommandItem>
-              </CommandGroup>
+              {CREATE_GROUPS.map(({ id, heading }) => {
+                const visible = createActionsFor(id).filter(
+                  (action) => !action.gate || createCapabilities[CAPABILITY_FLAG[action.gate]],
+                );
+                if (visible.length === 0) return null;
+                return (
+                  <CommandGroup key={id} heading={heading}>
+                    {visible.map(({ id: actionId, title, url, icon: Icon, text }) => (
+                      <CommandItem key={actionId} value={`${heading} ${title}`} onSelect={() => go(url)}>
+                        <Icon className={`mr-2 h-4 w-4 ${text}`} />
+                        <span>{title}</span>
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                );
+              })}
             </CommandList>
             <div className="flex justify-end items-center px-4 py-2 border-t text-xs text-muted-foreground select-none">
               <span className="mr-4">↑↓ Navigate</span>

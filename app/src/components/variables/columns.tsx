@@ -1,7 +1,8 @@
 "use client";
 
 import { type ColumnDef, type Row, type Table } from "@tanstack/react-table";
-import { TableBadge, type TableBadgeTone } from "@/components/ui/table-badge";
+import { TableBadge } from "@/components/ui/table-badge";
+import { TYPE_CHIP, VARIABLE_TYPES, typeText } from "@/lib/type-tones";
 import { Button } from "@/components/ui/button";
 import { 
   DropdownMenu, 
@@ -27,8 +28,6 @@ import {
   EyeOff,
   FileText,
   Download,
-  Braces,
-  Lock,
   type LucideIcon,
 } from "lucide-react";
 import { Variable } from "./schema";
@@ -290,11 +289,9 @@ function VariableActionsCell({ row, table }: { row: Row<Variable>; table: Table<
 }
 
 // Same tinted pills as the tests, monitors and services tables.
-const TYPE_BADGES: Record<string, { label: string; tone: TableBadgeTone; icon: LucideIcon }> = {
-  variable: { label: "Variable", tone: "info", icon: Braces },
-  secret: { label: "Secret", tone: "danger", icon: Lock },
-  file: { label: "File", tone: "success", icon: FileText },
-};
+const TYPE_BADGES: Record<string, { label: string; icon: LucideIcon; className: string }> = Object.fromEntries(
+  Object.entries(VARIABLE_TYPES).map(([key, { label, icon, tone }]) => [key, { label, icon, className: TYPE_CHIP[tone] }]),
+);
 
 const typeBadgeKey = (type: unknown) =>
   typeof type === "string" && Object.hasOwn(TYPE_BADGES, type) ? type : "variable";
@@ -331,7 +328,7 @@ export const columns: ColumnDef<Variable>[] = [
       const TypeIcon = config.icon;
       return (
         <div className="flex items-center w-[120px]">
-          <TableBadge tone={config.tone} compact className="gap-1">
+          <TableBadge compact className={`gap-1 ${config.className}`}>
             <TypeIcon aria-hidden="true" className="h-3.5 w-3.5" />
             {config.label}
           </TableBadge>
@@ -362,7 +359,7 @@ export const columns: ColumnDef<Variable>[] = [
       if (type === "file") {
         return (
           <div className="flex items-center gap-1.5">
-            <FileText className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <FileText className={`h-4 w-4 shrink-0 ${typeText("variable", "file")}`} />
             <span className="text-sm font-mono truncate max-w-[200px]">{variable.fileName || "file"}</span>
             {variable.fileSize && (
               <span className="text-xs text-muted-foreground">

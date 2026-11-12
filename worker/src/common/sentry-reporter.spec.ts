@@ -2,9 +2,17 @@ const loaded = jest.fn();
 const reportJobFailure = jest.fn();
 const initSentry = jest.fn(() => true);
 const closeSentry = jest.fn().mockResolvedValue(undefined);
+const runJobInSpan = jest.fn((_job, _type, fn: () => unknown) => fn());
+const countMetric = jest.fn();
 jest.mock('./sentry', () => {
   loaded();
-  return { reportJobFailure, initSentry, closeSentry };
+  return {
+    reportJobFailure,
+    initSentry,
+    closeSentry,
+    runJobInSpan,
+    countMetric,
+  };
 });
 
 const DSN = 'https://abc@o1.ingest.sentry.io/1';
@@ -33,6 +41,10 @@ describe('sentry-reporter', () => {
     expect(m.initSentry()).toBe(false);
     m.captureJobFailure({ id: '1' }, new Error('x'));
     await new m.SentryShutdown().onApplicationShutdown();
+    await expect(
+      m.runJobInSpan({ id: '1' }, 'k6', async () => 5),
+    ).resolves.toBe(5);
+    m.countMetric('monitor.check', { status: 'up' });
     expect(loaded).not.toHaveBeenCalled();
   });
 

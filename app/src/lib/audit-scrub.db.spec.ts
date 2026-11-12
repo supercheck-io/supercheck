@@ -64,6 +64,22 @@ describe("audit email scrub", () => {
     expect(await scrubAuditEmails({ dryRun: false, batchSize: 100, maxRecords: 1000 })).toBe(0); // finished rows are not rewritten
   });
 
+  it("keeps a deletedUserId that account deletion wrote while the scrub was waiting for the row", async () => {
+    const [row] = await insert(45, { targetEmail: "ann@example.com" });
+    const scrub: { run?: Promise<number> } = {};
+    await client.begin(async (tx) => {
+      await tx`SELECT id FROM audit_logs WHERE id = ${row.id} FOR UPDATE`;
+      scrub.run = scrubAuditEmails({ dryRun: false, batchSize: 100, maxRecords: 1000 });
+      await new Promise((resolve) => setTimeout(resolve, 300)); // the scrub is now waiting on the row lock
+      await tx`UPDATE audit_logs SET details = details || '{"deletedUserId":"user-1"}'::jsonb WHERE id = ${row.id}`;
+    });
+    await scrub.run;
+    const details = (await client`SELECT details FROM audit_logs WHERE id = ${row.id}`)[0].details;
+    expect(details.deletedUserId).toBe("user-1");
+    expect(details[AUDIT_SCRUBBED_MARKER]).toBe(true);
+    expect(JSON.stringify(details)).not.toContain("@");
+  });
+
   it("walks only unfinished rows (partial index)", async () => {
     await client`ANALYZE audit_logs`;
     const plan = (await client`EXPLAIN SELECT id FROM audit_logs WHERE created_at < now() AND (details IS NULL OR NOT (details ? 'emailsScrubbed')) ORDER BY created_at, id LIMIT 10`).map((r) => r["QUERY PLAN"]).join("\n");

@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { render, screen } from "@testing-library/react";
 import { Globe, Siren } from "lucide-react";
 
@@ -36,4 +38,24 @@ it("lets an item override its group's area colour", () => {
     </SidebarProvider>,
   );
   expect(screen.getByRole("link", { name: "Monitors" }).className).toContain("[&[data-active=true]>svg]:text-ai");
+});
+
+it("gives Settings items no colour beyond the shared active style", () => {
+  render(
+    <SidebarProvider>
+      <NavMain
+        groupLabel="Settings"
+        items={[
+          { title: "Organization", url: "/org-admin", icon: Globe },
+          { title: "Super Admin", url: "/super-admin", icon: Siren },
+        ]}
+      />
+    </SidebarProvider>,
+  );
+  for (const name of ["Organization", "Super Admin"]) {
+    expect(screen.getByRole("link", { name }).className).not.toMatch(/data-active=true\]>svg\]:text-/);
+  }
+  // The sidebar data must not set a tone on them either.
+  const sidebar = readFileSync(join(__dirname, "app-sidebar.tsx"), "utf8");
+  expect(sidebar).not.toMatch(/NAV\.(organization|superAdmin)\.tone/);
 });

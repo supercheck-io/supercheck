@@ -1,5 +1,10 @@
 jest.mock('@sentry/node', () => ({
   init: jest.fn(),
+  isInitialized: jest.fn(() => false),
+  httpIntegration: jest.fn(() => ({ name: 'Http' })),
+  nativeNodeFetchIntegration: jest.fn(() => ({ name: 'NodeFetch' })),
+  pinoIntegration: jest.fn(() => ({ name: 'Pino' })),
+  consoleLoggingIntegration: jest.fn(() => ({ name: 'ConsoleLogging' })),
   captureException: jest.fn(),
   close: jest.fn().mockResolvedValue(true),
   onUnhandledRejectionIntegration: jest.fn(() => ({
@@ -28,6 +33,15 @@ describe('enable gate', () => {
   it('is off without a DSN', () => {
     expect(getSentryOptions({}, false)).toBeNull();
     expect(getSentryOptions({ SENTRY_DSN: '  ' }, false)).toBeNull();
+  });
+
+  it('is off for private agents even with a DSN', () => {
+    expect(
+      getSentryOptions(
+        { SENTRY_DSN: DSN, SUPERCHECK_RUNTIME_MODE: 'private-agent' },
+        false,
+      ),
+    ).toBeNull();
   });
 
   it('is off when self-hosted even with a DSN', () => {
@@ -65,7 +79,14 @@ describe('enable gate', () => {
         { name: 'Dedupe' },
       ])
       .map((i: { name: string }) => i.name);
-    expect(names).toEqual(['Dedupe', 'OnUnhandledRejection']);
+    expect(names).toEqual([
+      'Dedupe',
+      'OnUnhandledRejection',
+      'Http',
+      'NodeFetch',
+    ]);
+    expect(opts.tracesSampler).toBeUndefined(); // no rate: tracing fully off
+    expect(opts.enableLogs).toBe(false);
     expect(Sentry.onUnhandledRejectionIntegration).toHaveBeenCalledWith({
       mode: 'strict',
     });
@@ -204,5 +225,60 @@ describe('reportJobFailure', () => {
         projectId: 'p1',
       },
     });
+  });
+});
+
+describe('runJobInSpan', () => {
+  it('runs the job, rethrows the same error and never fails on metrics', async () => {
+    const S = Sentry as unknown as Record<string, unknown>;
+    S.continueTrace = jest.fn((_t, fn: () => unknown) => fn());
+    S.startSpan = jest.fn((_o, fn: () => unknown) => fn());
+    S.metrics = {
+      distribution: jest.fn(() => {
+        throw new Error('metrics down');
+      }),
+    };
+    const { runJobInSpan } = await import('./sentry');
+    const job = {
+      id: '1',
+      queueName: 'k6-global',
+      timestamp: Date.now(),
+      data: { _trace: { sentryTrace: 't-s-1' } },
+    };
+    await expect(runJobInSpan(job, 'k6', async () => 7)).resolves.toBe(7);
+    const err = Object.assign(new Error('later'), { name: 'DelayedError' });
+    await expect(
+      runJobInSpan(job, 'k6', async () => {
+        throw err;
+      }),
+    ).rejects.toBe(err);
+    expect(S.continueTrace).toHaveBeenCalledWith(
+      { sentryTrace: 't-s-1', baggage: undefined },
+      expect.any(Function),
+    );
+  });
+});
+
+describe('worker tracing options', () => {
+  it('samples at the env rate, never health or metrics, and never propagates', () => {
+    const opts = getSentryOptions(
+      { SENTRY_DSN: DSN, SENTRY_TRACES_SAMPLE_RATE: '0.5' },
+      false,
+    )!;
+    const sampler = opts.tracesSampler!;
+    const ctx = (name: string) =>
+      ({
+        name,
+        inheritOrSampleWith: (rate: number) => rate,
+      }) as unknown as Parameters<typeof sampler>[0];
+    expect(sampler(ctx('POST /jobs'))).toBe(0.5);
+    expect(sampler(ctx('GET /health/ready'))).toBe(0);
+    expect(sampler(ctx('GET /queue-alerting/metrics'))).toBe(0);
+    expect(opts.tracePropagationTargets).toEqual([]);
+    (opts.integrations as (d: { name: string }[]) => unknown)([]);
+    // Outgoing requests (customer targets) never become spans.
+    const httpOpts = (Sentry.httpIntegration as jest.Mock).mock.calls.at(-1)[0];
+    expect(httpOpts.breadcrumbs).toBe(false);
+    expect(httpOpts.ignoreOutgoingRequests()).toBe(true);
   });
 });

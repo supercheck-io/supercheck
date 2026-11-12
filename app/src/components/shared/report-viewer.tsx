@@ -487,7 +487,7 @@ export function ReportViewer({
 
   // Main report iframe with loading state
   return (
-    <div className={containerClassName}>
+    <div className={containerClassName} data-sentry-block>
       {isReportLoading && (
         <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-card">
           <Loader2Icon className="h-12 w-12 animate-spin mb-2 text-muted-foreground" />

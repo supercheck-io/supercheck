@@ -1,6 +1,7 @@
 "use client";
 
 import { ColumnDef } from "@tanstack/react-table";
+import { TYPE_CHIP, typeTone } from "@/lib/type-tones";
 import { Button } from "@/components/ui/button";
 import { TableBadge } from "@/components/ui/table-badge";
 import {
@@ -80,8 +81,8 @@ export function createProjectColumns(
 
         return (
           <div className="flex h-8 min-w-[200px] items-center gap-2.5">
-            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-blue-100 dark:bg-blue-500/10">
-              <FolderOpen className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+            <div className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${TYPE_CHIP[typeTone("admin", "project")]}`}>
+              <FolderOpen className="h-4 w-4" />
             </div>
             <span className="truncate text-sm font-medium text-foreground">
               {project.name}
