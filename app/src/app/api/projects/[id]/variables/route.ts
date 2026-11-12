@@ -1,4 +1,5 @@
 import { isUuid } from "@/lib/uuid";
+import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { projectVariables } from "@/db/schema";
@@ -123,10 +124,7 @@ export async function POST(
     }
 
     if (!checkPermissionWithContext("variable", "create", permCtx)) {
-      return NextResponse.json(
-        { error: "Insufficient permissions to create variables" },
-        { status: 403 }
-      );
+      return await permissionDeniedResponse(permCtx.organizationId, "Insufficient permissions to create variables");
     }
 
     const contentType = request.headers.get("content-type") || "";

@@ -1,5 +1,6 @@
 "use server";
 
+import { permissionDeniedResult } from "@/lib/deletion/org-state";
 import { and, eq } from "drizzle-orm";
 import {
   TEST_TYPE_VALUES,
@@ -66,11 +67,7 @@ export async function saveTest(
         console.warn(
           `User ${userId} attempted to update test ${validatedData.id} without EDIT_TESTS permission`,
         );
-        return {
-          id: "",
-          success: false,
-          error: "Insufficient permissions to edit tests",
-        };
+        return { id: "", ...(await permissionDeniedResult(organizationId, "Insufficient permissions to edit tests")) };
       }
     } else if (
       !checkPermissionWithContext("test", "create", permissionContext)
@@ -78,11 +75,7 @@ export async function saveTest(
       console.warn(
         `User ${userId} attempted to create test without CREATE_TESTS permission`,
       );
-      return {
-        id: "",
-        success: false,
-        error: "Insufficient permissions to create tests",
-      };
+      return { id: "", ...(await permissionDeniedResult(organizationId, "Insufficient permissions to create tests")) };
     }
 
     await subscriptionService.blockUntilSubscribed(organizationId);

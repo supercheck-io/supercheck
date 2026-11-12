@@ -20,6 +20,7 @@ import { encryptValue } from "@/lib/encryption";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { createVariableSchema } from "@/lib/validations/variable";
 
+import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 export async function GET() {
   try {
     const context = await requireAuthContext();
@@ -66,10 +67,7 @@ export async function POST(request: NextRequest) {
 
     const canCreate = checkPermissionWithContext("variable", "create", context);
     if (!canCreate) {
-      return NextResponse.json(
-        { error: "Insufficient permissions" },
-        { status: 403 }
-      );
+      return await permissionDeniedResponse(context.organizationId, "Insufficient permissions");
     }
 
     let body;

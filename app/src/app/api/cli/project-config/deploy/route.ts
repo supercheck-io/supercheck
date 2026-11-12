@@ -92,10 +92,7 @@ export async function POST(request: NextRequest) {
     );
 
     if (!canUpdateNotifications || !canConfigureSreConnectors) {
-      return NextResponse.json(
-        { error: "Insufficient permissions" },
-        { status: 403 },
-      );
+      return await permissionDeniedResponse(context.organizationId, "Insufficient permissions");
     }
 
     let body: unknown;

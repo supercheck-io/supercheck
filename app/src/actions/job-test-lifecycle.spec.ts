@@ -310,6 +310,7 @@ describe("job and test lifecycle actions", () => {
       expect(result).toEqual({
         success: false,
         error: "Insufficient permissions to delete tests",
+        message: "Insufficient permissions to delete tests",
       });
       expect(mockDb.delete).not.toHaveBeenCalled();
       jest.restoreAllMocks();

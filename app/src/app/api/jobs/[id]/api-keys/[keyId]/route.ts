@@ -8,6 +8,7 @@ import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { z } from "zod";
 
+import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 const updateKeySchema = z.object({
   enabled: z.boolean().optional(),
   name: z.string().trim().min(1).max(100).optional(),
@@ -24,7 +25,7 @@ export async function PATCH(
 
     const canUpdate = checkPermissionWithContext("apiKey", "update", authCtx);
     if (!canUpdate) {
-      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
+      return await permissionDeniedResponse(authCtx.organizationId, "Insufficient permissions");
     }
 
     const parsed = updateKeySchema.safeParse(await request.json().catch(() => null));
@@ -122,7 +123,7 @@ export async function DELETE(
 
     const canDelete = checkPermissionWithContext("apiKey", "delete", authCtx);
     if (!canDelete) {
-      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
+      return await permissionDeniedResponse(authCtx.organizationId, "Insufficient permissions");
     }
 
     if (!isUuid((await params).id) || !isUuid((await params).keyId)) return NextResponse.json({ error: "API key not found" }, { status: 404 });

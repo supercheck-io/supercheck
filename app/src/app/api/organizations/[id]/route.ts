@@ -137,7 +137,7 @@ export async function PUT(
     // Only ORG_ADMIN and ORG_OWNER can update organizations
     const canUpdate = orgRole === Role.ORG_ADMIN || orgRole === Role.ORG_OWNER;
     if (!canUpdate) {
-      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
+      return await permissionDeniedResponse(organizationId, 'Insufficient permissions');
     }
     
     let body;

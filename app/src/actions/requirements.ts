@@ -298,11 +298,7 @@ export async function createRequirement(
       console.warn(
         `User ${userId} attempted to create requirement without permission`
       );
-      return {
-        id: "",
-        success: false,
-        error: "Insufficient permissions to create requirements",
-      };
+      return { id: "", ...(await permissionDeniedResult(organizationId, "Insufficient permissions to create requirements")) };
     }
 
     const result = await createRequirementRecord(
@@ -466,11 +462,7 @@ export async function deleteRequirements(
       console.warn(
         `User ${userId} attempted to delete requirements without permission`
       );
-      return {
-        success: false,
-        error: "Insufficient permissions to delete requirements",
-        deletedCount: 0,
-      };
+      return { deletedCount: 0, ...(await permissionDeniedResult(organizationId, "Insufficient permissions to delete requirements")) };
     }
 
     const parsed = z.array(z.string().uuid()).max(100).safeParse(ids);

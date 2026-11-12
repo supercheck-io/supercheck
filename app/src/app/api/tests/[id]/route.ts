@@ -116,10 +116,7 @@ export async function PUT(
     const canUpdate = checkPermissionWithContext("test", "update", context);
 
     if (!canUpdate) {
-      return NextResponse.json(
-        { error: "Insufficient permissions" },
-        { status: 403 },
-      );
+      return await permissionDeniedResponse(context.organizationId, "Insufficient permissions");
     }
 
     if (!isUuid(testId)) return NextResponse.json({ error: "Test not found" }, { status: 404 });
