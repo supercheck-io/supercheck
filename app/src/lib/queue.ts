@@ -66,6 +66,7 @@ import {
   CapacityReservationUnavailableError,
   type QueuedJobData,
 } from "./capacity-manager";
+import { getTraceHeaders } from "@/lib/sentry-lazy";
 
 function throwExecutionQueueError(error: unknown, operation: string): never {
   if (error instanceof ExecutionQueueError) {
@@ -998,7 +999,8 @@ export async function addTestToQueue(task: TestExecutionTask): Promise<{
   const queuedAt = Date.now();
   const policy = await getExecutionPolicy(orgId);
   await assertEnqueueWorkload(orgId, policy, "playwright");
-  const safeTask = { ...omitExecutionSecrets(task), _executionTier: policy.tier };
+  // _trace continues this request's trace in the worker, also after a capacity wait; empty unless Sentry is on.
+  const safeTask = { ...omitExecutionSecrets(task), _executionTier: policy.tier, _trace: await getTraceHeaders() };
 
   try {
     await assertExecutionQueueReady();
@@ -1084,7 +1086,8 @@ export async function addJobToQueue(task: JobExecutionTask): Promise<{
   const queuedAt = Date.now();
   const policy = await getExecutionPolicy(orgId);
   await assertEnqueueWorkload(orgId, policy, "playwright");
-  const safeTask = { ...omitExecutionSecrets(task), _executionTier: policy.tier };
+  // _trace continues this request's trace in the worker, also after a capacity wait; empty unless Sentry is on.
+  const safeTask = { ...omitExecutionSecrets(task), _executionTier: policy.tier, _trace: await getTraceHeaders() };
 
   try {
     await assertExecutionQueueReady();
@@ -1170,7 +1173,8 @@ export async function addK6TestToQueue(
   const queuedAt = Date.now();
   const policy = await getExecutionPolicy(orgId);
   await assertEnqueueWorkload(orgId, policy, "k6");
-  const safeTask = { ...omitExecutionSecrets(task), _executionTier: policy.tier };
+  // _trace continues this request's trace in the worker, also after a capacity wait; empty unless Sentry is on.
+  const safeTask = { ...omitExecutionSecrets(task), _executionTier: policy.tier, _trace: await getTraceHeaders() };
 
   // Resolve the queue location: use caller-provided location, or fall back to DB default.
   const k6TestLocation = task.location || await getFirstDefaultLocationCode();
@@ -1269,7 +1273,8 @@ export async function addK6JobToQueue(
   const queuedAt = Date.now();
   const policy = await getExecutionPolicy(orgId);
   await assertEnqueueWorkload(orgId, policy, "k6");
-  const safeTask = { ...omitExecutionSecrets(task), _executionTier: policy.tier };
+  // _trace continues this request's trace in the worker, also after a capacity wait; empty unless Sentry is on.
+  const safeTask = { ...omitExecutionSecrets(task), _executionTier: policy.tier, _trace: await getTraceHeaders() };
 
   // Respect the caller-provided location (already validated by resolveProjectK6Location);
   // fall back to the instance default only when no location was specified.

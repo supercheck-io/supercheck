@@ -212,6 +212,7 @@ export const MonacoConsoleViewer = memo(
         )}
       >
         <Editor
+          wrapperProps={{ "data-sentry-block": "" }}
           height="100%"
           defaultLanguage="console-log"
           value={displayContent}

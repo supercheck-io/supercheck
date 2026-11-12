@@ -122,9 +122,12 @@ const createNextConfig = (phase: string): NextConfig => {
     /* config options here */
     output: "standalone",
     poweredByHeader: false,
+    // Release builds with a Sentry token emit maps for upload; the Dockerfile deletes them afterwards.
+    productionBrowserSourceMaps: process.env.SENTRY_SOURCEMAPS === "1",
     // Server Actions configuration - increase body size limit for document uploads
     // Default is 1MB, we need to support up to MAX_DOCUMENT_SIZE_MB (10MB default)
     experimental: {
+      serverSourceMaps: process.env.SENTRY_SOURCEMAPS === "1",
       serverActions: {
         bodySizeLimit: "12mb", // Slightly higher than MAX_DOCUMENT_SIZE_MB to account for encoding overhead
       },
@@ -134,6 +137,8 @@ const createNextConfig = (phase: string): NextConfig => {
       "fs",
       "path",
       "postgres",
+      // One runtime copy, so Sentry's module patching (http, postgres, pino) and init state are shared.
+      "@sentry/node",
       "bullmq",
       "@bull-board/api",
       "@bull-board/express",

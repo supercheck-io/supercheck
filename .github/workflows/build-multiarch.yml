@@ -294,6 +294,13 @@ jobs:
             NEXT_PUBLIC_SOURCE_URL=https://github.com/supercheck-io/supercheck/tree/${{ github.sha }}
             NEXT_PUBLIC_SUPERCHECK_VERSION=${{ steps.app-meta.outputs.version }}
             SUPERCHECK_BUILD_SHA=${{ github.sha }}
+            SENTRY_SOURCEMAPS=${{ secrets.SENTRY_AUTH_TOKEN != '' && '1' || '0' }}
+            SENTRY_UPLOAD_ATTEMPT=${{ github.run_id }}-${{ github.run_attempt }}
+            SENTRY_ORG=${{ vars.SENTRY_ORG }}
+            SENTRY_PROJECT=${{ vars.SENTRY_PROJECT }}
+          # BuildKit secret: readable only inside the source map upload RUN, never stored in a layer.
+          secrets: |
+            sentry_auth_token=${{ secrets.SENTRY_AUTH_TOKEN }}
           # Keep release correctness independent of the GitHub Actions cache
           # service. A failed GHA cache export used to fail this job after the
           # image manifest had already been pushed successfully.
@@ -320,8 +327,32 @@ jobs:
           labels: ${{ steps.worker-meta.outputs.labels }}
           build-args: |
             SUPERCHECK_VERSION=${{ steps.worker-meta.outputs.version }}
+            SENTRY_SOURCEMAPS=${{ secrets.SENTRY_AUTH_TOKEN != '' && '1' || '0' }}
+            SENTRY_UPLOAD_ATTEMPT=${{ github.run_id }}-${{ github.run_attempt }}
+            SENTRY_ORG=${{ vars.SENTRY_ORG }}
+            SENTRY_PROJECT=${{ vars.SENTRY_PROJECT }}
+          secrets: |
+            sentry_auth_token=${{ secrets.SENTRY_AUTH_TOKEN }}
           cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/worker:buildcache
           cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/worker:buildcache,mode=max,ignore-error=true
+
+      # Associates commits and finalizes the Sentry release that the image builds
+      # uploaded source maps to. Skipped without a token; never blocks a release.
+      - name: Finalize Sentry release
+        continue-on-error: true
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT }}
+          RELEASE: ${{ steps.app-meta.outputs.version }}
+        run: |
+          if [ -z "$SENTRY_AUTH_TOKEN" ]; then
+            echo "SENTRY_AUTH_TOKEN not set; skipping Sentry release"
+            exit 0
+          fi
+          npx --yes @sentry/cli@3.8.2 releases new "$RELEASE"
+          npx --yes @sentry/cli@3.8.2 releases set-commits "$RELEASE" --auto --ignore-missing
+          npx --yes @sentry/cli@3.8.2 releases finalize "$RELEASE"
 
       - name: Install Cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
