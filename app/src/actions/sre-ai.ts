@@ -49,7 +49,8 @@ export async function getSreCopilotChatHistories(incidentId?: string | null): Pr
       {
         userId,
         organizationId,
-        orgPendingDeletion,
+        // Reading saved chats stays available while the organization is pending deletion; archiving (below) keeps the block.
+        orgPendingDeletion: false,
         project,
       },
     );
