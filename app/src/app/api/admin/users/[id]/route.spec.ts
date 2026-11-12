@@ -9,11 +9,13 @@ jest.mock("@/lib/rbac/middleware", () => ({ isImpersonatedSession: jest.fn(async
 import { isImpersonatedSession } from "@/lib/rbac/middleware";
 jest.mock("@/utils/db", () => ({ db: { select: jest.fn(), transaction: jest.fn(), update: jest.fn() } }));
 jest.mock("@/lib/user-avatar", () => ({ pruneAvatars: jest.fn() }));
+jest.mock("@/lib/deletion/org-state");
 jest.mock("@/lib/deletion/organization", () => {
   class OrganizationMembershipChangedError extends Error {}
   return { OrganizationMembershipChangedError, requestOrganizationDeletion: jest.fn(), soleMemberOrganizations: jest.fn(async () => []) };
 });
 import { requestOrganizationDeletion, soleMemberOrganizations } from "@/lib/deletion/organization";
+import { readOrgPendingOn } from "@/lib/deletion/org-state";
 import { NextRequest } from "next/server";
 import { db } from "@/utils/db";
 import { getCurrentUser } from "@/lib/session";
@@ -22,6 +24,7 @@ import { pruneAvatars } from "@/lib/user-avatar";
 import { DELETE, POST, PUT } from "./route";
 beforeEach(() => {
   jest.clearAllMocks();
+  (readOrgPendingOn as jest.Mock).mockResolvedValue(true); // organizations this request scheduled are still pending
   (getCurrentUser as jest.Mock).mockResolvedValue({ id: "admin" });
   (db.select as jest.Mock).mockReset()
     .mockReturnValueOnce({ from: () => ({ where: () => ({ limit: async () => [{ id: "0c11ab1e-7460-5139-b3b8-920f69f95082", email: "target@example.test" }] }) }) })
@@ -108,6 +111,14 @@ describe("organizations where the user is the only member", () => {
     expect(requestOrganizationDeletion).toHaveBeenCalledWith({ organizationId: "org-solo", actorUserId: "admin", guard: { onlyMemberUserId: ID }, reason: "account_deletion" });
     expect(logAdminEvent).toHaveBeenCalledWith("admin", "organization_deletion_requested", "org-solo", "organization", "org-solo", expect.objectContaining({ reason: "sole_member_user_deleted" }));
     expect(db.transaction).toHaveBeenCalled();
+  });
+
+  it("keeps the user when an organization it scheduled was cancelled before the user is deleted", async () => {
+    jest.mocked(requestOrganizationDeletion).mockResolvedValue({ status: "requested", purgeAfter: new Date("2026-12-01T00:00:00Z"), deletionId: "d", billing: "none" });
+    (readOrgPendingOn as jest.Mock).mockResolvedValue(false);
+    const response = await del({ confirmDeleteOrganizationIds: ["org-solo"] });
+    expect(response.status).toBe(409);
+    expect(logAdminEvent).not.toHaveBeenCalledWith("admin", "user_deleted", expect.anything(), "user", expect.anything(), expect.anything(), expect.anything());
   });
 
   it("refuses from an impersonated session", async () => {

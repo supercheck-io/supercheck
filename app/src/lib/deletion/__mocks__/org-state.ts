@@ -2,6 +2,7 @@
 export const PENDING_ORG_CODE = "ORG_PENDING_DELETION";
 export class OrgPendingDeletionError extends Error { readonly code = PENDING_ORG_CODE; }
 export const isOrgPendingDeletion = jest.fn(async () => false);
+export const readOrgPendingOn = jest.fn(async () => false);
 export const isProjectDeleted = jest.fn(async () => false);
 export const isProjectOrgPending = jest.fn(async () => false);
 export const assertOrgWritable = jest.fn(async () => undefined);
