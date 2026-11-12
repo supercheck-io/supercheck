@@ -8,9 +8,10 @@ import { setCancellationSignal, RUN_CANCELLATION_MARKER } from "@/lib/cancellati
 import { removeK6RunLinks, removeK6RunLinksForJob, removeServiceResourceLinks, removeTrialSuspensions } from "@/lib/resource-deletion/linked-records";
 import { DELETION_TX_LIMITS, DELETION_TX_STATEMENT_LIMIT } from "@/lib/resource-deletion/chunks";
 import type { DeletionRow } from "./jobs";
+import { PURGE_BATCH } from "./config";
 
-/** Rows (and S3 prefixes) handled per batch: bounded statements and short row locks. */
-export const PURGE_BATCH = Math.min(1000, Math.max(100, Number(process.env.DELETION_BATCH_SIZE || 500)));
+export { PURGE_BATCH };
+
 /** After this long a running job run that ignored its cancellation is purged anyway. */
 export const DRAIN_MAX_MS = 30 * 60_000;
 
@@ -68,6 +69,8 @@ const deleteReportRows = (tx: Tx, rows: Array<{ id: string; reportPath: string }
   rows.length === 0 ? Promise.resolve() : tx.delete(reports).where(
     sql`(${reports.id}, ${reports.reportPath}) IN (${sql.join(rows.map((r) => sql`(${r.id}::uuid, ${r.reportPath})`), sql`, `)})`,
   );
+
+const dbNowMs = async () => Number((await db.execute(sql`SELECT (extract(epoch from now()) * 1000)::float8 AS now_ms`))[0].now_ms);
 
 const progress = (row: DeletionRow, key: string, add: number) => ({ ...row.cursor, [key]: Number(row.cursor?.[key] ?? 0) + add });
 
@@ -140,14 +143,17 @@ export async function purgeJobStep(row: DeletionRow, ctx: StepContext): Promise<
   const phase = row.phase ?? "unschedule";
   if (phase === "unschedule") {
     await deleteScheduledJob(jobId, { throwOnError: true });
-    return { done: false, phase: "drain" };
+    return { done: false, phase: "drain", progress: { ...row.cursor, drainStartedAtMs: await dbNowMs() } };
   }
   if (phase === "drain") {
     const active = await db.select({ id: runs.id }).from(runs)
       .where(and(eq(runs.jobId, jobId), inArray(runs.status, ["queued", "running"]))).limit(PURGE_BATCH);
     if (active.length === 0) return { done: false, phase: "runs" };
-    const [job] = await db.select({ deletingAt: jobs.deletingAt }).from(jobs).where(eq(jobs.id, jobId));
-    if (!job || (job.deletingAt && Date.now() - job.deletingAt.getTime() > DRAIN_MAX_MS)) return { done: false, phase: "runs" };
+    // Measured from when this drain began (not from the delete request), so a purge that starts late still gives runs time to stop.
+    const nowMs = await dbNowMs();
+    const startedMs = Number(row.cursor?.drainStartedAtMs);
+    if (!Number.isFinite(startedMs)) return { done: false, phase: "drain", progress: { ...row.cursor, drainStartedAtMs: nowMs } }; // a row from before the marker existed
+    if (nowMs - startedMs > DRAIN_MAX_MS) return { done: false, phase: "runs" };
     await cancelActiveRuns(jobId, active.map((r) => r.id));
     return { done: false, phase: "drain", delayMs: 15_000 };
   }

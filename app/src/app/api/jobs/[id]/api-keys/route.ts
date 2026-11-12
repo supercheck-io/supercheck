@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { apikey, jobs, user } from "@/db/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { checkPermissionWithContext, isImpersonatedSession } from "@/lib/rbac/middleware";
@@ -57,7 +57,8 @@ export async function GET(
         and(
           eq(jobs.id, jobId),
           eq(jobs.projectId, authCtx.project.id),
-          eq(jobs.organizationId, authCtx.organizationId)
+          eq(jobs.organizationId, authCtx.organizationId),
+          isNull(jobs.deletingAt)
         )
       )
       .limit(1);
@@ -193,7 +194,8 @@ export async function POST(
         and(
           eq(jobs.id, jobId),
           eq(jobs.projectId, authCtx.project.id),
-          eq(jobs.organizationId, authCtx.organizationId)
+          eq(jobs.organizationId, authCtx.organizationId),
+          isNull(jobs.deletingAt)
         )
       )
       .limit(1);

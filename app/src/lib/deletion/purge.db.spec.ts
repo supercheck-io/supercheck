@@ -26,7 +26,8 @@ process.env.DELETION_BATCH_PAUSE_MS = "0";
 import { requestJobDeletion, requestMonitorDeletion } from "./request";
 import { getRowCountsByPeriod } from "@/lib/monitor-availability";
 import { runDeletion } from "./runner";
-import { claimDeletion, completeDeletion, enqueueOrphanedDeletions, failDeletion, findDueDeletions, heartbeat, LostClaimError, pruneCompletedDeletions, retryFailedDeletion, MAX_ATTEMPTS, GLOBAL_CONCURRENCY } from "./jobs";
+import { claimDeletion, completeDeletion, enqueueOrphanedDeletions, failDeletion, findDueDeletions, heartbeat, LostClaimError, pruneCompletedDeletions, releaseDeletion, retryFailedDeletion, MAX_ATTEMPTS, GLOBAL_CONCURRENCY } from "./jobs";
+import { MAX_TOTAL_STEPS } from "./config";
 
 const name = `deletion_purge_${randomUUID().replaceAll("-", "")}`;
 let maintenance: ReturnType<typeof postgres>;
@@ -312,6 +313,20 @@ describe("job deletion", () => {
 });
 
 describe("monitor deletion", () => {
+  it("keeps the monitor, its results and the report pointers after a partial storage failure", async () => {
+    const seeded = await seedMonitor(150); // one result carries a test execution id, so one report row exists
+    await requestMonitorDeletion(scope(seeded));
+    mockDeleteReports.mockResolvedValueOnce({ success: false, deletedObjects: ["partial"], failedObjects: [{ key: "remaining", error: "unavailable" }] });
+    const outcome = await runDeletion((await deletionRow(seeded.monitorId)).id);
+    expect(outcome.retryInMs).toBeGreaterThan(0);
+    expect((await deletionRow(seeded.monitorId)).state).toBe("queued");
+    expect(await count("monitors", "id", seeded.monitorId)).toBe(1);
+    expect(await count("monitor_results", "monitor_id", seeded.monitorId)).toBe(150);
+    expect(await client`SELECT 1 FROM reports WHERE entity_id LIKE ${"%" + seeded.monitorId}`).toHaveLength(1);
+    expect((await drive(seeded.monitorId)).state).toBe("completed"); // the retry finishes once storage recovers
+    expect(await client`SELECT 1 FROM reports WHERE entity_id LIKE ${"%" + seeded.monitorId}`).toHaveLength(0);
+  });
+
   it("flags once, unschedules, and purges results and report rows without touching another monitor", async () => {
     const mine = await seedMonitor(2500);
     const other = await seedMonitor(10);
@@ -427,6 +442,7 @@ describe("claims, retries and the sweep", () => {
     const done = await drive(seeded.monitorId);
     expect(done.state).toBe("completed");
     expect(done.attempts).toBe(0);
+    expect(Number(done.cursor.steps)).toBeGreaterThan(0);
   });
 
   it("restarts the attempt count after progress even when the claim started at the limit", async () => {
@@ -438,6 +454,64 @@ describe("claims, retries and the sweep", () => {
     const row = await deletionRow(seeded.jobId);
     expect(row.state).toBe("queued"); // not failed: a batch succeeded, so this is attempt 1 again
     expect(row.attempts).toBe(1);
+  });
+
+  it("fails a purge that keeps making progress but never drains, instead of resetting its attempts forever", async () => {
+    const seeded = await seedJob(1100);
+    await requestJobDeletion(scope(seeded));
+    // Every storage call "succeeds" while new runs keep arriving, so each batch counts as progress.
+    mockDeleteReports.mockImplementation(async () => {
+      await client`INSERT INTO runs (id, job_id, project_id, status, trigger) SELECT uuidv7(), ${seeded.jobId}, ${seeded.projectId}, 'passed', 'manual' FROM generate_series(1, 600)`;
+      return { success: true };
+    });
+    await client`UPDATE deletion_jobs SET cursor = jsonb_build_object('steps', ${MAX_TOTAL_STEPS - 2}::int) WHERE target_id = ${seeded.jobId}`;
+    await client`ALTER TABLE runs DISABLE TRIGGER USER`; // the insert guard would refuse these late runs; this simulates a writer that slips past it
+    let row;
+    try {
+      row = await drive(seeded.jobId);
+    } finally {
+      await client`ALTER TABLE runs ENABLE TRIGGER USER`;
+    }
+    expect(row.state).toBe("failed");
+    expect(row.lastError).toContain("without finishing");
+    expect(await count("jobs", "id", seeded.jobId)).toBe(1); // nothing is dropped half-way; a super admin can retry
+  });
+
+  it("stamps retries and releases with the database clock, not the pod clock", async () => {
+    const seeded = await seedJob(1);
+    await requestJobDeletion(scope(seeded));
+    const id = (await deletionRow(seeded.jobId)).id;
+    const spy = jest.spyOn(Date, "now").mockReturnValue(Date.now() + 3_600_000); // a pod an hour ahead
+    try {
+      const claim = await claimDeletion(id);
+      if (!("claimed" in claim)) throw new Error("expected a claim");
+      await failDeletion(claim.claimed, new Error("boom"));
+      expect((await client`SELECT next_attempt_at < now() + interval '5 minutes' AS ok FROM deletion_jobs WHERE id = ${id}`)[0].ok).toBe(true);
+      await client`UPDATE deletion_jobs SET next_attempt_at = now() WHERE id = ${id}`;
+      const again = await claimDeletion(id);
+      if (!("claimed" in again)) throw new Error("expected a claim");
+      await releaseDeletion(again.claimed, 15_000);
+      expect((await client`SELECT next_attempt_at < now() + interval '5 minutes' AS ok FROM deletion_jobs WHERE id = ${id}`)[0].ok).toBe(true);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("measures the drain window from when draining began, not from the delete request", async () => {
+    const seeded = await seedJob(1);
+    await client`UPDATE runs SET status = 'running' WHERE job_id = ${seeded.jobId}`;
+    await requestJobDeletion(scope(seeded));
+    await client`UPDATE jobs SET deleting_at = now() - interval '2 hours' WHERE id = ${seeded.jobId}`; // the purge starts late
+    const id = (await deletionRow(seeded.jobId)).id;
+    await client`UPDATE deletion_jobs SET next_attempt_at = now() WHERE id = ${id}`;
+    await runDeletion(id);
+    let row = await deletionRow(seeded.jobId);
+    expect(row.phase).toBe("drain"); // still waiting for the running run to stop
+    expect(Number(row.cursor.drainStartedAtMs)).toBeGreaterThan(0);
+    expect(await count("runs", "job_id", seeded.jobId)).toBe(1);
+    await client`UPDATE deletion_jobs SET cursor = jsonb_set(cursor, '{drainStartedAtMs}', to_jsonb(extract(epoch from now()) * 1000 - 31 * 60000)) WHERE id = ${id}`;
+    row = await drive(seeded.jobId);
+    expect(row.state).toBe("completed"); // the drain window elapsed, so the run is purged anyway
   });
 
   it("returns a retry delay for a purge that is not due yet instead of dropping the trigger", async () => {
@@ -466,6 +540,7 @@ describe("claims, retries and the sweep", () => {
     const seeded = await seedJob(1);
     await requestJobDeletion(scope(seeded));
     const id = (await deletionRow(seeded.jobId)).id;
+    const logged = jest.spyOn(console, "error").mockImplementation(() => undefined);
     for (let i = 0; i < MAX_ATTEMPTS; i++) {
       await client`UPDATE deletion_jobs SET next_attempt_at = now() WHERE id = ${id}`;
       const claim = await claimDeletion(id);
@@ -474,6 +549,9 @@ describe("claims, retries and the sweep", () => {
     }
     const row = await deletionRow(seeded.jobId);
     expect(row.state).toBe("failed");
+    // One stable line when it enters failed: the ops log alert (DeletionPurgeFailed) matches this text.
+    expect(logged.mock.calls.filter(([line]) => String(line).includes("Deletion purge failed permanently"))).toHaveLength(1);
+    logged.mockRestore();
     expect(await retryFailedDeletion(row.id)).toBe(true);
     expect(await retryFailedDeletion(row.id)).toBe(false);
     expect((await drive(seeded.jobId)).state).toBe("completed");

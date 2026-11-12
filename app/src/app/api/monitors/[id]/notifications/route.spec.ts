@@ -38,7 +38,7 @@ jest.mock("@/db/schema", () => ({
   notificationProviders: {},
   monitors: {},
 }));
-jest.mock("drizzle-orm", () => ({ eq: jest.fn(), and: jest.fn(), count: jest.fn() }));
+jest.mock("drizzle-orm", () => ({ eq: jest.fn(), and: jest.fn(), isNull: jest.fn(), count: jest.fn() }));
 const mockStanding = { value: true };
 jest.mock("@/lib/rbac/middleware", () => ({
   hasPermissionForUser: jest.fn().mockResolvedValue(true),

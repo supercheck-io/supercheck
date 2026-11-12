@@ -15,7 +15,7 @@ const logger = createLogger({ module: "monitor-permissions-api" }) as {
 };
 import { db } from '@/utils/db';
 import { monitors } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 
 export async function GET(
   request: NextRequest,
@@ -34,7 +34,7 @@ export async function GET(
     // Find the monitor to get project and organization IDs
     if (!isUuid((await context.params).id)) return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
     const monitor = await db.query.monitors.findFirst({
-      where: eq(monitors.id, id),
+      where: and(eq(monitors.id, id), isNull(monitors.deletingAt)),
       columns: {
         projectId: true,
         organizationId: true

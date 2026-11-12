@@ -5,7 +5,7 @@ import {
   monitors,
   monitorResults,
 } from "@/db/schema";
-import { eq, and, gte, sql, desc } from "drizzle-orm";
+import { eq, and, isNull, gte, sql, desc } from "drizzle-orm";
 import { hasPermissionForUser, forbiddenOrNotFound } from "@/lib/rbac/middleware";
 import { isAuthError, requireUserAuthContext, authErrorStatus } from "@/lib/auth-context";
 import { createLogger } from "@/lib/logger/index";
@@ -77,7 +77,7 @@ export async function GET(
     // First, find the monitor to check permissions
     if (!isUuid((await context.params).id)) return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
     const monitor = await db.query.monitors.findFirst({
-      where: eq(monitors.id, id),
+      where: and(eq(monitors.id, id), isNull(monitors.deletingAt)),
     });
 
     if (!monitor) {

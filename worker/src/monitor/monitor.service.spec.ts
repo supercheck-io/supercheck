@@ -2198,6 +2198,29 @@ describe('MonitorService', () => {
         service['saveMonitorResultToDb'](row),
       ).resolves.toBeUndefined();
     });
+    it('drops the result of a monitor deleted mid-check (FK violation) without retrying, evaluating or throwing', async () => {
+      const fkError = Object.assign(new Error('Failed query'), {
+        cause: Object.assign(new Error('insert or update violates foreign key constraint'), { code: '23503' }),
+      });
+      const save = jest
+        .spyOn(service as any, 'saveMonitorResultToDb')
+        .mockRejectedValue(fkError);
+      const aggregate = jest
+        .spyOn(service, 'saveMonitorResults')
+        .mockResolvedValue(undefined);
+      const row = {
+        monitorId: mockMonitor.id,
+        location: 'eu',
+        checkedAt: new Date(),
+        status: 'up',
+        isUp: true,
+      } as MonitorExecutionResult;
+      await expect(
+        service.saveDistributedMonitorResult(row, {}),
+      ).resolves.toBeUndefined();
+      expect(save).toHaveBeenCalledTimes(1);
+      expect(aggregate).not.toHaveBeenCalled();
+    });
     it('saveMonitorResults rethrows an insert failure only when asked, and swallows it by default', async () => {
       const failing = () => ({
         then: (_resolve: unknown, reject: (e: Error) => void) =>

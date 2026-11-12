@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { monitors, monitorResults } from "@/db/schema";
 import { monitorResultForRead } from "@/lib/monitor-read-config";
-import { eq, desc, and, gte, lt, sql } from "drizzle-orm";
+import { eq, isNull, desc, and, gte, lt, sql } from "drizzle-orm";
 import { requireAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-context';
 import { createLogger } from "@/lib/logger/index";
 
@@ -107,7 +107,7 @@ export async function GET(
     // Find the monitor and verify its organization and project.
     if (!isUuid((await routeContext.params).id)) return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
     const monitor = await db.query.monitors.findFirst({
-      where: eq(monitors.id, id),
+      where: and(eq(monitors.id, id), isNull(monitors.deletingAt)),
     });
 
     if (!monitor) {

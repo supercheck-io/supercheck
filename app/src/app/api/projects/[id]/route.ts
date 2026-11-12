@@ -5,7 +5,7 @@ import { resolveEffectiveProjectRole } from '@/lib/rbac/effective-project-role';
 import { requireUserAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-context';
 import { db } from '@/utils/db';
 import { projects, projectMembers, jobs, tests, monitors, statusPages } from '@/db/schema';
-import { eq, and, ne, count, isNotNull } from 'drizzle-orm';
+import { eq, and, ne, count, isNotNull, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { logAuditEvent } from '@/lib/audit-logger';
 
@@ -74,9 +74,9 @@ export async function GET(
     
     // Get project stats using SQL count() aggregate (not fetching all rows)
     const [jobCountResult, testCountResult, monitorCountResult, memberCountResult, userRoleResult, orgRole] = await Promise.all([
-      db.select({ count: count() }).from(jobs).where(eq(jobs.projectId, projectId)),
+      db.select({ count: count() }).from(jobs).where(and(eq(jobs.projectId, projectId), isNull(jobs.deletingAt))),
       db.select({ count: count() }).from(tests).where(eq(tests.projectId, projectId)),
-      db.select({ count: count() }).from(monitors).where(eq(monitors.projectId, projectId)),
+      db.select({ count: count() }).from(monitors).where(and(eq(monitors.projectId, projectId), isNull(monitors.deletingAt))),
       db.select({ count: count() }).from(projectMembers).where(eq(projectMembers.projectId, projectId)),
       db.select({ role: projectMembers.role }).from(projectMembers).where(and(
         eq(projectMembers.projectId, projectId),

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/utils/db";
 import { monitors, monitorTags, tags } from "@/db/schema";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
@@ -21,6 +21,7 @@ async function monitorExists(monitorId: string, organizationId: string, projectI
     .where(
       and(
         eq(monitors.id, monitorId),
+        isNull(monitors.deletingAt),
         eq(monitors.organizationId, organizationId),
         eq(monitors.projectId, projectId)
       )
@@ -137,7 +138,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       await tx
         .select({ id: monitors.id })
         .from(monitors)
-        .where(and(eq(monitors.id, monitorId), eq(monitors.organizationId, organizationId), eq(monitors.projectId, project.id)))
+        .where(and(eq(monitors.id, monitorId), isNull(monitors.deletingAt), eq(monitors.organizationId, organizationId), eq(monitors.projectId, project.id)))
         .for("update");
       await tx.delete(monitorTags).where(eq(monitorTags.monitorId, monitorId));
       if (normalizedTagIds.length > 0) {
@@ -217,7 +218,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         const locked = await tx
           .select({ id: monitors.id })
           .from(monitors)
-          .where(and(eq(monitors.id, monitorId), eq(monitors.organizationId, organizationId), eq(monitors.projectId, project.id)))
+          .where(and(eq(monitors.id, monitorId), isNull(monitors.deletingAt), eq(monitors.organizationId, organizationId), eq(monitors.projectId, project.id)))
           .for("update");
         if (locked.length === 0) throw new TagLimitError("not-found");
         if (remove.length > 0) {

@@ -14,7 +14,7 @@ import { headers } from "next/headers";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { db } from "@/utils/db";
 import { monitors, monitorResults } from "@/db/schema";
-import { eq, desc, and, gte } from "drizzle-orm";
+import { eq, desc, and, gte, isNull } from "drizzle-orm";
 import { getS3FileContentFromUrl, getS3FileContent } from "@/lib/s3-proxy";
 import { excludeSupersededSyntheticResults } from "@/lib/monitor-result-filters";
 
@@ -124,7 +124,7 @@ export async function POST(request: NextRequest) {
     const monitor = await db
       .select()
       .from(monitors)
-      .where(eq(monitors.id, monitorId))
+      .where(and(eq(monitors.id, monitorId), isNull(monitors.deletingAt)))
       .limit(1)
       .then((rows) => rows[0]);
 

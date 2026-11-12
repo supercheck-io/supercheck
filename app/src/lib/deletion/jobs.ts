@@ -3,22 +3,24 @@ import { and, eq, inArray, isNotNull, lt, lte, or, sql } from "drizzle-orm";
 import { db } from "@/utils/db";
 import { deletionJobs, jobs, monitors } from "@/db/schema";
 import type { DeletionScope } from "@/db/schema";
+import { GLOBAL_CONCURRENCY, MAX_ATTEMPTS } from "./config";
+
+export { GLOBAL_CONCURRENCY, MAX_ATTEMPTS };
 
 /** Table-backed state for background purges. BullMQ (see queue.ts) only triggers; every decision is made here. */
 
 export type DeletionRow = typeof deletionJobs.$inferSelect;
 type Executor = Pick<typeof db, "insert" | "select" | "update">;
 
-export const MAX_ATTEMPTS = Number(process.env.DELETION_MAX_ATTEMPTS || 8);
 /** A running purge that has not beaten its heart this long is considered crashed and may be taken over. */
 export const STALE_HEARTBEAT_SECONDS = 300;
-/** Small global cap on concurrent purges across all pods, and one per organization. */
-export const GLOBAL_CONCURRENCY = Math.max(1, Number(process.env.DELETION_PURGE_CONCURRENCY || 2));
 
 export const BLOCKED_RETRY_MS = 30_000;
 export const backoffMs = (attempts: number) => Math.min(30_000 * 2 ** Math.max(0, attempts - 1), 60 * 60_000);
 /** Finished rows older than this are pruned by the sweep. */
 export const COMPLETED_RETENTION_DAYS = 30;
+/** Every timestamp comes from the database clock, so pods with skewed clocks agree. */
+const afterMs = (ms: number) => sql`now() + make_interval(secs => ${ms / 1000})`;
 const truncate = (message: string) => message.slice(0, 1000);
 
 /** Idempotent: a second request (another pod, a double click) converges on the single live row. */
@@ -68,11 +70,11 @@ export async function claimDeletion(id: string): Promise<ClaimResult> {
       .where(and(eq(deletionJobs.state, "running"), sql`${deletionJobs.heartbeatAt} > now() - make_interval(secs => ${STALE_HEARTBEAT_SECONDS})`, sql`${deletionJobs.id} <> ${id}`));
     if (running.length >= GLOBAL_CONCURRENCY || (row.row.organizationId && running.some((other) => other.organizationId === row.row.organizationId))) {
       // Push the row out so duplicate triggers see "busy" and stop, and the sweep does not re-select it every tick.
-      await tx.update(deletionJobs).set({ state: "queued", ownerToken: null, heartbeatAt: null, nextAttemptAt: sql`now() + make_interval(secs => ${BLOCKED_RETRY_MS / 1000})` }).where(eq(deletionJobs.id, id));
+      await tx.update(deletionJobs).set({ state: "queued", ownerToken: null, heartbeatAt: null, nextAttemptAt: afterMs(BLOCKED_RETRY_MS) }).where(eq(deletionJobs.id, id));
       return { blocked: true } as const;
     }
     const [claimed] = await tx.update(deletionJobs).set({
-      state: "running", heartbeatAt: new Date(), ownerToken: randomUUID(), startedAt: row.row.startedAt ?? new Date(),
+      state: "running", heartbeatAt: sql`now()`, ownerToken: randomUUID(), startedAt: row.row.startedAt ?? sql`now()`,
     }).where(eq(deletionJobs.id, id)).returning();
     return { claimed };
   });
@@ -81,13 +83,13 @@ export async function claimDeletion(id: string): Promise<ClaimResult> {
 /** Beat the heart. Progress (`progressed`) also resets the attempt budget: it counts consecutive failures, not a whole purge. */
 export async function heartbeat(row: DeletionRow, patch: { phase?: string; cursor?: Record<string, unknown>; progressed?: boolean } = {}): Promise<void> {
   const { progressed, ...fields } = patch;
-  const updated = await db.update(deletionJobs).set({ heartbeatAt: new Date(), ...fields, ...(progressed ? { attempts: 0 } : {}) })
+  const updated = await db.update(deletionJobs).set({ heartbeatAt: sql`now()`, ...fields, ...(progressed ? { attempts: 0 } : {}) })
     .where(owned(row)).returning({ id: deletionJobs.id });
   if (updated.length === 0) throw new LostClaimError(`Lost the claim on deletion ${row.id}`);
 }
 
 export async function completeDeletion(row: DeletionRow): Promise<void> {
-  await db.update(deletionJobs).set({ state: "completed", completedAt: new Date(), heartbeatAt: null, ownerToken: null, lastError: null }).where(owned(row));
+  await db.update(deletionJobs).set({ state: "completed", completedAt: sql`now()`, heartbeatAt: null, ownerToken: null, lastError: null }).where(owned(row));
 }
 
 /** Back off and retry; give up (visible to super admins) after MAX_ATTEMPTS. Returns the delay before the next try, or null when failed. */
@@ -95,24 +97,26 @@ export async function failDeletion(row: DeletionRow, error: unknown): Promise<nu
   const attempts = row.attempts + 1;
   const message = truncate(error instanceof Error ? error.message : String(error));
   if (attempts >= MAX_ATTEMPTS) {
-    await db.update(deletionJobs).set({ state: "failed", attempts, lastError: message, heartbeatAt: null, ownerToken: null }).where(owned(row));
+    const failed = await db.update(deletionJobs).set({ state: "failed", attempts, lastError: message, heartbeatAt: null, ownerToken: null }).where(owned(row)).returning({ id: deletionJobs.id });
+    // Stable text: the ops log alert (Loki rule DeletionPurgeFailed) matches it. Ids and counters only, no tenant content.
+    if (failed.length) console.error(`[DELETION] Deletion purge failed permanently: id=${row.id} scope=${row.scope} target=${row.targetId} phase=${row.phase ?? "start"} attempts=${attempts} error=${message}`);
     return null;
   }
   const delay = backoffMs(attempts);
   await db.update(deletionJobs).set({
-    state: "queued", attempts, lastError: message, heartbeatAt: null, ownerToken: null, nextAttemptAt: new Date(Date.now() + delay),
+    state: "queued", attempts, lastError: message, heartbeatAt: null, ownerToken: null, nextAttemptAt: afterMs(delay),
   }).where(owned(row));
   return delay;
 }
 
 /** Give a purge back without counting an attempt (waiting for runs to drain, or a time slice ending). */
 export async function releaseDeletion(row: DeletionRow, delayMs: number): Promise<void> {
-  await db.update(deletionJobs).set({ state: "queued", heartbeatAt: null, ownerToken: null, nextAttemptAt: new Date(Date.now() + delayMs) }).where(owned(row));
+  await db.update(deletionJobs).set({ state: "queued", heartbeatAt: null, ownerToken: null, nextAttemptAt: afterMs(delayMs) }).where(owned(row));
 }
 
 /** Super admin: put a failed purge back in the queue with a fresh attempt budget. */
 export async function retryFailedDeletion(id: string, executor: Pick<typeof db, "update"> = db): Promise<boolean> {
-  const updated = await executor.update(deletionJobs).set({ state: "queued", attempts: 0, nextAttemptAt: new Date(), lastError: null })
+  const updated = await executor.update(deletionJobs).set({ state: "queued", attempts: 0, nextAttemptAt: sql`now()`, lastError: null })
     .where(and(eq(deletionJobs.id, id), eq(deletionJobs.state, "failed"))).returning({ id: deletionJobs.id });
   return updated.length > 0;
 }
@@ -120,7 +124,7 @@ export async function retryFailedDeletion(id: string, executor: Pick<typeof db, 
 /** Everything the sweep must (re)trigger. All lookups hit partial indexes over unfinished rows only. */
 export async function findDueDeletions(limit = 50): Promise<string[]> {
   const rows = await db.select({ id: deletionJobs.id }).from(deletionJobs).where(or(
-    and(eq(deletionJobs.state, "queued"), lte(deletionJobs.nextAttemptAt, new Date())),
+    and(eq(deletionJobs.state, "queued"), lte(deletionJobs.nextAttemptAt, sql`now()`)),
     and(eq(deletionJobs.state, "running"), sql`${deletionJobs.heartbeatAt} < now() - make_interval(secs => ${STALE_HEARTBEAT_SECONDS})`),
   )).orderBy(deletionJobs.nextAttemptAt).limit(limit);
   return rows.map((row) => row.id);

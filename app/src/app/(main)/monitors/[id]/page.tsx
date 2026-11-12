@@ -13,7 +13,7 @@ import {
   MonitorType as DBMonitorType,
   MonitorResultStatus as DBMonitorResultStatusType,
 } from "@/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { and, eq, desc, isNull } from "drizzle-orm";
 
 // Limit for chart data only - keep small for performance
 const chartResultsLimit = 100;
@@ -50,7 +50,7 @@ async function getMonitorDetailsDirectly(id: string): Promise<MonitorWithResults
         })
         .from(monitors)
         .leftJoin(projects, eq(monitors.projectId, projects.id))
-        .where(eq(monitors.id, id))
+        .where(and(eq(monitors.id, id), isNull(monitors.deletingAt)))
         .limit(1),
 
       // Only load limited results for charts and summary - table will use pagination API

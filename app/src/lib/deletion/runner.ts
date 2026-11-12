@@ -1,15 +1,16 @@
-import { BLOCKED_RETRY_MS, LostClaimError, MAX_ATTEMPTS, claimDeletion, completeDeletion, failDeletion, heartbeat, releaseDeletion, type DeletionRow } from "./jobs";
+import { BATCH_PAUSE_MS, MAX_ATTEMPTS, MAX_TOTAL_STEPS } from "./config";
+import { BLOCKED_RETRY_MS, LostClaimError, claimDeletion, completeDeletion, failDeletion, heartbeat, releaseDeletion, type DeletionRow } from "./jobs";
 import { purgeJobStep, purgeMonitorStep, type StepContext, type StepResult } from "./purge";
 
 /** One invocation works for at most this long, then hands the rest to the next trigger so a worker slot is never pinned. */
 const SLICE_MS = 4 * 60_000;
-/** Pause between batches so a big purge never saturates the database. */
-const BATCH_PAUSE_MS = Number(process.env.DELETION_BATCH_PAUSE_MS ?? 100);
 
 const handlers: Record<string, (row: DeletionRow, ctx: StepContext) => Promise<StepResult>> = {
   job: purgeJobStep,
   monitor: purgeMonitorStep,
 };
+
+class StepCapError extends Error {}
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -61,7 +62,10 @@ export async function runDeletion(id: string): Promise<RunOutcome> {
         await completeDeletion(row);
         return {};
       }
-      const cursor = result.progress ?? row.cursor;
+      // `steps` counts batches that made progress. Progress resets the attempt budget, so this is the absolute stop for a purge that never drains.
+      const steps = Number(row.cursor?.steps ?? 0) + (result.progress ? 1 : 0);
+      if (result.progress && steps >= MAX_TOTAL_STEPS) throw new StepCapError(`Gave up after ${steps} batches without finishing (phase ${result.phase}); something keeps adding rows or the target never drains`);
+      const cursor = { ...(result.progress ?? row.cursor), steps };
       await heartbeat(row, { phase: result.phase, cursor, progressed: !!result.progress });
       row = { ...row, phase: result.phase, cursor, ...(result.progress ? { attempts: 0 } : {}) }; // mirrors the reset in heartbeat()
       if (result.delayMs) {
@@ -77,7 +81,8 @@ export async function runDeletion(id: string): Promise<RunOutcome> {
   } catch (error) {
     if (error instanceof LostClaimError) return {}; // another pod owns it now; it carries on
     console.error(`[DELETION] ${row.scope} ${row.targetId} failed:`, error);
-    const delay = await failDeletion(row, error);
+    // The step cap fails the purge outright; ordinary errors back off and retry.
+    const delay = await failDeletion(error instanceof StepCapError ? { ...row, attempts: MAX_ATTEMPTS - 1 } : row, error);
     return delay === null ? {} : { retryInMs: delay };
   } finally {
     clearInterval(timer);
