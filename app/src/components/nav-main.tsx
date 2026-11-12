@@ -7,7 +7,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { prefetchSidebarRoute } from "@/lib/prefetch-utils";
 import { AREA_ACTIVE_ICON } from "@/lib/nav-areas";
-import type { AreaTone } from "@/components/ui/icon-chip";
+import type { AreaTone, NavTone } from "@/components/ui/icon-chip";
 
 import {
   Collapsible,
@@ -70,7 +70,7 @@ const GROUP_TONE: Record<string, AreaTone> = {
   Communicate: "communicate",
   Automate: "automate",
   Monitor: "monitor",
-  Settings: "settings",
+  Settings: "organization",
 };
 
 /** True for the item's own page and its sub-pages ("/" matches the dashboard only). */
@@ -94,7 +94,7 @@ export type MenuItem = {
   icon?: IconComponent;
   isActive?: boolean;
   /** Overrides the group's area colour for this item (e.g. Copilot is AI). */
-  tone?: AreaTone;
+  tone?: NavTone;
   badge?: string;
   items?: (SubItem | { groupLabel?: string; items?: SubItem[] })[];
 };

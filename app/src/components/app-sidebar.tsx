@@ -35,13 +35,17 @@ import {
 } from "@/components/ui/sidebar";
 import { useAdminStatus } from "@/hooks/use-admin-status";
 import { NAV } from "@/lib/nav-areas";
-import { typeTextForce } from "@/lib/type-tones";
+import { createActionsFor, type CreateGroupId } from "@/lib/create-actions";
 import { getReleaseVersionBadge } from "@/lib/release-metadata";
 
 // Internal: build-time value baked in by the release image build; not an operator setting.
 const releaseVersionBadge = getReleaseVersionBadge(
   process.env.NEXT_PUBLIC_SUPERCHECK_VERSION,
 );
+
+// Create menus render from the shared registry, so they match Cmd+K and Quick Create.
+const sidebarItems = (group: CreateGroupId) =>
+  createActionsFor(group).map(({ title, url, icon, force }) => ({ title, url, icon, color: force }));
 
 // Sidebar navigation data
 const data = {
@@ -90,50 +94,10 @@ const data = {
       icon: SquarePlus,
 
       items: [
-        {
-          groupLabel: "Functional",
-        },
-        {
-          items: [
-            {
-              title: "Browser Test",
-              url: "/playground?scriptType=browser",
-              icon: Chrome,
-              color: typeTextForce("test", "browser"),
-            },
-            {
-              title: "API Test",
-              url: "/playground?scriptType=api",
-              icon: ArrowLeftRight,
-              color: typeTextForce("test", "api"),
-            },
-            {
-              title: "Database Test",
-              url: "/playground?scriptType=database",
-              icon: Database,
-              color: typeTextForce("test", "database"),
-            },
-            {
-              title: "Custom Test",
-              url: "/playground?scriptType=custom",
-              icon: SquareFunction,
-              color: typeTextForce("test", "custom"),
-            },
-          ],
-        },
-        {
-          groupLabel: "Non-Functional",
-        },
-        {
-          items: [
-            {
-              title: "Performance Test",
-              url: "/playground?scriptType=performance",
-              icon: K6Logo,
-              color: typeTextForce("test", "performance"),
-            },
-          ],
-        },
+        { groupLabel: "Functional" },
+        { items: sidebarItems("tests").slice(0, 4) },
+        { groupLabel: "Non-Functional" },
+        { items: sidebarItems("tests").slice(4) },
       ],
     },
     {
@@ -168,38 +132,7 @@ const data = {
       title: "Create",
       url: "#",
       icon: SquarePlus,
-      items: [
-        {
-          title: "HTTP Monitor",
-          url: "/monitors/create?type=http_request",
-          icon: ArrowLeftRight,
-          color: typeTextForce("monitor", "http_request"),
-        },
-        {
-          title: "Website Monitor",
-          url: "/monitors/create?type=website",
-          icon: LaptopMinimal,
-          color: typeTextForce("monitor", "website"),
-        },
-        {
-          title: "Ping Monitor",
-          url: "/monitors/create?type=ping_host",
-          icon: ChevronsLeftRightEllipsis,
-          color: typeTextForce("monitor", "ping_host"),
-        },
-        {
-          title: "Port Monitor",
-          url: "/monitors/create?type=port_check",
-          icon: EthernetPort,
-          color: typeTextForce("monitor", "port_check"),
-        },
-        {
-          title: "Synthetic Monitor",
-          url: "/monitors/create?type=synthetic_test",
-          icon: PlaywrightLogo,
-          color: typeTextForce("monitor", "synthetic_test"),
-        },
-      ],
+      items: sidebarItems("monitors"),
     },
     {
       title: NAV.monitors.title,
@@ -213,6 +146,7 @@ const data = {
       title: NAV.superAdmin.title,
       url: "/super-admin",
       icon: NAV.superAdmin.icon,
+      tone: NAV.superAdmin.tone,
     },
   ],
   OrgAdmin: [
@@ -220,6 +154,7 @@ const data = {
       title: NAV.organization.title,
       url: "/org-admin",
       icon: NAV.organization.icon,
+      tone: NAV.organization.tone,
     },
   ],
 

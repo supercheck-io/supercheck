@@ -10,13 +10,9 @@ const css = readFileSync(join(SRC, "app/globals.css"), "utf8");
 const [light, dark] = [css.slice(css.indexOf(":root"), css.indexOf(".dark {")), css.slice(css.indexOf(".dark {"), css.indexOf("@theme inline"))];
 
 describe("type tones", () => {
-  it("defines every tone token in light and dark with a muted chroma", () => {
+  it("defines every tone token in light and dark", () => {
     for (const tone of TYPE_TONES) {
-      for (const block of [light, dark]) {
-        const match = block.match(new RegExp(`--type-${tone}: oklch\\(([\\d.]+) ([\\d.]+) [\\d.]+\\);`));
-        expect(match).not.toBeNull();
-        expect(Number(match![2])).toBeLessThanOrEqual(0.1);
-      }
+      for (const block of [light, dark]) expect(block).toMatch(new RegExp(`--type-${tone}: oklch\\(`));
       expect(css).toContain(`--color-type-${tone}: var(--type-${tone});`);
       expect(TYPE_TEXT[tone]).toBe(`text-type-${tone}`);
       expect(TYPE_TEXT_FORCE[tone]).toBe(`!text-type-${tone}`);
@@ -24,21 +20,38 @@ describe("type tones", () => {
     }
   });
 
-  it("gives every type inside one group its own tone", () => {
-    for (const group of Object.values(TYPE_TONE)) {
-      const tones = Object.values(group);
-      // Jobs deliberately share the tone of the test engine they run.
-      if (group === TYPE_TONE.job) continue;
-      expect(new Set(tones).size).toBe(tones.length);
+  it("keeps the original test and monitor colours (Tailwind 600 light, 400 dark)", () => {
+    const original = [
+      ["sky", "0.588 0.158 241.966", "0.746 0.16 232.661"],
+      ["teal", "0.6 0.118 184.704", "0.777 0.152 181.912"],
+      ["cyan", "0.609 0.126 221.723", "0.789 0.154 211.53"],
+      ["blue", "0.546 0.245 262.881", "0.707 0.165 254.624"],
+      ["purple", "0.558 0.288 302.321", "0.714 0.203 305.504"],
+    ];
+    for (const [tone, l, d] of original) {
+      expect(light).toContain(`--type-${tone}: oklch(${l});`);
+      expect(dark).toContain(`--type-${tone}: oklch(${d});`);
     }
-    expect(TYPE_TONE.job.playwright).toBe(TYPE_TONE.test.browser);
-    expect(TYPE_TONE.job.k6).toBe(TYPE_TONE.test.performance);
+    expect(Object.values(TYPE_TONE.test)).toEqual(["sky", "teal", "cyan", "blue", "purple"]);
+    expect(Object.values(TYPE_TONE.monitor)).toEqual(["teal", "sky", "cyan", "blue", "purple"]);
+    expect(TYPE_TONE.job).toEqual({ playwright: "sky", k6: "purple" });
   });
 
-  it("never reuses a tone across the registry (jobs share their engine's tone on purpose)", () => {
-    const tones = Object.entries(TYPE_TONE).filter(([group]) => group !== "job").flatMap(([, g]) => Object.values(g));
-    expect(new Set(tones).size).toBe(tones.length);
-    expect(TYPE_TONES.length).toBeGreaterThanOrEqual(tones.length);
+  it("gives every other type its own tone, apart from the five tests and monitors share", () => {
+    const shared = new Set<string>(Object.values(TYPE_TONE.test));
+    const others = [TYPE_TONE.variable, TYPE_TONE.sre, TYPE_TONE.admin].flatMap((g) => Object.values(g));
+    expect(new Set(others).size).toBe(others.length);
+    for (const tone of others) expect(shared.has(tone)).toBe(false);
+    for (const tone of Object.values(TYPE_TONE.monitor)) expect(shared.has(tone)).toBe(true);
+    // No tone is defined without a user.
+    const used = new Set<string>([...shared, ...others]);
+    expect([...TYPE_TONES].filter((t) => !used.has(t))).toEqual([]);
+  });
+
+  it("defines the Organization and Super Admin area tokens", () => {
+    for (const token of ["organization", "superadmin"]) {
+      for (const block of [light, dark]) expect(block).toMatch(new RegExp(`--${token}: oklch\\(`));
+    }
   });
 
   it("feeds the test and monitor type lists from the registry", () => {
@@ -48,11 +61,8 @@ describe("type tones", () => {
 
   it("keeps ad-hoc colours out of the type surfaces", () => {
     const read = (file: string) => readFileSync(join(SRC, file), "utf8");
-    // Sidebar entries take their colour from the registry, never a literal class.
     expect(read("components/app-sidebar.tsx")).not.toMatch(/color: "/);
-    // Command palette type items too.
-    expect(read("components/ui/command-search.tsx")).not.toMatch(/!text-(automate|monitor)\b/);
-    // Variable type icons and badges come from VARIABLE_TYPES.
+    expect(read("components/ui/command-search.tsx")).not.toMatch(/text-(automate|monitor|sky|teal|cyan|blue|purple)\b/);
     expect(read("components/variables/variable-dialog.tsx")).not.toMatch(/text-(red|green|blue)-\d{3}/);
   });
 });
