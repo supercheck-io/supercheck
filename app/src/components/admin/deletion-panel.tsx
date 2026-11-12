@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useAdminDeletionJobs, useRetryDeletionJob } from "@/hooks/use-deletion-jobs";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -34,17 +34,9 @@ export function DeletionPanel({ organizations, onChanged }: { organizations: Adm
   const [retrying, setRetrying] = useState<string | null>(null);
   const pending = organizations.filter((o) => o.deletionRequestedAt);
 
-  const { data: jobs = null, isError, refetch } = useQuery({
-    queryKey: ["super-admin", "deletion-jobs"],
-    queryFn: async (): Promise<DeletionJob[]> => {
-      const res = await fetch("/api/admin/deletion-jobs");
-      if (!res.ok) throw new Error("Failed to load deletion jobs");
-      const data = await res.json().catch(() => null);
-      return Array.isArray(data?.data) ? data.data : [];
-    },
-    staleTime: 0,
-  });
-  const loadJobs = refetch;
+  // Same query and retry hook as the jobs table, so a purge or retry in either view refreshes both.
+  const { jobs, isLoading, isError, refetch: loadJobs } = useAdminDeletionJobs();
+  const retryJob = useRetryDeletionJob();
 
   const reasonOk = reason.trim().length >= MIN_PURGE_REASON;
   const confirmed = !!target && reasonOk && typedId.trim() === target.id;
@@ -75,14 +67,13 @@ export function DeletionPanel({ organizations, onChanged }: { organizations: Adm
     setBusy(false);
   };
 
-  const retry = async (id: string) => {
+  const retry = (id: string) => {
     setRetrying(id);
-    const res = await fetch("/api/admin/deletion-jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) }).catch(() => null);
-    if (res?.ok) {
-      toast.success("Retry queued");
-      void loadJobs();
-    } else toast.error("Only a failed deletion job can be retried");
-    setRetrying(null);
+    retryJob.mutate(id, {
+      onSuccess: () => toast.success("Retry queued"),
+      onError: () => toast.error("Only a failed deletion job can be retried"),
+      onSettled: () => setRetrying(null),
+    });
   };
 
   return (
@@ -114,7 +105,7 @@ export function DeletionPanel({ organizations, onChanged }: { organizations: Adm
         <h3 className="text-sm font-semibold">Unfinished deletion jobs</h3>
         {isError ? (
           <p role="alert" className="text-sm text-destructive">Could not load deletion jobs. Reload to try again.</p>
-        ) : jobs === null ? (
+        ) : isLoading ? (
           <p className="text-sm text-muted-foreground">Loading...</p>
         ) : jobs.length === 0 ? (
           <p className="text-sm text-muted-foreground">None.</p>
@@ -134,7 +125,7 @@ export function DeletionPanel({ organizations, onChanged }: { organizations: Adm
                   </span>
                 </span>
                 {j.state === "failed" && (
-                  <Button size="sm" variant="outline" disabled={retrying === j.id} aria-label={`Retry ${j.scope} deletion ${j.targetId.slice(0, 8)}`} onClick={() => void retry(j.id)}>
+                  <Button size="sm" variant="outline" disabled={retrying === j.id} aria-label={`Retry ${j.scope} deletion ${j.targetId.slice(0, 8)}`} onClick={() => retry(j.id)}>
                     Retry
                   </Button>
                 )}
