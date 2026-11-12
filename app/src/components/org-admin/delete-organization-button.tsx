@@ -34,6 +34,8 @@ export function DeleteOrganizationButton({ organizationId, organizationName }: D
   const [typedName, setTypedName] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
   const [info, setInfo] = useState<DeletionInfo | null>(null);
+  const [infoFailed, setInfoFailed] = useState(false);
+  const [infoAttempt, setInfoAttempt] = useState(0);
   const [needsReauth, setNeedsReauth] = useState(false);
   const [requested, setRequested] = useState<{ purgeAfter: string | null } | null>(null);
   // Compare trimmed values and never accept an empty confirmation.
@@ -43,21 +45,27 @@ export function DeleteOrganizationButton({ organizationId, organizationName }: D
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
+    setInfoFailed(false);
     fetch(`/api/organizations/${organizationId}/deletion`)
       .then((res) => res.json())
-      .then((data) => !cancelled && data?.deletion && setInfo(data.deletion))
-      .catch(() => undefined);
+      .then((data) => {
+        if (cancelled) return;
+        if (data?.deletion) setInfo(data.deletion);
+        else setInfoFailed(true);
+      })
+      .catch(() => !cancelled && setInfoFailed(true));
     return () => {
       cancelled = true;
     };
-  }, [open, organizationId]);
+  }, [open, organizationId, infoAttempt]);
 
+  // The grace window is only known once the server answered: confirming is disabled until then, so the dialog never promises a window the server may not give.
   const graceDays = info?.graceDays ?? 14;
   // Without a mail server nothing is sent, so the confirmation is shown here instead.
   const emailed = info ? info.emailAvailable : true;
 
   const handleRequest = async () => {
-    if (!confirmed || isDeleting) return;
+    if (!confirmed || !info || isDeleting) return;
     setIsDeleting(true);
     try {
       const res = await fetch(`/api/organizations/${organizationId}`, {
@@ -188,6 +196,12 @@ export function DeleteOrganizationButton({ organizationId, organizationName }: D
                   disabled={isDeleting}
                 />
               </form>
+              {infoFailed && (
+                <p role="alert" className="text-sm text-destructive">
+                  Could not load the deletion settings, so the cancellation window is unknown.{" "}
+                  <button type="button" className="underline" onClick={() => setInfoAttempt((n) => n + 1)}>Retry</button>
+                </p>
+              )}
             </>
           )}
           <DialogFooter>
@@ -195,7 +209,7 @@ export function DeleteOrganizationButton({ organizationId, organizationName }: D
               {requested ? "Close" : "Cancel"}
             </Button>
             {!requested && (
-              <Button variant="destructive" onClick={handleRequest} disabled={!confirmed || isDeleting}>
+              <Button variant="destructive" onClick={handleRequest} disabled={!confirmed || !info || isDeleting}>
                 {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Request deletion
               </Button>

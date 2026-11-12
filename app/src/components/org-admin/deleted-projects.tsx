@@ -22,6 +22,7 @@ export function DeletedProjects({ onRestored, refreshKey = 0 }: { onRestored: ()
       return Array.isArray(data?.projects) ? data.projects : [];
     },
     staleTime: 0,
+    refetchOnMount: "always", // a deletion made elsewhere must show up when the owner returns, not the cached empty list
   });
 
   const restore = async (project: DeletedProject) => {
