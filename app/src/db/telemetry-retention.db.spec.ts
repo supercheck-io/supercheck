@@ -158,6 +158,26 @@ describe("telemetry retention purge", () => {
     expect(await purge("sre_service_health_snapshots")).toBe(0);
   });
 
+  it("monitor group receipts: purges by age only, leaving recent receipts and every check result", async () => {
+    const monitor = id();
+    const receipt = (days: number, processed: boolean) =>
+      `INSERT INTO monitor_group_evaluations (id, monitor_id, execution_group_id, evaluation, notification_processed_at, created_at) VALUES ('${id()}','${monitor}','${id()}','{}',${processed ? ago(days) : "NULL"},${ago(days)})`;
+    await seed([
+      receipt(30, true),
+      receipt(20, false), // never processed: still purged once far past any retry window
+      receipt(13, true),
+      receipt(0, false),
+      `INSERT INTO monitor_results (id, monitor_id, checked_at, status, is_up, location) VALUES ('${id()}','${monitor}',${ago(30)},'down',false,'eu')`,
+    ]);
+    expect(rule("monitor_group_evaluations").defaultDays).toBe(14);
+    expect(await purge("monitor_group_evaluations")).toBe(2);
+    expect((await ids("monitor_group_evaluations")).size).toBe(2);
+    const [{ count }] = await sql.unsafe(
+      `SELECT count(*)::int AS count FROM monitor_results WHERE monitor_id = '${monitor}'`,
+    );
+    expect(count).toBe(1);
+  });
+
   it("alert events: keeps firing, recent and incident-linked events", async () => {
     const [org, proj, inc] = [id(), id(), id()];
     const ev = (status: string, days: number, fp: string) => {

@@ -2360,41 +2360,60 @@ describe('MonitorService', () => {
           },
         },
       };
-      const rows: Record<
+      // Each group has persisted result rows; receipts live in monitor_group_evaluations.
+      const receipts = new Map<
         string,
-        { id: string; details: Record<string, unknown> }
-      > = {
-        a: { id: 'result-a', details: {} },
-        b: { id: 'result-b', details: {} },
-      };
+        {
+          evaluation: unknown;
+          notificationProcessedAt: Date | null;
+          claimedAt?: Date | null;
+        }
+      >();
       let activeGroup = 'a';
+      const limited = (rows: unknown[]) => ({
+        for: async () => rows,
+        then: (resolve: (value: unknown) => void) => resolve(rows),
+      });
       const tx = {
-        select: () => ({
+        select: (fields?: Record<string, unknown>) => ({
           from: (table: unknown) => ({
             where: () => ({
-              limit: () => ({ for: async () => [monitor] }),
-              then: (resolve: (value: unknown) => void) =>
-                resolve(
-                  table === schema.monitorResults
-                    ? [rows[activeGroup]]
-                    : [monitor],
-                ),
+              limit: () => {
+                if (table === schema.monitors) return limited([monitor]);
+                if (table === schema.monitorGroupEvaluations) {
+                  const receipt = receipts.get(activeGroup);
+                  return limited(
+                    receipt
+                      ? [
+                          {
+                            evaluation: receipt.evaluation,
+                            processedAt: receipt.notificationProcessedAt,
+                            claimedAt: receipt.claimedAt ?? null,
+                          },
+                        ]
+                      : [],
+                  );
+                }
+                // Legacy receipt lookup finds none; the group's result rows exist.
+                return limited(
+                  fields && 'evaluation' in fields
+                    ? []
+                    : [{ id: `result-${activeGroup}` }],
+                );
+              },
             }),
           }),
         }),
-        update: (table: unknown) => ({
-          set: (values: Record<string, unknown>) => ({
-            where: async () => {
-              if (table === schema.monitors)
-                monitor = { ...monitor, ...values };
-              else
-                rows[activeGroup].details = values.details as Record<
-                  string,
-                  unknown
-                >;
-            },
-          }),
+        insert: (table: unknown) => ({
+          values: async (values: Record<string, unknown>) => {
+            expect(table).toBe(schema.monitorGroupEvaluations);
+            receipts.set(values.executionGroupId as string, {
+              evaluation: values.evaluation,
+              notificationProcessedAt: null,
+            });
+          },
         }),
+        update: (table: unknown) => update(table, true),
       };
       mockDbService.db.transaction.mockImplementation(
         async (callback: (value: typeof tx) => Promise<unknown>) =>
@@ -2405,19 +2424,41 @@ describe('MonitorService', () => {
       );
       mockLocationService.calculateAggregatedStatus.mockReturnValue('down');
       let failMarker = true;
-      mockDbService.db.update.mockImplementation((table: unknown) => ({
-        set: jest.fn(() => ({
-          where: async () => {
-            if (table === schema.monitorResults) {
-              if (failMarker) {
-                failMarker = false;
-                throw new Error('marker write failed');
-              }
-              rows[activeGroup].details.aggregationNotificationProcessed = true;
+      // Shared by the plain connection and the claim's transaction; `.returning()` yields the rows hit.
+      const update = (table: unknown, isTx = false) => ({
+        set: jest.fn((values: Record<string, unknown>) => ({
+          where: () => {
+            if (isTx && table === schema.monitors) {
+              monitor = { ...monitor, ...values };
+              return Object.assign(Promise.resolve([]), {
+                returning: () => Promise.resolve([]),
+              });
             }
+            const hit: unknown[] = [];
+            if (table === schema.monitorGroupEvaluations) {
+              const receipt = receipts.get(activeGroup)!;
+              if ('notificationClaimToken' in values) {
+                // The lease claim: its write failing must stop the send.
+                if (failMarker) {
+                  failMarker = false;
+                  throw new Error('marker write failed');
+                }
+                receipt.claimedAt = values.notificationClaimedAt as Date | null;
+              } else if (!receipt.notificationProcessedAt) {
+                receipt.notificationProcessedAt =
+                  values.notificationProcessedAt as Date;
+                hit.push({ evaluation: receipt.evaluation });
+              }
+            }
+            return Object.assign(Promise.resolve(hit), {
+              returning: () => Promise.resolve(hit),
+            });
           },
         })),
-      }));
+      });
+      mockDbService.db.update.mockImplementation((table: unknown) =>
+        update(table),
+      );
       const results = ['eu', 'us'].map((location) => ({
         monitorId: monitor.id,
         location,
@@ -2456,7 +2497,9 @@ describe('MonitorService', () => {
         3,
       );
       expect(mockAlertService.sendNotification).toHaveBeenCalledTimes(1);
-      expect(rows.a.details.aggregationNotificationProcessed).toBe(true);
+      expect(receipts.get('a')!.notificationProcessedAt).toBeInstanceOf(Date);
+      expect(receipts.get('b')!.notificationProcessedAt).toBeInstanceOf(Date);
+      // The claim failed before anything was sent for 'a'; its retry claimed and (below threshold) sent nothing.
     });
 
     it('propagates group transaction failures before sending notifications', async () => {
@@ -2482,6 +2525,158 @@ describe('MonitorService', () => {
         ),
       ).rejects.toThrow('transaction failed');
       expect(mockAlertService.sendNotification).not.toHaveBeenCalled();
+    });
+
+    it('sends nothing when another writer already claimed the group notification', async () => {
+      mockDbService.db.query.monitors.findFirst.mockResolvedValue(mockMonitor);
+      const evaluator = (service as unknown as { evaluator: MonitorEvaluator })
+        .evaluator;
+      jest.spyOn(evaluator, 'prepareGroupEvaluation').mockResolvedValue({
+        monitor: mockMonitor,
+        receipt: { kind: 'group' },
+        evaluation: { previousStatus: 'up', currentStatus: 'down' },
+      } as never);
+      const claim = jest
+        .spyOn(evaluator, 'claimGroupNotification')
+        .mockResolvedValue(null);
+      await service.saveMonitorResults(
+        [
+          {
+            monitorId: mockMonitor.id,
+            location: 'eu',
+            status: 'down',
+            isUp: false,
+            checkedAt: new Date(),
+          },
+        ],
+        { persisted: true, executionGroupId: 'group-claimed' },
+      );
+      expect(claim).toHaveBeenCalledWith(mockMonitor.id, 'group-claimed', {
+        kind: 'group',
+      });
+      expect(mockAlertService.sendNotification).not.toHaveBeenCalled();
+    });
+
+    it('fails as busy, sending nothing, while another sender holds a live lease', async () => {
+      mockDbService.db.query.monitors.findFirst.mockResolvedValue(mockMonitor);
+      const evaluator = (service as unknown as { evaluator: MonitorEvaluator })
+        .evaluator;
+      jest.spyOn(evaluator, 'prepareGroupEvaluation').mockResolvedValue({
+        monitor: mockMonitor,
+        receipt: { kind: 'group' },
+        evaluation: { previousStatus: 'up', currentStatus: 'down' },
+      } as never);
+      jest.spyOn(evaluator, 'claimGroupNotification').mockResolvedValue('busy');
+      await expect(
+        service.saveMonitorResults(
+          [
+            {
+              monitorId: mockMonitor.id,
+              location: 'eu',
+              status: 'down',
+              isUp: false,
+              checkedAt: new Date(),
+            },
+          ],
+          { persisted: true, executionGroupId: 'group-busy' },
+        ),
+      ).rejects.toBeInstanceOf(MonitorAggregationBusyError);
+      expect(mockAlertService.sendNotification).not.toHaveBeenCalled();
+    });
+
+    it('sends nothing when claiming the group notification throws', async () => {
+      mockDbService.db.query.monitors.findFirst.mockResolvedValue(mockMonitor);
+      const evaluator = (service as unknown as { evaluator: MonitorEvaluator })
+        .evaluator;
+      jest.spyOn(evaluator, 'prepareGroupEvaluation').mockResolvedValue({
+        monitor: mockMonitor,
+        receipt: { kind: 'group' },
+        evaluation: { previousStatus: 'up', currentStatus: 'down' },
+      } as never);
+      jest
+        .spyOn(evaluator, 'claimGroupNotification')
+        .mockRejectedValue(new Error('claim failed'));
+      await expect(
+        service.saveMonitorResults(
+          [
+            {
+              monitorId: mockMonitor.id,
+              location: 'eu',
+              status: 'down',
+              isUp: false,
+              checkedAt: new Date(),
+            },
+          ],
+          { persisted: true, executionGroupId: 'group-claim-throws' },
+        ),
+      ).rejects.toThrow('claim failed');
+      expect(mockAlertService.sendNotification).not.toHaveBeenCalled();
+    });
+
+    describe('lease around the send', () => {
+      const run = () => {
+        mockDbService.db.query.monitors.findFirst.mockResolvedValue(
+          mockMonitor,
+        );
+        const evaluator = (
+          service as unknown as { evaluator: MonitorEvaluator }
+        ).evaluator;
+        jest.spyOn(evaluator, 'prepareGroupEvaluation').mockResolvedValue({
+          monitor: mockMonitor,
+          receipt: { kind: 'group' },
+          evaluation: { previousStatus: 'up', currentStatus: 'down' },
+        } as never);
+        jest
+          .spyOn(evaluator, 'claimGroupNotification')
+          .mockResolvedValue('token-1');
+        const release = jest
+          .spyOn(evaluator, 'releaseGroupNotification')
+          .mockResolvedValue(undefined);
+        const mark = jest
+          .spyOn(evaluator, 'markGroupNotified')
+          .mockResolvedValue(undefined);
+        const save = () =>
+          service.saveMonitorResults(
+            [
+              {
+                monitorId: mockMonitor.id,
+                location: 'eu',
+                status: 'down',
+                isUp: false,
+                checkedAt: new Date(),
+              },
+            ],
+            { persisted: true, executionGroupId: 'group-lease' },
+          );
+        return { release, mark, save };
+      };
+
+      it('marks the group notified after a successful send', async () => {
+        const { release, mark, save } = run();
+        jest
+          .spyOn(service as never, 'evaluateAndSendAlert')
+          .mockResolvedValue(undefined as never);
+        await save();
+        expect(mark).toHaveBeenCalledWith(mockMonitor.id, 'group-lease', {
+          kind: 'group',
+        });
+        expect(release).not.toHaveBeenCalled();
+      });
+
+      it('releases the lease and rethrows when the send fails', async () => {
+        const { release, mark, save } = run();
+        jest
+          .spyOn(service as never, 'evaluateAndSendAlert')
+          .mockRejectedValue(new Error('send failed') as never);
+        await expect(save()).rejects.toThrow('send failed');
+        expect(release).toHaveBeenCalledWith(
+          mockMonitor.id,
+          'group-lease',
+          { kind: 'group' },
+          'token-1',
+        );
+        expect(mark).not.toHaveBeenCalled();
+      });
     });
   });
 

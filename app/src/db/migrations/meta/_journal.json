@@ -519,6 +519,13 @@
       "when": 1794415761056,
       "tag": "0073_monitor_results_test_execution_idx",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1794432140523,
+      "tag": "0074_monitor_group_evaluations",
+      "breakpoints": true
     }
   ]
 }
