@@ -154,7 +154,11 @@ export async function settleBillingOnRequest(organizationId: string): Promise<"c
         // Only if the organization is still not pending: a newer deletion's own cancellation must not be undone by this stale call.
         await withBillingLock(organizationId, async (tx) => {
           const [current] = await tx.select({ pending: organization.deletionRequestedAt }).from(organization).where(eq(organization.id, organizationId));
-          if (!current?.pending) await reinstateSubscription(org);
+          if (!current?.pending) { await reinstateSubscription(org); return; }
+          // A newer deletion is pending and this call just turned renewal off: that cancellation now belongs to the newer
+          // deletion, so cancelling it reinstates the renewal (and nobody cancels it a second time).
+          await tx.update(organization).set({ deletionMeta: metaPatch(organization.deletionMeta, { billingCancelSettled: true, billingCancelRequested: true }) })
+            .where(and(eq(organization.id, organizationId), isNotNull(organization.deletionRequestedAt)));
         });
       }
       catch (error) {
