@@ -24,7 +24,7 @@ export async function initializeStatusPageScheduler() {
     async (job) => {
       if (job.name === "tick") {
         // Ticks every 10 s; the check-in is throttled to about one a minute.
-        await checkedTick("status-page-reconcile", { type: "interval", value: 1, unit: "minute" }, reconcileStatusPages, () => true, 50_000);
+        await checkedTick("status-page-reconcile", { type: "interval", value: 1, unit: "minute" }, reconcileStatusPages, (ran) => ran, 50_000);
         await enqueuePendingDeliveries(queue!);
         const due = await db
           .select({

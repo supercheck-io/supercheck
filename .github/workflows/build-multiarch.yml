@@ -295,6 +295,7 @@ jobs:
             NEXT_PUBLIC_SUPERCHECK_VERSION=${{ steps.app-meta.outputs.version }}
             SUPERCHECK_BUILD_SHA=${{ github.sha }}
             SENTRY_SOURCEMAPS=${{ secrets.SENTRY_AUTH_TOKEN != '' && '1' || '0' }}
+            SENTRY_UPLOAD_ATTEMPT=${{ github.run_id }}-${{ github.run_attempt }}
             SENTRY_ORG=${{ vars.SENTRY_ORG }}
             SENTRY_PROJECT=${{ vars.SENTRY_PROJECT }}
           # BuildKit secret: readable only inside the source map upload RUN, never stored in a layer.
@@ -327,6 +328,7 @@ jobs:
           build-args: |
             SUPERCHECK_VERSION=${{ steps.worker-meta.outputs.version }}
             SENTRY_SOURCEMAPS=${{ secrets.SENTRY_AUTH_TOKEN != '' && '1' || '0' }}
+            SENTRY_UPLOAD_ATTEMPT=${{ github.run_id }}-${{ github.run_attempt }}
             SENTRY_ORG=${{ vars.SENTRY_ORG }}
             SENTRY_PROJECT=${{ vars.SENTRY_PROJECT }}
           secrets: |

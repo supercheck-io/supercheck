@@ -70,6 +70,14 @@ type BrowserConfig = {
 type SentryReact = typeof import("@sentry/react");
 
 let sdkPromise: Promise<SentryReact | null> | null = null;
+let loadAttempts = 0;
+const MAX_LOAD_ATTEMPTS = 3;
+
+/** Tests only: forgets the per-page-load SDK state. */
+export function resetSentryBrowserForTest(): void {
+  sdkPromise = null;
+  loadAttempts = 0;
+}
 
 async function loadSentry(): Promise<SentryReact | null> {
   const res = await fetch("/api/client-config/sentry", { cache: "no-store" });
@@ -101,6 +109,8 @@ async function loadSentry(): Promise<SentryReact | null> {
       ...(traces > 0
         ? [
             Sentry.browserTracingIntegration({
+              // INP is sent as a standalone span that beforeSendSpan cannot drop on excluded pages.
+              enableInp: false,
               beforeStartSpan: (options) => ({
                 ...options,
                 name: scrubName(options.name),
@@ -172,11 +182,18 @@ export function SentryBrowser() {
         .catch(() => undefined);
       return;
     }
-    sdkPromise ??= loadSentry().catch(() => null);
+    // A failed config fetch is retried on later navigations, at most MAX_LOAD_ATTEMPTS times per page load.
+    if (!sdkPromise && loadAttempts < MAX_LOAD_ATTEMPTS) {
+      loadAttempts++;
+      sdkPromise = loadSentry().catch(() => {
+        sdkPromise = null;
+        return null;
+      });
+    }
     void sdkPromise
+      ?.then((s) => s?.setUser(userId ? { id: userId } : null))
       // shortcut: a replay stopped on an excluded page is not resumed when the user comes back
       // (a manual start() would ignore the sample rates); the next full page load samples again.
-      .then((s) => s?.setUser(userId ? { id: userId } : null))
       .catch(() => undefined);
   }, [excluded, userId]);
 

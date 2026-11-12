@@ -69,6 +69,8 @@ RUN BETTER_AUTH_SECRET=build-time-placeholder-will-be-overridden-at-runtime \
 # (with debug IDs) replace them.
 ARG SENTRY_ORG
 ARG SENTRY_PROJECT
+# Changes per CI attempt so a cached layer never skips a retried upload (secrets are not part of the cache key).
+ARG SENTRY_UPLOAD_ATTEMPT
 RUN --mount=type=secret,id=sentry_auth_token \
     set -e; \
     token="$(cat /run/secrets/sentry_auth_token 2>/dev/null || true)"; \

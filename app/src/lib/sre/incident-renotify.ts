@@ -26,7 +26,8 @@ const MAX_PER_TICK = 50;
  * is claimed (renotified_at, FOR UPDATE SKIP LOCKED) before sending, so ticks and replicas never
  * repeat it; a failed or thrown send gives the claim back for the next tick.
  */
-export async function renotifyUnacknowledgedIncidents(now = new Date()) {
+/** `stats.failed` counts reminders whose every send failed (they are released for the next tick). */
+export async function renotifyUnacknowledgedIncidents(now = new Date(), stats?: { failed: number }) {
   let total = 0;
   const released: string[] = [];
   while (total < MAX_PER_TICK) {
@@ -76,6 +77,7 @@ export async function renotifyUnacknowledgedIncidents(now = new Date()) {
       // Every send failed (or threw): give the reminder back so the next tick tries again.
       if (delivered === false) {
         released.push(incident.id);
+        if (stats) stats.failed++;
         await db.update(sreIncidents).set({ renotifiedAt: null }).where(eq(sreIncidents.id, incident.id));
       }
     }
@@ -95,7 +97,9 @@ export async function initializeIncidentRenotifyScheduler() {
     QUEUE_NAME,
     async () => {
       try {
-        await checkedTick("incident-renotify", { type: "interval", value: 1, unit: "minute" }, renotifyUnacknowledgedIncidents);
+        const stats = { failed: 0 };
+        // Every reminder failing to send is a failed tick (claims are released and retried).
+        await checkedTick("incident-renotify", { type: "interval", value: 1, unit: "minute" }, () => renotifyUnacknowledgedIncidents(new Date(), stats), (total) => (total > 0 && stats.failed === total ? "error" : true));
       } finally {
         // Same 60 s tick, independent of the above: lost recovery signals and detached triage runs (sweepSreIncidents).
         await sweepSreIncidents().catch((error) => queueLogger.error({ err: error }, "Incident sweep failed"));

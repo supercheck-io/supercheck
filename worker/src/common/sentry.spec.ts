@@ -258,3 +258,27 @@ describe('runJobInSpan', () => {
     );
   });
 });
+
+describe('worker tracing options', () => {
+  it('samples at the env rate, never health or metrics, and never propagates', () => {
+    const opts = getSentryOptions(
+      { SENTRY_DSN: DSN, SENTRY_TRACES_SAMPLE_RATE: '0.5' },
+      false,
+    )!;
+    const sampler = opts.tracesSampler!;
+    const ctx = (name: string) =>
+      ({
+        name,
+        inheritOrSampleWith: (rate: number) => rate,
+      }) as unknown as Parameters<typeof sampler>[0];
+    expect(sampler(ctx('POST /jobs'))).toBe(0.5);
+    expect(sampler(ctx('GET /health/ready'))).toBe(0);
+    expect(sampler(ctx('GET /queue-alerting/metrics'))).toBe(0);
+    expect(opts.tracePropagationTargets).toEqual([]);
+    (opts.integrations as (d: { name: string }[]) => unknown)([]);
+    // Outgoing requests (customer targets) never become spans.
+    const httpOpts = (Sentry.httpIntegration as jest.Mock).mock.calls.at(-1)[0];
+    expect(httpOpts.breadcrumbs).toBe(false);
+    expect(httpOpts.ignoreOutgoingRequests()).toBe(true);
+  });
+});
