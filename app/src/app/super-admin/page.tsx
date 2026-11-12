@@ -37,6 +37,7 @@ import { TabLoadingSpinner } from "@/components/ui/table-skeleton";
 import { SupercheckLoading } from "@/components/shared/supercheck-loading";
 import { cn } from "@/lib/utils";
 import { LocationsTable } from "@/components/admin/locations-table";
+import { DeletionPanel } from "@/components/admin/deletion-panel";
 import { DeletionJobsTable } from "@/components/admin/deletion-jobs-table";
 import { NAV } from "@/lib/nav-areas";
 
@@ -64,7 +65,7 @@ export default function AdminDashboard() {
   const { stats, isLoading: statsLoading } = useSuperAdminStats();
   const { users, isLoading: usersLoading } = useSuperAdminUsers();
   const { organizations, isLoading: orgsLoading } = useSuperAdminOrganizations();
-  const { invalidateStats, invalidateUsers } = useSuperAdminDataInvalidation();
+  const { invalidateStats, invalidateUsers, invalidateOrganizations } = useSuperAdminDataInvalidation();
 
   const hasData = stats !== null;
   const isInitialLoading = !isMounted || (!hasData && statsLoading);
@@ -307,6 +308,13 @@ export default function AdminDashboard() {
         </TabsContent>
 
         <TabsContent value="deletions" className="mt-0 space-y-4">
+          <DeletionPanel
+            organizations={organizations}
+            onChanged={() => {
+              invalidateOrganizations();
+              invalidateStats();
+            }}
+          />
           <DeletionJobsTable />
         </TabsContent>
 

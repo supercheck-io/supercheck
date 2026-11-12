@@ -116,9 +116,24 @@ Organization owners cannot leave; transfer ownership or delete the organization 
 </Accordion>
 <Accordion title="Delete the organization" id="delete-organization">
 
-Only the organization owner can delete it. Select the trash button (**Delete organization**) next to the organization name on the **Organization** page, type the organization name to confirm, and delete.
+Only the organization owner can delete it. Select the trash button (**Delete organization**) next to the organization name on the **Organization** page, read what happens next, type the organization name to confirm, and select **Request deletion**. If you signed in a while ago you are asked to sign in again first, then reopen the dialog and confirm within a few minutes.
 
-Deletion cannot be undone. It removes every project and its data and stored files, removes every member's access, and cancels the organization's subscription (including one whose checkout has not finished syncing yet), without a refund. Deletion is refused, and nothing is removed, while the organization has usage that was not billed yet (an unsettled execution or a closed billing period awaiting manual reconciliation). Audit log entries are kept.
+Deletion is never immediate. The organization enters a **pending deletion** window of 14 days (self-hosted installations can change it, see [Self-hosted](/docs/app/deployment/self-hosted)):
+
+- **Read-only.** Every member sees a banner with the date. Members can still view and export, but nothing runs, schedules and monitors stop, and nothing can be created, changed or invited.
+- **Cancel.** The owner can select **Cancel deletion** in the banner at any time before the date. Schedules and monitors resume. Other members see who can cancel but cannot.
+- **Billing.** A subscription stops renewing and ends at the end of the paid period. Cancelling the deletion turns renewal back on while the period is still running; if the period already ended, subscribe again.
+- **Emails.** The owners are emailed when the deletion is requested, 7 days and 1 day before it happens, and when it is complete. Without a mail server (some self-hosted installations) no email is sent and the dialog confirms the date in the app instead.
+- **After the window.** Every project, test, job, run, monitor, status page and stored report is deleted permanently, and every member loses access. This cannot be undone.
+
+Audit log entries are kept for 12 months, with email addresses replaced by a hash after 30 days, and then removed. Invoices and payment records stay with the payment provider.
+
+Deletion is postponed, not refused, while the organization has usage that was not billed yet: the purge retries until that usage is settled.
+
+</Accordion>
+<Accordion title="Delete and restore a project" id="delete-project">
+
+Organization owners and admins can delete a project from the **Projects** tab: open the row menu, choose **Delete project**, and type the project name. The default project cannot be deleted. The project disappears at once and its jobs and monitors stop. For 7 days it appears under **Recently deleted projects**, where an owner or admin can **Restore** it. After that its tests, runs, monitors, status pages and reports are deleted permanently.
 
 </Accordion>
 </Accordions>

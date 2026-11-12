@@ -21,6 +21,8 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 ### Added
 
 - **Safer job and monitor deletion.** Deleting a job or monitor now hides it at once and removes its runs, results and files in the background in bounded batches. Migrations `0075` and `0076` add the deletion queue, the `deleting_at` flags and their indexes; apply them before you update the app and the worker. A target being deleted reads as not found everywhere (lists, counts, dashboards, MCP, status pages, run views and notifications).
+- Organization deletion has a pending window: a banner with a countdown for every member, **Cancel deletion** for the owner, read-only access meanwhile, and emails to the owners on request, 7 days and 1 day before, and on completion. Super admins can **Purge now** with a recorded reason from the **Deletions** tab. New endpoint `POST /api/organizations/{id}/cancel-deletion`.
+- Projects are soft-deleted and can be restored by owners and admins for 7 days (**Recently deleted projects**), then purged in the background. New endpoints `POST /api/projects/{id}/restore` and `GET /api/projects/deleted`.
 - `GET /api/audit` accepts a `cursor` for stable paging, and the audit log table loads the newest 100 events with **Load older events**.
 - Monitors can open incidents without any notification channel, so incident-only monitoring works.
 - Incidents report `alertCount` (the opening alert plus repeats while the incident stayed open) and `lastAlertAt` in the API and in the MCP `get_incident` tool.

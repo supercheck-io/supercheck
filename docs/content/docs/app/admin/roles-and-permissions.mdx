@@ -59,7 +59,7 @@ Use the matrix below for each role's exact permissions and project scope.
 |----------|:-----------:|:---------:|:---------:|:-------------:|:--------------:|:--------------:|
 | **View organization** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **Update organization** | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
-| **Delete organization** | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Delete organization** (request, then cancel during the window) | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
 | **Invite members** | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
 | **Manage members** | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
 | **Remove members** | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
@@ -72,7 +72,8 @@ Use the matrix below for each role's exact permissions and project scope.
 | **View projects** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **Create projects** | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
 | **Update projects** | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
-| **Delete projects** | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
+| **Delete projects** (restorable for 7 days) | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
+| **Restore deleted projects** | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ |
 | **Manage project members** | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
 
 <Callout type="info">
@@ -234,5 +235,6 @@ These roles have additional permissions in **assigned projects** and read-only a
 | Create new tests | Project Editor |
 | Delete tests | Project Admin |
 | Invite team members | Org Admin |
-| Delete the organization | Org Owner |
+| Delete the organization, or cancel its pending deletion | Org Owner |
+| Delete or restore a project | Org Admin |
 | Ban/unban users | Super Admin |

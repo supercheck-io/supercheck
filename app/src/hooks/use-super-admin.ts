@@ -33,6 +33,8 @@ export interface AdminOrganization {
   name: string;
   slug: string;
   createdAt: string;
+  deletionRequestedAt?: string | null;
+  deletionPurgeAfter?: string | null;
   _count?: {
     members: number;
     projects: number;

@@ -54,6 +54,10 @@ Seat changes are made only in the app with **Change member seats**, and plan cha
 </Step>
 </Steps>
 
+<Callout type="info" title="Deleting an organization">
+Requesting deletion stops the subscription from renewing; it ends at the end of the paid period, and usage so far is still billed. Cancelling the deletion turns renewal back on if the period is still running. If the period already ended, subscribe again. Self-hosted installations have no billing, so none of this applies.
+</Callout>
+
 <Callout type="warn" title="What happens at the cap">
 With the hard stop on, new browser (Playwright) checks, test and job runs, k6 load tests, and full AI SRE investigations pause when the cap is reached. They resume when you raise the cap or your billing period resets. HTTP, website, ping, and port monitors keep running. Emails go out at 80% of the cap (and 90% when the hard stop is on) and at 100%. The subscription fee is separate. Work already admitted or running can still accrue usage, so the cap is not an exact limit on your final invoice.
 </Callout>
