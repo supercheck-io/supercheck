@@ -150,7 +150,13 @@ export async function settleBillingOnRequest(organizationId: string): Promise<"c
     const stored = await savePatch(ours ? { billingCancelSettled: true, billingCancelRequested: true } : { billingCancelSettled: true, billingCancelAttempted: false });
     // The owner cancelled the deletion while the provider call was in flight: undo the cancellation this call just made.
     if (stored.length === 0 && result.status === "cancelled") {
-      try { await withBillingLock(organizationId, () => reinstateSubscription(org)); }
+      try {
+        // Only if the organization is still not pending: a newer deletion's own cancellation must not be undone by this stale call.
+        await withBillingLock(organizationId, async (tx) => {
+          const [current] = await tx.select({ pending: organization.deletionRequestedAt }).from(organization).where(eq(organization.id, organizationId));
+          if (!current?.pending) await reinstateSubscription(org);
+        });
+      }
       catch (error) {
         if (!(error instanceof BillingCancellationError)) throw error;
         // The organization is active but renewal is off, and it is no longer pending, so the pending sweep cannot see it:
