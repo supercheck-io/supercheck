@@ -105,60 +105,65 @@ export async function requestOrganizationDeletion(input: {
   return { status: "requested", purgeAfter: outcome.purgeAfter, deletionId: outcome.deletionId, billing };
 }
 
+const BILLING_CLAIM_TTL = "2 minutes";
+
 /**
  * After the flip: cancel at period end once, flush usage. A provider outage leaves the marker unsettled and the sweep retries.
- * The intent (`billingCancelAttempted`) is committed on its own, before the lock transaction and the provider call open: a
- * crash after the provider accepted leaves a retry that sees "already", and that retry still counts as our cancellation, so
- * cancelling the deletion reinstates the renewal. (Written before taking the lock so no second pool connection is needed
- * while the lock's connection is held.)
+ *
+ * The attempt is claimed with a committed lease before the provider is called (`billingCancelAttempted` plus a claim time),
+ * never inside an open transaction, so a crash after the provider accepted cannot lose it: the retry finds the attempt
+ * marker, so an "already" it sees is our own cancellation and cancelling the deletion reinstates the renewal. Only one live
+ * claim exists at a time (a second caller gets "retry"), and a claim older than the TTL is a crashed attempt. A caller that
+ * is the first to claim sees no earlier attempt, so the owner's own earlier cancellation is never taken for ours.
  */
 export async function settleBillingOnRequest(organizationId: string): Promise<"cancelled" | "already" | "none" | "skipped" | "retry"> {
-  // Only the transition runs under the lock, on the lock's own connection (a second pool connection while holding one can
-  // stall a small pool). The usage flush goes through its own client, so it runs after the lock is released.
-  const [fresh] = await db.update(organization).set({ deletionMeta: metaPatch(organization.deletionMeta, { billingCancelAttempted: true }) })
-    .where(and(
-      eq(organization.id, organizationId), isNotNull(organization.deletionRequestedAt),
-      or(isNotNull(organization.subscriptionId), isNotNull(organization.polarCustomerId)),
-      sql`NOT (${organization.deletionMeta} ? 'billingCancelAttempted')`, sql`NOT (${organization.deletionMeta} ? 'billingCancelSettled')`,
-    )).returning({ id: organization.id });
-  const status = await withBillingLock(organizationId, (tx) => settleBilling(tx, organizationId, !!fresh));
-  if (status !== "cancelled" && status !== "already") return status;
-  try { await flushFinalUsage(organizationId, { strict: false }); }
-  catch (error) { if (!(error instanceof BillingCancellationError)) throw error; return "retry"; }
-  return status;
-}
-
-async function settleBilling(tx: Tx, organizationId: string, intentWrittenNow: boolean): Promise<"cancelled" | "already" | "none" | "skipped" | "retry"> {
-  const [org] = await tx.select({ id: organization.id, subscriptionId: organization.subscriptionId, polarCustomerId: organization.polarCustomerId, meta: organization.deletionMeta })
+  const [org] = await db.select({ id: organization.id, subscriptionId: organization.subscriptionId, polarCustomerId: organization.polarCustomerId, meta: organization.deletionMeta })
     .from(organization).where(and(eq(organization.id, organizationId), isNotNull(organization.deletionRequestedAt)));
   if (!org) return "skipped";
   const meta = org.meta as DeletionMeta;
   if (meta.billingCancelSettled) return "already";
-  // An intent this very call just wrote is not an earlier attempt: only a retry after a crash finds it already there.
-  const attemptedBefore = !!meta.billingCancelAttempted && !intentWrittenNow;
-  const savePatch = (patch: DeletionMeta) => tx.update(organization).set({ deletionMeta: metaPatch(organization.deletionMeta, patch) })
+  const attemptedBefore = !!meta.billingCancelAttempted;
+  const hasBilling = !!(org.subscriptionId || org.polarCustomerId);
+  if (hasBilling) {
+    const [claimed] = await db.update(organization)
+      .set({ deletionMeta: sql`${organization.deletionMeta} || jsonb_build_object('billingCancelAttempted', true, 'billingCancelClaimAt', clock_timestamp()::text)` })
+      .where(and(
+        eq(organization.id, organizationId), isNotNull(organization.deletionRequestedAt), sql`NOT (${organization.deletionMeta} ? 'billingCancelSettled')`,
+        sql`(NOT (${organization.deletionMeta} ? 'billingCancelClaimAt') OR (${organization.deletionMeta} ->> 'billingCancelClaimAt')::timestamptz < clock_timestamp() - ${sql.raw(`interval '${BILLING_CLAIM_TTL}'`)})`,
+      )).returning({ id: organization.id });
+    if (!claimed) return "retry"; // another caller holds a live claim (or the deletion was cancelled / settled meanwhile)
+  }
+  const savePatch = (patch: DeletionMeta) => db.update(organization).set({ deletionMeta: metaPatch(organization.deletionMeta, patch) })
     .where(and(eq(organization.id, organizationId), isNotNull(organization.deletionRequestedAt))).returning({ id: organization.id });
+  const dropClaim = () => db.update(organization).set({ deletionMeta: sql`${organization.deletionMeta} - 'billingCancelClaimAt'` })
+    .where(eq(organization.id, organizationId)).catch(() => undefined);
   try {
-    const result = await cancelSubscriptionAtPeriodEnd(org);
-    // Never downgrade billingCancelRequested. An "already" after an earlier attempt of ours is our cancellation (that attempt
-    // may have died after the provider accepted it); an "already" with no attempt of ours is the owner's own cancellation.
+    // The advisory lock covers only the provider call (a connection that runs nothing else), ordering it against a reinstate.
+    const result = await withBillingLock(organizationId, () => cancelSubscriptionAtPeriodEnd(org));
+    // Never downgrade billingCancelRequested. "cancelled" is ours; an "already" after an earlier attempt of ours is ours too
+    // (that attempt may have died after the provider accepted it); otherwise it is the owner's own cancellation.
     const ours = result.status === "cancelled" || (result.status === "already" && attemptedBefore);
     const stored = await savePatch(ours ? { billingCancelSettled: true, billingCancelRequested: true } : { billingCancelSettled: true, billingCancelAttempted: false });
     // The owner cancelled the deletion while the provider call was in flight: undo the cancellation this call just made.
     if (stored.length === 0 && result.status === "cancelled") {
-      try { await reinstateSubscription(org); }
+      try { await withBillingLock(organizationId, () => reinstateSubscription(org)); }
       catch (error) {
         if (!(error instanceof BillingCancellationError)) throw error;
         // The organization is active but renewal is off, and it is no longer pending, so the pending sweep cannot see it:
         // leave a marker the billing sweep retries.
-        await tx.update(organization).set({ deletionMeta: metaPatch(organization.deletionMeta, { billingReinstatePending: true }) })
+        await db.update(organization).set({ deletionMeta: metaPatch(organization.deletionMeta, { billingReinstatePending: true }) })
           .where(and(eq(organization.id, organizationId), sql`${organization.deletionRequestedAt} IS NULL`));
       }
       return "skipped";
     }
+    if (result.status === "cancelled" || result.status === "already") {
+      try { await flushFinalUsage(organizationId, { strict: false }); }
+      catch (error) { if (!(error instanceof BillingCancellationError)) throw error; return "retry"; }
+    }
     return result.status;
   } catch (error) {
     if (!(error instanceof BillingCancellationError)) throw error;
+    await dropClaim(); // the attempt marker stays (the provider may have accepted it); the sweep may retry at once
     return "retry";
   }
 }
