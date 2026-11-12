@@ -68,11 +68,14 @@ export const monitors = pgTable(
     alertConfig: jsonb("alert_config").$type<AlertConfig>(),
     lastCheckAt: timestamp("last_check_at", { withTimezone: true }),
     lastStatusChangeAt: timestamp("last_status_change_at", { withTimezone: true }),
+    // Set when deletion is requested: hidden, unscheduled, never checked again; the purge worker removes it.
+    deletingAt: timestamp("deleting_at", { withTimezone: true }),
     scheduledJobId: varchar("scheduled_job_id", { length: 255 }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }),
   },
   (table) => ({
+    deletingIdx: index("monitors_deleting_idx").on(table.id).where(sql`deleting_at IS NOT NULL`),
     projectOrgStatusIdx: index("monitors_project_org_status_idx").on(
       table.projectId,
       table.organizationId,

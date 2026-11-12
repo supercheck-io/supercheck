@@ -14,6 +14,7 @@ import { buildRedisOptions } from '../../common/redis/redis-options';
 import {
   MonitorService,
   MonitorAggregationBusyError,
+  isForeignKeyViolation,
 } from '../monitor.service';
 import { MonitorJobDataDto } from '../dto/monitor-job.dto';
 import { MonitorExecutionResult } from '../types/monitor-result.type';
@@ -515,6 +516,13 @@ export class MonitorDynamicWorkerService
           rethrow: true,
         });
       } catch (error) {
+        // The monitor row is already purged (foreign key violation): terminal, nothing to keep or retry.
+        if (isForeignKeyViolation(error)) {
+          this.logger.log(
+            `Monitor ${job.data.monitorId} was purged; dropping its check result`,
+          );
+          return [];
+        }
         throw new ResultNotKeptError(
           `Monitor ${job.data.monitorId} result could not be saved and will not be re-run: ${getErrorMessage(error)}`,
         );

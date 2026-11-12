@@ -90,6 +90,17 @@ import { nextOutageKey } from '../monitor-control/sequence-counters';
 type MonitorResult = z.infer<typeof monitorResultsSelectSchema>;
 
 const RESULT_SAVE_ATTEMPTS = 3;
+// Postgres 23503; drizzle wraps the driver error, so the code can sit on the cause.
+export const isForeignKeyViolation = (error: unknown): boolean => {
+  for (
+    let e = error as { code?: string; cause?: unknown } | undefined, i = 0;
+    e && i < 3;
+    e = e.cause as typeof e, i++
+  ) {
+    if (e.code === '23503') return true;
+  }
+  return false;
+};
 const RESULT_SAVE_BACKOFF_MS = 250;
 // How long a UDP probe waits for a reply or an ICMP port-unreachable before reporting open|filtered.
 const UDP_SILENCE_WAIT_MS = 2000;
@@ -174,9 +185,8 @@ export class MonitorService {
         };
       }
 
-      if (monitor.status === 'paused') {
-        // Removed log - paused execution is not an error
-        // Return null instead of a failed result - paused monitors shouldn't create results
+      if (monitor.status === 'paused' || monitor.deletingAt) {
+        // Paused or being deleted: not an error, and no result (a deleting monitor must not grow its history or alert)
         return null;
       }
       if (!monitor.organizationId && !isSelfHostedEnvironment()) {
@@ -477,7 +487,7 @@ export class MonitorService {
       ),
     );
 
-    // Filter out null results (paused monitors)
+    // Filter out null results (paused or deleting monitors)
     return results.filter((r) => r !== null);
   }
 
@@ -794,9 +804,12 @@ export class MonitorService {
           }
         : result;
 
-    if (!options.persisted) {
-      await this.insertResultWithRetry(persistedResult);
-    }
+    // A monitor purged mid-check has nowhere to record the result: drop it without evaluating or alerting.
+    if (
+      !options.persisted &&
+      !(await this.insertResultWithRetry(persistedResult))
+    )
+      return;
 
     if (!executionGroupId) {
       await this.saveMonitorResults([persistedResult], {
@@ -2507,15 +2520,22 @@ export class MonitorService {
   // A failed insert makes the BullMQ job retry, so a transient DB error is absorbed here first; re-running the
   // check would bill a synthetic one twice. The row id is fixed up front and the insert ignores a conflict on it,
   // so a retry after an insert that committed (response lost) cannot add a second row.
+  // Returns false when the monitor row is already purged (foreign key violation): terminal, never retried.
   private async insertResultWithRetry(
     result: MonitorExecutionResult,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const id = randomUUID();
     for (let attempt = 1; ; attempt++) {
       try {
         await this.saveMonitorResultToDb(result, true, id);
-        return;
+        return true;
       } catch (error) {
+        if (isForeignKeyViolation(error)) {
+          this.logger.log(
+            `Monitor ${result.monitorId} was purged; dropping its check result`,
+          );
+          return false;
+        }
         if (attempt >= RESULT_SAVE_ATTEMPTS) throw error;
         await new Promise((resolve) =>
           setTimeout(resolve, RESULT_SAVE_BACKOFF_MS * 2 ** (attempt - 1)),
@@ -2639,9 +2659,12 @@ export class MonitorService {
       });
       await (id ? insertRow.onConflictDoNothing() : insertRow);
     } catch (error) {
-      this.logger.error(
-        `Failed to save monitor result for ${resultData.monitorId}: ${getErrorMessage(error)}`,
-      );
+      // An FK violation is the expected "monitor purged mid-check" outcome; its message carries the insert params, so skip it.
+      if (!isForeignKeyViolation(error)) {
+        this.logger.error(
+          `Failed to save monitor result for ${resultData.monitorId}: ${getErrorMessage(error)}`,
+        );
+      }
       // Distributed jobs must fail (and retry) rather than ack with no row, or the region is later closed as a false Down.
       if (rethrow) throw error;
     }

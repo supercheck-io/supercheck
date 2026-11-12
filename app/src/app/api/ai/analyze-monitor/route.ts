@@ -1,3 +1,4 @@
+import { liveMonitor } from "@/lib/deletion/visibility";
 import { authErrorStatus, AuthError } from "@/lib/auth-context";
 import { getClientIP } from "@/lib/session-security";
 import { NextRequest, NextResponse } from "next/server";
@@ -124,7 +125,7 @@ export async function POST(request: NextRequest) {
     const monitor = await db
       .select()
       .from(monitors)
-      .where(eq(monitors.id, monitorId))
+      .where(and(eq(monitors.id, monitorId), liveMonitor()))
       .limit(1)
       .then((rows) => rows[0]);
 

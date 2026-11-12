@@ -73,13 +73,13 @@ export async function processScheduledMonitor(
   // must surface to BullMQ for a retry and not be recorded as the monitor being down.
   const monitor = await db.query.monitors.findFirst({
     where: eq(monitors.id, monitorId),
-    columns: { config: true, target: true, type: true, projectId: true, frequencyMinutes: true, enabled: true, status: true },
+    columns: { config: true, target: true, type: true, projectId: true, frequencyMinutes: true, enabled: true, status: true, deletingAt: true },
   });
-  if (!monitor || monitor.enabled === false || monitor.status === 'paused') {
+  if (!monitor || monitor.enabled === false || monitor.status === 'paused' || monitor.deletingAt) {
     // A deleted monitor still firing means the schedule delete after commit failed, so remove this job's
     // own repeatable schedule. Best effort: a later firing retries. Paused monitors are left alone: resume
     // re-adds the same repeat key, so removing here could race a resume and unschedule a live monitor.
-    if (!monitor && job.repeatJobKey) {
+    if ((!monitor || monitor.deletingAt) && job.repeatJobKey) {
       try {
         const { monitorSchedulerQueue } = await getQueues();
         await monitorSchedulerQueue.removeRepeatableByKey(job.repeatJobKey);

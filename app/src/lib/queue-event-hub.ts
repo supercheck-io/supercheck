@@ -1,6 +1,7 @@
+import { liveRunOfLiveJob } from "@/lib/deletion/visibility";
 import { EventEmitter } from "node:events";
 import { Queue, QueueEvents } from "bullmq";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import {
   getQueues,
   buildRedisOptions,
@@ -293,7 +294,7 @@ class QueueEventHub extends EventEmitter {
         else {
           if (UUID_REGEX.test(queueJobId)) {
             const run = await db.query.runs.findFirst({
-              where: eq(runs.id, queueJobId),
+              where: and(eq(runs.id, queueJobId), liveRunOfLiveJob(runs.jobId)),
             });
 
             if (run) {

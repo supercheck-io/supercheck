@@ -1,3 +1,4 @@
+import { liveJob } from "@/lib/deletion/visibility";
 import { getExecutionPolicy, type ExecutionPolicy } from "@/lib/execution/execution-policy";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
@@ -31,6 +32,7 @@ import {
   buildExecutionPolicyFailureResponse,
 } from "@/lib/execution-api-responses";
 import { requireSameOriginRequest } from "@/lib/security/same-origin";
+import { isDeletingError } from "@/lib/deletion/errors";
 
 export async function POST(request: NextRequest) {
   let jobId: string | null = null;
@@ -94,7 +96,7 @@ export async function POST(request: NextRequest) {
         name: jobs.name,
       })
       .from(jobs)
-      .where(eq(jobs.id, jobId))
+      .where(and(eq(jobs.id, jobId), liveJob()))
       .limit(1);
     
     if (jobDetails.length === 0) {
@@ -194,7 +196,8 @@ export async function POST(request: NextRequest) {
     runId = crypto.randomUUID();
     const startTime = new Date();
     
-    await db.insert(runs).values({
+    try {
+      await db.insert(runs).values({
       id: runId,
       jobId,
       projectId: jobRecord?.projectId ?? null,
@@ -213,6 +216,10 @@ export async function POST(request: NextRequest) {
           : { executionEngine: "playwright" }),
       },
     });
+    } catch (insertError) {
+      if (isDeletingError(insertError)) return NextResponse.json({ error: "Job not found" }, { status: 404 });
+      throw insertError;
+    }
 
     console.log(`[${jobId}/${runId}] Created queued run record: ${runId}`);
 

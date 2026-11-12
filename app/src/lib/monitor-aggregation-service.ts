@@ -24,6 +24,7 @@
  * @module monitor-aggregation-service
  */
 
+import { liveMonitor } from "@/lib/deletion/visibility";
 import { db } from "@/utils/db";
 import {
   monitorResults,
@@ -715,7 +716,7 @@ export class MonitorAggregationService {
         const monitorBatch = await db
           .select({ id: monitors.id, organizationId: monitors.organizationId })
           .from(monitors)
-          .where(or(eq(monitors.enabled, true), hasRecentRows))
+          .where(and(liveMonitor(), or(eq(monitors.enabled, true), hasRecentRows)))
           // Stable order, or offset paging can skip or repeat monitors between batches.
           .orderBy(monitors.id)
           .limit(AGGREGATION_CONFIG.MONITOR_BATCH_SIZE)

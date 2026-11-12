@@ -75,6 +75,14 @@ export async function register() {
       console.error('[Instrumentation] ❌ Failed to initialize data lifecycle service:', error);
     }
 
+    // Background purge consumer (jobs, monitors). Claims are table-backed, so any number of pods is safe.
+    try {
+      const { initializeDeletionWorker } = await import('@/lib/deletion/queue');
+      await initializeDeletionWorker();
+    } catch (error) {
+      console.error('[Instrumentation] ❌ Failed to initialize deletion worker (the lifecycle sweep keeps retrying):', error);
+    }
+
     // Initialize Polar usage retry sync. This is runtime-portable; database
     // advisory locking keeps it safe with multiple app instances.
     try {

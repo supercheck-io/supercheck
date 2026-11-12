@@ -1,3 +1,4 @@
+import { notFoundIfDeleting } from "@/lib/deletion/visibility";
 import { and, desc, eq, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
 import { db } from "@/utils/db";
 import {
@@ -277,8 +278,10 @@ export async function reconcileStatusPages() {
         manualStatuses.includes(status),
       );
       const manual = manualStatuses.length > 0;
+      // A monitor being deleted no longer counts toward the component.
+      const liveLinks = component.monitors.filter((association) => notFoundIfDeleting(association.monitor));
       const calculated = statusAggregationService.calculateFromMonitors(
-        component.monitors.map((association) => ({
+        liveLinks.map((association) => ({
           status: association.monitor.status,
           weight: association.weight,
         })),
@@ -288,7 +291,7 @@ export async function reconcileStatusPages() {
       );
       const status =
         manualStatus ??
-        (component.monitors.length ? calculated : component.status);
+        (liveLinks.length ? calculated : component.status);
       if (status !== component.status)
         await tx
           .update(statusPageComponents)
@@ -308,7 +311,7 @@ export async function reconcileStatusPages() {
       const automatic = active.find(
         (entry) => entry.incident.sourceComponentId === component.id,
       )?.incident;
-      const failing = component.monitors.some((association) => ["down", "error", "timeout"].includes(association.monitor.status)) && [
+      const failing = liveLinks.some((association) => ["down", "error", "timeout"].includes(association.monitor.status)) && [
         "major_outage",
         "partial_outage",
         "degraded_performance",
@@ -341,7 +344,7 @@ export async function reconcileStatusPages() {
             statusPageIncidentId: incident.id,
             organizationId: page.organizationId,
             projectId: page.projectId,
-            monitorIds: component.monitors.map((association) => association.monitorId),
+            monitorIds: liveLinks.map((association) => association.monitorId),
           });
         }
         await tx

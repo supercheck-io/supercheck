@@ -1,3 +1,4 @@
+import { liveJob } from "@/lib/deletion/visibility";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import {
@@ -114,7 +115,8 @@ export async function GET(request: Request) {
     // PERFORMANCE: Run count and paginated queries in parallel
     const whereCondition = and(
       eq(jobs.projectId, targetProjectId),
-      eq(jobs.organizationId, context.organizationId)
+      eq(jobs.organizationId, context.organizationId),
+      liveJob()
     );
 
     const [countResult, jobsResult] = await Promise.all([
@@ -771,7 +773,7 @@ export async function PUT(request: Request) {
         updatedAt: jobs.updatedAt,
       })
       .from(jobs)
-      .where(eq(jobs.id, targetJobId))
+      .where(and(eq(jobs.id, targetJobId), liveJob()))
       .limit(1);
 
     if (existingJob.length === 0) {

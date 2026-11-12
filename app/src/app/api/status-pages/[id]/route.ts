@@ -1,3 +1,4 @@
+import { liveMonitor } from "@/lib/deletion/visibility";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import {
@@ -122,7 +123,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
     // Fetch all monitors for the project (for adding to components)
     const projectMonitors = await db.query.monitors.findMany({
-      where: eq(monitors.projectId, targetProjectId),
+      where: and(eq(monitors.projectId, targetProjectId), liveMonitor()),
       orderBy: (monitors, { asc }) => [asc(monitors.name)],
       columns: {
         id: true,

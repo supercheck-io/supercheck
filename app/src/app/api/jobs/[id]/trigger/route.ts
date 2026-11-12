@@ -1,3 +1,4 @@
+import { liveJob } from "@/lib/deletion/visibility";
 import { getJobTriggerBaseUrl } from "@/lib/deprecated-env";
 import { getExecutionPolicy, ExecutionWorkloadError, type ExecutionPolicy } from "@/lib/execution/execution-policy";
 import { NextRequest, NextResponse } from "next/server";
@@ -37,6 +38,7 @@ import {
   getSafeExecutionQueueErrorDetails,
   buildExecutionPolicyFailureResponse,
 } from "@/lib/execution-api-responses";
+import { isDeletingError } from "@/lib/deletion/errors";
 
 // POST /api/jobs/[id]/trigger - Trigger job remotely via API key
 export async function POST(
@@ -239,7 +241,7 @@ export async function POST(
       .from(jobs)
       // Jobs keep their trigger keys after project deletion; only active projects may run (as for CLI tokens).
       .leftJoin(projects, eq(projects.id, jobs.projectId))
-      .where(and(eq(jobs.id, jobId), or(isNull(jobs.projectId), eq(projects.status, "active"))))
+      .where(and(eq(jobs.id, jobId), liveJob(), or(isNull(jobs.projectId), eq(projects.status, "active"))))
       .limit(1);
 
     if (jobResult.length === 0) {
@@ -365,7 +367,8 @@ export async function POST(
     const runId = crypto.randomUUID();
     const startTime = new Date();
 
-    await db.insert(runs).values({
+    try {
+      await db.insert(runs).values({
       id: runId,
       jobId,
       projectId: job.projectId,
@@ -384,6 +387,10 @@ export async function POST(
           : { executionEngine: "playwright" }),
       },
     });
+    } catch (insertError) {
+      if (isDeletingError(insertError)) return NextResponse.json({ error: "Job not found" }, { status: 404 });
+      throw insertError;
+    }
     createdRunId = runId;
 
     console.log(
@@ -691,7 +698,8 @@ export async function GET(
         and(
           eq(jobs.id, jobId),
           eq(jobs.projectId, project.id),
-          eq(jobs.organizationId, organizationId)
+          eq(jobs.organizationId, organizationId),
+          liveJob()
         )
       )
       .limit(1);

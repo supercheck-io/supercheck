@@ -1,3 +1,4 @@
+import { liveRunOfLiveJob } from "@/lib/deletion/visibility";
 import { isUuid } from "@/lib/uuid";
 import { NextResponse } from "next/server";
 import { db } from "@/utils/db";
@@ -49,7 +50,8 @@ export async function GET(
       .where(
         and(
           eq(runs.id, runId),
-          eq(runs.projectId, authCtx.project.id)
+          eq(runs.projectId, authCtx.project.id),
+          liveRunOfLiveJob(runs.jobId)
         )
       )
       .limit(1);

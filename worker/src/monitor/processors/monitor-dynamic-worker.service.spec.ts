@@ -15,6 +15,8 @@ jest.mock('../monitor.service', () => ({
   MonitorAggregationBusyError: class extends Error {
     readonly retryAfterMs = 60000;
   },
+  isForeignKeyViolation: (e: { code?: string } | undefined) =>
+    e?.code === '23503',
 }));
 jest.mock('../../db/db.service', () => ({ DbService: class {} }));
 jest.mock('../../common/heartbeat/heartbeat.service', () => ({
@@ -450,6 +452,27 @@ describe('MonitorDynamicWorkerService lifecycle', () => {
     );
     // Executed once; the unrecoverable error stops BullMQ from running the check again.
     expect(executeMonitorWithLocations).toHaveBeenCalledTimes(1);
+  });
+
+  it('treats a foreign key violation on a legacy save (monitor purged) as a terminal no-op', async () => {
+    const { service } = setup();
+    const executeMonitorWithLocations = jest
+      .fn()
+      .mockResolvedValue([{ monitorId: 'm1' }]);
+    Object.assign(service['monitorService'], {
+      executeMonitorWithLocations,
+      saveMonitorResults: jest
+        .fn()
+        .mockRejectedValue(Object.assign(new Error('fk'), { code: '23503' })),
+    });
+    jest
+      .spyOn(service as any, 'assertBrowserCapability')
+      .mockResolvedValue(undefined);
+    const job = {
+      name: EXECUTE_MONITOR_JOB_NAME,
+      data: { type: 'http_request', monitorId: 'm1' },
+    };
+    await expect(service['processJob'](job as never)).resolves.toEqual([]);
   });
 
   function setup(location = 'local') {

@@ -1,3 +1,4 @@
+import { liveRunOfLiveJob } from "@/lib/deletion/visibility";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { runs, jobs, reports, TestRunStatus } from "@/db/schema";
@@ -82,6 +83,8 @@ export async function GET(request: NextRequest) {
       filters.push(eq(runs.status, status as TestRunStatus));
     }
 
+    // Runs of a job being deleted are gone for the user at once (playground runs have no job).
+    filters.push(liveRunOfLiveJob(runs.jobId));
     const whereCondition = and(...filters);
 
     // PERFORMANCE: Run count and data queries in parallel

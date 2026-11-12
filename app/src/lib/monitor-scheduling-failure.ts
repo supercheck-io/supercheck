@@ -1,7 +1,8 @@
+import { liveMonitor } from "@/lib/deletion/visibility";
 import type { LocationConfig, MonitorConfig, MonitoringLocation } from "@/db/schema";
 import { monitors, monitorResults } from "@/db/schema";
 import { db } from "@/utils/db";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { queueLogger as logger } from "@/lib/queue";
 import { getFirstVisibleProjectRestrictionCode } from "@/lib/location-registry";
 import { resolveDefaultMonitorLocations, resolveMonitorLocations } from "@/lib/monitor-location-routing";
@@ -27,7 +28,7 @@ export async function recordSchedulingFailure(
     const monitor = await db.transaction(async (transaction) => {
       const [current] = await transaction.select({
         config: monitors.config, projectId: monitors.projectId, status: monitors.status, type: monitors.type,
-      }).from(monitors).where(eq(monitors.id, monitorId)).for("update");
+      }).from(monitors).where(and(eq(monitors.id, monitorId), liveMonitor())).for("update");
       if (!current) return;
       await transaction.update(monitors).set({
         status: 'down', lastCheckAt: now, updatedAt: now,

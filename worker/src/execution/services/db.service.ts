@@ -2,6 +2,7 @@ import { canPersistRunCallback } from './run-callback';
 import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
+import { liveJob, liveRunOfLiveJob } from '../../db/deletion-visibility';
 import * as schema from '../../db/schema'; // Import the schema we copied
 import {
   reports,
@@ -20,6 +21,7 @@ import {
   or,
   ne,
   isNull,
+  not,
   sql,
   desc,
   inArray,
@@ -300,7 +302,7 @@ export class DbService implements OnModuleInit {
   ): Promise<any> {
     try {
       // Build where condition with RBAC filtering if context is provided
-      const whereConditions = [eq(schema.jobs.id, jobId)];
+      const whereConditions = [eq(schema.jobs.id, jobId), liveJob()];
 
       if (organizationId) {
         whereConditions.push(eq(schema.jobs.organizationId, organizationId));
@@ -323,12 +325,31 @@ export class DbService implements OnModuleInit {
         return null;
       }
 
-      return job;
+      // A job being deleted reads as missing: callers skip alerts and bookkeeping for it.
+      return job ?? null;
     } catch (error) {
       this.logger.error(
         `Failed to get job ${jobId}: ${(error as Error).message}`,
       );
       throw error;
+    }
+  }
+
+  /** True once the job's delete request has committed (the job is flagged); false on a lookup error. */
+  async isJobDeleting(jobId: string | null | undefined): Promise<boolean> {
+    if (!jobId) return false;
+    try {
+      const [row] = await this.db
+        .select({ id: schema.jobs.id })
+        .from(schema.jobs)
+        .where(and(eq(schema.jobs.id, jobId), not(liveJob())))
+        .limit(1);
+      return !!row;
+    } catch (error) {
+      this.logger.warn(
+        `Could not check deletion state of job ${jobId}: ${(error as Error).message}`,
+      );
+      return false;
     }
   }
 
@@ -919,6 +940,7 @@ export class DbService implements OnModuleInit {
           .from(schema.runs)
           .where(
             and(
+              liveRunOfLiveJob(schema.runs.jobId),
               sql`${schema.runs.jobId} IN (${sql.join(
                 jobIds.map((id) => sql`${id}`),
                 sql`, `,

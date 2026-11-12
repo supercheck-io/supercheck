@@ -1,3 +1,4 @@
+import { liveJob, liveMonitor } from "@/lib/deletion/visibility";
 import { NextResponse } from 'next/server';
 import { db } from '@/utils/db';
 import { projects, jobs, tests, monitors, runs, member } from '@/db/schema';
@@ -41,12 +42,12 @@ export async function GET() {
       membersCount
     ] = await Promise.all([
       db.select({ count: count() }).from(projects).where(and(eq(projects.organizationId, organizationId), ne(projects.status, 'deleted'))),
-      db.select({ count: count() }).from(jobs).where(eq(jobs.organizationId, organizationId)),
+      db.select({ count: count() }).from(jobs).where(and(eq(jobs.organizationId, organizationId), liveJob())),
       db.select({ count: count() }).from(tests).where(eq(tests.organizationId, organizationId)),
-      db.select({ count: count() }).from(monitors).where(eq(monitors.organizationId, organizationId)),
+      db.select({ count: count() }).from(monitors).where(and(eq(monitors.organizationId, organizationId), liveMonitor())),
       db.select({ count: count() }).from(runs)
         .leftJoin(jobs, eq(runs.jobId, jobs.id))
-        .where(eq(jobs.organizationId, organizationId)),
+        .where(and(eq(jobs.organizationId, organizationId), liveJob())),
       db.select({ count: count() }).from(member).where(eq(member.organizationId, organizationId))
     ]);
 

@@ -1,8 +1,9 @@
 "use server";
 
+import { liveMonitor } from "@/lib/deletion/visibility";
 import { db } from "@/utils/db";
 import { monitors } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { requireProjectContext } from "@/lib/project-context";
 
 export async function getMonitorsForStatusPage() {
@@ -12,7 +13,7 @@ export async function getMonitorsForStatusPage() {
 
     // Get all monitors for the project
     const projectMonitors = await db.query.monitors.findMany({
-      where: eq(monitors.projectId, project.id),
+      where: and(eq(monitors.projectId, project.id), liveMonitor()),
       orderBy: (monitors, { asc }) => [asc(monitors.name)],
       columns: {
         id: true,

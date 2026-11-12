@@ -1,5 +1,6 @@
+import { liveJob, liveMonitor, liveRunOfLiveJob } from "@/lib/deletion/visibility";
 import { createHash } from "crypto";
-import { and, desc, eq, gte, inArray, lte } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, lte, or } from "drizzle-orm";
 
 import {
   alertHistory,
@@ -231,7 +232,7 @@ export async function collectNativeEvidence(input: {
         .from(alertHistory)
         .leftJoin(monitors, eq(alertHistory.monitorId, monitors.id))
         .leftJoin(jobs, eq(alertHistory.jobId, jobs.id))
-        .where(inArray(alertHistory.id, alertHistoryIds));
+        .where(and(inArray(alertHistory.id, alertHistoryIds), or(isNull(alertHistory.monitorId), liveMonitor()), or(isNull(alertHistory.jobId), liveJob())));
 
       linkedAlerts = fallbackAlerts.map((alert) => {
         const sourceType = alert.monitorId ? ("monitor" as const) : ("job" as const);
@@ -287,7 +288,8 @@ export async function collectNativeEvidence(input: {
             and(
               eq(monitors.organizationId, input.organizationId),
               eq(monitors.projectId, input.projectId),
-              inArray(monitors.id, monitorIds)
+              inArray(monitors.id, monitorIds),
+              liveMonitor()
             )
           )
       : Promise.resolve([]),
@@ -297,7 +299,7 @@ export async function collectNativeEvidence(input: {
           .from(monitorResults)
           .where(
             and(
-              inArray(monitorResults.monitorId, monitorIds),
+              inArray(monitorResults.monitorId, db.select({ id: monitors.id }).from(monitors).where(and(inArray(monitors.id, monitorIds), liveMonitor()))),
               gte(monitorResults.checkedAt, window.since),
               lte(monitorResults.checkedAt, window.until)
             )
@@ -313,7 +315,8 @@ export async function collectNativeEvidence(input: {
             and(
               eq(jobs.organizationId, input.organizationId),
               eq(jobs.projectId, input.projectId),
-              inArray(jobs.id, jobIds)
+              inArray(jobs.id, jobIds),
+              liveJob()
             )
           )
       : Promise.resolve([]),
@@ -321,7 +324,7 @@ export async function collectNativeEvidence(input: {
       ? db
           .select()
           .from(runs)
-          .where(and(eq(runs.projectId, input.projectId), inArray(runs.jobId, jobIds)))
+          .where(and(eq(runs.projectId, input.projectId), inArray(runs.jobId, jobIds), liveRunOfLiveJob(runs.jobId)))
           .orderBy(desc(runs.createdAt))
           .limit(100)
       : Promise.resolve([]),
@@ -329,7 +332,7 @@ export async function collectNativeEvidence(input: {
       ? db
           .select()
           .from(k6PerformanceRuns)
-          .where(and(eq(k6PerformanceRuns.projectId, input.projectId), inArray(k6PerformanceRuns.jobId, jobIds)))
+          .where(and(eq(k6PerformanceRuns.projectId, input.projectId), inArray(k6PerformanceRuns.jobId, jobIds), liveRunOfLiveJob(k6PerformanceRuns.jobId)))
           .orderBy(desc(k6PerformanceRuns.startedAt))
           .limit(100)
       : Promise.resolve([]),

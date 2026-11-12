@@ -624,8 +624,11 @@ export class PlaywrightExecutionProcessor
       // Delegate the actual execution to the service
       const result = await this.executionService.runJob(job.data);
       observedBillableMs = result.billableMs ?? 0;
+      // A job whose delete request committed while this ran counts as cancelled, whatever the run produced.
+      const jobDeleting = await this.dbService.isJobDeleting(originalJobId);
       // Interrupted runs are excluded from alerts like cancelled ones, even if saving the result fails.
       runWasCancelled =
+        jobDeleting ||
         result.interrupted === true ||
         (!result.success && !!result.error?.includes(RUN_CANCELLATION_MARKER));
 
@@ -650,8 +653,11 @@ export class PlaywrightExecutionProcessor
       // Check if execution service already set error status (for cancellations)
       // Don't override 'error' status with 'failed'
       let finalStatus: 'passed' | 'failed' | 'error';
-      if (!result.success && result.error?.includes(RUN_CANCELLATION_MARKER)) {
-        // Execution was cancelled, keep 'error' status
+      if (
+        jobDeleting ||
+        (!result.success && result.error?.includes(RUN_CANCELLATION_MARKER))
+      ) {
+        // Execution was cancelled (or its job is being deleted), keep 'error' status
         finalStatus = 'error';
       } else {
         // Normal completion
@@ -676,7 +682,7 @@ export class PlaywrightExecutionProcessor
               runId,
               finalStatus,
               durationSeconds.toString(),
-              result.error || undefined,
+              jobDeleting ? RUN_CANCELLATION_MARKER : result.error || undefined,
               transaction,
             ),
         ),
@@ -736,10 +742,7 @@ export class PlaywrightExecutionProcessor
         runId,
         finalStatus,
         // A restart-interrupted run is neither a failure to alert on nor part of a streak.
-        cancelled:
-          result.interrupted === true ||
-          (!result.success &&
-            !!result.error?.includes(RUN_CANCELLATION_MARKER)),
+        cancelled: runWasCancelled,
         durationSeconds,
         results: result.results ?? [],
         jobType: jobData.jobType ?? 'playwright',
@@ -796,7 +799,8 @@ export class PlaywrightExecutionProcessor
         error instanceof Error ? error.message : String(error);
       const isCancellation =
         errorMessage.includes('cancelled') ||
-        errorMessage.includes('cancellation');
+        errorMessage.includes('cancellation') ||
+        (await this.dbService.isJobDeleting(originalJobId));
       if (
         !isCancellation &&
         !(error instanceof UnrecoverableError) &&

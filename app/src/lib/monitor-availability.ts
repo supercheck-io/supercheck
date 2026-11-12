@@ -1,3 +1,4 @@
+import { liveMonitor } from "@/lib/deletion/visibility";
 import { and, eq, gte, isNotNull, lt, sql } from "drizzle-orm";
 import { db } from "@/utils/db";
 import { monitorAggregates, monitorResults, monitors } from "@/db/schema";
@@ -66,6 +67,7 @@ export async function getRowCountsByPeriod(input: {
   const scope = and(
     eq(monitors.projectId, input.projectId),
     eq(monitors.organizationId, input.organizationId),
+    liveMonitor(),
   );
 
   const [projectMonitors, aggregated] = await Promise.all([

@@ -1,3 +1,4 @@
+import { liveRunOfLiveJob } from "@/lib/deletion/visibility";
 import { getClientIP } from "@/lib/session-security";
 import { NextRequest, NextResponse } from "next/server";
 import { AIStreamingService } from "@/lib/ai/ai-streaming-service";
@@ -133,6 +134,7 @@ export async function POST(request: NextRequest) {
         inArray(runs.id, requestedRunIds),
         eq(runs.projectId, authContext.project.id),
         eq(projects.organizationId, authContext.organizationId),
+        liveRunOfLiveJob(runs.jobId),
       ));
     if (ownedRuns.length !== requestedRunIds.length || ownedRuns.some(
       (run) => run.projectId !== authContext.project.id ||

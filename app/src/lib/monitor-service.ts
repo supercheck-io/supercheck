@@ -1,3 +1,4 @@
+import { liveMonitor } from "@/lib/deletion/visibility";
 import { isDeepStrictEqual } from "node:util";
 import { db } from "@/utils/db";
 import {
@@ -13,7 +14,7 @@ import {
   scheduleMonitor,
   deleteScheduledMonitor,
 } from "@/lib/monitor-scheduler";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { ResumeRefusedError, withResumeWithinPlan } from "@/lib/middleware/plan-enforcement";
 import { assertKeptProvidersValid, MonitorScheduleError, dropStaleSslAlertState, preserveWorkerConfigKeys, scheduleOutOfSync, syncMonitorProviderRows, WORKER_OWNED_CONFIG_KEYS } from "@/lib/monitor-write";
 import { reconcileMonitorSchedule } from "@/lib/monitor-schedule-reconcile";
@@ -162,7 +163,7 @@ export async function updateMonitorHandler(
 ) {
   // Fetch existing monitor to compare old frequency/enabled status
   const existingMonitor = await db.query.monitors.findFirst({
-    where: eq(monitorTable.id, monitorId),
+    where: and(eq(monitorTable.id, monitorId), liveMonitor(monitorTable)),
   });
 
   if (!existingMonitor) {
@@ -288,7 +289,7 @@ export async function triggerImmediateMonitorExecution(monitorId: string) {
   try {
     // Get monitor details
     const monitor = await db.query.monitors.findFirst({
-      where: eq(monitorTable.id, monitorId),
+      where: and(eq(monitorTable.id, monitorId), liveMonitor(monitorTable)),
     });
 
     if (!monitor) {

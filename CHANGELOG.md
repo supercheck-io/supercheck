@@ -17,6 +17,7 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 
 ### Added
 
+- **Safer job and monitor deletion.** Deleting a job or monitor now hides it at once and removes its runs, results and files in the background in bounded batches. Migrations `0075` and `0076` add the deletion queue, the `deleting_at` flags and their indexes; apply them before you update the app and the worker. A target being deleted reads as not found everywhere (lists, counts, dashboards, MCP, status pages, run views and notifications).
 - `GET /api/audit` accepts a `cursor` for stable paging, and the audit log table loads the newest 100 events with **Load older events**.
 - Monitors can open incidents without any notification channel, so incident-only monitoring works.
 - Incidents report `alertCount` (the opening alert plus repeats while the incident stayed open) and `lastAlertAt` in the API and in the MCP `get_incident` tool.

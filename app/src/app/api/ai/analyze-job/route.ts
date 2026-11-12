@@ -1,3 +1,4 @@
+import { liveJob, liveRunOfLiveJob } from "@/lib/deletion/visibility";
 import { getClientIP } from "@/lib/session-security";
 import { NextRequest, NextResponse } from "next/server";
 import { AIStreamingService } from "@/lib/ai/ai-streaming-service";
@@ -156,7 +157,7 @@ export async function POST(request: NextRequest) {
           inArray(reports.entityType, ["job", "k6_job"])
         )
       )
-      .where(and(eq(runs.id, runId), eq(runs.projectId, authContext.project.id)))
+      .where(and(eq(runs.id, runId), eq(runs.projectId, authContext.project.id), liveRunOfLiveJob(runs.jobId)))
       .limit(1);
 
     const run = runResult[0];
@@ -174,7 +175,7 @@ export async function POST(request: NextRequest) {
       jobData = await db
         .select()
         .from(jobs)
-        .where(eq(jobs.id, run.jobId))
+        .where(and(eq(jobs.id, run.jobId), liveJob()))
         .limit(1)
         .then((rows) => rows[0]);
 

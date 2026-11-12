@@ -103,4 +103,22 @@ suite('DbService.syncJobStatusFromRuns (PostgreSQL)', () => {
     await service.syncJobStatusFromRuns(jobId);
     expect(await jobStatus()).toBe(before);
   });
+
+  it('hides a job being deleted from getJobById and reports it through isJobDeleting', async () => {
+    expect(await service.isJobDeleting(jobId)).toBe(false);
+    expect((await service.getJobById(jobId))?.id).toBe(jobId);
+    await testDb.db
+      .update(schema.jobs)
+      .set({ deletingAt: new Date() })
+      .where(eq(schema.jobs.id, jobId));
+    expect(await service.isJobDeleting(jobId)).toBe(true);
+    expect(await service.getJobById(jobId)).toBeNull();
+    expect(
+      await service.getJobById(
+        jobId,
+        '00000000-0000-4000-8000-000000000001',
+        projectId,
+      ),
+    ).toBeNull();
+  });
 });

@@ -1,3 +1,4 @@
+import { liveRunOfLiveJob } from "@/lib/deletion/visibility";
 import { checkCapacityLimits } from "@/lib/middleware/plan-enforcement";
 import { db } from "@/utils/db";
 import { runs, projects } from "@/db/schema";
@@ -107,6 +108,7 @@ export async function fetchQueueStats(
         .where(
           and(
             eq(projects.organizationId, organizationId),
+            liveRunOfLiveJob(runs.jobId),
             or(
               eq(runs.status, 'running'),
               eq(runs.status, 'queued')
@@ -123,9 +125,12 @@ export async function fetchQueueStats(
         })
         .from(runs)
         .where(
-          or(
-            eq(runs.status, 'running'),
-            eq(runs.status, 'queued')
+          and(
+            liveRunOfLiveJob(runs.jobId),
+            or(
+              eq(runs.status, 'running'),
+              eq(runs.status, 'queued')
+            )
           )
         )
         .groupBy(runs.status);

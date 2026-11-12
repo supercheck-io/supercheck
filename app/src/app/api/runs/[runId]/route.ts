@@ -1,3 +1,4 @@
+import { liveRunOfLiveJob } from "@/lib/deletion/visibility";
 import { deleteRunWithContext } from "@/lib/resource-deletion/run";
 import { isInvalidUuidError, isUuid } from "@/lib/uuid";
 import { NextResponse } from "next/server";
@@ -65,7 +66,8 @@ export async function GET(
         and(
           eq(runs.id, runId),
           eq(runs.projectId, authCtx.project.id),
-          eq(projects.organizationId, authCtx.organizationId)
+          eq(projects.organizationId, authCtx.organizationId),
+          liveRunOfLiveJob(runs.jobId)
         )
       )
       .limit(1);

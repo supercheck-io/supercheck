@@ -1,7 +1,8 @@
+import { liveRunOfLiveJob } from "@/lib/deletion/visibility";
 import { NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { k6PerformanceRuns, runs } from "@/db/schema";
-import { desc, eq, or, sql } from "drizzle-orm";
+import { and, desc, eq, or, sql } from "drizzle-orm";
 import { detectTimeoutError } from "@/lib/timeout-utils";
 
 export const isCancellationError = (
@@ -99,9 +100,12 @@ export async function resolveExecutionErrorDetails(
       })
       .from(runs)
       .where(
-        or(
-          eq(runs.id, entityId),
-          sql`${runs.metadata}->>'testId' = ${entityId}`
+        and(
+          or(
+            eq(runs.id, entityId),
+            sql`${runs.metadata}->>'testId' = ${entityId}`
+          ),
+          liveRunOfLiveJob(runs.jobId)
         )
       )
       .orderBy(desc(runs.createdAt))
@@ -122,7 +126,7 @@ export async function resolveExecutionErrorDetails(
         status: k6PerformanceRuns.status,
       })
       .from(k6PerformanceRuns)
-      .where(eq(k6PerformanceRuns.runId, entityId))
+      .where(and(eq(k6PerformanceRuns.runId, entityId), liveRunOfLiveJob(k6PerformanceRuns.jobId)))
       .limit(1);
 
     if (k6Record.length > 0) {

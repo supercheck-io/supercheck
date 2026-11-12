@@ -1,6 +1,7 @@
+import { liveJob, liveMonitor, liveRunOfLiveJob } from "@/lib/deletion/visibility";
 import { validateAIConfiguration } from "@/lib/ai/ai-provider";
 import { createHash } from "crypto";
-import { and, desc, eq, gt, gte, isNotNull, lt, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, gte, isNotNull, isNull, lt, ne, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import {
@@ -244,14 +245,14 @@ export async function sourceRecoveredSince(
     const [row] = await db
       .select({ at: monitors.lastStatusChangeAt })
       .from(monitors)
-      .where(and(eq(monitors.id, sourceId), eq(monitors.status, "up"), gt(monitors.lastStatusChangeAt, firedAt)))
+      .where(and(eq(monitors.id, sourceId), liveMonitor(), eq(monitors.status, "up"), gt(monitors.lastStatusChangeAt, firedAt)))
       .limit(1);
     return row?.at ?? null;
   }
   const [latest] = await db
     .select({ status: runs.status, at: runs.completedAt })
     .from(runs)
-    .where(and(eq(runs.jobId, sourceId), gt(runs.completedAt, firedAt)))
+    .where(and(eq(runs.jobId, sourceId), liveRunOfLiveJob(runs.jobId), gt(runs.completedAt, firedAt)))
     .orderBy(desc(runs.completedAt))
     .limit(1);
   return latest?.status === "passed" ? latest.at : null;
@@ -271,7 +272,7 @@ async function syntheticFailureAlert(failure: SourceFailureInput) {
       enabled: monitors.enabled,
     })
     .from(monitors)
-    .where(eq(monitors.id, failure.sourceId))
+    .where(and(eq(monitors.id, failure.sourceId), liveMonitor()))
     .limit(1);
   // A failure queued before the monitor was paused or disabled must not open or update an incident.
   if (monitor && (monitor.status === "paused" || !monitor.enabled)) return undefined;
@@ -326,7 +327,7 @@ async function createOrGetIncidentForAlertHistory(alertHistoryId: string, failur
     .from(alertHistory)
     .leftJoin(monitors, eq(alertHistory.monitorId, monitors.id))
     .leftJoin(jobs, eq(alertHistory.jobId, jobs.id))
-    .where(eq(alertHistory.id, alertHistoryId))
+    .where(and(eq(alertHistory.id, alertHistoryId), or(isNull(alertHistory.monitorId), liveMonitor()), or(isNull(alertHistory.jobId), liveJob())))
     .limit(1);
 
   const alert = failure ? await syntheticFailureAlert(failure) : loaded;

@@ -1,3 +1,4 @@
+import { liveMonitor } from "@/lib/deletion/visibility";
 import { deleteMonitorWithContext } from "@/lib/resource-deletion/monitor";
 import { isInvalidUuidError, isUuid } from "@/lib/uuid";
 import { isDeepStrictEqual } from "node:util";
@@ -16,7 +17,7 @@ import {
   notificationProviders,
 } from "@/db/schema";
 import { MonitorType, MonitorStatus } from "@/db/schema/types";
-import { eq, desc, and, inArray } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 import {
   scheduleMonitor,
   deleteScheduledMonitor,
@@ -104,6 +105,7 @@ export async function GET(
         eq(monitors.id, id),
         eq(monitors.projectId, context.project.id),
         eq(monitors.organizationId, context.organizationId),
+        liveMonitor(),
       ),
     });
 
@@ -222,6 +224,7 @@ export async function PUT(
         eq(monitors.id, id),
         eq(monitors.projectId, authCtx.project.id),
         eq(monitors.organizationId, authCtx.organizationId),
+        liveMonitor(),
       ),
     });
 
@@ -402,6 +405,7 @@ export async function PUT(
               eq(monitors.id, id),
               eq(monitors.projectId, authCtx.project.id),
               eq(monitors.organizationId, authCtx.organizationId),
+              liveMonitor(),
             ),
           )
           .returning();
@@ -613,6 +617,7 @@ export async function PATCH(
         eq(monitors.id, id),
         eq(monitors.projectId, authCtx.project.id),
         eq(monitors.organizationId, authCtx.organizationId),
+        liveMonitor(),
       ),
     });
 

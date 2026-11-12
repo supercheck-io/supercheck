@@ -66,6 +66,7 @@ jest.mock("drizzle-orm", () => ({
   eq: jest.fn(),
   and: jest.fn(),
   isNotNull: jest.fn(),
+  isNull: jest.fn(),
 }));
 
 jest.mock("@/db/schema", () => ({

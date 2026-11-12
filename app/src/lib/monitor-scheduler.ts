@@ -1,3 +1,4 @@
+import { liveMonitor } from "@/lib/deletion/visibility";
 import { db } from "@/utils/db";
 import { monitors as monitorSchemaDb, MonitorConfig } from "@/db/schema";
 import { eq, isNotNull, and, ne, inArray, gt } from "drizzle-orm";
@@ -31,6 +32,10 @@ export async function scheduleMonitor(
   try {
     const { monitorSchedulerQueue } = await getQueues();
     const schedulerJobName = `scheduled-monitor-${options.monitorId}`;
+    // A monitor being deleted must never get a schedule back (trial restore, reconcile and edit paths call this).
+    // Init passes `prefetched` and has already filtered deleting monitors, so it skips the lookup.
+    const [deleting] = prefetched ? [] : await db.select({ id: monitorSchemaDb.id }).from(monitorSchemaDb).where(and(eq(monitorSchemaDb.id, options.monitorId), isNotNull(monitorSchemaDb.deletingAt))).limit(1);
+    if (deleting) throw new Error(`Monitor ${options.monitorId} is being deleted`);
     // Backstop for the write-path check: concurrent edits (or rows saved before it) must not schedule faster checks.
     const frequencyMinutes = effectiveFrequencyMinutes(options.jobData.type, options.frequencyMinutes);
 
@@ -173,7 +178,7 @@ export async function repairMonitorSchedules(): Promise<{ repaired: number; fail
     const active = await db
       .select({ id: monitorSchemaDb.id, scheduledJobId: monitorSchemaDb.scheduledJobId })
       .from(monitorSchemaDb)
-      .where(and(gt(monitorSchemaDb.frequencyMinutes, 0), eq(monitorSchemaDb.enabled, true), ne(monitorSchemaDb.status, 'paused')))
+      .where(and(gt(monitorSchemaDb.frequencyMinutes, 0), eq(monitorSchemaDb.enabled, true), ne(monitorSchemaDb.status, 'paused'), liveMonitor(monitorSchemaDb)))
       .orderBy(monitorSchemaDb.id);
     // Never-scheduled monitors first; within each group continue after the last id of the previous sweep,
     // so rows that keep failing cannot starve the rest of the batch.
@@ -271,7 +276,8 @@ export async function initializeMonitorSchedulers(): Promise<{ success: boolean;
           .where(and(
             isNotNull(monitorSchemaDb.frequencyMinutes),
             eq(monitorSchemaDb.enabled, true),
-            ne(monitorSchemaDb.status, 'paused')
+            ne(monitorSchemaDb.status, 'paused'),
+            liveMonitor(monitorSchemaDb)
           ));
 
         if (activeMonitors.length === 0) {

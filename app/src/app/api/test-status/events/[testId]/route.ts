@@ -1,3 +1,4 @@
+import { liveRunOfLiveJob } from "@/lib/deletion/visibility";
 import { NextResponse } from "next/server";
 import { isUuid } from "@/lib/uuid";
 import { and, eq, sql } from "drizzle-orm";
@@ -98,7 +99,8 @@ export async function GET(request: Request) {
     const playgroundRun = await db.query.runs.findFirst({
       where: and(
         eq(runs.projectId, projectContext.project.id),
-        sql`${runs.metadata}->>'testId' = ${testId}`
+        sql`${runs.metadata}->>'testId' = ${testId}`,
+        liveRunOfLiveJob(runs.jobId)
       ),
       columns: { id: true }
     });

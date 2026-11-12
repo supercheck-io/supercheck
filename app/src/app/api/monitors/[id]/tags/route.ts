@@ -1,3 +1,4 @@
+import { liveMonitor } from "@/lib/deletion/visibility";
 import { NextRequest, NextResponse } from "next/server";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/utils/db";
@@ -21,6 +22,7 @@ async function monitorExists(monitorId: string, organizationId: string, projectI
     .where(
       and(
         eq(monitors.id, monitorId),
+        liveMonitor(),
         eq(monitors.organizationId, organizationId),
         eq(monitors.projectId, projectId)
       )
@@ -133,12 +135,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     // Replace semantics: remove existing, add the given set. The audit record commits with the change or not at all.
     // Same row lock as PATCH, so a concurrent PATCH cannot push past the cap.
-    await db.transaction(async (tx) => {
-      await tx
+    const found = await db.transaction(async (tx) => {
+      const locked = await tx
         .select({ id: monitors.id })
         .from(monitors)
-        .where(and(eq(monitors.id, monitorId), eq(monitors.organizationId, organizationId), eq(monitors.projectId, project.id)))
+        .where(and(eq(monitors.id, monitorId), liveMonitor(), eq(monitors.organizationId, organizationId), eq(monitors.projectId, project.id)))
         .for("update");
+      if (locked.length === 0) return false; // deleted between the check above and the lock
       await tx.delete(monitorTags).where(eq(monitorTags.monitorId, monitorId));
       if (normalizedTagIds.length > 0) {
         await tx
@@ -158,7 +161,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         tx,
         { strict: true },
       );
+      return true;
     });
+    if (!found) return notFound();
 
     return NextResponse.json({ tags: await loadTags(monitorId, project.id) });
   } catch (error) {
@@ -217,7 +222,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         const locked = await tx
           .select({ id: monitors.id })
           .from(monitors)
-          .where(and(eq(monitors.id, monitorId), eq(monitors.organizationId, organizationId), eq(monitors.projectId, project.id)))
+          .where(and(eq(monitors.id, monitorId), liveMonitor(), eq(monitors.organizationId, organizationId), eq(monitors.projectId, project.id)))
           .for("update");
         if (locked.length === 0) throw new TagLimitError("not-found");
         if (remove.length > 0) {

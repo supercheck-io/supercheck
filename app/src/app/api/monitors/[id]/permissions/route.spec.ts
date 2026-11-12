@@ -2,7 +2,7 @@
 const findFirst = jest.fn();
 jest.mock("@/utils/db", () => ({ db: { query: { monitors: { findFirst: (...a: unknown[]) => findFirst(...a) } } } }));
 jest.mock("@/db/schema", () => ({ monitors: {} }));
-jest.mock("drizzle-orm", () => ({ eq: jest.fn() }));
+jest.mock("drizzle-orm", () => ({ eq: jest.fn(), and: jest.fn(), isNull: jest.fn() }));
 const mockStanding = { value: true };
 jest.mock("@/lib/rbac/middleware", () => ({
   hasPermissionForUser: jest.fn(),

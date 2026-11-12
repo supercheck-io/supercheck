@@ -20,6 +20,7 @@ jest.mock('../services/run-callback', () => ({
 import { DelayedError, Job, UnrecoverableError } from 'bullmq';
 import { Logger } from '@nestjs/common';
 import { attachBillableMs } from '../../common/billable-ms';
+import { RUN_CANCELLATION_MARKER } from '../../common/services/cancellation.service';
 
 // Mock dependencies
 const mockExecutionService = {
@@ -32,6 +33,7 @@ const mockExecutionService = {
 const mockDbService = {
   getTerminalRun: jest.fn(),
   claimRunExecution: jest.fn(),
+  isJobDeleting: jest.fn().mockResolvedValue(false),
   finalizeCancelledRun: jest.fn().mockResolvedValue(true),
   updateRunStatus: jest.fn(),
   failRunUnlessCancelled: jest.fn().mockResolvedValue(undefined),
@@ -210,6 +212,7 @@ describe('PlaywrightExecutionProcessor', () => {
     mockExecutionService.runJob.mockResolvedValue(mockJobSuccessResult);
     mockDbService.getTerminalRun.mockResolvedValue(undefined);
     mockDbService.claimRunExecution.mockResolvedValue(true);
+    mockDbService.isJobDeleting.mockResolvedValue(false);
     mockDbService.updateRunStatus.mockResolvedValue(undefined);
     mockDbService.syncJobStatusFromRuns.mockResolvedValue(undefined);
     mockJobNotificationService.handleJobNotifications.mockResolvedValue(
@@ -716,6 +719,30 @@ describe('PlaywrightExecutionProcessor', () => {
           'failed',
           expect.anything(),
           'Interrupted by worker restart',
+          expect.anything(),
+        );
+        expect(
+          mockJobNotificationService.handleJobNotifications,
+        ).toHaveBeenCalledWith(expect.objectContaining({ cancelled: true }));
+      });
+
+      it('records a genuine failure of a job being deleted as cancelled and sends no alert', async () => {
+        mockDbService.isJobDeleting.mockResolvedValue(true);
+        mockExecutionService.runJob.mockResolvedValueOnce({
+          ...mockJobSuccessResult,
+          success: false,
+          error: 'Test assertion failed',
+          results: [],
+        });
+
+        await processor.process(createMockJob(mockJobTask));
+
+        expect(mockDbService.isJobDeleting).toHaveBeenCalledWith(jobId);
+        expect(mockDbService.updateRunStatus).toHaveBeenCalledWith(
+          mockJobTask.runId,
+          'error',
+          expect.anything(),
+          RUN_CANCELLATION_MARKER,
           expect.anything(),
         );
         expect(

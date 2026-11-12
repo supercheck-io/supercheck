@@ -1,3 +1,4 @@
+import { liveRunOfLiveJob } from "@/lib/deletion/visibility";
 import { isUuid } from "@/lib/uuid";
 import { NextRequest, NextResponse } from 'next/server';
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
@@ -44,6 +45,7 @@ export async function GET(
           eq(runs.id, runId),
           eq(runs.projectId, authCtx.project.id),
           eq(projects.organizationId, authCtx.organizationId),
+          liveRunOfLiveJob(runs.jobId),
         )
       )
       .limit(1);

@@ -68,6 +68,7 @@ export const monitors = pgTable(
       withTimezone: true,
     }),
     scheduledJobId: varchar('scheduled_job_id', { length: 255 }),
+    deletingAt: timestamp('deleting_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }),
   },

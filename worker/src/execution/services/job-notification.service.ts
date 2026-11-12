@@ -157,6 +157,7 @@ export class JobNotificationService {
         id: string;
         name: string;
         projectId?: string;
+        deletingAt?: Date | null;
         alertConfig?: {
           enabled: boolean;
           notificationProviders: string[];
@@ -169,8 +170,16 @@ export class JobNotificationService {
         } | null;
       } | null;
 
+      // A job being deleted reads as missing (getJobById); a finish that races the delete request sends nothing.
+      if (!job || job.deletingAt) {
+        this.logger.debug(
+          `Job ${jobId} is missing or being deleted; no alerts`,
+        );
+        return;
+      }
+
       // Before the alert checks: an open incident must auto-resolve even with alerts or channels off.
-      if (job && finalStatus === 'passed') {
+      if (finalStatus === 'passed') {
         await this.signalRecoveryIfRecovered(
           jobId,
           runId,
@@ -178,7 +187,7 @@ export class JobNotificationService {
         );
       }
 
-      if (!job || !job.alertConfig?.enabled) {
+      if (!job.alertConfig?.enabled) {
         this.logger.debug(
           `No alerts configured for job ${jobId} - alertConfig: ${JSON.stringify(job?.alertConfig)}`,
         );

@@ -1,3 +1,4 @@
+import { liveRunOfLiveJob } from "@/lib/deletion/visibility";
 import { isUuid } from "@/lib/uuid";
 import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
@@ -73,7 +74,8 @@ export async function GET(
         and(
           eq(k6PerformanceRuns.runId, runId),
           eq(k6PerformanceRuns.projectId, project.id),
-          eq(k6PerformanceRuns.organizationId, organizationId)
+          eq(k6PerformanceRuns.organizationId, organizationId),
+          liveRunOfLiveJob(k6PerformanceRuns.jobId)
         )
       )
       .limit(1);

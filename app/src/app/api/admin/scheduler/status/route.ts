@@ -1,10 +1,11 @@
+import { liveJob, liveMonitor } from "@/lib/deletion/visibility";
 import { NextResponse } from "next/server";
 import { isAdminAccessDeniedError, requireAdmin } from '@/lib/admin';
 import { adminDeniedResponse } from '@/lib/admin-errors';
 import { getQueues } from '@/lib/queue';
 import { db } from "@/utils/db";
 import { jobs, monitors } from "@/db/schema";
-import { isNotNull } from "drizzle-orm";
+import { and, isNotNull } from "drizzle-orm";
 
 export async function GET() {
   try {
@@ -28,7 +29,7 @@ export async function GET() {
         cronSchedule: jobs.cronSchedule,
         scheduledJobId: jobs.scheduledJobId,
         nextRunAt: jobs.nextRunAt
-      }).from(jobs).where(isNotNull(jobs.cronSchedule)),
+      }).from(jobs).where(and(isNotNull(jobs.cronSchedule), liveJob())),
       
       db.select({
         id: monitors.id,
@@ -36,7 +37,7 @@ export async function GET() {
         frequencyMinutes: monitors.frequencyMinutes,
         scheduledJobId: monitors.scheduledJobId,
         enabled: monitors.enabled
-      }).from(monitors).where(isNotNull(monitors.frequencyMinutes))
+      }).from(monitors).where(and(isNotNull(monitors.frequencyMinutes), liveMonitor()))
     ]);
 
     const status = {

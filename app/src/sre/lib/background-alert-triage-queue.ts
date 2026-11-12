@@ -1,5 +1,6 @@
+import { liveJob, liveMonitor } from "@/lib/deletion/visibility";
 import { Queue } from "bullmq";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull, or } from "drizzle-orm";
 import { z } from "zod";
 
 import { alertHistory, jobs, monitors } from "@/db/schema";
@@ -41,7 +42,7 @@ async function shouldEnqueueAlertTriage(alertHistoryId: string): Promise<SreAler
     .from(alertHistory)
     .leftJoin(monitors, eq(alertHistory.monitorId, monitors.id))
     .leftJoin(jobs, eq(alertHistory.jobId, jobs.id))
-    .where(eq(alertHistory.id, alertHistoryId))
+    .where(and(eq(alertHistory.id, alertHistoryId), or(isNull(alertHistory.monitorId), liveMonitor()), or(isNull(alertHistory.jobId), liveJob())))
     .limit(1);
 
   if (!alert) {

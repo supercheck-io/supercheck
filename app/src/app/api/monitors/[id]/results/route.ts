@@ -1,3 +1,4 @@
+import { liveMonitor } from "@/lib/deletion/visibility";
 import { isUuid } from "@/lib/uuid";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
@@ -107,7 +108,7 @@ export async function GET(
     // Find the monitor and verify its organization and project.
     if (!isUuid((await routeContext.params).id)) return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
     const monitor = await db.query.monitors.findFirst({
-      where: eq(monitors.id, id),
+      where: and(eq(monitors.id, id), liveMonitor()),
     });
 
     if (!monitor) {

@@ -1,3 +1,4 @@
+import { liveJob } from "@/lib/deletion/visibility";
 import { deleteJobWithContext } from "@/lib/resource-deletion/job";
 import { isInvalidUuidError, isUuid } from "@/lib/uuid";
 import { NextRequest, NextResponse } from "next/server";
@@ -51,7 +52,8 @@ export async function GET(
         and(
           eq(jobs.id, jobId),
           eq(jobs.projectId, context.project.id),
-          eq(jobs.organizationId, context.organizationId)
+          eq(jobs.organizationId, context.organizationId),
+          liveJob()
         )
       )
       .limit(1);
@@ -178,7 +180,8 @@ export async function PATCH(
       where: and(
         eq(jobs.id, jobId),
         eq(jobs.projectId, project.id),
-        eq(jobs.organizationId, organizationId)
+        eq(jobs.organizationId, organizationId),
+        liveJob()
       ),
     });
 
@@ -249,7 +252,8 @@ export async function PUT(
       where: and(
         eq(jobs.id, params.id),
         eq(jobs.projectId, context.project.id),
-        eq(jobs.organizationId, context.organizationId)
+        eq(jobs.organizationId, context.organizationId),
+        liveJob()
       ),
     });
 

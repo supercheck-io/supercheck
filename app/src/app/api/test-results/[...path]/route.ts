@@ -1,3 +1,4 @@
+import { liveRunOfLiveJob } from "@/lib/deletion/visibility";
 import { NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import {
@@ -5,7 +6,7 @@ import {
   runs,
   projects,
 } from "@/db/schema";
-import { eq, desc, or, sql } from "drizzle-orm";
+import { and, eq, desc, or, sql } from "drizzle-orm";
 import { fetchFromS3 } from "@/lib/s3-proxy";
 import { notFound } from "next/navigation";
 import { hasPermissionForUser } from "@/lib/rbac/middleware";
@@ -212,9 +213,12 @@ export async function GET(request: Request) {
         })
         .from(runs)
         .where(
-          or(
-            eq(runs.id, entityId),
-            sql`${runs.metadata}->>'testId' = ${entityId}`
+          and(
+            or(
+              eq(runs.id, entityId),
+              sql`${runs.metadata}->>'testId' = ${entityId}`
+            ),
+            liveRunOfLiveJob(runs.jobId)
           )
         )
         .orderBy(desc(runs.createdAt))

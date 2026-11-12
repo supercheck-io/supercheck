@@ -1,3 +1,4 @@
+import { liveMonitor } from "@/lib/deletion/visibility";
 import { and, eq, exists, gt, inArray, isNotNull, isNull, lte, ne, notExists, notInArray, or, sql } from "drizzle-orm";
 import {
   executionEntitlements,
@@ -111,6 +112,7 @@ async function suspendOrganizationResources(
       and(
         eq(monitors.organizationId, organizationId),
         ne(monitors.status, "paused"),
+        liveMonitor(),
       ),
     );
   const published = await tx
@@ -308,7 +310,7 @@ export async function suspendLapsedOrganizations(
               database
                 .select({ one: sql`1` })
                 .from(monitors)
-                .where(and(eq(monitors.organizationId, organization.id), ne(monitors.status, "paused"))),
+                .where(and(eq(monitors.organizationId, organization.id), ne(monitors.status, "paused"), liveMonitor())),
             ),
             exists(
               database

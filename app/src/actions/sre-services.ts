@@ -1,5 +1,6 @@
 "use server";
 
+import { liveJob, liveMonitor, liveRunOfLiveJob } from "@/lib/deletion/visibility";
 import { revalidatePath } from "next/cache";
 import { and, count, desc, eq, inArray, ne, or } from "drizzle-orm";
 import { z } from "zod";
@@ -609,13 +610,13 @@ async function getResourceCandidates(
     db
       .select({ id: monitors.id, name: monitors.name })
       .from(monitors)
-      .where(and(eq(monitors.organizationId, context.organizationId), eq(monitors.projectId, context.project.id)))
+      .where(and(eq(monitors.organizationId, context.organizationId), eq(monitors.projectId, context.project.id), liveMonitor()))
       .orderBy(desc(monitors.updatedAt))
       .limit(200),
     db
       .select({ id: jobs.id, name: jobs.name })
       .from(jobs)
-      .where(and(eq(jobs.organizationId, context.organizationId), eq(jobs.projectId, context.project.id)))
+      .where(and(eq(jobs.organizationId, context.organizationId), eq(jobs.projectId, context.project.id), liveJob()))
       .orderBy(desc(jobs.updatedAt))
       .limit(200),
     db
@@ -638,6 +639,7 @@ async function getResourceCandidates(
         and(
           eq(k6PerformanceRuns.organizationId, context.organizationId),
           eq(k6PerformanceRuns.projectId, context.project.id),
+          liveRunOfLiveJob(k6PerformanceRuns.jobId),
         ),
       )
       .orderBy(desc(k6PerformanceRuns.createdAt))
@@ -667,6 +669,7 @@ async function resourceBelongsToProject(
       return Boolean(await db.query.monitors.findFirst({
         where: and(
           eq(monitors.id, resourceId),
+          liveMonitor(),
           eq(monitors.organizationId, context.organizationId),
           eq(monitors.projectId, context.project.id),
         ),
@@ -676,6 +679,7 @@ async function resourceBelongsToProject(
       return Boolean(await db.query.jobs.findFirst({
         where: and(
           eq(jobs.id, resourceId),
+          liveJob(),
           eq(jobs.organizationId, context.organizationId),
           eq(jobs.projectId, context.project.id),
         ),
@@ -711,6 +715,7 @@ async function resourceBelongsToProject(
           eq(k6PerformanceRuns.id, resourceId),
           eq(k6PerformanceRuns.organizationId, context.organizationId),
           eq(k6PerformanceRuns.projectId, context.project.id),
+          liveRunOfLiveJob(k6PerformanceRuns.jobId),
         ),
         columns: { id: true },
       }));

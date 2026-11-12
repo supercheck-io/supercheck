@@ -1,3 +1,4 @@
+import { liveJob, liveMonitor } from "@/lib/deletion/visibility";
 import { and, eq, gte, isNull, ne, sql } from "drizzle-orm";
 
 import { jobs, monitors, runs, sreAlertEvents, sreIncidentAlerts, sreIncidents, sreInvestigationRuns } from "@/db/schema";
@@ -112,6 +113,7 @@ async function findRecoveryCandidates(now: Date): Promise<RecoveryCandidate[]> {
     .where(
       and(
         openAutomaticIncident(monitors.alertConfig, "monitor", now),
+        liveMonitor(),
         eq(monitors.status, "up"),
       ),
     )
@@ -143,6 +145,7 @@ async function findRecoveryCandidates(now: Date): Promise<RecoveryCandidate[]> {
     .where(
       and(
         openAutomaticIncident(jobs.alertConfig, "job", now),
+        liveJob(),
       ),
     )
     .groupBy(jobs.id)

@@ -1,3 +1,4 @@
+import { liveJob, liveMonitor } from "@/lib/deletion/visibility";
 import { NextRequest, NextResponse } from "next/server";
 import { isInvalidUuidError, isUuid } from "@/lib/uuid";
 import { isTestPriority, MAX_SCRIPT_LENGTH, MAX_DESCRIPTION_LENGTH } from "@/lib/validations/common";
@@ -334,6 +335,7 @@ export async function DELETE(
             eq(jobTests.testId, id),
             eq(jobs.projectId, project.id),
             eq(jobs.organizationId, organizationId),
+            liveJob(), // a job being deleted no longer uses the test
           ),
         );
 
@@ -355,6 +357,7 @@ export async function DELETE(
             eq(monitors.type, "synthetic_test"),
             eq(monitors.projectId, project.id),
             eq(monitors.organizationId, organizationId),
+            liveMonitor(),
             sql`${monitors.config}->>'testId' = ${id}`,
           ),
         );

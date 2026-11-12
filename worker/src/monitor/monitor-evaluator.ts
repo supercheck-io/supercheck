@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import { liveMonitor } from '../db/deletion-visibility';
 import type { z } from 'zod';
 import { DbService } from '../db/db.service';
 import * as schema from '../db/schema';
@@ -794,7 +795,7 @@ export class MonitorEvaluator {
       const [monitor] = await tx
         .select()
         .from(schema.monitors)
-        .where(eq(schema.monitors.id, monitorId))
+        .where(and(eq(schema.monitors.id, monitorId), liveMonitor()))
         .limit(1)
         .for('update');
       if (!monitor) return null;
@@ -1358,7 +1359,7 @@ export class MonitorEvaluator {
 
   async getMonitorById(monitorId: string): Promise<Monitor | undefined> {
     return this.dbService.db.query.monitors.findFirst({
-      where: eq(schema.monitors.id, monitorId),
+      where: and(eq(schema.monitors.id, monitorId), liveMonitor()),
     });
   }
 }

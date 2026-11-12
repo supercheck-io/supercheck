@@ -1,3 +1,4 @@
+import { liveJob, liveRunOfLiveJob } from "@/lib/deletion/visibility";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { k6PerformanceRuns, jobs } from "@/db/schema";
@@ -61,7 +62,9 @@ export async function GET(request: NextRequest) {
       eq(k6PerformanceRuns.projectId, targetProjectId),
       eq(k6PerformanceRuns.organizationId, organizationId),
       sql`${k6PerformanceRuns.completedAt} IS NOT NULL`,
-      sql`${k6PerformanceRuns.jobId} IS NOT NULL`
+      sql`${k6PerformanceRuns.jobId} IS NOT NULL`,
+      // Runs of a job being deleted are gone at once.
+      liveRunOfLiveJob(k6PerformanceRuns.jobId),
     ];
 
     if (jobId) {
@@ -83,7 +86,8 @@ export async function GET(request: NextRequest) {
           and(
             eq(jobs.projectId, targetProjectId),
             eq(jobs.organizationId, organizationId),
-            eq(jobs.jobType, 'k6')
+            eq(jobs.jobType, 'k6'),
+            liveJob()
           )
         )
         .orderBy(desc(jobs.lastRunAt)),

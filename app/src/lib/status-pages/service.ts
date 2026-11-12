@@ -7,10 +7,12 @@
  * custom-domain rules, cross-project checks, aggregation, audit logging)
  * lives here so both paths behave identically.
  */
+import { liveMonitor } from "@/lib/deletion/visibility";
 import { randomUUID } from "crypto";
 import { z } from "zod";
 import { HEX_COLOR_REGEX, normalizeHexColor } from "@/lib/status-page-branding";
 import { and, asc, eq, inArray, lt, ne, sql } from "drizzle-orm";
+import { isDeletingError } from "@/lib/deletion/errors";
 import { db } from "@/utils/db";
 import {
   monitors,
@@ -297,6 +299,23 @@ async function monitorIdsForComponent(componentId: string): Promise<string[]> {
   return links.map((l) => l.monitorId);
 }
 
+const MONITORS_UNAVAILABLE = "One or more monitors not found or access denied";
+class MonitorUnavailableError extends Error {}
+
+/**
+ * Lock the monitors (FOR KEY SHARE, in id order) before touching any link row, and require that none is being deleted.
+ * A deletion takes the monitor FOR UPDATE, so it queues behind this transaction or this one sees the flag; locking the
+ * monitor first also keeps a stable lock order against the deletion's link cleanup.
+ */
+async function lockLiveMonitors(tx: Parameters<Parameters<typeof db.transaction>[0]>[0], ctx: StatusPageServiceContext, monitorIds: string[]) {
+  if (monitorIds.length === 0) return;
+  const ids = [...new Set(monitorIds)].sort();
+  const rows = await tx.select({ id: monitors.id }).from(monitors)
+    .where(and(inArray(monitors.id, ids), eq(monitors.projectId, ctx.projectId), liveMonitor()))
+    .orderBy(monitors.id).for("key share");
+  if (rows.length !== ids.length) throw new MonitorUnavailableError();
+}
+
 /** Verifies monitors and the optional service belong to the caller's project. */
 async function verifyComponentReferences(
   ctx: StatusPageServiceContext,
@@ -307,7 +326,7 @@ async function verifyComponentReferences(
     const validMonitors = await db
       .select({ id: monitors.id })
       .from(monitors)
-      .where(and(inArray(monitors.id, monitorIds), eq(monitors.projectId, ctx.projectId)));
+      .where(and(inArray(monitors.id, monitorIds), eq(monitors.projectId, ctx.projectId), liveMonitor()));
 
     if (validMonitors.length !== monitorIds.length) {
       return fail("validation", "One or more monitors not found or access denied");
@@ -744,6 +763,7 @@ export async function createComponent(
     const monitorIds = validatedData.monitorIds ?? [];
     // The row and its monitor links commit together, so a failed link never leaves a component behind.
     let component = await db.transaction(async (tx) => {
+      await lockLiveMonitors(tx, ctx, monitorIds);
       const [created] = await tx
         .insert(statusPageComponents)
         .values({
@@ -806,6 +826,7 @@ export async function createComponent(
 
     return { ok: true, data: { component, monitorIds } };
   } catch (error) {
+    if (error instanceof MonitorUnavailableError || isDeletingError(error)) return fail("validation", MONITORS_UNAVAILABLE);
     console.error("Error creating component:", error);
     return fail("internal", "Failed to create component. Please try again.");
   }
@@ -868,6 +889,7 @@ export async function updateComponent(
     // Row update and link replacement commit together, so a failed insert cannot leave a half-applied component.
     const linkedMonitorIds = validatedData.monitorIds;
     const updated = await db.transaction(async (tx) => {
+      if (linkedMonitorIds !== undefined) await lockLiveMonitors(tx, ctx, linkedMonitorIds);
       const [row] = await tx
         .update(statusPageComponents)
         .set(updateData)
@@ -940,6 +962,7 @@ export async function updateComponent(
     const monitorIds = validatedData.monitorIds ?? (await monitorIdsForComponent(componentId));
     return { ok: true, data: { component, monitorIds } };
   } catch (error) {
+    if (error instanceof MonitorUnavailableError || isDeletingError(error)) return fail("validation", MONITORS_UNAVAILABLE);
     console.error("Error updating component:", error);
     return fail("internal", "Failed to update component. Please try again.");
   }

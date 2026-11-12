@@ -129,6 +129,39 @@ describe('JobNotificationService', () => {
       { id: 'row-provider-2', status: 'failed' },
     ]);
   });
+  it.each(['failed', 'passed'] as const)(
+    'sends nothing for a job that is missing or being deleted (%s run)',
+    async (finalStatus) => {
+      for (const job of [
+        null,
+        { id: 'job-1', name: 'x', deletingAt: new Date() },
+      ]) {
+        const {
+          service,
+          dbService,
+          notificationService,
+          sreAlertTriageQueueService,
+        } = createService();
+        dbService.getJobById.mockResolvedValue(job);
+        await service.handleJobNotifications({
+          jobId: 'job-1',
+          organizationId: 'org-1',
+          projectId: 'project-1',
+          runId: 'run-1',
+          finalStatus,
+          durationSeconds: 1,
+          results: [{ success: finalStatus === 'passed' }],
+        });
+        expect(
+          notificationService.sendNotificationToMultipleProviders,
+        ).not.toHaveBeenCalled();
+        expect(dbService.claimJobAlertSlots).not.toHaveBeenCalled();
+        expect(
+          sreAlertTriageQueueService.enqueueSourceRecovery,
+        ).not.toHaveBeenCalled();
+      }
+    },
+  );
   it.each(['failed', 'passed', 'error'] as const)(
     'counts the current %s run once at the threshold boundary',
     async (status) => {

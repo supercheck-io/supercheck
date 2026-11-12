@@ -1,3 +1,4 @@
+import { liveMonitor } from "@/lib/deletion/visibility";
 import { monitorConfigForRead, monitorResultForRead, monitorTargetForRead } from "@/lib/monitor-read-config";
 import { Metadata } from "next";
 import { AlertCircle } from "lucide-react";
@@ -15,7 +16,7 @@ import {
   MonitorType as DBMonitorType,
   MonitorResultStatus as DBMonitorResultStatusType,
 } from "@/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { and, eq, desc } from "drizzle-orm";
 import { hasPermissionForUser, requireAuth } from "@/lib/rbac/middleware";
 
 // Limit for chart data only - keep small for performance
@@ -54,7 +55,7 @@ async function getMonitorDetailsDirectly(
       })
       .from(monitors)
       .leftJoin(projects, eq(monitors.projectId, projects.id))
-      .where(eq(monitors.id, id))
+      .where(and(eq(monitors.id, id), liveMonitor()))
       .limit(1);
 
     if (!monitorData || monitorData.length === 0) {

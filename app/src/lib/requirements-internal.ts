@@ -1,3 +1,4 @@
+import { liveRunOfLiveJob } from "@/lib/deletion/visibility";
 import { eq, and, asc, desc, inArray, sql } from "drizzle-orm";
 import {
   requirementCoverageSnapshots,
@@ -190,6 +191,7 @@ async function recomputeCoverageSnapshot(requirementId: string, executor: Execut
       // A cancelled run is stored as "error" but has no test outcomes, so it must not decide coverage.
       and(
         eq(runs.jobId, jobTests.jobId),
+        liveRunOfLiveJob(runs.jobId),
         inArray(runs.status, ["passed", "failed", "error"]),
         sql`${runs.errorDetails} is distinct from ${RUN_CANCELLATION_MARKER}`
       )

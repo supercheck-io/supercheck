@@ -57,8 +57,11 @@ jest.mock("@/db/schema", () => ({
 }));
 
 jest.mock("drizzle-orm", () => ({
+  and: jest.fn(),
   desc: jest.fn(),
   eq: jest.fn(),
+  isNull: jest.fn(),
+  sql: jest.fn(),
 }));
 
 jest.mock("./constants", () => ({
@@ -147,6 +150,16 @@ describe("monitor-scheduler", () => {
     const job = { data: { monitorId: "monitor-1", type: "website", target: "https://example.com" }, repeatJobKey: "repeat-key" };
     await expect(processScheduledMonitor(job as never)).resolves.toEqual({ success: false });
     expect(removeRepeatableByKey).not.toHaveBeenCalled();
+  });
+
+  it("does nothing and drops its schedule for a monitor being deleted", async () => {
+    mockMonitorsFindFirst.mockResolvedValue({ status: "up", enabled: true, deletingAt: new Date() });
+    const removeRepeatableByKey = jest.fn().mockResolvedValue(true);
+    (getQueues as jest.Mock).mockResolvedValue({ monitorSchedulerQueue: { removeRepeatableByKey } });
+    const job = { data: { monitorId: "monitor-1", type: "website", target: "https://example.com" }, repeatJobKey: "repeat-key" };
+    await expect(processScheduledMonitor(job as never)).resolves.toEqual({ success: false });
+    expect(removeRepeatableByKey).toHaveBeenCalledWith("repeat-key");
+    expect(jest.requireMock("@/lib/queue").enqueueMonitorLocationJobs).not.toHaveBeenCalled();
   });
 
   it("does not fail the job when removing its stale schedule fails", async () => {

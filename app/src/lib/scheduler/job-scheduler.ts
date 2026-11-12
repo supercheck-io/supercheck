@@ -26,6 +26,7 @@ import {
 } from '@/lib/services/subscription-service';
 import { polarUsageService } from '@/lib/services/polar-usage.service';
 import { getSafeExecutionQueueErrorDetails } from '@/lib/execution-api-responses';
+import { isDeletingError } from '@/lib/deletion/errors';
 
 const logger = queueLogger;
 
@@ -48,6 +49,19 @@ function tickRunCondition(jobId: string, tickKey: string) {
  * advisory lock on the tick key makes check-and-insert atomic across them. Returns false if the tick has a run.
  */
 async function insertTickRun(
+  values: typeof runs.$inferInsert,
+  jobId: string,
+  tickKey: string | null,
+): Promise<boolean> {
+  try {
+    return await insertTickRunInner(values, jobId, tickKey);
+  } catch (error) {
+    if (isDeletingError(error)) return false; // lost the race with a deletion: no run, and the next tick drops the schedule
+    throw error;
+  }
+}
+
+async function insertTickRunInner(
   values: typeof runs.$inferInsert,
   jobId: string,
   tickKey: string | null,
@@ -135,6 +149,11 @@ export async function processScheduledJob(
     }
 
     const jobRecord = jobData[0];
+    // Deletion in progress: a late tick does nothing and drops its own schedule (the purge also removes it).
+    if (jobRecord.deletingAt) {
+      await removeOrphanedSchedule(jobId, 'job_deleting');
+      return { success: true };
+    }
     const jobType = jobRecord.jobType ?? 'playwright';
     const isK6Job = jobType === 'k6';
 

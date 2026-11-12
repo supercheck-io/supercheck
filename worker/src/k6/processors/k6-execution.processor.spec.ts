@@ -115,6 +115,7 @@ describe('k6 durable completion', () => {
           db,
           getTerminalRun,
           claimRunExecution: jest.fn().mockResolvedValue(true),
+          isJobDeleting: jest.fn().mockResolvedValue(false),
           finalizeCancelledRun: jest.fn().mockResolvedValue(false),
         } as unknown as Dependencies[1],
         { get: () => 'eu' } as unknown as Dependencies[2],
@@ -221,6 +222,7 @@ describe('k6 location capability backstop', () => {
         db,
         getTerminalRun: jest.fn().mockResolvedValue(undefined),
         claimRunExecution: jest.fn().mockResolvedValue(true),
+        isJobDeleting: jest.fn().mockResolvedValue(false),
         finalizeCancelledRun: jest.fn().mockResolvedValue(false),
       } as unknown as Dependencies[1],
       { get: () => 'us-east' } as unknown as Dependencies[2],
@@ -300,6 +302,7 @@ describe('k6 container-start metering', () => {
       db,
       getTerminalRun: jest.fn().mockResolvedValue(undefined),
       claimRunExecution: jest.fn().mockResolvedValue(true),
+      isJobDeleting: jest.fn().mockResolvedValue(false),
       finalizeCancelledRun: jest.fn().mockResolvedValue(false),
       getRunStatusesForJob: jest.fn(),
       updateJobStatus: jest.fn(),
@@ -493,6 +496,38 @@ describe('k6 container-start metering', () => {
       success: false,
       error: 'Interrupted by worker restart',
     });
+    expect(notify).toHaveBeenCalledWith(
+      expect.objectContaining({ cancelled: true, finalStatus: 'error' }),
+    );
+  });
+
+  it('records a genuine failure of a job being deleted as cancelled and sends no alert', async () => {
+    const runK6Test = jest.fn().mockResolvedValue({
+      success: false,
+      timedOut: false,
+      runId: 'run-id',
+      durationMs: 4000,
+      billableMs: 4000,
+      billingVirtualUsers: 1,
+      summary: { metrics: {} },
+      thresholdsPassed: false,
+      error: 'thresholds crossed',
+    });
+    const { processor, dbService } = build(runK6Test);
+    dbService.isJobDeleting.mockResolvedValue(true);
+    const notify = jest.fn().mockResolvedValue(undefined);
+    (
+      processor as unknown as {
+        jobNotificationService: { handleJobNotifications: jest.Mock };
+      }
+    ).jobNotificationService = { handleJobNotifications: notify };
+    const queued = job();
+    Object.assign(queued.data, { jobId: 'job-1' });
+
+    const result = await processor.process(queued);
+
+    expect(dbService.isJobDeleting).toHaveBeenCalledWith('job-1');
+    expect(result).toMatchObject({ error: 'Cancellation requested by user' });
     expect(notify).toHaveBeenCalledWith(
       expect.objectContaining({ cancelled: true, finalStatus: 'error' }),
     );
@@ -741,6 +776,7 @@ describe('k6 interrupted completion with a summary on hand', () => {
         db,
         getTerminalRun: jest.fn().mockResolvedValue(undefined),
         claimRunExecution: jest.fn().mockResolvedValue(true),
+        isJobDeleting: jest.fn().mockResolvedValue(false),
         finalizeCancelledRun: jest.fn().mockResolvedValue(false),
       } as unknown as Dependencies[1],
       { get: () => 'eu' } as unknown as Dependencies[2],

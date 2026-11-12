@@ -23,6 +23,7 @@ beforeAll(async () => {
   // Only the tables the coverage query touches; no application data or migrations are changed.
   await client.unsafe(`
     CREATE TABLE test_requirements (test_id uuid, requirement_id uuid);
+    CREATE TABLE jobs (id uuid PRIMARY KEY, deleting_at timestamptz);
     CREATE TABLE job_tests (job_id uuid, test_case_id uuid);
     CREATE TABLE runs (id uuid PRIMARY KEY DEFAULT uuidv7(), job_id uuid, status text, completed_at timestamptz,
       metadata jsonb DEFAULT '{}', error_details text);
@@ -39,9 +40,10 @@ afterAll(async () => {
   }
 });
 
-async function scenario(runs: { status: string; at: string; cancelled?: boolean; testStatuses?: Record<string, string> }[]) {
+async function scenario(runs: { status: string; at: string; cancelled?: boolean; testStatuses?: Record<string, string> }[], deletingJob = false) {
   const [requirement, job, a, b] = [randomUUID(), randomUUID(), randomUUID(), randomUUID()];
   await client`INSERT INTO requirement_coverage_snapshots (requirement_id, status) VALUES (${requirement}, 'missing')`;
+  if (deletingJob) await client`INSERT INTO jobs (id, deleting_at) VALUES (${job}, now())`;
   for (const test of [a, b]) {
     await client`INSERT INTO test_requirements VALUES (${test}, ${requirement})`;
     await client`INSERT INTO job_tests VALUES (${job}, ${test})`;
@@ -89,6 +91,11 @@ it("ignores a cancelled run: the latest non-cancelled run decides coverage", asy
     { status: "error", at: "2026-01-02", cancelled: true },
   ]);
   expect(snapshot).toMatchObject({ status: "covered", linked: 2, passed: 2, failed: 0 });
+});
+
+it("ignores runs of a job being deleted", async () => {
+  const snapshot = await scenario([{ status: "failed", at: "2026-01-02" }], true);
+  expect(snapshot).toMatchObject({ status: "missing", passed: 0, failed: 0 });
 });
 
 it("still counts an error run that was not cancelled as failing", async () => {

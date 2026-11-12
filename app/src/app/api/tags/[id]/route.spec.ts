@@ -13,6 +13,7 @@ jest.mock("@/utils/db", () => {
   const chain = () => {
     const node: Record<string, unknown> = {};
     node.from = () => node;
+    node.innerJoin = () => node;
     node.where = () => {
       const rows = () => Promise.resolve(mockSelectQueue.shift() ?? []);
       return {

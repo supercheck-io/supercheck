@@ -68,6 +68,7 @@ export const jobs = pgTable(
     lastRunAt: timestamp('last_run_at', { withTimezone: true }),
     nextRunAt: timestamp('next_run_at', { withTimezone: true }),
     scheduledJobId: varchar('scheduled_job_id', { length: 255 }),
+    deletingAt: timestamp('deleting_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }),
   },

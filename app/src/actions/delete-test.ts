@@ -1,5 +1,6 @@
 "use server";
 
+import { liveJob, liveMonitor } from "@/lib/deletion/visibility";
 import { db } from "../utils/db";
 import { tests, jobTests, monitors } from "@/db/schema";
 import { eq, count, and, sql } from "drizzle-orm";
@@ -71,7 +72,8 @@ export async function deleteTest(testId: string) {
     const jobCountResult = await db
       .select({ count: count() })
       .from(jobTests)
-      .where(eq(jobTests.testId, testId));
+      // A job being deleted no longer uses the test.
+      .where(and(eq(jobTests.testId, testId), sql`EXISTS (SELECT 1 FROM jobs WHERE jobs.id = ${jobTests.jobId} AND ${liveJob()})`));
 
     const jobCount = jobCountResult[0]?.count ?? 0;
 
@@ -93,7 +95,8 @@ export async function deleteTest(testId: string) {
           eq(monitors.type, "synthetic_test"),
           sql`${monitors.config}->>'testId' = ${testId}`,
           eq(monitors.projectId, project.id),
-          eq(monitors.organizationId, organizationId)
+          eq(monitors.organizationId, organizationId),
+          liveMonitor()
         )
       );
 

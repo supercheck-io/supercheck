@@ -1,3 +1,4 @@
+import { liveRunOfLiveJob } from "@/lib/deletion/visibility";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/utils/db";
 import { reports, runs } from "@/db/schema";
@@ -36,7 +37,8 @@ export async function fetchEventStatusReport(
       where: and(
         eq(runs.id, event.queueJobId),
         eq(runs.projectId, projectId),
-        sql`${runs.metadata}->>'testId' = ${testId}`
+        sql`${runs.metadata}->>'testId' = ${testId}`,
+        liveRunOfLiveJob(runs.jobId)
       ),
       columns: { id: true },
     });
@@ -63,7 +65,8 @@ export async function fetchInitialStatusReport(
   const latestK6Run = await db.query.runs.findFirst({
     where: and(
       eq(runs.projectId, projectId),
-      sql`${runs.metadata}->>'testId' = ${testId}`
+      sql`${runs.metadata}->>'testId' = ${testId}`,
+      liveRunOfLiveJob(runs.jobId)
     ),
     orderBy: [desc(runs.createdAt)],
     columns: { id: true, status: true, errorDetails: true },
