@@ -79,6 +79,7 @@ const data = {
       title: NAV.statusPages.title,
       url: "/status-pages",
       icon: NAV.statusPages.icon,
+      tone: NAV.statusPages.tone,
     },
     {
       title: NAV.notifications.title,

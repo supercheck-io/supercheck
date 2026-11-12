@@ -21,7 +21,7 @@ export const NAV = {
   savedQueries: { title: "Saved queries", icon: SquareLibrary, tone: "respond" },
   privateAgents: { title: "Private Agents", icon: RadioTower, tone: TYPE_TONE.sre.privateAgent },
   copilot: { title: "Copilot", icon: Bot, tone: "ai" },
-  statusPages: { title: "Status Pages", icon: Tally4, tone: "communicate" },
+  statusPages: { title: "Status Pages", icon: Tally4, tone: "statuspage" },
   notifications: { title: "Notifications", icon: BellRing, tone: "communicate" },
   deliveryHistory: { title: "Delivery history", icon: History, tone: "communicate" },
   requirements: { title: "Requirements", icon: Target, tone: "automate" },
@@ -45,6 +45,7 @@ export const AREA_TEXT: Record<NavTone, string> = {
   ai: "text-ai",
   organization: "text-organization",
   superadmin: "text-superadmin",
+  statuspage: "text-statuspage",
 };
 
 /** Active sidebar icon takes the item's area colour. */
@@ -57,4 +58,5 @@ export const AREA_ACTIVE_ICON: Record<NavTone, string> = {
   ai: "[&[data-active=true]>svg]:text-ai",
   organization: "[&[data-active=true]>svg]:text-organization",
   superadmin: "[&[data-active=true]>svg]:text-superadmin",
+  statuspage: "[&[data-active=true]>svg]:text-statuspage",
 };

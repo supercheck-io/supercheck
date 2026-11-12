@@ -7,7 +7,7 @@ import { Braces, FileText, FolderOpen, KeyRound, Lock, UserPlus, type LucideIcon
  * Tests and monitors reuse the five original colours on purpose (API test and HTTP monitor are both teal).
  * Brand marks (Playwright, k6, Chrome) keep their own colours; their type tone tints the chip and text around them.
  */
-export const TYPE_TONES = ["sky", "teal", "cyan", "blue", "purple", "indigo", "violet", "orchid", "slate", "zinc", "stone", "lime", "clay", "olive"] as const;
+export const TYPE_TONES = ["sky", "teal", "cyan", "blue", "purple", "indigo", "violet", "cobalt", "slate", "zinc", "stone", "lime", "clay", "olive"] as const;
 export type TypeTone = (typeof TYPE_TONES)[number];
 
 export const TYPE_TONE = {
@@ -16,7 +16,7 @@ export const TYPE_TONE = {
   // A job runs a test engine, so it shares the tone of that test type.
   job: { playwright: "sky", k6: "purple" },
   variable: { variable: "stone", secret: "violet", file: "indigo" },
-  sre: { service: "orchid", integration: "clay", privateAgent: "olive" },
+  sre: { service: "cobalt", integration: "clay", privateAgent: "olive" },
   admin: { project: "slate", member: "lime", cliToken: "zinc" },
 } as const satisfies Record<string, Record<string, TypeTone>>;
 
@@ -32,7 +32,7 @@ export const TYPE_TEXT: Record<TypeTone, string> = {
   purple: "text-type-purple",
   indigo: "text-type-indigo",
   violet: "text-type-violet",
-  orchid: "text-type-orchid",
+  cobalt: "text-type-cobalt",
   slate: "text-type-slate",
   zinc: "text-type-zinc",
   stone: "text-type-stone",
@@ -50,7 +50,7 @@ export const TYPE_TEXT_FORCE: Record<TypeTone, string> = {
   purple: "!text-type-purple",
   indigo: "!text-type-indigo",
   violet: "!text-type-violet",
-  orchid: "!text-type-orchid",
+  cobalt: "!text-type-cobalt",
   slate: "!text-type-slate",
   zinc: "!text-type-zinc",
   stone: "!text-type-stone",
@@ -68,7 +68,7 @@ export const TYPE_CHIP: Record<TypeTone, string> = {
   purple: "bg-type-purple/10 text-type-purple",
   indigo: "bg-type-indigo/10 text-type-indigo",
   violet: "bg-type-violet/10 text-type-violet",
-  orchid: "bg-type-orchid/10 text-type-orchid",
+  cobalt: "bg-type-cobalt/10 text-type-cobalt",
   slate: "bg-type-slate/10 text-type-slate",
   zinc: "bg-type-zinc/10 text-type-zinc",
   stone: "bg-type-stone/10 text-type-stone",
@@ -86,7 +86,7 @@ export const TYPE_ACTIVE_ICON: Record<TypeTone, string> = {
   purple: "[&[data-active=true]>svg]:text-type-purple",
   indigo: "[&[data-active=true]>svg]:text-type-indigo",
   violet: "[&[data-active=true]>svg]:text-type-violet",
-  orchid: "[&[data-active=true]>svg]:text-type-orchid",
+  cobalt: "[&[data-active=true]>svg]:text-type-cobalt",
   slate: "[&[data-active=true]>svg]:text-type-slate",
   zinc: "[&[data-active=true]>svg]:text-type-zinc",
   stone: "[&[data-active=true]>svg]:text-type-stone",
@@ -104,7 +104,7 @@ export const TYPE_HOVER_BORDER: Record<TypeTone, string> = {
   purple: "hover:border-type-purple/50",
   indigo: "hover:border-type-indigo/50",
   violet: "hover:border-type-violet/50",
-  orchid: "hover:border-type-orchid/50",
+  cobalt: "hover:border-type-cobalt/50",
   slate: "hover:border-type-slate/50",
   zinc: "hover:border-type-zinc/50",
   stone: "hover:border-type-stone/50",

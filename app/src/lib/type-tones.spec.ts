@@ -52,6 +52,8 @@ describe("type tones", () => {
     for (const token of ["organization", "superadmin"]) {
       for (const block of [light, dark]) expect(block).toMatch(new RegExp(`--${token}: oklch\\(`));
     }
+    // Status pages deliberately share the success green of the status page cards.
+    for (const block of [light, dark]) expect(block).toContain("--statuspage: var(--success-strong);");
   });
 
   it("feeds the test and monitor type lists from the registry", () => {

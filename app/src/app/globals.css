@@ -55,15 +55,16 @@
   --type-purple: oklch(0.558 0.288 302.321);
   --type-indigo: oklch(0.511 0.262 276.966);
   --type-violet: oklch(0.541 0.281 293.009);
-  --type-orchid: oklch(0.56 0.22 338);
+  --type-cobalt: oklch(0.48 0.17 255);
   --type-slate: oklch(0.446 0.043 257.281);
   --type-zinc: oklch(0.442 0.017 285.786);
   --type-stone: oklch(0.444 0.011 73.639);
   --type-lime: oklch(0.648 0.2 131.684);
   --type-clay: oklch(0.55 0.1 50);
   --type-olive: oklch(0.5 0.1 115);
-  --organization: oklch(0.591 0.293 322.896);
+  --organization: oklch(0.52 0.1 80);
   --superadmin: oklch(0.59 0.235 350);
+  --statuspage: var(--success-strong);
   --radius: 0.625rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.141 0.005 285.823);
@@ -119,15 +120,16 @@
   --type-purple: oklch(0.714 0.203 305.504);
   --type-indigo: oklch(0.673 0.182 276.935);
   --type-violet: oklch(0.702 0.183 293.541);
-  --type-orchid: oklch(0.72 0.18 338);
+  --type-cobalt: oklch(0.74 0.11 250);
   --type-slate: oklch(0.704 0.04 256.788);
   --type-zinc: oklch(0.705 0.015 286.067);
   --type-stone: oklch(0.709 0.01 56.259);
   --type-lime: oklch(0.841 0.238 128.85);
   --type-clay: oklch(0.74 0.09 55);
   --type-olive: oklch(0.76 0.1 118);
-  --organization: oklch(0.74 0.238 322.16);
+  --organization: oklch(0.78 0.11 85);
   --superadmin: oklch(0.72 0.2 350);
+  --statuspage: var(--success-strong);
   --sidebar: oklch(0.21 0.006 285.885);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);
@@ -178,7 +180,7 @@
   --color-type-purple: var(--type-purple);
   --color-type-indigo: var(--type-indigo);
   --color-type-violet: var(--type-violet);
-  --color-type-orchid: var(--type-orchid);
+  --color-type-cobalt: var(--type-cobalt);
   --color-type-slate: var(--type-slate);
   --color-type-zinc: var(--type-zinc);
   --color-type-stone: var(--type-stone);
@@ -187,6 +189,7 @@
   --color-type-olive: var(--type-olive);
   --color-organization: var(--organization);
   --color-superadmin: var(--superadmin);
+  --color-statuspage: var(--statuspage);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
 
