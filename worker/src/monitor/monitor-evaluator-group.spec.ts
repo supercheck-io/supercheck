@@ -1,5 +1,6 @@
 import {
   GROUP_EVALUATION_MAX_AGE_MS,
+  GROUP_NOTIFICATION_LEASE_MS,
   MonitorEvaluator,
   type GroupReceipt,
 } from './monitor-evaluator';
@@ -13,6 +14,8 @@ type ResultRow = {
 type Receipt = {
   evaluation: Record<string, unknown>;
   notificationProcessedAt: Date | null;
+  claimedAt?: Date | null;
+  token?: string | null;
 };
 
 /**
@@ -31,7 +34,7 @@ function fakeGroupStore(
   const writes = { monitor: 0, results: 0, inserts: 0 };
   const thenable = (rows: unknown[]) => ({
     then: (resolve: (v: unknown) => void) => resolve(rows),
-    for: () => (monitor ? [monitor] : []),
+    for: () => rows.filter(Boolean),
   });
   const select = (fields?: Record<string, unknown>) => ({
     from: (table: unknown) => ({
@@ -46,6 +49,7 @@ function fakeGroupStore(
                     {
                       evaluation: receipt.evaluation,
                       processedAt: receipt.notificationProcessedAt,
+                      claimedAt: receipt.claimedAt ?? null,
                     },
                   ]
                 : [],
@@ -80,7 +84,13 @@ function fakeGroupStore(
           Object.assign(monitor!, values);
         } else if (table === schema.monitorGroupEvaluations) {
           const receipt = receipts.get(group);
-          if (receipt && !receipt.notificationProcessedAt) {
+          if ('notificationClaimToken' in values) {
+            // A claim sets the lease; a release clears it.
+            if (receipt && !receipt.notificationProcessedAt) {
+              receipt.claimedAt = values.notificationClaimedAt as Date | null;
+              receipt.token = values.notificationClaimToken as string | null;
+            }
+          } else if (receipt && !receipt.notificationProcessedAt) {
             receipt.notificationProcessedAt =
               values.notificationProcessedAt as Date;
             hit.push({ evaluation: receipt.evaluation });
@@ -158,6 +168,14 @@ function fakeGroupStore(
     claimNotified(g: string, receipt: GroupReceipt) {
       group = g;
       return evaluator.claimGroupNotification('m1', g, receipt);
+    },
+    markNotified(g: string, receipt: GroupReceipt) {
+      group = g;
+      return evaluator.markGroupNotified('m1', g, receipt);
+    },
+    release(g: string, receipt: GroupReceipt, token: string) {
+      group = g;
+      return evaluator.releaseGroupNotification('m1', g, receipt, token);
     },
   };
 }
@@ -252,34 +270,85 @@ describe('MonitorEvaluator group receipt', () => {
     const store = fakeGroupStore(multiLocationMonitor('up'), groupRows('g1'));
     const prepared = await store.prepare('g1', 'down');
     await store.claimNotified('g1', prepared!.receipt);
+    await store.markNotified('g1', prepared!.receipt);
     expect(store.receipts.get('g1')!.notificationProcessedAt).toBeInstanceOf(
       Date,
     );
     await expect(store.prepare('g1', 'down')).resolves.toBeNull();
-    // The claim also wrote the legacy receipt onto one result row, for rollback.
+    // Marking also wrote the legacy receipt onto one result row, for rollback.
     expect(store.writes).toEqual({ monitor: 1, results: 1, inserts: 1 });
   });
 
-  it('keeps the first processed time when marked twice', async () => {
-    const rows = groupRows('g1');
-    const store = fakeGroupStore(multiLocationMonitor('up'), rows);
-    const prepared = await store.prepare('g1', 'down');
-    await expect(store.claimNotified('g1', prepared!.receipt)).resolves.toBe(
-      true,
-    );
-    const first = store.receipts.get('g1')!.notificationProcessedAt;
-    expect(
-      rows.filter(
-        (r) =>
-          r.details?.aggregationEvaluation &&
-          r.details.aggregationNotificationProcessed === true,
-      ),
-    ).toHaveLength(1);
-    // The second writer loses the claim, so its caller sends nothing.
-    await expect(store.claimNotified('g1', prepared!.receipt)).resolves.toBe(
-      false,
-    );
-    expect(store.receipts.get('g1')!.notificationProcessedAt).toBe(first);
+  describe('notification lease (fake clock)', () => {
+    beforeEach(() => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-06-10T12:00:00Z'));
+    });
+    afterEach(() => jest.useRealTimers());
+    const setup = async () => {
+      const rows = groupRows('g1');
+      const store = fakeGroupStore(multiLocationMonitor('up'), rows);
+      const prepared = await store.prepare('g1', 'down');
+      return { rows, store, receipt: prepared!.receipt };
+    };
+
+    it('skips a claim made while another sender holds a live lease', async () => {
+      const { store, receipt } = await setup();
+      const first = await store.claimNotified('g1', receipt);
+      expect(first).toEqual(expect.any(String));
+      jest.advanceTimersByTime(GROUP_NOTIFICATION_LEASE_MS - 1_000);
+      await expect(store.claimNotified('g1', receipt)).resolves.toBeNull();
+      expect(store.receipts.get('g1')!.token).toBe(first);
+    });
+
+    it('releases the lease after a failed send so the retry claims at once', async () => {
+      const { store, receipt } = await setup();
+      const token = await store.claimNotified('g1', receipt);
+      await store.release('g1', receipt, token!);
+      await expect(store.claimNotified('g1', receipt)).resolves.toEqual(
+        expect.any(String),
+      );
+    });
+
+    it('takes over a stale lease that never finished, and logs it', async () => {
+      const { store, receipt } = await setup();
+      const warn = jest
+        .spyOn(
+          (store.evaluator as unknown as { logger: { warn: () => void } })
+            .logger,
+          'warn',
+        )
+        .mockImplementation(() => {});
+      const crashed = await store.claimNotified('g1', receipt);
+      jest.advanceTimersByTime(GROUP_NOTIFICATION_LEASE_MS + 1_000);
+      const retry = await store.claimNotified('g1', receipt);
+      expect(retry).toEqual(expect.any(String));
+      expect(retry).not.toBe(crashed);
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('monitor_group_notification_lease_expired'),
+      );
+    });
+
+    it('lets only one of two concurrent-in-turn claimers send, and nothing claims once notified', async () => {
+      const { rows, store, receipt } = await setup();
+      const winners = [
+        await store.claimNotified('g1', receipt),
+        await store.claimNotified('g1', receipt),
+      ].filter(Boolean);
+      expect(winners).toHaveLength(1);
+      await store.markNotified('g1', receipt);
+      const first = store.receipts.get('g1')!.notificationProcessedAt;
+      await store.markNotified('g1', receipt);
+      expect(store.receipts.get('g1')!.notificationProcessedAt).toBe(first);
+      jest.advanceTimersByTime(GROUP_NOTIFICATION_LEASE_MS * 5);
+      await expect(store.claimNotified('g1', receipt)).resolves.toBeNull();
+      expect(
+        rows.filter(
+          (r) =>
+            r.details?.aggregationEvaluation &&
+            r.details.aggregationNotificationProcessed === true,
+        ),
+      ).toHaveLength(1);
+    });
   });
 
   it('throws without writing anything when the group has no persisted result', async () => {
@@ -407,6 +476,7 @@ describe('MonitorEvaluator legacy receipt (groups evaluated by older workers)', 
     const store = fakeGroupStore(multiLocationMonitor('down'), rows);
     const prepared = await store.prepare('g1', 'up');
     await store.claimNotified('g1', prepared!.receipt);
+    await store.markNotified('g1', prepared!.receipt);
     expect(rows[1].details!.aggregationNotificationProcessed).toBe(true);
     expect(store.receipts.size).toBe(0);
     await expect(store.prepare('g1', 'up')).resolves.toBeNull();

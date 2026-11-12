@@ -622,38 +622,59 @@ export class MonitorService {
       );
     }
 
-    // Claim before sending: a retry after a crash then finds the receipt processed and sends nothing.
-    if (
-      groupEvaluation &&
-      !(await this.evaluator.claimGroupNotification(
+    // Lease the send: a retry within the lease finds it held and sends nothing; a failed send releases it.
+    const claimToken = groupEvaluation
+      ? await this.evaluator.claimGroupNotification(
+          monitorId,
+          groupEvaluation.executionGroupId,
+          groupEvaluation.receipt,
+        )
+      : undefined;
+    if (groupEvaluation && !claimToken) return;
+    try {
+      // Use consolidated alert evaluation method with threshold support
+      await this.evaluateAndSendAlert({
+        monitorId,
+        monitor,
+        previousStatus,
+        currentStatus,
+        reason,
+        preparedAlertState: groupEvaluation?.alertState,
+        observedAt: checkedAt,
+        metadata: {
+          responseTime: avgResponseTime,
+          locationResults: results.map((r) => ({
+            location: r.location,
+            isUp: r.isUp,
+            responseTime: r.responseTimeMs,
+          })),
+        },
+      });
+      for (const result of results) {
+        await this.checkSslExpirationAlert(result, monitor);
+      }
+    } catch (error) {
+      if (groupEvaluation && claimToken)
+        await this.evaluator
+          .releaseGroupNotification(
+            monitorId,
+            groupEvaluation.executionGroupId,
+            groupEvaluation.receipt,
+            claimToken,
+          )
+          .catch((releaseError: unknown) =>
+            this.logger.warn(
+              `Unable to release group notification lease for ${groupEvaluation.executionGroupId}: ${getErrorMessage(releaseError)}`,
+            ),
+          );
+      throw error;
+    }
+    if (groupEvaluation)
+      await this.evaluator.markGroupNotified(
         monitorId,
         groupEvaluation.executionGroupId,
         groupEvaluation.receipt,
-      ))
-    )
-      return;
-
-    // Use consolidated alert evaluation method with threshold support
-    await this.evaluateAndSendAlert({
-      monitorId,
-      monitor,
-      previousStatus,
-      currentStatus,
-      reason,
-      preparedAlertState: groupEvaluation?.alertState,
-      observedAt: checkedAt,
-      metadata: {
-        responseTime: avgResponseTime,
-        locationResults: results.map((r) => ({
-          location: r.location,
-          isUp: r.isUp,
-          responseTime: r.responseTimeMs,
-        })),
-      },
-    });
-    for (const result of results) {
-      await this.checkSslExpirationAlert(result, monitor);
-    }
+      );
   }
 
   private isMultiLocationEvaluation(

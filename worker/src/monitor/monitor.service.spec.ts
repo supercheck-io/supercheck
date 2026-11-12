@@ -2363,11 +2363,15 @@ describe('MonitorService', () => {
       // Each group has persisted result rows; receipts live in monitor_group_evaluations.
       const receipts = new Map<
         string,
-        { evaluation: unknown; notificationProcessedAt: Date | null }
+        {
+          evaluation: unknown;
+          notificationProcessedAt: Date | null;
+          claimedAt?: Date | null;
+        }
       >();
       let activeGroup = 'a';
       const limited = (rows: unknown[]) => ({
-        for: async () => [monitor],
+        for: async () => rows,
         then: (resolve: (value: unknown) => void) => resolve(rows),
       });
       const tx = {
@@ -2384,6 +2388,7 @@ describe('MonitorService', () => {
                           {
                             evaluation: receipt.evaluation,
                             processedAt: receipt.notificationProcessedAt,
+                            claimedAt: receipt.claimedAt ?? null,
                           },
                         ]
                       : [],
@@ -2431,12 +2436,15 @@ describe('MonitorService', () => {
             }
             const hit: unknown[] = [];
             if (table === schema.monitorGroupEvaluations) {
-              if (failMarker) {
-                failMarker = false;
-                throw new Error('marker write failed');
-              }
               const receipt = receipts.get(activeGroup)!;
-              if (!receipt.notificationProcessedAt) {
+              if ('notificationClaimToken' in values) {
+                // The lease claim: its write failing must stop the send.
+                if (failMarker) {
+                  failMarker = false;
+                  throw new Error('marker write failed');
+                }
+                receipt.claimedAt = values.notificationClaimedAt as Date | null;
+              } else if (!receipt.notificationProcessedAt) {
                 receipt.notificationProcessedAt =
                   values.notificationProcessedAt as Date;
                 hit.push({ evaluation: receipt.evaluation });
@@ -2530,7 +2538,7 @@ describe('MonitorService', () => {
       } as never);
       const claim = jest
         .spyOn(evaluator, 'claimGroupNotification')
-        .mockResolvedValue(false);
+        .mockResolvedValue(null);
       await service.saveMonitorResults(
         [
           {
@@ -2576,6 +2584,72 @@ describe('MonitorService', () => {
         ),
       ).rejects.toThrow('claim failed');
       expect(mockAlertService.sendNotification).not.toHaveBeenCalled();
+    });
+
+    describe('lease around the send', () => {
+      const run = () => {
+        mockDbService.db.query.monitors.findFirst.mockResolvedValue(
+          mockMonitor,
+        );
+        const evaluator = (
+          service as unknown as { evaluator: MonitorEvaluator }
+        ).evaluator;
+        jest.spyOn(evaluator, 'prepareGroupEvaluation').mockResolvedValue({
+          monitor: mockMonitor,
+          receipt: { kind: 'group' },
+          evaluation: { previousStatus: 'up', currentStatus: 'down' },
+        } as never);
+        jest
+          .spyOn(evaluator, 'claimGroupNotification')
+          .mockResolvedValue('token-1');
+        const release = jest
+          .spyOn(evaluator, 'releaseGroupNotification')
+          .mockResolvedValue(undefined);
+        const mark = jest
+          .spyOn(evaluator, 'markGroupNotified')
+          .mockResolvedValue(undefined);
+        const save = () =>
+          service.saveMonitorResults(
+            [
+              {
+                monitorId: mockMonitor.id,
+                location: 'eu',
+                status: 'down',
+                isUp: false,
+                checkedAt: new Date(),
+              },
+            ],
+            { persisted: true, executionGroupId: 'group-lease' },
+          );
+        return { release, mark, save };
+      };
+
+      it('marks the group notified after a successful send', async () => {
+        const { release, mark, save } = run();
+        jest
+          .spyOn(service as never, 'evaluateAndSendAlert')
+          .mockResolvedValue(undefined as never);
+        await save();
+        expect(mark).toHaveBeenCalledWith(mockMonitor.id, 'group-lease', {
+          kind: 'group',
+        });
+        expect(release).not.toHaveBeenCalled();
+      });
+
+      it('releases the lease and rethrows when the send fails', async () => {
+        const { release, mark, save } = run();
+        jest
+          .spyOn(service as never, 'evaluateAndSendAlert')
+          .mockRejectedValue(new Error('send failed') as never);
+        await expect(save()).rejects.toThrow('send failed');
+        expect(release).toHaveBeenCalledWith(
+          mockMonitor.id,
+          'group-lease',
+          { kind: 'group' },
+          'token-1',
+        );
+        expect(mark).not.toHaveBeenCalled();
+      });
     });
   });
 

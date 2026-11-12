@@ -11,6 +11,8 @@ CREATE TABLE "monitor_group_evaluations" (
 	"execution_group_id" text NOT NULL,
 	"evaluation" jsonb NOT NULL,
 	"notification_processed_at" timestamp with time zone,
+"notification_claimed_at" timestamp with time zone,
+"notification_claim_token" uuid,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint

@@ -29,6 +29,9 @@ export const monitorGroupEvaluations = pgTable(
     executionGroupId: text("execution_group_id").notNull(),
     evaluation: jsonb("evaluation").$type<Record<string, unknown>>().notNull(),
     notificationProcessedAt: timestamp("notification_processed_at", { withTimezone: true }),
+    // Lease on sending the group's alerts: set by the claim, cleared on failure, ignored once processed.
+    notificationClaimedAt: timestamp("notification_claimed_at", { withTimezone: true }),
+    notificationClaimToken: uuid("notification_claim_token"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => ({

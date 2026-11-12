@@ -8,7 +8,10 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import { and, eq } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import type { DbService } from '../db/db.service';
-import { MonitorEvaluator } from './monitor-evaluator';
+import {
+  GROUP_NOTIFICATION_LEASE_MS,
+  MonitorEvaluator,
+} from './monitor-evaluator';
 import {
   createTestDatabase,
   seedMonitor,
@@ -168,12 +171,22 @@ suite('MonitorEvaluator group receipt (PostgreSQL)', () => {
     );
     expect(retry!.evaluation).toEqual(first!.evaluation);
     expect(await failureCount()).toBe(1);
+    const token = await evaluator.claimGroupNotification(
+      monitorId,
+      'crash',
+      retry!.receipt,
+    );
+    expect(token).toEqual(expect.any(String));
+    // While the lease is live a second sender loses the claim and must not send.
     await expect(
       evaluator.claimGroupNotification(monitorId, 'crash', retry!.receipt),
-    ).resolves.toBe(true);
+    ).resolves.toBeNull();
+    // Nothing is processed and no legacy receipt exists until the send succeeds.
+    expect((await receiptRows('crash'))[0].notificationProcessedAt).toBeNull();
+    await evaluator.markGroupNotified(monitorId, 'crash', retry!.receipt);
     const [receipt] = await receiptRows('crash');
     expect(receipt.notificationProcessedAt).toBeInstanceOf(Date);
-    // The claim dual-wrote the legacy receipt (rollback safety) onto exactly one row.
+    // Marking dual-wrote the legacy receipt (rollback safety) onto exactly one row.
     expect(
       (await resultDetails('crash')).filter(
         (d) =>
@@ -181,10 +194,14 @@ suite('MonitorEvaluator group receipt (PostgreSQL)', () => {
             true && (d as Record<string, unknown>)?.aggregationEvaluation,
       ),
     ).toHaveLength(1);
-    // A second writer loses the claim and must not send.
+    // Once notified, even long after the lease, nobody claims it again.
+    await db
+      .update(schema.monitorGroupEvaluations)
+      .set({ notificationClaimedAt: new Date(Date.now() - 3_600_000) })
+      .where(eq(schema.monitorGroupEvaluations.monitorId, monitorId));
     await expect(
       evaluator.claimGroupNotification(monitorId, 'crash', retry!.receipt),
-    ).resolves.toBe(false);
+    ).resolves.toBeNull();
     expect((await receiptRows('crash'))[0].notificationProcessedAt).toEqual(
       receipt.notificationProcessedAt,
     );
@@ -198,6 +215,57 @@ suite('MonitorEvaluator group receipt (PostgreSQL)', () => {
       ),
     ).resolves.toBeNull();
     expect(await failureCount()).toBe(1);
+  });
+
+  it('lets exactly one of many concurrent claimers send, then takes over a stale lease', async () => {
+    await report('race-claim');
+    const prepared = await evaluator.prepareGroupEvaluation(
+      monitorId,
+      'race-claim',
+      'down',
+      checkedAt,
+      2,
+    );
+    const claims = await Promise.all(
+      Array.from({ length: 6 }, () =>
+        evaluator.claimGroupNotification(
+          monitorId,
+          'race-claim',
+          prepared!.receipt,
+        ),
+      ),
+    );
+    expect(claims.filter(Boolean)).toHaveLength(1);
+    // A claimer that died: its lease ages past the limit and the next retry takes over.
+    await db
+      .update(schema.monitorGroupEvaluations)
+      .set({
+        notificationClaimedAt: new Date(
+          Date.now() - GROUP_NOTIFICATION_LEASE_MS - 1_000,
+        ),
+      })
+      .where(eq(schema.monitorGroupEvaluations.monitorId, monitorId));
+    const takeover = await evaluator.claimGroupNotification(
+      monitorId,
+      'race-claim',
+      prepared!.receipt,
+    );
+    expect(takeover).toEqual(expect.any(String));
+    expect(takeover).not.toBe(claims.find(Boolean));
+    // A failed send releases its own lease so the retry claims at once.
+    await evaluator.releaseGroupNotification(
+      monitorId,
+      'race-claim',
+      prepared!.receipt,
+      takeover!,
+    );
+    await expect(
+      evaluator.claimGroupNotification(
+        monitorId,
+        'race-claim',
+        prepared!.receipt,
+      ),
+    ).resolves.toEqual(expect.any(String));
   });
 
   it('honours a receipt an older worker wrote into a result row', async () => {
@@ -235,7 +303,8 @@ suite('MonitorEvaluator group receipt (PostgreSQL)', () => {
     expect(await failureCount()).toBeUndefined();
     await expect(
       evaluator.claimGroupNotification(monitorId, 'old', prepared!.receipt),
-    ).resolves.toBe(true);
+    ).resolves.toBe('legacy');
+    await evaluator.markGroupNotified(monitorId, 'old', prepared!.receipt);
     const details = await resultDetails('old');
     expect(
       details.filter(
@@ -305,7 +374,7 @@ suite('MonitorEvaluator group receipt (PostgreSQL)', () => {
     await db.delete(schema.monitors).where(eq(schema.monitors.id, monitorId));
     await expect(
       evaluator.claimGroupNotification(monitorId, 'gone', prepared!.receipt),
-    ).resolves.toBe(false);
+    ).resolves.toBeNull();
     expect(await receiptRows('gone')).toHaveLength(0);
   });
 
