@@ -13,6 +13,7 @@ import {
 } from "@/lib/auth/cli-key-service";
 import { createLogger } from "@/lib/logger/pino-config";
 
+import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 const logger = createLogger({ module: "cli-tokens" });
 
 const createCliTokenSchema = z.object({
@@ -112,10 +113,7 @@ export async function POST(request: NextRequest) {
 
     const canCreate = checkPermissionWithContext("apiKey", "create", context);
     if (!canCreate) {
-      return NextResponse.json(
-        { error: "Insufficient permissions" },
-        { status: 403 }
-      );
+      return await permissionDeniedResponse(context.organizationId, "Insufficient permissions");
     }
 
     // A token minted while impersonating would belong to the impersonated user and outlive the impersonation.

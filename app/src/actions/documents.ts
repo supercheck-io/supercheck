@@ -11,6 +11,7 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { getS3Client } from "@/lib/s3-proxy";
 import { buildContentDisposition } from "@/lib/content-disposition";
 
+import { permissionDeniedResult } from "@/lib/deletion/org-state";
 const BUCKET_NAME = process.env.S3_REQUIREMENTS_BUCKET_NAME || "test-requirement-artifacts";
 
 export type RequirementDocument = typeof requirementDocuments.$inferSelect & {
@@ -232,7 +233,7 @@ export async function deleteDocument(documentId: string): Promise<{ success: boo
     });
 
     if (!canDelete) {
-      return { success: false, error: "Insufficient permissions" };
+      return await permissionDeniedResult(organizationId, "Insufficient permissions");
     }
 
     // Get document to find storage path

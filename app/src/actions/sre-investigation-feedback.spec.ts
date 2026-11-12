@@ -1,4 +1,15 @@
 /** @jest-environment node */
+// Permission denials ask whether the organization is pending deletion; these specs run without a database.
+jest.mock("@/lib/deletion/org-state", () => {
+  const overrides: Record<string, unknown> = {
+    isOrgPendingDeletion: async () => false,
+    isProjectDeleted: async () => false,
+    isProjectOrgPending: async () => false,
+    permissionDeniedResponse: async (_org: unknown, message: string) => Response.json({ error: message }, { status: 403 }),
+    permissionDeniedResult: async (_org: unknown, message: string) => ({ success: false, error: message, message }),
+  };
+  return new Proxy({}, { get: (_t, key: string) => (key in overrides ? overrides[key] : jest.requireActual("@/lib/deletion/org-state")[key]) });
+});
 
 const ctx = {
   userId: "018f0000-0000-7000-8000-00000000000c",
@@ -47,7 +58,7 @@ describe("submitSreInvestigationFeedback", () => {
   it("requires the sre_incident update permission (viewers are denied)", async () => {
     checkPermissionWithContext.mockReturnValue(false);
     const result = await submitSreInvestigationFeedback({ investigationRunId: runId, verdict: "right" });
-    expect(result).toEqual({ success: false, error: expect.stringContaining("Insufficient permissions") });
+    expect(result).toEqual({ success: false, error: expect.stringContaining("Insufficient permissions"), message: expect.stringContaining("Insufficient permissions") });
     expect(checkPermissionWithContext).toHaveBeenCalledWith("sre_incident", "update", expect.anything());
     expect(rateLimit).not.toHaveBeenCalled();
     expect(submit).not.toHaveBeenCalled();

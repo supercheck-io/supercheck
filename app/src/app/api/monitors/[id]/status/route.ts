@@ -1,4 +1,5 @@
 import { liveMonitor } from "@/lib/deletion/visibility";
+import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 import { isUuid } from "@/lib/uuid";
 import { notInDeletedProject } from "@/lib/middleware/plan-limit-lock";
 import { NextRequest, NextResponse } from "next/server";
@@ -79,10 +80,7 @@ export async function PATCH(
         });
 
         if (!canUpdate) {
-          return NextResponse.json(
-            { error: "Insufficient permissions to manage monitor" },
-            { status: 403 }
-          );
+          return await permissionDeniedResponse(currentMonitor.organizationId, "Insufficient permissions to manage monitor");
         }
       }
     }

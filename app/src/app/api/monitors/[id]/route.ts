@@ -62,6 +62,7 @@ import {
 } from "@/lib/monitor-location-routing";
 import type { LocationConfig } from "@/db/schema";
 
+import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 const logger = createLogger({ module: "monitor-detail-api" }) as {
   debug: (data: unknown, msg?: string) => void;
   info: (data: unknown, msg?: string) => void;
@@ -193,10 +194,7 @@ export async function PUT(
     // Permission first: an unauthorised caller must not get validation detail or learn whether the monitor exists.
     const canUpdate = checkPermissionWithContext("monitor", "update", authCtx);
     if (!canUpdate) {
-      return NextResponse.json(
-        { error: "Insufficient permissions" },
-        { status: 403 },
-      );
+      return await permissionDeniedResponse(authCtx.organizationId, "Insufficient permissions");
     }
 
     let rawData;
@@ -596,10 +594,7 @@ export async function PATCH(
     // Permission first: an unauthorised caller must not get validation detail or learn whether the monitor exists.
     const canUpdate = checkPermissionWithContext("monitor", "update", authCtx);
     if (!canUpdate) {
-      return NextResponse.json(
-        { error: "Insufficient permissions" },
-        { status: 403 },
-      );
+      return await permissionDeniedResponse(authCtx.organizationId, "Insufficient permissions");
     }
 
     let rawData;
@@ -850,7 +845,7 @@ export async function DELETE(
     const { id } = await routeContext.params;
     const context = await requireAuthContext();
     if (!checkPermissionWithContext("monitor", "delete", context)) {
-      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
+      return await permissionDeniedResponse(context.organizationId, "Insufficient permissions");
     }
     if (!isUuid(id)) return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
     const result = await deleteMonitorWithContext(id, context);

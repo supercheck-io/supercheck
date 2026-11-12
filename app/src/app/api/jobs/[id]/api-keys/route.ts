@@ -12,6 +12,7 @@ import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-con
 import { capExpiryToCliToken, clampExpiry } from "@/lib/auth/cli-token-expiry";
 import crypto from "crypto";
 
+import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 const logger = createLogger({ module: 'api-keys' });
 
 // Validation schemas
@@ -179,7 +180,7 @@ export async function POST(
 
     const canCreate = checkPermissionWithContext("apiKey", "create", authCtx);
     if (!canCreate) {
-      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
+      return await permissionDeniedResponse(authCtx.organizationId, "Insufficient permissions");
     }
 
     // Verify job exists (scoped to current project/org)

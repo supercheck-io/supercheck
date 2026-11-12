@@ -139,7 +139,7 @@ export async function POST(request: NextRequest) {
     const isOrgAdmin = orgRole === Role.ORG_ADMIN || orgRole === Role.ORG_OWNER;
 
     if (!isOrgAdmin) {
-      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
+      return await permissionDeniedResponse(organizationId, "Insufficient permissions");
     }
 
     const body = await request.json().catch(() => null);
