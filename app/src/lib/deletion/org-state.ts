@@ -95,7 +95,13 @@ export type DeletionMeta = {
   quiesceAfter?: { job?: string; monitor?: string };
   /** We (not a webhook) asked the billing provider to cancel at period end, so cancelling the deletion must undo it. */
   billingCancelRequested?: boolean;
+  /** Saved before the provider call, so a crash between the call and its record cannot lose the reinstate. */
+  billingCancelAttempted?: boolean;
   billingCancelSettled?: boolean;
+  /** Owners the notice already reached, so a retry after a partial failure only sends to the rest. */
+  noticeRequestedTo?: string[];
+  notice7dTo?: string[];
+  notice1dTo?: string[];
   purgeStartedAt?: string;
   forcedByUserId?: string;
   noticeRequested?: string;
