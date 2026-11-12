@@ -32,7 +32,7 @@ export function useAdminDeletionJobs() {
     refetchOnWindowFocus: false,
     refetchOnMount: "always",
   });
-  return { jobs: query.data ?? [], isLoading: query.isPending && query.isFetching, refetch: query.refetch };
+  return { jobs: query.data ?? [], isLoading: query.isPending && query.isFetching, isError: query.isError, refetch: query.refetch };
 }
 
 export function useRetryDeletionJob() {

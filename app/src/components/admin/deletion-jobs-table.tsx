@@ -18,7 +18,7 @@ const STATE_OPTIONS = ["queued", "running", "failed"].map((value) => ({ value, l
 
 /** Super admin: unfinished background purges. A failed purge keeps its target hidden until someone retries it here. */
 export function DeletionJobsTable() {
-  const { jobs, isLoading, refetch } = useAdminDeletionJobs();
+  const { jobs, isLoading, isError, refetch } = useAdminDeletionJobs();
   const retry = useRetryDeletionJob();
 
   const columns = React.useMemo<ColumnDef<DeletionJobRow>[]>(() => [
@@ -73,6 +73,15 @@ export function DeletionJobsTable() {
   ), [refetch]);
 
   if (isLoading && jobs.length === 0) return <TabLoadingSpinner message="Loading deletions..." />;
+
+  if (isError && jobs.length === 0) {
+    return (
+      <div className="flex items-center justify-between rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm">
+        <span>Could not load deletions.</span>
+        <Button variant="outline" onClick={() => refetch()}>Try again</Button>
+      </div>
+    );
+  }
 
   return (
     <AdminDataTable

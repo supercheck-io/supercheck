@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, count, desc, eq, inArray, ne, or } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNull, ne, or } from "drizzle-orm";
 import { z } from "zod";
 
 import { db } from "@/utils/db";
@@ -667,6 +667,7 @@ async function resourceBelongsToProject(
       return Boolean(await db.query.monitors.findFirst({
         where: and(
           eq(monitors.id, resourceId),
+          isNull(monitors.deletingAt),
           eq(monitors.organizationId, context.organizationId),
           eq(monitors.projectId, context.project.id),
         ),
@@ -676,6 +677,7 @@ async function resourceBelongsToProject(
       return Boolean(await db.query.jobs.findFirst({
         where: and(
           eq(jobs.id, resourceId),
+          isNull(jobs.deletingAt),
           eq(jobs.organizationId, context.organizationId),
           eq(jobs.projectId, context.project.id),
         ),

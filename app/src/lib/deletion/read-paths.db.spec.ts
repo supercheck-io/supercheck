@@ -31,7 +31,7 @@ jest.mock("@/lib/monitor-aggregation-service", () => ({ monitorAggregationServic
 import { GET as orgStats } from "@/app/api/organizations/stats/route";
 import { GET as projectGet } from "@/app/api/projects/[id]/route";
 import { GET as monitorStats } from "@/app/api/monitors/[id]/stats/route";
-import { PATCH as monitorTags } from "@/app/api/monitors/[id]/tags/route";
+import { PATCH as monitorTags, POST as monitorTagsReplace } from "@/app/api/monitors/[id]/tags/route";
 import { GET as keysList, POST as keysCreate } from "@/app/api/jobs/[id]/api-keys/route";
 
 const name = `deleting_reads_${randomUUID().replaceAll("-", "")}`;
@@ -91,6 +91,8 @@ describe("targets flagged deleting", () => {
     const patch = (id: string) => monitorTags(req(`/api/monitors/${id}/tags`, { method: "PATCH", body: JSON.stringify({ add: [] }) }), params(id));
     expect((await patch(gone.monitorId)).status).toBe(404);
     expect((await patch(live.monitorId)).status).not.toBe(404);
+    const replace = (id: string) => monitorTagsReplace(req(`/api/monitors/${id}/tags`, { method: "POST", body: JSON.stringify({ tagIds: [] }) }), params(id));
+    expect((await replace(gone.monitorId)).status).toBe(404);
   });
 
   it("cannot list or mint API keys for a job being deleted", async () => {

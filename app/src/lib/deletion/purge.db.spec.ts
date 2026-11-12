@@ -464,7 +464,7 @@ describe("claims, retries and the sweep", () => {
       await client`INSERT INTO runs (id, job_id, project_id, status, trigger) SELECT uuidv7(), ${seeded.jobId}, ${seeded.projectId}, 'passed', 'manual' FROM generate_series(1, 600)`;
       return { success: true };
     });
-    await client`UPDATE deletion_jobs SET cursor = jsonb_build_object('steps', ${MAX_TOTAL_STEPS - 2}::int) WHERE target_id = ${seeded.jobId}`;
+    await client`UPDATE deletion_jobs SET cursor = jsonb_build_object('steps', ${MAX_TOTAL_STEPS - 5}::int) WHERE target_id = ${seeded.jobId}`;
     await client`ALTER TABLE runs DISABLE TRIGGER USER`; // the insert guard would refuse these late runs; this simulates a writer that slips past it
     let row;
     try {
@@ -475,6 +475,11 @@ describe("claims, retries and the sweep", () => {
     expect(row.state).toBe("failed");
     expect(row.lastError).toContain("without finishing");
     expect(await count("jobs", "id", seeded.jobId)).toBe(1); // nothing is dropped half-way; a super admin can retry
+    // Retry gives the purge a fresh batch budget; once the writer stops it finishes.
+    mockDeleteReports.mockReset().mockResolvedValue({ success: true });
+    expect(await retryFailedDeletion(row.id)).toBe(true);
+    expect((await drive(seeded.jobId)).state).toBe("completed");
+    expect(await count("jobs", "id", seeded.jobId)).toBe(0);
   });
 
   it("stamps retries and releases with the database clock, not the pod clock", async () => {

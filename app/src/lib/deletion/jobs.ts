@@ -114,9 +114,9 @@ export async function releaseDeletion(row: DeletionRow, delayMs: number): Promis
   await db.update(deletionJobs).set({ state: "queued", heartbeatAt: null, ownerToken: null, nextAttemptAt: afterMs(delayMs) }).where(owned(row));
 }
 
-/** Super admin: put a failed purge back in the queue with a fresh attempt budget. */
+/** Super admin: put a failed purge back in the queue with a fresh attempt and batch budget (a purge that hit the batch cap would otherwise fail again at once). */
 export async function retryFailedDeletion(id: string, executor: Pick<typeof db, "update"> = db): Promise<boolean> {
-  const updated = await executor.update(deletionJobs).set({ state: "queued", attempts: 0, nextAttemptAt: sql`now()`, lastError: null })
+  const updated = await executor.update(deletionJobs).set({ state: "queued", attempts: 0, nextAttemptAt: sql`now()`, lastError: null, cursor: sql`${deletionJobs.cursor} - 'steps'` })
     .where(and(eq(deletionJobs.id, id), eq(deletionJobs.state, "failed"))).returning({ id: deletionJobs.id });
   return updated.length > 0;
 }
