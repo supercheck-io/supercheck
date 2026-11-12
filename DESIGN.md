@@ -21,8 +21,8 @@ Every colour has one job. New code uses the token, never a raw palette class or 
 | Area: Communicate (notifications, delivery history) | `communicate` (indigo) | Same |
 | AI (Copilot, investigations, AI create, fix and analyze) | `ai` (violet) | Same. Violet means AI and nothing else. |
 | Status pages | `statuspage` (the `success` green) | Same. A deliberate exception to "area colours never look like status colours": status pages are about service health and match the green icon on the status page cards. Nothing else uses this tone. |
-| Organization (settings, members, projects) | `organization` (bronze) | Same |
-| Super Admin | `superadmin` (pink) | Same |
+| Organization (settings, members, projects) | `organization` (bronze) | Page header chip, Quick Create and admin cards, Cmd+K. Not the sidebar. |
+| Super Admin | `superadmin` (pink) | Same as Organization |
 | Type (test, monitor, job, variable, AI SRE setup, admin setup) | `type-*` palette from `app/src/lib/type-tones.ts` | Icons and icon chips that say what a thing is. Never status, never page chrome. |
 | Status | `success`, `warning`, `failure`, plus the `TableBadge` tones | Badges, status dots and charts only, always beside a text label or an icon |
 
@@ -61,7 +61,7 @@ Every colour has one job. New code uses the token, never a raw palette class or 
 
 List tables that have a View menu (monitors, tests, jobs, requirements) hide the UUID column by default (`id: false` in the initial column visibility), and the column must stay hideable so people can show it again. Tables without a View menu, and admin configuration tables, keep it visible.
 
-The sidebar marks the current page with its active state, and the active icon takes its group's area colour (`components/nav-main.tsx`).
+The sidebar marks the current page with its active state, and the active icon takes its group's area colour (`components/nav-main.tsx`). The Settings group has none: Organization and Super Admin look like a plain sidebar item and keep their colours in page header chips, Quick Create and Cmd+K.
 
 Rules for chips:
 - One chip per page title and at most one per card header. Rows in tables and form fields get no chips.

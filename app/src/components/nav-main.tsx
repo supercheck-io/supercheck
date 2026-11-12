@@ -65,13 +65,15 @@ function HoverPrefetchLink({
 }
 
 // The current page's icon takes its group's area colour (DESIGN.md); other groups stay neutral.
-const GROUP_TONE: Record<string, AreaTone> = {
+// Settings has no entry: its items keep the neutral sidebar active style.
+const GROUP_TONE: Partial<Record<string, AreaTone>> = {
   Respond: "respond",
   Communicate: "communicate",
   Automate: "automate",
   Monitor: "monitor",
-  Settings: "organization",
 };
+
+const activeIcon = (tone?: NavTone) => (tone ? AREA_ACTIVE_ICON[tone] : undefined);
 
 /** True for the item's own page and its sub-pages ("/" matches the dashboard only). */
 export function isCurrentRoute(pathname: string, url: string): boolean {
@@ -135,7 +137,7 @@ export function NavMain({
                   tooltip={item.title}
                   asChild
                   isActive={!item.url.startsWith("http") && isCurrentRoute(pathname, item.url)}
-                  className={AREA_ACTIVE_ICON[item.tone ?? GROUP_TONE[groupLabel]]}
+                  className={activeIcon(item.tone ?? GROUP_TONE[groupLabel])}
                 >
                   {item.url.startsWith("http") ? (
                     <a

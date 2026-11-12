@@ -147,7 +147,6 @@ const data = {
       title: NAV.superAdmin.title,
       url: "/super-admin",
       icon: NAV.superAdmin.icon,
-      tone: NAV.superAdmin.tone,
     },
   ],
   OrgAdmin: [
@@ -155,7 +154,6 @@ const data = {
       title: NAV.organization.title,
       url: "/org-admin",
       icon: NAV.organization.icon,
-      tone: NAV.organization.tone,
     },
   ],
 
