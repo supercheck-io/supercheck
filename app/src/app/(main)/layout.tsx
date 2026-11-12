@@ -23,6 +23,8 @@ import { RecorderAutoConnect } from "@/components/recorder/RecorderAutoConnect";
 import { getCurrentUser, getActiveOrganization, getSelectableProjects } from "@/lib/session";
 import { getCurrentProjectContext } from "@/lib/project-context";
 import { isSelfHosted } from "@/lib/feature-flags";
+import { getSentryDsn } from "@/lib/sentry-gate";
+import { SentryBrowser } from "@/components/sentry-browser";
 import { getTrialSummary } from "@/lib/execution/trial-limits";
 import { TrialBanner } from "@/components/trial-banner";
 import { SpendingCapBanner } from "@/components/spending-cap-banner";
@@ -171,6 +173,8 @@ export default async function MainLayout({
   return (
     <AuthGuard initialSession={initialSession}>
       <MonacoPrefetcher />
+      {/* Supercheck Cloud only: never rendered when self-hosted or without a DSN, so nothing is requested. */}
+      {getSentryDsn() ? <SentryBrowser /> : null}
       <RecorderAutoConnect />
       <BreadcrumbProvider>
         <ProjectContextProvider

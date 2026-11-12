@@ -8,7 +8,6 @@ import { QueryProvider } from "@/lib/query-provider";
 import { ServiceWorkerRegistration } from "@/components/service-worker-registration";
 import { HydrationReady } from "@/components/hydration-ready";
 import { SupportChat } from "@/components/support/support-chat";
-import { SentryBrowser } from "@/components/sentry-browser";
 
 export const metadata: Metadata = {
   title: "Dashboard | Supercheck",
@@ -33,8 +32,6 @@ export default function RootLayout({
         {/* TEST SUPPORT: exposes a hydration flag for the E2E suite */}
         <HydrationReady />
         <QueryProvider>
-          {/* Cloud-only error/replay monitoring; loads nothing unless the runtime config has a DSN */}
-          <SentryBrowser />
           <ThemeProvider
             attribute="class"
             defaultTheme="system"
