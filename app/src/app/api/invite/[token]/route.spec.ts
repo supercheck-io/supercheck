@@ -1,5 +1,6 @@
 /** @jest-environment node */
 jest.mock("@/lib/deletion/org-state");
+import { isOrgPendingDeletion } from "@/lib/deletion/org-state";
 
 import { NextRequest } from "next/server";
 import { PgDialect } from "drizzle-orm/pg-core";
@@ -53,6 +54,18 @@ describe("invitation privacy and acceptance", () => {
     auth.api.getSession.mockResolvedValue(null);
     requireUserAuthContext.mockResolvedValue({ userId: "user-1" });
     getCurrentUser.mockResolvedValue({ id: "user-1", email: invite.email });
+  });
+
+  it("does not reveal the organization's deletion state to a cancelled invitation or another recipient", async () => {
+    (isOrgPendingDeletion as jest.Mock).mockResolvedValue(true);
+    db.select.mockReset().mockReturnValue(selectRows([{ ...invite, status: "cancelled" }]));
+    const cancelled = await POST(new NextRequest("http://localhost/api/invite/11111111-1111-4111-8111-111111111111", { method: "POST" }), context);
+    expect((await cancelled.json()).code).not.toBe("ORG_PENDING_DELETION");
+    db.select.mockReset().mockReturnValue(selectRows([invite]));
+    getCurrentUser.mockResolvedValue({ id: "user-2", email: "someone-else@example.com" });
+    const forwarded = await POST(new NextRequest("http://localhost/api/invite/11111111-1111-4111-8111-111111111111", { method: "POST" }), context);
+    expect((await forwarded.json()).code).not.toBe("ORG_PENDING_DELETION");
+    (isOrgPendingDeletion as jest.Mock).mockResolvedValue(false);
   });
 
   it("rejects malformed invitation IDs without querying PostgreSQL", async () => {
