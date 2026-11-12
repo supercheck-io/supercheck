@@ -156,8 +156,8 @@ export async function settleBillingOnRequest(organizationId: string): Promise<"c
           const [current] = await tx.select({ pending: organization.deletionRequestedAt }).from(organization).where(eq(organization.id, organizationId));
           if (!current?.pending) { await reinstateSubscription(org); return; }
           // A newer deletion is pending and this call just turned renewal off: that cancellation now belongs to the newer
-          // deletion, so cancelling it reinstates the renewal (and nobody cancels it a second time).
-          await tx.update(organization).set({ deletionMeta: metaPatch(organization.deletionMeta, { billingCancelSettled: true, billingCancelRequested: true }) })
+          // deletion, so cancelling it reinstates the renewal. It stays unsettled: the newer deletion still checks and cancels the subscription itself.
+          await tx.update(organization).set({ deletionMeta: metaPatch(organization.deletionMeta, { billingCancelRequested: true }) })
             .where(and(eq(organization.id, organizationId), isNotNull(organization.deletionRequestedAt)));
         });
       }
