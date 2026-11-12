@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import { and, desc, eq, isNull, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import type { z } from 'zod';
 import { DbService } from '../db/db.service';
 import * as schema from '../db/schema';
@@ -89,9 +89,9 @@ export type GroupAlertEvaluation = {
 };
 
 /**
- * A group is evaluated only while its check is recent. Retries and late regions end within about 80 minutes,
- * and receipts are kept at least two days (telemetry-retention.ts), so a group this old that has no receipt is
- * stale: applying it would re-count it and overwrite the monitor's current status with an old one.
+ * Retries and late regions end within about 80 minutes, and receipts are kept at least two days
+ * (telemetry-retention.ts). A receipt-less group older than this is stale: it is dropped only when the monitor
+ * already holds an equal or newer check, since applying it would then overwrite current status with an old one.
  */
 export const GROUP_EVALUATION_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
@@ -915,14 +915,6 @@ export class MonitorEvaluator {
         executionGroupId,
         evaluation,
       });
-      // TODO(remove next release): dual-write the legacy receipt so a rollback to a worker that predates
-      // monitor_group_evaluations neither re-counts nor re-alerts this group. Tracked in the CHANGELOG.
-      await tx
-        .update(schema.monitorResults)
-        .set({
-          details: sql`jsonb_set(jsonb_set(coalesce(${schema.monitorResults.details}, '{}'::jsonb), '{aggregationEvaluation}', ${JSON.stringify(evaluation)}::jsonb), '{aggregationNotificationProcessed}', 'false'::jsonb)`,
-        })
-        .where(eq(schema.monitorResults.id, row.id));
       return {
         monitor,
         receipt: { kind: 'group' } as GroupReceipt,
@@ -940,52 +932,56 @@ export class MonitorEvaluator {
     executionGroupId: string,
     receipt: GroupReceipt,
   ): Promise<boolean> {
-    const legacyProcessed = (resultsWhere: SQL) =>
-      this.dbService.db
-        .update(schema.monitorResults)
-        .set({
-          details: sql`jsonb_set(coalesce(${schema.monitorResults.details}, '{}'::jsonb), '{aggregationNotificationProcessed}', 'true'::jsonb)`,
-        })
-        .where(resultsWhere)
-        .returning({ id: schema.monitorResults.id });
     let claimed: boolean;
     if (receipt.kind === 'legacy') {
       claimed =
         (
-          await legacyProcessed(
-            and(
-              eq(schema.monitorResults.id, receipt.resultId),
-              sql`coalesce(${schema.monitorResults.details} -> 'aggregationNotificationProcessed' = 'true'::jsonb, false) = false`,
-            ) as SQL,
-          )
-        ).length > 0;
-    } else {
-      claimed =
-        (
           await this.dbService.db
-            .update(schema.monitorGroupEvaluations)
-            .set({ notificationProcessedAt: new Date() })
+            .update(schema.monitorResults)
+            .set({
+              details: sql`jsonb_set(coalesce(${schema.monitorResults.details}, '{}'::jsonb), '{aggregationNotificationProcessed}', 'true'::jsonb)`,
+            })
             .where(
               and(
-                eq(schema.monitorGroupEvaluations.monitorId, monitorId),
-                eq(
-                  schema.monitorGroupEvaluations.executionGroupId,
-                  executionGroupId,
-                ),
-                isNull(schema.monitorGroupEvaluations.notificationProcessedAt),
+                eq(schema.monitorResults.id, receipt.resultId),
+                sql`coalesce(${schema.monitorResults.details} -> 'aggregationNotificationProcessed' = 'true'::jsonb, false) = false`,
               ),
             )
-            .returning({ id: schema.monitorGroupEvaluations.monitorId })
+            .returning({ id: schema.monitorResults.id })
         ).length > 0;
-      // Keep the legacy receipt in step for older workers (see the dual-write in prepareGroupEvaluation).
-      if (claimed)
-        await legacyProcessed(
-          and(
-            eq(schema.monitorResults.monitorId, monitorId),
-            eq(schema.monitorResults.executionGroupId, executionGroupId),
-            sql`jsonb_typeof(${schema.monitorResults.details} -> 'aggregationEvaluation') = 'object'`,
-          ) as SQL,
-        );
+    } else {
+      // TODO(remove next release): the second statement writes the legacy receipt (one result-row update per
+      // group) so a rollback to a worker that predates monitor_group_evaluations neither re-counts nor
+      // re-alerts it. Both statements commit together. Tracked in the CHANGELOG upgrade note.
+      claimed = await this.dbService.db.transaction(async (tx) => {
+        const [won] = await tx
+          .update(schema.monitorGroupEvaluations)
+          .set({ notificationProcessedAt: new Date() })
+          .where(
+            and(
+              eq(schema.monitorGroupEvaluations.monitorId, monitorId),
+              eq(
+                schema.monitorGroupEvaluations.executionGroupId,
+                executionGroupId,
+              ),
+              isNull(schema.monitorGroupEvaluations.notificationProcessedAt),
+            ),
+          )
+          .returning({ evaluation: schema.monitorGroupEvaluations.evaluation });
+        if (!won) return false;
+        await tx
+          .update(schema.monitorResults)
+          .set({
+            details: sql`jsonb_set(jsonb_set(coalesce(${schema.monitorResults.details}, '{}'::jsonb), '{aggregationEvaluation}', ${JSON.stringify(won.evaluation)}::jsonb), '{aggregationNotificationProcessed}', 'true'::jsonb)`,
+          })
+          .where(
+            eq(
+              schema.monitorResults.id,
+              sql`(select id from monitor_results where monitor_id = ${monitorId} and execution_group_id = ${executionGroupId} limit 1)`,
+            ),
+          );
+        return true;
+      });
     }
     if (!claimed)
       this.logger.warn(

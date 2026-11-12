@@ -2408,14 +2408,7 @@ describe('MonitorService', () => {
             });
           },
         }),
-        update: (table: unknown) => ({
-          set: (values: Record<string, unknown>) => ({
-            where: async () => {
-              if (table === schema.monitors)
-                monitor = { ...monitor, ...values };
-            },
-          }),
-        }),
+        update: (table: unknown) => update(table, true),
       };
       mockDbService.db.transaction.mockImplementation(
         async (callback: (value: typeof tx) => Promise<unknown>) =>
@@ -2426,9 +2419,16 @@ describe('MonitorService', () => {
       );
       mockLocationService.calculateAggregatedStatus.mockReturnValue('down');
       let failMarker = true;
-      mockDbService.db.update.mockImplementation((table: unknown) => ({
+      // Shared by the plain connection and the claim's transaction; `.returning()` yields the rows hit.
+      const update = (table: unknown, isTx = false) => ({
         set: jest.fn((values: Record<string, unknown>) => ({
           where: () => {
+            if (isTx && table === schema.monitors) {
+              monitor = { ...monitor, ...values };
+              return Object.assign(Promise.resolve([]), {
+                returning: () => Promise.resolve([]),
+              });
+            }
             const hit: unknown[] = [];
             if (table === schema.monitorGroupEvaluations) {
               if (failMarker) {
@@ -2439,7 +2439,7 @@ describe('MonitorService', () => {
               if (!receipt.notificationProcessedAt) {
                 receipt.notificationProcessedAt =
                   values.notificationProcessedAt as Date;
-                hit.push({});
+                hit.push({ evaluation: receipt.evaluation });
               }
             }
             return Object.assign(Promise.resolve(hit), {
@@ -2447,7 +2447,10 @@ describe('MonitorService', () => {
             });
           },
         })),
-      }));
+      });
+      mockDbService.db.update.mockImplementation((table: unknown) =>
+        update(table),
+      );
       const results = ['eu', 'us'].map((location) => ({
         monitorId: monitor.id,
         location,
@@ -2543,6 +2546,35 @@ describe('MonitorService', () => {
       expect(claim).toHaveBeenCalledWith(mockMonitor.id, 'group-claimed', {
         kind: 'group',
       });
+      expect(mockAlertService.sendNotification).not.toHaveBeenCalled();
+    });
+
+    it('sends nothing when claiming the group notification throws', async () => {
+      mockDbService.db.query.monitors.findFirst.mockResolvedValue(mockMonitor);
+      const evaluator = (service as unknown as { evaluator: MonitorEvaluator })
+        .evaluator;
+      jest.spyOn(evaluator, 'prepareGroupEvaluation').mockResolvedValue({
+        monitor: mockMonitor,
+        receipt: { kind: 'group' },
+        evaluation: { previousStatus: 'up', currentStatus: 'down' },
+      } as never);
+      jest
+        .spyOn(evaluator, 'claimGroupNotification')
+        .mockRejectedValue(new Error('claim failed'));
+      await expect(
+        service.saveMonitorResults(
+          [
+            {
+              monitorId: mockMonitor.id,
+              location: 'eu',
+              status: 'down',
+              isUp: false,
+              checkedAt: new Date(),
+            },
+          ],
+          { persisted: true, executionGroupId: 'group-claim-throws' },
+        ),
+      ).rejects.toThrow('claim failed');
       expect(mockAlertService.sendNotification).not.toHaveBeenCalled();
     });
   });

@@ -25,7 +25,7 @@ suite('MonitorEvaluator group receipt (PostgreSQL)', () => {
   let db: ReturnType<typeof drizzle<typeof schema>>;
   let evaluator: MonitorEvaluator;
   let monitorId: string;
-  // Recent: the evaluator refuses groups older than GROUP_EVALUATION_MAX_AGE_MS.
+  // Recent: older groups take the stale-group path (GROUP_EVALUATION_MAX_AGE_MS).
   const checkedAt = new Date(Date.now() - 60_000);
 
   beforeAll(async () => {
@@ -103,7 +103,7 @@ suite('MonitorEvaluator group receipt (PostgreSQL)', () => {
     ).aggregatedAlertState?.consecutiveFailureCount;
   };
 
-  it('writes one receipt and mirrors it into exactly one result row for rollback', async () => {
+  it('writes one receipt and leaves result rows untouched until the claim', async () => {
     await report('g1');
     const prepared = await evaluator.prepareGroupEvaluation(
       monitorId,
@@ -125,7 +125,7 @@ suite('MonitorEvaluator group receipt (PostgreSQL)', () => {
       (await resultDetails('g1')).filter(
         (d) => (d as Record<string, unknown>)?.aggregationEvaluation,
       ),
-    ).toHaveLength(1);
+    ).toHaveLength(0);
     expect(await failureCount()).toBe(1);
   });
 
@@ -168,24 +168,17 @@ suite('MonitorEvaluator group receipt (PostgreSQL)', () => {
     );
     expect(retry!.evaluation).toEqual(first!.evaluation);
     expect(await failureCount()).toBe(1);
-    // Dual-written legacy receipt (rollback safety): present and unprocessed until claimed.
-    expect(
-      (await resultDetails('crash')).filter(
-        (d) =>
-          (d as Record<string, unknown>)?.aggregationNotificationProcessed ===
-          false,
-      ),
-    ).toHaveLength(1);
     await expect(
       evaluator.claimGroupNotification(monitorId, 'crash', retry!.receipt),
     ).resolves.toBe(true);
     const [receipt] = await receiptRows('crash');
     expect(receipt.notificationProcessedAt).toBeInstanceOf(Date);
+    // The claim dual-wrote the legacy receipt (rollback safety) onto exactly one row.
     expect(
       (await resultDetails('crash')).filter(
         (d) =>
           (d as Record<string, unknown>)?.aggregationNotificationProcessed ===
-          true,
+            true && (d as Record<string, unknown>)?.aggregationEvaluation,
       ),
     ).toHaveLength(1);
     // A second writer loses the claim and must not send.

@@ -72,8 +72,8 @@ export const TELEMETRY_RETENTION_RULES: readonly TelemetryRetentionRule[] = [
     timeColumn: "created_at",
     envVar: "MONITOR_GROUP_EVALUATION_RETENTION_DAYS",
     defaultDays: 14,
-    // The worker refuses to evaluate a group older than one day (GROUP_EVALUATION_MAX_AGE_MS), so a receipt
-    // must outlive that: a lower setting would let a stale group apply again once its receipt is gone.
+    // A receipt-less group older than a day is dropped only if the monitor holds a newer check, and a processed
+    // receipt is mirrored onto a result row; keep receipts past that window so a purge never re-applies a group.
     minDays: 2,
   },
 ];

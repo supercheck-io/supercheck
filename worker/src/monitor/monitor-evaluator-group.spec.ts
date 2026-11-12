@@ -83,16 +83,16 @@ function fakeGroupStore(
           if (receipt && !receipt.notificationProcessedAt) {
             receipt.notificationProcessedAt =
               values.notificationProcessedAt as Date;
-            hit.push({});
+            hit.push({ evaluation: receipt.evaluation });
           }
         } else if (isTx) {
-          // Dual-write of the legacy receipt onto one result row.
+          // Claim's dual-write of the legacy receipt onto one result row.
           writes.results++;
           const row = results.find((r) => r.group === group)!;
           row.details = {
             ...row.details,
             aggregationEvaluation: receipts.get(group)!.evaluation,
-            aggregationNotificationProcessed: false,
+            aggregationNotificationProcessed: true,
           };
         } else {
           for (const row of results.filter(
@@ -219,7 +219,7 @@ describe('MonitorEvaluator.prepareGroupEvaluation paused monitor', () => {
 });
 
 describe('MonitorEvaluator group receipt', () => {
-  it('records a new group in its own receipt and mirrors it onto one result row for rollback', async () => {
+  it('records a new group in its own receipt and never rewrites a result row', async () => {
     const monitor = multiLocationMonitor('up');
     const rows = groupRows('g1');
     const store = fakeGroupStore(monitor, rows);
@@ -232,9 +232,9 @@ describe('MonitorEvaluator group receipt', () => {
       evaluation: { previousStatus: 'up', currentStatus: 'down' },
       notificationProcessedAt: null,
     });
-    expect(store.writes).toEqual({ monitor: 1, results: 1, inserts: 1 });
+    expect(store.writes).toEqual({ monitor: 1, results: 0, inserts: 1 });
     expect(rows.filter((r) => r.details?.aggregationEvaluation)).toHaveLength(
-      1,
+      0,
     );
     expect(monitor.status).toBe('down');
   });
@@ -245,7 +245,7 @@ describe('MonitorEvaluator group receipt', () => {
     const retry = await store.prepare('g1', 'down');
     expect(retry!.evaluation).toEqual(first!.evaluation);
     expect(retry!.receipt).toEqual({ kind: 'group' });
-    expect(store.writes).toEqual({ monitor: 1, results: 1, inserts: 1 });
+    expect(store.writes).toEqual({ monitor: 1, results: 0, inserts: 1 });
   });
 
   it('returns null for a group whose alerts were already handled', async () => {
@@ -256,16 +256,25 @@ describe('MonitorEvaluator group receipt', () => {
       Date,
     );
     await expect(store.prepare('g1', 'down')).resolves.toBeNull();
+    // The claim also wrote the legacy receipt onto one result row, for rollback.
     expect(store.writes).toEqual({ monitor: 1, results: 1, inserts: 1 });
   });
 
   it('keeps the first processed time when marked twice', async () => {
-    const store = fakeGroupStore(multiLocationMonitor('up'), groupRows('g1'));
+    const rows = groupRows('g1');
+    const store = fakeGroupStore(multiLocationMonitor('up'), rows);
     const prepared = await store.prepare('g1', 'down');
     await expect(store.claimNotified('g1', prepared!.receipt)).resolves.toBe(
       true,
     );
     const first = store.receipts.get('g1')!.notificationProcessedAt;
+    expect(
+      rows.filter(
+        (r) =>
+          r.details?.aggregationEvaluation &&
+          r.details.aggregationNotificationProcessed === true,
+      ),
+    ).toHaveLength(1);
     // The second writer loses the claim, so its caller sends nothing.
     await expect(store.claimNotified('g1', prepared!.receipt)).resolves.toBe(
       false,
