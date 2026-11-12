@@ -1,4 +1,5 @@
-import { desc, eq, sql } from "drizzle-orm";
+import { liveRunOfLiveJob } from "@/lib/deletion/visibility";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { runs } from "@/db/schema";
 import { db } from "@/utils/db";
 
@@ -14,9 +15,9 @@ export async function resolveRunArtifact(
   // resolveAccessContext), so neither query has to sort an OR of both conditions.
   const columns = { id: true, jobId: true } as const;
   const run =
-    (await db.query.runs.findFirst({ where: eq(runs.id, id), columns })) ??
+    (await db.query.runs.findFirst({ where: and(eq(runs.id, id), liveRunOfLiveJob(runs.jobId)), columns })) ??
     (await db.query.runs.findFirst({
-      where: sql`${runs.metadata}->>'testId' = ${id}`,
+      where: and(sql`${runs.metadata}->>'testId' = ${id}`, liveRunOfLiveJob(runs.jobId)),
       orderBy: [desc(runs.createdAt)],
       columns,
     }));

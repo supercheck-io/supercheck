@@ -1,3 +1,4 @@
+import { notFoundIfDeleting } from "@/lib/deletion/visibility";
 import { and, desc, eq, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
 import { db } from "@/utils/db";
 import {
@@ -277,8 +278,10 @@ export async function reconcileStatusPages() {
         manualStatuses.includes(status),
       );
       const manual = manualStatuses.length > 0;
+      // A monitor being deleted no longer counts toward the component.
+      const liveLinks = component.monitors.filter((association) => notFoundIfDeleting(association.monitor));
       const calculated = statusAggregationService.calculateFromMonitors(
-        component.monitors.map((association) => ({
+        liveLinks.map((association) => ({
           status: association.monitor.status,
           weight: association.weight,
         })),
@@ -288,7 +291,7 @@ export async function reconcileStatusPages() {
       );
       const status =
         manualStatus ??
-        (component.monitors.length ? calculated : component.status);
+        (liveLinks.length ? calculated : component.status);
       if (status !== component.status)
         await tx
           .update(statusPageComponents)

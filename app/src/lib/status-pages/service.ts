@@ -7,6 +7,7 @@
  * custom-domain rules, cross-project checks, aggregation, audit logging)
  * lives here so both paths behave identically.
  */
+import { liveMonitor } from "@/lib/deletion/visibility";
 import { randomUUID } from "crypto";
 import { z } from "zod";
 import { HEX_COLOR_REGEX, normalizeHexColor } from "@/lib/status-page-branding";
@@ -310,7 +311,7 @@ async function lockLiveMonitors(tx: Parameters<Parameters<typeof db.transaction>
   if (monitorIds.length === 0) return;
   const ids = [...new Set(monitorIds)].sort();
   const rows = await tx.select({ id: monitors.id }).from(monitors)
-    .where(and(inArray(monitors.id, ids), eq(monitors.projectId, ctx.projectId), isNull(monitors.deletingAt)))
+    .where(and(inArray(monitors.id, ids), eq(monitors.projectId, ctx.projectId), liveMonitor()))
     .orderBy(monitors.id).for("key share");
   if (rows.length !== ids.length) throw new MonitorUnavailableError();
 }
@@ -325,7 +326,7 @@ async function verifyComponentReferences(
     const validMonitors = await db
       .select({ id: monitors.id })
       .from(monitors)
-      .where(and(inArray(monitors.id, monitorIds), eq(monitors.projectId, ctx.projectId), isNull(monitors.deletingAt)));
+      .where(and(inArray(monitors.id, monitorIds), eq(monitors.projectId, ctx.projectId), liveMonitor()));
 
     if (validMonitors.length !== monitorIds.length) {
       return fail("validation", "One or more monitors not found or access denied");

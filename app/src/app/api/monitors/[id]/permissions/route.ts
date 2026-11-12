@@ -1,3 +1,4 @@
+import { liveMonitor } from "@/lib/deletion/visibility";
 import { isUuid } from "@/lib/uuid";
 import { NextRequest, NextResponse } from 'next/server';
 import { hasPermissionForUser, forbiddenOrNotFound } from '@/lib/rbac/middleware';
@@ -34,7 +35,7 @@ export async function GET(
     // Find the monitor to get project and organization IDs
     if (!isUuid((await context.params).id)) return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
     const monitor = await db.query.monitors.findFirst({
-      where: and(eq(monitors.id, id), isNull(monitors.deletingAt)),
+      where: and(eq(monitors.id, id), liveMonitor()),
       columns: {
         projectId: true,
         organizationId: true

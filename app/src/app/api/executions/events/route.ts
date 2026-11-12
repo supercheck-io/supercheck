@@ -1,10 +1,11 @@
+import { liveRunOfLiveJob } from "@/lib/deletion/visibility";
 import { NextResponse } from "next/server";
 import { getQueueEventHub, NormalizedQueueEvent } from "@/lib/queue-event-hub";
 import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { db } from "@/utils/db";
 import { runs, jobs, tests, projects } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 const encoder = new TextEncoder();
 
@@ -189,7 +190,7 @@ export async function GET(request: Request) {
             
             // Query run data (this is the only query that must be fresh)
             const run = await db.query.runs.findFirst({
-              where: eq(runs.id, event.queueJobId),
+              where: and(eq(runs.id, event.queueJobId), liveRunOfLiveJob(runs.jobId)),
               columns: {
                 id: true,
                 projectId: true,

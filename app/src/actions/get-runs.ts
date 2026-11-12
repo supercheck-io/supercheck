@@ -1,5 +1,6 @@
 "use server";
 
+import { liveRunOfLiveJob } from "@/lib/deletion/visibility";
 import { db } from "@/utils/db";
 import { runs, reports, jobs, jobTests, projects } from "@/db/schema";
 import type { JobType } from "@/db/schema";
@@ -72,7 +73,7 @@ export async function getRun(
           eq(reports.entityType, "job")
         )
       )
-      .where(and(eq(runs.id, runId), or(isNull(runs.jobId), isNull(jobs.deletingAt))))
+      .where(and(eq(runs.id, runId), liveRunOfLiveJob(runs.jobId)))
       .limit(1);
 
     if (result.length === 0) {

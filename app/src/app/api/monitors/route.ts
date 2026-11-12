@@ -1,3 +1,4 @@
+import { liveMonitor } from "@/lib/deletion/visibility";
 import { monitorConfigForRead, monitorTargetForRead } from "@/lib/monitor-read-config";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
@@ -118,7 +119,7 @@ export async function GET(request: Request) {
     const whereCondition = and(
       eq(monitors.projectId, context.project.id),
       eq(monitors.organizationId, context.organizationId),
-      isNull(monitors.deletingAt),
+      liveMonitor(),
     );
 
     if (usePagination) {
@@ -722,6 +723,7 @@ export async function PUT(req: NextRequest) {
           eq(monitors.id, id),
           eq(monitors.projectId, project.id),
           eq(monitors.organizationId, organizationId),
+          liveMonitor(),
         ),
       )
       .limit(1);

@@ -2,6 +2,7 @@ import { canPersistRunCallback } from './run-callback';
 import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
+import { liveRunOfLiveJob } from '../../db/deletion-visibility';
 import * as schema from '../../db/schema'; // Import the schema we copied
 import {
   reports,
@@ -919,6 +920,7 @@ export class DbService implements OnModuleInit {
           .from(schema.runs)
           .where(
             and(
+              liveRunOfLiveJob(schema.runs.jobId),
               sql`${schema.runs.jobId} IN (${sql.join(
                 jobIds.map((id) => sql`${id}`),
                 sql`, `,

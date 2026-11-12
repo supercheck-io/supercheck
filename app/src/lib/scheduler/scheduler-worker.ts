@@ -8,6 +8,7 @@
  * Uses singleton pattern to handle Next.js hot-reload safely.
  */
 
+import { liveJob } from "@/lib/deletion/visibility";
 import { Worker } from 'bullmq';
 import { getQueues, getRedisConnection, queueLogger } from '@/lib/queue';
 import { and, eq } from 'drizzle-orm';
@@ -31,7 +32,7 @@ export async function loadJobCron(jobId: string, scope: { projectId?: string; or
   const [row] = await db
     .select({ cron: jobs.cronSchedule })
     .from(jobs)
-    .where(and(eq(jobs.id, jobId), eq(jobs.projectId, scope.projectId), eq(jobs.organizationId, scope.organizationId)))
+    .where(and(eq(jobs.id, jobId), eq(jobs.projectId, scope.projectId), eq(jobs.organizationId, scope.organizationId), liveJob()))
     .limit(1);
   return row?.cron ?? null;
 }

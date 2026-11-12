@@ -48,7 +48,7 @@ async function deleteStorage(ctx: StepContext, inputs: ReportDeletionInput[] | (
 }
 
 // Tables whose rows cascade from the target and can be large. Names are constants (never input) and each has an index on the column.
-const MONITOR_CHILD_TABLES = ["monitor_aggregates", "monitor_cycles", "alert_history", "alerts", "monitor_aggregate_dedup_audit"] as const;
+const MONITOR_CHILD_TABLES = ["monitor_aggregates", "monitor_cycles", "alert_history", "alerts", "monitor_aggregate_dedup_audit", "monitor_group_evaluations"] as const;
 const JOB_CHILD_TABLES = ["alert_history"] as const;
 
 /** Delete up to one batch of a child table's rows by the target's id; returns how many went. */

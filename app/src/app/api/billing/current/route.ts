@@ -1,3 +1,4 @@
+import { liveMonitor } from "@/lib/deletion/visibility";
 import { NextResponse } from "next/server";
 import { getTrialSummary } from "@/lib/execution/trial-limits";
 import { requireUserAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
@@ -70,7 +71,7 @@ export async function GET() {
           .select({ count: sql<number>`count(*)` })
           .from(monitors)
           // Same count as create, resume and the plan-cap sweep.
-          .where(and(eq(monitors.organizationId, organizationId), ne(monitors.status, "paused"), isNull(monitors.deletingAt), notInDeletedProject(monitors.projectId))),
+          .where(and(eq(monitors.organizationId, organizationId), ne(monitors.status, "paused"), liveMonitor(), notInDeletedProject(monitors.projectId))),
         db
           .select({ count: sql<number>`count(*)` })
           .from(statusPages)

@@ -55,6 +55,7 @@ This section covers the variables the Compose files forward. Advanced tunables y
 | `PRIVATE_AGENT_HEARTBEAT_RETENTION_DAYS` | Days to keep private agent heartbeats; each agent's newest is always kept (default: `7`) |
 | `PRIVATE_AGENT_JOB_RETENTION_DAYS` | Days to keep finished private agent jobs; each connector's newest job is always kept (default: `30`) |
 | `SRE_HEALTH_SNAPSHOT_RETENTION_DAYS` / `SRE_DEPENDENCY_OBSERVATION_RETENTION_DAYS` / `SRE_ALERT_EVENT_RETENTION_DAYS` | Days to keep service health snapshots (latest per service is kept), dependency observations, and resolved alert events not linked to an incident (default: `90` each) |
+| `MONITOR_GROUP_EVALUATION_RETENTION_DAYS` | Days to keep monitor alert receipts used to send each check's alerts once; check results are not affected (default: `14`, minimum `2`) |
 | `NEXT_PUBLIC_APP_URL` | Browser-reachable app origin, including scheme and port, with no trailing slash (bundled stack: derived as `https://${APP_DOMAIN}` when set, otherwise `http://localhost:${APP_HOST_PORT:-3000}`; external-services variant requires an explicit value) |
 | `DATABASE_URL` | PostgreSQL connection. For an external server that requires TLS, add `?sslmode=require` (or `verify-full`): app, worker and migrations then verify the server certificate against the system CAs, so a private CA must be trusted in those containers. `sslmode=disable` turns TLS off |
 

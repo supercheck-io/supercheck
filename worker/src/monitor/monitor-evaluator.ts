@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import { liveMonitor } from '../db/deletion-visibility';
 import type { z } from 'zod';
 import { DbService } from '../db/db.service';
 import * as schema from '../db/schema';
@@ -87,6 +88,23 @@ export type GroupAlertEvaluation = {
   currentStatus: 'up' | 'down';
   alertState?: AggregatedAlertState;
 };
+
+/**
+ * Retries and late regions end within about 80 minutes, and receipts are kept at least two days
+ * (telemetry-retention.ts). A receipt-less group older than this is stale: it is dropped only when the monitor
+ * already holds an equal or newer check, since applying it would then overwrite current status with an old one.
+ */
+export const GROUP_EVALUATION_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+/** How long a claim on a group's alerts blocks other senders before it can be taken over. */
+export const GROUP_NOTIFICATION_LEASE_MS = 2 * 60 * 1000;
+
+/** Returned by a claim while another sender holds a live lease: retry later, the alert is not yet sent. */
+export const GROUP_NOTIFICATION_BUSY = 'busy' as const;
+
+/** Where a group's alert receipt lives: its own row, or (groups from older workers) a result row's details. */
+export type GroupReceipt =
+  { kind: 'group' } | { kind: 'legacy'; resultId: string };
 
 /**
  * Alert and status evaluation shared by the regional worker (MonitorService) and the
@@ -777,35 +795,91 @@ export class MonitorEvaluator {
       const [monitor] = await tx
         .select()
         .from(schema.monitors)
-        .where(eq(schema.monitors.id, monitorId))
+        .where(and(eq(schema.monitors.id, monitorId), liveMonitor()))
         .limit(1)
         .for('update');
       if (!monitor) return null;
-      const rows = await tx
+      // The monitor row lock serializes preparers, so the receipt read below cannot race its insert.
+      const [receipt] = await tx
+        .select({
+          evaluation: schema.monitorGroupEvaluations.evaluation,
+          processedAt: schema.monitorGroupEvaluations.notificationProcessedAt,
+        })
+        .from(schema.monitorGroupEvaluations)
+        .where(
+          and(
+            eq(schema.monitorGroupEvaluations.monitorId, monitorId),
+            eq(
+              schema.monitorGroupEvaluations.executionGroupId,
+              executionGroupId,
+            ),
+          ),
+        )
+        .limit(1);
+      if (receipt) {
+        if (receipt.processedAt) return null;
+        return {
+          monitor,
+          receipt: { kind: 'group' } as GroupReceipt,
+          evaluation: receipt.evaluation as GroupAlertEvaluation,
+        };
+      }
+      // A group evaluated by a worker that predates monitor_group_evaluations keeps its receipt in
+      // one result row's details; honour it so a rollout neither re-advances counters nor re-alerts.
+      const [legacy] = await tx
         .select({
           id: schema.monitorResults.id,
-          details: schema.monitorResults.details,
+          evaluation: sql<GroupAlertEvaluation>`${schema.monitorResults.details} -> 'aggregationEvaluation'`,
+          // Exact JSON true, as older workers wrote it; no cast, so an odd value cannot fail the job.
+          processed: sql<boolean>`coalesce(${schema.monitorResults.details} -> 'aggregationNotificationProcessed' = 'true'::jsonb, false)`,
         })
         .from(schema.monitorResults)
         .where(
           and(
             eq(schema.monitorResults.monitorId, monitorId),
             eq(schema.monitorResults.executionGroupId, executionGroupId),
+            sql`jsonb_typeof(${schema.monitorResults.details} -> 'aggregationEvaluation') = 'object'`,
           ),
-        );
-      const applied = rows.find((row) => row.details?.aggregationEvaluation);
-      if (applied) {
-        if (applied.details?.aggregationNotificationProcessed === true)
-          return null;
+        )
+        .limit(1);
+      if (legacy) {
+        if (legacy.processed) return null;
         return {
           monitor,
-          resultId: applied.id,
-          evaluation: applied.details!
-            .aggregationEvaluation as GroupAlertEvaluation,
+          receipt: { kind: 'legacy', resultId: legacy.id } as GroupReceipt,
+          evaluation: legacy.evaluation,
         };
       }
-      const row = rows[0];
+      const [row] = await tx
+        .select({ id: schema.monitorResults.id })
+        .from(schema.monitorResults)
+        .where(
+          and(
+            eq(schema.monitorResults.monitorId, monitorId),
+            eq(schema.monitorResults.executionGroupId, executionGroupId),
+          ),
+        )
+        .limit(1);
       if (!row) throw new Error('Persisted aggregation group is missing');
+      // A stale group is dropped only when the monitor already holds an equal or newer check (a duplicate
+      // whose receipt aged out, or one superseded by a later cycle). Otherwise it is the latest news the
+      // monitor has, so it is evaluated normally and alerts follow the usual rules.
+      if (Date.now() - checkedAt.getTime() > GROUP_EVALUATION_MAX_AGE_MS) {
+        const superseded =
+          monitor.lastCheckAt != null &&
+          monitor.lastCheckAt.getTime() >= checkedAt.getTime();
+        // Structured so log-based alerting can match `monitor_group_evaluation_stale`.
+        this.logger.warn(
+          JSON.stringify({
+            event: 'monitor_group_evaluation_stale',
+            action: superseded ? 'dropped_superseded' : 'evaluated',
+            monitorId,
+            executionGroupId,
+            checkedAt: checkedAt.toISOString(),
+          }),
+        );
+        if (superseded) return null;
+      }
       const previousStatus = monitor.status;
       const evaluation: GroupAlertEvaluation = {
         previousStatus,
@@ -843,17 +917,160 @@ export class MonitorEvaluator {
             : {}),
         })
         .where(eq(schema.monitors.id, monitorId));
+      await tx.insert(schema.monitorGroupEvaluations).values({
+        monitorId,
+        executionGroupId,
+        evaluation,
+      });
+      return {
+        monitor,
+        receipt: { kind: 'group' } as GroupReceipt,
+        evaluation,
+      };
+    });
+  }
+
+  /**
+   * Leases the right to send the group's alerts. Returns a claim token; GROUP_NOTIFICATION_BUSY while another
+   * sender holds a live lease (callers must retry later, not complete); null when the alerts were already sent. A lease older than GROUP_NOTIFICATION_LEASE_MS with no processed marker
+   * is taken over, so a crash between claim and send still delivers after the lease; that window can duplicate.
+   */
+  async claimGroupNotification(
+    monitorId: string,
+    executionGroupId: string,
+    receipt: GroupReceipt,
+  ): Promise<string | null> {
+    // Groups from older workers keep their receipt in a result row, which has no lease: no claim to take.
+    if (receipt.kind === 'legacy') return 'legacy';
+    const token = randomUUID();
+    const won = await this.dbService.db.transaction(async (tx) => {
+      const [row] = await tx
+        .select({
+          processedAt: schema.monitorGroupEvaluations.notificationProcessedAt,
+          claimedAt: schema.monitorGroupEvaluations.notificationClaimedAt,
+          // Judged on the database clock, so workers with skewed clocks agree on whether a lease is live.
+          leased: sql<boolean>`coalesce(${schema.monitorGroupEvaluations.notificationClaimedAt} > now() - make_interval(secs => ${GROUP_NOTIFICATION_LEASE_MS / 1000}), false)`,
+        })
+        .from(schema.monitorGroupEvaluations)
+        .where(
+          and(
+            eq(schema.monitorGroupEvaluations.monitorId, monitorId),
+            eq(
+              schema.monitorGroupEvaluations.executionGroupId,
+              executionGroupId,
+            ),
+          ),
+        )
+        .limit(1)
+        .for('update');
+      if (!row || row.processedAt) return 'done' as const;
+      if (row.leased) return 'busy' as const;
+      await tx
+        .update(schema.monitorGroupEvaluations)
+        .set({
+          notificationClaimedAt: sql`now()`,
+          notificationClaimToken: token,
+        })
+        .where(
+          and(
+            eq(schema.monitorGroupEvaluations.monitorId, monitorId),
+            eq(
+              schema.monitorGroupEvaluations.executionGroupId,
+              executionGroupId,
+            ),
+          ),
+        );
+      return row.claimedAt ? ('took_over' as const) : ('claimed' as const);
+    });
+    if (won === 'done') return null;
+    if (won === 'busy') {
+      this.logger.warn(
+        JSON.stringify({
+          event: 'monitor_group_notification_claim_lost',
+          monitorId,
+          executionGroupId,
+        }),
+      );
+      return GROUP_NOTIFICATION_BUSY;
+    }
+    if (won === 'took_over')
+      this.logger.warn(
+        JSON.stringify({
+          event: 'monitor_group_notification_lease_expired',
+          note: 'previous sender never finished; alert may duplicate',
+          monitorId,
+          executionGroupId,
+        }),
+      );
+    return token;
+  }
+
+  /** Frees a lease after a failed send so the retry can claim at once. Best effort; the lease expires anyway. */
+  async releaseGroupNotification(
+    monitorId: string,
+    executionGroupId: string,
+    receipt: GroupReceipt,
+    token: string,
+  ): Promise<void> {
+    if (receipt.kind === 'legacy') return;
+    await this.dbService.db
+      .update(schema.monitorGroupEvaluations)
+      .set({ notificationClaimedAt: null, notificationClaimToken: null })
+      .where(
+        and(
+          eq(schema.monitorGroupEvaluations.monitorId, monitorId),
+          eq(schema.monitorGroupEvaluations.executionGroupId, executionGroupId),
+          eq(schema.monitorGroupEvaluations.notificationClaimToken, token),
+          isNull(schema.monitorGroupEvaluations.notificationProcessedAt),
+        ),
+      );
+  }
+
+  /** Records that the group's alerts were sent, so no retry or late sibling sends them again. */
+  async markGroupNotified(
+    monitorId: string,
+    executionGroupId: string,
+    receipt: GroupReceipt,
+  ): Promise<void> {
+    if (receipt.kind === 'legacy') {
+      await this.dbService.db
+        .update(schema.monitorResults)
+        .set({
+          details: sql`jsonb_set(coalesce(${schema.monitorResults.details}, '{}'::jsonb), '{aggregationNotificationProcessed}', 'true'::jsonb)`,
+        })
+        .where(eq(schema.monitorResults.id, receipt.resultId));
+      return;
+    }
+    // TODO(remove next release): the second statement writes the legacy receipt (one result-row update per
+    // group) so a rollback to a worker that predates monitor_group_evaluations neither re-counts nor
+    // re-alerts it. Both statements commit together. Tracked in the CHANGELOG upgrade note.
+    await this.dbService.db.transaction(async (tx) => {
+      const [done] = await tx
+        .update(schema.monitorGroupEvaluations)
+        .set({ notificationProcessedAt: new Date() })
+        .where(
+          and(
+            eq(schema.monitorGroupEvaluations.monitorId, monitorId),
+            eq(
+              schema.monitorGroupEvaluations.executionGroupId,
+              executionGroupId,
+            ),
+            isNull(schema.monitorGroupEvaluations.notificationProcessedAt),
+          ),
+        )
+        .returning({ evaluation: schema.monitorGroupEvaluations.evaluation });
+      if (!done) return;
       await tx
         .update(schema.monitorResults)
         .set({
-          details: {
-            ...(row.details ?? {}),
-            aggregationEvaluation: evaluation,
-            aggregationNotificationProcessed: false,
-          },
+          details: sql`jsonb_set(jsonb_set(coalesce(${schema.monitorResults.details}, '{}'::jsonb), '{aggregationEvaluation}', ${JSON.stringify(done.evaluation)}::jsonb), '{aggregationNotificationProcessed}', 'true'::jsonb)`,
         })
-        .where(eq(schema.monitorResults.id, row.id));
-      return { monitor, resultId: row.id, evaluation };
+        .where(
+          eq(
+            schema.monitorResults.id,
+            sql`(select id from monitor_results where monitor_id = ${monitorId} and execution_group_id = ${executionGroupId} limit 1)`,
+          ),
+        );
     });
   }
 
@@ -1142,7 +1359,7 @@ export class MonitorEvaluator {
 
   async getMonitorById(monitorId: string): Promise<Monitor | undefined> {
     return this.dbService.db.query.monitors.findFirst({
-      where: eq(schema.monitors.id, monitorId),
+      where: and(eq(schema.monitors.id, monitorId), liveMonitor()),
     });
   }
 }

@@ -715,6 +715,28 @@ suite('MonitorCycleService (PostgreSQL)', () => {
       expect(sendNotification).not.toHaveBeenCalled();
     });
 
+    it('never evaluates a cycle a worker already aggregated into a group receipt', async () => {
+      await openCycle('r4b', { strategy: 'all' });
+      await db.insert(schema.monitorResults).values({
+        monitorId,
+        location: 'eu',
+        checkedAt: t0,
+        status: 'up',
+        isUp: true,
+        executionGroupId: 'r4b',
+      });
+      await db.insert(schema.monitorGroupEvaluations).values({
+        monitorId,
+        executionGroupId: 'r4b',
+        evaluation: { previousStatus: 'up', currentStatus: 'up' },
+      });
+      const before = await monitorRow();
+      expect(await service.closeCycle('r4b', afterDeadline)).toBe('superseded');
+      expect((await monitorRow()).status).toBe(before.status);
+      expect((await cycleRow('r4b')).notifiedAt).not.toBeNull();
+      expect(sendNotification).not.toHaveBeenCalled();
+    });
+
     it('leaves the cycle open and untouched when billing cannot be verified', async () => {
       await openCycle('r5');
       isHeld.mockRejectedValueOnce(

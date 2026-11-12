@@ -1,3 +1,4 @@
+import { liveMonitor } from "@/lib/deletion/visibility";
 import { isUuid } from "@/lib/uuid";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
@@ -39,7 +40,7 @@ export async function GET(
     // Get monitor to check permissions
     if (!isUuid((await context.params).id)) return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
     const monitor = await db.query.monitors.findFirst({
-      where: and(eq(monitors.id, id), isNull(monitors.deletingAt)),
+      where: and(eq(monitors.id, id), liveMonitor()),
       columns: { organizationId: true, projectId: true },
     });
 
@@ -116,7 +117,7 @@ export async function POST(
     // Get monitor to check permissions
     if (!isUuid((await context.params).id)) return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
     const monitor = await db.query.monitors.findFirst({
-      where: and(eq(monitors.id, id), isNull(monitors.deletingAt)),
+      where: and(eq(monitors.id, id), liveMonitor()),
       columns: { organizationId: true, projectId: true },
     });
 
@@ -256,7 +257,7 @@ export async function DELETE(
     // Get monitor to check permissions
     if (!isUuid((await context.params).id)) return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
     const monitor = await db.query.monitors.findFirst({
-      where: and(eq(monitors.id, id), isNull(monitors.deletingAt)),
+      where: and(eq(monitors.id, id), liveMonitor()),
       columns: { organizationId: true, projectId: true },
     });
 

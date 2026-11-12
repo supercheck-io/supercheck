@@ -1,5 +1,6 @@
 "use server";
 
+import { liveJob, liveMonitor } from "@/lib/deletion/visibility";
 import { createHash } from "crypto";
 import { revalidatePath } from "next/cache";
 import {
@@ -1632,10 +1633,12 @@ export async function createSreIncidentFromAlert(
             and(
               eq(monitors.organizationId, organizationId),
               eq(monitors.projectId, project.id),
+              liveMonitor(),
             ),
             and(
               eq(jobs.organizationId, organizationId),
               eq(jobs.projectId, project.id),
+              liveJob(),
             ),
           ),
         ),

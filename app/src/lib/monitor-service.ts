@@ -1,3 +1,4 @@
+import { liveMonitor } from "@/lib/deletion/visibility";
 import { isDeepStrictEqual } from "node:util";
 import { db } from "@/utils/db";
 import {
@@ -162,7 +163,7 @@ export async function updateMonitorHandler(
 ) {
   // Fetch existing monitor to compare old frequency/enabled status
   const existingMonitor = await db.query.monitors.findFirst({
-    where: and(eq(monitorTable.id, monitorId), isNull(monitorTable.deletingAt)),
+    where: and(eq(monitorTable.id, monitorId), liveMonitor(monitorTable)),
   });
 
   if (!existingMonitor) {
@@ -288,7 +289,7 @@ export async function triggerImmediateMonitorExecution(monitorId: string) {
   try {
     // Get monitor details
     const monitor = await db.query.monitors.findFirst({
-      where: and(eq(monitorTable.id, monitorId), isNull(monitorTable.deletingAt)),
+      where: and(eq(monitorTable.id, monitorId), liveMonitor(monitorTable)),
     });
 
     if (!monitor) {

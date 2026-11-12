@@ -1,3 +1,4 @@
+import { liveMonitor } from "@/lib/deletion/visibility";
 import { and, asc, eq, gt, inArray, isNotNull, isNull, ne, or, sql, type AnyColumn } from "drizzle-orm";
 import { monitors, organization, planLimits, statusPages } from "@/db/schema";
 import { createAuditLog } from "@/lib/audit-log";
@@ -16,7 +17,7 @@ type Database = Pick<typeof db, "select" | "transaction" | "update">;
 const activeMonitor = (organizationId: string | AnyColumn) => and(
   eq(monitors.organizationId, organizationId),
   ne(monitors.status, "paused"),
-  isNull(monitors.deletingAt),
+  liveMonitor(),
   notInDeletedProject(monitors.projectId),
 );
 const publishedPage = (organizationId: string | AnyColumn) => and(

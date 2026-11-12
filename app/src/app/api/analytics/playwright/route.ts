@@ -1,3 +1,4 @@
+import { liveJob, liveRunOfLiveJob } from "@/lib/deletion/visibility";
 import { isUuid } from '@/lib/uuid';
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
@@ -57,7 +58,7 @@ export async function GET(request: NextRequest) {
       eq(runs.projectId, targetProjectId),
       sql`${runs.completedAt} IS NOT NULL`,
       // Runs of a job being deleted are gone at once.
-      sql`(${runs.jobId} IS NULL OR NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.id = ${runs.jobId} AND jobs.deleting_at IS NOT NULL))`,
+      liveRunOfLiveJob(runs.jobId),
     ];
 
     if (jobId) {
@@ -80,7 +81,7 @@ export async function GET(request: NextRequest) {
             eq(jobs.projectId, targetProjectId),
             eq(jobs.organizationId, context.organizationId),
             eq(jobs.jobType, 'playwright'),
-            isNull(jobs.deletingAt)
+            liveJob()
           )
         )
         .orderBy(desc(jobs.lastRunAt)),

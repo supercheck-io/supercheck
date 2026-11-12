@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { and, desc, eq, gt, isNotNull, isNull, sql } from 'drizzle-orm';
+import { liveMonitor } from '../db/deletion-visibility';
 import { DbService } from '../db/db.service';
 import * as schema from '../db/schema';
 import type { MonitorCycleEvaluation } from '../db/schema';
@@ -68,10 +69,10 @@ export class MonitorCycleService {
       const [monitor] = await tx
         .select()
         .from(schema.monitors)
-        .where(eq(schema.monitors.id, peek.monitorId))
+        .where(and(eq(schema.monitors.id, peek.monitorId), liveMonitor()))
         .limit(1)
         .for('no key update');
-      // A deleted monitor cascades its cycles away.
+      // A deleted (or deleting) monitor cascades its cycles away.
       if (!monitor) return 'noop';
       const [cycle] = await tx
         .select()
@@ -100,7 +101,18 @@ export class MonitorCycleService {
 
       // An older-image worker may have aggregated this group through the legacy Redis path
       // (rollout or rollback). It already advanced the counters and alerted: never do it twice.
+      const [groupReceipt] = await tx
+        .select({ monitorId: schema.monitorGroupEvaluations.monitorId })
+        .from(schema.monitorGroupEvaluations)
+        .where(
+          and(
+            eq(schema.monitorGroupEvaluations.monitorId, cycle.monitorId),
+            eq(schema.monitorGroupEvaluations.executionGroupId, cycle.id),
+          ),
+        )
+        .limit(1);
       const legacyEvaluated =
+        Boolean(groupReceipt) ||
         rows.some(
           (row) =>
             (row.details as { aggregationEvaluation?: unknown } | null)
@@ -340,7 +352,7 @@ export class MonitorCycleService {
     const [monitor] = await this.dbService.db
       .select()
       .from(schema.monitors)
-      .where(eq(schema.monitors.id, cycle.monitorId))
+      .where(and(eq(schema.monitors.id, cycle.monitorId), liveMonitor()))
       .limit(1);
     if (!monitor) return false;
     const rows = await this.dbService.db

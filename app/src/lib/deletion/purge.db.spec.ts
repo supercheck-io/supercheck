@@ -344,6 +344,25 @@ describe("monitor deletion", () => {
     expect(mockUnscheduleMonitor).toHaveBeenCalled();
   });
 
+  it("purges group evaluation rows in bounded batches before the monitor row", async () => {
+    const mine = await seedMonitor(5);
+    const other = await seedMonitor(5);
+    for (const id of [mine.monitorId, other.monitorId]) {
+      await client`INSERT INTO monitor_group_evaluations (id, monitor_id, execution_group_id, evaluation)
+        SELECT uuidv7(), ${id}, 'g-' || g, '{}'::jsonb FROM generate_series(1, 1200) g`;
+    }
+    await requestMonitorDeletion(scope(mine));
+    queries.length = 0;
+    expect((await drive(mine.monitorId)).state).toBe("completed");
+    expect(await count("monitors", "id", mine.monitorId)).toBe(0);
+    expect(await count("monitor_group_evaluations", "monitor_id", mine.monitorId)).toBe(0);
+    expect(await count("monitor_group_evaluations", "monitor_id", other.monitorId)).toBe(1200);
+    // 1200 rows / 500 per batch: three batched deletes, never one statement per row.
+    const deletes = queries.filter((q) => q.includes('DELETE FROM "monitor_group_evaluations"'));
+    expect(deletes.length).toBeGreaterThanOrEqual(3);
+    expect(deletes.length).toBeLessThan(10);
+  });
+
   it("purges a result written by an in-flight check after the flag", async () => {
     const seeded = await seedMonitor(5);
     await requestMonitorDeletion(scope(seeded));

@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { and, asc, eq, isNull, lte, sql } from 'drizzle-orm';
+import { liveMonitor } from '../../db/deletion-visibility';
 import * as schema from '../../db/schema';
 import { DB_PROVIDER_TOKEN } from './db.service';
 import { resolveSpendingLimit } from './spending-limit';
@@ -839,6 +840,7 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
         and(
           eq(schema.monitors.organizationId, organizationId),
           sql`${schema.monitors.status} <> 'paused'`,
+          liveMonitor(),
         ),
       )
       .orderBy(asc(schema.monitors.createdAt), asc(schema.monitors.id))
@@ -929,6 +931,7 @@ export class UsageTrackerService implements OnModuleInit, OnModuleDestroy {
             and(
               eq(schema.monitors.organizationId, organizationId),
               sql`${schema.monitors.status} <> 'paused'`,
+              liveMonitor(),
             ),
           )
           .orderBy(asc(schema.monitors.createdAt), asc(schema.monitors.id))

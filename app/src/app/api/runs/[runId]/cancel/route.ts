@@ -1,3 +1,4 @@
+import { liveRunOfLiveJob } from "@/lib/deletion/visibility";
 import { isUuid } from "@/lib/uuid";
 import { isSuperAdmin } from "@/lib/rbac/super-admin";
 import { NextRequest, NextResponse } from "next/server";
@@ -94,7 +95,7 @@ export async function POST(
       })
       .from(runs)
       .leftJoin(jobs, eq(runs.jobId, jobs.id))
-      .where(eq(runs.id, runId))
+      .where(and(eq(runs.id, runId), liveRunOfLiveJob(runs.jobId)))
       .limit(1);
 
     const run = runResult[0];

@@ -71,6 +71,7 @@ flowchart TD
 - Use bearer-compatible auth helpers for routes called by CLI/API keys (`requireAuthContext` and `hasPermissionForUser`); cookie-only helpers such as `hasPermission` break those callers.
 - Validate request bodies, params, search params, uploads, provider events, and browser messages at their trust boundary.
 - Reject malformed UUID route params before any database access (`isUuid` in `app/src/lib/uuid.ts`; regression suite `app/src/app/api/malformed-identifiers.spec.ts`).
+- Deleting jobs and monitors: a target with `deleting_at` set must read as missing (404, not counted, not acted on). Build every read, list, count, aggregate, by-id load and write against `monitors`, `jobs` or `runs` from the helpers in `app/src/lib/deletion/visibility.ts` (`liveMonitor`, `liveJob`, `liveRunOfLiveJob`, `notFoundIfDeleting`; worker twin in `worker/src/db/deletion-visibility.ts`), never a hand-written `deleting_at` filter. Only purge/admin/cleanup code that must see deleting rows is exempt: add it to the allowlist in `app/src/lib/deletion/visibility.spec.ts` with a reason, which also fails the build when a new query skips the helper.
 - Use the owning schema to determine scope. Organization-owned resources need organization scoping; project-owned resources need verified organization and project ownership. Do not mechanically add both IDs to tables that do not own both.
 
 ## Database and migration rules

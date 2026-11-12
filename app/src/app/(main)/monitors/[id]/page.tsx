@@ -1,3 +1,4 @@
+import { liveMonitor } from "@/lib/deletion/visibility";
 import { hasPermissionForUser, requireAuth } from "@/lib/rbac/middleware";
 import { monitorConfigForRead, monitorResultForRead, monitorTargetForRead } from "@/lib/monitor-read-config";
 import { Metadata } from "next";
@@ -50,7 +51,7 @@ async function getMonitorDetailsDirectly(id: string): Promise<MonitorWithResults
         })
         .from(monitors)
         .leftJoin(projects, eq(monitors.projectId, projects.id))
-        .where(and(eq(monitors.id, id), isNull(monitors.deletingAt)))
+        .where(and(eq(monitors.id, id), liveMonitor()))
         .limit(1),
 
       // Only load limited results for charts and summary - table will use pagination API

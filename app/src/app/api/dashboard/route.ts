@@ -1,3 +1,4 @@
+import { liveJob, liveMonitor, liveRunOfLiveJob } from "@/lib/deletion/visibility";
 import { NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import {
@@ -57,7 +58,7 @@ export async function GET() {
     const monitorBaseCondition = and(
       eq(monitors.projectId, targetProjectId),
       eq(monitors.organizationId, context.organizationId),
-      isNull(monitors.deletingAt)
+      liveMonitor()
     );
     
     const [
@@ -99,7 +100,7 @@ export async function GET() {
         status: monitors.status,
         lastCheckAt: monitors.lastCheckAt
       }).from(monitors)
-        .where(and(eq(monitors.status, "down"), eq(monitors.projectId, targetProjectId), eq(monitors.organizationId, context.organizationId), isNull(monitors.deletingAt)))
+        .where(and(eq(monitors.status, "down"), eq(monitors.projectId, targetProjectId), eq(monitors.organizationId, context.organizationId), liveMonitor()))
         .limit(5)
     ]);
 
@@ -113,7 +114,7 @@ export async function GET() {
     const jobBaseCondition = and(
       eq(jobs.projectId, targetProjectId),
       eq(jobs.organizationId, context.organizationId),
-      isNull(jobs.deletingAt)
+      liveJob()
     );
     
     // Run-based cards are Playwright-only; k6 runs are read from k6_performance_runs.
@@ -263,7 +264,7 @@ export async function GET() {
           eq(k6PerformanceRuns.organizationId, context.organizationId),
           sql`${k6PerformanceRuns.completedAt} IS NOT NULL`,
           // Runs of a job being deleted are gone at once (anti-join on the jobs primary key).
-          sql`(${k6PerformanceRuns.jobId} IS NULL OR NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.id = ${k6PerformanceRuns.jobId} AND jobs.deleting_at IS NOT NULL))`
+          liveRunOfLiveJob(k6PerformanceRuns.jobId)
         )),
 
     ]);
@@ -290,7 +291,7 @@ export async function GET() {
           gte(monitorResults.checkedAt, last30Days),
           eq(monitors.projectId, targetProjectId),
           eq(monitors.organizationId, context.organizationId),
-          isNull(monitors.deletingAt),
+          liveMonitor(),
           eq(monitors.type, 'synthetic_test'),
           excludeSyntheticResults
         )),
@@ -351,7 +352,7 @@ export async function GET() {
           eq(monitorResults.isUp, true),
           eq(monitors.projectId, targetProjectId),
           eq(monitors.organizationId, context.organizationId),
-          isNull(monitors.deletingAt)
+          liveMonitor()
         )),
 
       // Daily playground executions breakdown (last 30 days)

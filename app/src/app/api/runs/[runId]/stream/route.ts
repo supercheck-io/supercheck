@@ -1,3 +1,4 @@
+import { liveRunOfLiveJob } from "@/lib/deletion/visibility";
 import { isUuid } from "@/lib/uuid";
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/utils/db';
@@ -79,7 +80,8 @@ export async function GET(request: NextRequest, context: RunStreamContext) {
       .where(
         and(
           eq(runs.id, runId),
-          eq(runs.projectId, authCtx.project.id)
+          eq(runs.projectId, authCtx.project.id),
+          liveRunOfLiveJob(runs.jobId)
         )
       )
       .limit(1);
@@ -268,7 +270,7 @@ export async function GET(request: NextRequest, context: RunStreamContext) {
 
           try {
             const currentRun = await db.query.runs.findFirst({
-              where: eq(runs.id, runId),
+              where: and(eq(runs.id, runId), liveRunOfLiveJob(runs.jobId)),
             });
 
             if (!currentRun) {

@@ -2,6 +2,7 @@ import { NextResponse, NextRequest } from "next/server";
 import { db } from "@/utils/db";
 import { alertHistory, jobs, monitors, type AlertDeliveryMetadata } from "@/db/schema";
 import { and, eq, sql } from "drizzle-orm";
+import { liveJob, liveMonitor } from "@/lib/deletion/visibility";
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-context';
 import { enqueueSreAlertTriageJob } from '@/sre/lib/background-alert-triage-queue';
@@ -74,6 +75,7 @@ export async function GET(request: NextRequest) {
                 INNER JOIN jobs j ON ah.job_id = j.id
                 WHERE j.organization_id = ${context.organizationId}
                   AND j.project_id = ${context.project.id}
+                  AND ${liveJob("j")}
               )
               UNION ALL
               (
@@ -82,6 +84,7 @@ export async function GET(request: NextRequest) {
                 INNER JOIN monitors m ON ah.monitor_id = m.id
                 WHERE m.organization_id = ${context.organizationId}
                   AND m.project_id = ${context.project.id}
+                  AND ${liveMonitor("m")}
               )
             )
             SELECT count(*)::int as total FROM history
@@ -112,6 +115,7 @@ export async function GET(request: NextRequest) {
           LEFT JOIN notification_providers np ON np.id::text = ah.provider
           WHERE j.organization_id = ${context.organizationId}
             AND j.project_id = ${context.project.id}
+            AND ${liveJob("j")}
         )
         UNION ALL
         (
@@ -137,6 +141,7 @@ export async function GET(request: NextRequest) {
           LEFT JOIN notification_providers np ON np.id::text = ah.provider
           WHERE m.organization_id = ${context.organizationId}
             AND m.project_id = ${context.project.id}
+            AND ${liveMonitor("m")}
         )
         ORDER BY "timestamp" DESC, id DESC
         LIMIT ${limit}
@@ -371,6 +376,7 @@ export async function POST(request: NextRequest) {
         eq(table.id, sourceId),
         eq(table.organizationId, projectContext.organizationId),
         eq(table.projectId, projectContext.project.id),
+        body.targetType === "monitor" ? liveMonitor() : liveJob(),
       ))
       .limit(1);
     if (!source) {

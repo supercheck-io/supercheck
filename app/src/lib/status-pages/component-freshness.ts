@@ -1,6 +1,7 @@
+import { liveMonitor } from "@/lib/deletion/visibility";
 import { db } from "@/utils/db";
 import { monitors, statusPageComponentMonitors } from "@/db/schema";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { staleComponentIds } from "./stale-components";
 
 /** Components whose linked monitors all stopped reporting; shared by the public page and badge. */
@@ -27,5 +28,5 @@ function loadLinks(componentIds: string[]) {
     })
     .from(statusPageComponentMonitors)
     .innerJoin(monitors, eq(monitors.id, statusPageComponentMonitors.monitorId))
-    .where(inArray(statusPageComponentMonitors.componentId, componentIds));
+    .where(and(inArray(statusPageComponentMonitors.componentId, componentIds), liveMonitor()));
 }

@@ -1,3 +1,4 @@
+import { liveJob } from "@/lib/deletion/visibility";
 import { getJobTriggerBaseUrl } from "@/lib/deprecated-env";
 import { getExecutionPolicy, ExecutionWorkloadError, type ExecutionPolicy } from "@/lib/execution/execution-policy";
 import { NextRequest, NextResponse } from "next/server";
@@ -240,7 +241,7 @@ export async function POST(
       .from(jobs)
       // Jobs keep their trigger keys after project deletion; only active projects may run (as for CLI tokens).
       .leftJoin(projects, eq(projects.id, jobs.projectId))
-      .where(and(eq(jobs.id, jobId), isNull(jobs.deletingAt), or(isNull(jobs.projectId), eq(projects.status, "active"))))
+      .where(and(eq(jobs.id, jobId), liveJob(), or(isNull(jobs.projectId), eq(projects.status, "active"))))
       .limit(1);
 
     if (jobResult.length === 0) {
@@ -698,7 +699,7 @@ export async function GET(
           eq(jobs.id, jobId),
           eq(jobs.projectId, project.id),
           eq(jobs.organizationId, organizationId),
-          isNull(jobs.deletingAt)
+          liveJob()
         )
       )
       .limit(1);

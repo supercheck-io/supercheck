@@ -8,7 +8,8 @@ import {
   tests,
   projects,
 } from "@/db/schema";
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
+import { liveMonitor, liveRunOfLiveJob } from "@/lib/deletion/visibility";
 
 export type AccessContext = {
   organizationId: string | null;
@@ -33,7 +34,7 @@ export async function resolveAccessContext(
         })
         .from(runs)
         .leftJoin(projects, eq(projects.id, runs.projectId))
-        .where(eq(runs.id, entityId))
+        .where(and(eq(runs.id, entityId), liveRunOfLiveJob(runs.jobId)))
         .limit(1);
 
       if (runResult.length) {
@@ -53,7 +54,7 @@ export async function resolveAccessContext(
         })
         .from(runs)
         .leftJoin(projects, eq(projects.id, runs.projectId))
-        .where(sql`${runs.metadata}->>'testId' = ${entityId}`)
+        .where(and(sql`${runs.metadata}->>'testId' = ${entityId}`, liveRunOfLiveJob(runs.jobId)))
         .orderBy(desc(runs.createdAt))
         .limit(1);
 
@@ -89,7 +90,7 @@ export async function resolveAccessContext(
         })
         .from(runs)
         .leftJoin(jobs, eq(jobs.id, runs.jobId))
-        .where(eq(runs.id, entityId))
+        .where(and(eq(runs.id, entityId), liveRunOfLiveJob(runs.jobId)))
         .limit(1);
 
       if (!result.length) return null;
@@ -106,7 +107,7 @@ export async function resolveAccessContext(
           projectId: k6PerformanceRuns.projectId,
         })
         .from(k6PerformanceRuns)
-        .where(eq(k6PerformanceRuns.runId, entityId))
+        .where(and(eq(k6PerformanceRuns.runId, entityId), liveRunOfLiveJob(k6PerformanceRuns.jobId)))
         .limit(1);
 
       if (!result.length) return null;
@@ -124,7 +125,7 @@ export async function resolveAccessContext(
         })
         .from(monitorResults)
         .leftJoin(monitors, eq(monitors.id, monitorResults.monitorId))
-        .where(eq(monitorResults.testExecutionId, entityId))
+        .where(and(eq(monitorResults.testExecutionId, entityId), liveMonitor()))
         .limit(1);
 
       if (result.length) {
@@ -140,7 +141,7 @@ export async function resolveAccessContext(
           projectId: monitors.projectId,
         })
         .from(monitors)
-        .where(eq(monitors.id, entityId))
+        .where(and(eq(monitors.id, entityId), liveMonitor()))
         .limit(1);
 
       if (!monitorRecord.length) return null;

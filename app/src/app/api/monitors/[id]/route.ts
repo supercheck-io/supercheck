@@ -1,3 +1,4 @@
+import { liveMonitor } from "@/lib/deletion/visibility";
 import { deleteMonitorWithContext } from "@/lib/resource-deletion/monitor";
 import { isInvalidUuidError, isUuid } from "@/lib/uuid";
 import { isDeepStrictEqual } from "node:util";
@@ -104,7 +105,7 @@ export async function GET(
         eq(monitors.id, id),
         eq(monitors.projectId, context.project.id),
         eq(monitors.organizationId, context.organizationId),
-        isNull(monitors.deletingAt),
+        liveMonitor(),
       ),
     });
 
@@ -223,7 +224,7 @@ export async function PUT(
         eq(monitors.id, id),
         eq(monitors.projectId, authCtx.project.id),
         eq(monitors.organizationId, authCtx.organizationId),
-        isNull(monitors.deletingAt),
+        liveMonitor(),
       ),
     });
 
@@ -404,7 +405,7 @@ export async function PUT(
               eq(monitors.id, id),
               eq(monitors.projectId, authCtx.project.id),
               eq(monitors.organizationId, authCtx.organizationId),
-              isNull(monitors.deletingAt),
+              liveMonitor(),
             ),
           )
           .returning();
@@ -616,6 +617,7 @@ export async function PATCH(
         eq(monitors.id, id),
         eq(monitors.projectId, authCtx.project.id),
         eq(monitors.organizationId, authCtx.organizationId),
+        liveMonitor(),
       ),
     });
 

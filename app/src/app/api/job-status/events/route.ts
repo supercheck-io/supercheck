@@ -1,11 +1,12 @@
 
+import { liveRunOfLiveJob } from "@/lib/deletion/visibility";
 import { NextResponse } from "next/server";
 import { getQueueEventHub, NormalizedQueueEvent } from "@/lib/queue-event-hub";
 import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { db } from "@/utils/db";
 import { runs, jobs, tests } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { formatBillingBlockedMessage } from "@/lib/billing-errors";
 
 const encoder = new TextEncoder();
@@ -134,7 +135,7 @@ export async function GET(request: Request) {
                 })
                 .from(runs)
                 .leftJoin(jobs, eq(runs.jobId, jobs.id))
-                .where(eq(runs.id, runId))
+                .where(and(eq(runs.id, runId), liveRunOfLiveJob(runs.jobId)))
                 .limit(1);
 
               if (result.length === 0) {

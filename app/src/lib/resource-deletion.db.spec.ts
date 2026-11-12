@@ -37,9 +37,9 @@ beforeAll(async () => {
   client = postgres(url.toString(), { max: 1 });
   mockDatabase = drizzle(client, { schema, logger: { logQuery: (query) => { queries.push(query); } } });
   await client.unsafe(`
-    CREATE TABLE jobs (id text PRIMARY KEY, project_id text, organization_id text, name text, description text, cron_schedule text, status text);
+    CREATE TABLE jobs (id text PRIMARY KEY, project_id text, organization_id text, name text, description text, cron_schedule text, status text, deleting_at timestamptz);
     CREATE TABLE job_tests (job_id text REFERENCES jobs(id));
-    CREATE TABLE monitors (id text PRIMARY KEY, project_id text, organization_id text, name text, type text, target text);
+    CREATE TABLE monitors (id text PRIMARY KEY, project_id text, organization_id text, name text, type text, target text, deleting_at timestamptz);
     CREATE TABLE monitor_results (id text PRIMARY KEY, monitor_id text REFERENCES monitors(id), test_execution_id text, test_report_s3_url text);
     CREATE TABLE runs (id text PRIMARY KEY, project_id text, job_id text, status text, trigger text, started_at timestamptz, report_s3_url text, logs_s3_url text, metadata jsonb, completed_at timestamptz, error_details text, created_at timestamptz DEFAULT now());
     CREATE TABLE reports (id text PRIMARY KEY, entity_id text, entity_type text, report_path text, s3_url text);

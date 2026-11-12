@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { and, eq, inArray, lte, gt, ne, sql } from 'drizzle-orm';
+import { liveMonitor } from '../../db/deletion-visibility';
 import { DbService } from '../../db/db.service';
 import * as schema from '../../db/schema';
 import {
@@ -765,7 +766,7 @@ export class MonitorAlertService {
 
     // Get monitor details
     const monitor = await db.query.monitors.findFirst({
-      where: eq(schema.monitors.id, monitorId),
+      where: and(eq(schema.monitors.id, monitorId), liveMonitor()),
     });
 
     if (!monitor) {

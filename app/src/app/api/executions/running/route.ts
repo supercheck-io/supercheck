@@ -1,3 +1,4 @@
+import { liveRunOfLiveJob } from "@/lib/deletion/visibility";
 import { NextResponse } from 'next/server';
 import { db } from '@/utils/db';
 import { runs, jobs, projects } from '@/db/schema';
@@ -70,6 +71,7 @@ export async function GET() {
         and(
           eq(projects.organizationId, organizationId),
           isOrgLevelRole ? undefined : eq(runs.projectId, project.id),
+          liveRunOfLiveJob(runs.jobId),
           or(
             eq(runs.status, 'running'),
             eq(runs.status, 'queued')

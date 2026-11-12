@@ -12,6 +12,8 @@ export interface TelemetryRetentionRule {
   protect?: string;
   /** Floor for the per-run row cap, for tables that grow faster than the shared limit. */
   minSafetyLimit?: number;
+  /** Smallest retention honoured; a lower setting is raised to it (rows a correctness check still needs). */
+  minDays?: number;
 }
 
 export const TELEMETRY_RETENTION_RULES: readonly TelemetryRetentionRule[] = [
@@ -63,6 +65,17 @@ export const TELEMETRY_RETENTION_RULES: readonly TelemetryRetentionRule[] = [
     defaultDays: 30,
     protect: `{a}.expanded_at IS NOT NULL AND NOT EXISTS (SELECT 1 FROM status_page_notification_deliveries d WHERE d.event_id = {a}.id AND d.status NOT IN ('delivered', 'failed', 'skipped'))`,
   },
+  {
+    // Alert receipts of worker-aggregated monitor check groups. A group's retries and late regions end
+    // within about 80 minutes, so two weeks is ample; deleting a receipt never deletes check results.
+    table: "monitor_group_evaluations",
+    timeColumn: "created_at",
+    envVar: "MONITOR_GROUP_EVALUATION_RETENTION_DAYS",
+    defaultDays: 14,
+    // A receipt-less group older than a day is dropped only if the monitor holds a newer check, and a processed
+    // receipt is mirrored onto a result row; keep receipts past that window so a purge never re-applies a group.
+    minDays: 2,
+  },
 ];
 
 /** Positive integer days from env; anything else falls back so a typo never deletes more than intended. */
@@ -71,9 +84,14 @@ export function resolveRetentionDays(
   env: Record<string, string | undefined> = process.env,
 ): number {
   const parsed = Number(env[rule.envVar]);
-  return Number.isInteger(parsed) && parsed >= 1 && parsed <= 3650
-    ? parsed
-    : rule.defaultDays;
+  const days =
+    Number.isInteger(parsed) && parsed >= 1 && parsed <= 3650
+      ? parsed
+      : rule.defaultDays;
+  const min = rule.minDays ?? 1;
+  if (days >= min) return days;
+  console.warn(`[DATA_LIFECYCLE] ${rule.envVar}=${days} is below the minimum ${min}; using ${min}`);
+  return min;
 }
 
 /** Integer in [min, max] from a raw value; anything else (NaN, negative, too large) falls back with a warning. */

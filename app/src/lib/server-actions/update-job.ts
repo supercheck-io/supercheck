@@ -1,3 +1,4 @@
+import { liveJob } from "@/lib/deletion/visibility";
 import "server-only";
 
 import { db } from "@/utils/db";
@@ -144,7 +145,7 @@ export async function updateJob(data: UpdateJobData, contextOverride?: UpdateJob
           eq(jobs.id, validatedData.jobId),
           eq(jobs.projectId, project.id),
           eq(jobs.organizationId, organizationId),
-          isNull(jobs.deletingAt)
+          liveJob()
         )
       )
       .limit(1);

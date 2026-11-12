@@ -1,5 +1,5 @@
 {
-  "id": "c75d319c-048e-4b18-bdc6-4fc36d90acaa",
+  "id": "fbbef6fc-7820-4315-81c0-d61cf8d9e2e4",
   "prevId": "f9f5cba9-141f-4418-9534-335ef8e8e45a",
   "version": "7",
   "dialect": "postgresql",
@@ -1875,174 +1875,6 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.deletion_jobs": {
-      "name": "deletion_jobs",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "scope": {
-          "name": "scope",
-          "type": "varchar(20)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "target_id": {
-          "name": "target_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "organization_id": {
-          "name": "organization_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "state": {
-          "name": "state",
-          "type": "varchar(20)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'queued'"
-        },
-        "phase": {
-          "name": "phase",
-          "type": "varchar(40)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "cursor": {
-          "name": "cursor",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'{}'::jsonb"
-        },
-        "attempts": {
-          "name": "attempts",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "next_attempt_at": {
-          "name": "next_attempt_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "heartbeat_at": {
-          "name": "heartbeat_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "owner_token": {
-          "name": "owner_token",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "last_error": {
-          "name": "last_error",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "requested_by_user_id": {
-          "name": "requested_by_user_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "started_at": {
-          "name": "started_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "completed_at": {
-          "name": "completed_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "deletion_jobs_active_target_idx": {
-          "name": "deletion_jobs_active_target_idx",
-          "columns": [
-            {
-              "expression": "scope",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "target_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "state <> 'completed'",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "deletion_jobs_pending_idx": {
-          "name": "deletion_jobs_pending_idx",
-          "columns": [
-            {
-              "expression": "state",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "next_attempt_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "state IN ('queued', 'running')",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "deletion_jobs_scope_check": {
-          "name": "deletion_jobs_scope_check",
-          "value": "\"deletion_jobs\".\"scope\" IN ('job', 'monitor', 'project', 'organization')"
-        },
-        "deletion_jobs_state_check": {
-          "name": "deletion_jobs_state_check",
-          "value": "\"deletion_jobs\".\"state\" IN ('queued', 'running', 'completed', 'failed')"
-        }
-      },
       "isRLSEnabled": false
     },
     "public.device_authorizations": {
@@ -6030,12 +5862,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "deleting_at": {
-          "name": "deleting_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -6051,22 +5877,6 @@
         }
       },
       "indexes": {
-        "jobs_deleting_idx": {
-          "name": "jobs_deleting_idx",
-          "columns": [
-            {
-              "expression": "id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "deleting_at IS NOT NULL",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "jobs_organization_id_idx": {
           "name": "jobs_organization_id_idx",
           "columns": [
@@ -7281,12 +7091,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "deleting_at": {
-          "name": "deleting_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
         "scheduled_job_id": {
           "name": "scheduled_job_id",
           "type": "varchar(255)",
@@ -7308,22 +7112,6 @@
         }
       },
       "indexes": {
-        "monitors_deleting_idx": {
-          "name": "monitors_deleting_idx",
-          "columns": [
-            {
-              "expression": "id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "deleting_at IS NOT NULL",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "monitors_project_org_status_idx": {
           "name": "monitors_project_org_status_idx",
           "columns": [
@@ -8042,6 +7830,119 @@
           "value": "\"monitor_cycles\".\"result_status\" IS NULL OR \"monitor_cycles\".\"result_status\" IN ('up', 'down')"
         }
       },
+      "isRLSEnabled": false
+    },
+    "public.monitor_group_evaluations": {
+      "name": "monitor_group_evaluations",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "monitor_id": {
+          "name": "monitor_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "execution_group_id": {
+          "name": "execution_group_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "evaluation": {
+          "name": "evaluation",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "notification_processed_at": {
+          "name": "notification_processed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "notification_claimed_at": {
+          "name": "notification_claimed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "notification_claim_token": {
+          "name": "notification_claim_token",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "monitor_group_evaluations_group_idx": {
+          "name": "monitor_group_evaluations_group_idx",
+          "columns": [
+            {
+              "expression": "monitor_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "execution_group_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "monitor_group_evaluations_created_at_idx": {
+          "name": "monitor_group_evaluations_created_at_idx",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "monitor_group_evaluations_monitor_id_monitors_id_fk": {
+          "name": "monitor_group_evaluations_monitor_id_monitors_id_fk",
+          "tableFrom": "monitor_group_evaluations",
+          "tableTo": "monitors",
+          "columnsFrom": [
+            "monitor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.alert_history": {
@@ -9421,22 +9322,6 @@
             }
           ],
           "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "reports_test_report_path_idx": {
-          "name": "reports_test_report_path_idx",
-          "columns": [
-            {
-              "expression": "report_path",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "entity_type = 'test'",
           "concurrently": false,
           "method": "btree",
           "with": {}

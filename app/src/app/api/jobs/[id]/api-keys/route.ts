@@ -1,3 +1,4 @@
+import { liveJob } from "@/lib/deletion/visibility";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { apikey, jobs, user } from "@/db/schema";
@@ -58,7 +59,7 @@ export async function GET(
           eq(jobs.id, jobId),
           eq(jobs.projectId, authCtx.project.id),
           eq(jobs.organizationId, authCtx.organizationId),
-          isNull(jobs.deletingAt)
+          liveJob()
         )
       )
       .limit(1);
@@ -195,7 +196,7 @@ export async function POST(
           eq(jobs.id, jobId),
           eq(jobs.projectId, authCtx.project.id),
           eq(jobs.organizationId, authCtx.organizationId),
-          isNull(jobs.deletingAt)
+          liveJob()
         )
       )
       .limit(1);

@@ -1,3 +1,4 @@
+import { liveMonitor } from "@/lib/deletion/visibility";
 import { NextResponse } from "next/server";
 import { getExecutionPolicy } from "@/lib/execution/execution-policy";
 /**
@@ -146,7 +147,7 @@ export async function checkUsageLimit(
  */
 export async function countPlanMonitors(executor: PlanLimitTransaction | typeof db, organizationId: string): Promise<number> {
   const [row] = await executor.select({ count: sql<number>`count(*)` }).from(monitors).where(and(
-    eq(monitors.organizationId, organizationId), ne(monitors.status, "paused"), isNull(monitors.deletingAt), notInDeletedProject(monitors.projectId)));
+    eq(monitors.organizationId, organizationId), ne(monitors.status, "paused"), liveMonitor(), notInDeletedProject(monitors.projectId)));
   return Number(row?.count ?? 0);
 }
 

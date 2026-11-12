@@ -15,6 +15,7 @@ jest.mock("drizzle-orm", () => ({
   eq: (_column: unknown, value: unknown) => ({ eq: value }),
   and: (...conditions: unknown[]) => ({ and: conditions }),
 }));
+jest.mock("@/lib/deletion/visibility", () => ({ liveRunOfLiveJob: () => "live-run-of-live-job" }));
 jest.mock("@/lib/rbac/middleware", () => ({ checkPermissionWithContext: jest.fn(() => true) }));
 
 import { GET } from "./route";

@@ -1,3 +1,4 @@
+import { liveJob } from "@/lib/deletion/visibility";
 import { getExecutionPolicy, type ExecutionPolicy } from "@/lib/execution/execution-policy";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
@@ -95,7 +96,7 @@ export async function POST(request: NextRequest) {
         name: jobs.name,
       })
       .from(jobs)
-      .where(and(eq(jobs.id, jobId), isNull(jobs.deletingAt)))
+      .where(and(eq(jobs.id, jobId), liveJob()))
       .limit(1);
     
     if (jobDetails.length === 0) {

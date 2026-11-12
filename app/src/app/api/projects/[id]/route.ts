@@ -1,3 +1,4 @@
+import { liveJob, liveMonitor } from "@/lib/deletion/visibility";
 import { isUuid } from "@/lib/uuid";
 import { NextRequest, NextResponse } from 'next/server';
 import { hasPermissionForUser, getUserOrgRole, forbiddenOrNotFound } from '@/lib/rbac/middleware';
@@ -74,9 +75,9 @@ export async function GET(
     
     // Get project stats using SQL count() aggregate (not fetching all rows)
     const [jobCountResult, testCountResult, monitorCountResult, memberCountResult, userRoleResult, orgRole] = await Promise.all([
-      db.select({ count: count() }).from(jobs).where(and(eq(jobs.projectId, projectId), isNull(jobs.deletingAt))),
+      db.select({ count: count() }).from(jobs).where(and(eq(jobs.projectId, projectId), liveJob())),
       db.select({ count: count() }).from(tests).where(eq(tests.projectId, projectId)),
-      db.select({ count: count() }).from(monitors).where(and(eq(monitors.projectId, projectId), isNull(monitors.deletingAt))),
+      db.select({ count: count() }).from(monitors).where(and(eq(monitors.projectId, projectId), liveMonitor())),
       db.select({ count: count() }).from(projectMembers).where(eq(projectMembers.projectId, projectId)),
       db.select({ role: projectMembers.role }).from(projectMembers).where(and(
         eq(projectMembers.projectId, projectId),

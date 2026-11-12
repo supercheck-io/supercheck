@@ -80,6 +80,8 @@ import {
   MonitorEvaluator,
   sslHost,
   type GroupAlertEvaluation,
+  type GroupReceipt,
+  GROUP_NOTIFICATION_BUSY,
 } from './monitor-evaluator';
 import { nextOutageKey } from '../monitor-control/sequence-counters';
 
@@ -89,7 +91,7 @@ type MonitorResult = z.infer<typeof monitorResultsSelectSchema>;
 
 const RESULT_SAVE_ATTEMPTS = 3;
 // Postgres 23503; drizzle wraps the driver error, so the code can sit on the cause.
-const isForeignKeyViolation = (error: unknown): boolean => {
+export const isForeignKeyViolation = (error: unknown): boolean => {
   for (
     let e = error as { code?: string; cause?: unknown } | undefined, i = 0;
     e && i < 3;
@@ -102,7 +104,7 @@ const isForeignKeyViolation = (error: unknown): boolean => {
 const RESULT_SAVE_BACKOFF_MS = 250;
 // How long a UDP probe waits for a reply or an ICMP port-unreachable before reporting open|filtered.
 const UDP_SILENCE_WAIT_MS = 2000;
-// The completed marker only guards late sibling completions within a job's lifetime (attempts x 15-min lock + backoff + busy retries, under ~80 min); later duplicates are still guarded by the persisted aggregationEvaluation in the DB.
+// The completed marker only guards late sibling completions within a job's lifetime (attempts x 15-min lock + backoff + busy retries, under ~80 min); later duplicates are still guarded by the persisted group receipt (monitor_group_evaluations) in the DB.
 export const AGGREGATION_COMPLETED_TTL_SECONDS = 2 * 60 * 60;
 
 function serializeResponseData(value: unknown): string {
@@ -566,7 +568,11 @@ export class MonitorService {
     let previousStatus = monitor.status;
     const checkedAt = results[0].checkedAt;
     let groupEvaluation:
-      (GroupAlertEvaluation & { resultId: string }) | undefined;
+      | (GroupAlertEvaluation & {
+          executionGroupId: string;
+          receipt: GroupReceipt;
+        })
+      | undefined;
     if (options?.executionGroupId) {
       const prepared = await this.prepareGroupEvaluation(
         monitorId,
@@ -579,7 +585,11 @@ export class MonitorService {
       monitor = prepared.monitor;
       previousStatus = prepared.evaluation.previousStatus;
       overallStatus = prepared.evaluation.currentStatus;
-      groupEvaluation = { ...prepared.evaluation, resultId: prepared.resultId };
+      groupEvaluation = {
+        ...prepared.evaluation,
+        executionGroupId: options.executionGroupId,
+        receipt: prepared.receipt,
+      };
     } else {
       await this.updateMonitorStatus(monitorId, overallStatus, checkedAt);
     }
@@ -623,35 +633,63 @@ export class MonitorService {
       );
     }
 
-    // Use consolidated alert evaluation method with threshold support
-    await this.evaluateAndSendAlert({
-      monitorId,
-      monitor,
-      previousStatus,
-      currentStatus,
-      reason,
-      preparedAlertState: groupEvaluation?.alertState,
-      observedAt: checkedAt,
-      metadata: {
-        responseTime: avgResponseTime,
-        locationResults: results.map((r) => ({
-          location: r.location,
-          isUp: r.isUp,
-          responseTime: r.responseTimeMs,
-        })),
-      },
-    });
-    for (const result of results) {
-      await this.checkSslExpirationAlert(result, monitor);
+    // Lease the send: a retry within the lease finds it held and sends nothing; a failed send releases it.
+    const claimToken = groupEvaluation
+      ? await this.evaluator.claimGroupNotification(
+          monitorId,
+          groupEvaluation.executionGroupId,
+          groupEvaluation.receipt,
+        )
+      : undefined;
+    // A live lease means the alert is not sent yet: fail as busy so the job retries after the lease, instead of
+    // completing and leaving a dead sender's alert undelivered.
+    if (claimToken === GROUP_NOTIFICATION_BUSY)
+      throw new MonitorAggregationBusyError();
+    if (groupEvaluation && !claimToken) return;
+    try {
+      // Use consolidated alert evaluation method with threshold support
+      await this.evaluateAndSendAlert({
+        monitorId,
+        monitor,
+        previousStatus,
+        currentStatus,
+        reason,
+        preparedAlertState: groupEvaluation?.alertState,
+        observedAt: checkedAt,
+        metadata: {
+          responseTime: avgResponseTime,
+          locationResults: results.map((r) => ({
+            location: r.location,
+            isUp: r.isUp,
+            responseTime: r.responseTimeMs,
+          })),
+        },
+      });
+      for (const result of results) {
+        await this.checkSslExpirationAlert(result, monitor);
+      }
+    } catch (error) {
+      if (groupEvaluation && claimToken)
+        await this.evaluator
+          .releaseGroupNotification(
+            monitorId,
+            groupEvaluation.executionGroupId,
+            groupEvaluation.receipt,
+            claimToken,
+          )
+          .catch((releaseError: unknown) =>
+            this.logger.warn(
+              `Unable to release group notification lease for ${groupEvaluation.executionGroupId}: ${getErrorMessage(releaseError)}`,
+            ),
+          );
+      throw error;
     }
-    if (groupEvaluation) {
-      await this.dbService.db
-        .update(schema.monitorResults)
-        .set({
-          details: sql`jsonb_set(coalesce(${schema.monitorResults.details}, '{}'::jsonb), '{aggregationNotificationProcessed}', 'true'::jsonb)`,
-        })
-        .where(eq(schema.monitorResults.id, groupEvaluation.resultId));
-    }
+    if (groupEvaluation)
+      await this.evaluator.markGroupNotified(
+        monitorId,
+        groupEvaluation.executionGroupId,
+        groupEvaluation.receipt,
+      );
   }
 
   private isMultiLocationEvaluation(

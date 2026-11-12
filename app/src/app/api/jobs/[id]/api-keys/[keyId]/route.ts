@@ -1,3 +1,4 @@
+import { liveJob } from "@/lib/deletion/visibility";
 import { isUuid } from "@/lib/uuid";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
@@ -50,7 +51,7 @@ export async function PATCH(
           eq(apikey.jobId, jobId),
           eq(jobs.projectId, authCtx.project.id),
           eq(jobs.organizationId, authCtx.organizationId),
-          isNull(jobs.deletingAt)
+          liveJob()
         )
       )
       .limit(1);
@@ -140,7 +141,7 @@ export async function DELETE(
           eq(apikey.jobId, jobId),
           eq(jobs.projectId, authCtx.project.id),
           eq(jobs.organizationId, authCtx.organizationId),
-          isNull(jobs.deletingAt)
+          liveJob()
         )
       )
       .limit(1);

@@ -1,3 +1,4 @@
+import { liveMonitor } from "@/lib/deletion/visibility";
 import { NextRequest, NextResponse } from "next/server";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/utils/db";
@@ -21,7 +22,7 @@ async function monitorExists(monitorId: string, organizationId: string, projectI
     .where(
       and(
         eq(monitors.id, monitorId),
-        isNull(monitors.deletingAt),
+        liveMonitor(),
         eq(monitors.organizationId, organizationId),
         eq(monitors.projectId, projectId)
       )
@@ -138,7 +139,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       const locked = await tx
         .select({ id: monitors.id })
         .from(monitors)
-        .where(and(eq(monitors.id, monitorId), isNull(monitors.deletingAt), eq(monitors.organizationId, organizationId), eq(monitors.projectId, project.id)))
+        .where(and(eq(monitors.id, monitorId), liveMonitor(), eq(monitors.organizationId, organizationId), eq(monitors.projectId, project.id)))
         .for("update");
       if (locked.length === 0) return false; // deleted between the check above and the lock
       await tx.delete(monitorTags).where(eq(monitorTags.monitorId, monitorId));
@@ -221,7 +222,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         const locked = await tx
           .select({ id: monitors.id })
           .from(monitors)
-          .where(and(eq(monitors.id, monitorId), isNull(monitors.deletingAt), eq(monitors.organizationId, organizationId), eq(monitors.projectId, project.id)))
+          .where(and(eq(monitors.id, monitorId), liveMonitor(), eq(monitors.organizationId, organizationId), eq(monitors.projectId, project.id)))
           .for("update");
         if (locked.length === 0) throw new TagLimitError("not-found");
         if (remove.length > 0) {

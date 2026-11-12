@@ -27,7 +27,7 @@ export async function requestJobDeletion(scope: Scope) {
   const result = await db.transaction(async (tx): Promise<DeletionRequest<{ name: string; description: string | null; cronSchedule: string | null; deletionId: string }>> => {
     await limit(tx);
     const where = and(eq(jobs.id, scope.id), eq(jobs.projectId, scope.projectId), eq(jobs.organizationId, scope.organizationId));
-    // FOR UPDATE first: it waits for runs being inserted right now and blocks new ones (see the runs trigger in migration 0074),
+    // FOR UPDATE first: it waits for runs being inserted right now and blocks new ones (see the runs trigger in migration 0075),
     // so the cancellation below sees every run that exists and none can be created afterwards.
     const [current] = await tx.select({ name: jobs.name, description: jobs.description, cronSchedule: jobs.cronSchedule, deletingAt: jobs.deletingAt }).from(jobs).where(where).for("update");
     if (!current) return { status: "not_found" };
@@ -54,7 +54,7 @@ export async function requestMonitorDeletion(scope: Scope) {
   const result = await db.transaction(async (tx): Promise<DeletionRequest<{ name: string; type: string; target: string; deletionId: string }>> => {
     await limit(tx);
     const where = and(eq(monitors.id, scope.id), eq(monitors.projectId, scope.projectId), eq(monitors.organizationId, scope.organizationId));
-    // FOR UPDATE first: it waits for status page links being inserted right now and blocks new ones (trigger in migration 0074).
+    // FOR UPDATE first: it waits for status page links being inserted right now and blocks new ones (trigger in migration 0075).
     const [current] = await tx.select({ name: monitors.name, type: monitors.type, target: monitors.target, deletingAt: monitors.deletingAt }).from(monitors).where(where).for("update");
     if (!current) return { status: "not_found" };
     if (current.deletingAt) return { status: "already" };

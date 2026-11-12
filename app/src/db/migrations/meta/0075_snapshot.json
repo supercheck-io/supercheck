@@ -1,6 +1,6 @@
 {
-  "id": "51220505-3ccd-43d3-92dd-df56c51ec6e4",
-  "prevId": "c75d319c-048e-4b18-bdc6-4fc36d90acaa",
+  "id": "9afeb5ce-8943-4299-9e23-7a109d8b2f69",
+  "prevId": "fbbef6fc-7820-4315-81c0-d61cf8d9e2e4",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -8042,6 +8042,119 @@
           "value": "\"monitor_cycles\".\"result_status\" IS NULL OR \"monitor_cycles\".\"result_status\" IN ('up', 'down')"
         }
       },
+      "isRLSEnabled": false
+    },
+    "public.monitor_group_evaluations": {
+      "name": "monitor_group_evaluations",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "monitor_id": {
+          "name": "monitor_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "execution_group_id": {
+          "name": "execution_group_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "evaluation": {
+          "name": "evaluation",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "notification_processed_at": {
+          "name": "notification_processed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "notification_claimed_at": {
+          "name": "notification_claimed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "notification_claim_token": {
+          "name": "notification_claim_token",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "monitor_group_evaluations_group_idx": {
+          "name": "monitor_group_evaluations_group_idx",
+          "columns": [
+            {
+              "expression": "monitor_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "execution_group_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "monitor_group_evaluations_created_at_idx": {
+          "name": "monitor_group_evaluations_created_at_idx",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "monitor_group_evaluations_monitor_id_monitors_id_fk": {
+          "name": "monitor_group_evaluations_monitor_id_monitors_id_fk",
+          "tableFrom": "monitor_group_evaluations",
+          "tableTo": "monitors",
+          "columnsFrom": [
+            "monitor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.alert_history": {

@@ -1,6 +1,7 @@
+import { liveRunOfLiveJob } from "@/lib/deletion/visibility";
 import { isUuid } from "@/lib/uuid";
 import { NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/utils/db";
 import { jobs, runs } from "@/db/schema";
 import { getQueueEventHub, NormalizedQueueEvent } from "@/lib/queue-event-hub";
@@ -13,7 +14,7 @@ const serialize = (payload: Record<string, unknown>) =>
 
 async function fetchRunDetails(runId: string) {
   const run = await db.query.runs.findFirst({
-    where: eq(runs.id, runId),
+    where: and(eq(runs.id, runId), liveRunOfLiveJob(runs.jobId)),
   });
 
   if (!run) {
@@ -79,7 +80,7 @@ export async function GET(request: Request) {
     })
     .from(runs)
     .leftJoin(jobs, eq(jobs.id, runs.jobId))
-    .where(eq(runs.id, runId))
+    .where(and(eq(runs.id, runId), liveRunOfLiveJob(runs.jobId)))
     .limit(1);
 
   if (!runRecord.length) {
