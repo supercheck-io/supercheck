@@ -167,7 +167,7 @@ export async function deleteRunWithContext(runId: string, context: ProjectAuthCo
   try {
     // Get current project context (includes auth verification)
     console.log("[DELETE_RUN] Getting project context...");
-    const { userId, project, organizationId } = context;
+    const { userId, project, organizationId, orgPendingDeletion } = context;
     console.log("[DELETE_RUN] Project context:", {
       userId: userId.substring(0, 8) + "...",
       projectId: project.id,
@@ -179,6 +179,7 @@ export async function deleteRunWithContext(runId: string, context: ProjectAuthCo
     const canDeleteJobs = checkPermissionWithContext("run", "delete", {
       userId,
       organizationId,
+      orgPendingDeletion,
       project,
     });
     console.log("[DELETE_RUN] Permission check result:", canDeleteJobs);

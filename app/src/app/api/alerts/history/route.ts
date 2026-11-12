@@ -267,7 +267,7 @@ async function alertHistoryDeliveryMetadataColumnExists(
 export async function POST(request: NextRequest) {
   try {
     // Require authentication and project context
-    let projectContext: { userId: string; project: { id: string; name: string; organizationId: string; userRole: string }; organizationId: string; isCliAuth: boolean };
+    let projectContext: { userId: string; project: { id: string; name: string; organizationId: string; userRole: string }; organizationId: string; orgPendingDeletion: boolean; isCliAuth: boolean };
     try {
       projectContext = await requireAuthContext();
     } catch (error) {

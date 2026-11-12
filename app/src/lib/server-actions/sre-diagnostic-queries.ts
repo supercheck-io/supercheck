@@ -65,8 +65,8 @@ function formatValidationErrors(error: z.ZodError) {
   return Object.fromEntries(Object.entries(flattened).filter(([, errors]) => Array.isArray(errors) && errors.length > 0)) as Record<string, string[]>;
 }
 
-function assertCanConfigureDiagnosticQueries(userId: string, organizationId: string, project: ProjectContext) {
-  const canConfigure = checkPermissionWithContext("sre_connector", "configure", { userId, organizationId, project });
+function assertCanConfigureDiagnosticQueries(userId: string, organizationId: string, orgPendingDeletion: boolean, project: ProjectContext) {
+  const canConfigure = checkPermissionWithContext("sre_connector", "configure", { userId, organizationId, orgPendingDeletion, project });
   if (!canConfigure) {
     throw new Error("Insufficient permissions to configure SRE diagnostic queries");
   }
@@ -104,8 +104,8 @@ export async function getSreDiagnosticQueries(requestContext?: ProjectAuthContex
   | { success: false; error: string; queries: [] }
 > {
   try {
-    const { userId, organizationId, project } = requestContext ?? await requireProjectContext();
-    assertCanConfigureDiagnosticQueries(userId, organizationId, project);
+    const { userId, organizationId, orgPendingDeletion, project } = requestContext ?? await requireProjectContext();
+    assertCanConfigureDiagnosticQueries(userId, organizationId, orgPendingDeletion, project);
 
     const rows = await db
       .select({
@@ -145,8 +145,8 @@ export async function getSreDiagnosticQuerySetupOptions(requestContext?: Project
   const emptyOptions = { connectors: [] };
 
   try {
-    const { userId, organizationId, project } = requestContext ?? await requireProjectContext();
-    assertCanConfigureDiagnosticQueries(userId, organizationId, project);
+    const { userId, organizationId, orgPendingDeletion, project } = requestContext ?? await requireProjectContext();
+    assertCanConfigureDiagnosticQueries(userId, organizationId, orgPendingDeletion, project);
 
     const connectors = await db
       .select({ id: externalConnectors.id, name: externalConnectors.name, type: externalConnectors.type, status: externalConnectors.status })
@@ -168,8 +168,8 @@ export async function createSreDiagnosticQuery(input: z.infer<typeof createDiagn
   }
 
   try {
-    const { userId, organizationId, project } = await requireProjectContext();
-    assertCanConfigureDiagnosticQueries(userId, organizationId, project);
+    const { userId, organizationId, orgPendingDeletion, project } = await requireProjectContext();
+    assertCanConfigureDiagnosticQueries(userId, organizationId, orgPendingDeletion, project);
 
     const [connector] = await db
       .select({ id: externalConnectors.id, type: externalConnectors.type, status: externalConnectors.status })
@@ -291,8 +291,8 @@ export async function disableSreDiagnosticQuery(input: z.infer<typeof disableDia
   }
 
   try {
-    const { userId, organizationId, project } = await requireProjectContext();
-    assertCanConfigureDiagnosticQueries(userId, organizationId, project);
+    const { userId, organizationId, orgPendingDeletion, project } = await requireProjectContext();
+    assertCanConfigureDiagnosticQueries(userId, organizationId, orgPendingDeletion, project);
 
     const [updated] = await db
       .update(diagnosticQueries)

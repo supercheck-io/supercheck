@@ -22,12 +22,13 @@ export async function deleteTest(testId: string) {
     }
 
     // Get current project context (includes auth verification)
-    const { userId, project, organizationId } = await requireProjectContext();
+    const { userId, project, organizationId, orgPendingDeletion } = await requireProjectContext();
 
     // Check test deletion permission (optimized - reuses context from requireProjectContext)
     const canDelete = checkPermissionWithContext("test", "delete", {
       userId,
       organizationId,
+      orgPendingDeletion,
       project,
     });
 

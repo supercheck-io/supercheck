@@ -50,7 +50,7 @@ describe("getSreIncidentDetails investigation summary", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.mocked(requireProjectContext).mockResolvedValue({
-      userId: "user-1", organizationId: "org-1",
+      userId: "user-1", organizationId: "org-1", orgPendingDeletion: false,
       project: { id: "project-1", name: "Prod", organizationId: "org-1", isDefault: true, userRole: "project_editor" },
     });
     jest.mocked(checkPermissionWithContext).mockReturnValue(true);
@@ -298,7 +298,7 @@ describe("getSreIncidents scope and cap", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.mocked(requireProjectContext).mockResolvedValue({
-      userId: "user-1", organizationId: "org-1",
+      userId: "user-1", organizationId: "org-1", orgPendingDeletion: false,
       project: { id: "project-1", name: "Prod", organizationId: "org-1", isDefault: true, userRole: "project_editor" },
     });
     jest.mocked(checkPermissionWithContext).mockReturnValue(true);
@@ -343,7 +343,7 @@ describe("getSreIncidents scope and cap", () => {
 describe("createSreIncidentFromAlert severity", () => {
   it("honours the monitor's configured incident severity", async () => {
     jest.mocked(requireProjectContext).mockResolvedValue({
-      userId: "user-1", organizationId: "org-1",
+      userId: "user-1", organizationId: "org-1", orgPendingDeletion: false,
       project: { id: "project-1", name: "Prod", organizationId: "org-1", isDefault: true, userRole: "project_editor" },
     });
     jest.mocked(checkPermissionWithContext).mockReturnValue(true);
@@ -376,7 +376,7 @@ describe("createSreIncidentFromAlert join/reopen rules", () => {
     jest.mocked(announceSystemTransition).mockClear();
     jest.mocked(reopenRecentlyAutoResolved).mockClear();
     jest.mocked(requireProjectContext).mockResolvedValue({
-      userId: "user-1", organizationId: "org-1",
+      userId: "user-1", organizationId: "org-1", orgPendingDeletion: false,
       project: { id: "project-1", name: "Prod", organizationId: "org-1", isDefault: true, userRole: "project_editor" },
     });
     jest.mocked(checkPermissionWithContext).mockReturnValue(true);
@@ -474,7 +474,7 @@ describe("createSreIncidentFromAlert join/reopen rules", () => {
 describe("createManualSreIncident default assignee", () => {
   it("assigns a hand-created incident to its creator", async () => {
     jest.mocked(requireProjectContext).mockResolvedValue({
-      userId: "creator-1", organizationId: "org-1",
+      userId: "creator-1", organizationId: "org-1", orgPendingDeletion: false,
       project: { id: "project-1", name: "Prod", organizationId: "org-1", isDefault: true, userRole: "project_editor" },
     });
     jest.mocked(checkPermissionWithContext).mockReturnValue(true);

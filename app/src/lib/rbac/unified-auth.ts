@@ -21,6 +21,8 @@ type UnifiedAuthContext = {
   organizationRole: string | null;
   subscriptionStatus: string | null;
   polarCustomerId: string | null;
+  /** The organization is pending deletion (read from the organization row this query already joins). */
+  organizationPendingDeletion?: boolean;
   // Valid?
   isValid: boolean;
   error?: string;
@@ -133,7 +135,8 @@ export async function getUnifiedAuthContext(
             // Org Details
             orgSlug: organization.slug,
             subStatus: organization.subscriptionStatus,
-            polarId: organization.polarCustomerId
+            polarId: organization.polarCustomerId,
+            orgPendingAt: organization.deletionRequestedAt
          })
          .from(projects)
          .leftJoin(organization, eq(projects.organizationId, organization.id))
@@ -226,7 +229,8 @@ export async function getUnifiedAuthContext(
                    : null,
                
                subscriptionStatus: ctx.subStatus,
-               polarCustomerId: ctx.polarId
+               polarCustomerId: ctx.polarId,
+               organizationPendingDeletion: !!ctx.orgPendingAt
            };
        }
     }

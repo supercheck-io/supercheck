@@ -26,6 +26,7 @@ import { isSelfHosted } from "@/lib/feature-flags";
 import { getTrialSummary } from "@/lib/execution/trial-limits";
 import { TrialBanner } from "@/components/trial-banner";
 import { SpendingCapBanner } from "@/components/spending-cap-banner";
+import { PendingDeletionBanner } from "@/components/pending-deletion-banner";
 import { checkPermissionWithContext, getUserOrgRole } from "@/lib/rbac/middleware";
 import { Role } from "@/lib/rbac/permissions";
 
@@ -86,6 +87,8 @@ export default async function MainLayout({
   };
   const initialIsSelfHosted = isSelfHosted();
   let showSpendingCap = false;
+  const orgPendingDeletion = !!org?.deletionRequestedAt;
+  let isOrgOwner = false;
 
   if (user && org) {
     // Derive subscription status from org data already fetched (avoids client-side API call)
@@ -96,8 +99,11 @@ export default async function MainLayout({
     // A free trial is separate from a paid subscription; without it an
     // unsubscribed organization would be sent to the subscribe page.
     // Only paying org admins can see or change the cap, so only they poll it.
-    if (!initialIsSelfHosted && initialSubscriptionStatus.isActive) {
-      const role = await getUserOrgRole(user.id, org.id).catch(() => null);
+    // One role lookup serves the spending-cap banner and the pending-deletion banner.
+    const needsSpendingCapRole = !initialIsSelfHosted && initialSubscriptionStatus.isActive;
+    const role = needsSpendingCapRole || orgPendingDeletion ? await getUserOrgRole(user.id, org.id).catch(() => null) : null;
+    isOrgOwner = role === Role.ORG_OWNER;
+    if (needsSpendingCapRole) {
       showSpendingCap = role === Role.ORG_ADMIN || role === Role.ORG_OWNER;
     }
     if (!initialIsSelfHosted && !initialSubscriptionStatus.isActive) {
@@ -126,6 +132,7 @@ export default async function MainLayout({
         const permissionContext = {
           userId: user.id,
           organizationId: currentProjectResult.organizationId,
+          orgPendingDeletion: !!org?.deletionRequestedAt,
           project: {
             id: currentProjectResult.id,
             userRole: currentProjectResult.userRole,
@@ -209,6 +216,7 @@ export default async function MainLayout({
                   </div>
                 </header>
                 <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+                  {org && <PendingDeletionBanner organizationId={org.id} pending={orgPendingDeletion} isOwner={isOrgOwner} />}
                   <TrialBanner initialTrial={initialSubscriptionStatus?.trial ?? null} />
                   <SpendingCapBanner enabled={showSpendingCap} />
                   <SubscriptionGuard

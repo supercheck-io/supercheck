@@ -38,13 +38,14 @@ export async function generateSreEvidenceBrief(input: {
       return { success: false, error: "Invalid incident ID" };
     }
 
-    const { userId, organizationId, project } = await requireProjectContext();
+    const { userId, organizationId, orgPendingDeletion, project } = await requireProjectContext();
     const canInvestigate = checkPermissionWithContext(
       "sre_incident",
       "investigate",
       {
         userId,
         organizationId,
+        orgPendingDeletion,
         project,
       },
     );

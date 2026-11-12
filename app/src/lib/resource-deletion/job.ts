@@ -13,8 +13,8 @@ type JobDeletionResult = { success: boolean; message?: string; error?: string; d
  */
 export async function deleteJobWithContext(jobId: string, context: ProjectAuthContext): Promise<JobDeletionResult> {
   if (!jobId) return { success: false, error: "Job ID is required" };
-  const { userId, project, organizationId } = context;
-  if (!checkPermissionWithContext("job", "delete", { userId, organizationId, project })) {
+  const { userId, project, organizationId, orgPendingDeletion } = context;
+  if (!checkPermissionWithContext("job", "delete", { userId, organizationId, orgPendingDeletion, project })) {
     console.warn(`[DELETE_JOB] User ${userId} attempted to delete job ${jobId} without permission`);
     return { success: false, error: "Insufficient permissions to delete jobs" };
   }

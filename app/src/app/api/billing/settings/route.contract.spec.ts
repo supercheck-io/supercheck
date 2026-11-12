@@ -1,4 +1,5 @@
 /** @jest-environment node */
+jest.mock("@/lib/deletion/org-state");
 const mockAuth = jest.fn();
 jest.mock("@/lib/auth-context", () => ({
   authErrorStatus: (e: unknown) => ((e as { status?: number })?.status === 403 ? 403 : 401),

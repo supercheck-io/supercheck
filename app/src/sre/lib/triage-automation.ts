@@ -1,6 +1,7 @@
 import { validateAIConfiguration } from "@/lib/ai/ai-provider";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { isSreAutomaticTriageEnabled } from "@/sre/lib/feature-gates";
+import { isOrgPendingDeletion } from "@/lib/deletion/org-state";
 import { runSreIncidentTriage, type RunSreIncidentTriageResult } from "@/sre/lib/triage-runner";
 
 export type AutomaticSreTriageInput = {
@@ -35,6 +36,8 @@ export async function maybeRunAutomaticSreTriage(input: AutomaticSreTriageInput)
   const permissionContext = {
     userId: input.userId,
     organizationId: input.organizationId,
+    // Alert-driven triage creates incidents and runs investigations: never for a pending organization (read at call time, not from the alert payload).
+    orgPendingDeletion: await isOrgPendingDeletion(input.organizationId),
     project: input.project,
   };
   const canInvestigateIncident = checkPermissionWithContext("sre_incident", "investigate", permissionContext);

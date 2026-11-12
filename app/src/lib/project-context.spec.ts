@@ -1,3 +1,4 @@
+jest.mock("@/lib/deletion/org-state", () => ({ isOrgPendingDeletion: jest.fn().mockResolvedValue(false) }));
 jest.mock("next/headers", () => ({
   headers: jest.fn(),
 }));
@@ -89,6 +90,7 @@ describe("requireProjectContext", () => {
     expect(context).toEqual({
       userId: "user-1",
       organizationId: "org-1",
+      orgPendingDeletion: false,
       project: {
         id: "project-1",
         name: "Production",
@@ -131,7 +133,7 @@ describe("default project recovery", () => {
     (getCurrentUser as jest.Mock).mockResolvedValue({ id: "user-1" });
     (getActiveOrganization as jest.Mock).mockResolvedValue({ id: "org-b" });
     (getUserProjects as jest.Mock).mockResolvedValue([{ id: "project-b", name: "Project B", organizationId: "org-b", isDefault: true, role: "org_owner" }]);
-    const rows = (values: unknown[]) => ({ from: jest.fn().mockReturnThis(), where: jest.fn().mockReturnThis(), limit: jest.fn().mockResolvedValue(values) });
+    const rows = (values: unknown[]) => ({ from: jest.fn().mockReturnThis(), innerJoin: jest.fn().mockReturnThis(), where: jest.fn().mockReturnThis(), limit: jest.fn().mockResolvedValue(values) });
     (db.select as jest.Mock).mockReset().mockReturnValueOnce(rows([{ activeOrganizationId: "org-b", activeProjectId: "project-a", userId: "user-1" }]))
       .mockReturnValueOnce(rows([{ id: "project-a", organizationId: "org-a" }]));
     returning.mockResolvedValue([{ id: "session-id" }]);
@@ -165,7 +167,7 @@ describe("project switching across account and invited projects", () => {
     returning.mockResolvedValue([{ activeProjectId: "project-2" }]);
     set.mockReturnValue({ where: jest.fn().mockReturnValue({ returning }) });
     (db.update as jest.Mock).mockReturnValue({ set });
-    (db.select as jest.Mock).mockReset().mockReturnValue({ from: jest.fn().mockReturnThis(), where: jest.fn().mockReturnThis(), limit: jest.fn().mockResolvedValue([{ activeProjectId: "previous-project", activeOrganizationId: "oldest-org" }]) });
+    (db.select as jest.Mock).mockReset().mockReturnValue({ from: jest.fn().mockReturnThis(), innerJoin: jest.fn().mockReturnThis(), where: jest.fn().mockReturnThis(), limit: jest.fn().mockResolvedValue([{ activeProjectId: "previous-project", activeOrganizationId: "oldest-org" }]) });
   });
   it("selects another project and repairs a legacy organization's session scope", async () => {
     expect(await switchProject("project-2")).toMatchObject({ success: true, project: { id: "project-2", organizationId: "oldest-org" } });

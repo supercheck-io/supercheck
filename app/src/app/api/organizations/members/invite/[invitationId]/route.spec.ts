@@ -1,4 +1,5 @@
 /** @jest-environment node */
+jest.mock("@/lib/deletion/org-state");
 import { NextRequest } from "next/server";
 jest.mock("@/utils/db", () => ({ db: { select: jest.fn(), update: jest.fn() } }));
 jest.mock("@/lib/rbac/middleware", () => ({ getUserOrgRole: jest.fn(async () => "org_owner") }));

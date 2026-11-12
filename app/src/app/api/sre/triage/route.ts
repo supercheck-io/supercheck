@@ -59,6 +59,7 @@ export async function POST(request: NextRequest) {
   const permissionContext = {
     userId: context.userId,
     organizationId: context.organizationId,
+    orgPendingDeletion: context.orgPendingDeletion,
     project: context.project,
   };
   const canInvestigateIncident = checkPermissionWithContext("sre_incident", "investigate", permissionContext);

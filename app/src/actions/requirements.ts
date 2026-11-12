@@ -105,12 +105,13 @@ export async function getRequirements(options?: {
   priority?: RequirementPriority;
   status?: RequirementCoverageStatus;
 }): Promise<RequirementListResponse> {
-  const { userId, project, organizationId } = await requireProjectContext();
+  const { userId, project, organizationId, orgPendingDeletion } = await requireProjectContext();
 
   // Check view permission (optimized - reuses context)
   const canView = checkPermissionWithContext("requirement", "view", {
     userId,
     organizationId,
+    orgPendingDeletion,
     project,
   });
 
@@ -282,12 +283,13 @@ export async function createRequirement(
   data: CreateRequirementInput
 ): Promise<{ id: string; success: boolean; error?: string }> {
   try {
-    const { userId, project, organizationId } = await requireProjectContext();
+    const { userId, project, organizationId, orgPendingDeletion } = await requireProjectContext();
 
     // Check create permission (optimized - reuses context)
     const canCreate = checkPermissionWithContext("requirement", "create", {
       userId,
       organizationId,
+      orgPendingDeletion,
       project,
     });
 
@@ -343,12 +345,13 @@ export async function updateRequirement(
   data: UpdateRequirementInput
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const { userId, project, organizationId } = await requireProjectContext();
+    const { userId, project, organizationId, orgPendingDeletion } = await requireProjectContext();
 
     // Check update permission (optimized - reuses context)
     const canUpdate = checkPermissionWithContext("requirement", "update", {
       userId,
       organizationId,
+      orgPendingDeletion,
       project,
     });
 
@@ -398,12 +401,13 @@ export async function deleteRequirement(
   id: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const { userId, project, organizationId } = await requireProjectContext();
+    const { userId, project, organizationId, orgPendingDeletion } = await requireProjectContext();
 
     // Check delete permission (optimized - reuses context)
     const canDelete = checkPermissionWithContext("requirement", "delete", {
       userId,
       organizationId,
+      orgPendingDeletion,
       project,
     });
 
@@ -453,12 +457,13 @@ export async function deleteRequirements(
   ids: string[]
 ): Promise<{ success: boolean; error?: string; deletedCount: number }> {
   try {
-    const { userId, project, organizationId } = await requireProjectContext();
+    const { userId, project, organizationId, orgPendingDeletion } = await requireProjectContext();
 
     // Check delete permission (optimized - reuses context)
     const canDelete = checkPermissionWithContext("requirement", "delete", {
       userId,
       organizationId,
+      orgPendingDeletion,
       project,
     });
 
@@ -532,12 +537,13 @@ export async function linkTestsToRequirement(
 ): Promise<{ success: boolean; error?: string }> {
   try {
 
-    const { userId, project, organizationId } = await requireProjectContext();
+    const { userId, project, organizationId, orgPendingDeletion } = await requireProjectContext();
 
     // Check update permission (optimized - reuses context)
     const canUpdate = checkPermissionWithContext("requirement", "update", {
       userId,
       organizationId,
+      orgPendingDeletion,
       project,
     });
 
@@ -583,11 +589,12 @@ export async function syncRequirementTests(
   testIds: string[]
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const { userId, project, organizationId } = await requireProjectContext();
+    const { userId, project, organizationId, orgPendingDeletion } = await requireProjectContext();
 
     const canUpdate = checkPermissionWithContext("requirement", "update", {
       userId,
       organizationId,
+      orgPendingDeletion,
       project,
     });
 
@@ -633,12 +640,13 @@ export async function unlinkTestFromRequirement(
 ): Promise<{ success: boolean; error?: string }> {
   try {
 
-    const { userId, project, organizationId } = await requireProjectContext();
+    const { userId, project, organizationId, orgPendingDeletion } = await requireProjectContext();
 
     // Check update permission (optimized - reuses context)
     const canUpdate = checkPermissionWithContext("requirement", "update", {
       userId,
       organizationId,
+      orgPendingDeletion,
       project,
     });
 
@@ -695,12 +703,13 @@ export async function getRequirementsDashboardStats(): Promise<{
   atRiskCount: number;
 }> {
   try {
-    const { userId, project, organizationId } = await requireProjectContext();
+    const { userId, project, organizationId, orgPendingDeletion } = await requireProjectContext();
 
     // Check view permission (optimized - reuses context)
     const canView = checkPermissionWithContext("requirement", "view", {
       userId,
       organizationId,
+      orgPendingDeletion,
       project,
     });
 
@@ -787,12 +796,13 @@ export async function getRequirement(
   id: string
 ): Promise<RequirementWithCoverage | null> {
   try {
-    const { userId, project, organizationId } = await requireProjectContext();
+    const { userId, project, organizationId, orgPendingDeletion } = await requireProjectContext();
 
     // Check view permission (optimized - reuses context)
     const canView = checkPermissionWithContext("requirement", "view", {
       userId,
       organizationId,
+      orgPendingDeletion,
       project,
     });
 
@@ -910,12 +920,13 @@ export async function getLinkedTests(
   requirementId: string
 ): Promise<LinkedTest[]> {
   try {
-    const { userId, project, organizationId } = await requireProjectContext();
+    const { userId, project, organizationId, orgPendingDeletion } = await requireProjectContext();
 
     // Check view permission (optimized - reuses context)
     const canView = checkPermissionWithContext("requirement", "view", {
       userId,
       organizationId,
+      orgPendingDeletion,
       project,
     });
 
@@ -1009,12 +1020,13 @@ export async function getAvailableTestsForLinking(
   search?: string
 ): Promise<{ id: string; title: string; type: string }[]> {
   try {
-    const { userId, project, organizationId } = await requireProjectContext();
+    const { userId, project, organizationId, orgPendingDeletion } = await requireProjectContext();
 
     // Check view permission (optimized - reuses context)
     const canView = checkPermissionWithContext("requirement", "view", {
       userId,
       organizationId,
+      orgPendingDeletion,
       project,
     });
 
@@ -1080,12 +1092,13 @@ export async function exportRequirementsCsv(): Promise<{
   error?: string;
 }> {
   try {
-    const { project, organizationId, userId } = await requireProjectContext();
+    const { project, organizationId, userId, orgPendingDeletion } = await requireProjectContext();
 
     // Check view permission (optimized - reuses context)
     const canView = checkPermissionWithContext("requirement", "view", {
       userId,
       organizationId,
+      orgPendingDeletion,
       project,
     });
 

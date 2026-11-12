@@ -93,6 +93,7 @@ async function requireConnectorConfigurationPermission() {
   const canConfigure = checkPermissionWithContext("sre_connector", "configure", {
     userId: context.userId,
     organizationId: context.organizationId,
+    orgPendingDeletion: context.orgPendingDeletion,
     project: context.project,
   });
 
@@ -104,10 +105,11 @@ async function requireConnectorConfigurationPermission() {
 }
 
 // Org-wide agents serve every project, so managing them needs org-level rights.
-function canManageOrgWide(context: { userId: string; organizationId: string; project: ProjectAuthContext["project"] }) {
+function canManageOrgWide(context: { userId: string; organizationId: string; orgPendingDeletion: boolean; project: ProjectAuthContext["project"] }) {
   return checkPermissionWithContext("organization", "update", {
     userId: context.userId,
     organizationId: context.organizationId,
+    orgPendingDeletion: context.orgPendingDeletion,
     project: context.project,
   });
 }
@@ -117,8 +119,8 @@ export async function getPrivateAgents(requestContext?: ProjectAuthContext): Pro
   | { success: false; error: string; agents: [] }
 > {
   try {
-    const { userId, organizationId, project } = requestContext ?? await requireProjectContext();
-    const canView = checkPermissionWithContext("sre_connector", "view", { userId, organizationId, project });
+    const { userId, organizationId, orgPendingDeletion, project } = requestContext ?? await requireProjectContext();
+    const canView = checkPermissionWithContext("sre_connector", "view", { userId, organizationId, orgPendingDeletion, project });
 
     if (!canView) {
       return { success: false, error: "Insufficient permissions to view Private Agents", agents: [] };

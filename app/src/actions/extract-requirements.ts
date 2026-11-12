@@ -581,12 +581,13 @@ export async function extractRequirementsFromDocument(
   formData: FormData
 ): Promise<ExtractResult> {
   try {
-    const { userId, project, organizationId } = await requireProjectContext();
+    const { userId, project, organizationId, orgPendingDeletion } = await requireProjectContext();
 
     // Check create permission (optimized - reuses context from requireProjectContext)
     const canCreate = checkPermissionWithContext("requirement", "create", {
       userId,
       organizationId,
+      orgPendingDeletion,
       project,
     });
 

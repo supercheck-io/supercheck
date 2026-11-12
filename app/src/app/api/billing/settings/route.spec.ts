@@ -1,3 +1,4 @@
+jest.mock("@/lib/deletion/org-state");
 jest.mock("@/lib/auth-context", () => ({
   requireUserAuthContext: jest.fn(),
   isAuthError: jest.fn(() => false),

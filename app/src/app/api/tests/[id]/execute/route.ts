@@ -32,6 +32,7 @@ import {
   buildExecutionPolicyFailureResponse,
 } from "@/lib/execution-api-responses";
 import { requireSameOriginRequest } from "@/lib/security/same-origin";
+import { pendingDeletionResponse, isOrgPendingDeletion } from "@/lib/deletion/org-state";
 declare const Buffer: {
   from(data: string, encoding: string): { toString(encoding: string): string };
 };
@@ -59,6 +60,7 @@ export async function POST(request: NextRequest, context: ExecuteContext) {
     const testId = params.id;
 
     // Check permission
+    if (authCtx.orgPendingDeletion) return pendingDeletionResponse();
     const canExecute = checkPermissionWithContext("test", "run", authCtx);
 
     if (!canExecute) {

@@ -75,12 +75,13 @@ export async function scheduleCronJob(
 ): Promise<ScheduleJobResponse> {
   try {
     // Get current project context (includes auth verification)
-    const { userId, project, organizationId } = await requireProjectContext();
+    const { userId, project, organizationId, orgPendingDeletion } = await requireProjectContext();
 
     // Check permission to update jobs (optimized - reuses context from requireProjectContext)
     const canEditJobs = checkPermissionWithContext("job", "update", {
       userId,
       organizationId,
+      orgPendingDeletion,
       project,
     });
 

@@ -77,6 +77,7 @@ export async function requireSreApiPermissions(
       !checkPermissionWithContext(permission.resource, permission.action, {
         userId: context.userId,
         organizationId: context.organizationId,
+        orgPendingDeletion: context.orgPendingDeletion,
         project: context.project,
       }),
   );

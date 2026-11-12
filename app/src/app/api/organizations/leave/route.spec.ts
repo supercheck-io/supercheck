@@ -1,4 +1,5 @@
 /** @jest-environment node */
+jest.mock("@/lib/deletion/org-state");
 import { NextRequest } from "next/server";
 import { POST } from "./route";
 import { leaveOrganization, LeaveOrganizationError } from "@/lib/services/leave-organization";

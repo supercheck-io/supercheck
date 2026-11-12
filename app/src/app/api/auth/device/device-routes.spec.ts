@@ -1,7 +1,9 @@
 /** @jest-environment node */
+jest.mock("@/lib/deletion/org-state");
 import { NextRequest } from "next/server";
 
 const mockApprove = jest.fn();
+const mockResolveContext = jest.fn();
 const mockDeny = jest.fn();
 const mockExchange = jest.fn();
 const mockCreate = jest.fn();
@@ -33,6 +35,7 @@ jest.mock("@/lib/auth/device-auth-rate-limit", () => ({
 jest.mock("@/lib/rbac/middleware", () => ({
   requireAuth: (...a: unknown[]) => mockRequireAuth(...a),
   isImpersonatedSession: (...a: unknown[]) => mockImpersonated(...a),
+  resolveProjectPermissionContext: (...a: unknown[]) => mockResolveContext(...a),
 }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn() }));
 jest.mock("@/lib/session-security", () => ({ getClientIP: () => "203.0.113.9" }));
@@ -151,6 +154,14 @@ describe("POST /approve", () => {
     const res = await approveRoute.POST(post("/a", body));
     expect(res.status).toBe(403);
     expect((await res.json()).error).toBe("impersonation_not_allowed");
+    expect(mockApprove).not.toHaveBeenCalled();
+  });
+
+  it("mints no CLI key for a project of an organization pending deletion", async () => {
+    mockResolveContext.mockResolvedValueOnce({ orgPendingDeletion: true });
+    const res = await approveRoute.POST(post("/a", body));
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toBe("organization_pending_deletion");
     expect(mockApprove).not.toHaveBeenCalled();
   });
 

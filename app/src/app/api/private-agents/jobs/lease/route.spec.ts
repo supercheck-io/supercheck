@@ -1,4 +1,5 @@
 /** @jest-environment node */
+jest.mock("@/lib/deletion/org-state");
 
 import { NextRequest } from "next/server";
 
@@ -45,6 +46,19 @@ describe("Private Agent job lease route", () => {
         id: "00000000-0000-0000-0000-000000000003",
       },
     });
+  });
+
+  it("leases nothing to an agent of an organization pending deletion", async () => {
+    const { isOrgPendingDeletion } = jest.requireMock("@/lib/deletion/org-state");
+    isOrgPendingDeletion.mockResolvedValue(true);
+    try {
+      const response = await POST(new NextRequest("http://localhost/api/private-agents/jobs/lease", { method: "POST", body: JSON.stringify({}) }));
+      expect(isOrgPendingDeletion).toHaveBeenCalledWith("00000000-0000-0000-0000-000000000002", { fresh: true });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ job: null });
+    } finally {
+      isOrgPendingDeletion.mockResolvedValue(false);
+    }
   });
 
   it("requeues expired connector leases before returning no work", async () => {

@@ -69,15 +69,15 @@ export type SreIncidentTimelineItem = {
 };
 
 type Guarded =
-  | { ok: true; actor: IncidentActor; context: { userId: string; organizationId: string; project: Awaited<ReturnType<typeof requireProjectContext>>["project"] } }
+  | { ok: true; actor: IncidentActor; context: { userId: string; organizationId: string; orgPendingDeletion: boolean; project: Awaited<ReturnType<typeof requireProjectContext>>["project"] } }
   | { ok: false; error: string };
 
 async function guard(action: "view" | "update"): Promise<Guarded> {
-  const { userId, organizationId, project } = await requireProjectContext();
-  if (!checkPermissionWithContext("sre_incident", action, { userId, organizationId, project })) {
+  const { userId, organizationId, orgPendingDeletion, project } = await requireProjectContext();
+  if (!checkPermissionWithContext("sre_incident", action, { userId, organizationId, orgPendingDeletion, project })) {
     return { ok: false, error: "Insufficient permissions for this incident action" };
   }
-  return { ok: true, actor: { userId, organizationId, projectId: project.id }, context: { userId, organizationId, project } };
+  return { ok: true, actor: { userId, organizationId, projectId: project.id }, context: { userId, organizationId, orgPendingDeletion, project } };
 }
 
 async function updateRateLimitError(actor: IncidentActor, incidentId: string) {

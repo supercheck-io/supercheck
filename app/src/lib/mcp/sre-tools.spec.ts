@@ -66,7 +66,7 @@ import { assertCan } from "./context";
 
 type Run = (args: Record<string, unknown>) => Promise<Record<string, unknown>>;
 const id = "00000000-0000-7000-8000-000000000001";
-const base: McpCallContext = { userId: "u", clientId: "c", organizationId: "o", projectId: "p", role: "project_editor", scopes: ["mcp:read"] };
+const base: McpCallContext = { userId: "u", clientId: "c", organizationId: "o", projectId: "p", role: "project_editor", orgPendingDeletion: false, scopes: ["mcp:read"] };
 
 function setup(scopes: string[]) {
   const tools = new Map<string, { gate: { scope: string; action: string }; run: Run; description: string }>();

@@ -23,8 +23,8 @@ export async function draftSreStatusUpdate(input: { incidentId: string }): Promi
   try {
     const parsed = z.object({ incidentId: z.string().uuid() }).safeParse(input);
     if (!parsed.success) return { success: false, error: "Invalid incident" };
-    const { userId, organizationId, project } = await requireProjectContext();
-    if (!checkPermissionWithContext("sre_incident", "update", { userId, organizationId, project })) {
+    const { userId, organizationId, orgPendingDeletion, project } = await requireProjectContext();
+    if (!checkPermissionWithContext("sre_incident", "update", { userId, organizationId, orgPendingDeletion, project })) {
       return { success: false, error: "Insufficient permissions to draft an update" };
     }
     const [incident] = await db

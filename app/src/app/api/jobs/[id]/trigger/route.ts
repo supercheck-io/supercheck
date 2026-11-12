@@ -17,6 +17,7 @@ import {
 import { prepareJobTestScripts } from "@/lib/job-execution-utils";
 import { validateK6Script } from "@/lib/k6-validator";
 import { SubscriptionAccessDeniedError } from "@/lib/services/subscription-service";
+import { pendingDeletionResponse, isOrgPendingDeletion } from "@/lib/deletion/org-state";
 import { polarUsageService } from "@/lib/services/polar-usage.service";
 import {
   apiKeyRateLimiter,
@@ -252,6 +253,9 @@ export async function POST(
     }
 
     const job = jobResult[0];
+
+    // Trigger keys carry no role, so this is the pending-deletion gate for them (fresh read: it admits work).
+    if (await isOrgPendingDeletion(job.organizationId, { fresh: true })) return pendingDeletionResponse();
 
     // Validate organization ID exists
     if (!job.organizationId) {

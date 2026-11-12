@@ -11,6 +11,7 @@ import { resolveMcpToolCall } from "@/lib/sre/connectors/providers/mcp";
 import { redactEndpointQuery } from "@/lib/sre/connectors/endpoint-policy";
 import { db } from "@/utils/db";
 import { authenticatePrivateAgent, unauthorized } from "../auth";
+import { isOrgPendingDeletion, pendingDeletionResponse } from "@/lib/deletion/org-state";
 
 const LEASE_TTL_MS = 5 * 60_000;
 const MAX_QUEUED_AGE_MS = 10 * 60_000;
@@ -70,6 +71,8 @@ export async function POST(request: NextRequest) {
     };
 
     const tryLeaseJob = async () => {
+      // A pending organization gets no new diagnostics work; the agent simply finds nothing to lease.
+      if (await isOrgPendingDeletion(auth.agent.organizationId, { fresh: true })) return null;
       const leaseToken = generateLeaseToken();
       const leaseTokenHash = hashApiKey(leaseToken);
       const now = new Date();

@@ -61,7 +61,7 @@ afterAll(async () => {
 function tool(toolName: string) {
   const tools = new Map<string, (args: Record<string, unknown>) => Promise<unknown>>();
   const reg = ((n: string, _d: string, _g: unknown, _s: unknown, run: (a: Record<string, unknown>) => Promise<unknown>) => tools.set(n, run)) as unknown as ToolRegistrar;
-  registerSreTools(reg, { userId: "u", clientId: "c", organizationId: org, projectId: project, role: "project_editor", scopes: ["mcp:read", "mcp:sre"] });
+  registerSreTools(reg, { userId: "u", clientId: "c", organizationId: org, projectId: project, role: "project_editor", orgPendingDeletion: false, scopes: ["mcp:read", "mcp:sre"] });
   return tools.get(toolName)!;
 }
 

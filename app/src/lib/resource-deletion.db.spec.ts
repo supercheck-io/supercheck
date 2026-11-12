@@ -62,7 +62,7 @@ beforeEach(() => {
   mockRemoveQueuedJob.mockRejectedValue(new Error("Job is locked"));
 });
 it("preserves another run's latest alias and removes the alias when its owner is deleted", async () => {
-  const context = { userId: "user", organizationId: "org", project: { id: "project", name: "Project", organizationId: "org", isDefault: true, userRole: "org_owner" } };
+  const context = { userId: "user", organizationId: "org", orgPendingDeletion: false, project: { id: "project", name: "Project", organizationId: "org", isDefault: true, userRole: "org_owner" } };
   expect((await deleteRunWithContext("old-run", context)).success).toBe(true);
   expect(await client`SELECT id FROM reports ORDER BY id`).toEqual([{ id: "latest" }, { id: "new" }]);
   expect((await deleteRunWithContext("new-run", context)).success).toBe(true);
@@ -74,7 +74,7 @@ it("retains an alias-only cleanup pointer after storage failure", async () => {
   await client`INSERT INTO reports VALUES ('alias-pointer', 'legacy-test', 'test', 'orphan-run/report', null)`;
   mockDeleteReports.mockResolvedValueOnce({ success: false });
   try {
-    const context = { userId: "user", organizationId: "org", project: { id: "project", name: "Project", organizationId: "org", isDefault: true, userRole: "org_owner" } };
+    const context = { userId: "user", organizationId: "org", orgPendingDeletion: false, project: { id: "project", name: "Project", organizationId: "org", isDefault: true, userRole: "org_owner" } };
     expect((await deleteRunWithContext("orphan-run", context)).success).toBe(false);
     expect(await client`SELECT id FROM reports WHERE id='alias-pointer'`).toEqual([{ id: "alias-pointer" }]);
     expect(await client`SELECT id FROM runs WHERE id='orphan-run'`).toEqual([{ id: "orphan-run" }]);
@@ -92,7 +92,7 @@ it("does not hold the pooled database connection while storage deletion is pendi
     await Promise.race([client`SELECT 1`, new Promise((_, reject) => setTimeout(() => reject(new Error('storage cleanup holds database connection')), 1500).unref())]);
     return { success: true };
   });
-  const context = { userId: "user", organizationId: "org", project: { id: "project", name: "Project", organizationId: "org", isDefault: true, userRole: "org_owner" as const } };
+  const context = { userId: "user", organizationId: "org", orgPendingDeletion: false, project: { id: "project", name: "Project", organizationId: "org", isDefault: true, userRole: "org_owner" as const } };
   expect((await deleteRunWithContext('slow-run', context)).success).toBe(true);
 });
 
@@ -103,14 +103,14 @@ it("retains a run if its report receipt changes while storage is being deleted",
     await client`UPDATE runs SET report_s3_url='http://storage/tests/race-run/report/index.html' WHERE id='race-run'`;
     return { success: true };
   });
-  const context = { userId: "user", organizationId: "org", project: { id: "project", name: "Project", organizationId: "org", isDefault: true, userRole: "org_owner" as const } };
+  const context = { userId: "user", organizationId: "org", orgPendingDeletion: false, project: { id: "project", name: "Project", organizationId: "org", isDefault: true, userRole: "org_owner" as const } };
   const result = await deleteRunWithContext('race-run', context);
   expect(result.success).toBe(false);
   expect(result.error).toContain('changed during cleanup');
   expect(await client`SELECT id FROM runs WHERE id='race-run'`).toHaveLength(1);
 });
 
-const deletionContext = { userId: "user", organizationId: "org", project: { id: "project", name: "Project", organizationId: "org", isDefault: true, userRole: "org_owner" as const } };
+const deletionContext = { userId: "user", organizationId: "org", orgPendingDeletion: false, project: { id: "project", name: "Project", organizationId: "org", isDefault: true, userRole: "org_owner" as const } };
 
 
 async function seedJob(project = "project", org = "org") {

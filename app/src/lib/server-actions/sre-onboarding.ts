@@ -37,11 +37,12 @@ export async function getSreOnboardingStatus(
   | { success: false; error: string; status: null }
 > {
   try {
-    const { userId, organizationId, project } =
+    const { userId, organizationId, orgPendingDeletion, project } =
       requestContext ?? (await requireProjectContext());
     const canViewServices = checkPermissionWithContext("sre_service", "view", {
       userId,
       organizationId,
+      orgPendingDeletion,
       project,
     });
     const canViewConnectors = checkPermissionWithContext(
@@ -50,6 +51,7 @@ export async function getSreOnboardingStatus(
       {
         userId,
         organizationId,
+        orgPendingDeletion,
         project,
       },
     );

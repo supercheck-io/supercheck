@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { authErrorStatus, isAuthError } from "@/lib/auth-context";
 import { requireSameOriginRequest } from "@/lib/security/same-origin";
 import { leaveOrganization, LeaveOrganizationError } from "@/lib/services/leave-organization";
+import { isOrgPendingDeletion, pendingDeletionResponse } from "@/lib/deletion/org-state";
 
 const schema = z.object({ organizationId: z.string().uuid() }).strict();
 
@@ -12,6 +13,7 @@ export async function POST(request: NextRequest) {
   const parsed = schema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "A valid organization ID is required" }, { status: 400 });
   try {
+    if (await isOrgPendingDeletion(parsed.data.organizationId, { fresh: true })) return pendingDeletionResponse();
     return NextResponse.json({ success: true, data: await leaveOrganization(parsed.data.organizationId) });
   } catch (error) {
     if (error instanceof LeaveOrganizationError) {

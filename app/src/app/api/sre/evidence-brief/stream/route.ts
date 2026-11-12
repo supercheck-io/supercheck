@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
       { status: isAuthError(error) ? authErrorStatus(error) : 500 },
     );
   }
-  const { userId, organizationId, project } = context;
+  const { userId, organizationId, orgPendingDeletion, project } = context;
   if (!isSreEnabled()) {
     return NextResponse.json(
       { error: "AI SRE is disabled", code: "feature_disabled", enabledBy: "SRE_ENABLED" },
@@ -65,6 +65,7 @@ export async function POST(request: NextRequest) {
     {
       userId,
       organizationId,
+      orgPendingDeletion,
       project,
     },
   );
@@ -74,6 +75,7 @@ export async function POST(request: NextRequest) {
     {
       userId,
       organizationId,
+      orgPendingDeletion,
       project,
     },
   );
