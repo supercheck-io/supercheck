@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { AREA_TEXT, NAV } from "@/lib/nav-areas";
+import { typeTextForce } from "@/lib/type-tones";
 
 function NavCommandItem({ id, onSelect }: { id: keyof typeof NAV; onSelect: () => void }) {
   const { title, icon: Icon, tone } = NAV[id];
@@ -222,23 +223,23 @@ export function CommandSearch({
                 <CommandItem
                   onSelect={() => handleCommand("create-test-browser")}
                 >
-                  <Chrome className="mr-2 h-4 w-4 !text-automate" />
+                  <Chrome className={`mr-2 h-4 w-4 ${typeTextForce("test", "browser")}`} />
                   <span>Browser Test</span>
                 </CommandItem>
                 <CommandItem onSelect={() => handleCommand("create-test-api")}>
-                  <ArrowLeftRight className="mr-2 h-4 w-4 !text-automate" />
+                  <ArrowLeftRight className={`mr-2 h-4 w-4 ${typeTextForce("test", "api")}`} />
                   <span>API Test</span>
                 </CommandItem>
                 <CommandItem
                   onSelect={() => handleCommand("create-test-database")}
                 >
-                  <Database className="mr-2 h-4 w-4 !text-automate" />
+                  <Database className={`mr-2 h-4 w-4 ${typeTextForce("test", "database")}`} />
                   <span>Database Test</span>
                 </CommandItem>
                 <CommandItem
                   onSelect={() => handleCommand("create-test-custom")}
                 >
-                  <SquareFunction className="mr-2 h-4 w-4 !text-automate" />
+                  <SquareFunction className={`mr-2 h-4 w-4 ${typeTextForce("test", "custom")}`} />
                   <span>Custom Test</span>
                 </CommandItem>
                 <CommandItem
@@ -255,31 +256,31 @@ export function CommandSearch({
                 <CommandItem
                   onSelect={() => handleCommand("create-monitor-http")}
                 >
-                  <ArrowLeftRight className="mr-2 h-4 w-4 !text-monitor" />
+                  <ArrowLeftRight className={`mr-2 h-4 w-4 ${typeTextForce("monitor", "http_request")}`} />
                   <span>HTTP Monitor</span>
                 </CommandItem>
                 <CommandItem
                   onSelect={() => handleCommand("create-monitor-website")}
                 >
-                  <LaptopMinimal className="mr-2 h-4 w-4 !text-monitor" />
+                  <LaptopMinimal className={`mr-2 h-4 w-4 ${typeTextForce("monitor", "website")}`} />
                   <span>Website Monitor</span>
                 </CommandItem>
                 <CommandItem
                   onSelect={() => handleCommand("create-monitor-ping")}
                 >
-                  <ChevronsLeftRightEllipsis className="mr-2 h-4 w-4 !text-monitor" />
+                  <ChevronsLeftRightEllipsis className={`mr-2 h-4 w-4 ${typeTextForce("monitor", "ping_host")}`} />
                   <span>Ping Monitor</span>
                 </CommandItem>
                 <CommandItem
                   onSelect={() => handleCommand("create-monitor-port")}
                 >
-                  <EthernetPort className="mr-2 h-4 w-4 !text-monitor" />
+                  <EthernetPort className={`mr-2 h-4 w-4 ${typeTextForce("monitor", "port_check")}`} />
                   <span>Port Monitor</span>
                 </CommandItem>
                 <CommandItem
                   onSelect={() => handleCommand("create-monitor-synthetic")}
                 >
-                  <PlaywrightLogo className="mr-2 h-4 w-4 !text-monitor" />
+                  <PlaywrightLogo className="mr-2 h-4 w-4" />
                   <span>Synthetic Monitor</span>
                 </CommandItem>
               </CommandGroup>

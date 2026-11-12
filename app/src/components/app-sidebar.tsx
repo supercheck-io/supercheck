@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/sidebar";
 import { useAdminStatus } from "@/hooks/use-admin-status";
 import { NAV } from "@/lib/nav-areas";
+import { typeTextForce } from "@/lib/type-tones";
 import { getReleaseVersionBadge } from "@/lib/release-metadata";
 
 // Internal: build-time value baked in by the release image build; not an operator setting.
@@ -98,25 +99,25 @@ const data = {
               title: "Browser Test",
               url: "/playground?scriptType=browser",
               icon: Chrome,
-              color: "!text-automate",
+              color: typeTextForce("test", "browser"),
             },
             {
               title: "API Test",
               url: "/playground?scriptType=api",
               icon: ArrowLeftRight,
-              color: "!text-automate",
+              color: typeTextForce("test", "api"),
             },
             {
               title: "Database Test",
               url: "/playground?scriptType=database",
               icon: Database,
-              color: "!text-automate",
+              color: typeTextForce("test", "database"),
             },
             {
               title: "Custom Test",
               url: "/playground?scriptType=custom",
               icon: SquareFunction,
-              color: "!text-automate",
+              color: typeTextForce("test", "custom"),
             },
           ],
         },
@@ -129,7 +130,7 @@ const data = {
               title: "Performance Test",
               url: "/playground?scriptType=performance",
               icon: K6Logo,
-              color: "!text-automate",
+              color: typeTextForce("test", "performance"),
             },
           ],
         },
@@ -172,31 +173,31 @@ const data = {
           title: "HTTP Monitor",
           url: "/monitors/create?type=http_request",
           icon: ArrowLeftRight,
-          color: "!text-monitor",
+          color: typeTextForce("monitor", "http_request"),
         },
         {
           title: "Website Monitor",
           url: "/monitors/create?type=website",
           icon: LaptopMinimal,
-          color: "!text-monitor",
+          color: typeTextForce("monitor", "website"),
         },
         {
           title: "Ping Monitor",
           url: "/monitors/create?type=ping_host",
           icon: ChevronsLeftRightEllipsis,
-          color: "!text-monitor",
+          color: typeTextForce("monitor", "ping_host"),
         },
         {
           title: "Port Monitor",
           url: "/monitors/create?type=port_check",
           icon: EthernetPort,
-          color: "!text-monitor",
+          color: typeTextForce("monitor", "port_check"),
         },
         {
           title: "Synthetic Monitor",
           url: "/monitors/create?type=synthetic_test",
           icon: PlaywrightLogo,
-          color: "!text-monitor",
+          color: typeTextForce("monitor", "synthetic_test"),
         },
       ],
     },

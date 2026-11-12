@@ -15,7 +15,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
-import { Shield, Variable as VariableIcon, Info, FileText, Upload, X } from "lucide-react";
+import { Info, FileText, Upload, X } from "lucide-react";
+import { TYPE_TEXT, VARIABLE_TYPES, typeText } from "@/lib/type-tones";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Variable } from "./schema";
 import { MAX_FILE_SIZE } from "@/lib/validations/variable";
@@ -383,11 +384,8 @@ export function VariableDialog({
     }
   };
 
-  const typeIcon = isFileType
-    ? <FileText className="h-5 w-5 text-green-500" />
-    : isSecretType
-      ? <Shield className="h-5 w-5 text-red-500" />
-      : <VariableIcon className="h-5 w-5 text-blue-500" />;
+  const currentType = VARIABLE_TYPES[isFileType ? "file" : isSecretType ? "secret" : "variable"];
+  const typeIcon = <currentType.icon className={`h-5 w-5 ${TYPE_TEXT[currentType.tone]}`} />;
 
   const canSubmit = (() => {
     if (loading || fetchingData || !formData.key.trim() || formData.key.length < 4 || formData.description.length > 300) {
@@ -431,19 +429,19 @@ export function VariableDialog({
                 <SelectContent>
                   <SelectItem value="variable">
                     <span className="flex items-center gap-2">
-                      <VariableIcon className="h-4 w-4 text-blue-500" />
+                      <VARIABLE_TYPES.variable.icon className={`h-4 w-4 ${typeText("variable", "variable")}`} />
                       Variable
                     </span>
                   </SelectItem>
                   <SelectItem value="secret">
                     <span className="flex items-center gap-2">
-                      <Shield className="h-4 w-4 text-red-500" />
+                      <VARIABLE_TYPES.secret.icon className={`h-4 w-4 ${typeText("variable", "secret")}`} />
                       Secret
                     </span>
                   </SelectItem>
                   <SelectItem value="file">
                     <span className="flex items-center gap-2">
-                      <FileText className="h-4 w-4 text-green-500" />
+                      <VARIABLE_TYPES.file.icon className={`h-4 w-4 ${typeText("variable", "file")}`} />
                       File
                     </span>
                   </SelectItem>
@@ -510,7 +508,7 @@ export function VariableDialog({
                   />
                   {selectedFile ? (
                     <div className="flex items-center gap-3">
-                      <FileText className="h-8 w-8 text-green-500" />
+                      <FileText className={`h-8 w-8 ${typeText("variable", "file")}`} />
                       <div>
                         <p className="text-sm font-medium">{selectedFile.name}</p>
                         <p className="text-xs text-muted-foreground">{formatFileSize(selectedFile.size)}</p>
