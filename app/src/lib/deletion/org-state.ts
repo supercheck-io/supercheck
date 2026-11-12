@@ -48,6 +48,12 @@ export async function isOrgPendingDeletion(organizationId: string | null | undef
   return pending;
 }
 
+/** Pending state read on the caller's own transaction (no second connection), optionally locking the organization row. */
+export async function readOrgPendingOn(tx: Pick<typeof db, "select">, organizationId: string, lock: "share" | "update"): Promise<boolean | null> {
+  const [row] = await tx.select({ at: organization.deletionRequestedAt }).from(organization).where(eq(organization.id, organizationId)).for(lock);
+  return row ? !!row.at : null;
+}
+
 export async function isProjectDeleted(projectId: string | null | undefined, options: { fresh?: boolean } = {}): Promise<boolean> {
   if (!projectId) return false;
   const hit = options.fresh ? undefined : projectCache.get(projectId);
@@ -116,6 +122,8 @@ export type DeletionMeta = {
   /** Saved before the provider call, so a crash between the call and its record cannot lose the reinstate. */
   billingCancelAttempted?: boolean;
   billingCancelSettled?: boolean;
+  /** A cancelled deletion could not restore renewal; the billing sweep retries it while the organization is not pending. */
+  billingReinstatePending?: boolean;
   /** Owners the notice already reached, so a retry after a partial failure only sends to the rest. */
   noticeRequestedTo?: string[];
   notice7dTo?: string[];

@@ -6,7 +6,7 @@ import { resolveEffectiveProjectRole } from '@/lib/rbac/effective-project-role';
 import { requireUserAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-context';
 import { db } from '@/utils/db';
 import { projects, projectMembers, jobs, tests, monitors, statusPages } from '@/db/schema';
-import { softDeleteProject } from '@/lib/deletion/project';
+import { ProjectDeletionError, softDeleteProject } from '@/lib/deletion/project';
 import { eq, and, ne, count, isNotNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { logAuditEvent } from '@/lib/audit-logger';
@@ -289,6 +289,9 @@ export async function DELETE(
         { error: error instanceof Error ? error.message : 'Authentication required' },
         { status: authErrorStatus(error) }
       );
+    }
+    if (error instanceof ProjectDeletionError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
     }
     console.error('Failed to delete project:', error);
     return NextResponse.json(
