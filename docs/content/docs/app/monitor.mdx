@@ -220,6 +220,10 @@ Health, performance and history for one monitor.
 | **Test ID** | For synthetic monitors, the linked Playwright test ID (click to copy) |
 | **Action Buttons** | Quick access to Pause, Edit, Delete, and **AI Analyze** |
 
+### Delete a monitor
+
+Deleting a monitor takes effect at once: it disappears from lists, dashboards, status page pickers, plan counts and alerts, its schedule is removed, and no further checks run. Its results, reports and stored artifacts are then removed in the background in small batches, and a retry continues where it stopped. There is no undo; to stop checks temporarily, pause the monitor instead.
+
 ### AI Analyze
 
 **AI Analyze** in the header generates a report from your monitor's own data.
