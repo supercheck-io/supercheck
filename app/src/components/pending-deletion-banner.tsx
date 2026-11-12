@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -37,9 +37,14 @@ export function PendingDeletionBanner({ organizationId, pending, isOwner }: { or
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   // The state loads in the browser after hydration, so the first render never prints a date.
-  const [now] = useState(() => Date.now());
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 60_000); // a page left open keeps an accurate countdown
+    return () => clearInterval(timer);
+  }, []);
   const { data } = useQuery({ queryKey: ["org-deletion-state", organizationId], queryFn: () => fetchState(organizationId), enabled: pending, staleTime: 60_000 });
-  if (!pending) return null;
+  // The fetched state wins once it is loaded (another owner may have cancelled); the prop covers the first render.
+  if (!(data ? data.pending : pending)) return null;
 
   const cancel = async () => {
     setCancelling(true);

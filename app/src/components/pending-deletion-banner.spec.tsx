@@ -28,6 +28,12 @@ it("renders nothing for an active organization", () => {
   expect(fetchMock).not.toHaveBeenCalled();
 });
 
+it("hides itself when the fetched state says the deletion was cancelled elsewhere", async () => {
+  fetchMock.mockResolvedValue({ ok: true, json: async () => ({ deletion: { pending: false, purgeAfter: null, canCancel: false } }) });
+  const { container } = renderBanner({ pending: true, isOwner: true });
+  await waitFor(() => expect(container).toBeEmptyDOMElement());
+});
+
 it("shows the countdown and a cancel button to the owner only", async () => {
   renderBanner({ pending: true, isOwner: true });
   expect(await screen.findByText(/in 5 days/)).toBeTruthy();
