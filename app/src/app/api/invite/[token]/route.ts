@@ -156,7 +156,6 @@ export async function POST(
     }
 
     const invite = inviteDetails[0];
-    if (await isOrgPendingDeletion(invite.organizationId, { fresh: true })) return pendingDeletionResponse();
 
     // Check if invitation is expired
     if (new Date() > invite.expiresAt) {
@@ -181,6 +180,8 @@ export async function POST(
         { status: 400 }
       );
     }
+    // Only a pending invitation addressed to this user learns the organization's deletion state.
+    if (await isOrgPendingDeletion(invite.organizationId, { fresh: true })) return pendingDeletionResponse();
     if (isCloudHosted()) {
       const [acceptingUser] = await db
         .select({ emailVerified: userTable.emailVerified })
