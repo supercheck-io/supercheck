@@ -140,6 +140,7 @@ const PENDING_COLUMN_OK: Record<string, string> = {
   "lib/deletion/visibility.ts": "defines notInPendingOrganization",
   "lib/deletion/org-state.ts": "defines the pending-state helpers",
   "lib/deletion/organization.ts": "the request, cancel and purge transitions decide under the row lock",
+  "lib/deletion/project.ts": "restore reads the organization fresh inside its own transaction",
   "lib/deletion/notices.ts": "reminder emails select the pending organizations",
   "lib/deletion/jobs.ts": "the sweeper finds due organizations",
   "lib/deletion/purge-tenant.ts": "the purge re-checks the window under the lock",
