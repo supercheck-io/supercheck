@@ -1,5 +1,5 @@
 import React from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { DeletedProjects } from "./deleted-projects";
@@ -75,4 +75,25 @@ it("reports a network failure while restoring", async () => {
   renderList();
   fireEvent.click(await screen.findByRole("button", { name: "Restore Alpha" }));
   await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Failed to restore project"));
+});
+
+it("shows an error with a retry when the list cannot be loaded", async () => {
+  fetchMock.mockResolvedValueOnce(list([], 500)).mockResolvedValueOnce(list([project("p1", "Alpha", 3 * day)]));
+  renderList();
+  expect(await screen.findByText(/Could not load recently deleted projects/)).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+  expect(await screen.findByText("Alpha")).toBeTruthy();
+});
+
+it("drops a project whose restore window ends while the page stays open", async () => {
+  jest.useFakeTimers();
+  try {
+    fetchMock.mockResolvedValue(list([project("p1", "Alpha", 20_000)]));
+    renderList();
+    expect(await screen.findByText("Alpha")).toBeTruthy();
+    await act(async () => { jest.advanceTimersByTime(60_000); });
+    expect(screen.queryByText("Alpha")).toBeNull();
+  } finally {
+    jest.useRealTimers();
+  }
 });

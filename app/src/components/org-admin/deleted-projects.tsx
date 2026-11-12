@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { RotateCcw } from "lucide-react";
 import { toast } from "sonner";
@@ -11,8 +11,12 @@ type DeletedProject = { id: string; name: string; deletedAt: string | null; purg
 /** Owners and admins: recently deleted projects that can still be restored. Renders nothing when there are none. */
 export function DeletedProjects({ onRestored, refreshKey = 0 }: { onRestored: () => void; refreshKey?: number }) {
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [now] = useState(() => Date.now());
-  const { data: items = [], refetch } = useQuery({
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 30_000); // a restore window that ends while the page is open drops the row
+    return () => clearInterval(timer);
+  }, []);
+  const { data: items = [], isError, refetch } = useQuery({
     queryKey: ["deleted-projects", refreshKey],
     queryFn: async (): Promise<DeletedProject[]> => {
       const res = await fetch("/api/projects/deleted");
@@ -44,6 +48,16 @@ export function DeletedProjects({ onRestored, refreshKey = 0 }: { onRestored: ()
 
   // The purge may be a little late; an expired row can no longer be restored.
   const restorable = items.filter((p) => !p.purgeAfter || new Date(p.purgeAfter).getTime() > now);
+  if (isError) {
+    return (
+      <section aria-label="Recently deleted projects" className="rounded-lg border p-4">
+        <p role="alert" className="text-sm text-destructive">
+          Could not load recently deleted projects.{" "}
+          <button type="button" className="underline" onClick={() => void refetch()}>Retry</button>
+        </p>
+      </section>
+    );
+  }
   if (restorable.length === 0) return null;
   return (
     <section aria-label="Recently deleted projects" className="rounded-lg border p-4">
