@@ -1,4 +1,15 @@
 /** @jest-environment node */
+// Permission denials ask whether the organization is pending deletion; these specs run without a database.
+jest.mock("@/lib/deletion/org-state", () => {
+  const overrides: Record<string, unknown> = {
+    isOrgPendingDeletion: async () => false,
+    isProjectDeleted: async () => false,
+    isProjectOrgPending: async () => false,
+    permissionDeniedResponse: async (_org: unknown, message: string) => Response.json({ error: message }, { status: 403 }),
+    permissionDeniedResult: async (_org: unknown, message: string) => ({ success: false, error: message, message }),
+  };
+  return new Proxy({}, { get: (_t, key: string) => (key in overrides ? overrides[key] : jest.requireActual("@/lib/deletion/org-state")[key]) });
+});
 import { updateJob } from "./update-job";
 import { subscriptionService, SubscriptionAccessDeniedError } from "@/lib/services/subscription-service";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
@@ -69,7 +80,7 @@ it.each(["blockUntilSubscribed", "requireValidPolarCustomer"] as const)(
 
 it("checks authorization before billing", async () => {
   jest.mocked(checkPermissionWithContext).mockReturnValue(false);
-  expect(await updateJob(input, context)).toEqual({ success: false, message: "Insufficient permissions to edit jobs" });
+  expect(await updateJob(input, context)).toEqual({ success: false, error: "Insufficient permissions to edit jobs", message: "Insufficient permissions to edit jobs" });
   expect(subscriptionService.blockUntilSubscribed).not.toHaveBeenCalled();
 });
 

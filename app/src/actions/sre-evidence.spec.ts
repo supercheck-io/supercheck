@@ -1,4 +1,15 @@
 /** @jest-environment node */
+// Permission denials ask whether the organization is pending deletion; these specs run without a database.
+jest.mock("@/lib/deletion/org-state", () => {
+  const overrides: Record<string, unknown> = {
+    isOrgPendingDeletion: async () => false,
+    isProjectDeleted: async () => false,
+    isProjectOrgPending: async () => false,
+    permissionDeniedResponse: async (_org: unknown, message: string) => Response.json({ error: message }, { status: 403 }),
+    permissionDeniedResult: async (_org: unknown, message: string) => ({ success: false, error: message, message }),
+  };
+  return new Proxy({}, { get: (_t, key: string) => (key in overrides ? overrides[key] : jest.requireActual("@/lib/deletion/org-state")[key]) });
+});
 import { generateSreEvidenceBrief } from "./sre-evidence";
 import { subscriptionService, SubscriptionAccessDeniedError } from "@/lib/services/subscription-service";
 import { runSreEvidenceBriefGeneration } from "@/lib/sre/evidence-brief-orchestrator";
@@ -42,7 +53,7 @@ it("passes permitted requests through existing subscription checks", async () =>
 });
 it("checks permissions before subscription or model work", async () => {
   jest.mocked(checkPermissionWithContext).mockReturnValue(false);
-  expect(await generateSreEvidenceBrief(input)).toEqual({ success: false, error: "Insufficient permissions to investigate this incident" });
+  expect(await generateSreEvidenceBrief(input)).toEqual({ success: false, error: "Insufficient permissions to investigate this incident", message: "Insufficient permissions to investigate this incident" });
   expect(subscriptionService.blockUntilSubscribed).not.toHaveBeenCalled();
   expect(runSreEvidenceBriefGeneration).not.toHaveBeenCalled();
 });
