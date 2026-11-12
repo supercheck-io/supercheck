@@ -76,8 +76,12 @@ async function stopProjectActivity(projectId: string, pausedMonitors: Array<{ id
 }
 
 /** Undo a soft delete inside the restore window (checked under the row lock the purge's first step also takes). */
-export async function restoreProject(input: { projectId: string; actorUserId: string }) {
-  const outcome = await db.transaction(async (tx) => {
+type RestoreInput = { projectId: string; actorUserId: string };
+type RestoreOutcome = Awaited<ReturnType<typeof restoreProjectRows>>;
+
+/** Restore the rows. `executor` is the caller's open transaction when there is one, so no second connection is taken. */
+export async function restoreProjectRows(input: RestoreInput, executor: Pick<typeof db, "transaction"> = db) {
+  return executor.transaction(async (tx) => {
     await tx.execute(sql`SET LOCAL lock_timeout = '10s'`);
     const [project] = await tx.select({ deletedAt: projects.deletedAt, expired: sql<boolean>`${projects.purgeAfter} <= now()`, status: projects.status, name: projects.name, organizationId: projects.organizationId })
       .from(projects).where(eq(projects.id, input.projectId)).for("update");
@@ -102,6 +106,10 @@ export async function restoreProject(input: { projectId: string; actorUserId: st
     await closeDeletionJobs(tx, "project", input.projectId);
     return { project, resumed };
   });
+}
+
+/** Everything that must wait for the restore to commit: cache, audit trail and schedule re-creation. */
+export async function finishProjectRestore(input: RestoreInput, outcome: RestoreOutcome) {
   invalidateProjectState(input.projectId);
   await logAuditEvent({ userId: input.actorUserId, organizationId: outcome.project.organizationId, action: "project_restored", resource: "project", resourceId: input.projectId, metadata: { projectName: outcome.project.name }, success: true });
   // Re-create schedules after the commit; a failure is repaired by the periodic monitor schedule repair and job init.
@@ -116,6 +124,10 @@ export async function restoreProject(input: { projectId: string; actorUserId: st
     }
   } catch (error) { console.error("Failed to reschedule jobs of restored project", input.projectId, error); }
   return outcome.project;
+}
+
+export async function restoreProject(input: RestoreInput) {
+  return finishProjectRestore(input, await restoreProjectRows(input));
 }
 
 /** Soft-deleted projects of an organization still inside their restore window (for the restore list). */
