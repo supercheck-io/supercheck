@@ -113,10 +113,7 @@ export async function GET(request: Request) {
     // Check view permission via context
     const canView = checkPermissionWithContext("job", "view", authCtx);
     if (!canView) {
-      return NextResponse.json(
-        { error: "Insufficient permissions" },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
     }
 
     // Determine scope: org-level admins see all projects in the org;

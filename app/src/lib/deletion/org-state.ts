@@ -79,6 +79,24 @@ export function pendingDeletionResponse(): NextResponse {
 }
 
 
+/**
+ * Response for a permission denial on organization-owned data. A member of an organization pending deletion is told why
+ * (code ORG_PENDING_DELETION, the same body as the guards that answer it directly) instead of a generic "insufficient
+ * permissions", so a client can point at Cancel deletion. Only the denial path calls it, so the lookup costs nothing on
+ * the hot path. Never reveals the state to someone who is not a member: callers use it after standing is established.
+ */
+export async function permissionDeniedResponse(organizationId: string | null | undefined, message: string): Promise<NextResponse> {
+  if (await isOrgPendingDeletion(organizationId)) return pendingDeletionResponse();
+  return NextResponse.json({ error: message }, { status: 403 });
+}
+
+/** Server-action twin of permissionDeniedResponse: the failure result, with the code when the organization is pending. */
+export async function permissionDeniedResult(organizationId: string | null | undefined, message: string): Promise<{ success: false; error: string; message: string; code?: string }> {
+  const pending = await isOrgPendingDeletion(organizationId);
+  const text = pending ? new OrgPendingDeletionError().message : message;
+  return { success: false, error: text, message: text, ...(pending ? { code: PENDING_ORG_CODE } : {}) };
+}
+
 /** Grace window for a new organization deletion. Zero (immediate purge) only for self-hosted; cloud ignores 0 and invalid values. */
 export function organizationGraceDays(env: NodeJS.ProcessEnv = process.env): number {
   const raw = env.ORG_DELETION_GRACE_DAYS;

@@ -6,6 +6,7 @@ import { requirePermissions } from "@/lib/rbac/middleware";
 import { z } from "zod";
 import { setStatusPagePublished } from "@/lib/status-pages/service";
 
+import { permissionDeniedResult } from "@/lib/deletion/org-state";
 async function changePublishState(
   statusPageId: string,
   target: "published" | "draft" | "archived"
@@ -40,10 +41,7 @@ async function changePublishState(
         `User ${userId} attempted to ${verb} status page without permission:`,
         error
       );
-      return {
-        success: false,
-        message: `Insufficient permissions to ${verb} status pages`,
-      };
+      return await permissionDeniedResult(organizationId, `Insufficient permissions to ${verb} status pages`);
     }
 
     const result = await setStatusPagePublished(

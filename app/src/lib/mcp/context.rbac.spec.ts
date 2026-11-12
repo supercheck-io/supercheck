@@ -41,6 +41,11 @@ describe("assertCan against the real RBAC tables", () => {
     const call = () => assertCan(as(role), "sre_incident", action, scope);
     if (allowed) expect(call).not.toThrow(); else expect(call).toThrow(McpAccessDeniedError);
   });
+  it("denies every write of a pending organization with its own reason, and keeps reads", () => {
+    const pending = { ...as("project_admin"), orgPendingDeletion: true };
+    expect(() => assertCan(pending, "sre_incident", "update", "mcp:incidents:write")).toThrow(expect.objectContaining({ reason: "org_pending_deletion" }));
+    expect(() => assertCanView(pending, "job")).not.toThrow();
+  });
   it("knows the connector resource used for live investigations", () => {
     expect(() => assertCan(as("project_admin"), "sre_connector", "investigate", "mcp:sre")).not.toThrow();
   });

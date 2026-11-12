@@ -10,8 +10,8 @@ import { logAuditEvent } from '@/lib/audit-logger';
 import { disableTriggerKeysForMember } from '@/lib/security/disable-trigger-keys';
 import { cancelPendingInvitesByInviter } from '@/lib/security/cancel-pending-invites';
 import { updateMemberSchema } from '@/lib/validations/member';
-import { isOrgPendingDeletion, pendingDeletionResponse } from "@/lib/deletion/org-state";
 
+import { isOrgPendingDeletion, pendingDeletionResponse, permissionDeniedResponse } from "@/lib/deletion/org-state";
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ memberId: string }> }
@@ -36,10 +36,7 @@ export async function PUT(
     const isOrgAdmin = orgRole === Role.ORG_ADMIN || orgRole === Role.ORG_OWNER;
     
     if (!isOrgAdmin) {
-      return NextResponse.json(
-        { error: 'Insufficient permissions to update member roles' },
-        { status: 403 }
-      );
+      return await permissionDeniedResponse(organizationId, 'Insufficient permissions to update member roles');
     }
 
     const body = await request.json().catch(() => null);
@@ -380,10 +377,7 @@ export async function DELETE(
     const isOrgAdmin = delOrgRole === Role.ORG_ADMIN || delOrgRole === Role.ORG_OWNER;
     
     if (!isOrgAdmin) {
-      return NextResponse.json(
-        { error: 'Insufficient permissions to remove members' },
-        { status: 403 }
-      );
+      return await permissionDeniedResponse(delOrgId, 'Insufficient permissions to remove members');
     }
 
     // Get member details for audit
@@ -485,7 +479,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Member not found' }, { status: 404 });
     }
     if (removed === 'forbidden') {
-      return NextResponse.json({ error: 'Insufficient permissions to remove this member' }, { status: 403 });
+      return await permissionDeniedResponse(delOrgId, 'Insufficient permissions to remove this member');
     }
 
     // Log the audit event

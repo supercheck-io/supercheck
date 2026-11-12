@@ -36,10 +36,7 @@ export async function deleteTest(testId: string) {
       console.warn(
         `User ${userId} attempted to delete test ${testId} without permission`
       );
-      return {
-        success: false,
-        error: "Insufficient permissions to delete tests",
-      };
+      return { success: false, error: "Insufficient permissions to delete tests" };
     }
 
 

@@ -12,8 +12,8 @@ import { isFreshSession, reauthRequiredResponse } from '@/lib/deletion/reauth';
 import { isImpersonatedSession } from '@/lib/rbac/middleware';
 import { checkAdminRateLimit } from '@/lib/session-security';
 import { requireSameOriginRequest } from '@/lib/security/same-origin';
-import { isOrgPendingDeletion, pendingDeletionResponse } from "@/lib/deletion/org-state";
 
+import { isOrgPendingDeletion, pendingDeletionResponse, permissionDeniedResponse } from "@/lib/deletion/org-state";
 /**
  * Validation schema for organization name updates.
  * Matches the client-side schema in lib/validations/organization.ts.
@@ -137,10 +137,7 @@ export async function PUT(
     // Only ORG_ADMIN and ORG_OWNER can update organizations
     const canUpdate = orgRole === Role.ORG_ADMIN || orgRole === Role.ORG_OWNER;
     if (!canUpdate) {
-      return NextResponse.json(
-        { error: 'Insufficient permissions' },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
     }
     
     let body;

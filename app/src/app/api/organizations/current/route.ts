@@ -19,10 +19,7 @@ export async function GET() {
     const isOrgAdmin = orgRole === Role.ORG_ADMIN || orgRole === Role.ORG_OWNER;
     
     if (!isOrgAdmin) {
-      return NextResponse.json(
-        { error: 'Insufficient permissions' },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
     }
 
     // Fetch org details from DB since we only have the ID from auth context

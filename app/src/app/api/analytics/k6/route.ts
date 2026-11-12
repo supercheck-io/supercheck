@@ -34,10 +34,7 @@ export async function GET(request: NextRequest) {
     // Check permissions
     const canView = checkPermissionWithContext('project', 'view', context);
     if (!canView) {
-      return NextResponse.json(
-        { error: 'Insufficient permissions' },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
     }
 
     const searchParams = request.nextUrl.searchParams;

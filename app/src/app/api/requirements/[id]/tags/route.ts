@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-context';
 
+import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -19,10 +20,7 @@ export async function GET(
     const canView = checkPermissionWithContext('requirement', 'view', context);
 
     if (!canView) {
-      return NextResponse.json(
-        { error: 'Insufficient permissions' },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
     }
 
     const { id: requirementId } = await params;
@@ -81,10 +79,7 @@ export async function POST(
     const canUpdate = checkPermissionWithContext('requirement', 'update', context);
 
     if (!canUpdate) {
-      return NextResponse.json(
-        { error: 'Insufficient permissions to update requirement tags' },
-        { status: 403 }
-      );
+      return await permissionDeniedResponse(organizationId, 'Insufficient permissions to update requirement tags');
     }
 
     const { id: requirementId } = await params;

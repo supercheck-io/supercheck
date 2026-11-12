@@ -30,6 +30,7 @@ import {
 } from "@/lib/status-pages/service";
 import { deleteStatusPageWithLinks } from "@/lib/resource-deletion/linked-records";
 
+import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 // UUID validation schema
 const uuidSchema = z.string().uuid("Invalid status page ID format");
 
@@ -68,10 +69,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     const canView = checkPermissionWithContext("status_page", "view", authCtx);
 
     if (!canView) {
-      return NextResponse.json(
-        { error: "Insufficient permissions" },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
     }
 
     // Check update permission
@@ -268,10 +266,7 @@ export async function DELETE(
 
     const canDelete = checkPermissionWithContext("status_page", "delete", authCtx);
     if (!canDelete) {
-      return NextResponse.json(
-        { error: "Insufficient permissions to delete status pages" },
-        { status: 403 }
-      );
+      return await permissionDeniedResponse(organizationId, "Insufficient permissions to delete status pages");
     }
 
     // Verify ownership
@@ -342,10 +337,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
     const authCtx = await requireAuthContext();
 
     if (!checkPermissionWithContext("status_page", "update", authCtx)) {
-      return NextResponse.json(
-        { error: "Insufficient permissions to update status pages" },
-        { status: 403 }
-      );
+      return await permissionDeniedResponse(authCtx.organizationId, "Insufficient permissions to update status pages");
     }
 
     let body: unknown;

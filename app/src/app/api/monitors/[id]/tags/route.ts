@@ -9,6 +9,7 @@ import { isUuid } from "@/lib/uuid";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { MAX_TAGS_PER_ENTITY, TagLimitError, tagPatchSchema } from "@/lib/tag-patch";
 
+import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 type RouteParams = { params: Promise<{ id: string }> };
 
 const MAX_TAGS_PER_MONITOR = MAX_TAGS_PER_ENTITY;
@@ -75,10 +76,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const { project, organizationId } = context;
 
     if (!checkPermissionWithContext("monitor", "update", context)) {
-      return NextResponse.json(
-        { error: "Insufficient permissions to update monitor tags" },
-        { status: 403 }
-      );
+      return await permissionDeniedResponse(organizationId, "Insufficient permissions to update monitor tags");
     }
 
     const { id: monitorId } = await params;
@@ -180,10 +178,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     const { project, organizationId } = context;
 
     if (!checkPermissionWithContext("monitor", "update", context)) {
-      return NextResponse.json(
-        { error: "Insufficient permissions to update monitor tags" },
-        { status: 403 }
-      );
+      return await permissionDeniedResponse(organizationId, "Insufficient permissions to update monitor tags");
     }
 
     const { id: monitorId } = await params;
@@ -282,10 +277,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     const { project, organizationId } = context;
 
     if (!checkPermissionWithContext("monitor", "update", context)) {
-      return NextResponse.json(
-        { error: "Insufficient permissions to update monitor tags" },
-        { status: 403 }
-      );
+      return await permissionDeniedResponse(organizationId, "Insufficient permissions to update monitor tags");
     }
 
     const { id: monitorId } = await params;

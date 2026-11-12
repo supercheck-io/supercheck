@@ -16,6 +16,7 @@ import {
   getStatusPageRuntimeConfig,
 } from "@/lib/status-page-domain";
 
+import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 /**
  * GET /api/status-pages
  * Fetches status pages for the current project with standardized pagination format.
@@ -139,10 +140,7 @@ export async function POST(request: NextRequest) {
     const authCtx = await requireAuthContext();
 
     if (!checkPermissionWithContext("status_page", "create", authCtx)) {
-      return NextResponse.json(
-        { error: "Insufficient permissions to create status pages" },
-        { status: 403 }
-      );
+      return await permissionDeniedResponse(authCtx.organizationId, "Insufficient permissions to create status pages");
     }
 
     let body: unknown;

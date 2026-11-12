@@ -10,6 +10,7 @@ import { requirePermissions } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { z } from "zod";
 
+import { permissionDeniedResult } from "@/lib/deletion/org-state";
 // UUID validation schema
 const uuidSchema = z.string().uuid();
 
@@ -44,10 +45,7 @@ export async function deleteIncident(id: string, statusPageId: string) {
       console.warn(
         `[SECURITY] User ${userId} attempted to delete incident without permission`
       );
-      return {
-        success: false,
-        message: "Insufficient permissions to delete incidents",
-      };
+      return await permissionDeniedResult(organizationId, "Insufficient permissions to delete incidents");
     }
 
     // SECURITY: Verify status page belongs to this organization and project

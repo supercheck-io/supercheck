@@ -13,8 +13,8 @@ import { logAuditEvent } from "@/lib/audit-logger";
 import { EmailService } from "@/lib/email-service";
 import { renderOrganizationInvitationEmail } from "@/lib/email-renderer";
 import { getRedisConnection } from "@/lib/queue";
-import { isOrgPendingDeletion, pendingDeletionResponse } from "@/lib/deletion/org-state";
 
+import { isOrgPendingDeletion, pendingDeletionResponse, permissionDeniedResponse } from "@/lib/deletion/org-state";
 // Rate limiting for resend operations (more restrictive than invite creation)
 const RESEND_RATE_LIMIT_KEY_PREFIX = "supercheck:invite:resend:ratelimit";
 const RESEND_RATE_LIMIT_MAX = 5; // Max 5 resends per hour per user
@@ -83,10 +83,7 @@ export async function DELETE(
     const isOrgAdmin = orgRole === Role.ORG_ADMIN || orgRole === Role.ORG_OWNER;
 
     if (!isOrgAdmin) {
-      return NextResponse.json(
-        { error: "Insufficient permissions to cancel invitations" },
-        { status: 403 }
-      );
+      return await permissionDeniedResponse(organizationId, "Insufficient permissions to cancel invitations");
     }
 
     // Find the invitation and verify it belongs to this organization
@@ -203,10 +200,7 @@ export async function POST(
     const isOrgAdmin = orgRole === Role.ORG_ADMIN || orgRole === Role.ORG_OWNER;
 
     if (!isOrgAdmin) {
-      return NextResponse.json(
-        { error: "Insufficient permissions to resend invitations" },
-        { status: 403 }
-      );
+      return await permissionDeniedResponse(organizationId, "Insufficient permissions to resend invitations");
     }
 
     // Find the invitation and verify it belongs to this organization

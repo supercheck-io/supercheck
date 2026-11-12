@@ -255,10 +255,7 @@ export async function GET(request: Request) {
           });
 
           if (!authorized) {
-            return NextResponse.json(
-              { error: "Insufficient permissions" },
-              { status: 403 }
-            );
+            return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
           }
         } catch (e) {
           console.error("Error checking permissions for missing report run:", e);
@@ -340,10 +337,7 @@ export async function GET(request: Request) {
     });
 
     if (!authorized) {
-      return NextResponse.json(
-        { error: "Insufficient permissions to view this report" },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: "Insufficient permissions to view this report" }, { status: 403 });
     }
 
     if (!reportResult.s3Url) {

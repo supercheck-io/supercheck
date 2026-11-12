@@ -11,6 +11,7 @@ import {
   invalidateLocationCache,
 } from "@/lib/location-registry";
 
+import { permissionDeniedResult } from "@/lib/deletion/org-state";
 type ActionResult<T = undefined> = {
   success: boolean;
   error?: string;
@@ -116,7 +117,7 @@ export async function setProjectLocationRestrictions(
       projectId,
     });
     if (!canUpdate) {
-      return { success: false, error: "Insufficient permissions to update project settings" };
+      return await permissionDeniedResult(context.organizationId, "Insufficient permissions to update project settings");
     }
 
     const uniqueLocationIds = Array.from(new Set(locationIds));

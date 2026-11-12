@@ -12,6 +12,7 @@ import {
   type RequirementServiceContext,
 } from "@/lib/requirements/service";
 
+import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 type RouteParams = { params: Promise<{ id: string }> };
 
 const notFound = () =>
@@ -67,10 +68,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     const context = await requireAuthContext();
     if (!checkPermissionWithContext("requirement", "update", context)) {
-      return NextResponse.json(
-        { error: "Insufficient permissions to link tests" },
-        { status: 403 }
-      );
+      return await permissionDeniedResponse(context.organizationId, "Insufficient permissions to link tests");
     }
     const { id } = await params;
     if (!isUuid(id)) return notFound();
@@ -97,10 +95,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     const context = await requireAuthContext();
     if (!checkPermissionWithContext("requirement", "update", context)) {
-      return NextResponse.json(
-        { error: "Insufficient permissions to unlink tests" },
-        { status: 403 }
-      );
+      return await permissionDeniedResponse(context.organizationId, "Insufficient permissions to unlink tests");
     }
     const { id } = await params;
     if (!isUuid(id)) return notFound();

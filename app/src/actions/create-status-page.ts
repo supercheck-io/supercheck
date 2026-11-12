@@ -8,6 +8,7 @@ import {
   type CreateStatusPageInput,
 } from "@/lib/status-pages/service";
 
+import { permissionDeniedResult } from "@/lib/deletion/org-state";
 export type CreateStatusPageData = CreateStatusPageInput;
 
 export async function createStatusPage(data: CreateStatusPageData) {
@@ -31,10 +32,7 @@ export async function createStatusPage(data: CreateStatusPageData) {
         `User ${userId} attempted to create status page without permission:`,
         error
       );
-      return {
-        success: false,
-        message: "Insufficient permissions to create status pages",
-      };
+      return await permissionDeniedResult(organizationId, "Insufficient permissions to create status pages");
     }
 
     const result = await createStatusPageService(

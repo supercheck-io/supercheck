@@ -26,10 +26,7 @@ export async function GET(
     });
 
     if (!canManageMembers) {
-      return NextResponse.json(
-        { error: 'Insufficient permissions' },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
     }
 
     // Get project assignments for the specific user in the active organization

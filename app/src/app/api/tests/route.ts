@@ -11,6 +11,7 @@ import { validateTestScript, normalizeTestType } from "@/lib/script-type-validat
 import { decodeStoredTestScript, encodeStoredTestScript } from "@/lib/test-script";
 import { loadCreators } from "@/lib/creators";
 
+import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 /**
  * GET /api/tests
  *
@@ -227,10 +228,7 @@ export async function POST(request: NextRequest) {
     const canCreate = checkPermissionWithContext("test", "create", context);
 
     if (!canCreate) {
-      return NextResponse.json(
-        { error: "Insufficient permissions to create tests" },
-        { status: 403 }
-      );
+      return await permissionDeniedResponse(context.organizationId, "Insufficient permissions to create tests");
     }
 
     let body;

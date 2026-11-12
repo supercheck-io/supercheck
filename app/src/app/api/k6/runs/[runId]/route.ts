@@ -32,10 +32,7 @@ export async function GET(
     const canViewTests = checkPermissionWithContext("test", "view", authCtx);
 
     if (!canViewTests) {
-      return NextResponse.json(
-        { error: "Insufficient permissions" },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
     }
 
     if (!isUuid((await context.params).runId)) return NextResponse.json({ error: "Run not found" }, { status: 404 });

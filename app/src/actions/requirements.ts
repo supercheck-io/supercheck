@@ -39,6 +39,7 @@ import {
   accumulateRequirementCoverage,
 } from "@/lib/dashboard/requirements-stats";
 
+import { permissionDeniedResult } from "@/lib/deletion/org-state";
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -359,10 +360,7 @@ export async function updateRequirement(
       console.warn(
         `User ${userId} attempted to update requirement ${data.id} without permission`
       );
-      return {
-        success: false,
-        error: "Insufficient permissions to update requirements",
-      };
+      return await permissionDeniedResult(organizationId, "Insufficient permissions to update requirements");
     }
 
     const result = await updateRequirementRecord(
@@ -415,10 +413,7 @@ export async function deleteRequirement(
       console.warn(
         `User ${userId} attempted to delete requirement ${id} without permission`
       );
-      return {
-        success: false,
-        error: "Insufficient permissions to delete requirements",
-      };
+      return await permissionDeniedResult(organizationId, "Insufficient permissions to delete requirements");
     }
 
     const result = await deleteRequirementRecord(
@@ -548,10 +543,7 @@ export async function linkTestsToRequirement(
     });
 
     if (!canUpdate) {
-      return {
-        success: false,
-        error: "Insufficient permissions to link tests",
-      };
+      return await permissionDeniedResult(organizationId, "Insufficient permissions to link tests");
     }
 
     const result = await linkTestsRecord(
@@ -599,10 +591,7 @@ export async function syncRequirementTests(
     });
 
     if (!canUpdate) {
-      return {
-        success: false,
-        error: "Insufficient permissions to update requirement tests",
-      };
+      return await permissionDeniedResult(organizationId, "Insufficient permissions to update requirement tests");
     }
 
     const result = await syncRequirementTestsRecord(
@@ -651,10 +640,7 @@ export async function unlinkTestFromRequirement(
     });
 
     if (!canUpdate) {
-      return {
-        success: false,
-        error: "Insufficient permissions to unlink tests",
-      };
+      return await permissionDeniedResult(organizationId, "Insufficient permissions to unlink tests");
     }
 
     const result = await unlinkTestsRecord(

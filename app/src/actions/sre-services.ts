@@ -30,6 +30,7 @@ import { isAssignableUser } from "@/lib/sre/incident-lifecycle";
 import { describeServiceSignals } from "@/lib/sre/service-health-explanation";
 import { listServiceDependencySuggestions } from "@/lib/sre/service-dependency-suggestions";
 
+import { permissionDeniedResult } from "@/lib/deletion/org-state";
 const logger = createLogger({ module: "sre-services" }) as {
   error: (data: unknown, message?: string) => void;
 };
@@ -365,7 +366,7 @@ export async function createSreService(input: z.infer<typeof serviceInputSchema>
     });
 
     if (!canCreate) {
-      return { success: false, error: "Insufficient permissions to create services" };
+      return await permissionDeniedResult(organizationId, "Insufficient permissions to create services");
     }
 
     const existing = await db.query.sreServices.findFirst({
@@ -445,7 +446,7 @@ export async function updateSreService(input: z.infer<typeof updateServiceInputS
     });
 
     if (!canUpdate) {
-      return { success: false, error: "Insufficient permissions to update services" };
+      return await permissionDeniedResult(organizationId, "Insufficient permissions to update services");
     }
 
     const current = await db.query.sreServices.findFirst({
@@ -543,7 +544,7 @@ export async function archiveSreService(input: z.infer<typeof archiveServiceInpu
     });
 
     if (!canDelete) {
-      return { success: false, error: "Insufficient permissions to archive services" };
+      return await permissionDeniedResult(organizationId, "Insufficient permissions to archive services");
     }
 
     const service = await db.transaction(async (tx) => {
@@ -1050,7 +1051,7 @@ export async function saveSreServiceDependency(
   try {
     const context = await requireProjectContext();
     if (!hasServicePermission(context, "update")) {
-      return { success: false, error: "Insufficient permissions to manage service dependencies" };
+      return await permissionDeniedResult(context.organizationId, "Insufficient permissions to manage service dependencies");
     }
     if (!await validateActiveServiceIds(context, [parsed.data.sourceServiceId, parsed.data.targetServiceId])) {
       return { success: false, error: "Both dependency endpoints must be active services in the current project" };
@@ -1132,7 +1133,7 @@ export async function removeSreServiceDependency(
   try {
     const context = await requireProjectContext();
     if (!hasServicePermission(context, "update")) {
-      return { success: false, error: "Insufficient permissions to manage service dependencies" };
+      return await permissionDeniedResult(context.organizationId, "Insufficient permissions to manage service dependencies");
     }
     const [dependency] = await db
       .update(sreServiceDependencies)
@@ -1177,7 +1178,7 @@ export async function addSreServiceResource(
   try {
     const context = await requireProjectContext();
     if (!hasServicePermission(context, "update")) {
-      return { success: false, error: "Insufficient permissions to manage service resources" };
+      return await permissionDeniedResult(context.organizationId, "Insufficient permissions to manage service resources");
     }
     const service = await getScopedService(context, parsed.data.serviceId);
     if (!service || service.status !== "active") {
@@ -1245,7 +1246,7 @@ export async function removeSreServiceResource(
   try {
     const context = await requireProjectContext();
     if (!hasServicePermission(context, "update")) {
-      return { success: false, error: "Insufficient permissions to manage service resources" };
+      return await permissionDeniedResult(context.organizationId, "Insufficient permissions to manage service resources");
     }
     const service = await getScopedService(context, parsed.data.serviceId);
     if (!service) return { success: false, error: "Service not found or access denied" };
@@ -1284,7 +1285,7 @@ async function decideDependencySuggestion(
   try {
     const context = await requireProjectContext();
     if (!hasServicePermission(context, "configure")) {
-      return { success: false, error: "Insufficient permissions to approve topology suggestions" };
+      return await permissionDeniedResult(context.organizationId, "Insufficient permissions to approve topology suggestions");
     }
 
     const outcome = await db.transaction(async (tx) => {

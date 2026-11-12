@@ -9,6 +9,7 @@ import {
   createComponentFieldsSchema,
 } from "@/lib/status-pages/service";
 
+import { permissionDeniedResult } from "@/lib/deletion/org-state";
 const createComponentSchema = createComponentFieldsSchema.extend({
   statusPageId: z.string().uuid(),
 });
@@ -35,10 +36,7 @@ export async function createComponent(data: CreateComponentData) {
       console.warn(
         `[SECURITY] User ${userId} attempted to create component without permission`,
       );
-      return {
-        success: false,
-        message: "Insufficient permissions to create components",
-      };
+      return await permissionDeniedResult(organizationId, "Insufficient permissions to create components");
     }
 
     // Validate the page id; the remaining fields are validated by the service

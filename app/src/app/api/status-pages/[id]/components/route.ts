@@ -10,6 +10,7 @@ import {
   toComponentDto,
 } from "@/lib/status-pages/service";
 
+import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 const uuidSchema = z.string().uuid("Invalid status page ID format");
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -69,10 +70,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     const authCtx = await requireAuthContext();
     if (!checkPermissionWithContext("status_page", "update", authCtx)) {
-      return NextResponse.json(
-        { error: "Insufficient permissions to create components" },
-        { status: 403 }
-      );
+      return await permissionDeniedResponse(authCtx.organizationId, "Insufficient permissions to create components");
     }
 
     let body: unknown;

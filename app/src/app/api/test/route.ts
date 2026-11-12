@@ -32,8 +32,8 @@ import {
 } from "@/lib/execution-api-responses";
 import { requireSameOriginRequest } from "@/lib/security/same-origin";
 import { MAX_SCRIPT_LENGTH } from "@/lib/validations/common";
-import { pendingDeletionResponse, isOrgPendingDeletion } from "@/lib/deletion/org-state";
 
+import { isOrgPendingDeletion, pendingDeletionResponse, permissionDeniedResponse } from "@/lib/deletion/org-state";
 function buildReportProxyUrl(entityId: string): string {
   return `/api/test-results/${encodeURIComponent(entityId)}/report/index.html?forceIframe=true`;
 }
@@ -53,10 +53,7 @@ export async function POST(request: NextRequest) {
     
 	    if (!canRunTests) {
 	      console.warn(`User ${userId} attempted to run playground test without RUN_TESTS permission`);
-	      return NextResponse.json(
-	        { error: "Insufficient permissions to run tests. Only editors and admins can execute tests from the playground." },
-	        { status: 403 }
-	      );
+	      return await permissionDeniedResponse(organizationId, "Insufficient permissions to run tests. Only editors and admins can execute tests from the playground.");
 	    }
 
 	    let executionPolicy: ExecutionPolicy;

@@ -16,8 +16,8 @@ import { insertWithinPlanLimit } from "@/lib/middleware/plan-limit-lock";
 import { countSeatsInUse } from "@/lib/billing/member-seats";
 import { getRedisConnection } from "@/lib/queue";
 import { withRedisDeadline } from "@/lib/security/redis-deadline";
-import { isOrgPendingDeletion, pendingDeletionResponse } from "@/lib/deletion/org-state";
 
+import { isOrgPendingDeletion, pendingDeletionResponse, permissionDeniedResponse } from "@/lib/deletion/org-state";
 // Redis-based rate limiting for distributed/serverless environments
 const INVITE_RATE_LIMIT_KEY_PREFIX = "supercheck:invite:ratelimit";
 const configuredInviteRateLimitMax = Number.parseInt(
@@ -139,10 +139,7 @@ export async function POST(request: NextRequest) {
     const isOrgAdmin = orgRole === Role.ORG_ADMIN || orgRole === Role.ORG_OWNER;
 
     if (!isOrgAdmin) {
-      return NextResponse.json(
-        { error: "Insufficient permissions" },
-        { status: 403 },
-      );
+      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
     }
 
     const body = await request.json().catch(() => null);

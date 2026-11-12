@@ -63,6 +63,7 @@ import {
 } from "@/lib/sre/connectors/mcp-endpoint-secret";
 import { db } from "@/utils/db";
 
+import { permissionDeniedResult } from "@/lib/deletion/org-state";
 const credentialTypes = [
   "api_key",
   "oauth_token",
@@ -736,10 +737,7 @@ export async function getPrivateAgentConnectorJobResult(
     });
 
     if (!canView) {
-      return {
-        success: false,
-        error: "Insufficient permissions to view Private Agent job results",
-      };
+      return { success: false, error: "Insufficient permissions to view Private Agent job results" };
     }
 
     const job = await db.query.privateAgentJobs.findFirst({
@@ -907,10 +905,7 @@ export async function createSreConnector(
     );
 
     if (!canConfigure) {
-      return {
-        success: false,
-        error: "Insufficient permissions to configure connectors",
-      };
+      return await permissionDeniedResult(organizationId, "Insufficient permissions to configure connectors");
     }
 
     const uniqueServiceIds = Array.from(new Set(parsed.data.serviceIds));
@@ -1141,10 +1136,7 @@ export async function validateSreConnector(
     );
 
     if (!canConfigure) {
-      return {
-        success: false,
-        error: "Insufficient permissions to validate connectors",
-      };
+      return await permissionDeniedResult(organizationId, "Insufficient permissions to validate connectors");
     }
 
     const row = await db.query.externalConnectors.findFirst({
@@ -1379,10 +1371,7 @@ export async function rotateSreConnectorCredential(
     );
 
     if (!canConfigure) {
-      return {
-        success: false,
-        error: "Insufficient permissions to rotate connector credentials",
-      };
+      return await permissionDeniedResult(organizationId, "Insufficient permissions to rotate connector credentials");
     }
 
     const connector = await db.query.externalConnectors.findFirst({
@@ -1549,10 +1538,7 @@ export async function searchSreConnectorEvidence(
     );
 
     if (!canInvestigate) {
-      return {
-        success: false,
-        error: "Insufficient permissions to search connector evidence",
-      };
+      return await permissionDeniedResult(organizationId, "Insufficient permissions to search connector evidence");
     }
 
     const connector = await db.query.externalConnectors.findFirst({
@@ -1929,10 +1915,7 @@ export async function disableSreConnector(
     );
 
     if (!canConfigure) {
-      return {
-        success: false,
-        error: "Insufficient permissions to disable connectors",
-      };
+      return await permissionDeniedResult(organizationId, "Insufficient permissions to disable connectors");
     }
 
     const [connector] = await db

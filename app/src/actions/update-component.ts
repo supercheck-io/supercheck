@@ -9,6 +9,7 @@ import {
   updateComponentFieldsSchema,
 } from "@/lib/status-pages/service";
 
+import { permissionDeniedResult } from "@/lib/deletion/org-state";
 const updateComponentSchema = updateComponentFieldsSchema.extend({
   id: z.string().uuid(),
   statusPageId: z.string().uuid(),
@@ -36,10 +37,7 @@ export async function updateComponent(data: UpdateComponentData) {
       console.warn(
         `[SECURITY] User ${userId} attempted to update component without permission`,
       );
-      return {
-        success: false,
-        message: "Insufficient permissions to update components",
-      };
+      return await permissionDeniedResult(organizationId, "Insufficient permissions to update components");
     }
 
     const { id, statusPageId, ...fields } = data;

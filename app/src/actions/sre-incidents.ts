@@ -82,6 +82,7 @@ import { readStoredSteps, type SreInvestigationStep } from "@/sre/lib/investigat
 import { db } from "@/utils/db";
 import { failStaleSreInvestigationRunsForIncident } from "@/sre/lib/stale-run-recovery";
 
+import { permissionDeniedResult } from "@/lib/deletion/org-state";
 const logger = createLogger({ module: "sre-incidents" }) as {
   error: (data: unknown, message?: string) => void;
   warn: (data: unknown, message?: string) => void;
@@ -1256,10 +1257,7 @@ export async function createManualSreIncident(
     });
 
     if (!canCreate) {
-      return {
-        success: false,
-        error: "Insufficient permissions to create incidents",
-      };
+      return await permissionDeniedResult(organizationId, "Insufficient permissions to create incidents");
     }
 
     const title = truncate(parsed.data.title, 500);
@@ -1381,10 +1379,7 @@ export async function updateSreIncident(
     });
 
     if (!canUpdate) {
-      return {
-        success: false,
-        error: "Insufficient permissions to update incidents",
-      };
+      return await permissionDeniedResult(organizationId, "Insufficient permissions to update incidents");
     }
 
     const limit = await checkSreIncidentUpdateRateLimit(userId, parsed.data.id);
@@ -1611,10 +1606,7 @@ export async function createSreIncidentFromAlert(
     });
 
     if (!canCreate) {
-      return {
-        success: false,
-        error: "Insufficient permissions to create SRE incidents",
-      };
+      return await permissionDeniedResult(organizationId, "Insufficient permissions to create SRE incidents");
     }
 
     const [alert] = await db

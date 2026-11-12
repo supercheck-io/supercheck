@@ -14,6 +14,7 @@ import { requireProjectContext } from "@/lib/project-context";
 import { requirePermissions } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
 
+import { permissionDeniedResult } from "@/lib/deletion/org-state";
 const testWebhookSchema = z.object({
   subscriberId: z.string().uuid(),
   statusPageId: z.string().uuid(),
@@ -43,10 +44,7 @@ export async function testWebhook(data: z.infer<typeof testWebhookSchema>) {
       console.warn(
         `[SECURITY] User ${userId} attempted to test webhook without permission`
       );
-      return {
-        success: false,
-        message: "Insufficient permissions to test webhooks",
-      };
+      return await permissionDeniedResult(organizationId, "Insufficient permissions to test webhooks");
     }
 
     // SECURITY: Verify status page belongs to this organization and project

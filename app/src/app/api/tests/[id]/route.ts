@@ -20,6 +20,7 @@ import {
 } from "@/lib/test-script";
 import { removeServiceResourceLinks } from "@/lib/resource-deletion/linked-records";
 
+import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 // Matches the tests.title varchar(255) column.
 const MAX_TITLE_LENGTH = 255;
 
@@ -295,10 +296,7 @@ export async function DELETE(
 
     const canDelete = checkPermissionWithContext("test", "delete", context);
     if (!canDelete) {
-      return NextResponse.json(
-        { error: "Insufficient permissions to delete tests" },
-        { status: 403 },
-      );
+      return await permissionDeniedResponse(organizationId, "Insufficient permissions to delete tests");
     }
     if (!isUuid(id)) return NextResponse.json({ error: "Test not found" }, { status: 404 });
 

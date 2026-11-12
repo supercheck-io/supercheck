@@ -38,10 +38,7 @@ export async function GET() {
     // Subscription, spending and usage figures are for org admins and owners only.
     const orgRole = await getUserOrgRole(userId, organizationId);
     if (orgRole !== Role.ORG_ADMIN && orgRole !== Role.ORG_OWNER) {
-      return NextResponse.json(
-        { error: "Insufficient permissions" },
-        { status: 403 },
-      );
+      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
     }
 
     // Get organization details with subscription info

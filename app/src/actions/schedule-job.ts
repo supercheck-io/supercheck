@@ -10,6 +10,7 @@ import { validateJobCron } from "@/lib/job-cron-validation";
 import { requireProjectContext } from "@/lib/project-context";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 
+import { permissionDeniedResult } from "@/lib/deletion/org-state";
 type Job = z.infer<typeof jobsSelectSchema>;
 
 interface ScheduleJobResponse {
@@ -89,10 +90,7 @@ export async function scheduleCronJob(
       console.warn(
         `User ${userId} attempted to schedule job ${jobId} without EDIT_JOBS permission`
       );
-      return {
-        success: false,
-        error: "Insufficient permissions to schedule jobs",
-      };
+      return await permissionDeniedResult(organizationId, "Insufficient permissions to schedule jobs");
     }
 
     // Validate cron expression

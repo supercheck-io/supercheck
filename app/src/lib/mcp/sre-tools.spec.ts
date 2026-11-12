@@ -213,6 +213,14 @@ describe("write tools through registerMcpTools (the gate the server really uses)
     expect(res).toMatchObject({ isError: true, structuredContent: { code: "forbidden" } });
     for (const fn of [assignIncident, acknowledgeIncident, resolveIncident]) expect(fn).not.toHaveBeenCalled();
   });
+  it.each(calls)("%s answers org_pending_deletion for an organization pending deletion and never reaches the service", async (name, args) => {
+    permission.mockReturnValue(true);
+    const handlers = new Map<string, Handler>();
+    registerMcpTools({ registerTool: (n: string, _c: unknown, h: Handler) => handlers.set(n, h) } as unknown as McpServer, { ...base, orgPendingDeletion: true, scopes: ["mcp:read", "mcp:incidents:write"] });
+    const res = await handlers.get(name)!(args);
+    expect(res).toMatchObject({ isError: true, structuredContent: { code: "org_pending_deletion" } });
+    for (const fn of [assignIncident, acknowledgeIncident, resolveIncident]) expect(fn).not.toHaveBeenCalled();
+  });
   it.each(calls)("%s does not exist without the write scope", (name) => {
     expect(server(["mcp:read"]).has(name)).toBe(false);
   });

@@ -17,7 +17,6 @@ import {
 import { prepareJobTestScripts } from "@/lib/job-execution-utils";
 import { validateK6Script } from "@/lib/k6-validator";
 import { SubscriptionAccessDeniedError } from "@/lib/services/subscription-service";
-import { pendingDeletionResponse, isOrgPendingDeletion } from "@/lib/deletion/org-state";
 import { polarUsageService } from "@/lib/services/polar-usage.service";
 import {
   apiKeyRateLimiter,
@@ -41,6 +40,7 @@ import {
 } from "@/lib/execution-api-responses";
 import { isDeletingError } from "@/lib/deletion/errors";
 
+import { isOrgPendingDeletion, pendingDeletionResponse, permissionDeniedResponse } from "@/lib/deletion/org-state";
 // POST /api/jobs/[id]/trigger - Trigger job remotely via API key
 export async function POST(
   request: NextRequest,
@@ -669,10 +669,7 @@ export async function GET(
     // Check permission to view job trigger info
     const canView = checkPermissionWithContext("job", "view", authCtx);
     if (!canView) {
-      return NextResponse.json(
-        { error: "Insufficient permissions" },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
     }
 
     const { id: jobId } = await params;

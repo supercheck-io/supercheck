@@ -31,6 +31,7 @@ import { decodeStoredTestScript } from "@/lib/test-script";
 import { randomUUID } from "crypto";
 import { loadCreators } from "@/lib/creators";
 
+import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 /** A non-numeric or absurdly large value (?limit=abc, ?page=1e20) would otherwise reach Postgres and fail the request with a 500. */
 function integerParam(value: string | null, fallback: number): number {
   const parsed = Number.parseInt(value ?? "", 10);
@@ -411,10 +412,7 @@ export async function POST(request: NextRequest) {
     const canCreate = checkPermissionWithContext("job", "create", context);
 
     if (!canCreate) {
-      return NextResponse.json(
-        { error: "Insufficient permissions to create jobs" },
-        { status: 403 }
-      );
+      return await permissionDeniedResponse(organizationId, "Insufficient permissions to create jobs");
     }
 
     // SECURITY: Validate subscription before allowing job creation
@@ -798,10 +796,7 @@ export async function PUT(request: Request) {
     const canEdit = checkPermissionWithContext("job", "update", context);
 
     if (!canEdit) {
-      return NextResponse.json(
-        { error: "Insufficient permissions to edit jobs" },
-        { status: 403 }
-      );
+      return await permissionDeniedResponse(organizationId, "Insufficient permissions to edit jobs");
     }
 
     const requestedProviderIds = jobData.alertConfig?.notificationProviders ?? [];

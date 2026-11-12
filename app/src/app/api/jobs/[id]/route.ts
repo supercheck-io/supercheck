@@ -161,10 +161,7 @@ export async function PATCH(
 
     const canUpdate = checkPermissionWithContext("job", "update", context);
     if (!canUpdate) {
-      return NextResponse.json(
-        { error: "Insufficient permissions" },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
     }
     if (!isUuid(jobId)) return NextResponse.json({ error: "Job not found" }, { status: 404 });
 

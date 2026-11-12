@@ -57,6 +57,7 @@ import {
 import type { AlertConfig } from "@/db/schema";
 import { loadCreators } from "@/lib/creators";
 
+import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 const logger = createLogger({ module: "monitors-api" }) as {
   debug: (data: unknown, msg?: string) => void;
   info: (data: unknown, msg?: string) => void;
@@ -229,10 +230,7 @@ export async function POST(req: NextRequest) {
 
     // Authorize before rate limiting or billing checks, so a viewer gets 403 rather than 429/402.
     if (!checkPermissionWithContext("monitor", "create", authCtx)) {
-      return NextResponse.json(
-        { error: "Insufficient permissions to create monitors" },
-        { status: 403 },
-      );
+      return await permissionDeniedResponse(organizationId, "Insufficient permissions to create monitors");
     }
 
     // SECURITY: Rate limiting to prevent API abuse
@@ -684,7 +682,7 @@ export async function PUT(req: NextRequest) {
 
     // Permission before existence, and the same action as PUT /api/monitors/[id], so a 404 never leaks to a caller who may not update.
     if (!checkPermissionWithContext("monitor", "update", putCtx)) {
-      return NextResponse.json({ error: "Insufficient permissions to update monitors" }, { status: 403 });
+      return await permissionDeniedResponse(organizationId, "Insufficient permissions to update monitors");
     }
 
     let rawData;

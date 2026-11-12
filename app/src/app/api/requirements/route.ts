@@ -22,6 +22,7 @@ import {
 import { containsPattern } from '@/lib/requirements/like';
 import { loadCreators } from "@/lib/creators";
 
+import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 // The dashboard calls this endpoint without paging and paginates client-side, so the default stays 500.
 const DEFAULT_PAGE = 1;
 const DEFAULT_PAGE_SIZE = 500;
@@ -252,10 +253,7 @@ export async function POST(request: NextRequest) {
     const context = await requireAuthContext();
 
     if (!checkPermissionWithContext('requirement', 'create', context)) {
-      return NextResponse.json(
-        { error: 'Insufficient permissions to create requirements' },
-        { status: 403 }
-      );
+      return await permissionDeniedResponse(context.organizationId, 'Insufficient permissions to create requirements');
     }
 
     let body: unknown;

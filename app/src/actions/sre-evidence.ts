@@ -10,6 +10,7 @@ import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { checkSreEvidenceBriefRateLimit } from "@/lib/sre/sre-rate-limiter";
 import { subscriptionService, SubscriptionAccessDeniedError } from "@/lib/services/subscription-service";
 
+import { permissionDeniedResult } from "@/lib/deletion/org-state";
 const generateBriefSchema = z.object({
   incidentId: z.string().uuid(),
 });
@@ -51,10 +52,7 @@ export async function generateSreEvidenceBrief(input: {
     );
 
     if (!canInvestigate) {
-      return {
-        success: false,
-        error: "Insufficient permissions to investigate this incident",
-      };
+      return await permissionDeniedResult(organizationId, "Insufficient permissions to investigate this incident");
     }
 
     await subscriptionService.blockUntilSubscribed(organizationId);

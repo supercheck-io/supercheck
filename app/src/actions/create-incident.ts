@@ -21,6 +21,7 @@ import {
 } from "@/lib/status-page-system-messages";
 import { eq, and, inArray } from "drizzle-orm";
 
+import { permissionDeniedResult } from "@/lib/deletion/org-state";
 const createIncidentSchema = z.object({
   sreIncidentId: z.string().uuid().optional(),
   scheduledFor: z.coerce.date().optional(),
@@ -83,10 +84,7 @@ export async function createIncident(data: CreateIncidentData) {
       console.warn(
         `[SECURITY] User ${userId} attempted to create incident without permission`,
       );
-      return {
-        success: false,
-        message: "Insufficient permissions to create incidents",
-      };
+      return await permissionDeniedResult(organizationId, "Insufficient permissions to create incidents");
     }
 
     // Validate the data
