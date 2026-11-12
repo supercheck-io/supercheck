@@ -22,6 +22,9 @@ import { eq, and, desc, sql } from "drizzle-orm";
 import { headers } from "next/headers";
 import { createLogger } from "./logger/index";
 
+/** The scrub job marks finished rows with this key; a caller-supplied metadata key must never set it. */
+const stripScrubMarker = (metadata: Record<string, unknown>) => Object.fromEntries(Object.entries(metadata).filter(([key]) => key !== "emailsScrubbed"));
+
 export interface AuditEvent {
   userId?: string;
   organizationId?: string;
@@ -88,8 +91,8 @@ export async function logAuditEvent(
         success: event.success,
         ipAddress: event.ipAddress || ipAddress,
         userAgent: event.userAgent || userAgent,
-        ...(event.metadata ?? {}),
-        ...(event.metadata ? { metadata: { ...event.metadata } } : {}),
+        ...stripScrubMarker(event.metadata ?? {}),
+        ...(event.metadata ? { metadata: stripScrubMarker(event.metadata) } : {}),
         ...actor,
       },
     };

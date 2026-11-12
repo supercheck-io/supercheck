@@ -105,7 +105,7 @@ export async function getSreDiagnosticQueries(requestContext?: ProjectAuthContex
 > {
   try {
     const { userId, organizationId, orgPendingDeletion, project } = requestContext ?? await requireProjectContext();
-    assertCanConfigureDiagnosticQueries(userId, organizationId, orgPendingDeletion, project);
+    assertCanConfigureDiagnosticQueries(userId, organizationId, false, project); // read: stays available while the organization is pending deletion
 
     const rows = await db
       .select({
@@ -146,7 +146,7 @@ export async function getSreDiagnosticQuerySetupOptions(requestContext?: Project
 
   try {
     const { userId, organizationId, orgPendingDeletion, project } = requestContext ?? await requireProjectContext();
-    assertCanConfigureDiagnosticQueries(userId, organizationId, orgPendingDeletion, project);
+    assertCanConfigureDiagnosticQueries(userId, organizationId, false, project); // read: stays available while the organization is pending deletion
 
     const connectors = await db
       .select({ id: externalConnectors.id, name: externalConnectors.name, type: externalConnectors.type, status: externalConnectors.status })

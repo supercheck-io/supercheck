@@ -74,9 +74,9 @@ function toState(config: Record<string, unknown> | null | undefined): SreMcpTool
   };
 }
 
-async function loadMcpConnector(id: string) {
+async function loadMcpConnector(id: string, options: { read?: boolean } = {}) {
   const { userId, organizationId, orgPendingDeletion, project } = await requireProjectContext();
-  if (!checkPermissionWithContext("sre_connector", "configure", { userId, organizationId, orgPendingDeletion, project })) {
+  if (!checkPermissionWithContext("sre_connector", "configure", { userId, organizationId, orgPendingDeletion: options.read ? false : orgPendingDeletion, project })) { // reading saved state stays available while the organization is pending deletion
     return { ok: false as const, error: "Insufficient permissions to configure connectors" as const };
   }
   const connector = await db.query.externalConnectors.findFirst({
@@ -101,7 +101,7 @@ export async function getSreMcpToolState(
   try {
     const parsed = connectorIdSchema.safeParse(input);
     if (!parsed.success) return { success: false, error: "Invalid connector ID" };
-    const loaded = await loadMcpConnector(parsed.data.id);
+    const loaded = await loadMcpConnector(parsed.data.id, { read: true });
     if (!loaded.ok) return { success: false, error: loaded.error };
     return { success: true, state: toState(loaded.connector.config), message: "Loaded" };
   } catch (error) {
