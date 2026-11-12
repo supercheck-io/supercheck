@@ -84,6 +84,7 @@ import {
   GROUP_NOTIFICATION_BUSY,
 } from './monitor-evaluator';
 import { nextOutageKey } from '../monitor-control/sequence-counters';
+import { countMetric } from '../common/sentry-reporter';
 
 // Use the Monitor type from schema
 // Use the MonitorResult type from schema
@@ -2692,6 +2693,18 @@ export class MonitorService {
             ?.executionGroupId || null,
       });
       await (id ? insertRow.onConflictDoNothing() : insertRow);
+      // Counted once per stored check (cycle and legacy paths), never on aggregation replays.
+      // Enum attributes only: never the target, location name or error text.
+      const cause = (resultData.details as { errorType?: unknown } | undefined)
+        ?.errorType;
+      countMetric('monitor.check', {
+        status: resultData.status,
+        cause: resultData.isUp
+          ? 'none'
+          : typeof cause === 'string' && /^[a-z_]{1,40}$/.test(cause)
+            ? cause
+            : 'other',
+      });
     } catch (error) {
       // An FK violation is the expected "monitor purged mid-check" outcome; its message carries the insert params, so skip it.
       if (!isForeignKeyViolation(error)) {

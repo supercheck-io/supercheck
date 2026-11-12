@@ -198,6 +198,7 @@ export function TemplateDialog({
                 </div>
                 <div className="min-h-0 flex-1 overflow-hidden">
                   <Editor
+                    wrapperProps={{ "data-sentry-block": "" }}
                     height="100%"
                     language={isPerformance ? "javascript" : "typescript"}
                     value={selectedTemplate.code}

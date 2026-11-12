@@ -19,7 +19,7 @@ import { PURGE_BATCH, asInput, deleteStorage, limits, purgeJobStep, purgeMonitor
 
 type Child = { kind: "job" | "monitor"; id: string; phase?: string | null; cursor?: Record<string, unknown> };
 type ProjectState = { sub?: "jobs" | "monitors" | "runs" | "tests" | "storage" | "final"; child?: Child; counts?: Record<string, number> };
-type OrgState = ProjectState & { stage?: "begin" | "quiesce" | "usage" | "projects" | "reports" | "billing" | "final"; projectId?: string; project?: ProjectState };
+type OrgState = ProjectState & { stage?: "begin" | "quiesce" | "projects" | "reports" | "usage" | "billing" | "final"; projectId?: string; project?: ProjectState };
 type Pass = { done: true } | { done: false; state: ProjectState; delayMs?: number };
 
 const count = (state: ProjectState, key: string, add: number) => ({ ...state.counts, [key]: (state.counts?.[key] ?? 0) + add });
@@ -153,17 +153,18 @@ export async function purgeOrganizationStep(row: DeletionRow, ctx: StepContext):
   if (stage === "quiesce") {
     // Finish stopping activity (cancel runs, unschedule). Not "done" yet: wait and retry rather than purge under live schedules.
     if (!(await quiesceOrganization(organizationId, { budgetMs: 60_000, force: true }))) return { done: false, phase: "quiesce", delayMs: 5_000 };
-    return next({ stage: "usage" });
+    return next({ stage: "projects" });
   }
   const [org] = await db.select({ id: organization.id, name: organization.name, subscriptionId: organization.subscriptionId, polarCustomerId: organization.polarCustomerId }).from(organization).where(eq(organization.id, organizationId));
   if (!org) return done();
   if (stage === "usage") {
+    // Runs after the projects stage, which drains running jobs: a stopping run can still write billing records until then.
     // Unsent usage would never be billed once the organization is gone: wait (retry with backoff) until it is settled.
     if (hasCancellableSubscription(org) && org.polarCustomerId) {
       await flushFinalUsage(organizationId, { strict: true });
       await assertNoUnsettledUsage(db, organizationId);
     }
-    return next({ stage: "projects" });
+    return next({ stage: "billing" });
   }
   if (stage === "projects") {
     let projectId = state.projectId;
@@ -181,7 +182,7 @@ export async function purgeOrganizationStep(row: DeletionRow, ctx: StepContext):
   if (stage === "reports") {
     // Report rows owned by the organization that no project purge reached.
     const batch = await db.select({ ...reportColumns, entityType: reports.entityType }).from(reports).where(eq(reports.organizationId, organizationId)).limit(PURGE_BATCH);
-    if (batch.length === 0) return next({ stage: "billing" });
+    if (batch.length === 0) return next({ stage: "usage" });
     await deleteStorage(ctx, batch.map((r) => asInput(r, r.entityType)), "organization");
     await db.delete(reports).where(inArray(reports.id, batch.map((r) => r.id)));
     return next({ counts: count(state, "reports", batch.length) }, "reports");

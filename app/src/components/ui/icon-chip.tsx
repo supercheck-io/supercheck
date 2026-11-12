@@ -1,10 +1,13 @@
 import type { LucideIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { TYPE_CHIP, type TypeTone } from "@/lib/type-tones";
 
 /** Product areas from DESIGN.md. Each maps to a CSS token in globals.css. */
-export type AreaTone = "automate" | "monitor" | "respond" | "communicate" | "ai" | "settings";
-export type IconTone = AreaTone | "violet" | "amber" | "blue" | "emerald" | "rose" | "slate" | "indigo" | "sky";
+export type AreaTone = "automate" | "monitor" | "respond" | "communicate" | "ai" | "organization" | "superadmin" | "statuspage";
+/** An area tone, or a type tone from type-tones.ts. */
+export type NavTone = AreaTone | TypeTone;
+export type IconTone = NavTone | "violet" | "amber" | "blue" | "emerald" | "rose" | "slate" | "indigo" | "sky";
 
 // Same palette steps as TableBadge, so icon chips and badges read as one system in light and dark.
 const ICON_TONE: Record<IconTone, string> = {
@@ -13,7 +16,10 @@ const ICON_TONE: Record<IconTone, string> = {
   respond: "bg-respond/10 text-respond",
   communicate: "bg-communicate/10 text-communicate",
   ai: "bg-ai/10 text-ai",
-  settings: "bg-settings/10 text-settings",
+  organization: "bg-organization/10 text-organization",
+  superadmin: "bg-superadmin/10 text-superadmin",
+  statuspage: "bg-statuspage/10 text-statuspage",
+  ...TYPE_CHIP,
   violet: "bg-violet-500/10 text-violet-600 dark:text-violet-400",
   amber: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
   blue: "bg-blue-500/10 text-blue-600 dark:text-blue-400",

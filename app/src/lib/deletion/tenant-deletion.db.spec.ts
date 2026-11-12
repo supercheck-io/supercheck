@@ -51,7 +51,7 @@ jest.mock("@/lib/email-service", () => ({
 jest.mock("@/lib/email-renderer", () => ({ renderOrganizationDeletionEmail: async (p: { kind: string }) => ({ subject: `s-${p.kind}`, html: "h", text: "t" }) }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: (...a: unknown[]) => mockAudit(...a), logAdminEvent: (...a: unknown[]) => mockAdminAudit(...a) }));
 process.env.DELETION_BATCH_PAUSE_MS = "0";
-import { cancelOrganizationDeletion, continueQuiescing, purgeOrganizationNow, requestOrganizationDeletion, retryPendingBillingCancels } from "./organization";
+import { cancelOrganizationDeletion, continueQuiescing, quiesceOrganization, purgeOrganizationNow, requestOrganizationDeletion, retryPendingBillingCancels } from "./organization";
 import { restoreProject, softDeleteProject } from "./project";
 import { runDeletion } from "./runner";
 import { enqueueOrphanedDeletions } from "./jobs";
@@ -96,7 +96,7 @@ beforeEach(async () => {
   mockSignal.mockResolvedValue(undefined);
   mockTrigger.mockResolvedValue(undefined);
   mockFlush.mockResolvedValue({ synced: 0, pending: 0 });
-  mockSend.mockResolvedValue({ sentCount: 1, skippedAddresses: [] });
+  mockSend.mockResolvedValue({ sentCount: 1, failedAddresses: [], skippedAddresses: [] });
   mockEmailConfigured = false;
   process.env.SELF_HOSTED = "true";
   Reflect.deleteProperty(process.env, "POLAR_ACCESS_TOKEN");
@@ -439,7 +439,7 @@ describe("organization deletion emails (transport mocked)", () => {
     expect(mockSend).not.toHaveBeenCalled();
     mockEmailConfigured = true;
     await client`UPDATE organization SET deletion_requested_at = now() - interval '8 days', deletion_purge_after = now() + interval '6 days' WHERE id = ${seeded.orgId}`;
-    mockSend.mockResolvedValueOnce({ sentCount: 0, skippedAddresses: [] });
+    mockSend.mockImplementationOnce(async (o: { recipients: string[] }) => ({ sentCount: 0, failedAddresses: o.recipients, skippedAddresses: [] }));
     await sendDueReminders();
     expect(await sendDueReminders()).toBe(1);
     // failed request email (first sweep), reminder (first sweep), request email again (second sweep)
@@ -452,7 +452,7 @@ describe("request email retry", () => {
     mockSend.mockClear();
     mockEmailConfigured = true;
     const seeded = await seedOrg();
-    mockSend.mockResolvedValueOnce({ sentCount: 0, skippedAddresses: [] });
+    mockSend.mockImplementationOnce(async (o: { recipients: string[] }) => ({ sentCount: 0, failedAddresses: o.recipients, skippedAddresses: [] }));
     await requestOrganizationDeletion({ organizationId: seeded.orgId, actorUserId: seeded.ownerId, guard: { ownerUserId: seeded.ownerId } });
     expect((await client`SELECT deletion_meta ? 'noticeRequested' AS sent FROM organization WHERE id = ${seeded.orgId}`)[0].sent).toBe(false);
     await sendDueReminders(); await sendDueReminders();
@@ -517,5 +517,87 @@ describe("project deletion", () => {
     const [a, b] = await Promise.all([softDeleteProject({ projectId: seeded.projectIds[1], actorUserId: seeded.ownerId }), softDeleteProject({ projectId: seeded.projectIds[1], actorUserId: seeded.ownerId })]);
     expect([a, b].filter(Boolean)).toHaveLength(1);
     expect(await count("deletion_jobs", "target_id", seeded.projectIds[1])).toBe(1);
+  });
+});
+
+describe("review fixes: races, retries and ordering", () => {
+  const cloud = () => { process.env.SELF_HOSTED = "false"; process.env.POLAR_ACCESS_TOKEN = "test"; process.env.POLAR_WEBHOOK_SECRET = "test"; process.env.POLAR_SERVER = "sandbox"; };
+  const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  it("a cancel waits for the schedule removals in flight, so cleanup never removes what the cancel restores", async () => {
+    const seeded = await seedOrg();
+    await seedJob(seeded.orgId, seeded.projectId, 1);
+    await requestOrganizationDeletion({ organizationId: seeded.orgId, actorUserId: seeded.ownerId, guard: { ownerUserId: seeded.ownerId } });
+    await client`UPDATE organization SET deletion_meta = '{}' WHERE id = ${seeded.orgId}`;
+    mockUnscheduleJob.mockReset();
+    let release: () => void = () => undefined;
+    mockUnscheduleJob.mockImplementation(() => new Promise<boolean>((resolve) => { release = () => resolve(true); }));
+    const quiesce = quiesceOrganization(seeded.orgId);
+    while (mockUnscheduleJob.mock.calls.length === 0) await pause(20);
+    let cancelled = false;
+    const cancel = cancelOrganizationDeletion({ organizationId: seeded.orgId, actorUserId: seeded.ownerId }).then(() => { cancelled = true; });
+    await pause(300);
+    expect(cancelled).toBe(false); // blocked on the organization row lock held by the removal in flight
+    release();
+    await Promise.all([quiesce, cancel]);
+    expect(cancelled).toBe(true);
+    expect(mockUnscheduleJob).toHaveBeenCalledTimes(1); // nothing removed after the restore
+  });
+
+  it("a crash after the provider accepted the cancellation still reinstates when the deletion is cancelled", async () => {
+    cloud();
+    mockPolarGet.mockRejectedValueOnce(new Error("crash")).mockResolvedValue({ cancel_at_period_end: true, status: "active" });
+    const seeded = await seedOrg({ subscription: "sub_r1" });
+    const requested = await requestOrganizationDeletion({ organizationId: seeded.orgId, actorUserId: seeded.ownerId, guard: { ownerUserId: seeded.ownerId } });
+    expect(requested?.billing).toBe("retry");
+    expect((await orgRow(seeded.orgId)).deletion_meta.billingCancelAttempted).toBe(true); // intent saved before the provider call
+    expect(await retryPendingBillingCancels()).toBe(1); // provider reports "already": ours, because the attempt was
+    expect((await cancelOrganizationDeletion({ organizationId: seeded.orgId, actorUserId: seeded.ownerId })).billing).toBe("reinstated");
+    expect(mockPolarUpdate).toHaveBeenLastCalledWith("sub_r1", { cancel_at_period_end: false });
+  });
+
+  it("the billing retry also picks up an organization that only has a provider customer", async () => {
+    cloud();
+    const seeded = await seedOrg({ subscription: "sub_r2" });
+    await requestOrganizationDeletion({ organizationId: seeded.orgId, actorUserId: seeded.ownerId, guard: { ownerUserId: seeded.ownerId } });
+    await client`UPDATE organization SET subscription_id = NULL, deletion_meta = '{}' WHERE id = ${seeded.orgId}`;
+    expect(await retryPendingBillingCancels()).toBe(1);
+    expect((await orgRow(seeded.orgId)).deletion_meta.billingCancelSettled).toBe(true);
+  });
+
+  it("the purge checks usage after the projects are drained, not before", async () => {
+    cloud();
+    mockPolarGet.mockResolvedValue({ cancel_at_period_end: true, status: "active" });
+    const seeded = await seedOrg({ subscription: "sub_r3" });
+    await requestOrganizationDeletion({ organizationId: seeded.orgId, actorUserId: seeded.ownerId, guard: { ownerUserId: seeded.ownerId } });
+    const projectsAtFlush: number[] = [];
+    mockFlush.mockImplementation(async () => { projectsAtFlush.push(await count("projects", "organization_id", seeded.orgId)); return { synced: 0, pending: 0 }; });
+    await makeDue(seeded.orgId);
+    expect((await drive("organization", seeded.orgId)).state).toBe("completed");
+    expect(projectsAtFlush.at(-1)).toBe(0);
+  });
+
+  it("a partly failed notice is retried for the owners it missed only", async () => {
+    mockEmailConfigured = true;
+    const seeded = await seedOrg();
+    const [second] = await mockDatabase.insert(schema.user).values({ name: "Second", email: `${randomUUID()}@example.test` }).returning();
+    await mockDatabase.insert(schema.member).values({ organizationId: seeded.orgId, userId: second.id, role: "org_owner", createdAt: new Date() });
+    mockSend.mockImplementationOnce(async (o: { recipients: string[] }) => ({ sentCount: 1, failedAddresses: [second.email], skippedAddresses: [] }));
+    await requestOrganizationDeletion({ organizationId: seeded.orgId, actorUserId: seeded.ownerId, guard: { ownerUserId: seeded.ownerId } });
+    expect((await orgRow(seeded.orgId)).deletion_meta.noticeRequested).toBeUndefined(); // released: not finished
+    await sendDueReminders();
+    const retry = mockSend.mock.calls.map((call) => (call[0] as { recipients: string[] }).recipients).find((_, index) => index === 1);
+    expect(retry).toEqual([second.email]); // the owner who already got it is not mailed again
+    expect((await orgRow(seeded.orgId)).deletion_meta.noticeRequested).toBeDefined();
+  });
+
+  it("the reminder sweep reaches organizations beyond the first page of rows that need nothing", async () => {
+    mockEmailConfigured = true;
+    await client`INSERT INTO organization (id, name, created_at, deletion_requested_at, deletion_purge_after, deletion_meta)
+      SELECT uuidv7(), 'Done', now(), now(), now() + interval '6 days', '{"noticeRequested":"x","notice7d":"x","notice1d":"x"}'::jsonb FROM generate_series(1, 501)`;
+    const seeded = await seedOrg();
+    mockSend.mockImplementationOnce(async (o: { recipients: string[] }) => ({ sentCount: 0, failedAddresses: o.recipients, skippedAddresses: [] }));
+    await requestOrganizationDeletion({ organizationId: seeded.orgId, actorUserId: seeded.ownerId, guard: { ownerUserId: seeded.ownerId } });
+    expect(await sendDueReminders()).toBe(1);
   });
 });

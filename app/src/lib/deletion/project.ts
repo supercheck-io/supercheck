@@ -51,18 +51,30 @@ export async function softDeleteProject(input: { projectId: string; actorUserId:
   return { ...outcome.deleted, purgeAfter };
 }
 
+/**
+ * Runs `work` only while the project is still deleted, holding FOR SHARE on its row. A restore takes FOR UPDATE on that row,
+ * so it waits for the removals in flight and re-creates its schedules afterwards; one that committed first is seen here.
+ */
+async function whileDeleted<T>(projectId: string, work: () => Promise<T>): Promise<T | null> {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`SET LOCAL lock_timeout = '10s'`);
+    const [current] = await tx.select({ status: projects.status }).from(projects).where(eq(projects.id, projectId)).for("share");
+    return current?.status === "deleted" ? work() : null;
+  });
+}
+
 /** Best effort after commit: the schedulers also refuse deleted projects, so a failure here only leaves a no-op repeatable. */
 async function stopProjectActivity(projectId: string, pausedMonitors: Array<{ id: string; scheduledJobId: string | null }>) {
   try {
     const { unscheduleMonitors } = await import("@/lib/execution/trial-lifecycle");
-    await unscheduleMonitors(pausedMonitors, db);
+    await whileDeleted(projectId, () => unscheduleMonitors(pausedMonitors, db));
   } catch (error) { console.error("Failed to unschedule monitors for deleted project", projectId, error); }
   try {
     for (let after: string | undefined; ;) {
       const page = await db.select({ id: jobs.id }).from(jobs).where(and(eq(jobs.projectId, projectId), isNotNull(jobs.cronSchedule), after ? gt(jobs.id, after) : undefined)).orderBy(asc(jobs.id)).limit(BATCH);
       if (page.length === 0) break;
       after = page[page.length - 1].id;
-      await Promise.all(page.map((job) => deleteScheduledJob(job.id)));
+      if ((await whileDeleted(projectId, () => Promise.all(page.map((job) => deleteScheduledJob(job.id))))) === null) return; // restored meanwhile: leave its schedules and runs alone
     }
     for (;;) {
       const active = await db.select({ id: runs.id }).from(runs)

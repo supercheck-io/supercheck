@@ -44,20 +44,26 @@ export async function scrubAuditEmails(options: { dryRun: boolean; batchSize: nu
   const cutoff = new Date(Date.now() - AUDIT_EMAIL_SCRUB_DAYS * 24 * 60 * 60 * 1000);
   let scrubbed = 0;
   while (scrubbed < options.maxRecords) {
-    const rows = await db.select({ id: auditLogs.id, details: auditLogs.details }).from(auditLogs)
-      .where(and(lt(auditLogs.createdAt, cutoff), AUDIT_UNSCRUBBED))
-      .orderBy(asc(auditLogs.createdAt), asc(auditLogs.id)).limit(options.batchSize);
-    if (rows.length === 0) break;
-    if (options.dryRun) return scrubbed + rows.length;
-    await db.transaction(async (tx) => {
+    const where = and(lt(auditLogs.createdAt, cutoff), AUDIT_UNSCRUBBED);
+    if (options.dryRun) {
+      const rows = await db.select({ id: auditLogs.id }).from(auditLogs).where(where).limit(options.batchSize);
+      return scrubbed + rows.length;
+    }
+    // Select and update in one transaction with FOR UPDATE: account deletion also rewrites old rows (deletedUserId), and a
+    // details object read before its commit must never be written back over it. A row it changed while we waited is re-read.
+    const count = await db.transaction(async (tx) => {
+      const rows = await tx.select({ id: auditLogs.id, details: auditLogs.details }).from(auditLogs).where(where)
+        .orderBy(asc(auditLogs.createdAt), asc(auditLogs.id)).limit(options.batchSize).for("update");
       for (const row of rows) {
         // The teardown marker carries only a subscription id and is read by billing webhooks: nothing in it is an email.
         await tx.update(auditLogs).set({ details: { ...scrubEmails(row.details ?? {}), [AUDIT_SCRUBBED_MARKER]: true } as typeof row.details })
           .where(eq(auditLogs.id, row.id));
       }
+      return rows.length;
     });
-    scrubbed += rows.length;
-    if (rows.length < options.batchSize) break;
+    if (count === 0) break;
+    scrubbed += count;
+    if (count < options.batchSize) break;
   }
   return scrubbed;
 }
