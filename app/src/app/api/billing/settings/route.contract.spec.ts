@@ -1,5 +1,6 @@
 /** @jest-environment node */
 jest.mock("@/lib/deletion/org-state");
+import { isOrgPendingDeletion } from "@/lib/deletion/org-state";
 const mockAuth = jest.fn();
 jest.mock("@/lib/auth-context", () => ({
   authErrorStatus: (e: unknown) => ((e as { status?: number })?.status === 403 ? 403 : 401),
@@ -77,6 +78,13 @@ describe("GET /api/billing/settings", () => {
     }
     mockRole.mockResolvedValue("project_editor");
     expect((await GET()).status).toBe(403);
+  });
+  it("keeps saved settings readable while the organization is pending deletion", async () => {
+    (isOrgPendingDeletion as jest.Mock).mockResolvedValue(true);
+    mockGet.mockResolvedValue({ enableSpendingLimit: true });
+    mockRole.mockResolvedValue("org_owner");
+    expect((await GET()).status).toBe(200);
+    (isOrgPendingDeletion as jest.Mock).mockResolvedValue(false);
   });
   it("rejects CLI tokens, missing organizations and unauthenticated callers", async () => {
     mockAuth.mockResolvedValue({

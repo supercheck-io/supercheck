@@ -16,8 +16,8 @@ import { isOrgPendingDeletion, pendingDeletionResponse, permissionDeniedResponse
  */
 export async function GET() {
   try {
+    // Reading stays available while the organization is pending deletion; only changes are blocked (the PUT below).
     const { userId, organizationId, isCliAuth } = await requireUserAuthContext();
-    if (await isOrgPendingDeletion(organizationId, { fresh: true })) return pendingDeletionResponse();
     if (isCliAuth) {
       return NextResponse.json({ error: "Organization administration requires an interactive browser session; CLI tokens are project-scoped" }, { status: 403 });
     }
