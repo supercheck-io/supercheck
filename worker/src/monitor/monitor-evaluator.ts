@@ -98,6 +98,9 @@ export const GROUP_EVALUATION_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 /** How long a claim on a group's alerts blocks other senders before it can be taken over. */
 export const GROUP_NOTIFICATION_LEASE_MS = 2 * 60 * 1000;
 
+/** Returned by a claim while another sender holds a live lease: retry later, the alert is not yet sent. */
+export const GROUP_NOTIFICATION_BUSY = 'busy' as const;
+
 /** Where a group's alert receipt lives: its own row, or (groups from older workers) a result row's details. */
 export type GroupReceipt =
   { kind: 'group' } | { kind: 'legacy'; resultId: string };
@@ -927,8 +930,8 @@ export class MonitorEvaluator {
   }
 
   /**
-   * Leases the right to send the group's alerts. Returns a claim token, or null when another writer holds a
-   * live lease (callers must not send). A lease older than GROUP_NOTIFICATION_LEASE_MS with no processed marker
+   * Leases the right to send the group's alerts. Returns a claim token; GROUP_NOTIFICATION_BUSY while another
+   * sender holds a live lease (callers must retry later, not complete); null when the alerts were already sent. A lease older than GROUP_NOTIFICATION_LEASE_MS with no processed marker
    * is taken over, so a crash between claim and send still delivers after the lease; that window can duplicate.
    */
   async claimGroupNotification(
@@ -957,11 +960,11 @@ export class MonitorEvaluator {
         )
         .limit(1)
         .for('update');
-      if (!row || row.processedAt) return 'lost' as const;
+      if (!row || row.processedAt) return 'done' as const;
       const leased =
         row.claimedAt &&
         Date.now() - row.claimedAt.getTime() < GROUP_NOTIFICATION_LEASE_MS;
-      if (leased) return 'lost' as const;
+      if (leased) return 'busy' as const;
       await tx
         .update(schema.monitorGroupEvaluations)
         .set({
@@ -979,7 +982,8 @@ export class MonitorEvaluator {
         );
       return row.claimedAt ? ('took_over' as const) : ('claimed' as const);
     });
-    if (won === 'lost') {
+    if (won === 'done') return null;
+    if (won === 'busy') {
       this.logger.warn(
         JSON.stringify({
           event: 'monitor_group_notification_claim_lost',
@@ -987,7 +991,7 @@ export class MonitorEvaluator {
           executionGroupId,
         }),
       );
-      return null;
+      return GROUP_NOTIFICATION_BUSY;
     }
     if (won === 'took_over')
       this.logger.warn(

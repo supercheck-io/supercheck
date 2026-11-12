@@ -2557,6 +2557,33 @@ describe('MonitorService', () => {
       expect(mockAlertService.sendNotification).not.toHaveBeenCalled();
     });
 
+    it('fails as busy, sending nothing, while another sender holds a live lease', async () => {
+      mockDbService.db.query.monitors.findFirst.mockResolvedValue(mockMonitor);
+      const evaluator = (service as unknown as { evaluator: MonitorEvaluator })
+        .evaluator;
+      jest.spyOn(evaluator, 'prepareGroupEvaluation').mockResolvedValue({
+        monitor: mockMonitor,
+        receipt: { kind: 'group' },
+        evaluation: { previousStatus: 'up', currentStatus: 'down' },
+      } as never);
+      jest.spyOn(evaluator, 'claimGroupNotification').mockResolvedValue('busy');
+      await expect(
+        service.saveMonitorResults(
+          [
+            {
+              monitorId: mockMonitor.id,
+              location: 'eu',
+              status: 'down',
+              isUp: false,
+              checkedAt: new Date(),
+            },
+          ],
+          { persisted: true, executionGroupId: 'group-busy' },
+        ),
+      ).rejects.toBeInstanceOf(MonitorAggregationBusyError);
+      expect(mockAlertService.sendNotification).not.toHaveBeenCalled();
+    });
+
     it('sends nothing when claiming the group notification throws', async () => {
       mockDbService.db.query.monitors.findFirst.mockResolvedValue(mockMonitor);
       const evaluator = (service as unknown as { evaluator: MonitorEvaluator })

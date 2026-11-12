@@ -81,6 +81,7 @@ import {
   sslHost,
   type GroupAlertEvaluation,
   type GroupReceipt,
+  GROUP_NOTIFICATION_BUSY,
 } from './monitor-evaluator';
 import { nextOutageKey } from '../monitor-control/sequence-counters';
 
@@ -630,6 +631,10 @@ export class MonitorService {
           groupEvaluation.receipt,
         )
       : undefined;
+    // A live lease means the alert is not sent yet: fail as busy so the job retries after the lease, instead of
+    // completing and leaving a dead sender's alert undelivered.
+    if (claimToken === GROUP_NOTIFICATION_BUSY)
+      throw new MonitorAggregationBusyError();
     if (groupEvaluation && !claimToken) return;
     try {
       // Use consolidated alert evaluation method with threshold support

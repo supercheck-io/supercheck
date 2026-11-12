@@ -9,6 +9,7 @@ import { and, eq } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import type { DbService } from '../db/db.service';
 import {
+  GROUP_NOTIFICATION_BUSY,
   GROUP_NOTIFICATION_LEASE_MS,
   MonitorEvaluator,
 } from './monitor-evaluator';
@@ -177,10 +178,10 @@ suite('MonitorEvaluator group receipt (PostgreSQL)', () => {
       retry!.receipt,
     );
     expect(token).toEqual(expect.any(String));
-    // While the lease is live a second sender loses the claim and must not send.
+    // While the lease is live a second sender is told it is busy and must not send.
     await expect(
       evaluator.claimGroupNotification(monitorId, 'crash', retry!.receipt),
-    ).resolves.toBeNull();
+    ).resolves.toBe(GROUP_NOTIFICATION_BUSY);
     // Nothing is processed and no legacy receipt exists until the send succeeds.
     expect((await receiptRows('crash'))[0].notificationProcessedAt).toBeNull();
     await evaluator.markGroupNotified(monitorId, 'crash', retry!.receipt);
@@ -235,7 +236,8 @@ suite('MonitorEvaluator group receipt (PostgreSQL)', () => {
         ),
       ),
     );
-    expect(claims.filter(Boolean)).toHaveLength(1);
+    const winners = claims.filter((c) => c && c !== GROUP_NOTIFICATION_BUSY);
+    expect(winners).toHaveLength(1);
     // A claimer that died: its lease ages past the limit and the next retry takes over.
     await db
       .update(schema.monitorGroupEvaluations)
@@ -251,7 +253,7 @@ suite('MonitorEvaluator group receipt (PostgreSQL)', () => {
       prepared!.receipt,
     );
     expect(takeover).toEqual(expect.any(String));
-    expect(takeover).not.toBe(claims.find(Boolean));
+    expect(takeover).not.toBe(winners[0]);
     // A failed send releases its own lease so the retry claims at once.
     await evaluator.releaseGroupNotification(
       monitorId,

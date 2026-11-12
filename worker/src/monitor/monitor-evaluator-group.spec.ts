@@ -1,5 +1,6 @@
 import {
   GROUP_EVALUATION_MAX_AGE_MS,
+  GROUP_NOTIFICATION_BUSY,
   GROUP_NOTIFICATION_LEASE_MS,
   MonitorEvaluator,
   type GroupReceipt,
@@ -296,7 +297,9 @@ describe('MonitorEvaluator group receipt', () => {
       const first = await store.claimNotified('g1', receipt);
       expect(first).toEqual(expect.any(String));
       jest.advanceTimersByTime(GROUP_NOTIFICATION_LEASE_MS - 1_000);
-      await expect(store.claimNotified('g1', receipt)).resolves.toBeNull();
+      await expect(store.claimNotified('g1', receipt)).resolves.toBe(
+        GROUP_NOTIFICATION_BUSY,
+      );
       expect(store.receipts.get('g1')!.token).toBe(first);
     });
 
@@ -333,7 +336,7 @@ describe('MonitorEvaluator group receipt', () => {
       const winners = [
         await store.claimNotified('g1', receipt),
         await store.claimNotified('g1', receipt),
-      ].filter(Boolean);
+      ].filter((t) => t && t !== GROUP_NOTIFICATION_BUSY);
       expect(winners).toHaveLength(1);
       await store.markNotified('g1', receipt);
       const first = store.receipts.get('g1')!.notificationProcessedAt;
