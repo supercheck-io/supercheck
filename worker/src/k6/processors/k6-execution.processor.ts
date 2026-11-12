@@ -331,7 +331,10 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
       // Extract metrics from summary
       const metrics = this.extractMetrics(result.summary);
 
-      const wasCancelled = result.cancelled === true;
+      // A job whose delete request committed while this ran counts as cancelled, whatever the run produced.
+      const wasCancelled =
+        result.cancelled === true ||
+        (await this.dbService.isJobDeleting(taskData.jobId));
       const wasInterrupted = result.interrupted === true;
 
       // Create k6_performance_runs record
@@ -630,7 +633,9 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
       // even when the underlying message mentions one.
       const cancellationLike =
         !(error instanceof UnrecoverableError) &&
-        (message.includes('cancelled') || message.includes('cancellation'));
+        (message.includes('cancelled') ||
+          message.includes('cancellation') ||
+          (await this.dbService.isJobDeleting(taskData.jobId)));
       // A restart-interrupted run whose result could not be saved: stored as the restart, no alert.
       const interruptedFailure = error instanceof RunInterruptedError;
 

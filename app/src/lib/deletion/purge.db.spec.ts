@@ -222,6 +222,21 @@ describe("job deletion", () => {
     expect(await count("runs", "job_id", seeded.jobId)).toBe(0);
   });
 
+  it("a deletion request drops the links to tags and channels at once, for monitors and jobs", async () => {
+    const monitor = await seedMonitor(0);
+    const job = await seedJob(0, monitor);
+    const [tag] = await client`INSERT INTO tags (id, organization_id, project_id, name) VALUES (uuidv7(), ${monitor.orgId}, ${monitor.projectId}, ${`t-${randomUUID()}`}) RETURNING id`;
+    const [provider] = await client`INSERT INTO notification_providers (id, organization_id, project_id, name, type, config) VALUES (uuidv7(), ${monitor.orgId}, ${monitor.projectId}, 'C', 'webhook', '{}') RETURNING id`;
+    await client`INSERT INTO monitor_tags (monitor_id, tag_id) VALUES (${monitor.monitorId}, ${tag.id})`;
+    await client`INSERT INTO monitor_notification_settings (monitor_id, notification_provider_id) VALUES (${monitor.monitorId}, ${provider.id})`;
+    await client`INSERT INTO job_notification_settings (job_id, notification_provider_id) VALUES (${job.jobId}, ${provider.id})`;
+    await requestMonitorDeletion(scope(monitor));
+    await requestJobDeletion(scope(job));
+    expect(await count("monitor_tags", "monitor_id", monitor.monitorId)).toBe(0);
+    expect(await count("monitor_notification_settings", "monitor_id", monitor.monitorId)).toBe(0);
+    expect(await count("job_notification_settings", "job_id", job.jobId)).toBe(0);
+  });
+
   it("rejects attaching a monitor being deleted to a status page component", async () => {
     const { monitorId, componentId } = await seedComponent();
     await requestMonitorDeletion(scope({ monitorId, orgId: componentOrg.orgId, projectId: componentOrg.projectId }));

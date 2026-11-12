@@ -1,8 +1,9 @@
 import { isUuid } from "@/lib/uuid";
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/utils/db';
-import { tags, testTags, requirementTags, monitorTags } from '@/db/schema';
+import { tags, testTags, requirementTags, monitorTags, monitors } from '@/db/schema';
 import { eq, count, and } from 'drizzle-orm';
+import { liveMonitor } from '@/lib/deletion/visibility';
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-context';
 import { createLogger } from '@/lib/logger/index';
@@ -77,7 +78,8 @@ export async function DELETE(
       const monitorUsageCount = await tx
         .select({ count: count() })
         .from(monitorTags)
-        .where(eq(monitorTags.tagId, tagId));
+        .innerJoin(monitors, eq(monitors.id, monitorTags.monitorId))
+        .where(and(eq(monitorTags.tagId, tagId), liveMonitor()));
 
       const testCount = testUsageCount[0]?.count ?? 0;
       const requirementCount = requirementUsageCount[0]?.count ?? 0;

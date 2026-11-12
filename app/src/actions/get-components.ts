@@ -8,6 +8,7 @@ import {
 import { eq, and } from "drizzle-orm";
 import { requireProjectContext } from "@/lib/project-context";
 import { hasPermissionForUser, requirePermissions } from "@/lib/rbac/middleware";
+import { notFoundIfDeleting } from "@/lib/deletion/visibility";
 import { monitorTargetForRead } from "@/lib/monitor-read-config";
 import { z } from "zod";
 
@@ -89,6 +90,7 @@ export async function getComponents(statusPageId: string) {
                 type: true,
                 status: true,
                 target: true,
+                deletingAt: true,
               },
             },
           },
@@ -105,7 +107,7 @@ export async function getComponents(statusPageId: string) {
     // Transform the data to the expected format
     const componentsWithMonitors = components.map((component) => {
       const linkedMonitors = component.monitors
-        .filter((assoc) => assoc.monitor)
+        .filter((assoc) => notFoundIfDeleting(assoc.monitor))
         .map((assoc) => ({
           ...assoc.monitor,
           target: monitorTargetForRead(assoc.monitor.target, canUpdateMonitors),

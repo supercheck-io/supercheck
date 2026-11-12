@@ -1,6 +1,6 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/utils/db";
-import { jobs, monitors, runs, statusPageComponentMonitors } from "@/db/schema";
+import { jobNotificationSettings, jobs, monitorNotificationSettings, monitors, monitorTags, runs, statusPageComponentMonitors } from "@/db/schema";
 import { deleteScheduledJob } from "@/lib/job-scheduler";
 import { deleteScheduledMonitor } from "@/lib/monitor-scheduler";
 import { RUN_CANCELLATION_MARKER, setCancellationSignal } from "@/lib/cancellation-service";
@@ -35,6 +35,8 @@ export async function requestJobDeletion(scope: Scope) {
     await tx.update(jobs).set({ deletingAt: new Date() }).where(eq(jobs.id, scope.id));
     const flagged = { name: current.name, description: current.description, cronSchedule: current.cronSchedule };
     await tx.update(runs).set({ errorDetails: RUN_CANCELLATION_MARKER }).where(and(eq(runs.jobId, scope.id), inArray(runs.status, ["queued", "running"])));
+    // Drop the links to shared channels now, so a deleting job never blocks deleting a channel or alerts through it.
+    await tx.delete(jobNotificationSettings).where(eq(jobNotificationSettings.jobId, scope.id));
     const deletionId = await insertDeletionJob(tx, { scope: "job", targetId: scope.id, organizationId: scope.organizationId, requestedByUserId: scope.userId });
     return { status: "requested", data: { ...flagged, deletionId } };
   });
@@ -62,6 +64,9 @@ export async function requestMonitorDeletion(scope: Scope) {
     const flagged = { name: current.name, type: current.type, target: current.target };
     // Public status pages stop showing it at once (indexed by monitor_id); the purge removes the rest.
     await tx.delete(statusPageComponentMonitors).where(eq(statusPageComponentMonitors.monitorId, scope.id));
+    // Same for the links to shared tags and channels, so a deleting monitor never blocks deleting them.
+    await tx.delete(monitorTags).where(eq(monitorTags.monitorId, scope.id));
+    await tx.delete(monitorNotificationSettings).where(eq(monitorNotificationSettings.monitorId, scope.id));
     const deletionId = await insertDeletionJob(tx, { scope: "monitor", targetId: scope.id, organizationId: scope.organizationId, requestedByUserId: scope.userId });
     return { status: "requested", data: { ...flagged, deletionId } };
   });

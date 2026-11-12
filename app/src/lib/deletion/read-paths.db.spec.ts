@@ -35,6 +35,9 @@ jest.mock("@/lib/cancellation-service", () => ({ RUN_CANCELLATION_MARKER: "Cance
 import { GET as orgStats } from "@/app/api/organizations/stats/route";
 import { GET as projectGet } from "@/app/api/projects/[id]/route";
 import { GET as monitorStats } from "@/app/api/monitors/[id]/stats/route";
+import { DELETE as tagDelete } from "@/app/api/tags/[id]/route";
+import { DELETE as providerDelete } from "@/app/api/notification-providers/[id]/route";
+import { GET as providerUsage } from "@/app/api/notification-providers/[id]/usage/route";
 import { PATCH as monitorTags, POST as monitorTagsReplace } from "@/app/api/monitors/[id]/tags/route";
 import { GET as keysList, POST as keysCreate } from "@/app/api/jobs/[id]/api-keys/route";
 import { GET as runStatus } from "@/app/api/runs/[runId]/status/route";
@@ -169,5 +172,37 @@ describe("runs of a job being deleted", () => {
   it("a run without a job is unaffected", async () => {
     expect((await runStatus(get(`/api/runs/${jobless}/status`), runParams(jobless))).status).toBe(200);
     expect(await resolveAccessContext("test", jobless)).not.toBeNull();
+  });
+});
+
+describe("tags and channels linked only to targets being deleted", () => {
+  // Links are inserted directly (the request transaction removes them); the usage counts must not depend on that.
+  const seedShared = async () => {
+    const [tag] = await mockDatabase.insert(schema.tags).values({ organizationId: ctx.organizationId, projectId, name: `t-${randomUUID()}` }).returning();
+    const [provider] = await mockDatabase.insert(schema.notificationProviders).values({ organizationId: ctx.organizationId, projectId, name: "C", type: "webhook", config: {} } as never).returning();
+    return { tagId: tag.id, providerId: provider.id };
+  };
+  const link = async (ids: { tagId: string; providerId: string }, target: { monitorId: string; jobId: string }) => {
+    await client`INSERT INTO monitor_tags (monitor_id, tag_id) VALUES (${target.monitorId}, ${ids.tagId})`;
+    await client`INSERT INTO monitor_notification_settings (monitor_id, notification_provider_id) VALUES (${target.monitorId}, ${ids.providerId})`;
+    await client`INSERT INTO job_notification_settings (job_id, notification_provider_id) VALUES (${target.jobId}, ${ids.providerId})`;
+  };
+
+  it("do not count a deleting monitor or job, so the tag and channel can be deleted", async () => {
+    const ids = await seedShared();
+    await link(ids, gone);
+    const usage = await (await providerUsage(req(`/api/notification-providers/${ids.providerId}/usage`), params(ids.providerId))).json();
+    expect(usage.isInUse).toBe(false);
+    expect((await tagDelete(req(`/api/tags/${ids.tagId}`, { method: "DELETE" }), params(ids.tagId))).status).toBe(200);
+    expect((await providerDelete(req(`/api/notification-providers/${ids.providerId}`, { method: "DELETE" }), params(ids.providerId))).status).toBe(200);
+  });
+
+  it("still count a live monitor or job", async () => {
+    const ids = await seedShared();
+    await link(ids, live);
+    const usage = await (await providerUsage(req(`/api/notification-providers/${ids.providerId}/usage`), params(ids.providerId))).json();
+    expect(usage.usage).toMatchObject({ monitors: 1, jobs: 1 });
+    expect((await tagDelete(req(`/api/tags/${ids.tagId}`, { method: "DELETE" }), params(ids.tagId))).status).toBe(409);
+    expect((await providerDelete(req(`/api/notification-providers/${ids.providerId}`, { method: "DELETE" }), params(ids.providerId))).status).toBe(400);
   });
 });

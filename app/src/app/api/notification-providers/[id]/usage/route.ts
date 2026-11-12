@@ -4,9 +4,12 @@ import { db } from "@/utils/db";
 import {
   monitorNotificationSettings,
   jobNotificationSettings,
+  monitors,
+  jobs,
   notificationProviders,
 } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
+import { liveJob, liveMonitor } from "@/lib/deletion/visibility";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 
@@ -54,11 +57,13 @@ export async function GET(
       db
         .select({ monitorId: monitorNotificationSettings.monitorId })
         .from(monitorNotificationSettings)
-        .where(eq(monitorNotificationSettings.notificationProviderId, id)),
+        .innerJoin(monitors, eq(monitors.id, monitorNotificationSettings.monitorId))
+        .where(and(eq(monitorNotificationSettings.notificationProviderId, id), liveMonitor())),
       db
         .select({ jobId: jobNotificationSettings.jobId })
         .from(jobNotificationSettings)
-        .where(eq(jobNotificationSettings.notificationProviderId, id)),
+        .innerJoin(jobs, eq(jobs.id, jobNotificationSettings.jobId))
+        .where(and(eq(jobNotificationSettings.notificationProviderId, id), liveJob())),
     ]);
 
     const isInUse = monitorUsage.length > 0 || jobUsage.length > 0;

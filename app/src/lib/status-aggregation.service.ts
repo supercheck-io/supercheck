@@ -1,6 +1,7 @@
 import { db } from "@/utils/db";
 import { statusPageComponents } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { notFoundIfDeleting } from "@/lib/deletion/visibility";
 
 export type ComponentStatus =
   | "operational"
@@ -38,12 +39,14 @@ export class StatusAggregationService {
       },
     });
 
-    if (!component || component.monitors.length === 0) {
+    // The deletion request unlinks a monitor at once; this also skips one whose link is still in flight.
+    const linked = component?.monitors.filter((association) => notFoundIfDeleting(association.monitor)) ?? [];
+    if (!component || linked.length === 0) {
       return "operational";
     }
 
     return this.calculateFromMonitors(
-      component.monitors.map((association) => ({
+      linked.map((association) => ({
         status: association.monitor.status,
         weight: association.weight,
       })),

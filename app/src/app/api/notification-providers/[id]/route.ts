@@ -6,10 +6,13 @@ import {
   notificationProvidersInsertSchema,
   monitorNotificationSettings,
   jobNotificationSettings,
+  monitors,
+  jobs,
   alertHistory,
   type PlainNotificationProviderConfig,
 } from "@/db/schema";
 import { eq, desc, and, count, sql } from "drizzle-orm";
+import { liveJob, liveMonitor } from "@/lib/deletion/visibility";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import {
@@ -373,11 +376,13 @@ export async function DELETE(
       db
         .select({ usageCount: count() })
         .from(monitorNotificationSettings)
-        .where(eq(monitorNotificationSettings.notificationProviderId, id)),
+        .innerJoin(monitors, eq(monitors.id, monitorNotificationSettings.monitorId))
+        .where(and(eq(monitorNotificationSettings.notificationProviderId, id), liveMonitor())),
       db
         .select({ usageCount: count() })
         .from(jobNotificationSettings)
-        .where(eq(jobNotificationSettings.notificationProviderId, id)),
+        .innerJoin(jobs, eq(jobs.id, jobNotificationSettings.jobId))
+        .where(and(eq(jobNotificationSettings.notificationProviderId, id), liveJob())),
     ]);
 
     const monitorUsageCount = monitorUsage[0]?.usageCount ?? 0;
