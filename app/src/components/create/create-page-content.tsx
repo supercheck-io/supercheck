@@ -2,16 +2,7 @@
 import React, { useState, useCallback } from "react";
 import { CreateCard } from "./create-card";
 import { useRouter } from "next/navigation";
-import {
-  FileText,
-  FolderOpen,
-  KeyRound,
-  Shield,
-  UserPlus,
-  Variable,
-  Video,
-  Chrome,
-} from "lucide-react";
+import { Video, Chrome } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -26,6 +17,7 @@ import { types } from "@/components/tests/data";
 import { K6Logo } from "@/components/logo/k6-logo";
 import { PlaywrightLogo } from "@/components/logo/playwright-logo";
 import { AREA_TEXT, NAV } from "@/lib/nav-areas";
+import { ADMIN_TYPES, VARIABLE_TYPES, typeText } from "@/lib/type-tones";
 import { notificationProviders } from "@/components/alerts/data";
 
 type ScriptType =
@@ -132,26 +124,20 @@ export function CreatePageContent({
     },
   ];
 
-  const variableTypes = [
-    {
-      icon: <Variable size={20} className="text-automate" />,
-      title: "Variable",
-      description: "Store plain config",
-      onClick: () => router.push("/variables?create=true"),
-    },
-    {
-      icon: <Shield size={20} className="text-automate" />,
-      title: "Secret",
-      description: "Store encrypted values",
-      onClick: () => router.push("/variables?create=true&type=secret"),
-    },
-    {
-      icon: <FileText size={20} className="text-automate" />,
-      title: "File",
-      description: "Upload project files",
-      onClick: () => router.push("/variables?create=true&type=file"),
-    },
-  ];
+  const variableTypes = (["variable", "secret", "file"] as const).map((key) => {
+    const { icon: Icon, label } = VARIABLE_TYPES[key];
+    return {
+      icon: <Icon size={20} className={typeText("variable", key)} />,
+      title: label,
+      description: {
+        variable: "Store plain config",
+        secret: "Store encrypted values",
+        file: "Upload project files",
+      }[key],
+      onClick: () =>
+        router.push(key === "variable" ? "/variables?create=true" : `/variables?create=true&type=${key}`),
+    };
+  });
 
   const statusPageTypes = [
     {
@@ -199,7 +185,7 @@ export function CreatePageContent({
   const sreSetupTypes = [
     capabilities.canCreateSreServices
       ? {
-          icon: <NAV.services.icon size={20} className={AREA_TEXT[NAV.services.tone]} />,
+          icon: <NAV.services.icon size={20} className={typeText("sre", "service")} />,
           title: "Service",
           description: "Define service topology",
           onClick: () => router.push("/services"),
@@ -207,7 +193,7 @@ export function CreatePageContent({
       : null,
     capabilities.canConfigureSreConnectors
       ? {
-          icon: <NAV.integrations.icon size={20} className={AREA_TEXT[NAV.integrations.tone]} />,
+          icon: <NAV.integrations.icon size={20} className={typeText("sre", "integration")} />,
           title: "Integration",
           description: "Connect evidence sources",
           onClick: () => router.push("/org-admin?tab=integrations"),
@@ -215,7 +201,7 @@ export function CreatePageContent({
       : null,
     capabilities.canConfigureSreConnectors
       ? {
-          icon: <NAV.privateAgents.icon size={20} className={AREA_TEXT[NAV.privateAgents.tone]} />,
+          icon: <NAV.privateAgents.icon size={20} className={typeText("sre", "privateAgent")} />,
           title: "Private Agent",
           description: "Register private access",
           onClick: () => router.push("/org-admin?tab=private-agents"),
@@ -225,7 +211,7 @@ export function CreatePageContent({
   const adminSetupTypes = [
     capabilities.canCreateProjects
       ? {
-          icon: <FolderOpen size={20} className={AREA_TEXT.settings} />,
+          icon: <ADMIN_TYPES.project.icon size={20} className={typeText("admin", "project")} />,
           title: "Project",
           description: "Manage workspaces",
           onClick: () => router.push("/org-admin?tab=projects"),
@@ -233,7 +219,7 @@ export function CreatePageContent({
       : null,
     capabilities.canInviteMembers
       ? {
-          icon: <UserPlus size={20} className={AREA_TEXT.settings} />,
+          icon: <ADMIN_TYPES.member.icon size={20} className={typeText("admin", "member")} />,
           title: "Member",
           description: "Invite users",
           onClick: () => router.push("/org-admin?tab=members"),
@@ -241,7 +227,7 @@ export function CreatePageContent({
       : null,
     capabilities.canCreateCliTokens
       ? {
-          icon: <KeyRound size={20} className={AREA_TEXT.settings} />,
+          icon: <ADMIN_TYPES.cliToken.icon size={20} className={typeText("admin", "cliToken")} />,
           title: "CLI Token",
           description: "Create CLI access",
           onClick: () => router.push("/org-admin?tab=cli-tokens"),
@@ -299,11 +285,11 @@ export function CreatePageContent({
               <p className="text-sm font-medium">Supported Browsers:</p>
               <div className="flex items-center gap-3">
                 <div className="flex items-center gap-2">
-                  <Chrome className="h-5 w-5 text-sky-500" />
+                  <Chrome className="h-5 w-5 text-type-sky" />
                   <span className="text-sm">Google Chrome</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Chrome className="h-5 w-5 text-blue-500" />
+                  <Chrome className="h-5 w-5 text-type-blue" />
                   <span className="text-sm">Microsoft Edge</span>
                 </div>
               </div>

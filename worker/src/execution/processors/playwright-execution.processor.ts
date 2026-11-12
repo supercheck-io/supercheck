@@ -34,7 +34,7 @@ import { getBillableMs } from '../../common/billable-ms';
 import { consumesWorkerQueue } from '../../common/worker-queues';
 import { GlobalQueueCapabilityGuard } from '../../common/location/global-queue-guard';
 import type { ExecutionUsageTransaction } from '../services/execution-usage-receipts';
-import { captureJobFailure } from '../../common/sentry-reporter';
+import { captureJobFailure, runJobInSpan } from '../../common/sentry-reporter';
 import {
   registerIntakeStopper,
   trackInFlight,
@@ -103,7 +103,7 @@ export class PlaywrightExecutionProcessor
     try {
       return await trackInFlight(() =>
         withRunCallback(this.dbService.db, job.data.runId, () =>
-          this.processOwned(job),
+          runJobInSpan(job, 'playwright', () => this.processOwned(job)),
         ),
       );
     } catch (error) {

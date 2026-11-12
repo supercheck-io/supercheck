@@ -30,6 +30,26 @@ COPY . .
 # Build the NestJS application
 RUN npm run build
 
+# Upload source maps to Sentry, then delete every map. The token comes from a
+# BuildKit secret and lives only inside this RUN (never an ARG, ENV or layer).
+# Without the secret (self-hosted and fork builds) this only deletes maps.
+ARG SUPERCHECK_VERSION
+ARG SENTRY_SOURCEMAPS=0
+ARG SENTRY_ORG
+ARG SENTRY_PROJECT
+# Changes per CI attempt so a cached layer never skips a retried upload (secrets are not part of the cache key).
+ARG SENTRY_UPLOAD_ATTEMPT
+RUN --mount=type=secret,id=sentry_auth_token \
+    set -e; \
+    token="$(cat /run/secrets/sentry_auth_token 2>/dev/null || true)"; \
+    if [ "$SENTRY_SOURCEMAPS" = "1" ] && [ -n "$token" ] && [ -n "$SUPERCHECK_VERSION" ]; then \
+      export SENTRY_AUTH_TOKEN="$token" SENTRY_ORG SENTRY_PROJECT; \
+      npx --yes @sentry/cli@3.8.2 sourcemaps inject dist; \
+      npx --yes @sentry/cli@3.8.2 sourcemaps upload --release "$SUPERCHECK_VERSION" dist \
+        || echo "WARNING: Sentry source map upload failed; release continues without symbolication"; \
+    fi; \
+    find dist -name '*.map' -type f -delete
+
 # Production image using the same base with dependencies already installed
 FROM base AS runner
 WORKDIR /worker
@@ -116,4 +136,4 @@ USER pwuser
 
 # EXPOSE 8000 # disabled per user request
 
-CMD ["node", "--max-http-header-size=16384", "dist/src/main.js"]
+CMD ["node", "--max-http-header-size=16384", "--require", "./dist/src/instrument.js", "dist/src/main.js"]

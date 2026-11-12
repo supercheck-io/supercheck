@@ -55,8 +55,33 @@ ENV NEXT_PUBLIC_SUPERCHECK_VERSION=${NEXT_PUBLIC_SUPERCHECK_VERSION}
 # uses WASM fallback which doesn't support turbo.createProject
 # Scope the non-sensitive placeholder to the build command so it is not persisted
 # in an image layer or mistaken for a runtime credential by image scanners.
+# Source maps are emitted only for the Sentry upload below (SENTRY_SOURCEMAPS=1 in
+# the release workflow when a Sentry token exists); they never reach the runner.
+ARG SENTRY_SOURCEMAPS=0
+ENV SENTRY_SOURCEMAPS=${SENTRY_SOURCEMAPS}
 RUN BETTER_AUTH_SECRET=build-time-placeholder-will-be-overridden-at-runtime \
     npm run build:webpack
+
+# Upload source maps to Sentry, then delete every map. The token comes from a
+# BuildKit secret and lives only inside this RUN (never an ARG, ENV or layer).
+# Without the secret (self-hosted and fork builds) this only deletes maps.
+# Standalone holds traced copies of the server bundles, so the injected copies
+# (with debug IDs) replace them.
+ARG SENTRY_ORG
+ARG SENTRY_PROJECT
+# Changes per CI attempt so a cached layer never skips a retried upload (secrets are not part of the cache key).
+ARG SENTRY_UPLOAD_ATTEMPT
+RUN --mount=type=secret,id=sentry_auth_token \
+    set -e; \
+    token="$(cat /run/secrets/sentry_auth_token 2>/dev/null || true)"; \
+    if [ "$SENTRY_SOURCEMAPS" = "1" ] && [ -n "$token" ] && [ -n "$NEXT_PUBLIC_SUPERCHECK_VERSION" ]; then \
+      export SENTRY_AUTH_TOKEN="$token" SENTRY_ORG SENTRY_PROJECT; \
+      npx --yes @sentry/cli@3.8.2 sourcemaps inject .next/static .next/server; \
+      (cd .next/server && find . -name '*.js' -exec sh -c 'for f; do if [ -f "../standalone/.next/server/$f" ]; then cp "$f" "../standalone/.next/server/$f"; fi; done' sh {} +); \
+      npx --yes @sentry/cli@3.8.2 sourcemaps upload --release "$NEXT_PUBLIC_SUPERCHECK_VERSION" .next/static .next/server \
+        || echo "WARNING: Sentry source map upload failed; release continues without symbolication"; \
+    fi; \
+    find .next -name '*.map' -type f -delete
 
 # Production image, copy all the files and run next
 FROM base AS runner

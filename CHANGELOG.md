@@ -54,6 +54,7 @@ The CLI is versioned separately; see [cli/CHANGELOG.md](cli/CHANGELOG.md). Prere
 
 ### Fixed
 
+- The worker image no longer ships JavaScript source map files.
 - SSL expiry alerts are suppressed during scheduled maintenance, like other monitor alerts.
 - The Playwright trace viewer works again: the retired root service worker no longer controls report pages (one reload clears the old worker in a tab opened before the update).
 - A playground run that fails or is cancelled before its report exists now ends the status stream instead of leaving the spinner running.
@@ -152,7 +153,6 @@ Read [Upgrade](https://supercheck.io/docs/app/deployment/self-hosted#upgrade) be
 - List tables size their page to the window so pages do not scroll (Rows per page offers the fitted size plus 10, 25, 50 and 100); the dashboard's Needs attention is two bar charts (failed runs in the last 7 days by trigger, open incidents by severity) with live incident counts, and the Playground fills the window height.
 - Organization and Super Admin settings put their tabs in the page header and use fit-to-window tables; CLI tokens are a table.
 - MCP `list_incidents` and `get_incident` return assignee, commander, acknowledgement and resolution summary, and `get_incident` also returns `alertCount`. `get_job` and `get_monitor` return the incident settings, never the channels. The CLI gains matching incident, analytics, variable file, CLI token and project commands (see the CLI changelog).
-- Supercheck Cloud sends server-side error reports from the app and worker to Sentry when `SENTRY_DSN` is set. A report has the error type, a shortened message scrubbed of secrets, URLs, email addresses, quoted text and database values, a stack trace, service (app or worker)/release/environment, OS and runtime versions, and internal IDs (hostnames and IPs in messages may appear); request contents, headers, cookies, form inputs, test scripts and run logs are not attached. Ignored when `SELF_HOSTED=true`, where the Sentry SDK is not loaded and no Sentry calls are made.
 - The self-hosted installer measures free disk where Docker stores data, prompts whenever a terminal is available (including when output is piped), and in public mode warns about DNS that points elsewhere, a blocking `ufw` firewall, and HTTPS not answering after install. The `ufw` check understands port lists, ranges, application profiles, interface-scoped and IPv6 rules, and first-match order.
 - `PATCH /api/tests/{id}/tags` and `PATCH /api/monitors/{id}/tags` add and remove individual tags atomically (`{"add": [...], "remove": [...]}`), so concurrent tag changes are not lost. `POST` (replace) and `DELETE` (clear) are unchanged.
 - The requirements API accepts `"priority": null` to clear a requirement's priority.
