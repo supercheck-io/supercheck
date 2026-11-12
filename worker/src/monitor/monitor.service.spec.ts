@@ -2200,7 +2200,10 @@ describe('MonitorService', () => {
     });
     it('drops the result of a monitor deleted mid-check (FK violation) without retrying, evaluating or throwing', async () => {
       const fkError = Object.assign(new Error('Failed query'), {
-        cause: Object.assign(new Error('insert or update violates foreign key constraint'), { code: '23503' }),
+        cause: Object.assign(
+          new Error('insert or update violates foreign key constraint'),
+          { code: '23503' },
+        ),
       });
       const save = jest
         .spyOn(service as any, 'saveMonitorResultToDb')

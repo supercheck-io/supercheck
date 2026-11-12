@@ -90,7 +90,11 @@ type MonitorResult = z.infer<typeof monitorResultsSelectSchema>;
 const RESULT_SAVE_ATTEMPTS = 3;
 // Postgres 23503; drizzle wraps the driver error, so the code can sit on the cause.
 const isForeignKeyViolation = (error: unknown): boolean => {
-  for (let e = error as { code?: string; cause?: unknown } | undefined, i = 0; e && i < 3; e = e.cause as typeof e, i++) {
+  for (
+    let e = error as { code?: string; cause?: unknown } | undefined, i = 0;
+    e && i < 3;
+    e = e.cause as typeof e, i++
+  ) {
     if (e.code === '23503') return true;
   }
   return false;
@@ -763,7 +767,11 @@ export class MonitorService {
         : result;
 
     // A monitor deleted mid-check has nowhere to record the result: drop it without evaluating or alerting.
-    if (!options.persisted && !(await this.insertResultWithRetry(persistedResult))) return;
+    if (
+      !options.persisted &&
+      !(await this.insertResultWithRetry(persistedResult))
+    )
+      return;
 
     if (!executionGroupId) {
       await this.saveMonitorResults([persistedResult], {
