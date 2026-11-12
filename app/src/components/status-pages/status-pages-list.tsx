@@ -51,7 +51,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { deleteStatusPage } from "@/actions/delete-status-page";
 import { CreateStatusPageForm } from "./create-status-page-form";
@@ -118,6 +118,7 @@ export default function StatusPagesList() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [deletingPage, setDeletingPage] = useState<StatusPage | null>(null);
   const searchParams = useSearchParams();
+  const router = useRouter();
 
   // Get user permissions
   const { currentProject } = useProjectContext();
@@ -136,6 +137,15 @@ export default function StatusPagesList() {
 
   // Track if we've already processed the create query param to avoid re-opening dialog
   const hasProcessedCreateParam = useRef(false);
+
+  // Closing drops ?create=true and re-arms the guard, so opening the same deep link again reopens the dialog.
+  const handleCreateDialogChange = (open: boolean) => {
+    setIsCreateDialogOpen(open);
+    if (!open) {
+      hasProcessedCreateParam.current = false;
+      if (searchParams.get("create") === "true") router.replace("/status-pages", { scroll: false });
+    }
+  };
 
   useEffect(() => {
     const create = searchParams.get("create");
@@ -202,7 +212,7 @@ export default function StatusPagesList() {
     });
 
     // Close dialog immediately (UI feels instant)
-    setIsCreateDialogOpen(false);
+    handleCreateDialogChange(false);
     toast.success("Status page created successfully");
 
     // Revalidate the active list after the server action completes. The
@@ -359,7 +369,7 @@ export default function StatusPagesList() {
           </div>
           <Dialog
             open={isCreateDialogOpen}
-            onOpenChange={setIsCreateDialogOpen}
+            onOpenChange={handleCreateDialogChange}
           >
             <DialogTrigger asChild>
               <Button disabled={!canCreate} data-testid="create-status-page-button">
@@ -383,7 +393,7 @@ export default function StatusPagesList() {
               </DialogHeader>
               <CreateStatusPageForm
                 onSuccess={handleCreateSuccess}
-                onCancel={() => setIsCreateDialogOpen(false)}
+                onCancel={() => handleCreateDialogChange(false)}
               />
             </DialogContent>
           </Dialog>

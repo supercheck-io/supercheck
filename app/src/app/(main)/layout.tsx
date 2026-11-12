@@ -83,6 +83,11 @@ export default async function MainLayout({
   let commandSearchCapabilities = {
     canInvestigateSre: false,
     canConfigureSre: false,
+    canCreateProjects: false,
+    canInviteMembers: false,
+    canCreateCliTokens: false,
+    canCreateSreServices: false,
+    canConfigureSreConnectors: false,
   };
   const initialIsSelfHosted = isSelfHosted();
   let showSpendingCap = false;
@@ -142,6 +147,11 @@ export default async function MainLayout({
             "configure",
             permissionContext
           ),
+          canCreateProjects: checkPermissionWithContext("project", "create", permissionContext),
+          canInviteMembers: checkPermissionWithContext("member", "create", permissionContext),
+          canCreateCliTokens: checkPermissionWithContext("apiKey", "create", permissionContext),
+          canCreateSreServices: checkPermissionWithContext("sre_service", "create", permissionContext),
+          canConfigureSreConnectors: checkPermissionWithContext("sre_connector", "configure", permissionContext),
         };
       }
 
