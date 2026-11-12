@@ -124,19 +124,23 @@ export async function settleBillingOnRequest(organizationId: string): Promise<"c
   if (meta.billingCancelSettled) return "already";
   const attemptedBefore = !!meta.billingCancelAttempted;
   const hasBilling = !!(org.subscriptionId || org.polarCustomerId);
+  const claimAt = new Date().toISOString();
   if (hasBilling) {
     const [claimed] = await db.update(organization)
-      .set({ deletionMeta: sql`${organization.deletionMeta} || jsonb_build_object('billingCancelAttempted', true, 'billingCancelClaimAt', clock_timestamp()::text)` })
+      .set({ deletionMeta: sql`${organization.deletionMeta} || jsonb_build_object('billingCancelAttempted', true, 'billingCancelClaimAt', ${claimAt}::text)` })
       .where(and(
         eq(organization.id, organizationId), isNotNull(organization.deletionRequestedAt), sql`NOT (${organization.deletionMeta} ? 'billingCancelSettled')`,
         sql`(NOT (${organization.deletionMeta} ? 'billingCancelClaimAt') OR (${organization.deletionMeta} ->> 'billingCancelClaimAt')::timestamptz < clock_timestamp() - ${sql.raw(`interval '${BILLING_CLAIM_TTL}'`)})`,
       )).returning({ id: organization.id });
     if (!claimed) return "retry"; // another caller holds a live claim (or the deletion was cancelled / settled meanwhile)
   }
+  // Every write of this call's outcome is bound to its own claim: a cancel and a new request reset the meta, so a stale call
+  // (paused after the provider answered) can never mark a newer deletion cycle as settled.
+  const ownClaim = hasBilling ? sql`${organization.deletionMeta} ->> 'billingCancelClaimAt' = ${claimAt}` : undefined;
   const savePatch = (patch: DeletionMeta) => db.update(organization).set({ deletionMeta: metaPatch(organization.deletionMeta, patch) })
-    .where(and(eq(organization.id, organizationId), isNotNull(organization.deletionRequestedAt))).returning({ id: organization.id });
+    .where(and(eq(organization.id, organizationId), isNotNull(organization.deletionRequestedAt), ownClaim)).returning({ id: organization.id });
   const dropClaim = () => db.update(organization).set({ deletionMeta: sql`${organization.deletionMeta} - 'billingCancelClaimAt'` })
-    .where(eq(organization.id, organizationId)).catch(() => undefined);
+    .where(and(eq(organization.id, organizationId), ownClaim)).catch(() => undefined);
   try {
     // The advisory lock covers only the provider call (a connection that runs nothing else), ordering it against a reinstate.
     const result = await withBillingLock(organizationId, () => cancelSubscriptionAtPeriodEnd(org));
