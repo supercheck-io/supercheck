@@ -272,7 +272,7 @@ Jobs send notifications through your configured alert channels:
 </Accordion>
 <Accordion title="Deleting jobs" id="deleting-jobs">
 
-Deleting a job takes effect at once: the job disappears from lists, its schedule is removed, and it cannot start new runs. Queued and running executions are cancelled. Its runs, reports and stored artifacts are then removed in the background in small batches, so a job with a long history does not slow the app down. There is no undo.
+Deleting a job takes effect at once: the job disappears from lists, its schedule is removed, and it cannot start new runs. Queued executions are cancelled, and running ones are asked to stop; a run that is already executing may finish its current step before it stops (removal waits up to 30 minutes for it). Its runs, reports and stored artifacts are then removed in the background in small batches, so a job with a long history does not slow the app down. There is no undo.
 
 If background removal hits an error (for example, storage is briefly unavailable), it is retried automatically with a growing delay. A super admin can see and retry removals that kept failing.
 
