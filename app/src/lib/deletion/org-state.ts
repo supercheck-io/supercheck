@@ -115,6 +115,10 @@ export type DeletionMeta = {
   noticeRequested?: string;
   notice7d?: string;
   notice1d?: string;
+  /** Set once a notice was fully delivered; a claim without it expires so a crashed send is retried. */
+  noticeRequestedSent?: boolean;
+  notice7dSent?: boolean;
+  notice1dSent?: boolean;
   noticeCompleted?: string;
 };
 

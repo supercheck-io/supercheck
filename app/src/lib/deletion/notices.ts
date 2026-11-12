@@ -20,21 +20,34 @@ const DAY_MS = 24 * 60 * 60_000;
 
 const appUrl = () => (process.env.NEXT_PUBLIC_APP_URL || process.env.BETTER_AUTH_URL || "").replace(/\/+$/, "");
 
+const CLAIM_TTL_MS = 10 * 60_000;
+const sentKey = (key: NoticeKey) => `${key}Sent` as const;
+/** Not done and not claimed, or claimed long ago by a pod that died before it finished (no delivery recorded). */
+const noticeDue = (meta: DeletionMeta, key: NoticeKey, now: number) => {
+  const claimed = meta[key];
+  if (!claimed) return true;
+  return !meta[sentKey(key)] && now - Date.parse(claimed) > CLAIM_TTL_MS;
+};
+
 export async function sendOrganizationNotice(organizationId: string, key: NoticeKey): Promise<"sent" | "skipped" | "failed"> {
   if (!isEmailConfigured()) return "skipped";
-  // Claim: only the pod that flips the marker sends.
+  // Claim: only the pod that flips the marker sends. A claim that never reached "sent" expires, so a crash cannot suppress the notice.
+  const claim = new Date().toISOString();
   const [org] = await db.update(organization)
-    .set({ deletionMeta: sql`${organization.deletionMeta} || ${JSON.stringify({ [key]: new Date().toISOString() })}::jsonb` })
-    .where(and(eq(organization.id, organizationId), sql`NOT (${organization.deletionMeta} ? ${key})`))
+    .set({ deletionMeta: sql`${organization.deletionMeta} || ${JSON.stringify({ [key]: claim })}::jsonb` })
+    .where(and(eq(organization.id, organizationId), isNotNull(organization.deletionRequestedAt), sql`(NOT (${organization.deletionMeta} ? ${key}) OR (NOT (${organization.deletionMeta} ? ${sentKey(key)}) AND (${organization.deletionMeta} ->> ${key})::timestamptz < now() - make_interval(secs => ${CLAIM_TTL_MS / 1000})))`))
     .returning({ name: organization.name, purgeAfter: organization.deletionPurgeAfter });
   if (!org) return "skipped";
   const deliveredKey = `${key}To` as const;
-  const release = () => db.update(organization).set({ deletionMeta: sql`${organization.deletionMeta} - ${key}::text` }).where(eq(organization.id, organizationId));
+  // Every later write is bound to this claim: a cancel and a new request reset the meta, and a stale send must not touch the new cycle's state.
+  const ours = sql`${organization.deletionMeta} ->> ${key} = ${claim}`;
+  const patch = (value: DeletionMeta) => db.update(organization).set({ deletionMeta: metaPatch(organization.deletionMeta, value) }).where(and(eq(organization.id, organizationId), ours));
+  const release = () => db.update(organization).set({ deletionMeta: sql`${organization.deletionMeta} - ${key}::text` }).where(and(eq(organization.id, organizationId), ours));
   try {
     const owners = await db.select({ email: user.email }).from(member).innerJoin(user, eq(user.id, member.userId))
       .where(and(eq(member.organizationId, organizationId), eq(member.role, "org_owner"), isNotNull(user.email)));
     const recipients = [...new Set(owners.map((owner) => owner.email))];
-    if (recipients.length === 0) return "skipped"; // sole-member account deletion: the owner is already gone
+    if (recipients.length === 0) { await patch({ [sentKey(key)]: true }); return "skipped"; } // sole-member account deletion: the owner is already gone
     // Owners an earlier, partly failed attempt already reached are skipped, so a retry never mails them twice.
     const [current] = await db.select({ meta: organization.deletionMeta }).from(organization).where(eq(organization.id, organizationId));
     const delivered = new Set(((current?.meta as DeletionMeta | undefined)?.[deliveredKey]) ?? []);
@@ -49,11 +62,11 @@ export async function sendOrganizationNotice(organizationId: string, key: Notice
     const result = todo.length
       ? await EmailService.getInstance().sendEmailToMultiple({ recipients: todo, subject: rendered.subject, text: rendered.text, html: rendered.html })
       : { sentCount: 0, failedAddresses: [] as string[], skippedAddresses: [] as string[] };
-    if (result.failedAddresses.length === 0) return "sent";
+    if (result.failedAddresses.length === 0) { await patch({ [sentKey(key)]: true }); return "sent"; }
     // Some owners failed: remember who got it, release the marker, and let the next sweep retry only the rest.
     const reached = new Set(delivered);
     for (const email of todo) if (!result.failedAddresses.includes(email)) reached.add(email);
-    await db.update(organization).set({ deletionMeta: metaPatch(organization.deletionMeta, { [deliveredKey]: [...reached] }) }).where(eq(organization.id, organizationId));
+    await patch({ [deliveredKey]: [...reached] });
     await release();
     return "failed";
   } catch (error) {
@@ -78,9 +91,9 @@ export async function sendDueReminders(now = new Date()): Promise<number> {
       const window = org.purgeAfter.getTime() - org.requestedAt.getTime();
       if (remaining <= 0) continue;
       // A request email that failed at request time (SMTP outage) released its marker: send it now.
-      if (!org.meta.noticeRequested && (await sendOrganizationNotice(org.id, "noticeRequested")) === "sent") sent++;
-      if (remaining <= DAY_MS && window > DAY_MS && !org.meta.notice1d) { if ((await sendOrganizationNotice(org.id, "notice1d")) === "sent") sent++; }
-      else if (remaining <= 7 * DAY_MS && remaining > DAY_MS && window > 7 * DAY_MS && !org.meta.notice7d) { if ((await sendOrganizationNotice(org.id, "notice7d")) === "sent") sent++; }
+      if (noticeDue(org.meta, "noticeRequested", now.getTime()) && (await sendOrganizationNotice(org.id, "noticeRequested")) === "sent") sent++;
+      if (remaining <= DAY_MS && window > DAY_MS && noticeDue(org.meta, "notice1d", now.getTime())) { if ((await sendOrganizationNotice(org.id, "notice1d")) === "sent") sent++; }
+      else if (remaining <= 7 * DAY_MS && remaining > DAY_MS && window > 7 * DAY_MS && noticeDue(org.meta, "notice7d", now.getTime())) { if ((await sendOrganizationNotice(org.id, "notice7d")) === "sent") sent++; }
     }
     if (pending.length < SWEEP_PAGE) break;
   }

@@ -4,7 +4,7 @@ import { deletionJobs, jobs, member, monitors, organization, projects, runs } fr
 import { logAdminEvent, logAuditEvent } from "@/lib/audit-logger";
 import { RUN_CANCELLATION_MARKER, setCancellationSignal } from "@/lib/cancellation-service";
 import { deleteScheduledJob, scheduleJob } from "@/lib/job-scheduler";
-import { deleteScheduledMonitor } from "@/lib/monitor-scheduler";
+import { removeScheduledMonitor } from "@/lib/monitor-scheduler";
 import { reconcileMonitorSchedule } from "@/lib/monitor-schedule-reconcile";
 import { getNextRunDate } from "@/lib/scheduler/cron-utils";
 import { isEmailConfigured } from "@/lib/email-service";
@@ -45,11 +45,11 @@ async function assertMembership(tx: Tx, organizationId: string, guard: Membershi
  * is held on a transaction for the whole provider call, so a late reinstate of an old cancellation cannot interleave with a
  * new request's cancel, and each transition re-reads the organization state after it holds the lock.
  */
-async function withBillingLock<T>(organizationId: string, work: () => Promise<T>): Promise<T> {
+async function withBillingLock<T>(organizationId: string, work: (tx: Tx) => Promise<T>): Promise<T> {
   return db.transaction(async (tx) => {
     await tx.execute(sql`SET LOCAL lock_timeout = '60s'`);
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`org-billing:${organizationId}`}))`);
-    return work();
+    return work(tx);
   });
 }
 
@@ -110,16 +110,24 @@ export async function requestOrganizationDeletion(input: {
  * The intent (`billingCancelAttempted`) is saved before the provider call: a crash after the provider accepted leaves a retry
  * that sees "already", and that retry still counts as our cancellation, so cancelling the deletion reinstates the renewal.
  */
-export const settleBillingOnRequest = (organizationId: string) => withBillingLock(organizationId, () => settleBilling(organizationId));
+export async function settleBillingOnRequest(organizationId: string): Promise<"cancelled" | "already" | "none" | "skipped" | "retry"> {
+  // Only the transition runs under the lock, on the lock's own connection (a second pool connection while holding one can
+  // stall a small pool). The usage flush goes through its own client, so it runs after the lock is released.
+  const status = await withBillingLock(organizationId, (tx) => settleBilling(tx, organizationId));
+  if (status !== "cancelled" && status !== "already") return status;
+  try { await flushFinalUsage(organizationId, { strict: false }); }
+  catch (error) { if (!(error instanceof BillingCancellationError)) throw error; return "retry"; }
+  return status;
+}
 
-async function settleBilling(organizationId: string): Promise<"cancelled" | "already" | "none" | "skipped" | "retry"> {
-  const [org] = await db.select({ id: organization.id, subscriptionId: organization.subscriptionId, polarCustomerId: organization.polarCustomerId, meta: organization.deletionMeta })
+async function settleBilling(tx: Tx, organizationId: string): Promise<"cancelled" | "already" | "none" | "skipped" | "retry"> {
+  const [org] = await tx.select({ id: organization.id, subscriptionId: organization.subscriptionId, polarCustomerId: organization.polarCustomerId, meta: organization.deletionMeta })
     .from(organization).where(and(eq(organization.id, organizationId), isNotNull(organization.deletionRequestedAt)));
   if (!org) return "skipped";
   const meta = org.meta as DeletionMeta;
   if (meta.billingCancelSettled) return "already";
   const attemptedBefore = !!meta.billingCancelAttempted;
-  const savePatch = (patch: DeletionMeta) => db.update(organization).set({ deletionMeta: metaPatch(organization.deletionMeta, patch) })
+  const savePatch = (patch: DeletionMeta) => tx.update(organization).set({ deletionMeta: metaPatch(organization.deletionMeta, patch) })
     .where(and(eq(organization.id, organizationId), isNotNull(organization.deletionRequestedAt))).returning({ id: organization.id });
   try {
     if (!attemptedBefore && !(await savePatch({ billingCancelAttempted: true })).length) return "skipped";
@@ -135,12 +143,11 @@ async function settleBilling(organizationId: string): Promise<"cancelled" | "alr
         if (!(error instanceof BillingCancellationError)) throw error;
         // The organization is active but renewal is off, and it is no longer pending, so the pending sweep cannot see it:
         // leave a marker the billing sweep retries.
-        await db.update(organization).set({ deletionMeta: metaPatch(organization.deletionMeta, { billingReinstatePending: true }) })
+        await tx.update(organization).set({ deletionMeta: metaPatch(organization.deletionMeta, { billingReinstatePending: true }) })
           .where(and(eq(organization.id, organizationId), sql`${organization.deletionRequestedAt} IS NULL`));
       }
       return "skipped";
     }
-    if (result.status === "cancelled" || result.status === "already") await flushFinalUsage(organizationId, { strict: false });
     return result.status;
   } catch (error) {
     if (!(error instanceof BillingCancellationError)) throw error;
@@ -158,14 +165,14 @@ export async function retryPendingBillingCancels(limit = 25): Promise<number> {
   const orphans = await db.select({ id: organization.id }).from(organization)
     .where(and(sql`${organization.deletionRequestedAt} IS NULL`, sql`${organization.deletionMeta} ? 'billingReinstatePending'`)).limit(limit);
   for (const row of orphans) {
-    const outcome = await withBillingLock(row.id, async () => {
-      const [org] = await db.select({ id: organization.id, subscriptionId: organization.subscriptionId, polarCustomerId: organization.polarCustomerId, pending: organization.deletionRequestedAt })
+    const outcome = await withBillingLock(row.id, async (tx) => {
+      const [org] = await tx.select({ id: organization.id, subscriptionId: organization.subscriptionId, polarCustomerId: organization.polarCustomerId, pending: organization.deletionRequestedAt })
         .from(organization).where(eq(organization.id, row.id));
       if (!org) return "gone" as const;
       if (!org.pending) {
         try { await reinstateSubscription(org); } catch (error) { if (error instanceof BillingCancellationError) return "retry" as const; throw error; }
       }
-      await db.update(organization).set({ deletionMeta: sql`${organization.deletionMeta} - 'billingReinstatePending'` }).where(eq(organization.id, row.id));
+      await tx.update(organization).set({ deletionMeta: sql`${organization.deletionMeta} - 'billingReinstatePending'` }).where(eq(organization.id, row.id));
       return "done" as const;
     });
     if (outcome !== "retry") settled++;
@@ -202,8 +209,8 @@ export async function cancelOrganizationDeletion(input: { organizationId: string
   if (cleared.billingCancelRequested) {
     try {
       // Under the billing lock, and only if no new request has made the organization pending again in the meantime.
-      billing = await withBillingLock(input.organizationId, async () => {
-        const [now] = await db.select({ pending: organization.deletionRequestedAt }).from(organization).where(eq(organization.id, input.organizationId));
+      billing = await withBillingLock(input.organizationId, async (tx) => {
+        const [now] = await tx.select({ pending: organization.deletionRequestedAt }).from(organization).where(eq(organization.id, input.organizationId));
         return now?.pending ? "skipped" as const : reinstateSubscription(cleared.org);
       });
     } catch (error) {
@@ -272,7 +279,16 @@ export async function quiesceOrganization(organizationId: string, options: { bud
       .limit(QUIESCE_BATCH);
     if (active.length === 0) break;
     const ids = active.map((run) => run.id);
-    await db.update(runs).set({ errorDetails: RUN_CANCELLATION_MARKER }).where(and(inArray(runs.id, ids), inArray(runs.status, ["queued", "running"])));
+    // Marked under FOR SHARE on the organization row: a cancel that committed first is seen here, so runs a restored
+    // organization has started are never cancelled by this old pass.
+    const marked = await db.transaction(async (tx) => {
+      await lockTimeout(tx);
+      const [current] = await tx.select({ pending: organization.deletionRequestedAt }).from(organization).where(eq(organization.id, organizationId)).for("share");
+      if (!current?.pending) return false;
+      await tx.update(runs).set({ errorDetails: RUN_CANCELLATION_MARKER }).where(and(inArray(runs.id, ids), inArray(runs.status, ["queued", "running"])));
+      return true;
+    });
+    if (!marked) return false;
     await Promise.allSettled(ids.map((id) => setCancellationSignal(id)));
     if (Date.now() > deadline) return false;
   }
@@ -293,7 +309,7 @@ export async function quiesceOrganization(organizationId: string, options: { bud
         return Promise.all(page.map(async (row) => {
           try {
             if (kind === "job") return await deleteScheduledJob(row.id, { throwOnError: true }), true;
-            for (const id of new Set([row.id, row.scheduledId].filter((v): v is string => !!v))) await deleteScheduledMonitor(id);
+            for (const id of new Set([row.id, row.scheduledId].filter((v): v is string => !!v))) await removeScheduledMonitor(id); // throws on a scheduler failure; false only means nothing was scheduled
             return true;
           } catch { return false; }
         }));
