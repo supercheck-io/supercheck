@@ -671,4 +671,19 @@ describe("review fixes: project guards, restore quotas, reinstate retry", () => 
     expect(mockSend).toHaveBeenCalledTimes(1);
     expect((await orgRow(seeded.orgId)).deletion_meta.noticeRequestedSent).toBe(true);
   });
+
+  it("a live claim by another caller is not mistaken for an earlier attempt, and an expired one is", async () => {
+    cloud();
+    mockPolarGet.mockResolvedValue({ cancel_at_period_end: true, status: "active" }); // the owner had already cancelled
+    const seeded = await seedOrg({ subscription: "sub_r10" });
+    await requestOrganizationDeletion({ organizationId: seeded.orgId, actorUserId: seeded.ownerId, guard: { ownerUserId: seeded.ownerId } });
+    // The request's own settle saw "already" with no earlier attempt: the owner's cancellation, not ours.
+    expect((await orgRow(seeded.orgId)).deletion_meta.billingCancelRequested).toBeUndefined();
+    await client`UPDATE organization SET deletion_meta = jsonb_build_object('billingCancelAttempted', true, 'billingCancelClaimAt', clock_timestamp()::text) WHERE id = ${seeded.orgId}`;
+    const { settleBillingOnRequest } = await import("./organization");
+    expect(await settleBillingOnRequest(seeded.orgId)).toBe("retry"); // another live caller holds the claim
+    await client`UPDATE organization SET deletion_meta = jsonb_build_object('billingCancelAttempted', true, 'billingCancelClaimAt', (clock_timestamp() - interval '10 minutes')::text) WHERE id = ${seeded.orgId}`;
+    expect(await settleBillingOnRequest(seeded.orgId)).toBe("already");
+    expect((await orgRow(seeded.orgId)).deletion_meta.billingCancelRequested).toBe(true); // a crashed earlier attempt of ours
+  });
 });
