@@ -6,7 +6,7 @@ import { Braces, FileText, FolderOpen, KeyRound, Lock, UserPlus, type LucideIcon
  * Cmd+K, tables, pickers, dialogs) reads the tone from here, never an ad-hoc palette class.
  * Brand marks (Playwright, k6, Chrome) keep their own colours; their type tone tints the chip and text around them.
  */
-export const TYPE_TONES = ["rose", "clay", "gold", "olive", "lime", "jade", "mint", "teal", "cyan", "sky", "blue", "indigo", "violet", "purple", "fuchsia", "steel", "sand", "stone"] as const;
+export const TYPE_TONES = ["rose", "clay", "gold", "olive", "lime", "jade", "mint", "teal", "cyan", "sky", "blue", "indigo", "violet", "purple", "fuchsia", "steel", "sand", "stone", "taupe"] as const;
 export type TypeTone = (typeof TYPE_TONES)[number];
 
 export const TYPE_TONE = {
@@ -16,7 +16,7 @@ export const TYPE_TONE = {
   job: { playwright: "sky", k6: "fuchsia" },
   variable: { variable: "lime", secret: "rose", file: "clay" },
   sre: { service: "mint", integration: "purple", privateAgent: "steel" },
-  admin: { project: "sand", member: "stone", cliToken: "olive" },
+  admin: { project: "sand", member: "stone", cliToken: "taupe" },
 } as const satisfies Record<string, Record<string, TypeTone>>;
 
 type Group = keyof typeof TYPE_TONE;
@@ -42,6 +42,7 @@ export const TYPE_TEXT: Record<TypeTone, string> = {
   steel: "text-type-steel",
   sand: "text-type-sand",
   stone: "text-type-stone",
+  taupe: "text-type-taupe",
 };
 
 /** Same colour with `!`, for sidebar and command items whose button sets the svg colour. */
@@ -64,6 +65,7 @@ export const TYPE_TEXT_FORCE: Record<TypeTone, string> = {
   steel: "!text-type-steel",
   sand: "!text-type-sand",
   stone: "!text-type-stone",
+  taupe: "!text-type-taupe",
 };
 
 /** Tinted square for IconChip (same 10% fill as the area chips). */
@@ -86,6 +88,7 @@ export const TYPE_CHIP: Record<TypeTone, string> = {
   steel: "bg-type-steel/10 text-type-steel",
   sand: "bg-type-sand/10 text-type-sand",
   stone: "bg-type-stone/10 text-type-stone",
+  taupe: "bg-type-taupe/10 text-type-taupe",
 };
 
 /** Hover border for picker cards. */
@@ -108,6 +111,7 @@ export const TYPE_HOVER_BORDER: Record<TypeTone, string> = {
   steel: "hover:border-type-steel/50",
   sand: "hover:border-type-sand/50",
   stone: "hover:border-type-stone/50",
+  taupe: "hover:border-type-taupe/50",
 };
 
 export const typeTone = <G extends Group>(group: G, key: Key<G>): TypeTone =>

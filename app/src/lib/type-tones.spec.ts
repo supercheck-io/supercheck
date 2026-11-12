@@ -35,6 +35,12 @@ describe("type tones", () => {
     expect(TYPE_TONE.job.k6).toBe(TYPE_TONE.test.performance);
   });
 
+  it("never reuses a tone across the registry (jobs share their engine's tone on purpose)", () => {
+    const tones = Object.entries(TYPE_TONE).filter(([group]) => group !== "job").flatMap(([, g]) => Object.values(g));
+    expect(new Set(tones).size).toBe(tones.length);
+    expect(TYPE_TONES.length).toBeGreaterThanOrEqual(tones.length);
+  });
+
   it("feeds the test and monitor type lists from the registry", () => {
     for (const t of testTypes) expect(t.color).toBe(typeText("test", t.value as keyof typeof TYPE_TONE.test));
     for (const t of monitorTypes) expect(t.color).toBe(typeText("monitor", t.value as keyof typeof TYPE_TONE.monitor));

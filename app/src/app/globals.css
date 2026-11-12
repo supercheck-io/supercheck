@@ -67,6 +67,7 @@
   --type-steel: oklch(0.5 0.04 255);
   --type-sand: oklch(0.5 0.04 80);
   --type-stone: oklch(0.5 0.04 310);
+  --type-taupe: oklch(0.5 0.04 20);
   --radius: 0.625rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.141 0.005 285.823);
@@ -134,6 +135,7 @@
   --type-steel: oklch(0.76 0.04 255);
   --type-sand: oklch(0.76 0.04 80);
   --type-stone: oklch(0.76 0.04 310);
+  --type-taupe: oklch(0.76 0.04 20);
   --sidebar: oklch(0.21 0.006 285.885);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);
@@ -196,6 +198,7 @@
   --color-type-steel: var(--type-steel);
   --color-type-sand: var(--type-sand);
   --color-type-stone: var(--type-stone);
+  --color-type-taupe: var(--type-taupe);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
 
