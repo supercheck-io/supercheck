@@ -184,9 +184,10 @@ export async function runJobInSpan<T>(
     );
   }
   const started = Date.now();
+  // Queue handler outcome: ok | failed (run returned failure) | error (threw) | delayed.
   let status = 'ok';
   try {
-    return await Sentry.continueTrace(
+    const result = await Sentry.continueTrace(
       {
         sentryTrace:
           typeof trace.sentryTrace === 'string' ? trace.sentryTrace : undefined,
@@ -203,6 +204,10 @@ export async function runJobInSpan<T>(
           fn,
         ),
     );
+    // Processors return failed runs instead of throwing.
+    const r = result as { success?: unknown; status?: unknown } | undefined;
+    if (r?.success === false || r?.status === 'failed') status = 'failed';
+    return result;
   } catch (error) {
     // DelayedError is BullMQ's "reschedule me", not a failure.
     status = (error as Error)?.name === 'DelayedError' ? 'delayed' : 'error';

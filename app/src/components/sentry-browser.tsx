@@ -11,12 +11,21 @@
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { useSession } from "@/utils/auth-client";
-import { scrubEvent, scrubName, scrubSpan, scrubString, scrubTransaction, scrubUrl } from "@/lib/sentry-scrub";
+import {
+  scrubEvent,
+  scrubName,
+  scrubSpan,
+  scrubString,
+  scrubTransaction,
+  scrubUrl,
+} from "@/lib/sentry-scrub";
 
 /** Scrubs URLs and text inside replay custom frames (navigation, resource and breadcrumb payloads). */
 function scrubDeep(value: unknown, depth = 0): unknown {
   if (typeof value === "string") {
-    return /^(https?:\/\/|\/)/i.test(value) ? scrubUrl(value) : scrubString(scrubName(value));
+    return /^(https?:\/\/|\/)/i.test(value)
+      ? scrubUrl(value)
+      : scrubString(scrubName(value));
   }
   if (depth > 4 || value === null || typeof value !== "object") return value;
   if (Array.isArray(value)) return value.map((v) => scrubDeep(v, depth + 1));
@@ -38,11 +47,17 @@ const EXCLUDED = [
   "/device",
   "/billing",
   "/subscribe",
+  // Billing lives under org admin (/billing redirects to its subscription tab); member lists show emails.
+  "/org-admin",
 ];
 
 export function isExcludedPath(pathname: string): boolean {
   return EXCLUDED.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
+
+// Checked on every send: the SDK stays loaded after client-side navigation to an excluded page.
+const onExcludedPage = () =>
+  typeof window !== "undefined" && isExcludedPath(window.location.pathname);
 
 type BrowserConfig = {
   dsn?: string;
@@ -71,9 +86,10 @@ async function loadSentry(): Promise<SentryReact | null> {
     sendDefaultPii: false,
     maxBreadcrumbs: 0,
     beforeBreadcrumb: () => null,
-    beforeSend: scrubEvent,
-    beforeSendTransaction: scrubTransaction,
-    // Standalone spans (INP) skip beforeSendTransaction.
+    beforeSend: (event) => (onExcludedPage() ? null : scrubEvent(event)),
+    beforeSendTransaction: (event) =>
+      onExcludedPage() ? null : scrubTransaction(event),
+    // Standalone spans (INP) skip beforeSendTransaction; the hook cannot drop them, so their name is scrubbed.
     beforeSendSpan: (span) => scrubSpan(span),
     tracesSampleRate: traces > 0 ? traces : undefined,
     // Trace headers only on same-origin requests.
@@ -85,7 +101,10 @@ async function loadSentry(): Promise<SentryReact | null> {
       ...(traces > 0
         ? [
             Sentry.browserTracingIntegration({
-              beforeStartSpan: (options) => ({ ...options, name: scrubName(options.name) }),
+              beforeStartSpan: (options) => ({
+                ...options,
+                name: scrubName(options.name),
+              }),
             }),
           ]
         : []),
@@ -99,10 +118,24 @@ async function loadSentry(): Promise<SentryReact | null> {
               networkDetailAllowUrls: [],
               networkCaptureBodies: false,
               // The defaults plus link and media targets (customer URLs in href/src).
-              maskAttributes: ["title", "placeholder", "aria-label", "href", "src", "srcset", "alt", "value"],
+              maskAttributes: [
+                "title",
+                "placeholder",
+                "aria-label",
+                "href",
+                "src",
+                "srcset",
+                "alt",
+                "value",
+              ],
               // Custom frames (navigation, resources, breadcrumbs) carry URLs with query strings.
               beforeAddRecordingEvent: (event) => {
-                if (event.type === 5 && "data" in event && event.data && typeof event.data === "object") {
+                if (
+                  event.type === 5 &&
+                  "data" in event &&
+                  event.data &&
+                  typeof event.data === "object"
+                ) {
                   const data = event.data as { payload?: unknown };
                   data.payload = scrubDeep(data.payload);
                 }
@@ -115,6 +148,7 @@ async function loadSentry(): Promise<SentryReact | null> {
   });
   // Replay events skip beforeSend: scrub their URL list here.
   Sentry.addEventProcessor((event) => {
+    if (onExcludedPage()) return null;
     if (event.type === "replay_event") {
       const replay = event as { urls?: string[]; request?: unknown };
       replay.urls = replay.urls?.map(scrubUrl);
@@ -133,7 +167,9 @@ export function SentryBrowser() {
   useEffect(() => {
     if (excluded) {
       // Leaving the app shell for an excluded page stops any running replay.
-      void sdkPromise?.then((s) => s?.getReplay()?.stop()).catch(() => undefined);
+      void sdkPromise
+        ?.then((s) => s?.getReplay()?.stop())
+        .catch(() => undefined);
       return;
     }
     sdkPromise ??= loadSentry().catch(() => null);

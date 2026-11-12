@@ -227,7 +227,7 @@ export function startMonitorScheduleRepair(): void {
   const state = globalThis as { __monitorRepairTimer?: ReturnType<typeof setInterval> };
   if (state.__monitorRepairTimer) return;
   state.__monitorRepairTimer = setInterval(() => {
-    checkedTick('monitor-schedule-repair', { type: 'interval', value: 5, unit: 'minute' }, repairMonitorSchedules, (r) => !r.skipped).catch((error) => console.error('[MonitorScheduler] Repair sweep failed:', error));
+    checkedTick('monitor-schedule-repair', { type: 'interval', value: 5, unit: 'minute' }, repairMonitorSchedules, (r) => (r.skipped ? false : r.failed > 0 ? 'error' : true)).catch((error) => console.error('[MonitorScheduler] Repair sweep failed:', error));
   }, REPAIR_INTERVAL_MS);
   state.__monitorRepairTimer.unref?.();
 }

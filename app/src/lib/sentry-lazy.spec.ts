@@ -46,6 +46,14 @@ describe("sentry-lazy", () => {
     ]);
   });
 
+  it("sends an error check-in when the tick returns failures", async () => {
+    process.env.SENTRY_DSN = DSN;
+    process.env.SELF_HOSTED = "false";
+    await checkedTick("failing", schedule, async () => ({ failed: 3 }), (r) => (r.failed ? "error" : true));
+    await flush();
+    expect(captureCheckIn.mock.calls.map((c) => [c[0], c[2]])).toEqual([["failing", "error"]]);
+  });
+
   it("throttles ok check-ins with minIntervalMs", async () => {
     process.env.SENTRY_DSN = DSN;
     process.env.SELF_HOSTED = "false";

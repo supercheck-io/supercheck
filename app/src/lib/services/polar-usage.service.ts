@@ -572,6 +572,8 @@ class PolarUsageService {
       const result = await withUsageSyncLease((assertOwned) =>
         checkedTick("usage-sync", { type: "interval", value: Math.max(1, Math.round(usageSyncIntervalMinutes())), unit: "minute" }, () =>
           this.syncPendingEventsLocked(batchSize, assertOwned),
+          // Failures are returned, not thrown: report them so a Polar outage is visible.
+          (r) => (r.failed > 0 && r.succeeded === 0 ? "error" : true),
         ),
       );
 

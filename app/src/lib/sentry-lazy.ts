@@ -20,7 +20,10 @@ async function load(): Promise<SentryModule | null> {
 }
 
 /** Trace headers for a queued job, so the worker continues the request's trace. Empty when off. */
-export async function getTraceHeaders(): Promise<{ sentryTrace?: string; baggage?: string }> {
+export async function getTraceHeaders(): Promise<{
+  sentryTrace?: string;
+  baggage?: string;
+}> {
   try {
     return (await load())?.getTraceHeaders() ?? {};
   } catch {
@@ -31,29 +34,43 @@ export async function getTraceHeaders(): Promise<{ sentryTrace?: string; baggage
 const lastCheckIn = new Map<string, number>();
 
 /**
- * Runs one scheduler tick and sends a cron check-in when `ran(result)` says this
+ * Runs one scheduler tick and sends a cron check-in when `outcome(result)` says this
  * replica did the work (it held the lock or lease), so replicas that skip never
- * report. A throw sends an error check-in and is rethrown. `minIntervalMs`
+ * report. `outcome` returns false to skip, "error" for a tick that ran but failed
+ * (failures returned rather than thrown), true for ok. A throw sends an error
+ * check-in and is rethrown. `minIntervalMs`
  * throttles check-ins for ticks that run more often than once a minute.
  */
 export async function checkedTick<T>(
   slug: string,
   schedule: CronSchedule,
   fn: () => Promise<T>,
-  ran: (result: T) => boolean = () => true,
+  outcome: (result: T) => boolean | "error" = () => true,
   minIntervalMs = 0,
 ): Promise<T> {
   const started = Date.now();
   const report = (status: "ok" | "error") => {
-    if (status === "ok" && started - (lastCheckIn.get(slug) ?? 0) < minIntervalMs) return;
+    if (
+      status === "ok" &&
+      started - (lastCheckIn.get(slug) ?? 0) < minIntervalMs
+    )
+      return;
     lastCheckIn.set(slug, started);
     void load()
-      .then((sdk) => sdk?.captureCheckIn(slug, schedule, status, (Date.now() - started) / 1000))
+      .then((sdk) =>
+        sdk?.captureCheckIn(
+          slug,
+          schedule,
+          status,
+          (Date.now() - started) / 1000,
+        ),
+      )
       .catch(() => undefined);
   };
   try {
     const result = await fn();
-    if (ran(result)) report("ok");
+    const status = outcome(result);
+    if (status) report(status === "error" ? "error" : "ok");
     return result;
   } catch (error) {
     report("error");
