@@ -1,14 +1,16 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import StatusPagesList from "./status-pages-list";
 
 const useStatusPagesMock = jest.fn();
 jest.mock("@/hooks/use-status-pages", () => ({ useStatusPages: () => useStatusPagesMock() }));
-jest.mock("@/hooks/use-project-context", () => ({ useProjectContext: () => ({ currentProject: null }) }));
+jest.mock("@/hooks/use-project-context", () => ({ useProjectContext: () => ({ currentProject: { userRole: "org_owner" } }) }));
 jest.mock("@tanstack/react-query", () => ({ useQueryClient: () => ({ setQueryData: jest.fn(), invalidateQueries: jest.fn() }) }));
 jest.mock("@/actions/delete-status-page", () => ({ deleteStatusPage: jest.fn() }));
+const routerReplace = jest.fn();
+let mockSearch = "";
 jest.mock("next/navigation", () => ({
-  useRouter: () => ({ push: jest.fn() }),
-  useSearchParams: () => new URLSearchParams(),
+  useRouter: () => ({ push: jest.fn(), replace: routerReplace }),
+  useSearchParams: () => new URLSearchParams(mockSearch),
 }));
 jest.mock("./create-status-page-form", () => ({ __esModule: true, default: () => null, CreateStatusPageForm: () => null }));
 
@@ -22,4 +24,21 @@ it("shows an error with Retry instead of the empty state when the load fails", (
   expect(screen.queryByText("No status pages yet")).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Retry" }));
   expect(refetch).toHaveBeenCalled();
+});
+
+it("opens from ?create=true, drops the param on close, and reopens on the next deep link", async () => {
+  useStatusPagesMock.mockReturnValue(base);
+  mockSearch = "create=true";
+  // Like the real router, replace() removes the param.
+  routerReplace.mockImplementation(() => { mockSearch = ""; });
+  const { rerender } = render(<StatusPagesList />);
+  await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
+
+  fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(routerReplace).toHaveBeenCalledWith("/status-pages", { scroll: false });
+
+  mockSearch = "create=true";
+  rerender(<StatusPagesList />);
+  await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
 });

@@ -74,6 +74,7 @@ import { RequirementTestDataTable } from "./requirement-test-data-table";
 import { createRequirementTestColumns } from "./requirement-test-columns";
 import { DocumentsList } from "./documents-list";
 import { NAV } from "@/lib/nav-areas";
+import { TYPE_CHIP, TYPE_HOVER_BORDER, typeTone } from "@/lib/type-tones";
 
 // GET /api/requirements caps pageSize at this value and the list sends none.
 const REQUIREMENTS_LIST_CAP = 500;
@@ -506,7 +507,7 @@ export default function RequirementsPage() {
                                                         </div>
                                                         <div className="space-y-2">
                                                             <div className="flex gap-2">
-                                                                <Chrome className="h-4 w-4 text-sky-500 shrink-0 mt-0.5" />
+                                                                <Chrome className="h-4 w-4 text-type-sky shrink-0 mt-0.5" />
                                                                 <div>
                                                                     <p className="font-medium text-foreground">Browser Tests</p>
                                                                     <p className="text-muted-foreground">Use the Playwright Recorder to capture real user interactions for reliable, accurate tests.</p>
@@ -529,46 +530,46 @@ export default function RequirementsPage() {
                                             <div className="grid grid-cols-5 gap-2">
                                                 <button
                                                     onClick={() => router.push(`/playground?scriptType=browser&requirementId=${selectedRequirement.id}`)}
-                                                    className="group flex flex-col items-center gap-2 p-4 rounded-lg border border-border/60 bg-background hover:bg-accent hover:border-sky-500/50 transition-all duration-200"
+                                                    className={`group flex flex-col items-center gap-2 p-4 rounded-lg border border-border/60 bg-background hover:bg-accent ${TYPE_HOVER_BORDER[typeTone("test", "browser")]} transition-all duration-200`}
                                                 >
-                                                    <div className="p-2.5 rounded-lg bg-sky-100 dark:bg-sky-900/40 group-hover:bg-sky-200 dark:group-hover:bg-sky-900/60 transition-colors">
-                                                        <Chrome className="h-5 w-5 text-sky-600 dark:text-sky-400" />
+                                                    <div className={`p-2.5 rounded-lg ${TYPE_CHIP[typeTone("test", "browser")]} transition-colors`}>
+                                                        <Chrome className="h-5 w-5" />
                                                     </div>
                                                     <span className="text-xs font-medium text-foreground">Browser</span>
                                                 </button>
                                                 <button
                                                     onClick={() => router.push(`/playground?scriptType=api&requirementId=${selectedRequirement.id}`)}
-                                                    className="group flex flex-col items-center gap-2 p-4 rounded-lg border border-border/60 bg-background hover:bg-accent hover:border-teal-500/50 transition-all duration-200"
+                                                    className={`group flex flex-col items-center gap-2 p-4 rounded-lg border border-border/60 bg-background hover:bg-accent ${TYPE_HOVER_BORDER[typeTone("test", "api")]} transition-all duration-200`}
                                                 >
-                                                    <div className="p-2.5 rounded-lg bg-teal-100 dark:bg-teal-900/40 group-hover:bg-teal-200 dark:group-hover:bg-teal-900/60 transition-colors">
-                                                        <ArrowLeftRight className="h-5 w-5 text-teal-600 dark:text-teal-400" />
+                                                    <div className={`p-2.5 rounded-lg ${TYPE_CHIP[typeTone("test", "api")]} transition-colors`}>
+                                                        <ArrowLeftRight className="h-5 w-5" />
                                                     </div>
                                                     <span className="text-xs font-medium text-foreground">API</span>
                                                 </button>
                                                 <button
                                                     onClick={() => router.push(`/playground?scriptType=database&requirementId=${selectedRequirement.id}`)}
-                                                    className="group flex flex-col items-center gap-2 p-4 rounded-lg border border-border/60 bg-background hover:bg-accent hover:border-cyan-500/50 transition-all duration-200"
+                                                    className={`group flex flex-col items-center gap-2 p-4 rounded-lg border border-border/60 bg-background hover:bg-accent ${TYPE_HOVER_BORDER[typeTone("test", "database")]} transition-all duration-200`}
                                                 >
-                                                    <div className="p-2.5 rounded-lg bg-cyan-100 dark:bg-cyan-900/40 group-hover:bg-cyan-200 dark:group-hover:bg-cyan-900/60 transition-colors">
-                                                        <Database className="h-5 w-5 text-cyan-600 dark:text-cyan-400" />
+                                                    <div className={`p-2.5 rounded-lg ${TYPE_CHIP[typeTone("test", "database")]} transition-colors`}>
+                                                        <Database className="h-5 w-5" />
                                                     </div>
                                                     <span className="text-xs font-medium text-foreground">Database</span>
                                                 </button>
                                                 <button
                                                     onClick={() => router.push(`/playground?scriptType=custom&requirementId=${selectedRequirement.id}`)}
-                                                    className="group flex flex-col items-center gap-2 p-4 rounded-lg border border-border/60 bg-background hover:bg-accent hover:border-blue-500/50 transition-all duration-200"
+                                                    className={`group flex flex-col items-center gap-2 p-4 rounded-lg border border-border/60 bg-background hover:bg-accent ${TYPE_HOVER_BORDER[typeTone("test", "custom")]} transition-all duration-200`}
                                                 >
-                                                    <div className="p-2.5 rounded-lg bg-blue-100 dark:bg-blue-900/40 group-hover:bg-blue-200 dark:group-hover:bg-blue-900/60 transition-colors">
-                                                        <SquareFunction className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                                                    <div className={`p-2.5 rounded-lg ${TYPE_CHIP[typeTone("test", "custom")]} transition-colors`}>
+                                                        <SquareFunction className="h-5 w-5" />
                                                     </div>
                                                     <span className="text-xs font-medium text-foreground">Custom</span>
                                                 </button>
                                                 <button
                                                     onClick={() => router.push(`/playground?scriptType=performance&requirementId=${selectedRequirement.id}`)}
-                                                    className="group flex flex-col items-center gap-2 p-4 rounded-lg border border-border/60 bg-background hover:bg-accent hover:border-purple-500/50 transition-all duration-200"
+                                                    className={`group flex flex-col items-center gap-2 p-4 rounded-lg border border-border/60 bg-background hover:bg-accent ${TYPE_HOVER_BORDER[typeTone("test", "performance")]} transition-all duration-200`}
                                                 >
-                                                    <div className="p-2.5 rounded-lg bg-purple-100 dark:bg-purple-900/40 group-hover:bg-purple-200 dark:group-hover:bg-purple-900/60 transition-colors">
-                                                        <K6Logo className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                                                    <div className={`p-2.5 rounded-lg ${TYPE_CHIP[typeTone("test", "performance")]} transition-colors`}>
+                                                        <K6Logo className="h-5 w-5" />
                                                     </div>
                                                     <span className="text-xs font-medium text-foreground">Performance</span>
                                                 </button>

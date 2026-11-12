@@ -509,7 +509,7 @@ function VirtualizedLargeOutput({ lines }: { lines: string[] }) {
   });
 
   return (
-    <div className="overflow-hidden rounded-lg border bg-muted/20">
+    <div className="overflow-hidden rounded-lg border bg-muted/20" data-sentry-block>
       <div className="border-b bg-background px-3 py-2 text-xs text-muted-foreground">
         Large output · {lines.length.toLocaleString()} lines
       </div>
@@ -735,5 +735,5 @@ export function SreMessageContent({
     );
   }
 
-  return <div className="flex flex-col gap-2">{rendered}</div>;
+  return <div className="flex flex-col gap-2" data-sentry-block>{rendered}</div>;
 }

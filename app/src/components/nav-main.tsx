@@ -7,7 +7,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { prefetchSidebarRoute } from "@/lib/prefetch-utils";
 import { AREA_ACTIVE_ICON } from "@/lib/nav-areas";
-import type { AreaTone } from "@/components/ui/icon-chip";
+import type { AreaTone, NavTone } from "@/components/ui/icon-chip";
 
 import {
   Collapsible,
@@ -65,13 +65,15 @@ function HoverPrefetchLink({
 }
 
 // The current page's icon takes its group's area colour (DESIGN.md); other groups stay neutral.
-const GROUP_TONE: Record<string, AreaTone> = {
+// Settings has no entry: its items keep the neutral sidebar active style.
+const GROUP_TONE: Partial<Record<string, AreaTone>> = {
   Respond: "respond",
   Communicate: "communicate",
   Automate: "automate",
   Monitor: "monitor",
-  Settings: "settings",
 };
+
+const activeIcon = (tone?: NavTone) => (tone ? AREA_ACTIVE_ICON[tone] : undefined);
 
 /** True for the item's own page and its sub-pages ("/" matches the dashboard only). */
 export function isCurrentRoute(pathname: string, url: string): boolean {
@@ -94,7 +96,7 @@ export type MenuItem = {
   icon?: IconComponent;
   isActive?: boolean;
   /** Overrides the group's area colour for this item (e.g. Copilot is AI). */
-  tone?: AreaTone;
+  tone?: NavTone;
   badge?: string;
   items?: (SubItem | { groupLabel?: string; items?: SubItem[] })[];
 };
@@ -135,7 +137,7 @@ export function NavMain({
                   tooltip={item.title}
                   asChild
                   isActive={!item.url.startsWith("http") && isCurrentRoute(pathname, item.url)}
-                  className={AREA_ACTIVE_ICON[item.tone ?? GROUP_TONE[groupLabel]]}
+                  className={activeIcon(item.tone ?? GROUP_TONE[groupLabel])}
                 >
                   {item.url.startsWith("http") ? (
                     <a

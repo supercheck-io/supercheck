@@ -148,13 +148,14 @@ export async function repointSreStatusPageSlot(tx: Tx, resolvedIncidentId: strin
     .where(eq(sreIncidents.id, owner.id));
 }
 
-export async function reconcileStatusPages() {
+/** Returns false when another replica holds the reconcile lock (the tick did nothing). */
+export async function reconcileStatusPages(): Promise<boolean> {
   // A transaction lock makes the singleton tick safe across app replicas and retries.
-  await db.transaction(async (tx) => {
+  return db.transaction(async (tx) => {
     const lock = await tx.execute(
       sql`select pg_try_advisory_xact_lock(73194722) as acquired`,
     );
-    if (!lock[0]?.acquired) return;
+    if (!lock[0]?.acquired) return false;
     // Only rows that are due to start or end; the checks below stay authoritative.
     const dueAt = new Date();
     const scheduled = await tx.query.incidents.findMany({
@@ -397,5 +398,6 @@ export async function reconcileStatusPages() {
           .values({ incidentId: automatic.id, updateId: update.id });
       }
     }
+    return true;
   });
 }

@@ -366,6 +366,7 @@ export function AIDiffViewer({
             }
           `}</style>
           <DiffEditor
+            wrapperProps={{ "data-sentry-block": "" }}
             height="100%"
             language="typescript"
             original={originalScript}

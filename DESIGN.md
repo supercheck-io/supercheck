@@ -18,16 +18,23 @@ Every colour has one job. New code uses the token, never a raw palette class or 
 | Area: Respond (dashboard, incidents, services) | `respond` (orange) | Same |
 | Area: Automate (tests, jobs, runs, requirements, variables) | `automate` (sky) | Icon chips, eyebrows, area labels |
 | Area: Monitor (monitors) | `monitor` (teal) | Same |
-| Area: Communicate (status pages, notifications, delivery history) | `communicate` (indigo) | Same |
+| Area: Communicate (notifications, delivery history) | `communicate` (indigo) | Same |
 | AI (Copilot, investigations, AI create, fix and analyze) | `ai` (violet) | Same. Violet means AI and nothing else. |
-| Settings and admin (organization, super admin) | `settings` (slate) | Same |
+| Status pages | `statuspage` (the `success` green) | Same. A deliberate exception to "area colours never look like status colours": status pages are about service health and match the green icon on the status page cards. Nothing else uses this tone. |
+| Organization (settings, members, projects) | `organization` (bronze) | Page header chip, Quick Create and admin cards, Cmd+K. Not the sidebar. |
+| Super Admin | `superadmin` (pink) | Same as Organization |
+| Type (test, monitor, job, variable, AI SRE setup, admin setup) | `type-*` palette from `app/src/lib/type-tones.ts` | Icons and icon chips that say what a thing is. Never status, never page chrome. |
 | Status | `success`, `warning`, `failure`, plus the `TableBadge` tones | Badges, status dots and charts only, always beside a text label or an icon |
 
 - Area colours mark where you are; status colours say how something is. They never swap jobs. An area colour never shows up on a status badge, and a status colour never decorates a heading.
+- Types have their own palette, separate from areas: 14 `--type-*` tokens (oklch, light and dark values). The five original test and monitor colours are Tailwind 600 in light mode and the matching 400 in dark: `sky`, `teal`, `cyan`, `blue`, `purple`; the rest use the same saturation family. Area says where you are, type says what a thing is, so a Browser test icon is `type-sky` even though it lives in the Automate area. Assign a type's tone once in `TYPE_TONE` (`app/src/lib/type-tones.ts`) and read it everywhere (sidebar, Quick Create, Cmd+K, tables, pickers, dialogs) through `typeText()`, `typeTextForce()`, `TYPE_CHIP` or `TYPE_HOVER_BORDER`. Never write a palette class for a type. Type tones are for icons and icon chips (3:1 non-text contrast), not body text.
+- Final mapping: tests Browser `sky`, API `teal`, Database `cyan`, Custom `blue`, Performance `purple`; monitors HTTP `teal`, Website `sky`, Ping `cyan`, Port `blue`, Synthetic `purple` (the overlap with tests is intended). A job takes the tone of its engine (Playwright job = Browser, k6 job = Performance). Variables: Variable `stone`, Secret `violet`, File `indigo`. AI SRE setup: Service `cobalt`, Integration `clay`, Private Agent `olive`. Admin setup: Project `slate`, Member `lime`, CLI Token `zinc`. Outside tests and monitors every type has its own tone (`type-tones.spec.ts` enforces it), so adding a type means adding a token.
+- Hues used by status (green, amber, red, orange) are not used for types. `violet` (AI) and `indigo` (Communicate) are the only tones that also exist as area colours; they are given to Secret and File, which never sit beside Copilot or Status Pages.
+- Brand marks (Playwright, k6, Chrome) keep their brand colours; the type tone tints the chip or text next to them. Notification provider colours (`alerts/data.tsx`) stay a per-feature brand map.
 - Incident lifecycle: Triggered `danger`, Acknowledged `warning`, Investigating `info`, Fixing `purple`, Monitoring `cyan`, Resolved `success` (`app/src/lib/sre/incident-status-display.ts`).
 - Status badges never use an area colour: `indigo` is reserved for the Communicate area, so Fixing and monitor Maintenance use `purple`.
 - Charts use `var(--chart-1)` to `var(--chart-5)`, and raw `var(--success)`, `var(--warning)` and `var(--failure)` for bright fills. Never write `hsl(var(--token))`: the tokens are oklch.
-- Contrast: Tailwind classes (`text-success`, `bg-warning/10`, `text-monitor`, ...) resolve to shades that meet WCAG AA (4.5:1) on cards in light mode (`--success-strong`, `--warning-strong`, `--failure-strong`, and the 700-shade area values; 600 for communicate and settings, still above 6:1 on white). Don't use the raw chart `var()`s for text.
+- Contrast: Tailwind classes (`text-success`, `bg-warning/10`, `text-monitor`, ...) resolve to shades that meet WCAG AA (4.5:1) on cards in light mode (`--success-strong`, `--warning-strong`, `--failure-strong`, and the 700-shade area values; 600 for communicate, still above 6:1 on white; Organization and Super Admin are icon colours only). Don't use the raw chart `var()`s for text.
 
 ## 3. Typography
 
@@ -42,6 +49,8 @@ Every colour has one job. New code uses the token, never a raw palette class or 
 |---|---|---|
 | Area colour and icon of a destination | `NAV` in `app/src/lib/nav-areas.ts`: the one place that maps a page to its icon and area tone. The sidebar, command palette (Cmd+K), Quick Create and page headers read it; never pick a tone or icon per page. | `app/src/lib/nav-areas.ts` |
 | Page title row | `PageHeader` with `icon` and `tone` from `NAV` | `app/src/components/shared/page-header.tsx` |
+| Colour of a type (test, monitor, job, variable, AI SRE setup, admin setup) | `TYPE_TONE` in `app/src/lib/type-tones.ts`; `type-tones.spec.ts` fails if a type surface uses an ad-hoc colour | `app/src/lib/type-tones.ts` |
+| Create actions (sidebar Create menus, Cmd+K Create section) | `CREATE_ACTIONS` in `app/src/lib/create-actions.ts`: one icon, title, URL and colour per action, in Quick Create order | `app/src/lib/create-actions.ts` |
 | Tinted icon (page, section or event type) | `IconChip` (`size="sm"` for sections, `"md"` for page titles) | `app/src/components/ui/icon-chip.tsx` |
 | Section heading inside a card | `SectionTitle` (chip, title, count, hint, action) | `app/src/components/sre/incidents/incident-ui.tsx` |
 | Table footer | `DataTablePagination` (label `Total {n} {itemName}`, rows-per-page fitted to the window) | `app/src/components/ui/data-table-pagination.tsx` |
@@ -52,7 +61,7 @@ Every colour has one job. New code uses the token, never a raw palette class or 
 
 List tables that have a View menu (monitors, tests, jobs, requirements) hide the UUID column by default (`id: false` in the initial column visibility), and the column must stay hideable so people can show it again. Tables without a View menu, and admin configuration tables, keep it visible.
 
-The sidebar marks the current page with its active state, and the active icon takes its group's area colour (`components/nav-main.tsx`).
+The sidebar marks the current page with its active state, and the active icon takes its group's area colour (`components/nav-main.tsx`). The Settings group has none: Organization and Super Admin look like a plain sidebar item and keep their colours in page header chips, Quick Create and Cmd+K.
 
 Rules for chips:
 - One chip per page title and at most one per card header. Rows in tables and form fields get no chips.
@@ -88,7 +97,7 @@ Flat by default: borders (`border`) separate surfaces. Use `shadow-sm` on page c
 
 ## 9. Raw colour guard
 
-`app/src/lib/design-tokens.spec.ts` counts raw palette classes (`text-green-500`, `bg-amber-100`, ...) in `app/src` and fails if the count rises above its `BASELINE`. Raw neutral greys (`text-gray-500`, `bg-zinc-100`, ...) have their own `NEUTRAL_BASELINE`; use `text-muted-foreground`, `bg-muted`, `border` and `bg-accent` instead. When you remove raw colours, lower the baseline in the same PR. Never raise it. Exempt paths: emails (clients need inline colours), `components/logo/`, the central maps (`table-badge.tsx`, `icon-chip.tsx`, `alert.tsx`), user-chosen tag colours (`tag-selector.tsx`), and the public status pages (`status-pages/public-*`, customer branding).
+`app/src/lib/design-tokens.spec.ts` counts raw palette classes (`text-green-500`, `bg-amber-100`, ...) in `app/src` and fails if the count rises above its `BASELINE`. Raw neutral greys (`text-gray-500`, `bg-zinc-100`, ...) have their own `NEUTRAL_BASELINE`; use `text-muted-foreground`, `bg-muted`, `border` and `bg-accent` instead. When you remove raw colours, lower the baseline in the same PR. Never raise it. Exempt paths: emails (clients need inline colours), `components/logo/`, the central maps (`table-badge.tsx`, `icon-chip.tsx`, `alert.tsx`; type colours live in `type-tones.ts` as tokens, not palette classes), user-chosen tag colours (`tag-selector.tsx`), and the public status pages (`status-pages/public-*`, customer branding).
 
 Category colours with no token (user roles, file types, notification providers, priority levels) stay in one map per feature. Don't scatter them across components.
 

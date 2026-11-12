@@ -23,6 +23,8 @@ import { RecorderAutoConnect } from "@/components/recorder/RecorderAutoConnect";
 import { getCurrentUser, getActiveOrganization, getSelectableProjects } from "@/lib/session";
 import { getCurrentProjectContext } from "@/lib/project-context";
 import { isSelfHosted } from "@/lib/feature-flags";
+import { getSentryDsn } from "@/lib/sentry-gate";
+import { SentryBrowser } from "@/components/sentry-browser";
 import { getTrialSummary } from "@/lib/execution/trial-limits";
 import { TrialBanner } from "@/components/trial-banner";
 import { SpendingCapBanner } from "@/components/spending-cap-banner";
@@ -83,6 +85,11 @@ export default async function MainLayout({
   let commandSearchCapabilities = {
     canInvestigateSre: false,
     canConfigureSre: false,
+    canCreateProjects: false,
+    canInviteMembers: false,
+    canCreateCliTokens: false,
+    canCreateSreServices: false,
+    canConfigureSreConnectors: false,
   };
   const initialIsSelfHosted = isSelfHosted();
   let showSpendingCap = false;
@@ -142,6 +149,11 @@ export default async function MainLayout({
             "configure",
             permissionContext
           ),
+          canCreateProjects: checkPermissionWithContext("project", "create", permissionContext),
+          canInviteMembers: checkPermissionWithContext("member", "create", permissionContext),
+          canCreateCliTokens: checkPermissionWithContext("apiKey", "create", permissionContext),
+          canCreateSreServices: checkPermissionWithContext("sre_service", "create", permissionContext),
+          canConfigureSreConnectors: checkPermissionWithContext("sre_connector", "configure", permissionContext),
         };
       }
 
@@ -171,6 +183,8 @@ export default async function MainLayout({
   return (
     <AuthGuard initialSession={initialSession}>
       <MonacoPrefetcher />
+      {/* Supercheck Cloud only: never rendered when self-hosted or without a DSN, so nothing is requested. */}
+      {getSentryDsn() ? <SentryBrowser /> : null}
       <RecorderAutoConnect />
       <BreadcrumbProvider>
         <ProjectContextProvider

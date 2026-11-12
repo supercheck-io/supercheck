@@ -49,6 +49,36 @@ export function captureJobFailure(
   }
 }
 
+/**
+ * Runs a queue job inside a Sentry transaction that continues the app's trace.
+ * Without Sentry it just calls `fn`. SDK failures never affect the job.
+ */
+export async function runJobInSpan<T>(
+  job: JobLike & { timestamp?: number },
+  type: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  let mod: SentryModule | null = null;
+  try {
+    mod = load();
+  } catch {
+    mod = null;
+  }
+  return mod ? mod.runJobInSpan(job, type, fn) : fn();
+}
+
+/** Counter metric with enum/ID attributes only. Never throws. */
+export function countMetric(
+  name: string,
+  attributes: Record<string, string | number | boolean>,
+): void {
+  try {
+    load()?.countMetric(name, attributes);
+  } catch {
+    // Metrics are best effort.
+  }
+}
+
 /** Flushes pending Sentry events when the Nest app shuts down. */
 @Injectable()
 export class SentryShutdown implements OnApplicationShutdown {

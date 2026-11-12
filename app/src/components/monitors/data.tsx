@@ -9,6 +9,7 @@ import {
   ChevronsLeftRightEllipsis,
   ArrowLeftRight,
 } from "lucide-react";
+import { typeText } from "@/lib/type-tones";
 import { PlaywrightLogo } from "@/components/logo/playwright-logo";
 
 
@@ -56,35 +57,35 @@ export const monitorTypes = [
     label: "HTTP Monitor",
     value: "http_request",
     icon: ArrowLeftRight,
-    color: "text-teal-600",
+    color: typeText("monitor", "http_request"),
     description: "Check HTTP/S endpoints (availability, status, response time)",
   },
   {
     label: "Website Monitor",
     value: "website",
     icon: LaptopMinimal,
-    color: "text-blue-600",
+    color: typeText("monitor", "website"),
     description: "Monitor website availability and performance with optional SSL certificate checking",
   },
   {
     label: "Ping Monitor",
     value: "ping_host",
     icon: ChevronsLeftRightEllipsis,
-    color: "text-indigo-500",
+    color: typeText("monitor", "ping_host"),
     description: "Check host reachability over TCP on ports 443 and 80",
   },
   {
     label: "Port Monitor",
     value: "port_check",
     icon: EthernetPort,
-    color: "text-sky-600",
+    color: typeText("monitor", "port_check"),
     description: "Check specific TCP or UDP port",
   },
   {
     label: "Synthetic Monitor",
     value: "synthetic_test",
     icon: PlaywrightLogo,
-    color: "text-purple-600",
+    color: typeText("monitor", "synthetic_test"),
     description: "Run Playwright tests on schedule to monitor critical user flows",
   },
 ];

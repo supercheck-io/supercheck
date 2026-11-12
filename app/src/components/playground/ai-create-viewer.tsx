@@ -205,6 +205,7 @@ export function AICreateViewer({
           className="relative min-h-0 flex-1 bg-background"
         >
           <Editor
+            wrapperProps={{ "data-sentry-block": "" }}
             height="100%"
             defaultLanguage="typescript"
             theme={editorTheme}
