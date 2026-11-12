@@ -1,6 +1,10 @@
 import { and, asc, eq, gt, gte, inArray, isNotNull, ne, or, sql } from "drizzle-orm";
 import { db } from "@/utils/db";
 import { deletionJobs, jobs, monitors, organization, projects, runs, statusPages } from "@/db/schema";
+import { isPolarEnabled } from "@/lib/feature-flags";
+import { countPlanMonitors } from "@/lib/middleware/plan-enforcement";
+import { notInDeletedProject } from "@/lib/middleware/plan-limit-lock";
+import { subscriptionService } from "@/lib/services/subscription-service";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { RUN_CANCELLATION_MARKER, setCancellationSignal } from "@/lib/cancellation-service";
 import { deleteScheduledJob } from "@/lib/job-scheduler";
@@ -25,6 +29,10 @@ export async function softDeleteProject(input: { projectId: string; actorUserId:
   const purgeAfter = new Date(at.getTime() + PROJECT_RESTORE_DAYS * 24 * 60 * 60_000);
   const outcome = await db.transaction(async (tx) => {
     await tx.execute(sql`SET LOCAL lock_timeout = '10s'`);
+    // Read-only while the organization is pending: a project purged after 7 days would outlive a cancel of the 14 day window.
+    const [parent] = await tx.select({ pending: organization.deletionRequestedAt }).from(projects).innerJoin(organization, eq(organization.id, projects.organizationId))
+      .where(eq(projects.id, input.projectId)).for("share", { of: organization });
+    if (parent?.pending) throw new ProjectDeletionError("This organization is scheduled for deletion and read-only", 403, "ORG_PENDING_DELETION");
     const [deleted] = await tx.update(projects).set({ status: "deleted", deletedAt: at, purgeAfter, updatedAt: at })
       .where(and(eq(projects.id, input.projectId), ne(projects.status, "deleted")))
       .returning({ name: projects.name, slug: projects.slug, description: projects.description, organizationId: projects.organizationId });
@@ -115,9 +123,34 @@ export async function restoreProjectRows(input: RestoreInput, executor: Pick<typ
       await tx.update(statusPages).set({ status: previous as typeof statusPages.$inferSelect.status, updatedAt: at })
         .where(and(inArray(statusPages.id, pages.filter((page) => page.status === previous).map((page) => page.id)), eq(statusPages.status, "archived")));
     }
+    // Slots this project freed may have been taken meanwhile: anything beyond the plan stays paused / archived (the owner can resume it later).
+    const overflow = await capRestoredChildren(tx, project.organizationId, resumed.map((m) => m.id), pages.filter((page) => page.status === "published").map((page) => page.id));
     await closeDeletionJobs(tx, "project", input.projectId);
-    return { project, resumed };
+    return { project, resumed: resumed.filter((m) => !overflow.monitors.has(m.id)), skipped: { monitors: overflow.monitors.size, statusPages: overflow.pages.size } };
   });
+}
+
+type RestoreTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+async function capRestoredChildren(tx: RestoreTx, organizationId: string, monitorIds: string[], publishedPageIds: string[]) {
+  const overflow = { monitors: new Set<string>(), pages: new Set<string>() };
+  if (!isPolarEnabled() || (monitorIds.length === 0 && publishedPageIds.length === 0)) return overflow;
+  const plan = await subscriptionService.getOrganizationPlan(organizationId);
+  const monitorExcess = (await countPlanMonitors(tx, organizationId)) - plan.maxMonitors;
+  if (monitorExcess > 0) {
+    const ids = monitorIds.slice(-monitorExcess);
+    await tx.update(monitors).set({ status: "paused" }).where(inArray(monitors.id, ids));
+    ids.forEach((id) => overflow.monitors.add(id));
+  }
+  const [published] = await tx.select({ count: sql<number>`count(*)` }).from(statusPages)
+    .where(and(eq(statusPages.organizationId, organizationId), eq(statusPages.status, "published"), notInDeletedProject(statusPages.projectId)));
+  const pageExcess = Number(published?.count ?? 0) - plan.maxStatusPages;
+  if (pageExcess > 0) {
+    const ids = publishedPageIds.slice(-pageExcess);
+    await tx.update(statusPages).set({ status: "archived" }).where(inArray(statusPages.id, ids));
+    ids.forEach((id) => overflow.pages.add(id));
+  }
+  return overflow;
 }
 
 /** Everything that must wait for the restore to commit: cache, audit trail and schedule re-creation. */

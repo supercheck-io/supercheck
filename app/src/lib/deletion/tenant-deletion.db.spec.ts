@@ -44,6 +44,8 @@ jest.mock("@/lib/billing/polar-client", () => ({
   }),
 }));
 jest.mock("@/lib/services/polar-usage.service", () => ({ polarUsageService: { flushOrganizationUsage: (...a: unknown[]) => mockFlush(...a) }, CLOSED_USAGE_PERIOD_ERROR: "closed" }));
+const mockPlan = jest.fn();
+jest.mock("@/lib/services/subscription-service", () => ({ subscriptionService: { getOrganizationPlan: (...a: unknown[]) => mockPlan(...a) } }));
 jest.mock("@/lib/email-service", () => ({
   isEmailConfigured: () => mockEmailConfigured,
   EmailService: { getInstance: () => ({ sendEmailToMultiple: (...a: unknown[]) => mockSend(...a) }) },
@@ -85,6 +87,7 @@ afterAll(async () => {
 const ok = { success: true, failedObjects: [] };
 beforeEach(async () => {
   await client`UPDATE deletion_jobs SET state = 'completed' WHERE state <> 'completed'`;
+  await client`UPDATE organization SET deletion_meta = deletion_meta - 'billingReinstatePending' WHERE deletion_meta ? 'billingReinstatePending'`;
   await client`UPDATE organization SET deletion_requested_at = NULL, deletion_purge_after = NULL WHERE deletion_requested_at IS NOT NULL`; // earlier tests' pending orgs must not join sweeps
   for (const m of [mockDeleteReports, mockDeletePrefix, mockUnscheduleJob, mockUnscheduleMonitor, mockSignal, mockTrigger, mockPolarGet, mockPolarUpdate, mockPolarRevoke, mockFlush, mockSend, mockAudit, mockAdminAudit]) m.mockReset();
   mockAudit.mockResolvedValue(undefined);
@@ -96,6 +99,8 @@ beforeEach(async () => {
   mockSignal.mockResolvedValue(undefined);
   mockTrigger.mockResolvedValue(undefined);
   mockFlush.mockResolvedValue({ synced: 0, pending: 0 });
+  mockPlan.mockReset();
+  mockPlan.mockResolvedValue({ maxMonitors: 1000, maxStatusPages: 1000 });
   mockSend.mockResolvedValue({ sentCount: 1, failedAddresses: [], skippedAddresses: [] });
   mockEmailConfigured = false;
   process.env.SELF_HOSTED = "true";
@@ -599,5 +604,56 @@ describe("review fixes: races, retries and ordering", () => {
     mockSend.mockImplementationOnce(async (o: { recipients: string[] }) => ({ sentCount: 0, failedAddresses: o.recipients, skippedAddresses: [] }));
     await requestOrganizationDeletion({ organizationId: seeded.orgId, actorUserId: seeded.ownerId, guard: { ownerUserId: seeded.ownerId } });
     expect(await sendDueReminders()).toBe(1);
+  });
+});
+
+describe("review fixes: project guards, restore quotas, reinstate retry", () => {
+  const cloud = () => { process.env.SELF_HOSTED = "false"; process.env.POLAR_ACCESS_TOKEN = "test"; process.env.POLAR_WEBHOOK_SECRET = "test"; process.env.POLAR_SERVER = "sandbox"; };
+
+  it("refuses to delete a project while its organization is pending deletion", async () => {
+    const seeded = await seedOrg({ projects: 2 });
+    await requestOrganizationDeletion({ organizationId: seeded.orgId, actorUserId: seeded.ownerId, guard: { ownerUserId: seeded.ownerId } });
+    await expect(softDeleteProject({ projectId: seeded.projectIds[1], actorUserId: seeded.ownerId })).rejects.toMatchObject({ code: "ORG_PENDING_DELETION", status: 403 });
+    expect((await client`SELECT status FROM projects WHERE id = ${seeded.projectIds[1]}`)[0].status).toBe("active");
+  });
+
+  it("a project purge also removes the report rows of playground k6 runs (entity type k6_test)", async () => {
+    const seeded = await seedOrg({ projects: 2 });
+    const projectId = seeded.projectIds[1];
+    const [run] = await client`INSERT INTO runs (id, project_id, status, trigger) VALUES (uuidv7(), ${projectId}, 'passed', 'manual') RETURNING id`;
+    await client`INSERT INTO reports (id, entity_type, entity_id, report_path, status, organization_id) VALUES (uuidv7(), 'k6_test', ${run.id}::text, ${`${run.id}/report`}, 'passed', ${seeded.orgId})`;
+    await softDeleteProject({ projectId, actorUserId: seeded.ownerId });
+    await client`UPDATE projects SET purge_after = now() - interval '1 second' WHERE id = ${projectId}`;
+    await client`UPDATE deletion_jobs SET next_attempt_at = now() WHERE scope = 'project' AND target_id = ${projectId}`;
+    expect((await drive("project", projectId)).state).toBe("completed");
+    expect(await count("reports", "entity_id", run.id)).toBe(0);
+  });
+
+  it("a restore leaves monitors beyond the plan paused", async () => {
+    cloud();
+    const seeded = await seedOrg({ projects: 2 });
+    const projectId = seeded.projectIds[1];
+    await seedMonitor(seeded.orgId, projectId, 0);
+    await seedMonitor(seeded.orgId, projectId, 0);
+    await softDeleteProject({ projectId, actorUserId: seeded.ownerId });
+    mockPlan.mockResolvedValue({ maxMonitors: 1, maxStatusPages: 1000 });
+    await restoreProject({ projectId, actorUserId: seeded.ownerId });
+    const rows = await client`SELECT status FROM monitors WHERE project_id = ${projectId}`;
+    expect(rows.filter((r) => r.status !== "paused")).toHaveLength(1);
+  });
+
+  it("a reinstate that fails after a concurrent cancel is retried by the sweep", async () => {
+    cloud();
+    mockPolarGet.mockResolvedValueOnce({ cancel_at_period_end: false, status: "active" }).mockResolvedValue({ cancel_at_period_end: true, status: "active" });
+    const seeded = await seedOrg({ subscription: "sub_r9" });
+    await requestOrganizationDeletion({ organizationId: seeded.orgId, actorUserId: seeded.ownerId, guard: { ownerUserId: seeded.ownerId } });
+    mockPolarUpdate.mockRejectedValueOnce(new Error("polar down"));
+    const outcome = await cancelOrganizationDeletion({ organizationId: seeded.orgId, actorUserId: seeded.ownerId });
+    expect(outcome.billing).toBe("failed");
+    expect((await orgRow(seeded.orgId)).deletion_meta.billingReinstatePending).toBe(true);
+    mockPolarUpdate.mockClear();
+    await retryPendingBillingCancels();
+    expect(mockPolarUpdate).toHaveBeenLastCalledWith("sub_r9", { cancel_at_period_end: false });
+    expect((await orgRow(seeded.orgId)).deletion_meta.billingReinstatePending).toBeUndefined();
   });
 });

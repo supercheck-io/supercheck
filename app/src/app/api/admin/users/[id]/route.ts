@@ -19,6 +19,7 @@ import { z } from 'zod';
 import { logAdminEvent, logImpersonationEvent } from '@/lib/audit-logger';
 import { checkAdminRateLimit } from '@/lib/session-security';
 import { pruneAvatars } from '@/lib/user-avatar';
+import { readOrgPendingOn } from '@/lib/deletion/org-state';
 import { OrganizationMembershipChangedError, requestOrganizationDeletion, soleMemberOrganizations } from '@/lib/deletion/organization';
 import { isImpersonatedSession } from '@/lib/rbac/middleware';
 
@@ -158,6 +159,10 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   }
 }
 
+class OrganizationCancelledDuringUserDeletionError extends Error {
+  constructor() { super('An organization deletion was cancelled while the user was being deleted; nothing was deleted'); }
+}
+
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = await params;
   // Organizations already deleted by this request; reported even when a later step fails.
@@ -267,6 +272,12 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     }
 
     await db.transaction(async (tx) => {
+      // 0. The organizations this request put into the pending window must still be pending. A cancel that landed meanwhile
+      // (it takes the same row lock) would otherwise leave an active organization with no members and no scheduled purge.
+      for (const orgId of deletedOrganizationIds) {
+        if ((await readOrgPendingOn(tx, orgId, 'update')) === false) throw new OrganizationCancelledDuringUserDeletionError();
+      }
+
       // 1. Delete API keys (onDelete: "no action" would block user deletion)
       await tx.delete(apikey).where(eq(apikey.referenceId, userId));
 
@@ -317,6 +328,9 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   } catch (error) {
     const denied = adminDeniedResponse(error);
     if (denied) return denied;
+    if (error instanceof OrganizationCancelledDuringUserDeletionError) {
+      return NextResponse.json({ success: false, error: error.message, ...(deletedOrganizationIds.length ? { deletedOrganizationIds } : {}) }, { status: 409 });
+    }
     console.error('Admin user DELETE error:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to delete user', ...(deletedOrganizationIds.length ? { deletedOrganizationIds } : {}) },
