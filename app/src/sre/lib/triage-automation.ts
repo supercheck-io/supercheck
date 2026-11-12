@@ -37,7 +37,7 @@ export async function maybeRunAutomaticSreTriage(input: AutomaticSreTriageInput)
     userId: input.userId,
     organizationId: input.organizationId,
     // Alert-driven triage creates incidents and runs investigations: never for a pending organization (read at call time, not from the alert payload).
-    orgPendingDeletion: await isOrgPendingDeletion(input.organizationId),
+    orgPendingDeletion: await isOrgPendingDeletion(input.organizationId, { fresh: true }),
     project: input.project,
   };
   const canInvestigateIncident = checkPermissionWithContext("sre_incident", "investigate", permissionContext);
