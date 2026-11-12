@@ -70,27 +70,47 @@ function fakeGroupStore(
       }),
     }),
   });
-  const update = (table: unknown) => ({
+  // `isTx` updates are the prepare transaction's writes; the others are claims. `.returning()` yields the rows hit.
+  const update = (table: unknown, isTx = false) => ({
     set: (values: Record<string, unknown>) => ({
-      where: async () => {
+      where: () => {
+        const hit: unknown[] = [];
         if (table === schema.monitors) {
           writes.monitor++;
           Object.assign(monitor!, values);
         } else if (table === schema.monitorGroupEvaluations) {
           const receipt = receipts.get(group);
-          if (receipt && !receipt.notificationProcessedAt)
+          if (receipt && !receipt.notificationProcessedAt) {
             receipt.notificationProcessedAt =
               values.notificationProcessedAt as Date;
-        } else {
+            hit.push({});
+          }
+        } else if (isTx) {
+          // Dual-write of the legacy receipt onto one result row.
           writes.results++;
+          const row = results.find((r) => r.group === group)!;
+          row.details = {
+            ...row.details,
+            aggregationEvaluation: receipts.get(group)!.evaluation,
+            aggregationNotificationProcessed: false,
+          };
+        } else {
           for (const row of results.filter(
-            (r) => r.group === group && r.details?.aggregationEvaluation,
-          ))
+            (r) =>
+              r.group === group &&
+              r.details?.aggregationEvaluation &&
+              r.details.aggregationNotificationProcessed !== true,
+          )) {
             row.details = {
               ...row.details,
               aggregationNotificationProcessed: true,
             };
+            hit.push({});
+          }
         }
+        return Object.assign(Promise.resolve(hit), {
+          returning: () => Promise.resolve(hit),
+        });
       },
     }),
   });
@@ -106,7 +126,7 @@ function fakeGroupStore(
       });
     },
   });
-  const tx = { select, update, insert };
+  const tx = { select, update: (t: unknown) => update(t, true), insert };
   const evaluator = new MonitorEvaluator(
     {
       db: {
@@ -135,9 +155,9 @@ function fakeGroupStore(
         resultCount,
       );
     },
-    markNotified(g: string, receipt: GroupReceipt) {
+    claimNotified(g: string, receipt: GroupReceipt) {
       group = g;
-      return evaluator.markGroupNotified('m1', g, receipt);
+      return evaluator.claimGroupNotification('m1', g, receipt);
     },
   };
 }
@@ -199,10 +219,9 @@ describe('MonitorEvaluator.prepareGroupEvaluation paused monitor', () => {
 });
 
 describe('MonitorEvaluator group receipt', () => {
-  it('records a new group in its own receipt and never rewrites a result row', async () => {
+  it('records a new group in its own receipt and mirrors it onto one result row for rollback', async () => {
     const monitor = multiLocationMonitor('up');
     const rows = groupRows('g1');
-    const before = JSON.stringify(rows);
     const store = fakeGroupStore(monitor, rows);
     const prepared = await store.prepare('g1', 'down');
     expect(prepared).toMatchObject({
@@ -213,8 +232,10 @@ describe('MonitorEvaluator group receipt', () => {
       evaluation: { previousStatus: 'up', currentStatus: 'down' },
       notificationProcessedAt: null,
     });
-    expect(store.writes).toEqual({ monitor: 1, results: 0, inserts: 1 });
-    expect(JSON.stringify(rows)).toBe(before);
+    expect(store.writes).toEqual({ monitor: 1, results: 1, inserts: 1 });
+    expect(rows.filter((r) => r.details?.aggregationEvaluation)).toHaveLength(
+      1,
+    );
     expect(monitor.status).toBe('down');
   });
 
@@ -224,26 +245,31 @@ describe('MonitorEvaluator group receipt', () => {
     const retry = await store.prepare('g1', 'down');
     expect(retry!.evaluation).toEqual(first!.evaluation);
     expect(retry!.receipt).toEqual({ kind: 'group' });
-    expect(store.writes).toEqual({ monitor: 1, results: 0, inserts: 1 });
+    expect(store.writes).toEqual({ monitor: 1, results: 1, inserts: 1 });
   });
 
   it('returns null for a group whose alerts were already handled', async () => {
     const store = fakeGroupStore(multiLocationMonitor('up'), groupRows('g1'));
     const prepared = await store.prepare('g1', 'down');
-    await store.markNotified('g1', prepared!.receipt);
+    await store.claimNotified('g1', prepared!.receipt);
     expect(store.receipts.get('g1')!.notificationProcessedAt).toBeInstanceOf(
       Date,
     );
     await expect(store.prepare('g1', 'down')).resolves.toBeNull();
-    expect(store.writes).toEqual({ monitor: 1, results: 0, inserts: 1 });
+    expect(store.writes).toEqual({ monitor: 1, results: 1, inserts: 1 });
   });
 
   it('keeps the first processed time when marked twice', async () => {
     const store = fakeGroupStore(multiLocationMonitor('up'), groupRows('g1'));
     const prepared = await store.prepare('g1', 'down');
-    await store.markNotified('g1', prepared!.receipt);
+    await expect(store.claimNotified('g1', prepared!.receipt)).resolves.toBe(
+      true,
+    );
     const first = store.receipts.get('g1')!.notificationProcessedAt;
-    await store.markNotified('g1', prepared!.receipt);
+    // The second writer loses the claim, so its caller sends nothing.
+    await expect(store.claimNotified('g1', prepared!.receipt)).resolves.toBe(
+      false,
+    );
     expect(store.receipts.get('g1')!.notificationProcessedAt).toBe(first);
   });
 
@@ -257,17 +283,57 @@ describe('MonitorEvaluator group receipt', () => {
     expect(monitor.status).toBe('up');
   });
 
-  it('refuses a stale group with no receipt, leaving status and counters alone', async () => {
-    const monitor = multiLocationMonitor('up');
-    const store = fakeGroupStore(monitor, groupRows('old'));
-    const dayAndAMinuteAgo = new Date(
-      Date.now() - GROUP_EVALUATION_MAX_AGE_MS - 60_000,
-    );
-    await expect(
-      store.prepare('old', 'down', 2, dayAndAMinuteAgo),
-    ).resolves.toBeNull();
-    expect(store.writes).toEqual({ monitor: 0, results: 0, inserts: 0 });
-    expect(monitor.status).toBe('up');
+  describe('stale groups (fake clock)', () => {
+    beforeEach(() => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-06-10T12:00:00Z'));
+    });
+    afterEach(() => jest.useRealTimers());
+    const dayAndAMinuteAgo = () =>
+      new Date(Date.now() - GROUP_EVALUATION_MAX_AGE_MS - 60_000);
+
+    it('evaluates a stale group when the monitor holds nothing newer, and logs it', async () => {
+      const monitor = multiLocationMonitor('up');
+      monitor.lastCheckAt = new Date(Date.now() - 3 * 86_400_000);
+      const store = fakeGroupStore(monitor, groupRows('old'));
+      const warn = jest
+        .spyOn(
+          (store.evaluator as unknown as { logger: { warn: () => void } })
+            .logger,
+          'warn',
+        )
+        .mockImplementation(() => {});
+      await expect(
+        store.prepare('old', 'down', 2, dayAndAMinuteAgo()),
+      ).resolves.toMatchObject({ evaluation: { currentStatus: 'down' } });
+      expect(monitor.status).toBe('down');
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('"event":"monitor_group_evaluation_stale"'),
+      );
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('"action":"evaluated"'),
+      );
+    });
+
+    it('drops a stale group the monitor has already moved past, leaving status alone', async () => {
+      const monitor = multiLocationMonitor('up');
+      monitor.lastCheckAt = new Date(Date.now() - 60_000);
+      const store = fakeGroupStore(monitor, groupRows('old'));
+      const warn = jest
+        .spyOn(
+          (store.evaluator as unknown as { logger: { warn: () => void } })
+            .logger,
+          'warn',
+        )
+        .mockImplementation(() => {});
+      await expect(
+        store.prepare('old', 'down', 2, dayAndAMinuteAgo()),
+      ).resolves.toBeNull();
+      expect(store.writes).toEqual({ monitor: 0, results: 0, inserts: 0 });
+      expect(monitor.status).toBe('up');
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('"action":"dropped_superseded"'),
+      );
+    });
   });
 
   it('still evaluates a group just inside the age limit', async () => {
@@ -331,7 +397,7 @@ describe('MonitorEvaluator legacy receipt (groups evaluated by older workers)', 
     const rows = legacyRows(false);
     const store = fakeGroupStore(multiLocationMonitor('down'), rows);
     const prepared = await store.prepare('g1', 'up');
-    await store.markNotified('g1', prepared!.receipt);
+    await store.claimNotified('g1', prepared!.receipt);
     expect(rows[1].details!.aggregationNotificationProcessed).toBe(true);
     expect(store.receipts.size).toBe(0);
     await expect(store.prepare('g1', 'up')).resolves.toBeNull();

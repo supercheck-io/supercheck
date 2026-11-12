@@ -103,9 +103,8 @@ suite('MonitorEvaluator group receipt (PostgreSQL)', () => {
     ).aggregatedAlertState?.consecutiveFailureCount;
   };
 
-  it('writes one receipt and leaves result rows untouched', async () => {
+  it('writes one receipt and mirrors it into exactly one result row for rollback', async () => {
     await report('g1');
-    const before = await resultDetails('g1');
     const prepared = await evaluator.prepareGroupEvaluation(
       monitorId,
       'g1',
@@ -122,7 +121,11 @@ suite('MonitorEvaluator group receipt (PostgreSQL)', () => {
       evaluation: { previousStatus: 'up', currentStatus: 'down' },
       notificationProcessedAt: null,
     });
-    expect(await resultDetails('g1')).toEqual(before);
+    expect(
+      (await resultDetails('g1')).filter(
+        (d) => (d as Record<string, unknown>)?.aggregationEvaluation,
+      ),
+    ).toHaveLength(1);
     expect(await failureCount()).toBe(1);
   });
 
@@ -165,10 +168,30 @@ suite('MonitorEvaluator group receipt (PostgreSQL)', () => {
     );
     expect(retry!.evaluation).toEqual(first!.evaluation);
     expect(await failureCount()).toBe(1);
-    await evaluator.markGroupNotified(monitorId, 'crash', retry!.receipt);
+    // Dual-written legacy receipt (rollback safety): present and unprocessed until claimed.
+    expect(
+      (await resultDetails('crash')).filter(
+        (d) =>
+          (d as Record<string, unknown>)?.aggregationNotificationProcessed ===
+          false,
+      ),
+    ).toHaveLength(1);
+    await expect(
+      evaluator.claimGroupNotification(monitorId, 'crash', retry!.receipt),
+    ).resolves.toBe(true);
     const [receipt] = await receiptRows('crash');
     expect(receipt.notificationProcessedAt).toBeInstanceOf(Date);
-    await evaluator.markGroupNotified(monitorId, 'crash', retry!.receipt);
+    expect(
+      (await resultDetails('crash')).filter(
+        (d) =>
+          (d as Record<string, unknown>)?.aggregationNotificationProcessed ===
+          true,
+      ),
+    ).toHaveLength(1);
+    // A second writer loses the claim and must not send.
+    await expect(
+      evaluator.claimGroupNotification(monitorId, 'crash', retry!.receipt),
+    ).resolves.toBe(false);
     expect((await receiptRows('crash'))[0].notificationProcessedAt).toEqual(
       receipt.notificationProcessedAt,
     );
@@ -206,7 +229,9 @@ suite('MonitorEvaluator group receipt (PostgreSQL)', () => {
     });
     expect(await receiptRows('old')).toHaveLength(0);
     expect(await failureCount()).toBeUndefined();
-    await evaluator.markGroupNotified(monitorId, 'old', prepared!.receipt);
+    await expect(
+      evaluator.claimGroupNotification(monitorId, 'old', prepared!.receipt),
+    ).resolves.toBe(true);
     const details = await resultDetails('old');
     expect(
       details.filter(
@@ -264,7 +289,7 @@ suite('MonitorEvaluator group receipt (PostgreSQL)', () => {
     expect(odd!.receipt).toMatchObject({ kind: 'legacy' });
   });
 
-  it('marks nothing and does not throw when the monitor was deleted after preparing', async () => {
+  it('claims nothing and does not throw when the monitor was deleted after preparing', async () => {
     await report('gone');
     const prepared = await evaluator.prepareGroupEvaluation(
       monitorId,
@@ -275,8 +300,8 @@ suite('MonitorEvaluator group receipt (PostgreSQL)', () => {
     );
     await db.delete(schema.monitors).where(eq(schema.monitors.id, monitorId));
     await expect(
-      evaluator.markGroupNotified(monitorId, 'gone', prepared!.receipt),
-    ).resolves.toBeUndefined();
+      evaluator.claimGroupNotification(monitorId, 'gone', prepared!.receipt),
+    ).resolves.toBe(false);
     expect(await receiptRows('gone')).toHaveLength(0);
   });
 

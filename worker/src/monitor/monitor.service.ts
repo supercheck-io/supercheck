@@ -622,6 +622,17 @@ export class MonitorService {
       );
     }
 
+    // Claim before sending: a retry after a crash then finds the receipt processed and sends nothing.
+    if (
+      groupEvaluation &&
+      !(await this.evaluator.claimGroupNotification(
+        monitorId,
+        groupEvaluation.executionGroupId,
+        groupEvaluation.receipt,
+      ))
+    )
+      return;
+
     // Use consolidated alert evaluation method with threshold support
     await this.evaluateAndSendAlert({
       monitorId,
@@ -642,13 +653,6 @@ export class MonitorService {
     });
     for (const result of results) {
       await this.checkSslExpirationAlert(result, monitor);
-    }
-    if (groupEvaluation) {
-      await this.evaluator.markGroupNotified(
-        monitorId,
-        groupEvaluation.executionGroupId,
-        groupEvaluation.receipt,
-      );
     }
   }
 

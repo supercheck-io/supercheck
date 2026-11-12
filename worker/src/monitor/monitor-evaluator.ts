@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, sql, type SQL } from 'drizzle-orm';
 import type { z } from 'zod';
 import { DbService } from '../db/db.service';
 import * as schema from '../db/schema';
@@ -854,11 +854,24 @@ export class MonitorEvaluator {
         )
         .limit(1);
       if (!row) throw new Error('Persisted aggregation group is missing');
+      // A stale group is dropped only when the monitor already holds an equal or newer check (a duplicate
+      // whose receipt aged out, or one superseded by a later cycle). Otherwise it is the latest news the
+      // monitor has, so it is evaluated normally and alerts follow the usual rules.
       if (Date.now() - checkedAt.getTime() > GROUP_EVALUATION_MAX_AGE_MS) {
+        const superseded =
+          monitor.lastCheckAt != null &&
+          monitor.lastCheckAt.getTime() >= checkedAt.getTime();
+        // Structured so log-based alerting can match `monitor_group_evaluation_stale`.
         this.logger.warn(
-          `Skipping stale check group ${executionGroupId} for monitor ${monitorId}: checked at ${checkedAt.toISOString()}`,
+          JSON.stringify({
+            event: 'monitor_group_evaluation_stale',
+            action: superseded ? 'dropped_superseded' : 'evaluated',
+            monitorId,
+            executionGroupId,
+            checkedAt: checkedAt.toISOString(),
+          }),
         );
-        return null;
+        if (superseded) return null;
       }
       const previousStatus = monitor.status;
       const evaluation: GroupAlertEvaluation = {
@@ -902,6 +915,14 @@ export class MonitorEvaluator {
         executionGroupId,
         evaluation,
       });
+      // TODO(remove next release): dual-write the legacy receipt so a rollback to a worker that predates
+      // monitor_group_evaluations neither re-counts nor re-alerts this group. Tracked in the CHANGELOG.
+      await tx
+        .update(schema.monitorResults)
+        .set({
+          details: sql`jsonb_set(jsonb_set(coalesce(${schema.monitorResults.details}, '{}'::jsonb), '{aggregationEvaluation}', ${JSON.stringify(evaluation)}::jsonb), '{aggregationNotificationProcessed}', 'false'::jsonb)`,
+        })
+        .where(eq(schema.monitorResults.id, row.id));
       return {
         monitor,
         receipt: { kind: 'group' } as GroupReceipt,
@@ -910,31 +931,71 @@ export class MonitorEvaluator {
     });
   }
 
-  /** Records that the group's alerts were handled, so a retry or late sibling does not send them again. */
-  async markGroupNotified(
+  /**
+   * Claims the group's alerts before they are sent, so a retry after a crash cannot send them twice (alerts
+   * are at-most-once per group). Returns false when another writer already claimed it; callers must not send.
+   */
+  async claimGroupNotification(
     monitorId: string,
     executionGroupId: string,
     receipt: GroupReceipt,
-  ): Promise<void> {
-    if (receipt.kind === 'legacy') {
-      await this.dbService.db
+  ): Promise<boolean> {
+    const legacyProcessed = (resultsWhere: SQL) =>
+      this.dbService.db
         .update(schema.monitorResults)
         .set({
           details: sql`jsonb_set(coalesce(${schema.monitorResults.details}, '{}'::jsonb), '{aggregationNotificationProcessed}', 'true'::jsonb)`,
         })
-        .where(eq(schema.monitorResults.id, receipt.resultId));
-      return;
+        .where(resultsWhere)
+        .returning({ id: schema.monitorResults.id });
+    let claimed: boolean;
+    if (receipt.kind === 'legacy') {
+      claimed =
+        (
+          await legacyProcessed(
+            and(
+              eq(schema.monitorResults.id, receipt.resultId),
+              sql`coalesce(${schema.monitorResults.details} -> 'aggregationNotificationProcessed' = 'true'::jsonb, false) = false`,
+            ) as SQL,
+          )
+        ).length > 0;
+    } else {
+      claimed =
+        (
+          await this.dbService.db
+            .update(schema.monitorGroupEvaluations)
+            .set({ notificationProcessedAt: new Date() })
+            .where(
+              and(
+                eq(schema.monitorGroupEvaluations.monitorId, monitorId),
+                eq(
+                  schema.monitorGroupEvaluations.executionGroupId,
+                  executionGroupId,
+                ),
+                isNull(schema.monitorGroupEvaluations.notificationProcessedAt),
+              ),
+            )
+            .returning({ id: schema.monitorGroupEvaluations.monitorId })
+        ).length > 0;
+      // Keep the legacy receipt in step for older workers (see the dual-write in prepareGroupEvaluation).
+      if (claimed)
+        await legacyProcessed(
+          and(
+            eq(schema.monitorResults.monitorId, monitorId),
+            eq(schema.monitorResults.executionGroupId, executionGroupId),
+            sql`jsonb_typeof(${schema.monitorResults.details} -> 'aggregationEvaluation') = 'object'`,
+          ) as SQL,
+        );
     }
-    await this.dbService.db
-      .update(schema.monitorGroupEvaluations)
-      .set({ notificationProcessedAt: new Date() })
-      .where(
-        and(
-          eq(schema.monitorGroupEvaluations.monitorId, monitorId),
-          eq(schema.monitorGroupEvaluations.executionGroupId, executionGroupId),
-          isNull(schema.monitorGroupEvaluations.notificationProcessedAt),
-        ),
+    if (!claimed)
+      this.logger.warn(
+        JSON.stringify({
+          event: 'monitor_group_notification_claim_lost',
+          monitorId,
+          executionGroupId,
+        }),
       );
+    return claimed;
   }
 
   /**

@@ -88,7 +88,10 @@ export function resolveRetentionDays(
     Number.isInteger(parsed) && parsed >= 1 && parsed <= 3650
       ? parsed
       : rule.defaultDays;
-  return Math.max(days, rule.minDays ?? 1);
+  const min = rule.minDays ?? 1;
+  if (days >= min) return days;
+  console.warn(`[DATA_LIFECYCLE] ${rule.envVar}=${days} is below the minimum ${min}; using ${min}`);
+  return min;
 }
 
 /** Integer in [min, max] from a raw value; anything else (NaN, negative, too large) falls back with a warning. */

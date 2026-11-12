@@ -20,7 +20,10 @@ describe("telemetry retention config", () => {
   it("raises a setting below a rule's minimum to that minimum", () => {
     const receipts = TELEMETRY_RETENTION_RULES.find((r) => r.table === "monitor_group_evaluations")!;
     expect(receipts.minDays).toBe(2);
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
     expect(resolveRetentionDays(receipts, { [receipts.envVar]: "1" })).toBe(2);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("MONITOR_GROUP_EVALUATION_RETENTION_DAYS=1 is below the minimum 2"));
+    warn.mockRestore();
     expect(resolveRetentionDays(receipts, { [receipts.envVar]: "2" })).toBe(2);
     expect(resolveRetentionDays(receipts, { [receipts.envVar]: "30" })).toBe(30);
     expect(resolveRetentionDays(receipts, {})).toBe(14);

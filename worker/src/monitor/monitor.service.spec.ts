@@ -2365,7 +2365,6 @@ describe('MonitorService', () => {
         string,
         { evaluation: unknown; notificationProcessedAt: Date | null }
       >();
-      let resultRowWrites = 0;
       let activeGroup = 'a';
       const limited = (rows: unknown[]) => ({
         for: async () => [monitor],
@@ -2414,7 +2413,6 @@ describe('MonitorService', () => {
             where: async () => {
               if (table === schema.monitors)
                 monitor = { ...monitor, ...values };
-              else resultRowWrites++;
             },
           }),
         }),
@@ -2430,15 +2428,23 @@ describe('MonitorService', () => {
       let failMarker = true;
       mockDbService.db.update.mockImplementation((table: unknown) => ({
         set: jest.fn((values: Record<string, unknown>) => ({
-          where: async () => {
+          where: () => {
+            const hit: unknown[] = [];
             if (table === schema.monitorGroupEvaluations) {
               if (failMarker) {
                 failMarker = false;
                 throw new Error('marker write failed');
               }
-              receipts.get(activeGroup)!.notificationProcessedAt =
-                values.notificationProcessedAt as Date;
-            } else if (table === schema.monitorResults) resultRowWrites++;
+              const receipt = receipts.get(activeGroup)!;
+              if (!receipt.notificationProcessedAt) {
+                receipt.notificationProcessedAt =
+                  values.notificationProcessedAt as Date;
+                hit.push({});
+              }
+            }
+            return Object.assign(Promise.resolve(hit), {
+              returning: () => Promise.resolve(hit),
+            });
           },
         })),
       }));
@@ -2482,8 +2488,7 @@ describe('MonitorService', () => {
       expect(mockAlertService.sendNotification).toHaveBeenCalledTimes(1);
       expect(receipts.get('a')!.notificationProcessedAt).toBeInstanceOf(Date);
       expect(receipts.get('b')!.notificationProcessedAt).toBeInstanceOf(Date);
-      // Result rows stay insert-only: no receipt is written into them.
-      expect(resultRowWrites).toBe(0);
+      // The claim failed before anything was sent for 'a'; its retry claimed and (below threshold) sent nothing.
     });
 
     it('propagates group transaction failures before sending notifications', async () => {
@@ -2508,6 +2513,36 @@ describe('MonitorService', () => {
           },
         ),
       ).rejects.toThrow('transaction failed');
+      expect(mockAlertService.sendNotification).not.toHaveBeenCalled();
+    });
+
+    it('sends nothing when another writer already claimed the group notification', async () => {
+      mockDbService.db.query.monitors.findFirst.mockResolvedValue(mockMonitor);
+      const evaluator = (service as unknown as { evaluator: MonitorEvaluator })
+        .evaluator;
+      jest.spyOn(evaluator, 'prepareGroupEvaluation').mockResolvedValue({
+        monitor: mockMonitor,
+        receipt: { kind: 'group' },
+        evaluation: { previousStatus: 'up', currentStatus: 'down' },
+      } as never);
+      const claim = jest
+        .spyOn(evaluator, 'claimGroupNotification')
+        .mockResolvedValue(false);
+      await service.saveMonitorResults(
+        [
+          {
+            monitorId: mockMonitor.id,
+            location: 'eu',
+            status: 'down',
+            isUp: false,
+            checkedAt: new Date(),
+          },
+        ],
+        { persisted: true, executionGroupId: 'group-claimed' },
+      );
+      expect(claim).toHaveBeenCalledWith(mockMonitor.id, 'group-claimed', {
+        kind: 'group',
+      });
       expect(mockAlertService.sendNotification).not.toHaveBeenCalled();
     });
   });
