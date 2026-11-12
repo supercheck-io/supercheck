@@ -311,7 +311,7 @@ export async function reconcileStatusPages() {
       const automatic = active.find(
         (entry) => entry.incident.sourceComponentId === component.id,
       )?.incident;
-      const failing = component.monitors.some((association) => ["down", "error", "timeout"].includes(association.monitor.status)) && [
+      const failing = liveLinks.some((association) => ["down", "error", "timeout"].includes(association.monitor.status)) && [
         "major_outage",
         "partial_outage",
         "degraded_performance",
@@ -344,7 +344,7 @@ export async function reconcileStatusPages() {
             statusPageIncidentId: incident.id,
             organizationId: page.organizationId,
             projectId: page.projectId,
-            monitorIds: component.monitors.map((association) => association.monitorId),
+            monitorIds: liveLinks.map((association) => association.monitorId),
           });
         }
         await tx

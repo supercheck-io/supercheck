@@ -50,7 +50,7 @@ const DIRECT_COLUMN_OK = new Set([
   "lib/scheduler/monitor-scheduler.ts",
 ]);
 
-const QUERIES = /(?:from|join)\s*\(\s*(?:schema\.)?(?:monitors|jobs|runs|k6PerformanceRuns)\b|\.(?:monitors|jobs|runs|k6PerformanceRuns)\.find(?:First|Many)\b|\b(?:update|delete|insert)\(\s*(?:schema\.)?(?:monitors|jobs|runs)\b|\b(?:from|join)\s+"?(?:monitors|jobs|runs|k6_performance_runs)\b/i;
+const QUERIES = /\b(?:monitors|jobs|runs|k6PerformanceRuns)\s+as\s+\w+\b|(?:from|join)\s*\(\s*(?:schema\.)?(?:monitors|jobs|runs|k6PerformanceRuns)\b|\.(?:monitors|jobs|runs|k6PerformanceRuns)\.find(?:First|Many)\b|\b(?:update|delete|insert)\(\s*(?:schema\.)?(?:monitors|jobs|runs)\b|\b(?:from|join)\s+"?(?:monitors|jobs|runs|k6_performance_runs)\b/i;
 const DIRECT = /isNull\(\w+\.deletingAt\)|isNotNull\(\w+\.deletingAt\)|\bdeleting_at\b/;
 
 function sources(): Array<{ rel: string; text: string }> {
@@ -94,7 +94,13 @@ describe("visibility helpers", () => {
   it("render index-friendly predicates", () => {
     expect(sqlOf(liveMonitor())).toBe(sqlOf(isNull(monitors.deletingAt)));
     expect(sqlOf(liveJob())).toBe(sqlOf(isNull(jobs.deletingAt)));
-    expect(sqlOf(and(liveRunOfLiveJob(runs.jobId))!)).toContain("IS NULL OR NOT EXISTS");
+    expect(sqlOf(and(liveRunOfLiveJob(runs.jobId))!)).toContain("NOT IN (SELECT id FROM jobs WHERE deleting_at IS NOT NULL)");
+  });
+
+  it("accept a raw SQL alias and reject anything that is not an identifier", () => {
+    expect(sqlOf(liveJob("j"))).toBe("j.deleting_at IS NULL");
+    expect(sqlOf(liveMonitor("m"))).toBe("m.deleting_at IS NULL");
+    expect(() => liveJob("j; drop table jobs")).toThrow("Invalid table alias");
   });
 
   it("notFoundIfDeleting hides a flagged row and keeps the rest", () => {

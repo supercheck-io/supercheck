@@ -131,7 +131,7 @@ describe("runs of a job being deleted", () => {
     ["runs/[runId]/status", (id) => runStatus(get(`/api/runs/${id}/status`), runParams(id))],
     ["runs/[runId]/permissions", (id) => runPermissions(get(`/api/runs/${id}/permissions`), runParams(id))],
     ["runs/[runId]/stream", (id) => runStream(get(`/api/runs/${id}/stream`), runParams(id))],
-    ["job-status/events/[runId]", (id) => jobStatusRun(get(`/api/job-status/events/${id}`), runParams(id))],
+    ["job-status/events/[runId]", (id) => jobStatusRun(get(`/api/job-status/events/${id}`))],
   ];
 
   it.each(paths)("%s answers not found for a run of a deleting job and still serves the live and jobless runs", async (_name, call) => {

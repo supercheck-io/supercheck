@@ -11,4 +11,4 @@ export const liveJob = (table: { deletingAt: AnyColumn } = jobs): SQL =>
 
 /** The run's parent job is not being deleted; a run without a job stays visible. */
 export const liveRunOfLiveJob = (jobId: AnyColumn): SQL =>
-  sql`(${jobId} IS NULL OR NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.id = ${jobId} AND jobs.deleting_at IS NOT NULL))`;
+  sql`(${jobId} IS NULL OR ${jobId} NOT IN (SELECT id FROM jobs WHERE deleting_at IS NOT NULL))`;

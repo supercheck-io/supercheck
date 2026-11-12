@@ -1,5 +1,6 @@
 "use server";
 
+import { liveJob } from "@/lib/deletion/visibility";
 import { db } from "../utils/db";
 import { jobs as jobsTable, jobsSelectSchema } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
@@ -39,7 +40,8 @@ async function getJob(
         and(
           eq(jobsTable.id, jobId),
           eq(jobsTable.projectId, projectId),
-          eq(jobsTable.organizationId, organizationId)
+          eq(jobsTable.organizationId, organizationId),
+          liveJob(jobsTable)
         )
       )
       .limit(1);

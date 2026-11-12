@@ -1,6 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { and, desc, eq, gt, isNotNull, isNull, sql } from 'drizzle-orm';
-import { liveMonitor } from '../db/deletion-visibility';
 import { DbService } from '../db/db.service';
 import * as schema from '../db/schema';
 import type { MonitorCycleEvaluation } from '../db/schema';
@@ -69,11 +68,15 @@ export class MonitorCycleService {
       const [monitor] = await tx
         .select()
         .from(schema.monitors)
-        .where(and(eq(schema.monitors.id, peek.monitorId), liveMonitor()))
+        .where(eq(schema.monitors.id, peek.monitorId))
         .limit(1)
         .for('no key update');
-      // A deleted (or deleting) monitor cascades its cycles away.
+      // A deleted monitor cascades its cycles away; one being deleted ends them here so sweeps do not re-pick them.
       if (!monitor) return 'noop';
+      if (monitor.deletingAt) {
+        await this.finish(tx, cycleId, 'aborted', now);
+        return 'aborted';
+      }
       const [cycle] = await tx
         .select()
         .from(schema.monitorCycles)
@@ -352,9 +355,16 @@ export class MonitorCycleService {
     const [monitor] = await this.dbService.db
       .select()
       .from(schema.monitors)
-      .where(and(eq(schema.monitors.id, cycle.monitorId), liveMonitor()))
+      .where(eq(schema.monitors.id, cycle.monitorId))
       .limit(1);
     if (!monitor) return false;
+    if (monitor.deletingAt) {
+      await this.dbService.db
+        .update(schema.monitorCycles)
+        .set({ notifiedAt: new Date() })
+        .where(eq(schema.monitorCycles.id, cycleId));
+      return false;
+    }
     const rows = await this.dbService.db
       .select()
       .from(schema.monitorResults)

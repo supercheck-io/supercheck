@@ -12,7 +12,7 @@ describe('deletion visibility helpers', () => {
     expect(text(liveMonitor())).toBe(text(isNull(monitors.deletingAt)));
     expect(text(liveJob())).toBe(text(isNull(jobs.deletingAt)));
     expect(text(liveRunOfLiveJob(runs.jobId))).toContain(
-      'IS NULL OR NOT EXISTS',
+      'NOT IN (SELECT id FROM jobs WHERE deleting_at IS NOT NULL)',
     );
   });
 });
