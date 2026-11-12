@@ -160,8 +160,9 @@ export async function purgeOrganizationStep(row: DeletionRow, ctx: StepContext):
   if (stage === "usage") {
     // Runs after the projects stage, which drains running jobs: a stopping run can still write billing records until then.
     // Unsent usage would never be billed once the organization is gone: wait (retry with backoff) until it is settled.
-    if (hasCancellableSubscription(org) && org.polarCustomerId) {
-      await flushFinalUsage(organizationId, { strict: true });
+    // Same set the billing stage revokes: a customer-only organization (subscription resolved through the customer) counts too.
+    if (hasCancellableSubscription(org) || org.polarCustomerId) {
+      if (org.polarCustomerId) await flushFinalUsage(organizationId, { strict: true });
       await assertNoUnsettledUsage(db, organizationId);
     }
     return next({ stage: "billing" });

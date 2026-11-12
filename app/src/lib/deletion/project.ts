@@ -63,11 +63,11 @@ export async function softDeleteProject(input: { projectId: string; actorUserId:
  * Runs `work` only while the project is still deleted, holding FOR SHARE on its row. A restore takes FOR UPDATE on that row,
  * so it waits for the removals in flight and re-creates its schedules afterwards; one that committed first is seen here.
  */
-async function whileDeleted<T>(projectId: string, work: () => Promise<T>): Promise<T | null> {
+async function whileDeleted<T>(projectId: string, work: (tx: RestoreTx) => Promise<T>): Promise<T | null> {
   return db.transaction(async (tx) => {
     await tx.execute(sql`SET LOCAL lock_timeout = '10s'`);
     const [current] = await tx.select({ status: projects.status }).from(projects).where(eq(projects.id, projectId)).for("share");
-    return current?.status === "deleted" ? work() : null;
+    return current?.status === "deleted" ? work(tx) : null;
   });
 }
 
@@ -75,7 +75,7 @@ async function whileDeleted<T>(projectId: string, work: () => Promise<T>): Promi
 async function stopProjectActivity(projectId: string, pausedMonitors: Array<{ id: string; scheduledJobId: string | null }>) {
   try {
     const { unscheduleMonitors } = await import("@/lib/execution/trial-lifecycle");
-    await whileDeleted(projectId, () => unscheduleMonitors(pausedMonitors, db));
+    await whileDeleted(projectId, (tx) => unscheduleMonitors(pausedMonitors, tx));
   } catch (error) { console.error("Failed to unschedule monitors for deleted project", projectId, error); }
   try {
     for (let after: string | undefined; ;) {
@@ -89,7 +89,11 @@ async function stopProjectActivity(projectId: string, pausedMonitors: Array<{ id
         .where(and(eq(runs.projectId, projectId), inArray(runs.status, ["queued", "running"]), or(sql`${runs.errorDetails} IS NULL`, ne(runs.errorDetails, RUN_CANCELLATION_MARKER)))).limit(BATCH);
       if (active.length === 0) break;
       const ids = active.map((run) => run.id);
-      await db.update(runs).set({ errorDetails: RUN_CANCELLATION_MARKER }).where(and(inArray(runs.id, ids), inArray(runs.status, ["queued", "running"])));
+      const marked = await whileDeleted(projectId, async (tx) => {
+        await tx.update(runs).set({ errorDetails: RUN_CANCELLATION_MARKER }).where(and(inArray(runs.id, ids), inArray(runs.status, ["queued", "running"])));
+        return true;
+      });
+      if (!marked) return; // restored meanwhile: its new runs stay
       await Promise.allSettled(ids.map((id) => setCancellationSignal(id)));
     }
   } catch (error) { console.error("Failed to stop activity of deleted project", projectId, error); }

@@ -1,5 +1,4 @@
 import { liveMonitor } from "@/lib/deletion/visibility";
-import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 import { isUuid } from "@/lib/uuid";
 import { notInDeletedProject } from "@/lib/middleware/plan-limit-lock";
 import { NextRequest, NextResponse } from "next/server";
@@ -9,7 +8,7 @@ import { and, eq, ne, sql } from "drizzle-orm";
 import { isAuthError, requireUserAuthContext, authErrorStatus } from "@/lib/auth-context";
 import { resumeRefusalResponse, withResumeWithinPlan } from "@/lib/middleware/plan-enforcement";
 import { ensureSubscribedForResume, monitorResumeBlockedResponse, subscriptionDeniedResponse } from "@/lib/execution/trial-interval-response";
-import { hasPermissionForUser } from '@/lib/rbac/middleware';
+import { hasPermissionForUser, forbiddenOrNotFound } from '@/lib/rbac/middleware';
 import { logAuditEvent } from "@/lib/audit-logger";
 import { reconcileMonitorSchedule } from "@/lib/monitor-schedule-reconcile";
 import { createLogger } from "@/lib/logger/index";
@@ -80,7 +79,7 @@ export async function PATCH(
         });
 
         if (!canUpdate) {
-          return await permissionDeniedResponse(currentMonitor.organizationId, "Insufficient permissions to manage monitor");
+          return await forbiddenOrNotFound(userId, currentMonitor.organizationId, "Insufficient permissions to manage monitor", "Monitor not found");
         }
       }
     }

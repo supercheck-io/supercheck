@@ -656,4 +656,19 @@ describe("review fixes: project guards, restore quotas, reinstate retry", () => 
     expect(mockPolarUpdate).toHaveBeenLastCalledWith("sub_r9", { cancel_at_period_end: false });
     expect((await orgRow(seeded.orgId)).deletion_meta.billingReinstatePending).toBeUndefined();
   });
+
+  it("a notice claimed by a pod that died before sending expires and is sent by the sweep", async () => {
+    mockEmailConfigured = true;
+    const seeded = await seedOrg();
+    await requestOrganizationDeletion({ organizationId: seeded.orgId, actorUserId: seeded.ownerId, guard: { ownerUserId: seeded.ownerId } });
+    mockSend.mockClear();
+    // A claim with no delivery recorded: fresh (a send may be in flight) is left alone, a stale one is retried.
+    await client`UPDATE organization SET deletion_meta = jsonb_build_object('noticeRequested', to_char(now() at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')) WHERE id = ${seeded.orgId}`;
+    await sendDueReminders();
+    expect(mockSend).not.toHaveBeenCalled();
+    await client`UPDATE organization SET deletion_meta = jsonb_build_object('noticeRequested', to_char((now() - interval '20 minutes') at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')) WHERE id = ${seeded.orgId}`;
+    await sendDueReminders();
+    expect(mockSend).toHaveBeenCalledTimes(1);
+    expect((await orgRow(seeded.orgId)).deletion_meta.noticeRequestedSent).toBe(true);
+  });
 });

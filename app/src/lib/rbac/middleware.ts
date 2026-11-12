@@ -19,8 +19,8 @@ import { auth } from "@/utils/auth";
 import {
   Role,
   hasPermission as checkPermission,
-  PermissionContext,
   PENDING_DELETION_ALLOWED_ACTIONS,
+  PermissionContext,
   statement,
 } from "./permissions";
 import { normalizeRole } from "./role-normalizer";
@@ -190,7 +190,7 @@ export async function hasPermission(
       assignedProjectIds: assignedProjects,
       resourceCreatorId: context?.resourceCreatorId,
       // A soft-deleted project is read-only like a pending organization (id-based routes do not go through the active-project context).
-      orgPendingDeletion: (await isOrgPendingDeletion(context?.organizationId)) || (await isProjectDeleted(context?.projectId)),
+      orgPendingDeletion: (await isOrgPendingDeletion(context?.organizationId, { fresh: !PENDING_DELETION_ALLOWED_ACTIONS.has(action) })) || (await isProjectDeleted(context?.projectId, { fresh: !PENDING_DELETION_ALLOWED_ACTIONS.has(action) })),
     };
 
     return checkPermission(permissionContext, resource, action);
@@ -260,7 +260,7 @@ export async function hasPermissionForUser(
       assignedProjectIds: assignedProjects,
       resourceCreatorId: context?.resourceCreatorId,
       // A soft-deleted project is read-only like a pending organization (id-based routes do not go through the active-project context).
-      orgPendingDeletion: (await isOrgPendingDeletion(context?.organizationId)) || (await isProjectDeleted(context?.projectId)),
+      orgPendingDeletion: (await isOrgPendingDeletion(context?.organizationId, { fresh: !PENDING_DELETION_ALLOWED_ACTIONS.has(action) })) || (await isProjectDeleted(context?.projectId, { fresh: !PENDING_DELETION_ALLOWED_ACTIONS.has(action) })),
     };
 
     return checkPermission(permissionContext, resource, action);
