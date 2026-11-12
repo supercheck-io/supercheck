@@ -34,6 +34,14 @@ it("hides itself when the fetched state says the deletion was cancelled elsewher
   await waitFor(() => expect(container).toBeEmptyDOMElement());
 });
 
+it("offers no cancel once the cancellation window has passed", async () => {
+  const past = new Date(Date.now() - 3_600_000).toISOString();
+  fetchMock.mockResolvedValue({ ok: true, json: async () => ({ deletion: { pending: true, purgeAfter: past, canCancel: true } }) });
+  renderBanner({ pending: true, isOwner: true });
+  await screen.findByText(/scheduled for deletion/);
+  await waitFor(() => expect(screen.queryByRole("button", { name: "Cancel deletion" })).toBeNull());
+});
+
 it("shows the countdown and a cancel button to the owner only", async () => {
   renderBanner({ pending: true, isOwner: true });
   expect(await screen.findByText(/in 5 days/)).toBeTruthy();
