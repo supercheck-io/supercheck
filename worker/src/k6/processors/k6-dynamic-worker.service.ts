@@ -19,7 +19,7 @@ import { isMissingCapabilityColumnError } from '../../common/location/location-c
 import { HeartbeatService } from '../../common/heartbeat/heartbeat.service';
 import { DbService } from '../../db/db.service';
 import { sql } from 'drizzle-orm';
-import { captureJobFailure } from '../../common/sentry-reporter';
+import { captureJobFailure, runJobInSpan } from '../../common/sentry-reporter';
 import {
   registerIntakeStopper,
   stopIntake,
@@ -346,7 +346,7 @@ export class K6DynamicWorkerService
   private async processJob(
     job: Job<K6ExecutionTask>,
   ): Promise<{ success: boolean; timedOut?: boolean }> {
-    return this.k6Processor.handleProcess(job);
+    return runJobInSpan(job, 'k6', () => this.k6Processor.handleProcess(job));
   }
 
   /**

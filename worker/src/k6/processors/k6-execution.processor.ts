@@ -36,7 +36,7 @@ import { truncateConsoleOutput } from '../console-output';
 import { consumesWorkerQueue } from '../../common/worker-queues';
 import { locationSupportsWorkload } from '../../common/location/location-capability';
 import { GlobalQueueCapabilityGuard } from '../../common/location/global-queue-guard';
-import { captureJobFailure } from '../../common/sentry-reporter';
+import { captureJobFailure, runJobInSpan } from '../../common/sentry-reporter';
 import { RunInterruptedError } from '../../common/run-interrupted.error';
 import {
   registerIntakeStopper,
@@ -949,7 +949,7 @@ export class K6ExecutionProcessor
   async process(
     job: Job<K6Task>,
   ): Promise<{ success: boolean; timedOut?: boolean }> {
-    return await this.handleProcess(job);
+    return await runJobInSpan(job, 'k6', () => this.handleProcess(job));
   }
 
   @OnWorkerEvent('completed')

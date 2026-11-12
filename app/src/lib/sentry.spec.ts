@@ -1,5 +1,12 @@
 jest.mock("@sentry/node", () => ({
   init: jest.fn(),
+  isInitialized: jest.fn(() => false),
+  getTraceData: jest.fn(() => ({ "sentry-trace": "t-s-1", baggage: "sentry-environment=test" })),
+  captureCheckIn: jest.fn(),
+  httpIntegration: jest.fn(() => ({ name: "Http" })),
+  nativeNodeFetchIntegration: jest.fn(() => ({ name: "NodeFetch" })),
+  pinoIntegration: jest.fn(() => ({ name: "Pino" })),
+  consoleLoggingIntegration: jest.fn(() => ({ name: "ConsoleLogging" })),
   captureException: jest.fn(),
   close: jest.fn().mockResolvedValue(true),
   onUnhandledRejectionIntegration: jest.fn(() => ({
@@ -9,6 +16,8 @@ jest.mock("@sentry/node", () => ({
 
 import * as Sentry from "@sentry/node";
 import {
+  captureCheckIn,
+  getTraceHeaders,
   getSentryOptions,
   initSentry,
   scrubEvent,
@@ -64,7 +73,9 @@ describe("enable gate", () => {
         { name: "Dedupe" },
       ])
       .map((i: { name: string }) => i.name);
-    expect(names).toEqual(["Dedupe", "OnUnhandledRejection"]);
+    expect(names).toEqual(["Dedupe", "OnUnhandledRejection", "Http", "NodeFetch"]);
+    expect(opts.tracesSampler).toBeUndefined(); // no rate: tracing fully off
+    expect(opts.enableLogs).toBe(false);
     // warn: Next's own listener keeps the app alive on stray rejections; strict would exit the pod.
     expect(Sentry.onUnhandledRejectionIntegration).toHaveBeenCalledWith({
       mode: "warn",
@@ -182,5 +193,37 @@ describe("sentry-gate", () => {
   it("does not import the SDK module", () => {
     const src = require("fs").readFileSync(require.resolve("./sentry-gate"), "utf8");
     expect(src).not.toMatch(/from\s+["']@sentry\//);
+  });
+});
+
+describe("tracing, logs and check-ins", () => {
+  const opts = (env: Record<string, string>) => getSentryOptions({ SENTRY_DSN: DSN, ...env }, false)!;
+
+  it("samples at the env rate but never health, stream, status or auth routes", () => {
+    const sampler = opts({ SENTRY_TRACES_SAMPLE_RATE: "0.25" }).tracesSampler!;
+    const ctx = (name: string) =>
+      ({ name, inheritOrSampleWith: (rate: number) => rate, normalizedRequest: undefined }) as unknown as Parameters<typeof sampler>[0];
+    expect(sampler(ctx("GET /api/jobs"))).toBe(0.25);
+    for (const name of ["GET /api/health", "GET /api/job-status/events", "GET /status/abc", "GET /api/auth/callback/x"]) {
+      expect(sampler(ctx(name))).toBe(0);
+    }
+    expect(opts({ SENTRY_TRACES_SAMPLE_RATE: "0.25" }).tracePropagationTargets).toEqual([]);
+  });
+
+  it("adds log integrations only when logs are enabled", () => {
+    const names = (env: Record<string, string>) =>
+      (opts(env).integrations as (d: { name: string }[]) => { name: string }[])([]).map((i) => i.name);
+    expect(names({})).not.toContain("Pino");
+    expect(names({ SENTRY_ENABLE_LOGS: "true" })).toEqual(expect.arrayContaining(["Pino", "ConsoleLogging"]));
+    expect(opts({ SENTRY_ENABLE_LOGS: "true" }).enableLogs).toBe(true);
+  });
+
+  it("exposes trace headers and sends check-ins with a monitor config", () => {
+    expect(getTraceHeaders()).toEqual({ sentryTrace: "t-s-1", baggage: "sentry-environment=test" });
+    captureCheckIn("usage-sync", { type: "interval", value: 5, unit: "minute" }, "error", 1.5);
+    expect(Sentry.captureCheckIn).toHaveBeenCalledWith(
+      { monitorSlug: "usage-sync", status: "error", duration: 1.5 },
+      expect.objectContaining({ schedule: { type: "interval", value: 5, unit: "minute" }, checkinMargin: 2 }),
+    );
   });
 });

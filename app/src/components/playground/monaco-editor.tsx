@@ -496,6 +496,7 @@ export const MonacoEditorClient = memo(
             </div>
 
             <Editor
+              wrapperProps={{ "data-sentry-block": "" }}
               height="100%"
               defaultLanguage="typescript"
               value={value}
@@ -604,6 +605,7 @@ export const MonacoEditorClient = memo(
                 </div>
                 <div className="flex-grow overflow-hidden">
                   <Editor
+                    wrapperProps={{ "data-sentry-block": "" }}
                     height="100%"
                     defaultLanguage="typescript"
                     value={value}

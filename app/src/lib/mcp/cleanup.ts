@@ -2,16 +2,18 @@ import { and, eq, inArray, isNull, lt, notExists, or, sql } from "drizzle-orm";
 import { db } from "@/utils/db";
 import { oauthAccessToken, oauthClient, oauthClientAssertion, oauthConsent, oauthRefreshToken, verification } from "@/db/schema";
 import { isMcpServerEnabled } from "./config";
+import { checkedTick } from "@/lib/sentry-lazy";
 
 const BATCH_SIZE = 500;
 const RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
-export async function cleanupMcpOAuthRows(): Promise<void> {
+/** Returns false when another replica holds the cleanup lock. */
+export async function cleanupMcpOAuthRows(): Promise<boolean> {
   const now = new Date();
   const cutoff = new Date(now.getTime() - RETENTION_MS);
-  await db.transaction(async (tx) => {
+  return db.transaction(async (tx) => {
     const [lock] = await tx.execute<{ locked: boolean }>(sql`SELECT pg_try_advisory_xact_lock(hashtext('mcp-oauth-cleanup')) AS locked`);
-    if (!lock.locked) return;
+    if (!lock.locked) return false;
 
     const access = tx.select({ id: oauthAccessToken.id }).from(oauthAccessToken)
       .where(or(lt(oauthAccessToken.expiresAt, now), lt(oauthAccessToken.revoked, cutoff))).limit(BATCH_SIZE);
@@ -45,6 +47,7 @@ export async function cleanupMcpOAuthRows(): Promise<void> {
         unusedClient,
       ));
     }
+    return true;
   });
 }
 
@@ -52,7 +55,7 @@ let timer: ReturnType<typeof setInterval> | undefined;
 
 export function initializeMcpOAuthCleanup(): void {
   if (!isMcpServerEnabled() || timer) return;
-  const run = () => cleanupMcpOAuthRows().catch((error: unknown) => {
+  const run = () => checkedTick("mcp-oauth-cleanup", { type: "interval", value: 5, unit: "minute" }, cleanupMcpOAuthRows, (ran) => ran).catch((error: unknown) => {
     console.error("[MCP] OAuth cleanup failed", error);
   });
   timer = setInterval(run, 5 * 60 * 1000);

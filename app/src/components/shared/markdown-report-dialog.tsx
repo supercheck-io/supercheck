@@ -143,6 +143,7 @@ export function MarkdownReportDialog({
         <div className="min-h-0 flex-1 overflow-hidden rounded-md border">
           {content ? (
             <Editor
+              wrapperProps={{ "data-sentry-block": "" }}
               height="100%"
               language="markdown"
               theme={editorTheme}
