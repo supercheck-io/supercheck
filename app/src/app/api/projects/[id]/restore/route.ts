@@ -6,7 +6,7 @@ import { isUuid } from "@/lib/uuid";
 import { requireUserAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { forbiddenOrNotFound, hasPermissionForUser, isImpersonatedSession } from "@/lib/rbac/middleware";
 import { requireSameOriginRequest } from "@/lib/security/same-origin";
-import { ProjectDeletionError, restoreProject } from "@/lib/deletion/project";
+import { ProjectDeletionError, finishProjectRestore, restoreProjectRows } from "@/lib/deletion/project";
 import { checkProjectLimit } from "@/lib/middleware/plan-enforcement";
 import { insertWithinPlanLimit } from "@/lib/middleware/plan-limit-lock";
 
@@ -39,10 +39,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           .where(and(eq(projects.organizationId, project.organizationId), ne(projects.status, "deleted")));
         return Number(row?.count || 0);
       },
-      insert: () => restoreProject({ projectId: id, actorUserId: userId }),
+      insert: (executor) => restoreProjectRows({ projectId: id, actorUserId: userId }, executor),
     });
     if (!restored.ok && restored.busy) return NextResponse.json({ error: "Too many concurrent requests. Please retry shortly." }, { status: 503, headers: { "Retry-After": "2" } });
     if (!restored.ok) return NextResponse.json({ error: restored.check.error, code: "PLAN_LIMIT" }, { status: 403 });
+    await finishProjectRestore({ projectId: id, actorUserId: userId }, restored.row);
     return NextResponse.json({ success: true, message: "Project restored" });
   } catch (error) {
     if (error instanceof ProjectDeletionError) return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });

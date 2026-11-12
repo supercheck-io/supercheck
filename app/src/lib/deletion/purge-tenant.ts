@@ -3,7 +3,6 @@ import { db } from "@/utils/db";
 import { jobs, monitors, oauthConsent, organization, projects, reports, statusPages, tests, member, user } from "@/db/schema";
 import { createS3CleanupService } from "@/lib/s3-cleanup";
 import { logAdminEvent, logAuditEvent } from "@/lib/audit-logger";
-import { TEARDOWN_ACTION } from "@/lib/organization-teardown-action";
 import { assertNoUnsettledUsage, flushFinalUsage, hasCancellableSubscription, revokeRemainingSubscription } from "./billing";
 import type { DeletionRow } from "./jobs";
 import { quiesceOrganization } from "./organization";
