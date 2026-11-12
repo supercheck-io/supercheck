@@ -83,6 +83,7 @@ test.describe("Organization project administration @admin @projects @critical", 
     expect(await deleteResponse.json()).toEqual({
       success: true,
       message: "Project deleted successfully",
+      purgeAfter: expect.any(String),
     });
     deleted = true;
 
