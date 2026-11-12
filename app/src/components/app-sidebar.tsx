@@ -35,12 +35,17 @@ import {
 } from "@/components/ui/sidebar";
 import { useAdminStatus } from "@/hooks/use-admin-status";
 import { NAV } from "@/lib/nav-areas";
+import { createActionsFor, type CreateGroupId } from "@/lib/create-actions";
 import { getReleaseVersionBadge } from "@/lib/release-metadata";
 
 // Internal: build-time value baked in by the release image build; not an operator setting.
 const releaseVersionBadge = getReleaseVersionBadge(
   process.env.NEXT_PUBLIC_SUPERCHECK_VERSION,
 );
+
+// Create menus render from the shared registry, so they match Cmd+K and Quick Create.
+const sidebarItems = (group: CreateGroupId) =>
+  createActionsFor(group).map(({ title, url, icon, force }) => ({ title, url, icon, color: force }));
 
 // Sidebar navigation data
 const data = {
@@ -74,6 +79,7 @@ const data = {
       title: NAV.statusPages.title,
       url: "/status-pages",
       icon: NAV.statusPages.icon,
+      tone: NAV.statusPages.tone,
     },
     {
       title: NAV.notifications.title,
@@ -89,50 +95,10 @@ const data = {
       icon: SquarePlus,
 
       items: [
-        {
-          groupLabel: "Functional",
-        },
-        {
-          items: [
-            {
-              title: "Browser Test",
-              url: "/playground?scriptType=browser",
-              icon: Chrome,
-              color: "!text-automate",
-            },
-            {
-              title: "API Test",
-              url: "/playground?scriptType=api",
-              icon: ArrowLeftRight,
-              color: "!text-automate",
-            },
-            {
-              title: "Database Test",
-              url: "/playground?scriptType=database",
-              icon: Database,
-              color: "!text-automate",
-            },
-            {
-              title: "Custom Test",
-              url: "/playground?scriptType=custom",
-              icon: SquareFunction,
-              color: "!text-automate",
-            },
-          ],
-        },
-        {
-          groupLabel: "Non-Functional",
-        },
-        {
-          items: [
-            {
-              title: "Performance Test",
-              url: "/playground?scriptType=performance",
-              icon: K6Logo,
-              color: "!text-automate",
-            },
-          ],
-        },
+        { groupLabel: "Functional" },
+        { items: sidebarItems("tests").slice(0, 4) },
+        { groupLabel: "Non-Functional" },
+        { items: sidebarItems("tests").slice(4) },
       ],
     },
     {
@@ -167,38 +133,7 @@ const data = {
       title: "Create",
       url: "#",
       icon: SquarePlus,
-      items: [
-        {
-          title: "HTTP Monitor",
-          url: "/monitors/create?type=http_request",
-          icon: ArrowLeftRight,
-          color: "!text-monitor",
-        },
-        {
-          title: "Website Monitor",
-          url: "/monitors/create?type=website",
-          icon: LaptopMinimal,
-          color: "!text-monitor",
-        },
-        {
-          title: "Ping Monitor",
-          url: "/monitors/create?type=ping_host",
-          icon: ChevronsLeftRightEllipsis,
-          color: "!text-monitor",
-        },
-        {
-          title: "Port Monitor",
-          url: "/monitors/create?type=port_check",
-          icon: EthernetPort,
-          color: "!text-monitor",
-        },
-        {
-          title: "Synthetic Monitor",
-          url: "/monitors/create?type=synthetic_test",
-          icon: PlaywrightLogo,
-          color: "!text-monitor",
-        },
-      ],
+      items: sidebarItems("monitors"),
     },
     {
       title: NAV.monitors.title,

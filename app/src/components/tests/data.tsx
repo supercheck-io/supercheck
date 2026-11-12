@@ -8,6 +8,7 @@ import {
   SquareFunction,
 } from "lucide-react";
 import type { ComponentType } from "react";
+import { typeText } from "@/lib/type-tones";
 import { K6Logo } from "@/components/logo/k6-logo";
 
 interface TestTypeOption {
@@ -44,31 +45,31 @@ export const types: TestTypeOption[] = [
     label: "Browser",
     value: "browser",
     icon: Chrome,
-    color: "text-sky-600",
+    color: typeText("test", "browser"),
   },
   {
     label: "API",
     value: "api",
     icon: ArrowLeftRight,
-    color: "text-teal-600",
+    color: typeText("test", "api"),
   },
   {
     label: "Database",
     value: "database",
     icon: Database,
-    color: "text-cyan-600",
+    color: typeText("test", "database"),
   },
   {
     label: "Custom",
     value: "custom",
     icon: SquareFunction,
-    color: "text-blue-600",
+    color: typeText("test", "custom"),
   },
   {
     label: "Performance",
     value: "performance",
     icon: K6Logo,
-    color: "text-purple-600",
+    color: typeText("test", "performance"),
     iconProps: {
       size: 16,
     },
