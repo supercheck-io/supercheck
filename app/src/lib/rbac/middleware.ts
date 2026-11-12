@@ -21,7 +21,6 @@ import {
   hasPermission as checkPermission,
   PENDING_DELETION_ALLOWED_ACTIONS,
   PermissionContext,
-  PENDING_DELETION_ALLOWED_ACTIONS,
   statement,
 } from "./permissions";
 import { normalizeRole } from "./role-normalizer";

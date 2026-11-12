@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { hasPermissionForUser, getUserRole } from "@/lib/rbac/middleware";
+import { hasPermissionForUser, getUserRole, forbiddenOrNotFound } from "@/lib/rbac/middleware";
 import { requireUserAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { getSelectableProjects, getUserProjects } from "@/lib/session";
 import { getCurrentProjectContext } from "@/lib/project-context";
@@ -15,7 +15,6 @@ import {
   SubscriptionAccessDeniedError,
 } from "@/lib/services/subscription-service";
 
-import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 /**
  * GET /api/projects
  * List all projects for the current user in the active organization
@@ -159,7 +158,7 @@ export async function POST(request: NextRequest) {
       organizationId: targetOrgId,
     });
     if (!canCreate) {
-      return await permissionDeniedResponse(organizationId, "Insufficient permissions to create projects");
+      return await forbiddenOrNotFound(userId, targetOrgId, "Insufficient permissions to create projects", "Organization not found");
     }
 
     // SECURITY: Validate subscription before allowing project creation
