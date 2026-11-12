@@ -45,7 +45,6 @@ export function DeleteOrganizationButton({ organizationId, organizationName }: D
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    setInfoFailed(false);
     fetch(`/api/organizations/${organizationId}/deletion`)
       .then((res) => res.json())
       .then((data) => {
@@ -199,7 +198,7 @@ export function DeleteOrganizationButton({ organizationId, organizationName }: D
               {infoFailed && (
                 <p role="alert" className="text-sm text-destructive">
                   Could not load the deletion settings, so the cancellation window is unknown.{" "}
-                  <button type="button" className="underline" onClick={() => setInfoAttempt((n) => n + 1)}>Retry</button>
+                  <button type="button" className="underline" onClick={() => { setInfoFailed(false); setInfoAttempt((n) => n + 1); }}>Retry</button>
                 </p>
               )}
             </>
