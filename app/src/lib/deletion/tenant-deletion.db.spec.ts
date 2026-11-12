@@ -6,7 +6,6 @@ import path from "node:path";
 import { promisify } from "node:util";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { eq } from "drizzle-orm";
 import * as schema from "@/db/schema";
 
 let mockDatabase: ReturnType<typeof drizzle<typeof schema>>;

@@ -12,14 +12,14 @@ jest.mock("@/lib/deletion/project", () => {
   class ProjectDeletionError extends Error {
     constructor(message: string, readonly status: number, readonly code: string) { super(message); }
   }
-  return { ProjectDeletionError, restoreProject: jest.fn() };
+  return { ProjectDeletionError, restoreProjectRows: jest.fn(), finishProjectRestore: jest.fn() };
 });
 jest.mock("@/lib/middleware/plan-enforcement", () => ({ checkProjectLimit: jest.fn() }));
 const mockInsertWithinLimit = jest.fn();
 jest.mock("@/lib/middleware/plan-limit-lock", () => ({ insertWithinPlanLimit: (...a: unknown[]) => mockInsertWithinLimit(...a) }));
 import { requireUserAuthContext } from "@/lib/auth-context";
 import { hasPermissionForUser, isImpersonatedSession } from "@/lib/rbac/middleware";
-import { restoreProject } from "@/lib/deletion/project";
+import { restoreProjectRows as restoreProject, finishProjectRestore } from "@/lib/deletion/project";
 import { POST } from "./route";
 
 const ID = "93ce4a2e-7846-5b60-b753-1ab3563f0fce";
@@ -32,13 +32,15 @@ describe("restore project", () => {
     (requireUserAuthContext as jest.Mock).mockResolvedValue({ userId: "u", isCliAuth: false });
     mockRows.mockResolvedValue([{ organizationId: "org-1", status: "deleted" }]);
     (hasPermissionForUser as jest.Mock).mockResolvedValue(true);
-    mockInsertWithinLimit.mockImplementation(async (opts: { insert: () => Promise<unknown> }) => ({ ok: true, row: await opts.insert() }));
+    mockInsertWithinLimit.mockImplementation(async (opts: { insert: (executor: unknown) => Promise<unknown> }) => ({ ok: true, row: await opts.insert("tx") }));
   });
 
   it("restores for someone who may delete projects (owners and admins)", async () => {
     expect((await call()).status).toBe(200);
     expect(hasPermissionForUser).toHaveBeenCalledWith("u", "project", "delete", { organizationId: "org-1" });
-    expect(restoreProject).toHaveBeenCalledWith({ projectId: ID, actorUserId: "u" });
+    expect(restoreProject).toHaveBeenCalledWith({ projectId: ID, actorUserId: "u" }, "tx");
+    // The commit-dependent work runs after the plan-limit transaction, not inside it.
+    expect(finishProjectRestore).toHaveBeenCalledTimes(1);
   });
 
   it("refuses without permission, cross-origin and CLI tokens, and 404s a project that is not deleted", async () => {
