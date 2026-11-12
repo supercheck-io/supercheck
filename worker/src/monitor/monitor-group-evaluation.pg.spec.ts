@@ -209,6 +209,17 @@ suite('MonitorEvaluator group receipt (PostgreSQL)', () => {
       },
       aggregationNotificationProcessed: false,
     });
+    // An older worker wrote its receipt into one row only.
+    await db
+      .update(schema.monitorResults)
+      .set({ details: { responseBody: 'body' } })
+      .where(
+        and(
+          eq(schema.monitorResults.monitorId, monitorId),
+          eq(schema.monitorResults.executionGroupId, 'old'),
+          eq(schema.monitorResults.location, 'us'),
+        ),
+      );
     const prepared = await evaluator.prepareGroupEvaluation(
       monitorId,
       'old',
