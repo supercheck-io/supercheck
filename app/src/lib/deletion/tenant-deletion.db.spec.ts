@@ -551,7 +551,9 @@ describe("review fixes: races, retries and ordering", () => {
 
   it("a crash after the provider accepted the cancellation still reinstates when the deletion is cancelled", async () => {
     cloud();
-    mockPolarGet.mockRejectedValueOnce(new Error("crash")).mockResolvedValue({ cancel_at_period_end: true, status: "active" });
+    // The change reached the provider but its answer was lost: the write may have applied.
+    mockPolarGet.mockResolvedValueOnce({ cancel_at_period_end: false, status: "active" }).mockResolvedValue({ cancel_at_period_end: true, status: "active" });
+    mockPolarUpdate.mockRejectedValueOnce(new Error("crash"));
     const seeded = await seedOrg({ subscription: "sub_r1" });
     const requested = await requestOrganizationDeletion({ organizationId: seeded.orgId, actorUserId: seeded.ownerId, guard: { ownerUserId: seeded.ownerId } });
     expect(requested?.billing).toBe("retry");
@@ -751,5 +753,16 @@ describe("review fixes: project guards, restore quotas, reinstate retry", () => 
     expect(state?.graceDays).toBe(3);
     expect(JSON.stringify(state)).not.toContain("secret driver detail");
     expect(state).not.toHaveProperty("requestedByUserId");
+  });
+  it("a provider failure before any change never makes the owner's own cancellation count as ours", async () => {
+    cloud();
+    mockPolarGet.mockRejectedValueOnce(new Error("polar down")).mockResolvedValue({ cancel_at_period_end: true, status: "active" }); // the owner had turned renewal off
+    const seeded = await seedOrg({ subscription: "sub_r13" });
+    await requestOrganizationDeletion({ organizationId: seeded.orgId, actorUserId: seeded.ownerId, guard: { ownerUserId: seeded.ownerId } });
+    expect((await orgRow(seeded.orgId)).deletion_meta.billingCancelAttempted).toBeUndefined();
+    await retryPendingBillingCancels(); // now sees "already": the owner's, not ours
+    expect((await orgRow(seeded.orgId)).deletion_meta.billingCancelRequested).toBeUndefined();
+    await cancelOrganizationDeletion({ organizationId: seeded.orgId, actorUserId: seeded.ownerId });
+    expect(mockPolarUpdate).not.toHaveBeenCalled();
   });
 });

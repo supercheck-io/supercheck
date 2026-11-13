@@ -10,7 +10,7 @@ import { getNextRunDate } from "@/lib/scheduler/cron-utils";
 import { isEmailConfigured } from "@/lib/email-service";
 import { isSelfHosted } from "@/lib/feature-flags";
 import {
-  BillingCancellationError, cancelSubscriptionAtPeriodEnd, flushFinalUsage, hasCancellableSubscription, reinstateSubscription,
+  BillingCancellationError, BillingPreWriteError, cancelSubscriptionAtPeriodEnd, flushFinalUsage, hasCancellableSubscription, reinstateSubscription,
 } from "./billing";
 import { closeDeletionJobs, expediteDeletionJob, insertDeletionJob } from "./jobs";
 import { sendOrganizationNotice } from "./notices";
@@ -190,7 +190,11 @@ export async function settleBillingOnRequest(organizationId: string): Promise<"c
     return result.status;
   } catch (error) {
     if (!(error instanceof BillingCancellationError)) throw error;
-    await dropClaim(); // the attempt marker stays (the provider may have accepted it); the sweep may retry at once
+    if (error instanceof BillingPreWriteError && !attemptedBefore) {
+      // Nothing reached the provider: this call never cancelled anything, so it must not later count as our cancellation.
+      await db.update(organization).set({ deletionMeta: sql`${organization.deletionMeta} - 'billingCancelClaimAt' - 'billingCancelAttempted'` })
+        .where(and(eq(organization.id, organizationId), ownClaim)).catch(() => undefined);
+    } else await dropClaim(); // the attempt marker stays (the provider may have accepted it); the sweep may retry at once
     return "retry";
   }
 }
