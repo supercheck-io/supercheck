@@ -11,6 +11,7 @@ import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { loadCreators } from '@/lib/creators';
 import { logAuditEvent } from '@/lib/audit-logger';
 
+import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 export async function GET(
   request: NextRequest,
   routeContext: { params: Promise<{ id: string }> }
@@ -161,10 +162,7 @@ export async function PATCH(
 
     const canUpdate = checkPermissionWithContext("job", "update", context);
     if (!canUpdate) {
-      return NextResponse.json(
-        { error: "Insufficient permissions" },
-        { status: 403 }
-      );
+      return await permissionDeniedResponse(organizationId, "Insufficient permissions");
     }
     if (!isUuid(jobId)) return NextResponse.json({ error: "Job not found" }, { status: 404 });
 
@@ -241,10 +239,7 @@ export async function PUT(
 
     const canUpdate = checkPermissionWithContext("job", "update", context);
     if (!canUpdate) {
-      return NextResponse.json(
-        { error: "Insufficient permissions" },
-        { status: 403 }
-      );
+      return await permissionDeniedResponse(context.organizationId, "Insufficient permissions");
     }
     if (!isUuid(params.id)) return NextResponse.json({ error: "Job not found" }, { status: 404 });
 
@@ -314,7 +309,7 @@ export async function DELETE(
     const { id } = await routeContext.params;
     const context = await requireAuthContext();
     if (!checkPermissionWithContext("job", "delete", context)) {
-      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
+      return await permissionDeniedResponse(context.organizationId, "Insufficient permissions");
     }
     if (!isUuid(id)) return NextResponse.json({ error: "Job not found" }, { status: 404 });
     const result = await deleteJobWithContext(id, context);

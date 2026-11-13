@@ -6,6 +6,7 @@ import { requirePermissions } from "@/lib/rbac/middleware";
 import { z } from "zod";
 import { deleteComponent as deleteComponentService } from "@/lib/status-pages/service";
 
+import { permissionDeniedResult } from "@/lib/deletion/org-state";
 // UUID validation schema
 const uuidSchema = z.string().uuid();
 
@@ -40,10 +41,7 @@ export async function deleteComponent(id: string, statusPageId: string) {
       console.warn(
         `[SECURITY] User ${userId} attempted to delete component without permission`
       );
-      return {
-        success: false,
-        message: "Insufficient permissions to delete components",
-      };
+      return await permissionDeniedResult(organizationId, "Insufficient permissions to delete components");
     }
 
     const result = await deleteComponentService(

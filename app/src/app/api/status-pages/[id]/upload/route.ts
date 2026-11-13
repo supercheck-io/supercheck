@@ -7,6 +7,7 @@ import { statusPages } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { requirePermissions } from "@/lib/rbac/middleware";
+import { isOrgPendingDeletionError, pendingDeletionResponse } from "@/lib/deletion/org-state";
 import { v4 as uuidv4 } from "uuid";
 import { sniffImageType } from "@/lib/image-sniff";
 import { apiKeyRateLimiter, createRateLimitHeaders } from "@/lib/api-key-rate-limiter";
@@ -219,6 +220,7 @@ export async function POST(request: Request, context: RouteContext) {
         { status: authErrorStatus(error) }
       );
     }
+    if (isOrgPendingDeletionError(error)) return pendingDeletionResponse();
     if (error instanceof Error && error.message.includes("Access denied")) {
       return NextResponse.json({ success: false, message: "Insufficient permissions" }, { status: 403 });
     }

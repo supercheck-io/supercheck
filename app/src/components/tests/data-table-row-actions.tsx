@@ -87,7 +87,7 @@ export function DataTableRowActions<TData>({
 
       if (!result.success) {
         // Check for specific error codes
-        if (result.errorCode === 409) {
+        if ("errorCode" in result && result.errorCode === 409) {
           toast.error("Cannot Delete Test", {
             description:
               result.error || "This test is currently used in one or more jobs or synthetic monitors.",

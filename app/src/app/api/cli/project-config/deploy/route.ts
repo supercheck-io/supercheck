@@ -28,6 +28,7 @@ import {
 } from "@/lib/sre/integration-bindings";
 import { createLogger } from "@/lib/logger/index";
 
+import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 export const dynamic = "force-dynamic";
 
 const logger = createLogger({ module: "cli-project-config-deploy" }) as {
@@ -91,10 +92,7 @@ export async function POST(request: NextRequest) {
     );
 
     if (!canUpdateNotifications || !canConfigureSreConnectors) {
-      return NextResponse.json(
-        { error: "Insufficient permissions" },
-        { status: 403 },
-      );
+      return await permissionDeniedResponse(context.organizationId, "Insufficient permissions");
     }
 
     let body: unknown;
@@ -114,10 +112,7 @@ export async function POST(request: NextRequest) {
       ) &&
       !canCreateNotifications
     ) {
-      return NextResponse.json(
-        { error: "Insufficient permissions to create notification providers" },
-        { status: 403 },
-      );
+      return await permissionDeniedResponse(context.organizationId, "Insufficient permissions to create notification providers");
     }
 
     if (!analysis.valid) {

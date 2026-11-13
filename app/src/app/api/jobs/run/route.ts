@@ -32,9 +32,9 @@ import {
   buildExecutionPolicyFailureResponse,
 } from "@/lib/execution-api-responses";
 import { requireSameOriginRequest } from "@/lib/security/same-origin";
-import { pendingDeletionResponse, isOrgPendingDeletion } from "@/lib/deletion/org-state";
 import { isDeletingError } from "@/lib/deletion/errors";
 
+import { isOrgPendingDeletion, pendingDeletionResponse, permissionDeniedResponse } from "@/lib/deletion/org-state";
 export async function POST(request: NextRequest) {
   let jobId: string | null = null;
   let runId: string | null = null;
@@ -124,10 +124,7 @@ export async function POST(request: NextRequest) {
     
     if (!canTriggerJobs) {
       console.warn(`User ${userId} attempted to trigger job ${jobId} without TRIGGER_JOBS permission`);
-      return NextResponse.json(
-        { error: "Insufficient permissions to trigger jobs" },
-        { status: 403 }
-      );
+      return await permissionDeniedResponse(organizationId, "Insufficient permissions to trigger jobs");
     }
 
     // SECURITY: Validate active subscription before allowing execution.

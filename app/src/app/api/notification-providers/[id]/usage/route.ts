@@ -26,10 +26,7 @@ export async function GET(
     const canView = checkPermissionWithContext("notification", "view", authContext);
 
     if (!canView) {
-      return NextResponse.json(
-        { error: "Insufficient permissions" },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
     }
 
     // Verify the provider belongs to this organization and project

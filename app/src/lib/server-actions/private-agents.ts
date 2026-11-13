@@ -14,6 +14,7 @@ import { checkPermissionWithContext, isImpersonatedSession } from "@/lib/rbac/mi
 import { hashApiKey } from "@/lib/security/api-key-hash";
 import { db } from "@/utils/db";
 
+import { permissionDeniedResult } from "@/lib/deletion/org-state";
 const privateAgentInputSchema = z.object({
   name: z.string().trim().min(1, "Title is required").max(100),
   region: z.string().trim().max(50).optional().nullable(),
@@ -153,7 +154,7 @@ export async function registerPrivateAgent(input: z.infer<typeof privateAgentInp
 
     const context = await requireConnectorConfigurationPermission();
     if (!context.allowed) {
-      return { success: false, error: "Insufficient permissions to register Private Agents" };
+      return await permissionDeniedResult(context.organizationId, "Insufficient permissions to register Private Agents");
     }
     // The registration token outlives the session and is attributed to the impersonated user.
     if (await isImpersonatedSession()) {
@@ -233,7 +234,7 @@ export async function rotatePrivateAgentToken(input: z.infer<typeof privateAgent
 
     const context = await requireConnectorConfigurationPermission();
     if (!context.allowed) {
-      return { success: false, error: "Insufficient permissions to rotate Private Agent tokens" };
+      return await permissionDeniedResult(context.organizationId, "Insufficient permissions to rotate Private Agent tokens");
     }
     // A rotated token becomes a runtime credential that outlives the impersonated session.
     if (await isImpersonatedSession()) {
@@ -324,7 +325,7 @@ export async function disablePrivateAgent(input: z.infer<typeof privateAgentIdSc
 
     const context = await requireConnectorConfigurationPermission();
     if (!context.allowed) {
-      return { success: false, error: "Insufficient permissions to disable Private Agents" };
+      return await permissionDeniedResult(context.organizationId, "Insufficient permissions to disable Private Agents");
     }
 
     const agent = await db.transaction(async (tx) => {

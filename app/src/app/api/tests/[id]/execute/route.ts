@@ -32,7 +32,7 @@ import {
   buildExecutionPolicyFailureResponse,
 } from "@/lib/execution-api-responses";
 import { requireSameOriginRequest } from "@/lib/security/same-origin";
-import { pendingDeletionResponse, isOrgPendingDeletion } from "@/lib/deletion/org-state";
+import { isOrgPendingDeletion, pendingDeletionResponse, permissionDeniedResponse } from "@/lib/deletion/org-state";
 declare const Buffer: {
   from(data: string, encoding: string): { toString(encoding: string): string };
 };
@@ -64,10 +64,7 @@ export async function POST(request: NextRequest, context: ExecuteContext) {
     const canExecute = checkPermissionWithContext("test", "run", authCtx);
 
     if (!canExecute) {
-      return NextResponse.json(
-        { error: "Insufficient permissions to execute tests" },
-        { status: 403 }
-      );
+      return await permissionDeniedResponse(organizationId, "Insufficient permissions to execute tests");
     }
 
     if (!isUuid(testId)) return NextResponse.json({ error: "Test not found" }, { status: 404 });

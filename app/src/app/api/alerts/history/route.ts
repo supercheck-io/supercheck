@@ -9,6 +9,7 @@ import { enqueueSreAlertTriageJob } from '@/sre/lib/background-alert-triage-queu
 import { isUuid } from '@/lib/uuid';
 import { checkSreAlertHistoryWriteRateLimit } from '@/lib/sre/sre-rate-limiter';
 
+import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 export async function GET(request: NextRequest) {
   try {
     const url = new URL(request.url);
@@ -290,10 +291,7 @@ export async function POST(request: NextRequest) {
       checkPermissionWithContext('sre_incident', 'update', projectContext);
 
     if (!canManage) {
-      return NextResponse.json(
-        { error: 'Insufficient permissions to create alert history' },
-        { status: 403 }
-      );
+      return await permissionDeniedResponse(projectContext.organizationId, 'Insufficient permissions to create alert history');
     }
 
     let body;

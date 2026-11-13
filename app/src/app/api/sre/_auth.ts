@@ -7,6 +7,7 @@ import { checkSreIncidentUpdateRateLimit } from "@/lib/sre/sre-rate-limiter";
 import { requireSameOriginRequest } from "@/lib/security/same-origin";
 import { subscriptionService, SubscriptionAccessDeniedError } from "@/lib/services/subscription-service";
 
+import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 /**
  * Call after authentication and RBAC, before starting billable SRE work. A free trial counts its own
  * investigations, so work that is not counted against that allowance (chat, evidence briefs) passes
@@ -85,10 +86,7 @@ export async function requireSreApiPermissions(
   if (deniedPermission) {
     return {
       success: false,
-      response: NextResponse.json(
-        { error: "Insufficient permissions for SRE API request" },
-        { status: 403 },
-      ),
+      response: await permissionDeniedResponse(context.organizationId, "Insufficient permissions for SRE API request"),
     };
   }
 

@@ -5,6 +5,7 @@ import { logAuditEvent } from "@/lib/audit-logger";
 import { isUuid } from "@/lib/uuid";
 import { requestMonitorDeletion } from "@/lib/deletion/request";
 
+import { permissionDeniedResult } from "@/lib/deletion/org-state";
 type MonitorDeletionResult = { success: boolean; message?: string; error?: string; details?: string };
 
 /**
@@ -16,7 +17,7 @@ export async function deleteMonitorWithContext(monitorId: string, context: Proje
   const { userId, project, organizationId, orgPendingDeletion } = context;
   if (!checkPermissionWithContext("monitor", "delete", { userId, organizationId, orgPendingDeletion, project })) {
     console.warn(`[DELETE_MONITOR] User ${userId} attempted to delete monitor ${monitorId} without permission`);
-    return { success: false, error: "Insufficient permissions to delete monitors" };
+    return await permissionDeniedResult(organizationId, "Insufficient permissions to delete monitors");
   }
   if (!isUuid(monitorId)) return { success: false, error: "Monitor not found or access denied" };
   try {

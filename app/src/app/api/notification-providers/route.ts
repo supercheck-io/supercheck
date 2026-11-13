@@ -22,6 +22,7 @@ import {
 import type { NotificationProviderType } from "@/db/schema";
 import { loadCreators } from "@/lib/creators";
 
+import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 const MAX_PROVIDER_NAME_LENGTH = 255;
 const MAX_PROVIDER_CONFIG_LENGTH = 20_000;
 
@@ -37,10 +38,7 @@ export async function GET() {
     const canView = checkPermissionWithContext("notification", "view", context);
 
     if (!canView) {
-      return NextResponse.json(
-        { error: "Insufficient permissions" },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
     }
 
     // Get notification providers scoped to the project
@@ -145,10 +143,7 @@ export async function POST(req: NextRequest) {
     const canCreate = checkPermissionWithContext("notification", "create", context);
 
     if (!canCreate) {
-      return NextResponse.json(
-        { error: "Insufficient permissions to create notification providers" },
-        { status: 403 }
-      );
+      return await permissionDeniedResponse(organizationId, "Insufficient permissions to create notification providers");
     }
 
     // Transform the data to match the database schema

@@ -12,7 +12,12 @@
  */
 
 // Mock Next.js server before any imports
-jest.mock("@/lib/deletion/org-state", () => ({ isOrgPendingDeletion: jest.fn().mockResolvedValue(false), isProjectDeleted: jest.fn().mockResolvedValue(false) }));
+jest.mock("@/lib/deletion/org-state", () => ({
+  isOrgPendingDeletion: jest.fn().mockResolvedValue(false),
+  isProjectDeleted: jest.fn().mockResolvedValue(false),
+  OrgPendingDeletionError: class OrgPendingDeletionError extends Error { code = "ORG_PENDING_DELETION"; },
+  pendingDeletionResponse: jest.fn(() => ({ status: 403, json: async () => ({ code: "ORG_PENDING_DELETION" }) })),
+}));
 jest.mock("next/server", () => ({
   NextRequest: jest.fn(),
   NextResponse: {
@@ -1123,6 +1128,28 @@ describe("RBAC Middleware", () => {
       const res = await forbiddenOrNotFound(testUserId, testOrgId, "forbidden", "missing");
       expect(res.status).toBe(403);
       expect(await res.json()).toEqual({ error: "forbidden" });
+    });
+
+    it("tells a member of an organization pending deletion why the write was refused", async () => {
+      const { isOrgPendingDeletion } = jest.requireMock("@/lib/deletion/org-state");
+      isOrgPendingDeletion.mockResolvedValueOnce(true);
+      mockIsSuperAdmin.mockResolvedValue(false);
+      mockNormalizeRole.mockReturnValue(Role.ORG_OWNER);
+      membership([{ role: "org_owner" }]);
+      const res = await forbiddenOrNotFound(testUserId, testOrgId, "forbidden", "missing");
+      expect(res.status).toBe(403);
+      expect(await res.json()).toEqual({ code: "ORG_PENDING_DELETION" });
+    });
+
+    it("never reveals the pending state to someone with no standing in the organization", async () => {
+      const { isOrgPendingDeletion } = jest.requireMock("@/lib/deletion/org-state");
+      isOrgPendingDeletion.mockResolvedValue(true);
+      mockIsSuperAdmin.mockResolvedValue(false);
+      membership([]);
+      const res = await forbiddenOrNotFound(testUserId, "other-org", "forbidden", "missing");
+      isOrgPendingDeletion.mockResolvedValue(false);
+      expect(res.status).toBe(404);
+      expect(await res.json()).toEqual({ error: "missing" });
     });
 
     it("answers 403 to a super admin", async () => {

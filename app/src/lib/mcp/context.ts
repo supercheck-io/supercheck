@@ -7,6 +7,7 @@ import {
   checkPermissionWithContext,
   resolveProjectPermissionContext,
 } from "@/lib/rbac/middleware";
+import { PENDING_DELETION_ALLOWED_ACTIONS } from "@/lib/rbac/permissions";
 import { MCP_PROJECT_CLAIM, MCP_READ_SCOPE, MCP_SCOPES } from "./config";
 
 /** What a tool call runs as: one user, in one project, through one client. */
@@ -21,6 +22,9 @@ export interface McpCallContext {
   /** Scopes this call may use: what the consent covers and the token carries. Always includes mcp:read. */
   scopes: string[];
 }
+
+/** Reason of a denial caused by the organization being pending deletion; tools answer it with its own code. */
+export const MCP_ORG_PENDING_REASON = "org_pending_deletion";
 
 export class McpAccessDeniedError extends Error {
   constructor(readonly reason: string) {
@@ -130,6 +134,7 @@ export function assertCan(
   scope: string,
 ): void {
   if (!context.scopes.includes(scope)) throw new McpAccessDeniedError(`missing_scope_${scope}`);
+  if (context.orgPendingDeletion && !PENDING_DELETION_ALLOWED_ACTIONS.has(action)) throw new McpAccessDeniedError(MCP_ORG_PENDING_REASON);
   const allowed = checkPermissionWithContext(resource, action, {
     userId: context.userId,
     organizationId: context.organizationId,

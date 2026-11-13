@@ -29,7 +29,7 @@ import { isSuperAdmin } from "./super-admin";
 import { getClientIP } from "@/lib/session-security";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { getCachedAuthSession } from "@/lib/session-cache";
-import { isOrgPendingDeletion, isProjectDeleted } from "@/lib/deletion/org-state";
+import { isOrgPendingDeletion, isProjectDeleted, OrgPendingDeletionError, pendingDeletionResponse } from "@/lib/deletion/org-state";
 
 // getCachedAuthSession imported from session-cache.ts (DRY principle)
 
@@ -285,9 +285,20 @@ export async function forbiddenOrNotFound(
   const hasStanding =
     !!organizationId &&
     ((await isSuperAdmin(userId)) || !!(await getUserOrgRole(userId, organizationId)));
-  return hasStanding
-    ? NextResponse.json({ error: forbiddenMessage }, { status: 403 })
-    : NextResponse.json({ error: notFoundMessage }, { status: 404 });
+  if (!hasStanding) return NextResponse.json({ error: notFoundMessage }, { status: 404 });
+  // A member of an organization pending deletion learns why the write was refused.
+  if (await isOrgPendingDeletion(organizationId)) return pendingDeletionResponse();
+  return NextResponse.json({ error: forbiddenMessage }, { status: 403 });
+}
+
+/**
+ * True when a denial of this action is caused by the organization pending deletion and the caller is a member (so the
+ * state is not revealed to outsiders). Only called after a denial, so it adds nothing to the allowed path.
+ */
+async function deniedByPendingDeletion(userId: string, organizationId: string | undefined, action: string): Promise<boolean> {
+  if (!organizationId || PENDING_DELETION_ALLOWED_ACTIONS.has(action)) return false;
+  if (!(await isOrgPendingDeletion(organizationId))) return false;
+  return (await isSuperAdmin(userId)) || !!(await getUserOrgRole(userId, organizationId));
 }
 
 // ============================================================================
@@ -490,6 +501,7 @@ export async function requirePermissions(
           context
         );
         if (!hasAccess) {
+          if (await deniedByPendingDeletion(authResult.userId, context?.organizationId, action)) throw new OrgPendingDeletionError();
           throw new Error(
             `Access denied: Missing ${resource}:${action} permission`
           );
@@ -499,6 +511,7 @@ export async function requirePermissions(
 
     return authResult;
   } catch (error) {
+    if (error instanceof OrgPendingDeletionError) throw error;
     throw new Error(
       `Permission check failed: ${
         error instanceof Error ? error.message : "Unknown error"
@@ -782,6 +795,9 @@ export function withPermissions(
           success: false,
         });
 
+        for (const permission of permissionArray) {
+          if (await deniedByPendingDeletion(userId, permission.context?.organizationId, permission.actions[0])) return pendingDeletionResponse();
+        }
         return NextResponse.json(
           { error: "Access denied: Insufficient permissions" },
           { status: 403 }

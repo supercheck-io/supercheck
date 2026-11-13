@@ -14,6 +14,7 @@ import { checkSreStatusDraftRateLimit } from "@/lib/sre/sre-rate-limiter";
 import { generateStatusUpdateDraft } from "@/lib/sre/status-update-draft";
 import { db } from "@/utils/db";
 
+import { permissionDeniedResult } from "@/lib/deletion/org-state";
 const logger = createLogger({ module: "sre-status-update-draft" }) as { error: (data: unknown, message?: string) => void };
 
 export type SreStatusDraftResult = { success: true; text: string } | { success: false; error: string };
@@ -25,7 +26,7 @@ export async function draftSreStatusUpdate(input: { incidentId: string }): Promi
     if (!parsed.success) return { success: false, error: "Invalid incident" };
     const { userId, organizationId, orgPendingDeletion, project } = await requireProjectContext();
     if (!checkPermissionWithContext("sre_incident", "update", { userId, organizationId, orgPendingDeletion, project })) {
-      return { success: false, error: "Insufficient permissions to draft an update" };
+      return await permissionDeniedResult(organizationId, "Insufficient permissions to draft an update");
     }
     const [incident] = await db
       .select({

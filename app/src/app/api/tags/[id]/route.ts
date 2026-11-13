@@ -8,6 +8,7 @@ import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-context';
 import { createLogger } from '@/lib/logger/index';
 
+import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 const logger = createLogger({ module: 'tags' }) as {
   debug: (data: unknown, msg?: string) => void;
   info: (data: unknown, msg?: string) => void;
@@ -56,10 +57,7 @@ export async function DELETE(
       });
     
       if (!canDelete) {
-        return NextResponse.json(
-          { error: 'Insufficient permissions to delete this tag' },
-          { status: 403 }
-        );
+        return await permissionDeniedResponse(organizationId, 'Insufficient permissions to delete this tag');
       }
 
       // Check if the tag is being used in any tests
@@ -146,10 +144,7 @@ export async function GET(
     const canView = checkPermissionWithContext('tag', 'view', context);
 
     if (!canView) {
-      return NextResponse.json(
-        { error: 'Insufficient permissions' },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
     }
 
     const resolvedParams = await params;
@@ -200,10 +195,7 @@ export async function PUT(
     const canUpdate = checkPermissionWithContext('tag', 'update', context);
 
     if (!canUpdate) {
-      return NextResponse.json(
-        { error: 'Insufficient permissions to update tags' },
-        { status: 403 }
-      );
+      return await permissionDeniedResponse(organizationId, 'Insufficient permissions to update tags');
     }
 
     const resolvedParams = await params;

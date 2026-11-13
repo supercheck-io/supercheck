@@ -1,5 +1,6 @@
 "use server";
 
+import { permissionDeniedResult } from "@/lib/deletion/org-state";
 import { createHash } from "crypto";
 
 import { and, eq } from "drizzle-orm";
@@ -48,7 +49,7 @@ export async function createSreInvestigationReportSnapshot(input: z.input<typeof
     });
 
     if (!canInvestigate) {
-      return { success: false as const, error: "Insufficient permissions to save SRE investigation reports" };
+      return await permissionDeniedResult(organizationId, "Insufficient permissions to save SRE investigation reports");
     }
 
     const reportBundle = await getSreInvestigationReportExportForRun({

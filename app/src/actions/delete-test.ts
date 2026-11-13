@@ -10,6 +10,7 @@ import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { removeServiceResourceLinks } from "@/lib/resource-deletion/linked-records";
 
+import { permissionDeniedResult } from "@/lib/deletion/org-state";
 export async function deleteTest(testId: string) {
   try {
     console.log("Deleting test with ID:", testId);
@@ -36,10 +37,7 @@ export async function deleteTest(testId: string) {
       console.warn(
         `User ${userId} attempted to delete test ${testId} without permission`
       );
-      return {
-        success: false,
-        error: "Insufficient permissions to delete tests",
-      };
+      return await permissionDeniedResult(organizationId, "Insufficient permissions to delete tests");
     }
 
 

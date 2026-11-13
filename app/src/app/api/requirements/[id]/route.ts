@@ -10,6 +10,7 @@ import {
   updateRequirementWithRelations,
 } from "@/lib/requirements/service";
 
+import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 type RouteParams = { params: Promise<{ id: string }> };
 
 const notFound = () =>
@@ -39,10 +40,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
   try {
     const context = await requireAuthContext();
     if (!checkPermissionWithContext("requirement", "update", context)) {
-      return NextResponse.json(
-        { error: "Insufficient permissions to update requirements" },
-        { status: 403 }
-      );
+      return await permissionDeniedResponse(context.organizationId, "Insufficient permissions to update requirements");
     }
 
     const { id } = await params;
@@ -86,10 +84,7 @@ export async function DELETE(_request: NextRequest, { params }: RouteParams) {
   try {
     const context = await requireAuthContext();
     if (!checkPermissionWithContext("requirement", "delete", context)) {
-      return NextResponse.json(
-        { error: "Insufficient permissions to delete requirements" },
-        { status: 403 }
-      );
+      return await permissionDeniedResponse(context.organizationId, "Insufficient permissions to delete requirements");
     }
 
     const { id } = await params;

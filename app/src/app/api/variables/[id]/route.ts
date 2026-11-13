@@ -21,6 +21,7 @@ import { getS3Client } from "@/lib/s3-proxy";
 import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { updateVariableSchema } from "@/lib/validations/variable";
 
+import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 const FILE_VARIABLES_BUCKET = process.env.S3_PROJECT_DATA_FILES_BUCKET_NAME || "project-data-files";
 
 // Drizzle wraps driver errors; the Postgres code lives on `cause`.
@@ -94,10 +95,7 @@ export async function PUT(
 
     const canUpdate = checkPermissionWithContext("variable", "update", context);
     if (!canUpdate) {
-      return NextResponse.json(
-        { error: "Insufficient permissions" },
-        { status: 403 }
-      );
+      return await permissionDeniedResponse(context.organizationId, "Insufficient permissions");
     }
 
     // Verify variable exists and belongs to project
@@ -278,10 +276,7 @@ export async function DELETE(
 
     const canDelete = checkPermissionWithContext("variable", "delete", context);
     if (!canDelete) {
-      return NextResponse.json(
-        { error: "Insufficient permissions" },
-        { status: 403 }
-      );
+      return await permissionDeniedResponse(context.organizationId, "Insufficient permissions");
     }
 
     // Verify variable exists and belongs to project

@@ -45,6 +45,7 @@ import {
   mapProviderError,
 } from "@/lib/ai/ai-provider";
 
+import { permissionDeniedResult } from "@/lib/deletion/org-state";
 const BUCKET_NAME =
   process.env.S3_REQUIREMENTS_BUCKET_NAME || "test-requirement-artifacts";
 
@@ -592,10 +593,7 @@ export async function extractRequirementsFromDocument(
     });
 
     if (!canCreate) {
-      return {
-        success: false,
-        error: "Insufficient permissions to create requirements",
-      };
+      return await permissionDeniedResult(organizationId, "Insufficient permissions to create requirements");
     }
 
     // AI extraction is a paid feature, gated like the other AI routes.

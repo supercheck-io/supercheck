@@ -20,6 +20,7 @@ import { incidentScheduleFields } from "@/lib/incident-schedule";
 
 import { updateIncidentStatusSchema, type UpdateIncidentStatusData } from "@/lib/validations/incident-status";
 
+import { permissionDeniedResult } from "@/lib/deletion/org-state";
 export type { UpdateIncidentStatusData } from "@/lib/validations/incident-status";
 
 export async function updateIncidentStatus(
@@ -48,10 +49,7 @@ export async function updateIncidentStatus(
       console.warn(
         `[SECURITY] User ${userId} attempted to update incident without permission`,
       );
-      return {
-        success: false,
-        message: "Insufficient permissions to update incidents",
-      };
+      return await permissionDeniedResult(organizationId, "Insufficient permissions to update incidents");
     }
 
     // Validate the data

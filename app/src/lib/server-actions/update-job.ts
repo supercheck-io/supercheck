@@ -26,6 +26,7 @@ import {
   isTestTypeCompatibleWithJobType,
 } from "@/lib/script-type-validator";
 
+import { permissionDeniedResult } from "@/lib/deletion/org-state";
 // Limits shared by POST /api/jobs and updateJob. Name matches jobs.name varchar(255); description is unbounded text in the DB.
 export const jobNameSchema = z.string().trim().min(1, { message: "Title is required." }).max(255, { message: "Title must be at most 255 characters." });
 export const jobDescriptionSchema = z.string().max(2000, { message: "Description must be at most 2000 characters." });
@@ -97,10 +98,7 @@ export async function updateJob(data: UpdateJobData, contextOverride?: UpdateJob
       console.warn(
         `User ${userId} attempted to update job ${data.jobId} without EDIT_JOBS permission`
       );
-      return {
-        success: false,
-        message: "Insufficient permissions to edit jobs",
-      };
+      return await permissionDeniedResult(organizationId, "Insufficient permissions to edit jobs");
     }
 
 

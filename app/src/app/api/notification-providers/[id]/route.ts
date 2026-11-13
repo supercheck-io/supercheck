@@ -27,6 +27,7 @@ import {
 } from "@/lib/notification-providers/validation";
 import type { NotificationProviderType } from "@/db/schema";
 
+import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 export async function GET(
   req: NextRequest,
   context: { params: Promise<{ id: string }> }
@@ -40,10 +41,7 @@ export async function GET(
     const canView = checkPermissionWithContext("notification", "view", authContext);
 
     if (!canView) {
-      return NextResponse.json(
-        { error: "Insufficient permissions" },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
     }
 
     if (!isUuid((await context.params).id)) return NextResponse.json({ error: "Notification provider not found" }, { status: 404 });
@@ -117,10 +115,7 @@ export async function PUT(
     const canUpdate = checkPermissionWithContext("notification", "update", authContext);
 
     if (!canUpdate) {
-      return NextResponse.json(
-        { error: "Insufficient permissions to update notification providers" },
-        { status: 403 }
-      );
+      return await permissionDeniedResponse(organizationId, "Insufficient permissions to update notification providers");
     }
 
     if (!isUuid((await context.params).id)) return NextResponse.json({ error: "Notification provider not found" }, { status: 404 });
@@ -346,10 +341,7 @@ export async function DELETE(
     const canDelete = checkPermissionWithContext("notification", "delete", authContext);
 
     if (!canDelete) {
-      return NextResponse.json(
-        { error: "Insufficient permissions to delete notification providers" },
-        { status: 403 }
-      );
+      return await permissionDeniedResponse(organizationId, "Insufficient permissions to delete notification providers");
     }
 
     if (!isUuid((await context.params).id)) return NextResponse.json({ error: "Notification provider not found" }, { status: 404 });

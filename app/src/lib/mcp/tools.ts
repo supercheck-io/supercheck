@@ -30,7 +30,7 @@ import {
 import { db } from "@/utils/db";
 import { TEST_PRIORITIES } from "@/lib/validations/common";
 import { logAuditEvent } from "@/lib/audit-logger";
-import { assertCan, assertCanView, McpAccessDeniedError, type McpCallContext } from "./context";
+import { assertCan, assertCanView, MCP_ORG_PENDING_REASON, McpAccessDeniedError, type McpCallContext } from "./context";
 import { UNTRUSTED } from "./config";
 import { McpToolFailure, registerSreTools, type ToolRegistrar } from "./sre-tools";
 import { getDisplayStatus } from "@/lib/sre/incident-status-display";
@@ -158,6 +158,7 @@ export function registerMcpTools(server: McpServer, ctx: McpCallContext): void {
           return ok(await run(args));
         } catch (error) {
           success = false;
+          if (error instanceof McpAccessDeniedError && error.reason === MCP_ORG_PENDING_REASON) return fail("org_pending_deletion", "This organization is scheduled for deletion and is read-only. The owner can cancel the deletion.");
           if (error instanceof McpAccessDeniedError) return fail("forbidden", "You cannot do this in this project");
           if (error instanceof McpToolFailure) return fail(error.code, error.message);
           console.error("mcp tool failed", name, error);

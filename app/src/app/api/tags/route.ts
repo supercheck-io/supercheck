@@ -5,6 +5,7 @@ import { eq, and } from 'drizzle-orm';
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-context';
 
+import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 export async function GET() {
   try {
     const context = await requireAuthContext();
@@ -58,10 +59,7 @@ export async function POST(request: NextRequest) {
     const canCreate = checkPermissionWithContext('tag', 'create', context);
     
     if (!canCreate) {
-      return NextResponse.json(
-        { error: 'Insufficient permissions to create tags' },
-        { status: 403 }
-      );
+      return await permissionDeniedResponse(context.organizationId, 'Insufficient permissions to create tags');
     }
 
     if (!name || typeof name !== 'string') {

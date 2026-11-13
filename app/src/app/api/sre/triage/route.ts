@@ -9,6 +9,7 @@ import { isSreTriageAgentEnabled } from "@/sre/lib/feature-gates";
 import { runSreIncidentTriage } from "@/sre/lib/triage-runner";
 import { requireSreSameOriginRequest, requireSreSubscription } from "../_auth";
 
+import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 const triageRequestSchema = z.object({
   incidentId: z.string().uuid(),
 });
@@ -66,7 +67,7 @@ export async function POST(request: NextRequest) {
   const canRunInvestigation = checkPermissionWithContext("sre_investigation", "investigate", permissionContext);
 
   if (!canInvestigateIncident || !canRunInvestigation) {
-    return NextResponse.json({ error: "Insufficient permissions to run SRE triage" }, { status: 403 });
+    return await permissionDeniedResponse(context.organizationId, "Insufficient permissions to run SRE triage");
   }
 
   const subscriptionError = await requireSreSubscription(context.organizationId);

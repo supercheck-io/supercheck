@@ -1,5 +1,6 @@
 "use server";
 
+import { permissionDeniedResult } from "@/lib/deletion/org-state";
 import { and, asc, desc, eq, inArray, lte, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -170,10 +171,7 @@ export async function archiveSreCopilotChat(
     );
 
     if (!canInvestigate) {
-      return {
-        success: false as const,
-        error: "Insufficient permissions to archive SRE AI chat",
-      };
+      return await permissionDeniedResult(organizationId, "Insufficient permissions to archive SRE AI chat");
     }
 
     const conversation = await db.query.sreChatConversations.findFirst({

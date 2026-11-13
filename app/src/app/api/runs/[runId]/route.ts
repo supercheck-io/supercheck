@@ -9,6 +9,7 @@ import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError, authErrorStatus } from "@/lib/auth-context";
 import { runReportPath } from "@/lib/run-report-url";
 
+import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 // Get run handler - scoped to current project
 export async function GET(
   request: Request,
@@ -122,7 +123,7 @@ export async function DELETE(
     const { runId } = await routeContext.params;
     const context = await requireAuthContext();
     if (!checkPermissionWithContext("run", "delete", context)) {
-      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
+      return await permissionDeniedResponse(context.organizationId, "Insufficient permissions");
     }
     if (!isUuid(runId)) return NextResponse.json({ error: "Run not found" }, { status: 404 });
     const result = await deleteRunWithContext(runId, context);

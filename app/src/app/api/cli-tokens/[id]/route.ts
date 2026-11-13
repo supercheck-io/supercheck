@@ -10,6 +10,7 @@ import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { MAX_CLI_TOKENS_PER_PROJECT, countUsableCliKeys, lockProjectForKeyIssuance } from "@/lib/auth/cli-key-service";
 import { createLogger } from "@/lib/logger/pino-config";
 
+import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 const logger = createLogger({ module: "cli-tokens" });
 
 const updateCliTokenSchema = z.object({
@@ -36,10 +37,7 @@ export async function PATCH(
 
     const canUpdate = checkPermissionWithContext("apiKey", "update", context);
     if (!canUpdate) {
-      return NextResponse.json(
-        { error: "Insufficient permissions" },
-        { status: 403 }
-      );
+      return await permissionDeniedResponse(context.organizationId, "Insufficient permissions");
     }
 
     let body;
@@ -188,10 +186,7 @@ export async function DELETE(
 
     const canDelete = checkPermissionWithContext("apiKey", "delete", context);
     if (!canDelete) {
-      return NextResponse.json(
-        { error: "Insufficient permissions" },
-        { status: 403 }
-      );
+      return await permissionDeniedResponse(context.organizationId, "Insufficient permissions");
     }
 
     // Verify the token belongs to this project and is a CLI token

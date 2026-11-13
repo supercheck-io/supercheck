@@ -8,8 +8,8 @@ import { z } from "zod";
 import { NextRequest } from "next/server";
 import { requireSameOriginRequest } from "@/lib/security/same-origin";
 import { BillingSettingsValidationError } from "@/lib/billing-errors";
-import { isOrgPendingDeletion, pendingDeletionResponse } from "@/lib/deletion/org-state";
 
+import { isOrgPendingDeletion, pendingDeletionResponse, permissionDeniedResponse } from "@/lib/deletion/org-state";
 /**
  * GET /api/billing/settings
  * Get billing settings for the active organization
@@ -33,10 +33,7 @@ export async function GET() {
     const orgRole = await getUserOrgRole(userId, organizationId);
     const isOrgAdmin = orgRole === Role.ORG_ADMIN || orgRole === Role.ORG_OWNER;
     if (!isOrgAdmin) {
-      return NextResponse.json(
-        { error: "Insufficient permissions" },
-        { status: 403 },
-      );
+      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
     }
 
     const [settings, effectiveSpendingLimit] = await Promise.all([
@@ -119,10 +116,7 @@ export async function PATCH(request: NextRequest) {
     const orgRole = await getUserOrgRole(userId, organizationId);
     const isOrgAdmin = orgRole === Role.ORG_ADMIN || orgRole === Role.ORG_OWNER;
     if (!isOrgAdmin) {
-      return NextResponse.json(
-        { error: "Insufficient permissions" },
-        { status: 403 },
-      );
+      return await permissionDeniedResponse(organizationId, "Insufficient permissions");
     }
     const impersonation = await getImpersonationState();
     if (impersonation === "unknown") {

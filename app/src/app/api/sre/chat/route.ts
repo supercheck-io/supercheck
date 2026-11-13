@@ -28,6 +28,7 @@ import { createSreSimilarIncidentTools } from "@/sre/tools/similar-incident-tool
 import { createSreEvidenceTools } from "@/sre/tools/evidence-tools";
 import { requireSreSameOriginRequest, requireSreSubscription } from "../_auth";
 
+import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 const chatRequestSchema = z.object({
   conversationId: z.string().uuid().optional().nullable(),
   incidentId: z.string().uuid().optional().nullable(),
@@ -300,10 +301,7 @@ export async function POST(request: NextRequest) {
   );
 
   if (!canInvestigate) {
-    return NextResponse.json(
-      { error: "Insufficient permissions to use Copilot" },
-      { status: 403 },
-    );
+    return await permissionDeniedResponse(context.organizationId, "Insufficient permissions to use Copilot");
   }
 
   const subscriptionError = await requireSreSubscription(context.organizationId, { allowTrial: false });

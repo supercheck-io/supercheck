@@ -10,6 +10,7 @@ import { logAuditEvent } from "@/lib/audit-logger";
 import { z } from "zod";
 import { deleteStatusPageWithLinks } from "@/lib/resource-deletion/linked-records";
 
+import { permissionDeniedResult } from "@/lib/deletion/org-state";
 // UUID validation schema
 const uuidSchema = z.string().uuid("Invalid status page ID");
 
@@ -42,10 +43,7 @@ export async function deleteStatusPage(id: string) {
       console.warn(
         `[SECURITY] User ${userId} attempted to delete status page without permission`
       );
-      return {
-        success: false,
-        message: "Insufficient permissions to delete status pages",
-      };
+      return await permissionDeniedResult(organizationId, "Insufficient permissions to delete status pages");
     }
 
     // Fetch the status page to verify ownership and get details for audit log

@@ -24,10 +24,7 @@ export async function GET(request: Request) {
 
     const role = await getUserOrgRole(userId, organizationId);
     if (role !== Role.ORG_OWNER && role !== Role.ORG_ADMIN) {
-      return NextResponse.json(
-        { error: "Insufficient permissions" },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);

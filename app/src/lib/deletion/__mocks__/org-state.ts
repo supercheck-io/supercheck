@@ -12,3 +12,5 @@ export const clearDeletionStateCache = jest.fn();
 export const isOrgPendingDeletionError = (error: unknown) => error instanceof OrgPendingDeletionError;
 export const pendingDeletionResponse = () => new Response(JSON.stringify({ code: PENDING_ORG_CODE }), { status: 403 });
 export const PROJECT_RESTORE_DAYS = 7;
+export const permissionDeniedResponse = jest.fn(async (_organizationId: unknown, message: string) => new Response(JSON.stringify({ error: message }), { status: 403 }));
+export const permissionDeniedResult = jest.fn(async (_organizationId: unknown, message: string) => ({ success: false as const, error: message, message }));

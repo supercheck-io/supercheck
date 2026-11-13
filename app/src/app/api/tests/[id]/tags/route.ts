@@ -8,6 +8,7 @@ import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireAuthContext, isAuthError, authErrorStatus } from '@/lib/auth-context';
 import { logAuditEvent } from '@/lib/audit-logger';
 
+import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 // A tag deleted after validation fails the insert with FK violation 23503 (drizzle wraps the driver error in `cause`).
 // Only the tag FK: a concurrently deleted test or monitor must not read as a missing tag.
 const isFkViolation = (e: unknown) =>
@@ -28,10 +29,7 @@ export async function GET(
     const canView = checkPermissionWithContext('test', 'view', context);
 
     if (!canView) {
-      return NextResponse.json(
-        { error: 'Insufficient permissions' },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
     }
 
     const { id: testId } = await params;
@@ -90,10 +88,7 @@ export async function POST(
     const canUpdate = checkPermissionWithContext('test', 'update', context);
 
     if (!canUpdate) {
-      return NextResponse.json(
-        { error: 'Insufficient permissions to update test tags' },
-        { status: 403 }
-      );
+      return await permissionDeniedResponse(organizationId, 'Insufficient permissions to update test tags');
     }
 
     const { id: testId } = await params;
@@ -227,10 +222,7 @@ export async function PATCH(
     const { project, organizationId } = context;
 
     if (!checkPermissionWithContext('test', 'update', context)) {
-      return NextResponse.json(
-        { error: 'Insufficient permissions to update test tags' },
-        { status: 403 }
-      );
+      return await permissionDeniedResponse(organizationId, 'Insufficient permissions to update test tags');
     }
 
     const { id: testId } = await params;
@@ -343,10 +335,7 @@ export async function DELETE(
     const canUpdate = checkPermissionWithContext('test', 'update', context);
 
     if (!canUpdate) {
-      return NextResponse.json(
-        { error: 'Insufficient permissions to update test tags' },
-        { status: 403 }
-      );
+      return await permissionDeniedResponse(organizationId, 'Insufficient permissions to update test tags');
     }
 
     const { id: testId } = await params;

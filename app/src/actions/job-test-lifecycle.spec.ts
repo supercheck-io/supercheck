@@ -1,4 +1,15 @@
 /** @jest-environment node */
+// Permission denials ask whether the organization is pending deletion; these specs run without a database.
+jest.mock("@/lib/deletion/org-state", () => {
+  const overrides: Record<string, unknown> = {
+    isOrgPendingDeletion: async () => false,
+    isProjectDeleted: async () => false,
+    isProjectOrgPending: async () => false,
+    permissionDeniedResponse: async (_org: unknown, message: string) => Response.json({ error: message }, { status: 403 }),
+    permissionDeniedResult: async (_org: unknown, message: string) => ({ success: false, error: message, message }),
+  };
+  return new Proxy({}, { get: (_t, key: string) => (key in overrides ? overrides[key] : jest.requireActual("@/lib/deletion/org-state")[key]) });
+});
 /**
  * Server actions that create jobs and delete tests.
  *
@@ -222,6 +233,7 @@ describe("job and test lifecycle actions", () => {
 
       expect(result).toEqual({
         success: false,
+        error: "Insufficient permissions to create jobs",
         message: "Insufficient permissions to create jobs",
       });
       expect(mockDb.insert).not.toHaveBeenCalled();
@@ -298,6 +310,7 @@ describe("job and test lifecycle actions", () => {
       expect(result).toEqual({
         success: false,
         error: "Insufficient permissions to delete tests",
+        message: "Insufficient permissions to delete tests",
       });
       expect(mockDb.delete).not.toHaveBeenCalled();
       jest.restoreAllMocks();

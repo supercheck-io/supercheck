@@ -5,6 +5,7 @@ import { logAuditEvent } from "@/lib/audit-logger";
 import { isUuid } from "@/lib/uuid";
 import { requestJobDeletion } from "@/lib/deletion/request";
 
+import { permissionDeniedResult } from "@/lib/deletion/org-state";
 type JobDeletionResult = { success: boolean; message?: string; error?: string; details?: string };
 
 /**
@@ -16,7 +17,7 @@ export async function deleteJobWithContext(jobId: string, context: ProjectAuthCo
   const { userId, project, organizationId, orgPendingDeletion } = context;
   if (!checkPermissionWithContext("job", "delete", { userId, organizationId, orgPendingDeletion, project })) {
     console.warn(`[DELETE_JOB] User ${userId} attempted to delete job ${jobId} without permission`);
-    return { success: false, error: "Insufficient permissions to delete jobs" };
+    return await permissionDeniedResult(organizationId, "Insufficient permissions to delete jobs");
   }
   if (!isUuid(jobId)) return { success: false, error: "Job not found or access denied" };
   try {

@@ -12,6 +12,7 @@ import {
 } from "@/lib/sre/investigation-feedback";
 import { checkSreFeedbackRateLimit } from "@/lib/sre/sre-rate-limiter";
 
+import { permissionDeniedResult } from "@/lib/deletion/org-state";
 const logger = createLogger({ module: "sre-investigation-feedback" }) as {
   error: (data: unknown, message?: string) => void;
 };
@@ -37,7 +38,7 @@ export async function submitSreInvestigationFeedback(
 
     const { userId, organizationId, orgPendingDeletion, project } = await requireProjectContext();
     if (!checkPermissionWithContext("sre_incident", "update", { userId, organizationId, orgPendingDeletion, project })) {
-      return { success: false, error: "Insufficient permissions to give feedback" };
+      return await permissionDeniedResult(organizationId, "Insufficient permissions to give feedback");
     }
 
     const limit = await checkSreFeedbackRateLimit(userId, parsed.data.investigationRunId);

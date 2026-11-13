@@ -10,13 +10,14 @@ import * as schema from "@/db/schema";
 
 let mockDatabase: ReturnType<typeof drizzle<typeof schema>>;
 let mockSessionToken = "";
+let mockSessionUserId = "u";
 jest.mock("@/utils/db", () => ({ get db() { return mockDatabase; } }));
 jest.mock("@/utils/auth", () => ({ auth: { api: { getSession: jest.fn() } } }));
 jest.mock("next/headers", () => ({ headers: jest.fn(async () => new Headers()) }));
 jest.mock("@/lib/audit-logger", () => ({ logAuditEvent: jest.fn(), logAdminEvent: jest.fn() }));
-jest.mock("@/lib/session-cache", () => ({ getCachedAuthSession: jest.fn(async () => ({ session: { token: mockSessionToken }, user: { id: "u" } })) }));
+jest.mock("@/lib/session-cache", () => ({ getCachedAuthSession: jest.fn(async () => ({ session: { token: mockSessionToken }, user: { id: mockSessionUserId } })) }));
 import { getUnifiedAuthContext } from "@/lib/rbac/unified-auth";
-import { resolveProjectPermissionContext, checkPermissionWithContext, hasPermissionForUser } from "@/lib/rbac/middleware";
+import { resolveProjectPermissionContext, checkPermissionWithContext, hasPermissionForUser, requirePermissions, forbiddenOrNotFound } from "@/lib/rbac/middleware";
 import { clearDeletionStateCache, isOrgPendingDeletion, isProjectDeleted, invalidateOrgState, isProjectOrgPending, organizationGraceDays } from "./org-state";
 import { notInPendingOrganization } from "./visibility";
 import { isFreshSession, reauthMaxAgeSeconds } from "./reauth";
@@ -118,6 +119,37 @@ describe("id-based permission checks and soft-deleted projects", () => {
     clearDeletionStateCache();
     expect(await hasPermissionForUser(seeded.userId, "job", "create", ctx)).toBe(false);
     expect(await hasPermissionForUser(seeded.userId, "job", "view", ctx)).toBe(true);
+  });
+});
+
+describe("denials say why in a pending organization", () => {
+  it("requirePermissions throws the pending error for a member's write and keeps reads working", async () => {
+    const seeded = await seed();
+    mockSessionToken = seeded.token; mockSessionUserId = seeded.userId;
+    const ctx = { organizationId: seeded.orgId, projectId: seeded.projectId };
+    await expect(requirePermissions({ test: ["create"] }, ctx)).resolves.toBeDefined();
+    await makePending(seeded.orgId);
+    clearDeletionStateCache();
+    await expect(requirePermissions({ test: ["create"] }, ctx)).rejects.toMatchObject({ code: "ORG_PENDING_DELETION" });
+    await expect(requirePermissions({ test: ["view"] }, ctx)).resolves.toBeDefined();
+  });
+
+  it("requirePermissions does not reveal the state to a user outside the organization", async () => {
+    const pending = await seed();
+    const outsider = await seed();
+    await makePending(pending.orgId);
+    mockSessionToken = outsider.token; mockSessionUserId = outsider.userId;
+    await expect(requirePermissions({ test: ["create"] }, { organizationId: pending.orgId, projectId: pending.projectId })).rejects.toThrow(/Access denied/);
+  });
+
+  it("forbiddenOrNotFound answers the pending code to a member and 404 to an outsider", async () => {
+    const pending = await seed();
+    const outsider = await seed();
+    await makePending(pending.orgId);
+    const member = await forbiddenOrNotFound(pending.userId, pending.orgId, "forbidden", "missing");
+    expect(member.status).toBe(403);
+    expect(await member.json()).toMatchObject({ code: "ORG_PENDING_DELETION" });
+    expect((await forbiddenOrNotFound(outsider.userId, pending.orgId, "forbidden", "missing")).status).toBe(404);
   });
 });
 

@@ -13,6 +13,7 @@ import { investigationGuidanceSchema } from "@/lib/sre/feedback-note";
 import { completeSreIncidentInvestigation, startSreIncidentInvestigation } from "@/sre/lib/investigation-runner";
 import { requireSreSameOriginRequest } from "../_auth";
 
+import { permissionDeniedResponse } from "@/lib/deletion/org-state";
 const investigateRequestSchema = z.object({
   incidentId: z.string().uuid(),
   useLiveConnectors: z.boolean().optional().default(false),
@@ -77,7 +78,7 @@ export async function POST(request: NextRequest) {
   const canRunInvestigation = checkPermissionWithContext("sre_investigation", "investigate", permissionContext);
 
   if (!canInvestigateIncident || !canRunInvestigation) {
-    return NextResponse.json({ error: "Insufficient permissions to run SRE investigation" }, { status: 403 });
+    return await permissionDeniedResponse(context.organizationId, "Insufficient permissions to run SRE investigation");
   }
 
   const parsed = investigateRequestSchema.safeParse(await parseRequestJson(request));
@@ -87,10 +88,7 @@ export async function POST(request: NextRequest) {
 
   const canInvestigateConnectors = checkPermissionWithContext("sre_connector", "investigate", permissionContext);
   if (parsed.data.useLiveConnectors && !canInvestigateConnectors) {
-    return NextResponse.json(
-      { error: "Insufficient permissions to use live connectors in an investigation" },
-      { status: 403 },
-    );
+    return await permissionDeniedResponse(context.organizationId, "Insufficient permissions to use live connectors in an investigation");
   }
 
   const rateLimit = await checkSreInvestigationRateLimit(

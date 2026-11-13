@@ -19,6 +19,7 @@ import {
   isTestTypeCompatibleWithJobType,
 } from "@/lib/script-type-validator";
 
+import { permissionDeniedResult } from "@/lib/deletion/org-state";
 const createJobSchema = z.object({
   name: z.string(),
   description: z.string().optional().default(""),
@@ -50,10 +51,7 @@ export async function createJob(data: CreateJobData) {
         `User ${userId} attempted to create job without permission:`,
         error
       );
-      return {
-        success: false,
-        message: "Insufficient permissions to create jobs",
-      };
+      return await permissionDeniedResult(organizationId, "Insufficient permissions to create jobs");
     }
 
     // Validate the data
