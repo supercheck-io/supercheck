@@ -63,7 +63,7 @@ import { isPolarEnabled } from "@/lib/feature-flags";
 import { removeK6RunLinks } from "@/lib/resource-deletion/linked-records";
 import { monitorAggregationService } from "./monitor-aggregation-service";
 import { endExpiredTrials, reconcilePaidTrialSuspensions, sendTrialReminders, suspendLapsedOrganizations } from "@/lib/execution/trial-lifecycle";
-import { AUDIT_EMAIL_SCRUB_DAYS, AUDIT_RETENTION_DAYS, scrubAuditEmails } from "@/lib/audit-scrub";
+import { AUDIT_RETENTION_DAYS, scrubAuditEmails } from "@/lib/audit-scrub";
 import { deliverTrialReminder } from "@/lib/execution/trial-reminder-delivery";
 
 const QUEUE_EVENTS_READY_TIMEOUT_MS = 10_000;
