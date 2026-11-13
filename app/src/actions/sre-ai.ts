@@ -42,13 +42,15 @@ export async function getSreCopilotChatHistories(incidentId?: string | null): Pr
 > {
   try {
     const parsedIncidentId = z.string().uuid().safeParse(incidentId);
-    const { userId, organizationId, project } = await requireProjectContext();
+    const { userId, organizationId, orgPendingDeletion, project } = await requireProjectContext();
     const canInvestigate = checkPermissionWithContext(
       "sre_investigation",
       "investigate",
       {
         userId,
         organizationId,
+        // Reading saved chats stays available while the organization is pending deletion; archiving (below) keeps the block.
+        orgPendingDeletion: false,
         project,
       },
     );
@@ -155,13 +157,14 @@ export async function archiveSreCopilotChat(
   }
 
   try {
-    const { userId, organizationId, project } = await requireProjectContext();
+    const { userId, organizationId, orgPendingDeletion, project } = await requireProjectContext();
     const canInvestigate = checkPermissionWithContext(
       "sre_investigation",
       "investigate",
       {
         userId,
         organizationId,
+        orgPendingDeletion,
         project,
       },
     );

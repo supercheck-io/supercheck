@@ -5,7 +5,7 @@ jest.mock("@/utils/db", () => ({ db: {} }));
 
 import { assertCan, assertCanView, McpAccessDeniedError, type McpCallContext } from "./context";
 
-const as = (role: string): McpCallContext => ({ userId: "u", clientId: "c", organizationId: "o", projectId: "p", role, scopes: ["mcp:read", "mcp:incidents:write", "mcp:sre"] });
+const as = (role: string): McpCallContext => ({ userId: "u", clientId: "c", organizationId: "o", projectId: "p", role, orgPendingDeletion: false, scopes: ["mcp:read", "mcp:incidents:write", "mcp:sre"] });
 const roles = ["super_admin", "org_owner", "org_admin", "project_admin", "project_editor", "project_viewer"];
 const resources = [
   "test", "job", "run", "monitor", "requirement", "status_page", "variable",

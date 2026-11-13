@@ -1,6 +1,9 @@
 /** @jest-environment node */
+jest.mock("@/lib/deletion/org-state");
 
 import { NextRequest } from "next/server";
+import type { SQL } from "drizzle-orm";
+import { PgDialect } from "drizzle-orm/pg-core";
 
 jest.mock("@/utils/db", () => ({
   db: {
@@ -45,6 +48,19 @@ describe("Private Agent job lease route", () => {
         id: "00000000-0000-0000-0000-000000000003",
       },
     });
+  });
+
+  it("leases nothing to an agent of an organization pending deletion", async () => {
+    const { isOrgPendingDeletion } = jest.requireMock("@/lib/deletion/org-state");
+    isOrgPendingDeletion.mockResolvedValue(true);
+    try {
+      const response = await POST(new NextRequest("http://localhost/api/private-agents/jobs/lease", { method: "POST", body: JSON.stringify({}) }));
+      expect(isOrgPendingDeletion).toHaveBeenCalledWith("00000000-0000-0000-0000-000000000002", { fresh: true });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ job: null });
+    } finally {
+      isOrgPendingDeletion.mockResolvedValue(false);
+    }
   });
 
   it("requeues expired connector leases before returning no work", async () => {
@@ -143,6 +159,25 @@ describe("Private Agent job lease route", () => {
     expect(updateSets).toContainEqual(expect.objectContaining({ status: "timed_out", errorCode: "queued_too_long" }));
     expect(updateSets).toContainEqual(expect.objectContaining({ status: "failed", errorCode: "connector_disabled" }));
     expect(updateSets).toContainEqual(expect.objectContaining({ status: "failed", errorCode: "connector_reassigned" }));
+  });
+
+  it("never selects a queued job of a soft-deleted project", async () => {
+    let selection: SQL | undefined;
+    const tx = {
+      update: jest.fn(() => ({ set: jest.fn(() => ({ where: jest.fn().mockResolvedValue([]) })) })),
+      select: jest.fn(() => ({
+        from: jest.fn(() => ({
+          where: jest.fn((where: SQL) => ({
+            orderBy: jest.fn(() => { selection = where; return { limit: jest.fn().mockResolvedValue([]) }; }),
+            limit: jest.fn().mockResolvedValue([{ id: "cred" }]),
+          })),
+        })),
+      })),
+    };
+    mockDb.transaction.mockImplementation(async (cb: (t: typeof tx) => Promise<unknown>) => cb(tx));
+    await POST(new NextRequest("http://localhost/api/private-agents/jobs/lease", { method: "POST", body: JSON.stringify({ waitMs: 0 }) }));
+    expect(selection).toBeDefined();
+    expect(new PgDialect().sqlToQuery(selection!).sql).toMatch(/"status" = 'deleted'/);
   });
 
   it("leases nothing when the credential was revoked after authentication", async () => {

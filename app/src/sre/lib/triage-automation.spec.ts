@@ -1,3 +1,4 @@
+jest.mock("@/lib/deletion/org-state", () => ({ isOrgPendingDeletion: jest.fn().mockResolvedValue(false) }));
 jest.mock("@/lib/ai/ai-provider", () => ({
   validateAIConfiguration: jest.fn(),
 }));

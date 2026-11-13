@@ -1,4 +1,5 @@
 /** @jest-environment node */
+jest.mock("@/lib/deletion/org-state");
 
 import { NextRequest } from "next/server";
 import { PgDialect } from "drizzle-orm/pg-core";
@@ -481,6 +482,19 @@ describe("Execution route regressions", () => {
     );
 	    expect(updateSet).toHaveBeenCalledWith({ status: "queued" });
 	  });
+
+  it("POST /api/tests/[id]/execute refuses a pending-deletion organization before any lookup or queueing", async () => {
+    mockRequireAuthContext.mockResolvedValue({ ...authCtx, isCliAuth: true, orgPendingDeletion: true });
+    const response = await executeSingleTest(
+      new NextRequest("http://localhost/api/tests/b6c7d749-56f1-509f-96c4-8234bc8c0244/execute", {
+        method: "POST", body: JSON.stringify({}), headers: { "content-type": "application/json" },
+      }),
+      { params: Promise.resolve({ id: "b6c7d749-56f1-509f-96c4-8234bc8c0244" }) },
+    );
+    expect(response.status).toBe(403);
+    expect((await response.json()).code).toBe("ORG_PENDING_DELETION");
+    expect(mockAddTestToQueue).not.toHaveBeenCalled();
+  });
 
   it("POST /api/tests/[id]/execute accepts CLI bearer auth without an Origin header", async () => {
     mockRequireAuthContext.mockResolvedValue({ ...authCtx, isCliAuth: true });

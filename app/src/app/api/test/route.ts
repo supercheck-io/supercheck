@@ -32,6 +32,7 @@ import {
 } from "@/lib/execution-api-responses";
 import { requireSameOriginRequest } from "@/lib/security/same-origin";
 import { MAX_SCRIPT_LENGTH } from "@/lib/validations/common";
+import { pendingDeletionResponse, isOrgPendingDeletion } from "@/lib/deletion/org-state";
 
 function buildReportProxyUrl(entityId: string): string {
   return `/api/test-results/${encodeURIComponent(entityId)}/report/index.html?forceIframe=true`;
@@ -47,6 +48,7 @@ export async function POST(request: NextRequest) {
     const { userId, project, organizationId } = authCtx;
 
     // Check permission to run tests
+    if (authCtx.orgPendingDeletion) return pendingDeletionResponse();
     const canRunTests = checkPermissionWithContext('test', 'run', authCtx);
     
 	    if (!canRunTests) {

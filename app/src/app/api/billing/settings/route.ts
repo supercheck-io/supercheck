@@ -8,6 +8,7 @@ import { z } from "zod";
 import { NextRequest } from "next/server";
 import { requireSameOriginRequest } from "@/lib/security/same-origin";
 import { BillingSettingsValidationError } from "@/lib/billing-errors";
+import { isOrgPendingDeletion, pendingDeletionResponse } from "@/lib/deletion/org-state";
 
 /**
  * GET /api/billing/settings
@@ -15,6 +16,7 @@ import { BillingSettingsValidationError } from "@/lib/billing-errors";
  */
 export async function GET() {
   try {
+    // Reading stays available while the organization is pending deletion; only changes are blocked (the PUT below).
     const { userId, organizationId, isCliAuth } = await requireUserAuthContext();
     if (isCliAuth) {
       return NextResponse.json({ error: "Organization administration requires an interactive browser session; CLI tokens are project-scoped" }, { status: 403 });
@@ -101,6 +103,7 @@ export async function PATCH(request: NextRequest) {
 
   try {
     const { userId, organizationId, isCliAuth } = await requireUserAuthContext();
+    if (await isOrgPendingDeletion(organizationId, { fresh: true })) return pendingDeletionResponse();
     if (isCliAuth) {
       return NextResponse.json({ error: "Organization administration requires an interactive browser session; CLI tokens are project-scoped" }, { status: 403 });
     }

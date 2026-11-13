@@ -11,6 +11,8 @@ import { resolveMcpToolCall } from "@/lib/sre/connectors/providers/mcp";
 import { redactEndpointQuery } from "@/lib/sre/connectors/endpoint-policy";
 import { db } from "@/utils/db";
 import { authenticatePrivateAgent, unauthorized } from "../auth";
+import { isOrgPendingDeletion, pendingDeletionResponse } from "@/lib/deletion/org-state";
+import { notInDeletedProject } from "@/lib/middleware/plan-limit-lock";
 
 const LEASE_TTL_MS = 5 * 60_000;
 const MAX_QUEUED_AGE_MS = 10 * 60_000;
@@ -70,6 +72,8 @@ export async function POST(request: NextRequest) {
     };
 
     const tryLeaseJob = async () => {
+      // A pending organization gets no new diagnostics work; the agent simply finds nothing to lease.
+      if (await isOrgPendingDeletion(auth.agent.organizationId, { fresh: true })) return null;
       const leaseToken = generateLeaseToken();
       const leaseTokenHash = hashApiKey(leaseToken);
       const now = new Date();
@@ -137,7 +141,9 @@ export async function POST(request: NextRequest) {
               eq(privateAgentJobs.privateAgentId, auth.agent.id),
               eq(privateAgentJobs.organizationId, auth.agent.organizationId),
               eq(privateAgentJobs.jobClass, "sre_connector_query"),
-              eq(privateAgentJobs.status, "queued")
+              eq(privateAgentJobs.status, "queued"),
+              // A job of a soft-deleted project is never handed out; organization-level jobs (no project) stay eligible.
+              notInDeletedProject(privateAgentJobs.projectId)
             )
           )
           .orderBy(asc(privateAgentJobs.createdAt))
@@ -190,7 +196,8 @@ export async function POST(request: NextRequest) {
             eq(privateAgentJobs.privateAgentId, auth.agent.id),
             eq(privateAgentJobs.organizationId, auth.agent.organizationId),
             eq(privateAgentJobs.jobClass, "sre_connector_query"),
-            eq(privateAgentJobs.status, "queued")
+            eq(privateAgentJobs.status, "queued"),
+            notInDeletedProject(privateAgentJobs.projectId) // same filter as the lease select, or a deleted project's job wakes every tick
           )
         )
         .limit(1);

@@ -91,6 +91,6 @@ describe("resolveMcpCallContext", () => {
 describe("assertCanView", () => {
   it("throws when the role cannot view the resource", () => {
     checkPermissionWithContext.mockReturnValue(false);
-    expect(() => assertCanView({ userId: "u", clientId: "c", organizationId: "o", projectId: "p", role: "x", scopes: ["mcp:read"] }, "job")).toThrow(McpAccessDeniedError);
+    expect(() => assertCanView({ userId: "u", clientId: "c", organizationId: "o", projectId: "p", role: "x", orgPendingDeletion: false, scopes: ["mcp:read"] }, "job")).toThrow(McpAccessDeniedError);
   });
 });

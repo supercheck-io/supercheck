@@ -39,10 +39,11 @@ export async function createSreInvestigationReportSnapshot(input: z.input<typeof
   }
 
   try {
-    const { userId, organizationId, project } = await requireProjectContext();
+    const { userId, organizationId, orgPendingDeletion, project } = await requireProjectContext();
     const canInvestigate = checkPermissionWithContext("sre_investigation", "investigate", {
       userId,
       organizationId,
+      orgPendingDeletion,
       project,
     });
 

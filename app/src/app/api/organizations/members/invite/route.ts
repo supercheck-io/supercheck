@@ -16,6 +16,7 @@ import { insertWithinPlanLimit } from "@/lib/middleware/plan-limit-lock";
 import { countSeatsInUse } from "@/lib/billing/member-seats";
 import { getRedisConnection } from "@/lib/queue";
 import { withRedisDeadline } from "@/lib/security/redis-deadline";
+import { isOrgPendingDeletion, pendingDeletionResponse } from "@/lib/deletion/org-state";
 
 // Redis-based rate limiting for distributed/serverless environments
 const INVITE_RATE_LIMIT_KEY_PREFIX = "supercheck:invite:ratelimit";
@@ -115,6 +116,7 @@ export async function POST(request: NextRequest) {
   try {
     const { userId, organizationId, isCliAuth } =
       await requireUserAuthContext();
+    if (await isOrgPendingDeletion(organizationId, { fresh: true })) return pendingDeletionResponse();
     if (isCliAuth) {
       return NextResponse.json(
         {

@@ -13,8 +13,8 @@ type MonitorDeletionResult = { success: boolean; message?: string; error?: strin
  */
 export async function deleteMonitorWithContext(monitorId: string, context: ProjectAuthContext): Promise<MonitorDeletionResult> {
   if (!monitorId) return { success: false, error: "Monitor ID is required" };
-  const { userId, project, organizationId } = context;
-  if (!checkPermissionWithContext("monitor", "delete", { userId, organizationId, project })) {
+  const { userId, project, organizationId, orgPendingDeletion } = context;
+  if (!checkPermissionWithContext("monitor", "delete", { userId, organizationId, orgPendingDeletion, project })) {
     console.warn(`[DELETE_MONITOR] User ${userId} attempted to delete monitor ${monitorId} without permission`);
     return { success: false, error: "Insufficient permissions to delete monitors" };
   }

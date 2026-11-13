@@ -40,6 +40,8 @@ export interface AuthContext {
   userId: string;
   project: ProjectContext;
   organizationId: string;
+  /** The organization is pending deletion: the permission layer makes it read-only. */
+  orgPendingDeletion: boolean;
   /** Organization name (available for CLI token auth) */
   organizationName?: string;
   /** Organization slug (available for CLI token auth) */
@@ -211,6 +213,7 @@ async function authenticateCliToken(token: string): Promise<AuthContext | null> 
       projectOrgId: projects.organizationId,
       orgName: organization.name,
       orgSlug: organization.slug,
+      orgPendingAt: organization.deletionRequestedAt,
       projectRole: projectMembers.role,
       orgRole: member.role,
     })
@@ -283,6 +286,7 @@ async function authenticateCliToken(token: string): Promise<AuthContext | null> 
   return {
     userId: matchedKey.userId,
     organizationId: ctx.projectOrgId,
+    orgPendingDeletion: !!ctx.orgPendingAt,
     organizationName: ctx.orgName ?? undefined,
     organizationSlug: ctx.orgSlug ?? undefined,
     isCliAuth: true,

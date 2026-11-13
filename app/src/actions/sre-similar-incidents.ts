@@ -33,8 +33,8 @@ export async function getSreSimilarIncidents(
   try {
     const parsed = z.string().uuid().safeParse(incidentId);
     if (!parsed.success) return { success: false, error: "Invalid incident", incidents: [] };
-    const { userId, organizationId, project } = await requireProjectContext();
-    if (!checkPermissionWithContext("sre_incident", "view", { userId, organizationId, project })) {
+    const { userId, organizationId, orgPendingDeletion, project } = await requireProjectContext();
+    if (!checkPermissionWithContext("sre_incident", "view", { userId, organizationId, orgPendingDeletion, project })) {
       return { success: false, error: "Insufficient permissions to view incidents", incidents: [] };
     }
     const found = await findSimilarIncidents({ organizationId, projectId: project.id, incidentId: parsed.data });

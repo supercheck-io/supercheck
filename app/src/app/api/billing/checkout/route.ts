@@ -17,6 +17,7 @@ import { countSeatsInUse, PRO_INCLUDED_MEMBERS } from "@/lib/billing/member-seat
 import { getCurrentUser } from "@/lib/session";
 import { db } from "@/utils/db";
 import { eq } from "drizzle-orm";
+import { isOrgPendingDeletion, pendingDeletionResponse } from "@/lib/deletion/org-state";
 
 const checkoutSchema = z.object({
   plan: z.enum(["plus", "pro"]),
@@ -40,6 +41,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const { userId, organizationId, isCliAuth } = await requireUserAuthContext();
+    if (await isOrgPendingDeletion(organizationId, { fresh: true })) return pendingDeletionResponse();
     if (isCliAuth) {
       return NextResponse.json(
         { error: "Billing checkout requires an interactive browser session" },

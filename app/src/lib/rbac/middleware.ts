@@ -13,12 +13,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { db } from "@/utils/db";
-import { member, projectMembers, projects, session } from "@/db/schema";
+import { member, organization, projectMembers, projects, session } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { auth } from "@/utils/auth";
 import {
   Role,
   hasPermission as checkPermission,
+  PENDING_DELETION_ALLOWED_ACTIONS,
   PermissionContext,
   statement,
 } from "./permissions";
@@ -28,6 +29,7 @@ import { isSuperAdmin } from "./super-admin";
 import { getClientIP } from "@/lib/session-security";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { getCachedAuthSession } from "@/lib/session-cache";
+import { isOrgPendingDeletion, isProjectDeleted } from "@/lib/deletion/org-state";
 
 // getCachedAuthSession imported from session-cache.ts (DRY principle)
 
@@ -57,6 +59,8 @@ export function checkPermissionWithContext(
   context: {
     userId: string;
     organizationId: string;
+    /** Required (not optional) so a hand-built context cannot silently skip the pending-deletion guard. */
+    orgPendingDeletion: boolean;
     project: {
       id: string;
       userRole: string;
@@ -81,6 +85,7 @@ export function checkPermissionWithContext(
     // For project-level roles, they wouldn't have access without being assigned
     assignedProjectIds: options?.assignedProjectIds ?? [context.project.id],
     resourceCreatorId: options?.resourceCreatorId,
+    orgPendingDeletion: context.orgPendingDeletion,
   };
 
   return checkPermission(permissionContext, resource, action);
@@ -184,6 +189,8 @@ export async function hasPermission(
       projectId: context?.projectId,
       assignedProjectIds: assignedProjects,
       resourceCreatorId: context?.resourceCreatorId,
+      // A soft-deleted project is read-only like a pending organization (id-based routes do not go through the active-project context).
+      orgPendingDeletion: (await isOrgPendingDeletion(context?.organizationId, { fresh: !PENDING_DELETION_ALLOWED_ACTIONS.has(action) })) || (await isProjectDeleted(context?.projectId, { fresh: !PENDING_DELETION_ALLOWED_ACTIONS.has(action) })),
     };
 
     return checkPermission(permissionContext, resource, action);
@@ -252,6 +259,8 @@ export async function hasPermissionForUser(
       projectId: context?.projectId,
       assignedProjectIds: assignedProjects,
       resourceCreatorId: context?.resourceCreatorId,
+      // A soft-deleted project is read-only like a pending organization (id-based routes do not go through the active-project context).
+      orgPendingDeletion: (await isOrgPendingDeletion(context?.organizationId, { fresh: !PENDING_DELETION_ALLOWED_ACTIONS.has(action) })) || (await isProjectDeleted(context?.projectId, { fresh: !PENDING_DELETION_ALLOWED_ACTIONS.has(action) })),
     };
 
     return checkPermission(permissionContext, resource, action);
@@ -292,6 +301,7 @@ export async function forbiddenOrNotFound(
 export interface ProjectPermissionContext {
   userId: string;
   organizationId: string;
+  orgPendingDeletion: boolean;
   project: { id: string; userRole: string };
 }
 
@@ -323,13 +333,16 @@ export async function resolveProjectPermissionContext(
   options?: { requireMembership?: boolean },
 ): Promise<ProjectPermissionContext | null> {
   // 1. Verify project exists and get org ID (1 DB query)
+  // One join, no extra round trip: the organization's pending-deletion flag rides on the project lookup.
   const [project] = await db
-    .select({ id: projects.id, organizationId: projects.organizationId })
+    .select({ id: projects.id, organizationId: projects.organizationId, pending: organization.deletionRequestedAt })
     .from(projects)
+    .innerJoin(organization, eq(organization.id, projects.organizationId))
     .where(and(eq(projects.id, projectId), eq(projects.status, "active")))
     .limit(1);
 
   if (!project) return null;
+  const orgPendingDeletion = !!project.pending;
 
   // 2. Check super admin status (1 DB query)
   const isSA = !options?.requireMembership && (await isSuperAdmin(userId));
@@ -337,6 +350,7 @@ export async function resolveProjectPermissionContext(
     return {
       userId,
       organizationId: project.organizationId,
+      orgPendingDeletion,
       project: { id: projectId, userRole: Role.SUPER_ADMIN },
     };
   }
@@ -350,6 +364,7 @@ export async function resolveProjectPermissionContext(
     return {
       userId,
       organizationId: project.organizationId,
+      orgPendingDeletion,
       project: { id: projectId, userRole: orgRole },
     };
   }
@@ -372,6 +387,7 @@ export async function resolveProjectPermissionContext(
   return {
     userId,
     organizationId: project.organizationId,
+    orgPendingDeletion,
     project: { id: projectId, userRole: effectiveRole },
   };
 }

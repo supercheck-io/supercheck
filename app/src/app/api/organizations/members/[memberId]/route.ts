@@ -10,6 +10,7 @@ import { logAuditEvent } from '@/lib/audit-logger';
 import { disableTriggerKeysForMember } from '@/lib/security/disable-trigger-keys';
 import { cancelPendingInvitesByInviter } from '@/lib/security/cancel-pending-invites';
 import { updateMemberSchema } from '@/lib/validations/member';
+import { isOrgPendingDeletion, pendingDeletionResponse } from "@/lib/deletion/org-state";
 
 export async function PUT(
   request: NextRequest,
@@ -18,6 +19,7 @@ export async function PUT(
   const resolvedParams = await params;
   try {
     const { userId, organizationId, isCliAuth } = await requireUserAuthContext();
+    if (await isOrgPendingDeletion(organizationId, { fresh: true })) return pendingDeletionResponse();
     if (isCliAuth) {
       return NextResponse.json({ error: "Organization administration requires an interactive browser session; CLI tokens are project-scoped" }, { status: 403 });
     }
@@ -361,6 +363,7 @@ export async function DELETE(
   const resolvedParams = await params;
   try {
     const { userId: currentUserId, organizationId: delOrgId, isCliAuth } = await requireUserAuthContext();
+    if (await isOrgPendingDeletion(delOrgId, { fresh: true })) return pendingDeletionResponse();
     if (isCliAuth) {
       return NextResponse.json({ error: "Organization administration requires an interactive browser session; CLI tokens are project-scoped" }, { status: 403 });
     }

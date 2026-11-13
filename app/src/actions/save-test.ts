@@ -55,12 +55,12 @@ export async function saveTest(
 ): Promise<{ id: string; success: boolean; error?: string }> {
   try {
     // Get user and project context
-    const { userId, project, organizationId } = await requireProjectContext();
+    const { userId, project, organizationId, orgPendingDeletion } = await requireProjectContext();
 
     const validatedData = saveTestWithIdSchema.parse(data);
 
     // Authorize before any lookup or script validation work.
-    const permissionContext = { userId, organizationId, project };
+    const permissionContext = { userId, organizationId, orgPendingDeletion, project };
     if (validatedData.id) {
       if (!checkPermissionWithContext("test", "update", permissionContext)) {
         console.warn(

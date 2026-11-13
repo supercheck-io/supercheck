@@ -1,4 +1,6 @@
 /** @jest-environment node */
+jest.mock("@/lib/deletion/org-state");
+import { isOrgPendingDeletion, readOrgPendingOn } from "@/lib/deletion/org-state";
 
 import { NextRequest } from "next/server";
 import { PgDialect } from "drizzle-orm/pg-core";
@@ -52,6 +54,18 @@ describe("invitation privacy and acceptance", () => {
     auth.api.getSession.mockResolvedValue(null);
     requireUserAuthContext.mockResolvedValue({ userId: "user-1" });
     getCurrentUser.mockResolvedValue({ id: "user-1", email: invite.email });
+  });
+
+  it("does not reveal the organization's deletion state to a cancelled invitation or another recipient", async () => {
+    (isOrgPendingDeletion as jest.Mock).mockResolvedValue(true);
+    db.select.mockReset().mockReturnValue(selectRows([{ ...invite, status: "cancelled" }]));
+    const cancelled = await POST(new NextRequest("http://localhost/api/invite/11111111-1111-4111-8111-111111111111", { method: "POST" }), context);
+    expect((await cancelled.json()).code).not.toBe("ORG_PENDING_DELETION");
+    db.select.mockReset().mockReturnValue(selectRows([invite]));
+    getCurrentUser.mockResolvedValue({ id: "user-2", email: "someone-else@example.com" });
+    const forwarded = await POST(new NextRequest("http://localhost/api/invite/11111111-1111-4111-8111-111111111111", { method: "POST" }), context);
+    expect((await forwarded.json()).code).not.toBe("ORG_PENDING_DELETION");
+    (isOrgPendingDeletion as jest.Mock).mockResolvedValue(false);
   });
 
   it("rejects malformed invitation IDs without querying PostgreSQL", async () => {
@@ -277,6 +291,14 @@ describe("invitation privacy and acceptance", () => {
     expect(tx.update).not.toHaveBeenCalled();
     expect(tx.insert).not.toHaveBeenCalled();
     expect(sessionSet).not.toHaveBeenCalled();
+  });
+
+  it("refuses acceptance when the organization became pending inside the acceptance transaction", async () => {
+    const { tx } = acceptance();
+    (readOrgPendingOn as jest.Mock).mockResolvedValueOnce(true);
+    const response = await POST(new NextRequest("http://localhost/api/invite/11111111-1111-4111-8111-111111111111", { method: "POST" }), context);
+    expect(response.status).toBe(403);
+    expect(tx.insert).not.toHaveBeenCalled();
   });
 
   it("allows an account owner to join an invited project without replacing ownership or touching their original organization", async () => {

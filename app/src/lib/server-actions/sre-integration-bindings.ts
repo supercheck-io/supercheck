@@ -101,16 +101,19 @@ function formatValidationErrors(error: z.ZodError) {
 function assertCanViewBindings(
   userId: string,
   organizationId: string,
+  orgPendingDeletion: boolean,
   project: ProjectContext,
 ) {
   const canViewConnectors = checkPermissionWithContext("sre_connector", "view", {
     userId,
     organizationId,
+    orgPendingDeletion,
     project,
   });
   const canViewNotifications = checkPermissionWithContext("notification", "view", {
     userId,
     organizationId,
+    orgPendingDeletion,
     project,
   });
 
@@ -122,17 +125,18 @@ function assertCanViewBindings(
 function assertCanConfigureBindings(
   userId: string,
   organizationId: string,
+  orgPendingDeletion: boolean,
   project: ProjectContext,
 ) {
   const canConfigureConnectors = checkPermissionWithContext(
     "sre_connector",
     "configure",
-    { userId, organizationId, project },
+    { userId, organizationId, orgPendingDeletion, project },
   );
   const canUpdateNotifications = checkPermissionWithContext(
     "notification",
     "update",
-    { userId, organizationId, project },
+    { userId, organizationId, orgPendingDeletion, project },
   );
 
   if (!canConfigureConnectors || !canUpdateNotifications) {
@@ -315,8 +319,8 @@ export async function getSreIntegrationBindings(requestContext?: ProjectAuthCont
   | { success: false; error: string; bindings: [] }
 > {
   try {
-    const { userId, organizationId, project } = requestContext ?? await requireProjectContext();
-    assertCanViewBindings(userId, organizationId, project);
+    const { userId, organizationId, orgPendingDeletion, project } = requestContext ?? await requireProjectContext();
+    assertCanViewBindings(userId, organizationId, orgPendingDeletion, project);
 
     const bindings = await getBindingListItems(organizationId, project.id);
     return { success: true, bindings };
@@ -341,8 +345,8 @@ export async function getSreIntegrationBindingSetupOptions(requestContext?: Proj
   };
 
   try {
-    const { userId, organizationId, project } = requestContext ?? await requireProjectContext();
-    assertCanViewBindings(userId, organizationId, project);
+    const { userId, organizationId, orgPendingDeletion, project } = requestContext ?? await requireProjectContext();
+    assertCanViewBindings(userId, organizationId, orgPendingDeletion, project);
 
     const [providerRows, connectorRows, serviceRows] = await Promise.all([
       db
@@ -449,8 +453,8 @@ export async function createSreIntegrationBinding(
   }
 
   try {
-    const { userId, organizationId, project } = await requireProjectContext();
-    assertCanConfigureBindings(userId, organizationId, project);
+    const { userId, organizationId, orgPendingDeletion, project } = await requireProjectContext();
+    assertCanConfigureBindings(userId, organizationId, orgPendingDeletion, project);
 
     const [provider] = await db
       .select({
@@ -630,8 +634,8 @@ export async function disableSreIntegrationBinding(
   }
 
   try {
-    const { userId, organizationId, project } = await requireProjectContext();
-    assertCanConfigureBindings(userId, organizationId, project);
+    const { userId, organizationId, orgPendingDeletion, project } = await requireProjectContext();
+    assertCanConfigureBindings(userId, organizationId, orgPendingDeletion, project);
 
     const [updated] = await db
       .update(sreIntegrationBindings)

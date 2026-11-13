@@ -18,6 +18,7 @@ import {
 } from "@/lib/billing/member-seats";
 import { createAuditLog } from "@/lib/audit-log";
 import { PlanLimitBusyError, withPlanLimitLock } from "@/lib/middleware/plan-limit-lock";
+import { isOrgPendingDeletion, pendingDeletionResponse } from "@/lib/deletion/org-state";
 
 const bodySchema = z.object({
   organizationId: z.string().uuid(),
@@ -56,6 +57,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const { userId, organizationId, isCliAuth } = await requireUserAuthContext();
+    if (await isOrgPendingDeletion(organizationId, { fresh: true })) return pendingDeletionResponse();
     if (isCliAuth) {
       return NextResponse.json({ error: "Organization administration requires an interactive browser session; CLI tokens are project-scoped" }, { status: 403 });
     }

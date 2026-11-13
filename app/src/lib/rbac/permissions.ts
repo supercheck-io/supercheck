@@ -365,7 +365,12 @@ export interface PermissionContext {
   projectId?: string;
   assignedProjectIds?: string[]; // For PROJECT_EDITOR role
   resourceCreatorId?: string; // For creator-based permissions
+  /** The organization is pending deletion: read-only for everyone, super admins included. */
+  orgPendingDeletion?: boolean;
 }
+
+/** Actions that stay allowed while an organization is pending deletion: reading and exporting. */
+export const PENDING_DELETION_ALLOWED_ACTIONS: ReadonlySet<string> = new Set(["view", "view_secrets", "export"]);
 
 // Check if user has permission in context
 export function hasPermission(
@@ -375,6 +380,11 @@ export function hasPermission(
 ): boolean {
   const roleInstance = roles[context.role];
   if (!roleInstance) {
+    return false;
+  }
+
+  // Checked before the super admin shortcut: a pending organization is read-only for every role.
+  if (context.orgPendingDeletion && !PENDING_DELETION_ALLOWED_ACTIONS.has(action)) {
     return false;
   }
 

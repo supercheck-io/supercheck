@@ -42,7 +42,7 @@ jest.mock("@/lib/services/subscription-service", () => ({
   },
 }));
 
-const context = { userId: "user", organizationId: "org", project: { id: "project", name: "P", userRole: "admin" } };
+const context = { userId: "user", organizationId: "org", orgPendingDeletion: false, project: { id: "project", name: "P", userRole: "admin" } };
 const input = { jobId: "018f0000-0000-7000-8000-000000000002", name: "Job", description: "", cronSchedule: "*/5 * * * *" };
 
 beforeEach(() => {

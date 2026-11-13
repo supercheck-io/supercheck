@@ -32,6 +32,7 @@ import {
   buildExecutionPolicyFailureResponse,
 } from "@/lib/execution-api-responses";
 import { requireSameOriginRequest } from "@/lib/security/same-origin";
+import { pendingDeletionResponse, isOrgPendingDeletion } from "@/lib/deletion/org-state";
 import { isDeletingError } from "@/lib/deletion/errors";
 
 export async function POST(request: NextRequest) {
@@ -118,6 +119,7 @@ export async function POST(request: NextRequest) {
     }
     
     // Check permission to trigger jobs
+    if (authCtx.orgPendingDeletion) return pendingDeletionResponse();
     const canTriggerJobs = checkPermissionWithContext('job', 'trigger', authCtx);
     
     if (!canTriggerJobs) {

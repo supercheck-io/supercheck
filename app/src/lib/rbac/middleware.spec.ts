@@ -12,6 +12,7 @@
  */
 
 // Mock Next.js server before any imports
+jest.mock("@/lib/deletion/org-state", () => ({ isOrgPendingDeletion: jest.fn().mockResolvedValue(false), isProjectDeleted: jest.fn().mockResolvedValue(false) }));
 jest.mock("next/server", () => ({
   NextRequest: jest.fn(),
   NextResponse: {
@@ -46,6 +47,7 @@ jest.mock("next/headers", () => ({
 
 jest.mock("./permissions", () => ({
   hasPermission: jest.fn().mockReturnValue(true),
+  PENDING_DELETION_ALLOWED_ACTIONS: new Set(["view", "view_secrets", "export"]),
   Role: {
     SUPER_ADMIN: "SUPER_ADMIN",
     ORG_OWNER: "ORG_OWNER",
@@ -157,7 +159,7 @@ describe("RBAC Middleware", () => {
 
     // Default db mocks
     const mockSelectChain = {
-      from: jest.fn().mockReturnThis(),
+      from: jest.fn().mockReturnThis(), innerJoin: jest.fn().mockReturnThis(),
       where: jest.fn().mockReturnThis(),
       limit: jest.fn().mockResolvedValue([mockMemberRecord]),
     };
@@ -171,7 +173,7 @@ describe("RBAC Middleware", () => {
   describe("isImpersonatedSession", () => {
     const rowFor = (row: unknown[] | Error) => {
       const chain = {
-        from: jest.fn().mockReturnThis(),
+        from: jest.fn().mockReturnThis(), innerJoin: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
         limit: row instanceof Error ? jest.fn().mockRejectedValue(row) : jest.fn().mockResolvedValue(row),
       };
@@ -328,7 +330,7 @@ describe("RBAC Middleware", () => {
         it("should return PROJECT_VIEWER as default", async () => {
           mockIsSuperAdmin.mockResolvedValue(false);
           const mockSelectChain = {
-            from: jest.fn().mockReturnThis(),
+            from: jest.fn().mockReturnThis(), innerJoin: jest.fn().mockReturnThis(),
             where: jest.fn().mockReturnThis(),
             limit: jest.fn().mockResolvedValue([]),
           };
@@ -381,7 +383,7 @@ describe("RBAC Middleware", () => {
       describe("Negative Cases", () => {
         it("should return null when no member record found", async () => {
           const mockSelectChain = {
-            from: jest.fn().mockReturnThis(),
+            from: jest.fn().mockReturnThis(), innerJoin: jest.fn().mockReturnThis(),
             where: jest.fn().mockReturnThis(),
             limit: jest.fn().mockResolvedValue([]),
           };
@@ -410,7 +412,7 @@ describe("RBAC Middleware", () => {
           { projectId: "proj-3" },
         ];
         mockDbSelect.mockReturnValue({
-          from: jest.fn().mockReturnThis(),
+          from: jest.fn().mockReturnThis(), innerJoin: jest.fn().mockReturnThis(),
           where: jest.fn().mockResolvedValue(mockProjects),
         } as unknown);
 
@@ -421,7 +423,7 @@ describe("RBAC Middleware", () => {
 
       it("should return empty array when no projects assigned", async () => {
         mockDbSelect.mockReturnValue({
-          from: jest.fn().mockReturnThis(),
+          from: jest.fn().mockReturnThis(), innerJoin: jest.fn().mockReturnThis(),
           where: jest.fn().mockResolvedValue([]),
         } as unknown);
 
@@ -435,7 +437,7 @@ describe("RBAC Middleware", () => {
           projectId: `proj-${i}`,
         }));
         mockDbSelect.mockReturnValue({
-          from: jest.fn().mockReturnThis(),
+          from: jest.fn().mockReturnThis(), innerJoin: jest.fn().mockReturnThis(),
           where: jest.fn().mockResolvedValue(mockProjects),
         } as unknown);
 
@@ -455,14 +457,14 @@ describe("RBAC Middleware", () => {
           if (callCount === 1) {
             // First call: getUserOrgRole
             return {
-              from: jest.fn().mockReturnThis(),
+              from: jest.fn().mockReturnThis(), innerJoin: jest.fn().mockReturnThis(),
               where: jest.fn().mockReturnThis(),
               limit: jest.fn().mockResolvedValue([mockMemberRecord]),
             } as unknown;
           }
           // Second call: getUserAssignedProjects
           return {
-            from: jest.fn().mockReturnThis(),
+            from: jest.fn().mockReturnThis(), innerJoin: jest.fn().mockReturnThis(),
             where: jest.fn().mockResolvedValue([{ projectId: "proj-1" }]),
           } as unknown;
         });
@@ -486,13 +488,13 @@ describe("RBAC Middleware", () => {
           callCount++;
           if (callCount === 1) {
             return {
-              from: jest.fn().mockReturnThis(),
+              from: jest.fn().mockReturnThis(), innerJoin: jest.fn().mockReturnThis(),
               where: jest.fn().mockReturnThis(),
               limit: jest.fn().mockResolvedValue([{ role: "editor" }]),
             } as unknown;
           }
           return {
-            from: jest.fn().mockReturnThis(),
+            from: jest.fn().mockReturnThis(), innerJoin: jest.fn().mockReturnThis(),
             where: jest.fn().mockResolvedValue([{ projectId: "proj-1" }]),
           } as unknown;
         });
@@ -505,7 +507,7 @@ describe("RBAC Middleware", () => {
       it("should return empty assignedProjectIds for non-editors", async () => {
         mockNormalizeRole.mockReturnValue(Role.ORG_OWNER);
         const mockSelectChain = {
-          from: jest.fn().mockReturnThis(),
+          from: jest.fn().mockReturnThis(), innerJoin: jest.fn().mockReturnThis(),
           where: jest.fn().mockReturnThis(),
           limit: jest.fn().mockResolvedValue([{ role: "org_owner" }]),
         };
@@ -530,7 +532,7 @@ describe("RBAC Middleware", () => {
       mockDbSelect.mockImplementation(
         () =>
           ({
-            from: jest.fn().mockReturnThis(),
+            from: jest.fn().mockReturnThis(), innerJoin: jest.fn().mockReturnThis(),
             where: jest.fn().mockReturnThis(),
             limit: jest.fn().mockResolvedValue(mockProject),
           }) as unknown
@@ -540,7 +542,7 @@ describe("RBAC Middleware", () => {
     describe("resolveProjectPermissionContext", () => {
       it("should return null when project does not exist", async () => {
         mockDbSelect.mockReturnValue({
-          from: jest.fn().mockReturnThis(),
+          from: jest.fn().mockReturnThis(), innerJoin: jest.fn().mockReturnThis(),
           where: jest.fn().mockReturnThis(),
           limit: jest.fn().mockResolvedValue([]),
         } as unknown);
@@ -556,7 +558,7 @@ describe("RBAC Middleware", () => {
       it("should return SUPER_ADMIN role for super admins", async () => {
         mockIsSuperAdmin.mockResolvedValue(true);
         mockDbSelect.mockReturnValue({
-          from: jest.fn().mockReturnThis(),
+          from: jest.fn().mockReturnThis(), innerJoin: jest.fn().mockReturnThis(),
           where: jest.fn().mockReturnThis(),
           limit: jest.fn().mockResolvedValue([
             { id: testProjectId, organizationId: testOrgId },
@@ -579,7 +581,7 @@ describe("RBAC Middleware", () => {
           mockDbSelect.mockImplementation(() => {
             callCount++;
             return {
-              from: jest.fn().mockReturnThis(),
+              from: jest.fn().mockReturnThis(), innerJoin: jest.fn().mockReturnThis(),
               where: jest.fn().mockReturnThis(),
               limit: jest.fn().mockResolvedValue(
                 callCount === 1 ? [{ id: testProjectId, organizationId: testOrgId }] : membership,
@@ -613,7 +615,7 @@ describe("RBAC Middleware", () => {
           if (callCount === 1) {
             // Project lookup
             return {
-              from: jest.fn().mockReturnThis(),
+              from: jest.fn().mockReturnThis(), innerJoin: jest.fn().mockReturnThis(),
               where: jest.fn().mockReturnThis(),
               limit: jest.fn().mockResolvedValue([
                 { id: testProjectId, organizationId: testOrgId },
@@ -622,7 +624,7 @@ describe("RBAC Middleware", () => {
           }
           // Org membership lookup
           return {
-            from: jest.fn().mockReturnThis(),
+            from: jest.fn().mockReturnThis(), innerJoin: jest.fn().mockReturnThis(),
             where: jest.fn().mockReturnThis(),
             limit: jest.fn().mockResolvedValue([{ role: "org_owner" }]),
           } as unknown;
@@ -644,7 +646,7 @@ describe("RBAC Middleware", () => {
           callCount++;
           if (callCount === 1) {
             return {
-              from: jest.fn().mockReturnThis(),
+              from: jest.fn().mockReturnThis(), innerJoin: jest.fn().mockReturnThis(),
               where: jest.fn().mockReturnThis(),
               limit: jest.fn().mockResolvedValue([
                 { id: testProjectId, organizationId: testOrgId },
@@ -653,7 +655,7 @@ describe("RBAC Middleware", () => {
           }
           // No org membership
           return {
-            from: jest.fn().mockReturnThis(),
+            from: jest.fn().mockReturnThis(), innerJoin: jest.fn().mockReturnThis(),
             where: jest.fn().mockReturnThis(),
             limit: jest.fn().mockResolvedValue([]),
           } as unknown;
@@ -676,7 +678,7 @@ describe("RBAC Middleware", () => {
           callCount++;
           if (callCount === 1) {
             return {
-              from: jest.fn().mockReturnThis(),
+              from: jest.fn().mockReturnThis(), innerJoin: jest.fn().mockReturnThis(),
               where: jest.fn().mockReturnThis(),
               limit: jest.fn().mockResolvedValue([
                 { id: testProjectId, organizationId: testOrgId },
@@ -686,14 +688,14 @@ describe("RBAC Middleware", () => {
           if (callCount === 2) {
             // Org membership
             return {
-              from: jest.fn().mockReturnThis(),
+              from: jest.fn().mockReturnThis(), innerJoin: jest.fn().mockReturnThis(),
               where: jest.fn().mockReturnThis(),
               limit: jest.fn().mockResolvedValue([{ role: "project_viewer" }]),
             } as unknown;
           }
           // Project membership
           return {
-            from: jest.fn().mockReturnThis(),
+            from: jest.fn().mockReturnThis(), innerJoin: jest.fn().mockReturnThis(),
             where: jest.fn().mockReturnThis(),
             limit: jest.fn().mockResolvedValue([{ role: "project_editor" }]),
           } as unknown;
@@ -716,7 +718,7 @@ describe("RBAC Middleware", () => {
           callCount++;
           if (callCount === 1) {
             return {
-              from: jest.fn().mockReturnThis(),
+              from: jest.fn().mockReturnThis(), innerJoin: jest.fn().mockReturnThis(),
               where: jest.fn().mockReturnThis(),
               limit: jest.fn().mockResolvedValue([
                 { id: testProjectId, organizationId: testOrgId },
@@ -725,14 +727,14 @@ describe("RBAC Middleware", () => {
           }
           if (callCount === 2) {
             return {
-              from: jest.fn().mockReturnThis(),
+              from: jest.fn().mockReturnThis(), innerJoin: jest.fn().mockReturnThis(),
               where: jest.fn().mockReturnThis(),
               limit: jest.fn().mockResolvedValue([{ role: "project_viewer" }]),
             } as unknown;
           }
           // No project membership
           return {
-            from: jest.fn().mockReturnThis(),
+            from: jest.fn().mockReturnThis(), innerJoin: jest.fn().mockReturnThis(),
             where: jest.fn().mockReturnThis(),
             limit: jest.fn().mockResolvedValue([]),
           } as unknown;
@@ -753,6 +755,7 @@ describe("RBAC Middleware", () => {
         const ctx = {
           userId: testUserId,
           organizationId: testOrgId,
+          orgPendingDeletion: false,
           project: { id: testProjectId, userRole: Role.ORG_OWNER },
         };
 
@@ -765,6 +768,7 @@ describe("RBAC Middleware", () => {
         const ctx = {
           userId: testUserId,
           organizationId: testOrgId,
+          orgPendingDeletion: false,
           project: { id: testProjectId, userRole: Role.ORG_ADMIN },
         };
 
@@ -777,6 +781,7 @@ describe("RBAC Middleware", () => {
         const ctx = {
           userId: testUserId,
           organizationId: testOrgId,
+          orgPendingDeletion: false,
           project: { id: testProjectId, userRole: Role.PROJECT_VIEWER },
         };
 
@@ -860,7 +865,7 @@ describe("RBAC Middleware", () => {
           callCount++;
           if (callCount === 1) {
             return {
-              from: jest.fn().mockReturnThis(),
+              from: jest.fn().mockReturnThis(), innerJoin: jest.fn().mockReturnThis(),
               where: jest.fn().mockReturnThis(),
               limit: jest.fn().mockResolvedValue([
                 { id: "other-project", organizationId: "other-org" },
@@ -869,7 +874,7 @@ describe("RBAC Middleware", () => {
           }
           // No org membership
           return {
-            from: jest.fn().mockReturnThis(),
+            from: jest.fn().mockReturnThis(), innerJoin: jest.fn().mockReturnThis(),
             where: jest.fn().mockReturnThis(),
             limit: jest.fn().mockResolvedValue([]),
           } as unknown;
@@ -885,7 +890,7 @@ describe("RBAC Middleware", () => {
 
       it("should return null when project does not exist", async () => {
         mockDbSelect.mockReturnValue({
-          from: jest.fn().mockReturnThis(),
+          from: jest.fn().mockReturnThis(), innerJoin: jest.fn().mockReturnThis(),
           where: jest.fn().mockReturnThis(),
           limit: jest.fn().mockResolvedValue([]),
         } as unknown);
@@ -902,7 +907,7 @@ describe("RBAC Middleware", () => {
     describe("Organization Scope", () => {
       it("should validate organization membership", async () => {
         const mockSelectChain = {
-          from: jest.fn().mockReturnThis(),
+          from: jest.fn().mockReturnThis(), innerJoin: jest.fn().mockReturnThis(),
           where: jest.fn().mockReturnThis(),
           limit: jest.fn().mockResolvedValue([]),
         };
@@ -939,6 +944,7 @@ describe("RBAC Middleware", () => {
         const ctx = {
           userId: testUserId,
           organizationId: testOrgId,
+          orgPendingDeletion: false,
           project: { id: testProjectId, userRole: Role.ORG_OWNER },
         };
 
@@ -951,6 +957,7 @@ describe("RBAC Middleware", () => {
         const ctx = {
           userId: testUserId,
           organizationId: testOrgId,
+          orgPendingDeletion: false,
           project: { id: testProjectId, userRole: Role.PROJECT_ADMIN },
         };
 
@@ -982,7 +989,7 @@ describe("RBAC Middleware", () => {
 
       it("should handle empty project ID", async () => {
         mockDbSelect.mockReturnValue({
-          from: jest.fn().mockReturnThis(),
+          from: jest.fn().mockReturnThis(), innerJoin: jest.fn().mockReturnThis(),
           where: jest.fn().mockReturnThis(),
           limit: jest.fn().mockResolvedValue([]),
         } as unknown);
@@ -1035,7 +1042,7 @@ describe("RBAC Middleware", () => {
           // Alternate between project lookup and org role
           if (callCount % 2 === 1) {
             return {
-              from: jest.fn().mockReturnThis(),
+              from: jest.fn().mockReturnThis(), innerJoin: jest.fn().mockReturnThis(),
               where: jest.fn().mockReturnThis(),
               limit: jest.fn().mockResolvedValue([
                 { id: testProjectId, organizationId: testOrgId },
@@ -1043,7 +1050,7 @@ describe("RBAC Middleware", () => {
             } as unknown;
           }
           return {
-            from: jest.fn().mockReturnThis(),
+            from: jest.fn().mockReturnThis(), innerJoin: jest.fn().mockReturnThis(),
             where: jest.fn().mockReturnThis(),
             limit: jest.fn().mockResolvedValue([{ role: "org_owner" }]),
           } as unknown;
@@ -1091,7 +1098,7 @@ describe("RBAC Middleware", () => {
   describe("forbiddenOrNotFound", () => {
     const membership = (rows: unknown[]) =>
       mockDbSelect.mockReturnValue({
-        from: jest.fn().mockReturnThis(),
+        from: jest.fn().mockReturnThis(), innerJoin: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
         limit: jest.fn().mockResolvedValue(rows),
       } as unknown);
@@ -1133,7 +1140,7 @@ describe("RBAC Middleware", () => {
         // User is authenticated but NOT a member of otherOrgId
         mockIsSuperAdmin.mockResolvedValue(false);
         const mockSelectChain = {
-          from: jest.fn().mockReturnThis(),
+          from: jest.fn().mockReturnThis(), innerJoin: jest.fn().mockReturnThis(),
           where: jest.fn().mockReturnThis(),
           limit: jest.fn().mockResolvedValue([]), // No membership record
         };
@@ -1154,7 +1161,7 @@ describe("RBAC Middleware", () => {
         // getUserOrgRole: select().from().where().limit() - limit() returns promise
         // getUserAssignedProjects: select().from().where() - where() returns promise (array)
         const mockSelectChain = {
-          from: jest.fn().mockReturnThis(),
+          from: jest.fn().mockReturnThis(), innerJoin: jest.fn().mockReturnThis(),
           where: jest.fn().mockReturnValue({
             limit: jest.fn().mockResolvedValue([{ role: "org_admin" }]),
             // Also support being awaited directly for getUserAssignedProjects
@@ -1179,7 +1186,7 @@ describe("RBAC Middleware", () => {
           map: jest.fn().mockReturnValue([]),
         });
         const mockSelectChain = {
-          from: jest.fn().mockReturnThis(),
+          from: jest.fn().mockReturnThis(), innerJoin: jest.fn().mockReturnThis(),
           where: jest.fn().mockResolvedValue(mockWhereResult),
         };
         mockDbSelect.mockReturnValue(mockSelectChain as unknown);
@@ -1201,7 +1208,7 @@ describe("RBAC Middleware", () => {
           map: jest.fn().mockReturnValue([]),
         });
         const mockSelectChain = {
-          from: jest.fn().mockReturnThis(),
+          from: jest.fn().mockReturnThis(), innerJoin: jest.fn().mockReturnThis(),
           where: jest.fn().mockResolvedValue(mockWhereResult),
         };
         mockDbSelect.mockReturnValue(mockSelectChain as unknown);
@@ -1226,7 +1233,7 @@ describe("RBAC Middleware", () => {
       it("should prevent authenticated user from viewing another org's tests", async () => {
         mockIsSuperAdmin.mockResolvedValue(false);
         const mockSelectChain = {
-          from: jest.fn().mockReturnThis(),
+          from: jest.fn().mockReturnThis(), innerJoin: jest.fn().mockReturnThis(),
           where: jest.fn().mockReturnThis(),
           limit: jest.fn().mockResolvedValue([]), // Not a member
         };
@@ -1242,7 +1249,7 @@ describe("RBAC Middleware", () => {
       it("should prevent authenticated user from viewing another org's jobs", async () => {
         mockIsSuperAdmin.mockResolvedValue(false);
         const mockSelectChain = {
-          from: jest.fn().mockReturnThis(),
+          from: jest.fn().mockReturnThis(), innerJoin: jest.fn().mockReturnThis(),
           where: jest.fn().mockReturnThis(),
           limit: jest.fn().mockResolvedValue([]), // Not a member
         };
@@ -1258,7 +1265,7 @@ describe("RBAC Middleware", () => {
       it("should prevent authenticated user from viewing another org's projects", async () => {
         mockIsSuperAdmin.mockResolvedValue(false);
         const mockSelectChain = {
-          from: jest.fn().mockReturnThis(),
+          from: jest.fn().mockReturnThis(), innerJoin: jest.fn().mockReturnThis(),
           where: jest.fn().mockReturnThis(),
           limit: jest.fn().mockResolvedValue([]), // Not a member
         };
@@ -1274,7 +1281,7 @@ describe("RBAC Middleware", () => {
       it("should prevent authenticated user from viewing another org's members", async () => {
         mockIsSuperAdmin.mockResolvedValue(false);
         const mockSelectChain = {
-          from: jest.fn().mockReturnThis(),
+          from: jest.fn().mockReturnThis(), innerJoin: jest.fn().mockReturnThis(),
           where: jest.fn().mockReturnThis(),
           limit: jest.fn().mockResolvedValue([]), // Not a member
         };

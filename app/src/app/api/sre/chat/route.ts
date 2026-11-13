@@ -284,6 +284,7 @@ export async function POST(request: NextRequest) {
     {
       userId: context.userId,
       organizationId: context.organizationId,
+      orgPendingDeletion: context.orgPendingDeletion,
       project: context.project,
     },
   );
@@ -293,6 +294,7 @@ export async function POST(request: NextRequest) {
     {
       userId: context.userId,
       organizationId: context.organizationId,
+      orgPendingDeletion: context.orgPendingDeletion,
       project: context.project,
     },
   );

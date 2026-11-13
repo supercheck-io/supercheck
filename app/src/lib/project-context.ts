@@ -24,6 +24,7 @@ import { roleToString } from "./rbac/role-normalizer";
 import { resolveEffectiveProjectRole } from "./rbac/effective-project-role";
 import { getCachedAuthSession } from "./session-cache";
 import { getUnifiedAuthContext } from "./rbac/unified-auth";
+import { isOrgPendingDeletion } from "./deletion/org-state";
 import { createLogger } from "./logger/index";
 
 const logger = createLogger({ module: "project-context" }) as {
@@ -46,6 +47,8 @@ export interface ProjectAuthContext {
   userId: string;
   project: ProjectContext;
   organizationId: string;
+  /** The organization is pending deletion: the permission layer makes it read-only. */
+  orgPendingDeletion: boolean;
 }
 
 /**
@@ -462,7 +465,9 @@ export async function requireProjectContext(): Promise<ProjectAuthContext> {
      return {
         userId,
         project: slowProject,
-        organizationId: slowProject.organizationId
+        organizationId: slowProject.organizationId,
+        // Rare first-login path: one fresh read instead of carrying the flag through the slow lookup.
+        orgPendingDeletion: await isOrgPendingDeletion(slowProject.organizationId, { fresh: true }),
      };
   }
 
@@ -482,6 +487,7 @@ export async function requireProjectContext(): Promise<ProjectAuthContext> {
   return {
     userId: ctx.userId,
     organizationId: ctx.organizationId,
+    orgPendingDeletion: ctx.organizationPendingDeletion === true,
     project: {
         id: ctx.projectId,
         name: ctx.projectName || "Unknown Project",

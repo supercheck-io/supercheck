@@ -9,7 +9,7 @@ import {
   guardDeviceAuthEnabled,
   readDeviceBody,
 } from "@/lib/auth/device-http";
-import { isImpersonatedSession, requireAuth } from "@/lib/rbac/middleware";
+import { isImpersonatedSession, requireAuth, resolveProjectPermissionContext } from "@/lib/rbac/middleware";
 import { requireSameOriginRequest } from "@/lib/security/same-origin";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { getClientIP } from "@/lib/session-security";
@@ -66,6 +66,8 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    // Only a member learns that the organization is pending; anyone else gets the usual denial from the approval.
+    if ((await resolveProjectPermissionContext(userId, body.project_id))?.orgPendingDeletion) return deviceJson({ error: "organization_pending_deletion" }, 403);
     const result = await approveDeviceGrant({
       userCode: body.user_code,
       userId,

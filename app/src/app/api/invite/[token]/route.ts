@@ -9,6 +9,7 @@ import { getCurrentUser } from '@/lib/session';
 import { withPlanLimitLock } from "@/lib/middleware/plan-limit-lock";
 import { effectiveMemberLimit } from "@/lib/billing/member-seats";
 import { isCloudHosted, isPolarEnabled } from '@/lib/feature-flags';
+import { isOrgPendingDeletion, pendingDeletionResponse, readOrgPendingOn } from "@/lib/deletion/org-state";
 
 export async function GET(
   request: NextRequest,
@@ -179,6 +180,8 @@ export async function POST(
         { status: 400 }
       );
     }
+    // Only a pending invitation addressed to this user learns the organization's deletion state.
+    if (await isOrgPendingDeletion(invite.organizationId, { fresh: true })) return pendingDeletionResponse();
     if (isCloudHosted()) {
       const [acceptingUser] = await db
         .select({ emailVerified: userTable.emailVerified })
@@ -234,6 +237,8 @@ export async function POST(
       const [acceptingUser] = await tx.select({ id: userTable.id, role: userTable.role }).from(userTable)
         .where(eq(userTable.id, currentUser.id)).limit(1).for("update");
       if (!acceptingUser) throw new Error('INVITE_SESSION_CHANGED');
+      // A deletion request takes this row FOR UPDATE: either it commits first and this refuses, or this commits first and the request sees the member.
+      if (await readOrgPendingOn(tx, invite.organizationId, 'share')) throw new Error('INVITE_ORG_PENDING');
       // Platform administrators are never team members; the invite flow cannot reveal them, so refuse here with the generic error.
       if (acceptingUser.role === 'super_admin') throw new Error('INVITE_ALREADY_USED');
       // Plan limits only exist when Polar billing is active; cloud mode without
@@ -406,6 +411,7 @@ export async function POST(
     if (error instanceof Error && error.message === "INVITE_MEMBER_LIMIT") {
       return NextResponse.json({ error: "The organization has reached its current plan's member limit. Ask an owner to upgrade or free a seat." }, { status: 402 });
     }
+    if (error instanceof Error && error.message === 'INVITE_ORG_PENDING') return pendingDeletionResponse();
     if (error instanceof Error && error.message === 'INVITE_SESSION_CHANGED') {
       return NextResponse.json({ error: 'Session changed. Please sign in again.' }, { status: 401 });
     }
