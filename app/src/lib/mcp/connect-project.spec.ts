@@ -1,5 +1,7 @@
 /** @jest-environment node */
 const mockGetSelectable = jest.fn();
+jest.mock("@/lib/deletion/org-state");
+import { isOrgPendingDeletion, OrgPendingDeletionError } from "@/lib/deletion/org-state";
 jest.mock("@/lib/session", () => ({ getSelectableProjects: (...a: unknown[]) => mockGetSelectable(...a) }));
 
 import {
@@ -31,6 +33,13 @@ describe("assertCanConnectProject", () => {
     await expect(assertCanConnectProject("u1", "0197a1b2-c3d4-7e5f-8a9b-ffffffffffff")).rejects.toBeInstanceOf(
       McpProjectAccessError,
     );
+  });
+
+  it("refuses a new connection while the project's organization is pending deletion", async () => {
+    mockGetSelectable.mockResolvedValue([{ id: A, organizationId: "org-1" }]);
+    jest.mocked(isOrgPendingDeletion).mockResolvedValueOnce(true);
+    await expect(assertCanConnectProject("u1", A)).rejects.toBeInstanceOf(OrgPendingDeletionError);
+    expect(isOrgPendingDeletion).toHaveBeenCalledWith("org-1", { fresh: true });
   });
 });
 

@@ -43,8 +43,9 @@ export function PendingDeletionBanner({ organizationId, pending, isOwner }: { or
     return () => clearInterval(timer);
   }, []);
   const { data } = useQuery({ queryKey: ["org-deletion-state", organizationId], queryFn: () => fetchState(organizationId), enabled: pending, staleTime: 60_000 });
-  // The fetched state wins once it is loaded (another owner may have cancelled); the prop covers the first render.
-  if (!(data ? data.pending : pending)) return null;
+  // The server prop is authoritative for "active" (a disabled query keeps stale cached data); while pending, a loaded
+  // state that says otherwise wins (another owner may have cancelled).
+  if (!pending || (data && !data.pending)) return null;
 
   const cancel = async () => {
     setCancelling(true);

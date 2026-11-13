@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { getSelectableProjects } from "@/lib/session";
+import { isOrgPendingDeletion, OrgPendingDeletionError } from "@/lib/deletion/org-state";
 
 /**
  * The connect screen asks which project an agent may read, and Better Auth
@@ -39,9 +40,12 @@ export async function listConnectableProjects(userId: string) {
 
 export async function assertCanConnectProject(userId: string, projectId: string): Promise<void> {
   const projects = await listConnectableProjects(userId);
-  if (!projects.some((project) => project.id === projectId)) {
+  const project = projects.find((candidate) => candidate.id === projectId);
+  if (!project) {
     throw new McpProjectAccessError();
   }
+  // A new connection is a write: a pending organization stays read-only.
+  if (await isOrgPendingDeletion(project.organizationId, { fresh: true })) throw new OrgPendingDeletionError();
 }
 
 /** Runs `fn` (the approval call) with `projectId` as the project being connected. */
