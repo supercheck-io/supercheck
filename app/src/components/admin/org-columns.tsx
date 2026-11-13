@@ -17,6 +17,8 @@ export interface AdminOrganization {
   memberCount?: number;
   projectCount?: number;
   createdAt: string;
+  deletionRequestedAt?: string | null;
+  deletionPurgeAfter?: string | null;
 }
 
 export const createOrgColumns = (): ColumnDef<AdminOrganization>[] => [

@@ -5944,8 +5944,8 @@
       },
       "delete": {
         "operationId": "deleteOrganization",
-        "summary": "Delete organization",
-        "description": "Owner only. Permanently deletes the organization, its projects, data and stored files, and cancels the subscription on record. Audit log entries are kept. The body must repeat the organization id in confirmOrganizationId. Not allowed while impersonating. Requires an interactive, same-origin browser session; project-scoped CLI tokens receive 403.",
+        "summary": "Request organization deletion",
+        "description": "Owner only. Schedules the organization for deletion. The organization becomes read-only for a grace window (14 days by default, ORG_DELETION_GRACE_DAYS on self-hosted installations) during which the owner can cancel. A self-hosted installation with ORG_DELETION_GRACE_DAYS=0 has no window: the purge is queued at once and the deletion cannot be cancelled. A subscription stops renewing and ends at the end of the paid period, and the owners are emailed when mail is configured. After the window the projects, data and stored files are deleted permanently. Audit log entries are kept for 12 months with email addresses removed. The body must repeat the organization name in confirmName. Needs a session created within the last few minutes (403 with code REAUTH_REQUIRED otherwise). Not allowed while impersonating. Requires an interactive, same-origin browser session; project-scoped CLI tokens receive 403.",
         "tags": [
           "Organizations"
         ],
@@ -5956,13 +5956,12 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "confirmOrganizationId"
+                  "confirmName"
                 ],
                 "properties": {
-                  "confirmOrganizationId": {
+                  "confirmName": {
                     "type": "string",
-                    "format": "uuid",
-                    "description": "Must equal the id in the path."
+                    "description": "The exact organization name."
                   }
                 }
               }
@@ -5971,7 +5970,326 @@
         },
         "responses": {
           "200": {
-            "description": "Organization deleted",
+            "description": "Deletion scheduled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "purgeAfter": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "When the organization is deleted permanently unless the owner cancels."
+                    },
+                    "billing": {
+                      "type": "string",
+                      "description": "Outcome of stopping the subscription. retry means the provider call failed and is retried automatically."
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "confirmName is missing or does not match the organization name (code CONFIRM_NAME_MISMATCH)."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Not an owner, or the session is too old (code REAUTH_REQUIRED): sign in again and retry."
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "The organization is busy. Retry shortly."
+          },
+          "429": {
+            "description": "Too many deletion attempts. Try again later."
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/organizations/{id}/cancel-deletion": {
+      "post": {
+        "operationId": "cancelOrganizationDeletion",
+        "summary": "Cancel organization deletion",
+        "description": "Owner only. Cancels a pending deletion during the grace window and returns the organization to normal. Returns 409 with code PURGE_STARTED once the window is over. Not allowed while impersonating. Requires an interactive, same-origin browser session.",
+        "tags": [
+          "Organizations"
+        ],
+        "responses": {
+          "200": {
+            "description": "Deletion cancelled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "billing": {
+                      "type": "string",
+                      "enum": [
+                        "reinstated",
+                        "ended",
+                        "skipped",
+                        "none",
+                        "failed"
+                      ],
+                      "description": "ended: the paid period already finished, so subscribe again. failed: the organization is restored but renewal could not be re-enabled; use the billing portal."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "The purge has already started (PURGE_STARTED) or the organization is not pending deletion."
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ]
+    },
+    "/api/organizations/{id}/deletion": {
+      "get": {
+        "operationId": "getOrganizationDeletion",
+        "summary": "Get organization deletion state",
+        "description": "Any member. The deletion state shown by the pending-deletion banner and the delete dialog. Non-members receive 404. Requires an interactive browser session; project-scoped CLI tokens receive 403.",
+        "tags": [
+          "Organizations"
+        ],
+        "responses": {
+          "200": {
+            "description": "Deletion state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "deletion": {
+                      "type": "object",
+                      "properties": {
+                        "pending": {
+                          "type": "boolean"
+                        },
+                        "requestedAt": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "format": "date-time"
+                        },
+                        "purgeAfter": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "format": "date-time"
+                        },
+                        "canCancel": {
+                          "type": "boolean",
+                          "description": "The owner can still cancel: the window is not over and the purge has not started."
+                        },
+                        "purge": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "description": "The unfinished purge job, if any.",
+                          "properties": {
+                            "state": {
+                              "type": "string"
+                            },
+                            "phase": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            }
+                          }
+                        },
+                        "graceDays": {
+                          "type": "integer",
+                          "description": "Length of the cancellation window in days: the pending deletion's own window, or the configured window when nothing is pending."
+                        },
+                        "emailAvailable": {
+                          "type": "boolean",
+                          "description": "False when no mail server is configured, so confirmations are shown in the app only."
+                        },
+                        "selfHosted": {
+                          "type": "boolean"
+                        },
+                        "hasSubscription": {
+                          "type": "boolean"
+                        },
+                        "reauthMaxAgeSeconds": {
+                          "type": "integer",
+                          "description": "How old a session may be before requesting deletion needs a fresh sign-in."
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ]
+    },
+    "/api/projects/deleted": {
+      "get": {
+        "operationId": "listDeletedProjects",
+        "summary": "List deleted projects",
+        "description": "Organization owners and admins. Soft-deleted projects of the active organization that can still be restored. Requires an interactive browser session; project-scoped CLI tokens receive 403.",
+        "tags": [
+          "Organizations"
+        ],
+        "responses": {
+          "200": {
+            "description": "Restorable projects",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "projects": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "deletedAt": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "format": "date-time"
+                          },
+                          "purgeAfter": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "format": "date-time",
+                            "description": "End of the restore window; after it the project is deleted permanently."
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "No active organization."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/projects/{id}/restore": {
+      "post": {
+        "operationId": "restoreProject",
+        "summary": "Restore a deleted project",
+        "description": "Organization owners and admins. Undoes a project deletion within its 7 day restore window. Monitors and status pages beyond the plan limits stay paused or archived. Returns 409 with code RESTORE_WINDOW_ENDED once the window is over, or PURGE_STARTED while the project is being purged; 403 with code ORG_PENDING_DELETION while the organization is pending deletion, or PLAN_LIMIT when the plan has no room for another project. Not allowed while impersonating. Requires an interactive, same-origin browser session.",
+        "tags": [
+          "Organizations"
+        ],
+        "responses": {
+          "200": {
+            "description": "Project restored",
             "content": {
               "application/json": {
                 "schema": {
@@ -5988,9 +6306,6 @@
               }
             }
           },
-          "400": {
-            "description": "confirmOrganizationId is missing or does not match the organization id."
-          },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
@@ -6001,16 +6316,10 @@
             "$ref": "#/components/responses/NotFound"
           },
           "409": {
-            "description": "The organization is busy (retry shortly), or related records block deletion (contact your administrator or support)."
+            "description": "The restore window has ended (RESTORE_WINDOW_ENDED) or the purge has started (PURGE_STARTED)."
           },
-          "429": {
-            "description": "Too many deletion attempts. Try again later."
-          },
-          "500": {
-            "description": "Internal server error"
-          },
-          "502": {
-            "description": "Billing cancellation or storage cleanup failed. The organization remains, but schedules may be stopped and some files already removed; retry to finish the deletion."
+          "503": {
+            "description": "Too many concurrent requests; retry shortly."
           }
         },
         "security": [
@@ -6018,7 +6327,18 @@
             "sessionCookie": []
           }
         ]
-      }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ]
     },
     "/api/organizations/members": {
       "get": {

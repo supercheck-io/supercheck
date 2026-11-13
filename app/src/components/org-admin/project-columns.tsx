@@ -13,7 +13,7 @@ import {
 import { DateCell } from "@/components/ui/table-cells";
 import { TruncatedTextWithTooltip } from "@/components/ui/truncated-text-with-tooltip";
 
-import { BellRing, Edit3, FolderOpen, MapPin, MoreHorizontal, Users } from "lucide-react";
+import { BellRing, Edit3, FolderOpen, MapPin, MoreHorizontal, Trash2, Users } from "lucide-react";
 import { toast } from "sonner";
 import { DataTableColumnHeader } from "@/components/tests/data-table-column-header";
 import { UUIDField } from "@/components/ui/uuid-field";
@@ -43,7 +43,8 @@ export function createProjectColumns(
   onEditProject?: (project: Project) => void,
   canManageProject?: boolean,
   onManageLocations?: (project: Project) => void,
-  onManageIncidentPolicy?: (project: Project) => void
+  onManageIncidentPolicy?: (project: Project) => void,
+  onDeleteProject?: (project: Project) => void
 ): ColumnDef<Project>[] {
   return [
     {
@@ -215,6 +216,15 @@ export function createProjectColumns(
                 <DropdownMenuItem onClick={() => onManageIncidentPolicy(project)}>
                   <BellRing className="mr-2 h-3.5 w-3.5" />
                   Incident notifications
+                </DropdownMenuItem>
+              )}
+              {onDeleteProject && !project.isDefault && (
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  onClick={() => onDeleteProject(project)}
+                >
+                  <Trash2 className="mr-2 h-3.5 w-3.5" />
+                  Delete project
                 </DropdownMenuItem>
               )}
             </DropdownMenuContent>
